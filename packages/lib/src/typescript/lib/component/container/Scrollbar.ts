@@ -518,13 +518,6 @@ export function isScrollbarTarget(e: Event): boolean {
  */
 class Scrollbar extends Component<ScrollbarOptions> {
 
-    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
-        {
-            selector: ".undisplayed",
-            extract: (): StyleBag => ({ displayed: false }),
-        },
-    ];
-
     private _orientation     : AxisOrientation     = "vertical";
     private _thumb           : ScrollbarThumb;
     private _viewportSize    : number                   = 0;
@@ -776,49 +769,6 @@ class Scrollbar extends Component<ScrollbarOptions> {
     protected emit(event: "scroll",       position: number): void;
     protected emit(event: ScrollbarEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
-    }
-
-    /**
-     * Returns whether the scrollbar currently participates in layout — `false`
-     * while `setMetrics` has hidden it because the content fits in the
-     * viewport. Reads the `.undisplayed` state directly for the same reason
-     * `Component.isVisible` reads `.invisible` directly — see
-     * ARCHITECTURE.md's state-tier section.
-     */
-    isDisplayed(): boolean {
-        if (this.isStyleState(".undisplayed")) {
-            return false;
-        }
-
-        return super.isDisplayed();
-    }
-
-    /**
-     * Shows or hides the scrollbar using CSS display, routed through the shared
-     * `.Scrollbar.undisplayed` class-tier rule instead of a per-instance `#id`
-     * declaration — `setMetrics` calls this on every metrics update, and about
-     * half of live scrollbars are undisplayed at any moment. Does not delegate
-     * to `super.setDisplayed` — see `## Architecture Decisions` for the stale
-     * idempotency-check bug that would otherwise introduce.
-     */
-    setDisplayed(value: boolean): this {
-        const v = !!value;
-
-        if (this.isDisplayed() === v && this.getElement()) {
-            return this;
-        }
-
-        this.setStyleState(".undisplayed", v === false);
-
-        if (v) {
-            this.writeStyle({ displayed: true });
-        }
-
-        if (this.getElement()) {
-            this.scheduleEffectiveVisibilityReconcile();
-        }
-
-        return this;
     }
 
     /**

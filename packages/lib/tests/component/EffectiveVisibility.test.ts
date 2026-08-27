@@ -335,3 +335,69 @@ describe('Component.setVisible routes through the .invisible state tier', () => 
         expect(c.isEffectivelyVisible()).toBe(false);
     });
 });
+
+// Component `setDisplayed`/`isDisplayed` state-tier dedup — plan
+// component-setdisplayed-state-tier-dedup.md's Expected Behaviour rows 3, 4,
+// 5. Rows 1, 2, 6, 7, 8 (the CSS-write-dedup assertions, which need the
+// `declarationsDuring`/`_ruleCacheHas` helpers) live in
+// `tests/core/StyleStates.test.ts` instead, alongside that file's existing
+// declared-state coverage.
+describe('Component.setDisplayed routes through the .undisplayed state tier', () => {
+    it('row 3: a never-rendered Component constructed with displayed:false reports isDisplayed() false', () => {
+        const c = new Component({ displayed: false });
+
+        expect(c.isDisplayed()).toBe(false);
+    });
+
+    it('row 4: the first render catches up the undisplayed class token, and isDisplayed() still reports false', () => {
+        const c = new Component({ displayed: false });
+        const element = c.getElement(true)!;
+
+        // `setStyleState`'s own DOM write is gated on `getElement()`, so the
+        // construction-time toggle (case row 3, before any element exists)
+        // only reaches the classList via `Component.init()`'s render-time
+        // catch-up sweep — assert that sweep actually added the token.
+        const addClassOps = (DOM.sink as RecordingDOMSink).writes.filter(w =>
+            w.op === 'apply' && w.args[0] === element
+            && (w.args[1] as { addClass?: readonly string[] }).addClass?.includes('undisplayed')
+        );
+        expect(addClassOps.length).toBeGreaterThan(0);
+        expect(c.isDisplayed()).toBe(false);
+    });
+
+    it('row 5: setDisplayed(true) after setDisplayed(false) removes the undisplayed class, reports true, and writes no real display declaration', () => {
+        const c = new Component({});
+        const element = c.getElement(true)!;
+        c.setDisplayed(false);
+
+        const writesBefore = (DOM.sink as RecordingDOMSink).writes.length;
+        c.setDisplayed(true);
+        const writesAfter = (DOM.sink as RecordingDOMSink).writes.slice(writesBefore);
+
+        const removedUndisplayed = writesAfter.some(w =>
+            w.op === 'apply' && w.args[0] === element
+            && (w.args[1] as { removeClass?: readonly string[] }).removeClass?.includes('undisplayed')
+        );
+        expect(removedUndisplayed).toBe(true);
+        expect(c.isDisplayed()).toBe(true);
+
+        // `writeStyle({ displayed: true })` on this branch resolves to the
+        // class/framework tier's own default, so per `flushStyleBag`'s own
+        // dedup it only ever queues a matching removal (`null`) — never a
+        // real `display: none` declaration.
+        const noneDecls = ruleStyleWrites(DOM.sink as RecordingDOMSink)
+            .filter(w => w.key === 'display' && w.value === 'none');
+        expect(noneDecls).toEqual([]);
+    });
+
+    it('isEffectivelyVisible() picks up a component hidden via the new .undisplayed path with no test-side change needed', () => {
+        const c = new Component({});
+        c.getElement(true);
+
+        expect(c.isEffectivelyVisible()).toBe(true);
+
+        c.setDisplayed(false);
+
+        expect(c.isEffectivelyVisible()).toBe(false);
+    });
+});

@@ -108,14 +108,15 @@ describe('Text truncate write-path cleanup', () => {
         const t = new Text('x', { truncate: false });
 
         // `writeGuardedCSSRule` (which `textOverflow`'s reconciliation routes
-        // through) now isolates onto `#id:not(.invisible)` rather than the
-        // bare `#id` rule: `Component`'s own `.invisible` state (the
-        // state-tier dedup plan) makes `isRestingChromeIsolated()` true for
-        // every class, `Text` included, even though `.invisible` shares no
-        // property with `textOverflow`. `:not(.invisible)` still beats the
-        // class-tier rule and still matches a non-hidden instance, so the
-        // override still wins the cascade; only the selector moved.
-        const declarations = declarationsDuring(sink, idSelector(t) + ':not(.invisible)', () => t.getElement(true));
+        // through) now isolates onto `#id:not(.undisplayed):not(.invisible)`
+        // rather than the bare `#id` rule: `Component`'s own
+        // `.undisplayed`/`.invisible` states (the state-tier dedup plans)
+        // make `isRestingChromeIsolated()` true for every class, `Text`
+        // included, even though neither state shares a property with
+        // `textOverflow`. `:not(.undisplayed):not(.invisible)` still beats
+        // the class-tier rule and still matches a non-hidden instance, so
+        // the override still wins the cascade; only the selector moved.
+        const declarations = declarationsDuring(sink, idSelector(t) + ':not(.undisplayed):not(.invisible)', () => t.getElement(true));
 
         expect(t.getTextOverflow()).toBeNull();
         expect(declarations.textOverflow).toBe('clip');
@@ -127,8 +128,8 @@ describe('Text truncate write-path cleanup', () => {
         t.getElement(true);
 
         // See the construction-time case above for why this is now
-        // `:not(.invisible)`, not the bare `#id` selector.
-        const declarations = declarationsDuring(sink, idSelector(t) + ':not(.invisible)', () => t.setTruncate(false));
+        // `:not(.undisplayed):not(.invisible)`, not the bare `#id` selector.
+        const declarations = declarationsDuring(sink, idSelector(t) + ':not(.undisplayed):not(.invisible)', () => t.setTruncate(false));
 
         expect(declarations.textOverflow).toBe('clip');
     });

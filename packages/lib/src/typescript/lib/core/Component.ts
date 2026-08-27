@@ -415,15 +415,25 @@ const FRAMEWORK_BASELINE_KEYS: ReadonlySet<string> = new Set([
 
 class Component<TOptions extends ComponentOptions = ComponentOptions> extends BaseObject {
 
-    // The one state Component itself declares — see ARCHITECTURE.md's
-    // "Component CSS tiers and state-rule dedup". setVisible(false) toggles
-    // it instead of writing a per-instance `visibility: hidden` declaration.
-    // Declared on the root class, not a concrete leaf — see the
-    // `stateRuleName` fix in ClassStyleRules.ts this relies on. A subclass
-    // that declares its own `ownStyleStates` (a whole-list override, see
-    // ARCHITECTURE.md) does not inherit this entry and is not required to
-    // restate it — see `isVisible()`'s `_activeStates` direct-read below.
+    // The two states Component itself declares — see ARCHITECTURE.md's
+    // "Component CSS tiers and state-rule dedup". setDisplayed(false) and
+    // setVisible(false) toggle these instead of writing a per-instance
+    // `display: none` / `visibility: hidden` declaration. Declared on the
+    // root class, not a concrete leaf — see the `stateRuleName` fix in
+    // ClassStyleRules.ts this relies on. A subclass that declares its own
+    // `ownStyleStates` (a whole-list override, see ARCHITECTURE.md) does not
+    // inherit these entries and is not required to restate them — see the
+    // `_activeStates` direct-reads in `isDisplayed()` / `isVisible()` below.
+    //
+    // `.undisplayed` is first deliberately: `guardedSuffixFor` guards every
+    // entry against the ones ahead of it, so a component that is both
+    // undisplayed and invisible resolves `display: none` (which subsumes
+    // `visibility: hidden`) rather than the other way round.
     protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".undisplayed",
+            extract: (): StyleBag => ({ displayed: false }),
+        },
         {
             selector: ".invisible",
             extract: (): StyleBag => ({ visible: false }),
@@ -2221,11 +2231,28 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     setDisplayed(value: boolean): this {
         const v = !!value;
-        if (this._instanceStyle.displayed === v && this.getElement()) {
+
+        // Compares against `isDisplayed()`, not `_instanceStyle.displayed`:
+        // the `false` leg below deliberately never caches into
+        // `_instanceStyle`, so that field goes stale after the first
+        // hide→show→hide sequence and would make a later show silently
+        // no-op. See `## Architecture Decisions`.
+        if (this.isDisplayed() === v && this.getElement()) {
             return this;
         }
 
-        this.writeStyle({ displayed: v });
+        // Route the CSS side through the shared
+        // `.ts-ui-component.undisplayed` class-tier rule instead of a
+        // per-instance `#id` declaration. `_instanceStyle` is deliberately
+        // left untouched on the `false` branch — caching it there would make
+        // a later full-sweep re-render treat it as a genuine per-instance
+        // override again, reproducing the exact duplicate rule this change
+        // removes.
+        this.setStyleState(".undisplayed", !v);
+
+        if (v) {
+            this.writeStyle({ displayed: true });
+        }
 
         if (this.getElement()) {
             this.scheduleEffectiveVisibilityReconcile();
@@ -2244,6 +2271,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *   (unlike `isVisible`, which is tri-state for inherited visibility).
      */
     isDisplayed(): boolean {
+        // `.undisplayed` is read from `_activeStates` directly rather than
+        // through `resolveStyleValue`'s layer walk: a subclass that declares
+        // its own `ownStyleStates` (Button, Row, TreeRow, ...) does not
+        // inherit Component's `.undisplayed` entry into its own resolved
+        // list, so `styleLayers()` never pushes that layer for such an
+        // instance. The shared CSS rule still applies regardless (it matches
+        // on the universal `ts-ui-component` token, not the concrete class
+        // name) — this check only keeps the *getter* correct uniformly
+        // across every subclass.
+        if (this._activeStates.has(".undisplayed")) {
+            return false;
+        }
+
         return (this.resolveStyleValue("displayed") ?? this._defaultOptions.displayed) as boolean;
     }
 

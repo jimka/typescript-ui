@@ -357,18 +357,29 @@ function declarationsDuring(
 
 describe('Body virtual-scroll — row re-display after pool recycle', () => {
     // Reproduces the live "rows vanish while scrolling" report: a pooled row
-    // hidden by `hideExcessPoolRows` (its `#id` rule gains a real
-    // `display: none` override) and later brought back into the window by
-    // `bindAndPositionRows` -> `positionRow` must have that stale override
-    // explicitly cleared. `_rowDisplayed` bookkeeping alone isn't proof —
-    // the bug left it correctly `true` while the DOM stayed `display: none`
-    // forever, since nothing else ever rewrote that declaration.
-    it('clears the stale display:none override when a hidden pool row re-enters the window', async () => {
+    // hidden by `hideExcessPoolRows` and later brought back into the window
+    // by `bindAndPositionRows` -> `positionRow` must actually become visible
+    // again. `_rowDisplayed` bookkeeping alone isn't proof — the original bug
+    // left it correctly `true` while the DOM stayed hidden forever.
+    //
+    // Originally written against `setDisplayed`'s old `writeStyle`-based
+    // implementation, where hiding wrote a real per-instance `display: none`
+    // onto the row's own `#id` rule and showing again had to explicitly clear
+    // it with a matching `null` removal — the case this test pinned.
+    // component-setdisplayed-state-tier-dedup.md routes the hide leg through
+    // the shared `.ts-ui-component.undisplayed` class-tier rule instead, so
+    // there is no longer any per-instance `display` declaration to leave
+    // stale: showing the row again only removes the `undisplayed` token, and
+    // `setDisplayed(true)`'s own `writeStyle({ displayed: true })` call
+    // queues nothing but a `null` onto a rule that was never materialised in
+    // the first place, so no `display` CSS write happens for this row at
+    // all — the token removal below is what now carries the whole fix.
+    it('removes the undisplayed token when a hidden pool row re-enters the window', async () => {
         const { b } = await bodyWith(200, 240);
         const p    = b as any;
         const sink = DOM.sink as RecordingDOMSink;
         const row  = p._rowPool[0];
-        const selector = '#' + DOM.source.escapeSelector(row.getId());
+        const element = row.getElement();
 
         // Simulate the row having scrolled out of the pool's window on a
         // previous tick.
@@ -377,11 +388,15 @@ describe('Body virtual-scroll — row re-display after pool recycle', () => {
 
         // Re-render at the same scroll position — the row re-enters the
         // window at the same slot.
-        const declarations = declarationsDuring(sink, selector, () => {
-            b.renderWindow(300, [100, 100, 100]);
-        });
+        const start = sink.writes.length;
+        b.renderWindow(300, [100, 100, 100]);
+        const writesAfter = sink.writes.slice(start);
 
-        expect(declarations.display).toBeNull();
+        const removedUndisplayed = writesAfter.some(w =>
+            w.op === 'apply' && w.args[0] === element
+            && (w.args[1] as { removeClass?: readonly string[] }).removeClass?.includes('undisplayed')
+        );
+        expect(removedUndisplayed).toBe(true);
         expect(row.isDisplayed()).toBe(true);
     });
 });

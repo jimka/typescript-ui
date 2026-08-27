@@ -238,7 +238,7 @@ describe('Component.setVisible routes through the shared .invisible class-tier r
 
         expect(firstDeclarations.visibility).toBeUndefined();
         expect(secondDeclarations.visibility).toBeUndefined();
-        expect(_ruleCacheHas('.ts-ui-component.invisible')).toBe(true);
+        expect(_ruleCacheHas('.ts-ui-component.invisible:not(.undisplayed)')).toBe(true);
     });
 
     it('row 7: a Button (which declares its own ownStyleStates without restating .invisible) still reports isVisible() false and stays visually hidden', () => {
@@ -260,6 +260,125 @@ describe('Component.setVisible routes through the shared .invisible class-tier r
         // The shared `.ts-ui-component.invisible` rule matches on the
         // universal component token, not `Button`'s own class name, so it
         // still applies visually with no restatement.
-        expect(_ruleCacheHas('.ts-ui-component.invisible')).toBe(true);
+        expect(_ruleCacheHas('.ts-ui-component.invisible:not(.undisplayed)')).toBe(true);
+    });
+});
+
+// Component `setDisplayed`/`isDisplayed` state-tier dedup — plan
+// component-setdisplayed-state-tier-dedup.md's Expected Behaviour rows 1, 2,
+// 6, 7, 8. Rows 3, 4, 5 (which need no `declarationsDuring`/`_ruleCacheHas`
+// helpers) live in `tests/component/EffectiveVisibility.test.ts` instead,
+// alongside that file's existing `isDisplayed`/effective-visibility coverage.
+describe('Component.setDisplayed routes through the shared .undisplayed class-tier rule', () => {
+    it('row 1: hiding a rendered, initially-displayed Component adds the undisplayed class and writes no display declaration to its own #id rule', () => {
+        const c = new Component({});
+        const element = c.getElement(true)!;
+
+        const start = sink.writes.length;
+        const declarations = declarationsDuring(sink, idSelector(c), () => c.setDisplayed(false));
+        expect(declarations.display).toBeUndefined();
+
+        const gainedUndisplayedClass = sink.writes.slice(start).some(w =>
+            w.op === 'apply' && w.args[0] === element && touchesToken(w, 'undisplayed')
+        );
+        expect(gainedUndisplayedClass).toBe(true);
+    });
+
+    it('row 2: two separate Component instances hidden at once share one class-tier rule and carry no per-instance display declaration', () => {
+        const first = new Component({});
+        const second = new Component({});
+        first.getElement(true);
+        second.getElement(true);
+
+        const firstDeclarations  = declarationsDuring(sink, idSelector(first),  () => first.setDisplayed(false));
+        const secondDeclarations = declarationsDuring(sink, idSelector(second), () => second.setDisplayed(false));
+
+        expect(firstDeclarations.display).toBeUndefined();
+        expect(secondDeclarations.display).toBeUndefined();
+        expect(_ruleCacheHas('.ts-ui-component.undisplayed')).toBe(true);
+    });
+
+    it('a plain Component that never calls setDisplayed queues no display declaration on its own #id rule across a first render', () => {
+        const c = new Component({});
+
+        const declarations = declarationsDuring(sink, idSelector(c), () => c.getElement(true));
+        expect(declarations.display).toBeUndefined();
+    });
+
+    it('row 6: a Button (which declares its own ownStyleStates without restating .undisplayed) still reports isDisplayed() false and stays hidden at the CSS level', () => {
+        const btn = new Button('x', { displayed: false });
+
+        // `_activeStates` is read directly by `isDisplayed()`, not through
+        // `resolveStyleStates(Button)` — which does not carry `.undisplayed`,
+        // since `Button` declares its own whole-list `ownStyleStates` that
+        // doesn't restate it (see the plan's Architecture Decisions).
+        expect(btn.isDisplayed()).toBe(false);
+
+        const element = btn.getElement(true)!;
+        const addClassOps = sink.writes.filter(w =>
+            w.op === 'apply' && w.args[0] === element
+            && (w.args[1] as { addClass?: readonly string[] }).addClass?.includes('undisplayed')
+        );
+        expect(addClassOps.length).toBeGreaterThan(0);
+
+        // The shared `.ts-ui-component.undisplayed` rule matches on the
+        // universal component token, not `Button`'s own class name, so it
+        // still applies visually with no restatement.
+        expect(_ruleCacheHas('.ts-ui-component.undisplayed')).toBe(true);
+    });
+
+    it('row 7: a component that is both undisplayed and invisible resolves display: none, not visibility: hidden, pinning the declaration order', () => {
+        const c = new Component({});
+        const element = c.getElement(true)!;
+
+        c.setDisplayed(false);
+        c.setVisible(false);
+
+        expect(c.isDisplayed()).toBe(false);
+        expect(c.isVisible()).toBe(false);
+
+        const undisplayedOn = sink.writes.some(w =>
+            w.op === 'apply' && w.args[0] === element && touchesToken(w, 'undisplayed')
+        );
+        const invisibleOn = sink.writes.some(w =>
+            w.op === 'apply' && w.args[0] === element && touchesToken(w, 'invisible')
+        );
+        expect(undisplayedOn).toBe(true);
+        expect(invisibleOn).toBe(true);
+
+        // `.undisplayed` is declared first, so `guardedSuffixFor` makes the
+        // shared invisible rule guard against it — pinning the declaration
+        // order from the plan's Architecture Decisions.
+        expect(_ruleCacheHas('.ts-ui-component.undisplayed')).toBe(true);
+        expect(_ruleCacheHas('.ts-ui-component.invisible:not(.undisplayed)')).toBe(true);
+    });
+
+    it('row 8: showing an undisplayed-and-invisible component again removes the undisplayed token and lets the invisible rule start matching once more', () => {
+        const c = new Component({});
+        const element = c.getElement(true)!;
+
+        c.setDisplayed(false);
+        c.setVisible(false);
+
+        c.setDisplayed(true);
+
+        expect(c.isDisplayed()).toBe(true);
+        expect(c.isVisible()).toBe(false);
+
+        const removedUndisplayed = sink.writes.some(w =>
+            w.op === 'apply' && w.args[0] === element
+            && (w.args[1] as { removeClass?: readonly string[] }).removeClass?.includes('undisplayed')
+        );
+        expect(removedUndisplayed).toBe(true);
+
+        // `invisible` is never removed across the whole sequence — it was
+        // added once by `setVisible(false)` and `setDisplayed(true)` has no
+        // reason to touch it, so the `invisible` rule starts matching again
+        // with no extra write.
+        const removedInvisible = sink.writes.some(w =>
+            w.op === 'apply' && w.args[0] === element
+            && (w.args[1] as { removeClass?: readonly string[] }).removeClass?.includes('invisible')
+        );
+        expect(removedInvisible).toBe(false);
     });
 });

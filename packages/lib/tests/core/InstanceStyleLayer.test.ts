@@ -116,25 +116,45 @@ describe('Instance style layer (Stage 2)', () => {
         expect(b.getBackgroundColor()).toBe('red');
     });
 
-    it('setDisplayed(true) after setDisplayed(false), matching the class default, writes a null removal', () => {
+    it('setDisplayed(true) after setDisplayed(false) removes the undisplayed token and writes no per-instance display declaration', () => {
         // `display` is a `SKIP_ON_MATCH_KEYS` member (unlike `backgroundColor`
-        // in row 6 above), whose skip-on-match branch is meant only for a
-        // key the instance never authored at all — a pooled Table/Tree row
-        // toggles `displayed` at runtime via `setDisplayed`, so a value that
-        // now matches the class default is a stale override that must be
-        // explicitly cleared, not silently left in place. Left unfixed, a
-        // row hidden mid-scroll and later re-shown stays `display: none`
-        // forever, since nothing else ever rewrites that declaration.
+        // in row 6 above). Originally written against `setDisplayed`'s old
+        // `writeStyle`-based implementation, where hiding wrote a real
+        // per-instance `display: none` onto `#id` and showing again had to
+        // explicitly clear it with a matching `null` removal — the case this
+        // test pinned, guarding against a pooled Table/Tree row hidden
+        // mid-scroll and later re-shown getting stuck `display: none` forever.
+        // component-setdisplayed-state-tier-dedup.md routes the hide leg
+        // through the shared `.ts-ui-component.undisplayed` class-tier rule
+        // instead, so there is no longer any per-instance `display`
+        // declaration to leave stale: `setDisplayed(false)` never writes
+        // `_instanceStyle` at all, so the later `setDisplayed(true)`'s
+        // `writeStyle({ displayed: true })` queues only a `null` (it matches
+        // the class default) onto a rule that was never materialised in the
+        // first place — `StyleTarget`'s all-null-batch-never-materialises
+        // rule means no CSS write happens for `display` at all. The token
+        // removal below is what now carries the whole fix.
         const sink = DOM.sink as RecordingDOMSink;
         const c    = new RedBgProbe({});
-        c.getElement(true);
+        const element = c.getElement(true)!;
 
         c.setDisplayed(false);
 
-        const declarations = declarationsDuring(sink, idSelector(c), () => c.setDisplayed(true));
+        const start = sink.writes.length;
+        c.setDisplayed(true);
+        const writesAfter = sink.writes.slice(start);
 
-        expect(declarations.display).toBeNull();
+        const removedUndisplayed = writesAfter.some(w =>
+            w.op === 'apply' && w.args[0] === element
+            && (w.args[1] as { removeClass?: readonly string[] }).removeClass?.includes('undisplayed')
+        );
+        expect(removedUndisplayed).toBe(true);
         expect(c.isDisplayed()).toBe(true);
+
+        const displayWrites = writesAfter.filter(w =>
+            w.op === 'setRuleStyles' && 'display' in (w.args[1] as Record<string, unknown>)
+        );
+        expect(displayWrites).toEqual([]);
     });
 
     it('row 7: clearOverflowX/clearOverflowY/clearOutline suppress the class default rather than re-resolving it', () => {
