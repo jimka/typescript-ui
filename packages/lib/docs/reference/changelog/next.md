@@ -80,6 +80,15 @@ neither needs no change.
   default by specificity, so overriding one of its properties on a specific
   class or instance requires an explicit setter call (an authored instance
   value), not just a class-tier default.
+- **`ButtonGroup.dispose()` and `Binding.dispose()`** release each class's
+  own emitted-event `ListenerBag`. Neither class is a `Component` or
+  `LayoutManager`, so neither had a teardown hook to piggyback on — unlike
+  `registerListenerBag`'s automatic clearing above, a caller that
+  constructs a `ButtonGroup` or `Binding` outside a `Component` tree must
+  call `dispose()` itself when done with it. `Binding.dispose()`
+  additionally deactivates every field registered via `bind()`, the same
+  way `unbind()` already does, so a bound component's listener becomes
+  inert rather than writing into a dead binding.
 
 ### Components
 

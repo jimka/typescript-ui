@@ -214,3 +214,34 @@ describe('ButtonGroup selection model', () => {
         expect(r2.getRadioName()).toBe(groupId);
     });
 });
+
+describe('ButtonGroup.dispose()', () => {
+    afterEach(() => DOM.reset());
+
+    it('clears the selection bag so a subsequent selection change does not fire it', () => {
+        installTestDOM(CONFIG);
+
+        const a = new ToggleButton('A');
+        const b = new ToggleButton('B');
+        const group = new ButtonGroup({ buttons: [a, b] });
+        const onSelection = vi.fn();
+
+        group.on('selection', onSelection);
+        group.dispose();
+
+        b.setSelected(true);
+        selectVia(group, b);
+
+        expect(onSelection).not.toHaveBeenCalled();
+    });
+
+    it('is idempotent', () => {
+        installTestDOM(CONFIG);
+
+        const group = new ButtonGroup();
+
+        group.dispose();
+
+        expect(() => group.dispose()).not.toThrow();
+    });
+});
