@@ -362,6 +362,16 @@ consumer action is needed.
 - **Every `DiagramNode` now shares one CSS rule for its `.selected` border
   colour instead of writing an identical per-instance rule.** Nothing
   changes visually for a stock node; no consumer action is needed.
+- **A closed submenu panel now disposes once its exit fade completes,
+  instead of leaking its own and every item's per-instance stylesheet
+  rule.** A submenu is a fresh `Menu` instance built on every open (see a
+  `MenuItemConfig`'s `submenu` field) and never reused, but
+  `closeOpenSubmenu()` only faded it out and detached it, dropping the last
+  reference with nothing left to dispose it — repeatedly opening and closing
+  one submenu (e.g. hovering a context menu's "Create ▶" item) leaked
+  roughly 20-25 stylesheet rules per traversal. The dispose is deferred to
+  the fade's completion, not immediate, so a submenu still visibly finishes
+  its exit animation. No consumer action is needed.
 
 ### Table
 
