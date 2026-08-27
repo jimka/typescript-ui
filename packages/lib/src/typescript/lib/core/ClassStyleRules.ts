@@ -62,6 +62,11 @@ export interface StyleBag {
     backgroundImage?: string | null;
     shadow?:          string | null;
     borderRadius?:    string | null;
+    /** CSS `border-color`. A refinement of `border`, not an alternative to
+     *  it: a bag may declare both, and `resolveDeclarations` emits this one
+     *  after `border`'s four side longhands so the colour wins while the
+     *  shorthand's width and style survive. */
+    borderColor?:     string | null;
     border?:          BorderOptions | string | null;
     // Longhand override for the `margin` shorthand `resolveDeclarations`
     // hardcodes below. Class-authored only — no `Component` setter writes it
@@ -274,6 +279,11 @@ export function resolveDeclarations(defaults: StyleBag): Record<string, string |
         Object.assign(declarations, borderToStyle(typeof border === "string" ? { border } : border));
     }
 
+    // After the border expansion, never before: `borderToStyle` writes each
+    // side's colour as part of its shorthand, so an earlier `borderColor`
+    // would be overwritten instead of refining it.
+    if (defaults.borderColor) declarations.borderColor = defaults.borderColor;
+
     // Unlike `position` above, `padding` has no framework-tier baseline to
     // fall back to (`FRAMEWORK_DECLARATIONS` carries no `padding` key — most
     // classes declare none), so this stays gated on presence, matching
@@ -332,6 +342,7 @@ const STYLE_WRITERS: { [K in keyof StyleBag]-?: (v: StyleBag[K]) => Record<strin
     backgroundImage: (v) => ({ backgroundImage: v ?? null }),
     shadow:          (v) => ({ boxShadow: v ?? null }),
     borderRadius:    (v) => ({ borderRadius: v ?? null }),
+    borderColor:     (v) => ({ borderColor: v ?? null }),
     border:          (v) => v
         ? borderToStyle(typeof v === "string" ? { border: v } : v)
         : { borderTop: null, borderRight: null, borderBottom: null, borderLeft: null },

@@ -6,7 +6,6 @@
 
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
-import { StyleRule } from "~/core/StyleTarget.js";
 import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
@@ -53,8 +52,12 @@ const _defaultDiagramNodeOptions: Partial<DiagramNodeOptions> = {
 // name.
 const BADGE_OPACITY = 0.6;
 
-/** `.selected`'s background-color declaration. One source of truth for both `ownStyleStates`' extract and the constructor's write. */
+/** `.selected`'s background-color declaration. */
 const DIAGRAM_NODE_SELECTED_BACKGROUND_COLOR = "var(--ts-ui-diagram-node-selected-bg, var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15)))";
+
+/** `.selected`'s border-color declaration. Recolours the resting border,
+ *  leaving `_defaultDiagramNodeOptions.border`'s width and style intact. */
+const DIAGRAM_NODE_SELECTED_BORDER_COLOR = "var(--ts-ui-accent-color, rgb(30, 100, 200))";
 
 /**
  * The default themed node renderer for a
@@ -68,14 +71,17 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
 
     // Declares `.selected` so `styleLayers()`/`restingGuardSuffix` know
     // about it — see `Button`'s `ownStyleStates` for the full mechanism.
-    // Only `backgroundColor` is extracted: the state's `borderColor`
-    // declaration (set alongside it below) is a longhand no `StyleBag` key
-    // covers, so it stays outside this bag (mirrors `Button`'s partial
-    // `.pressed` extract).
+    // Both declarations hoist onto the shared `.DiagramNode.selected` rule.
+    // The state declares the `borderColor` longhand rather than the `border`
+    // shorthand so it recolours the resting border without restating its
+    // width or style.
     protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
         {
             selector: ".selected",
-            extract:  (): StyleBag => ({ backgroundColor: DIAGRAM_NODE_SELECTED_BACKGROUND_COLOR }),
+            extract:  (): StyleBag => ({
+                backgroundColor: DIAGRAM_NODE_SELECTED_BACKGROUND_COLOR,
+                borderColor:     DIAGRAM_NODE_SELECTED_BORDER_COLOR,
+            }),
         },
     ];
 
@@ -87,13 +93,6 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
 
     /** The trailing badge chip, when the node carries one. */
     private _badge?: Text;
-
-    // Lazy `.selected` state rule. The slot caches the wrapper returned by
-    // Component's `createStyleRule` builder, which dedupes by selector suffix.
-    private declare _selectedStyleRule?: StyleRule;
-    private get selectedStyleRule(): StyleRule {
-        return this._selectedStyleRule ??= this.createStyleRule(".selected");
-    }
 
     /**
      * @param options - Optional construction-time options.
@@ -107,8 +106,6 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
             layoutManager: new Fit(),
             ...(subclassDefaults ?? {}),
         });
-
-        this.selectedStyleRule.set("borderColor", "var(--ts-ui-accent-color, rgb(30, 100, 200))");
 
         // Content children are built here (not during super's cascade), so the
         // label/glyph/badge/selected values cached pure in `applyOptions` are

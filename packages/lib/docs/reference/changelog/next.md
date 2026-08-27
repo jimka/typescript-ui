@@ -351,6 +351,9 @@ consumer action is needed.
   caller-supplied `minSize` still wins, and every list keeps the same
   minimum it had before. No consumer action is needed; nothing renders
   differently.
+- **Every `DiagramNode` now shares one CSS rule for its `.selected` border
+  colour instead of writing an identical per-instance rule.** Nothing
+  changes visually for a stock node; no consumer action is needed.
 
 ### Table
 
@@ -423,6 +426,10 @@ another cell.
   transparent` when the class declares one. A consumer that called
   `getBackground()` on an instance of a class with a class-level
   `background` and relied on the `null` return is affected.
+- **`borderColor` is now a style-bag key, so a class's declared toggle
+  state can recolour a border without restating its width and style.** A
+  state that declares it also isolates the four per-side border longhands
+  from the resting tier.
 
 ### Components
 
@@ -527,3 +534,8 @@ another cell.
   its indeterminate dash) inside the box is now computed from the box and
   ink sizes rather than a fixed pixel, so it stays centred at any base.
   Sizes under the shipped themes are unchanged.
+- **A selected `DiagramNode` built with a caller-supplied `border` now
+  paints that border's *colour* from the selection accent and its width
+  and style from the class default, rather than the caller's width and
+  style with the accent colour.** Only a consumer who overrides `border`
+  on a `DiagramNode` is affected; a stock node is unchanged.

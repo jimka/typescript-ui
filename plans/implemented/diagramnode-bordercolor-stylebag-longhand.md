@@ -291,6 +291,53 @@ No exported symbol is added, removed, or renamed. `StyleBag` lives in `core/Clas
 
 ---
 
+## Implementation Notes
+
+The code and tests match the plan's design exactly, with no deviation from
+`## Internal Structure` or `## Architecture Decisions`.
+
+**Manual verification (`## Verification`'s required browser check, `##
+Expected Behaviour` rows 9-11) was performed** against a dev server started
+from this worktree (`npx vite --port 8021` from `packages/lib`), driven live
+through `chrome-devtools` MCP tools, covering the demo app's **Diagram** tab
+(five leaf nodes: Start, Process, Validate, Database, Done — `Pipeline` is a
+container, not a leaf) across all three shipped themes:
+
+- **Row 9.** With "Start" selected, `getComputedStyle(...)` on its
+  `.DiagramNode` element read `border-top-color: rgb(30, 100, 200)` (the
+  `--ts-ui-accent-color` fallback — the token itself is unset in this dev
+  harness in every theme) and `background-color: rgba(30, 100, 200, 0.15)`
+  under the default (modern) and classic themes, and `rgba(30, 100, 200,
+  0.25)` under dark (the theme's own `--ts-ui-table-row-selected` alpha) —
+  in every theme, `border-top-style`/`-width` stayed `solid`/`1px`, matching
+  `_defaultDiagramNodeOptions.border`. The four unselected leaves read
+  `border-top-color: rgb(0, 0, 0)` in modern/classic and `rgb(90, 90, 90)`
+  in dark (the `--ts-ui-border-color` token's per-theme resolution,
+  unaffected by this plan) with no background tint. Clicking "Process"
+  (still under dark) moved the accent border and selected tint onto
+  "Process" and reverted "Start" to its resting values, confirming the
+  shared `.DiagramNode.selected` rule tracks the live selection rather than
+  being pinned to whichever node rendered first.
+- **Row 10.** A node was constructed live in the page console —
+  `new DiagramNode({ label: "custom", border: "2px dashed red" })` — mounted
+  via `DOM.sink.appendChild(DOM.source.intern(document.body), node.getElement(true))`
+  since it wasn't parented into the mounted `DiagramView` tree, and read with
+  the same `readState` helper across a `setSelected(true)`/`setSelected(false)`
+  cycle. Resting: `border-top-color: rgb(255, 0, 0)`, `-style: dashed`,
+  `-width: 2px` — the caller's override, untouched. Selected: `border-top-color:
+  rgb(30, 100, 200)`, `-style: solid`, `-width: 1px` — the class default's
+  width/style with only the colour swapped to the accent, exactly the row's
+  "1px solid accent" claim and the `## Architecture Decisions` cascade
+  table's row two. Deselecting reverted to the caller's `2px dashed red`
+  exactly. The probe node was removed from the DOM afterward; it isn't part
+  of the demo app.
+- **Row 11.** The Style Audit tab's ranked duplicate-rule table was scanned
+  (`document.body.textContent`) for `"DiagramNode"` after visiting the
+  Diagram tab and clicking "Refresh" — no match, confirming no `DiagramNode`
+  duplicate-body row exists.
+
+---
+
 ## Notes
 
 [^three-points]: Grepping an existing `StyleBag` field (`borderRadius`) across `packages/lib/src` finds it in exactly three mechanism sites: the interface (`ClassStyleRules.ts:56`), `resolveDeclarations` (`:237`), and `STYLE_WRITERS` (`:295`). Every other hit is either a consumer-facing `ComponentOptions` field with its own accessor and `applyChromeOptions` dispatch in `Component.ts`, or a class's own defaults bag. `resolvePartialDeclarations`, `deviationsFrom`, `classDeviations`, and `resolveClassLevel` are all generic over key names and need no edit. `SKIP_ON_MATCH_KEYS` and `FRAMEWORK_BASELINE_KEYS` in `Component.ts` are hand-kept sets, but both exclude exactly the conditionally-present keys `borderColor` joins.
