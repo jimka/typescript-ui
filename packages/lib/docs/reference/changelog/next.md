@@ -175,6 +175,14 @@ neither needs no change.
   alone). This is additive — no existing class is removed — but a consumer
   stylesheet selector written to match the arc by position rather than by
   name may now also be matched by a more specific `.ProgressSpinnerArc` rule.
+- **A large diagram now only attaches the nodes near the visible area to the
+  page.** `DiagramView` still builds, measures, and places every node in the
+  graph, but a node more than about half a viewport outside the visible area
+  is kept off the document until panning or zooming brings it into range, so
+  panning a several-hundred-node diagram no longer repaints the whole graph.
+  Selection, emphasis, `focusNode`, `revealNode`, `zoomToFit`, and
+  `resetView` all behave the same against a node that is currently off the
+  page. No consumer action is needed.
 
 ### Table
 
