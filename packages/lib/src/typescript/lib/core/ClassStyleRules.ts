@@ -206,11 +206,8 @@ function ensureFrameworkStyleRule(): void {
  * key the phase would *not* write gets the value that reproduces "no
  * declaration", so the framework rule's value is undone rather than inherited.
  *
- * Exported (module otherwise stays internal) so `core/Component.ts`'s
- * `resolveInstanceStyleDeclarations` can reuse it unchanged to resolve one
- * *instance's* own hoistable style for `ensureStyleGroupRule`, instead of a
- * class's plain `getClassStyleDefaults()` bag — see
- * plans/implemented/shared-instance-style-groups.md.
+ * Exported (module otherwise stays internal) so `core/Component.ts` can
+ * resolve a class's own default bag directly.
  *
  * Deliberately not built on {@link STYLE_WRITERS} / {@link
  * resolvePartialDeclarations}: this function's absent-key fallbacks and
@@ -472,8 +469,8 @@ function canonicalCtor(ctor: Function): Function {
 
 /**
  * One layer of a component's style stack: an authored bag plus the CSS
- * declarations it resolves to. Every tier — instance, meta-class, group,
- * class — shares this shape; {@link ResolvedClassLevel} is the class tier's
+ * declarations it resolves to. Every tier — instance, meta-class, class —
+ * shares this shape; {@link ResolvedClassLevel} is the class tier's
  * own instance of it (same two fields, its own JSDoc for that tier's
  * specifics).
  */
@@ -1130,111 +1127,6 @@ export function ensureClassStateRule(
     return bag;
 }
 
-// (ctor -> (group -> bag)). Parallel to `_stateBags`, but keyed by a
-// caller-supplied `styleGroup` token instead of a framework-defined state
-// suffix — see plans/implemented/shared-instance-style-groups.md.
-const _groupBags: Map<Function, Map<string, StyleLayer | null>> = new Map();
-
-/**
- * The safe `ClassName--<suffix>` contribution a `styleGroup` token makes to a
- * literal DOM class name. Unlike a component id (only ever written through
- * `DOM.sink.setId`/an escaped selector string, never through `classList`), a
- * `styleGroup` token becomes part of a literal token `core/Component.ts`'s
- * `init()` passes straight to `classList.add` — and CSS-escaping alone (see
- * {@link ensureStyleGroupRule}'s selector construction) does not help there:
- * `CSS.escape` backslash-prefixes a space rather than removing it, so an
- * escaped token can still contain a raw ASCII space character and
- * `classList.add` still rejects it. ASCII whitespace is replaced with `-` so
- * the token is always a valid single class; `core/Component.ts`'s `init()`
- * and {@link ensureStyleGroupRule} both call this before building their
- * respective class name / selector, so the two always agree on the same
- * literal suffix regardless of what characters the caller's token contains.
- */
-export function styleGroupClassSuffix(group: string): string {
-    return group.replace(/\s+/g, "-");
-}
-
-/**
- * Ensures a shared `.ClassName--<group>` rule exists carrying `declarations`
- * — the first instance in this `(ctor, group)` pair to call this function
- * determines the shared content; every later instance compares against it.
- * Mirrors {@link ensureClassStateRule}'s cache shape, keyed by a
- * caller-supplied token instead of a framework-defined state suffix. Always
- * keyed on the concrete class alone — never an ancestor, regardless of
- * whether `ctor`'s chain participates in the hierarchy mechanism above.
- *
- * @param ctor - The concrete component class constructor.
- * @param group - The caller-supplied `styleGroup` token, verbatim (not yet
- *   escaped — see the selector construction below).
- * @param authored - This instance's own hoistable style bag
- *   (`core/Component.ts`'s `resolveInstanceStyleDeclarations`) — the *first*
- *   call for a given `(ctor, group)` pair determines what every later
- *   instance in the same group compares against. Run through
- *   `resolveDeclarations` internally to produce the layer's resolved half.
- *
- * @returns The group's style layer, or `null` when the selector name
- *   (`ClassName--group`) is already claimed by a different constructor — the
- *   same name-collision opt-out the base and state tiers use, in which case
- *   the caller must write every declaration to its own `#id` rule.
- */
-export function ensureStyleGroupRule(
-    ctor: Function,
-    group: string,
-    authored: StyleBag,
-): StyleLayer | null {
-    // Cached by the *normalised* suffix (see `styleGroupClassSuffix`), not
-    // the raw token — the DOM class and CSS selector this function produces
-    // are both derived from the normalised form, so two raw tokens that
-    // normalise to the same suffix (e.g. "brand warning" and "brand-warning")
-    // must be treated as the same group, not two independent cache entries
-    // racing to overwrite one rule.
-    const normalizedGroup = styleGroupClassSuffix(group);
-
-    let byGroup = _groupBags.get(ctor);
-    if (!byGroup) {
-        byGroup = new Map();
-        _groupBags.set(ctor, byGroup);
-    }
-
-    const existing = byGroup.get(normalizedGroup);
-    if (existing !== undefined) {
-        return existing;
-    }
-
-    const className = ctor.name;
-    if (!className) {
-        byGroup.set(normalizedGroup, null);
-
-        return null;
-    }
-
-    // The group token is caller-supplied (unlike a state suffix, which the
-    // framework itself defines) and becomes part of a `.ClassName--<group>`
-    // selector, so it is CSS-escaped here — the same treatment a component id
-    // already gets in `core/StyleTarget.ts`'s `component`-scope selector.
-    const selectorName = className + "--" + DOM.source.escapeSelector(normalizedGroup);
-    const owner = _owners.get(selectorName);
-
-    if (owner !== undefined && owner !== ctor) {
-        byGroup.set(normalizedGroup, null);
-
-        return null;
-    }
-
-    _owners.set(selectorName, ctor);
-
-    const declarations = resolveDeclarations(authored);
-
-    if (Object.keys(declarations).length > 0) {
-        new StyleRule({ scope: "class", name: selectorName, styles: declarations });
-    }
-
-    const layer = Object.freeze({ authored, resolved: Object.freeze({ ...declarations }) });
-    byGroup.set(normalizedGroup, layer);
-
-    return layer;
-}
-
 // ---------------------------------------------------------------------------
 // Trait tier — a named, hand-authored bag of declarations any number of
 // unrelated component classes, or a single instance, can opt into. Every
@@ -1365,7 +1257,7 @@ const _traitBags: Map<StyleTrait, StyleLayer | null> = new Map();
  * `trait` and returns its layer. The rule itself is keyed on the trait's own
  * name — not a constructor — so two unrelated classes, or a class and an
  * unrelated instance, sharing the same `StyleTrait` object share one rule
- * for free. Mirrors {@link ensureStyleGroupRule}'s cache/insert shape.
+ * for free. Mirrors {@link ensureClassStateRule}'s cache/insert shape.
  *
  * @param trait - The declared trait to ensure a rule for.
  *
