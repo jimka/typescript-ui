@@ -8,6 +8,7 @@ import { Menu } from "~/overlay/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { callable } from "~/core/Callable.js";
 import { caret_down } from "~/glyphs/solid/caret_down.js";
+import { ThemeManager } from "~/core/Theme.js";
 
 // Register the trailing chevron eagerly at module load — same pattern as
 // `TabCloseButton` registering its `xmark` — so `new SplitButton()` always
@@ -18,12 +19,17 @@ Glyph.register(caret_down);
 const CHEVRON_GLYPH = "caret-down";
 
 /**
- * Square pixel size of the trailing chevron glyph. Pinned (not
- * line-height-tracked like the leading glyph) so the dropdown affordance stays
- * a constant, comfortably-clickable size across themes; 16px matches the
- * compact icon-button glyph size a flat toolbar uses.
+ * Square pixel size of the trailing chevron glyph — the theme's `glyphLg`
+ * default icon step (16px at the shipped base). Pinned (not
+ * line-height-tracked like the leading glyph) so the dropdown affordance sits
+ * on the same default icon size as a flat toolbar's icon buttons, and grows
+ * with the theme instead of staying a fixed pixel literal. Read per call, not
+ * frozen in a module constant, so a theme that raises `scale.base` moves the
+ * icon with it.
  */
-const CHEVRON_SIZE = 16;
+function chevronSizePx(): number {
+    return ThemeManager.getResolvedScale().glyphLg;
+}
 
 /**
  * Duration in milliseconds of the chevron's open/close spin. Matches the
@@ -130,8 +136,10 @@ class SplitButton extends Button<SplitButtonOptions> {
         // the SVG `<use>` retargets to its id-less inner element — an
         // exact-target listener on the glyph would never match it — while that
         // same retargeting keeps the click off the button face's `"action"`.
+        const chevronSize = chevronSizePx();
+
         this._chevron = new Glyph(CHEVRON_GLYPH);
-        this._chevron.setPreferredSize({ width: CHEVRON_SIZE, height: CHEVRON_SIZE });
+        this._chevron.setPreferredSize({ width: chevronSize, height: chevronSize });
         this._chevron.setCursor("pointer");
         // Button sets its whole `_content` row to `pointer-events: none` so face
         // clicks fall through to the `<button>`; the chevron inherits that and

@@ -6,6 +6,7 @@ import { xmark } from '~/glyphs/solid/xmark';
 import { DOM, type Handle } from '~/core/DOM';
 import { installTestDOM, ruleStyleWrites, type RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
+import { ThemeManager, ModernTheme, defineTheme } from '~/core/Theme';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -159,6 +160,21 @@ describe('Glyph size lock', () => {
         expect(glyph.getPreferredSize()).toEqual({ width: 16, height: 16 });
         expect(glyph.getMinSize()).toEqual({ width: 16, height: 16 });
         expect(glyph.getMaxSize()).toEqual({ width: 16, height: 16 });
+    });
+
+    // The default preferred size is resolved per construction from the
+    // theme's glyphLg icon step, not frozen at module load — see
+    // plans/in-progress/glyph-icon-size-scale.md.
+    describe('default size follows the theme scale', () => {
+        afterEach(() => ThemeManager.setTheme(ModernTheme));
+
+        it('grows a Glyph constructed after a raised scale.base', () => {
+            ThemeManager.setTheme(defineTheme(ModernTheme, { scale: { base: 28 } }));
+
+            const pref = new Glyph('unicode-arrow-up').getPreferredSize()!;
+
+            expect(pref).toEqual({ width: 32, height: 32 });
+        });
     });
 });
 

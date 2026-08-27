@@ -45,19 +45,19 @@ export interface WindowHeaderOptions extends HeaderOptions {
     glyph?:       string;
 }
 
-// The square size the title glyph's ink resolves to under the shipped
-// default theme — ThemeManager.getResolvedScale().titleGlyph (the root theme
-// font size; titleGlyph's scale token is 1). WindowHeader's own
+// The square size the title glyph's ink resolves to — the theme's `glyphMd`
+// icon step (14x14 at the shipped base). Resolved per construction rather
+// than frozen in a module constant, so a `setTheme` that runs before a
+// WindowHeaderTitleGlyph is built is honoured. WindowHeader's own
 // constructor/updatePreferredSize re-pins compute this independently via
 // resolveTitleGlyphInk(), so this is a hint the render-time reconciliation
 // checks against, not a hard override — matching ButtonIconGlyph's own
 // default.
-const WINDOW_HEADER_TITLE_GLYPH_SIZE = { width: 14, height: 14 };
+function windowHeaderTitleGlyphSize(): { width: number; height: number } {
+    const px = ThemeManager.getResolvedScale().glyphMd;
 
-const _defaultWindowHeaderTitleGlyphOptions: Partial<GlyphOptions> = {
-    minSize: WINDOW_HEADER_TITLE_GLYPH_SIZE,
-    maxSize: WINDOW_HEADER_TITLE_GLYPH_SIZE,
-};
+    return { width: px, height: px };
+}
 
 /**
  * The leading icon inside a {@link WindowHeader}'s title row. `minSize`/
@@ -70,10 +70,12 @@ class WindowHeaderTitleGlyph extends Glyph {
      * @param name - The glyph to render.
      * @param subclassDefaults - Per-subclass default bag layered over this
      *   class's defaults; forwarded so a subclass can seed a default without
-     *   editing this constant.
+     *   editing `windowHeaderTitleGlyphSize()`.
      */
     constructor(name: string, subclassDefaults?: Partial<GlyphOptions>) {
-        super(name, undefined, { ..._defaultWindowHeaderTitleGlyphOptions, ...(subclassDefaults ?? {}) });
+        const size = windowHeaderTitleGlyphSize();
+
+        super(name, undefined, { minSize: size, maxSize: size, ...(subclassDefaults ?? {}) });
     }
 }
 
@@ -231,7 +233,7 @@ class WindowHeader extends Header {
      * @returns The title-glyph ink size in pixels.
      */
     private resolveTitleGlyphInk(): number {
-        return ThemeManager.getResolvedScale().titleGlyph;
+        return ThemeManager.getResolvedScale().glyphMd;
     }
 
     /**

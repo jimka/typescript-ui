@@ -24,6 +24,17 @@ import { triangle_exclamation } from "~/glyphs/solid/triangle_exclamation.js";
 import { circle_exclamation } from "~/glyphs/solid/circle_exclamation.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import { ThemeManager } from "~/core/Theme.js";
+
+/**
+ * Square edge length used for the dialog's title-bar glyph — the theme's
+ * `glyphLg` default icon step (16px at the shipped base). Read per call, not
+ * frozen in a module constant, so a theme that raises `scale.base` moves the
+ * icon with it.
+ */
+function titleGlyphPx(): number {
+    return ThemeManager.getResolvedScale().glyphLg;
+}
 
 Glyph.register(xmark, circle_check, circle_info, triangle_exclamation, circle_exclamation);
 
@@ -291,9 +302,10 @@ class DialogTitleBar extends Component {
             this._titleGlyph = null;
         }
 
-        const glyph = new Glyph(name);
+        const glyph  = new Glyph(name);
+        const iconPx = titleGlyphPx();
         glyph.setPointerEvents("none");
-        glyph.setPreferredSize({ width: 16, height: 16 });
+        glyph.setPreferredSize({ width: iconPx, height: iconPx });
         this._titleGlyph = glyph;
         this.addComponent(glyph);
 
@@ -352,8 +364,9 @@ class DialogTitleBar extends Component {
         let labelX = TITLE_H_PAD;
 
         if (this._titleGlyph) {
-            const glyphSize = this._titleGlyph.getPreferredSize() ?? { width: 16, height: 16 };
-            const glyphY    = Math.max(0, Math.floor((h - glyphSize.height) / 2));
+            const fallbackPx = titleGlyphPx();
+            const glyphSize  = this._titleGlyph.getPreferredSize() ?? { width: fallbackPx, height: fallbackPx };
+            const glyphY     = Math.max(0, Math.floor((h - glyphSize.height) / 2));
 
             this._titleGlyph.setX(box.x + TITLE_H_PAD);
             this._titleGlyph.setY(box.y + glyphY);

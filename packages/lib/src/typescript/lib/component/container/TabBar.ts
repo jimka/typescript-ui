@@ -2533,7 +2533,7 @@ class TabBar extends Container<TabBarOptions> {
         // nothing.
         const scale = ThemeManager.getResolvedScale();
         const closeSize = scale.tabClose;
-        const glyphSize = scale.tabCloseGlyph;
+        const glyphSize = scale.glyphXs;
 
         for (const entry of this._entries) {
             const closeButton = entry.closeButton;

@@ -18,6 +18,17 @@ import { circle_exclamation } from "~/glyphs/solid/circle_exclamation.js";
 import { xmark } from "~/glyphs/solid/xmark.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import { ThemeManager } from "~/core/Theme.js";
+
+/**
+ * Square edge length used for the notification's severity badge glyph — the
+ * theme's `glyphXl` standalone-icon step (20px at the shipped base): read on
+ * its own, not beside text. Read per call, not frozen in a module constant,
+ * so a theme that raises `scale.base` moves the icon with it.
+ */
+function badgeSizePx(): number {
+    return ThemeManager.getResolvedScale().glyphXl;
+}
 
 Glyph.register(circle_info, circle_check, triangle_exclamation, circle_exclamation, xmark);
 
@@ -96,7 +107,6 @@ export class Notification extends Component {
     private static readonly H_PADDING: number      = 12;
     private static readonly V_PADDING: number      = 10;
     private static readonly CLOSE_SIZE: number     = 20;
-    private static readonly BADGE_SIZE: number     = 20;
     private static readonly BADGE_TEXT_GAP: number = 8;
     // Stacking z-index for toasts. Sits just above the managed dropdown band
     // (`LayerManager.Band.Dropdown` = 10000) so a toast floats over open pickers
@@ -184,9 +194,11 @@ export class Notification extends Component {
         this.setShadow(shadowVar);
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
 
+        const badgePx = badgeSizePx();
+
         this._badge = new Glyph(BADGE_GLYPH[type]);
         this._badge.setForegroundColor(borderVar);
-        this._badge.setPreferredSize({ width: Notification.BADGE_SIZE, height: Notification.BADGE_SIZE });
+        this._badge.setPreferredSize({ width: badgePx, height: badgePx });
         this._badge.setPointerEvents("none");
         // Decorative severity icon — its meaning is already carried by the
         // message text, so keep it out of the announced live-region content.
@@ -615,17 +627,18 @@ export class Notification extends Component {
     doLayout(): this {
         super.doLayout();
 
+        const badgePx   = badgeSizePx();
         const closeX    = Notification.WIDTH - Notification.CLOSE_SIZE - 4;
         const badgeX    = Notification.H_PADDING;
         const badgeY    = Notification.V_PADDING + 2;
-        const msgX      = badgeX + Notification.BADGE_SIZE + Notification.BADGE_TEXT_GAP;
+        const msgX      = badgeX + badgePx + Notification.BADGE_TEXT_GAP;
         const msgWidth  = closeX - msgX - 4;
         const msgHeight = Notification.HEIGHT - Notification.V_PADDING * 2;
 
         this._badge.setX(badgeX);
         this._badge.setY(badgeY);
-        this._badge.setWidth(Notification.BADGE_SIZE);
-        this._badge.setHeight(Notification.BADGE_SIZE);
+        this._badge.setWidth(badgePx);
+        this._badge.setHeight(badgePx);
 
         this._messageText.setX(msgX);
         this._messageText.setY(Notification.V_PADDING);

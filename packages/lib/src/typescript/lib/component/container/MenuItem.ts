@@ -7,6 +7,17 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { BorderOptions } from "~/primitive/Border.js";
 import { MenuRow } from "~/component/container/MenuRow.js";
 import { callable } from "~/core/Callable.js";
+import { ThemeManager } from "~/core/Theme.js";
+
+/**
+ * Square edge length used for a menu item's leading icon glyph — the theme's
+ * `glyphLg` default icon step (16px at the shipped base). Read per call, not
+ * frozen in a module constant, so a theme that raises `scale.base` moves the
+ * icon with it.
+ */
+function menuIconPx(): number {
+    return ThemeManager.getResolvedScale().glyphLg;
+}
 
 /**
  * Construction-time component-level options for {@link MenuItem}. Use this
@@ -277,7 +288,8 @@ class MenuItem extends MenuRow {
         if (config.glyph) {
             this._iconGlyph = new Glyph(config.glyph);
             this._iconGlyph.setPointerEvents("none");
-            this._iconGlyph.setPreferredSize({ width: 16, height: 16 });
+            const iconPx = menuIconPx();
+            this._iconGlyph.setPreferredSize({ width: iconPx, height: iconPx });
 
             if (config.glyphColor) {
                 this._iconGlyph.setForegroundColor(config.glyphColor);
@@ -641,8 +653,9 @@ class MenuItem extends MenuRow {
         }
 
         if (this._iconGlyph) {
-            const size  = this._iconGlyph.getPreferredSize() ?? { width: 16, height: 16 };
-            const iconY = Math.max(0, Math.floor((H - size.height) / 2));
+            const fallbackPx = menuIconPx();
+            const size       = this._iconGlyph.getPreferredSize() ?? { width: fallbackPx, height: fallbackPx };
+            const iconY      = Math.max(0, Math.floor((H - size.height) / 2));
 
             this._iconGlyph.setX(box.x + checkZone + 4);
             this._iconGlyph.setY(box.y + iconY);

@@ -5,6 +5,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
+import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { Size } from "~/primitive/Size.js";
 import {
@@ -168,16 +169,20 @@ export interface GlyphOptions extends ComponentOptions {
  * char-only `lineHeight`/`textAlign` defaults stay in the constructor body
  * because they depend on the per-instance `def.kind`.
  */
-// The size Glyph.applyOptions's re-pin always lands on when nothing
-// overrides preferredSize. Declared once and reused for minSize/maxSize
-// too, so the three fields below can never drift apart.
-const GLYPH_DEFAULT_SIZE = { width: 16, height: 16 };
+/**
+ * The square size an unsized Glyph takes — the theme's `glyphLg` icon step
+ * (16×16 at the shipped base). Resolved per construction rather than frozen
+ * at module load, so a `setTheme` that runs before the glyph is built is
+ * honoured. Used for preferredSize/minSize/maxSize together so the three can
+ * never drift apart.
+ */
+function glyphDefaultSize(): { width: number; height: number } {
+    const px = ThemeManager.getResolvedScale().glyphLg;
+
+    return { width: px, height: px };
+}
 
 const _defaultGlyphOptions: Partial<GlyphOptions> = {
-    preferredSize: GLYPH_DEFAULT_SIZE as GlyphOptions["preferredSize"],
-    minSize:       GLYPH_DEFAULT_SIZE as GlyphOptions["minSize"],
-    maxSize:       GLYPH_DEFAULT_SIZE as GlyphOptions["maxSize"],
-
     // Always an HTML element, both kinds. An SVG entry paints through an inner
     // `<svg>` rather than being one: Blink refuses to run a transform animation
     // on an SVG element on the compositor, so an `<svg>` root would force a
@@ -200,7 +205,8 @@ const _defaultGlyphOptions: Partial<GlyphOptions> = {
  * to swap glyph, discard the instance and create a new one.
  *
  * Pass any registry name to the constructor; unknown names throw at
- * construction. The default preferred size is 16×16.
+ * construction. The default preferred size is the theme's `glyphLg` icon
+ * step — 16×16 at the shipped base.
  *
  * @example
  * ```typescript
@@ -259,12 +265,17 @@ class Glyph extends Component<GlyphOptions> {
             throw new Error("Unknown glyph: " + name);
         }
 
+        const defaultSize = glyphDefaultSize();
+
         // Hand the class defaults to Component via the subclass-defaults arg so
         // they land in `_defaultOptions`. Component's super-time cascade applies
         // them; user `options` win because `applyOptions` merges
         // `{...defaults, ...options}` at dispatch time.
         super(options, {
             ..._defaultGlyphOptions,
+            preferredSize: defaultSize as GlyphOptions["preferredSize"],
+            minSize:       defaultSize as GlyphOptions["minSize"],
+            maxSize:       defaultSize as GlyphOptions["maxSize"],
             ...(subclassDefaults ?? {}),
         });
 

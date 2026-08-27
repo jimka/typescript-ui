@@ -18,6 +18,13 @@ implementing its own `DOMSource` is affected.
 `DOMSource` gains one required member: `getRuleCssText()`. Only a consumer
 implementing its own `DOMSource` is affected.
 
+The theme `scale` block's `titleGlyph` and `tabCloseGlyph` tokens are gone,
+replaced by a five-step icon scale: `glyphXs` (8px at the default base),
+`glyphSm` (12px), `glyphMd` (14px, the old `titleGlyph`), `glyphLg` (16px,
+the default icon size), and `glyphXl` (20px). A custom theme that set either
+removed token should set `glyphMd` / `glyphXs` instead; a theme that set
+neither needs no change.
+
 ### Components
 
 - **A table's row-viewport body now loses its old `Body` class and instead
@@ -426,3 +433,11 @@ another cell.
   (`.NumberSpinnerField`, and a new `.AutoCompleteTextField`). Nothing
   changes visually; only which CSS rule supplies each declaration. No
   consumer action is needed.
+- **Every framework icon that previously hardcoded its pixel size now reads
+  one of five named icon steps** (`glyphXs`/`glyphSm`/`glyphMd`/`glyphLg`/
+  `glyphXl` — see **Breaking changes** above), so raising `scale.base` scales
+  icons along with the rest of the chrome. Sizes under the shipped themes are
+  unchanged. The icons still sized against a fixed host graphic — a
+  checkbox's check, a radio button's dot, a scrollbar arrow, a table header's
+  menu icon — and a `Button`'s leading icon, which tracks its own label's
+  line box, are deliberately not on the scale.
