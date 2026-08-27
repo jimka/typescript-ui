@@ -59,13 +59,18 @@ export interface StyleBag {
     shadow?:          string | null;
     borderRadius?:    string | null;
     border?:          BorderOptions | string | null;
-    // The four properties `applyStyle` writes today outside the authored-bag
-    // path — from a raw field (`boxSizing`, `whiteSpace`), a hardcoded
-    // literal (`margin`), or its own options getter (`padding`). `position`
-    // used to belong to this group too, but `resolveDeclarations` below now
-    // reads it (falling back to `Position.ABSOLUTE` when a class declares no
-    // deviation), so a class's `ownClassStyleDefaults` can author it like any
-    // other hoistable field — see `Legend.ownClassStyleDefaults`.
+    // The three properties `applyStyle` writes today outside the authored-bag
+    // path — from a raw field (`boxSizing`, `whiteSpace`) or a hardcoded
+    // literal (`margin`). `position` used to belong to this group too, but
+    // `resolveDeclarations` below now reads it (falling back to
+    // `Position.ABSOLUTE` when a class declares no deviation), so a class's
+    // `ownClassStyleDefaults` can author it like any other hoistable field —
+    // see `Legend.ownClassStyleDefaults`. `padding` used to belong to this
+    // group too (via its own options getter), but `resolveDeclarations` below
+    // now reads it too — unlike `position`, the framework tier has no
+    // baseline padding value, so a class only gets a declaration when it
+    // actually sets one (see `SelectableListRow.classStyleDefaults` and
+    // `TextField.ownClassStyleDefaults`).
     boxSizing?:       string | null;
     position?:        Position;
     whiteSpace?:      string | null;
@@ -247,6 +252,14 @@ export function resolveDeclarations(defaults: StyleBag): Record<string, string |
         // border writers use, so the two tiers compare key for key.
         Object.assign(declarations, borderToStyle(typeof border === "string" ? { border } : border));
     }
+
+    // Unlike `position` above, `padding` has no framework-tier baseline to
+    // fall back to (`FRAMEWORK_DECLARATIONS` carries no `padding` key — most
+    // classes declare none), so this stays gated on presence, matching
+    // `backgroundColor`/`shadow`/`borderRadius` above: an unconditional entry
+    // would inject a spurious `padding: null` deviation onto every class
+    // that has never touched padding. See `## Architecture Decisions`.
+    if (defaults.padding) declarations.padding = defaults.padding.render() as string;
 
     const font = defaults.font;
     if (font?.fontFamily)     declarations.fontFamily     = font.fontFamily;

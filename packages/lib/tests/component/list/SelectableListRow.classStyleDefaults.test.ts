@@ -1,15 +1,19 @@
-// Coverage for SelectableListRow's static `cursor`/`border` moving from
-// imperative constructor setters into a registered
+// Coverage for SelectableListRow's static `cursor`/`border`/`padding` moving
+// from imperative constructor setters into a registered
 // `_defaultSelectableListRowOptions` class default — see
-// plans/implemented/delegate-class-style-defaults-followups.md row 5.
-// `setPadding` stays imperative: `padding` is now a `StyleBag` member
-// (`layered-style-bag.md` added its `STYLE_WRITERS` entry), but
-// `ClassStyleRules.ts`'s `resolveDeclarations` — the function that builds
-// every class's resolved CSS bag for the tier comparison — never gained a
-// matching case, so a class-tier `padding` default still can't dedupe
-// against an instance's own value. See
-// plans/implemented/class-tier-default-hoists-batch.md's Implementation
-// Notes; not attempted here.
+// plans/implemented/delegate-class-style-defaults-followups.md row 5 for
+// `cursor`/`border`, and plans/implemented/selectablelistrow-padding-resolvedeclarations-dedup.md
+// for `padding`. `setPadding` stays imperative (the constructor always calls
+// it); `ClassStyleRules.ts`'s `resolveDeclarations` now gains a matching
+// `padding` case, so the class-tier default dedupes against the instance's
+// own value. Before this fix, `padding`'s real value was the one thing that
+// forced the row's own `#id` rule to materialise at all (there being no
+// class-tier value yet to match against), so `border`'s already-matching
+// entries rode along as explicit `null` removals in the same batch. Now that
+// `padding` matches too, nothing in the batch is real any more, so the whole
+// `#id` rule never materialises (`StyleTarget.hasQueuedDeclarations`) —
+// `border`'s entries go from an explicit removal to simply absent, same as
+// `cursor`.
 import { describe, it, expect, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
@@ -60,7 +64,51 @@ function declarationsDuring(
 describe('SelectableListRow static style hoisting', () => {
     afterEach(() => DOM.reset());
 
-    it('row 5: a rendered row carries no static cursor/border declaration on its own #id rule, the shared .SelectableListRow class rule exists, and getBorderSize still reports the 1px bottom separator', () => {
+    // Runs FIRST in this file so its capture window sees the one-time
+    // `.SelectableListRow` class-tier rule write (`ensureClassStyleRule` is
+    // memoized per-ctor in module-level state — `_bags`/`_ruleCache` — that
+    // survives `DOM.reset()` between tests, so the content is written to the
+    // sink only on the very first construction+render of a
+    // `SelectableListRow` anywhere in this file; see
+    // `TextInputClassTier.test.ts`'s own file banner for the same rule).
+    // `row 5` below also constructs+renders a row, so if it ran first it
+    // would silently consume that one-time write and this test would find
+    // nothing.
+    it('a rendered row carries no real padding declaration on its own #id rule, and .SelectableListRow carries it', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const start = sink.writes.length;
+        const list  = new _List({ items: ['Apple', 'Banana'] });
+        const row   = (list as any)._rowPool[0];
+
+        const declarations = declarationsDuring(sink, idSelector(row), () => list.getElement(true));
+
+        const classDeclarations: Record<string, string | null> = {};
+        for (const w of sink.writes.slice(start)) {
+            if (w.op === 'setRuleStyles' && w.args[0] === '.SelectableListRow') {
+                Object.assign(classDeclarations, w.args[1]);
+            }
+        }
+        expect(classDeclarations.padding).toBe('0px 8px 0px 8px');
+
+        // The row's constructor always calls setPadding(), so padding is
+        // always a key in `this._instanceStyle` (`writeStyle({ padding })`,
+        // Component.ts:2265) — `flushStyleBag`'s per-key loop
+        // (Component.ts:5362) therefore always takes the `declaredByInstance`
+        // branch for it, and once the class tier's resolved value matches,
+        // `matchesLower` is true. Unlike `border` (which still forced a real
+        // #id write before this plan, since padding was the only real value
+        // left in the batch), padding matching now leaves nothing real in
+        // the row's whole resolved batch, so the `#id` rule never
+        // materialises at all (`StyleTarget.hasQueuedDeclarations`) and the
+        // key is simply absent — see `row 5` below for the same absence on
+        // `border`/`cursor`.
+        expect(declarations.padding).toBeUndefined();
+        expect(_ruleCacheHas('.SelectableListRow')).toBe(true);
+        expect(row.getPadding()?.getLeft()).toBe(8); // ROW_PADDING_X_PX
+    });
+
+    it('row 5: a rendered row carries no static cursor/border/padding declaration on its own #id rule, the shared .SelectableListRow class rule exists, and getBorderSize still reports the 1px bottom separator', () => {
         const sink = installTestDOM(CONFIG);
 
         const list = new _List({ items: ['Apple', 'Banana'] });
@@ -68,19 +116,19 @@ describe('SelectableListRow static style hoisting', () => {
 
         const declarations = declarationsDuring(sink, idSelector(row), () => list.getElement(true));
 
-        // cursor fully dedupes (no declaration on #id at all). border is
-        // always-dispatched through the real setBorder() setter at
-        // construction (Component.applyChromeOptions — see the plan's
-        // ## Architecture Decisions), which materialises #id regardless, so
-        // its now-matching value surfaces as an explicit removal in the same
-        // batch rather than being skipped in silence — the net rendered CSS
-        // (no declaration on #id, .SelectableListRow supplies the value) is
-        // unchanged.
+        // cursor, border, and (as of this plan) padding all now fully
+        // dedupe onto .SelectableListRow — with nothing real left in the
+        // row's own resolved batch, the #id rule never materialises at all
+        // (StyleTarget.hasQueuedDeclarations), so every one of these keys is
+        // absent (`undefined`), not an explicit `null` removal. The net
+        // rendered CSS (no declaration on #id, .SelectableListRow supplies
+        // every value) is unchanged.
         expect(declarations.cursor).toBeUndefined();
-        expect(declarations.borderTop).toBeNull();
-        expect(declarations.borderRight).toBeNull();
-        expect(declarations.borderBottom).toBeNull();
-        expect(declarations.borderLeft).toBeNull();
+        expect(declarations.borderTop).toBeUndefined();
+        expect(declarations.borderRight).toBeUndefined();
+        expect(declarations.borderBottom).toBeUndefined();
+        expect(declarations.borderLeft).toBeUndefined();
+        expect(declarations.padding).toBeUndefined();
         expect(_ruleCacheHas('.SelectableListRow')).toBe(true);
         expect(row.getBorderSize().bottom).toBe(1);
     });

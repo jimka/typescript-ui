@@ -57,7 +57,18 @@ function declarationsDuring(
 describe('AbstractMarkerList static style hoisting', () => {
     afterEach(() => DOM.reset());
 
-    it('a rendered BulletedList carries no listStyleType declaration on its own #id rule, and .MarkerList carries it', () => {
+    // `.MarkerList` (construction-time, `ensureMarkerListClassRule`) and
+    // `.BulletedList`/`.NumberedList` (render-time, hierarchy-aware
+    // `ensureClassStyleRule`) are both memoized per-ctor in module-level
+    // state (`_bags`/`_ruleCache`) that survives `DOM.reset()` between
+    // tests, so each rule's content is written to the sink only on the very
+    // first construction+render of that class anywhere in this file (see
+    // `TextInputClassTier.test.ts`'s own file banner for the same
+    // constraint). A single `new _BulletedList()` + `getElement(true)` pass
+    // triggers both writes at once, so both are captured from the same
+    // window below rather than in two separate tests, one of which would
+    // otherwise find the rule already-materialised and silently empty.
+    it('a rendered BulletedList carries no listStyleType/padding declaration on its own #id rule, and .MarkerList/.BulletedList carry them', () => {
         const sink = installTestDOM(CONFIG);
 
         // The shared .MarkerList rule materialises the moment the first
@@ -69,30 +80,52 @@ describe('AbstractMarkerList static style hoisting', () => {
 
         const declarations = declarationsDuring(sink, idSelector(list), () => list.getElement(true));
 
-        const classDeclarations: Record<string, string | null> = {};
+        const markerListDeclarations: Record<string, string | null> = {};
+        const bulletedListDeclarations: Record<string, string | null> = {};
         for (const w of sink.writes.slice(start)) {
-            if (w.op === 'setRuleStyles' && w.args[0] === '.MarkerList') {
-                Object.assign(classDeclarations, w.args[1]);
+            if (w.op !== 'setRuleStyles') {
+                continue;
+            }
+            if (w.args[0] === '.MarkerList') {
+                Object.assign(markerListDeclarations, w.args[1]);
+            } else if (w.args[0] === '.BulletedList') {
+                Object.assign(bulletedListDeclarations, w.args[1]);
             }
         }
-        expect(classDeclarations.listStyleType).toBe('none');
+        expect(markerListDeclarations.listStyleType).toBe('none');
+        expect(bulletedListDeclarations.padding).toBe('0px 0px 0px 25px');
 
         expect(declarations.listStyleType).toBeUndefined();
+        expect(declarations.padding).toBeUndefined(); // BulletedList never calls setPadding itself
         expect(_ruleCacheHas('.MarkerList')).toBe(true);
+        expect(_ruleCacheHas('.BulletedList')).toBe(true);
+        expect(list.getPadding()?.getLeft()).toBe(25);
     });
 
-    it('a rendered NumberedList shares the same .MarkerList rule and also carries no listStyleType on its own #id rule', () => {
+    it('a rendered NumberedList shares the .MarkerList rule and carries no listStyleType/padding on its own #id rule, with .NumberedList carrying padding independently', () => {
         const sink = installTestDOM(CONFIG);
         const list = new _NumberedList();
 
         const start        = sink.writes.length;
         const declarations = declarationsDuring(sink, idSelector(list), () => list.getElement(true));
 
-        // The rule is already registered from the BulletedList case above
+        // .MarkerList is already registered from the BulletedList case above
         // (module-level, idempotent), so no second .MarkerList write is
-        // expected here — only the negative (#id) half is worth asserting
-        // per-class.
+        // expected here — only .NumberedList's own first-time content write
+        // is worth asserting positively; the negative (#id) half is worth
+        // asserting per-class for both keys.
+        const numberedListDeclarations: Record<string, string | null> = {};
+        for (const w of sink.writes.slice(start)) {
+            if (w.op === 'setRuleStyles' && w.args[0] === '.NumberedList') {
+                Object.assign(numberedListDeclarations, w.args[1]);
+            }
+        }
+        expect(numberedListDeclarations.padding).toBe('0px 0px 0px 25px');
+
         expect(declarations.listStyleType).toBeUndefined();
+        expect(declarations.padding).toBeUndefined();
         expect(_ruleCacheHas('.MarkerList')).toBe(true);
+        expect(_ruleCacheHas('.NumberedList')).toBe(true);
+        expect(list.getPadding()?.getLeft()).toBe(25);
     });
 });
