@@ -181,15 +181,16 @@ describe('Button resting-chrome state isolation', () => {
         expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed):not(:hover)')).toBe(false);
     });
 
-    it('row 9: a chromeless-by-default MenuBarButton is not isolated — a deviating resting backgroundColor lands on the bare #id rule, and no .MenuBarButton.pressed rule is ever inserted', () => {
+    it('row 9: a MenuBarButton is isolated — setActive(true)\'s backgroundColor lands on #id:not(.pressed):not(:hover), not the bare #id rule, and .MenuBarButton.pressed is in the rule cache', () => {
         const btn = new MenuBarButton('File', () => {}, () => {});
         btn.getElement(true);
 
-        const declarations = declarationsDuring(sink, idSelector(btn), () => btn.setActive(true));
-        expect(declarations.backgroundColor).toBeDefined();
+        const writes = writesDuring(sink, () => btn.setActive(true));
 
-        expect(_ruleCacheHas('.MenuBarButton.pressed')).toBe(false);
-        expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed):not(:hover)')).toBe(false);
+        expect(declarationsIn(writes, idSelector(btn) + ':not(.pressed):not(:hover)').backgroundColor).toBeDefined();
+        expect(declarationsIn(writes, idSelector(btn)).backgroundColor).toBeUndefined();
+
+        expect(_ruleCacheHas('.MenuBarButton.pressed')).toBe(true);
     });
 
     it("row 10: SpinButton's constructor-time clearPressedShadow() dedupes against the shared .SpinButton.pressed class rule, writing no boxShadow to #id.pressed", () => {

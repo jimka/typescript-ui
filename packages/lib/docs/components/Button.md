@@ -118,7 +118,7 @@ The full setter / getter list is in the [API reference](/api/component/button/cl
 
 ## Chromeless mode
 
-`chromeless: true` suppresses the framework's visual-chrome defaults — border, border radius, shadow, gradient background, and the twelve pressed/hover treatments — and also neutralises the UA `<button>` background and ridge border, without disabling the rest of `Button`'s contract (cursor, colour, insets, content row, named listeners). Use it for buttons that want a flat label-shaped surface, like the trailing buttons in a [`WindowHeader`](/components/WindowHeader) or every entry in a [`MenuBar`](/components/MenuBar).
+`chromeless: true` suppresses the framework's visual-chrome defaults — border, border radius, shadow, gradient background, and the twelve pressed/hover treatments — and also neutralises the UA `<button>` background and ridge border, without disabling the rest of `Button`'s contract (cursor, colour, insets, content row, named listeners). Use it for buttons that want only a flat label-shaped surface with no framework chrome.
 
 ```typescript
 Button('Save', { chromeless: true });
@@ -187,7 +187,7 @@ class Editor {
 - `setText(text)` updates the label.
 - For toggle behavior (selected / unselected) use [`ToggleButton`](/components/ToggleButton).
 - For radio-group behavior use [`RadioButton`](/components/RadioButton) plus [`ButtonGroup`](/components/ButtonGroup).
-- For a flat menubar-style button reuse `chromeless: true` directly, or extend `Button` for a named class — `MenuBarButton` is the in-tree example.
+- For a flat menubar-style button reuse `chromeless: true` directly, or extend `Button` for a named class with its own declared chrome — `MenuBarButton` is the in-tree example.
 
 ## See also
 

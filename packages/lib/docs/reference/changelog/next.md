@@ -299,6 +299,12 @@ consumer action is needed.
   their resting, pressed, and hover chrome onto shared class rules instead of
   repeating on every instance.** No consumer action is needed; nothing
   renders differently.
+- **`MenuBarButton` now declares its own flat chrome instead of using
+  `chromeless: true`, so its resting and pressed styling dedupes onto shared
+  class rules instead of repeating on every button.** Menu bars render
+  exactly as before. Two inherited methods answer differently on a
+  `MenuBarButton`: `isChromeless()` now returns `false`, and `setFlat(true)`
+  now applies the flat appearance instead of being ignored.
 - **A `Rail`'s handles now show their selected tint when the handle's
   drawer is open or its window is restored — previously the tint was
   masked by the handle's own resting rule and never rendered.** The

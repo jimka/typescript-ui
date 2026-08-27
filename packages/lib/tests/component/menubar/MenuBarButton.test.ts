@@ -25,25 +25,26 @@ const NOOP = (): void => {};
 beforeEach(() => installTestDOM(CONFIG));
 afterEach(() => DOM.reset());
 
-describe('MenuBarButton chromeless contract', () => {
-    it('stays non-flat (chromeless wins over setFlat)', () => {
+describe('MenuBarButton declared chrome', () => {
+    it('isChromeless() is false by default', () => {
+        expect(new MenuBarButton('File', NOOP, NOOP).isChromeless()).toBe(false);
+    });
+    it('setFlat(true) now takes effect', () => {
         const btn = new MenuBarButton('File', NOOP, NOOP);
 
         expect(btn.isFlat()).toBe(false);
 
         btn.setFlat(true);
 
-        // The button constructs chromeless; setFlat(true) is suppressed because
-        // chromeless and flat are mutually exclusive.
-        expect(btn.isFlat()).toBe(false);
+        expect(btn.isFlat()).toBe(true);
     });
-    it('a caller-supplied chromeless: false wins over the default', () => {
-        expect(new MenuBarButton('File', NOOP, NOOP, { chromeless: false }).isChromeless()).toBe(false);
+    it('a caller-supplied chromeless: true still yields isChromeless() === true', () => {
+        expect(new MenuBarButton('File', NOOP, NOOP, { chromeless: true }).isChromeless()).toBe(true);
     });
 });
 
 describe('MenuBarButton resting background', () => {
-    it('keeps its own token instead of the chromeless transparent overwrite', () => {
+    it('keeps its own token', () => {
         expect(new MenuBarButton('File', NOOP, NOOP).getBackgroundColor()).toBe('var(--ts-ui-menu-bar-btn-bg, transparent)');
     });
 });

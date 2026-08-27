@@ -290,6 +290,95 @@ Run from the repo root unless noted.
 
 ---
 
+## Implementation Notes
+
+- **The two Internal Structure comment blocks, copied verbatim, contradict
+  the plan's own "zero matches" grep checks (step 1's `Check` and the
+  `## Verification` section's grep invariant).** Both required comments use
+  the word "chromeless" in prose (`` `chromeless: true` used to compute
+  imperatively`` and `` did while this class was chromeless``), which the
+  literal `grep -n 'chromeless' MenuBarButton.ts` check demands be absent.
+  Implemented by rewording both comments to describe the same content
+  without the word "chromeless" (e.g. "the old imperative flag"), preserving
+  the grep check's evident intent (no functional `chromeless`/`isChromeless`/
+  `setChromeless` usage survives in this file) without contradicting its
+  literal text. One irreducible remainder: both comments still say "See
+  plans/menubarbutton-chromeless-migration.md", and the plan's own filename
+  contains the substring "chromeless" — no rewording can make a
+  `grep -n 'chromeless'` on this file return zero matches while that
+  self-reference stays. Verified there is no *functional* chromeless usage
+  left (`grep -niE 'chromeless[^-]|ischromeless|setchromeless|chromeless:'`
+  returns nothing) and left the plan-file references in place, since they
+  are directly required by the Internal Structure section and are valuable
+  provenance.
+- **Manual browser verification (`## Expected Behaviour` row 7) surfaced a
+  pre-existing, out-of-scope quirk, not a regression: a hovered/active
+  `MenuBarButton` renders with `border-radius: 4px`, leaked in from
+  `.Button`'s own class rule.** `resolveDeclarations` in
+  `core/ClassStyleRules.ts` gates `borderRadius` on truthiness
+  (`if (defaults.borderRadius) declarations.borderRadius = …`), so the
+  explicit `borderRadius: undefined` key — which correctly suppresses the
+  *instance-level* `setBorderRadius` dispatch per the Architecture
+  Decisions — produces no class-tier declaration on `.MenuBarButton`
+  either, leaving `.Button`'s `border-radius: var(--ts-ui-border-radius,
+  4px)` unopposed in the cascade. Confirmed via `git stash` that the
+  unmigrated (`chromeless: true`) code shows the identical `4px` radius on
+  hover today: `cacheStyleValue`, which the chromeless branch used for
+  `borderRadius`, only updates the JS-side getter cache and explicitly
+  never writes CSS, so the leak predates this plan and is unrelated to it.
+  Row 7 only requires parity with pre-plan rendering, which holds. Left
+  unfixed as out of scope — the same latent gap likely affects
+  `PickerButton`/`WindowControlButton`, which also default `borderRadius:
+  undefined`, but never shows visually there because both keep a
+  transparent background in every state.
+
+**Manual verification (`## Verification`'s required browser check, `##
+Expected Behaviour` rows 7-10) was performed** against a dev server started
+from this worktree (`npx vite --port 8123` from `packages/lib`, confirmed via
+`readlink /proc/<pid>/cwd`), driven live through `chrome-devtools` MCP tools,
+covering the `MenuBar` demo panel's File/Edit/View/Options/Help buttons
+across all three shipped themes (modern, classic, dark), switched at
+runtime via `ThemeManager.setTheme`:
+
+- **Row 7.** A resting, unhovered button (`getComputedStyle`) read
+  `background-color: rgba(0, 0, 0, 0)` (transparent), `background-image:
+  none`, `box-shadow: none`, `border: 0px none`, and the theme's
+  `--ts-ui-menu-bar-btn-fg` text colour (`rgb(0, 0, 0)` modern/classic,
+  `rgb(220, 220, 220)` dark) in all three themes — no visible border,
+  radius, shadow, or gradient. `border-radius` itself resolved to `4px` in
+  every theme, leaked from `.Button`'s ancestor class rule (see the
+  border-radius note above); invisible against a transparent background,
+  and confirmed pre-existing rather than introduced by this plan.
+- **Row 8.** A real pointer hover (MCP `hover` tool, confirmed via
+  `Element.matches(':hover')`) read `background-color:` the theme's
+  `--ts-ui-menu-bar-btn-hover-bg` token (`rgba(30, 100, 200, 0.1)` modern/
+  classic, `rgba(100, 140, 220, 0.15)` dark) with `background-image: none`
+  and `box-shadow: none` in all three themes — only the highlight tint, no
+  leaked gradient or shadow (the regression this plan's Architecture
+  Decisions specifically guards against).
+- **Row 9.** A real primary-button press (`pointerdown`/`pointerup`
+  dispatched on the element and the viewport respectively, mirroring
+  `Button`'s own `_updatePressedClass` tracking) toggled the `.pressed`
+  class and, while held, read `background-color: rgba(0, 0, 0, 0)`,
+  `background-image: none`, `box-shadow: none` — identical to resting, in
+  all three themes. Clicking a button opened its menu, set
+  `aria-expanded="true"`, and painted the persistent highlight
+  (`background-color` equal to the hover token, `background-image`/
+  `box-shadow: none`) in all three themes; clicking again closed it
+  (`aria-expanded="false"`). With a menu already open, pressing that same
+  button (`pointerdown` without a click) reverted the background to the
+  transparent resting fill for the duration of the press and restored the
+  active highlight on release, without closing the menu — matching the
+  plan's specific claim about that sub-case.
+- **Row 10.** After exercising all of the above in all three themes, the
+  Style Audit panel's duplicate-rule table was scanned (`document.body
+  .innerText.includes('MenuBarButton')`) both before and after clicking its
+  "Refresh" button — no match either time, confirming no `MenuBarButton`
+  duplicate-rule rows (the per-`#id` resting-chrome reset or the
+  per-`#id.pressed` pin, both present before this plan) remain.
+
+---
+
 ## Notes
 
 [^audit-rows]: The two rows correspond to the two independent mechanisms `chromeless: true` triggers, both traced against current source. First, `applyChromeOptions`'s chromeless branch calls `suppressIsolation(true)` ([Button.ts:1035](packages/lib/src/typescript/lib/component/button/Button.ts#L1035)) and then `clearBorder()` / `setShadow("none")` / `setBackgroundImage("none")` ([Button.ts:1067-1070](packages/lib/src/typescript/lib/component/button/Button.ts#L1067)). Those three neutral values do not match `.MenuBarButton`'s class-tier bag — which today declares only `backgroundColor`, `foregroundColor`, `cursor`, and `insets` — so `flushStyleBag` finds no lower-layer match, writes them for real, and, with isolation suppressed, writes them to the bare `#id` rule. That is the resting-chrome reset row, one copy per rendered menu-bar button. Second, the same branch calls `pinPressedToResting()` ([Button.ts:1092](packages/lib/src/typescript/lib/component/button/Button.ts#L1092)), which reads `classStateLayer(".pressed")`, finds all four keys present, and writes them to `#id.pressed` through `pinStateStyle` — which removes the class-bag comparison by design. That is the pressed-pin row. `MenuBarButton`'s current `ownStyleStates[0]` is `Button.ownStyleStates[0]` restated verbatim, which resolves to the same four-key bag rather than an empty one, so the pin fires on every construction. The two row counts differ slightly because they come from different points in the same audit capture; both scale one-for-one with the number of live menu-bar buttons.
