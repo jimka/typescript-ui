@@ -25,6 +25,7 @@ import { NumberEditor } from '~/component/table/cell/editor/Number';
 import { AutoCompleteField } from '~/component/input/AutoCompleteField';
 import { Link } from '~/component/input/Link';
 import { PickerButton } from '~/component/input/PickerButton';
+import { RailHandle } from '~/overlay/RailHandle';
 import { NumberedList } from '~/component/list/NumberedList';
 import { NumberedListItemStyle } from '~/component/list/NumberedListItemStyle';
 import { TabCloseButton } from '~/component/button/TabCloseButton';
@@ -317,6 +318,8 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'TabCloseButton borderRadius (rendered)',    resolve: () => { const b = new TabCloseButton(); b.getElement(true); return b.getBorderRadius(); },    expected: '3px' },
     { label: 'PickerButton backgroundColor (rendered)',   resolve: () => { const b = new PickerButton(); b.getElement(true); return b.getBackgroundColor(); }, expected: 'transparent' },
     { label: 'PickerButton shadow (rendered)',            resolve: () => { const b = new PickerButton(); b.getElement(true); return b.getShadow(); },           expected: 'none' },
+    { label: 'RailHandle getBackgroundColor()',           resolve: () => { const h = new RailHandle(); h.getElement(true); return h.getBackgroundColor(); },   expected: 'transparent' },
+    { label: 'RailHandle getShadow()',                    resolve: () => { const h = new RailHandle(); h.getElement(true); return h.getShadow(); },             expected: 'none' },
     // ToggleButton itself has no backgroundColor default of its own; the value
     // below now comes from `Button`'s own `_defaultButtonOptions.backgroundColor`
     // entry — this plan's fix folds it through the getter instead of an
