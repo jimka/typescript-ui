@@ -23,6 +23,12 @@ const CONFIG = {
 // breathing-room constant, not a positioning magic number.
 const VIEWPORT_MARGIN = 4;
 
+// The panel's own left+right border ("1px solid ..." on each side, set by
+// both applyRebuildChrome and applyPersistentChrome), which layOutColumns
+// adds to the content-based width it clamps/measures rows against before
+// returning the panel's actual (border-box) width — see getMenuWidth().
+const MENU_BORDER_PX = 2;
+
 // MENU_ANIM_DURATION_MS (120) mirrored from Menu (private const), plus
 // Animation.play's default 40ms fallback buffer, plus headroom — comfortably
 // past the point a submenu's close() fade completes via the fallback timer
@@ -526,10 +532,12 @@ describe('Menu content-based width', () => {
         const wide = new Menu();
         wide.show(0, 0, [{ text: 'X'.repeat(200) }]);
 
-        // Tiny content clamps up to the floor; a very long label clamps to the ceiling.
-        expect(tiny.getMenuWidth()).toBe(120);
-        expect(wide.getMenuWidth()).toBeGreaterThan(120);
-        expect(wide.getMenuWidth()).toBeLessThanOrEqual(360);
+        // Tiny content clamps up to the floor; a very long label clamps to the
+        // ceiling. Both bounds are content-based, so the panel's own border
+        // is added on top of each.
+        expect(tiny.getMenuWidth()).toBe(120 + MENU_BORDER_PX);
+        expect(wide.getMenuWidth()).toBeGreaterThan(120 + MENU_BORDER_PX);
+        expect(wide.getMenuWidth()).toBeLessThanOrEqual(360 + MENU_BORDER_PX);
     });
 
     it('grows a viewport-overflowing menu down from the cursor and caps its height to scroll', () => {
@@ -1453,13 +1461,13 @@ describe('Menu custom rows', () => {
             // getContentWidth() excludes that inset, and Menu adds it back.
             const menu300 = new Menu();
             menu300.show(0, 0, [{ text: 'Bold' }, { row: () => new TestRow({ contentWidth: 300 }) }]);
-            expect(menu300.getMenuWidth()).toBe(MenuItem.TEXT_INSET + 300);
+            expect(menu300.getMenuWidth()).toBe(MenuItem.TEXT_INSET + 300 + MENU_BORDER_PX);
 
-            // A row reporting 900 clamps to the MAX_MENU_WIDTH ceiling (360)
-            // regardless of iconStart.
+            // A row reporting 900 clamps to the MAX_MENU_WIDTH ceiling (360),
+            // plus the panel's own border, regardless of iconStart.
             const menu900 = new Menu();
             menu900.show(0, 0, [{ text: 'Bold' }, { row: () => new TestRow({ contentWidth: 900 }) }]);
-            expect(menu900.getMenuWidth()).toBe(360);
+            expect(menu900.getMenuWidth()).toBe(360 + MENU_BORDER_PX);
 
             // A row reporting 0 contributes nothing past iconStart: the width
             // is whatever the MenuItem alone produced.
@@ -1484,7 +1492,7 @@ describe('Menu custom rows', () => {
                 { row: () => new TestRow({ contentWidth: 300 }) },
             ]);
 
-            expect(menu.getMenuWidth()).toBe(MenuItem.CHECK_ZONE + MenuItem.TEXT_INSET + 300);
+            expect(menu.getMenuWidth()).toBe(MenuItem.CHECK_ZONE + MenuItem.TEXT_INSET + 300 + MENU_BORDER_PX);
         });
 
         it('every non-separator row receives the same setColumns triple, custom rows included', () => {
@@ -1520,6 +1528,33 @@ describe('Menu custom rows', () => {
             const widenedItem = (withCheck as any)._menuItems.find((r: any) => r instanceof MenuItem);
 
             expect(widenedItem._iconStart).toBe(baseIconStart + MenuItem.CHECK_ZONE);
+        });
+
+        it('a CheckboxMenuRow driving the panel width gets its full checkbox width, not clipped by the panel border', () => {
+            installTestDOM(CONFIG);
+
+            // A label long enough that this row's own getContentWidth() (not a
+            // MenuItem title) drives the panel's natural width — the regime in
+            // which the panel's border previously starved the row's content box
+            // by MENU_BORDER_PX, silently clipping the checkbox's unellipsized
+            // label (see layOutColumns's comment).
+            let row!: InstanceType<typeof CheckboxMenuRow>;
+            const menu = new Menu();
+            menu.show(0, 0, [
+                { text: 'Bold' },
+                {
+                    row: () => {
+                        row = new CheckboxMenuRow({ text: 'A label long enough to drive the panel width' });
+                        return row;
+                    },
+                },
+            ]);
+
+            menu.flushLayout();
+
+            const checkbox = row.getComponents()[0] as any;
+
+            expect(checkbox.getWidth()).toBeGreaterThanOrEqual(checkbox.getPreferredSize()!.width);
         });
     });
 

@@ -181,7 +181,17 @@ class Menu extends Component implements DismissableLayer {
      * title/shortcut metrics by default, so the panel's natural width is
      * floored with the widest row's own `getContentWidth()` report.
      *
-     * @returns The clamped panel width in pixels.
+     * The clamp and every row's column geometry are computed against the
+     * panel's CONTENT box (matching `RIGHT_PAD`'s own "at the panel's inner
+     * edge" contract); the panel's own left/right border is added only to the
+     * returned value, so a caller applying it via `setWidth` (a border-box
+     * write) hands rows exactly the content width this method measured them
+     * against — short-changing it here previously starved every row's
+     * content box by the panel's border thickness, invisible on a
+     * `MenuItem`'s ellipsized title but a visible hard clip on an unellipsized
+     * custom row's content (e.g. `CheckboxMenuRow`'s label).
+     *
+     * @returns The clamped panel width in pixels, border included.
      */
     private layOutColumns(): number {
         const rows = this._menuItems.filter(row => !row.isSeparator());
@@ -213,7 +223,9 @@ class Menu extends Component implements DismissableLayer {
             row.setColumns(checkZone, iconStart, titleColumn);
         }
 
-        return width;
+        const border = this.getBorderSize();
+
+        return width + border.left + border.right;
     }
 
     /**
