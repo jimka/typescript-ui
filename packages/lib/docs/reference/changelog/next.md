@@ -150,6 +150,10 @@ neither needs no change.
 - **`SelectableListRow` no longer duplicates its fixed padding on every
   instance's own CSS rule.** It now shares one CSS rule across every
   instance in the app. Nothing changes visually; no consumer action needed.
+- **Every `AccordionHeader` in a themed accordion now shares one CSS rule
+  for its background, text colour, and border instead of repeating them on
+  every instance's own `#id` rule.** Nothing changes visually; no consumer
+  action needed.
 - **`TextField`, `TextArea`, `PasswordField`, `UsernameField`,
   `AbstractPickerField` (`DateField`/`TimeField`/`DateTimeField`), and
   `BulletedList`/`NumberedList` now render with the padding they were always
@@ -228,6 +232,9 @@ action is needed.
   of a 10,000-row `Table` (`bench.benchRowSelect()`) previously grew the
   count by 1,790; it now returns to baseline every time. No consumer action
   is needed.
+- **`clearForegroundColor()` now clears the colour instead of handing it
+  back to the class rule on a class that defaults `foregroundColor`.** No
+  consumer action is needed.
 
 ### Components
 
@@ -389,6 +396,14 @@ another cell.
   rows, since roughly half of all live instances are hidden or undisplayed
   at any moment. The rendered result is unchanged. No consumer action is
   needed.
+- **The CSS `background` shorthand now participates in the layered style
+  bag, the same way `backgroundColor` / `backgroundImage` already do.**
+  `getBackground()` now folds the class and group tiers instead of
+  reporting only what this instance set, `setBackground()` dedupes against
+  a class-level default, and `clearBackground()` asserts `background:
+  transparent` when the class declares one. A consumer that called
+  `getBackground()` on an instance of a class with a class-level
+  `background` and relied on the `null` return is affected.
 
 ### Components
 

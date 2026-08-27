@@ -2,7 +2,7 @@
 
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { AccordionConstraints } from "~/layout/AccordionConstraints.js";
-import { AccordionHeader } from "~/component/container/AccordionHeader.js";
+import { AccordionHeader, THEMED_HEADER_BG, THEMED_HEADER_BORDER, THEMED_HEADER_COLOR } from "~/component/container/AccordionHeader.js";
 import { SplitGutter } from "~/component/container/SplitGutter.js";
 import { Animation } from "~/core/Animation.js";
 import { Component } from "~/core/Component.js";
@@ -58,18 +58,6 @@ const COMPACT_HEADER_HEIGHT: number = 22;
  * `computeResizableHeights`) is unaffected by whether gutters are shown.
  */
 const RESIZE_GUTTER_SIZE: number = 6;
-
-/**
- * Themed-mode CSS values for the accordion theme tokens, with fallbacks
- * mirroring the default light theme. Applied to each header only when `themed`
- * is on, so an un-themed accordion stays chromeless. The header border is a
- * single bottom divider (not a four-side box): stacked headers then read as a
- * flat list whose dividers never double, so no separate `flat`/collapse option
- * is needed — the look is driven entirely by the `accordion.header.border` token.
- */
-const THEMED_HEADER_BG:     string = "var(--ts-ui-accordion-header-bg, rgb(243,244,246))";
-const THEMED_HEADER_BORDER: string = "var(--ts-ui-accordion-header-border, 1px solid rgb(214,217,222))";
-const THEMED_HEADER_COLOR:  string = "var(--ts-ui-accordion-header-color, inherit)";
 
 /**
  * All-around border drawn on the accordion's own container when `themed`, from

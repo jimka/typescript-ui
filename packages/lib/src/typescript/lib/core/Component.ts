@@ -2503,7 +2503,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS background shorthand string, or null.
      */
     getBackground(): string | null {
-        return this._options.background ?? null;
+        return this.resolveStyleValue("background");
     }
 
     /**
@@ -2515,12 +2515,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setBackground(value: string): this {
-        if (this._options.background === value) {
+        if (this._instanceStyle.background === value) {
             return this;
         }
 
-        this._options.background = value;
-        this.setElementCSSRule("background", value);
+        this.writeStyle({ background: value });
 
         return this;
     }
@@ -2531,8 +2530,24 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearBackground(): this {
-        this._options.background = undefined;
-        this.setElementCSSRule("background", null);
+        // Same reasoning as `clearBackgroundColor`: the layer write is what makes
+        // `getBackground()` report the clear, but a bare CSS removal would hand
+        // the property straight back to the class rule when the class defaults it.
+        // Only routed through the guarded escape hatch when `background` is one
+        // of this instance's own resting-isolation keys (e.g. an isolated
+        // Button-family instance) — `setBackground` (via `flushStyleBag`) only
+        // ever targets the guarded rule for those same keys, so asserting on it
+        // unconditionally here would outrank a later plain-`#id` `setBackground`
+        // and leave the clear permanently stuck.
+        this.writeStyle({ background: null });
+
+        if (this._defaultOptions.background) {
+            if (this.isRestingChromeIsolated() && this.restingIsolationKeys().has("background")) {
+                this.writeGuardedCSSRule("background", "transparent");
+            } else {
+                this.setElementCSSRule("background", "transparent");
+            }
+        }
 
         return this;
     }
@@ -2633,7 +2648,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     clearForegroundColor(): this {
         // Write the key (not skip it) so `getForegroundColor` sees an
         // explicit clear and returns null, suppressing a class-level default.
+        // Only routed through the guarded escape hatch when `color` is one of
+        // this instance's own resting-isolation keys — see `clearBackground`'s
+        // comment for why an unconditional guarded write would go stale.
         this.writeStyle({ foregroundColor: null });
+
+        if (this._defaultOptions.foregroundColor) {
+            if (this.isRestingChromeIsolated() && this.restingIsolationKeys().has("color")) {
+                this.writeGuardedCSSRule("color", "inherit");
+            } else {
+                this.setElementCSSRule("color", "inherit");
+            }
+        }
 
         return this;
     }
@@ -5722,6 +5748,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             }
         }
 
+        // `background` is a shorthand covering both background longhands, so a
+        // bare `#id { background: … }` would outrank a state rule declaring
+        // either of them. Isolate it whenever a declared state touches one.
+        if (keys.has("backgroundColor") || keys.has("backgroundImage")) {
+            keys.add("background");
+        }
+
         return keys;
     }
 
@@ -5803,12 +5836,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Writes one key onto the resting-guarded rule directly, bypassing the
-     * layer/dedup machinery — the escape hatch for a shorthand no `StyleBag`
-     * key covers (e.g. Button's `background`), which therefore has no class
-     * tier to compare against and nothing for `flushStyleBag` to resolve.
-     * Falls back to the plain `#id` write when this instance isn't
-     * isolated (see `isRestingChromeIsolated`): with no state to guard
-     * against, the value belongs on the bare rule instead.
+     * layer/dedup machinery — used by a `clearX` method to force a real CSS
+     * reset onto the guarded rule instead of the bare `#id` one, for a key a
+     * declared state might otherwise outrank. Correct only when `key` is
+     * actually one of this instance's own `restingIsolationKeys()` — the
+     * guarded rule exists to beat exactly those keys' state rules, nothing
+     * else (see `clearBackground`/`clearForegroundColor` for the per-key
+     * check this implies). Falls back to the plain `#id` write when this
+     * instance isn't isolated at all (see `isRestingChromeIsolated`).
      *
      * @param key - The CSS property name (camelCase).
      * @param value - The value to set, or null to remove the property.

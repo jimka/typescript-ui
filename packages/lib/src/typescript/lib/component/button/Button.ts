@@ -698,31 +698,6 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     };
 
     /**
-     * Routes the `background` shorthand — the one isolated key whose setters
-     * still use Component's plain single-key write path — through the
-     * resting-guard escape hatch. No class-tier bag ever carries
-     * `background`, so there is nothing to compare against and the value is
-     * written as given.
-     */
-    override setBackground(value: string): this {
-        if (this._options.background === value) {
-            return this;
-        }
-
-        this._options.background = value;
-        this.writeGuardedCSSRule("background", value);
-
-        return this;
-    }
-
-    override clearBackground(): this {
-        this._options.background = undefined;
-        this.writeGuardedCSSRule("background", null);
-
-        return this;
-    }
-
-    /**
      * Cached `flat` appearance flag. `declare` rather than initialized because
      * `setFlat` can fire during the super-time cascade via `applyChromeOptions`
      * (the flat branch installs hover/pressed treatments through the lazy
