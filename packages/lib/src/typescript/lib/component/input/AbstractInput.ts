@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Bindable } from "~/core/Bindable.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
+import { UNBOUNDED } from "~/primitive/Size.js";
 
 /**
  * String-literal union of the events emitted by every {@link AbstractInput}
@@ -217,6 +218,34 @@ abstract class AbstractInput<
      * @param value - The new read-only state.
      */
     protected abstract applyReadOnly(value: boolean): void;
+
+    /**
+     * Points this instance at the shared `.ClassName.h<px>` rule for a
+     * single-line box height, so every instance of this concrete class that
+     * resolves the same height shares one CSS rule instead of each writing its
+     * own `min-height`/`max-height` pair. Call this *before* the matching
+     * `setPreferredSize`/`setMaxSize`/`setMinSize` writes: on an
+     * already-rendered component those setters flush immediately, and a flush
+     * that runs against the previous height's value class writes the new height
+     * to this instance's own rule, where it outranks the shared one for good.
+     *
+     * @param h - The single-line box height in pixels, as
+     *   {@link Util.singleLineBoxHeight} computed it.
+     *
+     * @remarks The widths in the patch are pinned to the framework baseline
+     * (`0` / `UNBOUNDED`) rather than read back from this instance, so the
+     * shared rule's `min-width`/`max-width` declarations are the same inert
+     * pair for every instance. Reading this instance's real widths instead
+     * would bake whichever instance minted the rule first into every later
+     * instance's comparison, and a field with a different width would then
+     * write a width declaration to its own rule that it does not write today.
+     */
+    protected pinSingleLineBoxHeight(h: number): void {
+        this.setValueStyleState("h", h + "px", {
+            minSize: { width: 0,         height: h },
+            maxSize: { width: UNBOUNDED, height: h },
+        });
+    }
 
     /**
      * Applies an {@link AbstractInputOptions} bag, caching the `enabled` /

@@ -7180,7 +7180,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const classTraitTokens = resolveStyleTraits(this.constructor)
             .filter((trait) => this.ensureTraitLayer(this.constructor, trait) !== null)
             .map(traitClassName);
-        DOM.sink.apply(element, { addClass: [COMPONENT_CLASS, ...getStyleClassChain(this.constructor), ...groupClass, ...activeStateTokens, ...classTraitTokens] });
+        // Re-applies any value-class token recorded before this element existed
+        // (see `setValueStyleState`, whose own DOM write is gated on
+        // `getElement()`) — the same first-render catch-up `activeStateTokens`
+        // above performs for a declared state.
+        const valueClassTokens = Array.from(this._valueStyleTokens.values(), (entry) => entry.token);
+        DOM.sink.apply(element, { addClass: [COMPONENT_CLASS, ...getStyleClassChain(this.constructor), ...groupClass, ...activeStateTokens, ...classTraitTokens, ...valueClassTokens] });
 
         this.applyStyle(element);
 

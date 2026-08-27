@@ -838,6 +838,8 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     protected updateHeight(): void {
         const h = Util.singleLineBoxHeight(this.getInsets(), this.getPadding(), this.getBorderSize());
 
+        this.pinSingleLineBoxHeight(h);
+
         const width = this.getPreferredSizeConstraint()?.width ?? 200;
         this.setPreferredSize({ width, height: h });
 
