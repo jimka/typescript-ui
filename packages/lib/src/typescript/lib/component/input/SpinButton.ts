@@ -12,6 +12,7 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { chevron_up } from "~/glyphs/solid/chevron_up.js";
 import { chevron_down } from "~/glyphs/solid/chevron_down.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
+import { GLYPH_XS_INK_TRAIT } from "~/core/StyleTraits.js";
 
 /**
  * String-literal union of the events emitted by {@link SpinButton}. Extends
@@ -118,7 +119,7 @@ class SpinButton extends Button<SpinButtonOptions> {
         // line height; the 1px upward nudge corrects the centring rounding noted
         // above.
         this.pinGlyphSize(ThemeManager.getResolvedScale().glyphXs);
-        this.getGlyph()?.setStyleGroup("spin-glyph");
+        this.getGlyph()?.setStyleTrait(GLYPH_XS_INK_TRAIT);
         this.getGlyph()?.setTranslate(0, -1);
 
         this._repeat = new AutoRepeat({

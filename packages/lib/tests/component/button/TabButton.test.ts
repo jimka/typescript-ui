@@ -191,11 +191,11 @@ describe('TabButton listeners bag', () => {
     });
 });
 
-// Plan glyph-icon-size-dedup.md, 8px group: TabButton opts its close
-// button's chevron glyph into the "tab-close-glyph" styleGroup right after
-// pinGlyphSize, so every closeable tab's ✕ shares one
-// .ButtonIconGlyph--tab-close-glyph rule instead of each repeating the same
-// size on its own #id rule.
+// Plan glyph-icon-trait-dedup.md: TabButton opts its close button's chevron
+// glyph into GLYPH_XS_INK_TRAIT right after pinGlyphSize, so every closeable
+// tab's ✕ shares one .ts-ui-trait-glyph-xs-ink rule (also shared with
+// SpinButton's chevron) instead of each repeating the same size on its own
+// #id rule.
 describe('TabButton close-button glyph style hoisting', () => {
     /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
     function idSelector(component: { getId(): string }): string {
@@ -219,7 +219,7 @@ describe('TabButton close-button glyph style hoisting', () => {
         return out;
     }
 
-    it("a second closeable TabButton's close-button glyph writes no size declaration to its own #id rule, and the shared .ButtonIconGlyph--tab-close-glyph group rule exists", () => {
+    it("a second closeable TabButton's close-button glyph writes no size declaration to its own #id rule, and the shared trait rule exists", () => {
         new TabButton('Warmup', { closeable: true }).getElement(true);
 
         // TabButton.buildCloseButton renders the close button eagerly inside
@@ -236,6 +236,6 @@ describe('TabButton close-button glyph style hoisting', () => {
         expect(declarations.minHeight).toBeUndefined();
         expect(declarations.maxWidth).toBeUndefined();
         expect(declarations.maxHeight).toBeUndefined();
-        expect(_ruleCacheHas('.ButtonIconGlyph--tab-close-glyph')).toBe(true);
+        expect(_ruleCacheHas('.ts-ui-component.ts-ui-trait-glyph-xs-ink')).toBe(true);
     });
 });

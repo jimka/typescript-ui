@@ -282,7 +282,7 @@ describe('ComboBoxCaret static style hoisting', () => {
         expect(_ruleCacheHas('.ComboBoxCaret')).toBe(true);
     });
 
-    it("the caret's own chevron glyph carries no static min/max size declaration on its own #id rule, and the shared .ComboBoxCaretGlyph class rule exists once rendered", () => {
+    it("the caret's own chevron glyph carries no static min/max size declaration on its own #id rule, and the shared trait rule exists once rendered", () => {
         const sink  = installTestDOM(CONFIG);
         const combo = new ComboBox() as any;
         const glyph = combo._caret.getGlyph();
@@ -293,6 +293,7 @@ describe('ComboBoxCaret static style hoisting', () => {
         expect(declarations.minHeight).toBeUndefined();
         expect(declarations.maxWidth).toBeUndefined();
         expect(declarations.maxHeight).toBeUndefined();
-        expect(_ruleCacheHas('.ComboBoxCaretGlyph')).toBe(true);
+        expect(_ruleCacheHas('.ComboBoxCaretGlyph')).toBe(false);
+        expect(_ruleCacheHas('.ts-ui-component.ts-ui-trait-glyph-md-ink')).toBe(true);
     });
 });

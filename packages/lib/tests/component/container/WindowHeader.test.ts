@@ -54,7 +54,7 @@ describe('WindowHeaderTitleGlyph style hoisting', () => {
         return out;
     }
 
-    it("a rendered WindowHeader's default title glyph carries no min/max size declaration on its own #id rule, and the shared .WindowHeaderTitleGlyph class rule exists", () => {
+    it("a rendered WindowHeader's default title glyph carries no min/max size declaration on its own #id rule, and the shared trait rule exists", () => {
         const header = new WindowHeader('Title');
         const glyph  = header.getGlyph()!;
 
@@ -64,6 +64,7 @@ describe('WindowHeaderTitleGlyph style hoisting', () => {
         expect(declarations.minHeight).toBeUndefined();
         expect(declarations.maxWidth).toBeUndefined();
         expect(declarations.maxHeight).toBeUndefined();
-        expect(_ruleCacheHas('.WindowHeaderTitleGlyph')).toBe(true);
+        expect(_ruleCacheHas('.WindowHeaderTitleGlyph')).toBe(false);
+        expect(_ruleCacheHas('.ts-ui-component.ts-ui-trait-glyph-md-ink')).toBe(true);
     });
 });
