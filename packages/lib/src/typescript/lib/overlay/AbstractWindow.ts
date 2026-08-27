@@ -1596,10 +1596,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /**
      * Begins a window move from a press anywhere a subclass routes here.
-     * Snapshots the start position and pointer origin, pre-promotes a
-     * compositor layer, and registers the viewport move/up listeners. No-ops
-     * for a Shift-modified press (reserved for re-dock gestures) or when the
-     * window is not in the `"normal"` state.
+     * Snapshots the start position and pointer origin, and registers the
+     * viewport move/up listeners. No-ops for a Shift-modified press (reserved
+     * for re-dock gestures) or when the window is not in the `"normal"` state.
      *
      * @param e - The mousedown event whose pointer coordinate anchors the drag.
      *
@@ -1642,10 +1641,6 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this._dragReachMaxX = this._dragStartLeft;
         this._dragReachMinY = this._dragStartTop;
         this._dragReachMaxY = this._dragStartTop;
-
-        // Pre-promote to a compositor layer so the first mousemove translate doesn't
-        // pay a layer-creation cost mid-drag. Released in onMouseUp.
-        this.setWillChange("transform");
 
         // Viewport listeners are required (rather than direct document listeners) because
         // Event.baseViewportListener stops mouseup propagation at window capture phase
@@ -1934,6 +1929,16 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns `{ stop: true, prevent: true }`, consuming the move and suppressing the browser's default text selection while dragging.
      */
     onDrag(e: MouseEvent): Event.ListenerResult {
+        // Promoted here rather than in startMoveFrom: a plain click (mousedown +
+        // mouseup with no intervening move) never reaches this method, so it never
+        // pays for a compositor layer it doesn't need. Promoting on a bare click
+        // was visible as a ~1px flash across the window's content — many descendant
+        // glyph icons sit at sub-pixel CSS positions, and Chromium rasterizes a
+        // promoted layer against its own snapped origin, nudging them briefly.
+        // setWillChange no-ops once the value is already "transform", so this is
+        // free on every subsequent move of the same drag. Released in onMouseUp.
+        this.setWillChange("transform");
+
         // Derive the delta from the absolute pointer offset (not accumulated movementX)
         // so clampDragDelta's writeback can't drift: when the window is pinned at an edge
         // the over-travel is absorbed and the window re-attaches to the cursor on reverse.
