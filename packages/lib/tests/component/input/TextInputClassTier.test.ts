@@ -35,6 +35,7 @@ import { PasswordField } from '~/component/input/PasswordField';
 import { UsernameField } from '~/component/input/UsernameField';
 import { ComboBox } from '~/component/input/ComboBox';
 import { AutoCompleteField } from '~/component/input/AutoCompleteField';
+import { COMPONENT_CLASS, TRAIT_CLASS_PREFIX } from '~/core/ClassStyleRules';
 
 const DOM_CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -76,6 +77,39 @@ function declarationsDuring(
     return out;
 }
 
+/**
+ * Same as {@link declarationsDuring}, but for several selectors captured
+ * from one `fn()` run — needed when two selectors' one-time content writes
+ * (e.g. `.TextInput` and the shared trait rule) both land during the same,
+ * file-wide-first render.
+ */
+function declarationsDuringMulti(
+    sink: RecordingDOMSink,
+    selectors: readonly string[],
+    fn: () => void,
+): Record<string, Record<string, string | null>> {
+    const start = sink.writes.length;
+    fn();
+
+    const out: Record<string, Record<string, string | null>> = {};
+    for (const selector of selectors) {
+        out[selector] = {};
+    }
+
+    for (const w of sink.writes.slice(start)) {
+        if (w.op !== 'setRuleStyles' || !selectors.includes(w.args[0] as string)) {
+            continue;
+        }
+
+        const styles = w.args[1] as Record<string, string | null>;
+        for (const key of Object.keys(styles)) {
+            out[w.args[0] as string][key] = styles[key];
+        }
+    }
+
+    return out;
+}
+
 /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
 function idSelector(component: { getId(): string }): string {
     return '#' + DOM.source.escapeSelector(component.getId());
@@ -94,18 +128,24 @@ function realDeclarations(declarations: Record<string, string | null>): Record<s
 }
 
 describe('TextInput class-tier style migration', () => {
-    it('row 3: the shared .TextInput class rule carries the font baseline alongside its chrome', () => {
+    it('row 3: the shared .TextInput class rule carries the font baseline alongside its chrome, but no longer the border/borderRadius pair (moved onto the input-chrome trait)', () => {
         // Must be the first TextInput-family construction+render in this file
-        // — see the file banner comment.
-        const sink = DOM.sink as RecordingDOMSink;
-        const declarations = declarationsDuring(sink, '.TextInput', () => new TextField().getElement(true));
+        // — see the file banner comment. Both `.TextInput`'s and the shared
+        // trait rule's one-time content writes land during this same render,
+        // so both are captured from the one `declarationsDuringMulti` call.
+        const sink           = DOM.sink as RecordingDOMSink;
+        const traitSelector  = `.${COMPONENT_CLASS}.${TRAIT_CLASS_PREFIX}input-chrome`;
+        const byS = declarationsDuringMulti(sink, ['.TextInput', traitSelector], () => new TextField().getElement(true));
 
-        expect(declarations.fontFamily).toBe('var(--ts-ui-font-family, sans-serif)');
-        expect(declarations.fontSize).toBe('var(--ts-ui-font-size, 14px)');
-        expect(declarations.lineHeight).toBe('calc(1em + var(--ts-ui-line-padding, 2px))');
-        expect(declarations.backgroundColor).toBe('var(--ts-ui-input-bg, rgb(255, 255, 255))');
-        expect(declarations.borderTop).toBe('var(--ts-ui-input-border)');
-        expect(declarations.borderRadius).toBe('var(--ts-ui-border-radius, 4px)');
+        expect(byS['.TextInput'].fontFamily).toBe('var(--ts-ui-font-family, sans-serif)');
+        expect(byS['.TextInput'].fontSize).toBe('var(--ts-ui-font-size, 14px)');
+        expect(byS['.TextInput'].lineHeight).toBe('calc(1em + var(--ts-ui-line-padding, 2px))');
+        expect(byS['.TextInput'].backgroundColor).toBe('var(--ts-ui-input-bg, rgb(255, 255, 255))');
+        expect(byS['.TextInput'].borderTop).toBeUndefined();
+        expect(byS['.TextInput'].borderRadius).toBeUndefined();
+
+        expect(realDeclarations(byS[traitSelector]).borderTop).toBe('var(--ts-ui-input-border)');
+        expect(realDeclarations(byS[traitSelector]).borderRadius).toBe('var(--ts-ui-border-radius, 4px)');
     });
 
     it('row 1: a TextField renders with no font declaration on its own #id rule', () => {
@@ -132,7 +172,7 @@ describe('TextInput class-tier style migration', () => {
         expect(realDeclarations(declarations)).toEqual({});
     });
 
-    it('row 4: a DateField\'s inner PickerInput renders with only padding on its own #id rule', () => {
+    it('row 4: a DateField\'s inner PickerInput renders padding plus a genuine border override on its own #id rule', () => {
         new DateField().getElement(true); // throwaway, primes .DateField / .PickerInput
 
         const sink = DOM.sink as RecordingDOMSink;
@@ -140,7 +180,22 @@ describe('TextInput class-tier style migration', () => {
         const input = (field as any)._input;
         const declarations = declarationsDuring(sink, idSelector(input), () => field.getElement(true));
 
-        expect(realDeclarations(declarations)).toEqual({ padding: '0px 3px 0px 3px' });
+        // PickerInput's own class-tier `border: "none"` is dispatched to
+        // `setBorder` as an authored instance value (see PickerInput.ts and
+        // plans/cross-class-style-groups.md's worked example). Before this
+        // plan, that "none" matched PickerInput's own `.PickerInput` class
+        // rule and was skipped; now the trait layer it inherits from
+        // TextInput (`border: var(--ts-ui-input-border)`) outranks the class
+        // tier and is checked first, so "none" genuinely deviates and writes
+        // for real — the trait outranking the class tier by specificity
+        // means a class-tier override alone can no longer suppress it.
+        expect(realDeclarations(declarations)).toEqual({
+            padding:      '0px 3px 0px 3px',
+            borderTop:    'none',
+            borderRight:  'none',
+            borderBottom: 'none',
+            borderLeft:   'none',
+        });
     });
 
     it('row 5: NumberSpinner\'s inner field has no per-instance textAlign/border/borderRadius/outline, and .NumberSpinnerField carries exactly seven declarations', () => {
@@ -164,8 +219,15 @@ describe('TextInput class-tier style migration', () => {
         const input = (spinner as any)._input;
         const idDeclarations = declarationsDuring(sink, idSelector(input), () => spinner.getElement(true));
         expect(idDeclarations.textAlign).toBeUndefined();
-        expect(realDeclarations(idDeclarations).borderTop).toBeUndefined();
-        expect(realDeclarations(idDeclarations).borderRadius).toBeUndefined();
+        // border/borderRadius are dispatched instance values (from
+        // NumberSpinnerField's own class-tier defaults) that now genuinely
+        // deviate from the input-chrome trait NumberSpinnerField inherits
+        // through TextField/TextInput — see row 4's comment above for why.
+        // `outline` was never dispatched to an instance setter (it isn't one
+        // of `applyChromeOptions`'s four fields) and isn't a trait property,
+        // so it stays undeclared on #id exactly as before.
+        expect(realDeclarations(idDeclarations).borderTop).toBe('none');
+        expect(realDeclarations(idDeclarations).borderRadius).toBe('0');
         expect(realDeclarations(idDeclarations).outline).toBeUndefined();
     });
 
@@ -217,8 +279,13 @@ describe('TextInput class-tier style migration', () => {
         const field = new AutoCompleteField();
         const textField = (field as any)._textField;
         const idDeclarations = declarationsDuring(sink, idSelector(textField), () => field.getElement(true));
-        expect(realDeclarations(idDeclarations).borderTop).toBeUndefined();
-        expect(realDeclarations(idDeclarations).borderRadius).toBeUndefined();
+        // border/borderRadius are dispatched instance values that now
+        // genuinely deviate from the input-chrome trait AutoCompleteTextField
+        // inherits through TextField/TextInput — see row 4's comment above.
+        // `outline` stays undeclared on #id exactly as before (see row 5's
+        // comment on why).
+        expect(realDeclarations(idDeclarations).borderTop).toBe('none');
+        expect(realDeclarations(idDeclarations).borderRadius).toBe('0');
         expect(realDeclarations(idDeclarations).outline).toBeUndefined();
     });
 

@@ -6,6 +6,8 @@ import { Legend } from "~/component/container/Legend.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
+import type { StyleTrait } from "~/core/ClassStyleRules.js";
+import { INPUT_CHROME_TRAIT } from "~/core/StyleTraits.js";
 
 /**
  * Construction-time options for {@link FieldSet}.
@@ -24,8 +26,6 @@ export interface FieldSetOptions extends ComponentOptions {
  */
 const _defaultFieldSetOptions: Partial<FieldSetOptions> = {
     tag:           "fieldset",
-    border:        "var(--ts-ui-input-border)",
-    borderRadius:  "var(--ts-ui-border-radius, 4px)",
     // Intrinsic chrome carried as insets, not CSS padding. Top (5) is the gap
     // above content; the legend's own reserved height is added separately in
     // getPerimeterSize so it counts toward the box height without also pushing
@@ -44,6 +44,13 @@ const _defaultFieldSetOptions: Partial<FieldSetOptions> = {
  * @category Components
  */
 class FieldSet extends Component {
+
+    // Shares the border/borderRadius pair with TextInput, AbstractPickerField,
+    // and ComboBox via one generated CSS rule — see
+    // plans/cross-class-style-groups.md. `FieldSet` has no `ownClassStyleDefaults`
+    // of its own, and declaring this alone does not make its chain participate
+    // in the hierarchy cascade (`chainParticipates` only reads `ownClassStyleDefaults`).
+    protected static readonly ownStyleTraits: readonly StyleTrait[] = [INPUT_CHROME_TRAIT];
 
     /** Legend clearance (px) used before the legend element can be measured. */
     private static readonly LEGEND_CLEARANCE_FALLBACK = 16;

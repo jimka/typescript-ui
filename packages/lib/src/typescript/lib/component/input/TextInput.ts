@@ -2,13 +2,14 @@
 
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { ComponentOptions } from "~/core/Component.js";
-import type { StyleBag, TextStyleBag } from "~/core/ClassStyleRules.js";
+import type { StyleBag, StyleTrait, TextStyleBag } from "~/core/ClassStyleRules.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
+import { INPUT_CHROME_TRAIT } from "~/core/StyleTraits.js";
 
 /**
  * Unified focus mark for every standalone TextInput subclass — `TextField`,
@@ -70,8 +71,6 @@ export interface TextInputOptions extends AbstractInputOptions {
 const _defaultTextInputOptions: Partial<TextInputOptions> = {
     tag:             "input",
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
-    border:          "var(--ts-ui-input-border)",
-    borderRadius:    "var(--ts-ui-border-radius, 4px)",
 };
 
 // The font baseline every text control shares. `line-height` renders the
@@ -112,6 +111,10 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
     // Own contribution to the hierarchy-aware class tier — see
     // plans/implemented/class-hierarchy-cascade.md.
     protected static readonly ownClassStyleDefaults: StyleBag = _textInputClassStyleDefaults;
+    // Shares the border/borderRadius pair with AbstractPickerField, ComboBox,
+    // and FieldSet via one generated CSS rule — see
+    // plans/cross-class-style-groups.md.
+    protected static readonly ownStyleTraits: readonly StyleTrait[] = [INPUT_CHROME_TRAIT];
 
     constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
         super(

@@ -16,6 +16,12 @@ export { callable } from '~/core/Callable.js';
 export type { Callable } from '~/core/Callable.js';
 export { Component } from '~/core/Component.js';
 export type { Comparator, Style, ComponentOptions, ComponentStyleRuleSpec, ComponentFactory, ConstrainedComponent, PerimeterSize } from '~/core/Component.js';
+// `StyleTrait`, `StyleBag`, and `TextStyleBag` — reachable from the public
+// `ComponentOptions.styleTrait` field and `getStyleTrait`/`setStyleTrait`
+// (`StyleTrait.declarations` is a `StyleBag`, whose `font` field is a
+// `TextStyleBag`) — are exported here; the rest of `core/ClassStyleRules.ts`
+// stays internal (see plans/cross-class-style-groups.md).
+export type { StyleTrait, StyleBag, TextStyleBag } from '~/core/ClassStyleRules.js';
 export { Container } from '~/core/Container.js';
 export type { ContainerOptions } from '~/core/Container.js';
 export { Panel } from '~/core/Panel.js';
