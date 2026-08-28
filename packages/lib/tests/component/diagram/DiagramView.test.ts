@@ -5,6 +5,7 @@ import { Event } from '~/core/Event';
 import { Component } from '~/core/Component';
 import { _DiagramView } from '~/component/diagram/DiagramView';
 import { _DiagramEdgeLayer } from '~/component/diagram/DiagramEdgeLayer';
+import { inflateRect } from '~/component/diagram/DiagramResidency';
 import type { DiagramData, DiagramNodeData } from '~/component/diagram/DiagramModel';
 import type { DiagramLayoutResult } from '~/component/diagram/ElkLayoutEngine';
 import { installTestDOM, makeEvent, type RecordingDOMSink } from '../../dom/TestDOM';
@@ -2916,6 +2917,33 @@ function farResult(): DiagramLayoutResult {
     };
 }
 
+/**
+ * {@link farGraph} plus two edges: `spanning`, between the two nodes, and
+ * `far`, routed entirely near `far`'s own location.
+ */
+function farGraphWithEdges(): DiagramData {
+    return {
+        nodes: [{ id: 'a', label: 'A' }, { id: 'far', label: 'Far' }],
+        edges: [{ id: 'spanning', source: 'a', target: 'far' }, { id: 'far', source: 'far', target: 'far' }],
+    };
+}
+
+/** The layout result for {@link farGraphWithEdges}. */
+function farResultWithEdges(): DiagramLayoutResult {
+    return {
+        nodes: [
+            { id: 'a',   x: 10,    y: 20, width: 60, height: 30 },
+            { id: 'far', x: 40000, y: 0,  width: 60, height: 30 },
+        ],
+        edges: [
+            { id: 'spanning', sections: [{ startPoint: { x: 40, y: 35 }, endPoint: { x: 40000, y: 15 } }] },
+            { id: 'far',      sections: [{ startPoint: { x: 40000, y: 0 }, endPoint: { x: 40010, y: 10 } }] },
+        ],
+        width:  40060,
+        height: 230,
+    };
+}
+
 describe('DiagramView — node virtualization: only the resident set is mounted', () => {
     it('a sized view mounts only the node near the viewport, both still in _nodeComponents at their laid-out coords', async () => {
         stubEngine = new StubEngine(farResult());
@@ -3240,5 +3268,127 @@ describe('DiagramView — node virtualization: only the resident set is mounted'
 
         expect(nodeA.getWidth()).toBe(60);
         expect(nodeA.getHeight()).toBe(30);
+    });
+});
+
+describe('DiagramView — edge virtualization: only the admitted edges are drawn', () => {
+    it('a sized view hands its edge layer the residency rect', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        expect(view._edgeLayer._residency).toEqual(inflateRect(view.viewportGraphRect(), 0.5));
+    });
+
+    it('an unsized view hands over nothing, and every edge stays drawn', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+        // Forces the whole subtree (including the edge layer's <svg>) to
+        // render, so `_drawn` is populated — nothing renders eagerly in this
+        // offline harness (see Component.insertComponent: a child's element
+        // is only forced when its parent's own element already exists).
+        view.getElement(true);
+
+        expect(view._edgeLayer._residency).toBeNull();
+        expect(view._edgeLayer._drawn.map((d: any) => d.id)).toEqual(['e']);
+    });
+
+    it('a far edge is not drawn on a sized view, while one whose box straddles the residency rect is', async () => {
+        stubEngine = new StubEngine(farResultWithEdges());
+
+        const view = new StubDiagramView({ data: farGraphWithEdges(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+
+        const drawnIds = view._edgeLayer._drawn.map((d: any) => d.id);
+
+        expect(drawnIds).toContain('spanning');
+        expect(drawnIds).not.toContain('far');
+    });
+
+    it('panning far enough draws what comes into range', async () => {
+        stubEngine = new StubEngine(farResultWithEdges());
+
+        const view = new StubDiagramView({ data: farGraphWithEdges(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        const empty: Handle = view.getElement(true);
+
+        expect(view._edgeLayer._drawn.map((d: any) => d.id)).not.toContain('far');
+
+        // A single large drag centres the viewport on 'far' (40000, 0, 60, 30),
+        // the same pan `focusNode('far')` computes in the node-virtualization
+        // block — well past the trigger rect, so the residency rect (and the
+        // drawn edge set) is recomputed for the new location.
+        view._handlePointerDown(makeEvent(empty, 'pointerdown', { button: 0, clientX: 640, clientY: 400 }));
+        view._handlePointerMove(makeEvent(empty, 'pointermove', { clientX: -39350, clientY: 420, buttons: 1 }));
+
+        expect(view._edgeLayer._drawn.map((d: any) => d.id)).toContain('far');
+    });
+
+    it('a zoom pushes a new residency rect to the edge layer', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        const before = { ...view._edgeLayer._residency };
+
+        view.zoomOut();
+
+        expect(view._edgeLayer._residency.width).not.toBe(before.width);
+        expect(view._edgeLayer._residency.height).not.toBe(before.height);
+    });
+
+    it('a replaced graph re-derives the drawn edges against the standing rect', async () => {
+        let call = 0;
+        const results = [farResultWithEdges(), fixedResult()];
+
+        stubEngine = { layout: (): Promise<DiagramLayoutResult> => Promise.resolve(results[call++]), dispose: (): void => {} } as unknown as StubEngine;
+
+        const view = new StubDiagramView({ data: farGraphWithEdges() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+
+        // Reset the pan to the origin so the second (near-origin) graph's
+        // edge lands inside the residency rect once it's promoted.
+        view._panX = 0;
+        view._panY = 0;
+        view.applyTransformToHost();
+
+        view.setData(simpleGraph());
+        await flush();
+
+        expect(view._edgeLayer._drawn.map((d: any) => d.id)).toEqual(['e']);
+    });
+
+    it('setEdgeEmphasis still round-trips through the view on a sized view with a culled edge', async () => {
+        stubEngine = new StubEngine(farResultWithEdges());
+
+        const view = new StubDiagramView({ data: farGraphWithEdges(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+
+        expect(view._edgeLayer._drawn.map((d: any) => d.id)).not.toContain('far');
+
+        view.setEdgeEmphasis(['far']);
+
+        expect(view.getEdgeEmphasis()).toEqual(['far']);
     });
 });

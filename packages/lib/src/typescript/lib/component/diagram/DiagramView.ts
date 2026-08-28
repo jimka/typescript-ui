@@ -37,6 +37,8 @@ import { DiagramNode } from "~/component/diagram/DiagramNode.js";
 import { DiagramGroupNode } from "~/component/diagram/DiagramGroupNode.js";
 import { DiagramEdgeLayer } from "~/component/diagram/DiagramEdgeLayer.js";
 import type { DiagramEdgeRoute } from "~/component/diagram/DiagramEdgeLayer.js";
+import { computeResidentIds, inflateRect, residencyNeedsRefresh } from "~/component/diagram/DiagramResidency.js";
+import type { DiagramRect } from "~/component/diagram/DiagramResidency.js";
 import { callable } from "~/core/Callable.js";
 
 Glyph.register(plus, minus, expand, crosshairs);
@@ -105,110 +107,16 @@ const EDGE_LAYER_Z_INDEX = 1;
 const LEAF_Z_INDEX = 2;
 
 /**
- * How far beyond the visible graph rectangle nodes stay mounted, as a fraction
- * of the viewport's own extent on each side — so the residency rect is twice
- * the viewport in each axis. The diagram's counterpart to the row pool's
- * ±2-row scroll buffer: rows have a uniform pitch to count in, diagram nodes
- * do not, so the buffer is expressed in viewports. Half a viewport is what
- * lets the refresh threshold (half of this margin, a quarter viewport of
- * travel) absorb a fast drag without a node appearing at the viewport edge.
+ * How far beyond the visible graph rectangle nodes stay mounted and edges
+ * stay drawn, as a fraction of the viewport's own extent on each side — so
+ * the residency rect is twice the viewport in each axis. The diagram's
+ * counterpart to the row pool's ±2-row scroll buffer: rows have a uniform
+ * pitch to count in, diagram nodes and edges do not, so the buffer is
+ * expressed in viewports. Half a viewport is what lets the refresh threshold
+ * (half of this margin, a quarter viewport of travel) absorb a fast drag
+ * without a node or edge appearing at the viewport edge.
  */
-const NODE_RESIDENCY_MARGIN = 0.5;
-
-/** An axis-aligned box in unscaled graph coordinates. @internal */
-export interface DiagramRect { x: number; y: number; width: number; height: number; }
-
-/**
- * Inflates `rect` by `fraction` of its own width on the left/right and its
- * own height on the top/bottom.
- *
- * @param rect - The rectangle to inflate.
- * @param fraction - The fraction of the rect's own extent to add on each side.
- * @returns The inflated rectangle.
- *
- * @internal
- */
-export function inflateRect(rect: DiagramRect, fraction: number): DiagramRect {
-    const dx = rect.width  * fraction;
-    const dy = rect.height * fraction;
-
-    return { x: rect.x - dx, y: rect.y - dy, width: rect.width + 2 * dx, height: rect.height + 2 * dy };
-}
-
-/**
- * Whether the residency set must be rebuilt for `live`, given the rectangle
- * it was last committed for. `true` when nothing has been committed yet, when
- * `live`'s extents differ from `committed`'s (a zoom or a viewport resize —
- * the residency rect's size must track it exactly), or when `live` has
- * escaped the *trigger rect*: `committed` inflated by half of `margin`. This
- * is the hysteresis that lets an ordinary pan or a slow zoom change the
- * mounted set a few times per screen of travel instead of on every transform
- * write — see `computePoolTarget` in `VirtualRowView.ts` and
- * `computeColumnWindowSize` in `table/Body.ts` for the same "derive the
- * rendered set from the viewport, not the current position" rule on the
- * row/column axes.
- *
- * @param committed - The rectangle the residency set was last computed for, or `null` before the first computation.
- * @param live - The current visible graph rectangle.
- * @param margin - The residency margin (see {@link NODE_RESIDENCY_MARGIN}); half of it is the trigger-rect inflation.
- * @returns Whether the residency set must be recomputed.
- *
- * @internal
- */
-export function residencyNeedsRefresh(committed: DiagramRect | null, live: DiagramRect, margin: number): boolean {
-    if (committed === null) {
-        return true;
-    }
-
-    if (live.width !== committed.width || live.height !== committed.height) {
-        return true;
-    }
-
-    const trigger = inflateRect(committed, margin / 2);
-
-    return live.x < trigger.x
-        || live.y < trigger.y
-        || live.x + live.width  > trigger.x + trigger.width
-        || live.y + live.height > trigger.y + trigger.height;
-}
-
-/**
- * Every id whose box intersects `residency`; an id with no entry in `rects`
- * is always resident (a node ELK has not yet placed has no box to test, so it
- * cannot be culled). Intersection is inclusive — a box touching the
- * residency rect edge-to-edge counts as resident.
- *
- * @param ids - Every node id to test.
- * @param rects - Laid-out box per node id.
- * @param residency - The residency rectangle to test each box against.
- * @returns The set of resident ids.
- *
- * @internal
- */
-export function computeResidentNodes(ids: Iterable<string>, rects: Map<string, DiagramRect>, residency: DiagramRect): Set<string> {
-    const resident = new Set<string>();
-    const residencyRight  = residency.x + residency.width;
-    const residencyBottom = residency.y + residency.height;
-
-    for (const id of ids) {
-        const rect = rects.get(id);
-
-        if (!rect) {
-            resident.add(id);
-
-            continue;
-        }
-
-        const intersects = rect.x <= residencyRight && rect.x + rect.width >= residency.x
-            && rect.y <= residencyBottom && rect.y + rect.height >= residency.y;
-
-        if (intersects) {
-            resident.add(id);
-        }
-    }
-
-    return resident;
-}
+const RESIDENCY_MARGIN = 0.5;
 
 /**
  * Construction-time options for {@link DiagramView}.
@@ -676,7 +584,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
             component.setVisible(true);
         }
 
-        this.updateNodeResidency();
+        this.updateResidency();
     }
 
     /**
@@ -926,17 +834,17 @@ class DiagramView extends Panel<DiagramViewOptions> {
      * from the current pan offset and zoom factor. The host's box is set once
      * per layout (see `applyLayout`) to the unscaled graph bounds and is not
      * touched here — pan and zoom live entirely on the transform. Also the
-     * single place the mounted node set is reconciled (`updateNodeResidency`)
-     * — every pan, zoom, centring, and resize-anchoring path in this view
-     * ends here, so a residency check placed anywhere else would be
-     * redundant or miss an entry point.
+     * single place the mounted node set and the drawn edge set are
+     * reconciled (`updateResidency`) — every pan, zoom, centring, and
+     * resize-anchoring path in this view ends here, so a residency check
+     * placed anywhere else would be redundant or miss an entry point.
      */
     private applyTransformToHost(): void {
         const zoom = this.getZoom();
 
         this._contentHost.setTransform(`translate(${this._panX}px, ${this._panY}px) scale(${zoom})`);
 
-        this.updateNodeResidency();
+        this.updateResidency();
     }
 
     /**
@@ -961,24 +869,26 @@ class DiagramView extends Panel<DiagramViewOptions> {
     }
 
     /**
-     * Reconciles the mounted node set with the current viewport: recomputes
-     * the residency rect only when `residencyNeedsRefresh` says the live
-     * viewport has outgrown the one the set was last computed for, then
-     * mounts every newly-resident node and unmounts every node that fell out
-     * — a no-op while the view has no committed size (`viewportGraphRect`
-     * returns `null`), leaving whatever residency set already exists.
+     * Reconciles the mounted node set and the drawn edge set with the current
+     * viewport: recomputes the residency rect only when `residencyNeedsRefresh`
+     * says the live viewport has outgrown the one the set was last computed
+     * for, then mounts every newly-resident node and unmounts every node that
+     * fell out, and hands the same rectangle to the edge layer to reconcile
+     * its own drawn set — a no-op while the view has no committed size
+     * (`viewportGraphRect` returns `null`), leaving whatever residency set
+     * already exists.
      */
-    private updateNodeResidency(): void {
+    private updateResidency(): void {
         const live = this.viewportGraphRect();
 
-        if (live === null || !residencyNeedsRefresh(this._residencyViewport, live, NODE_RESIDENCY_MARGIN)) {
+        if (live === null || !residencyNeedsRefresh(this._residencyViewport, live, RESIDENCY_MARGIN)) {
             return;
         }
 
         this._residencyViewport = live;
 
-        const next = computeResidentNodes(this._nodeComponents.keys(), this._nodeRects,
-            inflateRect(live, NODE_RESIDENCY_MARGIN));
+        const residency = inflateRect(live, RESIDENCY_MARGIN);
+        const next = computeResidentIds(this._nodeComponents.keys(), this._nodeRects, residency);
 
         for (const id of this._residentIds) {
             if (!next.has(id)) {
@@ -993,6 +903,8 @@ class DiagramView extends Panel<DiagramViewOptions> {
         }
 
         this._residentIds = next;
+
+        this._edgeLayer.setResidency(residency);
     }
 
     /**

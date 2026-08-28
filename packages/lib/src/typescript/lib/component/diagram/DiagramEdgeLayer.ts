@@ -14,6 +14,8 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import type { ElkEdgeSection, ElkPoint } from "~/component/diagram/ElkLayoutEngine.js";
 import type { DiagramEdgeMarker, DiagramEdgeStyle } from "~/component/diagram/DiagramModel.js";
+import { computeResidentIds } from "~/component/diagram/DiagramResidency.js";
+import type { DiagramRect } from "~/component/diagram/DiagramResidency.js";
 import { callable } from "~/core/Callable.js";
 
 /** SVG namespace URI. */
@@ -296,6 +298,58 @@ function distanceToRoute(sections: ElkEdgeSection[], x: number, y: number): numb
     return min;
 }
 
+/**
+ * How far outside its own polyline an edge paints, in unscaled graph units.
+ * Three things reach past the bare line — the end markers, the 12px-wide
+ * invisible hit stroke, and the label's halo — and the widest end marker's
+ * own reach covers all three, so a route's box is grown by this much on
+ * every side before it is tested against the residency rect. Without it an
+ * edge whose route stops just outside the rect could still have a marker or
+ * label glyph reaching into it.
+ */
+const EDGE_BOUNDS_PADDING = EDGE_MARKER_EXTENT;
+
+/**
+ * The box an edge's drawing occupies, padded for markers, hit stroke, and
+ * label: the smallest rectangle containing every point on the routed
+ * polyline — start point, bend points, end point of every section, walking
+ * the same points {@link distanceToRoute} does — grown by
+ * {@link EDGE_BOUNDS_PADDING} on each of the four sides.
+ *
+ * @param sections - The edge's routed sections.
+ * @returns The edge's box, or `null` when the route has no points.
+ *
+ * @internal
+ */
+export function routeBounds(sections: ElkEdgeSection[]): DiagramRect | null {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const section of sections) {
+        const points = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint];
+
+        for (const point of points) {
+            minX = Math.min(minX, point.x);
+            minY = Math.min(minY, point.y);
+            maxX = Math.max(maxX, point.x);
+            maxY = Math.max(maxY, point.y);
+        }
+    }
+
+    if (minX === Infinity) {
+        return null;
+    }
+
+    return {
+        x:      minX - EDGE_BOUNDS_PADDING,
+        y:      minY - EDGE_BOUNDS_PADDING,
+        width:  maxX - minX + 2 * EDGE_BOUNDS_PADDING,
+        height: maxY - minY + 2 * EDGE_BOUNDS_PADDING,
+    };
+}
+
 /** The elements drawn for one edge, so it can be hit-tested and released. */
 interface DrawnEdge {
     id:    string;
@@ -324,6 +378,23 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
 
     /** Everything currently drawn, released and rebuilt by `rebuildPaths`. */
     private _drawn: DrawnEdge[] = [];
+
+    /**
+     * Box per edge id, rebuilt by `setEdges` from each route. An edge whose
+     * route has no points has no entry, which `computeResidentIds` treats as
+     * always admitted — and `drawEdge` skips it anyway for having no path data.
+     */
+    private _edgeRects: Map<string, DiagramRect> = new Map();
+
+    /**
+     * The rectangle an edge's box must reach to be drawn, in unscaled graph
+     * coordinates, or `null` when nothing has told this layer where the
+     * viewport is — in which case every edge is drawn.
+     */
+    private _residency: DiagramRect | null = null;
+
+    /** The admitted edge ids, or `null` when `_residency` is `null` (every edge is admitted). */
+    private _residentIds: Set<string> | null = null;
 
     /**
      * The currently emphasised edge ids. Runtime interaction state (not a
@@ -403,6 +474,10 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
      * find an element. {@link Component.onFirstLayout} exists for exactly this
      * "content built before the host attaches it" case.
      *
+     * Also rebuilds the per-edge box cache from the new routes and re-derives
+     * which edges the standing residency rect admits, so a graph swap culls
+     * correctly against whichever rectangle `DiagramView` last pushed.
+     *
      * @param edges - The routed edges to draw.
      *
      * @returns This layer, for method chaining.
@@ -410,6 +485,18 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
     setEdges(edges: DiagramEdgeRoute[]): this {
         this._edges = edges;
         this._edgeEmphasis = new Set();
+
+        this._edgeRects = new Map();
+
+        for (const edge of edges) {
+            const bounds = routeBounds(edge.sections);
+
+            if (bounds) {
+                this._edgeRects.set(edge.id, bounds);
+            }
+        }
+
+        this.recomputeResidentEdges();
 
         if (this.getElement()) {
             this.rebuildPaths();
@@ -455,7 +542,9 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
     }
 
     /**
-     * Resolves a raw DOM event target to the edge whose invisible hit path it is.
+     * Resolves a raw DOM event target to the edge whose invisible hit path it
+     * is. Answers only for the edges this layer is currently drawing, which
+     * on a large graph is those near the visible area.
      *
      * @param target - The raw DOM event target.
      * @returns The edge id, or null when the target is not an edge hit path.
@@ -473,7 +562,9 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
     /**
      * Every drawn edge whose route passes within the hit tolerance of a point,
      * in draw order. Several edges answer here wherever their routes overlap —
-     * which is what makes a merged trunk answerable.
+     * which is what makes a merged trunk answerable. Answers only for the
+     * edges this layer is currently drawing, which on a large graph is those
+     * near the visible area.
      *
      * @param x - Point x in unscaled graph coordinates.
      * @param y - Point y in unscaled graph coordinates.
@@ -637,8 +728,9 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
     }
 
     /**
-     * Clears the previously-drawn paths and rebuilds them from the cached edge
-     * routes. No-op before the element exists — `render` performs the first draw.
+     * Clears the previously-drawn paths and rebuilds the admitted subset from
+     * the cached edge routes. No-op before the element exists — `render`
+     * performs the first draw.
      */
     private rebuildPaths(): void {
         const svg = this.getElement();
@@ -653,25 +745,113 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
 
         this._drawn = [];
 
-        for (const edge of this._edges) {
-            const d = buildPathData(edge.sections);
+        this.updateDrawnEdges();
+    }
 
-            if (!d) {
+    /**
+     * Draws one edge's path data, hit path, visible path, and optional label
+     * into its emphasis group.
+     *
+     * @param edge - The routed edge to draw.
+     * @returns The drawn edge record, or `null` when the route has no path data.
+     */
+    private drawEdge(edge: DiagramEdgeRoute): DrawnEdge | null {
+        const d = buildPathData(edge.sections);
+
+        if (!d) {
+            return null;
+        }
+
+        const group = this.groupFor(edge.id);
+        const hit   = this.drawHitPath(group, d);
+        const path  = this.drawVisiblePath(group, edge, d);
+        const style = edge.style;
+        let label: Handle | null = null;
+
+        if (style?.label) {
+            label = this.drawLabel(group, edge, style.label);
+        }
+
+        return { id: edge.id, route: edge, path, hit, label, group };
+    }
+
+    /** Recomputes the admitted-id set from the standing residency rect and the current routes. */
+    private recomputeResidentEdges(): void {
+        this._residentIds = this._residency === null
+            ? null
+            : computeResidentIds(this._edges.map(edge => edge.id), this._edgeRects, this._residency);
+    }
+
+    /**
+     * Whether `id` is admitted by the standing residency rect.
+     *
+     * @param id - The edge id to test.
+     * @returns Whether the edge should be drawn.
+     */
+    private isResident(id: string): boolean {
+        return this._residentIds === null || this._residentIds.has(id);
+    }
+
+    /**
+     * Reconciles `_drawn` against `_edges` and the standing residency rect by
+     * difference: an already-drawn edge that stays admitted is left alone, a
+     * newly-admitted edge is drawn, and anything drawn that is no longer
+     * admitted is released. No-op before the element exists.
+     */
+    private updateDrawnEdges(): void {
+        if (!this.getElement()) {
+            return;
+        }
+
+        const previous = new Map(this._drawn.map(drawn => [drawn.id, drawn]));
+        const next: DrawnEdge[] = [];
+
+        for (const edge of this._edges) {
+            if (!this.isResident(edge.id)) {
                 continue;
             }
 
-            const group = this.groupFor(edge.id);
-            const hit   = this.drawHitPath(group, d);
-            const path  = this.drawVisiblePath(group, edge, d);
-            const style = edge.style;
-            let label: Handle | null = null;
+            const already = previous.get(edge.id);
 
-            if (style?.label) {
-                label = this.drawLabel(group, edge, style.label);
+            if (already) {
+                previous.delete(edge.id);
+                next.push(already);
+
+                continue;
             }
 
-            this._drawn.push({ id: edge.id, route: edge, path, hit, label, group });
+            const drawn = this.drawEdge(edge);
+
+            if (drawn) {
+                next.push(drawn);
+            }
         }
+
+        for (const drawn of previous.values()) {
+            this.releaseDrawnEdge(drawn);
+        }
+
+        this._drawn = next;
+    }
+
+    /**
+     * Sets the rectangle, in unscaled graph coordinates, an edge's box must
+     * reach to be drawn, and reconciles the drawn set against it. `null`
+     * draws every edge — the state a layer starts in and stays in when never
+     * told where the viewport is.
+     *
+     * @param rect - The residency rectangle, or `null` to draw every edge.
+     *
+     * @returns This layer, for method chaining.
+     *
+     * @internal Framework wiring between `DiagramView` and its edge layer; application code does not call this.
+     */
+    setResidency(rect: DiagramRect | null): this {
+        this._residency = rect;
+        this.recomputeResidentEdges();
+        this.updateDrawnEdges();
+
+        return this;
     }
 
     /**

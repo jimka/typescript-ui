@@ -1,16 +1,17 @@
 //
-// Offline coverage for the three pure functions behind DiagramView's node
-// mounting window: `inflateRect` (grows a rectangle by a fraction of its own
-// extent), `residencyNeedsRefresh` (the hysteresis gate deciding when the
-// residency rect must be recomputed), and `computeResidentNodes` (the
-// intersection test the residency pass mounts/unmounts from). See
+// Offline coverage for the three pure functions behind DiagramView and
+// DiagramEdgeLayer's shared residency window: `inflateRect` (grows a
+// rectangle by a fraction of its own extent), `residencyNeedsRefresh` (the
+// hysteresis gate deciding when the residency rect must be recomputed), and
+// `computeResidentIds` (the intersection test the residency pass
+// mounts/unmounts, or draws/releases, from). See
 // plans/implemented/diagram-node-virtualization.md's Architecture Decisions
 // for the viewport-sized, hysteresis-placed rationale these mirror from
 // `computeColumnWindowSize` / `computeColumnWindow`.
 //
 import { describe, it, expect } from 'vitest';
-import { inflateRect, residencyNeedsRefresh, computeResidentNodes } from '~/component/diagram/DiagramView';
-import type { DiagramRect } from '~/component/diagram/DiagramView';
+import { inflateRect, residencyNeedsRefresh, computeResidentIds } from '~/component/diagram/DiagramResidency';
+import type { DiagramRect } from '~/component/diagram/DiagramResidency';
 
 describe('inflateRect', () => {
     it('inflates by half the rect\'s own extent on each side', () => {
@@ -67,54 +68,54 @@ describe('residencyNeedsRefresh', () => {
     });
 });
 
-describe('computeResidentNodes', () => {
+describe('computeResidentIds', () => {
     const residency: DiagramRect = { x: -500, y: -300, width: 2000, height: 1200 };
 
     it('includes a box fully inside the viewport', () => {
         const rects = new Map([['a', { x: 100, y: 100, width: 80, height: 40 }]]);
 
-        expect(computeResidentNodes(['a'], rects, residency)).toEqual(new Set(['a']));
+        expect(computeResidentIds(['a'], rects, residency)).toEqual(new Set(['a']));
     });
 
     it('includes a box outside the viewport but inside the residency rect', () => {
         const rects = new Map([['a', { x: 1200, y: 0, width: 80, height: 40 }]]);
 
-        expect(computeResidentNodes(['a'], rects, residency)).toEqual(new Set(['a']));
+        expect(computeResidentIds(['a'], rects, residency)).toEqual(new Set(['a']));
     });
 
     it('excludes a box starting past the residency rect\'s right edge', () => {
         const rects = new Map([['a', { x: 1600, y: 0, width: 80, height: 40 }]]);
 
-        expect(computeResidentNodes(['a'], rects, residency)).toEqual(new Set());
+        expect(computeResidentIds(['a'], rects, residency)).toEqual(new Set());
     });
 
     it('includes a container box straddling the residency rect', () => {
         const rects = new Map([['a', { x: -600, y: -400, width: 2000, height: 1000 }]]);
 
-        expect(computeResidentNodes(['a'], rects, residency)).toEqual(new Set(['a']));
+        expect(computeResidentIds(['a'], rects, residency)).toEqual(new Set(['a']));
     });
 
     it('treats a box touching the residency rect edge-to-edge as resident (inclusive intersection)', () => {
         const rects = new Map([['a', { x: 1500, y: 0, width: 80, height: 40 }]]);
 
-        expect(computeResidentNodes(['a'], rects, residency)).toEqual(new Set(['a']));
+        expect(computeResidentIds(['a'], rects, residency)).toEqual(new Set(['a']));
     });
 
     it('always includes an id with no entry in rects', () => {
         const rects = new Map<string, DiagramRect>();
 
-        expect(computeResidentNodes(['a'], rects, residency)).toEqual(new Set(['a']));
+        expect(computeResidentIds(['a'], rects, residency)).toEqual(new Set(['a']));
     });
 
     it('returns an empty set for empty ids', () => {
         const rects = new Map([['a', { x: 100, y: 100, width: 80, height: 40 }]]);
 
-        expect(computeResidentNodes([], rects, residency)).toEqual(new Set());
+        expect(computeResidentIds([], rects, residency)).toEqual(new Set());
     });
 
     it('treats a zero-area box inside the rect as resident', () => {
         const rects = new Map([['a', { x: 100, y: 100, width: 0, height: 0 }]]);
 
-        expect(computeResidentNodes(['a'], rects, residency)).toEqual(new Set(['a']));
+        expect(computeResidentIds(['a'], rects, residency)).toEqual(new Set(['a']));
     });
 });

@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
-import { _DiagramEdgeLayer as DiagramEdgeLayer, EDGE_MARKER_EXTENT } from '~/component/diagram/DiagramEdgeLayer';
+import { _DiagramEdgeLayer as DiagramEdgeLayer, EDGE_MARKER_EXTENT, routeBounds } from '~/component/diagram/DiagramEdgeLayer';
 import type { DiagramEdgeRoute } from '~/component/diagram/DiagramEdgeLayer';
+import type { DiagramRect } from '~/component/diagram/DiagramResidency';
 import { installTestDOM, makeEvent, type RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -52,6 +53,53 @@ function route(overrides: Partial<DiagramEdgeRoute> = {}): DiagramEdgeRoute {
         ...overrides,
     };
 }
+
+describe('routeBounds', () => {
+    it('pads a straight two-point route by EDGE_MARKER_EXTENT on every side', () => {
+        const sections = [{ startPoint: { x: 0, y: 0 }, endPoint: { x: 100, y: 0 } }];
+
+        expect(routeBounds(sections)).toEqual({ x: -18, y: -18, width: 136, height: 36 });
+    });
+
+    it('includes a bend point that extends the route\'s bounds', () => {
+        const sections = [{
+            startPoint: { x: 0, y: 0 },
+            bendPoints: [{ x: 100, y: 0 }],
+            endPoint: { x: 100, y: 100 },
+        }];
+
+        expect(routeBounds(sections)).toEqual({ x: -18, y: -18, width: 136, height: 136 });
+    });
+
+    it('combines two sections at opposite corners into one box spanning both', () => {
+        const sections = [
+            { startPoint: { x: 0, y: 0 }, endPoint: { x: 10, y: 10 } },
+            { startPoint: { x: -50, y: -50 }, endPoint: { x: 0, y: 0 } },
+        ];
+
+        expect(routeBounds(sections)).toEqual({ x: -68, y: -68, width: 96, height: 96 });
+    });
+
+    it('returns null for a route with no sections', () => {
+        expect(routeBounds([])).toBeNull();
+    });
+
+    it('pads a zero-area point bounds for a section whose start equals its end', () => {
+        const sections = [{ startPoint: { x: 5, y: 5 }, endPoint: { x: 5, y: 5 } }];
+
+        expect(routeBounds(sections)).toEqual({ x: -13, y: -13, width: 36, height: 36 });
+    });
+
+    it('includes a bend point that falls outside the straight line between its endpoints', () => {
+        const sections = [{
+            startPoint: { x: 0, y: 0 },
+            bendPoints: [{ x: 50, y: -200 }],
+            endPoint: { x: 100, y: 0 },
+        }];
+
+        expect(routeBounds(sections)).toEqual({ x: -18, y: -218, width: 136, height: 236 });
+    });
+});
 
 describe('DiagramEdgeLayer — style-driven markers (crow\'s-foot)', () => {
     it('an edge route with no style keeps the default arrow marker-end and no marker-start', () => {
@@ -492,6 +540,181 @@ describe('DiagramEdgeLayer — emphasis', () => {
 
         expect(layer._drawn[0].group).toBe(layer._normalLayer);
         expect(layer._drawn[1].group).toBe(layer._dimLayer);
+    });
+});
+
+describe('DiagramEdgeLayer — viewport culling', () => {
+    const ADMIT_NEAR:    DiagramRect = { x: -500,  y: -500,  width: 2000,  height: 2000 };
+    const ADMIT_BOTH:    DiagramRect = { x: -1000, y: -1000, width: 42000, height: 2000 };
+    const ADMIT_NEITHER: DiagramRect = { x: 5000,  y: 5000,  width: 100,   height: 100 };
+
+    function nearRoute(): DiagramEdgeRoute {
+        return { id: 'e1', sections: [{ startPoint: { x: 0, y: 0 }, endPoint: { x: 10, y: 10 } }] };
+    }
+
+    function farRoute(): DiagramEdgeRoute {
+        return { id: 'far', sections: [{ startPoint: { x: 40000, y: 0 }, endPoint: { x: 40010, y: 10 } }] };
+    }
+
+    it('draws every edge when never given a residency rect', () => {
+        const layer = new DiagramEdgeLayer() as any;
+
+        layer.getElement(true);
+        layer.setEdges([nearRoute(), farRoute()]);
+
+        expect(layer._drawn.map((d: any) => d.id)).toEqual(['e1', 'far']);
+    });
+
+    it('a rect admitting one of two edges draws only that one', () => {
+        const layer = new DiagramEdgeLayer() as any;
+
+        layer.getElement(true);
+        layer.setEdges([nearRoute(), farRoute()]);
+
+        layer.setResidency(ADMIT_NEAR);
+
+        expect(layer._drawn.map((d: any) => d.id)).toEqual(['e1']);
+    });
+
+    it('moving the rect draws what enters without touching what stayed', () => {
+        const layer = new DiagramEdgeLayer() as any;
+
+        layer.getElement(true);
+        layer.setEdges([nearRoute(), farRoute()]);
+        layer.setResidency(ADMIT_NEAR);
+
+        sink.writes.length = 0;
+
+        layer.setResidency(ADMIT_BOTH);
+
+        const created = sink.writes.filter((w) => w.op === 'createElementNS' && w.args[1] === 'path');
+        const removed = sink.writes.filter((w) => w.op === 'removeChild');
+
+        expect(created).toHaveLength(2);
+        expect(removed).toHaveLength(0);
+        expect(layer._drawn.map((d: any) => d.id)).toEqual(['e1', 'far']);
+    });
+
+    it('moving the rect away releases what leaves', () => {
+        const layer = new DiagramEdgeLayer() as any;
+
+        layer.getElement(true);
+        layer.setEdges([nearRoute(), farRoute()]);
+        layer.setResidency(ADMIT_BOTH);
+
+        sink.writes.length = 0;
+
+        layer.setResidency(ADMIT_NEITHER);
+
+        const removed = sink.writes.filter((w) => w.op === 'removeChild');
+
+        expect(removed).toHaveLength(4);
+        expect(layer._drawn).toEqual([]);
+    });
+
+    it('setResidency(null) re-admits everything, drawing every edge not currently drawn', () => {
+        const layer = new DiagramEdgeLayer() as any;
+
+        layer.getElement(true);
+        layer.setEdges([nearRoute(), farRoute()]);
+        layer.setResidency(ADMIT_NEAR);
+
+        layer.setResidency(null);
+
+        expect(layer._drawn.map((d: any) => d.id)).toEqual(['e1', 'far']);
+        expect(layer._residentIds).toBeNull();
+    });
+
+    it('setEdges re-derives against the standing residency rect', () => {
+        const layer = new DiagramEdgeLayer() as any;
+
+        layer.getElement(true);
+        layer.setResidency(ADMIT_NEAR);
+
+        layer.setEdges([nearRoute(), farRoute()]);
+
+        expect(layer._drawn.map((d: any) => d.id)).toEqual(['e1']);
+    });
+
+    it('an edge with no sections is never drawn, whatever the rect, and neither call throws for it', () => {
+        const layer = new DiagramEdgeLayer() as any;
+
+        layer.getElement(true);
+
+        expect(() => layer.setEdges([{ id: 'empty', sections: [] }, nearRoute()])).not.toThrow();
+        expect(() => layer.setResidency(ADMIT_NEITHER)).not.toThrow();
+
+        expect(layer._drawn.map((d: any) => d.id)).not.toContain('empty');
+    });
+
+    it('a rect set before the element exists draws nothing then, and the deferred first draw honours it', () => {
+        const layer = new DiagramEdgeLayer() as any;
+
+        layer.setEdges([nearRoute(), farRoute()]);
+        layer.setResidency(ADMIT_NEAR);
+
+        expect(layer._drawn).toHaveLength(0);
+
+        layer.getElement(true);
+
+        expect(layer._drawn.map((d: any) => d.id)).toEqual(['e1']);
+    });
+
+    it('edgesNear reports only drawn edges: a point on a culled edge\'s route returns an empty array', () => {
+        const layer = new DiagramEdgeLayer() as any;
+
+        layer.getElement(true);
+        layer.setEdges([nearRoute(), farRoute()]);
+        layer.setResidency(ADMIT_NEAR);
+
+        expect(layer.edgesNear(40005, 5)).toEqual([]);
+    });
+
+    it('edgeIdAt cannot answer for a culled edge — its hit path no longer exists', () => {
+        const layer = new DiagramEdgeLayer() as any;
+
+        layer.getElement(true);
+        layer.setEdges([nearRoute(), farRoute()]);
+
+        const farHit = layer._drawn.find((d: any) => d.id === 'far').hit;
+
+        layer.setResidency(ADMIT_NEAR);
+
+        expect(layer.edgeIdAt(makeEvent(farHit, 'mousemove').target)).toBeNull();
+    });
+
+    it('emphasis survives a cull round trip', () => {
+        const layer = new DiagramEdgeLayer() as any;
+
+        layer.getElement(true);
+        layer.setEdges([nearRoute(), farRoute()]);
+
+        layer.setEdgeEmphasis(['far']);
+        layer.setResidency(ADMIT_NEAR);
+
+        expect(layer.getEdgeEmphasis()).toEqual(['far']);
+
+        layer.setResidency(ADMIT_BOTH);
+
+        const drawnFar = layer._drawn.find((d: any) => d.id === 'far');
+        const drawnE1  = layer._drawn.find((d: any) => d.id === 'e1');
+
+        expect(drawnFar.group).toBe(layer._normalLayer);
+        expect(drawnE1.group).toBe(layer._dimLayer);
+    });
+
+    it('emphasis applied while culled reaches the drawn set', () => {
+        const layer = new DiagramEdgeLayer() as any;
+
+        layer.getElement(true);
+        layer.setEdges([nearRoute(), farRoute()]);
+        layer.setResidency(ADMIT_NEAR);
+
+        expect(() => layer.setEdgeEmphasis(['far'])).not.toThrow();
+
+        const drawnE1 = layer._drawn.find((d: any) => d.id === 'e1');
+
+        expect(drawnE1.group).toBe(layer._dimLayer);
     });
 });
 
