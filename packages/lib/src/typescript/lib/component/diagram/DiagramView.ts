@@ -37,6 +37,7 @@ import { DiagramNode } from "~/component/diagram/DiagramNode.js";
 import { DiagramGroupNode } from "~/component/diagram/DiagramGroupNode.js";
 import { DiagramEdgeLayer } from "~/component/diagram/DiagramEdgeLayer.js";
 import type { DiagramEdgeRoute } from "~/component/diagram/DiagramEdgeLayer.js";
+import { DiagramNodeLayer, DIMMED_NODE_OPACITY } from "~/component/diagram/DiagramNodeLayer.js";
 import { computeResidentIds, inflateRect, residencyNeedsRefresh } from "~/component/diagram/DiagramResidency.js";
 import type { DiagramRect } from "~/component/diagram/DiagramResidency.js";
 import { callable } from "~/core/Callable.js";
@@ -71,16 +72,6 @@ const ZOOM_BUTTON_STEP = 1.5;
  * only other click-versus-drag disambiguation.
  */
 const CLICK_SLOP = 4;
-
-/**
- * Opacity of a node component outside a non-empty node-emphasis set. Higher
- * than `DiagramEdgeLayer`'s `DIMMED_EDGE_OPACITY` (`0.15`) because perceived
- * presence scales with area, not just alpha: a `TableCardNode`-sized box with
- * a border and text rows still reads at `0.15`, whereas a 1.5px hairline
- * needs the lower number to recede. `0.35` keeps a dimmed card's shape and
- * label legible while clearly receding behind the emphasised ones.
- */
-const DIMMED_NODE_OPACITY = 0.35;
 
 // Diameter in pixels of the busy overlay's arc. Matches `TablePanel`'s
 // store-loading spinner and `createSpinnerWrap`'s lazy-tab placeholder, so a
@@ -117,6 +108,96 @@ const LEAF_Z_INDEX = 2;
  * without a node or edge appearing at the viewport edge.
  */
 const RESIDENCY_MARGIN = 0.5;
+
+/**
+ * Fewest node components a graph must have before low-zoom simplification
+ * engages at all. Below this there is nothing worth saving — a hundred nodes
+ * is a few hundred elements, not the several thousand that make a fit-zoom
+ * repaint expensive — and a small diagram the user deliberately zoomed out
+ * of should keep rendering what it always rendered.
+ */
+const LOD_MIN_NODES = 200;
+
+/**
+ * Rendered height, in CSS pixels, below which a node's own content stops
+ * being worth drawing. `DiagramNode` spends 8px of its box on interior
+ * insets, so at 16px the label's glyphs resolve to about 6px — under the
+ * point where a table name can be read, and under the point where a 1px
+ * border and a 4px corner radius resolve at all.
+ */
+const LOD_ENGAGE_HEIGHT = 16;
+
+/**
+ * Rendered height at which full node components come back. Higher than
+ * LOD_ENGAGE_HEIGHT so the two form a hysteresis band: two wheel notches
+ * (1.1x each) inside the band cannot flip the mode back, which is what keeps
+ * a zoom burst near the boundary from mounting and unmounting every node
+ * component repeatedly. Same idea as the residency trigger rect, on the
+ * zoom axis instead of the pan axis.
+ */
+const LOD_DISENGAGE_HEIGHT = 20;
+
+/** The empty rect map handed to the node layer when the view is not simplified;
+ *  a shared instance so the layer's identity check sees no change between passes. */
+const EMPTY_RECTS: Map<string, DiagramRect> = new Map();
+
+/**
+ * The median height of the leaf boxes in `rects`; `0` when there are none.
+ * Containers are excluded because a compound graph's few container boxes are
+ * hundreds of units tall and would drag the statistic away from what the
+ * user is actually reading. The median (rather than the mean) keeps one
+ * outsized leaf from doing the same.
+ *
+ * @param rects - Laid-out box per node id.
+ * @param containerIds - Ids of the compound container nodes to exclude.
+ * @returns The median leaf height, or `0` when `rects` holds no leaf.
+ *
+ * @internal
+ */
+export function medianLeafHeight(rects: Map<string, DiagramRect>, containerIds: ReadonlySet<string>): number {
+    const heights: number[] = [];
+
+    for (const [id, rect] of rects) {
+        if (!containerIds.has(id)) {
+            heights.push(rect.height);
+        }
+    }
+
+    if (heights.length === 0) {
+        return 0;
+    }
+
+    heights.sort((a, b) => a - b);
+
+    return heights[Math.floor(heights.length / 2)];
+}
+
+/**
+ * Whether the view should draw simplified node boxes rather than mounting
+ * node components: `nodeCount` must reach `LOD_MIN_NODES`, `medianHeight`
+ * must be a genuine positive measurement, and the rendered height —
+ * `medianHeight * zoom` — must be under the engage threshold, or under the
+ * (higher) disengage threshold when already simplified. That last branch is
+ * the hysteresis: two wheel notches either side of the boundary cannot flip
+ * the whole graph back and forth.
+ *
+ * @param nodeCount - The number of node components in the graph.
+ * @param medianHeight - The median leaf height, from {@link medianLeafHeight}.
+ * @param zoom - The current zoom factor.
+ * @param simplified - Whether the view is currently simplified.
+ * @returns Whether the view should draw simplified node boxes.
+ *
+ * @internal
+ */
+export function shouldSimplify(nodeCount: number, medianHeight: number, zoom: number, simplified: boolean): boolean {
+    if (nodeCount < LOD_MIN_NODES || !(medianHeight > 0)) {
+        return false;
+    }
+
+    const rendered = medianHeight * zoom;
+
+    return rendered < (simplified ? LOD_DISENGAGE_HEIGHT : LOD_ENGAGE_HEIGHT);
+}
 
 /**
  * Construction-time options for {@link DiagramView}.
@@ -158,6 +239,8 @@ export interface DiagramViewOptions extends PanelOptions {
     zoom?: number;
     /** Show the built-in zoom / fit / reset control cluster (default true). */
     controls?: boolean;
+    /** Draw a simplified node box instead of the node component at low zoom (default true). */
+    simplifyAtLowZoom?: boolean;
     /**
      * Id of the node the one-shot initial view centres on, instead of the
      * graph's bounds. An id naming no node in the graph falls back to
@@ -205,6 +288,9 @@ class DiagramView extends Panel<DiagramViewOptions> {
     /** The SVG edge layer, a persistent child of the content host. */
     private _edgeLayer!: DiagramEdgeLayer;
 
+    /** The simplified-node layer, a persistent child of the content host beside the edge layer. */
+    private _nodeLayer!: DiagramNodeLayer;
+
     /** The ELK layout adapter. Runtime state, off the options bag. */
     private _engine!: ElkLayoutEngine;
 
@@ -238,6 +324,9 @@ class DiagramView extends Panel<DiagramViewOptions> {
 
     /** Visible graph rectangle the resident set was last computed for; `null` forces a rebuild. */
     private _residencyViewport: DiagramRect | null = null;
+
+    /** Whether the view is currently drawing simplified node boxes instead of mounting node components. */
+    private _simplified: boolean = false;
 
     /** Currently selected node data (single-select). */
     private _selection: DiagramNodeData[] = [];
@@ -335,7 +424,10 @@ class DiagramView extends Panel<DiagramViewOptions> {
     private readonly _onReset:   () => void = () => this.resetView();
 
     constructor(options?: DiagramViewOptions) {
-        super(options, { zoom: DEFAULT_ZOOM, minZoom: DEFAULT_MIN_ZOOM, maxZoom: DEFAULT_MAX_ZOOM, controls: true });
+        super(options, {
+            zoom: DEFAULT_ZOOM, minZoom: DEFAULT_MIN_ZOOM, maxZoom: DEFAULT_MAX_ZOOM,
+            controls: true, simplifyAtLowZoom: true,
+        });
 
         this.setLayoutManager(new Anchor());
         this.setCursor("grab");
@@ -359,6 +451,12 @@ class DiagramView extends Panel<DiagramViewOptions> {
 
         this._edgeLayer = new DiagramEdgeLayer();
         this._contentHost.addComponent(this._edgeLayer);
+
+        // Added right after the edge layer: in a flat graph both sit at
+        // DEFAULT_Z_INDEX, and document order is what paints node rects over
+        // edges (see applyContainerZIndex for the compound-graph z-indexing).
+        this._nodeLayer = new DiagramNodeLayer();
+        this._contentHost.addComponent(this._nodeLayer);
 
         this.buildControls();
         this.wireControlListeners();
@@ -454,6 +552,11 @@ class DiagramView extends Panel<DiagramViewOptions> {
         // `super()` cascade. The constructor dispatches `setControlsVisible`
         // itself once the cluster is built.
         if (options.controls       !== undefined) this._options.controls     = options.controls;
+        // Cached only: the getter folds the class default (see
+        // `isSimplifyAtLowZoom`), and the effect is read by `updateResidency`
+        // rather than dispatched here — there is nothing to apply yet during
+        // the `super()` cascade, before the content host exists.
+        if (options.simplifyAtLowZoom !== undefined) this._options.simplifyAtLowZoom = options.simplifyAtLowZoom;
         // Cached only: dispatched into the runtime `_focusNodeId` field from
         // the constructor body, mirroring `data` below.
         if (options.initialFocusNode !== undefined) this._options.initialFocusNode = options.initialFocusNode;
@@ -579,6 +682,8 @@ class DiagramView extends Panel<DiagramViewOptions> {
 
         this._selection = [];
         this._nodeEmphasis = new Set();
+        this._nodeLayer.setSelected(null);
+        this._nodeLayer.setEmphasis(new Set());
 
         for (const component of this._nodeComponents.values()) {
             component.setVisible(true);
@@ -781,16 +886,20 @@ class DiagramView extends Panel<DiagramViewOptions> {
      * touched here — they start at `DEFAULT_Z_INDEX` — but the persistent edge
      * layer is explicitly restored to `DEFAULT_Z_INDEX`, since an earlier
      * compound `setData` on this same view could have left it elevated (see
-     * the module-level z-index constants).
+     * the module-level z-index constants). The node layer is the second
+     * persistent child needing this same flat-mode restore, for the same
+     * reason as the edge layer.
      */
     private applyContainerZIndex(): void {
         if (this._containerIds.size === 0) {
             this._edgeLayer.setZIndex(DEFAULT_Z_INDEX);
+            this._nodeLayer.setZIndex(DEFAULT_Z_INDEX);
 
             return;
         }
 
         this._edgeLayer.setZIndex(EDGE_LAYER_Z_INDEX);
+        this._nodeLayer.setZIndex(LEAF_Z_INDEX);
 
         for (const [id, component] of this._nodeComponents) {
             component.setZIndex(this._containerIds.has(id) ? CONTAINER_Z_INDEX : LEAF_Z_INDEX);
@@ -870,13 +979,16 @@ class DiagramView extends Panel<DiagramViewOptions> {
 
     /**
      * Reconciles the mounted node set and the drawn edge set with the current
-     * viewport: recomputes the residency rect only when `residencyNeedsRefresh`
-     * says the live viewport has outgrown the one the set was last computed
-     * for, then mounts every newly-resident node and unmounts every node that
-     * fell out, and hands the same rectangle to the edge layer to reconcile
-     * its own drawn set — a no-op while the view has no committed size
-     * (`viewportGraphRect` returns `null`), leaving whatever residency set
-     * already exists.
+     * viewport, and decides whether the view draws simplified node boxes
+     * instead of mounting node components: recomputes the residency rect
+     * only when `residencyNeedsRefresh` says the live viewport has outgrown
+     * the one the set was last computed for, then — while simplified — hands
+     * every laid-out box to the node layer and leaves the resident set empty,
+     * or — while not — mounts every newly-resident node, unmounts every node
+     * that fell out, and clears the node layer, and either way hands the
+     * residency rectangle to the edge layer to reconcile its own drawn set.
+     * A no-op while the view has no committed size (`viewportGraphRect`
+     * returns `null`), leaving whatever residency set already exists.
      */
     private updateResidency(): void {
         const live = this.viewportGraphRect();
@@ -887,8 +999,17 @@ class DiagramView extends Panel<DiagramViewOptions> {
 
         this._residencyViewport = live;
 
-        const residency = inflateRect(live, RESIDENCY_MARGIN);
-        const next = computeResidentIds(this._nodeComponents.keys(), this._nodeRects, residency);
+        const residency  = inflateRect(live, RESIDENCY_MARGIN);
+        const simplified = this.isSimplifyAtLowZoom()
+            && shouldSimplify(this._nodeComponents.size,
+                medianLeafHeight(this._nodeRects, this._containerIds), this.getZoom(), this._simplified);
+
+        this._simplified = simplified;
+        this._nodeLayer.setNodes(simplified ? this._nodeRects : EMPTY_RECTS, this._containerIds);
+
+        const next = simplified
+            ? new Set<string>()
+            : computeResidentIds(this._nodeComponents.keys(), this._nodeRects, residency);
 
         for (const id of this._residentIds) {
             if (!next.has(id)) {
@@ -1303,7 +1424,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
         return [...this._nodeEmphasis];
     }
 
-    /** Rewrites every node component's opacity from the current emphasis set. */
+    /** Rewrites every node component's opacity from the current emphasis set, and the node layer's rects too. */
     private applyNodeEmphasis(): void {
         for (const [id, component] of this._nodeComponents) {
             if (this._nodeEmphasis.size === 0 || this._nodeEmphasis.has(id)) {
@@ -1312,6 +1433,8 @@ class DiagramView extends Panel<DiagramViewOptions> {
                 component.setOpacity(DIMMED_NODE_OPACITY);
             }
         }
+
+        this._nodeLayer.setEmphasis(this._nodeEmphasis);
     }
 
     /**
@@ -1419,6 +1542,8 @@ class DiagramView extends Panel<DiagramViewOptions> {
         } else {
             this._selection = [];
         }
+
+        this._nodeLayer.setSelected(data ? id : null);
     }
 
     /**
@@ -1617,7 +1742,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
             return;
         }
 
-        const id = this.nodeIdAt(event.target);
+        const id = this.nodeIdAtEvent(event);
 
         if (id !== null) {
             if (id === (this._selection[0]?.id ?? null)) {
@@ -1642,7 +1767,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
      *   subtree.
      */
     private _handleDoubleClick(event: MouseEvent): void {
-        const id = this.nodeIdAt(event.target);
+        const id = this.nodeIdAtEvent(event);
 
         if (id === null) {
             return;
@@ -1677,6 +1802,79 @@ class DiagramView extends Panel<DiagramViewOptions> {
         }
 
         return null;
+    }
+
+    /**
+     * Resolves the node id under a raw DOM event: delegates to `nodeIdAt`
+     * when the view is not simplified (no node components exist to compare
+     * against `nodeIdAt`'s element-containment test), else resolves the
+     * event's pointer position to a graph point and tests it geometrically
+     * against the laid-out boxes.
+     *
+     * @param event - The raw mouse event.
+     * @returns The node id under the event, or `null`.
+     */
+    private nodeIdAtEvent(event: MouseEvent): string | null {
+        if (!this._simplified) {
+            return this.nodeIdAt(event.target);
+        }
+
+        const host = this._contentHost.getElement();
+
+        if (host === undefined || event.target === null) {
+            return null;
+        }
+
+        const handle = DOM.source.intern(event.target);
+
+        // Only a target inside the content host can be over a node box. This is
+        // what keeps a press on the control cluster or on the busy overlay —
+        // both children of the view root, not of the content host — from
+        // resolving to whatever node happens to sit under them.
+        if (handle !== host && !DOM.source.contains(host, handle)) {
+            return null;
+        }
+
+        const rect = DOM.source.getViewportRect(this);
+        const zoom = this.getZoom();
+
+        return this.nodeIdAtGraphPoint((event.clientX - rect.left - this._panX) / zoom,
+            (event.clientY - rect.top - this._panY) / zoom);
+    }
+
+    /**
+     * Resolves the node id whose box contains a graph-coordinate point, while
+     * simplified. A leaf beats the container it sits in — the loop returns a
+     * leaf hit immediately, and only falls back to a container hit once every
+     * box has been checked. `_nodeRects` iterates in the same outer-before-
+     * inner order `rebuildNodes` built it in (a container immediately
+     * followed by its children), so among several nested containers whose
+     * boxes all contain the point, the last one seen is the innermost — the
+     * unconditional overwrite (not `??=`) is what picks that one, matching
+     * `nodeIdAt`'s DOM hit test: containers share one z-index, and the
+     * innermost is mounted after its ancestors, so it paints on top and is
+     * what a real click on the overlap actually resolves to.
+     *
+     * @param x - The point's x coordinate, in unscaled graph coordinates.
+     * @param y - The point's y coordinate, in unscaled graph coordinates.
+     * @returns The node id at the point, or `null`.
+     */
+    private nodeIdAtGraphPoint(x: number, y: number): string | null {
+        let container: string | null = null;
+
+        for (const [id, rect] of this._nodeRects) {
+            if (x < rect.x || y < rect.y || x > rect.x + rect.width || y > rect.y + rect.height) {
+                continue;
+            }
+
+            if (!this._containerIds.has(id)) {
+                return id;
+            }
+
+            container = id;
+        }
+
+        return container;
     }
 
     /**
@@ -1761,7 +1959,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
      *   subtree.
      */
     private _handleContextMenu(event: MouseEvent): Event.ListenerResult {
-        const id = this.nodeIdAt(event.target);
+        const id = this.nodeIdAtEvent(event);
 
         if (id === null) {
             return;
@@ -1948,6 +2146,36 @@ class DiagramView extends Panel<DiagramViewOptions> {
     setControlsVisible(value: boolean): this {
         this._options.controls = value;
         this._controls.setVisible(value);
+
+        return this;
+    }
+
+    /**
+     * Whether the view draws plain node boxes instead of node components once
+     * a large graph is zoomed out far enough that node content is no longer
+     * legible.
+     *
+     * @returns `true` when low-zoom simplification is enabled (the default).
+     */
+    isSimplifyAtLowZoom(): boolean {
+        return this._options.simplifyAtLowZoom ?? this._defaultOptions.simplifyAtLowZoom ?? true;
+    }
+
+    /**
+     * Sets whether the view draws plain node boxes instead of node
+     * components once a large graph is zoomed out far enough that node
+     * content is no longer legible (default `true`). Forces `updateResidency`
+     * to re-run so a mid-life change takes effect immediately, rather than
+     * waiting for the next pan/zoom.
+     *
+     * @param value - Whether low-zoom simplification is enabled.
+     *
+     * @returns This view, for method chaining.
+     */
+    setSimplifyAtLowZoom(value: boolean): this {
+        this._options.simplifyAtLowZoom = value;
+        this._residencyViewport = null;
+        this.updateResidency();
 
         return this;
     }

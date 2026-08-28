@@ -32,6 +32,16 @@ export interface DiagramNodeOptions extends PanelOptions {
     selected?: boolean;
 }
 
+/** Resting fill colour of a `DiagramNode` — and, once level-of-detail
+ *  simplification engages, of the `<rect>` `DiagramNodeLayer` draws in its
+ *  place. @internal */
+export const DIAGRAM_NODE_BACKGROUND_COLOR = "var(--ts-ui-diagram-node-bg, var(--ts-ui-button-bg, rgb(245, 245, 245)))";
+
+/** Resting border colour of a `DiagramNode` — and, once level-of-detail
+ *  simplification engages, of the `<rect>` `DiagramNodeLayer` draws in its
+ *  place. @internal */
+export const DIAGRAM_NODE_BORDER_COLOR = "var(--ts-ui-border-color, rgb(180, 180, 180))";
+
 /**
  * User-overridable defaults. The node paints a themed rounded box; its interior
  * inset gives the label structural breathing room away from the border.
@@ -40,8 +50,8 @@ const _defaultDiagramNodeOptions: Partial<DiagramNodeOptions> = {
     // Vertical 4px / horizontal 8px so a short label never sits flush against
     // the rounded border — structural interior spacing, not cosmetic nudging.
     insets: new Insets(4, 8, 4, 8),
-    backgroundColor: "var(--ts-ui-diagram-node-bg, var(--ts-ui-button-bg, rgb(245, 245, 245)))",
-    border:       "1px solid var(--ts-ui-border-color, rgb(180, 180, 180))",
+    backgroundColor: DIAGRAM_NODE_BACKGROUND_COLOR,
+    border:       `1px solid ${DIAGRAM_NODE_BORDER_COLOR}`,
     borderRadius: "4px",
     cursor:       "pointer",
 };
@@ -52,12 +62,15 @@ const _defaultDiagramNodeOptions: Partial<DiagramNodeOptions> = {
 // name.
 const BADGE_OPACITY = 0.6;
 
-/** `.selected`'s background-color declaration. */
-const DIAGRAM_NODE_SELECTED_BACKGROUND_COLOR = "var(--ts-ui-diagram-node-selected-bg, var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15)))";
+/** `.selected`'s background-color declaration — and, once level-of-detail
+ *  simplification engages, a selected leaf rect's `fill`. @internal */
+export const DIAGRAM_NODE_SELECTED_BACKGROUND_COLOR = "var(--ts-ui-diagram-node-selected-bg, var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15)))";
 
 /** `.selected`'s border-color declaration. Recolours the resting border,
- *  leaving `_defaultDiagramNodeOptions.border`'s width and style intact. */
-const DIAGRAM_NODE_SELECTED_BORDER_COLOR = "var(--ts-ui-accent-color, rgb(30, 100, 200))";
+ *  leaving `_defaultDiagramNodeOptions.border`'s width and style intact — and,
+ *  once level-of-detail simplification engages, a selected leaf rect's
+ *  `stroke`. @internal */
+export const DIAGRAM_NODE_SELECTED_BORDER_COLOR = "var(--ts-ui-accent-color, rgb(30, 100, 200))";
 
 /**
  * The default themed node renderer for a

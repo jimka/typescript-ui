@@ -5,6 +5,8 @@ import { Event } from '~/core/Event';
 import { Component } from '~/core/Component';
 import { _DiagramView } from '~/component/diagram/DiagramView';
 import { _DiagramEdgeLayer } from '~/component/diagram/DiagramEdgeLayer';
+import { DIMMED_NODE_OPACITY } from '~/component/diagram/DiagramNodeLayer';
+import { DIAGRAM_NODE_SELECTED_BACKGROUND_COLOR } from '~/component/diagram/DiagramNode';
 import { inflateRect } from '~/component/diagram/DiagramResidency';
 import type { DiagramData, DiagramNodeData } from '~/component/diagram/DiagramModel';
 import type { DiagramLayoutResult } from '~/component/diagram/ElkLayoutEngine';
@@ -2857,7 +2859,9 @@ describe('DiagramView — incoming nodes mount only once placed', () => {
 
         expect(view._nodeComponents.size).toBe(0);
         expect(view._incomingComponents.size).toBe(0);
-        expect(view._contentHost.getComponents()).toEqual([view._edgeLayer]);
+        // Both persistent layers, and nothing else — the node layer joined
+        // the edge layer as a second persistent content-host child.
+        expect(view._contentHost.getComponents()).toEqual([view._edgeLayer, view._nodeLayer]);
     });
 
     it('leaves the first graph mounted when a re-layout fails', async () => {
@@ -3178,9 +3182,13 @@ describe('DiagramView — node virtualization: only the resident set is mounted'
 
         expect(view._residentIds).toEqual(new Set(['a', 'b']));
 
+        // Both persistent layers plus the two resident node components —
+        // the node layer joined the edge layer as a second persistent
+        // content-host child.
         const hostComponents = view._contentHost.getComponents();
-        expect(hostComponents).toHaveLength(3);
+        expect(hostComponents).toHaveLength(4);
         expect(hostComponents).toContain(view._edgeLayer);
+        expect(hostComponents).toContain(view._nodeLayer);
         expect(hostComponents).toContain(view._nodeComponents.get('a'));
         expect(hostComponents).toContain(view._nodeComponents.get('b'));
     });
@@ -3390,5 +3398,447 @@ describe('DiagramView — edge virtualization: only the admitted edges are drawn
         view.setEdgeEmphasis(['far']);
 
         expect(view.getEdgeEmphasis()).toEqual(['far']);
+    });
+});
+
+// ── Level-of-detail rendering at low zoom ───────────────────────────────────
+
+/** Columns in the {@link gridResult} / {@link compoundGridResult} node grid. */
+const GRID_COLS = 20;
+const GRID_NODE_WIDTH  = 160;
+const GRID_NODE_HEIGHT = 30;
+const GRID_PITCH_X = 200;
+const GRID_PITCH_Y = 50;
+
+/** A flat graph of `n` nodes, `n0`..`n(n-1)`. */
+function gridGraph(n: number): DiagramData {
+    return { nodes: Array.from({ length: n }, (_, i) => ({ id: `n${i}`, label: `N${i}` })), edges: [] };
+}
+
+/** The layout result for {@link gridGraph}: `n` nodes on a `GRID_COLS`-wide grid, each 160x30. */
+function gridResult(n: number): DiagramLayoutResult {
+    const nodes = Array.from({ length: n }, (_, i) => ({
+        id: `n${i}`,
+        x: (i % GRID_COLS) * GRID_PITCH_X,
+        y: Math.floor(i / GRID_COLS) * GRID_PITCH_Y,
+        width: GRID_NODE_WIDTH, height: GRID_NODE_HEIGHT,
+    }));
+
+    return {
+        nodes, edges: [],
+        width:  GRID_COLS * GRID_PITCH_X,
+        height: Math.ceil(n / GRID_COLS) * GRID_PITCH_Y,
+    };
+}
+
+/** A single container holding `n` leaf children, `n0`..`n(n-1)`. */
+function compoundGridGraph(n: number): DiagramData {
+    return {
+        nodes: [{ id: 'container', children: Array.from({ length: n }, (_, i) => ({ id: `n${i}`, label: `N${i}` })) }],
+        edges: [],
+    };
+}
+
+/** The layout result for {@link compoundGridGraph}: leaves on a grid, inset 20px inside the container. */
+function compoundGridResult(n: number): DiagramLayoutResult {
+    const leaves = Array.from({ length: n }, (_, i) => ({
+        id: `n${i}`,
+        x: (i % GRID_COLS) * GRID_PITCH_X + 20,
+        y: Math.floor(i / GRID_COLS) * GRID_PITCH_Y + 20,
+        width: GRID_NODE_WIDTH, height: GRID_NODE_HEIGHT,
+    }));
+    const width  = GRID_COLS * GRID_PITCH_X + 40;
+    const height = Math.ceil(n / GRID_COLS) * GRID_PITCH_Y + 40;
+
+    return { nodes: [{ id: 'container', x: 0, y: 0, width, height }, ...leaves], edges: [], width, height };
+}
+
+/** The client point that currently maps to `(graphX, graphY)`, inverting the view's own transform. */
+function clientPointFor(view: any, graphX: number, graphY: number): { clientX: number; clientY: number } {
+    const { panX, panY, zoom } = parseTransform(view._contentHost.getTransform());
+
+    return { clientX: graphX * zoom + panX, clientY: graphY * zoom + panY };
+}
+
+/** The most recent `apply` payload written to `handle`, or null when it never was. */
+function lastApplyTo(handle: unknown): { setAttr?: Record<string, string>; removeAttr?: string[] } | null {
+    const write = [...sink.writes].reverse().find((w) => w.op === 'apply' && w.args[0] === handle);
+
+    return write ? (write.args[1] as { setAttr?: Record<string, string>; removeAttr?: string[] }) : null;
+}
+
+describe('DiagramView — level-of-detail rendering at low zoom', () => {
+    it('at zoom 1 the view is not simplified, and residency mounts only the nodes near the viewport', async () => {
+        stubEngine = new StubEngine(gridResult(220));
+
+        const view = new StubDiagramView({ data: gridGraph(220) }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+
+        expect(view._simplified).toBe(false);
+        expect(view._nodeLayer._drawn.size).toBe(0);
+        expect(view._residentIds.size).toBeGreaterThan(0);
+        expect(view._residentIds.size).toBeLessThan(220);
+    });
+
+    it('after zoomToFit the view is simplified: every node component is unmounted and the layer draws all of them', async () => {
+        stubEngine = new StubEngine(gridResult(220));
+
+        const view = new StubDiagramView({ data: gridGraph(220) }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+
+        view.zoomToFit();
+
+        expect(view._simplified).toBe(true);
+        expect(view._residentIds.size).toBe(0);
+        expect(view._nodeLayer._drawn.size).toBe(220);
+
+        const hostComponents = view._contentHost.getComponents();
+        expect(hostComponents).not.toContain(view._nodeComponents.get('n0'));
+        expect(hostComponents).not.toContain(view._nodeComponents.get('n219'));
+    });
+
+    it('every node component still exists and reports its laid-out coordinates while simplified', async () => {
+        stubEngine = new StubEngine(gridResult(220));
+
+        const view = new StubDiagramView({ data: gridGraph(220) }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+
+        view.zoomToFit();
+
+        expect(view._nodeComponents.size).toBe(220);
+
+        const n5 = view._nodeComponents.get('n5');
+        expect([n5.getX(), n5.getY()]).toEqual([5 * GRID_PITCH_X, 0]);
+    });
+
+    it('zooming back in past the disengage height remounts node components and clears the layer', async () => {
+        stubEngine = new StubEngine(gridResult(220));
+
+        const view = new StubDiagramView({ data: gridGraph(220) }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+        view.zoomToFit();
+
+        // Fit zoom is 0.32 (rendered height 9.6px); 0.7 renders the 30px leaf
+        // at 21px — past LOD_DISENGAGE_HEIGHT (20).
+        view.setZoom(0.7);
+
+        expect(view._simplified).toBe(false);
+        expect(view._nodeLayer._drawn.size).toBe(0);
+        expect(view._contentHost.getComponents().length).toBeGreaterThan(2);
+    });
+
+    it('the hysteresis band holds: a zoom rendering between the two thresholds stays simplified', async () => {
+        stubEngine = new StubEngine(gridResult(220));
+
+        const view = new StubDiagramView({ data: gridGraph(220) }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+        view.zoomToFit();
+
+        // 30px leaf at zoom 0.6 renders 18px — inside [16, 20).
+        view.setZoom(0.6);
+
+        expect(view._simplified).toBe(true);
+    });
+
+    it('a 190-node graph never simplifies, at fit or at any other zoom — under the node-count floor', async () => {
+        stubEngine = new StubEngine(gridResult(190));
+
+        const view = new StubDiagramView({ data: gridGraph(190) }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+
+        view.zoomToFit();
+        expect(view._simplified).toBe(false);
+
+        view.setZoom(0.1);
+        expect(view._simplified).toBe(false);
+    });
+
+    it('simplifyAtLowZoom: false never simplifies; setSimplifyAtLowZoom toggles it live', async () => {
+        stubEngine = new StubEngine(gridResult(220));
+
+        const view = new StubDiagramView({ data: gridGraph(220), simplifyAtLowZoom: false }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+
+        view.zoomToFit();
+        expect(view._simplified).toBe(false);
+
+        view.setSimplifyAtLowZoom(true);
+        expect(view._simplified).toBe(true);
+        expect(view._nodeLayer._drawn.size).toBe(220);
+
+        view.setSimplifyAtLowZoom(false);
+        expect(view._simplified).toBe(false);
+        expect(view._nodeLayer._drawn.size).toBe(0);
+        expect(view._contentHost.getComponents()).toContain(view._nodeComponents.get('n0'));
+    });
+
+    it('a click on a simplified node selects it', async () => {
+        stubEngine = new StubEngine(gridResult(220));
+
+        const fired: DiagramNodeData[][] = [];
+        const view = new StubDiagramView({ data: gridGraph(220), listeners: { selection: (nodes) => fired.push(nodes) } }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+        view.zoomToFit();
+
+        const host: Handle = view._contentHost.getElement(true);
+        const { clientX, clientY } = clientPointFor(view, 5 * GRID_PITCH_X + 10, 10);
+
+        view._handleClick(makeEvent(host, 'click', { clientX, clientY }));
+
+        expect(view.getSelection().map((n: DiagramNodeData) => n.id)).toEqual(['n5']);
+        expect(fired).toHaveLength(1);
+    });
+
+    it('a click on empty canvas while simplified clears the selection', async () => {
+        stubEngine = new StubEngine(gridResult(220));
+
+        const view = new StubDiagramView({ data: gridGraph(220) }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+        view.zoomToFit();
+        view.selectNode('n5');
+
+        const host: Handle = view._contentHost.getElement(true);
+        const { clientX, clientY } = clientPointFor(view, 50000, 50000);
+
+        view._handleClick(makeEvent(host, 'click', { clientX, clientY }));
+
+        expect(view.getSelection()).toEqual([]);
+    });
+
+    it('a click on the control cluster while simplified selects nothing, even over a node box', async () => {
+        stubEngine = new StubEngine(gridResult(220));
+
+        const view = new StubDiagramView({ data: gridGraph(220) }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+        view.zoomToFit();
+
+        const buttonHandle: Handle = view._zoomInBtn.getElement(true);
+        const { clientX, clientY } = clientPointFor(view, 5 * GRID_PITCH_X + 10, 10);
+
+        view._handleClick(makeEvent(buttonHandle, 'click', { clientX, clientY }));
+
+        expect(view.getSelection()).toEqual([]);
+    });
+
+    it('a double-click on a simplified node emits "activate"; a right-click emits "contextmenu" and prevents default', async () => {
+        stubEngine = new StubEngine(gridResult(220));
+
+        const activated: DiagramNodeData[] = [];
+        const contextMenued: DiagramNodeData[] = [];
+        const view = new StubDiagramView({
+            data: gridGraph(220),
+            listeners: { activate: (n) => activated.push(n), contextmenu: (n) => contextMenued.push(n) },
+        }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+        view.zoomToFit();
+
+        const host: Handle = view._contentHost.getElement(true);
+        const { clientX, clientY } = clientPointFor(view, 5 * GRID_PITCH_X + 10, 10);
+
+        view._handleDoubleClick(makeEvent(host, 'dblclick', { clientX, clientY }));
+        expect(activated).toHaveLength(1);
+        expect(activated[0].id).toBe('n5');
+
+        const result = view._handleContextMenu(makeEvent(host, 'contextmenu', { clientX, clientY }));
+        expect(contextMenued).toHaveLength(1);
+        expect(contextMenued[0].id).toBe('n5');
+        expect(typeof result === 'object' && result?.prevent).toBe(true);
+    });
+
+    it('a leaf beats its container: a click inside a leaf sitting inside a simplified container resolves to the leaf', async () => {
+        stubEngine = new StubEngine(compoundGridResult(200));
+
+        const view = new StubDiagramView({ data: compoundGridGraph(200) }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+        view.zoomToFit();
+
+        expect(view._simplified).toBe(true);
+
+        const host: Handle = view._contentHost.getElement(true);
+        // Leaf 'n0' sits at (20, 20, 160, 30), inside 'container' at (0, 0, 4040, 540).
+        const { clientX, clientY } = clientPointFor(view, 100, 35);
+
+        view._handleClick(makeEvent(host, 'click', { clientX, clientY }));
+
+        expect(view.getSelection().map((n: DiagramNodeData) => n.id)).toEqual(['n0']);
+    });
+
+    it('nodeIdAtGraphPoint resolves the innermost of several nested containers, matching nodeIdAt\'s real DOM hit test', () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView() as any;
+
+        // Three nested containers, outer to inner, all containing the test
+        // point with no leaf there. Listed outer-before-inner, matching the
+        // DFS order rebuildNodes/flattenElkNode actually build _nodeRects in.
+        view._nodeRects = new Map([
+            ['outer',  { x: 0, y: 0, width: 400, height: 400 }],
+            ['middle', { x: 0, y: 0, width: 300, height: 300 }],
+            ['inner',  { x: 0, y: 0, width: 200, height: 200 }],
+        ]);
+        view._containerIds = new Set(['outer', 'middle', 'inner']);
+
+        expect(view.nodeIdAtGraphPoint(50, 50)).toBe('inner');
+    });
+
+    it('nodeIdAtGraphPoint still returns a leaf immediately over any container nesting', () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView() as any;
+
+        view._nodeRects = new Map([
+            ['outer', { x: 0, y: 0, width: 400, height: 400 }],
+            ['inner', { x: 0, y: 0, width: 200, height: 200 }],
+            ['leaf',  { x: 10, y: 10, width: 50, height: 50 }],
+        ]);
+        view._containerIds = new Set(['outer', 'inner']);
+
+        expect(view.nodeIdAtGraphPoint(20, 20)).toBe('leaf');
+    });
+
+    it('a press on a simplified node pans', async () => {
+        stubEngine = new StubEngine(gridResult(220));
+
+        const view = new StubDiagramView({ data: gridGraph(220) }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+        view.zoomToFit();
+
+        const host: Handle = view._contentHost.getElement(true);
+        const { clientX, clientY } = clientPointFor(view, 5 * GRID_PITCH_X + 10, 10);
+        const before = view._contentHost.getTransform();
+
+        view._handlePointerDown(makeEvent(host, 'pointerdown', { button: 0, clientX, clientY }));
+        expect(view._panning).toBe(true);
+
+        view._handlePointerMove(makeEvent(host, 'pointermove', { clientX: clientX + 50, clientY, buttons: 1 }));
+
+        expect(view._contentHost.getTransform()).not.toBe(before);
+    });
+
+    it('selection paints on the rect', async () => {
+        stubEngine = new StubEngine(gridResult(220));
+
+        const view = new StubDiagramView({ data: gridGraph(220) }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+        view.zoomToFit();
+
+        view.selectNode('n5');
+
+        const attrs = lastApplyTo(view._nodeLayer._drawn.get('n5'))!.setAttr!;
+        expect(attrs.fill).toBe(DIAGRAM_NODE_SELECTED_BACKGROUND_COLOR);
+    });
+
+    it('node emphasis paints the dimmed opacity on every other rect', async () => {
+        stubEngine = new StubEngine(gridResult(220));
+
+        const view = new StubDiagramView({ data: gridGraph(220) }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+        view.zoomToFit();
+
+        view.setNodeEmphasis(['n5']);
+
+        expect(lastApplyTo(view._nodeLayer._drawn.get('n5'))!.setAttr!.opacity).toBeUndefined();
+        expect(lastApplyTo(view._nodeLayer._drawn.get('n6'))!.setAttr!.opacity).toBe(String(DIMMED_NODE_OPACITY));
+    });
+
+    it('a replaced graph resets the layer: no rect carries a stale selected colour or dimmed opacity', async () => {
+        stubEngine = new StubEngine(gridResult(220));
+
+        const view = new StubDiagramView({ data: gridGraph(220) }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+        view.getElement(true);
+        view.zoomToFit();
+
+        view.selectNode('n5');
+        view.setNodeEmphasis(['n5']);
+
+        view.setData(gridGraph(220));
+        await flush();
+
+        expect(view._nodeLayer._drawn.size).toBe(220);
+        expect(view._nodeLayer._selected).toBeNull();
+        expect(view._nodeLayer._emphasis.size).toBe(0);
+    });
+
+    it('the layer is a content-host child from construction, and is disposed with the view', () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView() as any;
+
+        expect(view._contentHost.getComponents()).toContain(view._nodeLayer);
+
+        // The recursive child teardown in `Component.destructor` calls each
+        // child's own `destructor()` directly (never the public `dispose()`
+        // wrapper — see its own doc comment), so that is what a still-mounted
+        // child's disposal shows up as here.
+        const destroyLayer = vi.spyOn(view._nodeLayer, 'destructor' as any);
+
+        view.dispose();
+
+        expect(destroyLayer).toHaveBeenCalledTimes(1);
+    });
+
+    it('compound z-index covers both layers; a following flat setData restores both to 0', async () => {
+        stubEngine = new StubEngine(compoundResult());
+
+        const view = new StubDiagramView({ data: compoundGraph() }) as any;
+
+        await flush();
+
+        expect(view._nodeLayer.getZIndex()).toBe(2);
+        expect(view._edgeLayer.getZIndex()).toBe(1);
+
+        view.setData(simpleGraph());
+        await flush();
+
+        expect(view._nodeLayer.getZIndex()).toBe(0);
+        expect(view._edgeLayer.getZIndex()).toBe(0);
     });
 });
