@@ -21,16 +21,24 @@ layer tree and one set of document-level listeners.
 
 ## The runtime layer tree
 
-The relationship that matters is the **"opened-from" edge** — which layer was
-topmost when this one opened. That is a *runtime* fact, distinct from the static
+The relationship that matters is the **"opened-from" edge** — which layer this
+one was opened from. That is a *runtime* fact, distinct from the static
 component hierarchy, and it changes every time a surface opens. When a ComboBox
 inside a `Popover` opens its dropdown, the dropdown becomes a **child** of the
 popover in the layer tree, even though neither element is a DOM ancestor of the
 other (both are siblings under `documentElement`).
 
-`LayerManager.register(layer)` pushes the new layer under the current topmost
-layer; `unregister(layer)` pops it. Because a nested layer always registers
-*after* its opener, it lands above its opener in the z-order automatically.
+`LayerManager.register(layer)` resolves that opener and pushes the new layer
+under it; `unregister(layer)` pops it. A layer that tracks its own anchor via
+`getAnchorElement` — a dropdown, popover, or rebuild-mode menu already does,
+for its own outside-click exclusion — links under whichever registered layer's
+DOM subtree physically contains that anchor, regardless of registration order
+or which band currently paints in front: neither says anything about which
+layer a given anchor actually lives inside once more than one root band
+exists (see below). A layer with no anchor to resolve falls back to the
+last-registered layer. Because a nested layer always draws a fresh, higher
+counter within the band it inherits, it lands above its opener in the z-order
+automatically.
 
 ## One containment query across portals
 
@@ -54,15 +62,19 @@ bands:
 | Band | Base |
 |---|---|
 | Window | 9000 |
+| PinnedWindow | 9400 |
 | Popover | 9800 |
 | Dropdown | 10000 |
 | Dialog | 11000 |
 
 A surface reports its band from `getBand()`; an unrelated top-level layer uses
-its own band, while a nested layer **inherits its opener's band** and rises
-above it via the per-register counter. The manager assigns `z = band + counter`
-at register time; surfaces mirror it with their own `setZIndex` and re-mirror on
-`bringToFront` via the optional `onZIndexChanged` hook.
+its own band, while a nested layer **inherits its opener's band** (see above)
+and rises above it via the per-register counter. `LayerManager.setBand(layer, band)`
+moves an already-registered layer (and its descendants) into a different band —
+an always-on-top window uses it to move into `PinnedWindow` without
+re-registering. The manager assigns `z = band + counter` at register time;
+surfaces mirror it with their own `setZIndex` and re-mirror on `bringToFront`
+via the optional `onZIndexChanged` hook.
 
 ## Dismiss modes
 

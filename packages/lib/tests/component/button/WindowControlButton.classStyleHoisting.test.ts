@@ -194,10 +194,24 @@ describe('WindowControlButton class-style hoisting', () => {
     });
 
     it('row 4: a second lead-glyph button writes no resting declaration to its own rule; .WindowLeadGlyphButton carries the transparent tokens', () => {
-        const classDeclarations = declarationsDuring(sink, '.WindowLeadGlyphButton', () => {
-            createWindowLeadGlyphButton('window-maximize').getElement(true);
-        });
+        const start = sink.writes.length;
+        const first = createWindowLeadGlyphButton('window-maximize');
 
+        // The button lives inside `TabBar._leadGroup`, itself
+        // `pointer-events: none` (TabBar.ts) — pointer-events is inherited CSS,
+        // so only an explicit `auto` on the button itself makes it
+        // hit-testable, the same fix `WindowHeader.setGlyph`'s title glyph and
+        // `SplitButton`'s chevron already apply for the identical reason. The
+        // offline harness has no real pointer-events hit-testing (see
+        // ScrollbarArrow.test.ts's identical caveat), so this checks the
+        // resolved property directly, the way Scrollbar.test.ts's "arrow glyph
+        // pointer-events:none" case does for the opposite value.
+        expect(first.getPointerEvents()).toBe('auto');
+
+        first.getElement(true);
+        const firstWrites = sink.writes.slice(start);
+
+        const classDeclarations = declarationsFor(firstWrites, '.WindowLeadGlyphButton');
         expect(classDeclarations.backgroundColor).toBe('transparent');
         expect(classDeclarations.backgroundImage).toBe('none');
         expect(classDeclarations.borderTop).toBe('1px solid transparent');
@@ -205,6 +219,19 @@ describe('WindowControlButton class-style hoisting', () => {
         expect(classDeclarations.borderBottom).toBe('1px solid transparent');
         expect(classDeclarations.borderLeft).toBe('1px solid transparent');
         expect(classDeclarations.boxShadow).toBe('none');
+
+        // The leading glyph is now clickable (it opens the window menu), so it
+        // carries the same two window-control states — `.pressed` and
+        // `:hover:not(.pressed)` — as `.WindowControlButton`, with its own
+        // background tokens (see windowControls.ts's
+        // `_defaultWindowLeadGlyphOptions`).
+        const pressedClassDeclarations = declarationsFor(firstWrites, '.WindowLeadGlyphButton.pressed');
+        expect(pressedClassDeclarations.backgroundColor).toBe('var(--ts-ui-window-control-active-bg)');
+        expect(pressedClassDeclarations.backgroundImage).toBe('var(--ts-ui-window-control-active-bg)');
+
+        const hoverClassDeclarations = declarationsFor(firstWrites, '.WindowLeadGlyphButton:hover:not(.pressed)');
+        expect(hoverClassDeclarations.backgroundColor).toBe('var(--ts-ui-window-control-hover-bg)');
+        expect(hoverClassDeclarations.backgroundImage).toBe('var(--ts-ui-window-control-hover-bg)');
 
         const second = createWindowLeadGlyphButton('window-maximize');
         const instanceDeclarations = declarationsDuring(sink, idSelector(second) + ':not(.pressed):not(:hover)', () => second.getElement(true));

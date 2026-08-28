@@ -3,7 +3,7 @@
 // wireMoveTrigger's subtree listener called onMouseDown unconditionally. A
 // press that only meant to click a control button also dragged the window.
 // Fixed by vetoing the trigger when the press lands inside a trailing button,
-// mirroring the existing targetIsInTrailingButton check onHeaderDoubleClick
+// mirroring the existing targetIsInHeaderControl check onHeaderDoubleClick
 // already uses.
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Window } from '~/overlay/Window';
@@ -69,5 +69,27 @@ describe('Window header move-trigger veto', () => {
             .onHeaderMouseDown(makeEvent(headerHandle, 'mousedown') as unknown as MouseEvent);
 
         expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not start a window move, and does not maximize on dblclick, when the press lands on the title icon', () => {
+        installTestDOM(CONFIG);
+
+        const win = new Window('W');
+        win.getElement(true);
+
+        const mouseDownSpy = vi.spyOn(win, 'onMouseDown');
+        const glyphHandle = win.getHeader().getGlyph()!.getElement(true)!;
+
+        (win as unknown as { onHeaderMouseDown(e: MouseEvent): void })
+            .onHeaderMouseDown(makeEvent(glyphHandle, 'mousedown') as unknown as MouseEvent);
+
+        expect(mouseDownSpy).not.toHaveBeenCalled();
+
+        const stateBefore = win.getWindowState();
+
+        (win as unknown as { onHeaderDoubleClick(e: MouseEvent): void })
+            .onHeaderDoubleClick(makeEvent(glyphHandle, 'dblclick') as unknown as MouseEvent);
+
+        expect(win.getWindowState()).toBe(stateBefore);
     });
 });

@@ -27,6 +27,7 @@ interface FakeLayerOpts {
     band?:        number;
     isRoot?:      boolean;
     withElement?: boolean;
+    anchor?:      Handle | null;
 }
 
 // Tracks every layer registered so the draining afterEach can unregister them —
@@ -52,6 +53,10 @@ function fakeLayer(opts: FakeLayerOpts = {}): FakeLayer {
 
     if (opts.isRoot !== undefined) {
         layer.isLayerRoot = () => opts.isRoot!;
+    }
+
+    if (opts.anchor !== undefined) {
+        layer.getAnchorElement = () => opts.anchor!;
     }
 
     return layer;
@@ -223,6 +228,167 @@ describe('LayerManager', () => {
 
             expect(() => LayerManager.bringToFront(stray)).not.toThrow();
             expect(stray.onActivate).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('setBand', () => {
+        it("moves a registered root's stamp into the new band and calls onZIndexChanged", () => {
+            installTestDOM(CONFIG);
+
+            const layer  = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true })) as FakeLayer;
+            const before = LayerManager.getZIndex(layer);
+
+            LayerManager.setBand(layer, LayerManager.Band.PinnedWindow);
+
+            const after = LayerManager.getZIndex(layer);
+
+            expect(after).toBeGreaterThanOrEqual(LayerManager.Band.PinnedWindow);
+            expect(after).toBeGreaterThan(before);
+            expect(layer.onZIndexChanged).toHaveBeenCalledWith(after);
+        });
+
+        it('is a no-op for an unregistered layer', () => {
+            installTestDOM(CONFIG);
+
+            const stray = fakeLayer({ isRoot: true }) as FakeLayer;
+
+            expect(() => LayerManager.setBand(stray, LayerManager.Band.PinnedWindow)).not.toThrow();
+            expect(stray.onZIndexChanged).not.toHaveBeenCalled();
+        });
+
+        it('is a no-op when the layer is already in the target band', () => {
+            installTestDOM(CONFIG);
+
+            const layer = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true })) as FakeLayer;
+
+            LayerManager.setBand(layer, LayerManager.Band.Window);
+
+            expect(layer.onZIndexChanged).not.toHaveBeenCalled();
+        });
+
+        it('moves a child layer registered under the root into the same new band', () => {
+            installTestDOM(CONFIG);
+
+            const root  = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true })) as FakeLayer;
+            const child = register(fakeLayer({})) as FakeLayer;
+
+            LayerManager.setBand(root, LayerManager.Band.PinnedWindow);
+
+            expect(LayerManager.getZIndex(child)).toBeGreaterThanOrEqual(LayerManager.Band.PinnedWindow);
+            expect(child.onZIndexChanged).toHaveBeenCalled();
+        });
+
+    });
+
+    // A nested (non-root) layer's parent used to be "the layer painting in
+    // front" (the highest current z-index), on the theory that a pinned
+    // window sitting in front of a later-registered ordinary window should
+    // still parent that ordinary window's own dropdowns correctly. That
+    // theory was wrong: "paints in front" identifies no relationship at all
+    // between a new layer and its actual opener once more than one root band
+    // exists — a differently-banded, unrelated peer can paint in front of the
+    // layer something was genuinely opened from. `register` instead resolves
+    // the opener via the anchor element a dropdown / popover / rebuild-mode
+    // menu already tracks for its own outside-click exclusion
+    // (`getAnchorElement`), falling back to the last-registered layer — the
+    // rule the tree used for every nested layer before `setBand` introduced a
+    // second root band — only when there is no anchor to resolve.
+    describe('register: nested-layer opener resolution', () => {
+        it('a layer whose anchor lives inside a specific window links under that window, not a pinned peer that currently paints in front', () => {
+            installTestDOM(CONFIG);
+
+            // Window A is pinned into the higher PinnedWindow band, so it
+            // paints in front of Window B even though B registered after it —
+            // reproduces the regression: a dropdown opened from inside B must
+            // not inherit A's band just because A is frontmost.
+            const winA = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true })) as FakeLayer;
+            LayerManager.setBand(winA, LayerManager.Band.PinnedWindow);
+            const winB = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true })) as FakeLayer;
+
+            expect(LayerManager.getZIndex(winA)).toBeGreaterThan(LayerManager.getZIndex(winB));
+
+            // The dropdown's anchor (its opener button) lives inside window
+            // B's DOM subtree — a real `appendChild` so `DOM.source.contains`
+            // (which climbs recorded parents) finds it there for real; an
+            // element created but never parented is where the harness's
+            // `contains` genuinely has nothing to climb (see the
+            // `containsAcrossLayers` tests above).
+            const anchor = DOM.sink.createElement('div');
+            const winBEl = winB.getLayerElement()!;
+            DOM.sink.appendChild(winBEl, anchor);
+
+            const dropdown = register(fakeLayer({ anchor })) as FakeLayer;
+
+            expect(LayerManager.getZIndex(dropdown)).toBeGreaterThanOrEqual(LayerManager.Band.Window);
+            expect(LayerManager.getZIndex(dropdown)).toBeLessThan(LayerManager.Band.PinnedWindow);
+            expect(LayerManager.getZIndex(dropdown)).toBeGreaterThan(LayerManager.getZIndex(winB));
+
+            // Direct proof of tree parentage (not just a band coincidence):
+            // raising B drags the dropdown up with it; raising A does not.
+            LayerManager.bringToFront(winB);
+            expect(dropdown.onZIndexChanged).toHaveBeenCalled();
+
+            dropdown.onZIndexChanged.mockClear();
+            LayerManager.bringToFront(winA);
+            expect(dropdown.onZIndexChanged).not.toHaveBeenCalled();
+        });
+
+        it('a layer whose anchor lives inside a window links under that window, not an unrelated root (a drawer) that currently paints in front', () => {
+            installTestDOM(CONFIG);
+
+            // The window registers first and is never raised, so a purely
+            // frontmost-by-z rule would misidentify the drawer — which
+            // declares no band of its own and so defaults to the Dropdown
+            // band, above Window — as the dropdown's opener.
+            const win    = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true })) as FakeLayer;
+            const drawer = register(fakeLayer({ isRoot: true })) as FakeLayer;
+
+            expect(LayerManager.getZIndex(drawer)).toBeGreaterThan(LayerManager.getZIndex(win));
+
+            const anchor = DOM.sink.createElement('div');
+            const winEl  = win.getLayerElement()!;
+            DOM.sink.appendChild(winEl, anchor);
+
+            const dropdown = register(fakeLayer({ anchor })) as FakeLayer;
+
+            // Proof of correct parentage: raising the window drags the
+            // dropdown up with it; raising the drawer does not.
+            LayerManager.bringToFront(win);
+            expect(dropdown.onZIndexChanged).toHaveBeenCalled();
+
+            dropdown.onZIndexChanged.mockClear();
+            LayerManager.bringToFront(drawer);
+            expect(dropdown.onZIndexChanged).not.toHaveBeenCalled();
+        });
+
+        it('an anchor-less nested layer falls back to the last-registered layer, not whichever peer currently paints in front', () => {
+            installTestDOM(CONFIG);
+
+            // `a` is pinned into the higher PinnedWindow band via setBand, so
+            // it outranks `b` (an ordinary Window-band peer registered
+            // afterwards) — the frontmost-by-z layer is no longer the
+            // last-registered one.
+            const a = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true })) as FakeLayer;
+            LayerManager.setBand(a, LayerManager.Band.PinnedWindow);
+            const b = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true })) as FakeLayer;
+
+            expect(LayerManager.getZIndex(a)).toBeGreaterThan(LayerManager.getZIndex(b));
+
+            // A nested layer with no anchor to resolve (e.g. a Dialog)
+            // registers next; it falls back to the last-registered layer's
+            // (b's) band, not the frontmost layer's (a's).
+            const nested = register(fakeLayer({})) as FakeLayer;
+
+            expect(LayerManager.getZIndex(nested)).toBeGreaterThanOrEqual(LayerManager.Band.Window);
+            expect(LayerManager.getZIndex(nested)).toBeLessThan(LayerManager.Band.PinnedWindow);
+            expect(LayerManager.getZIndex(nested)).toBeGreaterThan(LayerManager.getZIndex(b));
+
+            LayerManager.bringToFront(b);
+            expect(nested.onZIndexChanged).toHaveBeenCalled();
+
+            nested.onZIndexChanged.mockClear();
+            LayerManager.bringToFront(a);
+            expect(nested.onZIndexChanged).not.toHaveBeenCalled();
         });
     });
 

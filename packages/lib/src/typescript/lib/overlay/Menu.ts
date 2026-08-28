@@ -181,7 +181,17 @@ class Menu extends Component implements DismissableLayer {
      * title/shortcut metrics by default, so the panel's natural width is
      * floored with the widest row's own `getContentWidth()` report.
      *
-     * @returns The clamped panel width in pixels.
+     * The clamp and every row's column geometry are computed against the
+     * panel's CONTENT box (matching `RIGHT_PAD`'s own "at the panel's inner
+     * edge" contract); the panel's own left/right border is added only to the
+     * returned value, so a caller applying it via `setWidth` (a border-box
+     * write) hands rows exactly the content width this method measured them
+     * against — short-changing it here previously starved every row's
+     * content box by the panel's border thickness, invisible on a
+     * `MenuItem`'s ellipsized title but a visible hard clip on an unellipsized
+     * custom row's content (e.g. `CheckboxMenuRow`'s label).
+     *
+     * @returns The clamped panel width in pixels, border included.
      */
     private layOutColumns(): number {
         const rows = this._menuItems.filter(row => !row.isSeparator());
@@ -213,7 +223,9 @@ class Menu extends Component implements DismissableLayer {
             row.setColumns(checkZone, iconStart, titleColumn);
         }
 
-        return width;
+        const border = this.getBorderSize();
+
+        return width + border.left + border.right;
     }
 
     /**
@@ -487,6 +499,37 @@ class Menu extends Component implements DismissableLayer {
         this.assertRebuildMode("setMenuWidth");
 
         this._menuWidth = width;
+
+        return this;
+    }
+
+    /**
+     * Updates the `enabled` state of the row at `index`, in place — without
+     * closing, rebuilding, or re-animating the panel. **Rebuild-mode only.**
+     *
+     * Lets a caller that deliberately keeps the panel open after an action
+     * (e.g. a `CheckboxMenuRow`'s own toggle, which never closes the menu —
+     * see `MenuItemConfig.closeOnActivate`) push a live availability change
+     * into a *different*, sibling row, rather than leaving it stale until the
+     * panel is next closed and reopened. No-op when `index` is out of range,
+     * or names a separator or a custom `row()` factory row — a `MenuRow`
+     * built from a factory owns its own enabled state (see
+     * `MenuRow.isEnabled`) and has no shared update surface to push into.
+     *
+     * @param index - Zero-based index into the `configs` array passed to the
+     *   `show()` / `toggleFor()` call that built the currently-displayed rows.
+     * @param enabled - The row's new enabled state.
+     *
+     * @returns This menu, for method chaining.
+     */
+    setItemEnabled(index: number, enabled: boolean): this {
+        this.assertRebuildMode("setItemEnabled");
+
+        const row = this._menuItems[index];
+
+        if (row instanceof MenuItem) {
+            row.setEnabled(enabled);
+        }
 
         return this;
     }

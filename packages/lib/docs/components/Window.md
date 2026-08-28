@@ -41,6 +41,8 @@ win.show();
 | `minimizable`    | `boolean` | Show the title-bar minimize button. Default `true`. Hidden whenever `resizable` is `false`, regardless of this flag. |
 | `maximizable`    | `boolean` | Show the title-bar maximize button. Default `true`. Hidden whenever `resizable` is `false`, regardless of this flag. |
 | `resizable`      | `boolean` | Enable the drag-to-resize border strips. Default `true`. Also the master switch for `minimizable` / `maximizable` — setting it `false` hides and disables both, and setting it back to `true` restores whatever they were set to. |
+| `alwaysOnTop`    | `boolean` | Keep the window above every unpinned window. Default `false`. Also toggleable from the title-icon menu's "Always on top" row. |
+| `locked`         | `boolean` | Freeze the window: no drag-to-move and no drag-to-resize, and the resize-border strips are hidden. Also disables (never hides) the maximize button, the header double-click, and the menu's Maximize/Restore row — maximizing is itself a resize — but leaves minimize and close alone. Default `false`. Also toggleable from the title-icon menu's "Lock position" row. |
 | `maximizeBounds` | `"viewport" \| "parent"` | Where to fill on maximize. Default `"viewport"`. |
 | `windowState`    | `"normal" \| "minimized" \| "maximized"` | Initial lifecycle state. Default `"normal"`. |
 | `snapResizeEnabled` | `boolean` | Enable Ctrl-snap resize detection. Default `true`. |
@@ -81,13 +83,22 @@ win.setWindowState('normal');     // back to the cached rect
 win.setWindowState('minimized');  // docked at bottom-left, header only
 ```
 
-Double-clicking the header bar (anywhere that isn't one of the three trailing buttons) toggles maximize from `normal` and `maximized`; on a `minimized` window it restores to the state the window held before being minimized (`normal` or `maximized`). Each state transition tweens `x` / `y` / `width` / `height` over 150 ms; `prefers-reduced-motion: reduce` collapses the tween to a single synchronous commit so the layout settles in one frame.
+Double-clicking the header bar (anywhere that isn't one of the three trailing buttons) toggles maximize from `normal` and `maximized` — a no-op while `locked` is `true`, same as the maximize button. On a `minimized` window it instead restores to the state the window held before being minimized (`normal` or `maximized`), regardless of `locked` — the same carve-out `Minimize` gets, since it returns the window to a rect it already held rather than letting the user pick a new one. Each state transition tweens `x` / `y` / `width` / `height` over 150 ms; `prefers-reduced-motion: reduce` collapses the tween to a single synchronous commit so the layout settles in one frame.
 
 While `maximized`, the window registers a viewport `resize` listener and re-fills on every tick. Switch the fill target with `setMaximizeBounds("parent")` if the window has been re-parented out of `document.documentElement` and should fill its parent rect instead.
 
 While `minimized`, the body content (the first non-header child) is hidden via `setDisplayed(false)` and the window collapses to a fixed 200 px-wide strip docked along the viewport bottom. Multiple minimized windows lay out side-by-side in insertion order with a 4 px gap.
 
 Drag and border-resize are gated to the `normal` state — a maximized or minimized window stays where it is until you call `setWindowState('normal')` (which also restores the pre-transition rect from the cache).
+
+## Title-icon menu
+
+Clicking the title-bar icon opens a system menu anchored under it: Minimize, Maximize, a separator, checkable "Always on top" and "Lock position" rows, another separator, and Close. Clicking the icon again (or elsewhere) closes it. The list is rebuilt on every open, so it always reflects live state:
+
+- Minimize and Maximize read "Restore" while the window is `"minimized"` / `"maximized"`, and are omitted entirely when `minimizable` / `maximizable` (or the `resizable` master switch) hide the matching header button. Each carries the same glyph its header button shows in that state (e.g. Maximize swaps to the restore glyph alongside the "Restore" label).
+- Maximize/Restore is additionally disabled (never omitted) while `locked` is `true`, mirroring the header button — locking blocks the action, not just its current label.
+- The two checkable rows track `isAlwaysOnTop()` / `isLocked()` and toggle `setAlwaysOnTop` / `setLocked` on activation, leaving the menu open so both can be flipped in one visit. Neither carries a glyph.
+- Close is always present; it disables (rather than disappearing) when `closeable` is `false`, matching the header's close button. It carries the same `xmark` glyph as the header's close button.
 
 ## Snap-resize modifier
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Header, HeaderOptions } from "~/component/display/Header.js";
+import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Button, ClickListener } from "~/component/button/Button.js";
 import { Component } from "~/core/Component.js";
@@ -103,6 +104,8 @@ class WindowHeader extends Header {
     private _closeable:       boolean = true;
     private _minimizable:     boolean = true;
     private _maximizable:     boolean = true;
+    private _titleGlyphClickListener: (() => void) | null = null;
+    private readonly _boundOnHeaderClick: (e: MouseEvent) => void = (e) => this.onHeaderClick(e);
 
     constructor(text: string, options?: WindowHeaderOptions) {
         super(text);
@@ -286,16 +289,19 @@ class WindowHeader extends Header {
             this._titleGlyph = null;
         }
 
-        // A bare decorative glyph (pointer-through) sized to the same ink the
+        // The window's system-menu trigger, sized to the same ink the
         // TabWindow's leading glyph renders, so the title icon matches it. Kept a
         // plain Glyph rather than a control-peer button so it baseline-aligns with
         // the title text in this shared row (a taller control box would desync the
         // text's vertical centring); the leading inset on the title row supplies the
-        // corner offset that mirrors the TabWindow's.
+        // corner offset that mirrors the TabWindow's. Pointer events are re-enabled
+        // (its `pointer-events: none` ancestors leave the rest of the title row a
+        // drag handle) and the cursor reads clickable.
         const glyph = new WindowHeaderTitleGlyph(name);
         const ink = this.resolveTitleGlyphInk();
         glyph.setPreferredSize({ width: ink, height: ink });
-        glyph.setPointerEvents("none");
+        glyph.setPointerEvents("auto");
+        glyph.setCursor("pointer");
         this._titleGlyph = glyph;
 
         this._titleRow.insertComponent(glyph, 0);
@@ -415,6 +421,33 @@ class WindowHeader extends Header {
     }
 
     /**
+     * Enables or disables the maximize button without hiding it — used while
+     * the owning window is locked, since maximizing (and un-maximizing) is
+     * itself a resize. Distinct from {@link setMaximizable}, which hides the
+     * button entirely: `locked` is a runtime-togglable state, not a
+     * construction-time capability, so it disables the still-visible button
+     * instead, mirroring {@link setCloseable}'s disable-not-hide convention.
+     *
+     * @param value - True to enable the maximize button, false to disable it.
+     *
+     * @returns This component, for method chaining.
+     */
+    setMaximizeButtonEnabled(value: boolean): this {
+        this._maximizeButton.setEnabled(value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether the maximize button is currently enabled.
+     *
+     * @returns True when the maximize button is enabled.
+     */
+    isMaximizeButtonEnabled(): boolean {
+        return this._maximizeButton.isEnabled();
+    }
+
+    /**
      * Swaps the maximize button's glyph between the "maximize" and "restore"
      * icons. Called by the owning [`Window`](/api/overlay/classes/Window) when
      * transitioning between the `"normal"` and `"maximized"` states.
@@ -491,10 +524,50 @@ class WindowHeader extends Header {
         // Subtree, not exact-target: the title row sits inside a Border clip-frame
         // wrapper, so a double-click on the title text/glyph targets that wrapper
         // rather than the bare header element. The owning Window's handler already
-        // filters out the trailing buttons via targetIsInTrailingButton.
+        // filters out the trailing buttons via targetIsInHeaderControl.
         Event.addSubtreeListener(this, "dblclick", listener);
 
         return this;
+    }
+
+    /**
+     * Registers a listener for a click on the title icon. A second call
+     * replaces the listener; the underlying subtree click listener is wired
+     * only once, on the first call.
+     *
+     * @param listener - The callback to invoke when the title icon is clicked.
+     *
+     * @returns This component, for method chaining.
+     */
+    addTitleGlyphClickListener(listener: () => void): this {
+        if (this._titleGlyphClickListener === null) {
+            // Subtree, not exact-target: the icon sits inside the title row's
+            // own clip-frame wrapper (see addHeaderDoubleClickListener), so a
+            // click on it targets that wrapper rather than the bare header.
+            Event.addSubtreeListener(this, "click", this._boundOnHeaderClick);
+        }
+
+        this._titleGlyphClickListener = listener;
+
+        return this;
+    }
+
+    /**
+     * Subtree `click` handler backing {@link addTitleGlyphClickListener}:
+     * invokes the registered listener only when the click landed inside the
+     * title icon.
+     *
+     * @param e - The header subtree's `click` event.
+     */
+    private onHeaderClick(e: MouseEvent): void {
+        const target = e.target === null ? null : DOM.source.intern(e.target);
+        const glyphEl = this._titleGlyph?.getElement();
+
+        if (!target || !glyphEl || !DOM.source.contains(glyphEl, target)) {
+            return;
+        }
+
+        this._titleGlyphClickListener?.();
     }
 
     /**

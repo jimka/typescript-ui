@@ -1262,10 +1262,12 @@ class TabBar extends Container<TabBarOptions> {
      * @returns This tab strip, for method chaining.
      *
      * @remarks
-     * The hosting group is transparent and pointer-transparent, so the caller's
-     * widget is decorative by default (a press on it falls through to the
-     * empty-area window-move trigger). The widget is deliberately outside the
-     * {@link setBarSurfaceColor} / `isBarChromeTarget` chrome set.
+     * The hosting group stays transparent and pointer-transparent, so a widget
+     * that leaves pointer events untouched is decorative by default (a press on
+     * it falls through to the empty-area window-move trigger). A widget that
+     * opts back into pointer events (e.g. the window-menu-triggering leading
+     * glyph) handles its own presses and is vetoed from the move and
+     * double-click triggers by `isBarChromeTarget`.
      */
     setLeadingWidget(widget: Component | null): this {
         if (this._leadWidget) {
@@ -1294,11 +1296,12 @@ class TabBar extends Container<TabBarOptions> {
 
     /**
      * Returns whether an event target lands on the bar's interactive chrome —
-     * a tab wrapper, the tool group, or an overflow scroll-arrow button — as
-     * opposed to the draggable blank area. The tab clip is deliberately NOT
-     * treated as chrome: it spans the whole tab band and its blank remainder
-     * between the last tab and the fixed chrome IS the empty bar area, so
-     * vetoing it would swallow every empty-area gesture.
+     * a tab wrapper, the tool group, the leading widget, or an overflow
+     * scroll-arrow button — as opposed to the draggable blank area. The tab
+     * clip is deliberately NOT treated as chrome: it spans the whole tab band
+     * and its blank remainder between the last tab and the fixed chrome IS
+     * the empty bar area, so vetoing it would swallow every empty-area
+     * gesture.
      *
      * @param target - The event target to test.
      *
@@ -1322,6 +1325,12 @@ class TabBar extends Container<TabBarOptions> {
         const toolGroupEl = this._toolGroup.getElement();
 
         if (toolGroupEl && DOM.source.contains(toolGroupEl, targetHandle)) {
+            return true;
+        }
+
+        const leadWidgetEl = this._leadWidget?.getElement();
+
+        if (leadWidgetEl && DOM.source.contains(leadWidgetEl, targetHandle)) {
             return true;
         }
 

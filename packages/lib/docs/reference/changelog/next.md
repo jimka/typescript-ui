@@ -95,6 +95,8 @@ neither needs no change.
 ### Components
 
 - **[`Window`](/components/Window) and [`TabWindow`](/components/TabWindow) gain a `resizable` option**, plus the matching `setResizable(value)` / `isResizable()` pair on [`AbstractWindow`](/components/AbstractWindow). Defaults to `true`, so every existing window keeps behaving exactly as it does now. Setting it `false` hides all eight drag-to-resize border strips (no cursor, no hit test at the edges) and disarms the Ctrl-snap resize affordance; moving is unaffected. `resizable` is also the master switch for `minimizable` / `maximizable`: a non-resizable window can be neither minimized nor maximized by the user regardless of those two flags, and `isMinimizable()` / `isMaximizable()` report this *effective* value. Each flag's own setting is remembered underneath and takes effect again once `resizable` is re-enabled.
+- **[`Window`](/components/Window) and [`TabWindow`](/components/TabWindow) gain a title-icon system menu, an `alwaysOnTop` option, and a `locked` option.** Clicking the title-bar icon (or the `TabWindow` leading glyph, also newly clickable) opens a menu: Minimize, Maximize, "Always on top", "Lock position", and Close — mirroring the header buttons' own gating (minimize/maximize hide, close disables) and always reflecting live state. Minimize, Maximize, and Close each carry a glyph that swaps to match the window state (matching the header/tool button's own glyph on `Window`; on `TabWindow` the menu row swaps but the trailing tool buttons never do); the two checkable rows carry none. `setAlwaysOnTop(value)` / `isAlwaysOnTop()` keep a window above every unpinned window via a new z-index band between `Window` and `Popover`; `setLocked(value)` / `isLocked()` freeze both drag-to-move and drag-to-resize (hiding the resize-border strips) and disable every maximize control — the header/tool button, the header/bar double-click, and the menu's Maximize/Restore row — since maximizing is itself a resize, while leaving minimize and close alone. Both default to `false`, so every existing window keeps behaving exactly as it does now.
+- **`Menu.setItemEnabled(index, enabled)` and `MenuItem.setEnabled(value)`** update a rebuild-mode menu row's enabled state in place, without closing, rebuilding, or re-animating the panel — used by the window menu above so toggling "Lock position" (which deliberately leaves the panel open) immediately greys out a still-open panel's Maximize row instead of leaving it clickable until the next open. A no-op on a separator, a custom `row()` factory row, or an out-of-range index.
 - **[`DiagnosticsOverlay`](/components/DiagnosticsOverlay)**, a floating
   window showing live runtime diagnostics — FPS, JS heap, DOM node count and
   long tasks alongside framework-internal numbers (live `Component` count,
@@ -372,6 +374,16 @@ consumer action is needed.
   roughly 20-25 stylesheet rules per traversal. The dispose is deferred to
   the fade's completion, not immediate, so a submenu still visibly finishes
   its exit animation. No consumer action is needed.
+- **`Menu.getMenuWidth()` now reports the panel's true, border-included
+  width, 2px more than before.** `layOutColumns()` sized the panel from
+  each row's content-box requirement, but that value was then applied
+  straight to `setWidth()` — a border-box write — silently starving every
+  row's content by the panel's own left+right border. A `MenuItem`'s
+  ellipsized title absorbed this invisibly; a `CheckboxMenuRow`'s plain,
+  unellipsized label (e.g. the window menu's "Always on top" row) showed it
+  as a visible hard clip. Pre-existing in every `CheckboxMenuRow` consumer —
+  `Table.buildColumnMenuItems` and `Split.openGutterMenu`'s checkable rows
+  clip too, not only the new window menu. No consumer action is needed.
 
 ### Table
 
@@ -450,6 +462,17 @@ another cell.
   state can recolour a border without restating its width and style.** A
   state that declares it also isolates the four per-side border longhands
   from the resting tier.
+- **`LayerManager` gains a `Band.PinnedWindow` z-index band, between
+  `Window` and `Popover`, and a new `setBand(layer, band)` that moves an
+  already-registered layer (and its descendants) into a different band.**
+  Backs the new always-on-top window option (see Added, above). A nested
+  layer (a dropdown, say) now links under the registered layer whose DOM
+  subtree contains its anchor — the layer it was actually opened from —
+  rather than the last-registered one; with a single root band the two
+  were always the same layer, but a pinned window can now paint in front
+  of a window that registered after it, and resolving the real opener
+  keeps a layer opened from inside one window from landing behind a
+  differently-banded, unrelated peer. No consumer action is needed.
 
 ### Components
 
