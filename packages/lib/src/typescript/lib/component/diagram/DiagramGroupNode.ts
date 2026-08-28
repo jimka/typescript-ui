@@ -31,13 +31,23 @@ export interface DiagramGroupNodeOptions extends PanelOptions {
  */
 const HEADER_INSET = 6;
 
+/** Resting fill colour of a `DiagramGroupNode` — and, once level-of-detail
+ *  simplification engages, of a container `<rect>` `DiagramNodeLayer` draws
+ *  in its place. @internal */
+export const DIAGRAM_GROUP_BACKGROUND_COLOR = "var(--ts-ui-diagram-group-bg, rgba(120, 120, 120, 0.08))";
+
+/** Resting border colour of a `DiagramGroupNode` — and, once level-of-detail
+ *  simplification engages, of a container `<rect>` `DiagramNodeLayer` draws
+ *  in its place. @internal */
+export const DIAGRAM_GROUP_BORDER_COLOR = "var(--ts-ui-diagram-group-border, var(--ts-ui-border-color, rgb(180, 180, 180)))";
+
 const _defaultDiagramGroupNodeOptions: Partial<DiagramGroupNodeOptions> = {
-    backgroundColor: "var(--ts-ui-diagram-group-bg, rgba(120, 120, 120, 0.08))",
+    backgroundColor: DIAGRAM_GROUP_BACKGROUND_COLOR,
     // A container is a selectable node like any leaf, so it carries the same
     // pointer cursor `DiagramNode` does — left at the Component default it
     // would read as an arrow and promise a pan its own box does not perform.
     cursor:       "pointer",
-    border:       "1px solid var(--ts-ui-diagram-group-border, var(--ts-ui-border-color, rgb(180, 180, 180)))",
+    border:       `1px solid ${DIAGRAM_GROUP_BORDER_COLOR}`,
     borderRadius: "4px",
 };
 

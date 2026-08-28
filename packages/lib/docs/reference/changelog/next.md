@@ -190,6 +190,16 @@ neither needs no change.
   and edges already on screen are never redrawn when that happens. Edge
   hover, edge emphasis, and dragging an edge to pan all behave the same as
   before. No consumer action is needed.
+- **A large diagram now draws plain node boxes once it is zoomed out past the
+  point where node content is legible.** On a graph of at least a couple of
+  hundred nodes, zoomed out until a node renders under about 16 pixels tall,
+  `DiagramView` stops mounting node components and draws one themed box per
+  node instead — the case "fit the whole graph" produces, and the one place
+  viewport culling could never help, because nothing is off screen to cull.
+  Selection, `"activate"`, `"contextmenu"`, node emphasis, and every centring
+  method behave the same against a simplified node, and full node components
+  come back on the way in. Pass `simplifyAtLowZoom: false` (or call
+  `setSimplifyAtLowZoom(false)`) to keep full node components at every zoom.
 
 ### Table
 

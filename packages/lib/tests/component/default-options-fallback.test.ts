@@ -411,6 +411,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'BarChart grouped (no data)',   resolve: () => new BarChart({}).isGrouped(),                               expected: false },
     { label: 'DiagramView zoom',             resolve: () => new DiagramView().getZoom(),                                expected: 1 },
     { label: 'DiagramView controls',         resolve: () => new DiagramView().isControlsVisible(),                      expected: true },
+    { label: 'DiagramView simplifyAtLowZoom', resolve: () => new DiagramView().isSimplifyAtLowZoom(),                   expected: true },
     { label: 'FloatingPanel corner',         resolve: () => new FloatingPanel({}).getCorner(),                          expected: 'top-right' },
     { label: 'FloatingPanel margin',         resolve: () => new FloatingPanel({}).getMargin(),                          expected: 12 },
     { label: 'MarkdownMinimap maxHeadingDepth', resolve: () => new MarkdownMinimap({}).getMaxHeadingDepth(),            expected: 3 },
