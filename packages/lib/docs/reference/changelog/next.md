@@ -183,6 +183,13 @@ neither needs no change.
   Selection, emphasis, `focusNode`, `revealNode`, `zoomToFit`, and
   `resetView` all behave the same against a node that is currently off the
   page. No consumer action is needed.
+- **A large diagram now only draws the edges near the visible area.**
+  `DiagramView` still lays out and routes every edge in the graph, but an
+  edge whose route stays more than about half a viewport outside the visible
+  area is kept off the page until panning or zooming brings it into range,
+  and edges already on screen are never redrawn when that happens. Edge
+  hover, edge emphasis, and dragging an edge to pan all behave the same as
+  before. No consumer action is needed.
 
 ### Table
 
