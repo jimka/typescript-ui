@@ -38,7 +38,7 @@ import { DiagramGroupNode } from "~/component/diagram/DiagramGroupNode.js";
 import { DiagramEdgeLayer } from "~/component/diagram/DiagramEdgeLayer.js";
 import type { DiagramEdgeRoute } from "~/component/diagram/DiagramEdgeLayer.js";
 import { DiagramNodeLayer, DIMMED_NODE_OPACITY } from "~/component/diagram/DiagramNodeLayer.js";
-import { computeResidentIds, inflateRect, residencyNeedsRefresh } from "~/component/diagram/DiagramResidency.js";
+import { anyRectIntersects, computeResidentIds, inflateRect, residencyNeedsRefresh } from "~/component/diagram/DiagramResidency.js";
 import type { DiagramRect } from "~/component/diagram/DiagramResidency.js";
 import { callable } from "~/core/Callable.js";
 
@@ -390,7 +390,10 @@ class DiagramView extends Panel<DiagramViewOptions> {
     /**
      * Whether the graph still owes its one-time initial centring. Cleared by
      * the first layout that manages to centre, so a later `setData` re-layout
-     * never yanks a pan the user has since dragged to.
+     * never yanks a pan the user has since dragged to — except that a later
+     * layout re-arms this flag when the graph it just promoted lands entirely
+     * outside the viewport, via `rearmCentreIfOffScreen`, so a `setData` swap
+     * at a very different scale never leaves the view showing an empty canvas.
      */
     private _needsInitialCentre: boolean = true;
 
@@ -866,6 +869,11 @@ class DiagramView extends Panel<DiagramViewOptions> {
         this._contentHost.setPreferredSize({ width: result.width, height: result.height });
         this.applyTransformToHost();
 
+        // The floor under the preserved pan: when a graph swap at a very
+        // different scale leaves the new graph entirely off screen, re-arm the
+        // one-shot centring so the call below actually runs.
+        this.rearmCentreIfOffScreen();
+
         // Before `emit`, so a consumer's own `"layout"` listener (the sanctioned
         // auto-fit hook, `view.on("layout", () => view.zoomToFit())`) still runs
         // afterwards and wins. Only succeeds if the view is already sized; the
@@ -1173,6 +1181,31 @@ class DiagramView extends Panel<DiagramViewOptions> {
         this.zoomAboutViewportPoint(1 / ZOOM_BUTTON_STEP, this.getWidth() / 2, this.getHeight() / 2);
 
         return this;
+    }
+
+    /**
+     * Re-arms the one-shot initial centring when the graph `applyLayout` just
+     * promoted has no node overlapping the visible viewport — the floor under
+     * the preserved pan (see `_needsInitialCentre`). Every early return here
+     * is a "leave the pan alone" case: no nodes to test (an empty graph — a
+     * `setData` to nothing is not a state the floor needs to recover from),
+     * or no committed viewport size yet (nothing to test against, and the
+     * `doLayout` retry path re-attempts centring once the view is sized
+     * anyway). This method never centres by itself — the `tryInitialCentre`
+     * call straight after it does, only once the flag is armed.
+     */
+    private rearmCentreIfOffScreen(): void {
+        if (this._nodeRects.size === 0) {
+            return;
+        }
+
+        const viewport = this.viewportGraphRect();
+
+        if (viewport === null || anyRectIntersects(this._nodeRects.values(), viewport)) {
+            return;
+        }
+
+        this._needsInitialCentre = true;
     }
 
     /**
