@@ -283,6 +283,16 @@ consumer action is needed.
 - **`clearForegroundColor()` now clears the colour instead of handing it
   back to the class rule on a class that defaults `foregroundColor`.** No
   consumer action is needed.
+- **A CSS transition played through `Animation.play` is no longer cut short
+  when a busy main thread delays its start.** The safety-net timer that
+  guarantees the completion callback runs even if `transitionend` never
+  arrives was armed the moment the "to" styles were written, but the browser
+  only starts a transition at its next style recalculation — a frame or more
+  later under load. On a slow frame the timer therefore fired mid-animation
+  and the completion work (which clears the `transition` property) snapped
+  the element to its end value. It is now measured from the transition's
+  actual start. Every `Animation.play` caller benefits; no consumer action
+  is needed.
 
 ### Components
 
@@ -409,6 +419,19 @@ consumer action is needed.
   as a visible hard clip. Pre-existing in every `CheckboxMenuRow` consumer —
   `Table.buildColumnMenuItems` and `Split.openGutterMenu`'s checkable rows
   clip too, not only the new window menu. No consumer action is needed.
+- **A maximize / minimize / restore that changes a window's width or height
+  by more than 960px now fades its content out, glides to the new rect with
+  the body host's own layout paused, runs the one relayout that glide
+  deferred once it lands, and fades the content back in.** Smaller
+  transitions are unchanged. Pausing the body host's layout, rather than the
+  window's own, keeps the chrome (header and resize strips) tracking the
+  glide on every frame — that's positioned by the window's own layout pass
+  regardless of the body host's paused state — while the body's own,
+  potentially expensive, relayout (e.g. rebuilding a wide table's column
+  window) is deferred to a single pass once the glide lands, instead of
+  running once per frame. This removes the stutter a window holding a wide
+  virtualized table showed when resized on a large display. No consumer
+  action is needed.
 
 ### Table
 

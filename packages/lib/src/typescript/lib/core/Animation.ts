@@ -61,7 +61,9 @@ export namespace Animation {
         /**
          * Milliseconds added to {@link PlayConfig.durationMs} for the fallback
          * `setTimeout` that fires if `transitionend` never arrives (tab switch,
-         * interrupted transition, …). Defaults to 40 ms.
+         * interrupted transition, …). Defaults to 40 ms. The deadline is
+         * measured from the transition's own `transitionstart`, so a start
+         * delayed by a busy main thread moves it rather than eating into it.
          */
         fallbackBufferMs?: number;
     }
@@ -174,6 +176,22 @@ export namespace Animation {
             config.onComplete?.();
         };
 
+        // The fallback below is armed the moment the `to` styles are written,
+        // but the browser does not start the transition until its next style
+        // recalculation — which on a busy main thread arrives a frame or more
+        // later (~100ms on the frame after a large window's rect commit).
+        // A deadline counted from the write would then land mid-transition and
+        // `finish` would cut the animation short by clearing `transition`, so
+        // re-arm it from the moment the transition actually starts.
+        const rearmFallback = (): void => {
+            if (done || cancelled || timerId === null) {
+                return;
+            }
+
+            DOM.sink.clearTimeout(timerId);
+            timerId = DOM.sink.setTimeout(finish, config.durationMs + fallback);
+        };
+
         const applyTransitionAndTo = (): void => {
             frameId = null;
 
@@ -190,7 +208,8 @@ export namespace Animation {
 
             buf.setMany(config.to as Record<string, string | null>);
 
-            DOM.sink.addListener(el, "transitionend", finish, { once: true });
+            DOM.sink.addListener(el, "transitionend",   finish,        { once: true });
+            DOM.sink.addListener(el, "transitionstart", rearmFallback, { once: true });
             timerId = DOM.sink.setTimeout(finish, config.durationMs + fallback);
         };
 
