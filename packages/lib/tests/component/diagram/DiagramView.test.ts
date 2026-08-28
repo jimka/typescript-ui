@@ -122,6 +122,31 @@ function movedRootResult(): DiagramLayoutResult {
     };
 }
 
+/** A replacement graph laid out far from the origin — entirely off screen from a pan bounds-centred on `fixedResult()`. */
+function offScreenResult(): DiagramLayoutResult {
+    return {
+        nodes: [
+            { id: 'a', x: 40000, y: 20000, width: 60, height: 30 },
+            { id: 'b', x: 40200, y: 20400, width: 60, height: 30 },
+        ],
+        edges: [],
+        width:  80000,
+        height: 40000,
+    };
+}
+
+/** A replacement graph whose one node's left edge lands exactly on the prior pan's viewport right edge — on screen by an inclusive intersection. */
+function edgeTouchingResult(): DiagramLayoutResult {
+    return {
+        nodes: [
+            { id: 'a', x: 720, y: 400, width: 60, height: 30 },
+        ],
+        edges: [],
+        width:  800,
+        height: 500,
+    };
+}
+
 /** Parses a `translate(Xpx, Ypx) scale(Z)` transform string into its parts. */
 function parseTransform(transform: string): { panX: number; panY: number; zoom: number } {
     const match = transform.match(/^translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\((-?[\d.]+)\)$/);
@@ -736,6 +761,149 @@ describe('DiagramView — initial view is centred, matching resetView', () => {
         await flush();
 
         expect(view._contentHost.getTransform()).toBe('translate(99px, 77px) scale(1)');
+    });
+});
+
+describe('DiagramView — a re-layout that lands off screen re-centres', () => {
+    /**
+     * A two-call stub whose first layout settles on `fixedResult()` and whose
+     * second layout resolves (or rejects) to `second` — the shape already
+     * used at lines 2461 and 3196.
+     */
+    function twoCallStub(second: () => Promise<DiagramLayoutResult>): StubEngine {
+        let call = 0;
+
+        return {
+            layout: (): Promise<DiagramLayoutResult> => {
+                call += 1;
+
+                return call === 1 ? Promise.resolve(fixedResult()) : second();
+            },
+            dispose: (): void => {},
+        } as unknown as StubEngine;
+    }
+
+    it('a setData whose graph lands entirely off screen re-centres on the graph bounds', async () => {
+        stubEngine = twoCallStub(() => Promise.resolve(offScreenResult()));
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+
+        view.setData(simpleGraph());
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(-39360px, -19600px) scale(1)');
+    });
+
+    it('the same swap centres the focus node when the new graph has one', async () => {
+        stubEngine = twoCallStub(() => Promise.resolve(offScreenResult()));
+
+        const view = new StubDiagramView({ data: simpleGraph(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(600px, 365px) scale(1)');
+
+        view.setData(simpleGraph());
+        await flush();
+
+        // Node 'a' is at (40000, 20000, 60, 30) → centre (40030, 20015).
+        expect(view._contentHost.getTransform()).toBe('translate(-39390px, -19615px) scale(1)');
+    });
+
+    it('the recovery mounts the new graph\'s nodes', async () => {
+        stubEngine = twoCallStub(() => Promise.resolve(offScreenResult()));
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        view.setData(simpleGraph());
+        await flush();
+
+        expect(view._residentIds).toEqual(new Set(['a', 'b']));
+    });
+
+    it('the recovery never changes the zoom', async () => {
+        stubEngine = twoCallStub(() => Promise.resolve(offScreenResult()));
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        view.setData(simpleGraph());
+        await flush();
+
+        expect(view.getZoom()).toBe(1);
+    });
+
+    it('a single node touching the viewport edge is enough to keep the pan', async () => {
+        stubEngine = twoCallStub(() => Promise.resolve(edgeTouchingResult()));
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+
+        view.setData(simpleGraph());
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+    });
+
+    it('a new graph with no nodes leaves the flag alone', async () => {
+        stubEngine = twoCallStub(() => Promise.resolve({ nodes: [], edges: [], width: 0, height: 0 }));
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        view.setData({ nodes: [], edges: [] });
+        await flush();
+
+        expect(view._needsInitialCentre).toBe(false);
+    });
+
+    it('a failed layout never re-centres', async () => {
+        stubEngine = twoCallStub(() => Promise.reject(new Error('elkjs unavailable')));
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+
+        view.setData(simpleGraph());
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+    });
+
+    it('panning the graph off screen by hand does not snap back', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        view._panX = 90000;
+        view._panY = 90000;
+        view.applyTransformToHost();
+
+        expect(view._contentHost.getTransform()).toBe('translate(90000px, 90000px) scale(1)');
+        expect(view._needsInitialCentre).toBe(false);
     });
 });
 

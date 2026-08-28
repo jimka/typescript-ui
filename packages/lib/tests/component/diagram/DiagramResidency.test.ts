@@ -1,16 +1,18 @@
 //
-// Offline coverage for the three pure functions behind DiagramView and
+// Offline coverage for the four pure functions behind DiagramView and
 // DiagramEdgeLayer's shared residency window: `inflateRect` (grows a
 // rectangle by a fraction of its own extent), `residencyNeedsRefresh` (the
-// hysteresis gate deciding when the residency rect must be recomputed), and
+// hysteresis gate deciding when the residency rect must be recomputed),
 // `computeResidentIds` (the intersection test the residency pass
-// mounts/unmounts, or draws/releases, from). See
+// mounts/unmounts, or draws/releases, from), and `rectsIntersect` /
+// `anyRectIntersects` (the shared box-overlap predicate `computeResidentIds`
+// and `DiagramView`'s off-screen floor both build on). See
 // plans/implemented/diagram-node-virtualization.md's Architecture Decisions
 // for the viewport-sized, hysteresis-placed rationale these mirror from
 // `computeColumnWindowSize` / `computeColumnWindow`.
 //
 import { describe, it, expect } from 'vitest';
-import { inflateRect, residencyNeedsRefresh, computeResidentIds } from '~/component/diagram/DiagramResidency';
+import { inflateRect, residencyNeedsRefresh, computeResidentIds, rectsIntersect, anyRectIntersects } from '~/component/diagram/DiagramResidency';
 import type { DiagramRect } from '~/component/diagram/DiagramResidency';
 
 describe('inflateRect', () => {
@@ -117,5 +119,49 @@ describe('computeResidentIds', () => {
         const rects = new Map([['a', { x: 100, y: 100, width: 0, height: 0 }]]);
 
         expect(computeResidentIds(['a'], rects, residency)).toEqual(new Set(['a']));
+    });
+});
+
+describe('rectsIntersect', () => {
+    it('returns true for two overlapping boxes', () => {
+        expect(rectsIntersect({ x: 0, y: 0, width: 100, height: 100 }, { x: 50, y: 50, width: 100, height: 100 })).toBe(true);
+    });
+
+    it('returns true for boxes touching edge-to-edge (inclusive intersection)', () => {
+        expect(rectsIntersect({ x: 0, y: 0, width: 10, height: 10 }, { x: 10, y: 0, width: 10, height: 10 })).toBe(true);
+    });
+
+    it('returns false for boxes separated on x only', () => {
+        expect(rectsIntersect({ x: 0, y: 0, width: 10, height: 10 }, { x: 11, y: 0, width: 10, height: 10 })).toBe(false);
+    });
+
+    it('returns false for boxes separated on y only', () => {
+        expect(rectsIntersect({ x: 0, y: 0, width: 10, height: 10 }, { x: 0, y: 11, width: 10, height: 10 })).toBe(false);
+    });
+});
+
+describe('anyRectIntersects', () => {
+    const area: DiagramRect = { x: 0, y: 0, width: 100, height: 100 };
+
+    it('returns false for an empty iterable', () => {
+        expect(anyRectIntersects([], area)).toBe(false);
+    });
+
+    it('returns true when one box out of several overlaps', () => {
+        const rects: DiagramRect[] = [
+            { x: 500, y: 500, width: 10, height: 10 },
+            { x: 50, y: 50, width: 10, height: 10 },
+        ];
+
+        expect(anyRectIntersects(rects, area)).toBe(true);
+    });
+
+    it('returns false when no box overlaps', () => {
+        const rects: DiagramRect[] = [
+            { x: 500, y: 500, width: 10, height: 10 },
+            { x: -500, y: -500, width: 10, height: 10 },
+        ];
+
+        expect(anyRectIntersects(rects, area)).toBe(false);
     });
 });

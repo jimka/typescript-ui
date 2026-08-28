@@ -58,6 +58,20 @@ export function residencyNeedsRefresh(committed: DiagramRect | null, live: Diagr
 }
 
 /**
+ * Whether two boxes overlap; inclusive, so edge-to-edge counts.
+ *
+ * @param a - The first box.
+ * @param b - The second box.
+ * @returns Whether `a` and `b` overlap.
+ *
+ * @internal
+ */
+export function rectsIntersect(a: DiagramRect, b: DiagramRect): boolean {
+    return a.x <= b.x + b.width  && a.x + a.width  >= b.x
+        && a.y <= b.y + b.height && a.y + a.height >= b.y;
+}
+
+/**
  * Every id whose box intersects `residency`; an id with no entry in `rects`
  * is always resident (nothing has placed it yet, so it has no box to test,
  * and it cannot be culled). Intersection is inclusive — a box touching the
@@ -72,8 +86,6 @@ export function residencyNeedsRefresh(committed: DiagramRect | null, live: Diagr
  */
 export function computeResidentIds(ids: Iterable<string>, rects: Map<string, DiagramRect>, residency: DiagramRect): Set<string> {
     const resident = new Set<string>();
-    const residencyRight  = residency.x + residency.width;
-    const residencyBottom = residency.y + residency.height;
 
     for (const id of ids) {
         const rect = rects.get(id);
@@ -84,13 +96,29 @@ export function computeResidentIds(ids: Iterable<string>, rects: Map<string, Dia
             continue;
         }
 
-        const intersects = rect.x <= residencyRight && rect.x + rect.width >= residency.x
-            && rect.y <= residencyBottom && rect.y + rect.height >= residency.y;
-
-        if (intersects) {
+        if (rectsIntersect(rect, residency)) {
             resident.add(id);
         }
     }
 
     return resident;
+}
+
+/**
+ * Whether any box in `rects` overlaps `area`.
+ *
+ * @param rects - Every box to test.
+ * @param area - The area to test each box against.
+ * @returns Whether at least one box in `rects` overlaps `area`.
+ *
+ * @internal
+ */
+export function anyRectIntersects(rects: Iterable<DiagramRect>, area: DiagramRect): boolean {
+    for (const rect of rects) {
+        if (rectsIntersect(rect, area)) {
+            return true;
+        }
+    }
+
+    return false;
 }

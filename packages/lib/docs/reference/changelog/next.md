@@ -432,6 +432,15 @@ consumer action is needed.
   running once per frame. This removes the stutter a window holding a wide
   virtualized table showed when resized on a large display. No consumer
   action is needed.
+- **`DiagramView` no longer renders a blank canvas after a `setData` whose
+  replacement graph is laid out at a far larger scale than the one the view
+  is panned into.** The preserved pan and zoom used to have no floor, so a
+  graph swap that landed entirely outside the viewport left a correctly
+  computed ELK layout with nothing on screen until the built-in Fit-to-view
+  control was clicked. `applyLayout` now re-arms the one-shot initial
+  centring whenever no node of the newly promoted graph overlaps the
+  viewport, recovering the same placement a freshly constructed view would
+  show. No consumer action is needed.
 
 ### Table
 
