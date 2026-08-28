@@ -92,6 +92,18 @@ describe('Animation cancellation', () => {
         (call![2] as (event: unknown) => void)({ propertyName });
     }
 
+    /**
+     * Fires the `transitionstart` that `play` registered on `el`, taken from
+     * the recorded addListener call for the same reason as `fireTransitionEnd`.
+     */
+    function fireTransitionStart(spy: ReturnType<typeof vi.spyOn>, propertyName = 'opacity'): void {
+        const call = spy.mock.calls.find((args: unknown[]) => args[1] === 'transitionstart');
+
+        expect(call).toBeDefined();
+
+        (call![2] as (event: unknown) => void)({ propertyName });
+    }
+
     /** Style writes recorded since `from`, flattened to their style patches. */
     function stylesSince(from: number): Array<Record<string, string | null>> {
         return sink.writes
@@ -136,6 +148,40 @@ describe('Animation cancellation', () => {
             });
 
             vi.advanceTimersByTime(PAST_FALLBACK_MS);
+
+            expect(onComplete).toHaveBeenCalledTimes(1);
+        });
+
+        // The fallback exists for a transition that never finishes, not for one
+        // that starts late. A busy main thread can leave the browser unable to
+        // reach a style recalculation for a frame or more after the `to` styles
+        // are written — measured at ~100 ms on the wide-table window's
+        // post-maximize frame — so a deadline counted from the write lands
+        // mid-transition and `finish` cuts it short by clearing `transition`.
+        it('re-arms the fallback from the moment the transition actually starts', () => {
+            const onComplete = vi.fn();
+            const listen     = vi.spyOn(DOM.sink, 'addListener');
+
+            Animation.play(makeElement(), {
+                to:         { opacity: '1' },
+                durationMs: DURATION_MS,
+                properties: ['opacity'],
+                onComplete,
+            });
+
+            // The transition only gets going 90 ms after it was armed.
+            vi.advanceTimersByTime(90);
+            fireTransitionStart(listen);
+
+            // Past the write-time deadline (140 ms) with the transition still
+            // running: completing here would truncate it at 60 of its 100 ms.
+            vi.advanceTimersByTime(60);
+
+            expect(onComplete).not.toHaveBeenCalled();
+
+            // The re-armed deadline is 90 + 100 + 40 = 230 ms; the fallback
+            // still fires, just from the real start.
+            vi.advanceTimersByTime(100);
 
             expect(onComplete).toHaveBeenCalledTimes(1);
         });

@@ -29,6 +29,36 @@ import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
 // the reparent.
 const WINDOW_BODY_INSET_PX:     number = 4;
 const WINDOW_ANIM_DURATION_MS: number = 150;
+// Size delta, in pixels on the larger-changing axis, above which a window-state
+// transition swaps its plain rect tween for the fade path below. Below the
+// threshold every tween frame relays out the body's real content, which is
+// cheap for an ordinary window; above it, a virtualized body (a wide table)
+// would have to build a burst of newly-revealed cells on every frame, which
+// reads as a stutter, so the fade path instead pauses the body's own layout
+// for the glide and pays for that relayout once, when it lands. 960 px is
+// half a 1920-wide screen: a sweep that reveals more than that much new
+// content in 150 ms is where that per-frame cost would start to show.
+const WINDOW_FADE_THRESHOLD_PX: number = 960;
+// Duration of each leg of that fade. 100 ms (this constant's original value)
+// armed and completed correctly but read as an instant cut rather than a
+// fade: a handful of frames isn't enough for a human eye to register motion
+// rather than a flicker. 200 ms per leg is long enough to read as a
+// deliberate fade.
+const WINDOW_FADE_DURATION_MS: number = 200;
+// Animation.play's fallback-timer grace period for the fade-in leg only (see
+// fadeRectSwap), applied on top of WINDOW_FADE_DURATION_MS. resumeLayout's
+// relayout runs synchronously just before this leg is armed, and for
+// expensive content (a wide virtualized table can take several hundred
+// milliseconds to lay out its cells) that leaves the main thread too busy to
+// reach the style recalculation that starts the transition before
+// Animation.play's own default 40 ms buffer already expires — its pre-rearm
+// fallback then fires first, clearing the fade before the browser ever
+// paints a frame of it, so the "fade" reads as an instant pop. A late
+// transitionstart already re-arms the deadline from its own real start, so
+// this only pads how long the pre-rearm timer waits for that first signal
+// before giving up; it never delays a transition that starts and completes
+// on time.
+const WINDOW_FADE_IN_FALLBACK_BUFFER_MS: number = 1000;
 const SNAP_DOCK_GAP_PX:         number = 4;
 const DEFAULT_MIN_DOCK_WIDTH_PX: number = 200;
 // Must-stay-visible slab of a window edge, used only when constrainToViewport is
@@ -254,6 +284,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private _restoreRect:       WindowRect | null = null;
     private _normalMinSize:     Size | null = null;
     private _bodyHost:          Component | null = null;
+    /** True while a fade owns the body host's inline opacity. See `endBodyFade`. */
+    private _bodyFadeActive: boolean = false;
 
     /** Rail this window minimizes into, or null for the built-in bottom strip. */
     private _rail:              Rail | null = null;
@@ -1046,9 +1078,15 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /**
      * Sets the lifecycle state. Tweens geometry between the current rect and
-     * the rect implied by the target state over `WINDOW_ANIM_DURATION_MS`.
-     * Under `prefers-reduced-motion: reduce` the tween collapses to a single
-     * synchronous commit.
+     * the rect implied by the target state over `WINDOW_ANIM_DURATION_MS`,
+     * unless that rect changes the window's width or height by more than a
+     * fixed pixel threshold — a maximize/minimize/restore that reveals a lot
+     * of new content at once instead fades the window's body out, glides to
+     * the target rect over the same duration with the body's own layout
+     * paused, and fades the body back in, so a wide or tall body is only
+     * laid out once — when the glide lands — rather than on every glide
+     * frame. Under `prefers-reduced-motion: reduce` either path collapses to
+     * a single synchronous commit.
      *
      * @param state - One of `"normal"`, `"minimized"`, or `"maximized"`.
      *
@@ -2383,17 +2421,26 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
+     * Returns the window's body host, finding it lazily on first use and
+     * caching the result in `_bodyHost`.
+     *
+     * @returns The body host component, or `null`.
+     */
+    private resolveBodyHost(): Component | null {
+        if (!this._bodyHost) {
+            this._bodyHost = this.findBodyHost();
+        }
+
+        return this._bodyHost;
+    }
+
+    /**
      * Shows or hides the window's body host, finding it lazily on first use.
      *
      * @param displayed - True to show the body, false to hide it.
      */
     private setBodyHostDisplayed(displayed: boolean): void {
-        if (!this._bodyHost) {
-            this._bodyHost = this.findBodyHost();
-        }
-        if (this._bodyHost) {
-            this._bodyHost.setDisplayed(displayed);
-        }
+        this.resolveBodyHost()?.setDisplayed(displayed);
     }
 
     /**
@@ -2628,6 +2675,202 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
+     * Animates the window to `target`, choosing between two strategies
+     * depending on how large the size change is. A transition whose width or
+     * height changes by more than `WINDOW_FADE_THRESHOLD_PX` fades the body
+     * host out, glides to `target` with the body host's own layout paused,
+     * runs the one relayout that deferred, then fades the body host back in;
+     * a smaller transition tweens the rect over `WINDOW_ANIM_DURATION_MS`
+     * without pausing anything, as before — its body is cheap enough to
+     * relayout every frame. `prefers-reduced-motion` collapses either path to
+     * one synchronous commit at `target`.
+     *
+     * @param target - The rect to animate to.
+     * @param onDone - Optional callback fired once the animation completes.
+     */
+    private animateRect(target: WindowRect, onDone?: () => void): void {
+        this.beginStateAnimation();
+
+        if (this.isLargeRectChange(target)) {
+            this.fadeRectSwap(target, onDone);
+        } else {
+            this.tweenRect(target, onDone);
+        }
+    }
+
+    /**
+     * Whether `target` changes the window's width or height, relative to its
+     * current rect, by more than `WINDOW_FADE_THRESHOLD_PX`. Position deltas
+     * are ignored.
+     *
+     * @param target - The candidate target rect.
+     * @returns True when the larger of the two size deltas exceeds the fade
+     *   threshold.
+     */
+    private isLargeRectChange(target: WindowRect): boolean {
+        const current = this.currentRect();
+
+        return Math.max(
+            Math.abs(target.width  - current.width),
+            Math.abs(target.height - current.height),
+        ) > WINDOW_FADE_THRESHOLD_PX;
+    }
+
+    /**
+     * Fades the body host out, glides the window to `target` over
+     * `WINDOW_ANIM_DURATION_MS` with the body host's own layout paused, runs
+     * the one relayout that glide deferred, then fades the body host back
+     * in. Used by `animateRect` for a large size change: pausing the body
+     * host means every glide frame's `commitRect` → `doLayout` still
+     * repositions the chrome (the header and the eight resize strips) and
+     * the body's own box — both cheap — without recursing into the body's
+     * own potentially expensive relayout (e.g. a wide table rebuilding its
+     * column window, measured at several hundred ms), so the chrome tracks
+     * the glide in real time while that cost is paid once, when it lands,
+     * instead of once per frame.
+     *
+     * @param target - The rect to glide to.
+     * @param onDone - Optional callback fired once the glide lands and its
+     *   deferred relayout runs, before the fade-in starts.
+     */
+    private fadeRectSwap(target: WindowRect, onDone?: () => void): void {
+        const host    = this.resolveBodyHost();
+        const element = host?.getElement();
+
+        // No body to fade (a chrome-only window, or one not rendered yet): the
+        // swap is just the jump.
+        if (!host || !element) {
+            this.commitRect(target);
+            onDone?.();
+
+            return;
+        }
+
+        this._bodyFadeActive = true;
+        this._stateAnimHandle = Animation.play(element, {
+            to:         { opacity: "0" },
+            durationMs: WINDOW_FADE_DURATION_MS,
+            properties: ["opacity"],
+            onComplete: (): void => {
+                // Paused for the whole glide below, not just its landing
+                // commit — see this method's own doc comment.
+                // beginStateAnimation resumes this if a later transition
+                // supersedes it first.
+                host.pauseLayout();
+
+                this._stateAnimHandle = Animation.tween<WindowRect>({
+                    from:       this.currentRect(),
+                    to:         target,
+                    durationMs: WINDOW_ANIM_DURATION_MS,
+                    onStep:     (rect: WindowRect): void => this.commitRect(rect),
+                    onComplete: (): void => {
+                        // The one relayout the glide above deferred, paid now
+                        // that the window is sitting at its final rect.
+                        host.resumeLayout();
+                        onDone?.();
+
+                        // `onDone` may have hidden the body outright (the
+                        // minimized branch does). Leave it faded rather than
+                        // pay for a fade-in nobody will see — the next
+                        // transition that shows it again fades it in as part
+                        // of its own sequence.
+                        if (!host.isDisplayed()) {
+                            this._stateAnimHandle = null;
+                            this.endBodyFade();
+
+                            return;
+                        }
+
+                        this.startFadeIn(element);
+                    },
+                });
+            },
+        });
+    }
+
+    /**
+     * Fades `element` — the body host's element, left invisible by
+     * `fadeRectSwap`'s fade-out — back in.
+     *
+     * @param element - The body host's element handle.
+     */
+    private startFadeIn(element: Handle): void {
+        // No `from` here: the fade-out above already committed opacity "0"
+        // onto `element` before calling this method (via its own
+        // applyTransitionAndTo, whether it finished through transitionend or
+        // the fallback timer), and nothing between there and here touches
+        // opacity. Restating a `from` that already holds would be a no-op
+        // write, but Animation.play still burns two `requestAnimationFrame`
+        // turns proving it painted — turns that can run far longer than
+        // their nominal ~33ms right after a relayout, which measured as a
+        // 140+ms dead stall with the body pinned at invisible for no visible
+        // reason.
+        this._stateAnimHandle = Animation.play(element, {
+            to:         { opacity: "1" },
+            durationMs: WINDOW_FADE_DURATION_MS,
+            properties: ["opacity"],
+            // See WINDOW_FADE_IN_FALLBACK_BUFFER_MS: the relayout just
+            // before this call can leave the main thread too busy to start
+            // this transition within Animation.play's default 40 ms buffer,
+            // so the fallback needs more patience here than the fade-out leg
+            // (which isn't preceded by a relayout).
+            fallbackBufferMs: WINDOW_FADE_IN_FALLBACK_BUFFER_MS,
+            onComplete: (): void => {
+                this._stateAnimHandle = null;
+                this.endBodyFade();
+            },
+        });
+    }
+
+    /**
+     * Cancels whatever window-state animation is currently in flight and, if
+     * it was a fade, restores the body host's opacity. Run at the start of
+     * every `animateRect` call so a fade abandoned mid-flight never leaves
+     * the body host stranded at a partial opacity — or, if it was cancelled
+     * mid-glide before its landing resumed the body host's layout (see
+     * `fadeRectSwap`), stranded with that layout still paused.
+     */
+    private beginStateAnimation(): void {
+        this._stateAnimHandle?.cancel();
+        this._stateAnimHandle = null;
+        this.endBodyFade();
+
+        const host = this.resolveBodyHost();
+        if (host?.isLayoutPaused()) {
+            host.resumeLayout();
+        }
+    }
+
+    /**
+     * Clears the body host's inline opacity if a fade currently owns it.
+     * A no-op when no fade is active.
+     */
+    private endBodyFade(): void {
+        if (!this._bodyFadeActive) {
+            return;
+        }
+
+        this._bodyFadeActive = false;
+        this.resolveBodyHost()?.clearOpacity();
+    }
+
+    /**
+     * Writes `rect`'s `x`, `y`, `width`, `height` onto the window and lays it
+     * out in a single synchronous pass.
+     *
+     * @param rect - The rect to commit.
+     */
+    private commitRect(rect: WindowRect): void {
+        this.setAutoCommitStyle(false);
+        this.setX(rect.x);
+        this.setY(rect.y);
+        this.setWidth(rect.width);
+        this.setHeight(rect.height);
+        this.doLayout();
+        this.setAutoCommitStyle(true);
+    }
+
+    /**
      * Tweens the window's `x`, `y`, `width`, `height` from the current rect to
      * `target` over `WINDOW_ANIM_DURATION_MS`. Honours `prefers-reduced-motion`
      * by skipping straight to the final rect in one frame.
@@ -2635,25 +2878,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @param target - The rect to tween to.
      * @param onDone - Optional callback fired once the tween completes.
      */
-    private animateRect(target: WindowRect, onDone?: () => void): void {
-        this._stateAnimHandle?.cancel();
-        this._stateAnimHandle = null;
-
-        const commit = (rect: WindowRect): void => {
-            this.setAutoCommitStyle(false);
-            this.setX(rect.x);
-            this.setY(rect.y);
-            this.setWidth(rect.width);
-            this.setHeight(rect.height);
-            this.doLayout();
-            this.setAutoCommitStyle(true);
-        };
-
+    private tweenRect(target: WindowRect, onDone?: () => void): void {
         this._stateAnimHandle = Animation.tween<WindowRect>({
             from:       this.currentRect(),
             to:         target,
             durationMs: WINDOW_ANIM_DURATION_MS,
-            onStep:     commit,
+            onStep:     (rect: WindowRect): void => this.commitRect(rect),
             onComplete: (): void => {
                 this._stateAnimHandle = null;
                 onDone?.();
