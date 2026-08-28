@@ -665,7 +665,7 @@ describe('DiagramView — resetView (behaviour 7)', () => {
 });
 
 describe('DiagramView — initial view is centred, matching resetView', () => {
-    it('centres the graph on the first layout instead of showing its top-left corner', async () => {
+    it('fits the graph on the first layout by default, instead of showing its top-left corner', async () => {
         stubEngine = new StubEngine(fixedResult());
 
         const view = new StubDiagramView({ data: simpleGraph() }) as any;
@@ -675,14 +675,20 @@ describe('DiagramView — initial view is centred, matching resetView', () => {
 
         await flush();
 
-        // Exactly where resetView() puts it: (1280−160)/2, (800−230)/2.
-        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+        // fitOnLoad now defaults to true: the first centring fits instead of
+        // holding zoom 1. The fit zoom is 800/230, not exactly representable.
+        const expectedZoom = Math.min(1280 / 160, 800 / 230);
+        const { panX, panY, zoom } = parseTransform(view._contentHost.getTransform());
+
+        expect(zoom).toBeCloseTo(expectedZoom, 5);
+        expect(panX).toBeCloseTo((1280 - 160 * expectedZoom) / 2, 3);
+        expect(panY).toBeCloseTo((800 - 230 * expectedZoom) / 2, 3);
     });
 
     it('keeps a consumer-configured zoom rather than resetting it to the default', async () => {
         stubEngine = new StubEngine(fixedResult());
 
-        const view = new StubDiagramView({ data: simpleGraph(), zoom: 2 }) as any;
+        const view = new StubDiagramView({ data: simpleGraph(), zoom: 2, fitOnLoad: false }) as any;
 
         view.setSize({ width: 1280, height: 800 });
 
@@ -711,7 +717,12 @@ describe('DiagramView — initial view is centred, matching resetView', () => {
         view.setSize({ width: 1280, height: 800 });
         view.doLayout();
 
-        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+        const expectedZoom = Math.min(1280 / 160, 800 / 230);
+        const { panX, panY, zoom } = parseTransform(view._contentHost.getTransform());
+
+        expect(zoom).toBeCloseTo(expectedZoom, 5);
+        expect(panX).toBeCloseTo((1280 - 160 * expectedZoom) / 2, 3);
+        expect(panY).toBeCloseTo((800 - 230 * expectedZoom) / 2, 3);
 
         vi.restoreAllMocks();
     });
@@ -739,7 +750,12 @@ describe('DiagramView — initial view is centred, matching resetView', () => {
         view.setSize({ width: 1280, height: 800 });
         view.doLayout();
 
-        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+        const expectedZoom = Math.min(1280 / 160, 800 / 230);
+        const { panX, panY, zoom } = parseTransform(view._contentHost.getTransform());
+
+        expect(zoom).toBeCloseTo(expectedZoom, 5);
+        expect(panX).toBeCloseTo((1280 - 160 * expectedZoom) / 2, 3);
+        expect(panY).toBeCloseTo((800 - 230 * expectedZoom) / 2, 3);
 
         vi.restoreAllMocks();
     });
@@ -752,7 +768,8 @@ describe('DiagramView — initial view is centred, matching resetView', () => {
         view.setSize({ width: 1280, height: 800 });
         await flush();
 
-        // Stand in for a pan the user has dragged to since the first render.
+        // The first centring already fit (fitOnLoad defaults to true), so the
+        // zoom here is the fit zoom, not 1 — only the pan is overwritten below.
         view._panX = 99;
         view._panY = 77;
         view.applyTransformToHost();
@@ -760,7 +777,254 @@ describe('DiagramView — initial view is centred, matching resetView', () => {
         view.setData(simpleGraph());
         await flush();
 
-        expect(view._contentHost.getTransform()).toBe('translate(99px, 77px) scale(1)');
+        const expectedZoom = Math.min(1280 / 160, 800 / 230);
+        const { panX, panY, zoom } = parseTransform(view._contentHost.getTransform());
+
+        expect(zoom).toBeCloseTo(expectedZoom, 5);
+        expect(panX).toBe(99);
+        expect(panY).toBe(77);
+    });
+});
+
+describe('DiagramView — fitOnLoad fits the graph on the first centring', () => {
+    it('an explicit fitOnLoad: true fits the graph, sized before the layout lands', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: true }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        const expectedZoom = Math.min(1280 / 160, 800 / 230);
+        const { panX, panY, zoom } = parseTransform(view._contentHost.getTransform());
+
+        expect(zoom).toBeCloseTo(expectedZoom, 5);
+        expect(panX).toBeCloseTo((1280 - 160 * expectedZoom) / 2, 3);
+        expect(panY).toBeCloseTo((800 - 230 * expectedZoom) / 2, 3);
+    });
+
+    it('the default opening matches what an explicit fitOnLoad: true produces, and an explicit ' +
+       'zoomToFit() afterward changes nothing', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const fitted = new StubDiagramView({ data: simpleGraph(), fitOnLoad: true }) as any;
+
+        fitted.setSize({ width: 1280, height: 800 });
+
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        const expectedTransform = fitted._contentHost.getTransform();
+
+        expect(view._contentHost.getTransform()).toBe(expectedTransform);
+
+        // Idempotent: an explicit zoomToFit() call afterward changes nothing.
+        view.zoomToFit();
+
+        expect(view._contentHost.getTransform()).toBe(expectedTransform);
+    });
+
+    it('fitOnLoad: true overrides a configured zoom', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: true, zoom: 2 }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        const expectedZoom = Math.min(1280 / 160, 800 / 230);
+
+        expect(view.getZoom()).toBeCloseTo(expectedZoom, 5);
+        expect(parseTransform(view._contentHost.getTransform()).zoom).toBeCloseTo(expectedZoom, 5);
+    });
+
+    it('opting out with fitOnLoad restores the pre-this-plan opening', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: false }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+    });
+
+    it('initialFocusNode wins over an explicit fitOnLoad: true', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: true, initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        // Node 'a' is at (10, 20, 60, 30) → centre (40, 35), at zoom 1 —
+        // unchanged from the existing initialFocusNode test.
+        expect(view._contentHost.getTransform()).toBe('translate(600px, 365px) scale(1)');
+    });
+
+    it('a focusNode call before the first centring also wins over the default fit', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        view.focusNode('b');
+
+        vi.spyOn(DOM.source, 'isConnected').mockReturnValue(true);
+        view.getElement(true);
+        view.setSize({ width: 1280, height: 800 });
+        view.doLayout();
+
+        // Node 'b' is at (100, 200, 60, 30) → centre (130, 215), at zoom 1.
+        expect(view._contentHost.getTransform()).toBe('translate(510px, 185px) scale(1)');
+        expect(view._hasCentredOnce).toBe(true);
+
+        vi.restoreAllMocks();
+    });
+
+    it('fitOnLoad is one-shot: a later setData does not re-fit', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: true }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        const beforeTransform = view._contentHost.getTransform();
+
+        view.setData(simpleGraph());
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe(beforeTransform);
+    });
+
+    it('a user pan survives a later setData, keeping the fit zoom', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: true }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        const expectedZoom = Math.min(1280 / 160, 800 / 230);
+
+        // Stand in for a pan the user has dragged to since the fitted opening.
+        view._panX = 99;
+        view._panY = 77;
+        view.applyTransformToHost();
+
+        view.setData(simpleGraph());
+        await flush();
+
+        const { panX, panY, zoom } = parseTransform(view._contentHost.getTransform());
+
+        expect(zoom).toBeCloseTo(expectedZoom, 5);
+        expect(panX).toBe(99);
+        expect(panY).toBe(77);
+    });
+
+    it('the off-screen floor recovers by holding the fit zoom, not re-fitting', async () => {
+        let call = 0;
+
+        stubEngine = {
+            layout: (): Promise<DiagramLayoutResult> => {
+                call += 1;
+
+                return call === 1 ? Promise.resolve(fixedResult()) : Promise.resolve(offScreenResult());
+            },
+            dispose: (): void => {},
+        } as unknown as StubEngine;
+
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: true }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        const expectedZoom = Math.min(1280 / 160, 800 / 230);
+
+        expect(view.getZoom()).toBeCloseTo(expectedZoom, 5);
+
+        view.setData(simpleGraph());
+        await flush();
+
+        const fitZoom = view.getZoom();
+
+        expect(fitZoom).toBeCloseTo(expectedZoom, 5);
+
+        const { panX, panY, zoom } = parseTransform(view._contentHost.getTransform());
+
+        expect(zoom).toBeCloseTo(fitZoom, 10);
+        expect(panX).toBeCloseTo((1280 - 80000 * fitZoom) / 2, 3);
+        expect(panY).toBeCloseTo((800 - 40000 * fitZoom) / 2, 3);
+    });
+
+    it('resetView() never fits', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: true }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        view.resetView();
+
+        expect(view.getZoom()).toBe(1);
+        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+    });
+
+    it('resetView() before the view has ever centred still never fits', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: true }) as any;
+
+        // No setSize: the layout lands on an unsized view, so the first
+        // centring has not happened yet when resetView is called.
+        await flush();
+
+        view.resetView();
+
+        expect(view._hasCentredOnce).toBe(true);
+        expect(view._needsInitialCentre).toBe(true);
+
+        vi.spyOn(DOM.source, 'isConnected').mockReturnValue(true);
+        view.getElement(true);
+        view.setSize({ width: 1280, height: 800 });
+        view.doLayout();
+
+        expect(view.getZoom()).toBe(1);
+        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+
+        vi.restoreAllMocks();
+    });
+
+    it('a first layout that itself lands off screen still fits', async () => {
+        stubEngine = new StubEngine(offScreenResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: true }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        // 1280/80000 and 800/40000 both terminate exactly — no toBeCloseTo needed.
+        expect(view._contentHost.getTransform()).toBe('translate(0px, 80px) scale(0.016)');
+    });
+
+    it('_hasCentredOnce is set by a non-fitting centring too', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: false }) as any;
+
+        expect(view._hasCentredOnce).toBe(false);
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        expect(view._hasCentredOnce).toBe(true);
     });
 });
 
@@ -786,7 +1050,7 @@ describe('DiagramView — a re-layout that lands off screen re-centres', () => {
     it('a setData whose graph lands entirely off screen re-centres on the graph bounds', async () => {
         stubEngine = twoCallStub(() => Promise.resolve(offScreenResult()));
 
-        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: false }) as any;
 
         view.setSize({ width: 1280, height: 800 });
         await flush();
@@ -819,7 +1083,7 @@ describe('DiagramView — a re-layout that lands off screen re-centres', () => {
     it('the recovery mounts the new graph\'s nodes', async () => {
         stubEngine = twoCallStub(() => Promise.resolve(offScreenResult()));
 
-        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: false }) as any;
 
         view.setSize({ width: 1280, height: 800 });
         await flush();
@@ -833,7 +1097,7 @@ describe('DiagramView — a re-layout that lands off screen re-centres', () => {
     it('the recovery never changes the zoom', async () => {
         stubEngine = twoCallStub(() => Promise.resolve(offScreenResult()));
 
-        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: false }) as any;
 
         view.setSize({ width: 1280, height: 800 });
         await flush();
@@ -847,7 +1111,7 @@ describe('DiagramView — a re-layout that lands off screen re-centres', () => {
     it('a single node touching the viewport edge is enough to keep the pan', async () => {
         stubEngine = twoCallStub(() => Promise.resolve(edgeTouchingResult()));
 
-        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: false }) as any;
 
         view.setSize({ width: 1280, height: 800 });
         await flush();
@@ -863,7 +1127,7 @@ describe('DiagramView — a re-layout that lands off screen re-centres', () => {
     it('a new graph with no nodes leaves the flag alone', async () => {
         stubEngine = twoCallStub(() => Promise.resolve({ nodes: [], edges: [], width: 0, height: 0 }));
 
-        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: false }) as any;
 
         view.setSize({ width: 1280, height: 800 });
         await flush();
@@ -877,7 +1141,7 @@ describe('DiagramView — a re-layout that lands off screen re-centres', () => {
     it('a failed layout never re-centres', async () => {
         stubEngine = twoCallStub(() => Promise.reject(new Error('elkjs unavailable')));
 
-        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: false }) as any;
 
         view.setSize({ width: 1280, height: 800 });
         await flush();
@@ -893,7 +1157,7 @@ describe('DiagramView — a re-layout that lands off screen re-centres', () => {
     it('panning the graph off screen by hand does not snap back', async () => {
         stubEngine = new StubEngine(fixedResult());
 
-        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: false }) as any;
 
         view.setSize({ width: 1280, height: 800 });
         await flush();
@@ -1773,7 +2037,7 @@ describe('DiagramView — initialFocusNode / focusNode', () => {
         vi.restoreAllMocks();
     });
 
-    it('falls back to the graph bounds when the focus id names no node in the graph', async () => {
+    it('falls back to fitting the graph bounds when the focus id names no node in the graph', async () => {
         stubEngine = new StubEngine(fixedResult());
 
         const view = new StubDiagramView({ data: simpleGraph(), initialFocusNode: 'nope' }) as any;
@@ -1781,10 +2045,17 @@ describe('DiagramView — initialFocusNode / focusNode', () => {
         view.setSize({ width: 1280, height: 800 });
         await flush();
 
-        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+        // fitOnLoad now defaults to true: the first centring fits instead of
+        // holding zoom 1. The fit zoom is 800/230, not exactly representable.
+        const expectedZoom = Math.min(1280 / 160, 800 / 230);
+        const { panX, panY, zoom } = parseTransform(view._contentHost.getTransform());
+
+        expect(zoom).toBeCloseTo(expectedZoom, 5);
+        expect(panX).toBeCloseTo((1280 - 160 * expectedZoom) / 2, 3);
+        expect(panY).toBeCloseTo((800 - 230 * expectedZoom) / 2, 3);
     });
 
-    it('centres the graph bounds, unchanged, when no initialFocusNode is configured', async () => {
+    it('fits the graph bounds by default when no initialFocusNode is configured', async () => {
         stubEngine = new StubEngine(fixedResult());
 
         const view = new StubDiagramView({ data: simpleGraph() }) as any;
@@ -1792,7 +2063,14 @@ describe('DiagramView — initialFocusNode / focusNode', () => {
         view.setSize({ width: 1280, height: 800 });
         await flush();
 
-        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+        // fitOnLoad now defaults to true: the first centring fits instead of
+        // holding zoom 1. The fit zoom is 800/230, not exactly representable.
+        const expectedZoom = Math.min(1280 / 160, 800 / 230);
+        const { panX, panY, zoom } = parseTransform(view._contentHost.getTransform());
+
+        expect(zoom).toBeCloseTo(expectedZoom, 5);
+        expect(panX).toBeCloseTo((1280 - 160 * expectedZoom) / 2, 3);
+        expect(panY).toBeCloseTo((800 - 230 * expectedZoom) / 2, 3);
     });
 
     it('is one-shot: a later setData does not re-yank a pan the user has since dragged to', async () => {
@@ -1818,7 +2096,7 @@ describe('DiagramView — initialFocusNode / focusNode', () => {
     it('focusNode centres a different node on a settled, sized view', async () => {
         stubEngine = new StubEngine(fixedResult());
 
-        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        const view = new StubDiagramView({ data: simpleGraph(), fitOnLoad: false }) as any;
 
         view.setSize({ width: 1280, height: 800 });
         await flush();
@@ -3222,7 +3500,7 @@ describe('DiagramView — node virtualization: only the resident set is mounted'
     it('focusNode mounts its target', async () => {
         stubEngine = new StubEngine(farResult());
 
-        const view = new StubDiagramView({ data: farGraph() }) as any;
+        const view = new StubDiagramView({ data: farGraph(), fitOnLoad: false }) as any;
 
         view.setSize({ width: 1280, height: 800 });
         await flush();
@@ -3639,7 +3917,7 @@ describe('DiagramView — level-of-detail rendering at low zoom', () => {
     it('at zoom 1 the view is not simplified, and residency mounts only the nodes near the viewport', async () => {
         stubEngine = new StubEngine(gridResult(220));
 
-        const view = new StubDiagramView({ data: gridGraph(220) }) as any;
+        const view = new StubDiagramView({ data: gridGraph(220), fitOnLoad: false }) as any;
 
         view.setSize({ width: 1280, height: 800 });
         await flush();

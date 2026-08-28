@@ -235,7 +235,11 @@ export interface DiagramViewOptions extends PanelOptions {
     minZoom?: number;
     /** Maximum zoom factor (default 4). */
     maxZoom?: number;
-    /** Initial zoom factor (default 1). */
+    /**
+     * Initial zoom factor (default 1). Overridden on the view's first
+     * successful centring by {@link DiagramViewOptions.fitOnLoad}'s default
+     * of `true`, unless `fitOnLoad: false` is passed or a focus node wins.
+     */
     zoom?: number;
     /** Show the built-in zoom / fit / reset control cluster (default true). */
     controls?: boolean;
@@ -243,11 +247,27 @@ export interface DiagramViewOptions extends PanelOptions {
     simplifyAtLowZoom?: boolean;
     /**
      * Id of the node the one-shot initial view centres on, instead of the
-     * graph's bounds. An id naming no node in the graph falls back to
-     * centring the bounds. The configured `zoom` is honoured, except that a
-     * focus node too large to fit the viewport lowers it until the node fits.
+     * graph's bounds. An id naming no node in the graph falls back to the
+     * bounds — fitted by default, per
+     * {@link DiagramViewOptions.fitOnLoad}, or held at the configured `zoom`
+     * when `fitOnLoad: false`. When the id does name a node, the configured
+     * `zoom` is honoured, except that a focus node too large to fit the
+     * viewport lowers it until the node fits.
      */
     initialFocusNode?: string;
+    /**
+     * Fit the whole graph to the viewport on the view's first centring,
+     * instead of holding the configured `zoom` (default `true`). The scale
+     * chosen is the one {@link DiagramView.zoomToFit} would choose — the
+     * largest at which the graph bounds fit both axes — so the view opens
+     * exactly as the built-in "Fit to view" control would leave it. Applies
+     * once, to the first centring that succeeds, and only when no focus node
+     * is set: {@link DiagramViewOptions.initialFocusNode} still wins, and
+     * neither a later `setData` nor the "Reset view" control is affected.
+     * Pass `false` to hold the configured `zoom` instead — the opening every
+     * `DiagramView` had before this option existed.
+     */
+    fitOnLoad?: boolean;
     /** Construction-time listener bag dispatched to {@link DiagramView.on}. */
     listeners?: {
         selection?:   (nodes: DiagramNodeData[]) => void;
@@ -396,6 +416,18 @@ class DiagramView extends Panel<DiagramViewOptions> {
      * at a very different scale never leaves the view showing an empty canvas.
      */
     private _needsInitialCentre: boolean = true;
+
+    /**
+     * Whether this view has ever completed a centring. Set by the first
+     * `tryInitialCentre` pass that actually centres, and forced by
+     * `resetView` before it re-arms, so a Reset click is never treated as a
+     * first load. Never cleared. Deliberately separate from
+     * `_needsInitialCentre`, which is a pending *request* that `resetView`,
+     * `focusNode`, and `rearmCentreIfOffScreen` all legitimately re-arm:
+     * this flag records that the first-load moment has passed, so the
+     * `fitOnLoad` option fits exactly once.
+     */
+    private _hasCentredOnce: boolean = false;
 
     /**
      * Id of the node the one-shot initial view centres on, instead of the
@@ -563,6 +595,9 @@ class DiagramView extends Panel<DiagramViewOptions> {
         // Cached only: dispatched into the runtime `_focusNodeId` field from
         // the constructor body, mirroring `data` below.
         if (options.initialFocusNode !== undefined) this._options.initialFocusNode = options.initialFocusNode;
+        // Cached only: read once by `tryInitialCentre`, which is where the
+        // view's first centring decides between fitting and holding the zoom.
+        if (options.fitOnLoad !== undefined) this._options.fitOnLoad = options.fitOnLoad;
 
         return this;
     }
@@ -1127,17 +1162,31 @@ class DiagramView extends Panel<DiagramViewOptions> {
      * @returns This view, for method chaining.
      */
     zoomToFit(): this {
+        this.fitGraph();
+
+        return this;
+    }
+
+    /**
+     * Fits the whole graph in the viewport: picks the largest zoom at which
+     * the graph bounds fit both axes, then centres the graph at that zoom.
+     * Shared by `zoomToFit` and the fit-on-load branch of `tryInitialCentre`,
+     * which needs the success flag to decide whether its one-shot is spent.
+     *
+     * @returns `true` when the zoom and pan were written, `false` when no
+     *   layout has completed or the view has no committed size yet.
+     */
+    private fitGraph(): boolean {
         if (this._graphWidth <= 0 || this._graphHeight <= 0) {
-            return this;
+            return false;
         }
 
         const zoomX = this.getWidth()  / this._graphWidth;
         const zoomY = this.getHeight() / this._graphHeight;
 
         this.setZoom(Math.min(zoomX, zoomY));
-        this.centreGraph();
 
-        return this;
+        return this.centreGraph();
     }
 
     /**
@@ -1146,13 +1195,20 @@ class DiagramView extends Panel<DiagramViewOptions> {
      * focus node is `initialFocusNode`, or the target of the most recent
      * `focusNode` call. Centring a node also lowers the zoom, if needed, until
      * the node's whole box fits. Retried after the next layout pass when the
-     * view has no committed size yet.
+     * view has no committed size yet. The default zoom this restores is never
+     * overridden by the fit-on-load default, because a Reset is not a first
+     * load.
      *
      * @returns This view, for method chaining.
      */
     resetView(): this {
         this.setZoom(this._defaultOptions.zoom ?? DEFAULT_ZOOM);
 
+        // Reset is never a first load: spend the fit-on-load one-shot before
+        // re-arming, so `fitOnLoad` cannot override the default zoom this
+        // method just restored. "Reset view" and "Fit to view" are two
+        // separate controls and must stay two separate outcomes.
+        this._hasCentredOnce     = true;
         this._needsInitialCentre = true;
         this.tryInitialCentre();
 
@@ -1211,10 +1267,13 @@ class DiagramView extends Panel<DiagramViewOptions> {
     /**
      * Attempts the one-time initial centring, so the first render shows the
      * graph where `resetView` would put it rather than at the viewport's
-     * top-left corner. The configured `zoom` deliberately stands (unlike
-     * `resetView`, which also restores the default zoom), so a consumer's
-     * explicit `zoom` option still decides the initial scale — except that a
-     * focus node too large to fit the viewport lowers it until the node fits.
+     * top-left corner. By default, the fit branch runs and the whole graph is
+     * fitted to the viewport — the same scale `zoomToFit` would choose —
+     * unless `fitOnLoad: false` was passed, or a focus node wins instead. A
+     * focus node too large to fit the viewport lowers the zoom until the node
+     * fits. `_hasCentredOnce` records that this one-shot has already fired —
+     * once set, a later `setData` or the off-screen recovery floor never
+     * re-fits.
      *
      * Both inputs arrive asynchronously and in either order: the graph bounds
      * come from an ELK layout, the viewport size from the host's layout pass.
@@ -1239,8 +1298,15 @@ class DiagramView extends Panel<DiagramViewOptions> {
             ? this._focusNodeId
             : null;
 
-        if (focus !== null ? this.centreNode(focus) : this.centreGraph()) {
+        const fitting = !this._hasCentredOnce && (this._options.fitOnLoad ?? true);
+
+        const centred = focus !== null
+            ? this.centreNode(focus)
+            : (fitting ? this.fitGraph() : this.centreGraph());
+
+        if (centred) {
             this._needsInitialCentre = false;
+            this._hasCentredOnce     = true;
         }
     }
 
