@@ -51,6 +51,7 @@ neither needs no change.
   on a table's row-viewport body no longer matches; a new selector
   targeting `.VirtualRowView` or `.TableBody` now does, on both a table's
   and a tree table's body.** Audit any such selector before upgrading.
+- **[`DiagramView`](/components/DiagramView) now opens its graph fitted to the viewport by default.** A new `fitOnLoad` option controls the view's first successful centring — fitted (the same scale and centring the built-in Fit to view control produces) when `true`, or holding the configured `zoom` when `false` — and it **defaults to `true`**: every current consumer was already fitting the initial view by hand, so the useful default is now built in. **A consumer relying on the previous opening — the configured `zoom`, however large or small the graph is relative to the viewport — must now pass `fitOnLoad: false` explicitly.** The change applies once, to the first centring that succeeds, and only when no `initialFocusNode` is set; a later `setData`, the off-screen re-centring floor, and the Reset view control are all unaffected.
 
 ## Added
 
