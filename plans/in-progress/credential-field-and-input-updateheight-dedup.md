@@ -361,6 +361,29 @@ The only hand-written page to touch is [`docs/reference/changelog/next.md`](pack
 
 ---
 
+## Implementation Notes
+
+Manual verification (step 24 / behaviours 7 and 13), performed against a dev
+server started from this worktree on port 8015 (confirmed via
+`readlink /proc/<pid>/cwd`): visited `#/column`, `#/vbox` and `#/baseline` in
+one browser session (SPA tab clicks, not full navigations, so their
+constructed components accumulate in the shared stylesheet), then
+`#/style-audit` and clicked Refresh.
+
+- Behaviour 13 held: the refreshed audit table (146 → 175 total rules after
+  visiting the three tabs) contains no row whose body is the bare
+  `{ max-height: <n>px; min-height: <n>px; }` pair. The pre-existing
+  `AbstractInput` / `Button` / `Slider` / `TabBusyIndicator` rows are the
+  documented unrelated residue, not this bucket.
+- Behaviour 7 held: focusing a rendered `UsernameField` and a plain
+  `TextField` in the same session and reading `getComputedStyle` on each
+  produced an identical `boxShadow: rgb(30, 100, 200) 0px 0px 0px 2px inset`
+  with `outlineStyle: none` — the framework's inset focus mark, not the
+  browser's default outline.
+- No console errors were introduced; the only console output on these routes
+  is a pre-existing browser advisory (a password field outside a `<form>`)
+  unrelated to this change.
+
 ## Notes
 
 [^preset-precedent]: Three classes already extend `TextField` to make a preset: `NumberSpinnerField` ([`NumberSpinner.ts:96`](packages/lib/src/typescript/lib/component/input/NumberSpinner.ts#L96)), `AutoCompleteTextField` ([`AutoCompleteField.ts:40`](packages/lib/src/typescript/lib/component/input/AutoCompleteField.ts#L40)) and `NumberEditorField` ([`table/cell/editor/Number.ts:21`](packages/lib/src/typescript/lib/component/table/cell/editor/Number.ts#L21)). Each declares only its own deviation and inherits the height machinery. The copies are not a departure from a rule that existed when they were written: `UsernameField`/`PasswordField` were added on 2026-07-10, and the earliest of those three presets landed on 2026-08-23 (`2c421609`). They are simply the outlier now. Inheriting also fixes both drifts for free rather than by re-implementing: `setBorder`'s runtime height re-derivation, and the `pinSingleLineBoxHeight` call.
