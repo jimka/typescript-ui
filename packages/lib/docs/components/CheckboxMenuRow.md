@@ -59,7 +59,7 @@ Stacking several `CheckboxMenuRow` entries turns a menu into a multi-select cont
 | --- | --- |
 | `isChecked()` / `setChecked(boolean)` | Read / write the checked state. |
 | `isEnabled()` | Whether the row is interactive — the construction-time `enabled` option. |
-| `on("action", fn)` / `off("action", fn)` | Subscribe to each toggle — fires after the row's own state has already flipped, so the handler reads the new value from `isChecked()`. |
+| `on("action", fn)` / `off("action", fn)` | Subscribe to each activation — a click or Enter — fires once per activation, after the row's own state has already flipped, so the handler reads the new value from `isChecked()`. |
 
 ## See also
 

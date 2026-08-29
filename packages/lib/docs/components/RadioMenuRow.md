@@ -59,7 +59,7 @@ See [Menu's Custom rows section](/components/Menu#custom-rows) for the `MenuRow`
 | --- | --- |
 | `isChecked()` / `setChecked(boolean)` | Read / write the checked state. `setChecked(false)` is how a group owner deselects a sibling — only *user* activation is select-only. |
 | `isEnabled()` | Whether the row is interactive — the construction-time `enabled` option. |
-| `on("action", fn)` / `off("action", fn)` | Subscribe to each click — fires after the row's own state has already flipped to selected, so the handler reads `isChecked() === true`. |
+| `on("action", fn)` / `off("action", fn)` | Subscribe to each activation — a click or Enter — fires even when the row was already selected, after the row's own state has already flipped to selected, so the handler reads `isChecked() === true`. |
 
 ## See also
 

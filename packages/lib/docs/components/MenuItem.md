@@ -18,7 +18,7 @@ You usually pass [`MenuItemConfig`](/api/component/container/interfaces/MenuItem
 | `icon` | Glyph displayed on the left. |
 | `checked` | Marks the item as part of a checkable set and whether it's currently checked. When at least one item in the menu sets this (`true` or `false`), every item reserves a leading check column, so icons and titles stay aligned across checked and unchecked rows — see [Checkable items](#checkable-items). |
 | `submenu` | Nested [`MenuConfig`](/api/component/container/interfaces/MenuConfig); opens a submenu instead of firing `action` (persistent-mode only). |
-| `separator` | When `true`, render as a horizontal rule and ignore other fields. |
+| `separator` | When `true`, `Menu` renders a [`MenuSeparator`](/components/MenuSeparator) for the entry and ignores every other field, `row` included. |
 | `row` | A zero-argument factory returning a [`MenuRow`](/api/component/container/classes/MenuRow); the menu renders that component instead of a `MenuItem` and ignores every other field. See [Menu's Custom rows section](/components/Menu#custom-rows). |
 
 ## Layout
