@@ -209,6 +209,16 @@ describe('MarkdownViewer.setMarkdown', () => {
         expect(roots).toHaveLength(1);
         expect(roots[0].label).toBe('New Heading');
     });
+
+    it('refreshes the tracker\'s headings to the new source, not the construction-time set', () => {
+        installTestDOM(CONFIG);
+
+        const viewer = new MarkdownViewer({ markdown: '# Old\n' }) as any;
+
+        viewer.setMarkdown('# New Heading\n\n## Sub Heading\n');
+
+        expect(viewer._tracker.getHeadings().map((h: { text: string }) => h.text)).toEqual(['New Heading', 'Sub Heading']);
+    });
 });
 
 describe('MarkdownViewer minimap-select scrolls to the heading', () => {
@@ -247,7 +257,7 @@ describe('MarkdownViewer scroll tracking', () => {
         const viewer = new MarkdownViewer({ markdown: SOURCE }) as any;
         viewer.getElement(true);
 
-        const headings = viewer._headings as Array<{ id: string }>;
+        const headings = viewer._tracker.getHeadings() as Array<{ id: string }>;
 
         // Each heading's own top is a fixed "document coordinate"; setScrollTop
         // below (the framework's own scroll API, so it lands on whichever
@@ -291,7 +301,7 @@ describe('MarkdownViewer scroll tracking', () => {
 
         DOM.sink.apply(handle, { style: { left: '0px', top: '0px', width: '400px', height: '300px' } });
 
-        const headings = viewer._headings as Array<{ id: string }>;
+        const headings = viewer._tracker.getHeadings() as Array<{ id: string }>;
 
         DOM.sink.apply(DOM.source.getElementById(headings[0].id)!, { style: { left: '0px', top: '0px',   width: '10px', height: '10px' } });
         // The second and third headings sit at the exact same top — two
@@ -337,7 +347,7 @@ describe('MarkdownViewer scroll tracking', () => {
         const viewer = new MarkdownViewer({ markdown: SOURCE, listeners: { activeheadingchange: listener } }) as any;
         viewer.getElement(true);
 
-        const headings = viewer._headings as Array<{ id: string }>;
+        const headings = viewer._tracker.getHeadings() as Array<{ id: string }>;
 
         DOM.sink.apply(DOM.source.getElementById(headings[0].id)!, { style: { left: '0px', top: '100px', width: '10px', height: '10px' } });
         DOM.sink.apply(DOM.source.getElementById(headings[1].id)!, { style: { left: '0px', top: '600px', width: '10px', height: '10px' } });

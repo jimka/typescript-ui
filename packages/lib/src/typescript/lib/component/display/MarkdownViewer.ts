@@ -14,14 +14,14 @@ import { magnifying_glass_plus } from "~/glyphs/solid/magnifying_glass_plus.js";
 import { magnifying_glass_minus } from "~/glyphs/solid/magnifying_glass_minus.js";
 import { arrows_rotate } from "~/glyphs/solid/arrows_rotate.js";
 import { Event } from "~/core/Event.js";
-import { DOM } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
-import { Markdown, extractMarkdownHeadings, findActiveHeading } from "~/component/display/Markdown.js";
-import type { MarkdownLinkResolver, MarkdownHeading } from "~/component/display/Markdown.js";
+import { Markdown, extractMarkdownHeadings } from "~/component/display/Markdown.js";
+import type { MarkdownLinkResolver } from "~/component/display/Markdown.js";
 import { MarkdownMinimap } from "~/component/display/MarkdownMinimap.js";
 import type { HeadingScrollSource } from "~/component/display/MarkdownMinimap.js";
+import { HeadingScrollTracker } from "~/component/display/HeadingScrollTracker.js";
 
 Glyph.register(compress, expand, magnifying_glass_plus, magnifying_glass_minus, arrows_rotate);
 
@@ -88,9 +88,10 @@ const _defaultMarkdownViewerOptions: Partial<MarkdownViewerOptions> = {
  * `Markdown` instance gets both for free by using `MarkdownViewer` instead
  * of `Markdown` directly. Exposes the same `"activeheadingchange"` event
  * `DocsContent` exposes, computed from its own native scroll the same way —
- * see {@link HeadingScrollSource}. `MarkdownMinimap` consumes that event to
- * highlight whichever heading is currently on screen without depending on
- * this class concretely.
+ * both delegate to {@link HeadingScrollTracker}, the shared owner of that
+ * technique — see {@link HeadingScrollSource}. `MarkdownMinimap` consumes
+ * that event to highlight whichever heading is currently on screen without
+ * depending on this class concretely.
  *
  * @category Components
  */
@@ -105,20 +106,8 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
     private _zoomInBtn!: Button;
     private _resetBtn!: Button;
 
-    private _headings: MarkdownHeading[];
     private _widthIndex: number = DEFAULT_WIDTH_INDEX;
     private _zoomIndex: number = DEFAULT_ZOOM_INDEX;
-    private _lastActiveHeadingId: string | null = null;
-
-    /**
-     * The scrollTop {@link scrollToHeading} last landed the pane on, or
-     * `null` once a later native scroll has moved past it. Lets
-     * `onNativeScroll` recognise "nothing has organically scrolled since
-     * that click" and skip re-deriving the active heading from geometry —
-     * see both methods' own doc comments for why that re-derivation alone
-     * cannot be trusted here.
-     */
-    private _pendingClickScrollTop: number | null = null;
 
     private readonly _listeners: ListenerBag<"activeheadingchange"> = this.registerListenerBag(new ListenerBag<"activeheadingchange">());
 
@@ -129,6 +118,12 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
     private readonly _onZoomOut:          () => void            = () => this.stepZoom(-1);
     private readonly _onZoomIn:           () => void            = () => this.stepZoom(1);
     private readonly _onReset:            () => void            = () => this.resetViewerProperties();
+
+    private readonly handleActiveHeadingChange: (headingId: string | null) => void =
+        (id) => this.emit("activeheadingchange", id);
+
+    private readonly _tracker: HeadingScrollTracker =
+        new HeadingScrollTracker(this, this.handleActiveHeadingChange);
 
     constructor(options?: MarkdownViewerOptions, subclassDefaults?: Partial<MarkdownViewerOptions>) {
         super(options, {
@@ -153,10 +148,12 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
         markdownConstraints.right = 0;
         this.addComponent(this._markdown, markdownConstraints);
 
-        this._headings = extractMarkdownHeadings(options?.markdown ?? "");
+        const headings = extractMarkdownHeadings(options?.markdown ?? "");
+
+        this._tracker.setHeadings(headings);
 
         this._minimap = new MarkdownMinimap({ scrollSource: this, maxHeadingDepth: options?.maxHeadingDepth, corner: "top-right" });
-        this._minimap.setHeadings(this._headings);
+        this._minimap.setHeadings(headings);
         this._minimap.on("select", this.handleMinimapSelect);
         this.addComponent(this._minimap, this._minimap.getAnchorConstraints());
 
@@ -238,8 +235,11 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
      */
     setMarkdown(markdown: string): this {
         this._markdown.setMarkdown(markdown);
-        this._headings = extractMarkdownHeadings(markdown);
-        this._minimap.setHeadings(this._headings);
+
+        const headings = extractMarkdownHeadings(markdown);
+
+        this._tracker.setHeadings(headings);
+        this._minimap.setHeadings(headings);
 
         return this;
     }
@@ -387,74 +387,29 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
     /**
      * Computes the active heading from the current native scroll position and
      * emits `"activeheadingchange"` only when it differs from the previous
-     * tick. A no-op while the pane is still sitting exactly where {@link
-     * scrollToHeading} last left it (see `_pendingClickScrollTop`'s own doc
-     * comment) — geometry alone can't be trusted to reproduce that click's
-     * own target there, so this defers to whatever it already set.
+     * tick. Delegates to {@link HeadingScrollTracker}, the shared
+     * implementation `DocsContent` also delegates to.
      */
     private onNativeScroll(): void {
         const scrollElement = this.getScrollElement();
 
-        if (!scrollElement) {
-            return;
+        if (scrollElement) {
+            this._tracker.trackScroll(scrollElement);
         }
-
-        if (this._pendingClickScrollTop !== null) {
-            // Reads the live DOM value, not the cached getScrollTop(): an
-            // organic scroll (wheel, scrollbar drag) updates the pane's real
-            // scrollTop without ever going through setScrollTop, so the cache
-            // would otherwise still read the click's own landing spot forever.
-            if (DOM.source.getScrollTop(scrollElement) === this._pendingClickScrollTop) {
-                return;
-            }
-
-            this._pendingClickScrollTop = null;
-        }
-
-        const id = findActiveHeading(scrollElement, this._headings);
-
-        if (id === this._lastActiveHeadingId) {
-            return;
-        }
-
-        this._lastActiveHeadingId = id;
-        this.emit("activeheadingchange", id);
     }
 
     /**
-     * Scrolls this viewer so `id`'s heading sits at the pane's own top edge —
-     * the geometry technique `DocsContent.scrollToHeading` uses, kept local to
-     * this class rather than shared (see the plan's Non-Goals). Marks `id`
-     * active immediately rather than waiting for the resulting native scroll
-     * event to drive that through `findActiveHeading`: a heading close to the
-     * document's end can share its clamped landing scrollTop with a
-     * neighbouring heading, and geometry alone then can't tell which of them
-     * this click actually targeted (`findActiveHeading`'s own doc comment).
+     * Scrolls this viewer so `id`'s heading sits at the pane's own top edge.
+     * Delegates to {@link HeadingScrollTracker}, the shared implementation
+     * `DocsContent` also delegates to.
      *
      * @param id - The heading id to scroll to.
      */
     private scrollToHeading(id: string): void {
         const scrollElement = this.getScrollElement();
 
-        if (!scrollElement) {
-            return;
-        }
-
-        const heading = DOM.source.getElementById(id);
-
-        if (!heading || !DOM.source.contains(scrollElement, heading)) {
-            return;
-        }
-
-        const headingTop = DOM.source.getElementRect(heading).top;
-        const paneTop     = DOM.source.getElementRect(scrollElement).top;
-
-        this.setScrollTop(this.getScrollTop() + (headingTop - paneTop));
-        this._pendingClickScrollTop = this.getScrollTop();
-
-        if (id !== this._lastActiveHeadingId) {
-            this._lastActiveHeadingId = id;
-            this.emit("activeheadingchange", id);
+        if (scrollElement) {
+            this._tracker.scrollToHeading(scrollElement, id);
         }
     }
 }
