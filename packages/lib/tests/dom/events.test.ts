@@ -204,7 +204,27 @@ describe('Modelled event delivery — exact-target routing', () => {
         expect(runs).toBe(1);
     });
 
-    // Case 8: dispatching a type with no listeners is a no-op (still records).
+    // Case 8: a repeated viewport registration of the same reference is ignored.
+    it('ignores a repeated viewport registration of the same reference', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let runs = 0;
+        const f = (): void => { runs += 1; };
+
+        Event.addViewportListener(comp, type, f);
+        Event.addViewportListener(comp, type, f);
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type));
+
+        expect(runs).toBe(1);
+    });
+
+    // Case 9: dispatching a type with no listeners is a no-op (still records).
     it('is a no-op when no listener is registered for the type', () => {
         const sink = installTestDOM(CONFIG);
 
@@ -217,7 +237,7 @@ describe('Modelled event delivery — exact-target routing', () => {
         expect(sink.writes.some((w) => w.op === 'dispatchEvent' && w.args[0] === type)).toBe(true);
     });
 
-    // Case 9: removing the last listener stops delivery.
+    // Case 10: removing the last listener stops delivery.
     it('stops delivering after the last listener is removed', () => {
         installTestDOM(CONFIG);
 
@@ -236,7 +256,7 @@ describe('Modelled event delivery — exact-target routing', () => {
         expect(runs).toBe(0);
     });
 
-    // Case 10: event coordinate/key fields reach the handler.
+    // Case 11: event coordinate/key fields reach the handler.
     it('passes clientX / key fields through to the handler', () => {
         installTestDOM(CONFIG);
 
@@ -369,6 +389,73 @@ describe('Modelled event delivery — ListenerOptions.button filter', () => {
 
         DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type, { button: -1 }));
         expect(runs).toBe(1);
+    });
+
+    // A literal press-initiating type, not `uniqueType()`, for the same
+    // reason as the default-filter case above: the "primary" default this
+    // pins only applies to PRIMARY_BUTTON_TYPES members. `'mouseup'`, not
+    // `'mousedown'`, to avoid the "second test to register a literal type
+    // installs nothing against its own fresh sink" trap the comment above
+    // the PRIMARY_BUTTON_TYPES describe block explains — `'mousedown'`
+    // already has its own dedicated case there.
+    it('a re-registration of the same reference re-configures its options', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = 'mouseup';
+
+        comp.getElement(true);
+
+        let runs = 0;
+        const f = (): void => { runs += 1; };
+
+        Event.addListener(comp, type, f);
+        Event.addListener(comp, type, { button: 'any', handler: f });
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type, { button: 2 }));
+
+        expect(runs).toBe(1);
+    });
+
+    it('a re-registration of the same reference does not add a second listener', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let runs = 0;
+        const f = (): void => { runs += 1; };
+
+        Event.addListener(comp, type, f);
+        Event.addListener(comp, type, f);
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type));
+
+        expect(runs).toBe(1);
+    });
+
+    it('distinct references still both register', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let runsA = 0;
+        let runsB = 0;
+        const a = (): void => { runsA += 1; };
+        const b = (): void => { runsB += 1; };
+
+        Event.addListener(comp, type, a);
+        Event.addListener(comp, type, b);
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type));
+
+        expect(runsA).toBe(1);
+        expect(runsB).toBe(1);
     });
 });
 

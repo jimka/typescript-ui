@@ -243,7 +243,7 @@ class HeaderCell extends DefaultCell {
         }
 
         // Subtree listener so clicks on any child element (e.g. the Label) bubble up here.
-        Event.addSubtreeListener(this, 'click', (e: MouseEvent) => this.onSortClick(e.shiftKey));
+        Event.addSubtreeListener(this, 'click', this.onSortHeaderClick);
 
         Event.addSubtreeListener(this, 'contextmenu', { prevent: true, handler: this.onContextMenu });
 
@@ -606,6 +606,18 @@ class HeaderCell extends DefaultCell {
         }
 
         this.emit("sortclick", this._fieldName, shiftKey);
+    }
+
+    /**
+     * Subtree `click` handler. A named method rather than an inline closure so
+     * a re-registration — this cell's `init()` running again against a rebuilt
+     * element — dedupes against the entry already registered instead of
+     * stacking a second one.
+     *
+     * @param e - The click event; its shift state selects additive sorting.
+     */
+    private onSortHeaderClick(e: MouseEvent): void {
+        this.onSortClick(e.shiftKey);
     }
 
     /**

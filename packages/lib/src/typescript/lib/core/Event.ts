@@ -430,9 +430,10 @@ export namespace Event {
 
     /**
      * Finds or creates the `CompFunc` for `(type, component)` in `map` and
-     * appends `{ listener, options }` unless that exact `listener` reference
-     * is already registered there. Shared by `addListener` and
-     * `addSubtreeListener`, which differ only in which map they write to.
+     * appends `{ listener, options }` — or, when that exact `listener`
+     * reference is already registered there, overwrites its stored
+     * `options` instead of adding a second entry. Shared by `addListener`
+     * and `addSubtreeListener`, which differ only in which map they write to.
      */
     function registerEntry(
         map: Map<String, Map<String, CompFunc>>,
@@ -461,9 +462,20 @@ export namespace Event {
             typeMap.set(component.getId(), compFunc);
         }
 
-        if (!compFunc.listeners.some((entry) => entry.listener === listener)) {
-            compFunc.listeners.push({ listener, options });
+        const existing = compFunc.listeners.find((entry) => entry.listener === listener);
+
+        if (existing) {
+            // A second registration of the same reference is not a second listener —
+            // it re-configures the one already registered. Overwriting `options`
+            // (rather than dropping the call, as this did before) is what lets a
+            // rebuilt element's `init()` re-run land its CURRENT options instead of
+            // silently inheriting whatever the first registration passed.
+            existing.options = options;
+
+            return;
         }
+
+        compFunc.listeners.push({ listener, options });
     }
 
     /**
@@ -516,7 +528,10 @@ export namespace Event {
      * (or `false`) leaves the event untouched.
      *
      * @remarks A capture-phase window listener is installed the first time a given event type is registered,
-     * and removed automatically when the last listener for that type is unregistered.
+     * and removed automatically when the last listener for that type is unregistered. Re-registering the
+     * same function reference does not add a second listener — it replaces that registration's options; a
+     * fresh inline closure has no identity to match, so a site that can run more than once must pass a
+     * stable reference.
      */
     export function addListener(component: Component, type: string, listener: Listener): void;
 
@@ -534,6 +549,10 @@ export namespace Event {
      * see {@link ListenerOptions.button}. `stop` / `prevent` are an
      * unconditional floor applied regardless of `handler`'s return value —
      * see {@link ListenerOptions.stop}.
+     *
+     * @remarks Re-registering the same function reference does not add a second listener — it replaces
+     * that registration's options; a fresh inline closure has no identity to match, so a site that can
+     * run more than once must pass a stable reference.
      */
     export function addListener(component: Component, type: string, registration: ListenerRegistration): void;
 
@@ -592,6 +611,9 @@ export namespace Event {
      * @remarks Unlike `addListener`, which only matches the exact event target, this fires for
      * any event whose target is a descendant of the component's element. Multiple components
      * may register subtree listeners for the same event type; all matching ancestors are notified.
+     * Re-registering the same function reference does not add a second listener — it replaces
+     * that registration's options; a fresh inline closure has no identity to match, so a site
+     * that can run more than once must pass a stable reference.
      */
     export function addSubtreeListener(component: Component, type: string, listener: Listener): void;
 
@@ -602,6 +624,10 @@ export namespace Event {
      * @param component - The ancestor component to watch.
      * @param type - The DOM event type string to listen for.
      * @param registration - See {@link addListener}'s registration overload.
+     *
+     * @remarks Re-registering the same function reference does not add a second listener — it replaces
+     * that registration's options; a fresh inline closure has no identity to match, so a site that can
+     * run more than once must pass a stable reference.
      */
     export function addSubtreeListener(component: Component, type: string, registration: ListenerRegistration): void;
 
@@ -757,7 +783,9 @@ export namespace Event {
      * dispatcher does not stop propagation on a component's behalf: an unconsumed event keeps
      * propagating to the page (e.g. a consumer's `document`-level accelerator) unless a handler's
      * returned disposition asks for a stop. Logs a console trace and returns early if either
-     * argument is falsy.
+     * argument is falsy. Re-registering the same function reference does not add a second
+     * listener — it is ignored; a fresh inline closure has no identity to match, so a site that
+     * can run more than once must pass a stable reference.
      */
     export function addViewportListener(component: Component, type: string, listener: Listener) {
         if (!listener || !component) {
@@ -781,6 +809,10 @@ export namespace Event {
             }
 
             typeMap.set(component.getId(), compFunc);
+        }
+
+        if (compFunc.listeners.some((entry) => entry.listener === listener)) {
+            return;
         }
 
         compFunc.listeners.push({ listener });

@@ -148,6 +148,14 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
         this._contextLost = true;
     };
 
+    // Stable reference, not an inline closure, so re-registering on a rebuilt
+    // element dedupes against the existing entry. Mirrors `_onContextLost`.
+    private readonly _onContextRestored: () => void = () => {
+        this._contextLost        = false;
+        this._contextInitialised = false;
+        this.syncBackingStore();
+    };
+
     /**
      * False until `onContextInit` has run for the current context; reset on
      * restore (and by `setOnContextInit`) so the next frame re-runs the hook.
@@ -448,11 +456,7 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
         // `prevent: true` is REQUIRED — without it the browser never fires
         // `webglcontextrestored`.
         Event.addListener(this, "webglcontextlost", { prevent: true, handler: this._onContextLost });
-        Event.addListener(this, "webglcontextrestored", () => {
-            this._contextLost = false;
-            this._contextInitialised = false;
-            this.syncBackingStore();
-        });
+        Event.addListener(this, "webglcontextrestored", this._onContextRestored);
 
         this.watchDevicePixelRatio();
         this.onFirstLayout(() => this.startAnimation());
