@@ -907,6 +907,10 @@ class DiagramView extends Panel<DiagramViewOptions> {
         this._edgeLayer.setPreferredSize({ width: result.width, height: result.height });
         this._edgeLayer.setEdges(this.joinEdgeStyles(result.edges));
 
+        this._nodeLayer.setX(0);
+        this._nodeLayer.setY(0);
+        this._nodeLayer.setPreferredSize({ width: result.width, height: result.height });
+
         this.applyContainerZIndex();
 
         // The host is no longer resized per zoom (see applyTransformToHost) — its

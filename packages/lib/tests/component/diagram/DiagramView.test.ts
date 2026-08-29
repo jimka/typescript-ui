@@ -259,6 +259,12 @@ describe('DiagramView — layout application (U2)', () => {
         // The host box always equals the unscaled graph bounds — zoom lives
         // only in the transform's scale() factor (see applyTransformToHost).
         expect(view._contentHost.getPreferredSize()).toEqual({ width: 160, height: 230 });
+
+        // The node layer gets the same box as the content host and edge
+        // layer, so its low-zoom simplified-node rects have somewhere to
+        // render instead of being clipped by the framework tier's
+        // overflow: hidden.
+        expect(view._nodeLayer.getPreferredSize()).toEqual({ width: 160, height: 230 });
     });
 });
 

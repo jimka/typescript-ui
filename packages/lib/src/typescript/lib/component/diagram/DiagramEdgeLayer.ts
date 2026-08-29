@@ -437,6 +437,10 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
         // Inheriting through to the view root's live grab/grabbing write is
         // what lets an edge press pan the canvas honestly.
         this.setCursor("inherit");
+
+        // A marker or halo'd label reaching past the graph bounds must not
+        // clip at the layer edge.
+        this.setOverflow("visible");
     }
 
     /**
