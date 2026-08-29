@@ -481,8 +481,9 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
      * what creates the element, which is not the case here — so without the
      * deferral below the sole draw for those routes is silently lost and the
      * diagram shows nodes with no edges until some later `setEdges` happens to
-     * find an element. {@link Component.onFirstLayout} exists for exactly this
-     * "content built before the host attaches it" case.
+     * find an element. The layer therefore defers the draw to its first
+     * connected layout, which is what this "content built before the host
+     * attaches it" case needs.
      *
      * Also rebuilds the per-edge box cache from the new routes and re-derives
      * which edges the standing residency rect admits, so a graph swap culls
