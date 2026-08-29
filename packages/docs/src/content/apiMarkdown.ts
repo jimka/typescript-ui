@@ -5,7 +5,7 @@
 
 // typedoc-plugin-markdown separates each member with a `***` line — CommonMark
 // `hr` syntax the library's `Markdown` viewer has no case for (see the block-
-// token default branch at Markdown.ts:648), so it would render as the literal
+// token default branch at Markdown.ts:1448), so it would render as the literal
 // text `***` instead of a rule. This module strips those lines before the
 // source reaches the viewer, mirroring containers.ts's app-level transform of
 // a dialect the viewer doesn't support.

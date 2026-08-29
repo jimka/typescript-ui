@@ -1884,7 +1884,7 @@ const ACTIVE_HEADING_TOP_TOLERANCE_PX = 1;
  * `scrollElement`'s viewport top — the last heading, in document order,
  * whose top edge is at or above the scroll container's own top (within
  * `ACTIVE_HEADING_TOP_TOLERANCE_PX`). Mirrors
- * `DocsContent.scrollToHeading`'s lookup technique in the read direction.
+ * `HeadingScrollTracker.scrollToHeading`'s lookup technique in the read direction.
  *
  * Once `scrollElement` has scrolled to its maximum, the first heading that
  * hasn't yet reached the pane's own top is active outright, instead of

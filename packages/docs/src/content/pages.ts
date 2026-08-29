@@ -75,8 +75,8 @@ function routePathFor(globKey: string): string {
 }
 
 /**
- * Reads a page's title from its first `# ` heading, authored in every one of
- * the 15 Phase-1 pages.
+ * Reads a page's title from its first `# ` heading, authored in every page
+ * in the corpus.
  *
  * @param source - The page's Markdown source.
  * @returns The heading text, or `''` if the source has no `# ` heading.
