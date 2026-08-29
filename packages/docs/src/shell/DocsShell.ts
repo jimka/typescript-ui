@@ -51,6 +51,12 @@ class DocsShell extends Container {
     // handler below.
     private readonly handleContentSettled: () => void = () => this.rehugFloatingPanels();
 
+    // Cancelled on destructor, mirroring Dialog's afterNextLayout handles —
+    // DocsShell is constructed once at startup and lives for the app's
+    // lifetime today, but the guard is cheap and completes what the
+    // cancellation primitive is for.
+    private _contentSettledLayout: { cancel(): void } | null = null;
+
     constructor(router: Router) {
         super({ layoutManager: Border( { spacing: 0 }) });
 
@@ -190,7 +196,7 @@ class DocsShell extends Container {
     private onOutlineChange(headings: MarkdownHeading[]): void {
         this._minimap.setHeadings(headings);
         this._inheritedToggle.setVisible(this._content.isApiPage());
-        Component.afterNextLayout(this.handleContentSettled);
+        this._contentSettledLayout = Component.afterNextLayout(this.handleContentSettled);
     }
 
     /**
@@ -221,6 +227,12 @@ class DocsShell extends Container {
     showPath(path: string, fragment: string): void {
         this._content.showPath(path, fragment);
         void this._sidebar.select(path);
+    }
+
+    protected destructor(): void {
+        this._contentSettledLayout?.cancel();
+
+        super.destructor();
     }
 }
 

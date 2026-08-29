@@ -6983,10 +6983,26 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * work for the following frame, not re-entrantly within this drain.
      *
      * @param callback - The work to run once after the next layout flush.
+     * @returns A handle whose `cancel()` withdraws the callback before it
+     *   fires; calling `cancel()` after the callback has already run, or a
+     *   second time, is a no-op.
      */
-    static afterNextLayout(callback: () => void): void {
-        afterLayoutCallbacks.push(callback);
+    static afterNextLayout(callback: () => void): { cancel(): void } {
+        let cancelled = false;
+
+        afterLayoutCallbacks.push(() => {
+            if (!cancelled) {
+                callback();
+            }
+        });
+
         ensureFlushScheduled();
+
+        return {
+            cancel: (): void => {
+                cancelled = true;
+            },
+        };
     }
 
     /**

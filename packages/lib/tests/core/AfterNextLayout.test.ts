@@ -111,4 +111,46 @@ describe('Component.afterNextLayout', () => {
         flushFrame();
         expect(order).toEqual(['first', 'second']);
     });
+
+    it('cancelling the returned handle before the flush withdraws the callback', () => {
+        const ran = vi.fn();
+
+        const handle = Component.afterNextLayout(ran);
+        handle.cancel();
+        flushFrame();
+
+        expect(ran).not.toHaveBeenCalled();
+    });
+
+    it('cancelling a second time, or after the callback already ran, is a no-op', () => {
+        const ran = vi.fn();
+
+        const handle = Component.afterNextLayout(ran);
+
+        expect(() => handle.cancel()).not.toThrow();
+        expect(() => handle.cancel()).not.toThrow();
+        flushFrame();
+        expect(ran).not.toHaveBeenCalled();
+
+        const alreadyRan = vi.fn();
+        const ranHandle  = Component.afterNextLayout(alreadyRan);
+        flushFrame();
+        expect(alreadyRan).toHaveBeenCalledTimes(1);
+
+        expect(() => ranHandle.cancel()).not.toThrow();
+        expect(alreadyRan).toHaveBeenCalledTimes(1);
+    });
+
+    it('cancelling one of two callbacks queued in the same frame only withdraws that one', () => {
+        const cancelled = vi.fn();
+        const kept      = vi.fn();
+
+        const handle = Component.afterNextLayout(cancelled);
+        Component.afterNextLayout(kept);
+        handle.cancel();
+        flushFrame();
+
+        expect(cancelled).not.toHaveBeenCalled();
+        expect(kept).toHaveBeenCalledTimes(1);
+    });
 });
