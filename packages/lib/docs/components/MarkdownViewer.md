@@ -37,6 +37,8 @@ panel.addComponent(viewer);
 
 Inherits [`PanelOptions`](/api/core/interfaces/PanelOptions).
 
+The source is passed as the `markdown` option rather than a positional first argument, unlike [`Markdown`](/components/Markdown#construction), [`CodeEditor`](/components/CodeEditor#construction), and [`MarkdownEditor`](/components/MarkdownEditor#construction) — `MarkdownViewer` is a container whose options bag is its whole documented surface.
+
 ## Width and zoom controls
 
 The control cluster steps through two fixed preset arrays rather than exposing continuous sliders, the same discrete step-button pattern [`DiagramView`](/components/DiagramView)'s own zoom-in/zoom-out buttons use:
@@ -48,7 +50,7 @@ Both clamp at their array bounds rather than erroring or wrapping around. **Rese
 
 ## Scroll tracking
 
-`MarkdownViewer` computes its own active heading from its native scroll position — the last heading, in document order, whose top edge is at or above the viewer's own top — and emits `"activeheadingchange"` only when the result actually changes between scroll ticks. `MarkdownMinimap` consumes this to highlight the corresponding row; a consumer can also listen directly for its own purposes (a "reading progress" indicator, syncing an outside table of contents).
+`MarkdownViewer` computes its own active heading from its native scroll position — the last heading, in document order, whose top edge is at or above the viewer's own top — and emits `"activeheadingchange"` only when the result actually changes between scroll ticks. `MarkdownMinimap` consumes this to highlight the corresponding row; a consumer can also listen directly for its own purposes (a "reading progress" indicator, syncing an outside table of contents). The tracking itself is delegated to [`HeadingScrollTracker`](/api/component/display/classes/HeadingScrollTracker), the same shared implementation the docs site's own `DocsContent` pane uses for its scroll-driven outline.
 
 ## Common methods
 
