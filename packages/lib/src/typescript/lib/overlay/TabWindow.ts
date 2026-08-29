@@ -167,8 +167,8 @@ class TabWindow extends AbstractWindow {
      * move-trigger veto excludes them).
      */
     private onBarDoubleClick(): void {
-        if (this.getWindowState() === "minimized") {
-            this.setWindowState(this._preMinimizeState);
+        if (this.isMinimized()) {
+            this.restore();
 
             return;
         }

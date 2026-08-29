@@ -1395,7 +1395,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return;
         }
 
-        if (this.getWindowState() === "maximized") {
+        if (this.isMaximized()) {
             this.setWindowState("normal");
         } else {
             this.setWindowState("maximized");
