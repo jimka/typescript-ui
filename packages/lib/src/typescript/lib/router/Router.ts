@@ -200,12 +200,10 @@ export class Router {
      * @returns This router, for chaining.
      */
     navigate(path: string, options?: { replace?: boolean; query?: RouteQuery }): this {
-        const split        = splitFragment(path);
-        const withoutQuery = splitQuery(split.path);
-        const query        = options?.query ?? parseQuery(withoutQuery.query);
-
         if (this._mode === "hash") {
-            const hash = this.getHref(path, query);
+            // `getHref` derives the query from `path` itself when `options.query`
+            // is absent, so this branch needs no parse of its own.
+            const hash = this.getHref(path, options?.query);
 
             if (options?.replace === true) {
                 DOM.sink.replaceLocationHash(hash);
@@ -216,8 +214,11 @@ export class Router {
             return this;
         }
 
-        const target   = normalizePath(withoutQuery.path);
-        const fragment = split.fragment;
+        const split        = splitFragment(path);
+        const withoutQuery = splitQuery(split.path);
+        const query        = options?.query ?? parseQuery(withoutQuery.query);
+        const target       = normalizePath(withoutQuery.path);
+        const fragment     = split.fragment;
 
         if (target === this.getPath() && fragment === this.getFragment() && sameQuery(query, this.getQuery())) {
             return this;
@@ -444,12 +445,14 @@ export class Router {
         }
 
         if (options.listeners !== undefined) {
-            for (const event of Object.keys(options.listeners) as RouterEvent[]) {
-                const listener = options.listeners[event];
+            const { navigate, nomatch } = options.listeners;
 
-                if (listener !== undefined) {
-                    this._listeners.add(event, listener);
-                }
+            if (navigate !== undefined) {
+                this.on("navigate", navigate);
+            }
+
+            if (nomatch !== undefined) {
+                this.on("nomatch", nomatch);
             }
         }
     }
