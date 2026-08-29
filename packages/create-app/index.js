@@ -13,7 +13,7 @@ import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 
 /** Maps a template-side basename to its on-disk destination name. */
-const RENAME_MAP = { _gitignore: '.gitignore' };
+const RENAME_MAP = new Map([['_gitignore', '.gitignore']]);
 
 /** Absolute path to the template directory this package ships. */
 const TEMPLATE_DIR = fileURLToPath(new URL('./template', import.meta.url));
@@ -47,7 +47,7 @@ export function toValidPackageName(input) {
  * @returns {string} The destination basename.
  */
 export function renameTemplateFile(name) {
-    return RENAME_MAP[name] ?? name;
+    return RENAME_MAP.get(name) ?? name;
 }
 
 /**
@@ -60,15 +60,24 @@ export function isEmpty(entries) {
 }
 
 /**
- * Parse argv into `{ targetDir }` (undefined when omitted). Uses node:util
- * parseArgs with `allowPositionals: true`.
+ * Parse argv into `{ help, targetDir }` (targetDir undefined when omitted).
+ * Uses node:util parseArgs with `allowPositionals: true`.
  * @param {string[]} argv - Arguments after the node binary and script.
- * @returns {{ targetDir: string | undefined }} The parsed target directory.
+ * @returns {{ help: boolean, targetDir: string | undefined }} The parsed flags.
+ * @throws Error - when more than one positional argument is given.
  */
 export function parseCliArgs(argv) {
-    const { positionals } = parseArgs({ args: argv, allowPositionals: true });
+    const { values, positionals } = parseArgs({
+        args:             argv,
+        options:          { help: { type: 'boolean', short: 'h' } },
+        allowPositionals: true,
+    });
 
-    return { targetDir: positionals[0] };
+    if (positionals.length > 1) {
+        throw new Error(`unexpected extra argument(s): ${positionals.slice(1).join(', ')}`);
+    }
+
+    return { help: values.help === true, targetDir: positionals[0] };
 }
 
 /**
@@ -131,6 +140,19 @@ export async function promptForTargetDir() {
 }
 
 /**
+ * Print CLI usage to stdout.
+ * @returns {void}
+ */
+function printUsage() {
+    console.log(`Usage: create-tsui-app [target-directory] [options]
+
+Scaffold a minimal typescript-ui starter project.
+
+Options:
+  -h, --help   Print this usage information.`);
+}
+
+/**
  * CLI entry: parse args, prompt when the directory is omitted, scaffold, then
  * print next steps.
  * @param {string[]} argv - Arguments after the node binary and script.
@@ -139,8 +161,19 @@ export async function promptForTargetDir() {
  * @returns {Promise<void>} Resolves once scaffolding completes.
  */
 export async function main(argv, ask = promptForTargetDir) {
-    const { targetDir } = parseCliArgs(argv);
+    const { help, targetDir } = parseCliArgs(argv);
+
+    if (help) {
+        printUsage();
+        return;
+    }
+
     const dir = targetDir ?? (await ask());
+
+    if (dir === '') {
+        throw new Error('no project directory given (use "." for the current directory)');
+    }
+
     const target = resolve(process.cwd(), dir);
 
     await scaffold(target);
