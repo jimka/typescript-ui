@@ -52,7 +52,7 @@ const CONTROL_SPACING = 6;
  * @param seconds - The time in seconds.
  * @returns The formatted `m:ss` / `h:mm:ss` string.
  *
- * @category Components
+ * @internal
  */
 export function formatMediaTime(seconds: number): string {
     if (!Number.isFinite(seconds) || seconds < 0) {
