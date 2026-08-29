@@ -199,6 +199,38 @@ API automatically, so teardown needs no explicit `removeX` call. `removeX` is
 for unhooking while the component keeps living — a finished drag, a consumer
 unsubscribing — not for teardown.
 
+## Re-registering a listener
+
+Registering the same function reference twice for the same `(component,
+type)` is not a second listener — it re-configures the one already
+registered:
+
+```typescript
+Event.addListener(button, 'mousedown', onPress);
+// Same reference, same options: a no-op.
+Event.addListener(button, 'mousedown', onPress);
+// Same reference, new options: replaces onPress's registered options.
+Event.addListener(button, 'mousedown', { button: 'any', handler: onPress });
+```
+
+`addViewportListener` follows the same reference-matching rule, but a repeat
+registration is simply ignored rather than re-configured — it takes no
+options to update.
+
+A **fresh inline closure has no identity to match**, so each call registers
+a distinct listener that fires independently and, per the note above, can
+never be removed:
+
+```typescript
+Event.addListener(button, 'mousedown', () => save());
+Event.addListener(button, 'mousedown', () => save()); // A second, unremovable listener — save() now runs twice.
+```
+
+A registration site that can run more than once — most commonly `init()` or
+`render()`, which a component's `release()`/rematerialize cycle can replay —
+must pass a stable reference (a method on the component, or a `readonly`
+arrow field) for this reason.
+
 ## Hover events: use `mouseover` / `mouseout`
 
 ::: warning Don't use mouseenter / mouseleave with subtree listeners

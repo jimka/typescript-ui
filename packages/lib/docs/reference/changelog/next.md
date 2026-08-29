@@ -33,3 +33,10 @@ page resets to empty.
   `StyleRule` for the new selector but never disposed the one it replaced,
   leaving a dead rule behind for the life of the page. No consumer action
   is needed.
+- **Re-registering an already-registered listener reference through
+  `Event.addListener` / `addSubtreeListener` now applies the new call's
+  `button` / `stop` / `prevent` options instead of silently keeping the
+  first registration's.** No consumer action is needed.
+- **`Event.addViewportListener` now ignores a repeat registration of the
+  same function reference instead of registering it a second time and
+  firing it twice.** No consumer action is needed.
