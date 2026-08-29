@@ -456,3 +456,21 @@ Run from the repository root unless stated otherwise.
 [^precedent-search]: The precedent search for an existing "true first ever" versus "re-armed later" distinction found no pair anywhere in the library. What it found are three single-flag shapes this design stays inside: `DiagramView._needsInitialCentre` itself and `TabBar._scrollToSelected` (`TabBar.ts:552`, consumed by `revealSelectedIfRequested` at 2594) are both re-armable pending requests cleared only by a pass that actually did the work; `Component._firstLayoutCallbacks` (`Component.ts:417`, drained at 6817) is a genuine never-re-armed one-shot, nulled by the first *connected* layout and left intact by a layout that ran too early. `_hasCentredOnce` is the second instance of that last shape, written in the same idiom as the first: a private boolean with a plain initializer, a JSDoc block naming every writer, and no clearing path. Since no existing pair prescribes a naming convention for the combination, the field's name follows its neighbour `_needsInitialCentre` — a `_`-prefixed predicate that reads as the question it answers.
 
 [^focusnode-zoom-floor]: Two different mechanisms are at work here. First, several off-screen-floor tests hardcode a pixel-space fixture against the pre-existing zoom-1 opening — `edgeTouchingResult()`, for instance, places a node so its edge lands exactly on the viewport's right edge *at zoom 1*; at the new default's fit zoom that same node lands nowhere near the edge, inverting what the test means to exercise. Second, `zoomFittingNode` (line 1360) resolves its zoom from `this.getZoom()` — whatever zoom is currently in effect — and only ever lowers it, never raises it. This is why `focusNode mounts its target` and `at zoom 1 …` specifically break: both use a graph fixture spread far wider than the viewport (`farGraph()` / a 220-node grid), so the default fit zooms out much further than 1 on first load, and the later explicit `focusNode`/zoom-1 assumption in each test then observes that far-out zoom instead of the value the test was written against. `fitOnLoad: false` keeps every one of the eleven tests' scaffolding at zoom 1, as originally written, regardless of which of the two mechanisms would otherwise have disturbed it.
+
+---
+
+## Implementation Notes
+
+- **Step 13's manual demo check was performed and passed**, driving the actual
+  `npm run dev` demo app (the **Diagram** section) through `chrome-devtools`
+  browser automation rather than by hand, since the harness has no automated
+  substitute for visual/gesture verification (see `implement/worker.md`'s
+  test-first escape hatch). All four outcomes matched the plan: (1) the
+  diagram opened filled to the viewport at the fitted zoom, not at 1× in a
+  corner of empty canvas; (2) clicking **Reset view** returned it to 1×,
+  centred, without re-fitting; (3) clicking **Fit to view** afterward
+  returned it to the same fitted opening scale as (1); (4) temporarily
+  changing `DiagramPanel.ts:80` to `new DiagramView({ data: SAMPLE,
+  fitOnLoad: false })` and reloading opened the diagram at 1× centred (the
+  pre-this-plan opening) instead of fitted. The temporary edit was reverted
+  and confirmed via `git status` to leave `DiagramPanel.ts` unchanged.
