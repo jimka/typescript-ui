@@ -298,17 +298,19 @@ describe('TextInput class-tier style migration', () => {
         // TextField/ComboBox/NumberSpinner (and every TextField subclass,
         // e.g. the NumberSpinner/AutoCompleteField inner fields) dedup their
         // height pair onto a shared `.ClassName.h<h>px` value-class rule
-        // instead of `#id`. PasswordField, UsernameField and
-        // AbstractPickerField (DateField's own `updateHeight`) are the
-        // plan's named Non-Goals — held back for a follow-up — so they keep
-        // writing the real pair straight to `#id`, in the order
-        // plans/implemented/abstractinput-height-dedup.md fixed.
+        // instead of `#id`. PasswordField and UsernameField now extend
+        // TextField (plans/implemented/credential-field-and-input-updateheight-dedup.md)
+        // and inherit its `updateHeight`, so they dedupe the same way.
+        // AbstractPickerField (DateField's own `updateHeight`) is the one
+        // leaf still held back — so it keeps writing the real pair straight
+        // to `#id`, in the order plans/implemented/abstractinput-height-dedup.md
+        // fixed.
         const sink = DOM.sink as RecordingDOMSink;
 
         const leaves: Array<[string, () => { getElement(createIfMissing?: boolean): unknown; getId(): string }, string[]]> = [
             ['TextField',                     () => new TextField(),                                     []],
-            ['PasswordField',                 () => new PasswordField(),                                 ['maxHeight', 'minHeight']],
-            ['UsernameField',                 () => new UsernameField(),                                 ['maxHeight', 'minHeight']],
+            ['PasswordField',                 () => new PasswordField(),                                 []],
+            ['UsernameField',                 () => new UsernameField(),                                 []],
             ['ComboBox',                      () => new ComboBox(),                                      []],
             ['DateField',                     () => new DateField(),                                     ['maxHeight', 'minHeight']],
             ['NumberSpinner inner field',     () => (new NumberSpinner() as any)._input,                 []],

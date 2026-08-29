@@ -93,41 +93,27 @@ describe('TextInput-family padding activation', () => {
         expect(field.getPadding()?.getTop()).toBe(3);
     });
 
-    it('a rendered PasswordField carries no real padding on its own #id rule, and .PasswordField carries it', () => {
+    it('a rendered PasswordField carries no real padding on its own #id rule, and .TextField carries it', () => {
         const sink = installTestDOM(CONFIG);
 
-        const start = sink.writes.length;
         const field = new PasswordField();
         const declarations = declarationsDuring(sink, idSelector(field), () => field.getElement(true));
 
-        const classDeclarations: Record<string, string | null> = {};
-        for (const w of sink.writes.slice(start)) {
-            if (w.op === 'setRuleStyles' && w.args[0] === '.PasswordField') {
-                Object.assign(classDeclarations, w.args[1]);
-            }
-        }
-        expect(classDeclarations.padding).toBe('3px 3px 3px 3px');
         expect(declarations.padding).toBeUndefined();
-        expect(_ruleCacheHas('.PasswordField')).toBe(true);
+        expect(_ruleCacheHas('.PasswordField')).toBe(false);
+        expect(_ruleCacheHas('.TextField')).toBe(true);
         expect(field.getPadding()?.getTop()).toBe(3);
     });
 
-    it('a rendered UsernameField carries no real padding on its own #id rule, and .UsernameField carries it', () => {
+    it('a rendered UsernameField carries no real padding on its own #id rule, and .TextField carries it', () => {
         const sink = installTestDOM(CONFIG);
 
-        const start = sink.writes.length;
         const field = new UsernameField();
         const declarations = declarationsDuring(sink, idSelector(field), () => field.getElement(true));
 
-        const classDeclarations: Record<string, string | null> = {};
-        for (const w of sink.writes.slice(start)) {
-            if (w.op === 'setRuleStyles' && w.args[0] === '.UsernameField') {
-                Object.assign(classDeclarations, w.args[1]);
-            }
-        }
-        expect(classDeclarations.padding).toBe('3px 3px 3px 3px');
         expect(declarations.padding).toBeUndefined();
-        expect(_ruleCacheHas('.UsernameField')).toBe(true);
+        expect(_ruleCacheHas('.UsernameField')).toBe(false);
+        expect(_ruleCacheHas('.TextField')).toBe(true);
         expect(field.getPadding()?.getTop()).toBe(3);
     });
 

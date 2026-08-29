@@ -35,7 +35,7 @@ const _defaultTextFieldOptions: Partial<TextFieldOptions> = {
  *
  * @category Components
  */
-class TextField extends TextInput<TextFieldOptions> {
+class TextField<TOptions extends TextFieldOptions = TextFieldOptions> extends TextInput<TOptions> {
 
     // Own contribution to the hierarchy-aware class tier — see
     // plans/implemented/class-hierarchy-cascade.md. `TextField` deviates
@@ -51,8 +51,8 @@ class TextField extends TextInput<TextFieldOptions> {
      *   class's defaults; subclasses forward their `_defaultXxxOptions`
      *   constant here.
      */
-    constructor(options?: TextFieldOptions, subclassDefaults?: Partial<TextFieldOptions>) {
-        super(options, { ..._defaultTextFieldOptions, ...(subclassDefaults ?? {}) });
+    constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+        super(options, { ..._defaultTextFieldOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>);
 
         this.updateHeight();
         this.subscribeTheme(() => this.updateHeight());
@@ -143,7 +143,7 @@ class TextField extends TextInput<TextFieldOptions> {
 }
 
 const TextFieldCallable = callable(TextField);
-type TextFieldCallable = TextField;
+type TextFieldCallable<TOptions extends TextFieldOptions = TextFieldOptions> = TextField<TOptions>;
 export {
     TextField         as _TextField,
     TextFieldCallable as TextField

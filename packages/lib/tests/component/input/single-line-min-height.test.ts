@@ -20,6 +20,7 @@ import { VBox } from '~/layout/VBox';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
+import { Util } from '~/core/Util';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -109,5 +110,41 @@ describe('TextArea stays Y-resizable', () => {
         const pref = area.getPreferredSize()!;
 
         expect(min.height).toBeLessThan(pref.height);
+    });
+});
+
+describe('Credential fields inherit setBorder\'s runtime height re-derivation', () => {
+    // Before this plan, neither PasswordField nor UsernameField had a
+    // `setBorder` override, so all three heights stayed stale after a border
+    // change. Now both extend TextField and inherit its override. The class
+    // default border resolves to 0px against this test fixture's empty
+    // `themeVars`, and the new border contributes 2px top + 2px bottom, so
+    // the recomputed height is exactly 4px more than the recorded one.
+    const BORDER_WIDTH_DELTA_PX = 4;
+
+    it('PasswordField: setBorder re-derives preferred/min/max height', () => {
+        const field = new PasswordField();
+        const before = field.getPreferredSize()!.height;
+
+        field.setBorder('2px solid red');
+
+        const expectedHeight = Util.singleLineBoxHeight(field.getInsets(), field.getPadding(), field.getBorderSize());
+        expect(expectedHeight).toBe(before + BORDER_WIDTH_DELTA_PX);
+        expect(field.getPreferredSize()!.height).toBe(expectedHeight);
+        expect(field.getMinSize()!.height).toBe(expectedHeight);
+        expect(field.getMaxSize()!.height).toBe(expectedHeight);
+    });
+
+    it('UsernameField: setBorder re-derives preferred/min/max height', () => {
+        const field = new UsernameField();
+        const before = field.getPreferredSize()!.height;
+
+        field.setBorder('2px solid red');
+
+        const expectedHeight = Util.singleLineBoxHeight(field.getInsets(), field.getPadding(), field.getBorderSize());
+        expect(expectedHeight).toBe(before + BORDER_WIDTH_DELTA_PX);
+        expect(field.getPreferredSize()!.height).toBe(expectedHeight);
+        expect(field.getMinSize()!.height).toBe(expectedHeight);
+        expect(field.getMaxSize()!.height).toBe(expectedHeight);
     });
 });
