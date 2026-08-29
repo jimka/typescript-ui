@@ -7,6 +7,20 @@ page resets to empty.
 
 ## Changed
 
+### Components
+
+- **`TextField` is now generic over its options bag**
+  (`class TextField<TOptions extends TextFieldOptions = TextFieldOptions>`),
+  matching `TextInput`'s own shape. A subclass with its own options
+  interface — as `PasswordField`/`UsernameField` now are — can extend
+  `TextField<ItsOptions>` without losing type information on `this._options`.
+  Existing bare `TextField` references and unparameterised `extends
+  TextField` clauses are unaffected.
+- **`Form`'s constructor now accepts an optional `subclassDefaults` bag**,
+  layered under its own `{ tag: "form" }` default — the same forwarding
+  shape every other generic base class already uses. No consumer action is
+  needed; existing `new Form(options)` calls are unaffected.
+
 ### Menu
 
 - **`CheckboxMenuRow` and `RadioMenuRow` now share a new `AbstractBooleanMenuRow`
@@ -60,3 +74,15 @@ page resets to empty.
 - **A `MenuBar` dropdown's `separator: true` entry now renders through
   `MenuSeparator`,** the same class a context menu already used. No consumer
   action is needed.
+
+### Components
+
+- **`PasswordField` and `UsernameField` now extend `TextField` instead of
+  duplicating it.** Both classes were near-verbatim copies of `TextField`
+  that had drifted from it: neither re-derived its height when `setBorder`
+  was called at runtime, and `UsernameField` rendered with the browser's own
+  focus outline instead of the framework's inset focus mark, since it
+  carried no `TextField` class token. Extending `TextField` directly fixes
+  both — `setBorder` on either field now re-derives preferred/min/max
+  height, and a focused `UsernameField` shows the same inset focus ring as a
+  plain `TextField`. No consumer action is needed.
