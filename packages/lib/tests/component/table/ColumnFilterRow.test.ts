@@ -22,7 +22,7 @@ import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Table } from '~/component/table/Table';
 import { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
 import { TreeTable } from '~/component/table/TreeTable';
-import type { TableHeader } from '~/component/table/Header';
+import { TableHeader } from '~/component/table/Header';
 import { FilterCell } from '~/component/table/cell/Filter';
 import { FilterCellRenderer } from '~/component/table/cell/renderer/Filter';
 import { MemoryStore } from '~/data/MemoryStore';
@@ -647,6 +647,31 @@ describe('Column filter row — recycling and external sync', () => {
         await store.clearFilter();
 
         expect(renderer(filterCells(table).find(c => c.getFieldName() === 'name')!).getValue()).toBeNull();
+    });
+
+    // Offline coverage for plans/implemented/table-subsystem-consolidation-round-2.md's
+    // `## Expected Behaviour` §Phase 2 — `reconcileFilterCells` now shares
+    // `reconcileWindowedRow` / `reconcileWindowedRowSlide` with the column
+    // row, but a tick whose window and `_filterCellsDirty` are both
+    // unchanged still takes the early return before either shared method
+    // runs, exactly as the hand-written reconciler did before the extraction.
+    it('a scroll that leaves the filter window unchanged calls neither shared reconciler', async () => {
+        const table = await wideTable(20);
+        render20At100(table, 0); // window 0..2
+
+        const rowSpy   = vi.spyOn(TableHeader.prototype as any, 'reconcileWindowedRow');
+        const slideSpy = vi.spyOn(TableHeader.prototype as any, 'reconcileWindowedRowSlide');
+
+        // Re-rendering at the exact same geometry and scroll position leaves
+        // the filter window unchanged, so `reconcileFilterCells` must take
+        // its early return before either shared reconciler runs.
+        render20At100(table, 0);
+
+        expect(rowSpy).not.toHaveBeenCalled();
+        expect(slideSpy).not.toHaveBeenCalled();
+
+        rowSpy.mockRestore();
+        slideSpy.mockRestore();
     });
 });
 
