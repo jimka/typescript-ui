@@ -54,14 +54,26 @@ function ensureAccordionIndicatorClassRule(): void {
         scope:  "class",
         name:   "AccordionIndicator",
         styles: {
-            textAlign:     "center",
             pointerEvents: "none",
-            fontSize:      "10px",
-            color:         "var(--ts-ui-accordion-indicator-color, rgb(100,100,100))",
             transition:    "transform 200ms ease",
         },
     });
 }
+
+/**
+ * Resting-tier typography/colour — `foregroundColor`/`font` are confirmed
+ * `StyleBag` fields (`core/ClassStyleRules.ts`), so they hoist onto
+ * `ownClassStyleDefaults` instead of the hand-rolled module rule above, which
+ * now carries only the two declarations `StyleBag` has no field for
+ * (`pointerEvents`, `transition`).
+ */
+const _defaultAccordionIndicatorStyleDefaults: StyleBag = {
+    foregroundColor: "var(--ts-ui-accordion-indicator-color, rgb(100,100,100))",
+    font: {
+        fontSize:  "10px",
+        textAlign: "center",
+    },
+};
 
 /**
  * The expand/collapse chevron used by {@link AccordionHeader}.
@@ -79,6 +91,8 @@ function ensureAccordionIndicatorClassRule(): void {
  * @category Components
  */
 class AccordionIndicator extends Component<AccordionIndicatorOptions> {
+
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultAccordionIndicatorStyleDefaults;
 
     // Declares `.expanded` so `styleLayers()`/`restingGuardSuffix` know about
     // it — see `Button`'s `ownStyleStates` for the full mechanism. Empty

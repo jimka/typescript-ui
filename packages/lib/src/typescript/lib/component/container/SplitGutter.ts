@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { CollapseButton, CollapseDirection, CollapseTrigger } from "~/component/container/CollapseButton.js";
 import { Event } from "~/core/Event.js";
 import { beginViewportDrag, endViewportDrag } from "~/core/PointerDrag.js";
@@ -105,6 +106,21 @@ const _defaultSplitGutterOptions: Partial<SplitGutterOptions> = {
  * @category Components
  */
 class SplitGutter extends Component<SplitGutterOptions> {
+
+    // The collapsed-strip fill — a themed button surface, matching
+    // WindowBorder's `.snap-target` shape. Migrated per the StyleAudit sweep;
+    // `_expandedBackground`'s divider-state fill stays a per-instance write
+    // (a genuine per-caller value — see `setOpaque`).
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".opaque",
+            extract: (): StyleBag => ({
+                backgroundColor: "var(--ts-ui-button-bg, #e8e8e8)",
+                backgroundImage: "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))",
+                border:          "1px solid var(--ts-ui-button-border, #c8c8c8)",
+            }),
+        },
+    ];
 
     declare private _direction: String;
     declare private _collapsible: boolean;
@@ -312,13 +328,10 @@ class SplitGutter extends Component<SplitGutterOptions> {
             // restore. `--ts-ui-button-bg` is a solid colour in some themes and
             // a gradient in others, so set both background properties to it —
             // the browser ignores whichever is type-invalid for the given theme.
-            this.setBackgroundColor("var(--ts-ui-button-bg, #e8e8e8)");
-            this.setBackgroundImage("var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))");
-            this.setBorder("1px solid var(--ts-ui-button-border, #c8c8c8)");
+            this.setStyleState(".opaque", true);
             this._collapseButton?.setDirection(OPPOSITE_DIRECTION[this._collapseDirection]);
         } else {
-            this.clearBackgroundImage();
-            this.clearBorder();
+            this.setStyleState(".opaque", false);
             this.setBackgroundColor(this._expandedBackground);
             this._collapseButton?.setDirection(this._collapseDirection);
         }

@@ -108,7 +108,21 @@ const NOOP = (): void => {};
 // full account of this deviation. Derived from a real run of this file
 // against this worktree's own code (see the plan's Step 4); not carried
 // over from any other plan or document.
-const STYLE_AUDIT_DUPLICATE_CEILING = 68;
+// Raised from 68 to 69 by plans/split-accordion-panel-scroll-convergence.md's
+// SplitGutter `.opaque` migration: `_expandedBackground` (a genuine per-caller
+// value — Border passes "transparent", others can override it — so it stays
+// a per-instance `setBackgroundColor` call, not a class-tier default) now
+// shares a property key with the new `.opaque` `ownStyleStates` bag, so
+// `isRestingChromeIsolated` isolates it onto its own `#id:not(.opaque)` rule
+// instead of folding it into the same `#id` write as `applyCursor`'s
+// direction-derived cursor. The gallery's two identically-configured
+// (`'horizontal'`, default `expandedBackground`) SplitGutter instances still
+// produce the exact same one redundant pair either way — splitting a
+// previously-combined body into two separately-tracked ones just doubles how
+// many *groups* record that one redundant pair, not the underlying
+// duplication. Not a fixable dedup regression: this is the new class/state
+// tier machinery doing its job.
+const STYLE_AUDIT_DUPLICATE_CEILING = 69;
 
 // One factory per gallery class. Each constructor call is copied verbatim
 // from an existing, already-passing call in default-options-fallback.test.ts.

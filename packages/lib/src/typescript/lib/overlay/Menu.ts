@@ -14,6 +14,7 @@ import { MenuSeparator } from "~/component/container/MenuSeparator.js";
 import { MenuRow } from "~/component/container/MenuRow.js";
 import { callable } from "~/core/Callable.js";
 import { Util } from "~/core/Util.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 
 /**
  * Pixel bounds a content-sized menu panel clamps to. Menus size to their widest
@@ -41,6 +42,14 @@ const VIEWPORT_MARGIN = 4;
 function pointRect(x: number, y: number): Rect {
     return { x, y, left: x, top: y, right: x, bottom: y, width: 0, height: 0 };
 }
+
+// Resting-tier chrome shared by both modes — see `## Architecture Decisions`'
+// StyleAudit residue entry: `borderRadius` is identical in `applyRebuildChrome`
+// and `applyPersistentChrome`, so it hoists here instead of being written
+// per-instance by both.
+const _defaultMenuStyleDefaults: StyleBag = {
+    borderRadius: "var(--ts-ui-border-radius, 4px)",
+};
 
 /**
  * A floating menu panel that operates in one of two modes:
@@ -79,6 +88,23 @@ function pointRect(x: number, y: number): Rect {
  * @category Components
  */
 class Menu extends Component implements DismissableLayer {
+
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultMenuStyleDefaults;
+
+    // `.persistent`'s backgroundColor/border/shadow override the rebuild-mode
+    // (resting) values `applyRebuildChrome` still writes per-instance — set
+    // once at construction via `setStyleState(".persistent", true)` and never
+    // retoggled, since a Menu's mode is fixed for its lifetime.
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".persistent",
+            extract: (): StyleBag => ({
+                backgroundColor: "var(--ts-ui-menu-bar-panel-bg, rgb(255, 255, 255))",
+                border:          { border: "1px solid var(--ts-ui-menu-bar-panel-border, rgb(200, 200, 200))" },
+                shadow:          "var(--ts-ui-menu-bar-panel-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))",
+            }),
+        },
+    ];
 
     private readonly _persistent: boolean;
     // A persistent menu's items provider, kept so each open() re-resolves it —
@@ -859,11 +885,8 @@ class Menu extends Component implements DismissableLayer {
      * Applies the persistent-mode chrome (MenuBar dropdown CSS variables, aria role).
      */
     private applyPersistentChrome(): void {
-        this.setBackgroundColor("var(--ts-ui-menu-bar-panel-bg, rgb(255, 255, 255))");
         this.setInsets(new Insets(4, 0, 4, 0));
-        this.setBorder({ border: "1px solid var(--ts-ui-menu-bar-panel-border, rgb(200, 200, 200))" });
-        this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
-        this.setShadow("var(--ts-ui-menu-bar-panel-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))");
+        this.setStyleState(".persistent", true);
         this.getAria().setRole("menu");
         this.setContain("layout");
 
@@ -878,7 +901,6 @@ class Menu extends Component implements DismissableLayer {
         this.setBackgroundColor("var(--ts-ui-context-menu-bg, rgb(255, 255, 255))");
         this.setInsets(new Insets(4, 0, 4, 0));
         this.setBorder({ border: "1px solid var(--ts-ui-context-menu-border, rgb(200, 200, 200))" });
-        this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setShadow("var(--ts-ui-context-menu-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))");
         this.setContain("layout");
 
