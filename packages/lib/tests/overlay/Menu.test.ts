@@ -4,8 +4,9 @@ import { MenuItem, MenuItemConfig } from '~/component/container/MenuItem';
 import { MenuSeparator } from '~/component/container/MenuSeparator';
 import { MenuRow } from '~/component/container/MenuRow';
 import { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
+import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
-import type { Rect } from '~/core/DOM';
+import type { Handle, Rect } from '~/core/DOM';
 import { LayerManager } from '~/core/LayerManager';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -1176,6 +1177,81 @@ describe('Menu rect-anchored toggleFor — empty-list suppression', () => {
         // is hoisted above the toggle-shut branch.
         menu.toggleFor(opener, trigger, []);
         expect(LayerManager.getTopLayer()).not.toBe(menu);
+    });
+});
+
+describe('Menu open() — horizontal placement', () => {
+    afterEach(() => DOM.reset());
+
+    // A plain, unattached anchor Component resolves via getElementRect, which
+    // reads back its own committed left/top/width/height inline-style writes
+    // (TestDOM.getElementRect) — no parent tree needed. getElement(true) forces
+    // the render that flushes those buffered writes.
+    function anchor(x: number, y: number, width: number, height: number): Handle {
+        const el = new Component();
+
+        el.setX(x);
+        el.setY(y);
+        el.setWidth(width);
+        el.setHeight(height);
+
+        return el.getElement(true)!;
+    }
+
+    it('top-level, room to the right: left-aligns, unchanged from today', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu([{ text: 'A' }], () => {});
+        menu.setWidth(150);
+
+        menu.open(anchor(100, 500, 100, 24));
+
+        expect(menu.getX()).toBe(100);
+    });
+
+    it("top-level, flips (report-1 shape): right edge flush with the anchor's right", () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu([{ text: 'A' }], () => {});
+        menu.setWidth(150);
+
+        // Anchor right edge at 1270 in a 1280px viewport — today this clamps to
+        // 1280 - 150 = 1130 instead of flushing at 1270 - 150 = 1120.
+        menu.open(anchor(1200, 500, 70, 24));
+
+        expect(menu.getX()).toBe(1120);
+    });
+
+    it("submenu, room to the right of parent: flush with parent's right edge, unchanged from today", () => {
+        installTestDOM(CONFIG);
+
+        const parent = new Menu([{ text: 'A' }], () => {});
+        parent.setX(100);
+        parent.setWidth(100);
+        parent.getElement(true);
+
+        const menu = new Menu([{ text: 'B' }], () => {});
+        menu.setWidth(150);
+
+        menu.open(anchor(500, 500, 10, 24), parent);
+
+        expect(menu.getX()).toBe(200);
+    });
+
+    it("submenu, flips: flush with parent's left edge", () => {
+        installTestDOM(CONFIG);
+
+        const parent = new Menu([{ text: 'A' }], () => {});
+        parent.setX(1150);
+        parent.setWidth(100);
+        parent.getElement(true);
+
+        const menu = new Menu([{ text: 'B' }], () => {});
+        menu.setWidth(150);
+
+        menu.open(anchor(500, 500, 10, 24), parent);
+
+        expect(menu.getX()).toBe(1000);
     });
 });
 
