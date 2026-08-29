@@ -64,6 +64,12 @@ page resets to empty.
 - **`Event.addViewportListener` now ignores a repeat registration of the
   same function reference instead of registering it a second time and
   firing it twice.** No consumer action is needed.
+- **A layout-managed child whose minimum size exceeds its maximum is now
+  placed at its minimum instead of its maximum.** `LayoutManager.resolveBounds`
+  clamped size with an `if`/`else if` ladder, so the maximum branch, once
+  taken, skipped the minimum check — the opposite of every other clamp in
+  the framework. A component with such a contradictory constraint pair now
+  lands where its size already put it, instead of overflowing its own cell.
 
 ### Menu
 
