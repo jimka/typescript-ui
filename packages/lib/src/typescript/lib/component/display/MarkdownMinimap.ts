@@ -13,6 +13,7 @@ import { UNBOUNDED } from "~/primitive/Size.js";
 import type { Size } from "~/primitive/Size.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 import type { MarkdownHeading } from "~/component/display/Markdown.js";
 
 /**
@@ -104,13 +105,36 @@ const ROW_FONT_SIZE = 12;
 /** Padding around the header row's text — top/bottom give it room beyond its bare line height. */
 const HEADER_PADDING = new Insets(8, 12, 4, 12);
 
-const _defaultMarkdownMinimapOptions: Partial<MarkdownMinimapOptions> = {
-    maxHeadingDepth: DEFAULT_MAX_HEADING_DEPTH,
+// The opaque card surface lives on the outer panel; the inner Tree stays
+// transparent (see class doc) so there is exactly one opaque box, not two
+// stacked ones. Also carries minSize/maxSize, not just background/shadow/
+// borderRadius: once a class declares any ownClassStyleDefaults it starts
+// participating in the hierarchy-cascade mechanism (chainParticipates), and
+// from that point on ensureClassStyleRule's class-tier authored bag is built
+// from ownClassStyleDefaults alone, not the full _defaultOptions — a
+// StyleBag key this bag omits falls back to the framework baseline
+// (minSize: {0,0}) instead of this class's own default. Mirrors the same
+// full-bag-as-ownClassStyleDefaults shape TextArea, AbstractSelectableList,
+// AbstractChart, and Table already use for their own minSize.
+//
+// Typed as a `Pick` of these keys, not `Partial<MarkdownMinimapOptions>`:
+// `MarkdownMinimapOptions` also carries `FloatingPanelOptions.margin` as a
+// plain `number`, which is not assignable to `StyleBag`'s `string | null`,
+// and this same constant has to satisfy both roles below.
+const MARKDOWN_MINIMAP_CHROME: Pick<MarkdownMinimapOptions, "backgroundColor" | "shadow" | "borderRadius" | "minSize" | "maxSize"> = {
+    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
+    shadow:          "var(--ts-ui-popover-shadow, 2px 4px 12px rgba(0, 0, 0, 0.18))",
+    borderRadius:    "var(--ts-ui-border-radius, 4px)",
     // Caps the otherwise-unbounded content-derived height (see
     // DEFAULT_MAX_HEIGHT_PX). Class default (not an imperative setter call)
     // so a caller-supplied maxSize still wins.
     maxSize: { width: UNBOUNDED, height: DEFAULT_MAX_HEIGHT_PX },
     minSize: { width: DEFAULT_MIN_WIDTH_PX, height: 0 },
+};
+
+const _defaultMarkdownMinimapOptions: Partial<MarkdownMinimapOptions> = {
+    ...MARKDOWN_MINIMAP_CHROME,
+    maxHeadingDepth: DEFAULT_MAX_HEADING_DEPTH,
 };
 
 /**
@@ -128,6 +152,8 @@ const _defaultMarkdownMinimapOptions: Partial<MarkdownMinimapOptions> = {
  */
 class MarkdownMinimap extends FloatingPanel<MarkdownMinimapOptions> {
 
+    protected static readonly ownClassStyleDefaults: StyleBag = MARKDOWN_MINIMAP_CHROME;
+
     private readonly _tree: Tree;
     private readonly _listeners: ListenerBag<MarkdownMinimapEvent> = this.registerListenerBag(new ListenerBag<MarkdownMinimapEvent>());
     private readonly _scrollSource: HeadingScrollSource | null;
@@ -144,12 +170,6 @@ class MarkdownMinimap extends FloatingPanel<MarkdownMinimapOptions> {
     constructor(options?: MarkdownMinimapOptions, subclassDefaults?: Partial<MarkdownMinimapOptions>) {
         super(options, { ..._defaultMarkdownMinimapOptions, ...(subclassDefaults ?? {}) });
 
-        // The opaque card surface lives here, on the outer panel; the inner
-        // Tree stays transparent (see class doc) so there is exactly one
-        // opaque box, not two stacked ones.
-        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
-        this.setShadow("var(--ts-ui-popover-shadow, 2px 4px 12px rgba(0, 0, 0, 0.18))");
-        this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         // stretching: true fills the header and the tree to the panel's own
         // width — the same reason DocsSidebar's own Tree-hosting layouts pass it.
         this.setLayoutManager(new VBox({ spacing: 4, stretching: true }));
