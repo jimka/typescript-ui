@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+export { AbstractCanvasSurface } from '~/component/display/AbstractCanvasSurface.js';
+export type { AbstractCanvasSurfaceOptions } from '~/component/display/AbstractCanvasSurface.js';
 export { Canvas } from '~/component/display/Canvas.js';
 export type { CanvasOptions, CanvasDrawCallback } from '~/component/display/Canvas.js';
 export { WebGLCanvas } from '~/component/display/WebGLCanvas.js';

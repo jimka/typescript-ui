@@ -30,6 +30,7 @@ import { Component } from '~/core/Component';
 import { Markdown } from '~/component/display/Markdown';
 import { Video } from '~/component/display/Video';
 import { VideoPlayer } from '~/component/display/VideoPlayer';
+import { Canvas } from '~/component/display/Canvas';
 import { MenuItem } from '~/component/container/MenuItem';
 import { LineChart } from '~/component/chart/LineChart';
 import { ChartLegend } from '~/component/chart/ChartLegend';
@@ -124,6 +125,7 @@ const REGISTRY: Array<{
     },
     { name: 'MenuItem',      covers: ['MenuItem'], make: () => new MenuItem({ text: 'A' }, () => {}, () => {}) },
     { name: 'AbstractChart (via LineChart)', covers: ['AbstractChart'], make: () => new LineChart({}) },
+    { name: 'AbstractCanvasSurface (via Canvas)', covers: ['AbstractCanvasSurface'], make: () => new Canvas() },
     { name: 'ChartLegend',   make: () => new ChartLegend() },
     { name: 'MenuBarButton', make: () => new MenuBarButton('File', () => {}, () => {}) },
     { name: 'CodeEditor',    covers: ['CodeEditor'], make: () => new CodeEditor() },
@@ -474,11 +476,10 @@ const REGISTRY: Array<{
  */
 const UNCLAIMED_DESTRUCTOR_CLASSES: readonly string[] = [
     'AbstractPickerField', 'AbstractWindow', 'AnimatedDropdown', 'AutoCompleteField', 'Button',
-    'Canvas', 'DiagnosticsOverlay', 'DiagramView', 'Dialog', 'Dock', 'Drawer', 'DropZoneOverlay',
+    'DiagnosticsOverlay', 'DiagramView', 'Dialog', 'Dock', 'Drawer', 'DropZoneOverlay',
     'FilterCell', 'HeaderCell', 'LabeledGrid', 'MarkdownMinimap', 'Notification', 'Panel',
     'PopupButton', 'Rail', 'Row', 'SplitGutter', 'StatusBar', 'StyleAuditOverlay',
     'StyleAuditView', 'TableHeader', 'TablePanel', 'Text', 'Tooltip', 'TreeTablePanel',
-    'WebGLCanvas',
 ];
 
 describe('dispose-full-teardown registry: every dispose() leaves zero new rule-cache keys', () => {
