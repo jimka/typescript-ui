@@ -1,3 +1,5 @@
+import { DOM } from '@jimka/typescript-ui/core';
+
 /**
  * Resolves the current reading measure — Markdown's own
  * `--ts-ui-md-max-measure` theme token — to a real pixel width via an
@@ -7,19 +9,29 @@
  * whatever font the active theme has applied to `<html>`, the same font
  * Markdown's own prose measures against.
  *
- * Shared by {@link DocsDemo} (so a demo block's right edge lines up with the
- * prose column around it) and `DocsContent` (so its own width caps to the
- * reading measure instead of stretching to fill an `HBox` row, leaving no
- * room for a sibling like `MarkdownMinimap`).
+ * Used by `DocsDemo` so a demo block's right edge lines up with the prose
+ * column around it.
  *
  * @returns The resolved max width in pixels, rounded up.
  */
 export function resolveProseMeasureWidth(): number {
-    const probe = document.createElement('div');
-    probe.style.cssText = 'position:fixed;visibility:hidden;width:var(--ts-ui-md-max-measure, 70ch);';
-    document.body.appendChild(probe);
-    const width = probe.getBoundingClientRect().width;
-    document.body.removeChild(probe);
+    const body  = DOM.source.getBody();
+    const probe = DOM.sink.createElement('div');
+
+    DOM.sink.apply(probe, {
+        style: {
+            position:   'fixed',
+            visibility: 'hidden',
+            width:      'var(--ts-ui-md-max-measure, 70ch)',
+        },
+    });
+
+    DOM.sink.appendChild(body, probe);
+
+    const width = DOM.source.getElementRect(probe).width;
+
+    DOM.sink.removeChild(body, probe);
+    DOM.sink.release(probe);
 
     return Math.ceil(width);
 }
