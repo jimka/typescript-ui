@@ -1,10 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { _Form as Form } from '~/core/Form';
+import { _Form as Form, FormOptions } from '~/core/Form';
 import { _Panel as Panel } from '~/core/Panel';
 import { Event } from '~/core/Event';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, makeEvent } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
+import { Insets } from '~/primitive/Insets';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -108,6 +109,26 @@ describe('Form', () => {
         expect(onSubmit).not.toHaveBeenCalled();
 
         disposeForm(form);
+        DOM.reset();
+    });
+
+    it('forwards subclassDefaults over Panel\'s own default, while Form\'s own tag default survives', () => {
+        installTestDOM(CONFIG);
+
+        class TestForm extends Form {
+            constructor(o?: FormOptions) {
+                super(o, { insets: new Insets(0, 0, 0, 0) });
+            }
+        }
+
+        const insetsForm = new TestForm();
+        expect(insetsForm.getInsets().getTop()).toBe(0);
+
+        const tagForm = new TestForm();
+        expect(tagForm.getTag()).toBe('form');
+
+        disposeForm(insetsForm);
+        disposeForm(tagForm);
         DOM.reset();
     });
 });

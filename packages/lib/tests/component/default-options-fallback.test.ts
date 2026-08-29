@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Component, ComponentOptions } from '~/core/Component';
 import { Panel, PanelOptions } from '~/core/Panel';
+import { Form } from '~/core/Form';
 import { Fit } from '~/layout/Fit';
 import { Absolute } from '~/layout/Absolute';
 import { BulletedList } from '~/component/list/BulletedList';
@@ -427,6 +428,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'Panel autoScroll',             resolve: () => new Panel({}).getAutoScroll(),                              expected: 'none' },
     { label: 'Panel scrollShadows',          resolve: () => new Panel({}).getScrollShadows(),                           expected: true },
     { label: 'Panel scrollbarStyle',         resolve: () => new Panel({}).getScrollbarStyle(),                          expected: 'overlay' },
+    { label: 'Form tag',                     resolve: () => new Form().getTag(),                                        expected: 'form' },
     { label: 'ScrollingPanel autoScroll',     resolve: () => new ScrollingPanel().getAutoScroll(),                       expected: 'y' },
     { label: 'ScrollingPanel overflowY',      resolve: () => new ScrollingPanel().getOverflowY(),                        expected: 'auto' },
     { label: 'ScrollingPanel scrollShadows',  resolve: () => new ScrollingPanel().getScrollShadows(),                    expected: false },
