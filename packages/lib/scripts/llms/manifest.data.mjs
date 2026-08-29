@@ -83,6 +83,13 @@ export const groups = [
         { task: "Multi-select list", symbol: "MultiSelectList" },
     ] },
 
+    { name: "Charts / Diagrams", entries: [
+        { task: "Line chart over a linear or time x axis", symbol: "LineChart" },
+        { task: "Grouped or stacked bar chart over a category axis", symbol: "BarChart" },
+        { task: "Clickable series legend for a chart", symbol: "ChartLegend" },
+        { task: "Auto-laid-out graph / diagram viewer with pan and zoom", symbol: "DiagramView" },
+    ] },
+
     { name: "Display", entries: [
         { task: "Heading / section title text", symbol: "Header" },
         { task: "Image", symbol: "Image" },
@@ -97,6 +104,9 @@ export const groups = [
         { task: "Spinning busy indicator", symbol: "ProgressSpinner" },
         { task: "Page-through pagination controls", symbol: "PaginationBar" },
         { task: "Custom 2D drawing surface", symbol: "Canvas" },
+        { task: "Custom GPU drawing surface (WebGL2)", symbol: "WebGLCanvas" },
+        { task: "Bare native video surface", symbol: "Video" },
+        { task: "Video player with a themable control bar", symbol: "VideoPlayer" },
         { task: "Bulleted (unordered) list of items", symbol: "BulletedList" },
         { task: "Numbered (ordered) list of items", symbol: "NumberedList" },
     ] },

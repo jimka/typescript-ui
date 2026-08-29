@@ -69,8 +69,13 @@ const GITHUB_BLOB = "https://github.com/jimka/typescript-ui/blob/master/";
  *
  * Raised again from 6350: the StyleAuditOverlay catalog entry pushed the
  * site variant to ~6438/6350 — one more minimally-worded row.
+ *
+ * Raised again from 6440: the WebGLCanvas / Video / VideoPlayer entries and
+ * the new "Charts / Diagrams" group (LineChart, BarChart, ChartLegend,
+ * DiagramView) pushed the site variant to ~6931/6440 — seven more
+ * minimally-worded rows plus one new group heading.
  */
-const TOKEN_BUDGET = 6440;
+const TOKEN_BUDGET = 6940;
 
 /** Max summary length (chars). Bounds a single row so the catalog stays under budget. */
 const SUMMARY_CAP = 140;
