@@ -9,10 +9,12 @@
 // bug this rule exists to close. These tests pin that pairing — a change that
 // drops either half reintroduces a reverting-cursor bug.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
-import { beginPointerDrag, endPointerDrag } from '~/core/PointerDrag';
-import { installTestDOM, RecordingDOMSink } from '../dom/TestDOM';
+import { Event } from '~/core/Event';
+import { beginPointerDrag, endPointerDrag, beginViewportDrag, endViewportDrag } from '~/core/PointerDrag';
+import { installTestDOM, makeEvent, RecordingDOMSink } from '../dom/TestDOM';
 import { _ruleCacheHas } from '~/core/StyleTarget';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -86,6 +88,78 @@ describe('endPointerDrag', () => {
 
     it('is safe without a matching begin — it only clears the class and cursor', () => {
         endPointerDrag();
+
+        const patch = patchFor('HTML');
+        expect(patch?.removeClass).toEqual(['ts-ui-dragging']);
+        expect(patch?.style).toEqual({ cursor: '' });
+    });
+});
+
+// WindowBorder and SplitGutter both wrap the same five-listener viewport-drag
+// lifecycle (mouseup/touchend/touchcancel -> stop, mousemove/touchmove ->
+// move) around beginPointerDrag/endPointerDrag — these tests pin that shared
+// wrapper directly, independent of either call site.
+describe('beginViewportDrag / endViewportDrag', () => {
+    it('pins the dragging class and cursor on the document element, mirroring beginPointerDrag', () => {
+        const component = new Component({});
+        component.getElement(true);
+        const move = (): void => {};
+        const stop = (): Event.ListenerResult => true;
+
+        beginViewportDrag(component, move, stop, 'ew-resize');
+
+        const patch = patchFor('HTML');
+        expect(patch?.addClass).toEqual(['ts-ui-dragging']);
+        expect(patch?.style).toEqual({ cursor: 'ew-resize' });
+
+        endViewportDrag(component, move, stop);
+    });
+
+    it('invokes the move listener on mousemove/touchmove and the stop listener on mouseup/touchend/touchcancel', () => {
+        const component = new Component({});
+        component.getElement(true);
+
+        let moveCount = 0;
+        let stopCount = 0;
+        const move = (): void => { moveCount++; };
+        const stop = (): Event.ListenerResult => { stopCount++; return true; };
+
+        beginViewportDrag(component, move, stop, 'ew-resize');
+
+        const el = component.getElement()!;
+        DOM.sink.dispatchEvent(el, makeEvent(el, 'mousemove'));
+        DOM.sink.dispatchEvent(el, makeEvent(el, 'touchmove'));
+        expect(moveCount).toBe(2);
+
+        DOM.sink.dispatchEvent(el, makeEvent(el, 'mouseup'));
+        DOM.sink.dispatchEvent(el, makeEvent(el, 'touchend'));
+        DOM.sink.dispatchEvent(el, makeEvent(el, 'touchcancel'));
+        expect(stopCount).toBe(3);
+
+        endViewportDrag(component, move, stop);
+    });
+
+    it('removes all five listeners and clears the dragging class / cursor', () => {
+        const component = new Component({});
+        component.getElement(true);
+
+        let moveCount = 0;
+        let stopCount = 0;
+        const move = (): void => { moveCount++; };
+        const stop = (): Event.ListenerResult => { stopCount++; return true; };
+
+        beginViewportDrag(component, move, stop, 'ew-resize');
+        endViewportDrag(component, move, stop);
+
+        const el = component.getElement()!;
+        DOM.sink.dispatchEvent(el, makeEvent(el, 'mousemove'));
+        DOM.sink.dispatchEvent(el, makeEvent(el, 'touchmove'));
+        DOM.sink.dispatchEvent(el, makeEvent(el, 'mouseup'));
+        DOM.sink.dispatchEvent(el, makeEvent(el, 'touchend'));
+        DOM.sink.dispatchEvent(el, makeEvent(el, 'touchcancel'));
+
+        expect(moveCount).toBe(0);
+        expect(stopCount).toBe(0);
 
         const patch = patchFor('HTML');
         expect(patch?.removeClass).toEqual(['ts-ui-dragging']);

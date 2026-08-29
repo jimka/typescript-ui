@@ -4,7 +4,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { Event } from "~/core/Event.js";
-import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
+import { beginViewportDrag, endViewportDrag } from "~/core/PointerDrag.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 
@@ -265,15 +265,9 @@ class WindowBorder extends Component<WindowBorderOptions> {
             return;
         }
 
-        Event.addViewportListener(this, 'mouseup', this._dragStopListener);
-        Event.addViewportListener(this, 'touchend', this._dragStopListener);
-        Event.addViewportListener(this, 'touchcancel', this._dragStopListener);
-        Event.addViewportListener(this, 'mousemove', this._fireDragListener);
-        Event.addViewportListener(this, 'touchmove', this._fireDragListener);
-
         // A direction with no resize cursor of its own still suppresses body
         // pointer events; it just has nothing to hold, so it keeps the default.
-        beginPointerDrag(this.dragCursor() ?? "default");
+        beginViewportDrag(this, this._fireDragListener, this._dragStopListener, this.dragCursor() ?? "default");
     }
 
     /**
@@ -282,13 +276,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
      * @returns `true`, consuming the release that ends the border resize.
      */
     onDragStop(): Event.ListenerResult {
-        Event.removeViewportListener(this, 'mouseup', this._dragStopListener);
-        Event.removeViewportListener(this, 'touchend', this._dragStopListener);
-        Event.removeViewportListener(this, 'touchcancel', this._dragStopListener);
-        Event.removeViewportListener(this, 'mousemove', this._fireDragListener);
-        Event.removeViewportListener(this, 'touchmove', this._fireDragListener);
-
-        endPointerDrag();
+        endViewportDrag(this, this._fireDragListener, this._dragStopListener);
 
         // Drop the snap-target highlight (if any) once the drag commits, so a
         // subsequent Ctrl-release on the same hover doesn't leave the strip glowing.

@@ -5,7 +5,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { CollapseButton, CollapseDirection, CollapseTrigger } from "~/component/container/CollapseButton.js";
 import { Event } from "~/core/Event.js";
-import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
+import { beginViewportDrag, endViewportDrag } from "~/core/PointerDrag.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { callable } from "~/core/Callable.js";
@@ -550,13 +550,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
 
         this.emit("dragstart", position);
 
-        Event.addViewportListener(this, 'mouseup', this.onDragStop);
-        Event.addViewportListener(this, 'touchend', this.onDragStop);
-        Event.addViewportListener(this, 'touchcancel', this.onDragStop);
-        Event.addViewportListener(this, 'mousemove', this.onDrag);
-        Event.addViewportListener(this, 'touchmove', this.onDrag);
-
-        beginPointerDrag(this.dragCursor());
+        beginViewportDrag(this, this.onDrag, this.onDragStop, this.dragCursor());
     }
 
     /**
@@ -567,13 +561,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
      * @returns `true`, consuming the release that ends the gutter drag.
      */
     onDragStop(): Event.ListenerResult {
-        Event.removeViewportListener(this, 'mouseup', this.onDragStop);
-        Event.removeViewportListener(this, 'touchend', this.onDragStop);
-        Event.removeViewportListener(this, 'touchcancel', this.onDragStop);
-        Event.removeViewportListener(this, 'mousemove', this.onDrag);
-        Event.removeViewportListener(this, 'touchmove', this.onDrag);
-
-        endPointerDrag();
+        endViewportDrag(this, this.onDrag, this.onDragStop);
 
         this.emit("dragend");
 

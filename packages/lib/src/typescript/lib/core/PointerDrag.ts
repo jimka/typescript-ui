@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import type { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import { Event } from "~/core/Event.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 
 /**
@@ -73,4 +75,45 @@ export function endPointerDrag(): void {
         removeClass: [DRAGGING_CLASS],
         style:       { cursor: "" },
     });
+}
+
+/**
+ * Wires the standard viewport drag lifecycle: registers `moveListener` for
+ * both `mousemove` and `touchmove`, `stopListener` for `mouseup`, `touchend`,
+ * and `touchcancel` (all via `Event.addViewportListener`), then calls
+ * `beginPointerDrag(cursor)`. Pair with `endViewportDrag` using the exact
+ * same `component`/`moveListener`/`stopListener` references.
+ */
+export function beginViewportDrag(
+    component:    Component,
+    moveListener: Event.Listener,
+    stopListener: Event.Listener,
+    cursor:       string,
+): void {
+    Event.addViewportListener(component, 'mouseup', stopListener);
+    Event.addViewportListener(component, 'touchend', stopListener);
+    Event.addViewportListener(component, 'touchcancel', stopListener);
+    Event.addViewportListener(component, 'mousemove', moveListener);
+    Event.addViewportListener(component, 'touchmove', moveListener);
+
+    beginPointerDrag(cursor);
+}
+
+/**
+ * Removes the five viewport listeners `beginViewportDrag` registered and
+ * calls `endPointerDrag()`. `moveListener`/`stopListener` must be the same
+ * function references passed to the matching `beginViewportDrag` call.
+ */
+export function endViewportDrag(
+    component:    Component,
+    moveListener: Event.Listener,
+    stopListener: Event.Listener,
+): void {
+    Event.removeViewportListener(component, 'mouseup', stopListener);
+    Event.removeViewportListener(component, 'touchend', stopListener);
+    Event.removeViewportListener(component, 'touchcancel', stopListener);
+    Event.removeViewportListener(component, 'mousemove', moveListener);
+    Event.removeViewportListener(component, 'touchmove', moveListener);
+
+    endPointerDrag();
 }
