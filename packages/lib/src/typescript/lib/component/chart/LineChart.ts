@@ -199,16 +199,6 @@ class LineChart extends AbstractChart<LineChartOptions> {
     }
 
     /**
-     * Flattens the points of every visible series into one array (for domain
-     * computation).
-     *
-     * @returns The visible points.
-     */
-    private visiblePoints(): ChartPoint[] {
-        return this._series.filter((m) => !m.hidden).flatMap((m) => m.points);
-    }
-
-    /**
      * Builds a linear or time x scale and a linear y scale against the plot
      * rectangle, from the visible points' extents.
      *

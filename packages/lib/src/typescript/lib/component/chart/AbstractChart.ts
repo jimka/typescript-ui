@@ -130,6 +130,15 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
     /** The resolved series model (points + hidden flag), rebuilt on data change. */
     protected _series: ChartSeriesModel[] = [];
 
+    /**
+     * Flattens the points of every visible series, for domain computation.
+     *
+     * @returns The visible points.
+     */
+    protected visiblePoints(): ChartPoint[] {
+        return this._series.filter((m) => !m.hidden).flatMap((m) => m.points);
+    }
+
     /** The clicked point, drawn with a selection ring; `null` when none. */
     protected _selectedPoint: { series: number; index: number } | null = null;
 
