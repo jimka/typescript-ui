@@ -111,7 +111,7 @@ export interface MenuItemConfig {
     glyphColor?: string;
     /** When present this item opens a submenu rather than calling `action`. */
     submenu?: MenuConfig;
-    /** When `true` the item renders as a separator; all other fields are ignored. */
+    /** When `true`, `Menu` renders a `MenuSeparator` for this entry and ignores every other field, `row` included. */
     separator?: true;
     /**
      * A zero-argument factory returning a [`MenuRow`](/api/component/container/classes/MenuRow)
@@ -153,9 +153,7 @@ export interface MenuConfig {
  *
  * Renders a five-zone layout: check | icon | text | shortcut | chevron. The
  * check zone is reserved only when the menu has at least one checkable item
- * (see {@link MenuItemConfig.checked}). When `config.separator` is true the
- * item renders instead as a thin horizontal rule and ignores all other
- * config fields.
+ * (see {@link MenuItemConfig.checked}).
  *
  * Mouse hover triggers the submenu open callback after a 150 ms delay.
  * Keyboard focus is applied programmatically via `setFocused`.
@@ -167,7 +165,6 @@ class MenuItem extends MenuRow {
     /** Fixed pixel height for every non-separator menu item. */
     static readonly HEIGHT: number = MenuRow.HEIGHT;
 
-    private static readonly SEPARATOR_HEIGHT: number = 9;
     /** Title left inset when the menu reserves no icon column. */
     static readonly TEXT_INSET: number = 8;
     /** Title left offset when the menu reserves an icon column. */
@@ -238,28 +235,6 @@ class MenuItem extends MenuRow {
         this._onActivate = onActivate;
         this._onOpenSubmenu = onOpenSubmenu;
         this.setCssVarPrefix(cssVarPrefix);
-
-        if (config.separator) {
-            this.setHeight(MenuItem.SEPARATOR_HEIGHT);
-            this.setPreferredSize({ width: 0, height: MenuItem.SEPARATOR_HEIGHT });
-            this.setBackgroundColor("transparent");
-            this.setElementCSSRule(
-                "borderTop",
-                `1px solid var(--ts-ui-${cssVarPrefix}-separator-color, rgb(220, 220, 220))`
-            );
-            this.setElementCSSRule("margin", "4px 0");
-            this.getAria().setRole("separator");
-
-            this._onMouseOver = () => {};
-            this._onMouseOut = () => {};
-            this._onClick = () => {};
-
-            if (options) {
-                this.applyOptions(options);
-            }
-
-            return;
-        }
 
         const enabled = config.enabled !== false;
 
@@ -475,23 +450,13 @@ class MenuItem extends MenuRow {
     }
 
     /**
-     * Returns `true` when this item was constructed with `separator: true`.
+     * Every item is navigable; `activate` is what refuses to run for a
+     * disabled one.
      *
-     * @returns Whether this item is a non-interactive separator row.
-     */
-    isSeparator(): boolean {
-        return !!this._config.separator;
-    }
-
-    /**
-     * True for any item the menu's arrow-key highlight may land on — every
-     * item except a separator. A disabled item is still navigable; `activate`
-     * is what refuses to run for it.
-     *
-     * @returns Whether the roving highlight may land on this item.
+     * @returns `true`.
      */
     isNavigable(): boolean {
-        return !this.isSeparator();
+        return true;
     }
 
     /**
@@ -511,18 +476,13 @@ class MenuItem extends MenuRow {
      * live rather than a frozen construction-time value. Lets `Menu.setItemEnabled`
      * push a live availability change into an already-open panel — e.g. a
      * sibling row's own toggle that should immediately grey out this item —
-     * without closing or rebuilding the panel. No-op on a separator, which
-     * has no enabled state.
+     * without closing or rebuilding the panel.
      *
      * @param value - True to enable the item.
      *
      * @returns This item, for method chaining.
      */
     setEnabled(value: boolean): this {
-        if (this._config.separator) {
-            return this;
-        }
-
         this._config.enabled = value;
 
         this.setCursor(value ? "pointer" : "default");
@@ -615,7 +575,8 @@ class MenuItem extends MenuRow {
         // written value sane.
         const height = Math.max(1, MenuItem.HEIGHT - perimeter.top - perimeter.bottom);
 
-        // Optional chaining, not null checks: a separator has none of these, and a
+        // Optional chaining, not null checks: several of these are conditionally
+        // built (the check/icon/shortcut/chevron labels depend on config), and a
         // border arriving through the options bag could in principle reach here
         // before the field initializers have run.
         this._checkText?.centerInHeight(height);
@@ -660,10 +621,6 @@ class MenuItem extends MenuRow {
      */
     doLayout(): this {
         super.doLayout();
-
-        if (this._config.separator) {
-            return this;
-        }
 
         const box = this.getContentBounds();
 

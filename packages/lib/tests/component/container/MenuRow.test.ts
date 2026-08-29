@@ -120,6 +120,79 @@ describe('CheckboxMenuRow', () => {
         row.dispose();
     });
 
+    it('A1. activate() notifies a listeners.action handler and reads the NEW state inside it', () => {
+        installTestDOM(CONFIG);
+
+        let observed: boolean | undefined;
+        const action = vi.fn(() => { observed = row.isChecked(); });
+        const row = new CheckboxMenuRow({ text: 'Bold', listeners: { action } });
+
+        row.activate();
+
+        expect(action).toHaveBeenCalledOnce();
+        expect(observed).toBe(true);
+
+        row.dispose();
+    });
+
+    it('A2. activate() called twice notifies twice, reading true then false', () => {
+        installTestDOM(CONFIG);
+
+        const observed: boolean[] = [];
+        const action = vi.fn(() => { observed.push(row.isChecked()); });
+        const row = new CheckboxMenuRow({ text: 'Bold', listeners: { action } });
+
+        row.activate();
+        row.activate();
+
+        expect(action).toHaveBeenCalledTimes(2);
+        expect(observed).toEqual([true, false]);
+
+        row.dispose();
+    });
+
+    it('A4. activate() on a disabled row never notifies', () => {
+        installTestDOM(CONFIG);
+
+        const action = vi.fn();
+        const row = new CheckboxMenuRow({ text: 'Bold', enabled: false, listeners: { action } });
+
+        row.activate();
+
+        expect(action).not.toHaveBeenCalled();
+        expect(row.isChecked()).toBe(false);
+
+        row.dispose();
+    });
+
+    it('A5. setChecked() fires no action listener', () => {
+        installTestDOM(CONFIG);
+
+        const action = vi.fn();
+        const row = new CheckboxMenuRow({ text: 'Bold', listeners: { action } });
+
+        row.setChecked(true);
+
+        expect(action).not.toHaveBeenCalled();
+
+        row.dispose();
+    });
+
+    it('A6. off("action", fn) stops a following activate() from calling fn', () => {
+        installTestDOM(CONFIG);
+
+        const fn = vi.fn();
+        const row = new CheckboxMenuRow({ text: 'Bold' });
+
+        row.on('action', fn);
+        row.off('action', fn);
+        row.activate();
+
+        expect(fn).not.toHaveBeenCalled();
+
+        row.dispose();
+    });
+
     it('a listeners.action handler fires once per toggle and reads the NEW value', () => {
         installTestDOM(CONFIG);
 
@@ -295,6 +368,64 @@ describe('RadioMenuRow', () => {
 
         click(row);
         expect(row.isChecked()).toBe(true);
+
+        row.dispose();
+    });
+
+    it('A3. activate() called twice on a RadioMenuRow notifies twice, reading true both times', () => {
+        installTestDOM(CONFIG);
+
+        const observed: boolean[] = [];
+        const action = vi.fn(() => { observed.push(row.isChecked()); });
+        const row = new RadioMenuRow({ text: 'Lead', listeners: { action } });
+
+        row.activate();
+        row.activate();
+
+        expect(action).toHaveBeenCalledTimes(2);
+        expect(observed).toEqual([true, true]);
+
+        row.dispose();
+    });
+
+    it('A4. activate() on a disabled row never notifies', () => {
+        installTestDOM(CONFIG);
+
+        const action = vi.fn();
+        const row = new RadioMenuRow({ text: 'Lead', enabled: false, listeners: { action } });
+
+        row.activate();
+
+        expect(action).not.toHaveBeenCalled();
+        expect(row.isChecked()).toBe(false);
+
+        row.dispose();
+    });
+
+    it('A5. setChecked() fires no action listener', () => {
+        installTestDOM(CONFIG);
+
+        const action = vi.fn();
+        const row = new RadioMenuRow({ text: 'Lead', listeners: { action } });
+
+        row.setChecked(true);
+
+        expect(action).not.toHaveBeenCalled();
+
+        row.dispose();
+    });
+
+    it('A6. off("action", fn) stops a following activate() from calling fn', () => {
+        installTestDOM(CONFIG);
+
+        const fn = vi.fn();
+        const row = new RadioMenuRow({ text: 'Lead' });
+
+        row.on('action', fn);
+        row.off('action', fn);
+        row.activate();
+
+        expect(fn).not.toHaveBeenCalled();
 
         row.dispose();
     });

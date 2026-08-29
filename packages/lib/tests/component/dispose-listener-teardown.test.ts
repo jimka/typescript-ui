@@ -83,11 +83,11 @@ const REGISTRY: Array<{
  * to make a newly-failing assertion pass again.
  */
 const UNCLAIMED_LISTENER_CLASSES: readonly string[] = [
-    'AbstractBooleanInput', 'AbstractCalendarDropdown', 'AbstractWindow', 'Body', 'Button',
-    'Checkbox', 'CheckboxMenuRow', 'ComboBox', 'DateEditor', 'DateTimeEditor', 'DiagramView',
+    'AbstractBooleanInput', 'AbstractBooleanMenuRow', 'AbstractCalendarDropdown', 'AbstractWindow',
+    'Body', 'Button', 'Checkbox', 'ComboBox', 'DateEditor', 'DateTimeEditor', 'DiagramView',
     'Dialog', 'DialogBackdrop', 'Drawer', 'FileDropZone', 'Form', 'HeaderCell', 'Markdown',
     'MarkdownViewer', 'MenuBar', 'Notification', 'Panel', 'ParentHeaderCell', 'PickerCell',
-    'PickerDay', 'PickerMonthLabel', 'PickerNavButton', 'Popover', 'RadioButton', 'RadioMenuRow',
+    'PickerDay', 'PickerMonthLabel', 'PickerNavButton', 'Popover', 'RadioButton',
     'Rail', 'ResizeHandle', 'ScrollArrowButton', 'Scrollbar', 'Slider', 'SpinButton', 'SplitGutter',
     'TabBar', 'TableBody', 'TextInput', 'TimeEditor', 'TimePickerDropdown', 'ToggleButton',
     'ToolBar', 'Tree', 'TreeTable', 'WebGLCanvas', 'WindowBorder', 'WindowHeader',
