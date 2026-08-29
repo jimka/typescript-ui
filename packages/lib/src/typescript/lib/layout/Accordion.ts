@@ -2,6 +2,7 @@
 
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { AccordionConstraints } from "~/layout/AccordionConstraints.js";
+import { COLLAPSE_EASING as ACCORDION_EASING } from "~/layout/CollapseSupport.js";
 import { AccordionHeader, THEMED_HEADER_BG, THEMED_HEADER_BORDER, THEMED_HEADER_COLOR } from "~/component/container/AccordionHeader.js";
 import { SplitGutter } from "~/component/container/SplitGutter.js";
 import { Animation } from "~/core/Animation.js";
@@ -22,27 +23,6 @@ import { chainRoom, distributeDragChain } from "~/core/DragChain.js";
  * @category Layouts
  */
 export type AccordionEvent = "sectiontoggle" | "sectionresize";
-
-/**
- * Symmetric easing curve, shared between the panel wrapper height transition,
- * the headers'/wrappers' `top` transitions, and the indicator transform
- * transition so the open and close animations are exact time-reverses of each
- * other. Encoded as a module-private constant — motion personality belongs to
- * the layout, not the theme.
- *
- * The Material "standard" curve `cubic-bezier(0.4, 0, 0.2, 1)` was rejected
- * because it's asymmetric — `easing(0.5) ≈ 0.77`, so a close shrinks ~77% of
- * the way in the first half of the duration and crawls through the final 23%
- * for the second half. The visual weight lands at large sizes first, which
- * reads as "content vanished, then nothing happened." A symmetric curve has
- * `easing(t) + easing(1 - t) = 1`, so the close mirrors the open frame-for-frame.
- *
- * `scaleY` was rejected as the animated property: the wrapper participates
- * in document flow and siblings need to reflow as it grows. `height` with
- * `contain: layout paint` scopes the reflow cost and produces the correct
- * layout-tracking motion.
- */
-const ACCORDION_EASING: string = "cubic-bezier(0.4, 0, 0.6, 1)";
 
 /**
  * Header height in pixels used by {@link Accordion} compact mode. Tighter than
@@ -229,13 +209,6 @@ class Accordion extends LayoutManager {
     // reflow while a toggle animation is separately in flight on the same index.
     private _shrinkAnimations:  Map<number, Animation.CancelHandle> = new Map();
     private _wrapperAnimations: Map<number, Animation.CancelHandle> = new Map();
-    // Stable bound reference so add/removeViewportListener target the same
-    // callback; Accordion is a LayoutManager, not a Component, so it cannot
-    // key the registration on `this` the way every Component call site does —
-    // see the Potential Challenges drift note in the resizable-sections plan.
-    // A concise-arrow body returns onGutterDragEnd's disposition, so the
-    // wrapper forwards the consume without needing to carry the event.
-    private _boundOnGutterDragEnd: () => Event.ListenerResult = () => this.onGutterDragEnd();
 
     constructor(options?: AccordionOptions) {
         // LayoutManager's constructor takes no options; applied via applyOptions below.
@@ -1708,6 +1681,7 @@ class Accordion extends LayoutManager {
         gutter.setTransition("none");
         gutter.on("dragstart", (position: number) => this.onGutterDragStart(index, position));
         gutter.on("drag", (position: number) => this.onGutterDrag(index, position));
+        gutter.on("dragend", () => this.onGutterDragEnd());
 
         DOM.sink.appendChild(container.getElement()!, gutter.getElement(true)!);
 
@@ -1774,21 +1748,6 @@ class Accordion extends LayoutManager {
         this._dragUpper = pair.upper;
         this._dragLower = pair.lower;
         this._dragLastPointer = position;
-
-        // Accordion is a LayoutManager, not a Component, so it cannot key this
-        // registration on `this` the way every other `Event.addViewportListener`
-        // call site does (they call it from inside a Component, on themselves).
-        // The container Component it is attached to is the stable key instead —
-        // the same "arbitrary Component key" shape `DragManager` uses from
-        // module-level code. `_boundOnGutterDragEnd` is a field so add/remove
-        // share one reference regardless of which component's `apply` invokes it.
-        const container = this.getContainer();
-
-        if (container) {
-            Event.addViewportListener(container, "mouseup", this._boundOnGutterDragEnd);
-            Event.addViewportListener(container, "touchend", this._boundOnGutterDragEnd);
-            Event.addViewportListener(container, "touchcancel", this._boundOnGutterDragEnd);
-        }
     }
 
     /**
@@ -1924,13 +1883,6 @@ class Accordion extends LayoutManager {
      */
     private onGutterDragEnd(): Event.ListenerResult {
         const wasDragging = this._dragUpper !== null;
-        const container = this.getContainer();
-
-        if (container) {
-            Event.removeViewportListener(container, "mouseup", this._boundOnGutterDragEnd);
-            Event.removeViewportListener(container, "touchend", this._boundOnGutterDragEnd);
-            Event.removeViewportListener(container, "touchcancel", this._boundOnGutterDragEnd);
-        }
 
         this._dragUpper = null;
         this._dragLower = null;
