@@ -379,6 +379,43 @@ describe('Markdown fenced code block — CodeEditor upgrade wiring', () => {
         expect(anyMd._awaitingVisibilityKickoffs).toHaveLength(1);
     });
 
+    it('becoming effectively visible schedules a viewport pass for an entry already queued in _awaitingViewportKickoffs', () => {
+        const md = new Markdown('hello', { displayed: false });
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper, pre, code } = buildCodeHostTrio(md);
+
+        anyMd._awaitingViewportKickoffs.push({
+            wrapper, pre, code, text: 'x', languageId: 'javascript', generation: anyMd._renderGeneration,
+        });
+
+        const scheduleSpy = vi.spyOn(Markdown.prototype as any, 'scheduleViewportPass');
+
+        // Drives the real edge-triggered propagation (Component.setDisplayed
+        // -> propagateEffectiveVisibility -> onEffectiveVisibilityChange),
+        // mirroring the visibility-kickoff test above.
+        md.setDisplayed(true);
+        Component.flushEffectiveVisibility();
+
+        expect(scheduleSpy).toHaveBeenCalled();
+    });
+
+    it('onEffectiveVisibilityChange(false) does not schedule a viewport pass (guard clause, called directly)', () => {
+        const md = new Markdown('hello', { displayed: false });
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper, pre, code } = buildCodeHostTrio(md);
+
+        anyMd._awaitingViewportKickoffs.push({
+            wrapper, pre, code, text: 'x', languageId: 'javascript', generation: anyMd._renderGeneration,
+        });
+
+        const scheduleSpy = vi.spyOn(Markdown.prototype as any, 'scheduleViewportPass');
+        anyMd.onEffectiveVisibilityChange(false);
+
+        expect(scheduleSpy).not.toHaveBeenCalled();
+    });
+
     it('upgrades to a live CodeEditor once the deferred callback runs, replacing the placeholder', async () => {
         const onFirstLayoutSpy = vi.spyOn(Markdown.prototype as any, 'onFirstLayout');
         // No mockImplementation: calls through to the real (async) loader, so
