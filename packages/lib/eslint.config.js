@@ -10,7 +10,7 @@ import requireSubclassDefaults from "./scripts/eslint/require-subclass-defaults.
 // lib. Per plan Step 4 / Potential Challenges, run with just the targeted
 // custom rule until a separate cleanup pass adopts the broader preset.
 export default tseslint.config(
-    { ignores: ["dist/**", "node_modules/**", "docs/.vitepress/cache/**"] },
+    { ignores: ["dist/**", "node_modules/**"] },
     {
         files: ["src/**/*.ts"],
         languageOptions: {
