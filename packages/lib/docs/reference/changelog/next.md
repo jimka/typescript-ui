@@ -86,3 +86,8 @@ page resets to empty.
   both — `setBorder` on either field now re-derives preferred/min/max
   height, and a focused `UsernameField` shows the same inset focus ring as a
   plain `TextField`. No consumer action is needed.
+- A fenced code block in a rendered `Markdown` document no longer leaves a
+  strip of empty space below itself when the block shows a horizontal
+  scrollbar. `CodeEditor`'s auto-height pass committed an intermediate
+  measurement height and, on one path, returned without putting the height
+  back; the gap then persisted for the life of the block.
