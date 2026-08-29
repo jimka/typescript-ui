@@ -1078,6 +1078,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             rule.dispose();
         }
 
+        // Free every selector still tracked, then clear the record: the GC
+        // finalizer's held value IS `_ownedSelectors`, so the eager path has to
+        // free the same set or the two teardown routes disagree about what a
+        // component owns. `disposeStyleRule` is a no-op for a selector whose rule
+        // the two loops above already deleted, so this only ever catches a rule no
+        // live wrapper still points at.
+        for (const selector of this._ownedSelectors) {
+            disposeStyleRule(selector);
+        }
+
+        this._ownedSelectors.length = 0;
+
         // Eagerly release every remaining tracked handle (root and any
         // subclass-created children) and disarm the GC finalizer, then clear the
         // cache so a stale handle is never resolved.
@@ -1122,6 +1134,21 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /** Records a component-scope selector so both teardown paths delete it. */
     private trackSelector(selector: string): void {
         this._ownedSelectors.push(selector);
+    }
+
+    /**
+     * Stops tracking a component-scope selector whose rule has already been
+     * disposed through an explicit path (an id change retiring the previous
+     * `#<id>` rule), so the tracked set does not accumulate dead entries.
+     *
+     * @param selector - The selector to drop from the tracked set.
+     */
+    private untrackSelector(selector: string): void {
+        const idx = this._ownedSelectors.indexOf(selector);
+
+        if (idx !== -1) {
+            this._ownedSelectors.splice(idx, 1);
+        }
     }
 
     /**
@@ -1881,8 +1908,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // back to `position: static`. Re-derive it here from the new id; the
         // values are replayed from the component's fields by `applyStyle` at
         // render (and immediately below when already rendered).
+        const previousRule     = this._styleRule;
+        const previousSelector = previousRule.getSelector();
+
         this._styleRule = new StyleRule({ scope: "component", name: id, materialize: false });
-        this.trackSelector(this._styleRule.getSelector());
+
+        const selector = this._styleRule.getSelector();
+
+        if (selector !== previousSelector) {
+            // The outgoing `#<oldId>` rule can never match this element again, and no
+            // other wrapper holds it. `destructor` only ever disposes the CURRENT
+            // `_styleRule`, so a rule replaced here and left behind would sit on the
+            // shared stylesheet permanently.
+            previousRule.dispose();
+            this.untrackSelector(previousSelector);
+            this.trackSelector(selector);
+        }
 
         let element = this.getElement();
         if (!element) {
