@@ -331,9 +331,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      *
      * @param value - Initial Markdown source (optional; defaults to `""`).
      * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(value?: string, options?: MarkdownEditorOptions) {
-        super(options);
+    constructor(value?: string, options?: MarkdownEditorOptions, subclassDefaults?: Partial<MarkdownEditorOptions>) {
+        super(options, subclassDefaults);
 
         // Positional argument: cache it only when the caller didn't also pass
         // `options.value` (which the super-time cascade already stored).
