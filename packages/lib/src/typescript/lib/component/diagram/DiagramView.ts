@@ -560,6 +560,8 @@ class DiagramView extends Panel<DiagramViewOptions> {
             }
         }
 
+        this.discardIncomingNodes();
+
         this._engine.dispose();
 
         super.destructor();
@@ -676,8 +678,16 @@ class DiagramView extends Panel<DiagramViewOptions> {
         build(data.nodes);
     }
 
-    /** Forgets the un-promoted incoming components; never mounted, so nothing to detach. */
+    /**
+     * Disposes and forgets the un-promoted incoming components. Never mounted,
+     * so there is nothing to detach — but each holds a theme subscription (and
+     * whatever else its constructor registered) released only by `dispose()`.
+     */
     private discardIncomingNodes(): void {
+        for (const component of this._incomingComponents.values()) {
+            component.dispose();
+        }
+
         this._incomingComponents.clear();
         this._incomingRects.clear();
         this._incomingData.clear();
