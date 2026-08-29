@@ -1905,6 +1905,24 @@ class DiagramView extends Panel<DiagramViewOptions> {
     }
 
     /**
+     * The graph-space point under a pointer event, inverting the
+     * `translate(panX,panY) scale(zoom)` transform `applyTransformToHost`
+     * writes.
+     *
+     * @param event - The raw mouse event.
+     * @returns The point in unscaled graph coordinates.
+     */
+    private graphPointFor(event: MouseEvent): { x: number; y: number } {
+        const rect = DOM.source.getViewportRect(this);
+        const zoom = this.getZoom();
+
+        return {
+            x: (event.clientX - rect.left - this._panX) / zoom,
+            y: (event.clientY - rect.top  - this._panY) / zoom,
+        };
+    }
+
+    /**
      * Resolves the node id under a raw DOM event: delegates to `nodeIdAt`
      * when the view is not simplified (no node components exist to compare
      * against `nodeIdAt`'s element-containment test), else resolves the
@@ -1935,11 +1953,9 @@ class DiagramView extends Panel<DiagramViewOptions> {
             return null;
         }
 
-        const rect = DOM.source.getViewportRect(this);
-        const zoom = this.getZoom();
+        const point = this.graphPointFor(event);
 
-        return this.nodeIdAtGraphPoint((event.clientX - rect.left - this._panX) / zoom,
-            (event.clientY - rect.top - this._panY) / zoom);
+        return this.nodeIdAtGraphPoint(point.x, point.y);
     }
 
     /**
@@ -1999,12 +2015,8 @@ class DiagramView extends Panel<DiagramViewOptions> {
             return;
         }
 
-        const rect = DOM.source.getViewportRect(this);
-        const zoom = this.getZoom();
-        const gx   = (event.clientX - rect.left - this._panX) / zoom;
-        const gy   = (event.clientY - rect.top  - this._panY) / zoom;
-
-        const routes = this._edgeLayer.edgesNear(gx, gy);
+        const point  = this.graphPointFor(event);
+        const routes = this._edgeLayer.edgesNear(point.x, point.y);
 
         if (routes.length === 0) {
             this.leaveEdges();
