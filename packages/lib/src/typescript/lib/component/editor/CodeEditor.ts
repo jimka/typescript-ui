@@ -986,6 +986,18 @@ class CodeEditor extends Component<CodeEditorOptions> {
         const desired = contentDesired + this._lastHbarReserve;
 
         if (desired === previousHeight) {
+            // The `shapeChanged` branch above committed `contentDesired` as an
+            // intermediate probe height, so the horizontal-scrollbar reserve could
+            // be measured against a content-sized box. Folding that reserve back in
+            // landed on the height this call started at, so there is nothing to
+            // report — but the box is still sitting at the probe height, short by
+            // the reserve, until this puts it back. No `"heightchange"`: the height
+            // did not move, so a consumer that pinned its own chrome to
+            // `previousHeight` is already correct. `setHeight` no-ops when the box
+            // is already at `desired`, which is the case on the `!shapeChanged`
+            // path where no probe was committed.
+            this.setHeight(desired);
+
             return;
         }
 

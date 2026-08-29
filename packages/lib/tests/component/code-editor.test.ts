@@ -381,6 +381,61 @@ describe('CodeEditor autoHeightMaxRows', () => {
         expect(editor.getHeight()).toBe(100);
     });
 
+    it('reconciles the intermediate probe commit when the scrollbar reserve makes the final height equal the height the call started at', () => {
+        // Live repro from Markdown's fenced-code upgrade (Markdown.ts:1060,
+        // 1081): the wrapper and the editor are both pinned to the
+        // placeholder <pre>'s scrollHeight (115) before the first sync. That
+        // call measures 100px of real content, commits it as the intermediate
+        // probe (so the scrollbar reserve is read against a content-sized
+        // box), measures a real 15px horizontal scrollbar, and lands on
+        // desired = 115 — exactly the height it started at. The equal-height
+        // early return is right about the height but leaves the box at the
+        // 100px probe, showing a 15px gap under the block; and because the
+        // next call sees an unchanged shape, the growth guard then refuses to
+        // correct it, ever.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 5, length: 80 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        // Markdown's mount-time guess, from the placeholder <pre>.
+        editor.setHeight(115);
+
+        vi.spyOn(DOM.source, 'getScrollMetrics')
+            .mockReturnValueOnce({
+                scrollTop: 0, scrollLeft: 0,
+                scrollWidth: 600, scrollHeight: 100,
+                clientWidth: 500, clientHeight: 115,
+            })
+            .mockReturnValue({
+                scrollTop: 0, scrollLeft: 0,
+                scrollWidth: 600, scrollHeight: 100,
+                clientWidth: 500, clientHeight: 100,
+            });
+        // A real, rendered horizontal scrollbar: 15px thick against the
+        // content-sized (100px) box.
+        vi.spyOn(DOM.source, 'getOffsetSize').mockReturnValue({ offsetTop: 0, offsetHeight: 115 });
+
+        let fireCount = 0;
+        editor.on('heightchange', () => { fireCount += 1; });
+
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(115);
+        // The height never moved from what the call started at, so there is
+        // nothing for a consumer to re-pin.
+        expect(fireCount).toBe(0);
+
+        // The echo call CodeMirror's own measure pass fires right after: the
+        // shape is unchanged, so the growth guard is armed. The height must
+        // already be right rather than needing a growth that guard refuses.
+        editor.syncAutoHeight();
+        expect(editor.getHeight()).toBe(115);
+        expect(fireCount).toBe(0);
+    });
+
     it('re-measures the horizontal-scrollbar reserve on a later call against the same shape, picking up a scrollbar that resolved on its own', () => {
         // Live-reproduced: a language grammar loads asynchronously
         // (setLanguage's loadExtension().then(...), well after mount's
