@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@jimka/typescript-ui": "^0.7.0"
+    "@jimka/typescript-ui": "^0.8.0"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

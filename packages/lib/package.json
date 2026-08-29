@@ -1,6 +1,6 @@
 {
   "name": "@jimka/typescript-ui",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "A web-based layout manager and UI component framework written in TypeScript.",
   "keywords": ["ui", "ui-components", "typescript", "layout", "layout-manager", "widgets", "framework", "dock", "data-table", "retained-mode"],
   "author": "Jimmy Karlsson",

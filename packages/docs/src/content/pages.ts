@@ -351,6 +351,7 @@ export function getNav(): NavGroup[] {
     ];
     const changelogVersions: NavEntry[] = [
         { path: '/reference/changelog/next', label: 'Next' },
+        { path: '/reference/changelog/0.8.0', label: '0.8.0' },
         { path: '/reference/changelog/0.7.0', label: '0.7.0' },
         { path: '/reference/changelog/0.6.0', label: '0.6.0' },
         { path: '/reference/changelog/0.5.0', label: '0.5.0' },
@@ -363,6 +364,7 @@ export function getNav(): NavGroup[] {
     ];
     const migrationVersions: NavEntry[] = [
         { path: '/reference/migration/next', label: 'Next' },
+        { path: '/reference/migration/0.8.0', label: '0.8.0' },
         { path: '/reference/migration/0.6.0', label: '0.6.0' },
         { path: '/reference/migration/0.5.0', label: '0.5.0' },
         { path: '/reference/migration/0.4.1', label: '0.4.1' },
