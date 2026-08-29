@@ -102,7 +102,7 @@ class DocsContent extends Panel {
     // Backs the "outlinechange" / "activeheadingchange" events — mirrors
     // Video's own on/off/emit + ListenerBag shape for a re-emitted, non-DOM
     // event.
-    private readonly _listeners: ListenerBag<DocsContentEvent> = new ListenerBag<DocsContentEvent>();
+    private readonly _listeners: ListenerBag<DocsContentEvent> = this.registerListenerBag(new ListenerBag<DocsContentEvent>());
 
     // The current page's headings, in document order — read by
     // handleNativeScroll to resolve the active heading as the pane scrolls.
