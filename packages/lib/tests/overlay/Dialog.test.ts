@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { _Dialog as Dialog, DialogButtons } from '~/overlay/Dialog';
+import type { DialogButtonConfig } from '~/overlay/Dialog';
 import { LayerManager } from '~/core/LayerManager';
 import { DOM, type Handle } from '~/core/DOM';
 import { Component } from '~/core/Component';
@@ -49,6 +50,26 @@ class TestDialog extends Dialog {
 
     public requestFocusEl(): Handle | null {
         return (this as any).requestedFocusElement();
+    }
+
+    /** White-box seam onto the private footer row's buttons, by config order. */
+    public button(index: number): Button {
+        return (this as any)._buttonRow._buttons[index];
+    }
+
+    /**
+     * Drives the footer row's private handleClick() directly, for `cfg` (a
+     * config object also passed into this dialog's own `buttons` array) —
+     * bypassing native `Button.click()` DOM dispatch, which requires the
+     * button to already be mounted and (per PopupButton.test.ts's file-level
+     * comment) is flaky across more than one test per file, since Event's
+     * window-level click listener installs once per event type for the whole
+     * test module's lifetime. handleClick() is the actual code under test in
+     * the veto describe block below, so going through the DOM would only add
+     * a fragile mounting step around it, not additional coverage.
+     */
+    public clickButton(cfg: DialogButtonConfig): Promise<void> {
+        return (this as any)._buttonRow.handleClick(cfg, cfg.result ?? 'cancel');
     }
 }
 
@@ -551,5 +572,80 @@ describe('Dialog — initial focus', () => {
         vi.spyOn(DOM.source, 'querySelector').mockReturnValue(null);
 
         expect(dialog.requestFocusEl()).toBeNull();
+    });
+});
+
+describe('Dialog — button onClick veto', () => {
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    it('a button with no onClick still closes immediately (unchanged default)', () => {
+        installTestDOM(CONFIG);
+
+        const cfg    = DialogButtons.Confirm;
+        const dialog = new TestDialog({ title: 'T', message: 'M', buttons: [cfg] });
+        const hide   = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+
+        void dialog.clickButton(cfg);
+
+        expect(hide).toHaveBeenCalledWith('confirm');
+    });
+
+    it('onClick resolving true closes with the button\'s own result', async () => {
+        installTestDOM(CONFIG);
+
+        const cfg: DialogButtonConfig = { text: 'Import', result: 'confirm', onClick: () => Promise.resolve(true) };
+        const dialog = new TestDialog({ title: 'T', message: 'M', buttons: [cfg] });
+        const hide   = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+
+        await dialog.clickButton(cfg);
+
+        expect(hide).toHaveBeenCalledWith('confirm');
+    });
+
+    it('onClick returning false (sync) vetoes the close', async () => {
+        installTestDOM(CONFIG);
+
+        const cfg: DialogButtonConfig = { text: 'Import', result: 'confirm', onClick: () => false };
+        const dialog = new TestDialog({ title: 'T', message: 'M', buttons: [cfg] });
+        const hide   = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+
+        await dialog.clickButton(cfg);
+
+        expect(hide).not.toHaveBeenCalled();
+    });
+
+    it('onClick resolving false (async) vetoes the close', async () => {
+        installTestDOM(CONFIG);
+
+        const cfg: DialogButtonConfig = { text: 'Import', result: 'confirm', onClick: () => Promise.resolve(false) };
+        const dialog = new TestDialog({ title: 'T', message: 'M', buttons: [cfg] });
+        const hide   = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+
+        await dialog.clickButton(cfg);
+
+        expect(hide).not.toHaveBeenCalled();
+    });
+
+    it('disables every button while one\'s onClick is pending, and re-enables them after a veto', async () => {
+        installTestDOM(CONFIG);
+
+        let resolveGuard!: (v: boolean) => void;
+        const guard = new Promise<boolean>((resolve) => { resolveGuard = resolve; });
+
+        const cancelCfg: DialogButtonConfig = { text: 'Cancel', result: 'close' };
+        const importCfg: DialogButtonConfig = { text: 'Import', result: 'confirm', onClick: () => guard };
+        const dialog = new TestDialog({ title: 'T', message: 'M', buttons: [cancelCfg, importCfg] });
+        vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+
+        const pending = dialog.clickButton(importCfg);
+
+        expect(dialog.button(0).isEnabled()).toBe(false);
+        expect(dialog.button(1).isEnabled()).toBe(false);
+
+        resolveGuard(false);
+        await pending;
+
+        expect(dialog.button(0).isEnabled()).toBe(true);
+        expect(dialog.button(1).isEnabled()).toBe(true);
     });
 });

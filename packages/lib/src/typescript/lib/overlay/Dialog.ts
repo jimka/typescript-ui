@@ -68,6 +68,26 @@ export interface DialogButtonConfig {
      * only when overriding a preset or building a one-off button.
      */
     tint?   : string;
+    /**
+     * Optional async guard run when this button is clicked, before the dialog
+     * closes. Return (or resolve) `false` to veto the close: the dialog stays
+     * open and its `show()` promise does not resolve, so the caller can show
+     * its own in-content validation error and let the user retry with no
+     * rebuild. Return (or resolve) `true` — or omit `onClick` entirely — to
+     * close normally with this button's `result`, exactly as before this
+     * field existed.
+     *
+     * Every button in the row is disabled for the duration of a pending
+     * `onClick` call, so a slow validation/submit can't race a second click.
+     * A rejected/thrown `onClick` also vetoes the close (buttons re-enable),
+     * and the rejection propagates to the caller — reserve throwing for a
+     * genuine bug, not an expected validation failure; return `false` for that.
+     *
+     * Only chrome buttons go through this guard: Escape, a backdrop click, and
+     * the title-bar close button all still close unconditionally, so a user
+     * always has an unvalidated way out of the dialog.
+     */
+    onClick?: () => boolean | Promise<boolean>;
 }
 
 /**
@@ -409,14 +429,17 @@ class DialogTitleBar extends Component {
  */
 class DialogButtonRow extends Component {
 
-    private readonly _buttons: Button[] = [];
+    private readonly _buttons : Button[] = [];
+    private readonly _onButton: (result: DialogResult) => void;
 
     /**
      * @param configs - Button definitions to render.
-     * @param onButton - Called with the resolved [`DialogResult`](/api/overlay/type-aliases/DialogResult) when any button is clicked.
+     * @param onButton - Called with the resolved [`DialogResult`](/api/overlay/type-aliases/DialogResult) when a button's click clears its own `onClick` guard (or has none).
      */
     constructor(configs: DialogButtonConfig[], onButton: (result: DialogResult) => void) {
         super();
+
+        this._onButton = onButton;
 
         this.setBorder({
             border:    "none",
@@ -442,9 +465,54 @@ class DialogButtonRow extends Component {
                 }
             }
 
-            btn.on("action", () => onButton(result));
+            btn.on("action", () => void this.handleClick(cfg, result));
             this._buttons.push(btn);
             this.addComponent(btn);
+        }
+    }
+
+    /**
+     * Runs `cfg.onClick` (if any) before reporting the click upward. Disables
+     * every button in the row for the duration of a pending guard, so a slow
+     * validation/submit can't race a second click; re-enables them once the
+     * guard settles (a `true`/omitted result is about to tear this row down
+     * anyway, so re-enabling then is harmless). A guard that rejects/throws
+     * still re-enables the row and propagates — see `DialogButtonConfig.onClick`'s doc.
+     *
+     * @param cfg - The clicked button's own config (carries its `onClick`).
+     * @param result - The `DialogResult` to report once the guard clears.
+     */
+    private async handleClick(cfg: DialogButtonConfig, result: DialogResult): Promise<void> {
+        if (!cfg.onClick) {
+            this._onButton(result);
+
+            return;
+        }
+
+        this.setButtonsEnabled(false);
+
+        let proceed: boolean;
+
+        try {
+            proceed = await cfg.onClick();
+        } finally {
+            this.setButtonsEnabled(true);
+        }
+
+        if (proceed) {
+            this._onButton(result);
+        }
+    }
+
+    /**
+     * Enables or disables every button in the row at once — used to lock the
+     * whole footer while one button's `onClick` guard is pending.
+     *
+     * @param enabled - The enabled state to apply to every button.
+     */
+    private setButtonsEnabled(enabled: boolean): void {
+        for (const btn of this._buttons) {
+            btn.setEnabled(enabled);
         }
     }
 
