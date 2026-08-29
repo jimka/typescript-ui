@@ -147,10 +147,10 @@ export function createWindowControlButton(glyph: string): Button {
 }
 
 /**
- * Builds the window's leading glyph (title icon) shared by `TabWindow` and
- * `WindowHeader` — the window's system-menu trigger, not a decorative
- * pass-through. Same size/inset box as {@link createWindowControlButton} so
- * it is a peer of the trailing controls.
+ * Builds the window's leading glyph (title icon) — used by `TabWindow` — the
+ * window's system-menu trigger, not a decorative pass-through. Same
+ * size/inset box as {@link createWindowControlButton} so it is a peer of the
+ * trailing controls.
  *
  * @param glyph - The registry glyph name to show.
  *

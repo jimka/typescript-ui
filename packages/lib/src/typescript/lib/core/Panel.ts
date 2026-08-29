@@ -1133,8 +1133,9 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
     /**
      * Tears the overlay scrollbar down: unwires the native scroll listener,
-     * disposes both bars, removes the sticky host, un-hides the native bar,
-     * and clears any reserved gutter. Each step is guarded so this is safe to
+     * disposes both bars, re-parents content off the inner scroll host and
+     * removes it, un-hides the native bar, and clears any reserved gutter.
+     * Each step is guarded so this is safe to
      * call before the overlay was ever created (e.g. during the construction
      * cascade). Disposing (rather than only detaching) is required because
      * each bar is appended straight onto the panel element with a raw
