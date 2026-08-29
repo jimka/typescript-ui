@@ -701,7 +701,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // Structural setup that doesn't map to ComponentOptions.
         // `styleRule` stays unmaterialised until the element actually needs to
         // render; the dirty-style path queues writes until then. See
-        // `ensureCSSRule`.
+        // `materialiseWhenNeeded`.
         this._components         = [];
         this._elementAttributes  = new ElementAttributes();
         this._deferredStyleRules = new Map<string, StyleRule>();
@@ -1191,40 +1191,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     getTag(): string {
         return this._tag;
-    }
-
-    /**
-     * Returns the component's dedicated `#id` CSS style rule.
-     *
-     * @returns The CSSStyleRule scoped to this component's ID.
-     *
-     * @remarks Forces the underlying stylesheet rule to materialize on first
-     * access. After {@link ensureCSSRule} runs, any pending writes queued in
-     * `styleRule` are flushed onto the live rule so callers can read / mutate
-     * it directly. This `#id` rule no longer holds a component's full
-     * effective style: declarations that are uniform for this class are
-     * served instead by a framework-wide rule shared by every component, and
-     * a rule shared by every instance of this concrete class where its
-     * defaults deviate from that; this rule carries only the declarations an
-     * individual instance deviates on.
-     */
-    protected getCSSRule(): CSSStyleRule {
-        return this.ensureCSSRule();
-    }
-
-    /**
-     * Lazily creates the component's dedicated CSS rule and flushes any
-     * dirty-style entries that accumulated before the rule existed.
-     *
-     * @returns The live `CSSStyleRule` scoped to this component's ID.
-     *
-     * @remarks Until this is called the component has no stylesheet entry —
-     * setters queue into `styleRule` only. Defers the stylesheet insertion
-     * (which would force a paint) to the moment the component renders, so
-     * detached construction stays JS-only.
-     */
-    private ensureCSSRule(): CSSStyleRule {
-        return this._styleRule.ensure();
     }
 
     /**
@@ -1885,7 +1851,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @remarks Skips the flush entirely when the element has not yet been
      * rendered — the dirty entries stay queued and are picked up by the next
-     * {@link ensureCSSRule} call (typically driven by `render()`).
+     * `materialiseWhenNeeded` call (typically driven by `render()`).
      * Avoids inserting a stylesheet rule for components that are constructed
      * but never attached. Once attached, also skips inserting the rule when
      * nothing queued would produce a real declaration — see
@@ -4385,18 +4351,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this.writeStyle({ position });
 
         return this;
-    }
-
-
-    /**
-     * Restores the framework default (`Position.ABSOLUTE`). Framework-internal
-     * companion to [`setPosition`](/api/core/classes/Component#setposition) —
-     * application code does not need this.
-     *
-     * @returns This component, for method chaining.
-     */
-    protected clearPosition(): this {
-        return this.setPosition(Position.ABSOLUTE);
     }
 
     /**

@@ -121,7 +121,7 @@ export interface TextStyleBag {
     textOverflow?:   string | null;   // pre-resolved from `truncate`; see Text.getClassStyleDefaults
 }
 
-export type ResolvedStyleBag = Readonly<Record<string, string | null>>;
+type ResolvedStyleBag = Readonly<Record<string, string | null>>;
 
 // The fifteen hoistable keys at the value Component's own defaults resolve to.
 const FRAMEWORK_DECLARATIONS: ResolvedStyleBag = Object.freeze({
@@ -645,7 +645,7 @@ export interface StyleStateSpec {
  *  selector, the generated `:not(...)`-guarded suffix that makes it mutually
  *  exclusive with every higher-priority entry, and the `StyleLayer` (authored
  *  + resolved CSS) it contributes when active. */
-export interface ResolvedStyleState {
+interface ResolvedStyleState {
     /** e.g. `".pressed"`. */
     readonly selector:      string;
     /** e.g. `":hover:not(.pressed)"` — `selector` plus a `:not(...)` guard

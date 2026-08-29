@@ -4,14 +4,13 @@ import { DOM } from "~/core/DOM.js";
 import { scaleTicks, tickPosition } from "~/component/chart/Scale.js";
 import type { ChartScale } from "~/component/chart/Scale.js";
 import type { MarkFactory, PlotRect } from "~/component/chart/types.js";
+import type { Edge } from "~/primitive/Edge.js";
 
 /**
  * Which edge an axis is drawn on. `"bottom"` is the horizontal x axis under the
  * plot; `"left"` is the vertical y axis to its left.
- *
- * @category Components
  */
-export type AxisOrientation = "bottom" | "left";
+type ChartAxisEdge = Extract<Edge, "bottom" | "left">;
 
 /**
  * Length in px of each tick mark drawn outward from the axis line. Fixed rather
@@ -63,7 +62,7 @@ export interface AxisRenderOptions {
  * @returns The margin to reserve in px.
  */
 export function measureAxisMargin(
-    orientation: AxisOrientation,
+    orientation: ChartAxisEdge,
     scale: ChartScale,
     format: (value: number | Date | string) => string,
     tickCount: number
@@ -102,7 +101,7 @@ export function measureAxisMargin(
  */
 export function drawAxis(
     create: MarkFactory,
-    orientation: AxisOrientation,
+    orientation: ChartAxisEdge,
     scale: ChartScale,
     plot: PlotRect,
     opts: AxisRenderOptions

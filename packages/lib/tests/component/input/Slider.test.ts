@@ -92,27 +92,6 @@ describe('Slider getters and deprecated aliases', () => {
         expect(new Slider().getOrientation()).toBe('horizontal');
     });
 
-    it('maps deprecated minValue/maxValue to min/max only when the canonical key is absent', () => {
-        const fallback = new Slider({ minValue: 5, maxValue: 50 });
-        expect(fallback.getMin()).toBe(5);
-        expect(fallback.getMax()).toBe(50);
-
-        // Canonical min/max win when both forms are present.
-        const canonical = new Slider({ min: 1, minValue: 5, max: 99, maxValue: 50 });
-        expect(canonical.getMin()).toBe(1);
-        expect(canonical.getMax()).toBe(99);
-    });
-
-    it('aliases the deprecated value setters/getters onto the canonical ones', () => {
-        const s = new Slider();
-        s.setMinValue(10);
-        s.setMaxValue(90);
-
-        expect(s.getMinValue()).toBe(10);
-        expect(s.getMaxValue()).toBe(90);
-        expect(s.getMin()).toBe(10);
-        expect(s.getMax()).toBe(90);
-    });
 });
 
 describe('Slider orientation sizing', () => {

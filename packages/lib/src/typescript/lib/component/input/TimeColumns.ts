@@ -187,8 +187,4 @@ class TimeColumns extends Component {
     }
 }
 
-export {
-    TimeColumns,
-    TIME_COLUMNS_HEIGHT,
-};
-export type { TimeColumnsOptions };
+export { TimeColumns };

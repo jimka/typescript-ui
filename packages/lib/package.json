@@ -136,7 +136,6 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.lib.json --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
-    "doc": "typedoc --out dist/docs src/typescript",
     "docs:api": "typedoc",
     "docs:llms": "node scripts/llms/generate.mjs",
     "clean": "rimraf dist/*",

@@ -419,5 +419,4 @@ export {
     PickerColumn,
     PickerColumnHeader,
     CELL_HEIGHT as PICKER_CELL_HEIGHT,
-    HEADER_HEIGHT as PICKER_HEADER_HEIGHT,
 };

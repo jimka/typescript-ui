@@ -1470,19 +1470,6 @@ export abstract class AbstractStore {
     }
 
     /**
-     * Returns a copy of the primary active sorter config, or null if no sort is active.
-     *
-     * @returns The first active sorter mapped to the legacy `{ property, direction }` shape, or null.
-     *
-     * @deprecated Use {@link getActiveSorters} instead.
-     */
-    getActiveSorter(): { property: string; direction: 'asc' | 'desc' } | null {
-        const first = this._activeSorters[0];
-
-        return first ? { property: first.field, direction: first.dir } : null;
-    }
-
-    /**
      * Removes any active sort and restores insertion order, firing 'sortchange' and 'datachange'.
      *
      * @returns A promise that resolves once the local view has been rebuilt.

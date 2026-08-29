@@ -15,8 +15,10 @@ import { caret_right } from "~/glyphs/solid/caret_right.js";
 
 Glyph.register(caret_down, caret_right);
 
-/** Width in pixels reserved for the expand/collapse toggle icon. */
-export const TOGGLE_WIDTH = 20;
+/** Width in pixels reserved for the expand/collapse toggle icon. Matches
+ *  `TreeCell.ts`'s `TOGGLE_WIDTH`; keep the two in lockstep so a `Tree` and a
+ *  `TreeTable` indent identically. */
+const TOGGLE_WIDTH = 20;
 
 /** CSS background applied to the selected row. Owned here (not `Tree.ts`,
  *  which constructs `TreeRow` and would create a circular import) since

@@ -6,10 +6,10 @@
 // DOM seam involved — internal to router/, not exported from the barrel.
 
 /** The kind of a single pattern segment. */
-export type SegmentKind = "static" | "param" | "catchAll";
+type SegmentKind = "static" | "param" | "catchAll";
 
 /** One segment of a compiled pattern. */
-export interface RouteSegment {
+interface RouteSegment {
     kind:  SegmentKind;
     /** Literal text for "static", the parameter name for "param", "" for "catchAll". */
     value: string;

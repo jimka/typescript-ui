@@ -10,8 +10,10 @@ import { caret_right } from "~/glyphs/solid/caret_right.js";
 
 Glyph.register(caret_down, caret_right);
 
-/** Width in pixels reserved for the expand/collapse toggle glyph. */
-export const TOGGLE_WIDTH = 20;
+/** Width in pixels reserved for the expand/collapse toggle glyph. Matches
+ *  `TreeRow.ts`'s `TOGGLE_WIDTH`; keep the two in lockstep so a `Tree` and a
+ *  `TreeTable` indent identically. */
+const TOGGLE_WIDTH = 20;
 
 /** Default pixels of indentation added per depth level. */
 export const DEFAULT_INDENT_PX = 16;
