@@ -70,6 +70,13 @@ page resets to empty.
   taken, skipped the minimum check — the opposite of every other clamp in
   the framework. A component with such a contradictory constraint pair now
   lands where its size already put it, instead of overflowing its own cell.
+- **Adjacent components positioned at fractional coordinates no longer paint
+  a 1px seam between them.** `setX` / `setY` / `setWidth` / `setHeight`
+  rounded their own value independently; a box's rounded width is now
+  derived from its rounded origin (`round(origin + extent) - round(origin)`),
+  so its far edge always lands on the same pixel as the next box's rounded
+  origin. `setSize`, previously unrounded, now rounds the same way. No
+  consumer action is needed.
 
 ### Menu
 
