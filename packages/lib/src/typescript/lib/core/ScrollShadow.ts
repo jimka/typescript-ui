@@ -82,3 +82,39 @@ export function scrollShadowEdgeValue(percent: number): string | null {
         ? null
         : `color-mix(in srgb, var(--ts-ui-scroll-shadow-color) ${percent}%, transparent)`;
 }
+
+/**
+ * Per-edge scroll-shadow strength, quantised to a whole percent (0-100).
+ * Shared shape; each owner ({@link Panel}, {@link VirtualScroller}) keeps its
+ * own instance.
+ *
+ * @category Core
+ */
+export interface ScrollShadowEdges {
+    top:    number;
+    bottom: number;
+    left:   number;
+    right:  number;
+}
+
+/**
+ * Quantises a 0-1 edge strength to a whole percentage and reports whether it
+ * differs from the cached value for that edge, updating the cache in place
+ * when it does.
+ *
+ * @param edges - The owner's own per-edge percentage cache; mutated in place.
+ * @param edge - Which edge's cached percentage to check and update.
+ * @param strength - The edge's raw 0-1 strength.
+ * @returns The new percentage when it changed, or `null` when unchanged (nothing to write).
+ */
+export function quantizeShadowEdge(edges: ScrollShadowEdges, edge: keyof ScrollShadowEdges, strength: number): number | null {
+    const percent = Math.round(strength * 100);
+
+    if (edges[edge] === percent) {
+        return null;
+    }
+
+    edges[edge] = percent;
+
+    return percent;
+}

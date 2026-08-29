@@ -8,16 +8,8 @@ import { InlineStyle, StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
-import { scrollShadowBoxShadow, scrollShadowEdgeValue, scrollShadowRamp } from "~/core/ScrollShadow.js";
+import { scrollShadowBoxShadow, scrollShadowEdgeValue, scrollShadowRamp, quantizeShadowEdge, ScrollShadowEdges } from "~/core/ScrollShadow.js";
 import { Scrollbar } from "~/component/container/Scrollbar.js";
-
-/**
- * Per-edge shadow strength for a panel's scroll shadows, cached as a whole
- * percentage (0–100). The per-scroll update only rewrites a custom property
- * when an edge's quantised strength actually changes, so a scroll that doesn't
- * move the visible strength costs nothing here.
- */
-type ScrollShadowEdges = { top: number; bottom: number; left: number; right: number };
 
 /**
  * Selects the per-axis scroll behaviour for a {@link Panel}.
@@ -1004,13 +996,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * @param strength - The target strength in the range 0–1.
      */
     private setShadowEdge(edge: keyof ScrollShadowEdges, property: string, strength: number): void {
-        const percent = Math.round(strength * 100);   // quantise: 0–1 → 0–100%
+        const percent = quantizeShadowEdge(this._shadowEdges, edge, strength);
 
-        if (this._shadowEdges[edge] === percent) {
+        if (percent === null) {
             return;
         }
 
-        this._shadowEdges[edge] = percent;
         this._shadowOverlayStyle.set(property, scrollShadowEdgeValue(percent));
     }
 
