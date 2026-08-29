@@ -45,9 +45,12 @@ class BarChart extends AbstractChart<BarChartOptions> {
      * body.
      *
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: BarChartOptions) {
-        super(options);
+    constructor(options?: BarChartOptions, subclassDefaults?: Partial<BarChartOptions>) {
+        super(options, subclassDefaults);
 
         if (options?.grouped !== undefined) {
             this.setGrouped(options.grouped);

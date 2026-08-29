@@ -73,8 +73,14 @@ class DiagramNodeLayer extends Component<ComponentOptions> {
     /** Ids of the emphasised nodes; every other drawn rect dims. */
     private _emphasis: ReadonlySet<string> = new Set();
 
-    constructor(options?: ComponentOptions) {
-        super(options);
+    /**
+     * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(options?: ComponentOptions, subclassDefaults?: Partial<ComponentOptions>) {
+        super(options, subclassDefaults);
 
         // Non-interactive overlay: nothing hit-tests against a rect —
         // `DiagramView.nodeIdAtGraphPoint` resolves clicks geometrically

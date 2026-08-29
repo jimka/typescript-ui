@@ -447,10 +447,17 @@ class DiagramView extends Panel<DiagramViewOptions> {
     private readonly _onFit:     () => void = () => this.zoomToFit();
     private readonly _onReset:   () => void = () => this.resetView();
 
-    constructor(options?: DiagramViewOptions) {
+    /**
+     * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(options?: DiagramViewOptions, subclassDefaults?: Partial<DiagramViewOptions>) {
         super(options, {
             zoom: DEFAULT_ZOOM, minZoom: DEFAULT_MIN_ZOOM, maxZoom: DEFAULT_MAX_ZOOM,
             controls: true, simplifyAtLowZoom: true,
+            ...(subclassDefaults ?? {}),
         });
 
         this.setLayoutManager(new Anchor());

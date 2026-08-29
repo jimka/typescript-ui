@@ -189,12 +189,17 @@ class VideoPlayer extends Component<VideoPlayerOptions> {
      * Constructs a video player.
      *
      * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: VideoPlayerOptions) {
+    constructor(options?: VideoPlayerOptions, subclassDefaults?: Partial<VideoPlayerOptions>) {
         // Child components are built first; options are applied via applyOptions
-        // at the constructor tail, after the control children exist.
-        // eslint-disable-next-line local/forward-super-options
-        super();
+        // at the constructor tail, after the control children exist. The
+        // `local/forward-super-options` rule only flags a bare, zero-argument
+        // `super()`, so passing `subclassDefaults` through (with `options`
+        // still deliberately not forwarded) needs no disable comment.
+        super(undefined, subclassDefaults);
 
         this.setLayoutManager(new Border());
         this.getAria().setRole("region");

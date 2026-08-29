@@ -96,9 +96,12 @@ class LineChart extends AbstractChart<LineChartOptions> {
      * constructor body (after `super()` has wired the base chart).
      *
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: LineChartOptions) {
-        super(options);
+    constructor(options?: LineChartOptions, subclassDefaults?: Partial<LineChartOptions>) {
+        super(options, subclassDefaults);
 
         this.dispatchLineOptions(options);
     }

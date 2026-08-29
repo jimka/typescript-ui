@@ -420,8 +420,14 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
     /** Per-instance crow's-foot marker ids, keyed by marker kind. */
     private readonly _crowsFootMarkerIds: Record<Exclude<DiagramEdgeMarker, "arrow">, string>;
 
-    constructor(options?: ComponentOptions) {
-        super(options);
+    /**
+     * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(options?: ComponentOptions, subclassDefaults?: Partial<ComponentOptions>) {
+        super(options, subclassDefaults);
 
         this._markerId = `${this.getId()}-arrow`;
         this._crowsFootMarkerIds = Object.fromEntries(
