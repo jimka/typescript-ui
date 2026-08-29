@@ -363,8 +363,9 @@ export abstract class LayoutManager extends BaseObject {
      *
      * Reads the child's stored [`LayoutConstraints`](/api/layout/classes/LayoutConstraints), applies the
      * {@link FillType} / {@link AnchorType} policy, clamps the result to
-     * `maxWidth`/`maxHeight` and the child's own min/max sizes, and computes
-     * the anchor displacement that centres or pins the child within the cell.
+     * `maxWidth`/`maxHeight` and the child's own min/max sizes — the minimum
+     * wins when the two conflict — and computes the anchor displacement that
+     * centres or pins the child within the cell.
      *
      * Does NOT mutate the [`Component`](/api/core/classes/Component). Layout managers that need to
      * place a child outside the cell (e.g. to let it overflow a scroll panel)
@@ -417,7 +418,9 @@ export abstract class LayoutManager extends BaseObject {
 
                 if (maxSize && sw > maxSize.width) {
                     sw = maxSize.width;
-                } else if (minSize && sw < minSize.width) {
+                }
+
+                if (minSize && sw < minSize.width) {
                     sw = minSize.width;
                 }
 
@@ -443,7 +446,9 @@ export abstract class LayoutManager extends BaseObject {
 
                 if (maxSize && sh > maxSize.height) {
                     sh = maxSize.height;
-                } else if (minSize && sh < minSize.height) {
+                }
+
+                if (minSize && sh < minSize.height) {
                     sh = minSize.height;
                 }
 
