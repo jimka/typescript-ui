@@ -1401,6 +1401,8 @@ class TableBody extends VirtualRowView<Row> {
 
         this.alignPoolWindow(firstRow);
 
+        const rangeBounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus, records);
+
         for (let i = 0; i < windowSize; i++) {
             const row       = this._rowPool[i];
             const dataIndex = firstRow + i;
@@ -1442,7 +1444,7 @@ class TableBody extends VirtualRowView<Row> {
 
                 this._boundIndices[i] = dataIndex;
                 row.setStripe(dataIndex % 2 === 1);   // odd logical rows carry the zebra stripe; set before the paint below
-                this.updateRowVisualState(i);
+                this.updateRowVisualState(i, records);
                 this.computeRowAria(row, dataIndex);
             }
 
@@ -1455,7 +1457,7 @@ class TableBody extends VirtualRowView<Row> {
             }
 
             if (wasRebound || windowChanged) {
-                this.updateCellRangeVisualState(i);
+                this.updateCellRangeVisualState(i, records, rangeBounds);
             }
 
             this.afterRowBound(row, dataIndex, wasRebound);
@@ -1542,7 +1544,7 @@ class TableBody extends VirtualRowView<Row> {
         );
 
         this._boundIndices.forEach((dataIdx, i) => {
-            if (dataIdx !== -1) this.updateRowVisualState(i);
+            if (dataIdx !== -1) this.updateRowVisualState(i, records);
         });
 
         this.notifySelectionChange(before);
@@ -1582,7 +1584,7 @@ class TableBody extends VirtualRowView<Row> {
                 field,
                 columnIndex,
                 value:    record.get(field),
-                rowIndex: this.getVisibleRecords().indexOf(record),
+                rowIndex: records.indexOf(record),
                 event:    e,
             });
         }
@@ -1636,6 +1638,9 @@ class TableBody extends VirtualRowView<Row> {
      *
      * @param anchor - The range's fixed corner, or `null` when no range is active.
      * @param focus - The range's moving corner, or `null` when no range is active.
+     * @param records - The visible records to resolve each endpoint's row
+     *   position against. Defaults to a live query for the cold callers
+     *   (clipboard copy, context-menu copy) that don't already hold one.
      *
      * @returns The inclusive row/column bounds, or `null` when either
      *   endpoint is missing or its record is no longer visible.
@@ -1643,12 +1648,12 @@ class TableBody extends VirtualRowView<Row> {
     private getCellRangeBounds(
         anchor: { record: ModelRecord, col: number } | null,
         focus:  { record: ModelRecord, col: number } | null,
+        records: ModelRecord[] = this.getVisibleRecords(),
     ): CellRangeBounds | null {
         if (!anchor || !focus) {
             return null;
         }
 
-        const records   = this.getVisibleRecords();
         const anchorRow = records.indexOf(anchor.record);
         const focusRow  = records.indexOf(focus.record);
 
@@ -1687,10 +1692,15 @@ class TableBody extends VirtualRowView<Row> {
      * that can change the range — a mousedown, and a mousemove whose
      * resolved cell actually changed — and nowhere else; a right-click never
      * calls this, since it does not mutate the persistent range.
+     *
+     * @param records - The current visible records, passed in so this
+     *   helper doesn't re-query.
      */
-    private refreshCellRangeHighlight(): void {
+    private refreshCellRangeHighlight(records: ModelRecord[]): void {
+        const bounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus, records);
+
         this._boundIndices.forEach((dataIdx, i) => {
-            if (dataIdx !== -1) { this.updateCellRangeVisualState(i); }
+            if (dataIdx !== -1) { this.updateCellRangeVisualState(i, records, bounds); }
         });
     }
 
@@ -1704,20 +1714,22 @@ class TableBody extends VirtualRowView<Row> {
      * correct highlight state without a full sweep on every scroll tick.
      *
      * @param i - The zero-based index into the row pool.
+     * @param records - The current visible records, passed in so this
+     *   helper doesn't re-query.
+     * @param bounds - The current cell-range bounds, or `null` when no
+     *   range is active.
      */
-    private updateCellRangeVisualState(i: number): void {
+    private updateCellRangeVisualState(i: number, records: ModelRecord[], bounds: CellRangeBounds | null): void {
         const row = this._rowPool[i];
         if (row.isSeparator()) {
             return;
         }
 
         const dataIdx = this._boundIndices[i];
-        const record  = this.getVisibleRecords()[dataIdx];
-        if (!record) {
+        if (!records[dataIdx]) {
             return;
         }
 
-        const bounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus);
         const cells  = row.getComponents() as Cell<any>[];
         const start  = row.getColumnWindowStart();
 
@@ -1845,7 +1857,9 @@ class TableBody extends VirtualRowView<Row> {
             this._rangeFocus  = cell;
         }
 
-        this.refreshCellRangeHighlight();
+        const records = this.getVisibleRecords();
+
+        this.refreshCellRangeHighlight(records);
         this.focus();
 
         this.resetRangeDragWidening();
@@ -1853,7 +1867,7 @@ class TableBody extends VirtualRowView<Row> {
         Event.addViewportListener(this, "mousemove", this.onCellDragMove);
         Event.addViewportListener(this, "mouseup",   this.onCellDragEnd);
 
-        this.widenRangeDragIfMultiCell();
+        this.widenRangeDragIfMultiCell(records);
     }
 
     /**
@@ -1883,8 +1897,11 @@ class TableBody extends VirtualRowView<Row> {
         }
 
         this._rangeFocus = { record: located.record, col: located.col };
-        this.refreshCellRangeHighlight();
-        this.widenRangeDragIfMultiCell();
+
+        const records = this.getVisibleRecords();
+
+        this.refreshCellRangeHighlight(records);
+        this.widenRangeDragIfMultiCell(records);
     }
 
     /**
@@ -1920,13 +1937,16 @@ class TableBody extends VirtualRowView<Row> {
      * started in. A no-op while the range is still one cell, so an ordinary
      * click-drag inside a cell keeps the browser's own text selection; once
      * widened it clears that selection and stays widened until mouseup.
+     *
+     * @param records - The current visible records, passed in so this
+     *   helper doesn't re-query.
      */
-    private widenRangeDragIfMultiCell(): void {
+    private widenRangeDragIfMultiCell(records: ModelRecord[]): void {
         if (this._rangeDragWidened) {
             return;
         }
 
-        const bounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus);
+        const bounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus, records);
 
         if (!bounds || (bounds.minRow === bounds.maxRow && bounds.minCol === bounds.maxCol)) {
             return;
@@ -1997,8 +2017,10 @@ class TableBody extends VirtualRowView<Row> {
             this._selectedRecords.add(record);
         }
 
+        const records = this.getVisibleRecords();
+
         this._boundIndices.forEach((dataIdx, i) => {
-            if (dataIdx !== -1) this.updateRowVisualState(i);
+            if (dataIdx !== -1) this.updateRowVisualState(i, records);
         });
 
         this.notifySelectionChange(before);
@@ -2041,8 +2063,10 @@ class TableBody extends VirtualRowView<Row> {
             this._selectedRecords.add(record);
         }
 
+        const visibleRecords = this.getVisibleRecords();
+
         this._boundIndices.forEach((dataIdx, i) => {
-            if (dataIdx !== -1) this.updateRowVisualState(i);
+            if (dataIdx !== -1) this.updateRowVisualState(i, visibleRecords);
         });
 
         this.notifySelectionChange(before);
@@ -2247,14 +2271,16 @@ class TableBody extends VirtualRowView<Row> {
      * Applies selection highlight or normal visual state to the pool row at index i.
      *
      * @param i - The zero-based index into the row pool.
+     * @param records - The current visible records, passed in so this
+     *   helper doesn't re-query.
      */
-    private updateRowVisualState(i: number): void {
+    private updateRowVisualState(i: number, records: ModelRecord[]): void {
         const dataIdx = this._boundIndices[i];
         if (dataIdx === -1) {
             return;
         }
 
-        const record = this.getVisibleRecords()[dataIdx];
+        const record = records[dataIdx];
         if (!record) {
             return;
         }

@@ -802,7 +802,7 @@ describe('Body range selection — mouse gestures', () => {
 
         (b as any)._rangeAnchor = { record: recordAt(b, 0), col: 0 };
         (b as any)._rangeFocus  = { record: recordAt(b, 0), col: 1 };
-        (b as any).refreshCellRangeHighlight();
+        (b as any).refreshCellRangeHighlight((b as any).getVisibleRecords());
 
         expect((cellAt(b, 0, 0) as any)._rangeSelected).toBe(true);
         expect((cellAt(b, 0, 1) as any)._rangeSelected).toBe(true);
@@ -909,6 +909,120 @@ describe('Body range selection — mouse gestures', () => {
 
         expect(clearSelectionWrites()).toHaveLength(0);
         expect(selectstartRegistrations(addSpy)).toHaveLength(0);
+    });
+
+    it('a drag from (1,1) to (3,0) marks exactly that rectangle .rangeSelected and leaves cells outside it unmarked', async () => {
+        const b = await rangeBody();
+
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 1, 1).getElement()!, 'mousedown'));
+        (b as any).onCellDragMove(makeEvent(cellAt(b, 3, 0).getElement()!, 'mousemove'));
+
+        for (let r = 0; r < 4; r++) {
+            for (let c = 0; c < 3; c++) {
+                const inRect = r >= 1 && r <= 3 && c >= 0 && c <= 1;
+                expect((cellAt(b, r, c) as any)._rangeSelected).toBe(inRect);
+            }
+        }
+    });
+});
+
+// Behaviour-preserved coverage for Phase 1 of
+// plans/implemented/table-subsystem-consolidation-round-2.md: the visible-
+// records array driving `updateRowVisualState` / `updateCellRangeVisualState`
+// is now threaded in from the caller instead of re-queried per pool row —
+// these pin that the rendered result is unchanged.
+describe('Body range selection — behaviour preserved through the query-economy refactor', () => {
+    async function rangeBody(): Promise<Body> {
+        const store = new MemoryStore(MODEL, [
+            { a: 'a0', b: 'b0', c: 'c0' },
+            { a: 'a1', b: 'b1', c: 'c1' },
+            { a: 'a2', b: 'b2', c: 'c2' },
+            { a: 'a3', b: 'b3', c: 'c3' },
+        ]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(300);
+        b.setHeight(1000);   // tall enough that all 4 rows are in the pool
+        (b as any).renderWindow(300, [100, 100, 100]);
+
+        return b;
+    }
+
+    function cellAt(b: Body, row: number, col: number): Cell<any> {
+        return (b as any).getRowPool()[row].getComponents()[col];
+    }
+
+    function recordAt(b: Body, row: number) {
+        return (b as any).getRowPool()[row].getData();
+    }
+
+    it('selecting a row tints exactly that row; selecting another moves the tint', async () => {
+        const b    = await rangeBody();
+        const rows = (b as any).getRowPool();
+        const recs = [recordAt(b, 0), recordAt(b, 1), recordAt(b, 2), recordAt(b, 3)];
+
+        b.selectRecord(recs[0]);
+        expect(rows.map((r: any) => r.isStyleState('.selected'))).toEqual([true, false, false, false]);
+
+        b.selectRecord(recs[1]);
+        expect(rows.map((r: any) => r.isStyleState('.selected'))).toEqual([false, true, false, false]);
+    });
+
+    it('scrolling a range-selected block out of view and back restores the highlight on the rebound rows', async () => {
+        const store = new MemoryStore(MODEL, Array.from({ length: 40 }, (_, r) => ({
+            a: `a${r}`, b: `b${r}`, c: `c${r}`,
+        })));
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(300);
+        b.setHeight(120);   // a pool much smaller than the 40-row store
+        (b as any).renderWindow(300, [100, 100, 100]);
+
+        const target = store.getAll()[2];
+        (b as any)._rangeAnchor = { record: target, col: 0 };
+        (b as any)._rangeFocus  = { record: target, col: 1 };
+        (b as any).refreshCellRangeHighlight((b as any).getVisibleRecords());
+
+        const rowHeight = (b as any).getRowHeight();
+        b.setScrollY(rowHeight * 30);   // scrolls the target row's pool slot out of view
+        b.setScrollY(0);                // ...and back
+
+        const restored = (b as any).getRowPool().find((r: any) => r.getData() === target);
+        expect(restored).toBeDefined();
+
+        const cells = restored.getComponents();
+        expect((cells[0] as any)._rangeSelected).toBe(true);
+        expect((cells[1] as any)._rangeSelected).toBe(true);
+        expect((cells[2] as any)._rangeSelected).toBe(false);
+    });
+
+    it('a pool slot whose bound index is past the end of the visible records paints nothing and does not throw', async () => {
+        const b = await rangeBody();
+        const shortRecords = [recordAt(b, 0)];   // pool slot 3 is bound to dataIdx 3, out of range here
+
+        expect(() => (b as any).updateRowVisualState(3, shortRecords)).not.toThrow();
+        expect(() => (b as any).updateCellRangeVisualState(3, shortRecords, null)).not.toThrow();
+    });
+
+    it('a separator row is still skipped by the range highlight', async () => {
+        const b = await rangeBody();
+        b.setRowSeparator(record => record.get('a') === 'a1' ? { label: 'SEP', color: null } : null);
+        (b as any).renderWindow();
+
+        const sepRow = (b as any).getRowPool().find((r: any) => r.isSeparator());
+        expect(sepRow).toBeDefined();
+
+        (b as any)._rangeAnchor = { record: recordAt(b, 0), col: 0 };
+        (b as any)._rangeFocus  = { record: recordAt(b, 3), col: 2 };
+
+        expect(() => (b as any).refreshCellRangeHighlight((b as any).getVisibleRecords())).not.toThrow();
+
+        expect((cellAt(b, 0, 0) as any)._rangeSelected).toBe(true);
+        expect((cellAt(b, 3, 2) as any)._rangeSelected).toBe(true);
     });
 });
 
