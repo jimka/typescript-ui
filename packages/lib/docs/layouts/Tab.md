@@ -154,7 +154,7 @@ There is no automatic clear for a flag `setTabBusy` set: the consumer owns clear
 
 ## Tab-switch animation
 
-When the selected tab changes, the newly-visible child fades in over 120 ms via [`Animation`](/api/core/classes/Animation). The fade fires only on actual selection changes — a pure relayout (window resize, scheduleLayout from elsewhere) doesn't re-trigger it. Honours `prefers-reduced-motion: reduce`.
+When the selected tab changes, the newly-visible child fades in over 120 ms via [`Animation`](/api/core/namespaces/Animation). The fade fires only on actual selection changes — a pure relayout (window resize, scheduleLayout from elsewhere) doesn't re-trigger it. Honours `prefers-reduced-motion: reduce`.
 
 ## Strip placement, alignment & orientation
 

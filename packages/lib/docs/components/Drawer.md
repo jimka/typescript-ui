@@ -2,7 +2,7 @@
 
 [`Drawer`](/api/overlay/classes/Drawer) is an edge-anchored panel that rests off-screen against a viewport edge and slides into view when opened, overlaying the rest of the UI. Unlike [`Dialog`](/components/Dialog) (centred, promise-driven, always modal) it is a bare content host driven by a public `open()` / `close()` / `toggle()` API, and it can be modal *or* non-modal.
 
-It reuses the framework's floating-layer infrastructure wholesale: it mounts on `document.documentElement` and registers with [`LayerManager`](/api/core/classes/LayerManager) as a [`DismissableLayer`](/api/core/interfaces/DismissableLayer), so Escape, outside-click capture, and z-stacking behave like every other portaled surface.
+It reuses the framework's floating-layer infrastructure wholesale: it mounts on `document.documentElement` and registers with [`LayerManager`](/api/core/namespaces/LayerManager) as a [`DismissableLayer`](/api/core/interfaces/DismissableLayer), so Escape, outside-click capture, and z-stacking behave like every other portaled surface.
 
 ## Opening a drawer
 
@@ -36,7 +36,7 @@ The `edge` option reuses the compass primitive [`Placement`](/api/primitive/enum
 
 | | Modal (`modal: true`) | Non-modal (`modal: false`, default) |
 | --- | --- | --- |
-| Scrim | Draws a blocking [`DialogBackdrop`](/api/component/container/classes/DialogBackdrop) | None |
+| Scrim | Draws a blocking `DialogBackdrop` | None |
 | Outside click | Captured; clicking the scrim closes the drawer | App stays interactive; outside clicks are ignored |
 | Escape | Closes the drawer | Ignored |
 | Closing | Scrim-click / Escape / public API | Public API only |

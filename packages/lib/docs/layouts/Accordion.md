@@ -221,5 +221,5 @@ The duration and easing are a layout concern, not a theme concern — encoding t
 - [API: AccordionConstraints](/api/layout/classes/AccordionConstraints)
 - [API: SectionToggleCallback](/api/layout/type-aliases/SectionToggleCallback)
 - [API: SectionResizeCallback](/api/layout/type-aliases/SectionResizeCallback)
-- [API: LayoutSize](/api/layout/type-aliases/LayoutSize) — the persisted-size vocabulary shared with [`Split`](/layouts/Split#saving-and-restoring-layout)
+- [API: LayoutSize](/api/layout/interfaces/LayoutSize) — the persisted-size vocabulary shared with [`Split`](/layouts/Split#saving-and-restoring-layout)
 - [`AccordionHeader`](/api/component/container/classes/AccordionHeader) — the section header

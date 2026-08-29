@@ -198,7 +198,7 @@ A saved array whose length or per-index unit no longer matches the live panes (e
 ## See also
 
 - [API: Split](/api/layout/classes/Split)
-- [API: LayoutSize](/api/layout/type-aliases/LayoutSize) — the persisted-size vocabulary `getPaneSizes` / `applyPaneSizes` share with [`Accordion`](/layouts/Accordion#saving-and-restoring-section-sizes)
+- [API: LayoutSize](/api/layout/interfaces/LayoutSize) — the persisted-size vocabulary `getPaneSizes` / `applyPaneSizes` share with [`Accordion`](/layouts/Accordion#saving-and-restoring-section-sizes)
 - [`SplitGutter`](/api/component/container/classes/SplitGutter) — the drag handle
 - [`Border`](/layouts/Border) — fixed dividers
 - [Layout serialization](/layouts/LayoutSerialization) — capture and restore pane ratios

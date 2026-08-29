@@ -103,7 +103,7 @@ See [`CheckboxMenuRow`](/components/CheckboxMenuRow) for the full worked example
 - Rebuild-mode coordinates are in viewport space (`clientX` / `clientY`).
 - Submenus work in both modes: `showAnchored` wires up `submenu` on every rebuild-mode item too, not just persistent-mode ones. A submenu panel is built fresh each time it opens.
 - Rebuild mode reads the `--ts-ui-context-menu-*` theme tokens; persistent mode reads `--ts-ui-menu-bar-panel-*` tokens. The visual style of each mode therefore matches its host.
-- Opens and closes with a 120 ms opacity fade via [`Animation`](/api/core/classes/Animation). A fresh `show()` / `open()` during a fade-out cancels the deferred detach, so a quick close-then-reopen keeps the panel mounted. Honours `prefers-reduced-motion: reduce`.
+- Opens and closes with a 120 ms opacity fade via [`Animation`](/api/core/namespaces/Animation). A fresh `show()` / `open()` during a fade-out cancels the deferred detach, so a quick close-then-reopen keeps the panel mounted. Honours `prefers-reduced-motion: reduce`.
 
 ## See also
 

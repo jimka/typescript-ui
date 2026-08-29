@@ -35,7 +35,7 @@ The dragged source must be a tab carrying the framework's tab-drag payload — a
 
 ## Where a drop lands
 
-The cursor's position within the region's box resolves to one of five [`DropZone`](/api/layout/type-aliases/DropZone) values. The outer quarter of each axis (the `EDGE_BAND_FRACTION`, the canonical VS Code / GoldenLayout ratio) is an edge band; corners resolve to the nearer edge, so there is no dead diagonal; the inner remainder is the centre.
+The cursor's position within the region's box resolves to one of five [`DropZone`](/api/overlay/type-aliases/DropZone) values. The outer quarter of each axis (the `EDGE_BAND_FRACTION`, the canonical VS Code / GoldenLayout ratio) is an edge band; corners resolve to the nearer edge, so there is no dead diagonal; the inner remainder is the centre.
 
 | Drop zone | Result |
 | --- | --- |

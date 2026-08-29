@@ -8,7 +8,7 @@ Reaching for `AnimatedDropdown` directly to build a custom popup is usually unne
 
 The following framework components use this base class:
 
-- [`AutoCompleteDropdown`](/api/component/input/classes/AutoCompleteDropdown) (typeahead panel)
+- `AutoCompleteDropdown` (typeahead panel)
 - [`ComboBox`](/components/ComboBox)'s internal option-list dropdown
 - [`DatePickerDropdown`](/api/component/input/classes/DatePickerDropdown) ([`DateField`](/components/DateField), `DateEditor`)
 - [`TimePickerDropdown`](/api/component/input/classes/TimePickerDropdown) ([`TimeField`](/components/TimeField), `TimeEditor`)

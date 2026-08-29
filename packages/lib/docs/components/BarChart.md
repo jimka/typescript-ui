@@ -2,7 +2,7 @@
 
 [`BarChart`](/api/component/chart/classes/BarChart) plots one or more series as bars over a discrete category (band) x axis and a linear y axis. Multiple series are drawn side by side (grouped) or stacked.
 
-Like every chart in the family it is a [`Panel`](/api/component/container/classes/Panel) hosting a single `<svg>` surface built through the framework DOM sink. The band/linear scales come from the pure `d3-scale` submodule; the bar rectangles are hand-computed from the band scale (d3-shape adds nothing to axis-aligned rectangles). All rendering, layout, interaction, and theming stay native.
+Like every chart in the family it is a [`Panel`](/api/core/classes/Panel) hosting a single `<svg>` surface built through the framework DOM sink. The band/linear scales come from the pure `d3-scale` submodule; the bar rectangles are hand-computed from the band scale (d3-shape adds nothing to axis-aligned rectangles). All rendering, layout, interaction, and theming stay native.
 
 <!-- demo: barchart-grouped -->
 > **Live demo** — an in-memory, grouped `BarChart` over two product series,

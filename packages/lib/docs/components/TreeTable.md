@@ -100,7 +100,7 @@ if (parent) {
 
 ## Drag-and-drop reparenting
 
-`TreeTable` ships with built-in row drag-and-drop powered by the [`DragManager`](/api/overlay/variables/DragManager) subsystem. A user can pick up any row by mousing down on its body and drag it onto another row to move it within the hierarchy:
+`TreeTable` ships with built-in row drag-and-drop powered by the [`DragManager`](/api/overlay/namespaces/DragManager) subsystem. A user can pick up any row by mousing down on its body and drag it onto another row to move it within the hierarchy:
 
 | Drop target | Effect |
 |---|---|

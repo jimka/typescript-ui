@@ -63,7 +63,7 @@ A suggestion-select fires `on("select", fn)` (and its `addSelectListener` alias)
 
 ## Notes
 
-- The suggestion dropdown fades in / out over 100 ms via [`Animation`](/api/core/classes/Animation). A fresh `show()` during a fade-out cancels the deferred detach, so a fast hide-then-reshow (typical when typing rapidly) doesn't snap. Honours `prefers-reduced-motion: reduce`.
+- The suggestion dropdown fades in / out over 100 ms via [`Animation`](/api/core/namespaces/Animation). A fresh `show()` during a fade-out cancels the deferred detach, so a fast hide-then-reshow (typical when typing rapidly) doesn't snap. Honours `prefers-reduced-motion: reduce`.
 
 ## See also
 
