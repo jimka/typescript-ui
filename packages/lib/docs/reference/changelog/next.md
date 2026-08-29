@@ -137,3 +137,8 @@ page resets to empty.
   scroll or resize. `onEffectiveVisibilityChange` now also schedules a
   viewport pass on the visible edge, so a queued entry is re-checked at rest
   instead of waiting on an event that may never come.
+- **`AbstractCanvasSurface` is now the shared base for `Canvas` and
+  `WebGLCanvas`.** The diagram viewer no longer leaks theme listeners for a
+  graph discarded by a superseded `setData`, a failed layout, or disposal
+  mid-layout, and simplified nodes are no longer clipped at low zoom. No
+  consumer action is needed.
