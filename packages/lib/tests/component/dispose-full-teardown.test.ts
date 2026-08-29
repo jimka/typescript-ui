@@ -8,32 +8,23 @@
 // registry shape: one row per class, iterated by a single `describe`/`it`
 // loop so a missing row is as visible as a failing one.
 //
-// Row count is enforced structurally, not by a hard-coded literal (plan
-// counts written by hand go stale) — see the "regression checkpoints" step
-// in plans/implemented/component-teardown-seam.md, which greps
-// `^\s*protected destructor(` definitions in the library source and compares
-// that count against this registry by hand at implementation time.
+// Which classes this registry must cover is derived from the library source
+// at run time via `classesDeclaringDestructor()` (see
+// `../helpers/libraryClassScan.mjs`), not hand-counted: every row declares
+// which scanned classes it is evidence for via `covers`, and
+// `UNCLAIMED_DESTRUCTOR_CLASSES` is a shrink-only baseline of the classes no
+// row covers yet. A class gaining its first `protected destructor()` with
+// neither a covering row nor a baseline entry fails the coverage assertion
+// below — the registry cannot silently go stale the way its hand-written
+// predecessor did (a count of 35 that the source had already outgrown to
+// 54, undetected).
 //
-// Re-derived count (grep is a superset — read each hit before trusting it):
-// `grep -rn '^\s*protected destructor(' packages/lib/src/typescript/lib`
-// currently returns 35 hits. `Component.ts:756` is the base `destructor()`
-// this registry's rows override and doesn't belong here. Five predate the
-// original component-teardown-seam.md move and were never `dispose()`-named
-// — `StatusBar.ts`, `Canvas.ts`, `WebGLCanvas.ts`, `core/Panel.ts`,
-// `overlay/AbstractWindow.ts` — so they stay out of this registry's scope.
-//
-// plans/implemented/table-tab-close-residual-leak.md added five of this
-// registry's rows — `MenuButton`, `SplitButton`, `ToolBar`, `Table`,
-// `MenuBar` — each gaining its first `destructor()` override to dispose a
-// `Menu` held in a private field (never a registered child; see Menu.ts's
-// class comment), plus one line inside `TabBar`'s pre-existing override for
-// the same reason. It did not audit the remaining, unaccounted-for hits —
-// several later, unrelated plans (`Dock`, `Notification`,
-// `DropZoneOverlay`, `Dialog`, `Drawer`, `Rail`, `DiagramView`,
-// `VirtualRowView`, `table/cell/Header`, plus the abstract `AnimatedDropdown`
-// and the singleton `Tooltip`) have added `destructor()` overrides without a
-// corresponding row here since this count was last reconciled — a
-// pre-existing gap this plan did not introduce and did not close.
+// Each `it` also asserts a construct/destroy balance via `Diagnostics`
+// counters: after `dispose()`, as many components must have been destroyed
+// as were constructed. The pre-existing per-instance-CSS-rule check above it
+// catches a leaked class-tier rule but is blind to a leaked component that
+// writes no rule of its own (a bare renderer, a raw-appended label) — the
+// balance check catches that class of leak directly.
 import { describe, it, expect } from 'vitest';
 import { Component } from '~/core/Component';
 import { Markdown } from '~/component/display/Markdown';
@@ -63,7 +54,15 @@ import { TimeEditor } from '~/component/table/cell/editor/Time';
 import { DateTimeEditor } from '~/component/table/cell/editor/DateTime';
 import { MenuBar } from '~/component/menubar/MenuBar';
 import { TabButton } from '~/component/button/TabButton';
+import { FieldSet } from '~/component/container/FieldSet';
+import { ComboBox } from '~/component/input/ComboBox';
+import { List } from '~/component/list/List';
+import { Tree } from '~/component/tree/Tree';
+import { GlyphListItemRenderer } from '~/component/list/renderer/Glyph';
+import { IconLabelTreeNodeRenderer } from '~/component/tree/renderer/IconLabel';
 import { _ruleCacheKeys } from '~/core/StyleTarget';
+import { Diagnostics } from '~/core/Diagnostics';
+import { classesDeclaringDestructor } from '../helpers/libraryClassScan.mjs';
 
 /**
  * Recursively collects a component's own id plus every registered
@@ -101,34 +100,48 @@ const REGISTRY: Array<{
     // overlays (`_tabClip` etc.) ARE in scope and are covered here via
     // `extraSubtrees`.
     ownIds?: (c: Component) => string[];
+    /** Source classes this row is the registry's evidence for. Omitted where the row exercises the base class's own recursion rather than a declared override. */
+    covers?: string[];
+    /** Pre-existing undisposed-component residual this row does not fix; see `VideoPlayer` below. Never rises — only set for a class this plan does not address. */
+    undisposedBaseline?: number;
 }> = [
-    { name: 'Markdown',      make: () => new Markdown('# A') },
-    { name: 'Video',         make: () => new Video() },
+    { name: 'Markdown',      covers: ['Markdown'], make: () => new Markdown('# A') },
+    { name: 'Video',         covers: ['Video'],    make: () => new Video() },
     // VideoPlayer keeps its narrowing for a reason unrelated to the gutters
     // fixed above: its `Border` manager creates none, and its residual two
     // rules come from neither that source nor `Panel`'s overlay scrollbars
     // (see the block comment above) — scope the check to VideoPlayer's own
     // registered subtree.
-    { name: 'VideoPlayer',   make: () => new VideoPlayer(), ownIds: (c) => collectIds(c) },
-    { name: 'MenuItem',      make: () => new MenuItem({ text: 'A' }, () => {}, () => {}) },
-    { name: 'AbstractChart (via LineChart)', make: () => new LineChart({}) },
+    {
+        name: 'VideoPlayer',
+        covers: ['VideoPlayer'],
+        make: () => new VideoPlayer(),
+        ownIds: (c) => collectIds(c),
+        // Pre-existing, unrelated to the raw-append leaks this plan fixes —
+        // recorded so the balance assertion doesn't block on it. The number
+        // may only go down.
+        undisposedBaseline: 4,
+    },
+    { name: 'MenuItem',      covers: ['MenuItem'], make: () => new MenuItem({ text: 'A' }, () => {}, () => {}) },
+    { name: 'AbstractChart (via LineChart)', covers: ['AbstractChart'], make: () => new LineChart({}) },
     { name: 'ChartLegend',   make: () => new ChartLegend() },
     { name: 'MenuBarButton', make: () => new MenuBarButton('File', () => {}, () => {}) },
-    { name: 'CodeEditor',    make: () => new CodeEditor() },
-    { name: 'MarkdownEditor', make: () => new MarkdownEditor() },
+    { name: 'CodeEditor',    covers: ['CodeEditor'], make: () => new CodeEditor() },
+    { name: 'MarkdownEditor', covers: ['MarkdownEditor'], make: () => new MarkdownEditor() },
     {
         name: 'PaginationBar',
+        covers: ['PaginationBar'],
         make: () => new PaginationBar(new MemoryStore(new Model([{ name: 'id' }], 'id'), [])),
     },
-    // Menu has no destructor() override of its own — its former dispose()
-    // override (a manual `_menuItems` re-disposal loop guarded to persistent
-    // mode) became fully redundant once every item's own cleanup moved onto
-    // destructor(): every `MenuItem` / `MenuSeparator` is registered via
-    // `addComponent` in both modes, so the base class's recursive teardown
-    // already reaches them. The row stays to cover exactly that — the
-    // ancestor-recursion contract this plan's fix depends on — for a real,
-    // non-synthetic class.
-    { name: 'Menu',    make: () => new Menu([{ text: 'A' }], () => {}) },
+    // Menu's own destructor() (overlay/Menu.ts) cancels any in-flight
+    // show/hide fade and disposes a still-open submenu panel, which — like
+    // every Menu anywhere in the library — is a raw field, never a
+    // registered child (see Menu.ts's class comment), so the base
+    // destructor's recursion cannot reach it on its own. This row's plain
+    // unopened Menu doesn't reach either branch; it covers the ancestor-
+    // recursion contract every `MenuItem` / `MenuSeparator` relies on
+    // instead, for a real, non-synthetic class.
+    { name: 'Menu',    covers: ['Menu'], make: () => new Menu([{ text: 'A' }], () => {}) },
     // `_menu` is lazily created (only on the first toggle), so a bare
     // `new MenuButton(...)` never builds it — toggle the dropdown once to
     // materialise it, mirroring the Popover row's `ensureArrow()` idiom.
@@ -137,6 +150,7 @@ const REGISTRY: Array<{
     // `destructor()` now disposes it explicitly.
     {
         name: 'MenuButton',
+        covers: ['MenuButton'],
         make: () => {
             const button = new MenuButton<MenuButtonOptions>('Export', { menuItems: [{ text: 'A', action: () => {} }] });
 
@@ -149,6 +163,7 @@ const REGISTRY: Array<{
     // Same shape as MenuButton, for SplitButton's own lazily-created `_menu`.
     {
         name: 'SplitButton',
+        covers: ['SplitButton'],
         make: () => {
             const button = new SplitButton('Save', { menuItems: [{ text: 'A', action: () => {} }] });
 
@@ -165,6 +180,7 @@ const REGISTRY: Array<{
     // `_reflowOverflow` computes the overflow set before toggling.
     {
         name: 'ToolBar',
+        covers: ['ToolBar'],
         make: () => {
             const bar = new ToolBar({ overflow: 'menu' });
 
@@ -186,6 +202,7 @@ const REGISTRY: Array<{
     // comment on `StyleTarget.set` elsewhere in this file's siblings).
     {
         name: 'Table',
+        covers: ['Table'],
         make: () => {
             const table = new Table(new MemoryStore(new Model([{ name: 'a', type: 'string', order: 0 }], 'a'), []));
 
@@ -205,6 +222,7 @@ const REGISTRY: Array<{
     // store has actually loaded.
     {
         name: 'Table (cell-editor pool)',
+        covers: ['TableBody'],
         make: async () => {
             const store = new MemoryStore(new Model([{ name: 'a', type: 'string', order: 0 }], 'a'), [{ a: 'x' }]);
 
@@ -232,6 +250,7 @@ const REGISTRY: Array<{
     // first focus and held in a private field — never a registered child.
     {
         name: 'DateEditor',
+        covers: ['DateEditor'],
         make: () => {
             const editor = new DateEditor();
 
@@ -243,6 +262,7 @@ const REGISTRY: Array<{
     },
     {
         name: 'TimeEditor',
+        covers: ['TimeEditor'],
         make: () => {
             const editor = new TimeEditor();
 
@@ -254,6 +274,7 @@ const REGISTRY: Array<{
     },
     {
         name: 'DateTimeEditor',
+        covers: ['DateTimeEditor'],
         make: () => {
             const editor = new DateTimeEditor();
 
@@ -268,6 +289,7 @@ const REGISTRY: Array<{
     // `openMenu` actually shows one.
     {
         name: 'MenuBar',
+        covers: ['MenuBar'],
         make: () => {
             const bar = new MenuBar({ menus: [{ label: 'File', items: [{ text: 'A', action: () => {} }] }] });
 
@@ -284,6 +306,7 @@ const REGISTRY: Array<{
         // `show()` (anchor element, LayerManager, fade timers) just to
         // reach a one-line lazy builder.
         name: 'Popover',
+        covers: ['Popover'],
         make: () => {
             const popover = new Popover();
 
@@ -295,6 +318,7 @@ const REGISTRY: Array<{
     { name: 'Link',    make: () => new Link('x') },
     {
         name: 'TabButton',
+        covers: ['TabButton'],
         make: () => {
             const button = new TabButton('Home', { closeable: true });
 
@@ -305,6 +329,7 @@ const REGISTRY: Array<{
     },
     {
         name: 'TabBar',
+        covers: ['TabBar'],
         // Opens the real right-click context menu (rather than leaving
         // `_contextMenu` unshown) so its row also exercises the new
         // `_contextMenu.dispose()` line in `TabBar.destructor()` — driven the
@@ -350,6 +375,7 @@ const REGISTRY: Array<{
     // overflow, so they stay `null` (and out of `extraSubtrees`) here.
     {
         name: 'ScrollStrip',
+        covers: ['ScrollStrip'],
         make: () => new ScrollStrip(),
         ownIds: (c) => {
             const strip = c as unknown as {
@@ -362,10 +388,92 @@ const REGISTRY: Array<{
                 .filter((child): child is Component => child !== null));
         },
     },
+    { name: 'FieldSet', covers: ['FieldSet'], make: () => new FieldSet('Group') },
+    {
+        name: 'ComboBox',
+        covers: ['ComboBox', 'ComboBoxLabel'],
+        make: () => new ComboBox({ items: [{ key: 'a', label: 'Alpha' }] }),
+    },
+    {
+        name: 'List',
+        covers: ['AbstractSelectableList', 'SelectableListRow', 'LabelListItemRenderer'],
+        make: () => new List({ items: [{ key: 'a', label: 'Alpha' }, { key: 'b', label: 'Beta' }] }),
+    },
+    {
+        // setRendererFactory after render so the per-row renderer *swap* path runs
+        // too, not only the teardown path.
+        name: 'List (glyph renderer)',
+        covers: ['GlyphListItemRenderer'],
+        make: () => {
+            const list = new List({
+                items: [
+                    { key: 'a', label: 'Alpha', glyph: 'caret-right' },
+                    { key: 'b', label: 'Beta',  glyph: 'caret-down'  },
+                ],
+                rendererFactory: () => new GlyphListItemRenderer(),
+            });
+
+            list.getElement(true);
+            list.setRendererFactory(() => new GlyphListItemRenderer());
+
+            return list;
+        },
+    },
+    {
+        // expandAll() rebinds the root row, so `setRowData` swaps its caret-right
+        // glyph for a caret-down one and the discarded caret is exercised.
+        name: 'Tree',
+        covers: ['VirtualRowView', 'TreeRow', 'LabelTreeNodeRenderer'],
+        make: () => {
+            const tree = new Tree();
+
+            tree.setNodes([{ label: 'Root', children: [{ label: 'A' }] }]);
+            tree.getElement(true);
+            tree.setWidth(300);
+            tree.setHeight(200);
+            tree.doLayout();
+            tree.expandAll();
+
+            return tree;
+        },
+    },
+    {
+        // "caret-right" rather than the resolver default "file", which no library
+        // module registers with `Glyph.register` — the default throws here.
+        name: 'Tree (icon renderer)',
+        covers: ['IconLabelTreeNodeRenderer'],
+        make: () => {
+            const tree = new Tree();
+
+            tree.setNodes([{ label: 'Root', children: [{ label: 'A' }] }]);
+            tree.getElement(true);
+            tree.setWidth(300);
+            tree.setHeight(200);
+            tree.doLayout();
+            tree.setRendererFactory(() => new IconLabelTreeNodeRenderer(() => 'caret-right'));
+            tree.expandAll();
+
+            return tree;
+        },
+    },
+];
+
+/**
+ * Classes `classesDeclaringDestructor()` finds today with no `covers` row
+ * and no dedicated test of their own. Entries come out as rows are added;
+ * an entry only goes in as a deliberate, commented deferral — never to make
+ * a newly-failing assertion pass again.
+ */
+const UNCLAIMED_DESTRUCTOR_CLASSES: readonly string[] = [
+    'AbstractPickerField', 'AbstractWindow', 'AnimatedDropdown', 'AutoCompleteField', 'Button',
+    'Canvas', 'DiagramView', 'Dialog', 'Dock', 'Drawer', 'DropZoneOverlay', 'FilterCell',
+    'HeaderCell', 'LabeledGrid', 'MarkdownMinimap', 'Notification', 'Panel', 'PopupButton',
+    'Rail', 'Row', 'SplitGutter', 'StatusBar', 'TableHeader', 'TablePanel', 'Text', 'Tooltip',
+    'TreeTablePanel', 'WebGLCanvas',
 ];
 
 describe('dispose-full-teardown registry: every dispose() leaves zero new rule-cache keys', () => {
-    for (const { name, make, reason, ownIds } of REGISTRY) {
+    for (const { name, make, reason, ownIds, undisposedBaseline } of REGISTRY) {
         if (!make) {
             it.skip(`${name} (${reason})`, () => {});
             continue;
@@ -384,6 +492,7 @@ describe('dispose-full-teardown registry: every dispose() leaves zero new rule-c
 
             const before = new Set(_ruleCacheKeys());
 
+            Diagnostics._reset();
             const c = await make();
             c.getElement(true);
 
@@ -398,6 +507,24 @@ describe('dispose-full-teardown registry: every dispose() leaves zero new rule-c
             }
 
             expect(leaked).toEqual([]);
+
+            const counters   = Diagnostics.counters();
+            const undisposed = counters.componentsConstructed - counters.componentsDestroyed;
+
+            // Compared as a labelled string so the failure names the row, not just a number.
+            expect(`${name}: undisposed=${undisposed}`).toBe(`${name}: undisposed=${undisposedBaseline ?? 0}`);
         });
     }
+
+    const claimed = new Set(REGISTRY.flatMap((row) => row.covers ?? []));
+    const scanned = classesDeclaringDestructor();
+    const unclaimed = scanned.filter((name) => !claimed.has(name));
+
+    it('every covers entry still declares a destructor', () => {
+        expect([...claimed].filter((name) => !scanned.includes(name))).toEqual([]);
+    });
+
+    it('every declared destructor is claimed by a row or listed as unclaimed', () => {
+        expect(unclaimed).toEqual([...UNCLAIMED_DESTRUCTOR_CLASSES]);
+    });
 });

@@ -115,17 +115,15 @@ class TreeRow extends Component {
      * The new renderer's element is appended to the row immediately. The
      * caller is expected to follow up with `setRowData` (typically via the
      * Tree's next render pass) so the renderer receives an `update()` before
-     * being laid out.
+     * being laid out. The replaced renderer is disposed, so a caller holding
+     * a reference from {@link getRenderer} must not reuse it afterward.
      */
     setRenderer(renderer: TreeNodeRenderer): this {
         const el = this.getElement();
 
-        if (el) {
-            const oldEl = this._renderer.getElement();
-            if (oldEl && DOM.source.getParentNode(oldEl) === el) {
-                DOM.sink.removeChild(el, oldEl);
-            }
+        this._renderer.dispose();
 
+        if (el) {
             DOM.sink.appendChild(el, renderer.getElement(true)!);
         }
 
@@ -171,18 +169,12 @@ class TreeRow extends Component {
         this._depth = depth;
 
         if (this._toggle) {
-            const el = this.getElement();
-            if (el) {
-                DOM.sink.removeChild(el, this._toggle.getElement(true)!);
-            }
+            this._toggle.dispose();
             this._toggle = null;
         }
 
         if (this._spinner) {
-            const el = this.getElement();
-            if (el) {
-                DOM.sink.removeChild(el, this._spinner.getElement(true)!);
-            }
+            this._spinner.dispose();
             this._spinner = null;
         }
 
@@ -309,6 +301,19 @@ class TreeRow extends Component {
         DOM.sink.appendChild(el, this._renderer.getElement(true)!);
 
         return this;
+    }
+
+    /**
+     * Disposes the renderer, toggle, and spinner, then runs the inherited
+     * teardown. All three are raw-appended rather than registered, so the
+     * base destructor's recursion over `_components` cannot reach them.
+     */
+    protected destructor(): void {
+        this._renderer.dispose();
+        this._toggle?.dispose();
+        this._spinner?.dispose();
+
+        super.destructor();
     }
 }
 

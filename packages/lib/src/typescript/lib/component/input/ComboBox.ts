@@ -448,16 +448,14 @@ class ComboBoxLabel extends Component {
      * @param renderer - The replacement renderer.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks The replaced renderer is disposed, so a caller holding a
+     * reference to it must not reuse it afterward.
      */
     setRenderer(renderer: ListItemRenderer): this {
         const el = this.getElement();
 
-        if (el) {
-            const oldEl = this._renderer.getElement();
-            if (oldEl && DOM.source.getParentNode(oldEl) === el) {
-                DOM.sink.removeChild(el, oldEl);
-            }
-        }
+        this._renderer.dispose();
 
         this._renderer = renderer;
 
@@ -572,6 +570,17 @@ class ComboBoxLabel extends Component {
         this._renderer.layoutChildren(box.width, box.height);
 
         return this;
+    }
+
+    /**
+     * Disposes the renderer, then runs the inherited teardown. `_renderer`
+     * is raw-appended rather than registered, so the base destructor's
+     * recursion over `_components` cannot reach it.
+     */
+    protected destructor(): void {
+        this._renderer.dispose();
+
+        super.destructor();
     }
 }
 

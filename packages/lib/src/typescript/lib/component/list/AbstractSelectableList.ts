@@ -93,7 +93,7 @@ const TYPE_AHEAD_TIMEOUT_MS = 700;
  * @category Components
  */
 export interface AbstractSelectableListOptions extends AbstractInputOptions {
-    items?:        String | Array<String>;
+    items?:        SelectableListItemSpec | Array<SelectableListItemSpec>;
     store?:        AbstractStore;
     displayField?: string;
     valueField?:   string;
@@ -418,12 +418,7 @@ class SelectableListRow extends Component {
     setRenderer(renderer: ListItemRenderer): this {
         const el = this.getElement();
 
-        if (el) {
-            const oldEl = this._renderer.getElement();
-            if (oldEl && DOM.source.getParentNode(oldEl) === el) {
-                DOM.sink.removeChild(el, oldEl);
-            }
-        }
+        this._renderer.dispose();
 
         this._renderer = renderer;
         this._renderer.setPointerEvents("none");
@@ -540,6 +535,17 @@ class SelectableListRow extends Component {
         }
 
         return this;
+    }
+
+    /**
+     * Disposes the renderer, then runs the inherited teardown. `_renderer`
+     * is raw-appended rather than registered, so the base destructor's
+     * recursion over `_components` cannot reach it.
+     */
+    protected destructor(): void {
+        this._renderer.dispose();
+
+        super.destructor();
     }
 
     /**
@@ -880,13 +886,17 @@ abstract class AbstractSelectableList<
 
     /**
      * Unsubscribes from the currently-bound store (see {@link setStore}),
-     * then runs the inherited teardown. The store is owned by the caller,
-     * not this list, and can outlive it, so an un-unsubscribed listener
-     * would pin this list in the store's own `ListenerBag` for as long as
-     * the store itself lives.
+     * disposes the cached empty-state placeholder, then runs the inherited
+     * teardown. The store is owned by the caller, not this list, and can
+     * outlive it, so an un-unsubscribed listener would pin this list in the
+     * store's own `ListenerBag` for as long as the store itself lives. This
+     * covers the *detached and cached* placeholder, which is not a
+     * registered child and so is unreachable by the base recursion;
+     * disposing an attached one is an idempotent no-op.
      */
     protected destructor(): void {
         this.unbindStore(this._options.store);
+        this._emptyPlaceholder?.dispose();
 
         super.destructor();
     }
@@ -1130,6 +1140,7 @@ abstract class AbstractSelectableList<
             this._placeholderAttached = false;
         }
 
+        this._emptyPlaceholder?.dispose();
         this._emptyPlaceholder = null;
     }
 
@@ -1598,8 +1609,13 @@ abstract class AbstractSelectableList<
             for (let i = newLen; i < oldLen; i++) {
                 // Drop the row's tooltip attachment (a static id-keyed map) before
                 // discarding the row, so a shrinking pool doesn't leak entries.
+                // The surplus row is discarded, not re-parented, so removeComponent's
+                // detach-only contract needs the explicit disposal that follows it —
+                // removeComponent must run first: it writes DOM through the row's
+                // handles, which dispose() below releases.
                 Tooltip.detach(this._rowPool[i]);
                 this._innerPanel.removeComponent(this._rowPool[i]);
+                this._rowPool[i].dispose();
             }
             this._rowPool.splice(newLen);
         }
