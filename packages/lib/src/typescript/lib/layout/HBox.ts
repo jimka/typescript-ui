@@ -538,9 +538,9 @@ class HBox extends BoxLayout {
             if (cross) {
                 placements.push({ component, ...this.resolveBounds(component, x, cross.offset, widths[idx], cross.extent, FillType.BOTH) });
             } else if (this._itemAlign === "start" || this._itemAlign === "center" || this._itemAlign === "end") {
-                const y = crossLead + this.crossItemOffset(heights[idx], crossExtent);
+                const y = crossLead + this.crossItemOffset(naturalCross, crossExtent);
 
-                placements.push({ component, ...this.resolveBounds(component, x, y, widths[idx], heights[idx], FillType.BOTH) });
+                placements.push({ component, ...this.resolveBounds(component, x, y, widths[idx], naturalCross, FillType.BOTH) });
             } else {
                 const y = this.rowChildY(insets.getTop(), heights[idx], baselines[idx], rowAscent, rowDescent);
 
