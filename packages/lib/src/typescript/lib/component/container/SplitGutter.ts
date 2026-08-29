@@ -46,11 +46,6 @@ export interface SplitGutterOptions extends ComponentOptions {
      */
     movable?: boolean;
     /**
-     * Whether the gutter paints the opaque collapse-strip fill (collapsed
-     * state) or its expanded background (divider state). Defaults to `false`.
-     */
-    opaque?: boolean;
-    /**
      * The chevron's collapse heading — the way it points (and the way the
      * gutter travels) when collapsing. The restore heading is its opposite.
      * Defaults to `west` for a horizontal gutter, `north` for a vertical one.
@@ -74,12 +69,7 @@ export interface SplitGutterOptions extends ComponentOptions {
      * construction time.
      */
     listeners?: {
-        dragstart?:   (position: number) => void;
-        drag?:        (position: number) => void;
-        dragend?:     () => void;
         collapse?:    () => void;
-        /** Fires when the gutter's chevron is right-clicked, receiving the pointer's viewport coordinates. */
-        contextmenu?: (x: number, y: number) => void;
     };
 }
 
@@ -172,10 +162,6 @@ class SplitGutter extends Component<SplitGutterOptions> {
         });
 
         this._collapseButton.setVisible(this._collapsible);
-
-        if (options?.opaque) {
-            this.setOpaque(true);
-        }
 
         // A fixed gutter (Border) never resizes, so its body should not swallow
         // pointer events — the transparent track must let clicks reach the

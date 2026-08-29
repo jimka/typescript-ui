@@ -1092,18 +1092,6 @@ class Accordion extends LayoutManager {
     }
 
     /**
-     * Attaches to a container. Section headers and panel wrappers are created
-     * lazily in {@link doLayout} on first use.
-     *
-     * @param container - The container component to attach to.
-     */
-    attach(container: Component): this {
-        super.attach(container);
-
-        return this;
-    }
-
-    /**
      * Detaches from the container, moving each section's content element back
      * to the container and disposing every header and panel wrapper — they
      * are raw-appended to the container's element rather than registered as
