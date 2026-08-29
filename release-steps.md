@@ -3,8 +3,12 @@
 ## Update version string
 
 Update version in the following files:
-- packages/create-app/package.json
-- packages/create-app/template/package.json
+- packages/create-app/package.json — the `version` field. This package is
+  deliberately version-locked to the library.
+- packages/create-app/template/package.json — the
+  `dependencies["@jimka/typescript-ui"]` range **only**. Its own `version`
+  stays `0.0.0`; it is the scaffolded project's placeholder, not a released
+  version.
 - packages/docs/package.json
 - packages/lib/package.json
 
