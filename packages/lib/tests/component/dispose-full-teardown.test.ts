@@ -463,13 +463,22 @@ const REGISTRY: Array<{
  * and no dedicated test of their own. Entries come out as rows are added;
  * an entry only goes in as a deliberate, commented deferral — never to make
  * a newly-failing assertion pass again.
+ *
+ * `DiagnosticsOverlay` / `StyleAuditOverlay` / `StyleAuditView` joined this
+ * baseline when the `core-event-and-listener-bag-cleanup-round-2` plan
+ * dropped their `destructor()`'s stray `override` keyword to match the
+ * library's convention — the scanner's `/^\s*protected destructor\(/` regex
+ * only matches without it, so these three go from invisible to unclaimed
+ * with no change to their destructor bodies. Adding dispose-registry
+ * coverage for the diagnostics overlays is out of that plan's scope.
  */
 const UNCLAIMED_DESTRUCTOR_CLASSES: readonly string[] = [
     'AbstractPickerField', 'AbstractWindow', 'AnimatedDropdown', 'AutoCompleteField', 'Button',
-    'Canvas', 'DiagramView', 'Dialog', 'Dock', 'Drawer', 'DropZoneOverlay', 'FilterCell',
-    'HeaderCell', 'LabeledGrid', 'MarkdownMinimap', 'Notification', 'Panel', 'PopupButton',
-    'Rail', 'Row', 'SplitGutter', 'StatusBar', 'TableHeader', 'TablePanel', 'Text', 'Tooltip',
-    'TreeTablePanel', 'WebGLCanvas',
+    'Canvas', 'DiagnosticsOverlay', 'DiagramView', 'Dialog', 'Dock', 'Drawer', 'DropZoneOverlay',
+    'FilterCell', 'HeaderCell', 'LabeledGrid', 'MarkdownMinimap', 'Notification', 'Panel',
+    'PopupButton', 'Rail', 'Row', 'SplitGutter', 'StatusBar', 'StyleAuditOverlay',
+    'StyleAuditView', 'TableHeader', 'TablePanel', 'Text', 'Tooltip', 'TreeTablePanel',
+    'WebGLCanvas',
 ];
 
 describe('dispose-full-teardown registry: every dispose() leaves zero new rule-cache keys', () => {

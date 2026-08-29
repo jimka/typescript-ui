@@ -202,7 +202,7 @@ export class DiagnosticsOverlay extends Window {
     /**
      * The safety net for a direct `dispose()` that bypassed {@link onExitAction}.
      */
-    protected override destructor(): void {
+    protected destructor(): void {
         this.teardown();
         super.destructor();
     }
