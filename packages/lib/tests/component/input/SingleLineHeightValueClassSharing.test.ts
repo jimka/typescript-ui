@@ -19,6 +19,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TextField } from '~/component/input/TextField';
 import { ComboBox } from '~/component/input/ComboBox';
 import { NumberSpinner } from '~/component/input/NumberSpinner';
+import { PasswordField } from '~/component/input/PasswordField';
+import { UsernameField } from '~/component/input/UsernameField';
+import { DateField } from '~/component/input/DateField';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -177,7 +180,7 @@ describe('Single-line input height value-class sharing', () => {
         expect(ensureCalls.length).toBe(1);
     });
 
-    it('row 3: a TextField, ComboBox and NumberSpinner each get their own distinct class-keyed selector, and none writes a real height declaration to its own rule', () => {
+    it('row 3: a TextField, ComboBox, NumberSpinner, PasswordField, UsernameField and DateField each get their own distinct class-keyed selector, and none writes a real height declaration to its own rule', () => {
         // NumberSpinner's own chrome (a real border) differs from
         // TextField/ComboBox's under this test DOM's font-metrics fixture
         // (the shared `--ts-ui-input-border` CSS var used by TextInput's
@@ -193,9 +196,16 @@ describe('Single-line input height value-class sharing', () => {
         cb.getElement(true);
         const ns = make(new NumberSpinner());
         ns.getElement(true);
+        const pf = make(new PasswordField());
+        pf.getElement(true);
+        const uf = make(new UsernameField());
+        uf.getElement(true);
+        const df = make(new DateField());
+        df.getElement(true);
 
         const components: Array<[string, { getPreferredSize(): { height: number } | null }]> = [
             ['TextField', tf], ['ComboBox', cb], ['NumberSpinner', ns],
+            ['PasswordField', pf], ['UsernameField', uf], ['DateField', df],
         ];
 
         for (const [name, c] of components) {

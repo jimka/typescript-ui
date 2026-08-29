@@ -220,14 +220,49 @@ abstract class AbstractInput<
     protected abstract applyReadOnly(value: boolean): void;
 
     /**
+     * Recalculates preferred, minimum and maximum size from an already-computed
+     * single-line box height, shared by every `AbstractInput` leaf that renders
+     * one line of text in a box.
+     *
+     * @param h - The single-line box height in pixels, as
+     *   {@link Util.singleLineBoxHeight} computed it.
+     * @param defaultWidth - The preferred width to use on the very first call,
+     *   before any caller constraint has been resolved.
+     *
+     * @remarks Box height is `Util.lineHeightPx()` plus the component's own
+     * chrome (insets, padding, border); recomputed on every theme change so
+     * font-size adjustments propagate to the layout hint automatically. Width
+     * is read back from the already-resolved constraint — a caller override,
+     * or `defaultWidth` on the very first call — so only the height component
+     * changes on a theme change.
+     */
+    protected applySingleLineBox(h: number, defaultWidth: number): void {
+        this.pinSingleLineBoxHeight(h);
+
+        const width = this.getPreferredSizeConstraint()?.width ?? defaultWidth;
+        this.setPreferredSize({ width, height: h });
+
+        const maxWidth = this.getMaxSizeConstraint()?.width ?? UNBOUNDED;
+        this.setMaxSize({ width: maxWidth, height: h });
+
+        // Min-height pinned to the single-line box so the field can't be
+        // vertically compressed below one line; min-width preserves whatever
+        // was already resolved (a caller override, or 0 by default) instead of
+        // re-asserting a literal on every call.
+        const minWidth = this.getMinSizeConstraint()?.width ?? 0;
+        this.setMinSize({ width: minWidth, height: h });
+    }
+
+    /**
      * Points this instance at the shared `.ClassName.h<px>` rule for a
      * single-line box height, so every instance of this concrete class that
      * resolves the same height shares one CSS rule instead of each writing its
-     * own `min-height`/`max-height` pair. Call this *before* the matching
-     * `setPreferredSize`/`setMaxSize`/`setMinSize` writes: on an
-     * already-rendered component those setters flush immediately, and a flush
-     * that runs against the previous height's value class writes the new height
-     * to this instance's own rule, where it outranks the shared one for good.
+     * own `min-height`/`max-height` pair. Called from {@link applySingleLineBox}
+     * *before* the matching `setPreferredSize`/`setMaxSize`/`setMinSize` writes:
+     * on an already-rendered component those setters flush immediately, and a
+     * flush that runs against the previous height's value class writes the new
+     * height to this instance's own rule, where it outranks the shared one for
+     * good.
      *
      * @param h - The single-line box height in pixels, as
      *   {@link Util.singleLineBoxHeight} computed it.
@@ -240,7 +275,7 @@ abstract class AbstractInput<
      * instance's comparison, and a field with a different width would then
      * write a width declaration to its own rule that it does not write today.
      */
-    protected pinSingleLineBoxHeight(h: number): void {
+    private pinSingleLineBoxHeight(h: number): void {
         this.setValueStyleState("h", h + "px", {
             minSize: { width: 0,         height: h },
             maxSize: { width: UNBOUNDED, height: h },

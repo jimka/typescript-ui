@@ -301,10 +301,9 @@ describe('TextInput class-tier style migration', () => {
         // instead of `#id`. PasswordField and UsernameField now extend
         // TextField (plans/implemented/credential-field-and-input-updateheight-dedup.md)
         // and inherit its `updateHeight`, so they dedupe the same way.
-        // AbstractPickerField (DateField's own `updateHeight`) is the one
-        // leaf still held back — so it keeps writing the real pair straight
-        // to `#id`, in the order plans/implemented/abstractinput-height-dedup.md
-        // fixed.
+        // AbstractPickerField (DateField's own `updateHeight`) now calls the
+        // same shared `AbstractInput.applySingleLineBox` helper, so no leaf
+        // is held back any more.
         const sink = DOM.sink as RecordingDOMSink;
 
         const leaves: Array<[string, () => { getElement(createIfMissing?: boolean): unknown; getId(): string }, string[]]> = [
@@ -312,7 +311,7 @@ describe('TextInput class-tier style migration', () => {
             ['PasswordField',                 () => new PasswordField(),                                 []],
             ['UsernameField',                 () => new UsernameField(),                                 []],
             ['ComboBox',                      () => new ComboBox(),                                      []],
-            ['DateField',                     () => new DateField(),                                     ['maxHeight', 'minHeight']],
+            ['DateField',                     () => new DateField(),                                     []],
             ['NumberSpinner inner field',     () => (new NumberSpinner() as any)._input,                 []],
             ['AutoCompleteField inner field', () => (new AutoCompleteField() as any)._textField,          []],
         ];

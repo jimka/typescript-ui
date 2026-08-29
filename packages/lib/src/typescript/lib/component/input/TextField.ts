@@ -28,6 +28,10 @@ const _defaultTextFieldOptions: Partial<TextFieldOptions> = {
     foregroundColor: "var(--ts-ui-text-color, black)",
 };
 
+// Preferred width on the very first call, before any caller constraint has
+// been resolved.
+const TEXT_FIELD_DEFAULT_WIDTH = 200;
+
 /**
  * A single-line text field component backed by an `<input type="text">` element.
  *
@@ -64,33 +68,14 @@ class TextField<TOptions extends TextFieldOptions = TextFieldOptions> extends Te
      * Recalculates preferred and maximum height from the unified line box plus
      * this field's own chrome.
      *
-     * @remarks Box height is `Util.lineHeightPx()` plus the field's own vertical
-     * insets, padding, and border — the same sum `wrapInnerBaseline` re-adds —
-     * so the rendered input and its baseline match a sibling `Text`/`ComboBox`.
-     * Called at construction time and after each theme change so that font-size
-     * adjustments propagate to the layout hint automatically. Width is read back
-     * from the already-resolved constraint — a caller override, or the class
-     * default on the very first call — so only the height component changes on
-     * a theme change; `setBorder` below uses the same read-back technique for a
+     * @remarks `setBorder` below uses the same read-back technique for a
      * border change.
      */
     private updateHeight(): void {
-        const h = Util.singleLineBoxHeight(this.getInsets(), this.getPadding(), this.getBorderSize());
-
-        this.pinSingleLineBoxHeight(h);
-
-        const width = this.getPreferredSizeConstraint()?.width ?? 200;
-        this.setPreferredSize({ width, height: h });
-
-        const maxWidth = this.getMaxSizeConstraint()?.width ?? Number.MAX_SAFE_INTEGER;
-        this.setMaxSize({ width: maxWidth, height: h });
-
-        // Min-height pinned to the single-line box so the field can't be
-        // vertically compressed below one line; min-width preserves whatever
-        // was already resolved (a caller override, or 0 by default) instead of
-        // re-asserting a literal on every call.
-        const minWidth = this.getMinSizeConstraint()?.width ?? 0;
-        this.setMinSize({ width: minWidth, height: h });
+        this.applySingleLineBox(
+            Util.singleLineBoxHeight(this.getInsets(), this.getPadding(), this.getBorderSize()),
+            TEXT_FIELD_DEFAULT_WIDTH,
+        );
     }
 
     /**

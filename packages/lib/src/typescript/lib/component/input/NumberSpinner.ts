@@ -9,7 +9,6 @@ import { SpinButton, SpinButtonOptions } from "~/component/input/SpinButton.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { Insets } from "~/primitive/Insets.js";
-import { UNBOUNDED } from "~/primitive/Size.js";
 import { Util } from "~/core/Util.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
@@ -33,6 +32,10 @@ registerFocusWithinRing(".NumberSpinner");
         },
     });
 })();
+
+// Preferred width on the very first call, before any caller constraint has
+// been resolved.
+const NUMBER_SPINNER_DEFAULT_WIDTH = 120;
 
 /**
  * Construction-time options for {@link NumberSpinner}.
@@ -278,22 +281,10 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
     private updateHeight(): void {
         // Reads the *inner* input's padding (not the spinner's own, which is
         // zero) so the spinner matches a standalone TextField's height.
-        const h = Util.singleLineBoxHeight(this.getInsets(), this._input.getPadding(), this.getBorderSize());
-
-        this.pinSingleLineBoxHeight(h);
-
-        const width = this.getPreferredSizeConstraint()?.width ?? 120;
-        this.setPreferredSize({ width, height: h });
-
-        const maxWidth = this.getMaxSizeConstraint()?.width ?? UNBOUNDED;
-        this.setMaxSize({ width: maxWidth, height: h });
-
-        // Min-height pinned to the single-line box so the field can't be
-        // vertically compressed below one line; min-width preserves whatever
-        // was already resolved (a caller override, or 0 by default) instead of
-        // re-asserting a literal on every call.
-        const minWidth = this.getMinSizeConstraint()?.width ?? 0;
-        this.setMinSize({ width: minWidth, height: h });
+        this.applySingleLineBox(
+            Util.singleLineBoxHeight(this.getInsets(), this._input.getPadding(), this.getBorderSize()),
+            NUMBER_SPINNER_DEFAULT_WIDTH,
+        );
     }
 
     /**
