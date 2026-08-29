@@ -22,6 +22,7 @@ import { Button, ButtonOptions } from "~/component/button/Button.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { ellipsis_v } from "~/glyphs/solid/ellipsis_v.js";
 import { callable } from "~/core/Callable.js";
+import { Util } from "~/core/Util.js";
 import { TRACK_WIDTH } from "~/component/container/Scrollbar.js";
 import type { StyleBag, StyleStateSpec, StyleTrait } from "~/core/ClassStyleRules.js";
 
@@ -83,11 +84,6 @@ const MENU_BUTTON_Z_INDEX = 1;
  * apply immediately.
  */
 const COLUMN_FILTER_DEBOUNCE_MS = 200;
-
-/** Inclusive integer range `[a, b]` as an array, e.g. `range(2, 4)` -> `[2, 3, 4]`. */
-function range(a: number, b: number): number[] {
-    return Array.from({ length: b - a + 1 }, (_, i) => a + i);
-}
 
 // The header surface, themed via `--ts-ui-table-header-bg`. The value is
 // applied as BOTH a background-color and a background-image because the token
@@ -221,8 +217,12 @@ interface WindowedRowHooks<TCell extends Cell<any>> {
  * The header section of a table, rendered as a `<thead>` element.
  *
  * Builds one {@link HeaderCell} per column in its current column window —
- * the horizontally-visible range plus a small buffer, mirroring the body's
- * own column virtualization — rather than one per visible field up front.
+ * the horizontally-visible range plus a small buffer — rather than one per
+ * visible field up front. Computed by the same `computeColumnWindow` the
+ * body uses, but against the table's available column width, which excludes
+ * the vertical-scrollbar band the body's own width includes; the two
+ * windows are near-identical rather than equal, with the shared buffer
+ * covering the difference.
  * Each cell is wired with a sort-click callback (cycles asc → desc → clear), a
  * resize-drag callback (forwarded to the owner via the `"columnresize"`
  * event), and a context-menu callback (forwarded via the
@@ -938,8 +938,8 @@ class TableHeader extends Component {
         const enteringCells = delta > 0 ? cells.slice(0, outCount) : cells.slice(width - outCount);
 
         const enteringCols = delta > 0
-            ? range(lastCol - outCount + 1, lastCol)
-            : range(firstCol, firstCol + outCount - 1);
+            ? Util.range(lastCol - outCount + 1, lastCol)
+            : Util.range(firstCol, firstCol + outCount - 1);
 
         enteringCols.forEach((col, i) => {
             const cell = enteringCells[i];
@@ -1129,6 +1129,14 @@ class TableHeader extends Component {
      * `spanFrom` / `spanTo` indices are stored in its layout constraints'
      * `data` slot; the table layout manager reads them to position the
      * cell as the sum of underlying column widths.
+     *
+     * Mirrors `Table`'s private `computeGroupRuns`, which finds the same
+     * contiguous runs for the rotated body, with one intended divergence: a
+     * run here continues across a shared `null` group key, so adjacent
+     * ungrouped columns merge into one blank spanning cell that keeps the
+     * parent-header band continuous; `computeGroupRuns` breaks the run on
+     * `null` and emits nothing for it, since a rotated body row has no such
+     * continuity requirement.
      */
     private rebuildParentCells(): void {
         const row = this.getParentRow();

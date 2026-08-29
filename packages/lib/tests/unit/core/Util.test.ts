@@ -84,6 +84,21 @@ describe('Util.clamp', () => {
     });
 });
 
+describe('Util.range', () => {
+    it('builds the inclusive range from a to b', () => {
+        expect(Util.range(2, 4)).toEqual([2, 3, 4]);
+    });
+    it('returns a single-element array when a === b', () => {
+        expect(Util.range(3, 3)).toEqual([3]);
+    });
+    it('returns an empty array when b < a', () => {
+        expect(Util.range(3, 2)).toEqual([]);
+    });
+    it('handles a negative lower bound', () => {
+        expect(Util.range(-1, 1)).toEqual([-1, 0, 1]);
+    });
+});
+
 describe('Util.generateUUID', () => {
     it('matches the UUID v4 shape', () => {
         const uuid = Util.generateUUID();

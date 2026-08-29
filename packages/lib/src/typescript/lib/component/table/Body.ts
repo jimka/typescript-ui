@@ -17,7 +17,6 @@ import { Event } from "~/core/Event.js";
 import { VirtualRowView } from "~/component/shared/VirtualRowView.js";
 import { reduceModifierSelection } from "~/component/shared/reduceModifierSelection.js";
 import { selectionsEqual } from "~/component/shared/selectionsEqual.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { Util } from "~/core/Util.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { Column } from "~/component/table/Column.js";
@@ -25,6 +24,7 @@ import type { TableHeader } from "~/component/table/Header.js";
 import { callable } from "~/core/Callable.js";
 import { TableExporter } from "~/component/table/TableExporter.js";
 import { CellTextResolver } from "~/component/table/cell/CellText.js";
+import { tableRowHeight } from "~/component/table/RowMetrics.js";
 
 /**
  * String-literal union of the events emitted by the table {@link Body}.
@@ -235,11 +235,6 @@ function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
     return true;
 }
 
-/** Inclusive integer range `[a, b]` as an array, e.g. `range(2, 4)` -> `[2, 3, 4]`. */
-function range(a: number, b: number): number[] {
-    return Array.from({ length: b - a + 1 }, (_, i) => a + i);
-}
-
 /**
  * Inclusive row/column bounds of a rectangular cell-range selection, in
  * visible-row / visible-column index space.
@@ -253,12 +248,16 @@ interface CellRangeBounds {
     maxCol: number;
 }
 
+// Named so the class default below and the constructor's explicit seed share
+// one literal instead of two — mirrors Footer.ts's FOOTER_BG.
+const TABLE_BODY_BG = "var(--ts-ui-input-bg, rgb(255, 255, 255))";
+
 // Own contribution to the hierarchy-aware class tier — see
 // plans/implemented/class-hierarchy-cascade.md. Every Table's body resolves
 // the same resting background from theme tokens, so it is a class default
 // rather than a per-instance write.
 const _defaultTableBodyOptions: Partial<ComponentOptions> = {
-    backgroundColor: 'var(--ts-ui-input-bg, rgb(255, 255, 255))',
+    backgroundColor: TABLE_BODY_BG,
 };
 
 /**
@@ -345,14 +344,14 @@ class TableBody extends VirtualRowView<Row> {
         super({ tag: "tbody" }, { ..._defaultTableBodyOptions, ...(subclassDefaults ?? {}) });
 
         this.setOverflow("hidden");
-        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
+        this.setBackgroundColor(TABLE_BODY_BG);
         this.getAria().setTabIndex(0);
         this.getAria().setRole("rowgroup");
 
         this._store = store;
         this.bindStore(store);
 
-        this._rowHeight = this.computeRowHeight();
+        this._rowHeight = tableRowHeight();
 
         this.subscribeTheme(() => this.onThemeReflow());
     }
@@ -377,7 +376,7 @@ class TableBody extends VirtualRowView<Row> {
      * unchanged from before this class opted its cells into the skip.
      */
     protected onThemeReflow(): void {
-        this._rowHeight = this.computeRowHeight();
+        this._rowHeight = tableRowHeight();
 
         for (const row of this._rowPool) {
             for (const cell of row.getComponents()) {
@@ -386,24 +385,6 @@ class TableBody extends VirtualRowView<Row> {
         }
 
         super.onThemeReflow();
-    }
-
-    /**
-     * Derives the row height from the shared px line box plus top+bottom cell
-     * padding.
-     *
-     * @remarks `theme.table.cell.height` is intentionally ignored: a fixed pixel
-     * height ignores the active line box and clips text when the theme changes
-     * the leading. The line box is the additive `font-size + --ts-ui-line-padding`
-     * value `Util.lineHeightPx` derives at the root font size, keeping row
-     * height in sync with the line box the cells are actually rendered at.
-     */
-    private computeRowHeight(): number {
-        const theme      = ThemeManager.getTheme();
-        const lineHeight = Util.lineHeightPx();
-        const padding    = theme.table.cell.padding          ?? 2;
-
-        return lineHeight + 2 * padding;
     }
 
     /**
@@ -1214,8 +1195,8 @@ class TableBody extends VirtualRowView<Row> {
         const treeFieldName = this.getTreeFieldName();
         const enteringKeys  = new Map<number, string>();
         const enteringRange = delta > 0
-            ? range(next.lastCol - delta + 1, next.lastCol)
-            : range(next.firstCol, next.firstCol - delta - 1);
+            ? Util.range(next.lastCol - delta + 1, next.lastCol)
+            : Util.range(next.firstCol, next.firstCol - delta - 1);
 
         for (const col of enteringRange) {
             const field = visibleFields[col];
@@ -1261,9 +1242,7 @@ class TableBody extends VirtualRowView<Row> {
         scroller.clampToContent(totalContentWidth, totalHeight);
 
         const rowWidth   = Math.max(this._lastBodyWidth, totalColumnWidth);
-        const fieldCount = this._store.model.getFields()
-                               .filter(f => !this._hiddenColumns.has(f.getName()))
-                               .length;
+        const fieldCount = this.computeVisibleFields().length;
         const fallback   = fieldCount > 0 ? rowWidth / fieldCount : rowWidth;
         const effectiveWidths = Array.from({ length: fieldCount }, (_, i) => this._lastColumnWidths[i] ?? fallback);
 
@@ -2092,9 +2071,9 @@ class TableBody extends VirtualRowView<Row> {
      *
      * @returns This body, for method chaining.
      *
-     * @remarks `"verticalscroll"` is used by
-     * [`PinnedTable`](/api/component/table/classes/PinnedTable) to mirror
-     * `scrollY` from the scroll-side body into the pinned-side body;
+     * @remarks `"verticalscroll"` has no consumer inside the library today
+     * and exists so a host rendering two bodies side by side can mirror one
+     * body's `scrollY` into the other;
      * `"horizontalscroll"` is used by `Table` to mirror `scrollX` into the
      * header's transform so column headers stay aligned with the body cells
      * they label. The listeners fire from the `VirtualScroller`'s

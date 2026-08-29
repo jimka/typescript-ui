@@ -406,6 +406,21 @@ export namespace Util {
     }
 
     /**
+     * Builds the inclusive integer range `[a, b]` as an array.
+     *
+     * @param a - The range's lower bound, inclusive.
+     * @param b - The range's upper bound, inclusive.
+     *
+     * @returns The array `[a, a + 1, ..., b]`.
+     *
+     * @remarks Returns an empty array when `b < a`, rather than propagating a
+     * negative length into `Array.from`.
+     */
+    export function range(a: number, b: number): number[] {
+        return Array.from({ length: Math.max(0, b - a + 1) }, (_, i) => a + i);
+    }
+
+    /**
      * Converts a hyphen-separated identifier (e.g. `"border-top-width"`) to its
      * camelCase equivalent (`"borderTopWidth"`). Useful for translating
      * CSS-style kebab-case property names into the camelCase form expected by
