@@ -214,21 +214,10 @@ export interface DiagramViewOptions extends PanelOptions {
     /** Default ELK layout options applied to every layout pass. */
     layoutOptions?: Record<string, string>;
     /**
-     * URL of a consumer-hosted `elk-worker.js`, requesting off-thread layout.
-     * With the `elk.bundled.js` module this view's engine imports, elkjs's
-     * own worker-availability check always fails, so `workerUrl` alone never
-     * actually constructs a Worker; layout still runs on the main thread, via
-     * elkjs's own fallback. Pass {@link DiagramViewOptions.elkWorkerFactory}
-     * for real off-thread execution.
-     */
-    elkWorkerUrl?: string;
-    /**
      * Factory returning a Web Worker for off-thread ELK layout. When set,
      * ELK's compute runs in the returned worker. Construct it in your app so
      * your bundler emits the worker, e.g.
      * `() => new Worker(new URL("elkjs/lib/elk-worker.min.js", import.meta.url), { type: "classic" })`.
-     * Takes precedence over {@link DiagramViewOptions.elkWorkerUrl} when both
-     * are set.
      */
     elkWorkerFactory?: () => Worker;
     /** Minimum zoom factor (default 0.25). */
@@ -523,7 +512,6 @@ class DiagramView extends Panel<DiagramViewOptions> {
     protected createEngine(): ElkLayoutEngine {
         return new ElkLayoutEngine({
             workerFactory: this._options.elkWorkerFactory,
-            workerUrl:     this._options.elkWorkerUrl,
         });
     }
 
@@ -580,7 +568,6 @@ class DiagramView extends Panel<DiagramViewOptions> {
         if (options.nodeRenderer      !== undefined) this._options.nodeRenderer      = options.nodeRenderer;
         if (options.groupRenderer     !== undefined) this._options.groupRenderer     = options.groupRenderer;
         if (options.layoutOptions     !== undefined) this._options.layoutOptions     = options.layoutOptions;
-        if (options.elkWorkerUrl      !== undefined) this._options.elkWorkerUrl      = options.elkWorkerUrl;
         if (options.elkWorkerFactory  !== undefined) this._options.elkWorkerFactory  = options.elkWorkerFactory;
         if (options.minZoom           !== undefined) this._options.minZoom           = options.minZoom;
         if (options.maxZoom           !== undefined) this._options.maxZoom           = options.maxZoom;
