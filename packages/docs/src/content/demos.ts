@@ -55,7 +55,9 @@ export function getDemo(id: string): DemoEntry | null {
 }
 
 /**
- * Every registered demo id, sorted.
+ * Every registered demo id, sorted. Exported so the demo-catalogue coverage
+ * test can check every registered id against the page corpus's own
+ * `<!-- demo: id -->` markers.
  *
  * @returns The sorted list of ids every module in `src/demos/` is keyed under.
  */

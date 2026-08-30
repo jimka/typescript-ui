@@ -17,6 +17,8 @@ export { Markdown } from '~/component/display/Markdown.js';
 export type { MarkdownOptions, MarkdownLinkResolution, MarkdownLinkResolver } from '~/component/display/Markdown.js';
 export { extractMarkdownHeadings, findActiveHeading } from '~/component/display/Markdown.js';
 export type { MarkdownHeading } from '~/component/display/Markdown.js';
+export { HeadingScrollTracker } from '~/component/display/HeadingScrollTracker.js';
+export type { HeadingScrollHost } from '~/component/display/HeadingScrollTracker.js';
 export { MarkdownMinimap } from '~/component/display/MarkdownMinimap.js';
 export type { MarkdownMinimapOptions, MarkdownMinimapEvent, HeadingScrollSource } from '~/component/display/MarkdownMinimap.js';
 export { MarkdownViewer } from '~/component/display/MarkdownViewer.js';

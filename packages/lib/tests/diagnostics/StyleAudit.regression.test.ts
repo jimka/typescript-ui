@@ -108,7 +108,7 @@ const NOOP = (): void => {};
 // full account of this deviation. Derived from a real run of this file
 // against this worktree's own code (see the plan's Step 4); not carried
 // over from any other plan or document.
-const STYLE_AUDIT_DUPLICATE_CEILING = 81;
+const STYLE_AUDIT_DUPLICATE_CEILING = 68;
 
 // One factory per gallery class. Each constructor call is copied verbatim
 // from an existing, already-passing call in default-options-fallback.test.ts.

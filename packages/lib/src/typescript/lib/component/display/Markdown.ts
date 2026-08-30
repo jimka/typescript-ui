@@ -1315,24 +1315,36 @@ class Markdown extends Component<MarkdownOptions> {
      * Flushes any {@link QueuedCodeUpgrade} once this component becomes
      * effectively visible, starting the dynamic import for each — the
      * edge-triggered replacement for a per-frame visibility poll, mirroring
-     * `Canvas.onEffectiveVisibilityChange`'s animation-loop reconcile.
+     * `Canvas.onEffectiveVisibilityChange`'s animation-loop reconcile. Also
+     * schedules a viewport pass, so an entry already queued in {@link
+     * _awaitingViewportKickoffs} before this subtree was hidden — its own
+     * scroll/resize watch now stale — is re-checked at rest instead of
+     * waiting for a scroll or resize that may never come.
      *
      * @param effective - The component's new effective-visibility state.
      */
     protected onEffectiveVisibilityChange(effective: boolean): void {
         super.onEffectiveVisibilityChange(effective);
 
-        if (!effective || this._awaitingVisibilityKickoffs.length === 0) {
+        if (!effective) {
             return;
         }
 
-        const queued = this._awaitingVisibilityKickoffs;
+        if (this._awaitingVisibilityKickoffs.length > 0) {
+            const queued = this._awaitingVisibilityKickoffs;
 
-        this._awaitingVisibilityKickoffs = [];
+            this._awaitingVisibilityKickoffs = [];
 
-        for (const entry of queued) {
-            this.startCodeEditorImport(entry);
+            for (const entry of queued) {
+                this.startCodeEditorImport(entry);
+            }
         }
+
+        // Ordering is load-bearing: draining the visibility queue above can
+        // push newly-checked entries into _awaitingViewportKickoffs, and this
+        // has to run after that to cover them. A no-op when both queues are
+        // empty (scheduleViewportPass no-ops on an empty queue).
+        this.scheduleViewportPass();
     }
 
     /**
@@ -1872,7 +1884,7 @@ const ACTIVE_HEADING_TOP_TOLERANCE_PX = 1;
  * `scrollElement`'s viewport top — the last heading, in document order,
  * whose top edge is at or above the scroll container's own top (within
  * `ACTIVE_HEADING_TOP_TOLERANCE_PX`). Mirrors
- * `DocsContent.scrollToHeading`'s lookup technique in the read direction.
+ * `HeadingScrollTracker.scrollToHeading`'s lookup technique in the read direction.
  *
  * Once `scrollElement` has scrolled to its maximum, the first heading that
  * hasn't yet reached the pane's own top is active outright, instead of

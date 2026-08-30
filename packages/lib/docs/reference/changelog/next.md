@@ -45,6 +45,17 @@ page resets to empty.
   `RadioMenuRowEvent` type exports are removed in favour of
   `AbstractBooleanMenuRowEvent`. No consumer action is needed.
 
+## Added
+
+### Components
+
+- **`HeadingScrollTracker` / `HeadingScrollHost`**, exported from
+  `component/display`. The heading-scroll tracking `MarkdownViewer` and the
+  docs site's own `DocsContent` pane each implemented locally — resolving
+  the active heading as a pane scrolls, and scrolling to a chosen heading —
+  is now one shared class, reached through a structural `HeadingScrollHost`
+  interface so it depends on neither class concretely.
+
 ## Fixed
 
 - `TreeRow`, `FieldSet`, `ComboBox`'s collapsed-control label, and the
@@ -120,3 +131,9 @@ page resets to empty.
   scrollbar. `CodeEditor`'s auto-height pass committed an intermediate
   measurement height and, on one path, returned without putting the height
   back; the gap then persisted for the life of the block.
+- A fenced code block in a rendered `Markdown` document that queued for its
+  `CodeEditor` upgrade while its subtree was hidden no longer gets stuck as
+  an un-upgraded placeholder when the subtree is re-shown with no further
+  scroll or resize. `onEffectiveVisibilityChange` now also schedules a
+  viewport pass on the visible edge, so a queued entry is re-checked at rest
+  instead of waiting on an event that may never come.
