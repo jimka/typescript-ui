@@ -7,7 +7,7 @@ import { ListenerBag } from "~/core/ListenerBag.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Card } from "~/layout/Card.js";
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
-import { CellEditor, blurRelatedTargetHandle } from "~/component/table/cell/editor/CellEditor.js";
+import { CellEditor, blurRelatedTargetHandle, forwardedKeyDetail } from "~/component/table/cell/editor/CellEditor.js";
 import type { ForwardedKeyDetail } from "~/component/table/cell/editor/CellEditor.js";
 import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
@@ -18,6 +18,15 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
  * @category Components
  */
 export type CellEvent = "commit" | "editend";
+
+/**
+ * Direction {@link Cell.setNavigateHandler}'s callback is invoked with:
+ * "left"/"right" for Tab/Shift+Tab (same row, neighboring column), "up"/"down"
+ * for Shift+Enter/Enter (same column, neighboring row).
+ *
+ * @category Components
+ */
+export type CellNavigateDirection = "left" | "right" | "up" | "down";
 
 // Every cell resolves its text colour, resting background, and resting
 // border to the same theme tokens, on every instance and every subclass, so
@@ -37,7 +46,8 @@ const _defaultCellOptions: Partial<ComponentOptions> = {
  * Base class for table cells that support both a display renderer and an optional in-place editor.
  *
  * A {@link Card} layout toggles between the renderer and editor views. Double-clicking the
- * renderer starts an edit; blur or Enter commits it; Escape cancels it.
+ * renderer starts an edit; blur commits it. While editing, Enter/Shift+Enter and Tab/Shift+Tab
+ * commit and move editing to the neighboring row or column; Escape cancels the edit instead.
  *
  * Subclasses ({@link BooleanCell}, {@link NumberCell}, {@link StringCell}, {@link HeaderCell})
  * wire a typed renderer and editor pair. Custom cell types extend this class with your own
@@ -102,6 +112,8 @@ export class Cell<T> extends Component {
     private _editor: CellEditor<T> | undefined;
     private _editorPool: CellEditorPool | null = null;
     private _scrollIntoView: (() => void) | null = null;
+    private _navigateHandler: ((direction: CellNavigateDirection) => void) | null = null;
+    private _editEndHandler: (() => void) | null = null;
     // Internal cell-editor wiring: listens on a privately-owned child; see
     // the cell-editor carve-out in ARCHITECTURE.md. An arrow field rather
     // than a plain method: `Event` invokes a listener via
@@ -170,7 +182,20 @@ export class Cell<T> extends Component {
 
                 this.commitEdit();
             });
-            Event.addListener(editor, 'keydown', (e: CustomEvent<ForwardedKeyDetail>) => this.onKeyDown(e));
+            Event.addListener(editor, 'keydown', (e: CustomEvent<ForwardedKeyDetail> | KeyboardEvent) => {
+                this.onKeyDown(e);
+
+                // Tab must not shift native DOM focus: this cell's own
+                // navigate handler already moves editing to the neighboring
+                // cell (see onKeyDown), so the real native keydown reaching
+                // this listener is the one place that can actually suppress
+                // the browser's default Tab behaviour.
+                if (forwardedKeyDetail(e).keyCode === 9) {
+                    return { prevent: true };
+                }
+
+                return;
+            });
         }
 
         // Internal cell-editor wiring: listens on a privately-owned child;
@@ -241,6 +266,21 @@ export class Cell<T> extends Component {
     }
 
     /**
+     * Returns whether `startEdit()` commits immediately instead of opening a
+     * distinct edit session — e.g. a checkbox that toggles on the spot with
+     * no separate renderer/editor swap. Tab/Shift+Tab/Enter/Shift+Enter
+     * navigation (see {@link Cell.setNavigateHandler}) reads this before
+     * calling `startEdit()` on the cell it lands on, so merely navigating
+     * past such a cell never mutates it as a side effect.
+     *
+     * @returns `true` if `startEdit()` mutates immediately rather than
+     *   opening an editor; `false` (the default) for every editor-backed cell.
+     */
+    hasImmediateEditCommit(): boolean {
+        return false;
+    }
+
+    /**
      * Attaches this cell to a {@link CellEditorPool} so that {@link Cell.startEdit} can borrow
      * a shared editor instead of allocating one.
      *
@@ -265,6 +305,34 @@ export class Cell<T> extends Component {
      */
     setScrollIntoViewHandler(handler: (() => void) | null): this {
         this._scrollIntoView = handler;
+
+        return this;
+    }
+
+    /**
+     * Installs the callback {@link Cell.onKeyDown} invokes after committing
+     * an edit via Tab, Shift+Tab, Enter, or Shift+Enter, so the host
+     * {@link Body} can move editing to the neighboring column or row.
+     *
+     * @param handler - Receives the navigation direction, or `null` to clear it.
+     * @returns This cell, for method chaining.
+     */
+    setNavigateHandler(handler: ((direction: CellNavigateDirection) => void) | null): this {
+        this._navigateHandler = handler;
+
+        return this;
+    }
+
+    /**
+     * Installs the callback {@link Cell.onKeyDown} invokes after cancelling
+     * an edit via Escape, so the host {@link Body} can return focus to its
+     * own container.
+     *
+     * @param handler - The callback to run, or `null` to clear it.
+     * @returns This cell, for method chaining.
+     */
+    setEditEndHandler(handler: (() => void) | null): this {
+        this._editEndHandler = handler;
 
         return this;
     }
@@ -493,22 +561,35 @@ export class Cell<T> extends Component {
     }
 
     /**
-     * Commits on Enter and cancels on Escape while editing, then fires `_onEditEnd` to return focus to the container.
+     * Commits on Enter/Shift+Enter and Tab/Shift+Tab while editing, then
+     * calls the installed navigate handler to move editing to the
+     * neighboring row or column. Cancels on Escape instead, then calls the
+     * installed edit-end handler to return focus to the container. Any
+     * other key is a no-op — arrow-key caret movement inside the editor is
+     * untouched.
      *
-     * @param evnt - The forwarded keydown event. The editor re-fires its inner
-     *   field's keydown as a custom event whose `detail` carries `keyCode` and
-     *   the modifier flags, so this reads `detail` rather than the native
-     *   top-level properties.
+     * @param evnt - The forwarded keydown event. Most editors re-fire their
+     *   inner field's keydown as a `CustomEvent` whose `detail` carries
+     *   `keyCode` and the modifier flags; an editor whose own element is the
+     *   real `<input>` never re-fires, so its native `KeyboardEvent` arrives
+     *   instead — both shapes are normalized to the same fields before being
+     *   read.
      */
-    onKeyDown(evnt: CustomEvent<ForwardedKeyDetail>): void {
-        const keyCode = evnt.detail?.keyCode;
+    onKeyDown(evnt: CustomEvent<ForwardedKeyDetail> | KeyboardEvent): void {
+        const detail = forwardedKeyDetail(evnt);
 
-        if (keyCode == 13) { // Enter
+        if (detail.keyCode == 13) { // Enter / Shift+Enter
             this.commitEdit();
             this.emit("editend");
-        } else if (keyCode == 27) { // Escape
+            this._navigateHandler?.(detail.shiftKey ? "up" : "down");
+        } else if (detail.keyCode == 27) { // Escape
             this.cancelEdit();
             this.emit("editend");
+            this._editEndHandler?.();
+        } else if (detail.keyCode == 9) { // Tab / Shift+Tab
+            this.commitEdit();
+            this.emit("editend");
+            this._navigateHandler?.(detail.shiftKey ? "left" : "right");
         }
     }
 

@@ -23,6 +23,8 @@ import { Model } from '~/data/Model';
 import { Row, _Row } from '~/component/table/Row';
 import { Column } from '~/component/table/Column';
 import { Cell } from '~/component/table/cell/Cell';
+import { BooleanCell } from '~/component/table/cell/Boolean';
+import { DynamicCell } from '~/component/table/cell/Dynamic';
 import { ComboCell } from '~/component/table/cell/Combo';
 import { NumberCell } from '~/component/table/cell/Number';
 import { StringCell } from '~/component/table/cell/String';
@@ -1815,6 +1817,314 @@ describe('Column window — keyboard column navigation', () => {
 
         expect(priv._focusedColIndex).toBe(0);
         expect(priv._scroller.getScrollX()).toBe(0);
+    });
+});
+
+describe('Column window — keyboard cell-editor navigation', () => {
+    // Two-row fixture for the Enter/Shift+Enter (row) cases, mirroring the
+    // 'keyboard row navigation at a boundary' test's MemoryStore shape above,
+    // but tall enough (and rendered) that both rows are pooled and their
+    // cells are reachable via getRowPool()[i].getComponents().
+    async function twoRowBody(): Promise<Body> {
+        const store = new MemoryStore(MODEL, [
+            { a: '1', b: '2', c: '3' },
+            { a: '4', b: '5', c: '6' },
+        ]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(300);
+        b.setHeight(1000); // tall enough that both rows are in the pool
+        (b as any).renderWindow(300, [100, 100, 100]);
+
+        return b;
+    }
+
+    it('Tab commits, moves the focus to the next column, and re-opens editing there', async () => {
+        const b       = await wideBody(20, 250, 0); // window [0,4]
+        const row     = (b as any).getRowPool()[0];
+        const visible = (b as any).getVisibleRecords();
+
+        b.selectRecord(visible[0]);
+
+        const cell = row.getComponents()[0] as Cell<any>;
+        cell.startEdit();
+
+        cell.onKeyDown({ detail: { keyCode: 9, shiftKey: false } } as any);
+
+        expect(cell.isEditing()).toBe(false);
+        expect((b as any)._focusedColIndex).toBe(1);
+        expect((row.getComponents()[1] as Cell<any>).isEditing()).toBe(true);
+    });
+
+    it('Shift+Tab moves left and, at column 0, clamps: commits and re-opens editing on the same cell', async () => {
+        const b       = await wideBody(20, 250, 0);
+        const row     = (b as any).getRowPool()[0];
+        const visible = (b as any).getVisibleRecords();
+
+        b.selectRecord(visible[0]);
+
+        const cell = row.getComponents()[0] as Cell<any>;
+        cell.startEdit();
+
+        cell.onKeyDown({ detail: { keyCode: 9, shiftKey: true } } as any);
+
+        expect((b as any)._focusedColIndex).toBe(0);
+        expect(cell.isEditing()).toBe(true);
+    });
+
+    it('Tab at the last column clamps the same way', async () => {
+        const b       = await wideBody(4, 400, 0); // 4x100 fits 400px — every column renders
+        const row     = (b as any).getRowPool()[0];
+        const visible = (b as any).getVisibleRecords();
+
+        b.selectRecord(visible[0]);
+        (b as any)._focusedColIndex = 3; // last column
+
+        const cell = row.getComponents()[3] as Cell<any>;
+        cell.startEdit();
+
+        cell.onKeyDown({ detail: { keyCode: 9, shiftKey: false } } as any);
+
+        expect((b as any)._focusedColIndex).toBe(3);
+        expect(cell.isEditing()).toBe(true);
+    });
+
+    it('Enter commits, moves down a row, and re-opens editing on the same column', async () => {
+        const b       = await twoRowBody();
+        const visible = (b as any).getVisibleRecords();
+
+        b.selectRecord(visible[0]);
+
+        const cell = (b as any).getRowPool()[0].getComponents()[0] as Cell<any>;
+        cell.startEdit();
+
+        cell.onKeyDown({ detail: { keyCode: 13, shiftKey: false } } as any);
+
+        expect(cell.isEditing()).toBe(false);
+        expect(b.getSelectedRecords()[0]).toBe(visible[1]);
+
+        const nextCell = (b as any).getRowPool()[1].getComponents()[0] as Cell<any>;
+        expect(nextCell.isEditing()).toBe(true);
+    });
+
+    it('Enter at the last row clamps: commits and re-opens editing on the same row/column', async () => {
+        const b       = await twoRowBody();
+        const visible = (b as any).getVisibleRecords();
+
+        b.selectRecord(visible[1]); // last row
+
+        const cell = (b as any).getRowPool()[1].getComponents()[0] as Cell<any>;
+        cell.startEdit();
+
+        cell.onKeyDown({ detail: { keyCode: 13, shiftKey: false } } as any);
+
+        expect(b.getSelectedRecords()[0]).toBe(visible[1]);
+        expect(cell.isEditing()).toBe(true);
+    });
+
+    it('Shift+Enter moves up a row and re-opens editing on the same column', async () => {
+        const b       = await twoRowBody();
+        const visible = (b as any).getVisibleRecords();
+
+        b.selectRecord(visible[1]);
+
+        const cell = (b as any).getRowPool()[1].getComponents()[0] as Cell<any>;
+        cell.startEdit();
+
+        cell.onKeyDown({ detail: { keyCode: 13, shiftKey: true } } as any);
+
+        expect(b.getSelectedRecords()[0]).toBe(visible[0]);
+
+        const prevCell = (b as any).getRowPool()[0].getComponents()[0] as Cell<any>;
+        expect(prevCell.isEditing()).toBe(true);
+    });
+
+    it('Shift+Enter at row 0 clamps the same way', async () => {
+        const b       = await twoRowBody();
+        const visible = (b as any).getVisibleRecords();
+
+        b.selectRecord(visible[0]);
+
+        const cell = (b as any).getRowPool()[0].getComponents()[0] as Cell<any>;
+        cell.startEdit();
+
+        cell.onKeyDown({ detail: { keyCode: 13, shiftKey: true } } as any);
+
+        expect(b.getSelectedRecords()[0]).toBe(visible[0]);
+        expect(cell.isEditing()).toBe(true);
+    });
+
+    it('an arrow-keycode passed to Cell.onKeyDown is still a no-op — arrow keys are untouched', async () => {
+        const b    = await wideBody(4, 400, 0);
+        const row  = (b as any).getRowPool()[0];
+        const cell = row.getComponents()[0] as Cell<any>;
+
+        cell.startEdit();
+        cell.onKeyDown({ detail: { keyCode: 37, shiftKey: false } } as any); // ArrowLeft
+
+        expect(cell.isEditing()).toBe(true); // untouched — no commit, no navigation
+    });
+
+    it('Shift+Tab moves left across a real column boundary, not just the column-0 clamp', async () => {
+        const b       = await wideBody(4, 400, 0); // 4x100 fits 400px — every column renders
+        const row     = (b as any).getRowPool()[0];
+        const visible = (b as any).getVisibleRecords();
+
+        b.selectRecord(visible[0]);
+        (b as any)._focusedColIndex = 2;
+
+        const cell = row.getComponents()[2] as Cell<any>;
+        cell.startEdit();
+
+        cell.onKeyDown({ detail: { keyCode: 9, shiftKey: true } } as any);
+
+        expect((b as any)._focusedColIndex).toBe(1);
+        expect(cell.isEditing()).toBe(false);
+        expect((row.getComponents()[1] as Cell<any>).isEditing()).toBe(true);
+    });
+
+    it('Tab into a boolean column does not toggle the checkbox, and returns focus to the body', async () => {
+        // Regression: BooleanCell.startEdit() has no distinct edit session —
+        // it toggles the checkbox immediately (see Boolean.ts) — so calling
+        // it as a side effect of Tab navigating past it would silently flip
+        // an unrelated checkbox. The navigate-handler path must skip it.
+        const b       = await wideBody(4, 400, 0, { types: { 1: 'boolean' } });
+        const row     = (b as any).getRowPool()[0];
+        const visible = (b as any).getVisibleRecords();
+
+        b.selectRecord(visible[0]);
+
+        const cell     = row.getComponents()[0] as Cell<any>;
+        const boolCell = row.getComponents()[1] as BooleanCell;
+        const startEdit = vi.spyOn(boolCell, 'startEdit');
+        const focus     = vi.spyOn(b, 'focus');
+
+        cell.startEdit();
+        cell.onKeyDown({ detail: { keyCode: 9, shiftKey: false } } as any);
+
+        expect((b as any)._focusedColIndex).toBe(1);
+        expect(startEdit).not.toHaveBeenCalled();
+        expect(focus).toHaveBeenCalled();
+    });
+
+    it('Tab into a DynamicCell bound to its boolean variant does not toggle the checkbox either', async () => {
+        // Regression: DynamicCell.startEdit() mirrors BooleanCell.startEdit()
+        // for its 'boolean' variant (toggles immediately, no edit session),
+        // so it needs the same hasImmediateEditCommit() guard, not just a
+        // BooleanCell-specific check.
+        const configs = new Map<string, ColumnConfig>([['c1', { field: 'c1', cellType: () => 'boolean' }]]);
+        const b       = await wideBody(4, 400, 0, { configs });
+        const row     = (b as any).getRowPool()[0];
+        const visible = (b as any).getVisibleRecords();
+
+        b.selectRecord(visible[0]);
+
+        const cell       = row.getComponents()[0] as Cell<any>;
+        const dynamicCell = row.getComponents()[1] as DynamicCell;
+        expect(dynamicCell).toBeInstanceOf(DynamicCell);
+        expect(dynamicCell.hasImmediateEditCommit()).toBe(true);
+
+        const startEdit = vi.spyOn(dynamicCell as any, 'startEdit');
+        const focus     = vi.spyOn(b, 'focus');
+
+        cell.startEdit();
+        cell.onKeyDown({ detail: { keyCode: 9, shiftKey: false } } as any);
+
+        expect((b as any)._focusedColIndex).toBe(1);
+        expect(startEdit).not.toHaveBeenCalled();
+        expect(focus).toHaveBeenCalled();
+    });
+
+    it('Tab onto a read-only cell commits and moves the focus ring, but does not open an editor there, and returns focus to the body', async () => {
+        const configs = new Map<string, ColumnConfig>([['c1', { field: 'c1', readOnly: true }]]);
+        const b       = await wideBody(4, 400, 0, { configs });
+        const row     = (b as any).getRowPool()[0];
+        const visible = (b as any).getVisibleRecords();
+
+        b.selectRecord(visible[0]);
+
+        const cell   = row.getComponents()[0] as Cell<any>;
+        const roCell = row.getComponents()[1] as Cell<any>;
+        const focus  = vi.spyOn(b, 'focus');
+
+        cell.startEdit();
+        cell.onKeyDown({ detail: { keyCode: 9, shiftKey: false } } as any);
+
+        expect((b as any)._focusedColIndex).toBe(1);
+        expect(roCell.isEditing()).toBe(false);
+        expect(focus).toHaveBeenCalled();
+    });
+
+    it('a double-click-started edit is also refocused to the body on Escape (persistent setEditEndHandler, not the old transient per-keystroke wiring)', async () => {
+        // Regression: the old code installed `on("editend", ...)` only
+        // inside Body.onKeyDown's Enter/Space branch, so an edit started
+        // by double-click (Cell's own dblclick wiring, never routed
+        // through that branch) never got this listener at all — Escape
+        // would cancel with no refocus. `wireRowCells` now installs
+        // `setEditEndHandler` persistently, once per pooled cell,
+        // regardless of how the edit was started.
+        //
+        // Drives the real double-click path — Cell's own internal
+        // `dblclick` listener on the renderer, captured via a spy on
+        // Event.addListener (matching editor.test.ts's "Tab suppresses
+        // native focus-shift" precedent) and invoked directly, rather than
+        // `cell.startEdit()` called by hand or a full DOM.sink.dispatchEvent
+        // (whose window-level base listener is a process-wide singleton per
+        // event type — see Event.ts's installBaseListener — so it only
+        // reliably reaches a fresh test's own modelled sink for the FIRST
+        // dispatch of a given event type in this file).
+        const spy     = vi.spyOn(Event, 'addListener');
+        const b       = await wideBody(4, 400, 0); // 4x100 fits 400px — every column renders
+        const row     = (b as any).getRowPool()[0];
+        const visible = (b as any).getVisibleRecords();
+
+        b.selectRecord(visible[0]);
+
+        const cell     = row.getComponents()[0] as Cell<any>;
+        const renderer = cell.getRenderer();
+        const focus    = vi.spyOn(b, 'focus');
+
+        const registrations = spy.mock.calls.filter(c => c[0] === renderer && c[1] === 'dblclick');
+        spy.mockRestore();
+
+        expect(registrations.length).toBeGreaterThan(0);
+        const dblclickListener = registrations[registrations.length - 1][2] as unknown as Event.Listener;
+
+        dblclickListener({} as MouseEvent);
+        expect(cell.isEditing()).toBe(true);
+
+        cell.onKeyDown({ detail: { keyCode: 27, shiftKey: false } } as any);
+
+        expect(cell.isEditing()).toBe(false);
+        expect(focus).toHaveBeenCalled();
+    });
+
+    it('Enter skips a separator row via skipSeparators, matching ArrowDown', async () => {
+        const store = new MemoryStore(MODEL, [
+            { a: '1', b: '2', c: '3' },
+            { a: 'SEP', b: '', c: '' },
+            { a: '4', b: '5', c: '6' },
+        ]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(300);
+        b.setHeight(1000); // tall enough that all three rows are pooled
+        b.setRowSeparator(record => record.get('a') === 'SEP' ? { label: 'SEP', color: null } : null);
+        (b as any).renderWindow(300, [100, 100, 100]);
+
+        const visible = (b as any).getVisibleRecords();
+        b.selectRecord(visible[0]);
+
+        const cell = (b as any).getRowPool()[0].getComponents()[0] as Cell<any>;
+        cell.startEdit();
+
+        cell.onKeyDown({ detail: { keyCode: 13, shiftKey: false } } as any);
+
+        expect(b.getSelectedRecords()[0]).toBe(visible[2]);
     });
 });
 

@@ -76,6 +76,17 @@ class ComboEditor extends CellEditor<String | null> {
                 shiftKey: evnt.shiftKey, ctrlKey: evnt.ctrlKey,
                 altKey  : evnt.altKey  , metaKey: evnt.metaKey
             } });
+
+            // Tab must not shift native DOM focus: the parent cell's own
+            // navigate handler already moves editing to the neighboring
+            // cell (driven by the re-fired "keydown" above), so this
+            // listener — the real keydown target — is the one place that
+            // can actually suppress the browser's default Tab behaviour.
+            if (evnt.keyCode === 9) {
+                return { prevent: true };
+            }
+
+            return;
         });
 
         this.addComponent(this._combo);

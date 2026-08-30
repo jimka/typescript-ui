@@ -52,6 +52,42 @@ export interface ForwardedKeyDetail {
 }
 
 /**
+ * Normalizes a cell editor's re-fired `"keydown"` event to a
+ * {@link ForwardedKeyDetail}, regardless of whether the editor re-fired its
+ * inner field's keydown as a synthetic `CustomEvent` or the native
+ * `KeyboardEvent` reached the listener directly.
+ *
+ * {@link StringEditor}, {@link NumberEditor}, and {@link ComboEditor} wrap a
+ * child control and manually re-fire its keydown as a `CustomEvent` carrying
+ * this shape in `detail`. {@link DateEditor}, {@link TimeEditor}, and
+ * {@link DateTimeEditor} instead extend a shared base class whose own
+ * element *is* the `<input>`, so no re-fire happens — the listener receives
+ * the real native `KeyboardEvent`, whose own `detail` is the numeric
+ * `UIEvent.detail` (`0`), not an object. Reading `detail` as an object only
+ * when it actually is one keeps both paths working through the same read.
+ *
+ * @param e - The forwarded keydown event, in either shape.
+ * @returns The key fields in a uniform {@link ForwardedKeyDetail} shape.
+ *
+ * @category Components
+ */
+export function forwardedKeyDetail(e: CustomEvent<ForwardedKeyDetail> | KeyboardEvent): ForwardedKeyDetail {
+    const detail = (e as CustomEvent<ForwardedKeyDetail>).detail;
+
+    if (detail && typeof detail === "object") {
+        return detail;
+    }
+
+    const native = e as KeyboardEvent;
+
+    return {
+        key: native.key,     code: native.code,     keyCode: native.keyCode,
+        shiftKey: native.shiftKey, ctrlKey: native.ctrlKey,
+        altKey: native.altKey,    metaKey: native.metaKey,
+    };
+}
+
+/**
  * Abstract base class for cell editors.
  *
  * Subclasses allow in-place editing of a typed value inside a table cell using a

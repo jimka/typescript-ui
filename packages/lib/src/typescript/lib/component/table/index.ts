@@ -32,7 +32,7 @@ export { FooterRow } from '~/component/table/Footer.js';
 export { Row } from '~/component/table/Row.js';
 
 export { Cell } from '~/component/table/cell/Cell.js';
-export type { CellEvent } from '~/component/table/cell/Cell.js';
+export type { CellEvent, CellNavigateDirection } from '~/component/table/cell/Cell.js';
 export { DefaultCell } from '~/component/table/cell/Default.js';
 export { HeaderCell } from '~/component/table/cell/Header.js';
 export type { HeaderCellEvent } from '~/component/table/cell/Header.js';

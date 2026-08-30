@@ -2,7 +2,7 @@
 
 import { Event } from "~/core/Event.js";
 import type { Cell } from "~/component/table/cell/Cell.js";
-import { CellEditor, blurRelatedTargetHandle } from "~/component/table/cell/editor/CellEditor.js";
+import { CellEditor, blurRelatedTargetHandle, forwardedKeyDetail } from "~/component/table/cell/editor/CellEditor.js";
 import type { ForwardedKeyDetail } from "~/component/table/cell/editor/CellEditor.js";
 import { StringEditor } from "~/component/table/cell/editor/String.js";
 import { NumberEditor } from "~/component/table/cell/editor/Number.js";
@@ -144,8 +144,20 @@ export class CellEditorPool {
 
             this._activeCell?.commitEdit();
         });
-        Event.addListener(editor, "keydown", (e: CustomEvent<ForwardedKeyDetail>) => {
+        Event.addListener(editor, "keydown", (e: CustomEvent<ForwardedKeyDetail> | KeyboardEvent) => {
             this._activeCell?.onKeyDown(e);
+
+            // Tab must not shift native DOM focus: the active cell's own
+            // navigate handler already moves editing to the neighboring
+            // cell (see Cell.onKeyDown), so this listener — which for a
+            // native-input editor (Date/Time/DateTime) sits on the real
+            // keydown target — is one of the places that must suppress the
+            // browser's default Tab behaviour.
+            if (forwardedKeyDetail(e).keyCode === 9) {
+                return { prevent: true };
+            }
+
+            return;
         });
     }
 }
