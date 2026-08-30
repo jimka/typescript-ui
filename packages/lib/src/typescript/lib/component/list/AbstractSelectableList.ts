@@ -446,15 +446,6 @@ class SelectableListRow extends Component {
     }
 
     /**
-     * Returns the row's current pool index.
-     *
-     * @returns The zero-based index.
-     */
-    getIndex(): number {
-        return this._index;
-    }
-
-    /**
      * Toggles the `.selected` class and `aria-selected` to reflect
      * membership in the owning list's selection set.
      *
@@ -2075,4 +2066,4 @@ abstract class AbstractSelectableList<
     }
 }
 
-export { AbstractSelectableList, SelectableListRow };
+export { AbstractSelectableList };

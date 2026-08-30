@@ -71,6 +71,7 @@ describe('parseQuery', () => {
         ['q=%zz',   { q: '%zz' }],
         ['q=a+b',   { q: 'a+b' }],
         ['a%20b=1', { 'a b': '1' }],
+        ['__proto__=x', Object.fromEntries([['__proto__', 'x']])],
     ])('parses %j to %j', (input, expected) => {
         expect(parseQuery(input)).toEqual(expected);
     });

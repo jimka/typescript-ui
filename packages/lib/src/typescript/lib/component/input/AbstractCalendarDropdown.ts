@@ -1612,22 +1612,5 @@ abstract class AbstractCalendarDropdown<
 
 export {
     AbstractCalendarDropdown,
-    PickerDay,
-    PickerBlankCell,
-    PickerNavButton,
-    PickerMonthLabel,
-    PickerDayHeader,
-    dayStart,
-    dayEnd,
-    MONTH_HEIGHT,
-    NAV_BTN_WIDTH,
-    HEADER_HEIGHT,
-    CELL_HEIGHT,
-    DAY_GRID_HEIGHT,
     ROOT_GAP,
-    navGlyphPx,
-    DAY_GRID_INDEX,
-    DEFAULT_YEAR_SPAN_BACK,
-    DEFAULT_YEAR_SPAN_FORWARD,
-    YEAR_TYPE_IDLE_MS,
 };

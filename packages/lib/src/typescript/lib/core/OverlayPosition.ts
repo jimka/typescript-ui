@@ -3,13 +3,7 @@
 import { Util } from "~/core/Util.js";
 import type { Rect } from "~/core/DOM.js";
 import type { Size } from "~/primitive/Size.js";
-
-/**
- * The primary growth axis for an anchored overlay.
- *
- * @category Core
- */
-export type AnchorAxis = "vertical" | "horizontal";
+import type { AxisOrientation } from "~/primitive/Axis.js";
 
 /**
  * Options controlling how {@link positionAnchored} places an element against an
@@ -17,9 +11,9 @@ export type AnchorAxis = "vertical" | "horizontal";
  *
  * @category Core
  */
-export interface AnchorOptions {
+interface AnchorOptions {
     /** Primary growth axis: `"vertical"` grows below/above, `"horizontal"` right/left. */
-    axis:    AnchorAxis;
+    axis:    AxisOrientation;
     /** Gap in px between the anchor edge and the element on the primary axis. Default 0. */
     gap?:    number;
     /** Viewport-edge margin in px kept on the cross axis. Default 0. */
@@ -137,7 +131,7 @@ function clampAxis(value: number, size: number, extent: number, margin: number):
  *
  * @category Core
  */
-export interface FlexiblePlacement {
+interface FlexiblePlacement {
     /** Top-left coordinate on the primary axis. */
     start:     number;
     /** Room (px) on the side actually chosen — the caller's height/width cap. */

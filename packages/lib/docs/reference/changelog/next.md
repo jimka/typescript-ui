@@ -5,6 +5,22 @@ tied to a version number yet. Once this release is tagged, its content moves
 onto its own numbered page (see [Changelog](/reference/changelog)) and this
 page resets to empty.
 
+## Breaking changes
+
+### Data
+
+- **`AbstractStore.getActiveSorter()` is removed**, in favour of
+  `getActiveSorters()`. Use `getActiveSorters()[0]` and read `field` / `dir`
+  instead of `property` / `direction`. See
+  [Migration](/reference/migration) for the full replacement.
+
+### Components
+
+- **`Slider`'s deprecated `setMinValue` / `getMinValue` / `setMaxValue` /
+  `getMaxValue` and the `minValue` / `maxValue` options are removed.** Use
+  `setMin` / `getMin` / `setMax` / `getMax` and the `min` / `max` options.
+  See [Migration](/reference/migration) for the full replacement.
+
 ## Changed
 
 ### Components

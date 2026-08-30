@@ -138,8 +138,6 @@ store.sort([]);             // clear all sorters (also: store.clearSort())
 
 `Table` headers compose multi-column sort interactively when the user shift-clicks. The store fires the dedicated `'sortchange'` event whenever the active sorter list is replaced, alongside the broader `'datachange'` notification.
 
-The legacy `getActiveSorter()` accessor still works (returns the primary sorter mapped to `{ property, direction }`) but is **deprecated** in favour of `getActiveSorters()`.
-
 ### Locale-aware ordering and custom comparators
 
 Sorting is type-aware. String fields compare with `localeCompare`, so accented

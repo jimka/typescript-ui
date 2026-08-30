@@ -22,7 +22,7 @@
  * overlay's four-shadow geometry simple. `12px` reads as a soft edge cue
  * without masking a meaningful strip of content.
  */
-export const SCROLL_SHADOW_EXTENT_PX = 12;
+const SCROLL_SHADOW_EXTENT_PX = 12;
 
 /**
  * Distance in pixels over which an edge's shadow ramps from none to full as the
@@ -32,7 +32,7 @@ export const SCROLL_SHADOW_EXTENT_PX = 12;
  * instead of popping on/off at a single-pixel threshold. `40px` gives a visible
  * fade without staying faint through a meaningful amount of overflow.
  */
-export const SCROLL_SHADOW_RAMP_PX = 40;
+const SCROLL_SHADOW_RAMP_PX = 40;
 
 /**
  * Ramps an edge's shadow in by how far the scroll position sits past that

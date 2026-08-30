@@ -6,10 +6,10 @@
 // DOM seam involved — internal to router/, not exported from the barrel.
 
 /** The kind of a single pattern segment. */
-export type SegmentKind = "static" | "param" | "catchAll";
+type SegmentKind = "static" | "param" | "catchAll";
 
 /** One segment of a compiled pattern. */
-export interface RouteSegment {
+interface RouteSegment {
     kind:  SegmentKind;
     /** Literal text for "static", the parameter name for "param", "" for "catchAll". */
     value: string;
@@ -112,7 +112,11 @@ export function parseQuery(query: string): Record<string, string> {
             continue;
         }
 
-        result[key] = decodeSegment(rawValue);
+        // `Object.defineProperty`, not `result[key] = …`: assigning to the key
+        // "__proto__" hits Object.prototype's accessor, which ignores a string
+        // value, so the pair would vanish. Defining an own data property keeps
+        // every key the query carried.
+        Object.defineProperty(result, key, { value: decodeSegment(rawValue), writable: true, enumerable: true, configurable: true });
     }
 
     return result;
@@ -150,6 +154,10 @@ export function sameQuery(a: Record<string, string>, b: Record<string, string>):
  * Normalizes a base to leading-and-trailing-slash form, so
  * {@link stripBase} and {@link joinBase} can both assume that shape.
  * `""`, `"/"`, `"x"`, `"/x"`, and `"/x/"` all become `"/"` or `"/x/"`.
+ *
+ * Idempotent: `normalizeBase(normalizeBase(x))` equals `normalizeBase(x)`,
+ * which is what lets {@link stripBase} and {@link joinBase} normalize an
+ * already-normalized base without harm.
  *
  * @param base - The raw base path.
  * @returns The normalized base.
@@ -265,6 +273,11 @@ export function matchPattern(compiled: CompiledPattern, segments: string[]): Rec
             if (patternSegment.value !== value) {
                 return null;
             }
+        // Always true for a `compilePattern` result: it throws when "*" is
+        // anywhere but the last segment, and `staticLength` excludes a
+        // trailing `catchAll`, so only "static" and "param" ever reach here.
+        // The check stays because `matchPattern` is exported and takes a
+        // `CompiledPattern` a caller could build by hand.
         } else if (patternSegment.kind === "param") {
             params[patternSegment.value] = decodeSegment(value);
         }

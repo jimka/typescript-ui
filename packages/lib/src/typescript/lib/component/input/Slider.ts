@@ -22,11 +22,6 @@ export interface SliderOptions extends AbstractInputOptions {
     largeStep?:   number;
     orientation?: AxisOrientation;
     showTicks?:   boolean;
-
-    /** @deprecated use {@link SliderOptions.min} */
-    minValue?:    number;
-    /** @deprecated use {@link SliderOptions.max} */
-    maxValue?:    number;
     /**
      * Construction-time listener bag — the declarative form of `on()`. Adds the
      * slider's `action` shorthand to the inherited `change` / `binding`.
@@ -165,14 +160,6 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
 
         this.installInteraction();
 
-        if (this._options.minValue !== undefined && this._options.min === undefined) {
-            this._options.min = this._options.minValue;
-        }
-
-        if (this._options.maxValue !== undefined && this._options.max === undefined) {
-            this._options.max = this._options.maxValue;
-        }
-
         if (this._options.min !== undefined) {
             this.applyMin(this._options.min);
         }
@@ -220,8 +207,6 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         if (options.value       !== undefined) this._options.value       = options.value;
         if (options.min         !== undefined) this._options.min         = options.min;
         if (options.max         !== undefined) this._options.max         = options.max;
-        if (options.minValue    !== undefined) this._options.minValue    = options.minValue;
-        if (options.maxValue    !== undefined) this._options.maxValue    = options.maxValue;
         if (options.step        !== undefined) this._options.step        = options.step;
         if (options.largeStep   !== undefined) this._options.largeStep   = options.largeStep;
         if (options.orientation !== undefined) this._options.orientation = options.orientation;
@@ -315,55 +300,6 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         this.applyValue(this.snap(this.getValue()));
 
         return this;
-    }
-
-    /**
-     * Deprecated alias for {@link setMin}. Kept so existing demos compile;
-     * remove in a follow-up cleanup once all consumers are migrated.
-     *
-     * @param value - The new minimum.
-     *
-     * @returns This component, for method chaining.
-     *
-     * @deprecated Use {@link setMin}.
-     */
-    setMinValue(value: number): this {
-        return this.setMin(value);
-    }
-
-    /**
-     * Deprecated alias for {@link getMin}.
-     *
-     * @returns The current minimum.
-     *
-     * @deprecated Use {@link getMin}.
-     */
-    getMinValue(): number {
-        return this.getMin();
-    }
-
-    /**
-     * Deprecated alias for {@link setMax}.
-     *
-     * @param value - The new maximum.
-     *
-     * @returns This component, for method chaining.
-     *
-     * @deprecated Use {@link setMax}.
-     */
-    setMaxValue(value: number): this {
-        return this.setMax(value);
-    }
-
-    /**
-     * Deprecated alias for {@link getMax}.
-     *
-     * @returns The current maximum.
-     *
-     * @deprecated Use {@link getMax}.
-     */
-    getMaxValue(): number {
-        return this.getMax();
     }
 
     /**
