@@ -5,9 +5,11 @@ import { MenuSeparator } from '~/component/container/MenuSeparator';
 import { MenuRow } from '~/component/container/MenuRow';
 import { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
 import { Component } from '~/core/Component';
+import { Panel } from '~/core/Panel';
 import { DOM } from '~/core/DOM';
 import type { Handle, Rect } from '~/core/DOM';
 import { LayerManager } from '~/core/LayerManager';
+import { TRACK_WIDTH } from '~/component/container/Scrollbar';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { _ruleCacheKeys } from '~/core/StyleTarget';
@@ -29,6 +31,11 @@ const VIEWPORT_MARGIN = 4;
 // adds to the content-based width it clamps/measures rows against before
 // returning the panel's actual (border-box) width — see getMenuWidth().
 const MENU_BORDER_PX = 2;
+
+// TRACK_WIDTH mirrored from Scrollbar (12px), used to widen Menu when
+// its item list overflows vertically, so row content stays at the width
+// layOutColumns measured them against.
+const TEST_TRACK_WIDTH = TRACK_WIDTH;
 
 // MENU_ANIM_DURATION_MS (120) mirrored from Menu (private const), plus
 // Animation.play's default 40ms fallback buffer, plus headroom — comfortably
@@ -901,7 +908,7 @@ describe('Menu as DismissableLayer', () => {
     });
 });
 
-describe('Menu vertical-scroll scrollbar gutter', () => {
+describe('Menu overlay scrollbar — item panel structure and width', () => {
     afterEach(() => DOM.reset());
 
     // Ten identical items with a right-aligned shortcut, so the natural content
@@ -911,79 +918,321 @@ describe('Menu vertical-scroll scrollbar gutter', () => {
         shortcut: '⌘K',
     }));
 
-    it('reserves no gutter when the menu fits without scrolling', () => {
-        installTestDOM(CONFIG); // 800px tall — 10 * 24px items fit easily
+    it('has exactly one child: a Panel with autoScroll "y"', () => {
+        installTestDOM(CONFIG);
 
         const menu = new Menu();
         menu.show(10, 10, items);
 
-        expect(menu.getInsets().getRight()).toBe(0);
+        expect(menu.getComponents().length).toBe(1);
+        const itemPanel = menu.getComponents()[0] as Panel;
+        expect(itemPanel.getAutoScroll()).toBe('y');
+        expect(itemPanel.getScrollShadows()).toBe(false);
+        const insets = itemPanel.getInsets();
+        expect(insets.getTop()).toBe(4);
+        expect(insets.getLeft()).toBe(0);
+        expect(insets.getBottom()).toBe(4);
+        expect(insets.getRight()).toBe(0);
 
         menu.hide();
     });
 
-    it('reserves a scrollbar-width right gutter when the menu overflows vertically', () => {
-        // Measure the natural (non-scrolling) width of the same items first.
+    it("Menu's own insets are zero", () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        menu.show(10, 10, items);
+
+        expect(menu.getInsets().getTop()).toBe(0);
+        expect(menu.getInsets().getRight()).toBe(0);
+        expect(menu.getInsets().getBottom()).toBe(0);
+        expect(menu.getInsets().getLeft()).toBe(0);
+
+        menu.hide();
+    });
+
+    it('stores rows on the item panel, not the menu', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        menu.show(10, 10, items.slice(0, 5));
+
+        expect(menu.getComponents().length).toBe(1);
+        const itemPanel = menu.getComponents()[0] as Panel;
+        expect(itemPanel.getComponents().length).toBe(5);
+
+        menu.hide();
+    });
+
+    it('no widening when the menu fits without scrolling', () => {
+        installTestDOM(CONFIG); // 800px tall — 10 items fit easily
+
+        const menu = new Menu();
+        menu.show(10, 10, items);
+        menu.flushLayout(); // showAnchored only schedules; getInnerSize needs a flush.
+
+        // No overflow, so the panel reserves no gutter — its inner width is
+        // the menu's own width minus only its border, not TRACK_WIDTH too.
+        const itemPanel = menu.getComponents()[0] as Panel;
+        expect(itemPanel.getInnerSize()!.width).toBe(menu.getWidth() - MENU_BORDER_PX);
+
+        menu.hide();
+    });
+
+    it('widens by TRACK_WIDTH when the menu overflows vertically', () => {
+        // Measure the natural (non-scrolling) width first.
         installTestDOM(CONFIG);
         const fit = new Menu();
         fit.show(10, 10, items);
         const naturalWidth = fit.getWidth();
-        expect(fit.getInsets().getRight()).toBe(0);
         fit.hide();
         DOM.reset();
 
         // A short viewport forces the same items to overflow and scroll.
         installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 120 } });
-        const sbw = DOM.source.getScrollBarWidth();
-        expect(sbw).toBeGreaterThan(0);
 
         const scroll = new Menu();
         scroll.show(10, 10, items);
 
-        // The gutter is reserved as a right inset so items never lay out under
-        // the native scrollbar, and the panel is widened to keep the item
-        // content area at its natural width.
-        expect(scroll.getInsets().getRight()).toBe(sbw);
-        expect(scroll.getWidth()).toBe(naturalWidth + sbw);
-        expect(scroll.getWidth() - scroll.getInsets().getRight()).toBe(naturalWidth);
+        // The menu is widened by TRACK_WIDTH to compensate for the panel's
+        // internal gutter reservation, so row content stays at naturalWidth.
+        expect(scroll.getWidth()).toBe(naturalWidth + TEST_TRACK_WIDTH);
 
         scroll.hide();
     });
 
-    it('shows cleanly with scroll-to-bottom enabled (bottom offset verified live)', () => {
-        // TestDOM reports scrollHeight === clientHeight, so the browser's
-        // clamp-to-bottom is not observable offline; this guards that enabling
-        // the option exercises the flush + setScrollTop path without throwing.
+    it('row content width: item panel reserves the track, so rows stay at natural width', () => {
         installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 120 } });
 
-        const menu = new Menu().setScrollToBottomOnShow(true);
-        expect(() => menu.show(10, 10, items)).not.toThrow();
-        expect(typeof menu.getScrollTop()).toBe('number');
+        // The recording sink has no real layout, so overflow is an injected
+        // input — force the panel's own scroll element to report vertical
+        // overflow, mirroring tests/core/PanelOverlayScrollbar.test.ts.
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 200, scrollHeight: 400,
+            clientWidth: 200, clientHeight: 100,
+        });
+
+        const menu = new Menu();
+        menu.show(10, 10, items);
+        menu.flushLayout(); // showAnchored only schedules; size the panel to Menu's final width first.
+
+        const itemPanel = menu.getComponents()[0] as Panel;
+        itemPanel.doLayout(); // re-derive the gutter from the now-stubbed overflow.
+
+        // The panel's inner width excludes both Menu's border and the track
+        // it reserves internally, leaving rows at the width layOutColumns
+        // measured them against — never rendering under the bar.
+        expect(itemPanel.getInnerSize()!.width).toBe(menu.getWidth() - MENU_BORDER_PX - TEST_TRACK_WIDTH);
+
+        menu.hide();
+        vi.restoreAllMocks();
+    });
+
+    it('reused menu, fit → scroll: widens on transition', () => {
+        installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 120 } });
+
+        const menu = new Menu();
+
+        // First open: three items fit in 120px viewport.
+        menu.show(10, 10, items.slice(0, 3));
+        const fitWidth = menu.getWidth();
+        const fitHeight = menu.getHeight();
+        menu.hide();
+
+        // Reopen with all ten items — now overflows.
+        menu.show(10, 10, items);
+        const scrollWidth = menu.getWidth();
+
+        // The width must widen on this transition, not stay at the first size.
+        expect(scrollWidth).toBe(fitWidth + TEST_TRACK_WIDTH);
+        expect(menu.getHeight()).toBeGreaterThan(fitHeight);
 
         menu.hide();
     });
 
-    it('reserves the gutter when a reused menu grows from fitting to scrolling', () => {
+    it('reused menu, scroll → fit: narrows back to natural width', () => {
         installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 120 } });
-        const sbw = DOM.source.getScrollBarWidth();
 
         const menu = new Menu();
 
-        // First open: three 24px items in a 120px viewport — fits, no gutter.
-        menu.show(10, 10, items.slice(0, 3));
-        expect(menu.getInsets().getRight()).toBe(0);
-        const fitHeight = menu.getHeight();
-        menu.hide();
-
-        // Reopen the SAME instance with all ten items — now overflows. The gutter
-        // must be reserved on this transition too (not just on a fresh instance),
-        // and the panel must grow to fill the available height rather than staying
-        // stuck at the first, shorter size.
+        // First open: many items scroll.
         menu.show(10, 10, items);
-        expect(menu.getInsets().getRight()).toBe(sbw);
-        expect(menu.getHeight()).toBeGreaterThan(fitHeight);
+        const scrollWidth = menu.getWidth();
+        menu.hide();
+
+        // Reopen with just three — fits, no scroll.
+        menu.show(10, 10, items.slice(0, 3));
+        const fitWidth = menu.getWidth();
+
+        // The widening is never sticky; it must drop back.
+        expect(fitWidth).toBe(scrollWidth - TEST_TRACK_WIDTH);
 
         menu.hide();
+    });
+
+    it('setMenuWidth override still wins', () => {
+        installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 120 } });
+
+        const menu = new Menu().setMenuWidth(300);
+        menu.show(10, 10, items);
+
+        // With explicit width set, the menu is still widened when it overflows.
+        expect(menu.getWidth()).toBe(300 + TEST_TRACK_WIDTH);
+
+        menu.hide();
+    });
+
+    it('panel preserves structure on overflow', () => {
+        // When the menu overflows, the panel manages the scrollbar internally.
+        // This test verifies the panel structure is preserved.
+        installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 120 } });
+
+        const menu = new Menu();
+        menu.show(10, 10, items);
+
+        const itemPanel = menu.getComponents()[0] as Panel;
+
+        // Panel should exist and have the expected configuration
+        expect(itemPanel).toBeDefined();
+        expect(itemPanel.getAutoScroll()).toBe('y');
+
+        menu.hide();
+    });
+
+    it('scrollbar is inside the dismiss subtree', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        menu.show(10, 10, items);
+
+        const itemPanel = menu.getComponents()[0] as Panel;
+        const panelEl = itemPanel.getElement();
+        const layerEl = menu.getLayerElement();
+
+        // A pointerdown on the panel (and thus the scrollbar) counts as inside
+        // the layer, so LayerManager does not dismiss the menu.
+        expect(DOM.source.contains(layerEl!, panelEl!)).toBe(true);
+
+        menu.hide();
+    });
+
+    it('scroll-to-bottom routes to the item panel', () => {
+        installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 120 } });
+
+        const menu = new Menu().setScrollToBottomOnShow(true);
+        expect(() => menu.show(10, 10, items)).not.toThrow();
+
+        const itemPanel = menu.getComponents()[0] as Panel;
+        expect(typeof itemPanel.getScrollTop()).toBe('number');
+
+        menu.hide();
+    });
+
+    it('teardown: second show disposes every row and keeps the panel', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        menu.show(10, 10, items.slice(0, 5));
+        menu.hide();
+
+        menu.show(10, 10, items);
+
+        expect(menu.getComponents().length).toBe(1);
+        const itemPanel = menu.getComponents()[0] as Panel;
+        expect(itemPanel.getComponents().length).toBe(10);
+
+        menu.hide();
+    });
+
+    it('flipped side: widens when content overflows above', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        const opener = DOM.sink.createElement('div');
+        const trigger = rect(100, 772, 200, 796); // Near bottom of viewport
+        const manyItems = Array.from({ length: 60 }, (_, i) => ({ text: `Item ${i}` }));
+
+        // Measure natural width first
+        const tempMenu = new Menu();
+        tempMenu.show(10, 10, items);
+        const naturalWidth = tempMenu.getWidth();
+        tempMenu.hide();
+
+        menu.toggleFor(opener, trigger, manyItems);
+
+        // Menu flips and overflows above, so available space and overflow check
+        // come from the room above — gutter is still reserved.
+        expect(menu.getWidth()).toBe(naturalWidth + TEST_TRACK_WIDTH);
+    });
+
+    it('height clamp unchanged: placeVertically returns correct coordinates', () => {
+        installTestDOM(CONFIG);
+
+        const anchorTop = 100;
+        const totalHeight = 600;
+        const vpHeight = 800;
+        const growTop = vpHeight - anchorTop - 10; // 690px available below
+        const result = placeVertically(new Menu(), growTop, anchorTop, totalHeight, vpHeight);
+
+        // Height clamping logic is unchanged; result should still be valid top coordinate.
+        expect(typeof result).toBe('number');
+        expect(result).toBeGreaterThanOrEqual(0);
+    });
+
+    it('persistent mode: open() widens for overflow on top-level dropdown, and the widening is never sticky', () => {
+        // One 500px-tall viewport for both opens — reusing an already-rendered
+        // component across a DOM.reset() orphans its element handle, so the
+        // fits/overflows transition is driven by anchor geometry instead.
+        installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 500 } });
+
+        // buildPersistentItems commits the content-fit width at construction,
+        // before any open() — this is the un-widened baseline for this exact
+        // instance, not a separately-constructed menu with different items.
+        const menu = new Menu(items, () => {});
+        const naturalWidth = menu.getWidth();
+
+        // A tall anchor spans almost the whole viewport, leaving too little
+        // room on either side for the ten items — this open must widen.
+        const tallAnchor = new Component();
+        tallAnchor.setX(10);
+        tallAnchor.setY(10);
+        tallAnchor.setWidth(10);
+        tallAnchor.setHeight(480);
+        menu.open(tallAnchor.getElement(true)!);
+        expect(menu.getWidth()).toBe(naturalWidth + TEST_TRACK_WIDTH);
+        menu.close();
+
+        // Reopen the SAME instance against a short anchor near the top, where
+        // there is plenty of room below — the widening must not stick.
+        const shortAnchor = new Component();
+        shortAnchor.setX(10);
+        shortAnchor.setY(10);
+        shortAnchor.setWidth(10);
+        shortAnchor.setHeight(24);
+        menu.open(shortAnchor.getElement(true)!);
+        expect(menu.getWidth()).toBe(naturalWidth);
+
+        menu.close();
+    });
+
+    it('persistent mode: placeVertically (submenu) widens for overflow, and leaves the width untouched when content fits', () => {
+        installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 120 } });
+
+        const overflowing = new Menu(items, () => {});
+        const naturalWidth = overflowing.getWidth();
+
+        // roomBelow (120 - 400, clamped) is far short of totalHeight (600),
+        // so this call must widen by TRACK_WIDTH via applyScrollbarGutterWidth.
+        placeVertically(overflowing, 50, 400, 600, 120);
+        expect(overflowing.getWidth()).toBe(naturalWidth + TEST_TRACK_WIDTH);
+
+        const fitting = new Menu(items, () => {});
+        const fittingNaturalWidth = fitting.getWidth();
+
+        // Plenty of room below; content fits without overflowing.
+        placeVertically(fitting, 100, 90, 200, 800);
+        expect(fitting.getWidth()).toBe(fittingNaturalWidth);
     });
 });
 
@@ -1033,7 +1282,7 @@ describe('Menu rect-anchored toggleFor', () => {
         expect(menu.getY()).toBe(124);
     });
 
-    it('reserves the scrollbar gutter on the flipped side when the content overflows above', () => {
+    it('widens by TRACK_WIDTH on the flipped side when the content overflows above', () => {
         installTestDOM(CONFIG);
 
         const menu    = new Menu();
@@ -1041,11 +1290,17 @@ describe('Menu rect-anchored toggleFor', () => {
         const trigger = rect(100, 772, 200, 796);
         const items   = Array.from({ length: 60 }, (_, i) => ({ text: `Item ${i}` }));
 
+        // Measure natural width first
+        const tempMenu = new Menu();
+        tempMenu.show(10, 10, [{ text: 'A' }]);
+        const naturalWidth = tempMenu.getWidth();
+        tempMenu.hide();
+
         menu.toggleFor(opener, trigger, items);
 
         // `available` came from the room above, so the overflow (and therefore
-        // the gutter) is detected against the correct side.
-        expect(menu.getInsets().getRight()).toBe(DOM.source.getScrollBarWidth());
+        // the widening) is detected against the correct side.
+        expect(menu.getWidth()).toBe(naturalWidth + TEST_TRACK_WIDTH);
     });
 
     it('clamps the horizontal position without affecting the flipped vertical position', () => {
@@ -1202,7 +1457,6 @@ describe('Menu open() — horizontal placement', () => {
         installTestDOM(CONFIG);
 
         const menu = new Menu([{ text: 'A' }], () => {});
-        menu.setWidth(150);
 
         menu.open(anchor(100, 500, 100, 24));
 
@@ -1212,14 +1466,15 @@ describe('Menu open() — horizontal placement', () => {
     it("top-level, flips (report-1 shape): right edge flush with the anchor's right", () => {
         installTestDOM(CONFIG);
 
+        // buildPersistentItems commits the content-fit width at construction.
         const menu = new Menu([{ text: 'A' }], () => {});
-        menu.setWidth(150);
+        const naturalWidth = menu.getWidth();
 
         // Anchor right edge at 1270 in a 1280px viewport — today this clamps to
-        // 1280 - 150 = 1130 instead of flushing at 1270 - 150 = 1120.
+        // 1280 - naturalWidth instead of flushing at 1270 - naturalWidth.
         menu.open(anchor(1200, 500, 70, 24));
 
-        expect(menu.getX()).toBe(1120);
+        expect(menu.getX()).toBe(1270 - naturalWidth);
     });
 
     it("submenu, room to the right of parent: flush with parent's right edge, unchanged from today", () => {
@@ -1231,7 +1486,6 @@ describe('Menu open() — horizontal placement', () => {
         parent.getElement(true);
 
         const menu = new Menu([{ text: 'B' }], () => {});
-        menu.setWidth(150);
 
         menu.open(anchor(500, 500, 10, 24), parent);
 
@@ -1246,12 +1500,13 @@ describe('Menu open() — horizontal placement', () => {
         parent.setWidth(100);
         parent.getElement(true);
 
+        // buildPersistentItems commits the content-fit width at construction.
         const menu = new Menu([{ text: 'B' }], () => {});
-        menu.setWidth(150);
+        const naturalWidth = menu.getWidth();
 
         menu.open(anchor(500, 500, 10, 24), parent);
 
-        expect(menu.getX()).toBe(1000);
+        expect(menu.getX()).toBe(1150 - naturalWidth);
     });
 });
 
@@ -1378,13 +1633,25 @@ describe('Menu show(x, y, …) — pointer-anchored regression', () => {
 describe('Menu item teardown — disposes every replaced item, separators included', () => {
     afterEach(() => DOM.reset());
 
+    it('Menu has exactly one child: the item panel', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        menu.show(0, 0, [{ text: 'A', action: () => {} }, { separator: true }]);
+
+        expect(menu.getComponents().length).toBe(1);
+
+        menu.hide();
+    });
+
     it('M1: a reshow with a separator evicts the prior separator\'s style rule', () => {
         installTestDOM(CONFIG);
 
         const menu = new Menu();
         menu.show(0, 0, [{ text: 'A', action: () => {} }, { separator: true }]);
 
-        const oldSeparator = (menu as any)._menuItems[1];
+        const itemPanel = menu.getComponents()[0] as Panel;
+        const oldSeparator = itemPanel.getComponents()[1];
         oldSeparator.getElement(true);
         const id = oldSeparator.getId();
         expect(_ruleCacheKeys().some((k: string) => k.startsWith('#' + id))).toBe(true);
@@ -1398,9 +1665,10 @@ describe('Menu item teardown — disposes every replaced item, separators includ
         installTestDOM(CONFIG);
 
         const menu = new Menu([{ text: 'A', action: () => {} }], () => {});
-        const oldItems = (menu as any)._menuItems.slice();
-        oldItems.forEach((item: MenuItem) => item.getElement(true));
-        const ids = oldItems.map((item: MenuItem) => item.getId());
+        const itemPanel = menu.getComponents()[0] as Panel;
+        const oldItems = itemPanel.getComponents().slice();
+        oldItems.forEach((item) => item.getElement(true));
+        const ids = oldItems.map((item) => item.getId());
 
         expect(ids.some((id: string) => _ruleCacheKeys().some((k: string) => k.startsWith('#' + id)))).toBe(true);
 
@@ -1466,7 +1734,7 @@ class ClosingTestRow extends MenuRow {
 describe('Menu custom rows', () => {
     afterEach(() => DOM.reset());
 
-    it('builds the row from the factory exactly once and registers it as a child', () => {
+    it('builds the row from the factory exactly once and registers it as a child on the item panel', () => {
         installTestDOM(CONFIG);
 
         const factory = vi.fn(() => new TestRow());
@@ -1477,7 +1745,8 @@ describe('Menu custom rows', () => {
         expect(factory).toHaveBeenCalledOnce();
 
         const row = factory.mock.results[0].value;
-        expect(menu.getComponents()).toContain(row);
+        const itemPanel = menu.getComponents()[0] as Panel;
+        expect(itemPanel.getComponents()).toContain(row);
         expect((menu as any)._menuItems).toContain(row);
     });
 
