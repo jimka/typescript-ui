@@ -64,6 +64,14 @@ export interface CodeEditorOptions extends ComponentOptions {
      * the caller controls via `setHeight`/`preferredSize`, filling its host.
      */
     autoHeightMaxRows?: number;
+    /**
+     * Row count the editor never shrinks below, even when the real content is
+     * shorter — the floor complementing {@link autoHeightMaxRows}'s ceiling.
+     * Inert without `autoHeightMaxRows` also set, since auto-height itself is.
+     * Should not exceed `autoHeightMaxRows`: a larger floor than ceiling makes
+     * the floor win outright, silently defeating the cap.
+     */
+    autoHeightMinRows?: number;
     /** Construction-time listener bag; the events are `"change"`, `"readonlyedit"`, and `"heightchange"`. */
     listeners?: { change?: (payload: CodeEditorChange) => void; readonlyedit?: () => void; heightchange?: (payload: CodeEditorHeightChange) => void };
 }
@@ -92,6 +100,9 @@ const CM_SCROLLER_SELECTOR = ".cm-scroller";
 
 /** CodeMirror's content element, inside `.cm-scroller`. */
 const CM_CONTENT_SELECTOR = ".cm-content";
+
+/** One rendered document line, inside `.cm-content`. */
+const CM_LINE_SELECTOR = ".cm-line";
 
 // Padding-bottom applied once to an auto-height editor's `.cm-scroller`
 // (see the `_scrollElement` resolution in `mount`) so a sub-pixel content
@@ -307,6 +318,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
         if (options.language !== undefined) this._options.language = options.language;
         if (options.readOnly !== undefined) this._options.readOnly = options.readOnly;
         if (options.autoHeightMaxRows !== undefined) this._options.autoHeightMaxRows = options.autoHeightMaxRows;
+        if (options.autoHeightMinRows !== undefined) this._options.autoHeightMinRows = options.autoHeightMinRows;
 
         return this;
     }
@@ -426,6 +438,16 @@ class CodeEditor extends Component<CodeEditorOptions> {
      */
     getAutoHeightMaxRows(): number | null {
         return this._options.autoHeightMaxRows ?? null;
+    }
+
+    /**
+     * Returns the row-count floor this editor never auto-shrinks below.
+     *
+     * @returns The configured {@link CodeEditorOptions.autoHeightMinRows}, or
+     *   `null` when unset (no floor beyond the real content's own height).
+     */
+    getAutoHeightMinRows(): number | null {
+        return this._options.autoHeightMinRows ?? null;
     }
 
     /**
@@ -782,8 +804,19 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         // CM6's constructor-time initial update is not documented to
         // reliably invoke `updateListener`, so this call seeds the first
-        // measurement explicitly rather than assuming it does.
-        this.syncAutoHeight();
+        // measurement explicitly rather than assuming it does. Deferred one
+        // further layout flush past `mount()` itself — live-confirmed via a
+        // Dialog-hosted editor constructed already holding real (pre-set)
+        // content: read synchronously here, `.cm-scroller`'s metrics can
+        // still reflect CodeMirror's own not-yet-rendered initial paint (a
+        // near-zero height), which then locks in permanently, since only a
+        // genuine later document-shape change re-earns trust for a shrink or
+        // regrowth (see `syncAutoHeight`'s own doc). One more flush gives
+        // CodeMirror's construction a full frame to settle before the first
+        // number gets committed — the same "construction-time size needs one
+        // more settled pass" concern `Dialog.open()`'s own post-open
+        // `resizeToContent` re-fit already exists for.
+        Component.afterNextLayout(() => this.syncAutoHeight());
     }
 
     /**
@@ -843,11 +876,56 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         const metrics = DOM.source.getScrollMetrics(this._scrollElement);
 
-        const padding       = this._view.documentPadding.top + this._view.documentPadding.bottom;
-        const perLineHeight = (metrics.scrollHeight - padding) / this._view.state.doc.lines;
-        const capPx         = perLineHeight * maxRows + padding;
+        const padding = this._view.documentPadding.top + this._view.documentPadding.bottom;
 
-        let contentDesired = Math.min(metrics.scrollHeight, capPx);
+        // A single rendered `.cm-line`'s own height — immune to `.cm-content`'s
+        // `min-height: 100%` self-referential floor (see SUBPIXEL_HEIGHT_SLOP_PX's
+        // comment on that same mechanism). Deriving this from `metrics.scrollHeight
+        // / doc.lines` instead falls into exactly that trap once any earlier call
+        // has already floored or capped the box taller than its real content:
+        // `scrollHeight` then reports the PARENT's stretched height, not the
+        // genuine per-line extent, so dividing by the (changing) line count feeds
+        // a corrupted value into `floorPx`/`capPx` below, which commits a new
+        // wrong height, which corrupts the next call's reading in turn —
+        // live-confirmed to explode a short document's editor to 200,000+px
+        // within a handful of keystrokes. An individual `.cm-line` element's own
+        // rect is untouched by that stretch (the extra space `min-height: 100%`
+        // adds trails AFTER the last line, never distributed into the lines
+        // themselves), so it stays accurate regardless of how the box around it
+        // has been floored or capped by a previous call. Falls back to the old
+        // formula only when no line is rendered yet — always true for a mounted,
+        // laid-out editor (even an empty document renders one empty `.cm-line`),
+        // so this is a defensive floor, not an expected path.
+        const lineElement   = this._contentElement && DOM.source.querySelector(this._contentElement, CM_LINE_SELECTOR);
+        const perLineHeight = lineElement
+            ? DOM.source.getElementRect(lineElement).height
+            : (metrics.scrollHeight - padding) / this._view.state.doc.lines;
+        const capPx         = perLineHeight * maxRows + padding;
+        const minRows       = this.getAutoHeightMinRows();
+        const floorPx       = minRows !== null ? perLineHeight * minRows + padding : 0;
+
+        // The document's genuine content height, built purely from the
+        // per-line measurement above times the current line count —
+        // deliberately NOT `metrics.scrollHeight` itself, which suffers the
+        // exact same `.cm-content` self-referential floor `perLineHeight`
+        // above was rescued from: once an earlier call has committed a
+        // taller box, `scrollHeight` can never report less than that
+        // committed height, no matter how many lines are later deleted.
+        // Live-confirmed: removing rows back down well under a previously
+        // reached height left the box permanently stuck at its tallest-ever
+        // size, because `Math.min(metrics.scrollHeight, capPx)` below never
+        // saw a smaller number to shrink toward — shrinking was reported as
+        // a "shape change" (`doc.lines` genuinely differs) and so was never
+        // blocked by the shrink-noise guard in the `else` branch below; the
+        // content-height reading it trusted was simply never smaller.
+        // `perLineHeight * lines + padding` carries no memory of the box's
+        // own height, so it reports the correct, smaller figure the moment a
+        // line is removed. Identical to `metrics.scrollHeight` on the
+        // fallback path above (same two terms, rearranged), so that path's
+        // behaviour is unchanged.
+        const naturalContentHeight = perLineHeight * this._view.state.doc.lines + padding;
+
+        let contentDesired = Math.max(Math.min(naturalContentHeight, capPx), floorPx);
 
         if (pureSelectionChange && contentDesired > this.getHeight()) {
             return;
@@ -946,7 +1024,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
             // past its committed height — that's what drives its own
             // intentional internal scroll — so "correcting" it here would
             // defeat the cap.
-            if (metrics.scrollHeight <= capPx && this._contentElement) {
+            if (naturalContentHeight <= capPx && this._contentElement) {
                 const contentRectHeight        = DOM.source.getElementRect(this._contentElement).height;
                 const scrollerContentBoxHeight = DOM.source.getElementRect(this._scrollElement).height - SUBPIXEL_HEIGHT_SLOP_PX;
 
@@ -992,10 +1070,10 @@ class CodeEditor extends Component<CodeEditorOptions> {
             // report — but the box is still sitting at the probe height, short by
             // the reserve, until this puts it back. No `"heightchange"`: the height
             // did not move, so a consumer that pinned its own chrome to
-            // `previousHeight` is already correct. `setHeight` no-ops when the box
-            // is already at `desired`, which is the case on the `!shapeChanged`
+            // `previousHeight` is already correct. `setAutoHeight` no-ops when the
+            // box is already at `desired`, which is the case on the `!shapeChanged`
             // path where no probe was committed.
-            this.setHeight(desired);
+            this.setAutoHeight(desired);
 
             return;
         }
@@ -1024,8 +1102,29 @@ class CodeEditor extends Component<CodeEditorOptions> {
             return;
         }
 
-        this.setHeight(desired);
+        this.setAutoHeight(desired);
         this.emit("heightchange", { height: desired });
+    }
+
+    /**
+     * Commits an auto-height result: the actual box height, and — since
+     * {@link Component.getPreferredSize} always defers to this component's
+     * layout manager rather than its current size (`getLayoutManager()` never
+     * returns null; it defaults to an empty `Absolute`, whose own
+     * `getPreferredSize()` answers `null` for a foreign-DOM leaf like this one
+     * with no framework-tracked children) — the matching explicit preferred-size
+     * override, so an ancestor computing ITS OWN preferred size (a `VBox`
+     * summing children's `getPreferredSize()`, feeding {@link Dialog.resizeToContent})
+     * actually sees this editor's current auto-height instead of always reading
+     * `null` and silently contributing nothing. Width mirrors the editor's own
+     * current width (parent-driven, not something this method computes) rather
+     * than a stale or arbitrary value.
+     *
+     * @param px - The height in pixels to commit.
+     */
+    private setAutoHeight(px: number): void {
+        this.setHeight(px);
+        this.setPreferredSize({ width: this.getWidth(), height: px });
     }
 
     /**

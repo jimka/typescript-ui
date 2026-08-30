@@ -3158,22 +3158,23 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Returns the preferred size from the explicit override, layout manager, or current size.
+     * Returns the preferred size from the explicit override, else the layout
+     * manager's own.
      *
-     * @returns The preferred Size, determined in priority order: explicit override, layout manager, then current size.
+     * @returns The preferred Size, determined in priority order: explicit
+     *   override, then {@link LayoutManager.getPreferredSize}.
+     *
+     * @remarks There is no third, "current size" fallback for a component with
+     * neither: {@link getLayoutManager} never returns a falsy value (it
+     * defaults to an empty `Absolute`), so a bare component with no children
+     * and no explicit override reports `null` here, not its current size. A
+     * component whose own size should count toward an ancestor's preferred-size
+     * computation (e.g. a foreign-DOM leaf like `CodeEditor`, which grows itself
+     * via `setHeight` outside the framework's own layout tree) must call
+     * {@link setPreferredSize} explicitly to publish that size.
      */
     getPreferredSize(): Size | null {
-        let layoutManager = this.getLayoutManager();
-        let preferredSize;
-
-        const ownPreferred = this.getPreferredSizeConstraint();
-        if (ownPreferred) {
-            preferredSize = ownPreferred;
-        } else if (!layoutManager) {
-            preferredSize = this.getSize();
-        } else {
-            preferredSize = layoutManager.getPreferredSize();
-        }
+        const preferredSize = this.getPreferredSizeConstraint() ?? this.getLayoutManager().getPreferredSize();
 
         if (!preferredSize) {
             return null;

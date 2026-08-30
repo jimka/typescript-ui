@@ -6,8 +6,9 @@ import type { Formatter } from '~/component/editor/LanguageRegistry';
 import { formatWithSql } from '~/component/editor/formatters/sql';
 // Barrel import triggers the five-built-in registration side effect.
 import '~/component/editor/index';
+import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../dom/TestDOM';
+import { installTestDOM, setQuerySelectorResult } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -893,6 +894,264 @@ describe('CodeEditor autoHeightMaxRows', () => {
         // The first, shape-earned reading (140) is trusted and held; none
         // of the nine unshaped echoes after it are.
         expect(editor.getHeight()).toBe(140);
+    });
+});
+
+describe('CodeEditor autoHeightMinRows', () => {
+    it('getAutoHeightMinRows defaults to null', () => {
+        const editor = new CodeEditor();
+
+        expect(editor.getAutoHeightMinRows()).toBeNull();
+    });
+
+    it('round-trips through the constructor options bag', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20, autoHeightMinRows: 3 });
+
+        expect(editor.getAutoHeightMinRows()).toBe(3);
+    });
+
+    it('floors the content height to the min-rows count when real content is shorter', () => {
+        // 1 line at 20px/line + 8px padding = 28px real content; the 3-row
+        // floor is 20 (perLineHeight) * 3 (minRows) + 8 (padding) = 68.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20, autoHeightMinRows: 3 }) as any;
+        editor._view = {
+            state: { doc: { lines: 1 } },
+            documentPadding: { top: 4, bottom: 4 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 300, scrollHeight: 28,
+            clientWidth: 300, clientHeight: 28,
+        });
+
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(68);
+    });
+
+    it('does not raise the height above real content once it already exceeds the floor', () => {
+        // 5 lines at 20px/line + 8px padding = 108px, comfortably past the
+        // 3-row (68px) floor -- the floor must not override real content.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20, autoHeightMinRows: 3 }) as any;
+        editor._view = {
+            state: { doc: { lines: 5 } },
+            documentPadding: { top: 4, bottom: 4 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 300, scrollHeight: 108,
+            clientWidth: 300, clientHeight: 108,
+        });
+
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(108);
+    });
+
+    it('is inert (no floor) when unset, matching pre-existing content-only behaviour', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 1 } },
+            documentPadding: { top: 4, bottom: 4 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 300, scrollHeight: 28,
+            clientWidth: 300, clientHeight: 28,
+        });
+
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(28);
+    });
+});
+
+describe('CodeEditor syncAutoHeight per-line measurement', () => {
+    it("derives per-line height, and overall content height, from a rendered .cm-line — not scrollHeight / doc.lines — so a scrollHeight already inflated by an earlier commit doesn't keep the box pinned there", () => {
+        // A previous commit already stretched `.cm-content` to 500px
+        // (`min-height: 100%` pinning its rendered height to whatever the box
+        // was last committed to) even though the document is down to 1 real
+        // line. Reading `scrollHeight` directly for either the per-line ratio
+        // or the overall content height — as the pre-fix formula did for
+        // both — would either read a wildly inflated ~492px "per-line
+        // height" (dividing 500px by 1 line) or simply never see a number
+        // smaller than 500px to settle toward. A real `.cm-line`'s own
+        // rendered height (20px, seeded below) and the line count it's
+        // multiplied by are both untouched by that stretch, so the box
+        // correctly settles to the genuine 1-line content height instead.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 1 } },
+            documentPadding: { top: 4, bottom: 4 },
+        };
+        editor._scrollElement  = DOM.sink.createElement('div');
+        editor._contentElement = DOM.sink.createElement('div');
+
+        const line = DOM.sink.createElement('div');
+        setQuerySelectorResult('.cm-line', line);
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 300, scrollHeight: 500,
+            clientWidth: 300, clientHeight: 500,
+        });
+        // Neutralises the (separate, unrelated) fractional sub-pixel-undershoot
+        // correction and the horizontal-scrollbar reserve, so this assertion
+        // isolates the per-line / content-height fix alone.
+        vi.spyOn(DOM.source, 'getOffsetSize').mockReturnValue({ offsetTop: 0, offsetHeight: 0 });
+        vi.spyOn(DOM.source, 'getElementRect').mockImplementation((handle: unknown) => {
+            const height = handle === line ? 20 : (handle === editor._contentElement ? 0 : 1000);
+
+            return { x: 0, y: 0, width: 0, height, top: 0, left: 0, right: 0, bottom: height };
+        });
+
+        editor.syncAutoHeight();
+
+        // 1 line * 20px/line + 8px padding = 28px, not the stale 500px a
+        // scrollHeight-derived reading would have kept the box pinned at.
+        expect(editor.getHeight()).toBe(28);
+    });
+
+    it("shrinks back down when lines are removed, even though .cm-scroller's scrollHeight (mocked to stay pinned, matching min-height: 100%) still reports the box's previous, taller committed height", () => {
+        // Live-reproduced: typing several extra lines into a SqlPreviewDialog
+        // editor grew the box correctly, but deleting them back down never
+        // shrank it — the box stayed stuck at its tallest-ever size. Root
+        // cause: `.cm-content`'s `min-height: 100%` means `.cm-scroller`'s
+        // `scrollHeight` can never report less than the box's own
+        // last-committed height, so a later call reporting fewer lines still
+        // read the OLD, taller scrollHeight as "real content" and had nothing
+        // smaller to shrink toward — even though the shape genuinely changed
+        // (fewer lines), which is exactly when a shrink IS trusted. Deriving
+        // content height from `perLineHeight * doc.lines` instead of
+        // `scrollHeight` fixes this: it recomputes from the current line
+        // count every time, with no memory of the box's own prior height.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._scrollElement  = DOM.sink.createElement('div');
+        editor._contentElement = DOM.sink.createElement('div');
+
+        const line = DOM.sink.createElement('div');
+        setQuerySelectorResult('.cm-line', line);
+
+        // Fixed across both calls below, matching a real `.cm-scroller`
+        // pinned by `min-height: 100%` at the box's first (taller) commit.
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 300, scrollHeight: 100,
+            clientWidth: 300, clientHeight: 100,
+        });
+        vi.spyOn(DOM.source, 'getOffsetSize').mockReturnValue({ offsetTop: 0, offsetHeight: 0 });
+        vi.spyOn(DOM.source, 'getElementRect').mockImplementation((handle: unknown) => {
+            const height = handle === line ? 20 : (handle === editor._contentElement ? 0 : 1000);
+
+            return { x: 0, y: 0, width: 0, height, top: 0, left: 0, right: 0, bottom: height };
+        });
+
+        // First call: 5 real lines -- genuinely tall content, grows the box.
+        editor._view = { state: { doc: { lines: 5 } }, documentPadding: { top: 0, bottom: 0 } };
+        editor.syncAutoHeight();
+        expect(editor.getHeight()).toBe(100);
+
+        // Second call: 4 lines were deleted, leaving 1 -- `.cm-scroller`'s
+        // (mocked, statically-returned) scrollHeight still reads 100, exactly
+        // as a real min-height: 100%-pinned scroller would before settling.
+        editor._view = { state: { doc: { lines: 1 } }, documentPadding: { top: 0, bottom: 0 } };
+        editor.syncAutoHeight();
+
+        // 1 line * 20px/line + 0px padding = 20px -- the box must shrink to
+        // the genuine 1-line content, not stay pinned at the stale 100px.
+        expect(editor.getHeight()).toBe(20);
+    });
+
+    it('falls back to scrollHeight / doc.lines when no .cm-line is resolvable (no _contentElement)', () => {
+        // Matches the pre-fix formula exactly when there's nothing better to
+        // measure — a defensive floor, not an expected path once mounted.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 3 }) as any;
+        editor._view = {
+            state: { doc: { lines: 1 } },
+            documentPadding: { top: 4, bottom: 4 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 300, scrollHeight: 28,
+            clientWidth: 300, clientHeight: 28,
+        });
+
+        editor.syncAutoHeight();
+
+        // perLineHeight = (28 - 8) / 1 = 20; cap = 20 * 3 + 8 = 68, matching
+        // the real content height, so the cap never binds here.
+        expect(editor.getHeight()).toBe(28);
+    });
+});
+
+describe('CodeEditor syncAutoHeight preferred-size propagation', () => {
+    it("updates getPreferredSize() to mirror each committed auto-height, so an ancestor computing its own preferred size (e.g. Dialog.resizeToContent via a VBox sum) sees the current height instead of always reading null", () => {
+        // Component.getPreferredSize()'s "leaf with no layout manager" fallback
+        // to getSize() is unreachable in practice: getLayoutManager() never
+        // returns null (it defaults to an empty Absolute), and that default's
+        // own getPreferredSize() answers null for a foreign-DOM leaf like
+        // CodeEditor with no framework-tracked children. Confirmed live: a
+        // SqlPreviewDialog's content Panel kept computing a stale preferred
+        // height no matter how tall the editor's own box actually grew, so
+        // Dialog.resizeToContent() never resized the dialog for multi-line SQL.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20, autoHeightMinRows: 3 }) as any;
+        editor._view = {
+            state: { doc: { lines: 1 } },
+            documentPadding: { top: 4, bottom: 4 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 300, scrollHeight: 28,
+            clientWidth: 300, clientHeight: 28,
+        });
+
+        expect((editor as CodeEditor).getPreferredSize()).toBeNull();
+
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(68);
+        expect((editor as CodeEditor).getPreferredSize()).toEqual({ width: editor.getWidth(), height: 68 });
+    });
+});
+
+describe('CodeEditor mount() initial height-sync scheduling', () => {
+    it('defers the first syncAutoHeight() call to Component.afterNextLayout instead of running it synchronously', () => {
+        // Live-reproduced via a consumer app (SQLAdmin): a CodeEditor
+        // constructed already holding real content (SqlPreviewDialog seeds
+        // it via setValue() before its host Dialog is shown) can have
+        // mount()'s own first syncAutoHeight() call read `.cm-scroller`
+        // metrics before CodeMirror has finished its initial paint inside
+        // the freshly-opened Dialog, committing a near-zero height that then
+        // locks in permanently -- only a later genuine document-shape change
+        // (see the describe block above) ever re-earns trust for a
+        // correction, and nothing about a Dialog settling its own open
+        // animation naturally causes one. Deferring past mount() itself,
+        // mirroring Dialog.open()'s own identical-purpose post-open
+        // resizeToContent re-fit, gives CodeMirror's construction a full
+        // frame to settle before the first number gets committed.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor.getElement(true);
+
+        const afterNextLayoutSpy = vi.spyOn(Component, 'afterNextLayout');
+        const syncSpy = vi.spyOn(editor, 'syncAutoHeight');
+
+        editor.mount();
+
+        expect(syncSpy).not.toHaveBeenCalled();
+        expect(afterNextLayoutSpy).toHaveBeenCalledTimes(1);
+
+        afterNextLayoutSpy.mock.calls[0][0]();
+        expect(syncSpy).toHaveBeenCalledTimes(1);
     });
 });
 
