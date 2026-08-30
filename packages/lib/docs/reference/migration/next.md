@@ -58,3 +58,46 @@ new Slider({ min: 0, max: 100 });
 slider.setMin(5);
 slider.getMax();
 ```
+
+## `ChartStoreBinding` is removed
+
+**What changed and why.** `ChartStoreBinding` described a store-bound
+chart's field accessors (`store` / `xField` / `yField` / `seriesField`)
+as a standalone interface, but `AbstractChartOptions` already carries
+those same fields directly, and that flat shape is what
+`AbstractChart.setStore` and every chart's construction options
+actually route through. The interface had no reference anywhere in the
+library, its tests, or its docs.
+
+**Who needs to act.** Nobody: `ChartStoreBinding` was never a chart's
+actual construction-time shape and had no known consumers. Pass
+`store` / `xField` / `yField` / `seriesField` directly on the chart's
+options, as already documented.
+
+## `elkWorkerUrl` / `workerUrl` are removed
+
+**What changed and why.** `DiagramViewOptions.elkWorkerUrl` and
+`ElkLayoutEngineOptions.workerUrl` never achieved off-thread ELK
+layout: this library always imports elkjs's `elk.bundled.js`, whose
+own worker-availability check can never succeed against that module,
+so a `workerUrl` / `elkWorkerUrl` alone silently ran layout on the
+main thread regardless (with a console warning logged by elkjs
+itself). `elkWorkerFactory` already covers real off-thread execution
+in one line, so the non-functional option is removed rather than
+made to work.
+
+**Who needs to act.** Any `elkWorkerUrl` option passed to
+`DiagramView`, or `workerUrl` passed to `ElkLayoutEngine`, is now a
+compile error. Replace it with a worker factory:
+
+```typescript
+// Before
+DiagramView({ data, elkWorkerUrl: "https://example.com/elk-worker.js" });
+
+// After
+DiagramView({
+    data,
+    elkWorkerFactory: () =>
+        new Worker(new URL("elkjs/lib/elk-worker.min.js", import.meta.url), { type: "classic" }),
+});
+```

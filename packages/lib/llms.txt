@@ -64,6 +64,12 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - Single-select scrollable list → **List** · `@jimka/typescript-ui/component/list` · A scrollable single-selection list box. · docs/components/List.md
 - Multi-select list → **MultiSelectList** · `@jimka/typescript-ui/component/list` · A scrollable multi-selection list box. · docs/components/MultiSelectList.md
 
+### Charts / Diagrams
+- Line chart over a linear or time x axis → **LineChart** · `@jimka/typescript-ui/component/chart` · A line chart: one path per series over a linear or time x axis and a linear y axis, with optional point markers. The path `d` string is gen… · docs/components/LineChart.md
+- Grouped or stacked bar chart over a category axis → **BarChart** · `@jimka/typescript-ui/component/chart` · A bar chart: a discrete band x axis and a linear y axis. Multiple series are drawn grouped (side by side) or stacked. Bar rectangles are ha… · docs/components/BarChart.md
+- Clickable series legend for a chart → **ChartLegend** · `@jimka/typescript-ui/component/chart` · A clickable chart legend: one row per series (colour swatch + name). A click on a row emits `"toggle"(seriesIndex)` so the owning chart can… · docs/components/ChartLegend.md
+- Auto-laid-out graph / diagram viewer with pan and zoom → **DiagramView** · `@jimka/typescript-ui/component/diagram` · A read-only automatic-layout graph viewer with pan, zoom, and node selection. · docs/components/DiagramView.md
+
 ### Display
 - Heading / section title text → **Header** · `@jimka/typescript-ui/component/display` · A header bar component containing a left-aligned text label. · docs/components/Header.md
 - Image → **Image** · `@jimka/typescript-ui/component/display` · An image component backed by an `<img>` element. · docs/components/Image.md
@@ -78,6 +84,9 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - Spinning busy indicator → **ProgressSpinner** · `@jimka/typescript-ui/component/display` · A circular loading indicator rendered as a rotating arc. · docs/components/ProgressSpinner.md
 - Page-through pagination controls → **PaginationBar** · `@jimka/typescript-ui/component/display` · A horizontal navigation bar for stepping through pages of a paginated AbstractStore. · docs/components/PaginationBar.md
 - Custom 2D drawing surface → **Canvas** · `@jimka/typescript-ui/component/display` · A raster drawing surface backed by a `<canvas>` element and a live `CanvasRenderingContext2D`. · docs/components/Canvas.md
+- Custom GPU drawing surface (WebGL2) → **WebGLCanvas** · `@jimka/typescript-ui/component/display` · A GPU drawing surface backed by a `<canvas>` element and a live `WebGL2RenderingContext`. · docs/components/WebGLCanvas.md
+- Bare native video surface → **Video** · `@jimka/typescript-ui/component/display` · A native `<video>` surface primitive — the media twin of `Image`. · docs/components/Video.md
+- Video player with a themable control bar → **VideoPlayer** · `@jimka/typescript-ui/component/display` · A video player: a native `<video>` surface (Video) framed by a control bar built entirely from this library's own components — play / pause… · docs/components/VideoPlayer.md
 - Bulleted (unordered) list of items → **BulletedList** · `@jimka/typescript-ui/component/list` · An unordered (bulleted) list component. · docs/components/BulletedList.md
 - Numbered (ordered) list of items → **NumberedList** · `@jimka/typescript-ui/component/list` · An ordered (numbered) list component. · docs/components/NumberedList.md
 

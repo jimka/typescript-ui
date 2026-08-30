@@ -5,7 +5,7 @@ import { bandScale, linearScale, isBandScale, pointsYBounds } from "~/component/
 import type { ChartScale } from "~/component/chart/Scale.js";
 import type { ScaleBand } from "d3-scale";
 import { callable } from "~/core/Callable.js";
-import type { ChartPoint, ChartSeriesModel, PlotRect } from "~/component/chart/types.js";
+import type { ChartSeriesModel, PlotRect } from "~/component/chart/types.js";
 
 /**
  * Construction-time options for {@link BarChart}.
@@ -45,9 +45,12 @@ class BarChart extends AbstractChart<BarChartOptions> {
      * body.
      *
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: BarChartOptions) {
-        super(options);
+    constructor(options?: BarChartOptions, subclassDefaults?: Partial<BarChartOptions>) {
+        super(options, subclassDefaults);
 
         if (options?.grouped !== undefined) {
             this.setGrouped(options.grouped);
@@ -97,15 +100,6 @@ class BarChart extends AbstractChart<BarChartOptions> {
         }
 
         return Array.from(values).sort((a, b) => a - b).map(String);
-    }
-
-    /**
-     * Flattens the points of every visible series (for the y-domain).
-     *
-     * @returns The visible points.
-     */
-    private visiblePoints(): ChartPoint[] {
-        return this._series.filter((m) => !m.hidden).flatMap((m) => m.points);
     }
 
     /**

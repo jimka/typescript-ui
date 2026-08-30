@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import type { AbstractStore } from "~/data/AbstractStore.js";
 import type { ElementPatch, Handle } from "~/core/DOM.js";
 
 /**
@@ -32,27 +31,6 @@ export interface ChartSeries {
      * its index.
      */
     color?: string;
-}
-
-/**
- * Field-accessor configuration for a store-bound chart — the record fields the
- * chart reads to build its series model. Mirrors the display/value-field shape
- * of a store-bound [`ComboBox`](/api/component/input/classes/ComboBox).
- *
- * @category Components
- */
-export interface ChartStoreBinding {
-    /** The store whose records supply the chart's data. */
-    store: AbstractStore;
-    /** Record field read for each point's `x` value. */
-    xField: string;
-    /** Record field read for each point's `y` value. */
-    yField: string;
-    /**
-     * Optional record field whose distinct values split the records into
-     * separate series. When absent all records form a single series.
-     */
-    seriesField?: string;
 }
 
 /**

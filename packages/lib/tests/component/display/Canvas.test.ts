@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Canvas } from '~/component/display/Canvas';
 import type { CanvasDrawCallback, CanvasOptions } from '~/component/display/Canvas';
+import { WebGLCanvas } from '~/component/display/WebGLCanvas';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
@@ -344,6 +345,29 @@ describe('Canvas seam signatures (U7)', () => {
 
     it('ModelledDOMSource.getDevicePixelRatio returns 1', () => {
         expect(DOM.source.getDevicePixelRatio()).toBe(1);
+    });
+});
+
+// E6 — the device-pixel-ratio watch collapses onto one module-level arm
+// shared by every `AbstractCanvasSurface`, instead of one `matchMedia` call
+// per instance. Both old and new code arm from `render()`, so the render
+// (not just construction) is what makes this case meaningful. Phrased as an
+// upper bound, not an equality: the module arms at most once per process, and
+// an earlier test in this run may already have done so.
+describe('Canvas + WebGLCanvas — shared device-pixel-ratio watch (E6)', () => {
+    it('renders three Canvas instances and one WebGLCanvas with at most one matchMedia call total', () => {
+        const spy = vi.spyOn(DOM.source, 'matchMedia');
+
+        const canvases = [new Canvas(), new Canvas(), new Canvas()];
+        const webgl = new WebGLCanvas();
+
+        for (const canvas of canvases) {
+            canvas.getElement(true);
+        }
+
+        webgl.getElement(true);
+
+        expect(spy.mock.calls.length).toBeLessThanOrEqual(1);
     });
 });
 

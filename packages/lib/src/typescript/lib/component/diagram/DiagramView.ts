@@ -214,21 +214,10 @@ export interface DiagramViewOptions extends PanelOptions {
     /** Default ELK layout options applied to every layout pass. */
     layoutOptions?: Record<string, string>;
     /**
-     * URL of a consumer-hosted `elk-worker.js`, requesting off-thread layout.
-     * With the `elk.bundled.js` module this view's engine imports, elkjs's
-     * own worker-availability check always fails, so `workerUrl` alone never
-     * actually constructs a Worker; layout still runs on the main thread, via
-     * elkjs's own fallback. Pass {@link DiagramViewOptions.elkWorkerFactory}
-     * for real off-thread execution.
-     */
-    elkWorkerUrl?: string;
-    /**
      * Factory returning a Web Worker for off-thread ELK layout. When set,
      * ELK's compute runs in the returned worker. Construct it in your app so
      * your bundler emits the worker, e.g.
      * `() => new Worker(new URL("elkjs/lib/elk-worker.min.js", import.meta.url), { type: "classic" })`.
-     * Takes precedence over {@link DiagramViewOptions.elkWorkerUrl} when both
-     * are set.
      */
     elkWorkerFactory?: () => Worker;
     /** Minimum zoom factor (default 0.25). */
@@ -458,10 +447,17 @@ class DiagramView extends Panel<DiagramViewOptions> {
     private readonly _onFit:     () => void = () => this.zoomToFit();
     private readonly _onReset:   () => void = () => this.resetView();
 
-    constructor(options?: DiagramViewOptions) {
+    /**
+     * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(options?: DiagramViewOptions, subclassDefaults?: Partial<DiagramViewOptions>) {
         super(options, {
             zoom: DEFAULT_ZOOM, minZoom: DEFAULT_MIN_ZOOM, maxZoom: DEFAULT_MAX_ZOOM,
             controls: true, simplifyAtLowZoom: true,
+            ...(subclassDefaults ?? {}),
         });
 
         this.setLayoutManager(new Anchor());
@@ -523,7 +519,6 @@ class DiagramView extends Panel<DiagramViewOptions> {
     protected createEngine(): ElkLayoutEngine {
         return new ElkLayoutEngine({
             workerFactory: this._options.elkWorkerFactory,
-            workerUrl:     this._options.elkWorkerUrl,
         });
     }
 
@@ -560,6 +555,8 @@ class DiagramView extends Panel<DiagramViewOptions> {
             }
         }
 
+        this.discardIncomingNodes();
+
         this._engine.dispose();
 
         super.destructor();
@@ -578,7 +575,6 @@ class DiagramView extends Panel<DiagramViewOptions> {
         if (options.nodeRenderer      !== undefined) this._options.nodeRenderer      = options.nodeRenderer;
         if (options.groupRenderer     !== undefined) this._options.groupRenderer     = options.groupRenderer;
         if (options.layoutOptions     !== undefined) this._options.layoutOptions     = options.layoutOptions;
-        if (options.elkWorkerUrl      !== undefined) this._options.elkWorkerUrl      = options.elkWorkerUrl;
         if (options.elkWorkerFactory  !== undefined) this._options.elkWorkerFactory  = options.elkWorkerFactory;
         if (options.minZoom           !== undefined) this._options.minZoom           = options.minZoom;
         if (options.maxZoom           !== undefined) this._options.maxZoom           = options.maxZoom;
@@ -676,8 +672,16 @@ class DiagramView extends Panel<DiagramViewOptions> {
         build(data.nodes);
     }
 
-    /** Forgets the un-promoted incoming components; never mounted, so nothing to detach. */
+    /**
+     * Disposes and forgets the un-promoted incoming components. Never mounted,
+     * so there is nothing to detach — but each holds a theme subscription (and
+     * whatever else its constructor registered) released only by `dispose()`.
+     */
     private discardIncomingNodes(): void {
+        for (const component of this._incomingComponents.values()) {
+            component.dispose();
+        }
+
         this._incomingComponents.clear();
         this._incomingRects.clear();
         this._incomingData.clear();
@@ -896,6 +900,10 @@ class DiagramView extends Panel<DiagramViewOptions> {
         this._edgeLayer.setY(0);
         this._edgeLayer.setPreferredSize({ width: result.width, height: result.height });
         this._edgeLayer.setEdges(this.joinEdgeStyles(result.edges));
+
+        this._nodeLayer.setX(0);
+        this._nodeLayer.setY(0);
+        this._nodeLayer.setPreferredSize({ width: result.width, height: result.height });
 
         this.applyContainerZIndex();
 
@@ -1904,6 +1912,24 @@ class DiagramView extends Panel<DiagramViewOptions> {
     }
 
     /**
+     * The graph-space point under a pointer event, inverting the
+     * `translate(panX,panY) scale(zoom)` transform `applyTransformToHost`
+     * writes.
+     *
+     * @param event - The raw mouse event.
+     * @returns The point in unscaled graph coordinates.
+     */
+    private graphPointFor(event: MouseEvent): { x: number; y: number } {
+        const rect = DOM.source.getViewportRect(this);
+        const zoom = this.getZoom();
+
+        return {
+            x: (event.clientX - rect.left - this._panX) / zoom,
+            y: (event.clientY - rect.top  - this._panY) / zoom,
+        };
+    }
+
+    /**
      * Resolves the node id under a raw DOM event: delegates to `nodeIdAt`
      * when the view is not simplified (no node components exist to compare
      * against `nodeIdAt`'s element-containment test), else resolves the
@@ -1934,11 +1960,9 @@ class DiagramView extends Panel<DiagramViewOptions> {
             return null;
         }
 
-        const rect = DOM.source.getViewportRect(this);
-        const zoom = this.getZoom();
+        const point = this.graphPointFor(event);
 
-        return this.nodeIdAtGraphPoint((event.clientX - rect.left - this._panX) / zoom,
-            (event.clientY - rect.top - this._panY) / zoom);
+        return this.nodeIdAtGraphPoint(point.x, point.y);
     }
 
     /**
@@ -1998,12 +2022,8 @@ class DiagramView extends Panel<DiagramViewOptions> {
             return;
         }
 
-        const rect = DOM.source.getViewportRect(this);
-        const zoom = this.getZoom();
-        const gx   = (event.clientX - rect.left - this._panX) / zoom;
-        const gy   = (event.clientY - rect.top  - this._panY) / zoom;
-
-        const routes = this._edgeLayer.edgesNear(gx, gy);
+        const point  = this.graphPointFor(event);
+        const routes = this._edgeLayer.edgesNear(point.x, point.y);
 
         if (routes.length === 0) {
             this.leaveEdges();

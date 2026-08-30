@@ -96,9 +96,12 @@ class LineChart extends AbstractChart<LineChartOptions> {
      * constructor body (after `super()` has wired the base chart).
      *
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: LineChartOptions) {
-        super(options);
+    constructor(options?: LineChartOptions, subclassDefaults?: Partial<LineChartOptions>) {
+        super(options, subclassDefaults);
 
         this.dispatchLineOptions(options);
     }
@@ -196,16 +199,6 @@ class LineChart extends AbstractChart<LineChartOptions> {
      */
     getXScaleType(): LineChartScaleType {
         return this._options.xScaleType ?? "linear";
-    }
-
-    /**
-     * Flattens the points of every visible series into one array (for domain
-     * computation).
-     *
-     * @returns The visible points.
-     */
-    private visiblePoints(): ChartPoint[] {
-        return this._series.filter((m) => !m.hidden).flatMap((m) => m.points);
     }
 
     /**

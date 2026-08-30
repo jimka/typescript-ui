@@ -259,6 +259,12 @@ describe('DiagramView — layout application (U2)', () => {
         // The host box always equals the unscaled graph bounds — zoom lives
         // only in the transform's scale() factor (see applyTransformToHost).
         expect(view._contentHost.getPreferredSize()).toEqual({ width: 160, height: 230 });
+
+        // The node layer gets the same box as the content host and edge
+        // layer, so its low-zoom simplified-node rects have somewhere to
+        // render instead of being clipped by the framework tier's
+        // overflow: hidden.
+        expect(view._nodeLayer.getPreferredSize()).toEqual({ width: 160, height: 230 });
     });
 });
 
@@ -2841,7 +2847,7 @@ describe('DiagramView — disposal', () => {
         expect(layouts).toEqual([]);
     });
 
-    it('D4: a layout rejecting after disposal does not strip the view\'s nodes', async () => {
+    it('D4: a layout rejecting after disposal does not discard the incoming nodes a second time', async () => {
         stubEngine = new StubEngine(fixedResult(), 'defer');
 
         // No `await flush()` here: the first layout must still be genuinely
@@ -2850,17 +2856,25 @@ describe('DiagramView — disposal', () => {
 
         expect(view._incomingComponents.size).toBe(2);
 
+        const discard = vi.spyOn(view, 'discardIncomingNodes');
+
         view.dispose();
+
+        // The destructor now discards the still-incoming build itself (the
+        // theme-listener-leak fix — see DiagramView.incomingNodeDisposal.test.ts),
+        // so the map is already empty once `dispose()` returns.
+        expect(view._incomingComponents.size).toBe(0);
+        expect(discard).toHaveBeenCalledTimes(1);
+
         stubEngine.rejectDeferred(0, new Error('elkjs unavailable'));
 
         await flush();
 
-        // `handleLayoutFailure` discards the incoming nodes when it runs, so
-        // an untouched incoming map is what proves its generation guard
-        // dropped this stale failure. Asserting only "no unhandled
-        // rejection" would pass for any implementation — `relayout` always
-        // attaches a `.catch`.
-        expect(view._incomingComponents.size).toBe(2);
+        // `handleLayoutFailure`'s generation guard must drop this stale
+        // rejection before reaching its own `discardIncomingNodes()` call —
+        // asserting only "no unhandled rejection" would pass for any
+        // implementation, since `relayout` always attaches a `.catch`.
+        expect(discard).toHaveBeenCalledTimes(1);
     });
 
     it('D5: a setData that swaps out a node generation disposes the evicted components, not just detaches them', async () => {

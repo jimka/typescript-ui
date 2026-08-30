@@ -73,8 +73,14 @@ class DiagramNodeLayer extends Component<ComponentOptions> {
     /** Ids of the emphasised nodes; every other drawn rect dims. */
     private _emphasis: ReadonlySet<string> = new Set();
 
-    constructor(options?: ComponentOptions) {
-        super(options);
+    /**
+     * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(options?: ComponentOptions, subclassDefaults?: Partial<ComponentOptions>) {
+        super(options, subclassDefaults);
 
         // Non-interactive overlay: nothing hit-tests against a rect —
         // `DiagramView.nodeIdAtGraphPoint` resolves clicks geometrically
@@ -86,6 +92,10 @@ class DiagramNodeLayer extends Component<ComponentOptions> {
         // promising one of its own — a press over a simplified node still
         // pans (mirrors `DiagramEdgeLayer`'s own reasoning for its root).
         this.setCursor("inherit");
+
+        // A marker or halo'd label reaching past the graph bounds must not
+        // clip at the layer edge.
+        this.setOverflow("visible");
     }
 
     /**

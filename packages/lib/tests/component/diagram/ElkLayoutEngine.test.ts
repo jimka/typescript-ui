@@ -6,7 +6,7 @@ import type { DiagramData } from '~/component/diagram/DiagramModel';
 // itself. `elkjs/lib/elk.bundled.js` is mocked so the constructor call and the
 // `layout` call can be observed/controlled without a real ELK/worker.
 
-let lastConstructorOptions: { workerFactory?: () => Worker; workerUrl?: string } | undefined;
+let lastConstructorOptions: { workerFactory?: () => Worker } | undefined;
 const layoutMock = vi.fn();
 // Records the constructor options of whichever instance was terminated, so a
 // test can tell the worker-backed instance from the main-thread one. Real
@@ -38,8 +38,8 @@ let onConstruct: (() => void) | null = null;
 
 vi.mock('elkjs/lib/elk.bundled.js', () => {
     class MockELK {
-        options?: { workerFactory?: () => Worker; workerUrl?: string };
-        constructor(options?: { workerFactory?: () => Worker; workerUrl?: string }) {
+        options?: { workerFactory?: () => Worker };
+        constructor(options?: { workerFactory?: () => Worker }) {
             if (constructionError) {
                 const error = constructionError;
                 constructionError = null;
@@ -471,7 +471,7 @@ describe('ElkLayoutEngine — worker modes and fallback', () => {
         onConstruct = null;
     });
 
-    it('with no factory and no url, builds a plain ELK() and resolves', async () => {
+    it('with no factory, builds a plain ELK() and resolves', async () => {
         const engine = new ElkLayoutEngine();
         const result = await engine.layout(DATA, SIZES);
 
@@ -487,14 +487,6 @@ describe('ElkLayoutEngine — worker modes and fallback', () => {
 
         expect(factory).toHaveBeenCalled();
         expect(lastConstructorOptions).toEqual({ workerFactory: factory });
-    });
-
-    it('with workerUrl provided, builds new ELK({ workerUrl }) and resolves', async () => {
-        const engine = new ElkLayoutEngine({ workerUrl: 'https://example.com/elk-worker.js' });
-
-        await engine.layout(DATA, SIZES);
-
-        expect(lastConstructorOptions).toEqual({ workerUrl: 'https://example.com/elk-worker.js' });
     });
 
     it('falls back to the main thread when the workerFactory throws (e.g. Worker undefined / CSP)', async () => {
@@ -520,29 +512,6 @@ describe('ElkLayoutEngine — worker modes and fallback', () => {
 
         expect(layoutMock).toHaveBeenCalledTimes(2);
         expect(result.nodes).toEqual([]);
-    });
-
-    it('falls back to the main thread when a workerUrl-backed layout fails', async () => {
-        layoutMock.mockRejectedValueOnce(new Error('404'));
-        layoutMock.mockResolvedValueOnce({ id: 'root', children: [], edges: [] });
-
-        const engine = new ElkLayoutEngine({ workerUrl: 'https://example.com/elk-worker.js' });
-        const result = await engine.layout(DATA, SIZES);
-
-        expect(layoutMock).toHaveBeenCalledTimes(2);
-        expect(result.nodes).toEqual([]);
-    });
-
-    it('prefers workerFactory over workerUrl when both are set', async () => {
-        const factory = vi.fn((): Worker => ({}) as Worker);
-        const engine = new ElkLayoutEngine({
-            workerFactory: factory,
-            workerUrl: 'https://example.com/elk-worker.js',
-        });
-
-        await engine.layout(DATA, SIZES);
-
-        expect(lastConstructorOptions).toEqual({ workerFactory: factory });
     });
 
     it('propagates a main-thread failure (elkjs genuinely broken) without retrying', async () => {
@@ -636,15 +605,6 @@ describe('ElkLayoutEngine — disposal', () => {
 
     it('E3: does not terminate a main-thread instance', async () => {
         const engine = new ElkLayoutEngine();
-
-        await engine.layout(DATA, SIZES);
-        engine.dispose();
-
-        expect(terminateWorkerMock).not.toHaveBeenCalled();
-    });
-
-    it('E4: does not terminate a workerUrl-only instance (elkjs never built a real worker)', async () => {
-        const engine = new ElkLayoutEngine({ workerUrl: 'https://example.com/elk-worker.js' });
 
         await engine.layout(DATA, SIZES);
         engine.dispose();

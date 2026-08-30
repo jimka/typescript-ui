@@ -11,7 +11,6 @@ export type { AbstractChartOptions, ChartListeners, ChartLegendPosition } from "
 export type {
     ChartPoint,
     ChartSeries,
-    ChartStoreBinding,
     ChartSelectionEvent,
     ChartSeriesModel,
 } from "~/component/chart/types.js";

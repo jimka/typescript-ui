@@ -420,8 +420,14 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
     /** Per-instance crow's-foot marker ids, keyed by marker kind. */
     private readonly _crowsFootMarkerIds: Record<Exclude<DiagramEdgeMarker, "arrow">, string>;
 
-    constructor(options?: ComponentOptions) {
-        super(options);
+    /**
+     * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(options?: ComponentOptions, subclassDefaults?: Partial<ComponentOptions>) {
+        super(options, subclassDefaults);
 
         this._markerId = `${this.getId()}-arrow`;
         this._crowsFootMarkerIds = Object.fromEntries(
@@ -437,6 +443,10 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
         // Inheriting through to the view root's live grab/grabbing write is
         // what lets an edge press pan the canvas honestly.
         this.setCursor("inherit");
+
+        // A marker or halo'd label reaching past the graph bounds must not
+        // clip at the layer edge.
+        this.setOverflow("visible");
     }
 
     /**
@@ -471,8 +481,9 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
      * what creates the element, which is not the case here — so without the
      * deferral below the sole draw for those routes is silently lost and the
      * diagram shows nodes with no edges until some later `setEdges` happens to
-     * find an element. {@link Component.onFirstLayout} exists for exactly this
-     * "content built before the host attaches it" case.
+     * find an element. The layer therefore defers the draw to its first
+     * connected layout, which is what this "content built before the host
+     * attaches it" case needs.
      *
      * Also rebuilds the per-edge box cache from the new routes and re-derives
      * which edges the standing residency rect admits, so a graph swap culls
