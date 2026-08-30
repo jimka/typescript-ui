@@ -2152,6 +2152,101 @@ describe('Column window — keyboard cell-editor navigation', () => {
 
         expect(b.getSelectedRecords()[0]).toBe(visible[2]);
     });
+
+    // Two-row, boolean-column fixture for the Enter-reserved-for-navigation
+    // cases below — mirrors `twoRowBody` above, but built over `wideModel`
+    // so a column can be typed 'boolean'.
+    async function twoRowWideBody(colTypes: Record<number, string>): Promise<Body> {
+        const model = wideModel(4, colTypes);
+        const store = new MemoryStore(model, [
+            { c0: 'r0c0', c1: 'v1', c2: 'r0c2', c3: 'r0c3' },
+            { c0: 'r1c0', c1: 'v1', c2: 'r1c2', c3: 'r1c3' },
+        ]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(400);
+        b.setHeight(1000); // tall enough that both rows are pooled
+        (b as any).renderWindow(400, [100, 100, 100, 100]);
+
+        return b;
+    }
+
+    it('Enter on a focused boolean cell navigates down a row instead of toggling it', async () => {
+        // Regression: Body.onKeyDown's Enter/Space branch used to call
+        // startEditAtFocusedCell() unconditionally, so Enter on a
+        // BooleanCell toggled it the same as Space. Enter is reserved for
+        // cell-to-cell navigation everywhere else in this feature; Space is
+        // the deliberate toggle key.
+        const b       = await twoRowWideBody({ 1: 'boolean' });
+        const row     = (b as any).getRowPool()[0];
+        const visible = (b as any).getVisibleRecords();
+        const priv    = b as any;
+
+        b.selectRecord(visible[0]);
+        priv._focusedColIndex = 1;
+
+        const boolCell  = row.getComponents()[1] as BooleanCell;
+        const startEdit = vi.spyOn(boolCell, 'startEdit');
+
+        priv.onKeyDown({ key: 'Enter', shiftKey: false, preventDefault: () => {} });
+
+        expect(startEdit).not.toHaveBeenCalled();
+        expect(b.getSelectedRecords()[0]).toBe(visible[1]);
+        expect(priv._focusedColIndex).toBe(1);
+    });
+
+    it('Shift+Enter on a focused boolean cell navigates up a row instead of toggling it', async () => {
+        const b       = await twoRowWideBody({ 1: 'boolean' });
+        const row     = (b as any).getRowPool()[1];
+        const visible = (b as any).getVisibleRecords();
+        const priv    = b as any;
+
+        b.selectRecord(visible[1]);
+        priv._focusedColIndex = 1;
+
+        const boolCell  = row.getComponents()[1] as BooleanCell;
+        const startEdit = vi.spyOn(boolCell, 'startEdit');
+
+        priv.onKeyDown({ key: 'Enter', shiftKey: true, preventDefault: () => {} });
+
+        expect(startEdit).not.toHaveBeenCalled();
+        expect(b.getSelectedRecords()[0]).toBe(visible[0]);
+    });
+
+    it('Space on a focused boolean cell still toggles it', async () => {
+        const b       = await twoRowWideBody({ 1: 'boolean' });
+        const row     = (b as any).getRowPool()[0];
+        const visible = (b as any).getVisibleRecords();
+        const priv    = b as any;
+
+        b.selectRecord(visible[0]);
+        priv._focusedColIndex = 1;
+
+        const boolCell  = row.getComponents()[1] as BooleanCell;
+        const startEdit = vi.spyOn(boolCell, 'startEdit');
+
+        priv.onKeyDown({ key: ' ', shiftKey: false, preventDefault: () => {} });
+
+        expect(startEdit).toHaveBeenCalled();
+        expect(b.getSelectedRecords()[0]).toBe(visible[0]); // unmoved — Space doesn't navigate
+    });
+
+    it('Enter on a focused non-boolean cell still starts editing it there', async () => {
+        const b       = await twoRowWideBody({ 1: 'boolean' });
+        const row     = (b as any).getRowPool()[0];
+        const visible = (b as any).getVisibleRecords();
+        const priv    = b as any;
+
+        b.selectRecord(visible[0]);
+        priv._focusedColIndex = 0;
+
+        priv.onKeyDown({ key: 'Enter', shiftKey: false, preventDefault: () => {} });
+
+        expect((row.getComponents()[0] as Cell<any>).isEditing()).toBe(true);
+        expect(b.getSelectedRecords()[0]).toBe(visible[0]); // unmoved — opened an editor instead
+    });
 });
 
 describe('Column window — slot order with tied field order', () => {

@@ -2444,7 +2444,9 @@ class TableBody extends VirtualRowView<Row> {
 
     /**
      * Handles keyboard navigation: ArrowUp/Down/Home/End move row selection; ArrowLeft/Right
-     * move column focus; PageUp/Down move by a viewport-height page; Enter starts cell edit.
+     * move column focus; PageUp/Down move by a viewport-height page; Enter starts cell edit,
+     * or, on a cell with no distinct edit session (see {@link Cell.hasImmediateEditCommit}),
+     * navigates to the next/previous row instead; Space always starts the edit (or toggle).
      * Ctrl/Cmd+C copies the cell range, unless a live sub-cell text selection
      * exists, in which case the browser's own copy runs instead.
      *
@@ -2506,7 +2508,13 @@ class TableBody extends VirtualRowView<Row> {
             return { prevent: true };
         }
 
-        // Enter/Space — start editing the focused cell
+        // Enter/Space — start editing the focused cell. Space always does,
+        // including toggling an immediate-commit cell's checkbox (see
+        // hasImmediateEditCommit). Enter does too, EXCEPT on such a cell:
+        // toggling it isn't "starting an edit" the way opening a text editor
+        // is, and Enter is reserved for cell-to-cell navigation everywhere
+        // else in this feature (see Cell.onKeyDown), so it navigates like it
+        // does there instead — Space remains the deliberate toggle key.
         if (e.key === 'Enter' || e.key === ' ') {
             if (!this._anchorRecord) {
                 return { prevent: true };
@@ -2517,7 +2525,11 @@ class TableBody extends VirtualRowView<Row> {
             this.scrollColumnIntoView(this._focusedColIndex);
             this.renderWindow();
 
-            this.startEditAtFocusedCell();
+            if (e.key === 'Enter' && this.resolveFocusedCell()?.hasImmediateEditCommit()) {
+                this.navigateFromEditingCell(e.shiftKey ? "up" : "down");
+            } else {
+                this.startEditAtFocusedCell();
+            }
 
             return { prevent: true };
         }
@@ -2606,11 +2618,12 @@ class TableBody extends VirtualRowView<Row> {
 
     /**
      * Starts editing the cell at the current anchor row + `_focusedColIndex`,
-     * if one is bound. Used by the Enter/Space keyboard-start-edit path,
-     * where starting a {@link BooleanCell}'s "edit" — an immediate checkbox
-     * toggle, since it has no distinct edit session (see
-     * {@link BooleanCell.startEdit}) — is the correct, existing behaviour
-     * for a deliberate keypress on a cell the user already has focused.
+     * if one is bound. Used by the Enter/Space keyboard-start-edit path for
+     * Space (always) and for Enter on a cell that opens a distinct edit
+     * session. Enter on a {@link BooleanCell} — whose "edit" is an immediate
+     * checkbox toggle with no distinct session (see
+     * {@link BooleanCell.startEdit}) — navigates instead of calling this; see
+     * the caller.
      */
     private startEditAtFocusedCell(): void {
         this.resolveFocusedCell()?.startEdit();
