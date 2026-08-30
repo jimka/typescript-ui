@@ -2477,7 +2477,7 @@ class TableBody extends VirtualRowView<Row> {
 
         const navigable = new Set([
             'ArrowDown', 'ArrowUp', 'Home', 'End',
-            'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Enter', ' '
+            'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Enter', ' ', 'Tab'
         ]);
 
         if (!navigable.has(e.key)) {
@@ -2518,6 +2518,22 @@ class TableBody extends VirtualRowView<Row> {
             this.renderWindow();
 
             this.startEditAtFocusedCell();
+
+            return { prevent: true };
+        }
+
+        // Tab/Shift+Tab — reached when Body itself holds keyboard focus
+        // rather than a cell's editor, which happens whenever
+        // `openEditingAfterNavigate` lands on a cell it doesn't open an
+        // editor for (an immediate-commit cell, a read-only cell, …) and
+        // calls `this.focus()`. Without this branch, navigation would
+        // silently dead-end there: the next Tab keydown targets Body's own
+        // element, and `Cell.onKeyDown`'s Tab handling only ever fires while
+        // an editor is actually focused. Reuses the same
+        // `navigateFromEditingCell` the editing cell's own Tab handling
+        // calls, so the clamp and re-open-editor behaviour match exactly.
+        if (e.key === 'Tab') {
+            this.navigateFromEditingCell(e.shiftKey ? "left" : "right");
 
             return { prevent: true };
         }

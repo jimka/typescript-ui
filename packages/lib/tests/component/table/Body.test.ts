@@ -2037,6 +2037,32 @@ describe('Column window — keyboard cell-editor navigation', () => {
         expect(focus).toHaveBeenCalled();
     });
 
+    it('Tab keeps working after landing on a boolean column — Body itself must still handle Tab once focus returns to it', async () => {
+        // Regression: landing on an immediate-commit cell (BooleanCell) sends
+        // focus back to the Body container instead of opening an editor (see
+        // the tests above). From there, the *next* Tab keydown targets Body's
+        // own element, not any cell's editor — so Body.onKeyDown must treat
+        // Tab/Shift+Tab as navigable too, or navigation silently dead-ends the
+        // moment it passes over any cell that doesn't open an editor.
+        const b       = await wideBody(4, 400, 0, { types: { 1: 'boolean' } });
+        const row     = (b as any).getRowPool()[0];
+        const visible = (b as any).getVisibleRecords();
+        const priv    = b as any;
+
+        b.selectRecord(visible[0]);
+
+        const cell = row.getComponents()[0] as Cell<any>;
+        cell.startEdit();
+        cell.onKeyDown({ detail: { keyCode: 9, shiftKey: false } } as any); // lands on column 1 (boolean)
+
+        expect(priv._focusedColIndex).toBe(1);
+
+        priv.onKeyDown({ key: 'Tab', shiftKey: false, preventDefault: () => {} });
+
+        expect(priv._focusedColIndex).toBe(2);
+        expect((row.getComponents()[2] as Cell<any>).isEditing()).toBe(true);
+    });
+
     it('Tab onto a read-only cell commits and moves the focus ring, but does not open an editor there, and returns focus to the body', async () => {
         const configs = new Map<string, ColumnConfig>([['c1', { field: 'c1', readOnly: true }]]);
         const b       = await wideBody(4, 400, 0, { configs });
