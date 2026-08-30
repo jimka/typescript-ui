@@ -44,7 +44,44 @@ function lastSetAttr(attr: string): unknown {
     return value;
 }
 
+/**
+ * The class-hierarchy-cascade prefix of the `addClass` array from the first
+ * `apply` write that adds the framework's base `ts-ui-component` token
+ * (mirrors `ClassHierarchyCascade.test.ts`'s "case 2") — everything up to
+ * and including the leaf class name. A style trait's own class token and the
+ * height value-class token (`h<h>px`) are appended after the leaf name in
+ * the same write; both are covered by their own dedicated test files, so
+ * this helper trims them rather than pinning their incidental values here.
+ */
+function baseClassChainPrefix(writes: RecordingDOMSink['writes'], leafClassName: string): string[] | undefined {
+    for (const w of writes) {
+        if (w.op !== 'apply') {
+            continue;
+        }
+
+        const patch = w.args[1] as { addClass?: string[] };
+
+        if (Array.isArray(patch.addClass) && patch.addClass.includes('ts-ui-component')) {
+            const leafIndex = patch.addClass.indexOf(leafClassName);
+
+            return leafIndex === -1 ? patch.addClass : patch.addClass.slice(0, leafIndex + 1);
+        }
+    }
+
+    return undefined;
+}
+
 describe('UsernameField credential defaults', () => {
+    it('carries TextField in its class chain, between TextInput and UsernameField', () => {
+        const field = new UsernameField();
+
+        field.getElement(true);
+
+        expect(baseClassChainPrefix(sink.writes, 'UsernameField')).toEqual([
+            'ts-ui-component', 'AbstractInput', 'TextInput', 'TextField', 'UsernameField',
+        ]);
+    });
+
     it('defaults autocomplete to "username"', () => {
         const field = new UsernameField();
 
@@ -98,6 +135,16 @@ describe('UsernameField credential defaults', () => {
 });
 
 describe('PasswordField credential defaults', () => {
+    it('carries TextField in its class chain, between TextInput and PasswordField', () => {
+        const field = new PasswordField();
+
+        field.getElement(true);
+
+        expect(baseClassChainPrefix(sink.writes, 'PasswordField')).toEqual([
+            'ts-ui-component', 'AbstractInput', 'TextInput', 'TextField', 'PasswordField',
+        ]);
+    });
+
     it('defaults autocomplete to "current-password"', () => {
         const field = new PasswordField();
 
@@ -114,6 +161,14 @@ describe('PasswordField credential defaults', () => {
 
         expect(field.getName()).toBe('password');
         expect(lastSetAttr('name')).toBe('password');
+    });
+
+    it('renders type="password"', () => {
+        const field = new PasswordField();
+
+        field.getElement(true);
+
+        expect(lastSetAttr('type')).toBe('password');
     });
 
     it('newPassword: true switches autocomplete to "new-password"', () => {

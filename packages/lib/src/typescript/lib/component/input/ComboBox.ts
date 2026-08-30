@@ -26,6 +26,10 @@ import { ThemeManager } from "~/core/Theme.js";
 
 Glyph.register(chevron_down);
 
+// Preferred width on the very first call, before any caller constraint has
+// been resolved.
+const COMBO_BOX_DEFAULT_WIDTH = 200;
+
 /**
  * Construction-time options for {@link ComboBox}.
  *
@@ -839,28 +843,13 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * control renders at) plus the ComboBox's own vertical insets, padding, and
      * border — the identical sum `wrapInnerBaseline` re-adds — so a `ComboBox`
      * placed next to a `TextField` shares its row height and baseline without a
-     * UA `<input>` probe. Width is read back from the already-resolved
-     * constraint — a caller override, or the class default on the very first
-     * call — so only the height component changes on a theme change, mirroring
-     * `TextField.setBorder`'s own read-back technique.
+     * UA `<input>` probe.
      */
     protected updateHeight(): void {
-        const h = Util.singleLineBoxHeight(this.getInsets(), this.getPadding(), this.getBorderSize());
-
-        this.pinSingleLineBoxHeight(h);
-
-        const width = this.getPreferredSizeConstraint()?.width ?? 200;
-        this.setPreferredSize({ width, height: h });
-
-        const maxWidth = this.getMaxSizeConstraint()?.width ?? Number.MAX_SAFE_INTEGER;
-        this.setMaxSize({ width: maxWidth, height: h });
-
-        // Min-height pinned to the single-line box so the field can't be
-        // vertically compressed below one line; min-width preserves whatever
-        // was already resolved (a caller override, or 0 by default) instead of
-        // re-asserting a literal on every call.
-        const minWidth = this.getMinSizeConstraint()?.width ?? 0;
-        this.setMinSize({ width: minWidth, height: h });
+        this.applySingleLineBox(
+            Util.singleLineBoxHeight(this.getInsets(), this.getPadding(), this.getBorderSize()),
+            COMBO_BOX_DEFAULT_WIDTH,
+        );
     }
 
     /**

@@ -21,6 +21,15 @@ export interface FormOptions extends PanelOptions {
 }
 
 /**
+ * User-overridable defaults forwarded to `super` via the options bag. The
+ * cascade in `Component`'s constructor dispatches each setter once with the
+ * final value, so any field the caller supplied wins.
+ */
+const _defaultFormOptions: Partial<FormOptions> = {
+    tag: "form",
+};
+
+/**
  * A {@link Panel} that bakes the semantic `<form>` tag and wires the native
  * `submit` event to a single `onSubmit` callback.
  *
@@ -50,9 +59,12 @@ class Form<TOptions extends FormOptions = FormOptions> extends Panel<TOptions> {
 
     /**
      * @param options - Optional. Construction-time options applied to the form.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: TOptions) {
-        super(options, { tag: "form" } as Partial<TOptions>);
+    constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+        super(options, { ..._defaultFormOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>);
 
         // Wire after super() returns: Event.addListener needs the fully
         // constructed component, and this is the deferred-dispatch site the
