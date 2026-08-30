@@ -56,6 +56,15 @@ page resets to empty.
   is now one shared class, reached through a structural `HeadingScrollHost`
   interface so it depends on neither class concretely.
 
+### Layouts
+
+- **`Tab.setTabName(content, name)`** relabels a live tab's button and
+  re-lays out the strip — a tab's label was previously frozen at creation.
+- **`Tab`'s `"beforetabclose"` event** fires on the user close path (the ✕,
+  the context menu's *Close*, and every bulk-close row) before a tab is torn
+  down, and can be vetoed via its `TabCloseController.preventDefault()`. The
+  programmatic `closeTab` is not guarded by it.
+
 ## Fixed
 
 - `TreeRow`, `FieldSet`, `ComboBox`'s collapsed-control label, and the
