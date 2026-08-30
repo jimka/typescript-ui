@@ -155,6 +155,11 @@ export class Router {
      * Removes the `hashchange` (hash mode) or `popstate` (History mode)
      * listener. Safe to call when never started, or more than once.
      *
+     * `stop()` is the router's whole teardown surface. The window-level
+     * listener it removes is the only thing that holds a router once the app
+     * drops it; the private listener bag is a plain field collected with the
+     * instance, so there is nothing further to release.
+     *
      * @returns This router, for chaining.
      */
     stop(): this {

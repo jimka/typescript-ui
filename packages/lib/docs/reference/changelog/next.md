@@ -24,3 +24,19 @@ page resets to empty.
 - `Tree.setRendererFactory`, `AbstractSelectableList.setRendererFactory`,
   and `ComboBox.setRendererFactory` now dispose the renderer they replace on
   each row, instead of leaving the caller with no reference to release it.
+
+### Core
+
+- **`setId` on an already-rendered component now deletes the `#<old-id>`
+  rule it replaces instead of leaving it on the shared stylesheet.** A
+  `setId` call after first render swapped in a fresh per-instance
+  `StyleRule` for the new selector but never disposed the one it replaced,
+  leaving a dead rule behind for the life of the page. No consumer action
+  is needed.
+- **Re-registering an already-registered listener reference through
+  `Event.addListener` / `addSubtreeListener` now applies the new call's
+  `button` / `stop` / `prevent` options instead of silently keeping the
+  first registration's.** No consumer action is needed.
+- **`Event.addViewportListener` now ignores a repeat registration of the
+  same function reference instead of registering it a second time and
+  firing it twice.** No consumer action is needed.

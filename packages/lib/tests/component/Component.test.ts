@@ -24,6 +24,11 @@ function sizeHooks(component: Component): { _onPreferredSizeChange: unknown; _on
     return component as unknown as { _onPreferredSizeChange: unknown; _onConstraintSizeChange: unknown };
 }
 
+/** Reads a component's tracked component-scope selector set via a cast. */
+function ownedSelectors(component: Component): string[] {
+    return (component as unknown as { _ownedSelectors: string[] })._ownedSelectors;
+}
+
 describe('Component', () => {
     it('assigns a unique, non-empty id', () => {
         const a = new Component({});
@@ -682,5 +687,59 @@ describe('Component — touch-action survives applyStyle and folds a class defau
         component.getElement(true);
 
         expect(component.getTouchAction()).toBe('pan-y');
+    });
+});
+
+describe('Component — setId retires the previous style rule', () => {
+    beforeEach(() => installTestDOM(DOM_CONFIG));
+    afterEach(() => DOM.reset());
+
+    it('deletes the old rule when setId runs after render', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const c    = new Component({ backgroundColor: '#fff' });
+        c.getElement(true);
+        const id = c.getId();
+
+        c.setId('renamed');
+
+        expect(_ruleCacheHas('#' + id)).toBe(false);
+        expect(_ruleCacheHas('#renamed')).toBe(true);
+        expect(sink.writes).toContainEqual({ op: 'deleteStyleRule', args: ['#' + id] });
+    });
+
+    it('leaves no orphan tracked selector for a construction-time id', () => {
+        const c = new Component({ id: 'fixed-id', backgroundColor: '#fff' });
+
+        expect(ownedSelectors(c)).toEqual(['#fixed-id']);
+    });
+
+    it('changes nothing when re-setting the same id', () => {
+        const c = new Component({ backgroundColor: '#fff' });
+        c.getElement(true);
+        const id = c.getId();
+
+        // A rendered component also tracks its lazily-allocated resting-chrome
+        // isolation selector (`#<id>:not(.undisplayed):not(.invisible)`,
+        // materialised by `flushStyleBag` for the framework-baseline
+        // displayed/visible keys), so the tracked set has more than the bare
+        // `#<id>` entry — snapshot it rather than hard-coding its length.
+        const before = [...ownedSelectors(c)];
+
+        c.setId(id);
+
+        expect(ownedSelectors(c)).toEqual(before);
+        expect(_ruleCacheHas('#' + id)).toBe(true);
+    });
+
+    it('leaves no rule behind after teardown following a rename', () => {
+        const c = new Component({ backgroundColor: '#fff' });
+        c.getElement(true);
+        const oldId = c.getId();
+
+        c.setId('renamed');
+        (c as unknown as { destructor(): void }).destructor();
+
+        expect(_ruleCacheKeys().some((key) => key.startsWith('#' + oldId))).toBe(false);
+        expect(_ruleCacheKeys().some((key) => key.startsWith('#renamed'))).toBe(false);
     });
 });

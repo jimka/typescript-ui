@@ -158,6 +158,14 @@ export interface AbstractStoreOptions {
  * the view by calling `applyView()`. Consumers should read from `getRecords()` or
  * `getAt()` rather than accessing the raw arrays directly.
  *
+ * The store's listener bag needs no teardown hook. Nothing in the framework holds a
+ * store instance — there is no module-level store registry, and the shared sort/filter
+ * worker keys its snapshots by a plain string id with no back-reference — so a discarded
+ * store's bag is collected with it. The retention that does matter runs the other way: a
+ * long-lived store holding a subscription a destroyed component never removed. That is
+ * released by each component's own `destructor()` calling `store.off(…)`, not by anything
+ * the store could do.
+ *
  * @category Data
  */
 export abstract class AbstractStore {

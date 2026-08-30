@@ -93,7 +93,7 @@ class StyleAuditView extends Container {
      * for any non-empty title but never detaches it itself, the same reason
      * `DiagnosticsOverlay.teardown` detaches its own titled button's tooltip.
      */
-    protected override destructor(): void {
+    protected destructor(): void {
         Tooltip.detach(this._refreshButton);
         super.destructor();
     }
