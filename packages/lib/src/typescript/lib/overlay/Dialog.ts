@@ -430,6 +430,7 @@ class DialogTitleBar extends Component {
 class DialogButtonRow extends Component {
 
     private readonly _buttons : Button[] = [];
+    private readonly _configs : DialogButtonConfig[];
     private readonly _onButton: (result: DialogResult) => void;
 
     /**
@@ -439,6 +440,7 @@ class DialogButtonRow extends Component {
     constructor(configs: DialogButtonConfig[], onButton: (result: DialogResult) => void) {
         super();
 
+        this._configs  = configs;
         this._onButton = onButton;
 
         this.setBorder({
@@ -502,6 +504,29 @@ class DialogButtonRow extends Component {
         if (proceed) {
             this._onButton(result);
         }
+    }
+
+    /**
+     * Simulates a click on the button marked `primary`, running its `onClick`
+     * guard (if any) exactly as a real click would — see {@link handleClick}.
+     * Used by {@link Dialog.onEnter} so Enter-to-confirm never bypasses a
+     * primary button's own validation/submit work the way calling `hide`
+     * directly would.
+     *
+     * @returns `true` when a primary button exists (its click was
+     *   triggered, though `cfg.onClick`, if any, may still veto it);
+     *   `false` when no button is marked `primary`.
+     */
+    confirmPrimary(): boolean {
+        const cfg = this._configs.find(c => c.primary);
+
+        if (!cfg) {
+            return false;
+        }
+
+        void this.handleClick(cfg, cfg.result ?? 'cancel');
+
+        return true;
     }
 
     /**
@@ -1143,13 +1168,20 @@ class Dialog extends Component implements DismissableLayer {
     }
 
     /**
-     * Confirms the dialog on Enter by resolving the primary button's result,
-     * so a simple form submits like one without the caller wiring Enter itself.
+     * Confirms the dialog on Enter by simulating a click on the primary
+     * button — see {@link DialogButtonRow.confirmPrimary} — so a simple form
+     * submits like one without the caller wiring Enter itself, and a guarded
+     * primary action (e.g. an async `onClick` that does the dialog's real
+     * work and only closes on success) runs exactly as it would from a real
+     * click, rather than being skipped in favour of an unconditional close.
      *
-     * @remarks Deliberately inert when focus is on a `<textarea>` (Enter inserts
-     * a newline) or on a `<button>` (the button activates itself on Enter, and
-     * hijacking it would fire the wrong action). No-op when no button is marked
-     * `primary`, so a dialog with no clear default action does not submit blind.
+     * @remarks Deliberately inert when focus is on a `<textarea>` or a
+     * `contenteditable` host (a live `CodeEditor`'s CodeMirror surface is a
+     * `contenteditable` element, not a `<textarea>` — both need Enter to
+     * insert a newline, not confirm the dialog), or on a `<button>` (the
+     * button activates itself on Enter, and hijacking it would fire the
+     * wrong action). No-op when no button is marked `primary`, so a dialog
+     * with no clear default action does not submit blind.
      *
      * @param _e - The keydown event for the Enter press.
      * @returns `{ stop: true, prevent: true }` when Enter confirms the dialog; nothing when there is nothing to confirm.
@@ -1162,29 +1194,15 @@ class Dialog extends Component implements DismissableLayer {
             return;
         }
 
-        const result = this.primaryResult();
-
-        if (result === null) {
+        if (active && DOM.source.hasAttribute(active, 'contenteditable')) {
             return;
         }
 
-        this.hide(result);
+        if (!this._buttonRow.confirmPrimary()) {
+            return;
+        }
 
         return { stop: true, prevent: true };
-    }
-
-    /**
-     * Returns the result of the button marked `primary` in this dialog's
-     * resolved button set — the action Enter confirms — or `null` when none is
-     * primary.
-     *
-     * @returns The primary button's [`DialogResult`](/api/overlay/type-aliases/DialogResult), or `null`.
-     */
-    private primaryResult(): DialogResult | null {
-        const buttons = this._config.buttons ?? DEFAULT_BUTTONS;
-        const primary = buttons.find(b => b.primary);
-
-        return primary ? (primary.result ?? 'cancel') : null;
     }
 
     /**

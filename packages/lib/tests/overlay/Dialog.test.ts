@@ -31,15 +31,10 @@ function applyDisposition(e: KeyboardEvent, result: unknown): void {
     }
 }
 
-// White-box seam: widen the private Enter-confirm helpers so the primary-result
-// decision and the focus-guard can be exercised without a rendered DOM (the
-// end-to-end focus / keydown path needs querySelectorAll, which the offline DOM
-// stubs to []).
+// White-box seam: widen the private Enter-confirm helpers so the focus-guard
+// can be exercised without a rendered DOM (the end-to-end focus / keydown path
+// needs querySelectorAll, which the offline DOM stubs to []).
 class TestDialog extends Dialog {
-    public primary(): string | null {
-        return (this as any).primaryResult();
-    }
-
     public enter(e: KeyboardEvent): void {
         applyDisposition(e, (this as any).onEnter(e));
     }
@@ -230,15 +225,7 @@ describe('Dialog — resizeToContent', () => {
 describe('Dialog — Enter confirms the primary button', () => {
     afterEach(() => DOM.reset());
 
-    it('primaryResult() resolves the primary button (default Ok → confirm)', () => {
-        installTestDOM(CONFIG);
-
-        const dialog = new TestDialog({ title: 'T', message: 'M' });
-
-        expect(dialog.primary()).toBe('confirm');
-    });
-
-    it('primaryResult() follows which button is marked primary', () => {
+    it('Enter follows which button is marked primary, not button order', () => {
         installTestDOM(CONFIG);
 
         const dialog = new TestDialog({
@@ -246,21 +233,67 @@ describe('Dialog — Enter confirms the primary button', () => {
             message: 'M',
             buttons: [{ ...DialogButtons.Cancel, primary: true }, DialogButtons.Confirm],
         });
+        const hide = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+        const { event } = enterEvent();
 
-        expect(dialog.primary()).toBe('cancel');
+        dialog.enter(event);
+
+        expect(hide).toHaveBeenCalledWith('cancel');
     });
 
-    it('primaryResult() is null when no button is primary', () => {
+    // Regression: onEnter() used to resolve the primary button's result and
+    // call hide() directly, bypassing DialogButtonRow's own handleClick() —
+    // the only place a button's onClick guard actually runs. That made
+    // Enter-to-confirm a silent no-op for any dialog whose primary button
+    // does its real work in onClick (SqlPreviewDialog's Execute, ImportRowsDialog's
+    // Import, ...): the dialog would simply close, having run nothing.
+    // confirmPrimary() now routes through the same handleClick() a real click
+    // uses, so these two behaviours match.
+    it('Enter defers to the primary button\'s onClick guard instead of closing unconditionally', async () => {
         installTestDOM(CONFIG);
 
-        const dialog = new TestDialog({
-            title:   'T',
-            message: 'M',
-            buttons: [DialogButtons.Cancel, DialogButtons.Confirm],
-        });
+        const cfg: DialogButtonConfig = { text: 'Execute', result: 'confirm', primary: true, onClick: () => false };
+        const dialog = new TestDialog({ title: 'T', message: 'M', buttons: [DialogButtons.Cancel, cfg] });
+        const hide   = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+        const { event, prevented, stopped } = enterEvent();
 
-        expect(dialog.primary()).toBeNull();
+        dialog.enter(event);
+
+        // Enter is still consumed immediately (a primary button was found)...
+        expect(prevented()).toBe(true);
+        expect(stopped()).toBe(true);
+
+        // ...but the guard's veto is respected, not bypassed.
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(hide).not.toHaveBeenCalled();
     });
+
+    it('Enter runs the primary button\'s onClick guard and closes once it resolves true', async () => {
+        installTestDOM(CONFIG);
+
+        const cfg: DialogButtonConfig = {
+            text: 'Execute', result: 'confirm', primary: true, onClick: () => Promise.resolve(true),
+        };
+        const dialog = new TestDialog({ title: 'T', message: 'M', buttons: [DialogButtons.Cancel, cfg] });
+        const hide   = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+        const { event } = enterEvent();
+
+        dialog.enter(event);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(hide).toHaveBeenCalledWith('confirm');
+    });
+
+    // The contenteditable guard itself (see onEnter()'s doc) has no offline
+    // coverage: ModelledDOMSource.hasAttribute() is a permanent `false` stub
+    // (unlike getTagName, it models no per-element attribute state), so a
+    // fake contenteditable host can't be constructed against this harness.
+    // Confirmed live instead: a real CodeEditor's `.cm-content` genuinely
+    // carries `contenteditable="true"`, and Enter there inserts a newline
+    // rather than confirming the dialog (see also the code-editor.test.ts
+    // file-level comment on live-only CodeMirror behaviour).
 
     it('Enter hides with the primary result when focus is not on a button/field', () => {
         installTestDOM(CONFIG);
