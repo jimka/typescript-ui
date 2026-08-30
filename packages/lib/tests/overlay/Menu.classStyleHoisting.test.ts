@@ -124,4 +124,21 @@ describe('Menu class-tier chrome dedup', () => {
             && (w.args[1] as Record<string, unknown>).borderRadius !== undefined
         )).toBe(false);
     });
+
+    it('a persistent menu caches its border spec for getBorderSize(), even though the border is painted only by the shared .persistent class rule', () => {
+        // Regression test: `applyPersistentChrome` used to call `setBorder`,
+        // which both wrote the per-instance CSS and cached `_border` for
+        // `getBorderSize()`'s layout math. Hoisting the border onto the
+        // shared `.persistent` `ownStyleStates` rule dropped the `setBorder`
+        // call entirely, leaving `getBorderSize()` reporting a zero-width
+        // border while the CSS still painted a real 1px one — so the layout
+        // manager handed items 2px more room (height and width) than the
+        // rendered border-box actually offered, and that overflow tripped
+        // the menu's `overflow-y: auto` scrollbar even when the items would
+        // otherwise fit exactly.
+        const menu = new Menu([{ text: 'A', action: () => {} }], () => {});
+        menu.getElement(true);
+
+        expect(menu.getBorderSize()).toEqual({ top: 1, right: 1, bottom: 1, left: 1 });
+    });
 });

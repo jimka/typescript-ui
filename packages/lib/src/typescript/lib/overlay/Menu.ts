@@ -51,6 +51,13 @@ const _defaultMenuStyleDefaults: StyleBag = {
     borderRadius: "var(--ts-ui-border-radius, 4px)",
 };
 
+/** `.persistent`'s chrome declarations, read by `ownStyleStates`' entry below. */
+const MENU_PERSISTENT_DECLARATIONS: StyleBag = {
+    backgroundColor: "var(--ts-ui-menu-bar-panel-bg, rgb(255, 255, 255))",
+    border:          { border: "1px solid var(--ts-ui-menu-bar-panel-border, rgb(200, 200, 200))" },
+    shadow:          "var(--ts-ui-menu-bar-panel-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))",
+};
+
 /**
  * A floating menu panel that operates in one of two modes:
  *
@@ -98,11 +105,7 @@ class Menu extends Component implements DismissableLayer {
     protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
         {
             selector: ".persistent",
-            extract: (): StyleBag => ({
-                backgroundColor: "var(--ts-ui-menu-bar-panel-bg, rgb(255, 255, 255))",
-                border:          { border: "1px solid var(--ts-ui-menu-bar-panel-border, rgb(200, 200, 200))" },
-                shadow:          "var(--ts-ui-menu-bar-panel-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))",
-            }),
+            extract: (): StyleBag => MENU_PERSISTENT_DECLARATIONS,
         },
     ];
 
@@ -886,6 +889,14 @@ class Menu extends Component implements DismissableLayer {
      */
     private applyPersistentChrome(): void {
         this.setInsets(new Insets(4, 0, 4, 0));
+
+        // The border is painted entirely by the shared `.persistent` rule
+        // above, but `getBorderSize()`'s layout math reads the component's
+        // own cached border spec, which a shared class rule can't update —
+        // sync it without writing CSS (a real `setBorder` write here would
+        // defeat the hoisting by duplicating the value onto every instance's
+        // own rule). See `Button._applyFlatChrome` for the same pattern.
+        this.cacheBorderSpec(MENU_PERSISTENT_DECLARATIONS.border!);
         this.setStyleState(".persistent", true);
         this.getAria().setRole("menu");
         this.setContain("layout");
