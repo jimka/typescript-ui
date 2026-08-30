@@ -5,6 +5,16 @@ tied to a version number yet. Once this release is tagged, its content moves
 onto its own numbered page (see [Changelog](/reference/changelog)) and this
 page resets to empty.
 
+## Changed
+
+### Menu
+
+- **`CheckboxMenuRow` and `RadioMenuRow` now share a new `AbstractBooleanMenuRow`
+  base.** `action` moves onto the framework's `on` / `off` listener surface;
+  the call shapes are unchanged. The unused `CheckboxMenuRowEvent` and
+  `RadioMenuRowEvent` type exports are removed in favour of
+  `AbstractBooleanMenuRowEvent`. No consumer action is needed.
+
 ## Fixed
 
 - `TreeRow`, `FieldSet`, `ComboBox`'s collapsed-control label, and the
@@ -40,3 +50,13 @@ page resets to empty.
 - **`Event.addViewportListener` now ignores a repeat registration of the
   same function reference instead of registering it a second time and
   firing it twice.** No consumer action is needed.
+
+### Menu
+
+- **Activating a `CheckboxMenuRow` or `RadioMenuRow` with Enter now fires its
+  `action` listener.** Previously only a mouse click did, so a keyboard user
+  could flip the control without the application ever hearing about it. No
+  consumer action is needed.
+- **A `MenuBar` dropdown's `separator: true` entry now renders through
+  `MenuSeparator`,** the same class a context menu already used. No consumer
+  action is needed.

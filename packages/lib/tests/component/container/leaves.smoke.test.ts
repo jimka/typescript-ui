@@ -95,7 +95,7 @@ describe('MenuItem pure boolean getters', () => {
     it('isSeparator reflects the separator config', () => {
         installTestDOM(CONFIG);
 
-        const separator = new MenuItem({ separator: true }, () => {}, () => {});
+        const separator = new MenuSeparator();
         const leaf      = new MenuItem({ text: 'Open' }, () => {}, () => {});
 
         expect(separator.isSeparator()).toBe(true);

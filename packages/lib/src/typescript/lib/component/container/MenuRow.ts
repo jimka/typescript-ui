@@ -237,6 +237,11 @@ export abstract class MenuRow<TOptions extends ComponentOptions = ComponentOptio
      * Dismisses the owning menu, if one was injected via
      * {@link setMenuCloseHandler}. A no-op for a row constructed outside a
      * `Menu` (e.g. in isolation in a test).
+     *
+     * This is the extension point a consumer-written `MenuRow` subclass calls
+     * to dismiss the panel hosting it — e.g. an "Apply and close" row. No
+     * shipped subclass calls it, because none needs to; a factory-built row
+     * has no other way to reach its menu.
      */
     protected closeMenu(): void {
         this._closeMenu?.();

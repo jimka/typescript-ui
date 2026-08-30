@@ -131,6 +131,7 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | [`MenuItem`](/api/component/container/classes/MenuItem) | Item inside a menu |
 | [`MenuSeparator`](/api/component/container/classes/MenuSeparator) | Divider line in a menu |
 | [`MenuRow`](/api/component/container/classes/MenuRow) | Base class for a menu row; extend it to put custom content in a menu |
+| [`AbstractBooleanMenuRow`](/api/component/container/classes/AbstractBooleanMenuRow) | Shared base for a menu row hosting a boolean control |
 | [`CheckboxMenuRow`](/components/CheckboxMenuRow) | Menu row holding a real checkbox, for a multi-select menu |
 | [`RadioMenuRow`](/components/RadioMenuRow) | Menu row holding a real radio button, for a single-choice group of rows |
 

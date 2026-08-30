@@ -409,11 +409,12 @@ describe('Split gutter context menu', () => {
 
         // syncCollapseRows always rewrites both rows' checked state after a
         // click, so every click-driven assertion above reads the same
-        // whichever row class built the pair. Calling activate() directly —
-        // bypassing the click event and therefore syncCollapseRows entirely
-        // — isolates the row's own activation rule: a CheckboxMenuRow would
-        // flip an already-selected row to unchecked here; a RadioMenuRow is
-        // select-only and leaves it selected.
+        // whichever row class built the pair. activate() now runs the same
+        // "action" handler a click does — retargetGutterCollapse then
+        // syncCollapseRows — so this isolates the row's own activation rule
+        // rather than bypassing the sync: a CheckboxMenuRow would have
+        // flipped an already-selected row to unchecked before the re-sync
+        // ran; a RadioMenuRow is select-only and leaves it selected either way.
         const { split } = hostSplit(new Split(), 2);
         const configs = openMenuFor(split, 0);
         const leadRow = row(configs, 'Collapse left pane');

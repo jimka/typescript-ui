@@ -974,12 +974,12 @@ class Menu extends Component implements DismissableLayer {
         for (const config of items) {
             let row: MenuRow;
 
-            // `separator` wins over `row`, mirroring rebuild mode's
-            // precedence (see `showAnchored`'s loop and the config-entry
-            // table in the plan's Architecture Decisions): MenuItem's own
-            // constructor already renders a separator config as a rule
-            // regardless of `row`, via the `else` branch below.
-            if (config.row && config.separator !== true) {
+            // Both build loops now differ only in their CSS-variable prefix
+            // and their activate callback — see `showAnchored`'s loop and the
+            // config-entry table in the plan's Architecture Decisions.
+            if (config.separator === true) {
+                row = new MenuSeparator("menu-bar");
+            } else if (config.row) {
                 row = config.row();
                 // The default, made explicit so both build loops read alike.
                 row.setCssVarPrefix("menu-bar");

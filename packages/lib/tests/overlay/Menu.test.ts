@@ -723,6 +723,26 @@ describe('Menu focus navigation (persistent)', () => {
         menu.dispose();
     });
 
+    it('A9. activateFocused notifies a factory-built CheckboxMenuRow\'s action listener and reads the new state', () => {
+        installTestDOM(CONFIG);
+
+        const action = vi.fn();
+        const menu = new Menu(
+            [{ row: () => new CheckboxMenuRow({ text: 'Bold', listeners: { action } }) }],
+            () => {}
+        );
+
+        menu.focusItem(0);
+        menu.activateFocused();
+
+        const row = (menu as any)._menuItems[0] as InstanceType<typeof CheckboxMenuRow>;
+
+        expect(action).toHaveBeenCalledOnce();
+        expect(row.isChecked()).toBe(true);
+
+        menu.dispose();
+    });
+
     it('activateFocused no-ops when nothing is focused', () => {
         installTestDOM(CONFIG);
 
@@ -1420,22 +1440,33 @@ describe('Menu custom rows', () => {
         expect((menu as any)._menuItems[0]).toBeInstanceOf(MenuSeparator);
     });
 
-    it('separator wins over row in persistent mode too: builds a separator-rendering MenuItem and never calls the factory', () => {
+    it('A11. separator wins over row in persistent mode too: builds a MenuSeparator and never calls the factory', () => {
         installTestDOM(CONFIG);
 
-        // Persistent mode never builds a MenuSeparator instance — it always
-        // builds MenuItem, which renders itself as a rule when
-        // config.separator is set (a pre-existing asymmetry with rebuild
-        // mode, left alone). The precedence under test here is only that
-        // `row` does not preempt that path when both fields are set.
+        // Both build loops now build a MenuSeparator for `separator: true` —
+        // see the config-entry table in the plan's Architecture Decisions.
+        // The precedence under test here is only that `row` does not preempt
+        // that path when both fields are set.
         const factory = vi.fn(() => new TestRow());
         const menu = new Menu([{ separator: true, row: factory }], () => {});
 
         const row = (menu as any)._menuItems[0];
 
         expect(factory).not.toHaveBeenCalled();
-        expect(row).toBeInstanceOf(MenuItem);
+        expect(row).toBeInstanceOf(MenuSeparator);
         expect(row.isSeparator()).toBe(true);
+    });
+
+    it('A10. persistent mode builds a MenuSeparator for a plain separator entry', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu([{ text: 'A' }, { separator: true }], () => {});
+
+        const row = (menu as any)._menuItems[1];
+
+        expect(row).toBeInstanceOf(MenuSeparator);
+        expect(row.isSeparator()).toBe(true);
+        expect(row.getPreferredSize()!.height).toBe(MenuSeparator.HEIGHT);
     });
 
     it('row wins over the plain-item fields: builds the factory row and never calls action', () => {

@@ -13,10 +13,12 @@ export type { MenuItemConfig, MenuConfig, MenuItemCSSVarPrefix, MenuItemOptions 
 export { MenuRow } from '~/component/container/MenuRow.js';
 export { MenuSeparator } from '~/component/container/MenuSeparator.js';
 export type { MenuSeparatorOptions } from '~/component/container/MenuSeparator.js';
+export { AbstractBooleanMenuRow } from '~/component/container/AbstractBooleanMenuRow.js';
+export type { AbstractBooleanMenuRowOptions, AbstractBooleanMenuRowEvent } from '~/component/container/AbstractBooleanMenuRow.js';
 export { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow.js';
-export type { CheckboxMenuRowOptions, CheckboxMenuRowEvent } from '~/component/container/CheckboxMenuRow.js';
+export type { CheckboxMenuRowOptions } from '~/component/container/CheckboxMenuRow.js';
 export { RadioMenuRow } from '~/component/container/RadioMenuRow.js';
-export type { RadioMenuRowOptions, RadioMenuRowEvent } from '~/component/container/RadioMenuRow.js';
+export type { RadioMenuRowOptions } from '~/component/container/RadioMenuRow.js';
 export { Scrollbar } from '~/component/container/Scrollbar.js';
 export type { ScrollbarListener, ScrollbarOptions, ScrollbarEvent } from '~/component/container/Scrollbar.js';
 export { ScrollStrip } from '~/component/container/ScrollStrip.js';

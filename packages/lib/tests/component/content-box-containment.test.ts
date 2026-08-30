@@ -33,6 +33,7 @@ import { Dialog } from '~/overlay/Dialog';
 import { Tooltip } from '~/overlay/Tooltip';
 import { DragGhost } from '~/overlay/DragGhost';
 import { MenuItem } from '~/component/container/MenuItem';
+import { MenuSeparator } from '~/component/container/MenuSeparator';
 import { Cell } from '~/component/table/cell/Cell';
 import type { CellRenderer } from '~/component/table/cell/renderer/CellRenderer';
 import { TreeCellRenderer } from '~/component/table/cell/renderer/TreeCell';
@@ -541,10 +542,7 @@ describe('MenuItem labels track the border', () => {
     });
 
     it('a bordered separator has nothing to pin', () => {
-        const item = new MenuItem(
-            { separator: true }, noop, noop, 'menu-bar',
-            { border: '2px solid black' }
-        );
+        const item = new MenuSeparator('menu-bar', { border: '2px solid black' });
 
         expect(item.getComponents()).toEqual([]);
     });
