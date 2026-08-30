@@ -9,6 +9,9 @@ import { Table } from '~/component/table/Table';
 import type { CellClickEvent } from '~/component/table/Body';
 import { TableExporter } from '~/component/table/TableExporter';
 import { TRACK_WIDTH } from '~/component/container/Scrollbar';
+import { tableRowHeight } from '~/component/table/RowMetrics';
+import { ThemeManager } from '~/core/Theme';
+import { Util } from '~/core/Util';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ModelRecord } from '~/data/ModelRecord';
@@ -86,6 +89,42 @@ describe('Table cellcontextmenu — right-click "Copy" menu', () => {
         table.getElement(true);
 
         expect(() => (table as any).showCellMenu(10, 10)).not.toThrow();
+    });
+});
+
+// Phase 3 of plans/implemented/table-subsystem-consolidation-round-2.md:
+// header, footer and body row height all derive from the shared
+// `RowMetrics.tableRowHeight` now, rather than each re-deriving the same
+// `lineHeight + 2 * padding` formula independently.
+describe('Table row-height agreement', () => {
+    it('tableRowHeight() equals lineHeightPx() + 2 * the theme\'s cell padding', () => {
+        const padding = ThemeManager.getTheme().table.cell.padding ?? 2;
+
+        expect(tableRowHeight()).toBe(Util.lineHeightPx() + 2 * padding);
+    });
+
+    it('a laid-out table\'s header, footer and body row height all equal tableRowHeight()', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1' }]);
+        await store.load();
+
+        const table = new Table(store);
+
+        // Table exposes no footer-visibility setter — reachable only by
+        // writing the private flag directly, mirroring
+        // content-box-containment.test.ts's own "sizes the footer band from
+        // its own content box" case.
+        (table as unknown as { _footerVisible: boolean })._footerVisible = true;
+
+        table.getElement(true);
+        table.setWidth(300);
+        table.setHeight(200);
+        table.doLayout();
+
+        const expected = tableRowHeight();
+
+        expect(table.getHeader().getColumns()[0].getHeight()).toBe(expected);
+        expect(table.getFooter().getContentBounds()!.height).toBe(expected);
+        expect((table.getBody() as any).getRowHeight()).toBe(expected);
     });
 });
 

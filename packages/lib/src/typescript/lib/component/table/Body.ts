@@ -17,7 +17,6 @@ import { Event } from "~/core/Event.js";
 import { VirtualRowView } from "~/component/shared/VirtualRowView.js";
 import { reduceModifierSelection } from "~/component/shared/reduceModifierSelection.js";
 import { selectionsEqual } from "~/component/shared/selectionsEqual.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { Util } from "~/core/Util.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { Column } from "~/component/table/Column.js";
@@ -25,6 +24,7 @@ import type { TableHeader } from "~/component/table/Header.js";
 import { callable } from "~/core/Callable.js";
 import { TableExporter } from "~/component/table/TableExporter.js";
 import { CellTextResolver } from "~/component/table/cell/CellText.js";
+import { tableRowHeight } from "~/component/table/RowMetrics.js";
 
 /**
  * String-literal union of the events emitted by the table {@link Body}.
@@ -235,11 +235,6 @@ function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
     return true;
 }
 
-/** Inclusive integer range `[a, b]` as an array, e.g. `range(2, 4)` -> `[2, 3, 4]`. */
-function range(a: number, b: number): number[] {
-    return Array.from({ length: b - a + 1 }, (_, i) => a + i);
-}
-
 /**
  * Inclusive row/column bounds of a rectangular cell-range selection, in
  * visible-row / visible-column index space.
@@ -253,12 +248,16 @@ interface CellRangeBounds {
     maxCol: number;
 }
 
+// Named so the class default below and the constructor's explicit seed share
+// one literal instead of two — mirrors Footer.ts's FOOTER_BG.
+const TABLE_BODY_BG = "var(--ts-ui-input-bg, rgb(255, 255, 255))";
+
 // Own contribution to the hierarchy-aware class tier — see
 // plans/implemented/class-hierarchy-cascade.md. Every Table's body resolves
 // the same resting background from theme tokens, so it is a class default
 // rather than a per-instance write.
 const _defaultTableBodyOptions: Partial<ComponentOptions> = {
-    backgroundColor: 'var(--ts-ui-input-bg, rgb(255, 255, 255))',
+    backgroundColor: TABLE_BODY_BG,
 };
 
 /**
@@ -345,14 +344,14 @@ class TableBody extends VirtualRowView<Row> {
         super({ tag: "tbody" }, { ..._defaultTableBodyOptions, ...(subclassDefaults ?? {}) });
 
         this.setOverflow("hidden");
-        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
+        this.setBackgroundColor(TABLE_BODY_BG);
         this.getAria().setTabIndex(0);
         this.getAria().setRole("rowgroup");
 
         this._store = store;
         this.bindStore(store);
 
-        this._rowHeight = this.computeRowHeight();
+        this._rowHeight = tableRowHeight();
 
         this.subscribeTheme(() => this.onThemeReflow());
     }
@@ -377,7 +376,7 @@ class TableBody extends VirtualRowView<Row> {
      * unchanged from before this class opted its cells into the skip.
      */
     protected onThemeReflow(): void {
-        this._rowHeight = this.computeRowHeight();
+        this._rowHeight = tableRowHeight();
 
         for (const row of this._rowPool) {
             for (const cell of row.getComponents()) {
@@ -386,24 +385,6 @@ class TableBody extends VirtualRowView<Row> {
         }
 
         super.onThemeReflow();
-    }
-
-    /**
-     * Derives the row height from the shared px line box plus top+bottom cell
-     * padding.
-     *
-     * @remarks `theme.table.cell.height` is intentionally ignored: a fixed pixel
-     * height ignores the active line box and clips text when the theme changes
-     * the leading. The line box is the additive `font-size + --ts-ui-line-padding`
-     * value `Util.lineHeightPx` derives at the root font size, keeping row
-     * height in sync with the line box the cells are actually rendered at.
-     */
-    private computeRowHeight(): number {
-        const theme      = ThemeManager.getTheme();
-        const lineHeight = Util.lineHeightPx();
-        const padding    = theme.table.cell.padding          ?? 2;
-
-        return lineHeight + 2 * padding;
     }
 
     /**
@@ -1214,8 +1195,8 @@ class TableBody extends VirtualRowView<Row> {
         const treeFieldName = this.getTreeFieldName();
         const enteringKeys  = new Map<number, string>();
         const enteringRange = delta > 0
-            ? range(next.lastCol - delta + 1, next.lastCol)
-            : range(next.firstCol, next.firstCol - delta - 1);
+            ? Util.range(next.lastCol - delta + 1, next.lastCol)
+            : Util.range(next.firstCol, next.firstCol - delta - 1);
 
         for (const col of enteringRange) {
             const field = visibleFields[col];
@@ -1261,9 +1242,7 @@ class TableBody extends VirtualRowView<Row> {
         scroller.clampToContent(totalContentWidth, totalHeight);
 
         const rowWidth   = Math.max(this._lastBodyWidth, totalColumnWidth);
-        const fieldCount = this._store.model.getFields()
-                               .filter(f => !this._hiddenColumns.has(f.getName()))
-                               .length;
+        const fieldCount = this.computeVisibleFields().length;
         const fallback   = fieldCount > 0 ? rowWidth / fieldCount : rowWidth;
         const effectiveWidths = Array.from({ length: fieldCount }, (_, i) => this._lastColumnWidths[i] ?? fallback);
 
@@ -1401,6 +1380,8 @@ class TableBody extends VirtualRowView<Row> {
 
         this.alignPoolWindow(firstRow);
 
+        const rangeBounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus, records);
+
         for (let i = 0; i < windowSize; i++) {
             const row       = this._rowPool[i];
             const dataIndex = firstRow + i;
@@ -1442,7 +1423,7 @@ class TableBody extends VirtualRowView<Row> {
 
                 this._boundIndices[i] = dataIndex;
                 row.setStripe(dataIndex % 2 === 1);   // odd logical rows carry the zebra stripe; set before the paint below
-                this.updateRowVisualState(i);
+                this.updateRowVisualState(i, records);
                 this.computeRowAria(row, dataIndex);
             }
 
@@ -1455,7 +1436,7 @@ class TableBody extends VirtualRowView<Row> {
             }
 
             if (wasRebound || windowChanged) {
-                this.updateCellRangeVisualState(i);
+                this.updateCellRangeVisualState(i, records, rangeBounds);
             }
 
             this.afterRowBound(row, dataIndex, wasRebound);
@@ -1542,7 +1523,7 @@ class TableBody extends VirtualRowView<Row> {
         );
 
         this._boundIndices.forEach((dataIdx, i) => {
-            if (dataIdx !== -1) this.updateRowVisualState(i);
+            if (dataIdx !== -1) this.updateRowVisualState(i, records);
         });
 
         this.notifySelectionChange(before);
@@ -1582,7 +1563,7 @@ class TableBody extends VirtualRowView<Row> {
                 field,
                 columnIndex,
                 value:    record.get(field),
-                rowIndex: this.getVisibleRecords().indexOf(record),
+                rowIndex: records.indexOf(record),
                 event:    e,
             });
         }
@@ -1636,6 +1617,9 @@ class TableBody extends VirtualRowView<Row> {
      *
      * @param anchor - The range's fixed corner, or `null` when no range is active.
      * @param focus - The range's moving corner, or `null` when no range is active.
+     * @param records - The visible records to resolve each endpoint's row
+     *   position against. Defaults to a live query for the cold callers
+     *   (clipboard copy, context-menu copy) that don't already hold one.
      *
      * @returns The inclusive row/column bounds, or `null` when either
      *   endpoint is missing or its record is no longer visible.
@@ -1643,12 +1627,12 @@ class TableBody extends VirtualRowView<Row> {
     private getCellRangeBounds(
         anchor: { record: ModelRecord, col: number } | null,
         focus:  { record: ModelRecord, col: number } | null,
+        records: ModelRecord[] = this.getVisibleRecords(),
     ): CellRangeBounds | null {
         if (!anchor || !focus) {
             return null;
         }
 
-        const records   = this.getVisibleRecords();
         const anchorRow = records.indexOf(anchor.record);
         const focusRow  = records.indexOf(focus.record);
 
@@ -1687,10 +1671,15 @@ class TableBody extends VirtualRowView<Row> {
      * that can change the range — a mousedown, and a mousemove whose
      * resolved cell actually changed — and nowhere else; a right-click never
      * calls this, since it does not mutate the persistent range.
+     *
+     * @param records - The current visible records, passed in so this
+     *   helper doesn't re-query.
      */
-    private refreshCellRangeHighlight(): void {
+    private refreshCellRangeHighlight(records: ModelRecord[]): void {
+        const bounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus, records);
+
         this._boundIndices.forEach((dataIdx, i) => {
-            if (dataIdx !== -1) { this.updateCellRangeVisualState(i); }
+            if (dataIdx !== -1) { this.updateCellRangeVisualState(i, records, bounds); }
         });
     }
 
@@ -1704,20 +1693,22 @@ class TableBody extends VirtualRowView<Row> {
      * correct highlight state without a full sweep on every scroll tick.
      *
      * @param i - The zero-based index into the row pool.
+     * @param records - The current visible records, passed in so this
+     *   helper doesn't re-query.
+     * @param bounds - The current cell-range bounds, or `null` when no
+     *   range is active.
      */
-    private updateCellRangeVisualState(i: number): void {
+    private updateCellRangeVisualState(i: number, records: ModelRecord[], bounds: CellRangeBounds | null): void {
         const row = this._rowPool[i];
         if (row.isSeparator()) {
             return;
         }
 
         const dataIdx = this._boundIndices[i];
-        const record  = this.getVisibleRecords()[dataIdx];
-        if (!record) {
+        if (!records[dataIdx]) {
             return;
         }
 
-        const bounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus);
         const cells  = row.getComponents() as Cell<any>[];
         const start  = row.getColumnWindowStart();
 
@@ -1845,7 +1836,9 @@ class TableBody extends VirtualRowView<Row> {
             this._rangeFocus  = cell;
         }
 
-        this.refreshCellRangeHighlight();
+        const records = this.getVisibleRecords();
+
+        this.refreshCellRangeHighlight(records);
         this.focus();
 
         this.resetRangeDragWidening();
@@ -1853,7 +1846,7 @@ class TableBody extends VirtualRowView<Row> {
         Event.addViewportListener(this, "mousemove", this.onCellDragMove);
         Event.addViewportListener(this, "mouseup",   this.onCellDragEnd);
 
-        this.widenRangeDragIfMultiCell();
+        this.widenRangeDragIfMultiCell(records);
     }
 
     /**
@@ -1883,8 +1876,11 @@ class TableBody extends VirtualRowView<Row> {
         }
 
         this._rangeFocus = { record: located.record, col: located.col };
-        this.refreshCellRangeHighlight();
-        this.widenRangeDragIfMultiCell();
+
+        const records = this.getVisibleRecords();
+
+        this.refreshCellRangeHighlight(records);
+        this.widenRangeDragIfMultiCell(records);
     }
 
     /**
@@ -1920,13 +1916,16 @@ class TableBody extends VirtualRowView<Row> {
      * started in. A no-op while the range is still one cell, so an ordinary
      * click-drag inside a cell keeps the browser's own text selection; once
      * widened it clears that selection and stays widened until mouseup.
+     *
+     * @param records - The current visible records, passed in so this
+     *   helper doesn't re-query.
      */
-    private widenRangeDragIfMultiCell(): void {
+    private widenRangeDragIfMultiCell(records: ModelRecord[]): void {
         if (this._rangeDragWidened) {
             return;
         }
 
-        const bounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus);
+        const bounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus, records);
 
         if (!bounds || (bounds.minRow === bounds.maxRow && bounds.minCol === bounds.maxCol)) {
             return;
@@ -1997,8 +1996,10 @@ class TableBody extends VirtualRowView<Row> {
             this._selectedRecords.add(record);
         }
 
+        const records = this.getVisibleRecords();
+
         this._boundIndices.forEach((dataIdx, i) => {
-            if (dataIdx !== -1) this.updateRowVisualState(i);
+            if (dataIdx !== -1) this.updateRowVisualState(i, records);
         });
 
         this.notifySelectionChange(before);
@@ -2041,8 +2042,10 @@ class TableBody extends VirtualRowView<Row> {
             this._selectedRecords.add(record);
         }
 
+        const visibleRecords = this.getVisibleRecords();
+
         this._boundIndices.forEach((dataIdx, i) => {
-            if (dataIdx !== -1) this.updateRowVisualState(i);
+            if (dataIdx !== -1) this.updateRowVisualState(i, visibleRecords);
         });
 
         this.notifySelectionChange(before);
@@ -2068,9 +2071,9 @@ class TableBody extends VirtualRowView<Row> {
      *
      * @returns This body, for method chaining.
      *
-     * @remarks `"verticalscroll"` is used by
-     * [`PinnedTable`](/api/component/table/classes/PinnedTable) to mirror
-     * `scrollY` from the scroll-side body into the pinned-side body;
+     * @remarks `"verticalscroll"` has no consumer inside the library today
+     * and exists so a host rendering two bodies side by side can mirror one
+     * body's `scrollY` into the other;
      * `"horizontalscroll"` is used by `Table` to mirror `scrollX` into the
      * header's transform so column headers stay aligned with the body cells
      * they label. The listeners fire from the `VirtualScroller`'s
@@ -2247,14 +2250,16 @@ class TableBody extends VirtualRowView<Row> {
      * Applies selection highlight or normal visual state to the pool row at index i.
      *
      * @param i - The zero-based index into the row pool.
+     * @param records - The current visible records, passed in so this
+     *   helper doesn't re-query.
      */
-    private updateRowVisualState(i: number): void {
+    private updateRowVisualState(i: number, records: ModelRecord[]): void {
         const dataIdx = this._boundIndices[i];
         if (dataIdx === -1) {
             return;
         }
 
-        const record = this.getVisibleRecords()[dataIdx];
+        const record = records[dataIdx];
         if (!record) {
             return;
         }

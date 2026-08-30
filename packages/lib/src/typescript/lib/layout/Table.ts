@@ -6,10 +6,10 @@ import { Column } from "~/component/table/Column.js";
 import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { Size, UNBOUNDED } from "~/primitive/Size.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
 import { TRACK_WIDTH } from "~/component/container/Scrollbar.js";
+import { tableRowHeight } from "~/component/table/RowMetrics.js";
 
 /**
  * Construction-time options for the {@link Table} layout manager.
@@ -193,15 +193,8 @@ class Table extends LayoutManager {
         let header: TableGeometry["header"] = null;
 
         if (container.isHeaderVisible() && headerComponent && headerComponent.isDisplayed()) {
-            // Header cells render their text in the shared px line box, so the
-            // row height is that line box plus the cell padding.
-            const theme        = ThemeManager.getTheme();
-            // Cells render at the root font size, so the line box is the
-            // additive `font-size + --ts-ui-line-padding` value `Util` derives
-            // (the same line box the cell text is laid out at).
-            const lineHeight   = Util.lineHeightPx();
-            const padding      = theme.table.cell.padding          ?? 2;
-            const columnHeight = lineHeight + 2 * padding;
+            // Row height derivation lives in `RowMetrics.tableRowHeight`.
+            const columnHeight = tableRowHeight();
 
             // Parent header row uses the same arithmetic — same font, same
             // padding — so a theme swap re-runs `doLayout` and the two
@@ -245,14 +238,8 @@ class Table extends LayoutManager {
         let footer: TableGeometry["footer"] = null;
 
         if (container.isFooterVisible() && footerComponent && footerComponent.isDisplayed()) {
-            // Footer cells render their text in the shared px line box, so the
-            // row height is that line box plus the cell padding.
-            const theme        = ThemeManager.getTheme();
-            // Same additive line box as the header/body: the root font size plus
-            // the `--ts-ui-line-padding` leading, via `Util`.
-            const lineHeight   = Util.lineHeightPx();
-            const padding      = theme.table.cell.padding         ?? 2;
-            const columnHeight = lineHeight + 2 * padding;
+            // Row height derivation lives in `RowMetrics.tableRowHeight`.
+            const columnHeight = tableRowHeight();
 
             // Same "children plus perimeter" sum as the header band above:
             // the footer's own top border is chrome outside the row, so the

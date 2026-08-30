@@ -405,6 +405,54 @@ Read before starting:
 
 ---
 
+## Implementation Notes
+
+**`Body.setSelectedRecords`'s own `records` parameter already named what step
+7 wanted to call the hoisted local.** The parameter is the records to select;
+`this.getVisibleRecords()` needed a second, differently-named local
+(`visibleRecords`) to avoid redeclaring it in the same scope. `selectRecord`
+(no such parameter) got the plan's literal `records` name. Purely a naming
+fix — the value threaded into `updateRowVisualState` is the same one every
+other call site now passes.
+
+**The `DynamicCell` double-click manual-verify step used `PropertyGridPanel`,
+not `RotatedRecordPanel`.** `Table.setDisplayMode('rotated')` forces every
+projection row read-only (`bindView(..., () => true, ...)`, `Table.ts`
+line ~498) — "The projection is read-only" is stated in `setDisplayMode`'s
+own doc comment — so no cell in the rotated key/value view can ever open an
+editor, regardless of this plan's changes. `Cell.startEdit()` early-returns
+on `isReadOnly()` before it ever reaches the `_onRendererDoubleClick` wiring
+this plan touches. Verified instead against `PropertyGridPanel` (the
+`ColumnConfig.cellType`/`DynamicCell` demo that *is* editable, under the
+"Property Grid" tab): double-clicking the string-typed "Owner" cell opened
+its combo editor exactly as before the refactor. This is the same
+`DynamicCell.setActiveRenderer` → `_onRendererDoubleClick` → `startEdit()`
+path the rotated view would also exercise if it were editable; the plan's
+choice of demo panel was inaccurate, not the underlying behaviour.
+
+**`npm run docs:api` reports one pre-existing warning unrelated to this
+plan.** `DiagramEdgeLayer.setEdges` links to `Component.onFirstLayout`,
+which TypeDoc excludes from the generated docs — last touched by an
+unrelated commit (`44ee4146`, diagram edge-layer visibility), with no diff
+against it on this branch. This plan's own additions (`Util.range`,
+`Body.on`'s corrected `@remarks`) produce zero warnings.
+
+**Step 34's `ColumnVisibilityMenu.test.ts` case needed no new test.** The
+plan asked for a case proving `showColumnMenu` lists the three export
+entries — CSV, then JSON, then TSV, with the right glyphs — in both the
+rotated and normal branches, the normal branch preceded by a separator.
+`ColumnVisibilityMenu.test.ts` already carries this exact assertion pair
+pre-refactor: case 5 (`items[csvIndex - 1]` is a separator, `jsonIndex ===
+csvIndex + 1`, `tsvIndex === jsonIndex + 1`) for the normal branch, and
+case 6 (`toEqual` against the literal three-entry array with `file-csv` /
+`file-code` / `file-lines` glyphs) for the rotated branch — both built on
+the file's own `capturedMenuItems` helper, both still green against
+`Table.buildExportMenuItems`. The Files table listed this file as
+"Modify" on the assumption a new case was needed; it wasn't, so the file
+carries no diff on this branch.
+
+---
+
 ## Notes
 
 [^why-thread]: `AbstractStore.getRecords()` is `this._records.slice()` ([`AbstractStore.ts:631`](packages/lib/src/typescript/lib/data/AbstractStore.ts#L631)) — a full `O(N)` copy on every call — and `Body.getVisibleRecords` adds a full `.filter()` on top whenever a row-visibility predicate is set ([`Body.ts:506-510`](packages/lib/src/typescript/lib/component/table/Body.ts#L506)). `Table.setQuickSearch` installs exactly such a predicate, composed through `composeRowVisible` ([`Table.ts:644`](packages/lib/src/typescript/lib/component/table/Table.ts#L644)). The reviewer measured a 4,000-row table with a 21-slot pool: a one-row scroll tick made 3 calls, a full-rebind page jump made 41, and with quick search active that page jump ran the predicate 164,000 times for a single tick. Caching the array on the component was rejected: it would add an invalidation surface across every store event, sort, filter, quick-search change and row-visibility change, for a value that is already cheap to compute once per pass. Threading it needs no invalidation at all, and the caller doc at [`Body.ts:1384`](packages/lib/src/typescript/lib/component/table/Body.ts#L1384) already claims this is how it works.

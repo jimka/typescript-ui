@@ -22,6 +22,7 @@ import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
+import { Util } from "~/core/Util.js";
 import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 
 /**
@@ -53,11 +54,6 @@ export interface ColumnWindowSlidePlan {
 export interface RetargetedCell {
     cell: Cell<any>;
     fieldName: string;
-}
-
-/** Inclusive integer range `[a, b]` as an array, e.g. `range(2, 4)` -> `[2, 3, 4]`. */
-function range(a: number, b: number): number[] {
-    return Array.from({ length: b - a + 1 }, (_, i) => a + i);
 }
 
 /**
@@ -568,34 +564,15 @@ class Row extends Component {
 
             const field = this._visibleFields[col];
             const key   = this.cellKeyFor(field);
-            const pool   = free.get(key);
-            const cached = this._cellCache.get(key);
+            const pool  = free.get(key);
             let cell: Cell<any>;
 
             if (pool && pool.length > 0) {
                 cell = pool.pop()!;
 
                 this.setLayoutConstraints(cell, { data: field });
-            } else if (cached && cached.length > 0) {
-                cell = cached.pop()!;
-
-                if (cached.length === 0) {
-                    this._cellCache.delete(key);
-                }
-
-                this.addComponent(cell, { data: field });
-                cell.invalidateLayout();
             } else {
-                cell = Row.createCellForField(field, this._columnConfigs);
-
-                if (this._treeFieldName !== undefined && field.getName() === this._treeFieldName) {
-                    cell.wrapRenderer((delegate: CellRenderer<any>) => new TreeCellRenderer(delegate));
-                }
-
-                const builtCell = cell;
-                cell.on("commit", (newValue) => this.commitCellValue(builtCell, newValue));
-
-                this.addComponent(cell, { data: field });
+                cell = this.resolveEnteringCell(field, key);
             }
 
             assigned[slot] = cell;
@@ -674,6 +651,49 @@ class Row extends Component {
     }
 
     /**
+     * Resolves the cell for an entering column once no in-call free-pool
+     * cell is available: restores a cached cell keyed for `field`, or builds
+     * a fresh one when the cache holds none either. Shared by
+     * {@link setColumnWindow}'s pass 2 (after its own free-pool tier finds
+     * nothing) and {@link reconcileWindowSlide}, which has no free-pool tier
+     * of its own — a same-call cache hit already covers a departing/entering
+     * key match.
+     *
+     * @param field - The field the resolved cell will present.
+     * @param key - `field`'s cell key — see {@link cellKeyFor}.
+     * @returns The restored or newly-built cell, parented on this row via
+     *   `addComponent`.
+     */
+    private resolveEnteringCell(field: Field, key: string): Cell<any> {
+        const cached = this._cellCache.get(key);
+        let cell: Cell<any>;
+
+        if (cached && cached.length > 0) {
+            cell = cached.pop()!;
+
+            if (cached.length === 0) {
+                this._cellCache.delete(key);
+            }
+
+            this.addComponent(cell, { data: field });
+            cell.invalidateLayout();
+        } else {
+            cell = Row.createCellForField(field, this._columnConfigs);
+
+            if (this._treeFieldName !== undefined && field.getName() === this._treeFieldName) {
+                cell.wrapRenderer((delegate: CellRenderer<any>) => new TreeCellRenderer(delegate));
+            }
+
+            const builtCell = cell;
+            cell.on("commit", (newValue) => this.commitCellValue(builtCell, newValue));
+
+            this.addComponent(cell, { data: field });
+        }
+
+        return cell;
+    }
+
+    /**
      * Reconciles an ordinary same-width slide: retires the `|delta|`
      * departing cells into the cell cache, resolves the `|delta|` entering
      * columns (cache restore, else construct), and leaves every surviving
@@ -701,18 +721,16 @@ class Row extends Component {
         const survivorCells      = shift > 0 ? cells.slice(outCount)            : cells.slice(0, width - outCount);
 
         // 2. Retire the departing edge into the cell cache (always keyed — never disposed here).
-        const outgoingSlots = shift > 0 ? range(0, outCount - 1) : range(width - outCount, width - 1);
+        const outgoingSlots = shift > 0 ? Util.range(0, outCount - 1) : Util.range(width - outCount, width - 1);
 
         for (const slot of outgoingSlots) {
             this.retireCell(cells[slot], this._cellKeys[slot]);
         }
 
-        // 3. Resolve the entering columns: cache restore, else construct. Mirrors the full
-        //    path's pass-2 cache tier exactly (see row-cell-cache.md), minus the in-call
-        //    free tier — a same-call cache hit already covers a departing/entering key match.
+        // 3. Resolve the entering columns via the shared `resolveEnteringCell` helper.
         const enteringCols = shift > 0
-            ? range(lastCol - outCount + 1, lastCol)
-            : range(firstCol, firstCol + outCount - 1);
+            ? Util.range(lastCol - outCount + 1, lastCol)
+            : Util.range(firstCol, firstCol + outCount - 1);
 
         const enteringCells: Cell<any>[] = [];
         const enteringFieldNames: string[] = [];
@@ -721,30 +739,7 @@ class Row extends Component {
         for (const col of enteringCols) {
             const field = this._visibleFields[col];
             const key   = plan.enteringKeys.get(col) ?? this.cellKeyFor(field);
-            const cached = this._cellCache.get(key);
-            let cell: Cell<any>;
-
-            if (cached && cached.length > 0) {
-                cell = cached.pop()!;
-
-                if (cached.length === 0) {
-                    this._cellCache.delete(key);
-                }
-
-                this.addComponent(cell, { data: field });
-                cell.invalidateLayout();
-            } else {
-                cell = Row.createCellForField(field, this._columnConfigs);
-
-                if (this._treeFieldName !== undefined && field.getName() === this._treeFieldName) {
-                    cell.wrapRenderer((delegate: CellRenderer<any>) => new TreeCellRenderer(delegate));
-                }
-
-                const builtCell = cell;
-                cell.on("commit", (newValue) => this.commitCellValue(builtCell, newValue));
-
-                this.addComponent(cell, { data: field });
-            }
+            const cell  = this.resolveEnteringCell(field, key);
 
             cell.getAria().setColIndex(col + 1);
             cell.setBaseBackground(this._columnConfigs.get(field.getName())?.groupColor ?? null);

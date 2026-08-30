@@ -11,16 +11,18 @@ import { Column } from "~/component/table/Column.js";
 import { HeaderCell } from "~/component/table/cell/Header.js";
 import { ParentHeaderCell } from "~/component/table/cell/ParentHeader.js";
 import { FilterCell } from "~/component/table/cell/Filter.js";
+import { Cell } from "~/component/table/cell/Cell.js";
 import { computeColumnWindow } from "~/component/table/Body.js";
 import type { ColumnWindow } from "~/component/table/Body.js";
 import { columnFilterOperators, buildColumnFilter, columnFilterStatesEqual, columnFilterTakesNumericOperand } from "~/component/table/ColumnFilter.js";
-import type { ColumnFilterState, ColumnFilterTarget } from "~/component/table/ColumnFilter.js";
+import type { ColumnFilterOperator, ColumnFilterState, ColumnFilterTarget } from "~/component/table/ColumnFilter.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { CellTextResolver } from "~/component/table/cell/CellText.js";
 import { Button, ButtonOptions } from "~/component/button/Button.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { ellipsis_v } from "~/glyphs/solid/ellipsis_v.js";
 import { callable } from "~/core/Callable.js";
+import { Util } from "~/core/Util.js";
 import { TRACK_WIDTH } from "~/component/container/Scrollbar.js";
 import type { StyleBag, StyleStateSpec, StyleTrait } from "~/core/ClassStyleRules.js";
 
@@ -82,11 +84,6 @@ const MENU_BUTTON_Z_INDEX = 1;
  * apply immediately.
  */
 const COLUMN_FILTER_DEBOUNCE_MS = 200;
-
-/** Inclusive integer range `[a, b]` as an array, e.g. `range(2, 4)` -> `[2, 3, 4]`. */
-function range(a: number, b: number): number[] {
-    return Array.from({ length: b - a + 1 }, (_, i) => a + i);
-}
 
 // The header surface, themed via `--ts-ui-table-header-bg`. The value is
 // applied as BOTH a background-color and a background-image because the token
@@ -204,11 +201,28 @@ export interface HeaderColumnGeometry {
 }
 
 /**
+ * The two behaviours that differ between the column row and the filter row,
+ * threaded through the shared {@link TableHeader.reconcileWindowedRow} /
+ * {@link TableHeader.reconcileWindowedRowSlide} algorithms — see the plan's
+ * "one windowed-row reconciler" Architecture Decision.
+ */
+interface WindowedRowHooks<TCell extends Cell<any>> {
+    /** Builds a cell for `field`, parents it on the row with `{ data: field }`, wires it, returns it. */
+    create(field: Field): TCell;
+    /** Writes every per-column property onto `cell` for visible column `col`. */
+    apply(cell: TCell, col: number, retargeted: boolean): void;
+}
+
+/**
  * The header section of a table, rendered as a `<thead>` element.
  *
  * Builds one {@link HeaderCell} per column in its current column window —
- * the horizontally-visible range plus a small buffer, mirroring the body's
- * own column virtualization — rather than one per visible field up front.
+ * the horizontally-visible range plus a small buffer — rather than one per
+ * visible field up front. Computed by the same `computeColumnWindow` the
+ * body uses, but against the table's available column width, which excludes
+ * the vertical-scrollbar band the body's own width includes; the two
+ * windows are near-identical rather than equal, with the shared buffer
+ * covering the difference.
  * Each cell is wired with a sort-click callback (cycles asc → desc → clear), a
  * resize-drag callback (forwarded to the owner via the `"columnresize"`
  * event), and a context-menu callback (forwarded via the
@@ -778,64 +792,40 @@ class TableHeader extends Component {
     }
 
     /**
-     * Reconciles the column-row's rendered header cells to the
-     * horizontally-visible column range `[firstCol, lastCol]`. A header
-     * cell carries no per-kind identity — unlike the body's cell
-     * reconciler — so any leftover cell can serve any entering column.
-     *
-     * An ordinary same-width slide (see {@link reconcileColumnWindowSlide})
-     * takes a cheaper fast path instead: only the `|delta|` entering cells
-     * are repointed, and only their per-column state is re-applied — a
-     * surviving cell is left untouched rather than re-applied a second time
-     * with the same values. The full path below runs on every other route
-     * (first render, a resize, a jump, or a column-set change):
+     * Shared full-path reconciler for a windowed header row — the column row
+     * or the filter row, chosen by `hooks`. A cell carries no per-kind
+     * identity — unlike the body's cell reconciler — so any leftover cell can
+     * serve any entering column:
      *
      * 1. A column keeps the cell that already holds its field, matched by
      *    field name.
-     * 2. Every other column in the range recycles a leftover cell, or
-     *    builds a fresh one when none remains.
-     * 3. Every per-column property (label, tooltip, glyph, group tint,
-     *    required marker) is re-applied to every rendered cell, whether or
-     *    not it was re-targeted, so a recycled cell never shows a trace of
-     *    its previous column. The ARIA column index is the one exception —
-     *    a survivor's own index cannot be stale, so that write is scoped to
-     *    a retargeted cell (or every cell, once a field/config change
-     *    widens the scope).
+     * 2. Every other column in the range recycles a leftover cell, or builds
+     *    a fresh one via `hooks.create` when none remains.
+     * 3. Every per-column property is re-applied via `hooks.apply` to every
+     *    rendered cell, whether or not it was re-targeted, so a recycled
+     *    cell never shows a trace of its previous column — `retargeted` is
+     *    `true` for a cell that was just assigned a new field, or for every
+     *    cell when `dirty` is set, and it is up to `hooks.apply` to decide
+     *    what that flag changes (see the plan's own Architecture Decision on
+     *    the flag's OR'd meaning).
      *
      * Cells left over after the window is filled are removed and disposed.
-     * Called from {@link renderColumnWindow}, which positions the returned
-     * cells afterward.
+     * Does not touch `_windowFirst`, `_columnsDirty`, `_filterWindowFirst`,
+     * or `_filterCellsDirty` — those stay each caller's own bookkeeping.
      *
+     * @param row - The row whose cells to reconcile.
      * @param firstCol - The first visible-column index to render, inclusive.
      * @param lastCol - The last visible-column index to render, inclusive.
-     * @returns `true` when the rendered cell set changed.
+     * @param dirty - `true` when every cell's per-column state must be
+     *   re-applied as retargeted, regardless of whether it kept its own field.
+     * @param hooks - The two behaviours that differ between the column row
+     *   and the filter row.
      */
-    private reconcileColumnCells(firstCol: number, lastCol: number): boolean {
-        const row = this.getComponents()[1] as Row;
-
-        this._lastEnteredCells = undefined;
-
-        const prevFirst = this._windowFirst;
-        const prevWidth = row.getComponents().length;
-        const prevLast  = prevFirst + prevWidth - 1;
-
-        if (!this._columnsDirty && firstCol === prevFirst && lastCol === prevLast) {
-            return false;
-        }
-
-        const width = lastCol - firstCol + 1;
-        const delta = firstCol - prevFirst;
-
-        if (!this._columnsDirty && width === prevWidth && delta !== 0 && Math.abs(delta) < width) {
-            this._lastEnteredCells = this.reconcileColumnWindowSlide(row, firstCol, lastCol, delta);
-            this._windowFirst = firstCol;
-
-            return true;
-        }
-
-        const columnMap = new Map(this._columns.map(c => [c.getField().getName(), c]));
-        const existing  = row.getComponents().slice() as HeaderCell[];
-        const byName    = new Map<string, HeaderCell>();
+    private reconcileWindowedRow<TCell extends Cell<any>>(
+        row: Row, firstCol: number, lastCol: number, dirty: boolean, hooks: WindowedRowHooks<TCell>,
+    ): void {
+        const existing = row.getComponents().slice() as TCell[];
+        const byName   = new Map<string, TCell>();
 
         for (const cell of existing) {
             const lc    = row.getLayoutConstraints(cell);
@@ -847,7 +837,7 @@ class TableHeader extends Component {
         }
 
         const slotCount = lastCol - firstCol + 1;
-        const assigned: (HeaderCell | undefined)[] = new Array(slotCount).fill(undefined);
+        const assigned: (TCell | undefined)[] = new Array(slotCount).fill(undefined);
         const retargeted = new Set<number>();
 
         // Pass 1 — keep a cell for its own field.
@@ -877,19 +867,7 @@ class TableHeader extends Component {
             if (cell) {
                 row.setLayoutConstraints(cell, { data: field });
             } else {
-                cell = new HeaderCell(field.getName(), field.getName(), null);
-
-                row.addComponent(cell, { data: field });
-
-                // Wire exactly once, at creation. The resize/sort/context
-                // closures resolve the cell's visible-column index live (via
-                // columnIndexOf) at emit time, so a later hide/show/scroll
-                // that shifts indices needs no re-wiring. Re-wiring a
-                // surviving cell would stack duplicate listeners on its
-                // ListenerBag — making a single drag emit `columnresize`
-                // several times with mismatched indices, and a single header
-                // click cycle the sort twice.
-                this.wireCell(cell);
+                cell = hooks.create(field);
             }
 
             assigned[slot] = cell;
@@ -897,39 +875,11 @@ class TableHeader extends Component {
         }
 
         // Pass 3 — per-column state, re-applied to every rendered cell so a
-        // recycled cell never shows a trace of its previous column. The
-        // ARIA column index is the one exception: a survivor's index cannot
-        // be stale (it was matched by field name in pass 1, and a field's
-        // index into `_visibleFields` cannot change without `_columnsDirty`
-        // being set), so that write is scoped to a retargeted cell, or every
-        // cell once `_columnsDirty` widens the scope — read directly here,
-        // since this method does not clear it until after this pass.
+        // recycled cell never shows a trace of its previous column.
         for (let col = firstCol; col <= lastCol; col++) {
-            const cell   = assigned[col - firstCol]!;
-            const field  = this._visibleFields[col];
-            const column = columnMap.get(field.getName());
+            const cell = assigned[col - firstCol]!;
 
-            cell.setFieldName(field.getName());
-            cell.setHeaderText(column?.getHeaderText() ?? field.getName());
-
-            const description = field.getDescription();
-
-            if (cell.getTooltip() !== description) {
-                cell.setTooltip(description);
-            }
-
-            const headerGlyph = column?.getHeaderGlyph() ?? null;
-
-            if (cell.getHeaderGlyph() !== headerGlyph) {
-                cell.setHeaderGlyph(headerGlyph);
-            }
-
-            cell.setBaseBackground(column?.getGroupColor() ?? null);
-            cell.setRequired(column?.isRequired() ?? false);
-
-            if (retargeted.has(col) || this._columnsDirty) {
-                cell.getAria().setColIndex(col + 1);
-            }
+            hooks.apply(cell, col, retargeted.has(col) || dirty);
         }
 
         // Discard what is left over.
@@ -952,81 +902,218 @@ class TableHeader extends Component {
         const slotOf = new Map(assigned.map((cell, slot) => [cell, slot]));
 
         row.sortComponents((c1, c2) =>
-            (slotOf.get(c1 as HeaderCell) ?? 0) - (slotOf.get(c2 as HeaderCell) ?? 0));
-
-        this._windowFirst  = firstCol;
-        this._columnsDirty = false;
-
-        return true;
+            (slotOf.get(c1 as TCell) ?? 0) - (slotOf.get(c2 as TCell) ?? 0));
     }
 
     /**
-     * Reconciles an ordinary same-width slide: repoints the `|delta|`
-     * departing cells directly onto the `|delta|` entering columns and leaves
-     * every surviving cell untouched. A header cell carries no per-column type
-     * identity — unlike a body `Cell` — so the departing edge is always exactly
-     * the right size and shape to serve the entering edge: no cache,
-     * construction, or disposal is needed, and no detach/reattach either, since
-     * every cell stays a mounted child throughout.
+     * Shared slide-path reconciler: repoints the `|delta|` departing cells
+     * directly onto the `|delta|` entering columns and leaves every surviving
+     * cell untouched. A header cell (of either row) carries no per-column
+     * type identity — unlike a body `Cell` — so the departing edge is always
+     * exactly the right size and shape to serve the entering edge: no cache,
+     * construction, or disposal is needed, and no detach/reattach either,
+     * since every cell stays a mounted child throughout.
      *
-     * @param row - The column row.
+     * @param row - The row whose cells to reconcile.
      * @param firstCol - The first visible-column index to render, inclusive.
      * @param lastCol - The last visible-column index to render, inclusive.
-     * @param delta - `firstCol` minus this header's previous window start.
-     *   Positive: window moved right. Negative: moved left. Never zero.
-     * @returns The cells repointed at a new column this call, for the caller to
-     *   scope `syncSortIndicators` to.
+     * @param delta - The new window's first column minus the row's previous
+     *   window start. Positive: window moved right. Negative: moved left.
+     *   Never zero.
+     * @param hooks - The two behaviours that differ between the column row
+     *   and the filter row.
+     * @returns The cells repointed at a new column this call.
      */
-    private reconcileColumnWindowSlide(row: Row, firstCol: number, lastCol: number, delta: number): HeaderCell[] {
+    private reconcileWindowedRowSlide<TCell extends Cell<any>>(
+        row: Row, firstCol: number, lastCol: number, delta: number, hooks: WindowedRowHooks<TCell>,
+    ): TCell[] {
         const width    = lastCol - firstCol + 1;
         const outCount = Math.abs(delta);
 
         // Snapshot first — `sortComponents` below reorders the live array, and
         // nothing here may observe that reordering mid-method.
-        const cells = [...row.getComponents()] as HeaderCell[];
+        const cells = [...row.getComponents()] as TCell[];
 
         const survivorCells = delta > 0 ? cells.slice(outCount) : cells.slice(0, width - outCount);
         const enteringCells = delta > 0 ? cells.slice(0, outCount) : cells.slice(width - outCount);
 
         const enteringCols = delta > 0
-            ? range(lastCol - outCount + 1, lastCol)
-            : range(firstCol, firstCol + outCount - 1);
+            ? Util.range(lastCol - outCount + 1, lastCol)
+            : Util.range(firstCol, firstCol + outCount - 1);
 
         enteringCols.forEach((col, i) => {
-            const cell   = enteringCells[i];
-            const field  = this._visibleFields[col];
-            const column = this._columns.find(c => c.getField().getName() === field.getName());
+            const cell = enteringCells[i];
 
-            row.setLayoutConstraints(cell, { data: field });
-
-            cell.setFieldName(field.getName());
-            cell.setHeaderText(column?.getHeaderText() ?? field.getName());
-
-            const description = field.getDescription();
-
-            if (cell.getTooltip() !== description) {
-                cell.setTooltip(description);
-            }
-
-            const headerGlyph = column?.getHeaderGlyph() ?? null;
-
-            if (cell.getHeaderGlyph() !== headerGlyph) {
-                cell.setHeaderGlyph(headerGlyph);
-            }
-
-            cell.setBaseBackground(column?.getGroupColor() ?? null);
-            cell.setRequired(column?.isRequired() ?? false);
-            cell.getAria().setColIndex(col + 1);
+            row.setLayoutConstraints(cell, { data: this._visibleFields[col] });
+            hooks.apply(cell, col, true);
         });
 
-        const slotOf = new Map<HeaderCell, number>();
+        const slotOf = new Map<TCell, number>();
 
         survivorCells.forEach((cell, i) => slotOf.set(cell, delta > 0 ? i : i + outCount));
         enteringCells.forEach((cell, i) => slotOf.set(cell, delta > 0 ? width - outCount + i : i));
 
-        row.sortComponents((c1, c2) => (slotOf.get(c1 as HeaderCell) ?? 0) - (slotOf.get(c2 as HeaderCell) ?? 0));
+        row.sortComponents((c1, c2) => (slotOf.get(c1 as TCell) ?? 0) - (slotOf.get(c2 as TCell) ?? 0));
 
         return enteringCells;
+    }
+
+    /**
+     * Builds the {@link WindowedRowHooks} for the column row: `create`
+     * constructs, parents and wires a fresh {@link HeaderCell}; `apply`
+     * writes every per-column property (label, tooltip, glyph, group tint,
+     * required marker), gating the ARIA column-index write on `retargeted` —
+     * a survivor's own index cannot be stale, so that write stays scoped to a
+     * retargeted cell (or every cell, once a field/config change widens the
+     * scope via `dirty`).
+     *
+     * @param row - The column row the built hooks operate on.
+     * @returns The column row's hooks.
+     */
+    private columnRowHooks(row: Row): WindowedRowHooks<HeaderCell> {
+        const columnMap = new Map(this._columns.map(c => [c.getField().getName(), c]));
+
+        return {
+            create: (field: Field): HeaderCell => {
+                const cell = new HeaderCell(field.getName(), field.getName(), null);
+
+                row.addComponent(cell, { data: field });
+
+                // Wire exactly once, at creation. The resize/sort/context
+                // closures resolve the cell's visible-column index live (via
+                // columnIndexOf) at emit time, so a later hide/show/scroll
+                // that shifts indices needs no re-wiring. Re-wiring a
+                // surviving cell would stack duplicate listeners on its
+                // ListenerBag — making a single drag emit `columnresize`
+                // several times with mismatched indices, and a single header
+                // click cycle the sort twice.
+                this.wireCell(cell);
+
+                return cell;
+            },
+            apply: (cell: HeaderCell, col: number, retargeted: boolean): void => {
+                const field  = this._visibleFields[col];
+                const column = columnMap.get(field.getName());
+
+                cell.setFieldName(field.getName());
+                cell.setHeaderText(column?.getHeaderText() ?? field.getName());
+
+                const description = field.getDescription();
+
+                if (cell.getTooltip() !== description) {
+                    cell.setTooltip(description);
+                }
+
+                const headerGlyph = column?.getHeaderGlyph() ?? null;
+
+                if (cell.getHeaderGlyph() !== headerGlyph) {
+                    cell.setHeaderGlyph(headerGlyph);
+                }
+
+                cell.setBaseBackground(column?.getGroupColor() ?? null);
+                cell.setRequired(column?.isRequired() ?? false);
+
+                if (retargeted) {
+                    cell.getAria().setColIndex(col + 1);
+                }
+            },
+        };
+    }
+
+    /**
+     * Builds the {@link WindowedRowHooks} for the filter row: `create`
+     * constructs, parents and wires a fresh {@link FilterCell}; `apply`
+     * writes every per-column property (label, operators, numeric-only flag,
+     * filter state) and always writes the ARIA column index — unlike the
+     * column row, the filter row has no `syncSortIndicators`-style downstream
+     * consumer to scope the write for, so `retargeted` goes unread here.
+     *
+     * @param row - The filter row the built hooks operate on.
+     * @returns The filter row's hooks.
+     */
+    private filterRowHooks(row: Row): WindowedRowHooks<FilterCell> {
+        const columnMap = new Map(this._columns.map(c => [c.getField().getName(), c]));
+        const operatorsFor = (field: Field): ColumnFilterOperator[] => {
+            const column = columnMap.get(field.getName());
+
+            return column?.isFilterable() ? columnFilterOperators(field.getType()) : [];
+        };
+
+        return {
+            create: (field: Field): FilterCell => {
+                const cell = new FilterCell(field.getName(), operatorsFor(field));
+
+                row.addComponent(cell, { data: field });
+                this.wireFilterCell(cell);
+
+                return cell;
+            },
+            apply: (cell: FilterCell, col: number): void => {
+                const field     = this._visibleFields[col];
+                const column    = columnMap.get(field.getName());
+                const operators = operatorsFor(field);
+
+                cell.setFieldName(field.getName());
+                cell.setColumnLabel(column?.getHeaderText() ?? field.getName());
+                cell.setOperators(operators);
+
+                const target = this.filterTarget(field.getName());
+
+                cell.setNumericOnly(target !== null && columnFilterTakesNumericOperand(target));
+                cell.getAria().setColIndex(col + 1);
+
+                if (operators.length > 0) {
+                    cell.setFilterState(this.filterState().get(field.getName())
+                        ?? { clauses: [{ operator: operators[0], text: '' }] });
+                }
+            },
+        };
+    }
+
+    /**
+     * Reconciles the column-row's rendered header cells to the
+     * horizontally-visible column range `[firstCol, lastCol]`, via the
+     * shared {@link reconcileWindowedRow} / {@link reconcileWindowedRowSlide}
+     * algorithms and {@link columnRowHooks}. An ordinary same-width slide
+     * takes the cheaper slide path instead: only the `|delta|` entering
+     * cells are repointed, and only their per-column state is re-applied — a
+     * surviving cell is left untouched rather than re-applied a second time
+     * with the same values.
+     *
+     * Called from {@link renderColumnWindow}, which positions the returned
+     * cells afterward.
+     *
+     * @param firstCol - The first visible-column index to render, inclusive.
+     * @param lastCol - The last visible-column index to render, inclusive.
+     * @returns `true` when the rendered cell set changed.
+     */
+    private reconcileColumnCells(firstCol: number, lastCol: number): boolean {
+        const row = this.getComponents()[1] as Row;
+
+        this._lastEnteredCells = undefined;
+
+        const prevFirst = this._windowFirst;
+        const prevWidth = row.getComponents().length;
+        const prevLast  = prevFirst + prevWidth - 1;
+
+        if (!this._columnsDirty && firstCol === prevFirst && lastCol === prevLast) {
+            return false;
+        }
+
+        const width = lastCol - firstCol + 1;
+        const delta = firstCol - prevFirst;
+        const hooks = this.columnRowHooks(row);
+
+        if (!this._columnsDirty && width === prevWidth && delta !== 0 && Math.abs(delta) < width) {
+            this._lastEnteredCells = this.reconcileWindowedRowSlide(row, firstCol, lastCol, delta, hooks);
+        } else {
+            this.reconcileWindowedRow(row, firstCol, lastCol, this._columnsDirty, hooks);
+        }
+
+        this._windowFirst  = firstCol;
+        this._columnsDirty = false;
+
+        return true;
     }
 
     /**
@@ -1042,6 +1129,14 @@ class TableHeader extends Component {
      * `spanFrom` / `spanTo` indices are stored in its layout constraints'
      * `data` slot; the table layout manager reads them to position the
      * cell as the sum of underlying column widths.
+     *
+     * Mirrors `Table`'s private `computeGroupRuns`, which finds the same
+     * contiguous runs for the rotated body, with one intended divergence: a
+     * run here continues across a shared `null` group key, so adjacent
+     * ungrouped columns merge into one blank spanning cell that keeps the
+     * parent-header band continuous; `computeGroupRuns` breaks the run on
+     * `null` and emits nothing for it, since a rotated body row has no such
+     * continuity requirement.
      */
     private rebuildParentCells(): void {
         const row = this.getParentRow();
@@ -1403,15 +1498,12 @@ class TableHeader extends Component {
 
     /**
      * Reconciles the filter row's rendered cells to the horizontally-visible
-     * column range `[firstCol, lastCol]`, mirroring
-     * {@link reconcileColumnCells}'s three-pass recycle algorithm — and,
-     * for an ordinary same-width slide, its cheaper fast path too (see
-     * {@link reconcileFilterWindowSlide}), which repoints only the `|delta|`
-     * entering cells and leaves every survivor untouched — tracked by its
-     * own {@link _filterCellsDirty} flag and {@link _filterWindowFirst}
-     * offset. A column that is not filterable still gets a cell, so the row
-     * stays column-aligned; an empty operator list is what renders that
-     * cell blank.
+     * column range `[firstCol, lastCol]`, via the shared
+     * {@link reconcileWindowedRow} / {@link reconcileWindowedRowSlide}
+     * algorithms and {@link filterRowHooks} — tracked by its own
+     * {@link _filterCellsDirty} flag and {@link _filterWindowFirst} offset.
+     * A column that is not filterable still gets a cell, so the row stays
+     * column-aligned; an empty operator list is what renders that cell blank.
      *
      * When {@link hasFilterRow} is `false` every cell is disposed and the
      * row stays empty, mirroring {@link rebuildParentCells}'s own
@@ -1449,166 +1541,18 @@ class TableHeader extends Component {
 
         const width = lastCol - firstCol + 1;
         const delta = firstCol - prevFirst;
+        const hooks = this.filterRowHooks(row);
 
         if (!this._filterCellsDirty && width === prevWidth && delta !== 0 && Math.abs(delta) < width) {
-            this.reconcileFilterWindowSlide(row, firstCol, lastCol, delta);
-            this._filterWindowFirst = firstCol;
-
-            return true;
+            this.reconcileWindowedRowSlide(row, firstCol, lastCol, delta, hooks);
+        } else {
+            this.reconcileWindowedRow(row, firstCol, lastCol, this._filterCellsDirty, hooks);
         }
-
-        const columnMap = new Map(this._columns.map(c => [c.getField().getName(), c]));
-        const existing  = row.getComponents().slice() as FilterCell[];
-        const byName    = new Map<string, FilterCell>();
-
-        for (const cell of existing) {
-            const lc    = row.getLayoutConstraints(cell);
-            const field = lc?.data as Field | undefined;
-
-            if (field) {
-                byName.set(field.getName(), cell);
-            }
-        }
-
-        const slotCount = lastCol - firstCol + 1;
-        const assigned: (FilterCell | undefined)[] = new Array(slotCount).fill(undefined);
-
-        // Pass 1 — keep a cell for its own field.
-        for (let col = firstCol; col <= lastCol; col++) {
-            const name = this._visibleFields[col].getName();
-            const cell = byName.get(name);
-
-            if (cell) {
-                assigned[col - firstCol] = cell;
-                byName.delete(name);
-            }
-        }
-
-        const free = Array.from(byName.values());
-
-        // Pass 2 — recycle a leftover, else build.
-        for (let col = firstCol; col <= lastCol; col++) {
-            const slot = col - firstCol;
-
-            if (assigned[slot] !== undefined) {
-                continue;
-            }
-
-            const field     = this._visibleFields[col];
-            const column    = columnMap.get(field.getName());
-            const operators = column?.isFilterable() ? columnFilterOperators(field.getType()) : [];
-            let   cell      = free.pop();
-
-            if (cell) {
-                row.setLayoutConstraints(cell, { data: field });
-            } else {
-                cell = new FilterCell(field.getName(), operators);
-
-                row.addComponent(cell, { data: field });
-
-                this.wireFilterCell(cell);
-            }
-
-            assigned[slot] = cell;
-        }
-
-        // Pass 3 — per-column state, re-applied to every rendered cell so a
-        // recycled cell never shows a trace of its previous column.
-        for (let col = firstCol; col <= lastCol; col++) {
-            const cell      = assigned[col - firstCol]!;
-            const field     = this._visibleFields[col];
-            const column    = columnMap.get(field.getName());
-            const operators = column?.isFilterable() ? columnFilterOperators(field.getType()) : [];
-
-            cell.setFieldName(field.getName());
-            cell.setColumnLabel(column?.getHeaderText() ?? field.getName());
-            cell.setOperators(operators);
-
-            const target = this.filterTarget(field.getName());
-
-            cell.setNumericOnly(target !== null && columnFilterTakesNumericOperand(target));
-            cell.getAria().setColIndex(col + 1);
-
-            if (operators.length > 0) {
-                cell.setFilterState(this.filterState().get(field.getName())
-                    ?? { clauses: [{ operator: operators[0], text: '' }] });
-            }
-        }
-
-        // Discard what is left over.
-        for (const cell of free) {
-            row.removeComponent(cell);
-            cell.dispose();
-        }
-
-        // Re-order to slot order, mirroring `reconcileColumnCells`.
-        const slotOf = new Map(assigned.map((cell, slot) => [cell, slot]));
-
-        row.sortComponents((c1, c2) =>
-            (slotOf.get(c1 as FilterCell) ?? 0) - (slotOf.get(c2 as FilterCell) ?? 0));
 
         this._filterWindowFirst = firstCol;
         this._filterCellsDirty  = false;
 
         return true;
-    }
-
-    /**
-     * Reconciles an ordinary same-width slide for the filter row, mirroring
-     * {@link reconcileColumnWindowSlide}: repoints the `|delta|` departing
-     * cells directly onto the `|delta|` entering columns and leaves every
-     * surviving cell untouched. No return value is needed since
-     * {@link reconcileFilterCells} has no downstream scoped sweep to hand it
-     * to, unlike the column row's `syncSortIndicators`.
-     *
-     * @param row - The filter row.
-     * @param firstCol - The first visible-column index to render, inclusive.
-     * @param lastCol - The last visible-column index to render, inclusive.
-     * @param delta - `firstCol` minus this header's previous filter-window
-     *   start. Positive: window moved right. Negative: moved left. Never zero.
-     */
-    private reconcileFilterWindowSlide(row: Row, firstCol: number, lastCol: number, delta: number): void {
-        const width    = lastCol - firstCol + 1;
-        const outCount = Math.abs(delta);
-
-        const cells = [...row.getComponents()] as FilterCell[];
-
-        const survivorCells = delta > 0 ? cells.slice(outCount) : cells.slice(0, width - outCount);
-        const enteringCells = delta > 0 ? cells.slice(0, outCount) : cells.slice(width - outCount);
-
-        const enteringCols = delta > 0
-            ? range(lastCol - outCount + 1, lastCol)
-            : range(firstCol, firstCol + outCount - 1);
-
-        enteringCols.forEach((col, i) => {
-            const cell      = enteringCells[i];
-            const field     = this._visibleFields[col];
-            const column    = this._columns.find(c => c.getField().getName() === field.getName());
-            const operators = column?.isFilterable() ? columnFilterOperators(field.getType()) : [];
-
-            row.setLayoutConstraints(cell, { data: field });
-
-            cell.setFieldName(field.getName());
-            cell.setColumnLabel(column?.getHeaderText() ?? field.getName());
-            cell.setOperators(operators);
-
-            const target = this.filterTarget(field.getName());
-
-            cell.setNumericOnly(target !== null && columnFilterTakesNumericOperand(target));
-            cell.getAria().setColIndex(col + 1);
-
-            if (operators.length > 0) {
-                cell.setFilterState(this.filterState().get(field.getName())
-                    ?? { clauses: [{ operator: operators[0], text: '' }] });
-            }
-        });
-
-        const slotOf = new Map<FilterCell, number>();
-
-        survivorCells.forEach((cell, i) => slotOf.set(cell, delta > 0 ? i : i + outCount));
-        enteringCells.forEach((cell, i) => slotOf.set(cell, delta > 0 ? width - outCount + i : i));
-
-        row.sortComponents((c1, c2) => (slotOf.get(c1 as FilterCell) ?? 0) - (slotOf.get(c2 as FilterCell) ?? 0));
     }
 
     /**

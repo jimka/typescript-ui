@@ -1669,11 +1669,7 @@ class Table extends Component<TableOptions> {
                 return;
             }
 
-            this._columnContextMenu.show(x, y, [
-                { text: 'Export as CSV',  glyph: 'file-csv',  action: () => this.exportCSV()  },
-                { text: 'Export as JSON', glyph: 'file-code', action: () => this.exportJSON() },
-                { text: 'Export as TSV',  glyph: 'file-lines', action: () => this.exportTSV() },
-            ]);
+            this._columnContextMenu.show(x, y, this.buildExportMenuItems());
 
             return;
         }
@@ -1714,12 +1710,7 @@ class Table extends Component<TableOptions> {
         }
 
         if (this._exportMenuEnabled) {
-            items.push(
-                { separator: true },
-                { text: 'Export as CSV',  glyph: 'file-csv',  action: () => this.exportCSV()  },
-                { text: 'Export as JSON', glyph: 'file-code', action: () => this.exportJSON() },
-                { text: 'Export as TSV',  glyph: 'file-lines', action: () => this.exportTSV() }
-            );
+            items.push({ separator: true }, ...this.buildExportMenuItems());
         }
 
         this._columnContextMenu.show(x, y, items);
@@ -1804,6 +1795,20 @@ class Table extends Component<TableOptions> {
         }
 
         return items;
+    }
+
+    /**
+     * Builds the three export entries {@link showColumnMenu} lists in both
+     * the rotated and normal branches — CSV, then JSON, then TSV.
+     *
+     * @returns The export entries' `MenuItemConfig` array.
+     */
+    private buildExportMenuItems(): MenuItemConfig[] {
+        return [
+            { text: 'Export as CSV',  glyph: 'file-csv',  action: () => this.exportCSV()  },
+            { text: 'Export as JSON', glyph: 'file-code', action: () => this.exportJSON() },
+            { text: 'Export as TSV',  glyph: 'file-lines', action: () => this.exportTSV() },
+        ];
     }
 
     /**

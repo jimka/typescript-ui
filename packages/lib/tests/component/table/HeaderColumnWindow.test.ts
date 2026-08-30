@@ -1303,3 +1303,32 @@ describe('Header column window — ARIA scoping', () => {
         });
     });
 });
+
+// Offline coverage for plans/implemented/table-subsystem-consolidation-round-2.md's
+// `## Expected Behaviour` §Phase 2 — `reconcileColumnCells` and
+// `reconcileFilterCells` now share one pair of algorithms
+// (`reconcileWindowedRow` / `reconcileWindowedRowSlide`), but the early
+// return for a tick whose window and dirty flag are both unchanged still
+// runs before either shared method is reached, exactly as the two
+// hand-written reconcilers did before the extraction.
+describe('Header column window — unchanged-tick early return', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('a scroll that leaves the window unchanged calls neither shared reconciler nor syncSortIndicators', async () => {
+        const table = await wideTable(20);
+        render20At100(table);
+
+        const syncSpy  = vi.spyOn(TableHeader.prototype as any, 'syncSortIndicators');
+        const rowSpy   = vi.spyOn(TableHeader.prototype as any, 'reconcileWindowedRow');
+        const slideSpy = vi.spyOn(TableHeader.prototype as any, 'reconcileWindowedRowSlide');
+
+        // 10px moves neither the first nor the last visible column (see case
+        // 28 above), so the column-row and filter-row windows are both
+        // unchanged and neither reconciler has anything to do.
+        header(table).setScrollX(10);
+
+        expect(syncSpy).not.toHaveBeenCalled();
+        expect(rowSpy).not.toHaveBeenCalled();
+        expect(slideSpy).not.toHaveBeenCalled();
+    });
+});

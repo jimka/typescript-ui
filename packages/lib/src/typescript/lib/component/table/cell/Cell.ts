@@ -102,6 +102,14 @@ export class Cell<T> extends Component {
     private _editor: CellEditor<T> | undefined;
     private _editorPool: CellEditorPool | null = null;
     private _scrollIntoView: (() => void) | null = null;
+    // Internal cell-editor wiring: listens on a privately-owned child; see
+    // the cell-editor carve-out in ARCHITECTURE.md. An arrow field rather
+    // than a plain method: `Event` invokes a listener via
+    // `.apply(component, ...)`, bound to the component the listener was
+    // registered on — here the renderer, not this cell — so a bare method
+    // reference would run with the wrong `this`; the arrow field's lexical
+    // `this` keeps it pinned to the cell regardless.
+    private _onRendererDoubleClick = (): void => { this.startEdit(); };
     protected _activeEditor: CellEditor<T> | null = null;
     // Typed as `ListenerBag<string>` rather than `ListenerBag<CellEvent>` so
     // subclasses (e.g. HeaderCell) can re-declare the bag with a wider
@@ -759,7 +767,7 @@ export class Cell<T> extends Component {
 
             // Internal cell-editor wiring: listens on a privately-owned child;
             // see the cell-editor carve-out in ARCHITECTURE.md.
-            Event.addListener(renderer, 'dblclick', () => this.startEdit());
+            Event.addListener(renderer, 'dblclick', this._onRendererDoubleClick);
         }
 
         const changed = this._renderer !== renderer;
