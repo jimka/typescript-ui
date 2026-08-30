@@ -75,6 +75,18 @@ tabs.getTab().on("tabclose", component => store.removeBinding(component));
 
 The callback fires after the tab is removed and before the content is destroyed; the closed component is passed in so callers can capture anything they need before it goes. Once every `tabclose` listener has run, the content is disposed — releasing its element, handles, and per-instance stylesheet rules — unless the tab was added with `disposeOnClose: false`, or a listener re-parented the component during the callback.
 
+To ask before a user closes a tab — an unsaved-changes guard, say — wire `beforetabclose` on the same wrapped manager. `TabPanel` mirrors no per-setter forwarder for it, so `getTab()` is the documented route:
+
+```typescript
+tabs.getTab().on("beforetabclose", (component, controller) => {
+    if (isDirty(component)) {
+        controller.preventDefault();
+    }
+});
+```
+
+It fires only for the user close path (the ✕, the context menu's *Close*, and bulk-close rows), before the tab is torn down; calling the controller's `preventDefault()` keeps the tab open and suppresses `tabclose` for it.
+
 ## Right-click context menu
 
 Right-clicking any tab button opens a context menu that switches to another tab or closes the right-clicked one (the Close item is enabled only when that tab is `closeable`). This comes from the wrapped [`Tab`](/layouts/Tab#right-click-context-menu) manager and needs no wiring — closing through the menu fires `tabclose` just like the close button does.

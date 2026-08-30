@@ -50,10 +50,13 @@ tabbed.addComponent(advancedPanel,  { name: 'Advanced' });
 | Event | Payload | Fires when |
 | --- | --- | --- |
 | `tabclose` | the removed content component | A tab is **closed** (close button or context-menu Close). |
+| `beforetabclose` | the content about to close, and a [`TabCloseController`](/api/layout/interfaces/TabCloseController) | A **user** close is about to run — the ✕, the context menu's *Close*, or a bulk-close row — before the tab is torn down. |
 | `empty` | none | The strip loses its **last** tab by any path — close, [tear-off, or re-dock](#tear-off-re-dock). |
 | `detach` | the torn-off [`Window`](/components/Window) | A tab is **torn off** into a new floating window — fires for *every* tear-off, even one that leaves siblings behind. |
 
 `empty` is a passive announcement: the `Tab` fires it but does nothing itself, so a strip you place deliberately stays on screen when emptied. A dock layer can subscribe to it to clean up — [`DockRegion`](/layouts/DockRegion) listens on the stacks it creates to remove an emptied stack and collapse a leftover single-pane [`Split`](/layouts/Split). It is orthogonal to `tabclose`: a close-button close fires `tabclose` (with the content) and then, if that was the last tab, `empty` (with none); a tear-off fires `detach` (with the new window) and, only when it drained the strip, `empty` too. `detach` is what lets a dock fold *every* tear-off into its model — [`Dock`](/api/overlay/classes/Dock) schedules an adoption sweep on it — since `empty` alone misses a tear-off that keeps siblings.
+
+`beforetabclose` fires only on the **user** close path — the ✕, the context menu's *Close* row, and every bulk-close row all converge on the same strip-level close and share this one guard. The programmatic [`closeTab`](/api/layout/classes/Tab#closetab) is **not** guarded by it, so a listener that vetoes a user close can later finish that close itself by calling `closeTab` without re-triggering its own veto. Calling the controller's `preventDefault()` aborts the close; the tab stays open and no `tabclose` fires for it.
 
 A close **destroys** the content: once every `tabclose` listener has run, `Tab` disposes the removed component, releasing its element, handles, and per-instance stylesheet rules. A listener that re-parents the content during `tabclose` (`otherContainer.moveComponent(content)`) keeps it alive with no flag needed — it has an owner again by the time the destroy check runs. `disposeOnClose: false` opts out unconditionally, for a component the caller holds and intends to re-use.
 
@@ -67,6 +70,16 @@ A close **destroys** the content: once every `tabclose` listener has run, `Tab` 
 | `disposeOnClose` | Whether closing this tab destroys its content. Defaults to `true`; pass `false` for a component you hold and intend to re-use after the tab closes. |
 
 A tab button's label resolves in priority order: the per-placement `name` constraint above, then the component's intrinsic [`name`](/api/core/classes/Component#getname) (which travels with it across moves and tear-offs), then its `id` as a last resort. So a component constructed with `{ name: "Console" }` labels its tab automatically — and its torn-off window title too — without any constraint, while the constraint stays available to override the label for a specific placement.
+
+## Renaming a tab
+
+The label resolved at creation is otherwise frozen — `setTabName(content, name)` relabels a live tab's button and re-lays out the strip:
+
+```typescript
+layout.setTabName(consolePanel, 'Console •');
+```
+
+Returns `true` when `content` has a tab, `false` otherwise.
 
 ## Selecting a tab
 

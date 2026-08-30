@@ -17,7 +17,7 @@ export type { AccordionOptions, AccordionEvent, SectionToggleCallback, SectionRe
 export type { LayoutSize, LayoutSizeUnit } from '~/layout/LayoutSizes.js';
 export { AccordionConstraints } from '~/layout/AccordionConstraints.js';
 export { Tab } from '~/layout/Tab.js';
-export type { TabOptions, TabEvent, TabWidthMode, TabSide, TabOrientation, TabDetachWindowMode } from '~/layout/Tab.js';
+export type { TabOptions, TabEvent, TabCloseController, TabWidthMode, TabSide, TabOrientation, TabDetachWindowMode } from '~/layout/Tab.js';
 // `TabDragData` now lives in overlay/DragManager (shared with Window); re-exported here for back-compat.
 export type { TabDragData } from '~/overlay/DragManager.js';
 export { Border } from '~/layout/Border.js';

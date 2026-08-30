@@ -1449,6 +1449,27 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
+     * Replaces the display label of the cell with `id`, updating the strip
+     * button's text and re-laying out the strip. No-op for an unknown id.
+     *
+     * @param id - The cell id to rename.
+     * @param name - The new display label.
+     *
+     * @returns This tab strip, for method chaining.
+     */
+    setEntryName(id: string, name: string): this {
+        const entry = this.entryById(id);
+
+        if (entry) {
+            entry.name = name;
+            entry.button.setText(name);
+            this.scheduleLayout();
+        }
+
+        return this;
+    }
+
+    /**
      * Records the live content's component id on the cell with `id`. The id feeds
      * the drag payload (so a foreign strip can resolve the content from the shared
      * registry) and the cell button's ARIA `aria-controls` (so the button is

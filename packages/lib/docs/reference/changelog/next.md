@@ -56,6 +56,15 @@ page resets to empty.
   is now one shared class, reached through a structural `HeadingScrollHost`
   interface so it depends on neither class concretely.
 
+### Layouts
+
+- **`Tab.setTabName(content, name)`** relabels a live tab's button and
+  re-lays out the strip — a tab's label was previously frozen at creation.
+- **`Tab`'s `"beforetabclose"` event** fires on the user close path (the ✕,
+  the context menu's *Close*, and every bulk-close row) before a tab is torn
+  down, and can be vetoed via its `TabCloseController.preventDefault()`. The
+  programmatic `closeTab` is not guarded by it.
+
 ## Fixed
 
 - `TreeRow`, `FieldSet`, `ComboBox`'s collapsed-control label, and the
@@ -78,6 +87,14 @@ page resets to empty.
 
 ### Core
 
+- **`callable()` no longer wraps a class in a `Proxy`.** On Tauri's Linux
+  webview (WebKitGTK/JavaScriptCore), a `Proxy` anywhere above a method in an
+  `extends` chain resolved that method's own `super.<name>()` calls to
+  `undefined` — V8 (Chrome, Node) never showed this, so it surfaced only in a
+  desktop build. The wrapper is now a plain function sharing the class's own
+  `.prototype`, so every `extends` link is a real prototype-chain edge. No
+  consumer action is needed; `new`, a bare call, `instanceof`, and `extends`
+  all still work exactly as documented.
 - **`setId` on an already-rendered component now deletes the `#<old-id>`
   rule it replaces instead of leaving it on the shared stylesheet.** A
   `setId` call after first render swapped in a fresh per-instance
