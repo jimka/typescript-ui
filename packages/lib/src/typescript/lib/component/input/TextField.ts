@@ -55,6 +55,7 @@ class TextField<TOptions extends TextFieldOptions = TextFieldOptions> extends Te
      *   class's defaults; subclasses forward their `_defaultXxxOptions`
      *   constant here.
      */
+    constructor(options?: TextFieldOptions, subclassDefaults?: Partial<TextFieldOptions>);
     constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
         super(options, { ..._defaultTextFieldOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>);
 
