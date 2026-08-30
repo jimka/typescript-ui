@@ -96,4 +96,21 @@ describe('SplitGutter .opaque class-tier chrome dedup', () => {
         expect(idOpaqueDeclarations.backgroundImage).toBeUndefined();
         expect(idOpaqueDeclarations.borderTop).toBeUndefined();
     });
+
+    it('caches the border spec for getBorderSize(), even though the border is painted only by the shared .opaque class rule', () => {
+        // Regression test: `setOpaque` used to call `setBorder`/`clearBorder`,
+        // which both wrote the per-instance CSS and cached `_border` for
+        // `getBorderSize()`'s layout math. Hoisting the border onto the
+        // shared `.opaque` `ownStyleStates` rule dropped both calls entirely,
+        // leaving `getBorderSize()` reporting a zero-width border in the
+        // opaque state while the CSS still paints a real 1px one.
+        const gutter = new SplitGutter('horizontal');
+        gutter.getElement(true);
+
+        gutter.setOpaque(true);
+        expect(gutter.getBorderSize()).toEqual({ top: 1, right: 1, bottom: 1, left: 1 });
+
+        gutter.setOpaque(false);
+        expect(gutter.getBorderSize()).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
+    });
 });

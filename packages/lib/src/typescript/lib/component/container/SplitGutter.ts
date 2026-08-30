@@ -86,6 +86,13 @@ const _defaultSplitGutterOptions: Partial<SplitGutterOptions> = {
     movable:     true,
 };
 
+/** `.opaque`'s chrome declarations, read by `ownStyleStates`' entry below. */
+const OPAQUE_DECLARATIONS: StyleBag = {
+    backgroundColor: "var(--ts-ui-button-bg, #e8e8e8)",
+    backgroundImage: "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))",
+    border:          "1px solid var(--ts-ui-button-border, #c8c8c8)",
+};
+
 /**
  * A gutter component shared by [`Split`](/api/layout/classes/Split) and the
  * [`Border`](/api/layout/classes/Border) layout that doubles as both a divider
@@ -114,11 +121,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
     protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
         {
             selector: ".opaque",
-            extract: (): StyleBag => ({
-                backgroundColor: "var(--ts-ui-button-bg, #e8e8e8)",
-                backgroundImage: "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))",
-                border:          "1px solid var(--ts-ui-button-border, #c8c8c8)",
-            }),
+            extract: (): StyleBag => OPAQUE_DECLARATIONS,
         },
     ];
 
@@ -328,9 +331,18 @@ class SplitGutter extends Component<SplitGutterOptions> {
             // restore. `--ts-ui-button-bg` is a solid colour in some themes and
             // a gradient in others, so set both background properties to it —
             // the browser ignores whichever is type-invalid for the given theme.
+            // The border is painted entirely by the shared `.opaque` rule
+            // above, but `getBorderSize()`'s layout math reads the component's
+            // own cached border spec, which a shared class rule can't update —
+            // sync it without writing CSS (a real `setBorder` write here would
+            // defeat the hoisting by duplicating the value onto every
+            // instance's own rule). See `Button._applyFlatChrome` for the same
+            // pattern.
+            this.cacheBorderSpec(OPAQUE_DECLARATIONS.border!);
             this.setStyleState(".opaque", true);
             this._collapseButton?.setDirection(OPPOSITE_DIRECTION[this._collapseDirection]);
         } else {
+            this.cacheBorderSpec("none");
             this.setStyleState(".opaque", false);
             this.setBackgroundColor(this._expandedBackground);
             this._collapseButton?.setDirection(this._collapseDirection);
