@@ -124,6 +124,12 @@ class DocsContent extends Panel {
     // handler below.
     private readonly handleScrollToFragment: () => void = () => this.onScrollToFragment();
 
+    // Cancelled on destructor, mirroring Dialog's afterNextLayout handles —
+    // see DocsShell's own _contentSettledLayout for why this guard is worth
+    // adding even though DocsContent is never disposed in the running app
+    // today.
+    private _scrollToFragmentLayout: { cancel(): void } | null = null;
+
     // Stable reference, mirroring handleLinkClick above: Markdown calls this
     // on every render, and which rule applies depends on _linkBaseDir at that
     // moment, so it can't be bound once to either resolver.
@@ -456,7 +462,7 @@ class DocsContent extends Panel {
         }
 
         this._pendingFragment = fragment;
-        Component.afterNextLayout(this.handleScrollToFragment);
+        this._scrollToFragmentLayout = Component.afterNextLayout(this.handleScrollToFragment);
     }
 
     /**
@@ -595,6 +601,12 @@ class DocsContent extends Panel {
         if (scrollElement) {
             this._tracker.trackScroll(scrollElement);
         }
+    }
+
+    protected destructor(): void {
+        this._scrollToFragmentLayout?.cancel();
+
+        super.destructor();
     }
 }
 

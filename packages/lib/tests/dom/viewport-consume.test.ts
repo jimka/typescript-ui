@@ -9,7 +9,9 @@
 // DOM.sink — rather than by invoking the handler directly. That distinction is
 // the point: the bug this pins was a bound wrapper that dropped its event
 // argument, so the handler's own consume could never reach the dispatcher even
-// though the handler read correctly on its own.
+// though the handler read correctly on its own. This now covers
+// `SplitGutter.onDragStop`'s direct (non-wrapped) registration — the one
+// drag-end mechanism `Split`, `Border`, and `Accordion` all depend on today.
 //
 // These live in their own file deliberately. `Event`'s viewportListenerMap is
 // module-level state and the window listener is attached only when a type is
@@ -19,10 +21,7 @@
 // re-attaches and no dispatch reaches it. Vitest gives each test file a fresh
 // module registry, so a dedicated file is what makes these deterministic.
 import { describe, it, expect, afterEach } from 'vitest';
-import { Container } from '~/core/Container';
-import { Component } from '~/core/Component';
-import { Accordion } from '~/layout/Accordion';
-import { AccordionConstraints } from '~/layout/AccordionConstraints';
+import { SplitGutter } from '~/component/container/SplitGutter';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, makeEvent } from './TestDOM';
 import fontMetrics from './font-metrics.test-font.json';
@@ -35,44 +34,22 @@ const CONFIG = {
     themeVars:       {},
 };
 
-const HEADER = 30;
-
-/** A content component materialised for createSection's element reparent. */
-function content(): Component {
-    const c = new Component({ preferredSize: { width: 100, height: 60 } });
-    c.setMinSize({ width: 40, height: 20 });
-    c.getElement(true);
-    return c;
-}
-
-describe('Accordion — gutter drag end consumes its viewport event', () => {
+describe('SplitGutter — drag end consumes its viewport event', () => {
     afterEach(() => DOM.reset());
 
-    it('stops native propagation of the mouseup that ends a gutter drag', () => {
+    it('stops native propagation of the mouseup that ends a drag', () => {
         installTestDOM(CONFIG);
 
-        const acc = new Accordion();
-        acc.setHeaderHeight(HEADER);
-        acc.setResizable(true);
+        const gutter = new SplitGutter('horizontal');
+        gutter.getElement(true);
 
-        const host = new Container({ layoutManager: acc });
-        host.getElement(true);
-        host.setWidth(400);
-        host.setHeight(300);
-        host.clearInsets();
-        host.addComponent(content(), new AccordionConstraints('A', true));
-        host.addComponent(content(), new AccordionConstraints('B', true));
-        host.doLayout();
-
-        // Starting the drag is what registers the viewport listeners.
-        (acc as unknown as { onGutterDragStart(index: number, position: number): void })
-            .onGutterDragStart(0, 0);
+        gutter.onDragStart({ clientX: 10 } as MouseEvent);
 
         let nativeStops = 0;
-        const evt = makeEvent(host.getElement()!, 'mouseup');
+        const evt = makeEvent(gutter.getElement()!, 'mouseup');
         (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { nativeStops += 1; };
 
-        DOM.sink.dispatchEvent(host.getElement()!, evt);
+        DOM.sink.dispatchEvent(gutter.getElement()!, evt);
 
         expect(nativeStops).toBe(1);
     });

@@ -24,12 +24,12 @@ class DocsDemo extends Container {
     private readonly _toggle: ToggleButton;
     private readonly _source: Markdown;
 
-    // Component.afterNextLayout has no cancellation, so a queued
-    // handleSourceMeasured callback outlives a dispose that lands between
-    // the toggle click and the next animation frame; this flag lets that
-    // callback recognise the block is gone and no-op instead of touching a
-    // torn-down component.
-    private _disposed = false;
+    // Cancelled on destructor so a queued handleSourceMeasured callback from a
+    // "Show source" click that landed just before disposal never touches a
+    // torn-down component. A later toggle's handle replaces an earlier one's —
+    // there is at most one measurement in flight per toggle click, and the
+    // newer toggle's measurement is the one that matters.
+    private _sourceMeasuredLayout: { cancel(): void } | null = null;
 
     // Stable reference so the toggle's `listeners` bag always sees the same
     // function identity; delegates to the named handler below.
@@ -38,11 +38,7 @@ class DocsDemo extends Container {
     // Stable reference for Component.afterNextLayout, mirroring
     // handleToggleSource above — see onToggleSource for why a second relay
     // is needed after the first.
-    private readonly handleSourceMeasured: () => void = () => {
-        if (!this._disposed) {
-            this.notifyIntrinsicSizeChanged();
-        }
-    };
+    private readonly handleSourceMeasured: () => void = () => this.notifyIntrinsicSizeChanged();
 
     /**
      * Handle to detach the {@link ThemeManager.onThemeChange} listener on
@@ -108,16 +104,11 @@ class DocsDemo extends Container {
         this._toggle.setText(shown ? HIDE_SOURCE_LABEL : SHOW_SOURCE_LABEL);
         this.notifyIntrinsicSizeChanged();
 
-        Component.afterNextLayout(this.handleSourceMeasured);
+        this._sourceMeasuredLayout = Component.afterNextLayout(this.handleSourceMeasured);
     }
 
-    /**
-     * Marks this block as torn down before the base teardown runs, so a
-     * `handleSourceMeasured` callback still queued from a "Show source"
-     * click that landed just before disposal finds `_disposed` and no-ops.
-     */
     protected destructor(): void {
-        this._disposed = true;
+        this._sourceMeasuredLayout?.cancel();
         this._unsubscribeTheme();
 
         super.destructor();

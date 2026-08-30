@@ -4,7 +4,8 @@ import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
-import { Button } from "~/component/button/Button.js";
+import { Button, ButtonOptions } from "~/component/button/Button.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 import { Insets } from "~/primitive/Insets.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
@@ -68,6 +69,54 @@ export interface ScrollStripOptions extends PanelOptions {
 const _defaultScrollStripOptions: Partial<ScrollStripOptions> = {
     backgroundColor: "transparent",
 };
+
+/**
+ * Class-tier chrome shared by every lead/trail arrow button, following
+ * `Scrollbar.ts`'s `ScrollArrowButton` shape: `backgroundImage`/`border`/
+ * `shadow`/`borderRadius` are the four `ensureArrows` declarations confirmed
+ * against `StyleBag`'s field list. `border`/`shadow` use the literal `"none"`
+ * string — matching `clearBorder()`/`clearShadow()`'s own written value —
+ * rather than `null`: `resolveDeclarations` truthy-gates both keys, so a
+ * `null` value would resolve to "no declaration at this class tier" and let
+ * `Button`'s own border/shadow default leak through, instead of overriding it
+ * to none the way `clearBorder()`/`clearShadow()` do. `clearInsets()` and
+ * `setZIndex(3)` stay per-instance — `zIndex` has no `StyleBag` field, and
+ * `clearInsets`'s exact mapping onto `StyleBag.padding` was not verified for
+ * this migration (see `## Non-Goals`).
+ */
+const _defaultScrollStripArrowButtonStyleDefaults: Partial<ButtonOptions> = {
+    backgroundImage: "none",
+    border:          "none",
+    shadow:          "none",
+    borderRadius:    "0",
+};
+
+/** Internal arrow-button subclass carrying the shared class-tier chrome above. */
+class ScrollStripArrowButton extends Button {
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultScrollStripArrowButtonStyleDefaults;
+
+    constructor(options?: ButtonOptions, subclassDefaults?: Partial<ButtonOptions>) {
+        // Forwarded as `subclassDefaults` (not just `ownClassStyleDefaults`
+        // above) so `_defaultOptions` — the fallback `getBorder()`/
+        // `getBorderRadius()`/etc. read, and Button's own UA-defeating
+        // per-instance write draws from — agrees with the class-tier chrome
+        // instead of falling back to Button's own "2px ridge" default. The
+        // caller's own `subclassDefaults` layers on top, mirroring
+        // `Scrollbar.ts`'s `ScrollArrowButton` and `TabCloseButton`'s
+        // identical forwarding shape — a no-op today (this class has no
+        // subclass yet) but the dead end ARCHITECTURE.md's "Constructors
+        // forward subclassDefaults" rule warns against otherwise.
+        super(undefined, options, { ..._defaultScrollStripArrowButtonStyleDefaults, ...(subclassDefaults ?? {}) });
+
+        // Not in StyleBag (checked core/ClassStyleRules.ts:44-93 — neither
+        // field exists): clearInsets's exact resolved value against
+        // StyleBag.padding's null-vs-value semantics was not verified for
+        // this plan, and zIndex has no StyleBag field at all. Both stay
+        // per-instance.
+        this.clearInsets();
+        this.setZIndex(3);
+    }
+}
 
 /**
  * A button rail that lays a row or column of items and scrolls them past its
@@ -471,23 +520,13 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
             return;
         }
 
-        const lead = new Button({ glyph: "angle-left" });
-        const trail = new Button({ glyph: "angle-right" });
+        const lead = new ScrollStripArrowButton({ glyph: "angle-left" });
+        const trail = new ScrollStripArrowButton({ glyph: "angle-right" });
 
         for (const button of [lead, trail]) {
             if (this._arrowBackground !== null) {
                 button.setBackgroundColor(this._arrowBackground);
             }
-
-            button.setBackgroundImage("none");
-            button.clearBorder();
-            button.clearShadow();
-            button.setBorderRadius("0");
-            // Drop the default button insets so the glyph fits the narrow gutter.
-            button.clearInsets();
-            // Above the box children so the arrows stay clickable at the strip
-            // ends and cover any item that scrolls under them.
-            button.setZIndex(3);
         }
 
         lead.on("action", this.leadClicked);

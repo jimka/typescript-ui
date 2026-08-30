@@ -637,6 +637,11 @@ class Dialog extends Component implements DismissableLayer {
     private _panelOutAnimation   : Animation.CancelHandle | null = null;
     private _backdropOutAnimation: Animation.CancelHandle | null = null;
 
+    // Queued post-layout callbacks, cancelled on teardown so a dispose landing
+    // before the flush cannot touch a torn-down component.
+    private _resizeToContentLayout: { cancel(): void } | null = null;
+    private _focusFirstLayout:      { cancel(): void } | null = null;
+
     // True once `hide()`'s finalize has begun. `finalize` calls `destructor()`
     // partway through and finishes the rest afterwards, so the destructor uses
     // this to tell "reached from a completing hide" (leave the remainder to
@@ -917,7 +922,7 @@ class Dialog extends Component implements DismissableLayer {
         // height depends on width (wrapping Text) has settled, so re-fit to it.
         // A no-op for content whose height did not change (resizeToContent bails
         // when the height is unchanged), so only width-dependent content reflows.
-        Component.afterNextLayout(() => this.resizeToContent());
+        this._resizeToContentLayout = Component.afterNextLayout(() => this.resizeToContent());
 
         Event.addViewportListener(this, 'keydown', this._boundKeyHandler);
         Event.addViewportListener(this, 'resize', this._boundResizeHandler);
@@ -927,7 +932,7 @@ class Dialog extends Component implements DismissableLayer {
         // in its frame and re-parents the subtree into it. Moving a focused
         // element out of the document blurs it — silently, with no blur event —
         // so the focus is undone a frame later and lands nowhere.
-        Component.afterNextLayout(() => this.focusFirst());
+        this._focusFirstLayout = Component.afterNextLayout(() => this.focusFirst());
     }
 
     /**
@@ -1273,6 +1278,10 @@ class Dialog extends Component implements DismissableLayer {
         this._panelOutAnimation = null;
         this._backdropOutAnimation?.cancel();
         this._backdropOutAnimation = null;
+        this._resizeToContentLayout?.cancel();
+        this._resizeToContentLayout = null;
+        this._focusFirstLayout?.cancel();
+        this._focusFirstLayout = null;
 
         // A dispose that lands mid-dismiss cancels the animation whose
         // completion callback owns the rest of teardown, so run that work here.

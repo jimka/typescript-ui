@@ -5,6 +5,7 @@ import { HBox } from '~/layout/HBox';
 import { Text } from '~/component/input/Text';
 import { AnchorType } from '~/layout/AnchorType';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
+import { Insets } from '~/primitive/Insets';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -184,6 +185,46 @@ describe('HBox itemAlign cross placement', () => {
 
         expect(centred.getY()).toBe(4);  // centred: (24 - 16) / 2
         expect(anchored.getY()).toBe(8); // SOUTH-anchored: pinned to the row bottom
+    });
+
+    // Regression coverage for the itemAlign cross-extent bug: with non-zero
+    // top/bottom insets, a child whose preferred height sits between the
+    // trimmed and untrimmed cross extent must be sized/offset against the
+    // *trimmed* extent (matching VBox's naturalWidth-based equivalent), not
+    // the untrimmed containerSize.height — otherwise it overruns the bottom
+    // inset.
+    it('itemAlign "end" does not overrun the bottom inset with non-zero insets', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostHBox(200, 60, new HBox({ itemAlign: 'end' }));
+        host.setInsets(new Insets(10, 0, 10, 0));
+        // The host's inner (content) height is 60 - 10 - 10 = 40; the row's
+        // cross band, further trimmed by the same insets, is 40 - 10 - 10 = 20.
+        // A preferred height of 30 sits strictly between the two, so the bug
+        // (sizing against the untrimmed 40 instead of the trimmed 20) shows up
+        // as the child's bottom edge overrunning the inset.
+        const child = new Component({ preferredSize: { width: 100, height: 30 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getY()).toBe(10);
+        expect(child.getHeight()).toBe(20); // capped to the trimmed cross band, not the untrimmed 30
+        expect(child.getY() + child.getHeight()).toBe(30); // flush with the trimmed band's bottom edge
+    });
+
+    it('itemAlign "center" also sizes against the trimmed cross extent with non-zero insets', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostHBox(200, 60, new HBox({ itemAlign: 'center' }));
+        host.setInsets(new Insets(10, 0, 10, 0));
+        const child = new Component({ preferredSize: { width: 100, height: 30 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getY()).toBe(10);
+        expect(child.getHeight()).toBe(20); // capped to the trimmed cross band, not the untrimmed 30
     });
 });
 

@@ -499,7 +499,11 @@ describe('Dialog — initial focus', () => {
         // focusing synchronously here lands on an element that is torn out a frame
         // later. Focus must be deferred to after that layout.
         const scheduled: Array<() => void> = [];
-        vi.spyOn(Component, 'afterNextLayout').mockImplementation((cb: () => void) => { scheduled.push(cb); });
+        vi.spyOn(Component, 'afterNextLayout').mockImplementation((cb: () => void) => {
+            scheduled.push(cb);
+
+            return { cancel: () => {} };
+        });
 
         const dialog = new TestDialog({ title: 'T', message: 'M' });
         const focusFirst = vi.spyOn(dialog as any, 'focusFirst');
@@ -572,6 +576,36 @@ describe('Dialog — initial focus', () => {
         vi.spyOn(DOM.source, 'querySelector').mockReturnValue(null);
 
         expect(dialog.requestFocusEl()).toBeNull();
+    });
+});
+
+describe('Dialog — afterNextLayout cancellation', () => {
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    it('disposing before the queued layout flush withdraws resizeToContent and focusFirst', () => {
+        installTestDOM(CONFIG);
+
+        // Real Component.afterNextLayout, driven deterministically the same way
+        // AfterNextLayout.test.ts does: the offline requestAnimationFrame is a
+        // no-op recorder, so capture the frame callback and invoke it manually.
+        const frames: Array<() => void> = [];
+        vi.spyOn(DOM.sink, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
+            frames.push(() => cb(0));
+
+            return frames.length;
+        });
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+        const resizeToContent = vi.spyOn(dialog, 'resizeToContent');
+        const focusFirst      = vi.spyOn(dialog as any, 'focusFirst');
+
+        void dialog.show();
+        dialog.dispose();
+
+        frames.forEach(run => run());
+
+        expect(resizeToContent).not.toHaveBeenCalled();
+        expect(focusFirst).not.toHaveBeenCalled();
     });
 });
 

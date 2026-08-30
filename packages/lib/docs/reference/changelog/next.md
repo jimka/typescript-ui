@@ -142,3 +142,8 @@ page resets to empty.
   graph discarded by a superseded `setData`, a failed layout, or disposal
   mid-layout, and simplified nodes are no longer clipped at low zoom. No
   consumer action is needed.
+- `HBox`'s `itemAlign: "start"` / `"center"` / `"end"` no longer overruns a
+  non-zero cross-axis inset. The `itemAlign` branch sized and offset the
+  child against the row's untrimmed cross extent instead of the extent
+  already trimmed by the container's insets, matching `VBox`'s existing
+  (correct) behaviour. No consumer action is needed.

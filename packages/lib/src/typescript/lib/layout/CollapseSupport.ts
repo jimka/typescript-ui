@@ -22,7 +22,7 @@ const COLLAPSE_DURATION = 200;
 // a time-reverse of a restore. A symmetric curve (`easing(t) + easing(1-t) = 1`)
 // avoids the "content vanished, then nothing happened" feel of asymmetric
 // material curves. Shared with Accordion deliberately for a consistent feel.
-const COLLAPSE_EASING = "cubic-bezier(0.4, 0, 0.6, 1)";
+export const COLLAPSE_EASING = "cubic-bezier(0.4, 0, 0.6, 1)";
 
 /** Handle for the reduced-motion path, where no transition is primed at all. */
 const NOOP_HANDLE: Animation.CancelHandle = { cancel: (): void => {} };

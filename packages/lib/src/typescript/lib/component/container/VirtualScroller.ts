@@ -7,10 +7,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { SmoothScroller, consumeWheel } from "~/core/SmoothScroller.js";
 import { Scrollbar } from "~/component/container/Scrollbar.js";
-import { scrollShadowBoxShadow, scrollShadowEdgeValue, scrollShadowRamp } from "~/core/ScrollShadow.js";
-
-/** Per-edge scroll-shadow strength cache, quantised to a whole percent (0–100). */
-type ScrollShadowEdges = { top: number; bottom: number; left: number; right: number };
+import { scrollShadowBoxShadow, scrollShadowEdgeValue, scrollShadowRamp, quantizeShadowEdge, ScrollShadowEdges } from "~/core/ScrollShadow.js";
 
 // VirtualScroller is a plain helper, not a Component: it owns and lays out raw
 // `clipBox` / `rowsContainer` `HTMLElement`s it creates directly, so the
@@ -495,13 +492,12 @@ export class VirtualScroller {
      * @param strength - The target strength in the range 0–1.
      */
     private setShadowEdge(edge: keyof ScrollShadowEdges, property: string, strength: number): void {
-        const percent = Math.round(strength * 100);   // quantise: 0–1 → 0–100%
+        const percent = quantizeShadowEdge(this._shadowEdges, edge, strength);
 
-        if (this._shadowEdges[edge] === percent) {
+        if (percent === null) {
             return;
         }
 
-        this._shadowEdges[edge] = percent;
         DOM.sink.apply(this._shadowOverlay, { style: { [property]: scrollShadowEdgeValue(percent) } });
     }
 
