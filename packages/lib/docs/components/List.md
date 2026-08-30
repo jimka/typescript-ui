@@ -53,7 +53,7 @@ The list refreshes automatically on `load` / `add` / `remove` / `datachange` / `
 
 ## Item renderers
 
-Each row's content is produced by a [`ListItemRenderer`](/api/component/list/classes/ListItemRenderer). By default the list uses [`LabelListItemRenderer`](/api/component/list/classes/LabelListItemRenderer), which renders the item label as plain text with ellipsis truncation. Swap the renderer for every row with the `rendererFactory` option (or `setRendererFactory` at runtime), passing a zero-argument factory.
+Each row's content is produced by a [`ListItemRenderer`](/api/component/list/classes/ListItemRenderer). By default the list uses [`LabelListItemRenderer`](/api/component/list/classes/LabelListItemRenderer), which renders the item label as plain text with ellipsis truncation. Swap the renderer for every row with the `rendererFactory` option (or `setRendererFactory` at runtime), passing a zero-argument factory. Calling `setRendererFactory` disposes each row's previous renderer.
 
 [`GlyphListItemRenderer`](/api/component/list/classes/GlyphListItemRenderer) paints an icon before each label, sourcing the icon name from the item's `glyph` field. Register the glyphs first, as with any [`Glyph`](/api/component/display/classes/Glyph):
 

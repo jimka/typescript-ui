@@ -101,7 +101,7 @@ for (const node of loadStoredExpandedNodes()) {
 | `on("selection", fn)` | Subscribe to user-driven selection changes. |
 | `on("loaderror", fn)` | Subscribe to lazy-load failures (see [Lazy loading](#lazy-loading)). |
 | `on("expand", fn)` / `on("collapse", fn)` | Subscribe to a single node's expansion changing (see [Expansion state](#expansion-state)). |
-| `setRendererFactory(fn)` | Replace the content renderer used for every row. |
+| `setRendererFactory(fn)` | Replace the content renderer used for every row, disposing each row's previous renderer. |
 | `getRowOverflow()` / `setRowOverflow(mode)` | Get/set how a row wider than the viewport is handled — see [Row overflow](#row-overflow). |
 | `getExpandTrigger()` / `setExpandTrigger(mode)` | Get/set which click gesture on a row's body expands it — see [Expand trigger](#expand-trigger). |
 

@@ -68,7 +68,7 @@ The combo refreshes automatically on store `datachange` events.
 
 ## Item renderers
 
-The dropdown rows — and the collapsed control itself — render through a [`ListItemRenderer`](/api/component/list/classes/ListItemRenderer) supplied via the `rendererFactory` option (or `setRendererFactory` at runtime). The default renders the label as plain text; [`GlyphListItemRenderer`](/api/component/list/classes/GlyphListItemRenderer) shows each option's `glyph` beside its label — in the open dropdown **and** on the closed combo box, so the selected entry's icon stays visible after the dropdown closes:
+The dropdown rows — and the collapsed control itself — render through a [`ListItemRenderer`](/api/component/list/classes/ListItemRenderer) supplied via the `rendererFactory` option (or `setRendererFactory` at runtime). The default renders the label as plain text; [`GlyphListItemRenderer`](/api/component/list/classes/GlyphListItemRenderer) shows each option's `glyph` beside its label — in the open dropdown **and** on the closed combo box, so the selected entry's icon stays visible after the dropdown closes. Calling `setRendererFactory` disposes the replaced renderers.
 
 ```typescript
 import { ComboBox } from '@jimka/typescript-ui/component/input';

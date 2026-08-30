@@ -92,12 +92,7 @@ class GlyphListItemRenderer extends ListItemRenderer {
         if (next !== this._currentGlyph) {
             const el = this.getElement();
 
-            if (el && this._icon) {
-                const oldEl = this._icon.getElement();
-                if (oldEl && DOM.source.getParentNode(oldEl) === el) {
-                    DOM.sink.removeChild(el, oldEl);
-                }
-            }
+            this._icon?.dispose();
 
             this._icon         = null;
             this._currentGlyph = next;
@@ -200,6 +195,18 @@ class GlyphListItemRenderer extends ListItemRenderer {
         DOM.sink.appendChild(el, this._label.getElement(true)!);
 
         return this;
+    }
+
+    /**
+     * Disposes the label and icon, then runs the inherited teardown. Both
+     * are raw-appended rather than registered, so the base destructor's
+     * recursion over `_components` cannot reach them.
+     */
+    protected destructor(): void {
+        this._label.dispose();
+        this._icon?.dispose();
+
+        super.destructor();
     }
 }
 

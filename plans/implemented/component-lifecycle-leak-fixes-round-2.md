@@ -497,6 +497,23 @@ No exported symbol is added, renamed or removed, and every new method is `protec
 
 ---
 
+## Implementation Notes
+
+`AbstractSelectableListOptions.items` was declared `String | Array<String>` — a
+pre-existing typo (capital `String`, not the `SelectableListItemSpec` union
+`setItems()` actually accepts) that predates this plan by over a month. It went
+unnoticed because no prior test constructed a `List`/`MultiSelectList` with
+object-literal items via the options bag rather than `setItems()`. The new
+`List`, `List (glyph renderer)`, and `List (pool shrink)` rows added in steps 2
+and 3 do exactly that (`new List({ items: [{ key: 'a', label: 'Alpha' }, …] })`,
+verbatim from the plan), so `npm run typecheck:test` failed on them. Widened
+the field to `SelectableListItemSpec | Array<SelectableListItemSpec>` — the
+type `setItems()` already accepts and the field's own `glyphField`/`tooltipField`
+doc comments already assume for array-supplied items. Purely additive (a
+superset of the previous type), so no existing caller is affected.
+
+---
+
 ## Notes
 
 [^precedent]: Each of the five cited destructors was read and matches the shape this plan uses: dispose the raw-held fields first, then `super.destructor()`, with a doc comment explaining why the base recursion cannot reach them. `HeaderCell`'s is the multi-field one (`_resizeHandle`, `_priorityBadge`, `_headerGlyphInstance`) and uses `?.` on fields declared with `declare`. `VirtualRowView`'s loops a pool and is the nearest precedent to `TreeRow`, being `TreeRow`'s own base one level up through `Tree`.

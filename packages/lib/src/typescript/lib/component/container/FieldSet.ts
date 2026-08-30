@@ -265,6 +265,17 @@ class FieldSet extends Component {
 
         return element;
     }
+
+    /**
+     * Disposes the legend, then runs the inherited teardown. `_legend` is
+     * raw-appended rather than registered, so the base destructor's
+     * recursion over `_components` cannot reach it.
+     */
+    protected destructor(): void {
+        this._legend.dispose();
+
+        super.destructor();
+    }
 }
 
 const FieldSetCallable = callable(FieldSet);

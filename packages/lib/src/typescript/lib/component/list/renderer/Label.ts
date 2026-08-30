@@ -134,6 +134,17 @@ class LabelListItemRenderer extends ListItemRenderer {
 
         return this;
     }
+
+    /**
+     * Disposes the label, then runs the inherited teardown. `_label` is
+     * raw-appended rather than registered, so the base destructor's
+     * recursion over `_components` cannot reach it.
+     */
+    protected destructor(): void {
+        this._label.dispose();
+
+        super.destructor();
+    }
 }
 
 const LabelListItemRendererCallable = callable(LabelListItemRenderer);
