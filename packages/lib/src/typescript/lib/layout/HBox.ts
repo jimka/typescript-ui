@@ -506,15 +506,15 @@ class HBox extends BoxLayout {
                 contentWidth += w;
             }
 
-            const innerWidth = containerSize.width - (insets.getLeft() + insets.getRight());
-
-            ({ lead, gap } = this.justifyOffsets(contentWidth, innerWidth, components.length));
+            ({ lead, gap } = this.justifyOffsets(contentWidth, containerSize.width, components.length));
         }
 
         // Cross band for per-child align-self: the same vertical band the
-        // stretch path fills, trimmed by both insets.
+        // stretch path fills. `containerSize` is already the container's inner
+        // size (insets excluded, per `getInnerSize()`), so it is used as-is —
+        // subtracting the insets again here would trim the band twice.
         const crossLead   = insets.getTop();
-        const crossExtent = containerSize.height - (insets.getTop() + insets.getBottom());
+        const crossExtent = containerSize.height;
 
         let x = insets.getLeft() + lead;
         const placements: ResolvedPlacement[] = [];

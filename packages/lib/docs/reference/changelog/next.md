@@ -159,8 +159,14 @@ page resets to empty.
   graph discarded by a superseded `setData`, a failed layout, or disposal
   mid-layout, and simplified nodes are no longer clipped at low zoom. No
   consumer action is needed.
-- `HBox`'s `itemAlign: "start"` / `"center"` / `"end"` no longer overruns a
-  non-zero cross-axis inset. The `itemAlign` branch sized and offset the
-  child against the row's untrimmed cross extent instead of the extent
-  already trimmed by the container's insets, matching `VBox`'s existing
-  (correct) behaviour. No consumer action is needed.
+- `HBox`'s `itemAlign: "start"` / `"center"` / `"end"`, and both `HBox` and
+  `VBox`'s `justify: "center"` / `"end"` / `"between"` / `"around"` and
+  per-child anchor/fill cross-axis placement, no longer double-subtract a
+  non-zero inset. Each read the row/column's usable extent as the
+  container's already-inset-excluded inner size, minus the same insets a
+  second time, shrinking the band and leaving an outsized, asymmetric gap on
+  the trailing/bottom/right side. Both axes now use the container's inner
+  extent directly, matching the `mode: "equal"` code path, which never had
+  the bug. No consumer action is needed; a justified, aligned, anchored, or
+  filled child in a host with non-zero insets or padding now lands flush
+  with the host's true far edge instead of stopping short of it.

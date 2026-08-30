@@ -454,16 +454,15 @@ class VBox extends BoxLayout {
                 contentHeight += h;
             }
 
-            const innerHeight = containerSize.height - (insets.getTop() + insets.getBottom());
-
-            ({ lead, gap } = this.justifyOffsets(contentHeight, innerHeight, components.length));
+            ({ lead, gap } = this.justifyOffsets(contentHeight, containerSize.height, components.length));
         }
 
-        // Cross band for per-child align-self: the horizontal band trimmed by
-        // both insets. The default path keeps reading containerSize.width
-        // (un-trimmed) to stay byte-identical with today's body.
+        // Cross band for per-child align-self: the horizontal band. `containerSize`
+        // is already the container's inner size (insets excluded, per
+        // `getInnerSize()`), so it is used as-is — subtracting the insets again
+        // here would trim the band twice.
         const crossLead   = insets.getLeft();
-        const crossExtent = containerSize.width - (insets.getLeft() + insets.getRight());
+        const crossExtent = containerSize.width;
 
         const x = insets.getLeft();
         let y = insets.getTop() + lead;

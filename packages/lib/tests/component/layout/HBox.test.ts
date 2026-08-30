@@ -4,6 +4,7 @@ import { Component } from '~/core/Component';
 import { HBox } from '~/layout/HBox';
 import { Text } from '~/component/input/Text';
 import { AnchorType } from '~/layout/AnchorType';
+import { FillType } from '~/layout/FillType';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { Insets } from '~/primitive/Insets';
 import { DOM } from '~/core/DOM';
@@ -187,33 +188,32 @@ describe('HBox itemAlign cross placement', () => {
         expect(anchored.getY()).toBe(8); // SOUTH-anchored: pinned to the row bottom
     });
 
-    // Regression coverage for the itemAlign cross-extent bug: with non-zero
-    // top/bottom insets, a child whose preferred height sits between the
-    // trimmed and untrimmed cross extent must be sized/offset against the
-    // *trimmed* extent (matching VBox's naturalWidth-based equivalent), not
-    // the untrimmed containerSize.height — otherwise it overruns the bottom
-    // inset.
-    it('itemAlign "end" does not overrun the bottom inset with non-zero insets', () => {
+    // Regression coverage for the itemAlign cross-extent double-subtraction
+    // bug: `containerSize` (from `getInnerSize()`) already excludes the
+    // host's insets, so the row's cross band is `containerSize.height`
+    // itself, offset by `crossLead` — subtracting the insets a second time
+    // shrank the band and left a gap between an aligned child and the host's
+    // true far edge.
+    it('itemAlign "end" reaches the host\'s true bottom inset with non-zero insets', () => {
         installTestDOM(CONFIG);
 
         const host = hostHBox(200, 60, new HBox({ itemAlign: 'end' }));
         host.setInsets(new Insets(10, 0, 10, 0));
-        // The host's inner (content) height is 60 - 10 - 10 = 40; the row's
-        // cross band, further trimmed by the same insets, is 40 - 10 - 10 = 20.
-        // A preferred height of 30 sits strictly between the two, so the bug
-        // (sizing against the untrimmed 40 instead of the trimmed 20) shows up
-        // as the child's bottom edge overrunning the inset.
+        // The host's inner (content) height is 60 - 10 - 10 = 40; that is the
+        // row's cross band, unmodified. A 30px-tall child aligned "end" sits
+        // flush with the band's bottom edge, 10px above the host's own bottom
+        // edge (60 - 10 = 50).
         const child = new Component({ preferredSize: { width: 100, height: 30 } });
 
         host.addComponent(child);
         host.doLayout();
 
-        expect(child.getY()).toBe(10);
-        expect(child.getHeight()).toBe(20); // capped to the trimmed cross band, not the untrimmed 30
-        expect(child.getY() + child.getHeight()).toBe(30); // flush with the trimmed band's bottom edge
+        expect(child.getY()).toBe(20); // 10 (top inset) + (40 - 30)
+        expect(child.getHeight()).toBe(30);
+        expect(child.getY() + child.getHeight()).toBe(50); // flush with the host's true bottom inset
     });
 
-    it('itemAlign "center" also sizes against the trimmed cross extent with non-zero insets', () => {
+    it('itemAlign "center" centres the child within the host\'s true cross band with non-zero insets', () => {
         installTestDOM(CONFIG);
 
         const host = hostHBox(200, 60, new HBox({ itemAlign: 'center' }));
@@ -223,8 +223,88 @@ describe('HBox itemAlign cross placement', () => {
         host.addComponent(child);
         host.doLayout();
 
-        expect(child.getY()).toBe(10);
-        expect(child.getHeight()).toBe(20); // capped to the trimmed cross band, not the untrimmed 30
+        expect(child.getY()).toBe(15); // 10 (top inset) + (40 - 30) / 2
+        expect(child.getHeight()).toBe(30);
+    });
+});
+
+describe('HBox justify with insets', () => {
+    afterEach(() => DOM.reset());
+
+    // Regression coverage for the justify-residual double-subtraction bug:
+    // `containerSize` (from `getInnerSize()`) already excludes the host's
+    // insets, so the row's main-axis band is `containerSize.width` itself —
+    // subtracting the insets a second time shrank the band and left an
+    // outsized, asymmetric gap on the trailing side for every justify mode
+    // except "start".
+    it('justify "end" reaches the host\'s true trailing inset with non-zero insets', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostHBox(200, 24, new HBox({ justify: 'end' }));
+        host.setInsets(new Insets(0, 10, 0, 10));
+        // The host's inner (content) width is 200 - 10 - 10 = 180; that is the
+        // row's main-axis band, unmodified. A 50px-wide child justified "end"
+        // sits flush with the band's trailing edge.
+        const child = new Component({ preferredSize: { width: 50, height: 16 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getX()).toBe(140); // 10 (left inset) + (180 - 50)
+        expect(child.getX() + child.getWidth()).toBe(190); // flush with the host's true right inset (200 - 10)
+    });
+
+    it('justify "center" centres the child within the host\'s true main-axis band with non-zero insets', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostHBox(200, 24, new HBox({ justify: 'center' }));
+        host.setInsets(new Insets(0, 10, 0, 10));
+        const child = new Component({ preferredSize: { width: 50, height: 16 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getX()).toBe(75); // 10 (left inset) + (180 - 50) / 2
+    });
+});
+
+describe('HBox per-child anchor/fill cross placement with insets', () => {
+    afterEach(() => DOM.reset());
+
+    // Regression coverage for the same crossExtent double-subtraction bug,
+    // exercised through the per-child anchor/fill constraint path
+    // (`BoxLayout.crossPlacement`) rather than the global `itemAlign` option —
+    // this is the exact path the reported bug traveled through in
+    // AlignSelfPanel's NORTH/SOUTH/fill row.
+    it('a SOUTH-anchored child reaches the host\'s true bottom inset with non-zero insets', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostHBox(200, 60, new HBox());
+        host.setInsets(new Insets(10, 0, 10, 0));
+        const child = new Component({ preferredSize: { width: 100, height: 30 } });
+        const constraints = Object.assign(new LayoutConstraints(), { anchor: AnchorType.SOUTH });
+
+        host.addComponent(child, constraints);
+        host.doLayout();
+
+        expect(child.getY()).toBe(20); // 10 (top inset) + (40 - 30)
+        expect(child.getHeight()).toBe(30);
+        expect(child.getY() + child.getHeight()).toBe(50); // flush with the host's true bottom inset (60 - 10)
+    });
+
+    it('a VERTICAL-fill child spans the host\'s true cross band with non-zero insets', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostHBox(200, 60, new HBox());
+        host.setInsets(new Insets(10, 0, 10, 0));
+        const child = new Component({ preferredSize: { width: 100, height: 30 } });
+        const constraints = Object.assign(new LayoutConstraints(), { fill: FillType.VERTICAL });
+
+        host.addComponent(child, constraints);
+        host.doLayout();
+
+        expect(child.getY()).toBe(10); // top inset
+        expect(child.getHeight()).toBe(40); // 60 - 10 - 10: the full true cross band, not trimmed again
     });
 });
 

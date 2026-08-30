@@ -5,6 +5,8 @@ import { VBox } from '~/layout/VBox';
 import { HBox } from '~/layout/HBox';
 import { Text } from '~/component/input/Text';
 import { Insets } from '~/primitive/Insets';
+import { AnchorType } from '~/layout/AnchorType';
+import { FillType } from '~/layout/FillType';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
@@ -192,6 +194,126 @@ describe('VBox itemAlign cross placement', () => {
 
         expect(child.getX()).toBe(0);
         expect(child.getWidth()).toBe(16);
+    });
+
+    // Regression coverage for the itemAlign cross-extent double-subtraction
+    // bug (the VBox counterpart of HBox's — see HBox.test.ts): `containerSize`
+    // (from `getInnerSize()`) already excludes the host's insets, so the
+    // column's cross band is `containerSize.width` itself, offset by
+    // `crossLead` — subtracting the insets a second time shrank the band and
+    // left a gap between an aligned child and the host's true far edge.
+    it('itemAlign "end" reaches the host\'s true right inset with non-zero insets', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(60, 200, new VBox({ itemAlign: 'end' }));
+        host.setInsets(new Insets(0, 10, 0, 10));
+        // The host's inner (content) width is 60 - 10 - 10 = 40; that is the
+        // column's cross band, unmodified. A 30px-wide child aligned "end"
+        // sits flush with the band's trailing edge, 10px left of the host's
+        // own right edge (60 - 10 = 50).
+        const child = new Component({ preferredSize: { width: 30, height: 100 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getX()).toBe(20); // 10 (left inset) + (40 - 30)
+        expect(child.getWidth()).toBe(30);
+        expect(child.getX() + child.getWidth()).toBe(50); // flush with the host's true right inset
+    });
+
+    it('itemAlign "center" centres the child within the host\'s true cross band with non-zero insets', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(60, 200, new VBox({ itemAlign: 'center' }));
+        host.setInsets(new Insets(0, 10, 0, 10));
+        const child = new Component({ preferredSize: { width: 30, height: 100 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getX()).toBe(15); // 10 (left inset) + (40 - 30) / 2
+        expect(child.getWidth()).toBe(30);
+    });
+});
+
+describe('VBox justify with insets', () => {
+    afterEach(() => DOM.reset());
+
+    // Regression coverage for the justify-residual double-subtraction bug
+    // (the VBox counterpart of HBox's — see HBox.test.ts): `containerSize`
+    // (from `getInnerSize()`) already excludes the host's insets, so the
+    // column's main-axis band is `containerSize.height` itself — subtracting
+    // the insets a second time shrank the band and left an outsized,
+    // asymmetric gap on the trailing side for every justify mode except
+    // "start".
+    it('justify "end" reaches the host\'s true trailing inset with non-zero insets', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(24, 200, new VBox({ justify: 'end' }));
+        host.setInsets(new Insets(10, 0, 10, 0));
+        // The host's inner (content) height is 200 - 10 - 10 = 180; that is
+        // the column's main-axis band, unmodified. A 50px-tall child
+        // justified "end" sits flush with the band's trailing edge.
+        const child = new Component({ preferredSize: { width: 16, height: 50 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getY()).toBe(140); // 10 (top inset) + (180 - 50)
+        expect(child.getY() + child.getHeight()).toBe(190); // flush with the host's true bottom inset (200 - 10)
+    });
+
+    it('justify "center" centres the child within the host\'s true main-axis band with non-zero insets', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(24, 200, new VBox({ justify: 'center' }));
+        host.setInsets(new Insets(10, 0, 10, 0));
+        const child = new Component({ preferredSize: { width: 16, height: 50 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getY()).toBe(75); // 10 (top inset) + (180 - 50) / 2
+    });
+});
+
+describe('VBox per-child anchor/fill cross placement with insets', () => {
+    afterEach(() => DOM.reset());
+
+    // Regression coverage for the same crossExtent double-subtraction bug
+    // (the VBox counterpart of HBox's — see HBox.test.ts), exercised through
+    // the per-child anchor/fill constraint path (`BoxLayout.crossPlacement`)
+    // rather than the global `itemAlign` option — this is the exact path the
+    // reported bug traveled through in AlignSelfPanel's WEST/EAST/fill column.
+    it('an EAST-anchored child reaches the host\'s true right inset with non-zero insets', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(60, 200, new VBox());
+        host.setInsets(new Insets(0, 10, 0, 10));
+        const child = new Component({ preferredSize: { width: 30, height: 100 } });
+        const constraints = Object.assign(new LayoutConstraints(), { anchor: AnchorType.EAST });
+
+        host.addComponent(child, constraints);
+        host.doLayout();
+
+        expect(child.getX()).toBe(20); // 10 (left inset) + (40 - 30)
+        expect(child.getWidth()).toBe(30);
+        expect(child.getX() + child.getWidth()).toBe(50); // flush with the host's true right inset (60 - 10)
+    });
+
+    it('a HORIZONTAL-fill child spans the host\'s true cross band with non-zero insets', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(60, 200, new VBox());
+        host.setInsets(new Insets(0, 10, 0, 10));
+        const child = new Component({ preferredSize: { width: 30, height: 100 } });
+        const constraints = Object.assign(new LayoutConstraints(), { fill: FillType.HORIZONTAL });
+
+        host.addComponent(child, constraints);
+        host.doLayout();
+
+        expect(child.getX()).toBe(10); // left inset
+        expect(child.getWidth()).toBe(40); // 60 - 10 - 10: the full true cross band, not trimmed again
     });
 });
 
