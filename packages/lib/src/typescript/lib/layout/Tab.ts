@@ -49,10 +49,27 @@ import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
  * `"busychange"` fires when a tab's busy state changes (carrying the new state
  * and the tab's label) — driven automatically while a deferred tab's content
  * builds, or by {@link Tab.setTabBusy} for a consumer's own long operation.
+ * `"beforetabclose"` fires only on the user close path — the ✕, the context
+ * menu's *Close*, and every bulk-close row — before the tab is torn down, and
+ * can be vetoed via its {@link TabCloseController}; the programmatic
+ * {@link Tab.closeTab} is not guarded by it.
  *
  * @category Layouts
  */
-export type TabEvent = "tabclose" | "empty" | "detach" | "select" | "activate" | "dock" | "exception" | "busychange";
+export type TabEvent =
+    "tabclose" | "beforetabclose" | "empty" | "detach" | "select" | "activate"
+    | "dock" | "exception" | "busychange";
+
+/**
+ * Controller handed to a `"beforetabclose"` listener. Calling
+ * `preventDefault()` aborts the close the user just requested.
+ *
+ * @category Layouts
+ */
+export interface TabCloseController {
+    /** Aborts the close that is about to run. */
+    preventDefault(): void;
+}
 
 /**
  * How a torn-off tab's floating window hosts its content.
@@ -137,6 +154,8 @@ export interface TabOptions extends LayoutManagerOptions {
      */
     listeners?: {
         tabclose?: (component: Component) => void;
+        /** Fires on the user close path, before the tab is torn down; see {@link TabCloseController}. */
+        beforetabclose?: (component: Component, controller: TabCloseController) => void;
         /** Fires after the last tab leaves the strip by any path (close, tear-off, re-dock). */
         empty?: () => void;
         /** Fires after a deferred tab's async factory rejected and its tab was closed. */
@@ -1073,12 +1092,32 @@ class Tab extends LayoutManager {
     };
 
     /**
-     * Strip `"tabclose"` handler: a cell's ✕ was clicked. Removes the cell and its
-     * content component, emits the public `"tabclose"`, then selects the next tab.
+     * Strip `"tabclose"` handler: a cell's ✕ was clicked. Emits the cancelable
+     * `"beforetabclose"` event first; if a listener vetoes via
+     * `preventDefault()` the close is aborted. Otherwise removes the cell and
+     * its content component, emits the public `"tabclose"`, then selects the
+     * next tab.
      *
      * @param id - The cell id to close.
      */
     private _onBarTabClose = (id: string): void => {
+        const entry = this._contents.find(e => e.id === id);
+
+        if (entry?.component) {
+            let prevented = false;
+            const controller: TabCloseController = {
+                preventDefault: (): void => {
+                    prevented = true;
+                },
+            };
+
+            this.emit("beforetabclose", entry.component, controller);
+
+            if (prevented) {
+                return;
+            }
+        }
+
         this.closeEntry(id);
     };
 
@@ -1174,6 +1213,26 @@ class Tab extends LayoutManager {
         }
 
         this.closeEntry(entry.id);
+
+        return true;
+    }
+
+    /**
+     * Replaces the label of the tab hosting `content`.
+     *
+     * @param content - The content component whose tab to rename.
+     * @param name - The new display label.
+     *
+     * @returns `true` when a matching tab was found, `false` otherwise.
+     */
+    setTabName(content: Component, name: string): boolean {
+        const entry = this._contents.find(e => e.component === content);
+
+        if (!entry) {
+            return false;
+        }
+
+        this._bar.setEntryName(entry.id, name);
 
         return true;
     }
@@ -2353,6 +2412,24 @@ class Tab extends LayoutManager {
      */
     on(event: "tabclose", listener: (component: Component) => void): this;
     /**
+     * Registers a listener for the `"beforetabclose"` event, which fires on the
+     * user close path — the ✕, the context menu's *Close*, and every bulk-close
+     * row — before the tab is torn down, carrying the content about to close and
+     * a {@link TabCloseController}. Calling the controller's `preventDefault()`
+     * aborts the close; the tab stays open. Does not fire for
+     * {@link Tab.closeTab}, the programmatic entry point, so a listener that
+     * vetoes a close can later complete it by calling `closeTab` without
+     * re-triggering itself.
+     *
+     * @param event - The `"beforetabclose"` event.
+     * @param listener - Invoked with the content about to close and a controller
+     *   whose `preventDefault()` vetoes the close.
+     *
+     * @returns This tab layout, for method chaining.
+     */
+    on(event: "beforetabclose",
+       listener: (content: Component, controller: TabCloseController) => void): this;
+    /**
      * Registers a listener for the `"empty"` event, which fires after the strip
      * loses its last tab by any path (close, tear-off, or re-dock). It carries
      * no payload — a passive announcement; the subscriber decides what to do.
@@ -2487,6 +2564,7 @@ class Tab extends LayoutManager {
      * @param payload - Forwarded to each listener.
      */
     protected emit(event: "tabclose", component: Component): void;
+    protected emit(event: "beforetabclose", content: Component, controller: TabCloseController): void;
     protected emit(event: "empty"): void;
     protected emit(event: "detach", window: AbstractWindow): void;
     protected emit(event: "select", index: number, label: string): void;
