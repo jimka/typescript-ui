@@ -299,6 +299,24 @@ function formatSizeAttr(width: number, height: number): string {
 }
 
 /**
+ * Derives a rounded extent from an unrounded origin and extent, so a box's
+ * painted far edge (`round(origin) + roundedExtent`) always lands on
+ * `round(origin + extent)` — the same pixel the next box's rounded origin
+ * lands on. Rounding the extent on its own (`Math.round(extent)`) does not
+ * have this property at fractional coordinates, which is what opens a 1px
+ * seam between two adjacent boxes.
+ *
+ * @param origin - The unrounded position (`_left` / `_top`), or `NaN` if unset.
+ * @param extent - The unrounded extent (`_width` / `_height`).
+ * @returns The rounded extent to paint from the rounded origin.
+ */
+function roundedExtent(origin: number, extent: number): number {
+    const start = Number.isNaN(origin) ? 0 : origin;
+
+    return Math.round(start + extent) - Math.round(start);
+}
+
+/**
  * Base class for all UI components in the framework.
  *
  * Manages the component's DOM element lifecycle, CSS style rule, layout manager,
@@ -3726,6 +3744,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param size - The new Size with width and height in pixels.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks The DOM write is rounded to the nearest CSS pixel — see
+     * {@link setX}.
      */
     setSize(size: Size): this {
         const width  = this.clampWidth(size.width);
@@ -3739,10 +3760,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        this.setElementStyles({
-            "width": width + "px",
-            "height": height + "px"
-        });
+        this.writeHorizontalGeometry();
+        this.writeVerticalGeometry();
 
         this.scheduleLayout();
 
@@ -3863,7 +3882,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      *
-     * @remarks The DOM write is rounded to the nearest device pixel — see
+     * @remarks The DOM write is rounded to the nearest CSS pixel — see
      * {@link setX}.
      */
     setWidth(width: number): this {
@@ -3880,7 +3899,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        this.setElementStyle("width", Math.round(this._width) + "px");
+        this.writeHorizontalGeometry();
 
         return this;
     }
@@ -3967,7 +3986,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      *
-     * @remarks The DOM write is rounded to the nearest device pixel — see
+     * @remarks The DOM write is rounded to the nearest CSS pixel — see
      * {@link setX}.
      */
     setHeight(height: number): this {
@@ -3984,7 +4003,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        this.setElementStyle("height", Math.round(this._height) + "px");
+        this.writeVerticalGeometry();
 
         return this;
     }
@@ -4028,10 +4047,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      *
-     * @remarks The DOM write is rounded to the nearest device pixel to avoid
+     * @remarks The DOM write is rounded to the nearest CSS pixel to avoid
      * sub-pixel edges and text re-rasterization; `getX()` still returns the
      * exact value passed in, so repeated relative layout math does not
-     * accumulate rounding drift.
+     * accumulate rounding drift. The paired `width` write derives its rounded
+     * extent from this rounded origin, so this box's right edge always lands
+     * on the same pixel as the next box's rounded left — rounding `left` and
+     * `width` independently would not have that property at fractional
+     * coordinates.
      */
     setX(x: number): this {
         if (this._left === x) {
@@ -4045,7 +4068,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        this.setElementStyle("left", Math.round(this._left) + "px");
+        this.writeHorizontalGeometry();
 
         return this;
     }
@@ -4066,7 +4089,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      *
-     * @remarks The DOM write is rounded to the nearest device pixel — see
+     * @remarks The DOM write is rounded to the nearest CSS pixel — see
      * {@link setX}.
      */
     setY(y: number): this {
@@ -4081,9 +4104,48 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        this.setElementStyle("top", Math.round(this._top) + "px");
+        this.writeVerticalGeometry();
 
         return this;
+    }
+
+    /**
+     * Writes the horizontal geometry — `left` and `width` — from the cached
+     * `_left` / `_width` fields, deriving `width` from {@link roundedExtent} so
+     * this box's rounded right edge always lands on the same pixel as the next
+     * box's rounded `left`. Called from every setter that can change either
+     * field, since the rounded width depends on the origin as well as the
+     * extent: a move alone must re-derive it even though `_width` itself did
+     * not change.
+     *
+     * @remarks `_left` / `_width` start as `NaN` ("never assigned by a
+     * setter"); each guard skips the DOM write for that field while it holds,
+     * so a `NaN`-derived `"NaNpx"` declaration (silently dropped by the
+     * browser) is never produced.
+     */
+    private writeHorizontalGeometry(): void {
+        if (!Number.isNaN(this._left)) {
+            this.setElementStyle("left", Math.round(this._left) + "px");
+        }
+
+        if (!Number.isNaN(this._width)) {
+            this.setElementStyle("width", roundedExtent(this._left, this._width) + "px");
+        }
+    }
+
+    /**
+     * Writes the vertical geometry — `top` and `height` — from the cached
+     * `_top` / `_height` fields. Mirror of {@link writeHorizontalGeometry}; see
+     * its doc comment for the rationale.
+     */
+    private writeVerticalGeometry(): void {
+        if (!Number.isNaN(this._top)) {
+            this.setElementStyle("top", Math.round(this._top) + "px");
+        }
+
+        if (!Number.isNaN(this._height)) {
+            this.setElementStyle("height", roundedExtent(this._top, this._height) + "px");
+        }
     }
 
     /**
@@ -4266,7 +4328,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      *
-     * @remarks The DOM write is rounded to the nearest device pixel — see
+     * @remarks The DOM write is rounded to the nearest CSS pixel — see
      * {@link setX}.
      */
     setTranslate(x: number, y: number): this {
@@ -6112,7 +6174,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // NaN means "never assigned by a setter" — skip the DOM write for those.
         // Any finite value (including 0) MUST be written so the DOM matches the cached field.
         if (!Number.isNaN(this._width)) {
-            this._inlineStyle.set("width", Math.round(this._width) + "px");
+            this._inlineStyle.set("width", roundedExtent(this._left, this._width) + "px");
         }
 
         if (!Number.isNaN(this._top)) {
@@ -6124,7 +6186,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         if (!Number.isNaN(this._height)) {
-            this._inlineStyle.set("height", Math.round(this._height) + "px");
+            this._inlineStyle.set("height", roundedExtent(this._top, this._height) + "px");
         }
 
         // Replay the cached translate so a `setTranslate`'d transform survives
