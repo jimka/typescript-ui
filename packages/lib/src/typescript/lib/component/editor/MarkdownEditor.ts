@@ -2,7 +2,6 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
-import type { Handle } from "~/core/DOM.js";
 import { Insets } from "~/primitive/Insets.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
@@ -187,40 +186,11 @@ class WysiwygSurface extends Component {
     }
 
     /**
-     * Replays the cached `contenteditable` state onto the freshly-created
-     * element. `setContentEditable` (called during detached construction, before
-     * an element exists) caches into `_contentEditable`, and its underlying
-     * `setElementAttribute` now also caches into the base class's
-     * `_elementAttributes` map and replays it from `Component.init()`, so this
-     * replay is redundant — kept anyway for the reason below.
-     *
-     * The write targets the `element` handle directly — as the base class does
-     * for its own cached attributes — because at init time the element is not yet
-     * in the document, so a `getElement()`-based setter would miss it.
-     *
-     * @param element - Optional element to initialise; falls back to `getElement()`.
-     * @returns This surface, for method chaining.
-     */
-    protected init(element?: Handle): this {
-        super.init(element);
-
-        const el = element ?? this.getElement();
-
-        if (el) {
-            DOM.sink.apply(el, { setAttr: { contenteditable: this._contentEditable ? "true" : "false" } });
-        }
-
-        return this;
-    }
-
-    /**
      * Sets whether this surface's element hosts an editable region. Caches the
      * state in `_contentEditable` and writes the `contenteditable` attribute
-     * through to the element. The underlying `setElementAttribute` caches and
-     * replays the value itself now; {@link WysiwygSurface.init} also replays
-     * the cached `_contentEditable` state directly onto the element once it is
-     * created, redundantly but for the `getElement()`-timing reason documented
-     * there.
+     * through `setElementAttribute`, whose buffer replays the value onto the
+     * element once one is created — so a call made during detached
+     * construction still lands.
      *
      * @param contentEditable - Whether the element is contenteditable.
      * @returns This surface, for method chaining.
@@ -361,9 +331,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      *
      * @param value - Initial Markdown source (optional; defaults to `""`).
      * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(value?: string, options?: MarkdownEditorOptions) {
-        super(options);
+    constructor(value?: string, options?: MarkdownEditorOptions, subclassDefaults?: Partial<MarkdownEditorOptions>) {
+        super(options, subclassDefaults);
 
         // Positional argument: cache it only when the caller didn't also pass
         // `options.value` (which the super-time cascade already stored).

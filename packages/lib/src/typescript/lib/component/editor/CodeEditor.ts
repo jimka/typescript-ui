@@ -109,33 +109,6 @@ const CM_CONTENT_SELECTOR = ".cm-content";
 // ScrollStrip.arrowReserve's `+1` slop against the same rounding noise.
 const SUBPIXEL_HEIGHT_SLOP_PX = 1;
 
-// `syncAutoHeight` trusts a height GROWTH only on the call where the
-// document/width shape genuinely changed (a real edit or resize) — never
-// again against the same shape, no matter how plausible the reading looks.
-// Committing a height changes `.cm-scroller`'s real `clientHeight`;
-// CodeMirror's own `ViewState.measure()` (@codemirror/view) runs on its own
-// schedule and compares that live value against its cached copy on every
-// pass, reporting a fresh `geometryChanged` update whenever they differ —
-// which they always do, immediately after any commit. That re-invokes
-// `syncAutoHeight` with no genuine content or width change. On a real
-// (non-integer) device-pixel ratio the re-measurement does not reliably read
-// back the exact value just committed (unlike the mount-time case
-// `SUBPIXEL_HEIGHT_SLOP_PX` handles, which converges): it can read
-// fractionally MORE, live-observed climbing by tens of pixels roughly every
-// 100ms, forever, with the editor merely visible and no further interaction.
-// A one-growth-of-slack budget was tried first, on the theory that an
-// initial pre-layout guess might need exactly one accurate follow-up once
-// CodeMirror's real layout became available. Live testing across several
-// unrelated blocks (Dialog, Drawer, LineChart, Button) refuted that: the
-// "follow-up" fired on essentially every multi-line editor regardless of
-// whether real settling was needed, each time adding a line or two of dead
-// space with nothing behind it — the same self-referential echo the
-// unbounded case shows, just bounded to a single step instead of climbing
-// forever. There is no reliable signal that distinguishes a genuine
-// follow-up correction from this echo, so none is trusted; a block whose
-// first, always-free commit undershoots true content is a distinct bug (the
-// initial measurement itself, not this guard) to fix at the source.
-
 /** Duration of the read-only rejection flash, in milliseconds. */
 const READONLY_FLASH_MS = 300;
 
@@ -244,6 +217,32 @@ class CodeEditor extends Component<CodeEditorOptions> {
      */
     private _contentElement: Handle | null = null;
 
+    // `syncAutoHeight` trusts a height GROWTH only on the call where the
+    // document/width shape genuinely changed (a real edit or resize) — never
+    // again against the same shape, no matter how plausible the reading looks.
+    // Committing a height changes `.cm-scroller`'s real `clientHeight`;
+    // CodeMirror's own `ViewState.measure()` (@codemirror/view) runs on its own
+    // schedule and compares that live value against its cached copy on every
+    // pass, reporting a fresh `geometryChanged` update whenever they differ —
+    // which they always do, immediately after any commit. That re-invokes
+    // `syncAutoHeight` with no genuine content or width change. On a real
+    // (non-integer) device-pixel ratio the re-measurement does not reliably read
+    // back the exact value just committed (unlike the mount-time case
+    // `SUBPIXEL_HEIGHT_SLOP_PX` handles, which converges): it can read
+    // fractionally MORE, live-observed climbing by tens of pixels roughly every
+    // 100ms, forever, with the editor merely visible and no further interaction.
+    // A one-growth-of-slack budget was tried first, on the theory that an
+    // initial pre-layout guess might need exactly one accurate follow-up once
+    // CodeMirror's real layout became available. Live testing across several
+    // unrelated blocks (Dialog, Drawer, LineChart, Button) refuted that: the
+    // "follow-up" fired on essentially every multi-line editor regardless of
+    // whether real settling was needed, each time adding a line or two of dead
+    // space with nothing behind it — the same self-referential echo the
+    // unbounded case shows, just bounded to a single step instead of climbing
+    // forever. There is no reliable signal that distinguishes a genuine
+    // follow-up correction from this echo, so none is trusted; a block whose
+    // first, always-free commit undershoots true content is a distinct bug (the
+    // initial measurement itself, not this guard) to fix at the source.
     /**
      * `[lines, docLength, clientWidth]` as of the last call to
      * `syncAutoHeight`, or `null` before the first call. Used to tell a
@@ -986,6 +985,18 @@ class CodeEditor extends Component<CodeEditorOptions> {
         const desired = contentDesired + this._lastHbarReserve;
 
         if (desired === previousHeight) {
+            // The `shapeChanged` branch above committed `contentDesired` as an
+            // intermediate probe height, so the horizontal-scrollbar reserve could
+            // be measured against a content-sized box. Folding that reserve back in
+            // landed on the height this call started at, so there is nothing to
+            // report — but the box is still sitting at the probe height, short by
+            // the reserve, until this puts it back. No `"heightchange"`: the height
+            // did not move, so a consumer that pinned its own chrome to
+            // `previousHeight` is already correct. `setHeight` no-ops when the box
+            // is already at `desired`, which is the case on the `!shapeChanged`
+            // path where no probe was committed.
+            this.setHeight(desired);
+
             return;
         }
 

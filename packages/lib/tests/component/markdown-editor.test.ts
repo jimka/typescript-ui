@@ -78,6 +78,22 @@ function wysiwygOf(editor: MarkdownEditor): { getElement(createIfMissing?: boole
     })._wysiwyg;
 }
 
+/** Folds every apply patch for `handle` into the attribute state it produces. */
+function attrsOf(sink: RecordingDOMSink, handle: unknown): Record<string, string> {
+    const attrs: Record<string, string> = {};
+
+    for (const w of sink.writes) {
+        if (w.op !== 'apply' || w.args[0] !== handle) continue;
+
+        const patch = w.args[1] as { setAttr?: Record<string, string>; removeAttr?: string[] };
+
+        for (const key of patch.removeAttr ?? []) delete attrs[key];
+        for (const key of Object.keys(patch.setAttr ?? {})) attrs[key] = patch.setAttr![key];
+    }
+
+    return attrs;
+}
+
 /** Places a collapsed range selection at the start of the document, so a block command has a selection to act on. */
 function selectStart(editor: MarkdownEditor): void {
     lexicalOf(editor).update(() => { $getRoot().selectStart(); }, { discrete: true });
@@ -142,6 +158,24 @@ describe('MarkdownEditor WYSIWYG surface line-height', () => {
             .filter((w) => w.selector.includes(surface.getId()) && w.key === 'lineHeight');
 
         expect(rows.some((w) => w.value === 'var(--ts-ui-md-line-height, 1.8)')).toBe(true);
+    });
+});
+
+describe('MarkdownEditor WYSIWYG surface contenteditable', () => {
+    it('stamps contenteditable="true" onto the surface element through the base attribute buffer', () => {
+        // `setContentEditable` caches through `setElementAttribute` during
+        // detached construction; `Component.init` replays the buffer onto
+        // the handle it is given (Component.ts:7095 ->
+        // ElementAttributes.attach at Component.ts:7107), so the surface
+        // needs no `init()` override of its own to get the attribute onto
+        // its element.
+        const editor = new MarkdownEditor('# Hi');
+        const surface = wysiwygOf(editor);
+
+        editor.getElement(true);
+        const element = surface.getElement(true);
+
+        expect(attrsOf(DOM.sink as RecordingDOMSink, element).contenteditable).toBe('true');
     });
 });
 

@@ -17,7 +17,6 @@ const LINK_CLASS        = "ts-ui-mde-link";
 const BOLD_CLASS        = "ts-ui-mde-bold";
 const ITALIC_CLASS      = "ts-ui-mde-italic";
 const TABLE_CLASS               = "ts-ui-mde-table";
-const TABLE_ROW_CLASS           = "ts-ui-mde-table-row";
 const TABLE_CELL_CLASS          = "ts-ui-mde-table-cell";
 const TABLE_CELL_HEADER_CLASS   = "ts-ui-mde-table-cell-header";
 const TABLE_CELL_SELECTED_CLASS = "ts-ui-mde-table-cell-selected";
@@ -204,7 +203,6 @@ export const EDITOR_THEME: EditorThemeClasses = {
     },
     link:              LINK_CLASS,
     table:             TABLE_CLASS,
-    tableRow:          TABLE_ROW_CLASS,
     tableCell:         TABLE_CELL_CLASS,
     tableCellHeader:   TABLE_CELL_HEADER_CLASS,
     tableCellSelected: TABLE_CELL_SELECTED_CLASS,
