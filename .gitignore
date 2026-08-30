@@ -4,6 +4,8 @@ dist
 vendor
 .worktrees/
 *:Zone.Identifier
+branches.txt
+merge.sh
 
 # Test coverage output
 coverage
