@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { Panel } from "~/core/Panel.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle, Rect } from "~/core/DOM.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
@@ -9,6 +10,8 @@ import { fadeShow, fadeHideAndDetach } from "~/core/OverlayFade.js";
 import type { Animation } from "~/core/Animation.js";
 import { Insets } from "~/primitive/Insets.js";
 import { VBox } from "~/layout/VBox.js";
+import { Fit } from "~/layout/Fit.js";
+import { TRACK_WIDTH } from "~/component/container/Scrollbar.js";
 import { MenuItem, MenuItemConfig } from "~/component/container/MenuItem.js";
 import { MenuSeparator } from "~/component/container/MenuSeparator.js";
 import { MenuRow } from "~/component/container/MenuRow.js";
@@ -151,6 +154,15 @@ class Menu extends Component implements DismissableLayer {
     // than just fading-and-detaching it for reuse.
     private _disposeOnClose: boolean = false;
 
+    // Assigned in the constructor body, after super() returns. Menu overrides no
+    // applyOptions, so no `declare` is needed (CODE_CONVENTIONS.md, super() cascade).
+    private readonly _itemPanel: Panel;
+
+    // The content-fit border-box width from layOutColumns(), before any scrollbar
+    // widening. Cached because a reused menu must widen from its un-widened width,
+    // not from whatever the previous open left committed.
+    private _contentFitWidth: number = 0;
+
     /**
      * Constructs a Menu. With no arguments, a rebuild-mode (right-click context)
      * menu whose items are supplied per `show()` call. With `items` (and `onClose`),
@@ -176,12 +188,16 @@ class Menu extends Component implements DismissableLayer {
         this._itemsProvider = typeof items === "function" ? items : null;
         this._onClose = onClose ?? null;
 
-        const vbox = new VBox();
+        this.setLayoutManager(new Fit());
 
-        vbox.setComponentSpacing(0);
-        vbox.setStretching(true);
+        this._itemPanel = new Panel({
+            layoutManager: new VBox({ spacing: 0, stretching: true }),
+            autoScroll:    "y",
+            scrollShadows: false,
+            insets:        new Insets(4, 0, 4, 0),
+        });
 
-        this.setLayoutManager(vbox);
+        this.addComponent(this._itemPanel);
 
         if (this._persistent) {
             this.applyPersistentChrome();
@@ -312,7 +328,7 @@ class Menu extends Component implements DismissableLayer {
         this._excludedEl = excludeEl;
 
         this._menuItems = [];
-        this.disposeAllComponents();
+        this._itemPanel.disposeAllComponents();
 
         this.pauseLayout();
 
@@ -342,14 +358,15 @@ class Menu extends Component implements DismissableLayer {
                 );
             }
 
-            this.addComponent(row);
+            this._itemPanel.addComponent(row);
             this._menuItems.push(row);
         }
 
         this.resumeLayout();
 
-        const contentWidth = this.layOutColumns();
-        const naturalWidth = this._menuWidth ?? contentWidth;
+        this._contentFitWidth = this.layOutColumns();
+
+        const naturalWidth = this._menuWidth ?? this._contentFitWidth;
 
         this.setWidth(naturalWidth);
 
@@ -372,17 +389,7 @@ class Menu extends Component implements DismissableLayer {
         // scrollbar-gutter widening below; only `x` needs the second pass.
         const available = positionAnchoredFlexible(anchorRect, { width: naturalWidth, height: totalHeight }, vp, VIEWPORT_MARGIN).available;
 
-        // When the content is taller than the room on the side the menu lands on,
-        // `applyViewportHeightClamp` caps the height and the `overflow-y: auto`
-        // scrollbar engages. Reserve its width as a right inset — and widen the
-        // content-sized panel to match — so items lay out beside the native
-        // scrollbar instead of beneath it. `Component.getInnerSize` subtracts the
-        // inset, so the VBox stretches items to `naturalWidth`, unchanged from the
-        // no-scroll case.
-        const gutter = totalHeight > available ? DOM.source.getScrollBarWidth() : 0;
-
-        this.setInsets(new Insets(4, gutter, 4, 0));
-        this.setWidth(naturalWidth + gutter);
+        this.applyScrollbarGutterWidth(totalHeight > available);
 
         const placement = positionAnchoredFlexible(anchorRect, { width: this.getWidth(), height: totalHeight }, vp, VIEWPORT_MARGIN);
 
@@ -411,7 +418,7 @@ class Menu extends Component implements DismissableLayer {
         // accurate; when nothing overflows the offset is 0 and this is a no-op.
         if (this._scrollToBottomOnShow) {
             this.flushLayout();
-            this.setScrollTop(this.getMaxScrollTop());
+            this._itemPanel.setScrollTop(this._itemPanel.getMaxScrollTop());
         }
 
         return this;
@@ -597,7 +604,10 @@ class Menu extends Component implements DismissableLayer {
 
         // A provider-sourced menu re-resolves its items on every open, so labels
         // and enabled state reflect current state each time it is shown (a submenu
-        // is a fresh panel per open, but a reused top-level dropdown is not).
+        // is a fresh panel per open, but a reused top-level dropdown is not). A
+        // non-provider menu's items never change after construction, so
+        // `_contentFitWidth` — set once by `buildPersistentItems` — never goes
+        // stale and needs no re-measurement here.
         if (this._itemsProvider) {
             this.rebuildPersistentItems(this._itemsProvider());
         }
@@ -608,7 +618,11 @@ class Menu extends Component implements DismissableLayer {
         this.setMaxSize({ width: Number.MAX_VALUE, height: Number.MAX_VALUE });
 
         const totalHeight = this.getPreferredSize()?.height ?? (this._menuItems.length * MenuItem.HEIGHT + 8);
-        const width       = this.getWidth();
+
+        // Always measure from the un-widened content-fit width, never from
+        // `getWidth()` — a reused menu's committed width may already include a
+        // previous open's scrollbar-gutter widening, which must not compound.
+        const width = this._contentFitWidth;
 
         const el = this.getElement(true)!;
         LayerManager.mount(el);
@@ -622,14 +636,14 @@ class Menu extends Component implements DismissableLayer {
                 : { left: 0, right: 0, top: 0, bottom: 0 };
             const anchorRect = DOM.source.getElementRect(anchorEl);
 
-            // A submenu sits beside its parent panel: right of the parent's
-            // right edge, flipping to the parent's left edge when the right
-            // side overflows the viewport. No gap — flush, as today.
-            const x = positionAdjacent(parentRect.left, parentRect.right, width, vp.width, 0);
-
             // A submenu grows down from the anchor item's top, and flips up
             // against that same top edge when there is more room above.
             const y = this.placeVertically(anchorRect.top, anchorRect.top, totalHeight, vp.height);
+
+            // A submenu sits beside its parent panel: right of the parent's
+            // right edge, flipping to the parent's left edge when the right
+            // side overflows the viewport. No gap — flush, as today.
+            const x = positionAdjacent(parentRect.left, parentRect.right, this.getWidth(), vp.width, 0);
 
             this.setAutoCommitStyle(false);
             this.setX(Math.max(0, x));
@@ -642,8 +656,14 @@ class Menu extends Component implements DismissableLayer {
             // up against the anchor's top when the room below is short;
             // horizontally it aligns to the anchor's left edge, flipping to the
             // anchor's right edge when that overflows — the same primitive
-            // rebuild-mode's showAnchored uses.
-            const placement = positionAnchoredFlexible(anchorRect, { width, height: totalHeight }, vp, VIEWPORT_MARGIN);
+            // rebuild-mode's showAnchored uses. First pass measures with natural
+            // width to resolve available room, then widen if needed, then
+            // measure horizontal placement.
+            const available = positionAnchoredFlexible(anchorRect, { width, height: totalHeight }, vp, VIEWPORT_MARGIN).available;
+
+            this.applyScrollbarGutterWidth(totalHeight > available);
+
+            const placement = positionAnchoredFlexible(anchorRect, { width: this.getWidth(), height: totalHeight }, vp, VIEWPORT_MARGIN);
 
             this.applyViewportHeightClamp(placement.available, totalHeight);
 
@@ -888,8 +908,6 @@ class Menu extends Component implements DismissableLayer {
      * Applies the persistent-mode chrome (MenuBar dropdown CSS variables, aria role).
      */
     private applyPersistentChrome(): void {
-        this.setInsets(new Insets(4, 0, 4, 0));
-
         // The border is painted entirely by the shared `.persistent` rule
         // above, but `getBorderSize()`'s layout math reads the component's
         // own cached border spec, which a shared class rule can't update —
@@ -900,8 +918,6 @@ class Menu extends Component implements DismissableLayer {
         this.setStyleState(".persistent", true);
         this.getAria().setRole("menu");
         this.setContain("layout");
-
-        this.enableVerticalScroll();
     }
 
     /**
@@ -910,28 +926,24 @@ class Menu extends Component implements DismissableLayer {
     private applyRebuildChrome(): void {
         this.setVisible(false);
         this.setBackgroundColor("var(--ts-ui-context-menu-bg, rgb(255, 255, 255))");
-        this.setInsets(new Insets(4, 0, 4, 0));
         this.setBorder({ border: "1px solid var(--ts-ui-context-menu-border, rgb(200, 200, 200))" });
         this.setShadow("var(--ts-ui-context-menu-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))");
         this.setContain("layout");
-
-        this.enableVerticalScroll();
     }
 
     /**
-     * Wires the native vertical-scroll primitives so an over-tall menu scrolls
-     * its items instead of overflowing the clamped panel height. This is the
-     * `"y"` case of [`Panel.setAutoScroll`](/api/core/classes/Panel#setautoscroll)
-     * replicated directly: `overflow-x: hidden` (so a `visible` x-axis does not
-     * compute to `auto` and sprout a spurious horizontal scrollbar), `overflow-y:
-     * auto`, and the layout manager's vertical overflow flag so the `VBox` lays
-     * items out past the clamped inner height rather than compressing them.
+     * Commits the panel width for this open: the content-fit width (or the
+     * explicit `setMenuWidth` override), plus the overlay scrollbar's track when
+     * the item list will not fit the room at this anchor. The item panel reserves
+     * that same track internally, so the extra width lands on the scrollbar band
+     * and the rows keep the content width `layOutColumns` measured them against.
+     *
+     * @param overflows - Whether the content height exceeds the available room.
      */
-    private enableVerticalScroll(): void {
-        this.setOverflowX("hidden");
-        this.setOverflowY("auto");
+    private applyScrollbarGutterWidth(overflows: boolean): void {
+        const base = this._menuWidth ?? this._contentFitWidth;
 
-        (this.getLayoutManager() as VBox).setOverflowing(false, true);
+        this.setWidth(base + (overflows ? TRACK_WIDTH : 0));
     }
 
     /**
@@ -939,8 +951,9 @@ class Menu extends Component implements DismissableLayer {
      * position, then applies the content height. Because `Menu` is a
      * `clampsToContentSize()` component, `setHeight` runs `contentHeight` through
      * `clampHeight`, which caps it at `availableHeight`; when the content fits no
-     * clamp fires, and when it overflows the height is capped and the
-     * `overflow-y: auto` scrollbar engages. Width is left unconstrained via the
+     * clamp fires, and when it overflows the height is capped and the nested
+     * scrolling panel's framework scrollbar engages, showing the scrollbar widget
+     * and reserving its track width. Width is left unconstrained via the
      * `Number.MAX_VALUE` "no constraint" sentinel — horizontal scroll is a
      * non-goal.
      *
@@ -971,6 +984,8 @@ class Menu extends Component implements DismissableLayer {
     private placeVertically(growTop: number, anchorTop: number, totalHeight: number, viewportHeight: number): number {
         const { start, available } = positionFlexibleAnchored(anchorTop, growTop, totalHeight, viewportHeight, VIEWPORT_MARGIN);
 
+        this.applyScrollbarGutterWidth(totalHeight > available);
+
         this.applyViewportHeightClamp(available, totalHeight);
 
         return start;
@@ -989,7 +1004,7 @@ class Menu extends Component implements DismissableLayer {
 
         this._menuItems = [];
         this._focusedIndex = -1;
-        this.disposeAllComponents();
+        this._itemPanel.disposeAllComponents();
 
         this.buildPersistentItems(configs);
     }
@@ -1031,13 +1046,15 @@ class Menu extends Component implements DismissableLayer {
                 );
             }
 
-            this.addComponent(row);
+            this._itemPanel.addComponent(row);
             this._menuItems.push(row);
         }
 
         this.resumeLayout();
 
-        this.setWidth(this.layOutColumns());
+        this._contentFitWidth = this.layOutColumns();
+
+        this.setWidth(this._contentFitWidth);
     }
 
     /**
