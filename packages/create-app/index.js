@@ -22,6 +22,25 @@ const TEMPLATE_DIR = fileURLToPath(new URL('./template', import.meta.url));
 const FALLBACK_PACKAGE_NAME = 'typescript-ui-app';
 
 /**
+ * Pre-existing entries that don't block scaffolding a target directory.
+ * Mirrors the ignore list other `create-*` scaffolders (e.g. create-vite)
+ * use for a freshly `git init`-ed or IDE-touched directory. Deliberately
+ * excludes anything the template itself writes (e.g. `.gitignore`), so a
+ * pre-existing file with the same name is never silently overwritten.
+ */
+const SAFE_EXISTING_ENTRIES = new Set([
+    '.git',
+    '.gitattributes',
+    '.hg',
+    '.hgcheck',
+    '.hgignore',
+    '.idea',
+    '.vscode',
+    '.DS_Store',
+    'Thumbs.db',
+]);
+
+/**
  * Convert an arbitrary target-dir name into a valid npm package name.
  *
  * A name built only from characters this strips — `...`, `--`, or a
@@ -51,12 +70,14 @@ export function renameTemplateFile(name) {
 }
 
 /**
- * True when a target directory's entry list permits scaffolding (empty).
+ * True when a target directory's entry list permits scaffolding: empty, or
+ * containing only pre-existing entries from `SAFE_EXISTING_ENTRIES` (e.g. a
+ * `.git` directory from `git init`).
  * @param {string[]} entries - Directory entries.
  * @returns {boolean} Whether scaffolding may proceed.
  */
 export function isEmpty(entries) {
-    return entries.length === 0;
+    return entries.every((entry) => SAFE_EXISTING_ENTRIES.has(entry));
 }
 
 /**

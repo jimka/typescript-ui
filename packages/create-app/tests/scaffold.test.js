@@ -82,6 +82,15 @@ describe('isEmpty', () => {
     it('is false for a non-empty entry list', () => {
         expect(isEmpty(['index.html'])).toBe(false);
     });
+
+    it('is true when the only entry is a safe pre-existing one like .git', () => {
+        expect(isEmpty(['.git'])).toBe(true);
+        expect(isEmpty(['.git', '.idea'])).toBe(true);
+    });
+
+    it('is false when a safe entry is mixed with a real file', () => {
+        expect(isEmpty(['.git', 'index.html'])).toBe(false);
+    });
 });
 
 describe('parseCliArgs', () => {
@@ -136,6 +145,17 @@ describe('scaffold', () => {
         await expect(scaffold(target)).rejects.toThrow(/not empty/);
 
         expect(readdirSync(target)).toEqual(['existing.txt']);
+    });
+
+    it('scaffolds into a directory containing only a pre-existing .git', async () => {
+        tmpRoot = mkdtempSync(join(tmpdir(), 'create-tsui-app-'));
+        const target = join(tmpRoot, 'my-app');
+        mkdirSync(join(target, '.git'), { recursive: true });
+
+        await scaffold(target);
+
+        expect(existsSync(join(target, 'package.json'))).toBe(true);
+        expect(existsSync(join(target, '.git'))).toBe(true);
     });
 
     it('renames _gitignore to .gitignore on disk', async () => {
