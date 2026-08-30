@@ -7,7 +7,7 @@
 // Architecture Decisions). Construction and the gated calls stay JS-only, so
 // all of this is exercised offline under the recording sink. See plan's
 // Expected Behaviour cases 20-24.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Window } from '~/overlay/Window';
 import { TabWindow } from '~/overlay/TabWindow';
 import { WindowBorder, Direction } from '~/component/container/WindowBorder';
@@ -238,6 +238,26 @@ describe('AbstractWindow locked option', () => {
 
         win.setLocked(false);
         expect(win.getHeader().isMaximizeButtonEnabled()).toBe(false);
+    });
+
+    // Mirrors Window.headerMoveTrigger.test.ts's identical case for the header
+    // double-click — TabWindow's onBarDoubleClick makes the same replacement.
+    it('restores AND activates a minimized TabWindow via bar double-click', () => {
+        installTestDOM(CONFIG);
+
+        const win = new TabWindow();
+        win.getElement(true);
+        win.minimize();
+        expect(win.getWindowState()).toBe('minimized');
+
+        const bringToFrontSpy = vi.spyOn(win, 'bringToFront');
+        const focusSpy = vi.spyOn(win, 'focus');
+
+        (win as unknown as { onBarDoubleClick(): void }).onBarDoubleClick();
+
+        expect(win.getWindowState()).toBe('normal');
+        expect(bringToFrontSpy).toHaveBeenCalledOnce();
+        expect(focusSpy).toHaveBeenCalledWith(true);
     });
 
     it('minimize stays available on a locked window: toggleMinimize still changes its state', () => {

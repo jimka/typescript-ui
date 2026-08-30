@@ -67,12 +67,14 @@ describe('AbstractWindow — restoring from maximized clamps the stale restore r
 
         win.toggleMaximize();
         expect(win.getWindowState()).toBe('maximized');
+        expect(win.isMaximized()).toBe(true);
 
         // Shrink the viewport so the pre-maximize position is now off-screen.
         resizeViewport(win, 480, 400);
 
         win.toggleMaximize();
         expect(win.getWindowState()).toBe('normal');
+        expect(win.isMaximized()).toBe(false);
 
         // Same margin-clamped placement fitNormalWindowToViewport would have
         // produced had the window been "normal" (not maximized) throughout.

@@ -52,6 +52,7 @@ Its own ~30 components, their listeners, and their per-instance rules are inside
 
 - Singleton — there is only ever one diagnostics window on screen, mirroring [`Tooltip`](/components/Tooltip)'s shape.
 - The overhead of the pushed counters is one integer increment at seams the framework already runs on every request; the two `performance.now()` calls that time a layout flush only run while the overlay is open.
+- The window is fixed-size, with no minimize or maximize affordance — drag the title bar to reposition it, or use `close()` / `toggle()` to dismiss it.
 
 ## See also
 

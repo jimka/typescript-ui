@@ -5,7 +5,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { CollapseButton, CollapseDirection, CollapseTrigger } from "~/component/container/CollapseButton.js";
 import { Event } from "~/core/Event.js";
-import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
+import { beginViewportDrag, endViewportDrag } from "~/core/PointerDrag.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { callable } from "~/core/Callable.js";
@@ -46,11 +46,6 @@ export interface SplitGutterOptions extends ComponentOptions {
      */
     movable?: boolean;
     /**
-     * Whether the gutter paints the opaque collapse-strip fill (collapsed
-     * state) or its expanded background (divider state). Defaults to `false`.
-     */
-    opaque?: boolean;
-    /**
      * The chevron's collapse heading — the way it points (and the way the
      * gutter travels) when collapsing. The restore heading is its opposite.
      * Defaults to `west` for a horizontal gutter, `north` for a vertical one.
@@ -74,12 +69,7 @@ export interface SplitGutterOptions extends ComponentOptions {
      * construction time.
      */
     listeners?: {
-        dragstart?:   (position: number) => void;
-        drag?:        (position: number) => void;
-        dragend?:     () => void;
         collapse?:    () => void;
-        /** Fires when the gutter's chevron is right-clicked, receiving the pointer's viewport coordinates. */
-        contextmenu?: (x: number, y: number) => void;
     };
 }
 
@@ -172,10 +162,6 @@ class SplitGutter extends Component<SplitGutterOptions> {
         });
 
         this._collapseButton.setVisible(this._collapsible);
-
-        if (options?.opaque) {
-            this.setOpaque(true);
-        }
 
         // A fixed gutter (Border) never resizes, so its body should not swallow
         // pointer events — the transparent track must let clicks reach the
@@ -550,13 +536,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
 
         this.emit("dragstart", position);
 
-        Event.addViewportListener(this, 'mouseup', this.onDragStop);
-        Event.addViewportListener(this, 'touchend', this.onDragStop);
-        Event.addViewportListener(this, 'touchcancel', this.onDragStop);
-        Event.addViewportListener(this, 'mousemove', this.onDrag);
-        Event.addViewportListener(this, 'touchmove', this.onDrag);
-
-        beginPointerDrag(this.dragCursor());
+        beginViewportDrag(this, this.onDrag, this.onDragStop, this.dragCursor());
     }
 
     /**
@@ -567,13 +547,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
      * @returns `true`, consuming the release that ends the gutter drag.
      */
     onDragStop(): Event.ListenerResult {
-        Event.removeViewportListener(this, 'mouseup', this.onDragStop);
-        Event.removeViewportListener(this, 'touchend', this.onDragStop);
-        Event.removeViewportListener(this, 'touchcancel', this.onDragStop);
-        Event.removeViewportListener(this, 'mousemove', this.onDrag);
-        Event.removeViewportListener(this, 'touchmove', this.onDrag);
-
-        endPointerDrag();
+        endViewportDrag(this, this.onDrag, this.onDragStop);
 
         this.emit("dragend");
 

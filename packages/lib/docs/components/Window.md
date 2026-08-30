@@ -60,7 +60,7 @@ Inherits all [`PanelOptions`](/api/core/interfaces/PanelOptions) / [`ComponentOp
 | `getHeader()` | The internal [`WindowHeader`](/api/component/container/classes/WindowHeader) — call `setGlyph(name)` on it for the title icon, or listen on its close button. |
 | `show()` | Display the window and bring it to the front. |
 | `setSize(w, h)` / `setPosition(x, y)` | Initial geometry. |
-| `setResizeFps(fps)` | Throttle resize-driven layout (default 30). |
+| `setResizeFps(fps)` | Throttle resize-driven layout (default 60). |
 | `on("close", fn)` | Called when the user clicks the × button. |
 
 The full surface — drag listeners, focus / activation events, viewport-clamping — is in the [API reference](/api/overlay/classes/Window).

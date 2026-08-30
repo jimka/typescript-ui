@@ -415,15 +415,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // built and the geometry fields are initialised.
         // All carry a class default, so dispatch the caller value (stashed in
         // `_options` by `applyOptions`) or the class default — never leave the
-        // chrome unbuilt. Minimizable/maximizable reflect rather than re-set:
-        // `resizable` can veto the effective value, and routing through
-        // setMinimizable/setMaximizable would write that gated value back
-        // into `_options`, overwriting the caller's own setting.
+        // chrome unbuilt. `_options.resizable`/`_options.locked` are already
+        // seeded by `applyOptions`, so reconciling the chrome they gate is a
+        // single `applyResizeChrome()` call rather than a `setResizable`/
+        // `setLocked` round-trip through their own `_options` writes.
         this.setCloseable(this.isCloseable());
-        this.reflectMinimizable(this.isMinimizable());
-        this.reflectMaximizable(this.isMaximizable());
-        this.setResizable(this.isResizable());
-        this.setLocked(this.isLocked());
+        this.applyResizeChrome();
         this.setMaximizeBounds(this.getMaximizeBounds());
         this.setWindowState(this.getWindowState());
 
@@ -1398,7 +1395,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return;
         }
 
-        if (this.getWindowState() === "maximized") {
+        if (this.isMaximized()) {
             this.setWindowState("normal");
         } else {
             this.setWindowState("maximized");
@@ -1552,6 +1549,21 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
+     * Reconciles every piece of chrome gated by resizable/locked in one pass:
+     * the eight resize-border strips, the minimize/maximize affordances (which
+     * `resizable` supersedes), and the maximize-availability gate (which both
+     * `resizable` and `locked` feed). Called by `setResizable`, `setLocked`, and
+     * once from `initChrome` — never duplicated across two construction-time
+     * setter calls.
+     */
+    private applyResizeChrome(): void {
+        this.applyResizeBorderVisibility();
+        this.reflectMinimizable(this.isMinimizable());
+        this.reflectMaximizable(this.isMaximizable());
+        this.applyMaximizeAvailability();
+    }
+
+    /**
      * Live-refreshes the Maximize/Restore row's `enabled` state in an
      * already-open window menu, without closing, rebuilding, or
      * re-animating the panel — so toggling "Lock position" from inside the
@@ -1593,15 +1605,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     setResizable(value: boolean): this {
         this._options.resizable = value;
 
-        this.applyResizeBorderVisibility();
-
         // `resizable` supersedes minimizable/maximizable, so both affordances
-        // re-reflect against their effective value. Straight to the reflect
-        // hooks: setMinimizable/setMaximizable would write the gated value
-        // into `_options` and destroy the caller's own setting.
-        this.reflectMinimizable(this.isMinimizable());
-        this.reflectMaximizable(this.isMaximizable());
-        this.applyMaximizeAvailability();
+        // re-reflect against their effective value — see `applyResizeChrome`.
+        this.applyResizeChrome();
 
         return this;
     }
@@ -1631,8 +1637,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     setLocked(value: boolean): this {
         this._options.locked = value;
-        this.applyResizeBorderVisibility();
-        this.applyMaximizeAvailability();
+        this.applyResizeChrome();
 
         return this;
     }

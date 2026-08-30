@@ -308,8 +308,8 @@ class Window extends AbstractWindow {
             return;
         }
 
-        if (this.getWindowState() === "minimized") {
-            this.setWindowState(this._preMinimizeState);
+        if (this.isMinimized()) {
+            this.restore();
             return;
         }
 

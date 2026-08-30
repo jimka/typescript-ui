@@ -86,6 +86,11 @@ export class DiagnosticsOverlay extends Window {
 
     /** Private — use the static methods; only one instance is ever created. */
     private constructor() {
+        // `resizable: false` also suppresses minimize/maximize (AbstractWindow's
+        // `isMinimizable`/`isMaximizable` gate both on `isResizable()`, since
+        // each is itself a resize operation). Accepted here: this is a small,
+        // fixed-metrics debug panel — dismiss it via close()/toggle(), and
+        // drag-to-reposition (only resize, not move, is gated) still works.
         super("Diagnostics", { resizable: false });
 
         this.setX(OVERLAY_X);

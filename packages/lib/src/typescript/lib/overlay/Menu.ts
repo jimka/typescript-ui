@@ -4,7 +4,7 @@ import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle, Rect } from "~/core/DOM.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
-import { positionAnchoredFlexible, positionFlexibleAnchored } from "~/core/OverlayPosition.js";
+import { positionAdjacent, positionAnchoredFlexible, positionFlexibleAnchored } from "~/core/OverlayPosition.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/OverlayFade.js";
 import type { Animation } from "~/core/Animation.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -593,11 +593,10 @@ class Menu extends Component implements DismissableLayer {
                 : { left: 0, right: 0, top: 0, bottom: 0 };
             const anchorRect = DOM.source.getElementRect(anchorEl);
 
-            let x = parentRect.right;
-
-            if (x + width > vp.width) {
-                x = parentRect.left - width;
-            }
+            // A submenu sits beside its parent panel: right of the parent's
+            // right edge, flipping to the parent's left edge when the right
+            // side overflows the viewport. No gap — flush, as today.
+            const x = positionAdjacent(parentRect.left, parentRect.right, width, vp.width, 0);
 
             // A submenu grows down from the anchor item's top, and flips up
             // against that same top edge when there is more room above.
@@ -610,19 +609,18 @@ class Menu extends Component implements DismissableLayer {
         } else {
             const anchorRect = DOM.source.getElementRect(anchorEl);
 
-            let x = anchorRect.left;
+            // A top-level dropdown grows down from the anchor's bottom and flips
+            // up against the anchor's top when the room below is short;
+            // horizontally it aligns to the anchor's left edge, flipping to the
+            // anchor's right edge when that overflows — the same primitive
+            // rebuild-mode's showAnchored uses.
+            const placement = positionAnchoredFlexible(anchorRect, { width, height: totalHeight }, vp, VIEWPORT_MARGIN);
 
-            if (x + width > vp.width) {
-                x = vp.width - width;
-            }
-
-            // A top-level dropdown grows down from the anchor's bottom, and
-            // flips up against the anchor's top when there is more room above.
-            const y = this.placeVertically(anchorRect.bottom, anchorRect.top, totalHeight, vp.height);
+            this.applyViewportHeightClamp(placement.available, totalHeight);
 
             this.setAutoCommitStyle(false);
-            this.setX(Math.max(0, x));
-            this.setY(Math.max(0, y));
+            this.setX(Math.max(0, placement.x));
+            this.setY(Math.max(0, placement.y));
             this.setAutoCommitStyle(true);
         }
 

@@ -92,4 +92,44 @@ describe('Window header move-trigger veto', () => {
 
         expect(win.getWindowState()).toBe(stateBefore);
     });
+
+    // A double-click on a minimized header used to only flip the state back
+    // (setWindowState(this._preMinimizeState)); a click-to-restore from a Rail
+    // handle already activates and focuses the window via restore() — the two
+    // paths reached different outcomes for the same "restore" action. Routing
+    // the header entry point through restore() too closes that gap.
+    it('restores AND activates a minimized window via header double-click', () => {
+        installTestDOM(CONFIG);
+
+        const win = new Window('W');
+        win.getElement(true);
+        win.minimize();
+        expect(win.getWindowState()).toBe('minimized');
+
+        const bringToFrontSpy = vi.spyOn(win, 'bringToFront');
+        const focusSpy = vi.spyOn(win, 'focus');
+        const headerHandle = win.getHeader().getElement()!;
+
+        (win as unknown as { onHeaderDoubleClick(e: MouseEvent): void })
+            .onHeaderDoubleClick(makeEvent(headerHandle, 'dblclick') as unknown as MouseEvent);
+
+        // Default _preMinimizeState is "normal" (this window was never maximized).
+        expect(win.getWindowState()).toBe('normal');
+        expect(bringToFrontSpy).toHaveBeenCalledOnce();
+        expect(focusSpy).toHaveBeenCalledWith(true);
+    });
+
+    it('a NOT-minimized window still falls through to the maximize-toggle tail on double-click', () => {
+        installTestDOM(CONFIG);
+
+        const win = new Window('W');
+        win.getElement(true);
+
+        const headerHandle = win.getHeader().getElement()!;
+
+        (win as unknown as { onHeaderDoubleClick(e: MouseEvent): void })
+            .onHeaderDoubleClick(makeEvent(headerHandle, 'dblclick') as unknown as MouseEvent);
+
+        expect(win.getWindowState()).toBe('maximized');
+    });
 });

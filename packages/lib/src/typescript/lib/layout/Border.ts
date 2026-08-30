@@ -379,7 +379,6 @@ class Border extends LayoutManager {
 
         gutter = new SplitGutter(vertical ? "vertical" : "horizontal", {
             movable:            false,
-            opaque:             false,
             collapseDirection:  COLLAPSE_CHEVRON[placement],
             expandedBackground: "transparent",
             listeners:          { collapse: () => this.setRegionCollapsed(placement, !this.isRegionCollapsed(placement)) },

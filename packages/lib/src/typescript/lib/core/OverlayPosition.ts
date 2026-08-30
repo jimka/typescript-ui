@@ -51,8 +51,8 @@ export function positionAdjacent(nearEdge: number, farEdge: number, extent: numb
     }
 
     // Neither side fits: pin to whichever side has more room, saturated so the
-    // element stays on-screen (mirrors placeAnchored's spaceBelow/spaceAbove
-    // fallback, axis-agnostic).
+    // element stays on-screen — the same saturate-to-more-room fallback every
+    // fixed-size adjacency placement needs.
     if (spaceFar >= spaceNear) {
         return Math.max(0, viewportExtent - extent);
     }

@@ -5,7 +5,7 @@
 // gated call stay JS-only, so all eight rows are exercised offline under the
 // recording sink; cursor rendering, hit testing, and a live drag need a real
 // browser and are covered by the plan's manual pass instead.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Window } from '~/overlay/Window';
 import { TabWindow } from '~/overlay/TabWindow';
 import { WindowBorder, Direction } from '~/component/container/WindowBorder';
@@ -118,6 +118,23 @@ describe('AbstractWindow resizable option', () => {
         expect(prevented).toBe(false);
         expect(win.getWidth()).toBe(originalWidth);
         expect(win.getHeight()).toBe(originalHeight);
+    });
+
+    // initChrome used to reconcile resize/lock chrome twice at construction
+    // (setResizable(...) then setLocked(...), each re-running the eight-strip
+    // visibility sweep) — 16 setVisible calls for 8 borders. applyResizeChrome()
+    // consolidates both setters' tails into one reconciliation, called once
+    // from initChrome, so construction should now sweep the eight strips once.
+    it('reconciles border strip visibility exactly once per strip at construction', () => {
+        installTestDOM(CONFIG);
+
+        const spy = vi.spyOn(WindowBorder.prototype, 'setVisible');
+
+        new Window('W');
+
+        expect(spy).toHaveBeenCalledTimes(8);
+
+        spy.mockRestore();
     });
 });
 
