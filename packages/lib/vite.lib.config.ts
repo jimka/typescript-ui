@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
 import { resolve } from 'node:path'
 import { globSync } from 'node:fs'
+import { keepNamesMinify } from '../../build/keepNames.js'
 
 const libRoot = fileURLToPath(new URL('./src/typescript/lib', import.meta.url))
 const r = (p: string): string => resolve(libRoot, p)
@@ -100,10 +101,7 @@ export default defineConfig({
         // Downstream consumers hit the same `constructor.name` dependency as
         // the app (CSS classes + layout serialization), so the library bundle
         // must preserve class identifiers through minification too.
-        minify: {
-          compress: { keepNames: { function: true, class: true } },
-          mangle:   { keepNames: { function: true, class: true } },
-        },
+        minify: keepNamesMinify,
       },
     },
   },

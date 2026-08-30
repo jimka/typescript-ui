@@ -1,4 +1,4 @@
-import { callable, Component, Container, DOM, Panel } from '@jimka/typescript-ui/core';
+import { callable, Component, Container } from '@jimka/typescript-ui/core';
 import { Border, HBox, Fit, AnchorType, Anchor, AnchorConstraints } from '@jimka/typescript-ui/layout';
 import { Placement } from '@jimka/typescript-ui/primitive';
 import { Header, Glyph, MarkdownMinimap } from '@jimka/typescript-ui/component/display';

@@ -2,7 +2,7 @@
 
 [`ChartLegend`](/api/component/chart/classes/ChartLegend) is the clickable legend the chart family renders beside the plot: one row per series (a colour swatch plus the series name). A click on a row emits `"toggle"(seriesIndex)` so the owning chart can hide or show that series and repaint.
 
-It is composed from existing components — an `HBox`/`VBox` [`Panel`](/api/component/container/classes/Panel) of per-entry rows, each an `HBox` of a swatch and a [`Text`](/api/component/input/classes/Text) — rather than a specialised component. [`LineChart`](/components/LineChart) and [`BarChart`](/components/BarChart) create and drive one internally, so you rarely construct it directly; it is public for custom chart chrome.
+It is composed from existing components — an `HBox`/`VBox` [`Panel`](/api/core/classes/Panel) of per-entry rows, each an `HBox` of a swatch and a [`Text`](/api/component/input/classes/Text) — rather than a specialised component. [`LineChart`](/components/LineChart) and [`BarChart`](/components/BarChart) create and drive one internally, so you rarely construct it directly; it is public for custom chart chrome.
 
 ## Usage
 

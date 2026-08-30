@@ -618,3 +618,10 @@ The published `packages/lib/README.md` is **not** updated by this plan.[^lib-rea
   every `.`/`_` to `-` unconditionally; both drafts pass all seven `##
   Expected Behaviour` table rows, since none of them exercises an interior
   `.`/`_`.
+- **The `### Initial version 0.0.1` decision (lines 50-52) and its
+  `[^initial-version]` footnote (line 538) were reversed after this plan
+  shipped.** Commit `f19c076c` bumped the scaffolder from `0.0.1` to `0.3.0`
+  alongside the library, and every release since has kept the two locked;
+  `release-steps.md` now codifies the lock instead of independent versioning.
+  npm versions cannot go backwards, so restoring independence is not an
+  available option — the lock is recorded here rather than reverted.

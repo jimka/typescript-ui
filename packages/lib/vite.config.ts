@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
+import { keepNamesMinify } from '../../build/keepNames.js'
 
 const sub = (p: string): string => fileURLToPath(new URL(`./src/typescript/lib/${p}`, import.meta.url))
 
@@ -46,10 +47,7 @@ export default defineConfig({
         // must not mangle class identifiers — otherwise `constructor.name`
         // returns a short/empty string and `classList.add("")` throws,
         // blanking the production page.
-        minify: {
-          compress: { keepNames: { function: true, class: true } },
-          mangle:   { keepNames: { function: true, class: true } },
-        },
+        minify: keepNamesMinify,
       },
     },
   },

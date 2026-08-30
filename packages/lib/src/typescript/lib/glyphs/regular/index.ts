@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 export * from "./address_book.js";
 export * from "./address_card.js";
 export * from "./alarm_clock.js";

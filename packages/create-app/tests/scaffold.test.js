@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
@@ -66,6 +66,12 @@ describe('renameTemplateFile', () => {
         expect(renameTemplateFile('index.html')).toBe('index.html');
         expect(renameTemplateFile('package.json')).toBe('package.json');
     });
+
+    it('leaves an Object.prototype-shaped name unchanged rather than resolving to the inherited member', () => {
+        expect(renameTemplateFile('constructor')).toBe('constructor');
+        expect(renameTemplateFile('toString')).toBe('toString');
+        expect(renameTemplateFile('__proto__')).toBe('__proto__');
+    });
 });
 
 describe('isEmpty', () => {
@@ -80,11 +86,23 @@ describe('isEmpty', () => {
 
 describe('parseCliArgs', () => {
     it('returns the positional target directory', () => {
-        expect(parseCliArgs(['my-app'])).toEqual({ targetDir: 'my-app' });
+        expect(parseCliArgs(['my-app'])).toEqual({ help: false, targetDir: 'my-app' });
     });
 
     it('returns undefined when no positional is given', () => {
-        expect(parseCliArgs([])).toEqual({ targetDir: undefined });
+        expect(parseCliArgs([])).toEqual({ help: false, targetDir: undefined });
+    });
+
+    it('sets help on --help without throwing', () => {
+        expect(parseCliArgs(['--help'])).toEqual({ help: true, targetDir: undefined });
+    });
+
+    it('sets help on the -h short flag', () => {
+        expect(parseCliArgs(['-h'])).toEqual({ help: true, targetDir: undefined });
+    });
+
+    it('throws on more than one positional argument, naming the extra one', () => {
+        expect(() => parseCliArgs(['a', 'b'])).toThrow(/b/);
     });
 });
 
@@ -199,5 +217,37 @@ describe('main', () => {
 
         expect(askCalls).toBe(0);
         expect(existsSync(join(target, 'package.json'))).toBe(true);
+    });
+
+    it('prints usage and scaffolds nothing when --help is given', async () => {
+        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        let askCalls = 0;
+        const ask = async () => {
+            askCalls += 1;
+            return '';
+        };
+
+        try {
+            await main(['--help'], ask);
+
+            expect(askCalls).toBe(0);
+            expect(logSpy.mock.calls.some(([line]) => /usage/i.test(line))).toBe(true);
+        } finally {
+            logSpy.mockRestore();
+        }
+    });
+
+    it('rejects with a clear error and creates nothing when the answer is empty', async () => {
+        tmpRoot = mkdtempSync(join(tmpdir(), 'create-tsui-app-'));
+        const originalCwd = process.cwd();
+        process.chdir(tmpRoot);
+        const ask = async () => '';
+
+        try {
+            await expect(main([], ask)).rejects.toThrow(/no project directory given/);
+            expect(readdirSync(tmpRoot)).toEqual([]);
+        } finally {
+            process.chdir(originalCwd);
+        }
     });
 });

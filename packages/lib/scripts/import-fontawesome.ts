@@ -42,6 +42,9 @@ function parseSvg(source: string, file: string): { viewBox: string; path: string
     return { viewBox, path: pathMatches[0][1] };
 }
 
+/** Header for the generated barrels: project-licensed index files carrying no Font Awesome asset data. */
+const BARREL_HEADER = "// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0\n\n";
+
 function renderIconFile(rec: IconRecord): string {
     return `// SPDX-License-Identifier: CC-BY-4.0
 // Source: Font Awesome Free 7.2.0, https://fontawesome.com/license/free
@@ -90,7 +93,7 @@ async function processStyle(svgsDir: string, style: Style): Promise<IconRecord[]
         await writeFile(join(outDir, `${rec.identifier}.ts`), renderIconFile(rec), "utf8");
     }
 
-    const indexLines = records.map((r) => `export * from "./${r.identifier}.js";`).join("\n") + "\n";
+    const indexLines = BARREL_HEADER + records.map((r) => `export * from "./${r.identifier}.js";`).join("\n") + "\n";
     await writeFile(join(outDir, "index.ts"), indexLines, "utf8");
 
     return records;
@@ -98,6 +101,7 @@ async function processStyle(svgsDir: string, style: Style): Promise<IconRecord[]
 
 async function writeTopLevelBarrel(): Promise<void> {
     const content =
+        BARREL_HEADER +
         `export * as solid from "./solid/index.js";\n` +
         `export * as regular from "./regular/index.js";\n` +
         `export * as brands from "./brands/index.js";\n`;

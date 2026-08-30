@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from 'vite'
 import { readFileSync, readdirSync, cpSync, copyFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 import path from 'node:path'
+import { keepNamesMinify } from '../../build/keepNames.js'
 
 const API_DIR = fileURLToPath(new URL('../lib/docs/api', import.meta.url))
 const VIRTUAL = 'virtual:typedoc-api'
@@ -138,14 +139,10 @@ export default defineConfig({
     // The framework derives every component's CSS class (and option routing) from
     // `this.constructor.name`, so the minifier must not mangle class identifiers —
     // otherwise `constructor.name` yields a mangled string, option handling breaks,
-    // and the page renders "[object Object]" with unclassed elements. Mirror the
-    // keepNames guard in vite.config.ts and vite.lib.config.ts.
+    // and the page renders "[object Object]" with unclassed elements.
     rollupOptions: {
       output: {
-        minify: {
-          compress: { keepNames: { function: true, class: true } },
-          mangle:   { keepNames: { function: true, class: true } },
-        },
+        minify: keepNamesMinify,
       },
     },
   },

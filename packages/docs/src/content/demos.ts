@@ -1,7 +1,7 @@
 import type { Component } from '@jimka/typescript-ui/core';
 
 /** The shape every module in `src/demos/` must export. */
-export interface DemoModule {
+interface DemoModule {
     /**
      * Pixel height of the framed live area the demo is rendered into on its
      * docs page — the height of the bordered stage embedded in the Markdown,

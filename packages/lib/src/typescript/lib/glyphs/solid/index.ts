@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 export * from "./_0.js";
 export * from "./_1.js";
 export * from "./_2.js";

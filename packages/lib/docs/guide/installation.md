@@ -1,6 +1,6 @@
 # Installation
 
-`@jimka/typescript-ui` is published on npm and ships ESM bundles and `.d.ts` declarations. The package has zero runtime npm dependencies.
+`@jimka/typescript-ui` is published on npm and ships ESM bundles and `.d.ts` declarations. It declares runtime dependencies that npm installs alongside it — the CodeMirror and Lexical editor stacks, the `d3-array` / `d3-scale` / `d3-shape` charting submodules, `marked`, `prettier`, `sql-formatter`, and the Manrope webfont. `elkjs` is an optional peer dependency, needed only for `DiagramView`'s ELK layout engine.
 
 The public API is exposed only through **subpath exports** — there is no bare `@jimka/typescript-ui` entry. Import each symbol from its group: `core`, `primitive`, `layout`, `data`, `validation`, or `component/<group>` (where `<group>` is `input`, `button`, `display`, `list`, `container`, `menubar`, `table`, or `tree`).
 
@@ -85,14 +85,13 @@ If instead you are consuming a local checkout of this library from your own app 
 
 | Command | Description |
 | --- | --- |
-| `npm run dev` | Vite dev server on port 8015 with hot reload |
-| `npm run build` | Production bundle of the demo app to `dist/` |
-| `npm run build:lib` | Per-subpath ESM bundles + `.d.ts` declarations to `dist/lib/` |
-| `npm run preview` | Preview the production build locally |
+| `npm run dev` | Vite dev server on port 8015 (developer component showcase) |
+| `npm -w packages/lib run build` | Production bundle of the component showcase to `packages/lib/dist/` |
+| `npm run build:lib` | Library bundle (ESM + `.d.ts`) to `packages/lib/dist/lib/` |
 | `npm run typecheck` | Strict TypeScript type check (no emit) |
 | `npm run docs:dev` | Serve the documentation app locally |
 | `npm run build:pages` | Build the full documentation site |
-| `npm run clean` | Delete `dist/` contents |
+| `npm -w packages/lib run clean` | Delete `packages/lib/dist/` contents |
 
 ## Browser support
 

@@ -2,7 +2,7 @@
 
 [`LineChart`](/api/component/chart/classes/LineChart) plots one or more series as lines over a linear or time x axis and a linear y axis, with optional point markers.
 
-Like every chart in the family it is a [`Panel`](/api/component/container/classes/Panel) whose root `<div>` hosts a single `<svg>` drawing surface built entirely through the framework DOM sink — axes, gridlines, and marks are SVG elements, never `innerHTML`. The computational layer (scales, nice-number ticks, tick formatting, and the path `d` string) delegates to the pure `d3-scale` / `d3-shape` / `d3-array` submodules; all rendering, layout, interaction, and theming stay native.
+Like every chart in the family it is a [`Panel`](/api/core/classes/Panel) whose root `<div>` hosts a single `<svg>` drawing surface built entirely through the framework DOM sink — axes, gridlines, and marks are SVG elements, never `innerHTML`. The computational layer (scales, nice-number ticks, tick formatting, and the path `d` string) delegates to the pure `d3-scale` / `d3-shape` / `d3-array` submodules; all rendering, layout, interaction, and theming stay native.
 
 <!-- demo: linechart-store -->
 > **Live demo** — a store-bound `LineChart` over two regional sales series,

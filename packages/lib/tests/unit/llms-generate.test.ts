@@ -209,9 +209,9 @@ describe('llms generator — doc resolution & budget', () => {
         expect(estimateTokens('123456789')).toBe(3);
     });
 
-    it('passes a within-budget document and throws past the 6000-token ceiling', () => {
+    it('passes a within-budget document and throws past the ceiling', () => {
         expect(assertBudget('small.txt', 'a'.repeat(400))).toBe(100);
-        // ceil(28000 / 4) = 7000 tokens, over the 6000 ceiling.
+        // ceil(28000 / 4) = 7000 tokens, over any ceiling the constant has carried.
         expect(() => assertBudget('big.txt', 'a'.repeat(28000))).toThrow(/budget/i);
     });
 });

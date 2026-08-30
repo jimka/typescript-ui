@@ -1,6 +1,6 @@
 # Drag-and-drop with `DragManager`
 
-[`DragManager`](/api/overlay/variables/DragManager) is a process-wide coordinator that turns any [`Component`](/api/core/classes/Component) into a drag source, a drop target, or both. It owns the global session, draws the three overlay components ([`DragGhost`](/api/overlay/classes/DragGhost), [`DragFeedback`](/api/overlay/classes/DragFeedback), [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator)) above the page, and routes every callback through the option bag you pass to the factory.
+[`DragManager`](/api/overlay/namespaces/DragManager) is a process-wide coordinator that turns any [`Component`](/api/core/classes/Component) into a drag source, a drop target, or both. It owns the global session, draws the three overlay components ([`DragGhost`](/api/overlay/classes/DragGhost), [`DragFeedback`](/api/overlay/classes/DragFeedback), [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator)) above the page, and routes every callback through the option bag you pass to the factory.
 
 The framework already wires this up for [`TreeTable`](/components/TreeTable) rows — see [Drag-and-drop reparenting](/components/TreeTable#drag-and-drop-reparenting) on that page. This recipe covers the lower-level API for custom drag sources and drop targets.
 
@@ -8,8 +8,8 @@ The framework already wires this up for [`TreeTable`](/components/TreeTable) row
 
 | Concept | Owner | Lifecycle |
 |---|---|---|
-| Drag source | The component the user mouses down on | Register with [`makeDragSource`](/api/overlay/variables/DragManager#makedragsource); teardown via the returned closure. |
-| Drop target | The component a drag may land on | Register with [`makeDropTarget`](/api/overlay/variables/DragManager#makedroptarget); teardown via the returned closure. |
+| Drag source | The component the user mouses down on | Register with [`makeDragSource`](/api/overlay/namespaces/DragManager/functions/makeDragSource); teardown via the returned closure. |
+| Drop target | The component a drag may land on | Register with [`makeDropTarget`](/api/overlay/namespaces/DragManager/functions/makeDropTarget); teardown via the returned closure. |
 | Drag data | An opaque `Record<string, unknown>` carrying the source's payload | Resolved once per session — pass a literal, or pass a factory if the payload changes per drag. |
 | Drag session | The in-flight drag | Single-instance: the mouse is one pointer. Commits past a 4 px movement threshold so plain clicks never fire a drag. |
 
@@ -90,7 +90,7 @@ For tree-like data where you also need to forbid drops onto descendants, walk th
 
 ## Programmatic cancel
 
-[`DragManager.cancel`](/api/overlay/variables/DragManager#cancel) tears down the active session without firing `drop`. Wire it to your application's Escape key handler if the user expects Esc to abort an in-flight drag.
+[`DragManager.cancel`](/api/overlay/namespaces/DragManager/functions/cancel) tears down the active session without firing `drop`. Wire it to your application's Escape key handler if the user expects Esc to abort an in-flight drag.
 
 ```typescript
 if (DragManager.isDragging()) {
@@ -101,12 +101,12 @@ if (DragManager.isDragging()) {
 ## Architectural notes
 
 - The manager hooks `mousedown` on each source through [`Component.addMouseDownListener`](/api/core/classes/Component#addmousedownlistener), so the framework's "components own their event surface" rule is preserved.
-- `mousemove` / `mouseup` are registered through [`Event.addViewportListener`](/api/core/variables/Event#addviewportlistener) (not raw `document` listeners) so the manager interoperates with other viewport-level listeners — e.g. [`Window.onMouseDown`](/api/overlay/classes/Window#onmousedown), which already pre-empts `mouseup` at window capture.
+- `mousemove` / `mouseup` are registered through [`Event.addViewportListener`](/api/core/namespaces/Event/functions/addViewportListener) (not raw `document` listeners) so the manager interoperates with other viewport-level listeners — e.g. [`Window.onMouseDown`](/api/overlay/classes/Window#onmousedown), which already pre-empts `mouseup` at window capture.
 - Overlays are appended directly to `<html>` and sit on `position: fixed` — one of the two documented overlay carve-outs in `ARCHITECTURE.md` §Positioning.
 - The hit-test uses `document.elementsFromPoint`; overlays carry `pointer-events: none` so the row underneath always wins.
 
 ## See also
 
 - [`TreeTable` drag-and-drop reparenting](/components/TreeTable#drag-and-drop-reparenting) — the highest-level integration shipped with the framework.
-- [`DragManager` API](/api/overlay/variables/DragManager).
+- [`DragManager` API](/api/overlay/namespaces/DragManager).
 - [`DragGhost`](/api/overlay/classes/DragGhost) / [`DragFeedback`](/api/overlay/classes/DragFeedback) / [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator) — the three overlay primitives.

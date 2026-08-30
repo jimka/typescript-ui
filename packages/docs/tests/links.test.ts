@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { Router } from '@jimka/typescript-ui/router';
 import { resolveDocLink, resolveApiLink } from '../src/content/links.js';
+import { getPage } from '../src/content/pages.js';
+import { apiFileFor, isApiPath } from '../src/content/api.js';
 
 // import.meta.env.BASE_URL is '/' under vitest, not the deployed base, so the
 // fixture router builds its base explicitly — see "import.meta.env.BASE_URL
@@ -103,5 +105,99 @@ describe('resolveApiLink', () => {
     it('strips a #fragment from a dotted relative link, joining .. segments first', () => {
         expect(resolveApiLink('../../../core/classes/Component.md#setscrollleft', 'component/button/classes', router))
             .toEqual({ href: '/typescript-ui/api/core/classes/Component', external: false });
+    });
+});
+
+const CORPUS = import.meta.glob(
+    '../../lib/docs/{guide,concepts,components,layouts,data,recipes,reference,reference/changelog,reference/migration}/*.md',
+    { query: '?raw', import: 'default', eager: true },
+) as Record<string, string>;
+
+// Copied from content-constructs.test.ts:51-81 rather than imported, matching
+// that file's own deliberate duplication of routePathFor and slugify — this
+// guard exercises the actual authored corpus independently of any other
+// guard's helpers.
+function stripCode(source: string): string {
+    // The lookarounds are load-bearing: without them a run of N backticks can
+    // close against the first N backticks of a *longer* run, and the scan then
+    // swallows everything up to the next accidental match. On
+    // `components/MarkdownEditor.md:53` — `| Fenced code | ` ``` ` fence |` —
+    // the 1-backtick opener closed against the first backtick of the ``` run
+    // and ate 12 lines, hiding them from every assertion below. Requiring the
+    // closing run to be a whole run (CommonMark's own rule) fixes it.
+    return stripFences(source)
+        .replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, '');   // inline code spans, any backtick run
+}
+
+/**
+ * `source` with fenced blocks removed but inline code spans left intact.
+ *
+ * @param source - A page's raw Markdown source.
+ * @returns `source` with fenced code blocks removed.
+ */
+function stripFences(source: string): string {
+    return source.replace(/^([ \t]*)```[\s\S]*?^\1```[ \t]*$/gm, '');   // fenced blocks, incl. indented
+}
+
+/** Every `](/…)` target on the page, fragment and trailing slash normalized away. */
+function internalLinkPaths(source: string): string[] {
+    return [...stripCode(source).matchAll(/\]\((\/[^)\s]*)\)/g)]
+        .map((match) => match[1].split('#')[0].replace(/\/$/, '') || '/');
+}
+
+function resolves(path: string): boolean {
+    return isApiPath(path) ? apiFileFor(path) !== null : getPage(path) !== null;
+}
+
+describe('internalLinkPaths', () => {
+    it('strips the #fragment from a route link', () => {
+        expect(internalLinkPaths('see [x](/concepts/sizing#the-size-invariant)')).toEqual(['/concepts/sizing']);
+    });
+
+    it('strips the trailing slash of a directory-index link', () => {
+        expect(internalLinkPaths('see [x](/layouts/)')).toEqual(['/layouts']);
+    });
+
+    it('strips the trailing slash of the api root link', () => {
+        expect(internalLinkPaths('see [x](/api/)')).toEqual(['/api']);
+    });
+
+    it('collects only absolute site paths, not external or in-page links', () => {
+        expect(internalLinkPaths('see [x](https://example.com)')).toEqual([]);
+        expect(internalLinkPaths('see [x](#anchor)')).toEqual([]);
+    });
+
+    it('ignores a dangling-looking href inside a fenced block', () => {
+        expect(internalLinkPaths('```\n](/nope)\n```')).toEqual([]);
+    });
+
+    it('ignores a dangling-looking href inside an inline code span', () => {
+        expect(internalLinkPaths('`](/nope)`')).toEqual([]);
+    });
+});
+
+describe('resolves', () => {
+    it('resolves an authored page path via getPage', () => {
+        expect(resolves('/concepts/sizing')).toBe(true);
+        expect(resolves('/layouts')).toBe(true);
+        expect(resolves('/api')).toBe(true);
+    });
+
+    it('resolves an /api/… path via apiFileFor', () => {
+        expect(resolves('/api/core/namespaces/Animation')).toBe(true);
+        expect(resolves('/api/core/classes/Animation')).toBe(false);
+    });
+
+    it('fails a path that matches no page', () => {
+        expect(resolves('/concepts/architecture')).toBe(false);
+        expect(resolves('/nope')).toBe(false);
+    });
+});
+
+describe('corpus link guard', () => {
+    it.each(Object.entries(CORPUS))('%s has no dangling internal link', (path, raw) => {
+        const dangling = internalLinkPaths(raw).filter((target) => !resolves(target));
+
+        expect(dangling, `${path} links dangling target(s): ${dangling.join(', ')}`).toHaveLength(0);
     });
 });
