@@ -20,7 +20,7 @@ import type { CellClickEvent } from '~/component/table/Body';
 import { Body as CoreBody } from '~/core/Body';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
-import { Row } from '~/component/table/Row';
+import { Row, _Row } from '~/component/table/Row';
 import { Column } from '~/component/table/Column';
 import { Cell } from '~/component/table/cell/Cell';
 import { ComboCell } from '~/component/table/cell/Combo';
@@ -2174,7 +2174,11 @@ describe('Column window — fast-path slide (Body integration)', () => {
         const priv     = b as any;
         const poolSize = (priv.getRowPool() as unknown[]).length;
 
-        const buildSpy   = vi.spyOn(Row as any, 'createCellForField');
+        // Row.ts's own createCellForField call (Row.createCellForField(...) at
+        // Row.ts:681) resolves the bare `Row` identifier in scope there — the
+        // raw class, not the callable-wrapped export — so the spy must sit on
+        // the raw class (_Row) to see those internal calls.
+        const buildSpy   = vi.spyOn(_Row as any, 'createCellForField');
         const disposeSpy = vi.spyOn(Cell.prototype, 'dispose');
 
         (b as any)._scroller.setScrollX(400); // one-column slide to window [1,9] — c9 enters
