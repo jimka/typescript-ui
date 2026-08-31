@@ -77,12 +77,13 @@ class ComboEditor extends CellEditor<String | null> {
                 altKey  : evnt.altKey  , metaKey: evnt.metaKey
             } });
 
-            // Tab must not shift native DOM focus: the parent cell's own
-            // navigate handler already moves editing to the neighboring
-            // cell (driven by the re-fired "keydown" above), so this
-            // listener — the real keydown target — is the one place that
-            // can actually suppress the browser's default Tab behaviour.
-            if (evnt.keyCode === 9) {
+            // Tab and PageUp/PageDown must not run their native default:
+            // the parent cell's own navigate handler already moves editing
+            // to the neighboring cell or page (driven by the re-fired
+            // "keydown" above), so this listener — the real keydown target
+            // — is the one place that can actually suppress the browser's
+            // default behaviour for these keys.
+            if (evnt.keyCode === 9 || evnt.keyCode === 33 || evnt.keyCode === 34) {
                 return { prevent: true };
             }
 

@@ -171,7 +171,7 @@ describe('Tab suppresses native focus-shift at the real keydown target', () => {
         return registrations[registrations.length - 1][2] as unknown as Event.Listener;
     }
 
-    it("StringEditor's inner TextField listener returns { prevent: true } on Tab, and no disposition on Enter", () => {
+    it("StringEditor's inner TextField listener returns { prevent: true } on Tab/PageUp/PageDown, and no disposition on Enter", () => {
         const spy    = vi.spyOn(Event, 'addListener');
         const editor = new StringEditor();
         editor.getElement(true); // required: the listener re-fires "keydown" on `this`
@@ -180,10 +180,12 @@ describe('Tab suppresses native focus-shift at the real keydown target', () => {
         spy.mockRestore();
 
         expect(listener({ keyCode: 9 } as KeyboardEvent)).toEqual({ prevent: true });
+        expect(listener({ keyCode: 33 } as KeyboardEvent)).toEqual({ prevent: true });
+        expect(listener({ keyCode: 34 } as KeyboardEvent)).toEqual({ prevent: true });
         expect(listener({ keyCode: 13 } as KeyboardEvent)).toBeUndefined();
     });
 
-    it("NumberEditor's inner TextField listener returns { prevent: true } on Tab, and no disposition on Enter", () => {
+    it("NumberEditor's inner TextField listener returns { prevent: true } on Tab/PageUp/PageDown, and no disposition on Enter", () => {
         const spy    = vi.spyOn(Event, 'addListener');
         const editor = new NumberEditor();
         editor.getElement(true); // required: the listener re-fires "keydown" on `this`
@@ -192,10 +194,12 @@ describe('Tab suppresses native focus-shift at the real keydown target', () => {
         spy.mockRestore();
 
         expect(listener({ keyCode: 9 } as KeyboardEvent)).toEqual({ prevent: true });
+        expect(listener({ keyCode: 33 } as KeyboardEvent)).toEqual({ prevent: true });
+        expect(listener({ keyCode: 34 } as KeyboardEvent)).toEqual({ prevent: true });
         expect(listener({ keyCode: 13 } as KeyboardEvent)).toBeUndefined();
     });
 
-    it("ComboEditor's inner ComboBox listener returns { prevent: true } on Tab, and no disposition on Enter", () => {
+    it("ComboEditor's inner ComboBox listener returns { prevent: true } on Tab/PageUp/PageDown, and no disposition on Enter", () => {
         const spy    = vi.spyOn(Event, 'addListener');
         const editor = new ComboEditor(['a', 'b']);
         editor.getElement(true); // required: the listener re-fires "keydown" on `this`
@@ -204,10 +208,12 @@ describe('Tab suppresses native focus-shift at the real keydown target', () => {
         spy.mockRestore();
 
         expect(listener({ keyCode: 9 } as KeyboardEvent)).toEqual({ prevent: true });
+        expect(listener({ keyCode: 33 } as KeyboardEvent)).toEqual({ prevent: true });
+        expect(listener({ keyCode: 34 } as KeyboardEvent)).toEqual({ prevent: true });
         expect(listener({ keyCode: 13 } as KeyboardEvent)).toBeUndefined();
     });
 
-    it("CellEditorPool.wireListeners's shared keydown listener returns { prevent: true } on Tab for a native-input editor (DateEditor)", () => {
+    it("CellEditorPool.wireListeners's shared keydown listener returns { prevent: true } on Tab/PageUp/PageDown for a native-input editor (DateEditor)", () => {
         const spy      = vi.spyOn(Event, 'addListener');
         const cellStub = { onKeyDown: vi.fn() } as unknown as Cell<any>;
         const pool     = new CellEditorPool();
@@ -217,11 +223,13 @@ describe('Tab suppresses native focus-shift at the real keydown target', () => {
         spy.mockRestore();
 
         expect(listener({ keyCode: 9 } as KeyboardEvent)).toEqual({ prevent: true });
+        expect(listener({ keyCode: 33 } as KeyboardEvent)).toEqual({ prevent: true });
+        expect(listener({ keyCode: 34 } as KeyboardEvent)).toEqual({ prevent: true });
         expect(cellStub.onKeyDown).toHaveBeenCalled();
         expect(listener({ keyCode: 13 } as KeyboardEvent)).toBeUndefined();
     });
 
-    it("Cell's own constructor keydown listener returns { prevent: true } on Tab for a legacy (non-pooled) native-input editor", () => {
+    it("Cell's own constructor keydown listener returns { prevent: true } on Tab/PageUp/PageDown for a legacy (non-pooled) native-input editor", () => {
         const spy    = vi.spyOn(Event, 'addListener');
         const editor = new DateEditor();
         new Cell<any>('td', new StringRenderer(), editor);
@@ -230,6 +238,8 @@ describe('Tab suppresses native focus-shift at the real keydown target', () => {
         spy.mockRestore();
 
         expect(listener({ keyCode: 9 } as KeyboardEvent)).toEqual({ prevent: true });
+        expect(listener({ keyCode: 33 } as KeyboardEvent)).toEqual({ prevent: true });
+        expect(listener({ keyCode: 34 } as KeyboardEvent)).toEqual({ prevent: true });
         expect(listener({ keyCode: 13 } as KeyboardEvent)).toBeUndefined();
     });
 });
@@ -337,6 +347,34 @@ describe('Cell.onKeyDown commit / cancel contract', () => {
         cell.onKeyDown(keyEvent(13));
 
         expect(navigate).toHaveBeenCalledWith('down');
+    });
+
+    it('commits and calls the navigate handler with "pageup" on PageUp (keyCode 33)', () => {
+        const cell = new DefaultCell();
+        const commit = vi.spyOn(cell, 'commitEdit').mockReturnValue(cell);
+        const emit   = vi.spyOn(cell as any, 'emit').mockImplementation(() => {});
+        const navigate = vi.fn();
+
+        cell.setNavigateHandler(navigate);
+        cell.onKeyDown(keyEvent(33));
+
+        expect(commit).toHaveBeenCalledTimes(1);
+        expect(emit).toHaveBeenCalledWith('editend');
+        expect(navigate).toHaveBeenCalledWith('pageup');
+    });
+
+    it('commits and calls the navigate handler with "pagedown" on PageDown (keyCode 34)', () => {
+        const cell = new DefaultCell();
+        const commit = vi.spyOn(cell, 'commitEdit').mockReturnValue(cell);
+        const emit   = vi.spyOn(cell as any, 'emit').mockImplementation(() => {});
+        const navigate = vi.fn();
+
+        cell.setNavigateHandler(navigate);
+        cell.onKeyDown(keyEvent(34));
+
+        expect(commit).toHaveBeenCalledTimes(1);
+        expect(emit).toHaveBeenCalledWith('editend');
+        expect(navigate).toHaveBeenCalledWith('pagedown');
     });
 
     it('cancels and calls the edit-end handler on Escape', () => {

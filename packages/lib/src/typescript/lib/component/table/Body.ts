@@ -2659,13 +2659,15 @@ class TableBody extends VirtualRowView<Row> {
 
     /**
      * Moves editing to the neighboring cell after `Cell.onKeyDown` commits an
-     * edit via Tab / Shift+Tab / Enter / Shift+Enter. Installed on every cell
-     * as its navigate handler by `wireRowCells`.
+     * edit via Tab / Shift+Tab / Enter / Shift+Enter / PageUp / PageDown.
+     * Installed on every cell as its navigate handler by `wireRowCells`.
      *
      * Tab/Shift+Tab move within the row, mirroring the ArrowLeft/Right clamp.
      * Enter/Shift+Enter move to the next/previous row in the same column,
-     * mirroring the ArrowDown/Up clamp (including `skipSeparators`). Both
-     * clamp at the grid edge rather than wrapping — see Architecture Decisions.
+     * and PageUp/PageDown move by a page of rows there instead, mirroring the
+     * ArrowDown/Up and PageUp/PageDown clamp (including `skipSeparators`).
+     * All clamp at the grid edge rather than wrapping — see Architecture
+     * Decisions.
      *
      * @param direction - Which neighboring cell to move editing to.
      */
@@ -2687,13 +2689,18 @@ class TableBody extends VirtualRowView<Row> {
             this.scrollColumnIntoView(this._focusedColIndex);
             this.renderWindow();
         } else {
+            const isDown = direction === "down" || direction === "pagedown";
+            const step   = direction === "pageup" || direction === "pagedown"
+                ? this.computePageSize()
+                : 1;
+
             const currentIdx = records.indexOf(this._anchorRecord);
-            let newIdx = direction === "down"
-                ? Math.min(currentIdx + 1, records.length - 1)
-                : Math.max(currentIdx - 1, 0);
+            let newIdx = isDown
+                ? Math.min(currentIdx + step, records.length - 1)
+                : Math.max(currentIdx - step, 0);
 
             if (this._rowSeparator) {
-                newIdx = this.skipSeparators(records, newIdx, direction === "down" ? 1 : -1);
+                newIdx = this.skipSeparators(records, newIdx, isDown ? 1 : -1);
             }
 
             const newAnchor = records[newIdx];

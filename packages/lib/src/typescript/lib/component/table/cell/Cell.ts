@@ -22,11 +22,12 @@ export type CellEvent = "commit" | "editend";
 /**
  * Direction {@link Cell.setNavigateHandler}'s callback is invoked with:
  * "left"/"right" for Tab/Shift+Tab (same row, neighboring column), "up"/"down"
- * for Shift+Enter/Enter (same column, neighboring row).
+ * for Shift+Enter/Enter (same column, neighboring row), "pageup"/"pagedown"
+ * for PageUp/PageDown (same column, a page of rows).
  *
  * @category Components
  */
-export type CellNavigateDirection = "left" | "right" | "up" | "down";
+export type CellNavigateDirection = "left" | "right" | "up" | "down" | "pageup" | "pagedown";
 
 // Every cell resolves its text colour, resting background, and resting
 // border to the same theme tokens, on every instance and every subclass, so
@@ -185,12 +186,17 @@ export class Cell<T> extends Component {
             Event.addListener(editor, 'keydown', (e: CustomEvent<ForwardedKeyDetail> | KeyboardEvent) => {
                 this.onKeyDown(e);
 
-                // Tab must not shift native DOM focus: this cell's own
-                // navigate handler already moves editing to the neighboring
-                // cell (see onKeyDown), so the real native keydown reaching
-                // this listener is the one place that can actually suppress
-                // the browser's default Tab behaviour.
-                if (forwardedKeyDetail(e).keyCode === 9) {
+                // Tab must not shift native DOM focus, and PageUp/PageDown
+                // must not run their native per-editor default (e.g. a
+                // native date/time input's own segment-increment) — this
+                // cell's own navigate handler already moves editing to the
+                // neighboring cell or page (see onKeyDown), so the real
+                // native keydown reaching this listener is the one place
+                // that can actually suppress the browser's default
+                // behaviour for these keys.
+                const keyCode = forwardedKeyDetail(e).keyCode;
+
+                if (keyCode === 9 || keyCode === 33 || keyCode === 34) {
                     return { prevent: true };
                 }
 
@@ -561,12 +567,12 @@ export class Cell<T> extends Component {
     }
 
     /**
-     * Commits on Enter/Shift+Enter and Tab/Shift+Tab while editing, then
-     * calls the installed navigate handler to move editing to the
-     * neighboring row or column. Cancels on Escape instead, then calls the
-     * installed edit-end handler to return focus to the container. Any
-     * other key is a no-op — arrow-key caret movement inside the editor is
-     * untouched.
+     * Commits on Enter/Shift+Enter, Tab/Shift+Tab, and PageUp/PageDown while
+     * editing, then calls the installed navigate handler to move editing to
+     * the neighboring row, column, or page of rows. Cancels on Escape
+     * instead, then calls the installed edit-end handler to return focus to
+     * the container. Any other key is a no-op — arrow-key caret movement
+     * inside the editor is untouched.
      *
      * @param evnt - The forwarded keydown event. Most editors re-fire their
      *   inner field's keydown as a `CustomEvent` whose `detail` carries
@@ -590,6 +596,14 @@ export class Cell<T> extends Component {
             this.commitEdit();
             this.emit("editend");
             this._navigateHandler?.(detail.shiftKey ? "left" : "right");
+        } else if (detail.keyCode == 33) { // PageUp
+            this.commitEdit();
+            this.emit("editend");
+            this._navigateHandler?.("pageup");
+        } else if (detail.keyCode == 34) { // PageDown
+            this.commitEdit();
+            this.emit("editend");
+            this._navigateHandler?.("pagedown");
         }
     }
 

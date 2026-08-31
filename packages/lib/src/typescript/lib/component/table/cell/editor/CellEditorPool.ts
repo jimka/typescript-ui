@@ -147,13 +147,17 @@ export class CellEditorPool {
         Event.addListener(editor, "keydown", (e: CustomEvent<ForwardedKeyDetail> | KeyboardEvent) => {
             this._activeCell?.onKeyDown(e);
 
-            // Tab must not shift native DOM focus: the active cell's own
-            // navigate handler already moves editing to the neighboring
-            // cell (see Cell.onKeyDown), so this listener — which for a
-            // native-input editor (Date/Time/DateTime) sits on the real
-            // keydown target — is one of the places that must suppress the
-            // browser's default Tab behaviour.
-            if (forwardedKeyDetail(e).keyCode === 9) {
+            // Tab must not shift native DOM focus, and PageUp/PageDown must
+            // not run their native per-editor default (e.g. a native
+            // date/time input's own segment-increment): the active cell's
+            // own navigate handler already moves editing to the neighboring
+            // cell or page (see Cell.onKeyDown), so this listener — which
+            // for a native-input editor (Date/Time/DateTime) sits on the
+            // real keydown target — is one of the places that must
+            // suppress the browser's default behaviour for these keys.
+            const keyCode = forwardedKeyDetail(e).keyCode;
+
+            if (keyCode === 9 || keyCode === 33 || keyCode === 34) {
                 return { prevent: true };
             }
 

@@ -2153,6 +2153,110 @@ describe('Column window — keyboard cell-editor navigation', () => {
         expect(b.getSelectedRecords()[0]).toBe(visible[2]);
     });
 
+    // 50-row fixture for the PageUp/PageDown cases below — tall enough
+    // (relative to the theme's row height) that `computePageSize()` moves
+    // more than one row, so a page-jump is distinguishable from Enter's
+    // single-row move.
+    async function manyRowBody(): Promise<Body> {
+        const rows = Array.from({ length: 50 }, (_, i) => ({ a: `${i}`, b: `${i}`, c: `${i}` }));
+        const store = new MemoryStore(MODEL, rows);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(300);
+        b.setHeight(300);
+        (b as any).renderWindow(300, [100, 100, 100]);
+
+        return b;
+    }
+
+    function findEditingCell(b: Body): Cell<any> | undefined {
+        return (b as any).getRowPool()
+            .flatMap((row: any) => row.getComponents())
+            .find((c: any) => c.isEditing());
+    }
+
+    it('PageDown commits, moves down a page of rows, and re-opens editing there', async () => {
+        const b        = await manyRowBody();
+        const visible  = (b as any).getVisibleRecords();
+        const pageSize = (b as any).computePageSize();
+
+        expect(pageSize).toBeGreaterThan(1); // sanity: fixture must exercise a real page jump
+
+        b.selectRecord(visible[0]);
+
+        const cell = (b as any).getRowPool()[0].getComponents()[0] as Cell<any>;
+        cell.startEdit();
+
+        cell.onKeyDown({ detail: { keyCode: 34, shiftKey: false } } as any); // PageDown
+
+        expect(cell.isEditing()).toBe(false);
+        expect(b.getSelectedRecords()[0]).toBe(visible[pageSize]);
+        expect(findEditingCell(b)).toBeDefined();
+    });
+
+    it('PageDown at the last page clamps: commits and re-opens editing on the last row', async () => {
+        const b       = await manyRowBody();
+        const priv    = b as any;
+        const visible = priv.getVisibleRecords();
+        const lastRec = visible[visible.length - 1];
+
+        // Scroll to the last row first — mirrors how a real session would
+        // have gotten there — so it's actually pooled before resolving its
+        // cell via the same private helper `navigateFromEditingCell` uses.
+        b.selectRecord(lastRec);
+        priv.scrollRecordIntoView(lastRec);
+        priv.renderWindow();
+
+        const cell = priv.resolveFocusedCell() as Cell<any>;
+        cell.startEdit();
+
+        cell.onKeyDown({ detail: { keyCode: 34, shiftKey: false } } as any); // PageDown
+
+        expect(b.getSelectedRecords()[0]).toBe(lastRec);
+        expect(findEditingCell(b)).toBeDefined();
+    });
+
+    it('PageUp commits, moves up a page of rows, and re-opens editing there', async () => {
+        const b        = await manyRowBody();
+        const priv     = b as any;
+        const visible  = priv.getVisibleRecords();
+        const pageSize = priv.computePageSize();
+        const startRec = visible[visible.length - 1];
+        const startIdx = visible.length - 1;
+
+        expect(startIdx).toBeGreaterThan(pageSize); // sanity: room to move a full page up
+
+        b.selectRecord(startRec);
+        priv.scrollRecordIntoView(startRec);
+        priv.renderWindow();
+
+        const cell = priv.resolveFocusedCell() as Cell<any>;
+        cell.startEdit();
+
+        cell.onKeyDown({ detail: { keyCode: 33, shiftKey: false } } as any); // PageUp
+
+        expect(cell.isEditing()).toBe(false);
+        expect(b.getSelectedRecords()[0]).toBe(visible[startIdx - pageSize]);
+        expect(findEditingCell(b)).toBeDefined();
+    });
+
+    it('PageUp at the first page clamps: commits and re-opens editing on the first row', async () => {
+        const b       = await manyRowBody();
+        const visible = (b as any).getVisibleRecords();
+
+        b.selectRecord(visible[0]);
+
+        const cell = (b as any).getRowPool()[0].getComponents()[0] as Cell<any>;
+        cell.startEdit();
+
+        cell.onKeyDown({ detail: { keyCode: 33, shiftKey: false } } as any); // PageUp
+
+        expect(b.getSelectedRecords()[0]).toBe(visible[0]);
+        expect(findEditingCell(b)).toBeDefined();
+    });
+
     // Two-row, boolean-column fixture for the Enter-reserved-for-navigation
     // cases below — mirrors `twoRowBody` above, but built over `wideModel`
     // so a column can be typed 'boolean'.
