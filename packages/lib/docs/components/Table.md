@@ -69,7 +69,7 @@ const table = Table(store, {
 
 `appendUnlisted` (default `true`) controls whether fields not in the `columns` array are auto-generated after the listed ones. `ColumnSpec.filterable` sets the table-wide default for `ColumnConfig.filterable`; a column's own `filterable` still wins when set.
 
-While a cell is being edited, Tab / Shift+Tab move the active edit to the neighboring column and Enter / Shift+Enter move it to the neighboring row, committing the current cell first; at a grid edge the edit clamps back onto the same cell instead of wrapping.
+While a cell is being edited, Tab / Shift+Tab move the active edit to the neighboring column and Enter / Shift+Enter move it to the neighboring row, committing the current cell first; at a grid edge the edit clamps back onto the same cell instead of wrapping. On a boolean cell, Space toggles it and Enter navigates instead of toggling.
 
 Every column gets a width floor and a starting width derived from its field
 type, whether or not a spec is supplied: a `boolean` column is sized for its
