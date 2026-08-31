@@ -119,6 +119,14 @@ class BooleanCell extends Cell<Boolean | null> {
     }
 
     /**
+     * @returns Always `true` — `startEdit()` toggles the checkbox
+     *   immediately rather than opening a distinct edit session.
+     */
+    hasImmediateEditCommit(): boolean {
+        return true;
+    }
+
+    /**
      * Sets the checkbox checked state. `null` and `undefined` put the
      * checkbox into the indeterminate (mixed) state.
      *

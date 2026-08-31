@@ -156,6 +156,16 @@ class DynamicCell extends Cell<any> {
     }
 
     /**
+     * @returns `true` when the active variant is `boolean` — `startEdit()`
+     *   toggles the checkbox immediately rather than opening a distinct edit
+     *   session (mirroring {@link BooleanCell.hasImmediateEditCommit}); `false`
+     *   for every other variant, which do open one.
+     */
+    hasImmediateEditCommit(): boolean {
+        return this._activeType === 'boolean';
+    }
+
+    /**
      * Marks the cell read-only and, when the active variant is `boolean`,
      * also disables the checkbox so it rejects toggles.
      *

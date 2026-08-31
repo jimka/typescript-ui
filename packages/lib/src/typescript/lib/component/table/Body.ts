@@ -11,6 +11,7 @@ import type { Field } from "~/data/Field.js";
 import { Row } from "~/component/table/Row.js";
 import type { ColumnWindowSlidePlan, RetargetedCell } from "~/component/table/Row.js";
 import { Cell } from "~/component/table/cell/Cell.js";
+import type { CellNavigateDirection } from "~/component/table/cell/Cell.js";
 import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js";
 import { ComboEditor } from "~/component/table/cell/editor/Combo.js";
 import { Event } from "~/core/Event.js";
@@ -414,13 +415,20 @@ class TableBody extends VirtualRowView<Row> {
     }
 
     /**
-     * Wires `cells` (default: every one of `row`'s cells) to the shared
-     * editor pool and the horizontal scroll-into-view handler. Called from
-     * {@link createPoolRow} for a freshly-pooled row (no scope — the whole
-     * row is new) and from {@link bindAndPositionRows} whenever a reconcile
-     * changes the rendered cell set, scoped to just the retargeted cells —
-     * both `setEditorPool` and `setScrollIntoViewHandler` are idempotent for
-     * a surviving cell, so scoping down changes nothing but the cost.
+     * Wires `cells` (default: every one of `row`'s cells) to four
+     * callbacks: the shared editor pool (`setEditorPool`), the horizontal
+     * scroll-into-view handler (`setScrollIntoViewHandler`), the edit-end
+     * handler that returns focus to the body on Escape
+     * (`setEditEndHandler`), and the navigate handler that moves editing to
+     * a neighboring cell on Tab/Shift+Tab/Enter/Shift+Enter
+     * (`setNavigateHandler`). Called from {@link createPoolRow} for a
+     * freshly-pooled row (no scope — the whole row is new) and from
+     * {@link bindAndPositionRows} whenever a reconcile changes the rendered
+     * cell set, scoped to just the retargeted cells — all four setters
+     * simply replace the cell's single stored callback rather than
+     * accumulating state (unlike `.on()`), so re-running any of them on a
+     * surviving cell is idempotent and scoping down changes nothing but
+     * the cost.
      *
      * @param row - The pool row whose cells to wire.
      * @param cells - Optional. The cells to wire; defaults to every cell in `row`.
@@ -429,6 +437,12 @@ class TableBody extends VirtualRowView<Row> {
         for (const cell of cells ?? (row.getComponents() as Cell<any>[])) {
             cell.setEditorPool(this._editorPool);
             cell.setScrollIntoViewHandler(() => this.scrollColumnIntoView(this._focusedColIndex));
+            cell.setEditEndHandler(() => {
+                this.focus();
+                this._updateFocusStyle();
+                this._updateActiveDescendant();
+            });
+            cell.setNavigateHandler((direction) => this.navigateFromEditingCell(direction));
         }
     }
 
@@ -2430,7 +2444,9 @@ class TableBody extends VirtualRowView<Row> {
 
     /**
      * Handles keyboard navigation: ArrowUp/Down/Home/End move row selection; ArrowLeft/Right
-     * move column focus; PageUp/Down move by a viewport-height page; Enter starts cell edit.
+     * move column focus; PageUp/Down move by a viewport-height page; Enter starts cell edit,
+     * or, on a cell with no distinct edit session (see {@link Cell.hasImmediateEditCommit}),
+     * navigates to the next/previous row instead; Space always starts the edit (or toggle).
      * Ctrl/Cmd+C copies the cell range, unless a live sub-cell text selection
      * exists, in which case the browser's own copy runs instead.
      *
@@ -2463,7 +2479,7 @@ class TableBody extends VirtualRowView<Row> {
 
         const navigable = new Set([
             'ArrowDown', 'ArrowUp', 'Home', 'End',
-            'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Enter', ' '
+            'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Enter', ' ', 'Tab'
         ]);
 
         if (!navigable.has(e.key)) {
@@ -2492,7 +2508,13 @@ class TableBody extends VirtualRowView<Row> {
             return { prevent: true };
         }
 
-        // Enter/Space — start editing the focused cell
+        // Enter/Space — start editing the focused cell. Space always does,
+        // including toggling an immediate-commit cell's checkbox (see
+        // hasImmediateEditCommit). Enter does too, EXCEPT on such a cell:
+        // toggling it isn't "starting an edit" the way opening a text editor
+        // is, and Enter is reserved for cell-to-cell navigation everywhere
+        // else in this feature (see Cell.onKeyDown), so it navigates like it
+        // does there instead — Space remains the deliberate toggle key.
         if (e.key === 'Enter' || e.key === ' ') {
             if (!this._anchorRecord) {
                 return { prevent: true };
@@ -2503,29 +2525,27 @@ class TableBody extends VirtualRowView<Row> {
             this.scrollColumnIntoView(this._focusedColIndex);
             this.renderWindow();
 
-            const anchorIdx = records.indexOf(this._anchorRecord);
-            const poolSlotIdx = this._boundIndices.indexOf(anchorIdx);
-
-            if (poolSlotIdx < 0) {
-                return { prevent: true };
+            if (e.key === 'Enter' && this.resolveFocusedCell()?.hasImmediateEditCommit()) {
+                this.navigateFromEditingCell(e.shiftKey ? "up" : "down");
+            } else {
+                this.startEditAtFocusedCell();
             }
 
-            const row   = this._rowPool[poolSlotIdx];
-            const cells = row.getComponents();
-            const slot  = this._focusedColIndex - row.getColumnWindowStart();
-            const cell  = (slot >= 0 && slot < cells.length) ? cells[slot] : undefined;
+            return { prevent: true };
+        }
 
-            if (cell instanceof Cell) {
-                const typedCell = cell as Cell<unknown>;
-
-                typedCell.on("editend", () => {
-                    this.focus();
-                    this._updateFocusStyle();
-                    this._updateActiveDescendant();
-                });
-
-                typedCell.startEdit();
-            }
+        // Tab/Shift+Tab — reached when Body itself holds keyboard focus
+        // rather than a cell's editor, which happens whenever
+        // `openEditingAfterNavigate` lands on a cell it doesn't open an
+        // editor for (an immediate-commit cell, a read-only cell, …) and
+        // calls `this.focus()`. Without this branch, navigation would
+        // silently dead-end there: the next Tab keydown targets Body's own
+        // element, and `Cell.onKeyDown`'s Tab handling only ever fires while
+        // an editor is actually focused. Reuses the same
+        // `navigateFromEditingCell` the editing cell's own Tab handling
+        // calls, so the clamp and re-open-editor behaviour match exactly.
+        if (e.key === 'Tab') {
+            this.navigateFromEditingCell(e.shiftKey ? "left" : "right");
 
             return { prevent: true };
         }
@@ -2568,6 +2588,132 @@ class TableBody extends VirtualRowView<Row> {
         this._updateActiveDescendant();
 
         return { prevent: true };
+    }
+
+    /**
+     * Resolves the cell at the current anchor row + `_focusedColIndex`, or
+     * `undefined` if no record is anchored, the anchor's pool row can't be
+     * found, or no cell is bound at that slot. Shared by
+     * `startEditAtFocusedCell` and `openEditingAfterNavigate`.
+     */
+    private resolveFocusedCell(): Cell<any> | undefined {
+        if (!this._anchorRecord) {
+            return undefined;
+        }
+
+        const anchorIdx = this.getVisibleRecords().indexOf(this._anchorRecord);
+        const poolSlotIdx = this._boundIndices.indexOf(anchorIdx);
+
+        if (poolSlotIdx < 0) {
+            return undefined;
+        }
+
+        const row   = this._rowPool[poolSlotIdx];
+        const cells = row.getComponents();
+        const slot  = this._focusedColIndex - row.getColumnWindowStart();
+        const cell  = (slot >= 0 && slot < cells.length) ? cells[slot] : undefined;
+
+        return cell instanceof Cell ? cell : undefined;
+    }
+
+    /**
+     * Starts editing the cell at the current anchor row + `_focusedColIndex`,
+     * if one is bound. Used by the Enter/Space keyboard-start-edit path for
+     * Space (always) and for Enter on a cell that opens a distinct edit
+     * session. Enter on a {@link BooleanCell} — whose "edit" is an immediate
+     * checkbox toggle with no distinct session (see
+     * {@link BooleanCell.startEdit}) — navigates instead of calling this; see
+     * the caller.
+     */
+    private startEditAtFocusedCell(): void {
+        this.resolveFocusedCell()?.startEdit();
+    }
+
+    /**
+     * Opens editing on the cell at the current anchor row +
+     * `_focusedColIndex` after Tab/Shift+Tab/Enter/Shift+Enter navigation
+     * lands there. Unlike `startEditAtFocusedCell`, this never calls
+     * `startEdit()` on a cell whose {@link Cell.hasImmediateEditCommit}
+     * returns `true` (e.g. a `BooleanCell`, or a `DynamicCell` currently
+     * showing its `boolean` variant): arriving here by navigation, unlike a
+     * deliberate keypress on an already-focused cell, must not mutate it as
+     * a side effect of merely passing over it. Whether or not an editor
+     * actually opens — a read-only or editor-pool-less destination's own
+     * `startEdit()` already no-ops, and an immediate-commit cell is skipped
+     * here — keyboard focus returns to this body's own container so
+     * `Body.onKeyDown` (which fires only while its own element holds focus)
+     * keeps receiving subsequent keys instead of the browser silently
+     * dropping focus once the previous cell's editor closed.
+     */
+    private openEditingAfterNavigate(): void {
+        const cell = this.resolveFocusedCell();
+
+        if (cell && !cell.hasImmediateEditCommit()) {
+            cell.startEdit();
+        }
+
+        if (!cell?.isEditing()) {
+            this.focus();
+        }
+    }
+
+    /**
+     * Moves editing to the neighboring cell after `Cell.onKeyDown` commits an
+     * edit via Tab / Shift+Tab / Enter / Shift+Enter / PageUp / PageDown.
+     * Installed on every cell as its navigate handler by `wireRowCells`.
+     *
+     * Tab/Shift+Tab move within the row, mirroring the ArrowLeft/Right clamp.
+     * Enter/Shift+Enter move to the next/previous row in the same column,
+     * and PageUp/PageDown move by a page of rows there instead, mirroring the
+     * ArrowDown/Up and PageUp/PageDown clamp (including `skipSeparators`).
+     * All clamp at the grid edge rather than wrapping — see Architecture
+     * Decisions.
+     *
+     * @param direction - Which neighboring cell to move editing to.
+     */
+    private navigateFromEditingCell(direction: CellNavigateDirection): void {
+        const records = this.getVisibleRecords();
+
+        if (records.length === 0 || !this._anchorRecord) {
+            return;
+        }
+
+        if (direction === "left" || direction === "right") {
+            const visibleColCount = this._store.model.getFields()
+                .filter(f => !this._hiddenColumns.has(f.getName())).length;
+
+            this._focusedColIndex = direction === "left"
+                ? Math.max(0, this._focusedColIndex - 1)
+                : Math.min(visibleColCount - 1, this._focusedColIndex + 1);
+
+            this.scrollColumnIntoView(this._focusedColIndex);
+            this.renderWindow();
+        } else {
+            const isDown = direction === "down" || direction === "pagedown";
+            const step   = direction === "pageup" || direction === "pagedown"
+                ? this.computePageSize()
+                : 1;
+
+            const currentIdx = records.indexOf(this._anchorRecord);
+            let newIdx = isDown
+                ? Math.min(currentIdx + step, records.length - 1)
+                : Math.max(currentIdx - step, 0);
+
+            if (this._rowSeparator) {
+                newIdx = this.skipSeparators(records, newIdx, isDown ? 1 : -1);
+            }
+
+            const newAnchor = records[newIdx];
+
+            this.selectRecord(newAnchor);
+            this.scrollRecordIntoView(newAnchor);
+            this.renderWindow();
+        }
+
+        this._updateActiveDescendant();
+        this._updateFocusStyle();
+
+        this.openEditingAfterNavigate();
     }
 
     /**

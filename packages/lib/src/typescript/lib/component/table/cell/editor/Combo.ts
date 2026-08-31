@@ -76,6 +76,18 @@ class ComboEditor extends CellEditor<String | null> {
                 shiftKey: evnt.shiftKey, ctrlKey: evnt.ctrlKey,
                 altKey  : evnt.altKey  , metaKey: evnt.metaKey
             } });
+
+            // Tab and PageUp/PageDown must not run their native default:
+            // the parent cell's own navigate handler already moves editing
+            // to the neighboring cell or page (driven by the re-fired
+            // "keydown" above), so this listener — the real keydown target
+            // — is the one place that can actually suppress the browser's
+            // default behaviour for these keys.
+            if (evnt.keyCode === 9 || evnt.keyCode === 33 || evnt.keyCode === 34) {
+                return { prevent: true };
+            }
+
+            return;
         });
 
         this.addComponent(this._combo);

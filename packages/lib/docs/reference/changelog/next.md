@@ -45,6 +45,20 @@ page resets to empty.
   `RadioMenuRowEvent` type exports are removed in favour of
   `AbstractBooleanMenuRowEvent`. No consumer action is needed.
 
+### Table
+
+- **Tab / Shift+Tab / Enter / Shift+Enter now move an in-progress cell edit
+  to a neighboring column or row**, committing the current cell first.
+  Previously Tab fell through to the browser's native tab order (usually
+  leaving the table entirely) and Enter committed without moving anywhere.
+  Navigation clamps at the grid's edges rather than wrapping, matching the
+  existing arrow-key behaviour, and skips mutating a read-only or
+  boolean-toggle cell it merely passes through. `Cell` gains
+  `setNavigateHandler` / `setEditEndHandler` — the callbacks a host grid
+  installs to drive this — and a `hasImmediateEditCommit()` hook a custom
+  cell can override to opt out of the auto-open-on-navigate step, alongside
+  the new `CellNavigateDirection` type. No consumer action is needed.
+
 ## Added
 
 ### Components
