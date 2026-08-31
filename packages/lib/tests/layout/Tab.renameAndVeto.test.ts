@@ -7,7 +7,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
-import { Tab, TabCloseController } from '~/layout/Tab';
+import { Tab, TabCloseController, TabOptions } from '~/layout/Tab';
 import { TabBar } from '~/component/container/TabBar';
 import { TabButton } from '~/component/button/TabButton';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
@@ -24,8 +24,8 @@ const CONFIG = {
 };
 
 /** A Tab-managed strip, sized and rendered so tab cells materialise on doLayout. */
-function hostTab(): { host: Container; tab: Tab } {
-    const tab  = new Tab();
+function hostTab(options?: TabOptions): { host: Container; tab: Tab } {
+    const tab  = new Tab(options);
     const host = new Container({ layoutManager: tab });
 
     host.getElement(true);
@@ -68,6 +68,28 @@ describe('Tab rename and close veto', () => {
 
         expect(tab.getActiveTabLabel()).toBe('renamed');
         expect(barEntries(tab)[0].button.getText()).toBe('renamed');
+    });
+
+    it('2a — rename schedules the owning container\'s layout, so a content-width strip reflects the new label', () => {
+        installTestDOM(CONFIG);
+
+        const { host, tab } = hostTab({ widthMode: 'content', maxWidth: 200 });
+        const content = new Component({});
+
+        host.addComponent(content, { name: 'short' });
+        host.doLayout();
+
+        const before = barEntries(tab)[0].button.getWidth();
+
+        expect(host.isLayoutDirty()).toBe(false);
+
+        tab.setTabName(content, 'a much much longer renamed label');
+
+        expect(host.isLayoutDirty()).toBe(true);
+
+        host.doLayout();
+
+        expect(barEntries(tab)[0].button.getWidth()).toBeGreaterThan(before);
     });
 
     it('2 — rename on an unknown component is a no-op', () => {

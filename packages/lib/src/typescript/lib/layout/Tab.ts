@@ -1233,6 +1233,7 @@ class Tab extends LayoutManager {
         }
 
         this._bar.setEntryName(entry.id, name);
+        this.getContainer()?.scheduleLayout();
 
         return true;
     }
