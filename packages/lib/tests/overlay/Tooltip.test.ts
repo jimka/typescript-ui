@@ -302,7 +302,10 @@ describe('Tooltip.attach — teardown', () => {
         // internal detach()) but must not stack extra onDestroy closures —
         // detach() is idempotent, so a stacked duplicate would be harmless
         // in effect but would still mean the guard isn't doing its job.
-        expect((c as any)._destroyCleanups.length).toBe(1);
+        // Baseline is 2, not 1: every Component registers one onDestroy
+        // cleanup of its own for `_dirtyListeners` (via `registerListenerBag`,
+        // see core/Component.ts), on top of the one Tooltip.attach adds here.
+        expect((c as any)._destroyCleanups.length).toBe(2);
 
         c.dispose();
 
