@@ -161,6 +161,105 @@ describe('CodeEditor listeners bag', () => {
     });
 });
 
+describe('CodeEditor dirty state', () => {
+    it('a freshly built editor is clean', () => {
+        const editor = new CodeEditor('const x = 1;');
+
+        expect(editor.isDirty()).toBe(false);
+    });
+
+    it('onDocChange marks the editor dirty and updates the value', () => {
+        const editor = new CodeEditor() as any;
+
+        editor.onDocChange('typed');
+
+        expect(editor.isDirty()).toBe(true);
+        expect(editor.getValue()).toBe('typed');
+    });
+
+    it('onDocChange still emits "change" exactly once', () => {
+        const editor = new CodeEditor() as any;
+        let received: CodeEditorChange | null = null;
+        let fired = 0;
+        editor.on('change', (payload: CodeEditorChange) => { received = payload; fired += 1; });
+
+        editor.onDocChange('typed');
+
+        expect(fired).toBe(1);
+        expect(received).toEqual({ value: 'typed' });
+    });
+
+    it('a "change" listener sees isDirty() already true', () => {
+        const editor = new CodeEditor() as any;
+        let dirtyDuringChange: boolean | null = null;
+        editor.on('change', () => { dirtyDuringChange = editor.isDirty(); });
+
+        editor.onDocChange('typed');
+
+        expect(dirtyDuringChange).toBe(true);
+    });
+
+    it('onDirtyChange fires once per real transition', () => {
+        const editor = new CodeEditor() as any;
+        let fired = 0;
+        let received: boolean | null = null;
+        editor.onDirtyChange((dirty: boolean) => { fired += 1; received = dirty; });
+
+        editor.onDocChange('a');
+        editor.onDocChange('b');
+
+        expect(fired).toBe(1);
+        expect(received).toBe(true);
+    });
+
+    it('markClean clears the flag, fires once, and is chainable', () => {
+        const editor = new CodeEditor() as any;
+        (editor as any).onDocChange('typed');
+        let fired = 0;
+        let received: boolean | null = null;
+        editor.onDirtyChange((dirty: boolean) => { fired += 1; received = dirty; });
+
+        const returned = editor.markClean();
+
+        expect(editor.isDirty()).toBe(false);
+        expect(fired).toBe(1);
+        expect(received).toBe(false);
+        expect(returned).toBe(editor);
+
+        editor.markClean();
+        expect(fired).toBe(1);
+    });
+
+    it('relays dirty state to a real parent', () => {
+        const editor = new CodeEditor() as any;
+        const parent = new Component();
+        parent.addComponent(editor);
+        let fired = 0;
+        let received: boolean | null = null;
+        parent.onDirtyChange((dirty: boolean) => { fired += 1; received = dirty; });
+
+        editor.onDocChange('x');
+
+        expect(parent.isDirty()).toBe(true);
+        expect(fired).toBe(1);
+        expect(received).toBe(true);
+
+        editor.markClean();
+
+        expect(parent.isDirty()).toBe(false);
+        expect(fired).toBe(2);
+        expect(received).toBe(false);
+    });
+
+    it('offline setValue leaves isDirty() unchanged', () => {
+        const editor = new CodeEditor();
+
+        editor.setValue('hello');
+
+        expect(editor.isDirty()).toBe(false);
+    });
+});
+
 describe('CodeEditor autoHeightMaxRows', () => {
     it('getAutoHeightMaxRows defaults to null', () => {
         const editor = new CodeEditor();
