@@ -277,6 +277,15 @@ class CodeEditor extends Component<CodeEditorOptions> {
     private _lastHbarReserve = 0;
 
     /**
+     * The document text as of the last clean point — the text this editor was
+     * constructed with (re-taken from the mounted state in `mount`), or the
+     * text `markClean()` last accepted. `onDocChange` compares against it to
+     * decide the dirty flag, so an edit undone back to this text reports clean
+     * again. Mirrors `ModelRecord._original`.
+     */
+    private _cleanValue: string;
+
+    /**
      * Constructs a code editor.
      *
      * @param value - Initial document text (optional; defaults to "").
@@ -293,6 +302,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
         if (value !== undefined && this._options.value === undefined) {
             this._options.value = value;
         }
+
+        this._cleanValue = this.getValue();
 
         this._unsubscribeTheme = ThemeManager.onThemeChange(() => this.onThemeChange());
 
@@ -357,19 +368,22 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
-     * Accepts the current document as the clean baseline, clearing this
-     * editor's dirty flag (and, through the framework's relay, every
-     * ancestor's, unless another descendant is still dirty). Call it after
-     * the host has persisted the document, or after loading one with
-     * `setValue`. Persisting is the host's job — this method only reports
-     * state; it writes nothing and does not change the document.
+     * Accepts the current document as the clean text, clearing this editor's
+     * dirty flag (and, through the framework's relay, every ancestor's,
+     * unless another descendant is still dirty). Call it after the host has
+     * persisted the document, or after loading one with `setValue`.
+     * Persisting is the host's job — this method only reports state; it
+     * writes nothing and does not change the document.
      *
-     * Every document change — typing, paste, `format()`, `setValue()` —
-     * marks the editor dirty again.
+     * The editor reports itself dirty whenever its document differs from the
+     * clean text, so an edit that is undone back to that text clears the flag
+     * on its own — and an undo that moves the document *away* from the text a
+     * later `markClean()` accepted marks it dirty again.
      *
      * @returns This component, for method chaining.
      */
     markClean(): this {
+        this._cleanValue = this.getValue();
         this.setDirty(false);
 
         return this;
@@ -580,8 +594,9 @@ class CodeEditor extends Component<CodeEditorOptions> {
     private onDocChange(value: string): void {
         this._options.value = value;
         // Dirty before the emit, so a `"change"` listener that queries
-        // isDirty() sees the settled value.
-        this.setDirty(true);
+        // isDirty() sees the settled value. `setDirty` is idempotent, so
+        // calling it on every change costs nothing when nothing flipped.
+        this.setDirty(value !== this._cleanValue);
         this.emit("change", { value });
     }
 
@@ -774,6 +789,14 @@ class CodeEditor extends Component<CodeEditorOptions> {
         ];
 
         const state = EditorState.create({ doc: this._options.value ?? "", extensions });
+
+        // EditorState.create splits the document on line endings and
+        // doc.toString() rejoins with "\n", normalizing CRLF text to LF. The
+        // editor is always clean at mount (only the live view's update
+        // listener can mark it dirty), so re-taking the clean text from the
+        // state it just built keeps both sides of the onDocChange comparison
+        // in the same normalized form.
+        this._cleanValue = state.doc.toString();
 
         this._view = DOM.sink.mountView(element, (parent) => new EditorView({ parent, state }));
 

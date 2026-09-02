@@ -258,6 +258,95 @@ describe('CodeEditor dirty state', () => {
 
         expect(editor.isDirty()).toBe(false);
     });
+
+    it('undo back to the constructed text clears the flag', () => {
+        const editor = new CodeEditor('a') as any;
+
+        editor.onDocChange('ab');
+        expect(editor.isDirty()).toBe(true);
+
+        editor.onDocChange('a');
+        expect(editor.isDirty()).toBe(false);
+    });
+
+    it('both transitions of an undo round-trip fire onDirtyChange', () => {
+        const editor = new CodeEditor('a') as any;
+        const received: boolean[] = [];
+        editor.onDirtyChange((dirty: boolean) => { received.push(dirty); });
+
+        editor.onDocChange('ab');
+        editor.onDocChange('a');
+
+        expect(received).toEqual([true, false]);
+    });
+
+    it('"change" still fires on the change that returns to clean', () => {
+        const editor = new CodeEditor('a') as any;
+        const values: string[] = [];
+        const dirtyAtChange: boolean[] = [];
+        editor.on('change', (payload: CodeEditorChange) => {
+            values.push(payload.value);
+            dirtyAtChange.push(editor.isDirty());
+        });
+
+        editor.onDocChange('ab');
+        editor.onDocChange('a');
+
+        expect(values).toEqual(['ab', 'a']);
+        expect(dirtyAtChange).toEqual([true, false]);
+    });
+
+    it('markClean() moves the clean text', () => {
+        const editor = new CodeEditor('a') as any;
+
+        editor.onDocChange('ab');
+        editor.markClean();
+
+        editor.onDocChange('a');
+        expect(editor.isDirty()).toBe(true);
+
+        editor.onDocChange('ab');
+        expect(editor.isDirty()).toBe(false);
+    });
+
+    it('the relay follows both ways through an undo round-trip', () => {
+        const editor = new CodeEditor('a') as any;
+        const parent = new Component();
+        parent.addComponent(editor);
+        let fired = 0;
+        parent.onDirtyChange(() => { fired += 1; });
+
+        editor.onDocChange('ab');
+        expect(parent.isDirty()).toBe(true);
+
+        editor.onDocChange('a');
+        expect(parent.isDirty()).toBe(false);
+
+        expect(fired).toBe(2);
+    });
+
+    it('a setValue() load followed by markClean() makes the loaded text the clean text', () => {
+        const editor = new CodeEditor('a') as any;
+
+        editor.setValue('b');
+        editor.markClean();
+
+        editor.onDocChange('bc');
+        expect(editor.isDirty()).toBe(true);
+
+        editor.onDocChange('b');
+        expect(editor.isDirty()).toBe(false);
+    });
+
+    it('an editor built with no text has "" as its clean text', () => {
+        const editor = new CodeEditor() as any;
+
+        editor.onDocChange('x');
+        expect(editor.isDirty()).toBe(true);
+
+        editor.onDocChange('');
+        expect(editor.isDirty()).toBe(false);
+    });
 });
 
 describe('CodeEditor autoHeightMaxRows', () => {
