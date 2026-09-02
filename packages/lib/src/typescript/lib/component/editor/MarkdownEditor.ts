@@ -327,6 +327,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     private readonly _codeEditor: CodeEditor;
 
     /**
+     * The Markdown as of the last clean point — the value this editor was
+     * constructed with, the converted form re-taken when the Lexical editor
+     * is first built, or the value `markClean()` last accepted. `onDocChange`
+     * compares against it to decide the dirty flag.
+     */
+    private _cleanValue: string;
+
+    /**
      * Constructs a Markdown editor.
      *
      * @param value - Initial Markdown source (optional; defaults to `""`).
@@ -363,6 +371,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         // Pick the initial visible child from the mode.
         this._card.setVisibleComponentId(
             this.getMode() === "source" ? this._codeEditor.getId() : this._wysiwyg.getId());
+
+        this._cleanValue = this.getValue();
 
         this.applyListeners(options?.listeners);
     }
@@ -465,6 +475,28 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         // Discrete forces a synchronous commit, so the resulting `"change"`
         // fires before this returns rather than on a later flush.
         this.ensureEditor().update(() => $convertFromMarkdownString(value, TRANSFORMERS), { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Accepts the current document as the clean Markdown, clearing this editor's
+     * dirty flag (and, through the framework's relay, every ancestor's, unless
+     * another descendant is still dirty). Call it after the host has persisted
+     * the document, or after loading one with `setValue`. Persisting is the
+     * host's job — this method only reports state; it writes nothing and does
+     * not change the document.
+     *
+     * The editor reports itself dirty whenever `getValue()` differs from the
+     * clean Markdown, in either editing mode, so an edit undone back to that
+     * text clears the flag on its own.
+     *
+     * @returns This component, for method chaining.
+     */
+    markClean(): this {
+        this._cleanValue = this.getValue();
+        this.setDirty(false);
+        this._codeEditor.markClean();
 
         return this;
     }
@@ -821,6 +853,17 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             editor.update(() => $convertFromMarkdownString(this._options.value ?? "", TRANSFORMERS), { discrete: true });
             editor.setEditable(!(this._options.readOnly ?? false));
 
+            // Lexical's converters normalize what they round-trip (a trailing newline is
+            // dropped, a table's delimiter row is re-spaced), so from here on `getValue()`
+            // reports the converted form rather than the string this editor was built
+            // with. Re-take the clean Markdown from the converted form so both sides of
+            // `onDocChange`'s comparison come from the same converter — but only while the
+            // document is still clean, since a first build can also happen after a
+            // source-mode edit, and re-taking then would clear a real dirty flag.
+            if (!this.isDirty()) {
+                this._cleanValue = editor.read(() => $convertToMarkdownString(TRANSFORMERS));
+            }
+
             this._unregister = mergeRegister(
                 registerRichText(editor),
                 registerList(editor),
@@ -856,9 +899,30 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * The single document-change seam for both editing surfaces: caches the new
+     * Markdown, sets the dirty flag from a comparison against the clean Markdown,
+     * then emits `"change"`. No-op when the value is unchanged, which is what
+     * keeps the programmatic `setValue` on a mode switch from double-emitting (it
+     * loads the value already equal to `_options.value`).
+     *
+     * @param value - The new Markdown value.
+     */
+    private onDocChange(value: string): void {
+        if (value === this._options.value) {
+            return;
+        }
+
+        this._options.value = value;
+        // Dirty before the emit, so a `"change"` listener that queries isDirty()
+        // sees the settled value. `setDirty` is idempotent, so calling it on
+        // every change costs nothing when nothing flipped.
+        this.setDirty(value !== this._cleanValue);
+        this.emit("change", { value });
+    }
+
+    /**
      * Recomputes the Markdown value from the committed editor state after a
-     * Lexical update and, when it differs from the cached value (i.e. the content
-     * — not merely the selection — changed), caches it and emits `"change"`.
+     * Lexical update and hands it to the shared change seam.
      */
     private handleChange(): void {
         const editor = this._editor;
@@ -867,31 +931,23 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             return;
         }
 
-        const value = editor.read(() => $convertToMarkdownString(TRANSFORMERS));
-
-        if (value === this._options.value) {
-            return;
-        }
-
-        this._options.value = value;
-        this.emit("change", { value });
+        this.onDocChange(editor.read(() => $convertToMarkdownString(TRANSFORMERS)));
     }
 
     /**
-     * Recomputes the cached value from a source-surface (`CodeEditor`) edit and,
-     * when it differs from the cached value, caches it and emits `"change"`. The
-     * equality guard makes the programmatic `setValue` on a mode switch not
-     * double-emit (it loads the value already equal to `_options.value`).
+     * Routes a source-surface (`CodeEditor`) edit into the shared change seam,
+     * then re-baselines the source editor. The source `CodeEditor` is a surface,
+     * not a second owner of this document's dirty state: re-baselining it on
+     * every change keeps its own flag clear, so `isDirty()` is decided by this
+     * component's comparison alone. Outside `onDocChange` so it also runs on a
+     * mode-switch load, which that method's unchanged-value guard returns early
+     * from.
      *
      * @param payload - The `CodeEditor` change payload (the new source text).
      */
     private handleCodeChange(payload: CodeEditorChange): void {
-        if (payload.value === this._options.value) {
-            return;
-        }
-
-        this._options.value = payload.value;
-        this.emit("change", { value: payload.value });
+        this.onDocChange(payload.value);
+        this._codeEditor.markClean();
     }
 }
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import type { MarkdownEditorChange } from '~/component/editor/MarkdownEditor';
+import { Component } from '~/core/Component';
 import { TRANSFORMERS } from '~/component/editor/markdownTransformers';
 import { EDITOR_NODES } from '~/component/editor/editorNodes';
 import {
@@ -66,9 +67,13 @@ function lexicalOf(editor: MarkdownEditor): LexicalEditor {
     return (editor as unknown as { _editor: LexicalEditor })._editor;
 }
 
-/** Reaches the private source-surface CodeEditor for white-box readOnly assertions. */
-function codeEditorOf(editor: MarkdownEditor): { getReadOnly(): boolean; getValue(): string } {
-    return (editor as unknown as { _codeEditor: { getReadOnly(): boolean; getValue(): string } })._codeEditor;
+/** Reaches the private source-surface CodeEditor for white-box readOnly / dirty-state assertions. */
+function codeEditorOf(editor: MarkdownEditor): {
+    getReadOnly(): boolean; getValue(): string; isDirty(): boolean; onDocChange(value: string): void;
+} {
+    return (editor as unknown as {
+        _codeEditor: { getReadOnly(): boolean; getValue(): string; isDirty(): boolean; onDocChange(value: string): void };
+    })._codeEditor;
 }
 
 /** Reaches the private WYSIWYG contenteditable surface for white-box style assertions. */
@@ -424,6 +429,159 @@ describe('MarkdownEditor mode', () => {
 
         expect(lexicalOf(editor).isEditable()).toBe(true);
         expect(codeEditorOf(editor).getReadOnly()).toBe(false);
+    });
+});
+
+describe('MarkdownEditor dirty state', () => {
+    it('a fresh editor is clean', () => {
+        expect(new MarkdownEditor('# Hi').isDirty()).toBe(false);
+        expect(new MarkdownEditor().isDirty()).toBe(false);
+    });
+
+    it('a WYSIWYG edit marks it dirty, and undoing it clears the flag', () => {
+        const editor = new MarkdownEditor('# Hi');
+
+        editor.setValue('# Bye');
+        expect(editor.isDirty()).toBe(true);
+
+        editor.setValue('# Hi');
+        expect(editor.isDirty()).toBe(false);
+    });
+
+    it('onDirtyChange fires once per real transition', () => {
+        const editor = new MarkdownEditor('# Hi');
+        let fired = 0;
+        let received: boolean | null = null;
+        editor.onDirtyChange((dirty) => { fired += 1; received = dirty; });
+
+        editor.setValue('# A');
+        editor.setValue('# B');
+        expect(fired).toBe(1);
+        expect(received).toBe(true);
+
+        editor.setValue('# Hi');
+        expect(fired).toBe(2);
+        expect(received).toBe(false);
+    });
+
+    it('markClean() moves the clean point and is chainable', () => {
+        const editor = new MarkdownEditor('# Hi');
+
+        editor.setValue('# A');
+        const returned = editor.markClean();
+        expect(returned).toBe(editor);
+        expect(editor.isDirty()).toBe(false);
+
+        editor.setValue('# Hi');
+        expect(editor.isDirty()).toBe(true);
+
+        editor.setValue('# A');
+        expect(editor.isDirty()).toBe(false);
+    });
+
+    it('"change" still fires, with the flag settled first', () => {
+        const editor = new MarkdownEditor('# Hi');
+        const dirtyAtChange: boolean[] = [];
+        editor.on('change', () => { dirtyAtChange.push(editor.isDirty()); });
+
+        editor.setValue('# Edited');
+        editor.setValue('# Hi');
+
+        expect(dirtyAtChange).toEqual([true, false]);
+    });
+
+    it('the relay reaches a real parent', () => {
+        const editor = new MarkdownEditor('# Hi');
+        const parent = new Component();
+        parent.addComponent(editor);
+        let fired = 0;
+        parent.onDirtyChange(() => { fired += 1; });
+
+        editor.setValue('# A');
+        expect(parent.isDirty()).toBe(true);
+
+        editor.markClean();
+        expect(parent.isDirty()).toBe(false);
+
+        expect(fired).toBe(2);
+    });
+
+    it('a construction value the converters normalize does not report dirty', () => {
+        const editor = new MarkdownEditor('# Title\n\nbody\n');
+
+        (editor as unknown as { ensureEditor(): LexicalEditor }).ensureEditor();
+        expect(editor.isDirty()).toBe(false);
+
+        // A selection-only update, as `focus()` produces.
+        lexicalOf(editor).update(() => {}, { discrete: true });
+        expect(editor.isDirty()).toBe(false);
+
+        expect((editor as unknown as { _cleanValue: string })._cleanValue).toBe(editor.getValue());
+    });
+
+    it('a mode round trip with no edits leaves it clean, whether or not the Lexical editor was built first', () => {
+        const built = new MarkdownEditor('# Title\n\nbody\n');
+        (built as unknown as { ensureEditor(): LexicalEditor }).ensureEditor();
+        built.setMode('source');
+        built.setMode('wysiwyg');
+        expect(built.isDirty()).toBe(false);
+
+        const notBuilt = new MarkdownEditor('# Title\n\nbody\n');
+        notBuilt.setMode('source');
+        notBuilt.setMode('wysiwyg');
+        expect(notBuilt.isDirty()).toBe(false);
+    });
+
+    it('a source-surface edit marks the editor dirty while the child stays clean', () => {
+        const editor = new MarkdownEditor('# Hi', { mode: 'source' });
+        let fired = 0;
+        let received: boolean | null = null;
+        editor.onDirtyChange((dirty) => { fired += 1; received = dirty; });
+
+        codeEditorOf(editor).onDocChange('# Hi typed');
+        expect(editor.isDirty()).toBe(true);
+        expect(codeEditorOf(editor).isDirty()).toBe(false);
+        expect(fired).toBe(1);
+        expect(received).toBe(true);
+
+        codeEditorOf(editor).onDocChange('# Hi');
+        expect(editor.isDirty()).toBe(false);
+        expect(codeEditorOf(editor).isDirty()).toBe(false);
+        expect(fired).toBe(2);
+        expect(received).toBe(false);
+    });
+
+    it('markClean() leaves the child clean too', () => {
+        const editor = new MarkdownEditor('# Hi', { mode: 'source' });
+
+        codeEditorOf(editor).onDocChange('# Hi typed');
+        editor.markClean();
+
+        expect(editor.isDirty()).toBe(false);
+        expect(codeEditorOf(editor).isDirty()).toBe(false);
+    });
+
+    it('dirty survives a mode switch', () => {
+        const editor = new MarkdownEditor('# Hi');
+
+        editor.setValue('# Edited');
+        expect(editor.isDirty()).toBe(true);
+
+        editor.setMode('source');
+        expect(editor.isDirty()).toBe(true);
+
+        editor.setMode('wysiwyg');
+        expect(editor.isDirty()).toBe(true);
+    });
+
+    it('a first build that happens after a source-mode edit does not clear the flag', () => {
+        const editor = new MarkdownEditor('# Title\n\nbody\n', { mode: 'source' });
+
+        codeEditorOf(editor).onDocChange('# Title\n\nbody\n\nmore');
+        expect(editor.isDirty()).toBe(true);
+
+        editor.setMode('wysiwyg');   // the first ensureEditor() call
+        expect(editor.isDirty()).toBe(true);
     });
 });
 
