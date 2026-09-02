@@ -75,6 +75,11 @@ page resets to empty.
   edit undone back to the clean text clears the flag on its own.
   `MarkdownEditor` inherits the state through the framework's relay because
   it hosts a `CodeEditor`. No consumer action is needed.
+- **`Table` (and `TreeTable`, by inheritance) now reports itself dirty**
+  through `Component.isDirty()` whenever its bound store has unsynced
+  changes, updating automatically as the store changes and clearing on sync
+  or reject. No consumer action is needed; `TablePanel`/`TreeTablePanel`'s
+  own Sync/Reject button logic is unchanged.
 
 ### Layouts
 
