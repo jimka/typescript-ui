@@ -69,8 +69,10 @@ page resets to empty.
   the active heading as a pane scrolls, and scrolling to a chosen heading —
   is now one shared class, reached through a structural `HeadingScrollHost`
   interface so it depends on neither class concretely.
-- **`CodeEditor` now reports itself dirty** through `Component.isDirty()` on
-  every document change and gains `markClean()` to clear the flag.
+- **`CodeEditor` now reports itself dirty** through `Component.isDirty()`
+  whenever its document differs from the text at the last clean point, and
+  gains `markClean()`, which accepts the current document as that point. An
+  edit undone back to the clean text clears the flag on its own.
   `MarkdownEditor` inherits the state through the framework's relay because
   it hosts a `CodeEditor`. No consumer action is needed.
 

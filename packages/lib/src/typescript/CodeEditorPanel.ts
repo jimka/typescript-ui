@@ -20,8 +20,8 @@ console.log(greet("world"));
  * (Prettier), and a read-only toggle. The editor sits in a `Fit` panel so it
  * fills the available space and scrolls internally. A status row reports the
  * editor's own dirty flag and the panel's own, the panel's arriving through
- * the framework's parent-to-child relay two containers up, and Save clears
- * it.
+ * the framework's parent-to-child relay two containers up. Save clears the
+ * flag, and so does undoing an edit back to the last-saved text.
  */
 class CodeEditorPanel extends Panel {
 

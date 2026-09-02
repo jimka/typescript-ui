@@ -83,7 +83,7 @@ registerLanguage({
 
 ## Dirty state
 
-Every document change — typing, paste, `format()`, `setValue()` — marks the editor dirty via the framework's [`Component.isDirty()`](/api/core/classes/Component) mechanism; `markClean()` is the only thing that clears the flag. `isDirty()` folds up into every ancestor container automatically, so a host that loads a document with `setValue()` should follow it with `markClean()` to establish a clean baseline. The flag tracks *that* edits happened, not whether the text currently differs from a baseline — undoing back to the original document leaves the editor dirty.
+The editor reports itself dirty, via the framework's [`Component.isDirty()`](/api/core/classes/Component) mechanism, whenever its document differs from the text at the last clean point — the text it was constructed with, or the text `markClean()` last accepted. Typing, paste, `format()`, and `setValue()` all go through the same check, so an edit undone back to the clean text clears the flag on its own. `isDirty()` folds up into every ancestor container automatically. A host that loads a document with `setValue()` should follow it with `markClean()`, so the loaded text becomes the clean text.
 
 ## Keyboard
 
