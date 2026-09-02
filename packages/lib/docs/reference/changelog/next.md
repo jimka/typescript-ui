@@ -72,14 +72,18 @@ page resets to empty.
 - **`CodeEditor` now reports itself dirty** through `Component.isDirty()`
   whenever its document differs from the text at the last clean point, and
   gains `markClean()`, which accepts the current document as that point. An
-  edit undone back to the clean text clears the flag on its own.
-  `MarkdownEditor` inherits the state through the framework's relay because
-  it hosts a `CodeEditor`. No consumer action is needed.
+  edit undone back to the clean text clears the flag on its own. No consumer
+  action is needed.
 - **`Table` (and `TreeTable`, by inheritance) now reports itself dirty**
   through `Component.isDirty()` whenever its bound store has unsynced
   changes, updating automatically as the store changes and clearing on sync
   or reject. No consumer action is needed; `TablePanel`/`TreeTablePanel`'s
   own Sync/Reject button logic is unchanged.
+- **`MarkdownEditor` now reports itself dirty** through `Component.isDirty()`
+  whenever its Markdown differs from the value at the last clean point, in
+  either editing mode, and gains `markClean()` to accept the current document
+  as that point. Switching between the WYSIWYG and source surfaces is not an
+  edit. No consumer action is needed.
 
 ### Layouts
 
