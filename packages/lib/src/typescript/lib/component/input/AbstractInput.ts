@@ -57,6 +57,7 @@ abstract class AbstractInput<
     implements Bindable<TValue>
 {
     private _listeners: ListenerBag<AbstractInputEvent> = this.registerListenerBag(new ListenerBag<AbstractInputEvent>());
+    private _cleanValue: TValue | undefined = undefined;
 
     /**
      * @param options - Caller-supplied options bag.
@@ -192,6 +193,22 @@ abstract class AbstractInput<
     }
 
     /**
+     * Compares a candidate value against the clean baseline (or `undefined`
+     * when no baseline has been established yet, which always compares
+     * unequal). Defaults to `Object.is`, correct for every scalar `TValue`.
+     * Override when `TValue` is an array or object whose `getValue()` may
+     * return a fresh reference for an unchanged value.
+     *
+     * @param a - The candidate value.
+     * @param b - The clean baseline, or `undefined` if none has been set.
+     *
+     * @returns `true` when the two are equal for dirty-tracking purposes.
+     */
+    protected valuesEqual(a: TValue, b: TValue | undefined): boolean {
+        return Object.is(a, b);
+    }
+
+    /**
      * Fires `"change"` listeners with `value` and `"binding"` listeners
      * with no arguments. Subclasses call this after committing a
      * user-driven value change.
@@ -199,8 +216,51 @@ abstract class AbstractInput<
      * @param value - The newly committed value.
      */
     protected notifyChange(value: TValue): void {
+        this.setDirty(!this.valuesEqual(value, this._cleanValue));
         this.emit("change", value);
         this.emit("binding");
+    }
+
+    /**
+     * Accepts the current value as the clean baseline, clearing this input's
+     * dirty flag — and, through the framework's relay, every ancestor's, unless
+     * another descendant is still dirty. Also cleans every `AbstractInput`
+     * composed internally (e.g. a picker field's inner text input), so a
+     * composite control's own baseline and its inner children's stay in sync.
+     *
+     * Call this after a host has persisted the value, or after loading one
+     * programmatically. Persisting is the host's job — this method only
+     * reports state; it does not change the value itself.
+     *
+     * @returns This component, for method chaining.
+     */
+    markClean(): this {
+        this._cleanValue = this.getValue();
+        this.setDirty(false);
+        this.markComposedInputsClean(this);
+
+        return this;
+    }
+
+    /**
+     * Recursive walk backing {@link markClean}: descends through every
+     * non-`AbstractInput` container to reach a composed `AbstractInput`
+     * child (e.g. `AbstractPickerField`'s inner `PickerInput`) at any depth,
+     * calling `markClean()` on each one found. An `AbstractInput`'s own
+     * composed subtree is always small (a handful of chrome components), so
+     * the full walk is cheap even though most visited components are plain
+     * `Component`s with no `AbstractInput` descendants at all.
+     *
+     * @param root - The component whose children are walked.
+     */
+    private markComposedInputsClean(root: Component): void {
+        for (const child of root.getComponents()) {
+            if (child instanceof AbstractInput) {
+                child.markClean();
+            } else {
+                this.markComposedInputsClean(child);
+            }
+        }
     }
 
     /**

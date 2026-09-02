@@ -117,6 +117,11 @@ class MultiSelectListPanel extends Panel {
         });
 
         const bindingStatusText = new Text("Binding status: clean");
+        const fieldDirtyText = new Text("Field dirty: no");
+
+        tagList.onDirtyChange(() => {
+            fieldDirtyText.setText(`Field dirty: ${tagList.isDirty() ? "yes" : "no"}`);
+        });
 
         const binding = new Binding()
             .bind('tags', tagList, {
@@ -151,6 +156,7 @@ class MultiSelectListPanel extends Panel {
         this.addComponent(new Text("Binding integration (tags field):"));
         this.addComponent(tagList);
         this.addComponent(bindingStatusText);
+        this.addComponent(fieldDirtyText);
         this.addComponent(bindingBtnRow);
 
         // ── Load stores ──────────────────────────────────────────────────────

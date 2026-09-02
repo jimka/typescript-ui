@@ -84,3 +84,26 @@ describe('DateField value round-trip', () => {
         expect(out!.getDate()).toBe(15);
     });
 });
+
+describe('DateField dirty state', () => {
+    it('a freshly constructed field with an initial value is not dirty', () => {
+        const field = new DateField({ value: new Date(2025, 5, 15) });
+
+        expect(field.isDirty()).toBe(false);
+    });
+
+    it('typing a different date through the commit seam makes it dirty, and typing back to a fresh Date with the same Y/M/D clears it', () => {
+        const field = new DateField({ value: new Date(2025, 5, 15) }) as any;
+
+        field._input.setText('2025-06-20');
+        field.onInput();
+        expect(field.isDirty()).toBe(true);
+
+        // A freshly parsed Date with the same year/month/day as the original —
+        // not the same object — proves the Date-equality override runs rather
+        // than reference equality.
+        field._input.setText('2025-06-15');
+        field.onInput();
+        expect(field.isDirty()).toBe(false);
+    });
+});

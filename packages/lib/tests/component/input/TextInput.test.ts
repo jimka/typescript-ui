@@ -79,6 +79,37 @@ describe('TextInput unified input sync (bug 1 / consolidation item 6)', () => {
     }
 });
 
+describe('TextField dirty state', () => {
+    it('a freshly constructed field with an initial value is not dirty', () => {
+        const field = new TextField({ text: 'hello' });
+
+        expect(field.isDirty()).toBe(false);
+    });
+
+    it('typing a different value makes it dirty', () => {
+        const field = new TextField({ text: 'hello' }) as any;
+        const el = field.getElement(true)!;
+
+        DOM.sink.setValue(el, 'hello world');
+        field.onInput();
+
+        expect(field.isDirty()).toBe(true);
+    });
+
+    it('typing back to the original text clears the dirty flag', () => {
+        const field = new TextField({ text: 'hello' }) as any;
+        const el = field.getElement(true)!;
+
+        DOM.sink.setValue(el, 'hello world');
+        field.onInput();
+
+        DOM.sink.setValue(el, 'hello');
+        field.onInput();
+
+        expect(field.isDirty()).toBe(false);
+    });
+});
+
 describe('TextInput keydown shorthand', () => {
     // The recording sink does not deliver DOM events to listeners, so the
     // contract verified here is the *wiring*: on("keydown") routes to the native

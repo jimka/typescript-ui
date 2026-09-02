@@ -341,6 +341,9 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         if (this._options.readOnly !== undefined) {
             this.applyReadOnly(this._options.readOnly);
         }
+
+        // Establishes the clean baseline for dirty-state tracking — see AbstractInput.markClean().
+        this.markClean();
     }
 
     /**
