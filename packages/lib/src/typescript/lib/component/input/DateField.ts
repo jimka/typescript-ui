@@ -54,6 +54,9 @@ class DateField extends AbstractPickerField<Date, DatePickerDropdown, DateFieldO
         if (this._options.value !== undefined) {
             this.setValue(this._options.value);
         }
+
+        // Establishes the clean baseline for dirty-state tracking — see AbstractInput.markClean().
+        this.markClean();
     }
 
     /**

@@ -53,6 +53,9 @@ class MultiSelectList extends AbstractSelectableList<string[], MultiSelectListOp
         if (this._options.selectedIndices !== undefined) {
             this.applyInitialSelection(this._options.selectedIndices);
         }
+
+        // Establishes the clean baseline for dirty-state tracking — see AbstractInput.markClean().
+        this.markClean();
     }
 
     /**
@@ -128,6 +131,25 @@ class MultiSelectList extends AbstractSelectableList<string[], MultiSelectListOp
         const indices = [...this._selectedSet].sort((a, b) => a - b);
 
         return indices.map(i => this._items[i].key);
+    }
+
+    /**
+     * Compares two selection sets for dirty-tracking purposes. `getValue()`
+     * builds a fresh array on every call, so this overrides the inherited
+     * `Object.is` default with a length-and-per-index comparison — sound
+     * because `getValue()` always returns keys sorted by row order.
+     *
+     * @param a - The candidate value.
+     * @param b - The clean baseline, or `undefined` if none has been set.
+     *
+     * @returns `true` when the two are equal for dirty-tracking purposes.
+     */
+    protected valuesEqual(a: string[], b: string[] | undefined): boolean {
+        if (b === undefined || a.length !== b.length) {
+            return false;
+        }
+
+        return a.every((v, i) => v === b[i]);
     }
 
     /**

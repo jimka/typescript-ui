@@ -807,6 +807,9 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         if (this._options.readOnly !== undefined) {
             this.applyReadOnly(this._options.readOnly);
         }
+
+        // Establishes the clean baseline for dirty-state tracking — see AbstractInput.markClean().
+        this.markClean();
     }
 
     /**

@@ -226,6 +226,9 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
         if (this._options.value     !== undefined) this.setValue(this._options.value);
         if (this._options.enabled   !== undefined) this.setEnabled(this._options.enabled);
         if (this._options.readOnly  !== undefined) this.setReadOnly(this._options.readOnly);
+
+        // Establishes the clean baseline for dirty-state tracking — see AbstractInput.markClean().
+        this.markClean();
     }
 
     /**

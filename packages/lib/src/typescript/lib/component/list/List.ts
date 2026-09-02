@@ -52,6 +52,9 @@ class List extends AbstractSelectableList<string, ListOptions> {
         if (this._options.selectedItem !== undefined) {
             this.setValue(this._options.selectedItem);
         }
+
+        // Establishes the clean baseline for dirty-state tracking — see AbstractInput.markClean().
+        this.markClean();
     }
 
     /**

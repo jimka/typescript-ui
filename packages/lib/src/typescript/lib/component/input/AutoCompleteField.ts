@@ -180,6 +180,9 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
         if (this._options.readOnly !== undefined) {
             this.applyReadOnly(this._options.readOnly);
         }
+
+        // Establishes the clean baseline for dirty-state tracking — see AbstractInput.markClean().
+        this.markClean();
     }
 
     /**

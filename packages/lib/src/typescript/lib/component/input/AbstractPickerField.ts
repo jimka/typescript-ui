@@ -311,6 +311,26 @@ abstract class AbstractPickerField<
     }
 
     /**
+     * Compares two picker values for dirty-tracking purposes. `Date` fails
+     * reference equality (every commit path constructs a fresh `Date`), so
+     * this overrides the inherited `Object.is` default with a `.getTime()`
+     * comparison when both sides are `Date` instances, falling back to
+     * `Object.is` for `null`/mismatched-type comparisons.
+     *
+     * @param a - The candidate value.
+     * @param b - The clean baseline, or `undefined` if none has been set.
+     *
+     * @returns `true` when the two are equal for dirty-tracking purposes.
+     */
+    protected valuesEqual(a: TValue | null, b: (TValue | null) | undefined): boolean {
+        if (a instanceof Date && b instanceof Date) {
+            return a.getTime() === b.getTime();
+        }
+
+        return Object.is(a, b);
+    }
+
+    /**
      * Returns the offset from the top of the picker field to its inner-text
      * baseline.
      *

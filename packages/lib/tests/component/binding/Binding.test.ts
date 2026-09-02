@@ -3,6 +3,8 @@ import { Binding } from '~/core/Binding';
 import { Model } from '~/data/Model';
 import { ModelRecord } from '~/data/ModelRecord';
 import type { BindingAccessors } from '~/core/Bindable';
+import { TextField } from '~/component/input/TextField';
+import { MultiSelectList } from '~/component/list/MultiSelectList';
 
 /** Minimal stand-in for a bound widget: holds a value and notifies on change. */
 class FakeWidget {
@@ -114,5 +116,69 @@ describe('Binding.dispose()', () => {
         binding.dispose();
 
         expect(() => binding.dispose()).not.toThrow();
+    });
+});
+
+describe('Binding — AbstractInput presentation-dirty integration', () => {
+    it('commit() clears a short-form-bound TextField\'s dirty flag after a user edit', () => {
+        const textField = new TextField();
+        const binding = new Binding().bind('name', textField);
+        const record = new ModelRecord(MODEL, { name: 'Alice' });
+        binding.setRecord(record);
+
+        textField.setText('Bob');
+        (textField as any).notifyChange(textField.getValue());
+
+        expect(textField.isDirty()).toBe(true);
+        expect(record.get('name')).toBe('Bob');
+
+        binding.commit();
+        expect(textField.isDirty()).toBe(false);
+    });
+
+    it('reject() clears a short-form-bound TextField\'s dirty flag and reverts its value', () => {
+        const textField = new TextField();
+        const binding = new Binding().bind('name', textField);
+        const record = new ModelRecord(MODEL, { name: 'Alice' });
+        binding.setRecord(record);
+
+        textField.setText('Bob');
+        (textField as any).notifyChange(textField.getValue());
+
+        binding.reject();
+
+        expect(textField.isDirty()).toBe(false);
+        expect(textField.getValue()).toBe('Alice');
+    });
+
+    it('the existing long-form FakeWidget cases are unaffected — markClean?.() is a no-op when absent', () => {
+        const w = new FakeWidget();
+        const record = new ModelRecord(MODEL, { name: 'Alice' });
+        const binding = new Binding().bind('name', w, accessors(w));
+        binding.setRecord(record);
+        w.edit('Bob');
+
+        expect(() => binding.commit()).not.toThrow();
+        expect(() => binding.reject()).not.toThrow();
+    });
+
+    it('a long-form bind() whose component is an AbstractInput still gets auto-wired markClean', () => {
+        const TAG_MODEL = new Model([{ name: 'tags' }], 'tags');
+        const tagList = MultiSelectList({ items: ['urgent', 'review', 'docs'] });
+        const binding = new Binding().bind('tags', tagList, {
+            get:    () => tagList.getValue(),
+            set:    (v: unknown) => tagList.setValues(v ? String(v).split(',').filter(Boolean) : []),
+            listen: (fn) => tagList.on('binding', fn),
+        });
+        const record = new ModelRecord(TAG_MODEL, { tags: 'urgent,review' });
+        binding.setRecord(record);
+
+        tagList.setValues(['docs']);
+        (tagList as any).notifyChange(tagList.getValue());
+
+        expect(tagList.isDirty()).toBe(true);
+
+        binding.commit();
+        expect(tagList.isDirty()).toBe(false);
     });
 });

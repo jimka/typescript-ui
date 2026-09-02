@@ -10,6 +10,13 @@ export interface BindingAccessors<T = unknown> {
     get:    () => T;
     set:    (value: T) => void;
     listen: (fn: () => void) => void;
+    /**
+     * Accepts the field's current value as clean. Auto-supplied by
+     * `Binding.bind()` when the bound component is an `AbstractInput`;
+     * supply your own for a component with an equivalent concept. Called by
+     * `Binding.commit()` and `Binding.reject()`.
+     */
+    markClean?: () => void;
 }
 
 /**

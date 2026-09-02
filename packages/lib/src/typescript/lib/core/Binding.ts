@@ -4,6 +4,9 @@ import { BaseObject } from '~/core/BaseObject.js';
 import { ModelRecord } from '~/data/ModelRecord.js';
 import { Bindable, BindingAccessors } from '~/core/Bindable.js';
 import { Component } from '~/core/Component.js';
+// core/ reaching into component/ has precedent: core/Panel.ts imports
+// Scrollbar from "~/component/container/Scrollbar.js".
+import { AbstractInput } from '~/component/input/AbstractInput.js';
 import { ListenerBag } from '~/core/ListenerBag.js';
 import { ValidationRule, FieldValidationConfig } from '~/validation/ValidationRule.js';
 import { FieldDecorator } from '~/validation/FieldDecorator.js';
@@ -98,6 +101,10 @@ export class Binding extends BaseObject {
             set:    (v: T) => (component as Bindable<T>).setValue(v),
             listen: (fn) => (component as Bindable<T>).on("binding", fn),
         };
+
+        if (acc.markClean === undefined && component instanceof AbstractInput) {
+            acc.markClean = () => component.markClean();
+        }
 
         const entry: BoundEntry = { accessors: acc, active: true };
         this._entries.set(fieldName, entry);
@@ -204,6 +211,10 @@ export class Binding extends BaseObject {
     commit(): this {
         this._record?.commit();
 
+        for (const [, entry] of this._entries) {
+            entry.accessors.markClean?.();
+        }
+
         this.emit("commit");
 
         return this;
@@ -221,6 +232,10 @@ export class Binding extends BaseObject {
             for (const [fieldName, entry] of this._entries) {
                 entry.accessors.set(this._record.get(fieldName));
             }
+        }
+
+        for (const [, entry] of this._entries) {
+            entry.accessors.markClean?.();
         }
 
         this.clearValidation();

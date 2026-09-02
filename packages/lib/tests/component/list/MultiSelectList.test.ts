@@ -15,6 +15,12 @@ class TestMultiSelectList extends _MultiSelectList {
     public all(): void {
         this.selectAll();
     }
+
+    /** Performs both calls the real click handler makes — reduce, then notify. */
+    public click(idx: number, ev: { ctrl: boolean; shift: boolean }): void {
+        this.reduceSelection(idx, ev);
+        this.notifyUserChange();
+    }
 }
 
 const FRUITS = ['Apple', 'Banana', 'Cherry', 'Date', 'Elder', 'Fig'];
@@ -241,5 +247,35 @@ describe('MultiSelectList — store round-trip', () => {
 
         list.setValues(['Banana']);
         expect(list.getSelectedRecords()).toEqual([]);
+    });
+});
+
+describe('MultiSelectList dirty state', () => {
+    it('a freshly constructed list with an initial selection is not dirty', () => {
+        const list = new _MultiSelectList({ items: FRUITS, selectedIndices: [1, 3] });
+
+        expect(list.getValue()).toEqual(['Banana', 'Date']);
+        expect(list.isDirty()).toBe(false);
+    });
+
+    it('a plain click that replaces the selection makes it dirty', () => {
+        const list = new TestMultiSelectList({ items: FRUITS, selectedIndices: [1, 3] });
+
+        list.click(1, { ctrl: false, shift: false });
+
+        expect(list.getValue()).toEqual(['Banana']);
+        expect(list.isDirty()).toBe(true);
+    });
+
+    it('ctrl-clicking back to the original selection set clears the dirty flag', () => {
+        const list = new TestMultiSelectList({ items: FRUITS, selectedIndices: [1, 3] });
+
+        list.click(1, { ctrl: false, shift: false });
+        list.click(3, { ctrl: true, shift: false });
+
+        // Sorted by row order, independent of click order — confirms
+        // content-based rather than reference comparison.
+        expect(list.getValue()).toEqual(['Banana', 'Date']);
+        expect(list.isDirty()).toBe(false);
     });
 });

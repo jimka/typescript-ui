@@ -84,6 +84,23 @@ page resets to empty.
   either editing mode, and gains `markClean()` to accept the current document
   as that point. Switching between the WYSIWYG and source surfaces is not an
   edit. No consumer action is needed.
+- **Every `AbstractInput` subclass** — `TextField`, `TextArea`,
+  `PasswordField`, `UsernameField`, `PickerInput`, `Checkbox`, `RadioButton`,
+  `Toggle`, `ComboBox`, `Slider`, `NumberSpinner`, `FileField`,
+  `FileDropZone`, `AutoCompleteField`, `DateField`, `TimeField`,
+  `DateTimeField`, `List`, and `MultiSelectList` — **now reports
+  `Component.isDirty()`** whenever its committed value differs from the value
+  at the last clean point, and gains the inherited `markClean()`, which
+  accepts the current value as that point. A composite control (a picker
+  field's inner text input, `NumberSpinner`'s inner field, and similar)
+  re-baselines together with its host. No consumer action is needed.
+
+### Data
+
+- **`Binding.commit()` and `Binding.reject()` now also clear each bound
+  `AbstractInput`'s presentation-dirty flag**, via a new optional
+  `BindingAccessors.markClean` hook that `Binding.bind()` auto-supplies when
+  the bound component is an `AbstractInput`. No consumer action is needed.
 
 ### Layouts
 

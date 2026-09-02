@@ -130,6 +130,9 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
         // current before `on("change")` reads it — the fix for the
         // one-keystroke-behind value bug.
         Event.addListener(this, "input", this.onInput);
+
+        // Establishes the clean baseline for dirty-state tracking — see AbstractInput.markClean().
+        this.markClean();
     }
 
     /**
