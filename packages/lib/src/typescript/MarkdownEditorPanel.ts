@@ -7,6 +7,7 @@ import { Button, ToggleButton } from '@jimka/typescript-ui/component/button';
 import { ToolBar } from '@jimka/typescript-ui/component/menubar';
 import { Markdown } from '@jimka/typescript-ui/component/display';
 import { MarkdownEditor } from '@jimka/typescript-ui/component/editor';
+import { Text } from '@jimka/typescript-ui/component/input';
 
 const SAMPLE = `# MarkdownEditor
 
@@ -41,12 +42,16 @@ const editor = new MarkdownEditor("# Hello");
  * over the editor switches it between the WYSIWYG surface and a raw-Markdown
  * source editor via `setMode`; the viewer stays in sync in both modes. The editor
  * fills its `Fit` host and scrolls internally; the viewer sits in a vertically
- * scrolling panel.
+ * scrolling panel. A status row below the editor reports the editor's own dirty
+ * flag and the panel's own, the panel's arriving through the framework's
+ * parent-to-child relay three containers up; Save clears it, and so does
+ * undoing an edit back to the last-saved text.
  */
 class MarkdownEditorPanel extends Panel {
 
     private readonly _editor: MarkdownEditor;
     private readonly _viewer: Markdown;
+    private readonly _statusText: Text;
 
     constructor() {
         super();
@@ -66,9 +71,15 @@ class MarkdownEditorPanel extends Panel {
         const insertTableButton = new Button('Insert table');
         insertTableButton.on('action', this.handleInsertTable);
 
+        // Writes nothing — only clears the dirty flag, standing in for a
+        // host that has persisted the document.
+        const saveBtn = new Button('Save');
+        saveBtn.on('action', () => { this._editor.markClean(); });
+
         const toolbar = new ToolBar();
         toolbar.addComponent(sourceToggle);
         toolbar.addComponent(insertTableButton);
+        toolbar.addComponent(saveBtn);
 
         const editorFit = new Panel({ layoutManager: new Fit() });
         editorFit.addComponent(this._editor);
@@ -76,6 +87,10 @@ class MarkdownEditorPanel extends Panel {
         const editorHost = new Panel({ layoutManager: new Border() });
         editorHost.addComponent(toolbar,    { placement: Placement.NORTH });
         editorHost.addComponent(editorFit,  { placement: Placement.CENTER });
+
+        this._statusText = new Text('');
+        editorHost.addComponent(this._statusText, { placement: Placement.SOUTH });
+
         this.addComponent(editorHost);
 
         const viewerHost = new Panel({ layoutManager: new Fit() });
@@ -84,6 +99,8 @@ class MarkdownEditorPanel extends Panel {
         this.addComponent(viewerHost);
 
         this._editor.on('change', () => this.syncViewer());
+        this.onDirtyChange(this.handleDirtyChange);
+        this.handleDirtyChange();
     }
 
     private syncViewer(): void {
@@ -96,6 +113,12 @@ class MarkdownEditorPanel extends Panel {
     // ScrollStrip.leadClicked precedent.
     private readonly handleInsertTable = (): void => {
         this._editor.insertTable(2, 3);
+    };
+
+    private readonly handleDirtyChange = (): void => {
+        this._statusText.setText(
+            `Dirty — editor: ${this._editor.isDirty() ? 'yes' : 'no'}`
+            + `, panel (3 levels up): ${this.isDirty() ? 'yes' : 'no'}`);
     };
 }
 
