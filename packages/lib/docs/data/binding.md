@@ -36,7 +36,7 @@ const binding = new Binding()
     });
 ```
 
-The accessor object matches [`BindingAccessors`](/api/core/interfaces/BindingAccessors). The `listen` callback is what tells the binding "the user just edited this field" — typically you wire it to whatever change event your component fires.
+The accessor object matches [`BindingAccessors`](/api/core/interfaces/BindingAccessors). The `listen` callback is what tells the binding "the user just edited this field" — typically you wire it to whatever change event your component fires. `BindingAccessors` also has an optional fourth field, `markClean`, called by `commit()` / `reject()`; it is auto-supplied when the bound component is an `AbstractInput`.
 
 ## Listeners
 
@@ -49,6 +49,12 @@ binding.on("reject", () => console.log('rejected'));
 ```
 
 These let callers react to record mutations without polling. Use them to enable / disable a save button, show a "you have unsaved changes" indicator, etc.
+
+## Presentation dirty state
+
+Every bound component that is an `AbstractInput` — `TextField`, `Checkbox`, `ComboBox`, `DateField`, and the rest — also reports its own `Component.isDirty()`, separate from the record's own `isDirty()` shown in the `## Listeners` example above. The record's dirty flag tracks whether a field *value* differs from what was loaded; a component's own dirty flag tracks whether its *presentation* differs from its last clean point, and the two are never derived from each other — a record can be dirty while a field's presentation is clean, or vice versa, depending on what else touched either one.
+
+`binding.commit()` and `binding.reject()` both clear the presentation-dirty flag on every bound `AbstractInput`, via the field's own `markClean()`, so a save button wired to `nameField.onDirtyChange(...)` re-disables itself the moment either operation runs — with no extra code at the call site.
 
 ## Switching records
 
