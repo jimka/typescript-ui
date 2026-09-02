@@ -47,7 +47,7 @@ panel.addComponents(button, label, textField);    // variadic
 panel.addComponents([button, label, textField]);  // or as an array
 ```
 
-`addComponent` registers a child with its parent's component list and applies the parent's layout-manager constraints (optional second argument). `addComponents` accepts any mix of bare components, `{ component, constraints }` pairs, or arrays of either. Neither call forces a DOM commit — the element is still lazy.
+`addComponent` registers a child with its parent's component list and applies the parent's layout-manager constraints (optional second argument). `addComponents` accepts any mix of bare components, `{ component, constraints }` pairs, or arrays of either. Neither call forces a DOM commit — the element is still lazy. Both also fold the child's dirty state into the parent's own `isDirty()`, so an already-dirty child reports up immediately, and further changes on the child keep bubbling up as long as it stays attached.
 
 For a fully declarative tree, pass children via the `components` option at construction time:
 

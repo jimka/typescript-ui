@@ -505,6 +505,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // bound by the parent in add/insert, nulled on remove. `setMinSize`/
     // `setMaxSize` (not `applyOptions`) write it, so no `declare` is needed.
     private _onConstraintSizeChange: (() => void) | null    = null;
+    // Own uncommitted-edit flag, set via the protected `setDirty()`. Folded
+    // into `isDirty()` alongside `_dirtyDescendantCount` — see that pair below.
+    private _ownDirty              : boolean                     = false;
+    // Count of direct children whose own `isDirty()` is currently true,
+    // maintained by `_handleChildDirtyChange` via the `wireChild`/`unwireChild`
+    // relay. `isDirty()` reads this as `> 0` rather than walking `getComponents()`.
+    private _dirtyDescendantCount  : number                      = 0;
+    private readonly _dirtyListeners: ListenerBag<"dirtychange">  =
+        this.registerListenerBag(new ListenerBag<"dirtychange">());
+    // Bound once per instance so `wireChild`/`unwireChild` can add/remove the
+    // exact same reference on a child's own `_dirtyListeners`.
+    private readonly _handleChildDirtyChange = (dirty: boolean): void => {
+        const before = this.isDirty();
+        this._dirtyDescendantCount += dirty ? 1 : -1;
+        this._fireDirtyChangeIfFlipped(before);
+    };
     // Eased wheel-scroll controller, lazily attached while an overflow axis is
     // scrollable (auto/scroll). Null otherwise — most components never scroll.
     private _wheelScroller        : SmoothScroller | null     = null;
@@ -2310,6 +2326,81 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     protected scheduleEffectiveVisibilityReconcile(): void {
         pendingVisibility.add(this);
         ensureVisibilityFlushScheduled();
+    }
+
+    /**
+     * Whether this component or any of its descendants has uncommitted edits.
+     * True when this component's own dirty flag is set (see the protected
+     * dirty setter) or when at least one direct child reports dirty — so an
+     * ancestor at any depth learns about a dirty descendant without reaching
+     * down into the tree itself.
+     *
+     * @returns `true` if this component or any descendant is dirty.
+     */
+    isDirty(): boolean {
+        return this._ownDirty || this._dirtyDescendantCount > 0;
+    }
+
+    /**
+     * Registers a listener for a change in {@link isDirty}'s return value —
+     * fired exactly once per real transition, whether the change originates on
+     * this component or bubbles up from a descendant.
+     *
+     * @param listener - Called with the new {@link isDirty} value.
+     * @returns This component, for method chaining.
+     */
+    onDirtyChange(listener: (dirty: boolean) => void): this {
+        this._dirtyListeners.add("dirtychange", listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a listener registered with {@link onDirtyChange}.
+     *
+     * @param listener - The exact listener reference to remove.
+     * @returns This component, for method chaining.
+     */
+    offDirtyChange(listener: (dirty: boolean) => void): this {
+        this._dirtyListeners.remove("dirtychange", listener);
+
+        return this;
+    }
+
+    /**
+     * Sets this component's own dirty flag. For a subclass that holds
+     * uncommitted edits — a text editor, an input field, a form — to report
+     * itself dirty. A component's descendants are folded into its own
+     * `isDirty()` automatically; a subclass only ever calls this for its own
+     * edit buffer, never to account for children. No-op if the value is
+     * unchanged.
+     *
+     * @param dirty - The new own-dirty state.
+     */
+    protected setDirty(dirty: boolean): void {
+        if (this._ownDirty === dirty) {
+            return;
+        }
+        const before = this.isDirty();
+        this._ownDirty = dirty;
+        this._fireDirtyChangeIfFlipped(before);
+    }
+
+    /**
+     * Fires `"dirtychange"` only if `isDirty()` actually differs from
+     * `before`. Dispatches straight through `_dirtyListeners.fire(...)`
+     * rather than a `protected emit(...)` — see ARCHITECTURE.md's *Event
+     * handling* for why: `emit` is one shared method name, so a subclass's
+     * own `emit` override (declared for its own custom events, as most
+     * emitting classes have) would shadow this base-class dispatch via
+     * ordinary JS prototype resolution, silently swallowing every
+     * `"dirtychange"` fire on any such subclass instance.
+     */
+    private _fireDirtyChangeIfFlipped(before: boolean): void {
+        const after = this.isDirty();
+        if (after !== before) {
+            this._dirtyListeners.fire("dirtychange", after);
+        }
     }
 
     /**
@@ -6357,6 +6448,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
             this._onConstraintSizeChange?.();
         };
+        component.onDirtyChange(this._handleChildDirtyChange);
+        if (component.isDirty()) {
+            this._handleChildDirtyChange(true);
+        }
     }
 
     /**
@@ -6370,10 +6465,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     private unwireChild(component: Component): LayoutConstraints | undefined {
         const constraints = this.delLayoutConstraints(component);
+        // Captured before the `_parent` null-out below: a redundant unwire (a
+        // second removeComponent on an already-detached child, or a call
+        // against a component that was never this container's child in the
+        // first place) must not decrement `_dirtyDescendantCount` for a
+        // relay that was never counted here.
+        const wasChild = component._parent === this;
 
         component._parent = null;
         component._onPreferredSizeChange = null;
         component._onConstraintSizeChange = null;
+        if (wasChild) {
+            component.offDirtyChange(this._handleChildDirtyChange);
+            if (component.isDirty()) {
+                this._handleChildDirtyChange(false);
+            }
+        }
         component.removeElement();
 
         return constraints ?? undefined;

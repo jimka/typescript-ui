@@ -79,6 +79,16 @@ page resets to empty.
   down, and can be vetoed via its `TabCloseController.preventDefault()`. The
   programmatic `closeTab` is not guarded by it.
 
+### Core
+
+- **`Component.isDirty()`**, with `onDirtyChange()` / `offDirtyChange()`
+  listeners and a protected `setDirty()` setter a subclass calls to report
+  its own uncommitted edits. Every container automatically folds each
+  child's dirty state into its own `isDirty()`, so an ancestor at any depth
+  learns about a dirty descendant — a text editor, an input, a form — with
+  no code walking down into the tree. No existing component calls
+  `setDirty()` yet; no consumer action is needed.
+
 ## Fixed
 
 - `TreeRow`, `FieldSet`, `ComboBox`'s collapsed-control label, and the

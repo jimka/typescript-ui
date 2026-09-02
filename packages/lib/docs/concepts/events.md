@@ -181,6 +181,16 @@ registration order. The same shape applies to
 [`Accordion`](/api/layout/classes/Accordion) layout, and the
 [`Tab`](/api/layout/classes/Tab) layout.
 
+One exception lives directly on the base
+[`Component`](/api/core/classes/Component) class: dirty-state change is
+exposed through its own dedicated `onDirtyChange(listener)` /
+`offDirtyChange(listener)` pair rather than `on("dirtychange", …)`. A
+subclass that declares its own `on`/`off` overloads (as most of the emitters
+above do) hides the base class's overload set, so a hypothetical
+`Component.on("dirtychange", …)` would be unreachable on any of them —
+`onDirtyChange`/`offDirtyChange` sidestep that collision entirely, the same
+way `onDestroy(cleanup)` already does for teardown.
+
 ## DOM event removal
 
 Each `addX` has a matching `removeX` that takes the same `(component, type, listener)` triple. Pass the **same function reference** that you passed to the `add` call:
