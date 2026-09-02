@@ -268,6 +268,10 @@ class Table extends Component<TableOptions> {
     private _rotatedIndentedRecords: Set<ModelRecord> = new Set();
     private _sourceRefresh    : (() => void) | null = null;
     private _sourceUpdate     : ((event: StoreUpdateEvent) => void) | null = null;
+    // Set by bindDirtyRelay; guards unbindDirtyRelay the same way _sourceRefresh
+    // guards unbindSourceStore, though in practice bindDirtyRelay always runs
+    // first (constructor, then every setStore).
+    private _dirtyRelayRefresh: (() => void) | null = null;
     private _suppressSelectionForward: boolean = false;
     private _widthRefs        : WidthReferences | null = null;
     // Longest sampled candidate strings from the last content derivation,
@@ -312,6 +316,7 @@ class Table extends Component<TableOptions> {
         this._footerVisible = false;
 
         this.bindSourceStore(store);
+        this.bindDirtyRelay(store);
 
         this._resolvedColumns = Column.resolve(store.model.getFields(), spec);
         this.initHiddenFromSpec();
@@ -696,6 +701,7 @@ class Table extends Component<TableOptions> {
 
         this._header.setStore(store);
         this.unbindSourceStore(this._store);
+        this.unbindDirtyRelay(this._store);
 
         this._store = store;
         this._columnWidths = [];
@@ -707,6 +713,7 @@ class Table extends Component<TableOptions> {
         this._resolvedColumns = Column.resolve(store.model.getFields(), this._spec);
 
         this.bindSourceStore(store);
+        this.bindDirtyRelay(store);
 
         this._body.setStore(store);
         this._header.setModel(store.model);
@@ -1288,6 +1295,43 @@ class Table extends Component<TableOptions> {
     }
 
     /**
+     * Subscribes to the store events that can change {@link AbstractStore.hasPendingChanges},
+     * recomputing this table's own dirty flag (see {@link Component.setDirty})
+     * on each one — and once immediately, so a table constructed over an
+     * already-dirty store reports dirty right away. Stores the callback in
+     * `_dirtyRelayRefresh` so {@link unbindDirtyRelay} can remove exactly this
+     * registration later.
+     *
+     * @param store - The store to subscribe to.
+     */
+    private bindDirtyRelay(store: AbstractStore): void {
+        const updateDirty = () => this.setDirty(store.hasPendingChanges());
+
+        this._dirtyRelayRefresh = updateDirty;
+
+        (['load', 'add', 'remove', 'datachange', 'sync'] as const).forEach(e =>
+            store.on(e, updateDirty)
+        );
+
+        updateDirty();
+    }
+
+    /**
+     * Unsubscribes the callback installed by {@link bindDirtyRelay} from `store`.
+     *
+     * @param store - The store to unsubscribe from.
+     */
+    private unbindDirtyRelay(store: AbstractStore): void {
+        if (!this._dirtyRelayRefresh) {
+            return;
+        }
+
+        (['load', 'add', 'remove', 'datachange', 'sync'] as const).forEach(e =>
+            store.off(e, this._dirtyRelayRefresh!)
+        );
+    }
+
+    /**
      * Keeps the rotated projection in sync with the source store. Also the
      * hook for the auto-size re-derive (see
      * {@link maybeResampleColumnWidths}), which runs regardless of display
@@ -1647,6 +1691,7 @@ class Table extends Component<TableOptions> {
      */
     protected destructor(): void {
         this.unbindSourceStore(this._store);
+        this.unbindDirtyRelay(this._store);
         this._columnDialog?.dispose();
         this._columnContextMenu.dispose();
         this._cellText.dispose();

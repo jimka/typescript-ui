@@ -324,6 +324,20 @@ For example, with available width 500 and four columns at `[200, 150, 100,
 gives up 130px from its neighbours before they bottom out, and the remaining
 70px widens the table to 570.
 
+## Dirty state
+
+The table reports itself dirty, through the framework's
+[`Component.isDirty()`](/api/core/classes/Component) mechanism, whenever its
+bound store's `hasPendingChanges()` is true. The flag updates automatically
+as the store's records are added, removed, edited, loaded, or synced, and
+clears once every pending change is synced or rejected. `isDirty()` folds up
+into every ancestor container automatically, so a `Tab`, `Window`, or custom
+panel hosting a bare `Table` can ask `isDirty()` without reaching into the
+store. Swapping stores with `setStore()` re-derives the flag from the new
+store immediately. `TreeTable` inherits this unchanged. This is a separate
+signal from `TablePanel`'s own Sync/Reject button enablement, which reads
+the store directly.
+
 ## Events
 
 `table.on("selection", records => …)` fires whenever the selected-record
