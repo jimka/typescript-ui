@@ -22,6 +22,7 @@ import type { MarkdownLinkResolver } from "~/component/display/Markdown.js";
 import { MarkdownMinimap } from "~/component/display/MarkdownMinimap.js";
 import type { HeadingScrollSource } from "~/component/display/MarkdownMinimap.js";
 import { HeadingScrollTracker } from "~/component/display/HeadingScrollTracker.js";
+import type { Handle } from "~/core/DOM.js";
 
 Glyph.register(compress, expand, magnifying_glass_plus, magnifying_glass_minus, arrows_rotate);
 
@@ -80,6 +81,20 @@ const _defaultMarkdownViewerOptions: Partial<MarkdownViewerOptions> = {
 };
 
 /**
+ * The scrolling host `_markdown` renders into — `Panel` with `autoScroll`
+ * already does everything this needs; the only reason for a subclass at all
+ * is that `getScrollElement()` is `protected`, so `MarkdownViewer` (a
+ * separate instance, not a subclass of this one) has no other way to reach
+ * the element `HeadingScrollTracker` needs. File-local — not exported, an
+ * implementation detail of `MarkdownViewer`'s own scroll wiring.
+ */
+class MarkdownContentPane extends Panel {
+    getContentScrollElement(): Handle | undefined {
+        return this.getScrollElement();
+    }
+}
+
+/**
  * A single-document Markdown viewer with a floating outline minimap and
  * width/zoom controls, both pinned over the prose.
  *
@@ -93,10 +108,18 @@ const _defaultMarkdownViewerOptions: Partial<MarkdownViewerOptions> = {
  * that event to highlight whichever heading is currently on screen without
  * depending on this class concretely.
  *
+ * The viewer itself never scrolls: `_markdown` renders into an internal
+ * {@link MarkdownContentPane} (a plain scrolling `Panel`, stretched to fill)
+ * so the minimap and controls — anchored directly on this outer, non-scrolling
+ * `Anchor` host, the same way `DocsShell` anchors its own floating panels
+ * beside (not inside) the scrolling `DocsContent` — stay pinned over the
+ * viewport instead of scrolling away with the prose.
+ *
  * @category Components
  */
 class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScrollSource {
 
+    private readonly _content: MarkdownContentPane;
     private readonly _markdown: Markdown;
     private readonly _minimap: MarkdownMinimap;
     private _controls!: FloatingPanel;
@@ -135,8 +158,16 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
             // Component's own dispatch — the same pre-existing tradeoff
             // DiagramView's own Anchor-dependent constructor carries.)
             layoutManager: new Anchor(),
-            autoScroll:    "y",
         } as Partial<MarkdownViewerOptions>);
+
+        this._content = new MarkdownContentPane({ layoutManager: new Anchor(), autoScroll: "y", flush: true });
+
+        const contentConstraints = new AnchorConstraints();
+        contentConstraints.left   = 0;
+        contentConstraints.right  = 0;
+        contentConstraints.top    = 0;
+        contentConstraints.bottom = 0;
+        this.addComponent(this._content, contentConstraints);
 
         this._markdown = new Markdown(options?.markdown, {
             linkResolver: options?.linkResolver,
@@ -146,7 +177,7 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
         const markdownConstraints = new AnchorConstraints();
         markdownConstraints.left  = 0;
         markdownConstraints.right = 0;
-        this.addComponent(this._markdown, markdownConstraints);
+        this._content.addComponent(this._markdown, markdownConstraints);
 
         const headings = extractMarkdownHeadings(options?.markdown ?? "");
 
@@ -171,11 +202,12 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
 
     /**
      * Lays out `Markdown` / the minimap / the controls as usual, then
-     * re-hugs the minimap against `_markdown`'s freshly committed geometry —
-     * `MarkdownMinimap.placeNextTo` needs calling after every pass that can
-     * move either this viewer's own width or `_markdown`'s rendered width
-     * (see its own doc comment for why it's an owner-driven call rather than
-     * a `MarkdownMinimap`-internal `doLayout` override).
+     * re-hugs the minimap and the controls against `_markdown`'s freshly
+     * committed geometry — `FloatingPanel.placeNextTo` needs calling after
+     * every pass that can move either this viewer's own width or
+     * `_markdown`'s rendered width (see its own doc comment for why it's an
+     * owner-driven call rather than a `FloatingPanel`-internal `doLayout`
+     * override).
      *
      * @returns This viewer, for method chaining.
      */
@@ -183,9 +215,10 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
         super.doLayout();
 
         // Guards against the super() cascade's own options dispatch (e.g.
-        // setAutoScroll) triggering a layout pass before this constructor has
-        // reached the point of assigning _minimap/_markdown.
+        // setLayoutManager) triggering a layout pass before this constructor
+        // has reached the point of assigning _minimap/_controls/_markdown.
         this._minimap?.placeNextTo(this._markdown ?? null);
+        this._controls?.placeNextTo(this._markdown ?? null);
 
         return this;
     }
@@ -351,9 +384,10 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
         this._widthIndex = Util.clamp(this._widthIndex + direction, 0, WIDTH_PRESETS_CH.length - 1);
         this._markdown.setMaxMeasure(WIDTH_PRESETS_CH[this._widthIndex] + "ch");
         // setMaxMeasure writes a CSS rule directly and schedules no layout of
-        // its own, so the minimap's hug would otherwise go stale against the
-        // prose's new rendered width — see MarkdownMinimap.placeNextTo.
+        // its own, so the minimap/controls hug would otherwise go stale
+        // against the prose's new rendered width — see FloatingPanel.placeNextTo.
         this._minimap.placeNextTo(this._markdown);
+        this._controls.placeNextTo(this._markdown);
     }
 
     /**
@@ -368,6 +402,7 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
         // setFontScale can also change the prose's rendered width (ch-based
         // maxMeasure scales with font size) — see stepWidth's own comment.
         this._minimap.placeNextTo(this._markdown);
+        this._controls.placeNextTo(this._markdown);
     }
 
     /**
@@ -382,6 +417,7 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
         this._markdown.setMaxMeasure(null);
         this._markdown.setFontScale(1);
         this._minimap.placeNextTo(this._markdown);
+        this._controls.placeNextTo(this._markdown);
     }
 
     /**
@@ -391,7 +427,7 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
      * implementation `DocsContent` also delegates to.
      */
     private onNativeScroll(): void {
-        const scrollElement = this.getScrollElement();
+        const scrollElement = this._content.getContentScrollElement();
 
         if (scrollElement) {
             this._tracker.trackScroll(scrollElement);
@@ -406,11 +442,35 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
      * @param id - The heading id to scroll to.
      */
     private scrollToHeading(id: string): void {
-        const scrollElement = this.getScrollElement();
+        const scrollElement = this._content.getContentScrollElement();
 
         if (scrollElement) {
             this._tracker.scrollToHeading(scrollElement, id);
         }
+    }
+
+    /**
+     * The prose's scroll offset — delegates to the internal {@link
+     * MarkdownContentPane} that actually scrolls; this outer viewer never does
+     * (see the class doc for why).
+     *
+     * @returns The cached `scrollTop` in pixels.
+     */
+    getScrollTop(): number {
+        return this._content.getScrollTop();
+    }
+
+    /**
+     * Scrolls the prose to the given offset — delegates to the internal
+     * {@link MarkdownContentPane}; see {@link getScrollTop}.
+     *
+     * @param value - The new `scrollTop` in pixels.
+     * @returns This viewer, for method chaining.
+     */
+    setScrollTop(value: number): this {
+        this._content.setScrollTop(value);
+
+        return this;
     }
 }
 

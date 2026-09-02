@@ -92,6 +92,67 @@ describe('MarkdownViewer minimap placement wiring', () => {
     });
 });
 
+describe('MarkdownViewer controls placement wiring', () => {
+    it('calls placeNextTo(_markdown) from its own doLayout, same as the minimap', () => {
+        installTestDOM(CONFIG);
+
+        const viewer = new MarkdownViewer({ markdown: SOURCE }) as any;
+        const spy = vi.spyOn(viewer._controls, 'placeNextTo');
+
+        viewer.doLayout();
+
+        expect(spy).toHaveBeenCalledWith(viewer._markdown);
+    });
+
+    it('re-hugs after stepping width, stepping zoom, and resetting — none of which trigger a layout pass on their own', () => {
+        installTestDOM(CONFIG);
+
+        const viewer = new MarkdownViewer({ markdown: SOURCE }) as any;
+        const spy = vi.spyOn(viewer._controls, 'placeNextTo');
+
+        viewer._onWider();
+        expect(spy).toHaveBeenLastCalledWith(viewer._markdown);
+
+        viewer._onZoomIn();
+        expect(spy).toHaveBeenLastCalledWith(viewer._markdown);
+
+        viewer._onReset();
+        expect(spy).toHaveBeenLastCalledWith(viewer._markdown);
+    });
+});
+
+describe('MarkdownViewer scroll ownership', () => {
+    it('never scrolls itself — the internal content pane owns autoScroll instead', () => {
+        installTestDOM(CONFIG);
+
+        const viewer = new MarkdownViewer({ markdown: SOURCE }) as any;
+
+        expect(viewer.getAutoScroll()).toBe('none');
+        expect(viewer._content.getAutoScroll()).toBe('y');
+    });
+
+    it('keeps the minimap and controls outside the scrolling content pane, so scrolling the prose never carries them along', () => {
+        installTestDOM(CONFIG);
+
+        const viewer = new MarkdownViewer({ markdown: SOURCE }) as any;
+        const contentElement = viewer._content.getElement(true);
+
+        expect(DOM.source.contains(contentElement, viewer._minimap.getElement(true))).toBe(false);
+        expect(DOM.source.contains(contentElement, viewer._controls.getElement(true))).toBe(false);
+    });
+
+    it('getScrollTop/setScrollTop delegate to the internal content pane', () => {
+        installTestDOM(CONFIG);
+
+        const viewer = new MarkdownViewer({ markdown: SOURCE }) as any;
+
+        viewer.setScrollTop(42);
+
+        expect(viewer.getScrollTop()).toBe(42);
+        expect(viewer._content.getScrollTop()).toBe(42);
+    });
+});
+
 describe('MarkdownViewer width controls', () => {
     it('wider steps _widthIndex and calls setMaxMeasure with the next preset', () => {
         installTestDOM(CONFIG);
@@ -226,9 +287,12 @@ describe('MarkdownViewer minimap-select scrolls to the heading', () => {
         installTestDOM(CONFIG);
 
         const viewer = new MarkdownViewer({ markdown: SOURCE }) as any;
-        const handle = viewer.getElement(true);
+        viewer.getElement(true);
 
-        DOM.sink.apply(handle, { style: { left: '0px', top: '0px', width: '400px', height: '300px' } });
+        // Stubbed on the internal scrolling content pane, not the outer
+        // viewer — scrollToHeading reads its own pane's rect, and the outer
+        // no longer scrolls (see "MarkdownViewer scroll ownership" above).
+        DOM.sink.apply(viewer._content.getElement(true), { style: { left: '0px', top: '0px', width: '400px', height: '300px' } });
 
         // Resolve the actual rendered heading ids from the minimap's own tree
         // (built from the same extractMarkdownHeadings source), so the test
@@ -297,9 +361,10 @@ describe('MarkdownViewer scroll tracking', () => {
         installTestDOM(CONFIG);
 
         const viewer = new MarkdownViewer({ markdown: SOURCE }) as any;
-        const handle = viewer.getElement(true);
+        viewer.getElement(true);
 
-        DOM.sink.apply(handle, { style: { left: '0px', top: '0px', width: '400px', height: '300px' } });
+        // Stubbed on the internal scrolling content pane — see the previous test's own comment.
+        DOM.sink.apply(viewer._content.getElement(true), { style: { left: '0px', top: '0px', width: '400px', height: '300px' } });
 
         const headings = viewer._tracker.getHeadings() as Array<{ id: string }>;
 

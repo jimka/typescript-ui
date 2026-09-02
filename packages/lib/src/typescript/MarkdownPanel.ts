@@ -2,7 +2,7 @@
 
 import { callable, Panel } from '@jimka/typescript-ui/core';
 import { Fit } from '@jimka/typescript-ui/layout';
-import { Markdown } from '@jimka/typescript-ui/component/display';
+import { MarkdownViewer } from '@jimka/typescript-ui/component/display';
 
 const SAMPLE = `# Markdown component
 
@@ -66,11 +66,11 @@ SELECT id, name, email, created_at, updated_at, status, role, last_login_at FROM
 Unsupported tokens (images, raw HTML) fall back to plain text and never crash.`;
 
 /**
- * Demo panel showcasing the [`Markdown`](/api/component/display/classes/Markdown)
- * display component: a single instance rendering a sample document inside a
- * scrolling `Fit` panel. The prose wraps to the panel width and the component
- * measures its own flowed height, so vertical `autoScroll` produces a scrollbar
- * whenever the document is taller than the panel.
+ * Demo panel showcasing the [`MarkdownViewer`](/api/component/display/classes/MarkdownViewer)
+ * component: a single instance rendering a sample document inside a `Fit`
+ * panel. `MarkdownViewer` scrolls internally, so this host panel stays
+ * unscrolled itself — a redundant `autoScroll` here would starve it of a
+ * bounded height and hand scrolling to this outer panel instead.
  */
 class MarkdownPanel extends Panel {
 
@@ -78,9 +78,10 @@ class MarkdownPanel extends Panel {
         super();
 
         this.setLayoutManager(new Fit());
-        this.setAutoScroll("y");
 
-        this.addComponent(new Markdown(SAMPLE));
+        this.addComponent(new MarkdownViewer({
+            markdown: SAMPLE
+        }));
     }
 }
 
