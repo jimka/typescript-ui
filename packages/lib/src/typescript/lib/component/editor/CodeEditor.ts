@@ -357,6 +357,25 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
+     * Accepts the current document as the clean baseline, clearing this
+     * editor's dirty flag (and, through the framework's relay, every
+     * ancestor's, unless another descendant is still dirty). Call it after
+     * the host has persisted the document, or after loading one with
+     * `setValue`. Persisting is the host's job — this method only reports
+     * state; it writes nothing and does not change the document.
+     *
+     * Every document change — typing, paste, `format()`, `setValue()` —
+     * marks the editor dirty again.
+     *
+     * @returns This component, for method chaining.
+     */
+    markClean(): this {
+        this.setDirty(false);
+
+        return this;
+    }
+
+    /**
      * Returns the active language id.
      *
      * @returns The registered language id, or `null` when unset.
@@ -550,6 +569,23 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
+     * Applies a document change from the live CodeMirror view: caches the new
+     * text, flags the editor dirty, then emits `"change"`. Factored out of the
+     * update listener in `mount()` so the offline harness — where no
+     * `EditorView` ever mounts — can drive the same path directly, mirroring
+     * how `reindentFallback` is factored out of `format()`.
+     *
+     * @param value - The new document text.
+     */
+    private onDocChange(value: string): void {
+        this._options.value = value;
+        // Dirty before the emit, so a `"change"` listener that queries
+        // isDirty() sees the settled value.
+        this.setDirty(true);
+        this.emit("change", { value });
+    }
+
+    /**
      * Registers a listener for the `"change"` event, fired whenever the
      * document changes (including via {@link CodeEditor.format} / {@link CodeEditor.setValue}).
      *
@@ -718,8 +754,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
             this._langCompartment.of([]),
             EditorView.updateListener.of((update) => {
                 if (update.docChanged) {
-                    this._options.value = update.state.doc.toString();
-                    this.emit("change", { value: this._options.value });
+                    this.onDocChange(update.state.doc.toString());
                 }
 
                 if (update.heightChanged || update.geometryChanged) {

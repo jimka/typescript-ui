@@ -81,6 +81,10 @@ registerLanguage({
 - If the formatter **throws** (invalid syntax), the promise **rejects** and the document is left **completely untouched** — formatting never loses content.
 - If the active language has no formatter (or none is set), `format()` re-indents the whole document using CodeMirror's own indentation service instead.
 
+## Dirty state
+
+Every document change — typing, paste, `format()`, `setValue()` — marks the editor dirty via the framework's [`Component.isDirty()`](/api/core/classes/Component) mechanism; `markClean()` is the only thing that clears the flag. `isDirty()` folds up into every ancestor container automatically, so a host that loads a document with `setValue()` should follow it with `markClean()` to establish a clean baseline. The flag tracks *that* edits happened, not whether the text currently differs from a baseline — undoing back to the original document leaves the editor dirty.
+
 ## Keyboard
 
 The editor uses CodeMirror's default keymap plus its history bindings, with one
@@ -103,6 +107,7 @@ Tab then moves focus again, and the same shortcut switches back to indenting.
 | `getAutoHeightMaxRows()` | Read the configured `autoHeightMaxRows`, or `null` when unset. |
 | `on('heightchange', fn)` / `off('heightchange', fn)` | Subscribe to the editor's own auto-height changes (only fires when `autoHeightMaxRows` is set). |
 | `dispose()` | Detach the theme-change listener and destroy the live CodeMirror view — call before discarding a dynamically-built `CodeEditor`. |
+| `markClean()` | Clear the dirty flag, accepting the current document as the clean baseline. |
 
 ## Theming
 

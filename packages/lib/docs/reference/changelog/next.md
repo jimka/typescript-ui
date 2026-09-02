@@ -69,6 +69,10 @@ page resets to empty.
   the active heading as a pane scrolls, and scrolling to a chosen heading —
   is now one shared class, reached through a structural `HeadingScrollHost`
   interface so it depends on neither class concretely.
+- **`CodeEditor` now reports itself dirty** through `Component.isDirty()` on
+  every document change and gains `markClean()` to clear the flag.
+  `MarkdownEditor` inherits the state through the framework's relay because
+  it hosts a `CodeEditor`. No consumer action is needed.
 
 ### Layouts
 
@@ -86,8 +90,7 @@ page resets to empty.
   its own uncommitted edits. Every container automatically folds each
   child's dirty state into its own `isDirty()`, so an ancestor at any depth
   learns about a dirty descendant — a text editor, an input, a form — with
-  no code walking down into the tree. No existing component calls
-  `setDirty()` yet; no consumer action is needed.
+  no code walking down into the tree. No consumer action is needed.
 
 ## Fixed
 
