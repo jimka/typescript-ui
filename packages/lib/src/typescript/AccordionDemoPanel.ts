@@ -298,10 +298,12 @@ class AccordionDemoPanel extends Panel {
 
         panel.setLayoutManager(new VBox({ stretching: true }));
 
-        panel.addComponent(new Text('Accordion Layout Manager', {
+        const title = new Text('Accordion Layout Manager', {
             fontWeight   : 'bold',
             preferredSize: { width: 0, height: 20 },
-        }));
+        });
+
+        panel.addComponent(title);
 
         panel.addComponent(new Text('Vertically stacked sections with CSS height animation.', {
             preferredSize: { width: 0, height: 20 },
