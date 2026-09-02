@@ -340,7 +340,21 @@ class MiscPanel extends Panel {
                 // TODO: Will this lead to a race condition if we don't 'await'?
                 tableStore.sync();
 
-                return tablePanel;
+                // Proves Table.isDirty() — this plan's new store-derived
+                // dirty flag — bubbling up through TablePanel via the
+                // framework's existing parent-to-child relay: nothing in
+                // TablePanel.ts reads or forwards it.
+                const dirtyStatus = new Text('');
+                const updateDirtyStatus = () =>
+                    dirtyStatus.setText(`Dirty — table: ${tablePanel.isDirty() ? 'yes' : 'no'}`);
+                tablePanel.onDirtyChange(updateDirtyStatus);
+                updateDirtyStatus();
+
+                const host = new Panel({ layoutManager: new VBox({ stretching: true }) });
+                host.addComponent(tablePanel, { weight: 1 });
+                host.addComponent(dirtyStatus);
+
+                return host;
             });
 
             win2.show();
