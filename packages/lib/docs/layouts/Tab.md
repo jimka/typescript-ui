@@ -71,7 +71,7 @@ A close **destroys** the content: once every `tabclose` listener has run, `Tab` 
 
 A tab button's label resolves in priority order: the per-placement `name` constraint above, then the component's intrinsic [`name`](/api/core/classes/Component#getname) (which travels with it across moves and tear-offs), then its `id` as a last resort. So a component constructed with `{ name: "Console" }` labels its tab automatically — and its torn-off window title too — without any constraint, while the constraint stays available to override the label for a specific placement.
 
-## Renaming and re-iconing a tab
+## Renaming, re-iconing and italicising a tab
 
 The label resolved at creation is otherwise frozen — `setTabName(content, name)` relabels a live tab's button and re-lays out the strip:
 
@@ -90,6 +90,16 @@ layout.clearTabGlyph(consolePanel);
 ```
 
 Both return `true` when `content` has a tab, `false` otherwise — including for a lazy tab whose factory has not run yet, since it has no content component to key on. [`TabBar`](/components/TabBar)'s own `setEntryGlyph(id, glyph)` / `clearEntryGlyph(id)` reach such a cell directly, by its owner-minted id, but change only the live button — they don't write the `glyph` constraint, so the change does not survive a tear-off, a re-dock, or a saved layout the way `setTabGlyph` does.
+
+`setTabItalic(content, italic)` italicises (or restores) a tab's label — the VS Code-style preview-tab treatment, with nothing else about the tab changed — and `isTabItalic(content)` reads the flag back:
+
+```typescript
+layout.setTabItalic(consolePanel, true);
+// ...
+layout.setTabItalic(consolePanel, false);
+```
+
+Unlike `setTabGlyph`, the italic flag is **view-only**: it is not written to the tab's `LayoutConstraints`, so a tear-off, a re-dock, or a restored layout brings the tab back upright.
 
 ## Selecting a tab
 
