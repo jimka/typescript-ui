@@ -92,11 +92,14 @@ const SCROLL_ARROW_STEP = 80;
  * - `"dockhover"()` — a foreign tab has dwelt over this strip long enough to
  *   spring-load a raise; the owner surfaces the strip's window so a backgrounded
  *   float can be aimed at.
+ * - `"tabdblclick"(id)` — a cell's tab button was double-clicked; the owner
+ *   re-emits it with the live content.
  *
  * @category Components
  */
 export type TabBarEvent =
-    "tabpressed" | "reorder" | "tabclose" | "dockrequested" | "tabdragstart" | "tearoffrequested" | "detach" | "dockhover";
+    "tabpressed" | "reorder" | "tabclose" | "dockrequested" | "tabdragstart" | "tearoffrequested" | "detach"
+    | "dockhover" | "tabdblclick";
 
 /**
  * Declares a strip tool that also surfaces in the tab context menu's `Tools`
@@ -768,6 +771,7 @@ class TabBar extends Container<TabBarOptions> {
         DOM.sink.appendChild(clip, this._reorderBar.getElement(true)!);
 
         Event.addSubtreeListener(this, "keydown", this.onToolbarKeyDown);
+        Event.addSubtreeListener(this, "dblclick", this.onTabDoubleClick);
 
         // The reorder option may have been set during construction before the
         // strip element existed; perform the deferred install now.
@@ -1295,6 +1299,28 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
+     * Returns the cell whose tab button contains `target`, or `null` when the
+     * target lands outside every tab button.
+     */
+    private entryForTarget(target: EventTarget | null): BarEntry | null {
+        if (!DOM.source.isNode(target)) {
+            return null;
+        }
+
+        const targetHandle = DOM.source.intern(target);
+
+        for (const entry of this._entries) {
+            const buttonEl = entry.button.getElement();
+
+            if (buttonEl && DOM.source.contains(buttonEl, targetHandle)) {
+                return entry;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Returns whether an event target lands on the bar's interactive chrome —
      * a tab wrapper, the tool group, the leading widget, or an overflow
      * scroll-arrow button — as opposed to the draggable blank area. The tab
@@ -1308,19 +1334,15 @@ class TabBar extends Container<TabBarOptions> {
      * @returns `true` when the target is interactive bar chrome.
      */
     private isBarChromeTarget(target: EventTarget | null): boolean {
+        if (this.entryForTarget(target) !== null) {
+            return true;
+        }
+
         if (!DOM.source.isNode(target)) {
             return false;
         }
 
         const targetHandle = DOM.source.intern(target);
-
-        for (const entry of this._entries) {
-            const wrapperEl = entry.button.getElement();
-
-            if (wrapperEl && DOM.source.contains(wrapperEl, targetHandle)) {
-                return true;
-            }
-        }
 
         const toolGroupEl = this._toolGroup.getElement();
 
@@ -1339,6 +1361,19 @@ class TabBar extends Container<TabBarOptions> {
         }
 
         return false;
+    }
+
+    /**
+     * Subtree `dblclick` handler: emits `"tabdblclick"` for the cell the gesture
+     * landed on. A double-click on the strip's blank area or its fixed chrome
+     * resolves to no cell and emits nothing.
+     */
+    private onTabDoubleClick(e: MouseEvent): void {
+        const entry = this.entryForTarget(e.target);
+
+        if (entry) {
+            this.emit("tabdblclick", entry.id);
+        }
     }
 
     /**
@@ -3265,6 +3300,7 @@ class TabBar extends Container<TabBarOptions> {
     on(event: "tearoffrequested", listener: (id: string, clientX: number, clientY: number, forceBare: boolean) => void): this;
     on(event: "detach",         listener: (id: string) => void): this;
     on(event: "dockhover",        listener: () => void): this;
+    on(event: "tabdblclick",      listener: (id: string) => void): this;
     on(event: TabBarEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -3301,6 +3337,7 @@ class TabBar extends Container<TabBarOptions> {
     protected emit(event: "tearoffrequested", id: string, clientX: number, clientY: number, forceBare: boolean): void;
     protected emit(event: "detach",         id: string): void;
     protected emit(event: "dockhover"): void;
+    protected emit(event: "tabdblclick",      id: string): void;
     protected emit(event: TabBarEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
