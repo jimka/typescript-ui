@@ -421,3 +421,40 @@ class-level summary and curated seam entries, neither of which this change touch
     declaring it. The ordering is stated in prose instead — here, and as a precondition step
     in Loom's plan. Nothing in this plan depends on Loom; it stands alone and can ship on its
     own.
+
+---
+
+## Implementation Notes
+
+- **The entry branch routes through `nearestEnabledIndex`, not a bare `moveFocus(0)` /
+  `moveFocus(len - 1)`.** This plan predates `list-row-enabled-state`, which landed on this
+  branch's history first and added per-row `enabled` state, `isItemEnabled`, and the
+  `nearestEnabledIndex` scan that every other key in `handleNavigationKey` already goes
+  through before calling `moveFocus`. The `## Internal Structure` snippet's raw
+  `this.moveFocus(e.key === "End" ? this._items.length - 1 : 0, ctrl, e.shiftKey)` would have
+  landed the entry keys on a disabled row 0 (or a disabled last row, for `End`) instead of
+  skipping it — reintroducing exactly the kind of gap `nearestEnabledIndex` exists to close.
+  The implemented branch instead computes `direction`/`target` the same way the rest of the
+  function does and shares its `target < 0` ("every row disabled") guard, so entering the list
+  is subject to the identical disabled-row rule as every other navigation key. Covered by
+  `List.test.ts`'s `'entering the list with ArrowDown skips a disabled row 0'` case, which the
+  plan's own snippet would have failed. `setFocusedIndex` itself is unaffected — it mirrors
+  `setSelectedIndex`, which has never checked `isItemEnabled`, so it keeps that same
+  no-enabled-check contract.
+
+- **The `## Verification` section's ComboBox manual check could not be exercised as written.**
+  Every `ComboBox` currently wired into the library's demo app (`MiscPanel.ts`) — including the
+  `Popover + ComboBox (nested)` demo built from a plain `items` array with no `value` or
+  `selectedIndex` — resolves to a real selection before any keypress, because
+  `ComboBox.autoSelectFirstIfEmpty` (`ComboBox.ts:1346`) selects row 0 whenever the inner list's
+  selection is still `-1` after items are set; it runs from `applyOptions`, `setItems`, and
+  `setStore`, so a freshly constructed `items`-based `ComboBox` never sits in the unfocused
+  state this plan's fix is about — there is no demo wiring today that reaches it live. The
+  `AutoCompleteField` demo (which has no such auto-select) was used instead and confirms the
+  fix directly: typing into
+  the "AutoComplete:" field on the Misc panel and pressing `ArrowDown` once now focuses the
+  *first* suggestion (previously the second), and pressing `Enter` before any arrow key still
+  commits nothing and leaves the typed text untouched. The `ComboBox`-specific code path is the
+  same `AbstractSelectableList.handleNavigationKey` exercised by `AutoCompleteDropdown`, and is
+  covered directly by the automated `List.test.ts` cases, so this is a gap in the demo app's
+  wiring for manual verification, not in the fix or its test coverage.
