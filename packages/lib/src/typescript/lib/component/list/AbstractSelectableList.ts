@@ -1918,6 +1918,27 @@ abstract class AbstractSelectableList<
     }
 
     /**
+     * Sets the keyboard-focus mark to `idx`, independent of the
+     * selection: the selected row (if any) is untouched and no `change`
+     * or `action` event fires. An index outside the item array clears
+     * the focus mark instead of throwing.
+     *
+     * @param idx - The zero-based index to focus, or an out-of-range
+     *   value to clear the focus mark.
+     *
+     * @returns This component, for method chaining.
+     */
+    setFocusedIndex(idx: number): this {
+        this._focusedIndex = idx >= 0 && idx < this._items.length ? idx : -1;
+
+        this.refreshRowVisualState();
+        this.updateActiveDescendant();
+        this.scrollIndexIntoView(this._focusedIndex);
+
+        return this;
+    }
+
+    /**
      * Returns the framework-generated DOM element id of the keyboard-focus
      * row, suitable for writing into a host input's `aria-activedescendant`.
      * Returns `null` when no row holds focus or the focused row hasn't
@@ -2080,9 +2101,27 @@ abstract class AbstractSelectableList<
 
         e.preventDefault();
 
+        // The first navigation key enters the list rather than stepping
+        // through it: every key lands on row 0 except `End`, which still
+        // means "the last row". Routed through `nearestEnabledIndex` so
+        // entering a list whose row 0 (or last row) is disabled lands on
+        // the nearest enabled row instead, same as every other key below.
+        if (this._focusedIndex < 0) {
+            const direction: 1 | -1 = e.key === "End" ? -1 : 1;
+            const target = this.nearestEnabledIndex(e.key === "End" ? this._items.length - 1 : 0, direction);
+
+            if (target < 0) {
+                return true;
+            }
+
+            this.moveFocus(target, ctrl, e.shiftKey);
+
+            return true;
+        }
+
         const viewportH = this.getHeight() || ROW_HEIGHT_PX;
         const pageSize  = Math.max(1, Math.floor(viewportH / ROW_HEIGHT_PX));
-        const curr      = this._focusedIndex < 0 ? 0 : this._focusedIndex;
+        const curr      = this._focusedIndex;
         let next: number;
 
         if (e.key === "ArrowDown") {
@@ -2197,10 +2236,7 @@ abstract class AbstractSelectableList<
         // unaffected (same behaviour as the native `<select>` it
         // replaces — typing a letter previews the row without
         // committing).
-        this._focusedIndex = idx;
-        this.refreshRowVisualState();
-        this.updateActiveDescendant();
-        this.scrollIndexIntoView(idx);
+        this.setFocusedIndex(idx);
     }
 
     /**
