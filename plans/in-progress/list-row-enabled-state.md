@@ -451,3 +451,27 @@ Read before implementing:
 [^why-prune-local]: `reduceModifierSelection` is shared with the table body (`Body`) and is deliberately generic over the selection identity type — it knows nothing about items, let alone about an enabled flag. Teaching it a predicate would widen its signature for every caller and pull `Body` into this change. Pruning in `MultiSelectList.reduceSelection` instead is three lines in one place, and it is provably a user-gesture-only path: `reduceSelection` is reached from `handleRowClick`, `moveFocus` and `commitFocusedRow` and from nowhere else, while `setValues` writes the selection set directly. `List.reduceSelection` needs no prune — it selects exactly the one index it is given, and all three of its callers now filter that index.
 
 [^why-dblclick-not-contextmenu]: The two events differ in what the library says they mean. `handleRowDblClick`'s own doc comment describes it as layering "an activation signal on top" of the click that already selected the row, so it must refuse wherever the click refuses. `handleRowContextMenu` is documented as deliberately *not* changing the selection, mirroring `Tree` — it opens an inspection surface rather than activating anything, and a host may well want a context menu on an unavailable row ("why is this greyed out", "install this"). It therefore keeps firing, and the host decides what to offer.
+
+---
+
+## Implementation Notes
+
+**Step 4's `:not(.disabled)` guard on the hover selector was replaced with a separate override rule, because the guard as specified regresses hovering a selected row.**
+
+The plan called for changing the hover selector from `.SelectableListRow:hover` to `.SelectableListRow:not(.disabled):hover`. `:not()` takes the specificity of its argument, so this raised the hover rule's specificity from `(0,2,0)` to `(0,3,0)` — one class higher than `.SelectableListRow.selected`'s `(0,2,0)`. Before the change, the two rules tied at `(0,2,0)` and `.selected` won ties on `background-color` purely by being declared later in the same IIFE (the file's existing tie-breaking idiom, also relied on by the `.disabled`/`.selected` combination the plan's own specificity table documents). After the change, the hover rule unconditionally outranks `.selected` by specificity regardless of declaration order, so hovering an **enabled, selected** row now paints the weaker `--ts-ui-list-row-hover-bg` over the stronger `--ts-ui-list-row-selected-bg` — a real visual regression the plan's specificity table (which enumerates only *enabled+hovered*, *disabled+hovered*, and *selected+disabled*) did not catch, because it never enumerated *selected+enabled+hovered*.
+
+The fix keeps the hover rule at its original `.SelectableListRow:hover` (`(0,2,0)`), so its tie with `.selected` resolves by source order exactly as before, and adds a new, separate rule registered after `.disabled`:
+
+```typescript
+new StyleRule({
+    scope:  "selector",
+    name:   ".SelectableListRow.disabled:hover:not(.selected)",
+    styles: {
+        backgroundColor: "transparent",
+    },
+});
+```
+
+This rule's specificity (`(0,4,0)`) only matters when it actually matches, and `:not(.selected)` means it never matches a selected row — so a selected-and-disabled row's hover leaves the `.selected`/hover tie (still `(0,2,0)`/`(0,2,0)`, still resolved by source order) completely alone, and its selection background survives exactly as the plan's *selected and disabled* row of the specificity table requires. For a disabled, non-selected row, the new rule does match and overrides the hover rule's `background-color` back to `transparent` — the row's own un-hovered default, since neither `SelectableListRow` nor its class defaults set a resting `background-color`.
+
+Verified in a browser (`npm run docs:dev`, the same temporary `list.setItemEnabled(2, false)` edit to `packages/docs/src/demos/list-selection.ts` the plan's Verification section describes, reverted after) across all four combinations: enabled+hover (hover tint, unchanged), enabled+selected+hover (selection wash, the fixed case), disabled+hover (no wash), and disabled+selected+hover (selection wash retained). The plan's step-4 checkpoint (`grep -n 'SelectableListRow:hover'` expecting zero matches) no longer holds, since the plain selector was restored; the checkpoint was written for the specific (buggy) selector text the plan specified, and the intent it was checking — that hover is suppressed on a disabled row — is instead covered by the new rule and the manual verification above.
