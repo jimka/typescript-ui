@@ -34,12 +34,18 @@ The list root is focusable; rows are not. Focus tracks the active row via `aria-
 
 | Key | Behaviour |
 |---|---|
-| `ArrowUp` / `ArrowDown` | Move focus and selection by one row. |
+| `ArrowUp` / `ArrowDown` | Move focus and selection by one row. With no row focused yet, the first press lands on the first row. |
 | `Home` / `End` | Jump to the first / last row. |
 | `PageUp` / `PageDown` | Jump by one visible-row count. |
 | `Enter` / `Space` | Commit the focused row. |
 | Printable character | Type-ahead — focus the first row whose label starts with the buffer. The buffer resets after a 700ms pause. |
 | `Escape` | Clear the type-ahead buffer. |
+
+A host that drives the list from its own input surface — a search field filtering the rows
+as you type — can highlight a row up front with
+[`setFocusedIndex`](/api/component/list/classes/List#setfocusedindex), so `Enter` commits it
+without an arrow keypress first. It moves the focus mark only: the selection is untouched and
+no `change` event fires.
 
 Navigation and type-ahead skip disabled rows entirely — see [Disabled rows](#disabled-rows) below.
 
