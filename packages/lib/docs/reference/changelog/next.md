@@ -127,6 +127,10 @@ page resets to empty.
   or restore a live tab's label. Unlike `setTabGlyph`, the flag is
   view-only — it is not written to the tab's `LayoutConstraints`, so it
   does not survive a tear-off, a re-dock, or a saved layout.
+- **`Tab`'s `"tabdblclick"` event** fires when a tab button in the strip is
+  double-clicked, carrying that tab's content and its zero-based index. It
+  does not fire for a double-click on the strip's blank area or fixed
+  chrome, nor for a lazy tab whose deferred content has not been built.
 
 ### Core
 
