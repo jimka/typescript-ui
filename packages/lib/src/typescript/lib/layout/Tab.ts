@@ -1239,6 +1239,78 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Replaces the leading icon of the tab hosting `content`.
+     *
+     * @param content - The content component whose tab to re-icon.
+     * @param glyph - Registry glyph name to display.
+     *
+     * @returns `true` when a matching tab was found, `false` otherwise.
+     *
+     * @remarks
+     * A lazy tab whose factory has not run yet has no content component to
+     * key on, so this returns `false` for it. {@link TabBar.setEntryGlyph}
+     * reaches such a cell directly, by its owner-minted id.
+     */
+    setTabGlyph(content: Component, glyph: string): boolean {
+        return this.applyTabGlyph(content, glyph);
+    }
+
+    /**
+     * Removes the leading icon of the tab hosting `content`.
+     *
+     * @param content - The content component whose tab to clear.
+     *
+     * @returns `true` when a matching tab was found, `false` otherwise.
+     *
+     * @remarks
+     * Same lazy-tab limitation as {@link setTabGlyph}: a tab whose factory
+     * has not run yet has no content component to key on, so this returns
+     * `false` for it. {@link TabBar.clearEntryGlyph} reaches such a cell
+     * directly, by its owner-minted id.
+     */
+    clearTabGlyph(content: Component): boolean {
+        return this.applyTabGlyph(content, null);
+    }
+
+    /**
+     * Shared implementation for {@link setTabGlyph} / {@link clearTabGlyph}.
+     * Writes `glyph` back to the tab's stored `LayoutConstraints` — the
+     * glyph's durable home, re-read by `createTab` on a re-dock and captured
+     * by layout serialization — in addition to swapping the live button icon.
+     *
+     * @param content - The content component whose tab to update.
+     * @param glyph - Registry glyph name to display, or `null` to clear it.
+     *
+     * @returns `true` when a matching tab was found, `false` otherwise.
+     */
+    private applyTabGlyph(content: Component, glyph: string | null): boolean {
+        const entry = this._contents.find(e => e.component === content);
+
+        if (!entry) {
+            return false;
+        }
+
+        let constraints = this.getLayoutConstraints(content);
+
+        if (!constraints) {
+            constraints = new LayoutConstraints();
+            this.setLayoutConstraints(content, constraints);
+        }
+
+        constraints.glyph = glyph;
+
+        if (glyph === null) {
+            this._bar.clearEntryGlyph(entry.id);
+        } else {
+            this._bar.setEntryGlyph(entry.id, glyph);
+        }
+
+        this.getContainer()?.scheduleLayout();
+
+        return true;
+    }
+
+    /**
      * Marks the tab hosting `content` as busy (or not). Its tab button shows a
      * loading overlay until the flag is cleared or the tab is closed. Deferred
      * tabs are driven automatically while their content builds; this is the
