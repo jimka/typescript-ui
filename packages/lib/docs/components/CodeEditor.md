@@ -75,13 +75,37 @@ registerLanguage({
 
 ## `format()` semantics
 
-`editor.format()` returns a `Promise<void>`:
+`editor.format(options?)` returns a `Promise<void>`:
 
 - If the active language has a formatter, it is invoked with the current document text. On success, the whole document is replaced in one transaction and the cursor is preserved (mapped by Prettier's `formatWithCursor`, or clamped to the new document length for `sql-formatter`, which has no cursor map).
 - If the formatter's result matches the document already held, it is left **completely untouched** — no transaction, so no re-render, no undo entry, and no `"change"` event for a save that had nothing to reformat.
 - When the result does change the document, the editor's visible area no longer unconditionally jumps to the top. It stays exactly in place when nothing above it changed length, which is the common case for an incremental edit-then-save, and can otherwise shift — by roughly however much text the formatter added or removed above it, never all the way back to the top — when a reformat changes text throughout the document, e.g. a first-time format of a wholly unformatted file.
-- If the formatter **throws** (invalid syntax), the promise **rejects** and the document is left **completely untouched** — formatting never loses content.
-- If the active language has no formatter (or none is set), `format()` re-indents the whole document using CodeMirror's own indentation service instead.
+- If the formatter **throws** (invalid syntax, or an `options` value the engine rejects — e.g. a negative `indentWidth`), the promise **rejects** and the document is left **completely untouched** — formatting never loses content.
+- If the active language has no formatter (or none is set), `format()` re-indents the whole document using CodeMirror's own indentation service instead, ignoring `options` entirely.
+
+## Formatting options
+
+`format(options?)` accepts a `FormatOptions` bag of style knobs, forwarded to the active language's formatter. Each field is optional, and an absent field leaves that engine's own default alone:
+
+```typescript
+await editor.format({ indentWidth: 4, singleQuote: true });
+```
+
+The options are a per-call argument — the editor stores none of them, so a caller that wants them applied on every format passes them on every call. No field is honoured by every built-in language:
+
+| `FormatOptions` field | Engine option | `javascript` | `json` | `html` | `markdown` | `sql` |
+|---|---|---|---|---|---|---|
+| `indentWidth` | `tabWidth` (both engines) | ✔ | ✔ | ✔ | ✔ list nesting only | ✔ |
+| `useTabs` | `useTabs` (both engines) | ✔ | ✔ | ✔ | — | ✔ |
+| `lineWidth` | Prettier `printWidth` | ✔ | ✔ | ✔ | ✔ only with `proseWrap: "always"` | — |
+| `singleQuote` | Prettier `singleQuote` | ✔ | — | — | — | — |
+| `semicolons` | Prettier `semi` | ✔ | — | — | — | — |
+| `trailingComma` | Prettier `trailingComma` | ✔ | — | — | — | — |
+| `arrowParens` | Prettier `arrowParens` | ✔ | — | — | — | — |
+| `bracketSpacing` | Prettier `bracketSpacing` | ✔ | ✔ | — | — | — |
+| `proseWrap` | Prettier `proseWrap` | — | — | — | ✔ | — |
+| `htmlWhitespaceSensitivity` | Prettier `htmlWhitespaceSensitivity` | — | — | ✔ | — | — |
+| `keywordCase` | `sql-formatter` `keywordCase` | — | — | — | — | ✔ |
 
 ## Dirty state
 
@@ -104,7 +128,7 @@ Tab then moves focus again, and the same shortcut switches back to indenting.
 | `getValue()` / `setValue(value)` | Read or replace the whole document. |
 | `getLanguage()` / `setLanguage(id)` | Read or swap the active language (grammar loads lazily). |
 | `getReadOnly()` / `setReadOnly(readOnly)` | Read or toggle whether the editor accepts edits. |
-| `format()` | Format the document (or re-indent, with no formatter). |
+| `format(options?)` | Format the document (or re-indent, with no formatter). |
 | `on('change', fn)` / `off('change', fn)` | Subscribe to document changes. |
 | `getAutoHeightMaxRows()` | Read the configured `autoHeightMaxRows`, or `null` when unset. |
 | `on('heightchange', fn)` / `off('heightchange', fn)` | Subscribe to the editor's own auto-height changes (only fires when `autoHeightMaxRows` is set). |
