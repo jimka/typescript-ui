@@ -35,7 +35,9 @@ panel.addComponent(tags);
 | `Shift`-click | Extend the selection from the anchor row to the targeted row. |
 | `Shift`-`ArrowUp` / `Shift`-`ArrowDown` | Extend the selection by one row. |
 | `Ctrl`-`ArrowUp` / `Ctrl`-`ArrowDown` | Move focus without changing selection. |
-| `Ctrl`-`A` | Select every row. |
+| `Ctrl`-`A` | Select every row. Disabled rows are skipped. |
+
+A `Shift`-extension that crosses a disabled row drops it from the resulting selection — see [Disabled rows](#disabled-rows).
 
 ## Common methods
 
@@ -49,6 +51,10 @@ panel.addComponent(tags);
 ## Item renderers
 
 `MultiSelectList` inherits the `rendererFactory` option / `setRendererFactory` and the per-item `glyph` field from the shared list base, so a [`GlyphListItemRenderer`](/api/component/list/classes/GlyphListItemRenderer) paints an icon beside each row exactly as in [`List`](/components/List#item-renderers).
+
+## Disabled rows
+
+`MultiSelectList` inherits the per-item `enabled` field, `isItemEnabled` and `setItemEnabled` from the shared list base, and it behaves exactly as in [List](/components/List#disabled-rows): a disabled row renders dim, refuses a click, and is skipped by keyboard navigation and type-ahead. `Ctrl`-`A` and a `Shift`-range extension additionally skip disabled rows when building the multi-selection.
 
 ## Horizontal scrolling
 
