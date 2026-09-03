@@ -1470,6 +1470,70 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
+     * Replaces the leading icon of the cell with `id`, updating the strip
+     * button and re-laying out the strip. No-op for an unknown id.
+     *
+     * @param id - The cell id whose icon to replace.
+     * @param glyph - Registry glyph name to display.
+     *
+     * @returns This tab strip, for method chaining.
+     *
+     * @remarks
+     * View-only: this bar never touches a container's `LayoutConstraints`,
+     * so the change does not survive a tear-off, a re-dock, or a saved
+     * layout the way [`Tab.setTabGlyph`](/api/layout/classes/Tab#settabglyph)
+     * does. Reach for this method only when `Tab.setTabGlyph` can't — a lazy
+     * cell whose content hasn't materialised yet, addressed here by its
+     * owner-minted id instead.
+     */
+    setEntryGlyph(id: string, glyph: string): this {
+        const entry = this.entryById(id);
+
+        if (entry) {
+            entry.button.setGlyph(glyph);
+            this.scheduleLayout();
+        }
+
+        return this;
+    }
+
+    /**
+     * Removes the leading icon of the cell with `id`, updating the strip
+     * button and re-laying out the strip. No-op for an unknown id.
+     *
+     * @param id - The cell id whose icon to remove.
+     *
+     * @returns This tab strip, for method chaining.
+     *
+     * @remarks
+     * View-only, like {@link setEntryGlyph}: this bar never touches a
+     * container's `LayoutConstraints`, so the removal does not survive a
+     * tear-off, a re-dock, or a saved layout the way
+     * [`Tab.clearTabGlyph`](/api/layout/classes/Tab#cleartabglyph) does.
+     */
+    clearEntryGlyph(id: string): this {
+        const entry = this.entryById(id);
+
+        if (entry) {
+            entry.button.clearGlyph();
+            this.scheduleLayout();
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the registry glyph name on the cell with `id`.
+     *
+     * @param id - The cell id to query.
+     *
+     * @returns The glyph name, or `null` when the cell has none or the id is unknown.
+     */
+    getEntryGlyph(id: string): string | null {
+        return this.entryById(id)?.button.getGlyph()?.getGlyphName() ?? null;
+    }
+
+    /**
      * Records the live content's component id on the cell with `id`. The id feeds
      * the drag payload (so a foreign strip can resolve the content from the shared
      * registry) and the cell button's ARIA `aria-controls` (so the button is

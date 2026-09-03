@@ -66,12 +66,12 @@ A close **destroys** the content: once every `tabclose` listener has run, `Tab` 
 | --- | --- |
 | `name` | Per-placement tab button label override (see resolution below). |
 | `closeable` | When `true`, render a [`TabCloseButton`](/components/TabCloseButton) inside the tab button. |
-| `glyph` | Optional registry glyph name shown leading the tab button's label (dispatched to the button's `setGlyph`). |
+| `glyph` | Optional registry glyph name shown leading the tab button's label (dispatched to the button's `setGlyph`). Also the value `setTabGlyph` updates, so a runtime icon change survives a tear-off, a re-dock and a saved layout. |
 | `disposeOnClose` | Whether closing this tab destroys its content. Defaults to `true`; pass `false` for a component you hold and intend to re-use after the tab closes. |
 
 A tab button's label resolves in priority order: the per-placement `name` constraint above, then the component's intrinsic [`name`](/api/core/classes/Component#getname) (which travels with it across moves and tear-offs), then its `id` as a last resort. So a component constructed with `{ name: "Console" }` labels its tab automatically — and its torn-off window title too — without any constraint, while the constraint stays available to override the label for a specific placement.
 
-## Renaming a tab
+## Renaming and re-iconing a tab
 
 The label resolved at creation is otherwise frozen — `setTabName(content, name)` relabels a live tab's button and re-lays out the strip:
 
@@ -80,6 +80,16 @@ layout.setTabName(consolePanel, 'Console •');
 ```
 
 Returns `true` when `content` has a tab, `false` otherwise.
+
+A tab's leading icon is likewise frozen at creation. `setTabGlyph(content, glyph)` swaps it for a live tab, and `clearTabGlyph(content)` removes it; both write back to the tab's `glyph` constraint, so the change survives a tear-off, a re-dock, or a saved-and-restored layout:
+
+```typescript
+layout.setTabGlyph(consolePanel, 'triangle-exclamation');
+// ...
+layout.clearTabGlyph(consolePanel);
+```
+
+Both return `true` when `content` has a tab, `false` otherwise — including for a lazy tab whose factory has not run yet, since it has no content component to key on. [`TabBar`](/components/TabBar)'s own `setEntryGlyph(id, glyph)` / `clearEntryGlyph(id)` reach such a cell directly, by its owner-minted id, but change only the live button — they don't write the `glyph` constraint, so the change does not survive a tear-off, a re-dock, or a saved layout the way `setTabGlyph` does.
 
 ## Selecting a tab
 

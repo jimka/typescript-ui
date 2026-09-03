@@ -1729,10 +1729,13 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * visual artifacts at the default 0px spacing. The glyph is a dedicated
      * `ButtonIconGlyph` (not a bare `Glyph`), so every unpinned icon's
      * `minSize`/`maxSize` shares one `.ButtonIconGlyph` CSS rule instead of
-     * each carrying its own.
+     * each carrying its own. The replaced glyph is destroyed, so a caller
+     * holding a reference from an earlier {@link getGlyph} must not reuse it
+     * across a `setGlyph` call.
      */
     setGlyph(name: string): this {
-        const glyph = new ButtonIconGlyph(name);
+        const outgoing = this._glyph;
+        const glyph    = new ButtonIconGlyph(name);
         glyph.setPointerEvents("none");
 
         // Reassign before the rebuild; the rebuild empties the content
@@ -1749,6 +1752,11 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
 
         this._rebuildContentRow();
 
+        // The rebuild only detaches the replaced glyph (removeAllComponents is
+        // detach-only), so discard it here or every swap strands its element
+        // and its per-instance stylesheet rule.
+        outgoing?.dispose();
+
         // The content row's preferred size shifted — re-sync the button's
         // auto-derived preferred size (also sizes the glyph) unless the
         // consumer has pinned it.
@@ -1758,15 +1766,23 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Removes the leading glyph from the button, if one is present.
+     * Removes the leading glyph from the button, if one is present. The
+     * removed glyph is destroyed, so a caller holding a reference from an
+     * earlier {@link getGlyph} must not reuse it across a `clearGlyph` call.
      *
      * @returns This component, for method chaining.
      */
     clearGlyph(): this {
+        const outgoing = this._glyph;
+
         this._glyph           = null;
         this._glyphSyncedSize = null;
 
         this._rebuildContentRow();
+
+        // See setGlyph: the rebuild only detaches, so dispose explicitly.
+        outgoing?.dispose();
+
         this.recomputePreferredSize();
 
         return this;

@@ -94,6 +94,10 @@ page resets to empty.
   accepts the current value as that point. A composite control (a picker
   field's inner text input, `NumberSpinner`'s inner field, and similar)
   re-baselines together with its host. No consumer action is needed.
+- **`TabBar` gains `setEntryGlyph(id, glyph)` / `clearEntryGlyph(id)` /
+  `getEntryGlyph(id)`** — a cell's leading icon was previously fixed at
+  creation; these swap, remove, or read it on a live cell, mirroring the
+  existing `setEntryName` / `getEntryName` pair.
 
 ### Data
 
@@ -110,6 +114,10 @@ page resets to empty.
   the context menu's *Close*, and every bulk-close row) before a tab is torn
   down, and can be vetoed via its `TabCloseController.preventDefault()`. The
   programmatic `closeTab` is not guarded by it.
+- **`Tab.setTabGlyph(content, glyph)` / `clearTabGlyph(content)`** swap or
+  remove the leading icon of a live tab, mirroring the existing
+  `setTabName`. The change writes back to the tab's `glyph` constraint, so
+  it survives a tear-off, a re-dock, or a saved-and-restored layout.
 
 ### Core
 
@@ -225,3 +233,9 @@ page resets to empty.
   the bug. No consumer action is needed; a justified, aligned, anchored, or
   filled child in a host with non-zero insets or padding now lands flush
   with the host's true far edge instead of stopping short of it.
+- **`Button.setGlyph` / `clearGlyph` now dispose the glyph they replace or
+  remove**, instead of leaving it detached but alive. Every repeated swap on
+  the same button previously stranded a `Glyph` component holding its
+  element and its per-instance stylesheet rule. A caller holding a
+  reference from an earlier `getGlyph()` must not reuse it across a
+  `setGlyph` / `clearGlyph` call.

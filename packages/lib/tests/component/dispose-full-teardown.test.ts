@@ -118,10 +118,13 @@ const REGISTRY: Array<{
         covers: ['VideoPlayer'],
         make: () => new VideoPlayer(),
         ownIds: (c) => collectIds(c),
-        // Pre-existing, unrelated to the raw-append leaks this plan fixes —
-        // recorded so the balance assertion doesn't block on it. The number
-        // may only go down.
-        undisposedBaseline: 4,
+        // Used to carry `undisposedBaseline: 4`: the constructor's initial
+        // `syncFromState` call redundantly re-set the play and mute buttons'
+        // already-correct glyphs, and `Button.setGlyph` discarded each
+        // outgoing glyph without disposing it. Fixed by
+        // plans/implemented/tab-set-glyph.md, which makes `setGlyph` /
+        // `clearGlyph` dispose the glyph they replace or remove — the
+        // balance is now zero like every other row.
     },
     { name: 'MenuItem',      covers: ['MenuItem'], make: () => new MenuItem({ text: 'A' }, () => {}, () => {}) },
     { name: 'AbstractChart (via LineChart)', covers: ['AbstractChart'], make: () => new LineChart({}) },

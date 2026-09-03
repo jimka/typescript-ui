@@ -1,6 +1,10 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { TabBar } from '~/component/container/TabBar';
+import { TabButton } from '~/component/button/TabButton';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
+import { Glyph } from '~/component/display/Glyph';
+import { file } from '~/glyphs/solid/file';
+import { file_lines } from '~/glyphs/solid/file_lines';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -20,6 +24,20 @@ function closeable(): LayoutConstraints {
     c.closeable = true;
 
     return c;
+}
+
+/** A LayoutConstraints carrying a glyph name. */
+function glyphed(name: string): LayoutConstraints {
+    const c = new LayoutConstraints();
+
+    c.glyph = name;
+
+    return c;
+}
+
+/** Reaches TabBar's private `_entries`, the same private surface other suites cast through. */
+function barEntries(bar: TabBar): Array<{ id: string; button: TabButton }> {
+    return (bar as unknown as { _entries: Array<{ id: string; button: TabButton }> })._entries;
 }
 
 /** Builds a TabBar with three entries: a, b, c (no constraints). */
@@ -237,5 +255,101 @@ describe('TabBar entry metadata', () => {
         // Documented defaults for an unknown id.
         expect(bar.getEntryName('missing')).toBe('');
         expect(bar.isEntryCloseable('missing')).toBe(false);
+    });
+});
+
+describe('TabBar glyph', () => {
+    // 'file' / 'file-lines' are SVG-kind glyphs, so (per Glyph.test.ts's
+    // convention) each case registers them and this cleans up afterward to
+    // avoid leaking into the global registry.
+    afterEach(() => {
+        Glyph.unregister('file');
+        Glyph.unregister('file-lines');
+        DOM.reset();
+    });
+
+    it('7 — setEntryGlyph on an unknown id is a no-op and chainable; getEntryGlyph is null', () => {
+        installTestDOM(CONFIG);
+
+        const bar = threeEntryBar();
+
+        expect(bar.setEntryGlyph('nope', 'file')).toBe(bar);
+        expect(bar.getEntryGlyph('nope')).toBeNull();
+        expect(barEntries(bar).every(e => e.button.getGlyph() === null)).toBe(true);
+    });
+
+    it('8 — swapping the active entry\'s glyph leaves it active and selected', () => {
+        installTestDOM(CONFIG);
+        Glyph.register(file);
+
+        const bar = threeEntryBar(); // 'a' is active
+
+        bar.setEntryGlyph('a', 'file');
+
+        expect(bar.getActiveEntryId()).toBe('a');
+        expect(barEntries(bar)[0].button.isSelected()).toBe(true);
+    });
+
+    it('9 — swapping a closeable entry\'s glyph leaves its close button instance untouched', () => {
+        installTestDOM(CONFIG);
+        Glyph.register(file);
+
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha', closeable());
+
+        const before = barEntries(bar)[0].button.getCloseButton();
+
+        bar.setEntryGlyph('a', 'file');
+
+        expect(barEntries(bar)[0].button.getCloseButton()).toBe(before);
+    });
+
+    it('10 — swapping a busy entry\'s glyph leaves it busy', () => {
+        installTestDOM(CONFIG);
+        Glyph.register(file);
+
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha');
+        bar.setEntryBusy('a', true);
+
+        bar.setEntryGlyph('a', 'file');
+
+        expect(bar.isEntryBusy('a')).toBe(true);
+    });
+
+    it('13 — setEntryGlyph disposes the glyph it replaces', () => {
+        installTestDOM(CONFIG);
+        Glyph.register(file, file_lines);
+
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha', glyphed('file'));
+
+        const fn = vi.fn();
+        barEntries(bar)[0].button.getGlyph()!.onDestroy(fn);
+
+        bar.setEntryGlyph('a', 'file-lines');
+
+        expect(fn).toHaveBeenCalled();
+        expect(bar.getEntryGlyph('a')).toBe('file-lines');
+    });
+
+    it('14 — clearEntryGlyph disposes the glyph it removes', () => {
+        installTestDOM(CONFIG);
+        Glyph.register(file);
+
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha', glyphed('file'));
+
+        const fn = vi.fn();
+        barEntries(bar)[0].button.getGlyph()!.onDestroy(fn);
+
+        bar.clearEntryGlyph('a');
+
+        expect(fn).toHaveBeenCalled();
+        expect(bar.getEntryGlyph('a')).toBeNull();
     });
 });
