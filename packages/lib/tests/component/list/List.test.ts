@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { _List } from '~/component/list/List';
+import type { SelectableListItem } from '~/component/list/AbstractSelectableList';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 
@@ -26,7 +27,28 @@ class TestList extends _List {
     public dblClick(idx: number, e: MouseEvent): void {
         this.handleRowDblClick(idx, e);
     }
+
+    // Widen the protected click dispatcher the same way, so a disabled-row
+    // click refusal can be exercised without a rendered row pool.
+    public rowClick(idx: number, e: MouseEvent): void {
+        this.handleRowClick(idx, e);
+    }
 }
+
+/** A minimal KeyboardEvent-shaped object for the offline keyboard harness. */
+function key(name: string): KeyboardEvent {
+    return { key: name, preventDefault() {}, stopPropagation() {} } as unknown as KeyboardEvent;
+}
+
+/** Six-row fixture with rows 1, 2 and 5 disabled — the plan's navigation table. */
+const ROWS = [
+    { key: 'a', label: 'Apple' },
+    { key: 'b', label: 'Banana', enabled: false },
+    { key: 'c', label: 'Cherry', enabled: false },
+    { key: 'd', label: 'Date' },
+    { key: 'e', label: 'Elder' },
+    { key: 'f', label: 'Fig', enabled: false },
+];
 
 /** A minimal MouseEvent stub tracking preventDefault, for the offline env. */
 function mouseEventStub(): { event: MouseEvent; prevented: () => boolean } {
@@ -407,5 +429,185 @@ describe('List — per-item tooltip data', () => {
         const list = new _List({ store, displayField: 'name', valueField: 'id', tooltipField: 'note' });
 
         expect(list.getItems()[0].tooltip).toBe('the first one');
+    });
+});
+
+describe('List — disabled rows: item plumbing', () => {
+    it('the enabled field round-trips through setItemsArray / setItems / addItem', () => {
+        const viaArray = new _List();
+        viaArray.setItemsArray(ROWS);
+        expect(viaArray.getItems()[1].enabled).toBe(false);
+        expect(viaArray.getItems()[0].enabled).toBeUndefined();
+
+        const viaSetItems = new _List();
+        viaSetItems.setItems(ROWS);
+        expect(viaSetItems.getItems()[1].enabled).toBe(false);
+        expect(viaSetItems.getItems()[0].enabled).toBeUndefined();
+
+        const viaAddItem = new _List();
+        viaAddItem.addItem({ key: 'g', label: 'Grape', enabled: false });
+        expect(viaAddItem.getItems()[0].enabled).toBe(false);
+    });
+
+    it('a plain string entry stays enabled', () => {
+        const list = new _List();
+        list.setItems(['Apple']);
+        expect(list.isItemEnabled(0)).toBe(true);
+    });
+});
+
+describe('List — disabled rows: isItemEnabled / setItemEnabled', () => {
+    it('isItemEnabled reflects a missing field, true, false, and out-of-range indices', () => {
+        const list = new _List();
+        list.setItemsArray(ROWS);
+
+        expect(list.isItemEnabled(0)).toBe(true);
+        expect(list.isItemEnabled(3)).toBe(true);
+        expect(list.isItemEnabled(1)).toBe(false);
+        expect(list.isItemEnabled(-1)).toBe(false);
+        expect(list.isItemEnabled(99)).toBe(false);
+    });
+
+    it('setItemEnabled updates the flag both ways', () => {
+        const list = new _List();
+        list.setItemsArray(ROWS);
+
+        list.setItemEnabled(0, false);
+        expect(list.isItemEnabled(0)).toBe(false);
+        expect(list.getItems()[0].enabled).toBe(false);
+
+        list.setItemEnabled(1, true);
+        expect(list.isItemEnabled(1)).toBe(true);
+    });
+
+    it('setItemEnabled does not mutate the caller-supplied item object', () => {
+        const held: SelectableListItem = { key: 'a', label: 'Apple' };
+        const list = new _List();
+        list.setItemsArray([held]);
+
+        list.setItemEnabled(0, false);
+        expect(held.enabled).toBeUndefined();
+    });
+
+    it('setItemEnabled out of range is a no-op', () => {
+        const list = new _List();
+        list.setItemsArray(ROWS);
+        const before = list.getItems();
+
+        const result = list.setItemEnabled(99, false);
+        expect(result).toBe(list);
+        expect(list.getItems()).toEqual(before);
+    });
+
+    it('setItemEnabled leaves selection and focus alone', () => {
+        const list = new _List();
+        list.setItemsArray(ROWS);
+
+        list.setSelectedIndex(0, false);
+        list.setItemEnabled(0, false);
+        expect(list.getSelectedIndex()).toBe(0);
+        expect(list.getFocusedIndex()).toBe(0);
+    });
+});
+
+describe('List — disabled rows: keyboard navigation skips them', () => {
+    // The plan's navigation table: rows 1, 2 and 5 disabled. PageDown/PageUp
+    // take the same code path as ArrowDown/ArrowUp for an offline (heightless)
+    // list, whose page size falls back to one row — no separate case needed.
+    it.each([
+        { before: 0, key: 'ArrowDown', after: 3 },
+        { before: 4, key: 'ArrowDown', after: 4 },
+        { before: 3, key: 'ArrowUp',   after: 0 },
+        { before: 0, key: 'ArrowUp',   after: 0 },
+        { before: -1, key: 'Home',     after: 0 },
+        { before: -1, key: 'End',      after: 4 },
+    ])('focus $before + $key -> $after', ({ before, key: k, after }) => {
+        const list = new TestList({ items: ROWS });
+        list.setSelectedIndex(before, false);
+
+        list.handleKey(key(k));
+        expect(list.getFocusedIndex()).toBe(after);
+    });
+
+    it('consumes the key but does not move when every row is disabled', () => {
+        const allDisabled = ROWS.map(item => ({ ...item, enabled: false }));
+        const list = new TestList({ items: allDisabled });
+        list.setSelectedIndex(-1, false);
+
+        expect(list.handleKey(key('ArrowDown'))).toBe(true);
+        expect(list.getFocusedIndex()).toBe(-1);
+    });
+});
+
+describe('List — disabled rows: type-ahead skips a disabled match', () => {
+    it('jumps past a disabled row whose label matches first', () => {
+        const list = new TestList({
+            items: [
+                { key: 'a', label: 'Apple',   enabled: false },
+                { key: 'b', label: 'Avocado' },
+            ],
+        });
+
+        list.typeAhead('a');
+        expect(list.getFocusedIndex()).toBe(1);
+    });
+});
+
+describe('List — disabled rows: gesture refusal', () => {
+    it('a click on a disabled row is refused', () => {
+        const list = new TestList({ items: ROWS });
+        list.setFocusOnRowClick(false);
+        const fn = vi.fn();
+        list.on('change', fn);
+
+        list.rowClick(1, mouseEventStub().event);
+
+        expect(list.getSelectedIndex()).toBe(-1);
+        expect(fn).not.toHaveBeenCalled();
+    });
+
+    it('a double-click on a disabled row fires nothing', () => {
+        const list = new TestList({ items: ROWS });
+        const fn = vi.fn();
+        list.on('dblclick', fn);
+
+        list.dblClick(1, mouseEventStub().event);
+
+        expect(fn).not.toHaveBeenCalled();
+    });
+
+    it('a right-click on a disabled row still fires and prevents default', () => {
+        const list = new TestList({ items: ROWS });
+        const fn = vi.fn();
+        list.on('contextmenu', fn);
+
+        const { event, prevented } = mouseEventStub();
+        list.contextMenu(1, event);
+
+        expect(fn).toHaveBeenCalledWith(1, event);
+        expect(prevented()).toBe(true);
+    });
+
+    it('Enter on a focus parked at a disabled row is refused', () => {
+        const list = new TestList({ items: ROWS });
+        list.setSelectedIndex(1, false);
+        const valueBefore = list.getValue();
+        const selectedBefore = list.getSelectedIndex();
+        const fn = vi.fn();
+        list.on('change', fn);
+
+        list.handleKey(key('Enter'));
+
+        expect(list.getValue()).toBe(valueBefore);
+        expect(list.getSelectedIndex()).toBe(selectedBefore);
+        expect(fn).not.toHaveBeenCalled();
+    });
+
+    it('programmatic selection still reaches a disabled row', () => {
+        const list = new _List({ items: ROWS });
+
+        list.setValue('b');
+        expect(list.getSelectedIndex()).toBe(1);
+        expect(list.getValue()).toBe('b');
     });
 });

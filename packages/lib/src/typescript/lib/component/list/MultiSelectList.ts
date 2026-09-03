@@ -228,6 +228,15 @@ class MultiSelectList extends AbstractSelectableList<string[], MultiSelectListOp
             ev,
         );
 
+        // The shared modifier reducer sweeps a contiguous index range, so a
+        // Shift-extension can cross a disabled row. Drop those: a gesture must
+        // never select a row the user could not have clicked.
+        for (const i of [...this._selectedSet]) {
+            if (!this.isItemEnabled(i)) {
+                this._selectedSet.delete(i);
+            }
+        }
+
         this._focusedIndex = idx;
     }
 
@@ -273,7 +282,9 @@ class MultiSelectList extends AbstractSelectableList<string[], MultiSelectListOp
         this._selectedSet.clear();
 
         for (let i = 0; i < this._items.length; i++) {
-            this._selectedSet.add(i);
+            if (this.isItemEnabled(i)) {
+                this._selectedSet.add(i);
+            }
         }
 
         this._anchorIndex  = 0;
