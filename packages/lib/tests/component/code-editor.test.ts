@@ -4,6 +4,10 @@ import type { CodeEditorChange } from '~/component/editor/CodeEditor';
 import { registerLanguage, getLanguage, listLanguages } from '~/component/editor/LanguageRegistry';
 import type { Formatter } from '~/component/editor/LanguageRegistry';
 import { formatWithSql } from '~/component/editor/formatters/sql';
+import { formatWithPrettier } from '~/component/editor/formatters/prettier';
+import { mapFormatOptions } from '~/component/editor/formatters/options';
+import type { FormatOptionNames } from '~/component/editor/formatters/options';
+import type { FormatOptions } from '~/component/editor/LanguageRegistry';
 // Barrel import triggers the five-built-in registration side effect.
 import '~/component/editor/index';
 import { Component } from '~/core/Component';
@@ -1349,6 +1353,7 @@ describe('CodeEditor format() dispatch', () => {
     const NO_FORMATTER_LANG = 'test-no-formatter-lang';
     const NOOP_FORMATTER_LANG = 'test-noop-formatter-lang';
     const CHANGE_FORMATTER_LANG = 'test-change-formatter-lang';
+    const OPTIONS_FORMATTER_LANG = 'test-options-formatter-lang';
 
     it('resolves and applies the result when the formatter succeeds', async () => {
         const formatter: Formatter = async (source) => ({ formatted: source.toUpperCase(), cursorOffset: 0 });
@@ -1492,6 +1497,32 @@ describe('CodeEditor format() dispatch', () => {
 
         expect(dispatchSpy.mock.calls[0][0].effects).toBe(SNAPSHOT);
     });
+
+    it('passes format() options through to the formatter as its third argument', async () => {
+        const received: (FormatOptions | undefined)[] = [];
+        const formatter: Formatter = async (source, _cursorOffset, options) => {
+            received.push(options);
+
+            return { formatted: source, cursorOffset: 0 };
+        };
+
+        registerLanguage({
+            id: OPTIONS_FORMATTER_LANG,
+            loadExtension: async () => [] as any,
+            loadFormatter: async () => formatter,
+        });
+
+        const editor  = new CodeEditor('x', { language: OPTIONS_FORMATTER_LANG });
+        const options: FormatOptions = { indentWidth: 4 };
+
+        await editor.format();
+        await editor.format(options);
+        await editor.format({});
+
+        expect(received[0]).toBeUndefined();
+        expect(received[1]).toBe(options); // forwarded by identity, not copied
+        expect(received[2]).toEqual({});
+    });
 });
 
 describe('sql-formatter cursor clamp', () => {
@@ -1505,6 +1536,143 @@ describe('sql-formatter cursor clamp', () => {
         const result = await formatWithSql('select 1', 0);
 
         expect(result.cursorOffset).toBe(0);
+    });
+});
+
+describe('mapFormatOptions', () => {
+    // Exercises every FormatOptions field since FormatOptionNames is a
+    // Record over all of them; only indentWidth maps to a real target here.
+    const NAMES: FormatOptionNames = {
+        indentWidth:               'tabWidth',
+        useTabs:                   null,
+        lineWidth:                 null,
+        singleQuote:               null,
+        semicolons:                null,
+        trailingComma:             null,
+        arrowParens:               null,
+        bracketSpacing:            null,
+        proseWrap:                 null,
+        htmlWhitespaceSensitivity: null,
+        keywordCase:               null,
+    };
+
+    it('returns an empty object for undefined options', () => {
+        expect(mapFormatOptions(undefined, NAMES)).toEqual({});
+    });
+
+    it('returns an empty object for an empty options bag', () => {
+        expect(mapFormatOptions({}, NAMES)).toEqual({});
+    });
+
+    it('renames a field onto its mapped target name', () => {
+        expect(mapFormatOptions({ indentWidth: 4 }, NAMES)).toEqual({ tabWidth: 4 });
+    });
+
+    it('drops a field whose target is null', () => {
+        expect(mapFormatOptions({ useTabs: true }, NAMES)).toEqual({});
+    });
+
+    it('omits an explicitly-undefined field rather than forwarding it', () => {
+        const result = mapFormatOptions({ indentWidth: undefined }, NAMES);
+
+        expect(result).toEqual({});
+        expect('tabWidth' in result).toBe(false);
+    });
+
+    it('maps only the fields present, ignoring the rest', () => {
+        expect(mapFormatOptions({ indentWidth: 4, useTabs: true }, NAMES)).toEqual({ tabWidth: 4 });
+    });
+});
+
+describe('formatWithPrettier options', () => {
+    const jsFormatter = formatWithPrettier('babel-ts', async () => [
+        await import('prettier/plugins/babel'),
+        await import('prettier/plugins/estree'),
+    ]);
+    const SOURCE = 'const a = {foo: "bar"}\nconst f = x => x\n';
+
+    it('formats with Prettier defaults when no options are given', async () => {
+        const result = await jsFormatter(SOURCE, 0);
+
+        expect(result.formatted).toBe('const a = { foo: "bar" };\nconst f = (x) => x;\n');
+    });
+
+    it('applies singleQuote', async () => {
+        const result = await jsFormatter(SOURCE, 0, { singleQuote: true });
+
+        expect(result.formatted).toBe("const a = { foo: 'bar' };\nconst f = (x) => x;\n");
+    });
+
+    it('applies semicolons: false', async () => {
+        const result = await jsFormatter(SOURCE, 0, { semicolons: false });
+
+        expect(result.formatted).toBe('const a = { foo: "bar" }\nconst f = (x) => x\n');
+    });
+
+    it('applies arrowParens: avoid', async () => {
+        const result = await jsFormatter(SOURCE, 0, { arrowParens: 'avoid' });
+
+        expect(result.formatted).toBe('const a = { foo: "bar" };\nconst f = x => x;\n');
+    });
+
+    it('applies indentWidth and lineWidth together', async () => {
+        const result = await jsFormatter(SOURCE, 0, { indentWidth: 8, lineWidth: 20 });
+
+        expect(result.formatted).toBe('const a = {\n        foo: "bar",\n};\nconst f = (x) => x;\n');
+    });
+
+    it('ignores a SQL-only field', async () => {
+        const result = await jsFormatter(SOURCE, 0, { keywordCase: 'upper' });
+
+        expect(result.formatted).toBe('const a = { foo: "bar" };\nconst f = (x) => x;\n');
+    });
+
+    it('rejects on a value Prettier refuses', async () => {
+        await expect(jsFormatter(SOURCE, 0, { indentWidth: 2.5 })).rejects.toThrow();
+    });
+});
+
+describe('formatWithSql options', () => {
+    const SOURCE = 'select a from b;';
+
+    it('formats with sql-formatter defaults when no options are given', async () => {
+        const result = await formatWithSql(SOURCE, 0);
+
+        expect(result.formatted).toBe('select\n  a\nfrom\n  b;');
+    });
+
+    it('applies keywordCase', async () => {
+        const result = await formatWithSql(SOURCE, 0, { keywordCase: 'upper' });
+
+        expect(result.formatted).toBe('SELECT\n  a\nFROM\n  b;');
+    });
+
+    it('applies indentWidth', async () => {
+        const result = await formatWithSql(SOURCE, 0, { indentWidth: 4 });
+
+        expect(result.formatted).toBe('select\n    a\nfrom\n    b;');
+    });
+
+    it('applies useTabs', async () => {
+        const result = await formatWithSql(SOURCE, 0, { useTabs: true });
+
+        expect(result.formatted).toBe('select\n\ta\nfrom\n\tb;');
+    });
+
+    it('ignores Prettier-only fields', async () => {
+        const result = await formatWithSql(SOURCE, 0, {
+            lineWidth:   120,
+            singleQuote: true,
+            proseWrap:   'always',
+        });
+
+        expect(result.formatted).toBe('select\n  a\nfrom\n  b;');
+    });
+
+    it('omits explicitly-undefined fields rather than forwarding them', async () => {
+        const result = await formatWithSql(SOURCE, 0, { indentWidth: undefined, keywordCase: undefined });
+
+        expect(result.formatted).toBe('select\n  a\nfrom\n  b;');
     });
 });
 
