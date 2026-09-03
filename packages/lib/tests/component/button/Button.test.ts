@@ -77,6 +77,21 @@ describe('Button text', () => {
     });
 });
 
+describe('Button label font style', () => {
+    it('round-trips setFontStyle/getFontStyle and returns the button for chaining', () => {
+        const btn = new Button('Save');
+
+        const chained = btn.setFontStyle('italic');
+
+        expect(chained).toBe(btn);
+        expect(btn.getFontStyle()).toBe('italic');
+
+        btn.setFontStyle('normal');
+
+        expect(btn.getFontStyle()).toBe('normal');
+    });
+});
+
 describe('Button glyph', () => {
     it('is null until a glyph is wired', () => {
         expect(new Button('Save').getGlyph()).toBe(null);

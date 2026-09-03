@@ -352,4 +352,87 @@ describe('TabBar glyph', () => {
         expect(fn).toHaveBeenCalled();
         expect(bar.getEntryGlyph('a')).toBeNull();
     });
+
+    it('setEntryItalic round-trips isEntryItalic', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha');
+
+        expect(bar.isEntryItalic('a')).toBe(false);
+
+        bar.setEntryItalic('a', true);
+
+        expect(bar.isEntryItalic('a')).toBe(true);
+
+        bar.setEntryItalic('a', false);
+
+        expect(bar.isEntryItalic('a')).toBe(false);
+    });
+
+    it('setEntryItalic on an unknown id is a no-op and chainable; isEntryItalic is false', () => {
+        installTestDOM(CONFIG);
+
+        const bar = threeEntryBar();
+
+        expect(bar.setEntryItalic('nope', true)).toBe(bar);
+        expect(bar.isEntryItalic('nope')).toBe(false);
+    });
+
+    it('italicising the active entry leaves it active and selected', () => {
+        installTestDOM(CONFIG);
+
+        const bar = threeEntryBar(); // 'a' is active
+
+        bar.setEntryItalic('a', true);
+
+        expect(bar.getActiveEntryId()).toBe('a');
+        expect(barEntries(bar)[0].button.isSelected()).toBe(true);
+    });
+
+    it('italicising a closeable entry leaves its close button instance untouched', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha', closeable());
+
+        const before = barEntries(bar)[0].button.getCloseButton();
+
+        bar.setEntryItalic('a', true);
+
+        expect(barEntries(bar)[0].button.getCloseButton()).toBe(before);
+    });
+
+    it('removeBarEntry clears the italic read for that id', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha');
+        bar.setEntryItalic('a', true);
+        bar.removeBarEntry('a');
+
+        expect(bar.isEntryItalic('a')).toBe(false);
+    });
+
+    it('busy, glyph and italic per-cell flags are independent', () => {
+        installTestDOM(CONFIG);
+        Glyph.register(file);
+
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha');
+        bar.setEntryBusy('a', true);
+        bar.setEntryItalic('a', true);
+
+        expect(bar.isEntryBusy('a')).toBe(true);
+        expect(bar.isEntryItalic('a')).toBe(true);
+
+        bar.setEntryBusy('a', false);
+        bar.setEntryGlyph('a', 'file');
+
+        expect(bar.isEntryItalic('a')).toBe(true);
+    });
 });

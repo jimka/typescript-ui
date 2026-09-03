@@ -1311,6 +1311,51 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Italicises (or un-italicises) the label of the tab hosting `content` —
+     * the VS Code-style preview-tab treatment. Nothing else about the tab
+     * changes.
+     *
+     * @param content - The content component whose tab to style.
+     * @param italic - True to italicise the label, false to restore it upright.
+     *
+     * @returns `true` when a matching tab was found, `false` otherwise.
+     *
+     * @remarks
+     * A lazy tab whose factory has not run yet has no content component to
+     * key on, so this returns `false` for it. {@link TabBar.setEntryItalic}
+     * reaches such a cell directly, by its owner-minted id.
+     *
+     * The flag is view-only: it is not written to the tab's
+     * `LayoutConstraints`, so it does not survive a tear-off, a re-dock, or a
+     * saved layout.
+     */
+    setTabItalic(content: Component, italic: boolean): boolean {
+        const entry = this._contents.find(e => e.component === content);
+
+        if (!entry) {
+            return false;
+        }
+
+        this._bar.setEntryItalic(entry.id, italic);
+        this.getContainer()?.scheduleLayout();
+
+        return true;
+    }
+
+    /**
+     * Reports whether the tab hosting `content` is currently italicised.
+     *
+     * @param content - The content component whose tab to query.
+     *
+     * @returns `true` when that tab's label is italic; `false` when no tab matches.
+     */
+    isTabItalic(content: Component): boolean {
+        const entry = this._contents.find(e => e.component === content);
+
+        return entry ? this._bar.isEntryItalic(entry.id) : false;
+    }
+
+    /**
      * Marks the tab hosting `content` as busy (or not). Its tab button shows a
      * loading overlay until the flag is cleared or the tab is closed. Deferred
      * tabs are driven automatically while their content builds; this is the

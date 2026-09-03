@@ -1299,6 +1299,36 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
+     * Sets the CSS font-style of the button's title label — a
+     * [`Text`](/api/component/input/classes/Text) — leaving the description
+     * subtitle (see [`setDescription`](/api/component/button/classes/Button#setdescription))
+     * unaffected.
+     *
+     * @param value - A CSS font-style value (e.g. "normal", "italic", "oblique").
+     *
+     * @returns This component, for method chaining.
+     */
+    setFontStyle(value: string): this {
+        if (this._text) {
+            this._text.setFontStyle(value);
+            this.recomputePreferredSize();
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the CSS font-style of the button's title label — a
+     * [`Text`](/api/component/input/classes/Text) — the description subtitle
+     * is not reflected here.
+     *
+     * @returns The CSS font-style string, or `null` if the label does not exist yet.
+     */
+    getFontStyle(): string | null {
+        return this._text ? this._text.getFontStyle() : null;
+    }
+
+    /**
      * Sets the button's subtitle, shown on a line below the title in a
      * smaller, dimmer style. The subtitle label is created lazily on the
      * first call (mirroring {@link setGlyph}) so a button with no description

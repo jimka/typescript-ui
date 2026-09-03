@@ -13,6 +13,7 @@
 // `installCountingBorderSource`.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Text } from '~/component/input/Text';
+import { Container } from '~/core/Container';
 import { DOM } from '~/core/DOM';
 import { Util } from '~/core/Util';
 import type { TextMeasureOptions, TextMeasureRequest, TextMetrics } from '~/core/Util';
@@ -243,5 +244,61 @@ describe('Text — batched measurement', () => {
 
         const wrappedSize = wrapping.getPreferredSize()!;
         expect(wrappedSize.height).toBeGreaterThan(naturalSize.height);
+    });
+});
+
+// Behavioural coverage for plans/in-progress/tab-label-styling.md — Expected
+// Behaviour rows 1-3: `Text.setFontStyle` gains the same measurement
+// invalidation its sibling font setters (`setFontWeight`, `setFontFamily`)
+// already have.
+describe('Text — font-style re-measure', () => {
+    it('a: setFontStyle re-stales an already-measured Text, so the next probe carries the new fontStyle', () => {
+        const a = new Text('alpha');
+        const b = new Text('beta wide label');
+
+        // Measure both once so they start clean.
+        a.getPreferredSize();
+        b.getPreferredSize();
+
+        const counter = installCountingMeasureSource();
+
+        a.setFontStyle('italic');
+        b.setFontStyle('oblique');
+
+        a.getPreferredSize();
+
+        expect(counter.batchCalls).toHaveLength(1);
+        expect(counter.batchCalls[0].map(r => r.options?.fontStyle)).toEqual(['italic', 'oblique']);
+    });
+
+    it('b: setFontStyle schedules a layout on the parent, matching setFontWeight', () => {
+        const container = new Container({});
+        const text = new Text('alpha');
+
+        container.addComponent(text);
+        container.getElement(true);
+        container.setWidth(200);
+        container.setHeight(50);
+        container.doLayout();
+        // A second pass settles the child's just-measured preferred size (its
+        // first-ever measurement fires an onPreferredSizeChange relay that
+        // re-schedules the parent once), reaching a genuinely clean state.
+        container.doLayout();
+
+        expect(container.isLayoutDirty()).toBe(false);
+
+        text.setFontStyle('italic');
+
+        expect(container.isLayoutDirty()).toBe(true);
+    });
+
+    it('c: getFontStyle reports the written value', () => {
+        const text = new Text('alpha');
+
+        expect(text.getFontStyle()).toBe('normal');
+
+        text.setFontStyle('italic');
+
+        expect(text.getFontStyle()).toBe('italic');
     });
 });

@@ -300,6 +300,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'Button backgroundColor',       resolve: () => new Button('x').getBackgroundColor(),                       expected: 'var(--ts-ui-button-bg, transparent)' },
     { label: 'Button _text textAlign',       resolve: () => (new Button() as any)._text.getTextAlign(),                  expected: 'center' },
     { label: 'Button _text fontWeight',      resolve: () => (new Button() as any)._text.getFontWeight(),                 expected: 'bold' },
+    { label: 'Button fontStyle',             resolve: () => new Button().getFontStyle(),                                expected: 'normal' },
     { label: 'TabButton backgroundColor',    resolve: () => new TabButton('x').getBackgroundColor(),                    expected: 'var(--ts-ui-tab-button-bg, #b8b8c3)' },
     { label: 'TabButton backgroundImage',    resolve: () => new TabButton('x').getBackgroundImage(),                    expected: 'var(--ts-ui-tab-button-bg, #b8b8c3)' },
     { label: 'TabButton hoverBackgroundColor', resolve: () => new TabButton('x').getHoverBackgroundColor(),             expected: 'var(--ts-ui-tab-button-hover-bg, #c4c4cf)' },
