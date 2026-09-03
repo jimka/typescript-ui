@@ -78,6 +78,8 @@ registerLanguage({
 `editor.format()` returns a `Promise<void>`:
 
 - If the active language has a formatter, it is invoked with the current document text. On success, the whole document is replaced in one transaction and the cursor is preserved (mapped by Prettier's `formatWithCursor`, or clamped to the new document length for `sql-formatter`, which has no cursor map).
+- If the formatter's result matches the document already held, it is left **completely untouched** — no transaction, so no re-render, no undo entry, and no `"change"` event for a save that had nothing to reformat.
+- When the result does change the document, the editor's visible area no longer unconditionally jumps to the top. It stays exactly in place when nothing above it changed length, which is the common case for an incremental edit-then-save, and can otherwise shift — by roughly however much text the formatter added or removed above it, never all the way back to the top — when a reformat changes text throughout the document, e.g. a first-time format of a wholly unformatted file.
 - If the formatter **throws** (invalid syntax), the promise **rejects** and the document is left **completely untouched** — formatting never loses content.
 - If the active language has no formatter (or none is set), `format()` re-indents the whole document using CodeMirror's own indentation service instead.
 
