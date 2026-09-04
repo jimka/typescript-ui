@@ -16,6 +16,7 @@ import { EditorState, Compartment } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { indentOnInput, bracketMatching, indentRange, codeFolding, foldGutter, foldKeymap, foldedRanges } from "@codemirror/language";
+import { search, highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { getLanguage } from "~/component/editor/LanguageRegistry.js";
 import type { FormatOptions } from "~/component/editor/LanguageRegistry.js";
 import { codeEditorTheme } from "~/component/editor/theme.js";
@@ -929,7 +930,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
             // the escape hatch: Ctrl-m (Alt-Shift-m on macOS) toggles
             // CodeMirror's tab-focus mode, after which Tab moves focus again.
             // Listed last so its Tab / Shift-Tab bindings take precedence.
-            keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, indentWithTab]),
+            keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap, indentWithTab]),
             drawSelection(),
             lineNumbers(),
             highlightActiveLine(),
@@ -943,6 +944,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
             rectangularSelection(),
             crosshairCursor(),
             EditorState.allowMultipleSelections.of(true),
+            search(),
+            highlightSelectionMatches(),
             this._readOnlyCompartment.of(buildReadOnlyExtension(this.getReadOnly())),
             this._themeCompartment.of(codeEditorTheme(dark)),
             this._langCompartment.of([]),

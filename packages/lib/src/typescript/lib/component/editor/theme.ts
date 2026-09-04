@@ -82,6 +82,54 @@ export function codeEditorTheme(dark: boolean): Extension {
             // Same color-mix recipe as .cm-searchMatch below.
             backgroundColor: "color-mix(in srgb, var(--ts-ui-validation-error-border, #dc2626) 15%, transparent)",
         },
+        ".cm-panels": {
+            backgroundColor: "var(--ts-ui-toolbar-bg, #f5f5f5)",
+            color:           "var(--ts-ui-text-color, #1a1a1a)",
+        },
+        ".cm-panels-top": {
+            borderBottom: "1px solid var(--ts-ui-toolbar-border, #dcdcdc)",
+        },
+        ".cm-panels-bottom": {
+            borderTop: "1px solid var(--ts-ui-toolbar-border, #dcdcdc)",
+        },
+        ".cm-textfield": {
+            backgroundColor: "var(--ts-ui-input-bg, #ffffff)",
+            color:           "var(--ts-ui-text-color, #1a1a1a)",
+            border:          "var(--ts-ui-input-border, 1px solid #a0a0a0)",
+            borderRadius:    "var(--ts-ui-border-radius, 4px)",
+            fontFamily:      "var(--ts-ui-font-family, sans-serif)",
+            fontSize:        "var(--ts-ui-font-size, 14px)",
+        },
+        ".cm-button": {
+            backgroundColor: "var(--ts-ui-button-bg, #f3f4f6)",
+            border:          "1px solid var(--ts-ui-button-border, #d6d9de)",
+            borderRadius:    "var(--ts-ui-border-radius, 4px)",
+            backgroundImage: "none",
+        },
+        ".cm-button:hover": {
+            backgroundColor: "var(--ts-ui-button-hover-bg, #eaecef)",
+        },
+        ".cm-button:active": {
+            backgroundColor: "var(--ts-ui-button-pressed-bg, #ced2d8)",
+        },
+        ".cm-searchMatch": {
+            // Derived from the framework's single accent token (the same one
+            // `.cm-completionMatchedText` below reads) rather than
+            // `--ts-ui-indicator-selection`: that token's real, actively
+            // consumed shape is a dashed *outline* shorthand (see
+            // AbstractSelectableList.ts / Cell.ts), not a colour, so it is
+            // invalid as a `background-color` source. Reduced-opacity variant
+            // of the selected match's colour below, so a consumer's
+            // `--ts-ui-indicator-focus` override reaches both — same
+            // `color-mix` recipe as ScrollShadow.scrollShadowEdgeValue.
+            backgroundColor: "color-mix(in srgb, var(--ts-ui-indicator-focus, #2563eb) 15%, transparent)",
+        },
+        ".cm-searchMatch.cm-searchMatch-selected": {
+            backgroundColor: "color-mix(in srgb, var(--ts-ui-indicator-focus, #2563eb) 25%, transparent)",
+        },
+        ".cm-selectionMatch": {
+            backgroundColor: "rgba(127, 127, 127, 0.2)",
+        },
     }, { dark });
 
     const highlight = syntaxHighlighting(HighlightStyle.define([
