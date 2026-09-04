@@ -15,11 +15,11 @@ import { registerRichText, $createHeadingNode, $createQuoteNode } from "@lexical
 import type { HeadingTagType } from "@lexical/rich-text";
 import { registerList, INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND } from "@lexical/list";
 import { $toggleLink } from "@lexical/link";
-import { $createCodeNode } from "@lexical/code";
+import { $createCodeNode, $isCodeNode } from "@lexical/code";
 import { registerHistory, createEmptyHistoryState } from "@lexical/history";
 import {
     registerTablePlugin, registerTableCellUnmergeTransform, registerTableSelectionObserver,
-    $getTableCellNodeFromLexicalNode,
+    $getTableCellNodeFromLexicalNode, $isTableNode,
     $insertTableRowAtSelection, $deleteTableRowAtSelection,
     $insertTableColumnAtSelection, $deleteTableColumnAtSelection,
     INSERT_TABLE_COMMAND,
@@ -428,8 +428,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             this._codeEditor.setValue(markdown);
             this._card.setVisibleComponentId(this._codeEditor.getId());
         } else {
-            this.ensureEditor().update(
-                () => $convertFromMarkdownString(markdown, TRANSFORMERS), { discrete: true });
+            this.ensureEditor().update(() => {
+                $convertFromMarkdownString(markdown, TRANSFORMERS);
+                this.ensureTrailingParagraph();
+            }, { discrete: true });
             this._card.setVisibleComponentId(this._wysiwyg.getId());
         }
 
@@ -474,7 +476,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         // Discrete forces a synchronous commit, so the resulting `"change"`
         // fires before this returns rather than on a later flush.
-        this.ensureEditor().update(() => $convertFromMarkdownString(value, TRANSFORMERS), { discrete: true });
+        this.ensureEditor().update(() => {
+            $convertFromMarkdownString(value, TRANSFORMERS);
+            this.ensureTrailingParagraph();
+        }, { discrete: true });
 
         return this;
     }
@@ -679,6 +684,11 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             includeHeaders: { rows: true, columns: false },
         });
 
+        // A table landing at the very end of the document leaves nothing
+        // past it to click into and keep typing — a table has no trailing
+        // line of its own the way a paragraph does.
+        editor.update(() => this.ensureTrailingParagraph(), { discrete: true });
+
         return this;
     }
 
@@ -838,6 +848,28 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Appends an empty paragraph after the document's last child when that
+     * child is a table or fenced code block. Must run inside an `editor.update()`.
+     *
+     * @remarks
+     * Unlike a heading, list, or blockquote — ordinary flow text a click below
+     * the last line already lands in, the same as a paragraph — a table's grid
+     * layout and a code block's preformatted whitespace give a trailing click
+     * nothing to resolve into, so one landing last leaves nothing past it to
+     * click into and keep typing. Called after every operation that can leave
+     * one of these two node types last: loading Markdown (initial build,
+     * {@link MarkdownEditor.setValue}, a `"source"` → `"wysiwyg"`
+     * {@link MarkdownEditor.setMode} switch) and {@link MarkdownEditor.insertTable}.
+     */
+    private ensureTrailingParagraph(): void {
+        const lastChild = $getRoot().getLastChild();
+
+        if (lastChild !== null && ($isTableNode(lastChild) || $isCodeNode(lastChild))) {
+            $getRoot().append($createParagraphNode());
+        }
+    }
+
+    /**
      * Builds the headless Lexical editor on first use. Idempotent: the editor is
      * built once. Offline the editor stays headless — the state, and every value
      * / command operation, still work.
@@ -850,7 +882,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
             // Populate the initial state before registering the update listener,
             // so loading the cached value does not fire a spurious `"change"`.
-            editor.update(() => $convertFromMarkdownString(this._options.value ?? "", TRANSFORMERS), { discrete: true });
+            editor.update(() => {
+                $convertFromMarkdownString(this._options.value ?? "", TRANSFORMERS);
+                this.ensureTrailingParagraph();
+            }, { discrete: true });
             editor.setEditable(!(this._options.readOnly ?? false));
 
             // Lexical's converters normalize what they round-trip (a trailing newline is

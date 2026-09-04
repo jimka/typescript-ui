@@ -1601,7 +1601,19 @@ class Markdown extends Component<MarkdownOptions> {
             }
 
             DOM.sink.apply(cellElement, { addClass: classes });
-            this.appendInlineTokens(cellElement, cell.tokens);
+
+            if (cell.tokens.length === 0) {
+                // An empty cell has no inline content to give its line box
+                // height, so the row collapses shorter than one carrying
+                // text — unlike the WYSIWYG editor, whose empty table cell is
+                // always an empty Lexical paragraph and so always renders a
+                // <br>. Matching that keeps a freshly inserted, still-empty
+                // table the same height in both surfaces.
+                DOM.sink.appendChild(cellElement, this.create("br"));
+            } else {
+                this.appendInlineTokens(cellElement, cell.tokens);
+            }
+
             DOM.sink.appendChild(row, cellElement);
         }
 

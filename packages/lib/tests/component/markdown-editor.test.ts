@@ -4,13 +4,14 @@ import type { MarkdownEditorChange } from '~/component/editor/MarkdownEditor';
 import { Component } from '~/core/Component';
 import { TRANSFORMERS } from '~/component/editor/markdownTransformers';
 import { EDITOR_NODES } from '~/component/editor/editorNodes';
+import { ensureMarkdownEditorClassRules } from '~/component/editor/editorTheme';
 import {
     HEADING, QUOTE, CODE, UNORDERED_LIST, ORDERED_LIST,
     BOLD_STAR, ITALIC_STAR, INLINE_CODE, LINK,
     STRIKETHROUGH, HIGHLIGHT, CHECK_LIST,
 } from '@lexical/markdown';
 import { TableNode, TableRowNode, TableCellNode } from '@lexical/table';
-import { $getRoot } from 'lexical';
+import { $getRoot, $isParagraphNode } from 'lexical';
 import type { LexicalEditor } from 'lexical';
 import { lexer } from 'marked';
 import { DOM } from '~/core/DOM';
@@ -163,6 +164,20 @@ describe('MarkdownEditor WYSIWYG surface line-height', () => {
             .filter((w) => w.selector.includes(surface.getId()) && w.key === 'lineHeight');
 
         expect(rows.some((w) => w.value === 'var(--ts-ui-md-line-height, 1.8)')).toBe(true);
+    });
+
+    it('resets fenced- and inline-code lineHeight to normal, matching the read-only Markdown viewer\'s own reset (Markdown.ts:163,183)', () => {
+        // Calls the class-rule registrar directly rather than mounting the
+        // WYSIWYG surface: `ensureMarkdownEditorClassRules` only runs from
+        // `WysiwygSurface.mount`, gated on the surface's first *layout* pass
+        // (`onFirstLayout`), which `getElement(true)` alone does not drive
+        // in this offline harness.
+        ensureMarkdownEditorClassRules();
+
+        const rows = ruleStyleWrites(DOM.sink as RecordingDOMSink).filter((w) => w.key === 'lineHeight');
+
+        expect(rows.some((w) => w.selector.includes('ts-ui-mde-code') && w.value === 'normal')).toBe(true);
+        expect(rows.some((w) => w.selector.includes('ts-ui-mde-inline-code') && w.value === 'normal')).toBe(true);
     });
 });
 
@@ -711,6 +726,64 @@ describe('MarkdownEditor table commands', () => {
                 .insertTableColumn()
                 .deleteTableColumn()
         ).not.toThrow();
+    });
+});
+
+describe('MarkdownEditor trailing paragraph after a non-paragraph last block', () => {
+    /** Whether the document's last root child is a paragraph node. */
+    function endsWithParagraph(editor: MarkdownEditor): boolean {
+        return lexicalOf(editor).read(() => {
+            const lastChild = $getRoot().getLastChild();
+
+            return lastChild !== null && $isParagraphNode(lastChild);
+        });
+    }
+
+    it('insertTable on an empty editor leaves a trailing paragraph after the table, so a click below it has somewhere to land', () => {
+        const editor = new MarkdownEditor();
+
+        editor.insertTable(2, 3);
+
+        expect(endsWithParagraph(editor)).toBe(true);
+    });
+
+    it('setValue with content ending in a fenced code block appends a trailing paragraph', () => {
+        const editor = new MarkdownEditor();
+
+        editor.setValue('# Heading\n\n```\ncode\n```');
+
+        expect(endsWithParagraph(editor)).toBe(true);
+    });
+
+    it('building the editor from construction-time content ending in a table appends a trailing paragraph', () => {
+        const editor = new MarkdownEditor('| a | b |\n| --- | --- |\n| 1 | 2 |');
+
+        // Forces ensureEditor()'s first-build path (the same one the SAMPLE
+        // demo content and any other construction-time value goes through)
+        // without a selection to act on, so the command itself is a no-op
+        // on content.
+        editor.setBlockType('paragraph');
+
+        expect(endsWithParagraph(editor)).toBe(true);
+    });
+
+    it('a source-mode round trip through setMode ending in a table still leaves a trailing paragraph', () => {
+        const editor = new MarkdownEditor('| a | b |\n| --- | --- |\n| 1 | 2 |');
+
+        editor.setMode('source');
+        editor.setMode('wysiwyg');
+
+        expect(endsWithParagraph(editor)).toBe(true);
+    });
+
+    it('does not add a second trailing paragraph when the document already ends with prose', () => {
+        const editor = new MarkdownEditor();
+
+        editor.setValue('# Heading\n\nSome prose.');
+
+        const childCount = lexicalOf(editor).read(() => $getRoot().getChildrenSize());
+
+        expect(childCount).toBe(2);   // heading, then the one prose paragraph — no extra
     });
 });
 

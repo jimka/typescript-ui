@@ -83,6 +83,11 @@ export function ensureMarkdownEditorClassRules(): void {
             // margin; both are restated here so the two surfaces stack alike.
             display:      "block",
             margin:       "1em 0",
+            // Matches the viewer's own fenced-code reset (Markdown.ts's
+            // PRE_CLASS): without it this block inherits the WYSIWYG
+            // surface's prose line-height (WysiwygSurface's constructor),
+            // rendering taller here than in the viewer.
+            lineHeight:   "normal",
         },
     });
 
@@ -95,6 +100,9 @@ export function ensureMarkdownEditorClassRules(): void {
             borderRadius: "var(--ts-ui-border-radius, 3px)",
             // Snug padding so the wash hugs the inline-code glyphs.
             padding:      "0.1em 0.3em",
+            // Matches the viewer's own inline-code reset (Markdown.ts's
+            // CODE_CLASS), for the same reading-vs-code rationale.
+            lineHeight:   "normal",
         },
     });
 

@@ -766,6 +766,20 @@ describe('Markdown table', () => {
 
         expect(createdTags()).not.toContain('table');
     });
+
+    it('gives an empty header or body cell a <br> so its row does not collapse shorter than a text-bearing row', () => {
+        new Markdown('|  |  |\n| --- | --- |\n|  |  |').getElement(true);
+
+        expect(childTagsOf('th')).toEqual(['BR', 'BR']);
+        expect(childTagsOf('td')).toEqual(['BR', 'BR']);
+    });
+
+    it('does not add a <br> to a cell that has text', () => {
+        new Markdown(TABLE).getElement(true);
+
+        expect(childTagsOf('th')).not.toContain('BR');
+        expect(childTagsOf('td')).not.toContain('BR');
+    });
 });
 
 describe('Markdown empty source', () => {
