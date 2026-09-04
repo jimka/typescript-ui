@@ -13,6 +13,7 @@ import type { Extension } from "@codemirror/state";
 import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { indentOnInput, bracketMatching, indentRange } from "@codemirror/language";
 import { getLanguage } from "~/component/editor/LanguageRegistry.js";
+import type { FormatOptions } from "~/component/editor/LanguageRegistry.js";
 import { codeEditorTheme } from "~/component/editor/theme.js";
 
 /**
@@ -549,10 +550,13 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * the way back to the top — when a reformat changes text throughout the
      * document, e.g. a first-time format of a wholly unformatted file.
      *
+     * @param options - Style knobs forwarded to the active language's
+     *   formatter. Ignored when the language has no formatter (the
+     *   re-indent fallback runs instead).
      * @returns A promise that resolves once formatting completes, or rejects
      *   with the formatter's error.
      */
-    async format(): Promise<void> {
+    async format(options?: FormatOptions): Promise<void> {
         const id  = this.getLanguage();
         const def = id ? getLanguage(id) : undefined;
 
@@ -566,7 +570,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
         const source       = this.getValue();
         const cursorOffset = this._view ? this._view.state.selection.main.head : 0;
 
-        const result = await formatter(source, cursorOffset);
+        const result = await formatter(source, cursorOffset, options);
 
         this.applyFormatted(result.formatted, result.cursorOffset);
     }

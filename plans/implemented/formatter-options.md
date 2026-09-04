@@ -647,6 +647,30 @@ in the demo app passes options.
 
 ---
 
+## Implementation Notes
+
+**The `format()` semantics doc's rejection example names a negative
+`indentWidth`, not the plan's own "a fractional `indentWidth`, a negative
+`lineWidth`" pairing** ([^no-validation], and Documentation Impact edit 1).
+Both of the plan's named examples were checked against the shipped engines
+(Prettier 3.9.6, `sql-formatter` 15.8.2) while writing the doc, and the
+`lineWidth` half does not hold: `formatWithCursor(..., { printWidth: -10 })`
+formats successfully — Prettier does not validate `printWidth`'s sign — and
+`lineWidth` is not even forwarded to `sql-formatter` in the first place,
+since `SQL_OPTION_NAMES` ([formatters/sql.ts](../../packages/lib/src/typescript/lib/component/editor/formatters/sql.ts))
+maps it to `null`. A negative `indentWidth`, by contrast, throws in *both*
+engines (`Invalid count value: -1` / `-4`), so it is the example that
+actually demonstrates the documented "an option value the engine rejects"
+path across every built-in language with a formatter. The shipped doc bullet
+([docs/components/CodeEditor.md](../../packages/lib/docs/components/CodeEditor.md))
+uses that example instead. The *fractional*-`indentWidth` example the plan
+also names is unaffected and ships as written — it throws in Prettier, per
+the existing `formatWithPrettier` test case — though it's worth noting for
+any future edit to this doc that `sql-formatter` itself accepts a fractional
+`tabWidth` silently (truncating rather than rejecting), so that example's
+generality is narrower than the doc's "an option value the engine rejects"
+framing implies.
+
 ## Notes
 
 [^one-bag]: Verified by running Prettier with a deliberately irrelevant option

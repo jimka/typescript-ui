@@ -3,17 +3,53 @@
 import type { Extension } from "@codemirror/state";
 
 /**
+ * Style knobs a {@link Formatter} may honour. Every field is optional;
+ * an absent field means "leave that engine's own default alone". No field is
+ * honoured by every built-in language — see the applicability table in
+ * `docs/components/CodeEditor.md`.
+ *
+ * @category Components
+ */
+export interface FormatOptions {
+    /** Spaces per indent level. */
+    indentWidth?: number;
+    /** Indent with tab characters instead of spaces. */
+    useTabs?: boolean;
+    /** Column the formatter wraps at. */
+    lineWidth?: number;
+    /** Prefer single quotes for string literals. */
+    singleQuote?: boolean;
+    /** Terminate statements with semicolons. */
+    semicolons?: boolean;
+    /** Where to print trailing commas. */
+    trailingComma?: "none" | "es5" | "all";
+    /** Parenthesise a sole arrow-function parameter. */
+    arrowParens?: "always" | "avoid";
+    /** Print spaces inside object braces. */
+    bracketSpacing?: boolean;
+    /** How to re-wrap prose. */
+    proseWrap?: "always" | "never" | "preserve";
+    /** How strictly to preserve significant whitespace in markup. */
+    htmlWhitespaceSensitivity?: "css" | "strict" | "ignore";
+    /** Case to print SQL keywords in. */
+    keywordCase?: "preserve" | "upper" | "lower";
+}
+
+/**
  * Formats `source`, returning the formatted text and a cursor offset mapped
  * (or clamped) into the new document. May return synchronously or via a
  * `Promise` — `CodeEditor.format()` awaits either.
  *
  * @param source - The document text to format.
  * @param cursorOffset - The cursor's current offset into `source`.
+ * @param options - Style knobs to pass to the formatting engine, when it
+ *   honours any. Omitted fields leave the engine's own default alone.
  * @returns The formatted text and the mapped/clamped cursor offset.
  */
 export type Formatter = (
     source: string,
     cursorOffset: number,
+    options?: FormatOptions,
 ) =>
     | Promise<{ formatted: string; cursorOffset: number }>
     | { formatted: string; cursorOffset: number };
