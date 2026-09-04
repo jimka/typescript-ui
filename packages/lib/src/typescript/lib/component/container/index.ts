@@ -27,6 +27,8 @@ export { StatusBar, STATUS_BAR_HEIGHT } from '~/component/container/StatusBar.js
 export type { StatusBarOptions } from '~/component/container/StatusBar.js';
 export { VirtualScroller } from '~/component/container/VirtualScroller.js';
 export type { VirtualScrollerOnScroll } from '~/component/container/VirtualScroller.js';
+export { Separator } from '~/component/container/Separator.js';
+export type { SeparatorOptions } from '~/component/container/Separator.js';
 export { Spacer } from '~/component/container/Spacer.js';
 export type { SpacerOptions } from '~/component/container/Spacer.js';
 export { SplitGutter } from '~/component/container/SplitGutter.js';

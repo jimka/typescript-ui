@@ -42,6 +42,7 @@ import { Slider } from '~/component/input/Slider';
 import { StatusBar } from '~/component/container/StatusBar';
 import { TabBar } from '~/component/container/TabBar';
 import { MenuSeparator } from '~/component/container/MenuSeparator';
+import { Separator } from '~/component/container/Separator';
 import { SortPriorityBadge } from '~/component/table/cell/SortPriorityBadge';
 import { FilterClauseBadge } from '~/component/table/cell/FilterClauseBadge';
 import { Scrollbar } from '~/component/container/Scrollbar';
@@ -335,6 +336,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'StatusBar foregroundColor',    resolve: () => new StatusBar().getForegroundColor(),                       expected: 'var(--ts-ui-statusbar-color, rgb(60, 60, 60))' },
     { label: 'TabBar backgroundColor',       resolve: () => new TabBar().getBackgroundColor(),                          expected: 'var(--ts-ui-tab-toolbar-bg, #eee)' },
     { label: 'MenuSeparator backgroundColor', resolve: () => new MenuSeparator().getBackgroundColor(),                  expected: 'transparent' },
+    { label: 'Separator backgroundColor', resolve: () => new Separator().getBackgroundColor(), expected: 'var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))' },
     { label: 'SortPriorityBadge backgroundColor', resolve: () => new SortPriorityBadge().getBackgroundColor(),          expected: 'var(--ts-ui-sort-badge-bg, rgba(0,0,0,0.15))' },
     { label: 'SortPriorityBadge foregroundColor', resolve: () => new SortPriorityBadge().getForegroundColor(),          expected: 'var(--ts-ui-sort-badge-color, inherit)' },
     { label: 'FilterClauseBadge backgroundColor', resolve: () => new FilterClauseBadge().getBackgroundColor(),          expected: 'var(--ts-ui-filter-clause-badge-bg, rgba(0,0,0,0.15))' },
@@ -598,9 +600,10 @@ describe('an explicit value wins over a class default', () => {
         expect(new FilterClauseBadge({ foregroundColor: 'blue' }).getForegroundColor()).toBe('blue');
     });
 
-    it('a caller-supplied backgroundColor/foregroundColor wins for Scrollbar, ToolBarSeparator, ChartLegend, Popover', () => {
+    it('a caller-supplied backgroundColor/foregroundColor wins for Scrollbar, ToolBarSeparator, Separator, ChartLegend, Popover', () => {
         expect(new Scrollbar('vertical', { backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
         expect(new ToolBarSeparator({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new Separator({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
         expect(new ChartLegend({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
         expect(new Popover({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
         expect(new Popover({ foregroundColor: 'blue' }).getForegroundColor()).toBe('blue');
