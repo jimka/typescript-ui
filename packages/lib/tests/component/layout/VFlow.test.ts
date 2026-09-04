@@ -4,6 +4,9 @@ import { Component } from '~/core/Component';
 import { Insets } from '~/primitive/Insets';
 import { VFlow } from '~/layout/VFlow';
 import type { FlowItemAlign } from '~/layout/FlowLayout';
+import { FillType } from '~/layout/FillType';
+import { LayoutConstraints } from '~/layout/LayoutConstraints';
+import { UNBOUNDED } from '~/primitive/Size';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -322,5 +325,78 @@ describe('VFlow item alignment within the column', () => {
 
         expect(narrow.getX()).toBe(0);
         expect(wide.getX()).toBe(0);
+    });
+});
+
+describe('VFlow per-child cross-axis fill (align-self: stretch)', () => {
+    afterEach(() => DOM.reset());
+
+    /**
+     * A horizontal rule: 1px tall, no intrinsic width, and a cross-axis
+     * (HORIZONTAL) fill constraint — the transpose of HFlow's rule.
+     */
+    function rule(): { component: Component; constraints: LayoutConstraints } {
+        const component = new Component({
+            preferredSize: { width: 0, height: 1 },
+            minSize:       { width: 0, height: 1 },
+            maxSize:       { width: UNBOUNDED, height: 1 },
+        });
+        const constraints = Object.assign(new LayoutConstraints(), { fill: FillType.HORIZONTAL });
+
+        return { component: component, constraints: constraints };
+    }
+
+    it('V1 — a rule child spans its column', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVFlow(300, 200, new VFlow({ spacing: 5 }));
+        const a = new Component({ preferredSize: { width: 20, height: 40 } });
+        const { component: r, constraints } = rule();
+        const c = new Component({ preferredSize: { width: 30, height: 60 } });
+
+        host.addComponent(a);
+        host.addComponent(r, constraints);
+        host.addComponent(c);
+        host.doLayout();
+
+        expect(r.getWidth()).toBe(30);
+        expect(r.getX()).toBe(0);
+        expect(r.getHeight()).toBe(1);
+        expect(r.getY()).toBe(45);
+    });
+
+    it('V2 — fill overrides itemAlign for that child only', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVFlow(300, 200, new VFlow({ spacing: 5, itemAlign: 'center' }));
+        const a = new Component({ preferredSize: { width: 20, height: 40 } });
+        const { component: r, constraints } = rule();
+        const c = new Component({ preferredSize: { width: 30, height: 60 } });
+
+        host.addComponent(a);
+        host.addComponent(r, constraints);
+        host.addComponent(c);
+        host.doLayout();
+
+        // A centres in the 30-wide column: (30 - 20) / 2.
+        expect(a.getX()).toBe(5);
+        expect(r.getX()).toBe(0);
+        expect(r.getWidth()).toBe(30);
+    });
+
+    it('V3 — an unconstrained child is untouched', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVFlow(300, 200, new VFlow({ spacing: 5 }));
+        const a = new Component({ preferredSize: { width: 20, height: 40 } });
+        const { component: r } = rule();
+        const c = new Component({ preferredSize: { width: 30, height: 60 } });
+
+        host.addComponent(a);
+        host.addComponent(r);
+        host.addComponent(c);
+        host.doLayout();
+
+        expect(r.getWidth()).toBe(0);
     });
 });

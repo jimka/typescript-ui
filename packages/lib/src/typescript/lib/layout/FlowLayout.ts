@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { FillType } from "~/layout/FillType.js";
 import { Size } from "~/primitive/Size.js";
 import { Component } from "~/core/Component.js";
 import type { AxisPosition, AxisSpread } from "~/primitive/Axis.js";
@@ -36,7 +37,8 @@ export type FlowUniformity = "none" | "width" | "height" | "both";
  *
  * @remarks This positions the *cell* within the line; a child's
  * {@link AnchorType} still positions the child within its (possibly uniform)
- * cell — both apply. Flow never resizes cells, so alignment only moves them.
+ * cell — both apply. Alignment only moves a cell; a child with a cross-axis
+ * `fill` constraint instead takes the whole line extent and ignores this.
  *
  * @category Layouts
  */
@@ -498,6 +500,46 @@ export abstract class FlowLayout extends LayoutManager {
             default:
                 return 0;
         }
+    }
+
+    /**
+     * Whether the child's stored `fill` constraint carries this flow's cross
+     * axis, making it an align-self stretch against its wrapped line.
+     *
+     * @param component - The child whose constraints supply the fill intent.
+     * @param horizontal - `true` for HFlow (cross axis is vertical), `false`
+     *   for VFlow (cross axis is horizontal).
+     * @returns `true` when the child stretches to its line's cross extent.
+     */
+    protected isCrossFilled(component: Component, horizontal: boolean): boolean {
+        const fill = this.getLayoutConstraints(component)?.fill ?? null;
+
+        return horizontal
+            ? (fill === FillType.VERTICAL   || fill === FillType.BOTH)
+            : (fill === FillType.HORIZONTAL || fill === FillType.BOTH);
+    }
+
+    /**
+     * Whether the child's stored `fill` constraint carries this flow's *main*
+     * axis — a mismatched-orientation intent the flow does not implement (it
+     * owns main-axis sizing and wrapping; see {@link isCrossFilled} for the
+     * axis the flow does honour). `resolveBounds` reads a child's raw `fill`
+     * directly and would otherwise stretch such a child to whatever main-axis
+     * cell extent a caller hands it — inert in the default (non-`uniform`)
+     * case, where that extent already equals the child's own preferred main
+     * extent, but not under a `uniform` mode that widens the cell past it.
+     *
+     * @param component - The child whose constraints supply the fill intent.
+     * @param horizontal - `true` for HFlow (main axis is horizontal), `false`
+     *   for VFlow (main axis is vertical).
+     * @returns `true` when the child's `fill` names the flow's main axis.
+     */
+    protected isMainFilled(component: Component, horizontal: boolean): boolean {
+        const fill = this.getLayoutConstraints(component)?.fill ?? null;
+
+        return horizontal
+            ? (fill === FillType.HORIZONTAL || fill === FillType.BOTH)
+            : (fill === FillType.VERTICAL   || fill === FillType.BOTH);
     }
 
     /**

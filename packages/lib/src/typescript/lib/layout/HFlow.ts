@@ -36,9 +36,11 @@ interface HFlowRow {
 /**
  * A layout manager that packs children in horizontal rows, wrapping to a new
  * line when the next child would exceed the container's inner width. Unlike
- * {@link HBox} it never shrinks or stretches children: each keeps its preferred
- * size and lines stack downward. A scroll-enabled host (`Panel.setAutoScroll`)
- * gains a vertical scrollbar once the stacked lines exceed its inner height.
+ * {@link HBox} it never shrinks a child, and stretches one only on the cross
+ * axis and only when that child asks for it with a cross-axis `fill`; each
+ * child otherwise keeps its preferred size and lines stack downward. A
+ * scroll-enabled host (`Panel.setAutoScroll`) gains a vertical scrollbar once
+ * the stacked lines exceed its inner height.
  *
  * @remarks Shares its flow configuration (item/line spacing, cell uniformity,
  * line alignment) with {@link VFlow} through the {@link FlowLayout} base. The
@@ -365,7 +367,9 @@ class HFlow extends FlowLayout {
      * main axis per the `justify` mode (or packs them at the `align` offset when
      * `justify` is `"start"`), and resolves each cell's bounds within the row
      * height per the `itemAlign` mode. Each child keeps its preferred size
-     * (`FillType.NONE`); its own {@link AnchorType} positions it within its cell.
+     * (`FillType.NONE`) unless its own constraints set a cross-axis `fill`,
+     * which sizes it to the row's cross extent instead; its own
+     * {@link AnchorType} positions it within its cell.
      *
      * @param rows - The rows produced by {@link HFlow.groupIntoRows}.
      * @param leftInset - The container's left content inset (the row's leading edge).
@@ -394,9 +398,19 @@ class HFlow extends FlowLayout {
             let x = leftInset + blockLead + lead;
 
             for (const cell of row.cells) {
-                const y = row.y + this.crossOffset(cell.height, row.rowHeight, cell.baseline, rowAscent, rowDescent);
+                const crossFilled = this.isCrossFilled(cell.component, true);
+                const cellHeight  = crossFilled ? row.rowHeight : cell.height;
+                const y           = row.y + (crossFilled ? 0 : this.crossOffset(cell.height, row.rowHeight, cell.baseline, rowAscent, rowDescent));
 
-                placements.push({ component: cell.component, ...this.resolveBounds(cell.component, x, y, cell.width, cell.height, FillType.NONE) });
+                // A raw fill naming this flow's main (horizontal) axis is a
+                // mismatched orientation the flow does not implement — hand
+                // resolveBounds the cell's own clamped preferred width instead
+                // of the (possibly uniform-widened) packed width, so it can't
+                // silently stretch into the uniform grid slot.
+                const mainFilled = this.isMainFilled(cell.component, true);
+                const cellWidth  = mainFilled ? this.clampedPreferredSize(cell.component).width : cell.width;
+
+                placements.push({ component: cell.component, ...this.resolveBounds(cell.component, x, y, cellWidth, cellHeight, FillType.NONE) });
 
                 x += cell.width + gap;
             }
