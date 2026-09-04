@@ -16,6 +16,8 @@ import { installTestDOM, setQuerySelectorResult } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { EditorState } from '@codemirror/state';
 import { codeFolding, foldEffect } from '@codemirror/language';
+import { json } from '@codemirror/lang-json';
+import { collectSyntaxErrors } from '~/component/editor/syntaxDiagnostics';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -51,6 +53,28 @@ describe('LanguageRegistry', () => {
 
     it('returns undefined for an unregistered id', () => {
         expect(getLanguage('nope-not-registered')).toBeUndefined();
+    });
+
+    it('round-trips a registered loadLintSource intact', () => {
+        const source = async () => [];
+        const def = {
+            id: 'test-registry-lang-with-lint',
+            loadExtension: async () => [] as any,
+            loadLintSource: async () => source,
+        };
+
+        registerLanguage(def);
+
+        expect(getLanguage('test-registry-lang-with-lint')?.loadLintSource).toBe(def.loadLintSource);
+    });
+
+    it('leaves loadLintSource undefined for a definition registered without one', () => {
+        registerLanguage({
+            id: 'test-registry-lang-no-lint',
+            loadExtension: async () => [] as any,
+        });
+
+        expect(getLanguage('test-registry-lang-no-lint')?.loadLintSource).toBeUndefined();
     });
 
     it('lists the seven built-in languages after the barrel side-effect import', () => {
@@ -1353,6 +1377,62 @@ describe('CodeEditor highlightWhitespace', () => {
     });
 });
 
+describe('CodeEditor lint', () => {
+    it('getLint defaults to false', () => {
+        const editor = new CodeEditor();
+
+        expect(editor.getLint()).toBe(false);
+    });
+
+    it('round-trips through the constructor options bag', () => {
+        const editor = new CodeEditor(undefined, { lint: true });
+
+        expect(editor.getLint()).toBe(true);
+    });
+
+    it('setLint round-trips without a live view, with no throw', () => {
+        const editor = new CodeEditor();
+
+        expect(() => editor.setLint(true)).not.toThrow();
+        expect(editor.getLint()).toBe(true);
+    });
+
+    it('setLint(true) for a language with no loadLintSource clears the compartment synchronously (no linter installed)', () => {
+        registerLanguage({
+            id: 'test-lint-no-source-lang',
+            loadExtension: async () => [] as any,
+        });
+        const editor = new CodeEditor(undefined, { language: 'test-lint-no-source-lang' }) as any;
+        const dispatch = vi.fn();
+        editor._view = { dispatch };
+
+        editor.setLint(true);
+
+        expect(dispatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('setLint(true) for a language with a loadLintSource asynchronously installs the linter', async () => {
+        const source = async () => [];
+
+        registerLanguage({
+            id: 'test-lint-with-source-lang',
+            loadExtension: async () => [] as any,
+            loadLintSource: async () => source,
+        });
+        const editor = new CodeEditor(undefined, { language: 'test-lint-with-source-lang' }) as any;
+        const dispatch = vi.fn();
+        editor._view = { dispatch };
+
+        editor.setLint(true);
+        expect(dispatch).not.toHaveBeenCalled();
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(dispatch).toHaveBeenCalledTimes(1);
+    });
+});
+
 describe('CodeEditor countFoldedLines', () => {
     function buildState(lineCount: number): EditorState {
         const doc = Array.from({ length: lineCount }, (_, i) => `line ${i + 1}`).join('\n');
@@ -1385,6 +1465,63 @@ describe('CodeEditor countFoldedLines', () => {
         const state = initial.update({ effects: [foldEffect.of(foldA), foldEffect.of(foldB)] }).state;
 
         expect(editor.countFoldedLines(state)).toBe(7);
+    });
+});
+
+describe('collectSyntaxErrors', () => {
+    function buildJsonState(doc: string): EditorState {
+        return EditorState.create({ doc, extensions: [json()] });
+    }
+
+    it('returns [] for valid JSON', () => {
+        const state = buildJsonState('{"a": 1}');
+
+        expect(collectSyntaxErrors(state)).toEqual([]);
+    });
+
+    it('reports at least one "error"-severity diagnostic for invalid JSON', () => {
+        const state = buildJsonState('{"a": }');
+        const diagnostics = collectSyntaxErrors(state);
+
+        expect(diagnostics.length).toBeGreaterThanOrEqual(1);
+        expect(diagnostics.every((d) => d.severity === 'error')).toBe(true);
+    });
+
+    it('reports a single diagnostic for an empty document, not []', () => {
+        // Deviates from the plan's original expectation (`""` -> `[]`):
+        // `@codemirror/lang-json`'s grammar treats an empty document as a
+        // missing top-level value -- a genuine parse error, matching
+        // collectSyntaxErrors's own contract of reporting wherever the
+        // grammar fails. See the plan's Implementation Notes.
+        const state = buildJsonState('');
+        const diagnostics = collectSyntaxErrors(state);
+
+        expect(diagnostics).toHaveLength(1);
+        expect(diagnostics[0]).toMatchObject({ from: 0, to: 0, severity: 'error' });
+    });
+
+    it('merges adjacent error nodes into one diagnostic', () => {
+        // Ten consecutive, individually-invalid `]` tokens with no JSON value
+        // ever opened -- each is its own zero-width-adjacent error node
+        // (from[n] === to[n-1]), so they must merge into a single diagnostic
+        // spanning the whole run rather than staying ten separate ones.
+        const state = buildJsonState(']]]]]]]]]]');
+        const diagnostics = collectSyntaxErrors(state);
+
+        expect(diagnostics).toHaveLength(1);
+        expect(diagnostics[0].from).toBe(0);
+        expect(diagnostics[0].to).toBe(10);
+    });
+
+    it('caps output at 100 diagnostics for a document producing more error nodes', () => {
+        // 250 single-character error tokens, each separated by a space so
+        // none are adjacent (no merging) -- this exercises the cap itself,
+        // not the merge logic above.
+        const doc = Array.from({ length: 250 }, () => ']').join(' ');
+        const state = buildJsonState(doc);
+        const diagnostics = collectSyntaxErrors(state);
+
+        expect(diagnostics).toHaveLength(100);
     });
 });
 

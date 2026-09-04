@@ -10,6 +10,7 @@
 import { registerLanguage } from "~/component/editor/LanguageRegistry.js";
 import { formatWithPrettier } from "~/component/editor/formatters/prettier.js";
 import { formatWithSql } from "~/component/editor/formatters/sql.js";
+import { collectSyntaxErrors } from "~/component/editor/syntaxDiagnostics.js";
 
 /** Loads the babel + estree plugins Prettier's `babel-ts` and `json` parsers need. */
 async function loadBabelPlugins() {
@@ -30,6 +31,7 @@ registerLanguage({
         return javascript({ typescript: true });
     },
     loadFormatter: async () => formatWithPrettier("babel-ts", loadBabelPlugins),
+    loadLintSource: async () => collectSyntaxErrors,
 });
 
 registerLanguage({
@@ -41,6 +43,7 @@ registerLanguage({
         return json();
     },
     loadFormatter: async () => formatWithPrettier("json", loadBabelPlugins),
+    loadLintSource: async () => collectSyntaxErrors,
 });
 
 registerLanguage({
@@ -52,6 +55,7 @@ registerLanguage({
         return html();
     },
     loadFormatter: async () => formatWithPrettier("html", async () => [await import("prettier/plugins/html")]),
+    loadLintSource: async () => collectSyntaxErrors,
 });
 
 registerLanguage({
@@ -63,6 +67,7 @@ registerLanguage({
         return sql();
     },
     loadFormatter: async () => formatWithSql,
+    loadLintSource: async () => collectSyntaxErrors,
 });
 
 registerLanguage({
@@ -85,6 +90,7 @@ registerLanguage({
         return css();
     },
     loadFormatter: async () => formatWithPrettier("css", async () => [await import("prettier/plugins/postcss")]),
+    loadLintSource: async () => collectSyntaxErrors,
 });
 
 registerLanguage({
@@ -96,4 +102,5 @@ registerLanguage({
         return python();
     },
     // No formatter: format() falls back to CodeMirror's own re-indent.
+    loadLintSource: async () => collectSyntaxErrors,
 });

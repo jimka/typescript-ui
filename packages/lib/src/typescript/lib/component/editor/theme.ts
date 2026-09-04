@@ -130,6 +130,20 @@ export function codeEditorTheme(dark: boolean): Extension {
         ".cm-selectionMatch": {
             backgroundColor: "rgba(127, 127, 127, 0.2)",
         },
+        ".cm-lintRange-error": {
+            backgroundImage: "none",
+            textDecoration:  "underline wavy var(--ts-ui-validation-error-border, #dc2626)",
+        },
+        ".cm-diagnostic-error": {
+            borderLeft: "4px solid var(--ts-ui-validation-error-border, #dc2626)",
+        },
+        ".cm-diagnosticSource": {
+            color: "var(--ts-ui-autocomplete-item-disabled-color, #aaaaaa)",
+        },
+        ".cm-tooltip-lint .cm-diagnostic": {
+            backgroundColor: "var(--ts-ui-tooltip-bg, #fffff0)",
+            color:           "var(--ts-ui-tooltip-color, #000000)",
+        },
     }, { dark });
 
     const highlight = syntaxHighlighting(HighlightStyle.define([

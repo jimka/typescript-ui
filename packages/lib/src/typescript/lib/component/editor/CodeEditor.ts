@@ -17,6 +17,7 @@ import type { Extension } from "@codemirror/state";
 import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { indentOnInput, bracketMatching, indentRange, codeFolding, foldGutter, foldKeymap, foldedRanges } from "@codemirror/language";
 import { search, highlightSelectionMatches, searchKeymap } from "@codemirror/search";
+import { linter, lintGutter } from "@codemirror/lint";
 import { getLanguage } from "~/component/editor/LanguageRegistry.js";
 import type { FormatOptions } from "~/component/editor/LanguageRegistry.js";
 import { codeEditorTheme } from "~/component/editor/theme.js";
@@ -84,6 +85,8 @@ export interface CodeEditorOptions extends ComponentOptions {
     placeholder?: string;
     /** Whether spaces, tabs and trailing whitespace are rendered visibly. Default `false`. */
     highlightWhitespace?: boolean;
+    /** Whether parser-error diagnostics are shown. Default `false`; inert for a language with no lint source. */
+    lint?: boolean;
     /** Construction-time listener bag; the events are `"change"`, `"readonlyedit"`, and `"heightchange"`. */
     listeners?: { change?: (payload: CodeEditorChange) => void; readonlyedit?: () => void; heightchange?: (payload: CodeEditorHeightChange) => void };
 }
@@ -228,6 +231,9 @@ class CodeEditor extends Component<CodeEditorOptions> {
     /** Reconfigured by {@link CodeEditor.setHighlightWhitespace}. */
     private readonly _whitespaceCompartment: Compartment = new Compartment();
 
+    /** Reconfigured by {@link CodeEditor.refreshLint}. */
+    private readonly _lintCompartment: Compartment = new Compartment();
+
     /** Custom-event fan-out for `"change"`. */
     private readonly _listeners: ListenerBag<CodeEditorEvent> = this.registerListenerBag(new ListenerBag<CodeEditorEvent>());
 
@@ -370,6 +376,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
         if (options.lineWrap !== undefined) this._options.lineWrap = options.lineWrap;
         if (options.placeholder !== undefined) this._options.placeholder = options.placeholder;
         if (options.highlightWhitespace !== undefined) this._options.highlightWhitespace = options.highlightWhitespace;
+        if (options.lint !== undefined) this._options.lint = options.lint;
 
         return this;
     }
@@ -443,7 +450,11 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * mounted and the id names a registered language, kicks off the grammar's
      * lazy `loadExtension()` and reconfigures the grammar compartment once it
      * resolves — guarded against a stale resolution by re-checking the active
-     * language id, so a rapid double-swap applies only the latest.
+     * language id, so a rapid double-swap applies only the latest. Also
+     * refreshes lint, resolving the new language's lint source (if any) and
+     * reconfiguring the lint compartment, so switching language swaps the
+     * diagnostics along with the grammar instead of leaving stale markers
+     * from the previous language.
      *
      * @param id - A registered language id, or `null` to clear highlighting.
      * @returns This component, for method chaining.
@@ -454,6 +465,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
         if (!this._view) {
             return this;
         }
+
+        this.refreshLint();
 
         if (!id) {
             this._view.dispatch({ effects: this._langCompartment.reconfigure([]) });
@@ -474,6 +487,47 @@ class CodeEditor extends Component<CodeEditorOptions> {
         });
 
         return this;
+    }
+
+    /**
+     * Resolves the active language's lint source (if any) and reconfigures
+     * the lint compartment. Called from {@link CodeEditor.setLint} and
+     * {@link CodeEditor.setLanguage} whenever a view is mounted; a no-op
+     * otherwise (both callers already guard on `this._view`).
+     *
+     * Mirrors `setLanguage`'s async stale-guard: the resolved source is only
+     * applied if `this._view` still exists, {@link CodeEditor.getLint} is
+     * still `true`, and {@link CodeEditor.getLanguage} still equals the id
+     * this call started for — so a rapid language or lint toggle applies only
+     * the latest.
+     */
+    private refreshLint(): void {
+        if (!this._view) {
+            return;
+        }
+
+        if (!this.getLint()) {
+            this._view.dispatch({ effects: this._lintCompartment.reconfigure([]) });
+
+            return;
+        }
+
+        const id  = this.getLanguage();
+        const def = id ? getLanguage(id) : undefined;
+
+        if (!def?.loadLintSource) {
+            this._view.dispatch({ effects: this._lintCompartment.reconfigure([]) });
+
+            return;
+        }
+
+        void def.loadLintSource().then((source) => {
+            if (this._view && this.getLint() && this.getLanguage() === id) {
+                this._view.dispatch({
+                    effects: this._lintCompartment.reconfigure([linter((view) => source(view.state)), lintGutter()]),
+                });
+            }
+        });
     }
 
     /**
@@ -582,6 +636,34 @@ class CodeEditor extends Component<CodeEditorOptions> {
                 effects: this._whitespaceCompartment.reconfigure(
                     highlight ? [highlightWhitespace(), highlightTrailingWhitespace()] : []),
             });
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether parser-error diagnostics are currently shown.
+     *
+     * @returns The lint state.
+     */
+    getLint(): boolean {
+        return this._options.lint ?? false;
+    }
+
+    /**
+     * Sets whether parser-error diagnostics are shown. Caches the state;
+     * when a view is mounted, also resolves the active language's lint
+     * source (if any) and reconfigures the lint compartment. Inert for a
+     * language with no lint source.
+     *
+     * @param lint - Whether diagnostics should be shown.
+     * @returns This component, for method chaining.
+     */
+    setLint(lint: boolean): this {
+        this._options.lint = lint;
+
+        if (this._view) {
+            this.refreshLint();
         }
 
         return this;
@@ -953,6 +1035,11 @@ class CodeEditor extends Component<CodeEditorOptions> {
             this._placeholderCompartment.of(this.getPlaceholder() ? placeholder(this.getPlaceholder()!) : []),
             this._whitespaceCompartment.of(
                 this.getHighlightWhitespace() ? [highlightWhitespace(), highlightTrailingWhitespace()] : []),
+            // Left empty here rather than seeded from getLint(): an editor
+            // mounted with a language runs setLanguage(language) a few lines
+            // below, which calls refreshLint() itself; one mounted without a
+            // language has nothing to lint, so [] is already right.
+            this._lintCompartment.of([]),
             EditorView.updateListener.of((update) => {
                 if (update.docChanged) {
                     this.onDocChange(update.state.doc.toString());
