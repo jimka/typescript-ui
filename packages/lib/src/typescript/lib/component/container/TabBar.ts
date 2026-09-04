@@ -1534,6 +1534,44 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
+     * Italicises (or un-italicises) the label of the cell with `id`, updating
+     * the strip button and re-laying out the strip. No-op for an unknown id.
+     *
+     * @param id - The cell id whose label style to change.
+     * @param italic - True to italicise the label, false to restore it upright.
+     *
+     * @returns This tab strip, for method chaining.
+     *
+     * @remarks
+     * View-only: this bar never touches a container's `LayoutConstraints`, so
+     * the change does not survive a tear-off, a re-dock, or a saved layout.
+     * Reach for this method only when [`Tab.setTabItalic`](/api/layout/classes/Tab#settabitalic)
+     * can't — a lazy cell whose content hasn't materialised yet, addressed
+     * here by its owner-minted id instead.
+     */
+    setEntryItalic(id: string, italic: boolean): this {
+        const entry = this.entryById(id);
+
+        if (entry) {
+            entry.button.setFontStyle(italic ? "italic" : "normal");
+            this.scheduleLayout();
+        }
+
+        return this;
+    }
+
+    /**
+     * Reports whether the cell with `id` is currently italicised.
+     *
+     * @param id - The cell id to query.
+     *
+     * @returns True when the cell's label is italic; false for an unknown id.
+     */
+    isEntryItalic(id: string): boolean {
+        return this.entryById(id)?.button.getFontStyle() === "italic";
+    }
+
+    /**
      * Records the live content's component id on the cell with `id`. The id feeds
      * the drag payload (so a foreign strip can resolve the content from the shared
      * registry) and the cell button's ARIA `aria-controls` (so the button is

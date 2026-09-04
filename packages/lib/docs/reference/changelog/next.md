@@ -98,6 +98,11 @@ page resets to empty.
   `getEntryGlyph(id)`** — a cell's leading icon was previously fixed at
   creation; these swap, remove, or read it on a live cell, mirroring the
   existing `setEntryName` / `getEntryName` pair.
+- **`TabBar` gains `setEntryItalic(id, italic)` / `isEntryItalic(id)`**, and
+  **`Button` gains `setFontStyle(value)` / `getFontStyle()`** as the
+  label-level mechanism they run through — italicising a cell's label
+  (the VS Code-style preview-tab treatment) with nothing else about the tab
+  changed.
 
 ### Data
 
@@ -118,6 +123,10 @@ page resets to empty.
   remove the leading icon of a live tab, mirroring the existing
   `setTabName`. The change writes back to the tab's `glyph` constraint, so
   it survives a tear-off, a re-dock, or a saved-and-restored layout.
+- **`Tab.setTabItalic(content, italic)` / `isTabItalic(content)`** italicise
+  or restore a live tab's label. Unlike `setTabGlyph`, the flag is
+  view-only — it is not written to the tab's `LayoutConstraints`, so it
+  does not survive a tear-off, a re-dock, or a saved layout.
 
 ### Core
 
@@ -197,6 +206,9 @@ page resets to empty.
 
 ### Components
 
+- `Text.setFontStyle` now re-measures the text and re-lays out its parent,
+  so a label switched to italics no longer keeps its upright width and
+  clip. No consumer action is needed.
 - **`PasswordField` and `UsernameField` now extend `TextField` instead of
   duplicating it.** Both classes were near-verbatim copies of `TextField`
   that had drifted from it: neither re-derived its height when `setBorder`

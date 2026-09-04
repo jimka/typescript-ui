@@ -1077,7 +1077,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
-     * Sets the CSS font-style and updates the component's CSS rule.
+     * Sets the CSS font-style, updates the rule, and recalculates preferred size.
      *
      * @param value - A CSS font-style value (e.g. "normal", "italic", "oblique").
      *
@@ -1085,6 +1085,9 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      */
     setFontStyle(value: string): this {
         this.writeStyle({ font: { fontStyle: value } });
+
+        this._measurementDirty = true;
+        (this.getParentComponent() ?? this).scheduleLayout();
 
         return this;
     }

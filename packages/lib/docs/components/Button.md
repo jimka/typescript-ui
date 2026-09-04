@@ -185,6 +185,7 @@ class Editor {
 
 - The label is a child [`Label`](/api/component/input/classes/Label); it inherits the button's foreground colour and theme font size.
 - `setText(text)` updates the label.
+- `setFontStyle(value)` / `getFontStyle()` style the title label only, not the description subtitle.
 - For toggle behavior (selected / unselected) use [`ToggleButton`](/components/ToggleButton).
 - For radio-group behavior use [`RadioButton`](/components/RadioButton) plus [`ButtonGroup`](/components/ButtonGroup).
 - For a flat menubar-style button reuse `chromeless: true` directly, or extend `Button` for a named class with its own declared chrome — `MenuBarButton` is the in-tree example.

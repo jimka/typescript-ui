@@ -51,6 +51,9 @@ class TabDemoPanel extends Component {
         const toggleBusyBtn = new Button("Toggle Busy");
         toolbar.addComponent(toggleBusyBtn);
 
+        const toggleItalicBtn = new Button("Toggle Italic");
+        toolbar.addComponent(toggleItalicBtn);
+
         const toggleBorderBtn = new Button("Toggle Under-border");
         toolbar.addComponent(toggleBorderBtn);
 
@@ -330,6 +333,14 @@ class TabDemoPanel extends Component {
 
         this.tabPanel.getTab().on("busychange", (busy, label) => {
             this.logText.setText(`${busy ? "Loading" : "Loaded"}: ${label}`);
+        });
+
+        toggleItalicBtn.on("action", () => {
+            const content = this.tabPanel.getTab().getActiveContent();
+
+            if (content) {
+                this.tabPanel.getTab().setTabItalic(content, !this.tabPanel.getTab().isTabItalic(content));
+            }
         });
 
         toggleBorderBtn.on("action", () => {
