@@ -46,6 +46,20 @@ page resets to empty.
   `collectSyntaxErrors` (a syntax-only diagnostics source built from a
   grammar's own parse tree) are newly exported from `component/editor`. No
   consumer action is needed.
+- **`CodeEditor` gains three options: `tabSize`, `lineNumbers`, and
+  `spellcheck`.** `tabSize` controls the live editor's tab-stop width — how
+  wide a literal tab renders and how many columns Tab / auto-indent insert
+  — by setting CodeMirror's `EditorState.tabSize` and `indentUnit` facets
+  together; unset (the default) leaves CodeMirror's own defaults in place.
+  `lineNumbers` (default `true`) toggles the line-number gutter.
+  `spellcheck` (default `false`) toggles the browser's native spellcheck
+  inside the editor — distinct from the existing `lint` diagnostics, which
+  come from the language's own parser, not the browser. New `getTabSize()`
+  / `setTabSize(size)`, `getLineNumbers()` / `setLineNumbers(show)`, and
+  `getSpellcheck()` / `setSpellcheck(spellcheck)` accessors. `tabSize` is
+  also distinct from the existing `FormatOptions.indentWidth`, which only
+  shapes `format()`'s one-shot reformat output. No consumer action is
+  needed.
 
 ### Menu
 
