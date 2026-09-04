@@ -49,6 +49,15 @@ export interface SelectableListItem {
      * the record field named by the list's `tooltipField`.
      */
     tooltip?: string;
+    /**
+     * Whether the row is interactive. Defaults to `true` — only an explicit
+     * `false` disables the row, which then renders dim, refuses clicks and
+     * Enter/Space, and is skipped by arrow-key navigation and type-ahead. A
+     * disabled row keeps its index and its key: it is still returned by
+     * `getItems`, and a programmatic `setValue` / `setValues` can still select
+     * it.
+     */
+    enabled?: boolean;
 }
 
 /**
@@ -261,6 +270,41 @@ const _defaultAbstractSelectableListOptions: Partial<AbstractSelectableListOptio
             outline: "var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))",
         },
     });
+
+    // Registered last on purpose. `.SelectableListRow.selected` and
+    // `.SelectableListRow.focused` have the same (0,2,0) specificity as this
+    // rule, so stylesheet order decides: a selected-but-disabled row keeps
+    // its selection background (this rule declares none) but takes the
+    // dim colour. `color` alone dims the label and the glyph together — the
+    // built-in renderers set no foreground and a Glyph paints with
+    // `fill: currentColor`.
+    new StyleRule({
+        scope:  "selector",
+        name:   ".SelectableListRow.disabled",
+        styles: {
+            color: "var(--ts-ui-list-row-disabled-color, rgb(170, 170, 170))",
+        },
+    });
+
+    // Cancels the hover rule's background for a disabled, non-selected row.
+    // `:not(.selected)` is required, not cosmetic: without it this selector's
+    // (0,4,0) would outrank `.selected`'s (0,2,0) and clear the selection
+    // wash on a hover of a selected-and-disabled row. With the guard, this
+    // rule simply doesn't match a selected row, so `.selected` and the plain
+    // `.SelectableListRow:hover` above go back to their (0,2,0)/(0,2,0) tie —
+    // decided by source order exactly as it already is for every other
+    // enabled row — and the selection background survives the hover there
+    // too. An earlier version guarded the hover selector itself with
+    // `:not(.disabled)`, which raised hover's own specificity above
+    // `.selected`'s and broke that tie for every enabled selected row, not
+    // just the disabled one it meant to fix.
+    new StyleRule({
+        scope:  "selector",
+        name:   ".SelectableListRow.disabled:hover:not(.selected)",
+        styles: {
+            backgroundColor: "transparent",
+        },
+    });
 })();
 
 const _defaultSelectableListRowOptions: Partial<ComponentOptions> = {
@@ -272,10 +316,12 @@ const _defaultSelectableListRowOptions: Partial<ComponentOptions> = {
 /**
  * A single row inside an {@link AbstractSelectableList}. Holds the static
  * row styling via the `.SelectableListRow` / `.SelectableListRow:hover` /
- * `.SelectableListRow.selected` / `.SelectableListRow.focused` class rules —
- * except the bottom separator, which is a real border set in the constructor so
- * it is measurable — and exposes typed setters for the label, the pool index,
- * the selected flag, and the focused flag.
+ * `.SelectableListRow.selected` / `.SelectableListRow.focused` /
+ * `.SelectableListRow.disabled` / `.SelectableListRow.disabled:hover:not(.selected)`
+ * class rules — except the bottom separator, which is a real border set in
+ * the constructor so it is measurable — and exposes typed setters for the
+ * label, the pool index, the selected flag, the focused flag, and the
+ * enabled flag.
  *
  * Internal — not re-exported from the per-subpath barrel; the public
  * surface lives on `List` / `MultiSelectList`.
@@ -285,6 +331,7 @@ class SelectableListRow extends Component {
     // be applied at render time.
     private _selected: boolean = false;
     private _focused:  boolean = false;
+    private _enabled:  boolean = true;
     /** Zero-based index in the row pool; forwarded to the handlers on a gesture. */
     private _index:    number;
     /** Owner-supplied gesture handlers, each invoked with this row's `_index`. */
@@ -358,6 +405,7 @@ class SelectableListRow extends Component {
     updateItem(item: SelectableListItem, index: number): this {
         this._renderer.update({ item, index });
         this.applyTooltip(item.tooltip);
+        this.setEnabled(item.enabled !== false);
 
         return this;
     }
@@ -496,6 +544,39 @@ class SelectableListRow extends Component {
     }
 
     /**
+     * Toggles the row's interactive state: reflects `aria-disabled`, swaps
+     * the cursor between `pointer` and `default`, and repaints the
+     * `.disabled` class. Guarded on change so a selection repaint that
+     * revisits an already-current state does not re-queue a style write per
+     * row.
+     *
+     * @param value - `true` when the row is interactive.
+     *
+     * @returns This row, for method chaining.
+     */
+    setEnabled(value: boolean): this {
+        if (this._enabled === value) {
+            return this;
+        }
+
+        this._enabled = value;
+        this.getAria().setDisabled(!value);
+        this.setCursor(value ? "pointer" : "default");
+        this.applyRowClass();
+
+        return this;
+    }
+
+    /**
+     * Returns the cached enabled state.
+     *
+     * @returns `true` when the row is currently interactive.
+     */
+    isEnabled(): boolean {
+        return this._enabled;
+    }
+
+    /**
      * Renders the row's `<div>` with its current class set. The label content
      * lives in the renderer child, appended by {@link init}.
      *
@@ -586,6 +667,10 @@ class SelectableListRow extends Component {
 
         if (this._focused) {
             classes.push("focused");
+        }
+
+        if (!this._enabled) {
+            classes.push("disabled");
         }
 
         this.setElementAttribute("class", classes.join(" "));
@@ -1185,7 +1270,7 @@ abstract class AbstractSelectableList<
             built.push(
                 typeof entry === "string"
                     ? { key: entry, label: entry }
-                    : { key: (entry as SelectableListItem).key, label: (entry as SelectableListItem).label, glyph: (entry as SelectableListItem).glyph, tooltip: (entry as SelectableListItem).tooltip },
+                    : { key: (entry as SelectableListItem).key, label: (entry as SelectableListItem).label, glyph: (entry as SelectableListItem).glyph, tooltip: (entry as SelectableListItem).tooltip, enabled: (entry as SelectableListItem).enabled },
             );
         }
 
@@ -1243,7 +1328,7 @@ abstract class AbstractSelectableList<
         this._items.push(
             typeof item === "string"
                 ? { key: item, label: item }
-                : { key: (item as SelectableListItem).key, label: (item as SelectableListItem).label, glyph: (item as SelectableListItem).glyph, tooltip: (item as SelectableListItem).tooltip },
+                : { key: (item as SelectableListItem).key, label: (item as SelectableListItem).label, glyph: (item as SelectableListItem).glyph, tooltip: (item as SelectableListItem).tooltip, enabled: (item as SelectableListItem).enabled },
         );
 
         this.pauseLayout();
@@ -1413,6 +1498,43 @@ abstract class AbstractSelectableList<
         if (fireEvent) {
             this.fireChange();
         }
+
+        return this;
+    }
+
+    /**
+     * Whether the item at `index` is interactive. `false` for an item
+     * carrying `enabled: false`, and for an index outside the item array.
+     *
+     * @param index - The zero-based item index to check.
+     *
+     * @returns `true` when the item is interactive.
+     */
+    isItemEnabled(index: number): boolean {
+        const item = this._items[index];
+
+        return item !== undefined && item.enabled !== false;
+    }
+
+    /**
+     * Updates one item's enabled state in place, repainting just that row.
+     * Selection and focus are left exactly as they are. No-op for an index
+     * outside the item array.
+     *
+     * @param index - The zero-based item index to update.
+     * @param enabled - The new enabled state.
+     *
+     * @returns This component, for method chaining.
+     */
+    setItemEnabled(index: number, enabled: boolean): this {
+        const item = this._items[index];
+
+        if (item === undefined) {
+            return this;
+        }
+
+        this._items[index] = { ...item, enabled };
+        this._rowPool[index]?.setEnabled(enabled);
 
         return this;
     }
@@ -1686,6 +1808,10 @@ abstract class AbstractSelectableList<
             return;
         }
 
+        if (!this.isItemEnabled(idx)) {
+            return;
+        }
+
         this.reduceSelection(idx, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
         this.refreshRowVisualState();
         this.updateActiveDescendant();
@@ -1734,6 +1860,10 @@ abstract class AbstractSelectableList<
      */
     protected handleRowDblClick(idx: number, e: MouseEvent): void {
         if (idx < 0 || idx >= this._items.length) {
+            return;
+        }
+
+        if (!this.isItemEnabled(idx)) {
             return;
         }
 
@@ -1900,6 +2030,36 @@ abstract class AbstractSelectableList<
     }
 
     /**
+     * Scans outward from `from` for the nearest enabled item, walking in
+     * `direction` first and, if that runs off the end of the array, walking
+     * back the other way from one step behind `from`. Backing the
+     * navigation filter, this is what lets `ArrowDown` on the last enabled
+     * row before a disabled run land back on the current row instead of
+     * falling off the list.
+     *
+     * @param from - The raw target index the navigation key computed.
+     * @param direction - `1` to prefer scanning forward, `-1` to prefer
+     *   scanning backward.
+     *
+     * @returns The nearest enabled index, or `-1` when every item is disabled.
+     */
+    private nearestEnabledIndex(from: number, direction: 1 | -1): number {
+        for (let i = from; i >= 0 && i < this._items.length; i += direction) {
+            if (this.isItemEnabled(i)) {
+                return i;
+            }
+        }
+
+        for (let i = from - direction; i >= 0 && i < this._items.length; i -= direction) {
+            if (this.isItemEnabled(i)) {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /**
      * Subset of `handleKeyDown` that processes the arrow / Home / End /
      * Page-* navigation keys. Returns `true` when a key was handled so
      * the caller can skip the remaining branches.
@@ -1939,7 +2099,17 @@ abstract class AbstractSelectableList<
             next = this._items.length - 1;
         }
 
-        this.moveFocus(next, ctrl, e.shiftKey);
+        // ArrowDown / PageDown / Home travel forward, ArrowUp / PageUp / End back.
+        const direction: 1 | -1 = (e.key === "ArrowDown" || e.key === "PageDown" || e.key === "Home") ? 1 : -1;
+        const target = this.nearestEnabledIndex(next, direction);
+
+        // Every row disabled: the list still owns the key (preventDefault above
+        // already ran) but the focus highlight has nowhere legal to go.
+        if (target < 0) {
+            return true;
+        }
+
+        this.moveFocus(target, ctrl, e.shiftKey);
 
         return true;
     }
@@ -1986,7 +2156,7 @@ abstract class AbstractSelectableList<
      * @param shift - Shift modifier flag at the time of the keypress.
      */
     protected commitFocusedRow(ctrl: boolean, shift: boolean): void {
-        if (this._focusedIndex < 0) {
+        if (this._focusedIndex < 0 || !this.isItemEnabled(this._focusedIndex)) {
             return;
         }
 
@@ -2015,7 +2185,9 @@ abstract class AbstractSelectableList<
         this._typeAheadAt   = now;
 
         const buf = this._typeAheadBuf;
-        const idx = this._items.findIndex(item => item.label.toLowerCase().startsWith(buf));
+        const idx = this._items.findIndex(
+            (item, i) => this.isItemEnabled(i) && item.label.toLowerCase().startsWith(buf),
+        );
 
         if (idx < 0) {
             return;

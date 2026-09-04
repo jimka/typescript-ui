@@ -25,6 +25,16 @@ class TestMultiSelectList extends _MultiSelectList {
 
 const FRUITS = ['Apple', 'Banana', 'Cherry', 'Date', 'Elder', 'Fig'];
 
+/** Six-row fixture with rows 1, 2 and 5 disabled — matches List.test.ts's ROWS. */
+const ROWS = [
+    { key: 'a', label: 'Apple' },
+    { key: 'b', label: 'Banana', enabled: false },
+    { key: 'c', label: 'Cherry', enabled: false },
+    { key: 'd', label: 'Date' },
+    { key: 'e', label: 'Elder' },
+    { key: 'f', label: 'Fig', enabled: false },
+];
+
 describe('MultiSelectList — construction + selectedIndices option', () => {
     it('selects the rows named by selectedIndices', () => {
         const list = new _MultiSelectList({ items: FRUITS, selectedIndices: [1, 3] });
@@ -247,6 +257,31 @@ describe('MultiSelectList — store round-trip', () => {
 
         list.setValues(['Banana']);
         expect(list.getSelectedRecords()).toEqual([]);
+    });
+});
+
+describe('MultiSelectList — disabled rows', () => {
+    it('programmatic setValues still reaches a disabled row', () => {
+        const list = new _MultiSelectList({ items: ROWS });
+
+        list.setValues(['b']);
+        expect(list.getValue()).toContain('b');
+    });
+
+    it('a Shift-range excludes a disabled row it crosses', () => {
+        const list = new TestMultiSelectList({ items: ROWS });
+
+        list.reduce(0, { ctrl: false, shift: false });
+        list.reduce(3, { ctrl: false, shift: true });
+
+        expect(list.getValue()).toEqual(['a', 'd']);
+    });
+
+    it('Ctrl+A (selectAll) excludes disabled rows', () => {
+        const list = new TestMultiSelectList({ items: ROWS });
+
+        list.all();
+        expect(list.getValue()).toEqual(['a', 'd', 'e']);
     });
 });
 
