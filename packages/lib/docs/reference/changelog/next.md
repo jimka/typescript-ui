@@ -292,3 +292,8 @@ page resets to empty.
   element and its per-instance stylesheet rule. A caller holding a
   reference from an earlier `getGlyph()` must not reuse it across a
   `setGlyph` / `clearGlyph` call.
+- The mouse wheel now scrolls `CodeEditor`'s completion list when the
+  pointer is over it, instead of scrolling the document behind it; the
+  framework's eased wheel scroller no longer claims a wheel over one of
+  CodeMirror's own tooltips when that tooltip can scroll itself. No
+  consumer action is needed.
