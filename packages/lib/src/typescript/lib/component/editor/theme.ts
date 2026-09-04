@@ -72,6 +72,16 @@ export function codeEditorTheme(dark: boolean): Extension {
             border:          "1px solid var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
             borderRadius:    "var(--ts-ui-border-radius, 4px)",
         },
+        ".cm-placeholder": {
+            color: "var(--ts-ui-autocomplete-item-disabled-color, #aaaaaa)",
+        },
+        ".cm-specialChar, .cm-highlightSpace, .cm-highlightTab": {
+            color: "var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
+        },
+        ".cm-trailingSpace": {
+            // Same color-mix recipe as .cm-searchMatch below.
+            backgroundColor: "color-mix(in srgb, var(--ts-ui-validation-error-border, #dc2626) 15%, transparent)",
+        },
     }, { dark });
 
     const highlight = syntaxHighlighting(HighlightStyle.define([

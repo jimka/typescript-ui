@@ -53,10 +53,11 @@ describe('LanguageRegistry', () => {
         expect(getLanguage('nope-not-registered')).toBeUndefined();
     });
 
-    it('lists the five built-in languages after the barrel side-effect import', () => {
+    it('lists the seven built-in languages after the barrel side-effect import', () => {
         const ids = listLanguages().map((def) => def.id);
 
-        expect(ids).toEqual(expect.arrayContaining(['javascript', 'json', 'html', 'sql', 'markdown']));
+        expect(ids).toEqual(expect.arrayContaining(
+            ['javascript', 'json', 'html', 'sql', 'markdown', 'css', 'python']));
     });
 });
 
@@ -1304,6 +1305,51 @@ describe('CodeEditor lineWrap', () => {
 
         expect(() => editor.setLineWrap(true)).not.toThrow();
         expect(editor.getLineWrap()).toBe(true);
+    });
+});
+
+describe('CodeEditor placeholder', () => {
+    it('getPlaceholder defaults to null', () => {
+        const editor = new CodeEditor();
+
+        expect(editor.getPlaceholder()).toBeNull();
+    });
+
+    it('round-trips through the constructor options bag', () => {
+        const editor = new CodeEditor(undefined, { placeholder: 'Type…' });
+
+        expect(editor.getPlaceholder()).toBe('Type…');
+    });
+
+    it('setPlaceholder(null) clears a previously set placeholder', () => {
+        const editor = new CodeEditor();
+
+        editor.setPlaceholder('x');
+        expect(editor.getPlaceholder()).toBe('x');
+
+        editor.setPlaceholder(null);
+        expect(editor.getPlaceholder()).toBeNull();
+    });
+});
+
+describe('CodeEditor highlightWhitespace', () => {
+    it('getHighlightWhitespace defaults to false', () => {
+        const editor = new CodeEditor();
+
+        expect(editor.getHighlightWhitespace()).toBe(false);
+    });
+
+    it('round-trips through the constructor options bag', () => {
+        const editor = new CodeEditor(undefined, { highlightWhitespace: true });
+
+        expect(editor.getHighlightWhitespace()).toBe(true);
+    });
+
+    it('setHighlightWhitespace round-trips without a live view, with no throw', () => {
+        const editor = new CodeEditor();
+
+        expect(() => editor.setHighlightWhitespace(true)).not.toThrow();
+        expect(editor.getHighlightWhitespace()).toBe(true);
     });
 });
 

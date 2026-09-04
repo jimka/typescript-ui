@@ -75,3 +75,25 @@ registerLanguage({
     },
     loadFormatter: async () => formatWithPrettier("markdown", async () => [await import("prettier/plugins/markdown")]),
 });
+
+registerLanguage({
+    id: "css",
+    label: "CSS",
+    loadExtension: async () => {
+        const { css } = await import("@codemirror/lang-css");
+
+        return css();
+    },
+    loadFormatter: async () => formatWithPrettier("css", async () => [await import("prettier/plugins/postcss")]),
+});
+
+registerLanguage({
+    id: "python",
+    label: "Python",
+    loadExtension: async () => {
+        const { python } = await import("@codemirror/lang-python");
+
+        return python();
+    },
+    // No formatter: format() falls back to CodeMirror's own re-indent.
+});

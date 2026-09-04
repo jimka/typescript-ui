@@ -7,7 +7,11 @@ import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
-import { EditorView, keymap, drawSelection, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view";
+import {
+    EditorView, keymap, drawSelection, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
+    placeholder, highlightWhitespace, highlightTrailingWhitespace, highlightSpecialChars,
+    dropCursor, rectangularSelection, crosshairCursor,
+} from "@codemirror/view";
 import { EditorState, Compartment } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -75,6 +79,10 @@ export interface CodeEditorOptions extends ComponentOptions {
     autoHeightMinRows?: number;
     /** Whether long lines wrap instead of scrolling horizontally. Default `false`. */
     lineWrap?: boolean;
+    /** Text shown in an empty document. Unset: nothing is shown. */
+    placeholder?: string;
+    /** Whether spaces, tabs and trailing whitespace are rendered visibly. Default `false`. */
+    highlightWhitespace?: boolean;
     /** Construction-time listener bag; the events are `"change"`, `"readonlyedit"`, and `"heightchange"`. */
     listeners?: { change?: (payload: CodeEditorChange) => void; readonlyedit?: () => void; heightchange?: (payload: CodeEditorHeightChange) => void };
 }
@@ -212,6 +220,12 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
     /** Reconfigured by {@link CodeEditor.setLineWrap} to toggle line wrapping. */
     private readonly _lineWrapCompartment: Compartment = new Compartment();
+
+    /** Reconfigured by {@link CodeEditor.setPlaceholder}. */
+    private readonly _placeholderCompartment: Compartment = new Compartment();
+
+    /** Reconfigured by {@link CodeEditor.setHighlightWhitespace}. */
+    private readonly _whitespaceCompartment: Compartment = new Compartment();
 
     /** Custom-event fan-out for `"change"`. */
     private readonly _listeners: ListenerBag<CodeEditorEvent> = this.registerListenerBag(new ListenerBag<CodeEditorEvent>());
@@ -353,6 +367,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
         if (options.autoHeightMaxRows !== undefined) this._options.autoHeightMaxRows = options.autoHeightMaxRows;
         if (options.autoHeightMinRows !== undefined) this._options.autoHeightMinRows = options.autoHeightMinRows;
         if (options.lineWrap !== undefined) this._options.lineWrap = options.lineWrap;
+        if (options.placeholder !== undefined) this._options.placeholder = options.placeholder;
+        if (options.highlightWhitespace !== undefined) this._options.highlightWhitespace = options.highlightWhitespace;
 
         return this;
     }
@@ -508,6 +524,63 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         if (this._view) {
             this._view.dispatch({ effects: this._lineWrapCompartment.reconfigure(wrap ? EditorView.lineWrapping : []) });
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the text shown in an empty document.
+     *
+     * @returns The placeholder text, or `null` when unset.
+     */
+    getPlaceholder(): string | null {
+        return this._options.placeholder ?? null;
+    }
+
+    /**
+     * Sets (or clears) the text shown in an empty document. Caches the value;
+     * when a view is mounted, also reconfigures the placeholder compartment.
+     *
+     * @param text - The placeholder text, or `null` to clear it.
+     * @returns This component, for method chaining.
+     */
+    setPlaceholder(text: string | null): this {
+        this._options.placeholder = text ?? undefined;
+
+        if (this._view) {
+            this._view.dispatch({ effects: this._placeholderCompartment.reconfigure(text ? placeholder(text) : []) });
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether spaces, tabs and trailing whitespace are currently
+     * rendered visibly.
+     *
+     * @returns The highlightWhitespace state.
+     */
+    getHighlightWhitespace(): boolean {
+        return this._options.highlightWhitespace ?? false;
+    }
+
+    /**
+     * Sets whether spaces, tabs and trailing whitespace are rendered visibly.
+     * Caches the state; when a view is mounted, also reconfigures the
+     * whitespace compartment.
+     *
+     * @param highlight - Whether whitespace should render visibly.
+     * @returns This component, for method chaining.
+     */
+    setHighlightWhitespace(highlight: boolean): this {
+        this._options.highlightWhitespace = highlight;
+
+        if (this._view) {
+            this._view.dispatch({
+                effects: this._whitespaceCompartment.reconfigure(
+                    highlight ? [highlightWhitespace(), highlightTrailingWhitespace()] : []),
+            });
         }
 
         return this;
@@ -865,10 +938,18 @@ class CodeEditor extends Component<CodeEditorOptions> {
             bracketMatching(),
             codeFolding(),
             foldGutter(),
+            highlightSpecialChars(),
+            dropCursor(),
+            rectangularSelection(),
+            crosshairCursor(),
+            EditorState.allowMultipleSelections.of(true),
             this._readOnlyCompartment.of(buildReadOnlyExtension(this.getReadOnly())),
             this._themeCompartment.of(codeEditorTheme(dark)),
             this._langCompartment.of([]),
             this._lineWrapCompartment.of(this.getLineWrap() ? EditorView.lineWrapping : []),
+            this._placeholderCompartment.of(this.getPlaceholder() ? placeholder(this.getPlaceholder()!) : []),
+            this._whitespaceCompartment.of(
+                this.getHighlightWhitespace() ? [highlightWhitespace(), highlightTrailingWhitespace()] : []),
             EditorView.updateListener.of((update) => {
                 if (update.docChanged) {
                     this.onDocChange(update.state.doc.toString());
