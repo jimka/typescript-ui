@@ -2,17 +2,22 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import { Event } from "~/core/Event.js";
 import { Insets } from "~/primitive/Insets.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { Card } from "~/layout/Card.js";
+import { Menu } from "~/overlay/Menu.js";
+import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { CodeEditor } from "~/component/editor/CodeEditor.js";
 import type { CodeEditorChange } from "~/component/editor/CodeEditor.js";
 import {
     createEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $getRoot,
     $createParagraphNode, KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH,
+    IS_ALL_FORMATTING, $isTextNode,
+    $getNearestNodeFromDOMNode, isDOMNode, $findMatchingParent, $isElementNode, $isParagraphNode,
 } from "lexical";
-import type { LexicalEditor, ElementNode, LexicalNode } from "lexical";
+import type { LexicalEditor, ElementNode, LexicalNode, TextFormatType } from "lexical";
 import { $convertFromMarkdownString, $convertToMarkdownString, registerMarkdownShortcuts } from "@lexical/markdown";
 import { registerRichText, $createHeadingNode, $createQuoteNode } from "@lexical/rich-text";
 import type { HeadingTagType } from "@lexical/rich-text";
@@ -111,6 +116,24 @@ function createBlockNode(type: MarkdownBlockType): ElementNode {
 }
 
 /**
+ * Finds the table containing the current selection, if any.
+ *
+ * @returns The enclosing {@link TableNode}, or `null` when the selection is
+ *   not a range selection anchored inside a table cell.
+ */
+function $getEnclosingTableNode(): TableNode | null {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return null;
+    }
+
+    const tableCell = $getTableCellNodeFromLexicalNode(selection.anchor.getNode());
+
+    return tableCell === null ? null : $getTableNodeFromLexicalNodeOrThrow(tableCell);
+}
+
+/**
  * Whether the caret currently sits inside a table cell — the precondition for
  * the row/column helpers, which throw rather than no-op when it does not.
  *
@@ -118,13 +141,7 @@ function createBlockNode(type: MarkdownBlockType): ElementNode {
  *   a table cell.
  */
 function $selectionIsInTableCell(): boolean {
-    const selection = $getSelection();
-
-    if (!$isRangeSelection(selection)) {
-        return false;
-    }
-
-    return $getTableCellNodeFromLexicalNode(selection.anchor.getNode()) !== null;
+    return $getEnclosingTableNode() !== null;
 }
 
 /**
@@ -193,6 +210,51 @@ function $handleSeparatorShortcut(event: KeyboardEvent | null): boolean {
     return true;
 }
 
+/**
+ * The right-click context this plan's menu builds around a resolved Lexical
+ * node: a table cell, an empty paragraph (outside any table), or ordinary
+ * text/prose, carrying the current selection's inline-format state so the
+ * format menu can show a checkmark on active toggles.
+ *
+ * @remarks Exported (not part of the public `MarkdownEditor` callable) so it
+ * can be imported directly in tests, mirroring how `Markdown.test.ts` imports
+ * the non-barrel-exposed `mapFenceLangToEditorId`.
+ */
+export type ContextMenuTarget =
+    | { kind: "table-cell" }
+    | { kind: "empty-line" }
+    | { kind: "text"; bold: boolean; italic: boolean; strikethrough: boolean; code: boolean };
+
+/**
+ * Classifies an already-resolved Lexical node for the right-click context
+ * menu: a table cell wins even when empty, an empty paragraph outside any
+ * table is the insert context, and everything else is the format context.
+ *
+ * @param node - The node the native `contextmenu` event's DOM target resolved to.
+ * @returns The classified {@link ContextMenuTarget}.
+ */
+export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget {
+    if ($getTableCellNodeFromLexicalNode(node) !== null) {
+        return { kind: "table-cell" };
+    }
+
+    const block = $findMatchingParent(node, (n) => $isElementNode(n) && !n.isInline());
+
+    if ($isParagraphNode(block) && block.getTextContent() === "") {
+        return { kind: "empty-line" };
+    }
+
+    const selection = $getSelection();
+    const hasFormat = (type: TextFormatType): boolean =>
+        $isRangeSelection(selection) && selection.hasFormat(type);
+
+    return {
+        kind: "text",
+        bold: hasFormat("bold"), italic: hasFormat("italic"),
+        strikethrough: hasFormat("strikethrough"), code: hasFormat("code"),
+    };
+}
+
 // A text caret over the whole surface signals editability. The surface is also
 // a contenteditable editing host, which the browser exempts from the framework's
 // `user-select: none` on its own, and Lexical additionally stamps
@@ -201,6 +263,9 @@ function $handleSeparatorShortcut(event: KeyboardEvent | null): boolean {
 // on that inline write surviving a later re-render. As class defaults both land
 // on the shared `.WysiwygSurface` rule rather than each instance's `#id` rule.
 const _defaultWysiwygSurfaceOptions: Partial<ComponentOptions> = { userSelect: "text", cursor: "text" };
+
+/** The event {@link WysiwygSurface} exposes through its custom `on` / `off` surface. */
+type WysiwygSurfaceEvent = "contextmenu";
 
 /**
  * The private WYSIWYG editing surface: the element Lexical's `contenteditable`
@@ -221,6 +286,9 @@ class WysiwygSurface extends Component {
 
     /** Invoked on the surface's first connected + sized layout — the moment to mount the live view. */
     private readonly _onReady: () => void;
+
+    /** Custom-event fan-out for `"contextmenu"`. */
+    private readonly _listeners: ListenerBag<WysiwygSurfaceEvent> = this.registerListenerBag(new ListenerBag<WysiwygSurfaceEvent>());
 
     /**
      * Constructs the WYSIWYG surface.
@@ -251,6 +319,13 @@ class WysiwygSurface extends Component {
         // the theme applies to <html>.
         this.setElementCSSRule("lineHeight", "var(--ts-ui-md-line-height, 1.8)");
 
+        // Subtree, not exact-target: a right-click over rendered prose lands on
+        // a descendant span/text node Lexical wraps content in, not on this
+        // surface's own root element, so the exact-target `Event.addListener`
+        // variant would never see it. Matches `ParentHeaderCell`'s identical
+        // registration (ParentHeader.ts:305).
+        Event.addSubtreeListener(this, "contextmenu", { prevent: true, handler: this.handleContextMenu });
+
         this.onFirstLayout(() => this._onReady());
     }
 
@@ -278,6 +353,55 @@ class WysiwygSurface extends Component {
      */
     getContentEditable(): boolean {
         return this._contentEditable;
+    }
+
+    /**
+     * Registers a listener for the `"contextmenu"` event, fired on a native
+     * right-click over this surface's element.
+     *
+     * @param event - Must be `"contextmenu"`.
+     * @param listener - Invoked with the native `MouseEvent`.
+     * @returns This surface, for method chaining.
+     */
+    on(event: WysiwygSurfaceEvent, listener: (event: MouseEvent) => void): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered `"contextmenu"` listener.
+     *
+     * @param event - Must be `"contextmenu"`.
+     * @param listener - The exact callback reference to remove.
+     * @returns This surface, for method chaining.
+     */
+    off(event: WysiwygSurfaceEvent, listener: (event: MouseEvent) => void): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fans the `"contextmenu"` event out to its registered listeners.
+     *
+     * @param event - Must be `"contextmenu"`.
+     * @param payload - The native `MouseEvent`.
+     */
+    protected emit(event: WysiwygSurfaceEvent, payload: MouseEvent): void {
+        this._listeners.fire(event, payload);
+    }
+
+    /**
+     * `Event`-registered handler for a native `contextmenu` DOM event on this
+     * surface's element: re-fires it through the semantic `"contextmenu"`
+     * custom event.
+     *
+     * @param event - The native contextmenu event. `preventDefault` is applied
+     *   by the registration's `prevent: true` floor.
+     */
+    private handleContextMenu(event: MouseEvent): void {
+        this.emit("contextmenu", event);
     }
 
     /**
@@ -399,6 +523,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     private readonly _codeEditor: CodeEditor;
 
     /**
+     * The right-click context menu shown over the WYSIWYG surface, in rebuild
+     * mode — one instance whose item list is fully rebuilt on every
+     * {@link Menu.show}, mirroring `Table`'s `_columnContextMenu`. The three
+     * contexts this editor's own right-click can resolve to are mutually
+     * exclusive per click, so one instance is safe to reuse across all of them.
+     */
+    private readonly _contextMenu: Menu = new Menu();
+
+    /**
      * The Markdown as of the last clean point — the value this editor was
      * constructed with, the converted form re-taken when the Lexical editor
      * is first built, or the value `markClean()` last accepted. `onDocChange`
@@ -431,6 +564,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         this.setLayoutManager(this._card);
 
         this._wysiwyg = new WysiwygSurface(() => this.mountWysiwyg());
+        // Arrow, not a bare method reference: ListenerBag.fire (which this `on`
+        // ultimately dispatches through) calls listeners bare with no `this`
+        // rebinding, unlike Event.addListener's `.apply(component, …)`.
+        this._wysiwyg.on("contextmenu", (event) => this.handleWysiwygContextMenu(event));
         this._codeEditor = new CodeEditor(this._options.value ?? "", {
             language:  "markdown",
             readOnly:  this._options.readOnly ?? false,
@@ -660,6 +797,17 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Toggles strikethrough on the current selection. No-op without a range selection.
+     *
+     * @returns This component, for method chaining.
+     */
+    toggleStrikethrough(): this {
+        this.ensureEditor().dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough");
+
+        return this;
+    }
+
+    /**
      * Converts the selected blocks into an unordered (bulleted) list, or out of
      * one when already a list. No-op without a range selection.
      *
@@ -698,6 +846,33 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
             if ($isRangeSelection(selection)) {
                 $toggleLink(url);
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Clears every inline text format (bold, italic, strikethrough, inline code,
+     * and any other Lexical text format) from the current selection, leaving
+     * plain text. No-op without a range selection. Block type is untouched.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearFormatting(): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                return;
+            }
+
+            for (const node of selection.getNodes()) {
+                if ($isTextNode(node)) {
+                    node.setFormat(node.getFormat() & ~IS_ALL_FORMATTING);
+                }
             }
         }, { discrete: true });
 
@@ -831,6 +1006,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Deletes the entire table containing the caret, including every row and
+     * cell. No-op without throwing when the caret is not inside a table cell.
+     *
+     * @returns This component, for method chaining.
+     */
+    deleteTable(): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            $getEnclosingTableNode()?.remove();
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
      * Registers a listener for the `"change"` event, fired whenever the document
      * content changes (typing, a command, or {@link MarkdownEditor.setValue}) in
      * whichever surface is active.
@@ -902,6 +1093,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         this._unregister?.();
         this._editor?.setRootElement(null);
 
+        // `Menu` is never registered via `addComponent` (per its own class
+        // comment), so the base class's child-recursion teardown below cannot
+        // reach it — `Table.destructor()` disposes `_columnContextMenu` the
+        // same explicit way.
+        this._contextMenu.dispose();
+
         // `_codeEditor` is registered via `addComponent`, so
         // `super.destructor()`'s child recursion below already disposes it —
         // an explicit call here would run `CodeEditor.destructor()` a second
@@ -969,6 +1166,132 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         if (editor.getRootElement() && !this._unregisterTableView) {
             this._unregisterTableView = registerTableSelectionObserver(editor, true);
         }
+    }
+
+    /**
+     * `WysiwygSurface`'s `"contextmenu"` handler: resolves the native event's
+     * DOM target to a Lexical node, classifies it, and shows the resulting
+     * context menu at the click point. No-op when the target is not a DOM
+     * node, or when it does not resolve to a mounted Lexical node.
+     *
+     * @param event - The native `contextmenu` event forwarded by the surface.
+     */
+    private handleWysiwygContextMenu(event: MouseEvent): void {
+        if (!isDOMNode(event.target)) {
+            return;
+        }
+
+        const domTarget = event.target;
+        const editor = this.ensureEditor();
+
+        const context = editor.read(() => {
+            const node = $getNearestNodeFromDOMNode(domTarget);
+
+            return node === null ? null : $classifyContextMenuTarget(node);
+        });
+
+        if (context === null) {
+            return;
+        }
+
+        this._contextMenu.show(event.clientX, event.clientY, this.buildContextMenuItems(context));
+    }
+
+    /**
+     * Dispatches a classified right-click context to the item list for its kind.
+     *
+     * @param context - The classified {@link ContextMenuTarget}.
+     * @returns The `MenuItemConfig` array for {@link Menu.show}.
+     */
+    private buildContextMenuItems(context: ContextMenuTarget): MenuItemConfig[] {
+        switch (context.kind) {
+            case "table-cell": return this.buildTableCellContextMenuItems();
+            case "empty-line": return this.buildEmptyLineContextMenuItems();
+            case "text":       return this.buildTextContextMenuItems(context);
+        }
+    }
+
+    /**
+     * Builds the format menu shown over a word, a range selection, or an
+     * ordinary (non-empty) block: inline-format toggles with active-state
+     * checkmarks, a block-style submenu scoped to paragraph/headings, and a
+     * clear-formatting action.
+     *
+     * @param context - The `"text"` classification, carrying the current
+     *   selection's inline-format state.
+     * @returns The `MenuItemConfig` array for {@link Menu.show}.
+     */
+    private buildTextContextMenuItems(context: ContextMenuTarget & { kind: "text" }): MenuItemConfig[] {
+        return [
+            { text: "Bold", shortcut: "Ctrl+B", checked: context.bold, action: () => this.toggleBold() },
+            { text: "Italic", shortcut: "Ctrl+I", checked: context.italic, action: () => this.toggleItalic() },
+            { text: "Strikethrough", checked: context.strikethrough, action: () => this.toggleStrikethrough() },
+            { text: "Inline code", checked: context.code, action: () => this.toggleInlineCode() },
+            { separator: true },
+            {
+                text:    "Block style",
+                submenu: {
+                    label: "Block style",
+                    items: [
+                        { text: "Paragraph", action: () => this.setBlockType("paragraph") },
+                        { separator: true },
+                        ...this.buildHeadingMenuItems(),
+                    ],
+                },
+            },
+            { separator: true },
+            { text: "Clear formatting", action: () => this.clearFormatting() },
+        ];
+    }
+
+    /**
+     * Builds the insert menu shown over an empty line (outside any table):
+     * headings, quote, code block, and table insertion. Omits a "Paragraph"
+     * item — the classification already guarantees the caret sits in an empty
+     * paragraph, so converting it to a paragraph is a guaranteed no-op.
+     *
+     * @returns The `MenuItemConfig` array for {@link Menu.show}.
+     */
+    private buildEmptyLineContextMenuItems(): MenuItemConfig[] {
+        return [
+            { text: "Heading", submenu: { label: "Heading", items: this.buildHeadingMenuItems() } },
+            { text: "Quote", action: () => this.setBlockType("quote") },
+            { text: "Code block", action: () => this.setBlockType("code") },
+            { separator: true },
+            { text: "Table", action: () => this.insertTable(2, 3) },
+        ];
+    }
+
+    /**
+     * Builds the menu shown over a table cell (populated or empty): the four
+     * directional row/column inserts, then row/column/whole-table deletion.
+     *
+     * @returns The `MenuItemConfig` array for {@link Menu.show}.
+     */
+    private buildTableCellContextMenuItems(): MenuItemConfig[] {
+        return [
+            { text: "Insert row above", action: () => this.insertTableRow(false) },
+            { text: "Insert row below", action: () => this.insertTableRow(true) },
+            { text: "Insert column left", action: () => this.insertTableColumn(false) },
+            { text: "Insert column right", action: () => this.insertTableColumn(true) },
+            { separator: true },
+            { text: "Delete row", action: () => this.deleteTableRow() },
+            { text: "Delete column", action: () => this.deleteTableColumn() },
+            { text: "Delete table", action: () => this.deleteTable() },
+        ];
+    }
+
+    /**
+     * Builds the six heading-level items shared by the text-context block-style
+     * submenu and the empty-line insert menu's own Heading submenu.
+     *
+     * @returns The six `MenuItemConfig` entries, `h1` through `h6`.
+     */
+    private buildHeadingMenuItems(): MenuItemConfig[] {
+        return ([1, 2, 3, 4, 5, 6] as const).map((level) => ({
+            text:   `Heading ${level}`,
+            action: () => this.setBlockType(`h${level}` as MarkdownBlockType),
+        }));
     }
 
     /**

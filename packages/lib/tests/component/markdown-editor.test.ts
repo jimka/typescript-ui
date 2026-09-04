@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
-import type { MarkdownEditorChange } from '~/component/editor/MarkdownEditor';
+import { MarkdownEditor, $classifyContextMenuTarget } from '~/component/editor/MarkdownEditor';
+import type { MarkdownEditorChange, ContextMenuTarget } from '~/component/editor/MarkdownEditor';
+import type { MenuItemConfig } from '~/component/container/MenuItem';
 import { Component } from '~/core/Component';
 import { TRANSFORMERS } from '~/component/editor/markdownTransformers';
 import { EDITOR_NODES } from '~/component/editor/editorNodes';
@@ -11,8 +12,8 @@ import {
     STRIKETHROUGH, HIGHLIGHT, CHECK_LIST,
 } from '@lexical/markdown';
 import { TableNode, TableRowNode, TableCellNode } from '@lexical/table';
-import { $getRoot, $getSelection, $isRangeSelection, $isParagraphNode, KEY_ENTER_COMMAND } from 'lexical';
-import type { LexicalEditor } from 'lexical';
+import { $getRoot, $getSelection, $isRangeSelection, $isParagraphNode, $selectAll, KEY_ENTER_COMMAND } from 'lexical';
+import type { LexicalEditor, ElementNode, LexicalNode } from 'lexical';
 import { lexer } from 'marked';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, ruleStyleWrites, type RecordingDOMSink } from '../dom/TestDOM';
@@ -43,6 +44,7 @@ const CORPUS: Record<string, string> = {
     'heading h6':       '###### Heading six',
     'paragraph':        'A plain paragraph of prose.',
     'inline formats':   'Text with **bold**, *italic*, and `inline code`.',
+    'strikethrough':    '~~struck~~ text',
     'unordered list':   '- one\n- two\n- three',
     'ordered list':     '1. first\n2. second',
     'blockquote':       '> a quoted line',
@@ -84,6 +86,17 @@ function wysiwygOf(editor: MarkdownEditor): { getElement(createIfMissing?: boole
     })._wysiwyg;
 }
 
+/** Reaches the private context-menu builder/handler methods for white-box assertions. */
+function contextMenuMethodsOf(editor: MarkdownEditor): {
+    buildContextMenuItems(context: ContextMenuTarget): MenuItemConfig[];
+    handleWysiwygContextMenu(event: MouseEvent): void;
+} {
+    return editor as unknown as {
+        buildContextMenuItems(context: ContextMenuTarget): MenuItemConfig[];
+        handleWysiwygContextMenu(event: MouseEvent): void;
+    };
+}
+
 /** Folds every apply patch for `handle` into the attribute state it produces. */
 function attrsOf(sink: RecordingDOMSink, handle: unknown): Record<string, string> {
     const attrs: Record<string, string> = {};
@@ -106,16 +119,15 @@ function selectStart(editor: MarkdownEditor): void {
 }
 
 describe('markdownTransformers curation', () => {
-    it('contains exactly the ten dialect transformers', () => {
-        expect(TRANSFORMERS).toHaveLength(10);
+    it('contains exactly the eleven dialect transformers', () => {
+        expect(TRANSFORMERS).toHaveLength(11);
         expect(TRANSFORMERS).toEqual(expect.arrayContaining([
             HEADING, QUOTE, CODE, UNORDERED_LIST, ORDERED_LIST,
-            BOLD_STAR, ITALIC_STAR, INLINE_CODE, LINK,
+            BOLD_STAR, ITALIC_STAR, INLINE_CODE, STRIKETHROUGH, LINK,
         ]));
     });
 
-    it('excludes the constructs the viewer drops (strikethrough, highlight, check-list)', () => {
-        expect(TRANSFORMERS).not.toContain(STRIKETHROUGH);
+    it('excludes the constructs the viewer drops (highlight, check-list)', () => {
         expect(TRANSFORMERS).not.toContain(HIGHLIGHT);
         expect(TRANSFORMERS).not.toContain(CHECK_LIST);
     });
@@ -269,12 +281,44 @@ describe('MarkdownEditor command API', () => {
                 .toggleBold()
                 .toggleItalic()
                 .toggleInlineCode()
+                .toggleStrikethrough()
                 .toggleUnorderedList()
                 .toggleOrderedList()
                 .toggleLink('https://example.com')
                 .toggleLink(null)
                 .setBlockType('h1')
+                .clearFormatting()
         ).not.toThrow();
+    });
+
+    it('toggleStrikethrough round-trips ~~x~~ through setValue/getValue on a selected word', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('word');
+
+        lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true });
+        editor.toggleStrikethrough();
+
+        expect(editor.getValue()).toContain('~~word~~');
+    });
+
+    it('clearFormatting strips bold/italic/strikethrough/inline-code markers, leaving plain text', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('**bold** *italic* `code` ~~struck~~');
+
+        lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true });
+
+        editor.clearFormatting();
+
+        const value = editor.getValue();
+
+        expect(value).not.toContain('**');
+        expect(value).not.toContain('*italic*');
+        expect(value).not.toContain('`code`');
+        expect(value).not.toContain('~~');
+        expect(value).toContain('bold');
+        expect(value).toContain('italic');
+        expect(value).toContain('code');
+        expect(value).toContain('struck');
     });
 
     it('setBlockType("h2") converts the selected paragraph to a heading', () => {
@@ -715,6 +759,23 @@ describe('MarkdownEditor table commands', () => {
         }
     });
 
+    it('deleteTable removes the table containing the caret, including every row and cell', () => {
+        const editor = new MarkdownEditor();
+        editor.insertTable(2, 3);   // caret lands in the first header cell
+
+        editor.deleteTable();
+
+        const tokens = lexer(editor.getValue());
+
+        expect(tokens.some((token) => token.type === 'table')).toBe(false);
+    });
+
+    it('deleteTable no-throws when the caret is not inside a table cell', () => {
+        const editor = new MarkdownEditor();
+
+        expect(() => editor.deleteTable()).not.toThrow();
+    });
+
     it('all five commands chain on a fresh editor with no prior selection and no table, without throwing', () => {
         const editor = new MarkdownEditor();
 
@@ -726,6 +787,83 @@ describe('MarkdownEditor table commands', () => {
                 .insertTableColumn()
                 .deleteTableColumn()
         ).not.toThrow();
+    });
+});
+
+describe('$classifyContextMenuTarget', () => {
+    it('classifies a text node inside ordinary prose as "text" with every format false', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+
+        const result = lexicalOf(editor).read(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const textNode = paragraph.getFirstChild() as LexicalNode;
+
+            return $classifyContextMenuTarget(textNode);
+        });
+
+        expect(result).toEqual({ kind: 'text', bold: false, italic: false, strikethrough: false, code: false });
+    });
+
+    it('reflects the current selection\'s bold state', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+
+        lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true });
+        editor.toggleBold();
+
+        const result = lexicalOf(editor).read(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const textNode = paragraph.getFirstChild() as LexicalNode;
+
+            return $classifyContextMenuTarget(textNode);
+        });
+
+        expect(result).toEqual({ kind: 'text', bold: true, italic: false, strikethrough: false, code: false });
+    });
+
+    it('classifies the paragraph node of a genuinely empty paragraph as "empty-line"', () => {
+        const editor = new MarkdownEditor();
+
+        (editor as unknown as { ensureEditor(): LexicalEditor }).ensureEditor();
+
+        const result = lexicalOf(editor).read(() => {
+            const paragraph = $getRoot().getFirstChild() as LexicalNode;
+
+            return $classifyContextMenuTarget(paragraph);
+        });
+
+        expect(result).toEqual({ kind: 'empty-line' });
+    });
+
+    it('classifies a node inside a populated table cell as "table-cell"', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+
+        const result = lexicalOf(editor).read(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+            const row = table.getFirstChild() as TableRowNode;
+            const cell = row.getFirstChild() as TableCellNode;
+            const textNode = (cell.getFirstChild() as ElementNode).getFirstChild() as LexicalNode;
+
+            return $classifyContextMenuTarget(textNode);
+        });
+
+        expect(result).toEqual({ kind: 'table-cell' });
+    });
+
+    it('classifies a node inside an empty table cell as "table-cell", not "empty-line" (table check wins)', () => {
+        const editor = new MarkdownEditor();
+        editor.insertTable(2, 3);   // caret lands in the first (empty) header cell
+
+        const result = lexicalOf(editor).read(() => {
+            const selection = $getSelection();
+            const node = $isRangeSelection(selection) ? selection.anchor.getNode() : null;
+
+            return $classifyContextMenuTarget(node as LexicalNode);
+        });
+
+        expect(result).toEqual({ kind: 'table-cell' });
     });
 });
 
@@ -839,6 +977,84 @@ describe('MarkdownEditor Alt+Enter block-separator shortcut', () => {
         // instead — the same plain paragraph split a non-Alt Enter would do.
         expect(handled).toBe(true);
         expect(childTypes(editor)).toEqual(['paragraph', 'paragraph']);
+    });
+});
+
+describe('MarkdownEditor context menu', () => {
+    /** Finds the config for the item with the given `text`, in a possibly-nested submenu list. */
+    function findItem(items: MenuItemConfig[], text: string): MenuItemConfig | undefined {
+        return items.find((item) => item.text === text);
+    }
+
+    /** Resolves a `MenuConfig`'s `items`, which may be a fixed array or a zero-argument provider. */
+    function submenuItemsOf(item: MenuItemConfig | undefined): MenuItemConfig[] | undefined {
+        const items = item?.submenu?.items;
+
+        return typeof items === 'function' ? items() : items;
+    }
+
+    it('a "text" context marks the active formats checked and offers an 8-item block-style submenu', () => {
+        const editor = new MarkdownEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'text', bold: true, italic: false, strikethrough: true, code: false,
+        });
+
+        expect(findItem(items, 'Bold')?.checked).toBe(true);
+        expect(findItem(items, 'Italic')?.checked).toBe(false);
+        expect(findItem(items, 'Strikethrough')?.checked).toBe(true);
+        expect(findItem(items, 'Inline code')?.checked).toBe(false);
+
+        // Paragraph, separator, 6 headings.
+        expect(submenuItemsOf(findItem(items, 'Block style'))).toHaveLength(8);
+    });
+
+    it('an "empty-line" context omits Paragraph and offers a 6-item Heading submenu', () => {
+        const editor = new MarkdownEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line' });
+
+        expect(findItem(items, 'Paragraph')).toBeUndefined();
+        expect(submenuItemsOf(findItem(items, 'Heading'))).toHaveLength(6);
+    });
+
+    it('a "table-cell" context returns 8 entries: 4 inserts, a separator, then 3 deletes, in order', () => {
+        const editor = new MarkdownEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'table-cell' });
+
+        expect(items).toHaveLength(8);
+        expect(items.map((item) => item.text ?? '(separator)')).toEqual([
+            'Insert row above', 'Insert row below', 'Insert column left', 'Insert column right',
+            '(separator)', 'Delete row', 'Delete column', 'Delete table',
+        ]);
+        expect(items[4].separator).toBe(true);
+    });
+
+    it("the table-cell menu's Delete table item reaches MarkdownEditor.deleteTable", () => {
+        const editor = new MarkdownEditor();
+        editor.insertTable(2, 3);   // caret lands in the first header cell
+
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'table-cell' });
+
+        findItem(items, 'Delete table')?.action?.();
+
+        const tokens = lexer(editor.getValue());
+        expect(tokens.some((token) => token.type === 'table')).toBe(false);
+    });
+
+    it("the empty-line menu's Table item reaches MarkdownEditor.insertTable(2, 3)", () => {
+        const editor = new MarkdownEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line' });
+
+        findItem(items, 'Table')?.action?.();
+
+        const lines = normalize(editor.getValue()).split('\n');
+        expect(lines).toHaveLength(3);   // header, delimiter, one body row
+    });
+
+    it('handleWysiwygContextMenu no-throws when event.target is not a DOM node', () => {
+        const editor = new MarkdownEditor();
+        const fakeEvent = { target: {} } as MouseEvent;
+
+        expect(() => contextMenuMethodsOf(editor).handleWysiwygContextMenu(fakeEvent)).not.toThrow();
     });
 });
 
