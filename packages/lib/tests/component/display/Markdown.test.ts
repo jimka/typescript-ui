@@ -781,13 +781,19 @@ describe('Markdown table', () => {
         expect(childTagsOf('td')).not.toContain('BR');
     });
 
-    it('splits a cell\'s escaped newline (markdownTableTransformer.ts\'s escape for a soft line break) into a <br>, not literal backslash-n text', () => {
-        // '\\n' here is the literal two-character sequence (backslash, n) —
-        // what escapeCellText writes in place of a real newline, since a GFM
-        // table row cannot contain one.
-        new Markdown('| line1\\nline2 | b |\n| --- | --- |\n| 1 | 2 |').getElement(true);
+    it('splits a cell\'s escaped paragraph break (two adjacent Lexical paragraphs from one Enter) into one <br>, not a blank line', () => {
+        // '\\n\\n' here is the literal four-character sequence — two escaped
+        // newlines — that markdownTableTransformer.ts's escapeCellText always
+        // writes for one paragraph-to-paragraph boundary, since
+        // $convertToMarkdownString joins a cell's Lexical paragraphs (one
+        // plain Enter in the editor makes two) with a raw two-newline
+        // separator, not one. Splitting on a lone single-newline escape
+        // instead double-counts every boundary into a blank line the WYSIWYG
+        // editor itself never shows (its cell paragraphs render flush,
+        // margin: 0).
+        new Markdown('| line1\\n\\nline2 | b |\n| --- | --- |\n| 1 | 2 |').getElement(true);
 
-        expect(childTagsOf('th')).toContain('BR');
+        expect(childTagsOf('th').filter((tag) => tag === 'BR')).toHaveLength(1);
 
         const texts = textWrites();
 
@@ -796,8 +802,18 @@ describe('Markdown table', () => {
         expect(texts.some((t) => t.includes('\\n'))).toBe(false);
     });
 
-    it('splits every escaped newline in a cell with more than one', () => {
-        new Markdown('| a\\nb\\nc | d |\n| --- | --- |\n| 1 | 2 |').getElement(true);
+    it('splits every paragraph-break pair in a cell with more than one boundary, one <br> per boundary', () => {
+        new Markdown('| a\\n\\nb\\n\\nc | d |\n| --- | --- |\n| 1 | 2 |').getElement(true);
+
+        expect(childTagsOf('th').filter((tag) => tag === 'BR')).toHaveLength(2);
+    });
+
+    it('renders a genuinely empty paragraph between two cell paragraphs as two <br> (a real blank line)', () => {
+        // Three Lexical paragraphs "a", "", "b" (Enter, Enter) export as two
+        // back-to-back paragraph-join separators with nothing between them —
+        // four raw newlines, escaped to four consecutive tokens — which must
+        // still read as a blank line, unlike the flush two-paragraph case above.
+        new Markdown('| a\\n\\n\\n\\nb | c |\n| --- | --- |\n| 1 | 2 |').getElement(true);
 
         expect(childTagsOf('th').filter((tag) => tag === 'BR')).toHaveLength(2);
     });

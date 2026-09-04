@@ -11,7 +11,7 @@ import {
     STRIKETHROUGH, HIGHLIGHT, CHECK_LIST,
 } from '@lexical/markdown';
 import { TableNode, TableRowNode, TableCellNode } from '@lexical/table';
-import { $getRoot, $isParagraphNode } from 'lexical';
+import { $getRoot, $getSelection, $isRangeSelection, $isParagraphNode, KEY_ENTER_COMMAND } from 'lexical';
 import type { LexicalEditor } from 'lexical';
 import { lexer } from 'marked';
 import { DOM } from '~/core/DOM';
@@ -729,98 +729,116 @@ describe('MarkdownEditor table commands', () => {
     });
 });
 
-describe('MarkdownEditor block separators around tables and code blocks', () => {
-    /** Whether the document's last root child is a paragraph node. */
-    function endsWithParagraph(editor: MarkdownEditor): boolean {
-        return lexicalOf(editor).read(() => {
-            const lastChild = $getRoot().getLastChild();
-
-            return lastChild !== null && $isParagraphNode(lastChild);
-        });
-    }
-
+describe('MarkdownEditor Alt+Enter block-separator shortcut', () => {
     /** The root's children, by Lexical node type, in document order. */
     function childTypes(editor: MarkdownEditor): string[] {
         return lexicalOf(editor).read(() => $getRoot().getChildren().map((node) => node.getType()));
     }
 
-    it('insertTable on an empty editor leaves a trailing paragraph after the table, so a click below it has somewhere to land', () => {
+    /** Whether the caret sits in a (necessarily just-created, still empty) paragraph. */
+    function caretIsInAParagraph(editor: MarkdownEditor): boolean {
+        return lexicalOf(editor).read(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                return false;
+            }
+
+            const node = selection.anchor.getNode();
+
+            return $isParagraphNode(node) || $isParagraphNode(node.getParent());
+        });
+    }
+
+    /** Selects into the end of the first cell of the document's first (only) table. */
+    function selectInFirstTableCell(editor: MarkdownEditor): void {
+        lexicalOf(editor).update(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+            const row = table.getFirstChild() as TableRowNode;
+            const cell = row.getFirstChild() as TableCellNode;
+
+            cell.selectEnd();
+        }, { discrete: true });
+    }
+
+    /** Dispatches `KEY_ENTER_COMMAND` with a synthetic event, `altKey` as given. */
+    function dispatchEnter(editor: MarkdownEditor, altKey: boolean): boolean {
+        return lexicalOf(editor).dispatchCommand(
+            KEY_ENTER_COMMAND, { altKey, shiftKey: false, preventDefault: () => {} } as KeyboardEvent);
+    }
+
+    it('with the caret in a table cell, inserts a paragraph after the table and moves the caret into it', () => {
         const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+        expect(childTypes(editor)).toEqual(['table']);   // sanity: no auto separator on import
+        selectInFirstTableCell(editor);
 
-        editor.insertTable(2, 3);
+        const handled = dispatchEnter(editor, true);
 
-        expect(endsWithParagraph(editor)).toBe(true);
+        expect(handled).toBe(true);
+        expect(childTypes(editor)).toEqual(['table', 'paragraph']);
+        expect(caretIsInAParagraph(editor)).toBe(true);
     });
 
-    it('setValue with content ending in a fenced code block appends a trailing paragraph', () => {
+    it('with the caret in a fenced code block, inserts a paragraph after it', () => {
         const editor = new MarkdownEditor();
+        editor.setValue('```\ncode\n```');
+        expect(childTypes(editor)).toEqual(['code']);   // sanity: no auto separator on import
+        lexicalOf(editor).update(() => { $getRoot().selectEnd(); }, { discrete: true });   // lands in the code block, its only child
 
-        editor.setValue('# Heading\n\n```\ncode\n```');
+        const handled = dispatchEnter(editor, true);
 
-        expect(endsWithParagraph(editor)).toBe(true);
+        expect(handled).toBe(true);
+        expect(childTypes(editor)).toEqual(['code', 'paragraph']);
+        expect(caretIsInAParagraph(editor)).toBe(true);
     });
 
-    it('building the editor from construction-time content ending in a table appends a trailing paragraph', () => {
-        const editor = new MarkdownEditor('| a | b |\n| --- | --- |\n| 1 | 2 |');
-
-        // Forces ensureEditor()'s first-build path (the same one the SAMPLE
-        // demo content and any other construction-time value goes through)
-        // without a selection to act on, so the command itself is a no-op
-        // on content.
-        editor.setBlockType('paragraph');
-
-        expect(endsWithParagraph(editor)).toBe(true);
-    });
-
-    it('a source-mode round trip through setMode ending in a table still leaves a trailing paragraph', () => {
-        const editor = new MarkdownEditor('| a | b |\n| --- | --- |\n| 1 | 2 |');
-
-        editor.setMode('source');
-        editor.setMode('wysiwyg');
-
-        expect(endsWithParagraph(editor)).toBe(true);
-    });
-
-    it('a table immediately followed by a fenced code block in the source Markdown gets a separator paragraph between them', () => {
-        // Mirrors the demo's own SAMPLE content: a blank line in Markdown
-        // between two block constructs is only separator syntax, not a real
-        // paragraph, so without this the importer would leave the table
-        // directly bordering the code block with nowhere to click between
-        // them (see the "problem entering content between... a table and a
-        // code block" report this transform fixes).
+    it('inserts a separator between a table and an immediately following code block, from the caret in the table', () => {
+        // A blank line in the source Markdown between two block constructs is
+        // only separator syntax, not a real paragraph, so the table imports
+        // directly bordering the code block with nowhere to click between them.
         const editor = new MarkdownEditor();
-
         editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |\n\n```\ncode\n```');
+        expect(childTypes(editor)).toEqual(['table', 'code']);   // no separator on import
 
-        expect(childTypes(editor)).toEqual(['table', 'paragraph', 'code', 'paragraph']);
+        selectInFirstTableCell(editor);
+        dispatchEnter(editor, true);
+
+        expect(childTypes(editor)).toEqual(['table', 'paragraph', 'code']);
     });
 
-    it('inserting a table at the caret inside the auto-added trailing paragraph after a code block keeps a separator between them', () => {
+    it('inserts a separator between a table and an immediately following code block, from the caret in the code block', () => {
         const editor = new MarkdownEditor();
-        editor.setValue('```\ncode\n```');   // ends in a code block -> a trailing paragraph gets appended
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |\n\n```\ncode\n```');
+        lexicalOf(editor).update(() => { $getRoot().selectEnd(); }, { discrete: true });   // code is the last child
 
-        // Mirrors a user clicking into that trailing paragraph (the "type
-        // below the code block" affordance) before using the toolbar's
-        // Insert table action.
+        dispatchEnter(editor, true);
+
+        expect(childTypes(editor)).toEqual(['table', 'code', 'paragraph']);
+    });
+
+    it('a plain Enter (no Alt) in a table cell splits the cell\'s own paragraph, not the table\'s root sibling', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+        selectInFirstTableCell(editor);
+
+        dispatchEnter(editor, false);
+
+        expect(childTypes(editor)).toEqual(['table']);   // no root-level paragraph added
+    });
+
+    it('outside a table or code block, falls through to a normal paragraph split', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('Some prose.');
         lexicalOf(editor).update(() => { $getRoot().selectEnd(); }, { discrete: true });
 
-        editor.insertTable(2, 2);
+        const handled = dispatchEnter(editor, true);
 
-        // A table directly bordering a code block is exactly the adjacency
-        // $ensureParagraphAfter exists to prevent, so the separator the
-        // caret sat in stays — removing it would leave nowhere to click
-        // between the two blocks, and the transform would just reinsert it.
-        expect(childTypes(editor)).toEqual(['code', 'paragraph', 'table', 'paragraph']);
-    });
-
-    it('does not add a second trailing paragraph when the document already ends with prose', () => {
-        const editor = new MarkdownEditor();
-
-        editor.setValue('# Heading\n\nSome prose.');
-
-        const childCount = lexicalOf(editor).read(() => $getRoot().getChildrenSize());
-
-        expect(childCount).toBe(2);   // heading, then the one prose paragraph — no extra
+        // $findEnclosingSeparatorTarget finds nothing, so the handler returns
+        // false and registerRichText's own (lower-priority) handler runs
+        // instead — the same plain paragraph split a non-Alt Enter would do.
+        expect(handled).toBe(true);
+        expect(childTypes(editor)).toEqual(['paragraph', 'paragraph']);
     });
 });
 

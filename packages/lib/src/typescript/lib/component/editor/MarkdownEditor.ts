@@ -10,24 +10,24 @@ import { CodeEditor } from "~/component/editor/CodeEditor.js";
 import type { CodeEditorChange } from "~/component/editor/CodeEditor.js";
 import {
     createEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $getRoot,
-    $createParagraphNode,
+    $createParagraphNode, KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH,
 } from "lexical";
-import type { LexicalEditor, ElementNode } from "lexical";
+import type { LexicalEditor, ElementNode, LexicalNode } from "lexical";
 import { $convertFromMarkdownString, $convertToMarkdownString, registerMarkdownShortcuts } from "@lexical/markdown";
 import { registerRichText, $createHeadingNode, $createQuoteNode } from "@lexical/rich-text";
 import type { HeadingTagType } from "@lexical/rich-text";
 import { registerList, INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND } from "@lexical/list";
 import { $toggleLink } from "@lexical/link";
-import { CodeNode, $createCodeNode, $isCodeNode } from "@lexical/code";
+import { CodeNode, $createCodeNode } from "@lexical/code";
 import { registerHistory, createEmptyHistoryState } from "@lexical/history";
 import {
     TableNode, registerTablePlugin, registerTableCellUnmergeTransform, registerTableSelectionObserver,
-    $getTableCellNodeFromLexicalNode, $isTableNode,
+    $getTableCellNodeFromLexicalNode, $getTableNodeFromLexicalNodeOrThrow,
     $insertTableRowAtSelection, $deleteTableRowAtSelection,
     $insertTableColumnAtSelection, $deleteTableColumnAtSelection,
     INSERT_TABLE_COMMAND,
 } from "@lexical/table";
-import { mergeRegister } from "@lexical/utils";
+import { mergeRegister, $getNearestNodeOfType } from "@lexical/utils";
 import { $setBlocksType } from "@lexical/selection";
 import { TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { EDITOR_NODES } from "~/component/editor/editorNodes.js";
@@ -128,31 +128,69 @@ function $selectionIsInTableCell(): boolean {
 }
 
 /**
- * Node-transform body for {@link TableNode} / {@link CodeNode}: inserts an
- * empty paragraph immediately after `node` whenever it would otherwise be
- * followed by nothing, or by another table or fenced code block.
+ * Finds the table or fenced code block enclosing `node`, if any.
+ *
+ * @param node - The node to search upward from (typically a selection anchor).
+ * @returns The enclosing {@link TableNode} or {@link CodeNode}, or `null` when
+ *   `node` sits in neither.
+ */
+function $findEnclosingSeparatorTarget(node: LexicalNode): TableNode | CodeNode | null {
+    const codeNode = $getNearestNodeOfType(node, CodeNode);
+
+    if (codeNode !== null) {
+        return codeNode;
+    }
+
+    const tableCell = $getTableCellNodeFromLexicalNode(node);
+
+    return tableCell === null ? null : $getTableNodeFromLexicalNodeOrThrow(tableCell);
+}
+
+/**
+ * `KEY_ENTER_COMMAND` handler for Alt+Enter (Option+Enter on macOS): with the
+ * caret inside a table or fenced code block, inserts an empty paragraph
+ * immediately after that block and moves the caret into it.
  *
  * @remarks
  * Unlike a heading, list, or blockquote — ordinary flow text a click at its
  * trailing edge already lands in, the same as a paragraph — a table's grid
  * layout and a code block's preformatted whitespace give a click nothing to
  * resolve into, so wherever one directly borders another such block (or the
- * end of the document) there is nowhere to click to insert new content there.
- * Registered as a node transform, rather than called from each command that
- * can produce this shape, so the invariant holds regardless of *how* the
- * adjacency arises: the initial Markdown import (the demo's own SAMPLE ends
- * a table directly into a fenced block with no blank-line paragraph between
- * them), {@link MarkdownEditor.insertTable}, a `setBlockType('code')` that
- * replaces the paragraph separating two blocks, undo/redo, or paste.
+ * end of the document) there is otherwise nowhere to place a caret to add
+ * content there. Bound to Alt+Enter rather than plain Enter or Shift+Enter,
+ * both of which already mean something inside a cell or code block (splitting
+ * into a new paragraph, or a soft line break); registered at
+ * {@link COMMAND_PRIORITY_HIGH} so it runs ahead of `registerRichText`'s own
+ * `KEY_ENTER_COMMAND` handler (registered at `COMMAND_PRIORITY_EDITOR`).
  *
- * @param node - The just-created-or-updated table or code node to check.
+ * @param event - The native keyboard event, or `null` for a programmatic dispatch.
+ * @returns Whether an Alt+Enter inside a table or code block was handled.
  */
-function $ensureParagraphAfter(node: ElementNode): void {
-    const next = node.getNextSibling();
-
-    if (next === null || $isTableNode(next) || $isCodeNode(next)) {
-        node.insertAfter($createParagraphNode());
+function $handleSeparatorShortcut(event: KeyboardEvent | null): boolean {
+    if (!event?.altKey) {
+        return false;
     }
+
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return false;
+    }
+
+    const target = $findEnclosingSeparatorTarget(selection.anchor.getNode());
+
+    if (target === null) {
+        return false;
+    }
+
+    event.preventDefault();
+
+    const paragraph = $createParagraphNode();
+
+    target.insertAfter(paragraph);
+    paragraph.selectStart();
+
+    return true;
 }
 
 // A text caret over the whole surface signals editability. The surface is also
@@ -289,11 +327,14 @@ class WysiwygSurface extends Component {
  *
  * Formatting is driven three ways, all without a built-in toolbar: Markdown
  * shortcut typing (`# ` → heading, `**b**` → bold, `- ` → list, `> ` → quote,
- * ` ``` ` → code), the default keyboard shortcuts (Ctrl/Cmd+B / +I, undo/redo),
- * and a thin imperative command API (`toggleBold`, `setBlockType`,
- * `toggleUnorderedList`, `toggleLink`, `insertTable`,
- * `insertTableRow`/`deleteTableRow`, `insertTableColumn`/`deleteTableColumn`,
- * …) a consumer can wire to their own `Button`s.
+ * ` ``` ` → code), the default keyboard shortcuts (Ctrl/Cmd+B / +I, undo/redo,
+ * and Alt+Enter — with the caret in a table cell or a fenced code block —
+ * to insert a paragraph after it, since a table's grid and a code block's
+ * preformatted text otherwise give a click nowhere to land), and a thin
+ * imperative command API (`toggleBold`, `setBlockType`, `toggleUnorderedList`,
+ * `toggleLink`, `insertTable`, `insertTableRow`/`deleteTableRow`,
+ * `insertTableColumn`/`deleteTableColumn`, …) a consumer can wire to their own
+ * `Button`s.
  *
  * A {@link MarkdownEditor.setMode | mode} (`"wysiwyg"` | `"source"`) swaps the
  * editing surface between that rich-text view and a raw-Markdown
@@ -879,15 +920,6 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         if (!this._editor) {
             const editor = createEditor({ nodes: EDITOR_NODES, theme: EDITOR_THEME, onError: reportEditorError });
 
-            // Registered before the initial load below, so the invariant
-            // $ensureParagraphAfter enforces already holds for content
-            // parsed straight from `_options.value` (the demo's own SAMPLE
-            // included) rather than only for later edits.
-            const unregisterBlockSeparatorTransforms = mergeRegister(
-                editor.registerNodeTransform(TableNode, $ensureParagraphAfter),
-                editor.registerNodeTransform(CodeNode, $ensureParagraphAfter),
-            );
-
             // Populate the initial state before registering the update listener,
             // so loading the cached value does not fire a spurious `"change"`.
             editor.update(() => $convertFromMarkdownString(this._options.value ?? "", TRANSFORMERS), { discrete: true });
@@ -905,13 +937,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             this._unregister = mergeRegister(
-                unregisterBlockSeparatorTransforms,
                 registerRichText(editor),
                 registerList(editor),
                 registerTablePlugin(editor),
                 registerTableCellUnmergeTransform(editor),
                 registerHistory(editor, createEmptyHistoryState(), HISTORY_DELAY_MS),
                 registerMarkdownShortcuts(editor, TRANSFORMERS),
+                editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
                 editor.registerUpdateListener(() => this.handleChange()),
             );
 

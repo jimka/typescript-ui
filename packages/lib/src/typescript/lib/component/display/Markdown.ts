@@ -46,6 +46,19 @@ const ALIGN_RIGHT_CLASS  = "ts-ui-md-align-right";
  */
 const CELL_LINE_BREAK = "\\n";
 /**
+ * Two consecutive {@link CELL_LINE_BREAK} sequences — the escaped form of the
+ * blank-line separator Lexical's `$convertToMarkdownString` always places
+ * between a table cell's paragraphs (one raw newline pair per paragraph
+ * boundary, empty or not, regardless of the WYSIWYG editor's own cell-only
+ * `margin: 0` reset that renders those paragraphs flush against each other).
+ * {@link Markdown.appendTextWithBreaks} splits on this pair, not on a lone
+ * {@link CELL_LINE_BREAK}, so each paragraph boundary collapses to exactly one
+ * `<br>` — matching that flush rendering — while a genuinely empty paragraph
+ * in between (two boundaries with nothing between them) still gets the second
+ * `<br>` that gives its blank line height.
+ */
+const CELL_PARAGRAPH_BREAK = CELL_LINE_BREAK + CELL_LINE_BREAK;
+/**
  * Wraps a fenced block that upgrades to a live `CodeEditor`. `position:
  * relative` gives the absolutely-positioned `CodeEditor` child a local
  * positioning context wherever the block sits in the token tree (top-level,
@@ -1815,15 +1828,15 @@ class Markdown extends Component<MarkdownOptions> {
     }
 
     /**
-     * Appends `text`, split on {@link CELL_LINE_BREAK} into separate text runs
-     * joined by `<br>` elements — the read-only counterpart of a table cell's
-     * own soft line breaks.
+     * Appends `text`, split on {@link CELL_PARAGRAPH_BREAK} into separate text
+     * runs joined by `<br>` elements — the read-only counterpart of a table
+     * cell's own paragraph-per-line breaks.
      *
      * @param parent - The element handle to append into.
      * @param text - The text content, containing one or more {@link CELL_LINE_BREAK} sequences.
      */
     private appendTextWithBreaks(parent: Handle, text: string): void {
-        const lines = text.split(CELL_LINE_BREAK);
+        const lines = text.split(CELL_PARAGRAPH_BREAK);
 
         lines.forEach((line, index) => {
             if (index > 0) {
