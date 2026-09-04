@@ -8,7 +8,10 @@ import { callable } from "~/core/Callable.js";
 import { Card } from "~/layout/Card.js";
 import { CodeEditor } from "~/component/editor/CodeEditor.js";
 import type { CodeEditorChange } from "~/component/editor/CodeEditor.js";
-import { createEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $getRoot, $createParagraphNode } from "lexical";
+import {
+    createEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $getRoot,
+    $createParagraphNode, $isParagraphNode,
+} from "lexical";
 import type { LexicalEditor, ElementNode } from "lexical";
 import { $convertFromMarkdownString, $convertToMarkdownString, registerMarkdownShortcuts } from "@lexical/markdown";
 import { registerRichText, $createHeadingNode, $createQuoteNode } from "@lexical/rich-text";
@@ -19,7 +22,7 @@ import { $createCodeNode, $isCodeNode } from "@lexical/code";
 import { registerHistory, createEmptyHistoryState } from "@lexical/history";
 import {
     registerTablePlugin, registerTableCellUnmergeTransform, registerTableSelectionObserver,
-    $getTableCellNodeFromLexicalNode, $isTableNode,
+    $getTableCellNodeFromLexicalNode, $isTableNode, $findTableNode,
     $insertTableRowAtSelection, $deleteTableRowAtSelection,
     $insertTableColumnAtSelection, $deleteTableColumnAtSelection,
     INSERT_TABLE_COMMAND,
@@ -684,10 +687,26 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             includeHeaders: { rows: true, columns: false },
         });
 
-        // A table landing at the very end of the document leaves nothing
-        // past it to click into and keep typing — a table has no trailing
-        // line of its own the way a paragraph does.
-        editor.update(() => this.ensureTrailingParagraph(), { discrete: true });
+        // A table lands via a caret-position split rather than by replacing
+        // the paragraph the caret sits in, so inserting one at a collapsed
+        // caret inside an empty paragraph (typically the auto-added
+        // trailing paragraph from ensureTrailingParagraph, but any empty
+        // paragraph behaves the same) leaves that paragraph behind as a
+        // dead gap between it and the table — invisible in the exported
+        // Markdown (an empty paragraph carries no content to export) but
+        // still real, visible blank space in this WYSIWYG surface. Consume
+        // it, then re-check the trailing edge: the table may now be last.
+        editor.update(() => {
+            const selection = $getSelection();
+            const tableNode = $isRangeSelection(selection) ? $findTableNode(selection.anchor.getNode()) : null;
+            const previousSibling = tableNode?.getPreviousSibling() ?? null;
+
+            if ($isParagraphNode(previousSibling) && previousSibling.isEmpty()) {
+                previousSibling.remove();
+            }
+
+            this.ensureTrailingParagraph();
+        }, { discrete: true });
 
         return this;
     }

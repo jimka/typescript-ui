@@ -776,6 +776,25 @@ describe('MarkdownEditor trailing paragraph after a non-paragraph last block', (
         expect(endsWithParagraph(editor)).toBe(true);
     });
 
+    it('inserting a table at the caret inside the auto-added trailing paragraph consumes it, rather than leaving a dead gap before the table', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('```\ncode\n```');   // ends in a code block -> a trailing paragraph gets appended
+
+        // Mirrors a user clicking into that trailing paragraph (the "type
+        // below the code block" affordance) before using the toolbar's
+        // Insert table action.
+        lexicalOf(editor).update(() => { $getRoot().selectEnd(); }, { discrete: true });
+
+        editor.insertTable(2, 2);
+
+        const childTypes = lexicalOf(editor).read(() => $getRoot().getChildren().map((node) => node.getType()));
+
+        // No leftover empty paragraph between the code block and the table —
+        // just the fresh trailing paragraph ensureTrailingParagraph appends
+        // after the table, which is now the last child.
+        expect(childTypes).toEqual(['code', 'table', 'paragraph']);
+    });
+
     it('does not add a second trailing paragraph when the document already ends with prose', () => {
         const editor = new MarkdownEditor();
 
