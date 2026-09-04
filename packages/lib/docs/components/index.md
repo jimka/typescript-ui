@@ -95,6 +95,7 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | [`ProgressSpinner`](/components/ProgressSpinner) | Circular loading spinner; supports inline and overlay use |
 | [`PaginationBar`](/components/PaginationBar) | First / prev / next / last navigation for a paginated [`Store`](/api/data/classes/Store) |
 | [`StatusBar`](/components/StatusBar) | Bottom-of-window status strip with a transient message and left / right indicator zones |
+| [`Separator`](/components/Separator) | Thin divider rule — horizontal or vertical, spans its container |
 
 ## Charts
 

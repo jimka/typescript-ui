@@ -233,6 +233,7 @@ export function getNav(): NavGroup[] {
         { path: '/components/VideoPlayer',     label: 'VideoPlayer' },
         { path: '/components/Spacer',          label: 'Spacer' },
         { path: '/components/StatusBar',       label: 'StatusBar' },
+        { path: '/components/Separator',       label: 'Separator' },
     ];
     const componentsCharts: NavEntry[] = [
         { path: '/components/LineChart',   label: 'LineChart' },
