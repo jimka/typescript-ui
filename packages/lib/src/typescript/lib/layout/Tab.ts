@@ -53,12 +53,15 @@ import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
  * menu's *Close*, and every bulk-close row — before the tab is torn down, and
  * can be vetoed via its {@link TabCloseController}; the programmatic
  * {@link Tab.closeTab} is not guarded by it.
+ * `"tabdblclick"` fires when a tab button in the strip is double-clicked
+ * (carrying that tab's content and its zero-based index); it does not fire
+ * for a tab whose deferred content has not been built.
  *
  * @category Layouts
  */
 export type TabEvent =
     "tabclose" | "beforetabclose" | "empty" | "detach" | "select" | "activate"
-    | "dock" | "exception" | "busychange";
+    | "dock" | "exception" | "busychange" | "tabdblclick";
 
 /**
  * Controller handed to a `"beforetabclose"` listener. Calling
@@ -984,6 +987,7 @@ class Tab extends LayoutManager {
         this._bar.on("tearoffrequested", this._onBarTearOffRequested);
         this._bar.on("detach",         this._onBarDetached);
         this._bar.on("dockhover",        this._onBarDockHover);
+        this._bar.on("tabdblclick",      this._onBarTabDoubleClick);
 
         return this;
     }
@@ -1016,6 +1020,7 @@ class Tab extends LayoutManager {
         this._bar.off("tearoffrequested", this._onBarTearOffRequested);
         this._bar.off("detach",         this._onBarDetached);
         this._bar.off("dockhover",        this._onBarDockHover);
+        this._bar.off("tabdblclick",      this._onBarTabDoubleClick);
 
         this._bar.dispose();
 
@@ -1064,6 +1069,28 @@ class Tab extends LayoutManager {
         }
 
         this.getContainer()?.scheduleLayout();
+    };
+
+    /**
+     * Strip `"tabdblclick"` handler: a cell's tab button was double-clicked.
+     * Re-emits the public `"tabdblclick"` with the cell's live content and index.
+     *
+     * @param id - The double-clicked cell id.
+     */
+    private _onBarTabDoubleClick = (id: string): void => {
+        const idx = this._contents.findIndex(entry => entry.id === id);
+
+        if (idx < 0) {
+            return;
+        }
+
+        const entry = this._contents[idx];
+
+        // A deferred entry has no content for the event to carry, and unlike
+        // "activate" there is nothing to owe it later — the gesture is over.
+        if (entry.component) {
+            this.emit("tabdblclick", entry.component, idx);
+        }
     };
 
     /**
@@ -2653,6 +2680,17 @@ class Tab extends LayoutManager {
      * @returns This tab layout, for method chaining.
      */
     on(event: "busychange", listener: (busy: boolean, label: string) => void): this;
+    /**
+     * Registers a listener for the `"tabdblclick"` event, which fires when a
+     * tab button in the strip is double-clicked, carrying that tab's content
+     * component and its zero-based index.
+     *
+     * @param event - The `"tabdblclick"` event.
+     * @param listener - Invoked with the double-clicked tab's content and index.
+     *
+     * @returns This tab layout, for method chaining.
+     */
+    on(event: "tabdblclick", listener: (content: Component, index: number) => void): this;
     on(event: TabEvent,   listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -2690,6 +2728,7 @@ class Tab extends LayoutManager {
     protected emit(event: "dock",   content: Component): void;
     protected emit(event: "exception", error: unknown, label: string): void;
     protected emit(event: "busychange", busy: boolean, label: string): void;
+    protected emit(event: "tabdblclick", content: Component, index: number): void;
     protected emit(event: TabEvent,   ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
