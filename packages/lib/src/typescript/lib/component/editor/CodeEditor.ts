@@ -18,6 +18,7 @@ import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirro
 import { indentOnInput, bracketMatching, indentRange, codeFolding, foldGutter, foldKeymap, foldedRanges } from "@codemirror/language";
 import { search, highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { linter, lintGutter } from "@codemirror/lint";
+import { autocompletion, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { getLanguage } from "~/component/editor/LanguageRegistry.js";
 import type { FormatOptions } from "~/component/editor/LanguageRegistry.js";
 import { codeEditorTheme } from "~/component/editor/theme.js";
@@ -1012,7 +1013,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
             // the escape hatch: Ctrl-m (Alt-Shift-m on macOS) toggles
             // CodeMirror's tab-focus mode, after which Tab moves focus again.
             // Listed last so its Tab / Shift-Tab bindings take precedence.
-            keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap, indentWithTab]),
+            keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap, ...closeBracketsKeymap, indentWithTab]),
             drawSelection(),
             lineNumbers(),
             highlightActiveLine(),
@@ -1028,6 +1029,13 @@ class CodeEditor extends Component<CodeEditorOptions> {
             EditorState.allowMultipleSelections.of(true),
             search(),
             highlightSelectionMatches(),
+            // completionKeymap is deliberately not added to the keymap array
+            // above: autocompletion() installs it itself, at Prec.highest, so
+            // adding it again here would bind the same keys at a lower
+            // precedence. closeBrackets() is not self-installing, so its
+            // Backspace binding (closeBracketsKeymap) is added explicitly.
+            autocompletion(),
+            closeBrackets(),
             this._readOnlyCompartment.of(buildReadOnlyExtension(this.getReadOnly())),
             this._themeCompartment.of(codeEditorTheme(dark)),
             this._langCompartment.of([]),

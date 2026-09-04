@@ -144,6 +144,33 @@ export function codeEditorTheme(dark: boolean): Extension {
             backgroundColor: "var(--ts-ui-tooltip-bg, #fffff0)",
             color:           "var(--ts-ui-tooltip-color, #000000)",
         },
+        ".cm-tooltip.cm-tooltip-autocomplete": {
+            backgroundColor: "var(--ts-ui-autocomplete-bg, #ffffff)",
+            border:          "1px solid var(--ts-ui-autocomplete-border, #c8c8c8)",
+            boxShadow:       "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))",
+            color:           "var(--ts-ui-text-color, #1a1a1a)",
+        },
+        ".cm-tooltip-autocomplete > ul > li": {
+            color: "var(--ts-ui-text-color, #1a1a1a)",
+        },
+        ".cm-tooltip-autocomplete > ul > li:hover": {
+            backgroundColor: "var(--ts-ui-autocomplete-item-hover-bg, rgba(37, 99, 235, 0.08))",
+        },
+        ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
+            backgroundColor: "var(--ts-ui-autocomplete-item-highlight-bg, rgba(37, 99, 235, 0.18))",
+            color:           "var(--ts-ui-autocomplete-item-highlight-color, inherit)",
+        },
+        ".cm-completionMatchedText": {
+            color:          "var(--ts-ui-indicator-focus, #2563eb)",
+            fontWeight:     "bold",
+            textDecoration: "none",
+        },
+        ".cm-completionDetail": {
+            color: "var(--ts-ui-autocomplete-item-disabled-color, #aaaaaa)",
+        },
+        ".cm-completionIcon": {
+            color: "var(--ts-ui-autocomplete-item-disabled-color, #aaaaaa)",
+        },
     }, { dark });
 
     const highlight = syntaxHighlighting(HighlightStyle.define([

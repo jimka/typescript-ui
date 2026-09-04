@@ -38,9 +38,17 @@ registerLanguage({
     id: "json",
     label: "JSON",
     loadExtension: async () => {
-        const { json } = await import("@codemirror/lang-json");
+        // The only built-in grammar with no completion source of its own
+        // (every other language publishes one through its own <lang>Language.data
+        // facet, which autocompletion() reads without being told); attached here
+        // using the same language-data idiom a consumer would use for a custom
+        // grammar.
+        const [{ json, jsonLanguage }, { completeFromList }] = await Promise.all([
+            import("@codemirror/lang-json"),
+            import("@codemirror/autocomplete"),
+        ]);
 
-        return json();
+        return [json(), jsonLanguage.data.of({ autocomplete: completeFromList(["true", "false", "null"]) })];
     },
     loadFormatter: async () => formatWithPrettier("json", loadBabelPlugins),
     loadLintSource: async () => collectSyntaxErrors,
