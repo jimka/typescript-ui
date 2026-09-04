@@ -238,6 +238,81 @@ describe('AbstractSelectableList (via List) — item bookkeeping', () => {
     });
 });
 
+describe('AbstractSelectableList (via List) — navigation from an unfocused list', () => {
+    it.each([
+        { start: -1, key: 'ArrowDown', after: 0 },
+        { start: -1, key: 'PageDown',  after: 0 },
+        { start: -1, key: 'ArrowUp',   after: 0 },
+        { start: -1, key: 'Home',      after: 0 },
+        { start: -1, key: 'PageUp',    after: 0 },
+        { start: -1, key: 'End',       after: 3 },
+        { start: 0,  key: 'ArrowDown', after: 1 },
+        { start: 2,  key: 'ArrowUp',   after: 1 },
+        { start: 3,  key: 'ArrowDown', after: 3 },
+    ])('focus $start + $key -> $after', ({ start, key: k, after }) => {
+        const list = new _List({ items: FRUITS });
+
+        if (start >= 0) {
+            list.setFocusedIndex(start);
+        }
+
+        list.handleKey(key(k));
+        expect(list.getFocusedIndex()).toBe(after);
+    });
+
+    it('selects the landing row by default, so the first ArrowDown from unfocused commits row 0', () => {
+        const list = new _List({ items: FRUITS });
+
+        list.handleKey(key('ArrowDown'));
+        expect(list.getValue()).toBe('Apple');
+    });
+
+    it('moves focus only, leaving the selection empty, when selectFollowsFocus is disabled', () => {
+        const list = new _List({ items: FRUITS });
+        list.setSelectFollowsFocus(false);
+
+        list.handleKey(key('ArrowDown'));
+        expect(list.getFocusedIndex()).toBe(0);
+        expect(list.getSelectedIndex()).toBe(-1);
+    });
+});
+
+describe('AbstractSelectableList (via List) — setFocusedIndex', () => {
+    it.each([
+        { call: 0,  after: 0 },
+        { call: 3,  after: 3 },
+        { call: 4,  after: -1 },
+        { call: -1, after: -1 },
+    ])('setFocusedIndex($call) -> $after', ({ call, after }) => {
+        const list = new _List({ items: FRUITS });
+
+        list.setFocusedIndex(call);
+        expect(list.getFocusedIndex()).toBe(after);
+    });
+
+    it('clears focus when called on an empty list', () => {
+        const list = new _List({ items: [] });
+
+        list.setFocusedIndex(0);
+        expect(list.getFocusedIndex()).toBe(-1);
+    });
+
+    it('leaves the selection untouched and fires no change/action event', () => {
+        const list = new _List({ items: FRUITS });
+        const changeFn = vi.fn();
+        const actionFn = vi.fn();
+        list.on('change', changeFn);
+        list.on('action', actionFn);
+
+        list.setFocusedIndex(2);
+
+        expect(list.getSelectedIndex()).toBe(-1);
+        expect(list.getValue()).toBe('');
+        expect(changeFn).not.toHaveBeenCalled();
+        expect(actionFn).not.toHaveBeenCalled();
+    });
+});
+
 describe('AbstractSelectableList (via List) — type-ahead with a deterministic clock', () => {
     afterEach(() => {
         vi.restoreAllMocks();
@@ -521,6 +596,10 @@ describe('List — disabled rows: keyboard navigation skips them', () => {
         { before: 0, key: 'ArrowUp',   after: 0 },
         { before: -1, key: 'Home',     after: 0 },
         { before: -1, key: 'End',      after: 4 },
+        { before: -1, key: 'ArrowDown', after: 0 },
+        { before: -1, key: 'PageDown',  after: 0 },
+        { before: -1, key: 'ArrowUp',   after: 0 },
+        { before: -1, key: 'PageUp',    after: 0 },
     ])('focus $before + $key -> $after', ({ before, key: k, after }) => {
         const list = new TestList({ items: ROWS });
         list.setSelectedIndex(before, false);
@@ -536,6 +615,18 @@ describe('List — disabled rows: keyboard navigation skips them', () => {
 
         expect(list.handleKey(key('ArrowDown'))).toBe(true);
         expect(list.getFocusedIndex()).toBe(-1);
+    });
+
+    it('entering the list with ArrowDown skips a disabled row 0', () => {
+        const list = new TestList({
+            items: [
+                { key: 'a', label: 'Apple', enabled: false },
+                { key: 'b', label: 'Banana' },
+            ],
+        });
+
+        list.handleKey(key('ArrowDown'));
+        expect(list.getFocusedIndex()).toBe(1);
     });
 });
 
