@@ -24,6 +24,14 @@ function describePerson(person) {
 }
 
 console.log(greet("world"));
+
+// A literal tab indents this line — Tab always inserts spaces
+// (indentUnit), so a literal tab can only get into this sample by being
+// seeded here directly. Cycling "Tab size" above changes how many
+// columns it lines up under.
+\tconsole.log("indented with a literal tab");
+
+// This comment has a delibrately misspelled word, for the Spellcheck button.
 `;
 
 // One sample per newly-registered or newly-completion/lint-relevant
@@ -93,6 +101,9 @@ class CodeEditorPanel extends Panel {
     private readonly _upperWrapBtn: Button;
     private readonly _lowerWrapBtn: Button;
     private readonly _lintBtn: Button;
+    private readonly _tabSizeBtn: Button;
+    private readonly _lineNumbersBtn: Button;
+    private readonly _spellcheckBtn: Button;
     private readonly _upperStatusText: Text;
     private readonly _lowerStatusText: Text;
 
@@ -123,6 +134,15 @@ class CodeEditorPanel extends Panel {
         this._lintBtn = new Button({ text: 'Lint: off' });
         this._lintBtn.on('action', () => this.toggleLint());
 
+        this._tabSizeBtn = new Button({ text: 'Tab size: 4' });
+        this._tabSizeBtn.on('action', () => this.toggleTabSize());
+
+        this._lineNumbersBtn = new Button({ text: 'Line numbers: on' });
+        this._lineNumbersBtn.on('action', () => this.toggleLineNumbers());
+
+        this._spellcheckBtn = new Button({ text: 'Spellcheck: off' });
+        this._spellcheckBtn.on('action', () => this.toggleSpellcheck());
+
         // Writes nothing — only clears the dirty flag, standing in for a
         // host that has persisted the document.
         const saveBtn = new Button({ text: 'Save' });
@@ -133,6 +153,9 @@ class CodeEditorPanel extends Panel {
         upperToolbar.addComponent(this._readOnlyBtn);
         upperToolbar.addComponent(this._upperWrapBtn);
         upperToolbar.addComponent(this._lintBtn);
+        upperToolbar.addComponent(this._tabSizeBtn);
+        upperToolbar.addComponent(this._lineNumbersBtn);
+        upperToolbar.addComponent(this._spellcheckBtn);
         upperToolbar.addComponent(saveBtn);
         upperToolbar.addComponent(new Text('Language:'));
         upperToolbar.addComponent(this.makeLanguageButton('JS', 'javascript', SAMPLE_JS));
@@ -211,6 +234,33 @@ class CodeEditorPanel extends Panel {
 
         this._editor.setLint(lint);
         this._lintBtn.setText(lint ? 'Lint: on' : 'Lint: off');
+    }
+
+    private toggleTabSize(): void {
+        // Cycles through three presets. Unset (CodeMirror's own default,
+        // effectively 4) folds into the 4 slot, so the cycle always lands on
+        // one of the three shown values instead of a fourth ambiguous
+        // "unset" step.
+        const TAB_SIZE_PRESETS = [2, 4, 8];
+        const current = this._editor.getTabSize() ?? 4;
+        const next = TAB_SIZE_PRESETS[(TAB_SIZE_PRESETS.indexOf(current) + 1) % TAB_SIZE_PRESETS.length];
+
+        this._editor.setTabSize(next);
+        this._tabSizeBtn.setText(`Tab size: ${next}`);
+    }
+
+    private toggleLineNumbers(): void {
+        const show = !this._editor.getLineNumbers();
+
+        this._editor.setLineNumbers(show);
+        this._lineNumbersBtn.setText(show ? 'Line numbers: on' : 'Line numbers: off');
+    }
+
+    private toggleSpellcheck(): void {
+        const spellcheck = !this._editor.getSpellcheck();
+
+        this._editor.setSpellcheck(spellcheck);
+        this._spellcheckBtn.setText(spellcheck ? 'Spellcheck: on' : 'Spellcheck: off');
     }
 
     /**

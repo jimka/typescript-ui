@@ -15,7 +15,7 @@ import {
 import { EditorState, Compartment } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { indentOnInput, bracketMatching, indentRange, codeFolding, foldGutter, foldKeymap, foldedRanges } from "@codemirror/language";
+import { indentOnInput, bracketMatching, indentRange, codeFolding, foldGutter, foldKeymap, foldedRanges, indentUnit } from "@codemirror/language";
 import { search, highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { linter, lintGutter } from "@codemirror/lint";
 import { autocompletion, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
@@ -88,6 +88,33 @@ export interface CodeEditorOptions extends ComponentOptions {
     highlightWhitespace?: boolean;
     /** Whether parser-error diagnostics are shown. Default `false`; inert for a language with no lint source. */
     lint?: boolean;
+    /**
+     * Tab-stop width, in columns: how wide a literal tab character renders,
+     * and how many columns one Tab keypress or auto-indent inserts. Sets
+     * CodeMirror's `EditorState.tabSize` and `indentUnit` facets together, so
+     * rendered tab stops and Tab-key / auto-indent width agree — the same
+     * combined "Tab Size" setting most editors (e.g. VS Code's
+     * `editor.tabSize`) use. Unset: CodeMirror's own defaults apply
+     * untouched (4-column tab stops, a 2-space indent unit). Should be a
+     * positive integer; not validated at runtime.
+     *
+     * Distinct from `FormatOptions.indentWidth` (see `LanguageRegistry.ts`),
+     * which only shapes `format()`'s one-shot reformat output and has no
+     * effect on live, interactive editing.
+     */
+    tabSize?: number;
+    /** Whether the line-number gutter is shown. Default `true`. */
+    lineNumbers?: boolean;
+    /**
+     * Whether the browser's native spellcheck runs inside the editor.
+     * Default `false` — code identifiers are not English words, so the
+     * browser's spellchecker produces constant false-positive squiggles
+     * unless a consumer opts back in (e.g. `MarkdownEditor`'s prose source
+     * view). Sets the DOM `spellcheck` attribute only; distinct from
+     * `lint`, CodeMirror's own parser-error diagnostics, which also render
+     * as a squiggly underline but come from the grammar, not the browser.
+     */
+    spellcheck?: boolean;
     /** Construction-time listener bag; the events are `"change"`, `"readonlyedit"`, and `"heightchange"`. */
     listeners?: { change?: (payload: CodeEditorChange) => void; readonlyedit?: () => void; heightchange?: (payload: CodeEditorHeightChange) => void };
 }
@@ -239,6 +266,15 @@ class CodeEditor extends Component<CodeEditorOptions> {
     /** Reconfigured by {@link CodeEditor.refreshLint}. */
     private readonly _lintCompartment: Compartment = new Compartment();
 
+    /** Reconfigured by {@link CodeEditor.setTabSize}. */
+    private readonly _tabSizeCompartment: Compartment = new Compartment();
+
+    /** Reconfigured by {@link CodeEditor.setLineNumbers}. */
+    private readonly _lineNumbersCompartment: Compartment = new Compartment();
+
+    /** Reconfigured by {@link CodeEditor.setSpellcheck}. */
+    private readonly _spellcheckCompartment: Compartment = new Compartment();
+
     /** Custom-event fan-out for `"change"`. */
     private readonly _listeners: ListenerBag<CodeEditorEvent> = this.registerListenerBag(new ListenerBag<CodeEditorEvent>());
 
@@ -382,6 +418,9 @@ class CodeEditor extends Component<CodeEditorOptions> {
         if (options.placeholder !== undefined) this._options.placeholder = options.placeholder;
         if (options.highlightWhitespace !== undefined) this._options.highlightWhitespace = options.highlightWhitespace;
         if (options.lint !== undefined) this._options.lint = options.lint;
+        if (options.tabSize !== undefined) this._options.tabSize = options.tabSize;
+        if (options.lineNumbers !== undefined) this._options.lineNumbers = options.lineNumbers;
+        if (options.spellcheck !== undefined) this._options.spellcheck = options.spellcheck;
 
         return this;
     }
@@ -669,6 +708,97 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         if (this._view) {
             this.refreshLint();
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the current tab-stop width, in columns.
+     *
+     * @returns The configured tabSize, or `null` when unset (CodeMirror's own
+     *   defaults apply: 4-column tab stops, a 2-space indent unit).
+     */
+    getTabSize(): number | null {
+        return this._options.tabSize ?? null;
+    }
+
+    /**
+     * Sets (or clears) the tab-stop width, in columns. Caches the value; when
+     * a view is mounted, also reconfigures the tab-size compartment, setting
+     * CodeMirror's `EditorState.tabSize` and `indentUnit` facets together so
+     * rendered tab stops and Tab-key / auto-indent width agree.
+     *
+     * @param size - The tab-stop width in columns (should be a positive
+     *   integer), or `null` to clear it and fall back to CodeMirror's own
+     *   defaults.
+     * @returns This component, for method chaining.
+     */
+    setTabSize(size: number | null): this {
+        this._options.tabSize = size ?? undefined;
+
+        if (this._view) {
+            this._view.dispatch({
+                effects: this._tabSizeCompartment.reconfigure(
+                    size !== null ? [EditorState.tabSize.of(size), indentUnit.of(" ".repeat(size))] : []),
+            });
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether the line-number gutter is currently shown.
+     *
+     * @returns The lineNumbers state.
+     */
+    getLineNumbers(): boolean {
+        return this._options.lineNumbers ?? true;
+    }
+
+    /**
+     * Sets whether the line-number gutter is shown. Caches the state; when a
+     * view is mounted, also reconfigures the line-numbers compartment.
+     *
+     * @param show - Whether the gutter should be shown.
+     * @returns This component, for method chaining.
+     */
+    setLineNumbers(show: boolean): this {
+        this._options.lineNumbers = show;
+
+        if (this._view) {
+            this._view.dispatch({ effects: this._lineNumbersCompartment.reconfigure(show ? lineNumbers() : []) });
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether the browser's native spellcheck currently runs inside
+     * the editor.
+     *
+     * @returns The spellcheck state.
+     */
+    getSpellcheck(): boolean {
+        return this._options.spellcheck ?? false;
+    }
+
+    /**
+     * Sets whether the browser's native spellcheck runs inside the editor.
+     * Caches the state; when a view is mounted, also reconfigures the
+     * spellcheck compartment, setting the DOM `spellcheck` attribute.
+     *
+     * @param spellcheck - Whether the browser's spellcheck should run.
+     * @returns This component, for method chaining.
+     */
+    setSpellcheck(spellcheck: boolean): this {
+        this._options.spellcheck = spellcheck;
+
+        if (this._view) {
+            this._view.dispatch({
+                effects: this._spellcheckCompartment.reconfigure(
+                    EditorView.contentAttributes.of({ spellcheck: spellcheck ? "true" : "false" })),
+            });
         }
 
         return this;
@@ -1019,7 +1149,6 @@ class CodeEditor extends Component<CodeEditorOptions> {
             // Listed last so its Tab / Shift-Tab bindings take precedence.
             keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap, ...closeBracketsKeymap, indentWithTab]),
             drawSelection(),
-            lineNumbers(),
             highlightActiveLine(),
             highlightActiveLineGutter(),
             indentOnInput(),
@@ -1052,6 +1181,13 @@ class CodeEditor extends Component<CodeEditorOptions> {
             // below, which calls refreshLint() itself; one mounted without a
             // language has nothing to lint, so [] is already right.
             this._lintCompartment.of([]),
+            this._tabSizeCompartment.of(
+                this.getTabSize() !== null
+                    ? [EditorState.tabSize.of(this.getTabSize()!), indentUnit.of(" ".repeat(this.getTabSize()!))]
+                    : []),
+            this._lineNumbersCompartment.of(this.getLineNumbers() ? lineNumbers() : []),
+            this._spellcheckCompartment.of(
+                EditorView.contentAttributes.of({ spellcheck: this.getSpellcheck() ? "true" : "false" })),
             EditorView.updateListener.of((update) => {
                 if (update.docChanged) {
                     this.onDocChange(update.state.doc.toString());
