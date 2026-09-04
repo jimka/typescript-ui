@@ -171,9 +171,12 @@ function buildReadOnlyExtension(readOnly: boolean): Extension {
  * A syntax-highlighting, formatting code editor wrapping CodeMirror 6.
  *
  * @remarks
- * `CodeEditor` deliberately omits IntelliSense (no autocomplete, no lint, no
- * language service) — its scope is highlighting plus one-command formatting.
- * CodeMirror's `EditorView` is a *foreign live widget*: it takes a real parent
+ * `CodeEditor`'s scope is highlighting, formatting, folding, search,
+ * parser-level diagnostics (lint) and keyword/snippet completion — every one
+ * of them bounded to what a grammar's own parse tree already knows. Anything
+ * needing semantic understanding — cross-file symbols, type information,
+ * hovers, go-to-definition, a real language server — or collaborative
+ * editing is out of scope. CodeMirror's `EditorView` is a *foreign live widget*: it takes a real parent
  * element and mutates a whole DOM region it owns directly, exactly like the
  * `CanvasRenderingContext2D` a [`Canvas`](/api/component/display/classes/Canvas)
  * obtains from the seam. So `CodeEditor` is **live-only** — under the modelled
@@ -186,10 +189,11 @@ function buildReadOnlyExtension(readOnly: boolean): Extension {
  * internally; give it a sized host (a `Fit` panel or an explicit
  * `preferredSize`), the same as `Canvas`.
  *
- * Highlighting grammars and formatters load lazily, per language, through the
- * registry in `LanguageRegistry.ts` (`registerLanguage` / `getLanguage` /
- * `listLanguages`) — see that module and `languages.ts` for the five built-in
- * languages (JavaScript/TypeScript, JSON, HTML, SQL, Markdown).
+ * Highlighting grammars, formatters and lint sources load lazily, per
+ * language, through the registry in `LanguageRegistry.ts` (`registerLanguage`
+ * / `getLanguage` / `listLanguages`) — see that module and `languages.ts` for
+ * the seven built-in languages (JavaScript/TypeScript, JSON, HTML, SQL,
+ * Markdown, CSS, Python).
  *
  * @example
  * ```typescript

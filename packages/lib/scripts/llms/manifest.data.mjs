@@ -98,7 +98,7 @@ export const groups = [
         { task: "Render a Markdown string as formatted content", symbol: "Markdown" },
         { task: "Floating heading-outline minimap", symbol: "MarkdownMinimap" },
         { task: "Markdown viewer with minimap and zoom controls", symbol: "MarkdownViewer" },
-        { task: "Syntax-highlighted code editor with one-command formatting", symbol: "CodeEditor" },
+        { task: "Syntax-highlighted code editor with formatting, folding, search, lint and completion", symbol: "CodeEditor" },
         { task: "WYSIWYG rich-text editor whose value is a Markdown string", symbol: "MarkdownEditor" },
         { task: "Determinate/indeterminate progress bar", symbol: "ProgressBar" },
         { task: "Spinning busy indicator", symbol: "ProgressSpinner" },
