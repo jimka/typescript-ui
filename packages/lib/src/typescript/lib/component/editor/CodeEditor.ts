@@ -538,7 +538,16 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * replace only runs after the formatter resolves successfully, so a
      * throwing formatter never reaches it. The cursor is preserved through
      * Prettier's `formatWithCursor` mapping, or clamped to the new document
-     * length for a formatter with no cursor map (sql-formatter).
+     * length for a formatter with no cursor map (sql-formatter). A formatter
+     * result matching the document already held leaves it completely
+     * untouched — no transaction, so no re-render, no undo entry, and no
+     * `"change"` event. When the result does differ, the visible area no
+     * longer unconditionally jumps to the top: it stays exactly in place
+     * when nothing above it changed length, which is the common case for an
+     * incremental edit-then-save, and can otherwise shift — by roughly
+     * however much text the formatter added or removed above it, never all
+     * the way back to the top — when a reformat changes text throughout the
+     * document, e.g. a first-time format of a wholly unformatted file.
      *
      * @returns A promise that resolves once formatting completes, or rejects
      *   with the formatter's error.
@@ -559,14 +568,50 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         const result = await formatter(source, cursorOffset);
 
-        this._options.value = result.formatted;
+        this.applyFormatted(result.formatted, result.cursorOffset);
+    }
 
-        if (this._view) {
-            this._view.dispatch({
-                changes:   { from: 0, to: this._view.state.doc.length, insert: result.formatted },
-                selection: { anchor: Math.min(result.cursorOffset, result.formatted.length) },
-            });
+    /**
+     * Applies a successful formatter result to the document: a whole-document
+     * replace carrying the formatter's mapped cursor, plus a scroll snapshot so
+     * the viewport stays where the user left it. A no-op when the formatter
+     * returned text the document already holds — no transaction, so no
+     * re-render, no undo entry, and no `"change"` event for a save that had
+     * nothing to reformat.
+     *
+     * Factored out of `format()` so the apply-or-skip decision, and the
+     * dispatched transaction's shape, are unit-testable against an injected
+     * duck-typed view (mirroring `reindentFallback`'s extraction); only the
+     * rendered result of a real CodeMirror view applying the transaction —
+     * whether the visible area actually holds still — is manual-verify only.
+     *
+     * @param formatted - The formatter's output text.
+     * @param cursorOffset - The formatter's cursor offset into `formatted`.
+     */
+    private applyFormatted(formatted: string, cursorOffset: number): void {
+        if (formatted === this.getValue()) {
+            return;
         }
+
+        this._options.value = formatted;
+
+        if (!this._view) {
+            return;
+        }
+
+        // Taken before the dispatch, while the view still holds the old
+        // document: `scrollSnapshot()` reads the live scroller offset and the
+        // document position sitting at the top of the visible area. Without it,
+        // CodeMirror maps its own scroll anchor through the change set below,
+        // which sends every position in a whole-document replace to 0, and the
+        // next measurement pass scrolls the viewport to the top.
+        const scrollSnapshot = this._view.scrollSnapshot();
+
+        this._view.dispatch({
+            changes:   { from: 0, to: this._view.state.doc.length, insert: formatted },
+            selection: { anchor: Math.min(cursorOffset, formatted.length) },
+            effects:   scrollSnapshot,
+        });
     }
 
     /**

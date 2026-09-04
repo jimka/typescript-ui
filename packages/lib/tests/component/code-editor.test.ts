@@ -1347,6 +1347,8 @@ describe('CodeEditor format() dispatch', () => {
     const FORMATTER_LANG = 'test-formatter-lang';
     const THROWING_LANG   = 'test-throwing-formatter-lang';
     const NO_FORMATTER_LANG = 'test-no-formatter-lang';
+    const NOOP_FORMATTER_LANG = 'test-noop-formatter-lang';
+    const CHANGE_FORMATTER_LANG = 'test-change-formatter-lang';
 
     it('resolves and applies the result when the formatter succeeds', async () => {
         const formatter: Formatter = async (source) => ({ formatted: source.toUpperCase(), cursorOffset: 0 });
@@ -1400,6 +1402,95 @@ describe('CodeEditor format() dispatch', () => {
         await editor.format();
 
         expect(spy).toHaveBeenCalledOnce();
+    });
+
+    it('skips the apply when the formatter returns the document unchanged', async () => {
+        const source = 'already formatted';
+        const formatter: Formatter = async (text) => ({ formatted: text, cursorOffset: 0 });
+
+        registerLanguage({
+            id: NOOP_FORMATTER_LANG,
+            loadExtension: async () => [] as any,
+            loadFormatter: async () => formatter,
+        });
+
+        const editor = new CodeEditor(source, { language: NOOP_FORMATTER_LANG }) as any;
+        const dispatchSpy = vi.fn();
+
+        editor._view = {
+            state: {
+                doc:       { length: source.length, toString: () => source },
+                selection: { main: { head: 0 } },
+            },
+            dispatch:       dispatchSpy,
+            scrollSnapshot: () => ({}),
+        };
+
+        const applySpy = vi.spyOn(editor, 'applyFormatted');
+
+        await editor.format();
+
+        expect(applySpy).toHaveBeenCalledOnce();
+        expect(dispatchSpy).not.toHaveBeenCalled();
+    });
+
+    it('dispatches a whole-document replace when the formatter changes the text', async () => {
+        const source = 'lower';
+        const formatter: Formatter = async (text) => ({ formatted: text.toUpperCase(), cursorOffset: 3 });
+
+        registerLanguage({
+            id: CHANGE_FORMATTER_LANG,
+            loadExtension: async () => [] as any,
+            loadFormatter: async () => formatter,
+        });
+
+        const editor = new CodeEditor(source, { language: CHANGE_FORMATTER_LANG }) as any;
+        const dispatchSpy = vi.fn();
+
+        editor._view = {
+            state: {
+                doc:       { length: source.length, toString: () => source },
+                selection: { main: { head: 0 } },
+            },
+            dispatch:       dispatchSpy,
+            scrollSnapshot: () => ({}),
+        };
+
+        await editor.format();
+
+        expect(dispatchSpy).toHaveBeenCalledOnce();
+        expect(dispatchSpy.mock.calls[0][0]).toMatchObject({
+            changes:   { from: 0, to: source.length, insert: 'LOWER' },
+            selection: { anchor: 3 },
+        });
+    });
+
+    it('carries a scroll snapshot on the replace', async () => {
+        const SNAPSHOT = { isSnapshot: true };
+        const source    = 'lower';
+        const formatter: Formatter = async (text) => ({ formatted: text.toUpperCase(), cursorOffset: 0 });
+
+        registerLanguage({
+            id: CHANGE_FORMATTER_LANG,
+            loadExtension: async () => [] as any,
+            loadFormatter: async () => formatter,
+        });
+
+        const editor = new CodeEditor(source, { language: CHANGE_FORMATTER_LANG }) as any;
+        const dispatchSpy = vi.fn();
+
+        editor._view = {
+            state: {
+                doc:       { length: source.length, toString: () => source },
+                selection: { main: { head: 0 } },
+            },
+            dispatch:       dispatchSpy,
+            scrollSnapshot: () => SNAPSHOT,
+        };
+
+        await editor.format();
+
+        expect(dispatchSpy.mock.calls[0][0].effects).toBe(SNAPSHOT);
     });
 });
 
