@@ -62,6 +62,16 @@ export function codeEditorTheme(dark: boolean): Extension {
         ".cm-activeLine, .cm-activeLineGutter": {
             backgroundColor: "rgba(127, 127, 127, 0.08)",
         },
+        ".cm-foldGutter .cm-gutterElement": {
+            color:  "var(--ts-ui-text-color, #1a1a1a)",
+            opacity: "0.6",
+            cursor: "pointer",
+        },
+        ".cm-foldPlaceholder": {
+            backgroundColor: "var(--ts-ui-button-bg, #f3f4f6)",
+            border:          "1px solid var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
+            borderRadius:    "var(--ts-ui-border-radius, 4px)",
+        },
     }, { dark });
 
     const highlight = syntaxHighlighting(HighlightStyle.define([

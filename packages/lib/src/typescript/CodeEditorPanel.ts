@@ -11,7 +11,25 @@ const SAMPLE_JS = `function greet(name) {
   return message
 }
 
+function describePerson(person) {
+  // A multi-line body, foldable from the gutter arrow or Ctrl-Shift-[.
+  const parts = [];
+  parts.push(person.name);
+  parts.push('(' + person.age + ')');
+  if (person.role) {
+    parts.push('- ' + person.role);
+  }
+  return parts.join(' ');
+}
+
 console.log(greet("world"));
+`;
+
+// A single long line, and autoHeightMaxRows set, so toggling Wrap below is a
+// manual-verify handle for line wrap driving auto-height growth/shrink — the
+// main SAMPLE_JS editor above has no autoHeightMaxRows (it fills its Fit
+// host instead), so it cannot demonstrate that interaction on its own.
+const SAMPLE_LONG_LINE = `const longLine = "this line is deliberately long enough that, with Wrap turned on, it reflows across several rows and grows this editor's own auto-height box to fit them";
 `;
 
 /**
@@ -26,7 +44,9 @@ console.log(greet("world"));
 class CodeEditorPanel extends Panel {
 
     private readonly _editor: CodeEditor;
+    private readonly _wrapHeightDemo: CodeEditor;
     private readonly _readOnlyBtn: Button;
+    private readonly _wrapBtn: Button;
     private readonly _statusText: Text;
 
     private readonly handleDirtyChange = (): void => {
@@ -52,6 +72,9 @@ class CodeEditorPanel extends Panel {
         this._readOnlyBtn = new Button({ text: 'Read-only: off' });
         this._readOnlyBtn.on('action', () => this.toggleReadOnly());
 
+        this._wrapBtn = new Button({ text: 'Wrap: off' });
+        this._wrapBtn.on('action', () => this.toggleLineWrap());
+
         // Writes nothing — only clears the dirty flag, standing in for a
         // host that has persisted the document.
         const saveBtn = new Button({ text: 'Save' });
@@ -60,8 +83,25 @@ class CodeEditorPanel extends Panel {
         const toolbar = new Panel({ layoutManager: new HBox() });
         toolbar.addComponent(formatBtn);
         toolbar.addComponent(this._readOnlyBtn);
+        toolbar.addComponent(this._wrapBtn);
         toolbar.addComponent(saveBtn);
         this.addComponent(toolbar);
+
+        // Unweighted (not inside a Fit host): with autoHeightMaxRows set, the
+        // editor reports its own auto-grown preferred size, and VBox sizes
+        // this row to exactly that — the same "controlled via
+        // setHeight/preferredSize" contract Markdown's fenced-code-block
+        // upgrade relies on, and the shape Wrap needs to be able to grow it.
+        // An explicit preferredSize.width caps it well below SAMPLE_LONG_LINE's
+        // rendered width — without one, VBox's default (non-stretching)
+        // cross-axis layout reads CodeEditor's own getPreferredSize() (null
+        // until the first auto-height commit sets one), falls back to the
+        // full container width, and the line never has anything to wrap
+        // against.
+        this.addComponent(new Text('Wrap + auto-height demo (autoHeightMaxRows: 6):'));
+        this._wrapHeightDemo = new CodeEditor(SAMPLE_LONG_LINE,
+            { language: 'javascript', autoHeightMaxRows: 6, preferredSize: { width: 400, height: 60 } });
+        this.addComponent(this._wrapHeightDemo);
 
         this._statusText = new Text('');
         this.addComponent(this._statusText);
@@ -74,6 +114,17 @@ class CodeEditorPanel extends Panel {
 
         this._editor.setReadOnly(readOnly);
         this._readOnlyBtn.setText(readOnly ? 'Read-only: on' : 'Read-only: off');
+    }
+
+    private toggleLineWrap(): void {
+        const wrap = !this._editor.getLineWrap();
+
+        this._editor.setLineWrap(wrap);
+        // Also drives the auto-height demo below, since the main editor
+        // above has no autoHeightMaxRows and so cannot show wrap driving a
+        // height change on its own.
+        this._wrapHeightDemo.setLineWrap(wrap);
+        this._wrapBtn.setText(wrap ? 'Wrap: on' : 'Wrap: off');
     }
 }
 
