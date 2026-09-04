@@ -60,6 +60,13 @@ page resets to empty.
   also distinct from the existing `FormatOptions.indentWidth`, which only
   shapes `format()`'s one-shot reformat output. No consumer action is
   needed.
+- **`CodeEditor.format()` now defaults `FormatOptions.indentWidth` from the
+  editor's own `tabSize` when the caller omits it and `tabSize` is set.** An
+  explicit `indentWidth` always wins, and the default is inert when
+  `tabSize` is unset — unchanged from before. This keeps a reformat's indent
+  width matching what the live editor already renders without requiring
+  every caller to pass `tabSize` into every `format()` call by hand. No
+  consumer action is needed.
 
 ### Menu
 
