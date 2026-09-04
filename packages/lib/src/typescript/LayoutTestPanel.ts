@@ -7,7 +7,7 @@ import { HBox, VBox } from '@jimka/typescript-ui/layout';
 import { Checkbox, ComboBox, PasswordField, RadioButton, Slider, Text, TextArea, TextField, Toggle, UsernameField } from '@jimka/typescript-ui/component/input';
 import { Button, ToggleButton } from '@jimka/typescript-ui/component/button';
 import { List } from '@jimka/typescript-ui/component/list';
-import { FieldSet } from '@jimka/typescript-ui/component/container';
+import { FieldSet, Separator } from '@jimka/typescript-ui/component/container';
 class LayoutTestPanel extends Panel {
 
     constructor() {
@@ -43,6 +43,9 @@ class LayoutTestPanel extends Panel {
         list.addItem("Eleven");
         list.addItem("Twelve");
         list.addItem("Thirteen");
+
+        this.addComponent(new Separator({ orientation: "vertical" }));
+        this.addComponent(new Separator({ orientation: "horizontal" }));
 
         let passwordField = new PasswordField();
         this.addComponent(passwordField);
