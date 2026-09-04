@@ -40,8 +40,11 @@ const editor = new MarkdownEditor("# Hello");
  * editor's `"change"` event and `getValue()`, visually proving the dialect
  * round-trips: what you edit renders identically in the viewer. A toolbar toggle
  * over the editor switches it between the WYSIWYG surface and a raw-Markdown
- * source editor via `setMode`; the viewer stays in sync in both modes. The editor
- * fills its `Fit` host and scrolls internally; the viewer sits in a vertically
+ * source editor via `setMode`; the viewer stays in sync in both modes. Four more
+ * toolbar buttons expose the row/column command API (`insertTableRow` /
+ * `deleteTableRow` / `insertTableColumn` / `deleteTableColumn`), all no-ops
+ * (never throws) with the caret outside a table cell. The editor fills its
+ * `Fit` host and scrolls internally; the viewer sits in a vertically
  * scrolling panel. A status row below the editor reports the editor's own dirty
  * flag and the panel's own, the panel's arriving through the framework's
  * parent-to-child relay three containers up; Save clears it, and so does
@@ -71,6 +74,20 @@ class MarkdownEditorPanel extends Panel {
         const insertTableButton = new Button('Insert table');
         insertTableButton.on('action', this.handleInsertTable);
 
+        // The row/column commands are no-ops (not throws) without the caret in
+        // a table cell, so these need no enabled/disabled state to stay safe.
+        const insertRowButton = new Button('+ Row');
+        insertRowButton.on('action', this.handleInsertRow);
+
+        const deleteRowButton = new Button('− Row');
+        deleteRowButton.on('action', this.handleDeleteRow);
+
+        const insertColumnButton = new Button('+ Column');
+        insertColumnButton.on('action', this.handleInsertColumn);
+
+        const deleteColumnButton = new Button('− Column');
+        deleteColumnButton.on('action', this.handleDeleteColumn);
+
         // Writes nothing — only clears the dirty flag, standing in for a
         // host that has persisted the document.
         const saveBtn = new Button('Save');
@@ -79,6 +96,10 @@ class MarkdownEditorPanel extends Panel {
         const toolbar = new ToolBar();
         toolbar.addComponent(sourceToggle);
         toolbar.addComponent(insertTableButton);
+        toolbar.addComponent(insertRowButton);
+        toolbar.addComponent(deleteRowButton);
+        toolbar.addComponent(insertColumnButton);
+        toolbar.addComponent(deleteColumnButton);
         toolbar.addComponent(saveBtn);
 
         const editorFit = new Panel({ layoutManager: new Fit() });
@@ -113,6 +134,22 @@ class MarkdownEditorPanel extends Panel {
     // ScrollStrip.leadClicked precedent.
     private readonly handleInsertTable = (): void => {
         this._editor.insertTable(2, 3);
+    };
+
+    private readonly handleInsertRow = (): void => {
+        this._editor.insertTableRow();
+    };
+
+    private readonly handleDeleteRow = (): void => {
+        this._editor.deleteTableRow();
+    };
+
+    private readonly handleInsertColumn = (): void => {
+        this._editor.insertTableColumn();
+    };
+
+    private readonly handleDeleteColumn = (): void => {
+        this._editor.deleteTableColumn();
     };
 
     private readonly handleDirtyChange = (): void => {

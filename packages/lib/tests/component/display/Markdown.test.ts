@@ -780,6 +780,34 @@ describe('Markdown table', () => {
         expect(childTagsOf('th')).not.toContain('BR');
         expect(childTagsOf('td')).not.toContain('BR');
     });
+
+    it('splits a cell\'s escaped newline (markdownTableTransformer.ts\'s escape for a soft line break) into a <br>, not literal backslash-n text', () => {
+        // '\\n' here is the literal two-character sequence (backslash, n) —
+        // what escapeCellText writes in place of a real newline, since a GFM
+        // table row cannot contain one.
+        new Markdown('| line1\\nline2 | b |\n| --- | --- |\n| 1 | 2 |').getElement(true);
+
+        expect(childTagsOf('th')).toContain('BR');
+
+        const texts = textWrites();
+
+        expect(texts).toContain('line1');
+        expect(texts).toContain('line2');
+        expect(texts.some((t) => t.includes('\\n'))).toBe(false);
+    });
+
+    it('splits every escaped newline in a cell with more than one', () => {
+        new Markdown('| a\\nb\\nc | d |\n| --- | --- |\n| 1 | 2 |').getElement(true);
+
+        expect(childTagsOf('th').filter((tag) => tag === 'BR')).toHaveLength(2);
+    });
+
+    it('does not split an escaped newline outside a table cell', () => {
+        new Markdown('a\\nb').getElement(true);
+
+        expect(createdTags()).not.toContain('br');
+        expect(textWrites()).toContain('a\\nb');
+    });
 });
 
 describe('Markdown empty source', () => {

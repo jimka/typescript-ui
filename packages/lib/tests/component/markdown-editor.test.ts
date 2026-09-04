@@ -729,7 +729,7 @@ describe('MarkdownEditor table commands', () => {
     });
 });
 
-describe('MarkdownEditor trailing paragraph after a non-paragraph last block', () => {
+describe('MarkdownEditor block separators around tables and code blocks', () => {
     /** Whether the document's last root child is a paragraph node. */
     function endsWithParagraph(editor: MarkdownEditor): boolean {
         return lexicalOf(editor).read(() => {
@@ -737,6 +737,11 @@ describe('MarkdownEditor trailing paragraph after a non-paragraph last block', (
 
             return lastChild !== null && $isParagraphNode(lastChild);
         });
+    }
+
+    /** The root's children, by Lexical node type, in document order. */
+    function childTypes(editor: MarkdownEditor): string[] {
+        return lexicalOf(editor).read(() => $getRoot().getChildren().map((node) => node.getType()));
     }
 
     it('insertTable on an empty editor leaves a trailing paragraph after the table, so a click below it has somewhere to land', () => {
@@ -776,7 +781,21 @@ describe('MarkdownEditor trailing paragraph after a non-paragraph last block', (
         expect(endsWithParagraph(editor)).toBe(true);
     });
 
-    it('inserting a table at the caret inside the auto-added trailing paragraph consumes it, rather than leaving a dead gap before the table', () => {
+    it('a table immediately followed by a fenced code block in the source Markdown gets a separator paragraph between them', () => {
+        // Mirrors the demo's own SAMPLE content: a blank line in Markdown
+        // between two block constructs is only separator syntax, not a real
+        // paragraph, so without this the importer would leave the table
+        // directly bordering the code block with nowhere to click between
+        // them (see the "problem entering content between... a table and a
+        // code block" report this transform fixes).
+        const editor = new MarkdownEditor();
+
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |\n\n```\ncode\n```');
+
+        expect(childTypes(editor)).toEqual(['table', 'paragraph', 'code', 'paragraph']);
+    });
+
+    it('inserting a table at the caret inside the auto-added trailing paragraph after a code block keeps a separator between them', () => {
         const editor = new MarkdownEditor();
         editor.setValue('```\ncode\n```');   // ends in a code block -> a trailing paragraph gets appended
 
@@ -787,12 +806,11 @@ describe('MarkdownEditor trailing paragraph after a non-paragraph last block', (
 
         editor.insertTable(2, 2);
 
-        const childTypes = lexicalOf(editor).read(() => $getRoot().getChildren().map((node) => node.getType()));
-
-        // No leftover empty paragraph between the code block and the table —
-        // just the fresh trailing paragraph ensureTrailingParagraph appends
-        // after the table, which is now the last child.
-        expect(childTypes).toEqual(['code', 'table', 'paragraph']);
+        // A table directly bordering a code block is exactly the adjacency
+        // $ensureParagraphAfter exists to prevent, so the separator the
+        // caret sat in stays — removing it would leave nowhere to click
+        // between the two blocks, and the transform would just reinsert it.
+        expect(childTypes(editor)).toEqual(['code', 'paragraph', 'table', 'paragraph']);
     });
 
     it('does not add a second trailing paragraph when the document already ends with prose', () => {

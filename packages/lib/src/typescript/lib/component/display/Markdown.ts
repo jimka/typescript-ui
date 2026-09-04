@@ -35,6 +35,17 @@ const ALIGN_LEFT_CLASS   = "ts-ui-md-align-left";
 const ALIGN_CENTER_CLASS = "ts-ui-md-align-center";
 const ALIGN_RIGHT_CLASS  = "ts-ui-md-align-right";
 /**
+ * The literal two-character sequence (backslash, `n`) `markdownTableTransformer.ts`'s
+ * `escapeCellText` writes in place of a real newline in a `MarkdownEditor`
+ * table cell's exported Markdown — a GFM table row cannot contain a raw
+ * newline, since one terminates the row. `appendTableRow` below is this
+ * escape's read-only counterpart: it splits on the same sequence back into
+ * `<br>`-joined runs, matching that transformer's own import-side unescaping
+ * (`.replace(/\\n/g, "\n")`) so a soft line break typed into a cell renders
+ * as one in the viewer too, instead of as visible literal backslash-n text.
+ */
+const CELL_LINE_BREAK = "\\n";
+/**
  * Wraps a fenced block that upgrades to a live `CodeEditor`. `position:
  * relative` gives the absolutely-positioned `CodeEditor` child a local
  * positioning context wherever the block sits in the token tree (top-level,
@@ -1611,7 +1622,7 @@ class Markdown extends Component<MarkdownOptions> {
                 // table the same height in both surfaces.
                 DOM.sink.appendChild(cellElement, this.create("br"));
             } else {
-                this.appendInlineTokens(cellElement, cell.tokens);
+                this.appendInlineTokens(cellElement, cell.tokens, true);
             }
 
             DOM.sink.appendChild(row, cellElement);
@@ -1687,12 +1698,15 @@ class Markdown extends Component<MarkdownOptions> {
      *
      * @param parent - The element handle to append into.
      * @param tokens - The inline-level tokens to render.
+     * @param splitCellBreaks - Whether a text run's {@link CELL_LINE_BREAK}
+     *   sequences should split into `<br>`-joined runs — set only from a
+     *   table cell's own render call, never for prose (see {@link CELL_LINE_BREAK}).
      */
-    private appendInlineTokens(parent: Handle, tokens: Token[]): void {
+    private appendInlineTokens(parent: Handle, tokens: Token[], splitCellBreaks: boolean = false): void {
         const sole = tokens.length === 1;
 
         for (const token of tokens) {
-            this.appendInlineToken(parent, token, sole);
+            this.appendInlineToken(parent, token, sole, splitCellBreaks);
         }
     }
 
@@ -1706,14 +1720,17 @@ class Markdown extends Component<MarkdownOptions> {
      * @param token - The inline-level token.
      * @param sole - Whether this is the only token being appended into `parent`,
      *   allowing a direct text write instead of a wrapping span.
+     * @param splitCellBreaks - See {@link appendInlineTokens}.
      */
-    private appendInlineToken(parent: Handle, token: Token, sole: boolean): void {
+    private appendInlineToken(parent: Handle, token: Token, sole: boolean, splitCellBreaks: boolean = false): void {
         switch (token.type) {
             case "text": {
                 const text = token as Tokens.Text;
 
                 if (text.tokens && text.tokens.length > 0) {
-                    this.appendInlineTokens(parent, text.tokens);
+                    this.appendInlineTokens(parent, text.tokens, splitCellBreaks);
+                } else if (splitCellBreaks && text.text.includes(CELL_LINE_BREAK)) {
+                    this.appendTextWithBreaks(parent, text.text);
                 } else if (sole) {
                     DOM.sink.apply(parent, { text: text.text });
                 } else {
@@ -1723,8 +1740,8 @@ class Markdown extends Component<MarkdownOptions> {
                 break;
             }
 
-            case "strong": this.appendInlineWrapper(parent, "strong", (token as Tokens.Strong).tokens); break;
-            case "em":     this.appendInlineWrapper(parent, "em", (token as Tokens.Em).tokens);         break;
+            case "strong": this.appendInlineWrapper(parent, "strong", (token as Tokens.Strong).tokens, splitCellBreaks); break;
+            case "em":     this.appendInlineWrapper(parent, "em", (token as Tokens.Em).tokens, splitCellBreaks);         break;
 
             case "codespan": {
                 const code = this.create("code");
@@ -1735,7 +1752,7 @@ class Markdown extends Component<MarkdownOptions> {
                 break;
             }
 
-            case "link": this.appendLink(parent, token as Tokens.Link); break;
+            case "link": this.appendLink(parent, token as Tokens.Link, splitCellBreaks); break;
 
             default: this.appendTextNode(parent, (token as Tokens.Text).text ?? token.raw ?? ""); break;
         }
@@ -1748,11 +1765,12 @@ class Markdown extends Component<MarkdownOptions> {
      * @param parent - The element handle to append into.
      * @param tag - The wrapper tag.
      * @param tokens - The inline children.
+     * @param splitCellBreaks - See {@link appendInlineTokens}.
      */
-    private appendInlineWrapper(parent: Handle, tag: string, tokens: Token[]): void {
+    private appendInlineWrapper(parent: Handle, tag: string, tokens: Token[], splitCellBreaks: boolean = false): void {
         const wrapper = this.create(tag);
 
-        this.appendInlineTokens(wrapper, tokens);
+        this.appendInlineTokens(wrapper, tokens, splitCellBreaks);
         DOM.sink.appendChild(parent, wrapper);
     }
 
@@ -1764,8 +1782,9 @@ class Markdown extends Component<MarkdownOptions> {
      *
      * @param parent - The element handle to append into.
      * @param token - The link token.
+     * @param splitCellBreaks - See {@link appendInlineTokens}.
      */
-    private appendLink(parent: Handle, token: Tokens.Link): void {
+    private appendLink(parent: Handle, token: Tokens.Link, splitCellBreaks: boolean = false): void {
         const anchor = this.create("a");
         const resolution = this.getLinkResolver()(token.href);
         const setAttr: Record<string, string> = { href: resolution.href };
@@ -1776,7 +1795,7 @@ class Markdown extends Component<MarkdownOptions> {
         }
 
         DOM.sink.apply(anchor, { addClass: [LINK_CLASS], setAttr });
-        this.appendInlineTokens(anchor, token.tokens);
+        this.appendInlineTokens(anchor, token.tokens, splitCellBreaks);
         DOM.sink.appendChild(parent, anchor);
     }
 
@@ -1793,6 +1812,28 @@ class Markdown extends Component<MarkdownOptions> {
 
         DOM.sink.apply(span, { text });
         DOM.sink.appendChild(parent, span);
+    }
+
+    /**
+     * Appends `text`, split on {@link CELL_LINE_BREAK} into separate text runs
+     * joined by `<br>` elements — the read-only counterpart of a table cell's
+     * own soft line breaks.
+     *
+     * @param parent - The element handle to append into.
+     * @param text - The text content, containing one or more {@link CELL_LINE_BREAK} sequences.
+     */
+    private appendTextWithBreaks(parent: Handle, text: string): void {
+        const lines = text.split(CELL_LINE_BREAK);
+
+        lines.forEach((line, index) => {
+            if (index > 0) {
+                DOM.sink.appendChild(parent, this.create("br"));
+            }
+
+            if (line.length > 0) {
+                this.appendTextNode(parent, line);
+            }
+        });
     }
 }
 

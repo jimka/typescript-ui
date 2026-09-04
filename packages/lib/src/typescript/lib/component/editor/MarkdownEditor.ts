@@ -10,7 +10,7 @@ import { CodeEditor } from "~/component/editor/CodeEditor.js";
 import type { CodeEditorChange } from "~/component/editor/CodeEditor.js";
 import {
     createEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $getRoot,
-    $createParagraphNode, $isParagraphNode,
+    $createParagraphNode,
 } from "lexical";
 import type { LexicalEditor, ElementNode } from "lexical";
 import { $convertFromMarkdownString, $convertToMarkdownString, registerMarkdownShortcuts } from "@lexical/markdown";
@@ -18,11 +18,11 @@ import { registerRichText, $createHeadingNode, $createQuoteNode } from "@lexical
 import type { HeadingTagType } from "@lexical/rich-text";
 import { registerList, INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND } from "@lexical/list";
 import { $toggleLink } from "@lexical/link";
-import { $createCodeNode, $isCodeNode } from "@lexical/code";
+import { CodeNode, $createCodeNode, $isCodeNode } from "@lexical/code";
 import { registerHistory, createEmptyHistoryState } from "@lexical/history";
 import {
-    registerTablePlugin, registerTableCellUnmergeTransform, registerTableSelectionObserver,
-    $getTableCellNodeFromLexicalNode, $isTableNode, $findTableNode,
+    TableNode, registerTablePlugin, registerTableCellUnmergeTransform, registerTableSelectionObserver,
+    $getTableCellNodeFromLexicalNode, $isTableNode,
     $insertTableRowAtSelection, $deleteTableRowAtSelection,
     $insertTableColumnAtSelection, $deleteTableColumnAtSelection,
     INSERT_TABLE_COMMAND,
@@ -125,6 +125,34 @@ function $selectionIsInTableCell(): boolean {
     }
 
     return $getTableCellNodeFromLexicalNode(selection.anchor.getNode()) !== null;
+}
+
+/**
+ * Node-transform body for {@link TableNode} / {@link CodeNode}: inserts an
+ * empty paragraph immediately after `node` whenever it would otherwise be
+ * followed by nothing, or by another table or fenced code block.
+ *
+ * @remarks
+ * Unlike a heading, list, or blockquote — ordinary flow text a click at its
+ * trailing edge already lands in, the same as a paragraph — a table's grid
+ * layout and a code block's preformatted whitespace give a click nothing to
+ * resolve into, so wherever one directly borders another such block (or the
+ * end of the document) there is nowhere to click to insert new content there.
+ * Registered as a node transform, rather than called from each command that
+ * can produce this shape, so the invariant holds regardless of *how* the
+ * adjacency arises: the initial Markdown import (the demo's own SAMPLE ends
+ * a table directly into a fenced block with no blank-line paragraph between
+ * them), {@link MarkdownEditor.insertTable}, a `setBlockType('code')` that
+ * replaces the paragraph separating two blocks, undo/redo, or paste.
+ *
+ * @param node - The just-created-or-updated table or code node to check.
+ */
+function $ensureParagraphAfter(node: ElementNode): void {
+    const next = node.getNextSibling();
+
+    if (next === null || $isTableNode(next) || $isCodeNode(next)) {
+        node.insertAfter($createParagraphNode());
+    }
 }
 
 // A text caret over the whole surface signals editability. The surface is also
@@ -431,10 +459,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             this._codeEditor.setValue(markdown);
             this._card.setVisibleComponentId(this._codeEditor.getId());
         } else {
-            this.ensureEditor().update(() => {
-                $convertFromMarkdownString(markdown, TRANSFORMERS);
-                this.ensureTrailingParagraph();
-            }, { discrete: true });
+            this.ensureEditor().update(
+                () => $convertFromMarkdownString(markdown, TRANSFORMERS), { discrete: true });
             this._card.setVisibleComponentId(this._wysiwyg.getId());
         }
 
@@ -479,10 +505,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         // Discrete forces a synchronous commit, so the resulting `"change"`
         // fires before this returns rather than on a later flush.
-        this.ensureEditor().update(() => {
-            $convertFromMarkdownString(value, TRANSFORMERS);
-            this.ensureTrailingParagraph();
-        }, { discrete: true });
+        this.ensureEditor().update(() => $convertFromMarkdownString(value, TRANSFORMERS), { discrete: true });
 
         return this;
     }
@@ -687,27 +710,6 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             includeHeaders: { rows: true, columns: false },
         });
 
-        // A table lands via a caret-position split rather than by replacing
-        // the paragraph the caret sits in, so inserting one at a collapsed
-        // caret inside an empty paragraph (typically the auto-added
-        // trailing paragraph from ensureTrailingParagraph, but any empty
-        // paragraph behaves the same) leaves that paragraph behind as a
-        // dead gap between it and the table — invisible in the exported
-        // Markdown (an empty paragraph carries no content to export) but
-        // still real, visible blank space in this WYSIWYG surface. Consume
-        // it, then re-check the trailing edge: the table may now be last.
-        editor.update(() => {
-            const selection = $getSelection();
-            const tableNode = $isRangeSelection(selection) ? $findTableNode(selection.anchor.getNode()) : null;
-            const previousSibling = tableNode?.getPreviousSibling() ?? null;
-
-            if ($isParagraphNode(previousSibling) && previousSibling.isEmpty()) {
-                previousSibling.remove();
-            }
-
-            this.ensureTrailingParagraph();
-        }, { discrete: true });
-
         return this;
     }
 
@@ -867,28 +869,6 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Appends an empty paragraph after the document's last child when that
-     * child is a table or fenced code block. Must run inside an `editor.update()`.
-     *
-     * @remarks
-     * Unlike a heading, list, or blockquote — ordinary flow text a click below
-     * the last line already lands in, the same as a paragraph — a table's grid
-     * layout and a code block's preformatted whitespace give a trailing click
-     * nothing to resolve into, so one landing last leaves nothing past it to
-     * click into and keep typing. Called after every operation that can leave
-     * one of these two node types last: loading Markdown (initial build,
-     * {@link MarkdownEditor.setValue}, a `"source"` → `"wysiwyg"`
-     * {@link MarkdownEditor.setMode} switch) and {@link MarkdownEditor.insertTable}.
-     */
-    private ensureTrailingParagraph(): void {
-        const lastChild = $getRoot().getLastChild();
-
-        if (lastChild !== null && ($isTableNode(lastChild) || $isCodeNode(lastChild))) {
-            $getRoot().append($createParagraphNode());
-        }
-    }
-
-    /**
      * Builds the headless Lexical editor on first use. Idempotent: the editor is
      * built once. Offline the editor stays headless — the state, and every value
      * / command operation, still work.
@@ -899,12 +879,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         if (!this._editor) {
             const editor = createEditor({ nodes: EDITOR_NODES, theme: EDITOR_THEME, onError: reportEditorError });
 
+            // Registered before the initial load below, so the invariant
+            // $ensureParagraphAfter enforces already holds for content
+            // parsed straight from `_options.value` (the demo's own SAMPLE
+            // included) rather than only for later edits.
+            const unregisterBlockSeparatorTransforms = mergeRegister(
+                editor.registerNodeTransform(TableNode, $ensureParagraphAfter),
+                editor.registerNodeTransform(CodeNode, $ensureParagraphAfter),
+            );
+
             // Populate the initial state before registering the update listener,
             // so loading the cached value does not fire a spurious `"change"`.
-            editor.update(() => {
-                $convertFromMarkdownString(this._options.value ?? "", TRANSFORMERS);
-                this.ensureTrailingParagraph();
-            }, { discrete: true });
+            editor.update(() => $convertFromMarkdownString(this._options.value ?? "", TRANSFORMERS), { discrete: true });
             editor.setEditable(!(this._options.readOnly ?? false));
 
             // Lexical's converters normalize what they round-trip (a trailing newline is
@@ -919,6 +905,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             this._unregister = mergeRegister(
+                unregisterBlockSeparatorTransforms,
                 registerRichText(editor),
                 registerList(editor),
                 registerTablePlugin(editor),
