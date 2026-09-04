@@ -443,22 +443,25 @@ class WysiwygSurface extends Component {
  * the editing counterpart to the read-only
  * [`Markdown`](/api/component/display/classes/Markdown) viewer. Its dialect is
  * deliberately the **exact subset** the viewer renders (headings, paragraphs,
- * bold, italic, inline code, ordered/unordered lists, blockquotes, fenced code,
- * links, and GFM pipe tables with per-column alignment); a curated transformer
+ * bold, italic, strikethrough, inline code, ordered/unordered lists, blockquotes,
+ * fenced code, links, and GFM pipe tables with per-column alignment); a curated transformer
  * list — not Lexical's full preset — guarantees the editor can never emit
  * Markdown the viewer would drop to plain text, so an edited document renders
  * identically in the viewer.
  *
- * Formatting is driven three ways, all without a built-in toolbar: Markdown
+ * Formatting is driven four ways, all without a built-in toolbar: Markdown
  * shortcut typing (`# ` → heading, `**b**` → bold, `- ` → list, `> ` → quote,
  * ` ``` ` → code), the default keyboard shortcuts (Ctrl/Cmd+B / +I, undo/redo,
  * and Alt+Enter — with the caret in a table cell or a fenced code block —
  * to insert a paragraph after it, since a table's grid and a code block's
- * preformatted text otherwise give a click nowhere to land), and a thin
- * imperative command API (`toggleBold`, `setBlockType`, `toggleUnorderedList`,
- * `toggleLink`, `insertTable`, `insertTableRow`/`deleteTableRow`,
- * `insertTableColumn`/`deleteTableColumn`, …) a consumer can wire to their own
- * `Button`s.
+ * preformatted text otherwise give a click nowhere to land), a thin
+ * imperative command API (`toggleBold`, `toggleStrikethrough`, `clearFormatting`,
+ * `setBlockType`, `toggleUnorderedList`, `toggleLink`, `insertTable`,
+ * `insertTableRow`/`deleteTableRow`, `insertTableColumn`/`deleteTableColumn`,
+ * `deleteTable`, …) a consumer can wire to their own `Button`s, and a
+ * self-wired right-click context menu on the WYSIWYG surface whose contents
+ * depend on what was clicked (a word/selection, an empty line, or a table
+ * cell) — the only one of the four that needs no consumer wiring at all.
  *
  * A {@link MarkdownEditor.setMode | mode} (`"wysiwyg"` | `"source"`) swaps the
  * editing surface between that rich-text view and a raw-Markdown

@@ -44,6 +44,7 @@ Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) 
 | `#` … `######` | `<h1>` … `<h6>` |
 | paragraph text | `<p>` |
 | `**bold**`, `*italic*` | `<strong>`, `<em>` |
+| `~~struck~~` | `<del>` |
 | `` `inline code` `` | `<code>` |
 | fenced ```` ``` ```` block | `<pre>` › `<code>` (literal text, newlines preserved), or a syntax-highlighted `CodeEditor` for a supported language — see [Syntax highlighting](#syntax-highlighting-in-fenced-code-blocks) |
 | `-`/`*` and `1.` lists | `<ul>`/`<ol>` with `<li>` items |
@@ -102,7 +103,7 @@ the reader actually scrolls to.
 
 ### Fallback for unsupported tokens
 
-Any token type not in the v1 set — images, raw HTML, and the remaining GFM extensions (task lists, strikethrough) — falls through to a **defined fallback** that renders the token's plain text. It never crashes and never emits the corresponding element (no `<img>`). Support for a new token type is added by extending the internal token switch, with no structural rewrite.
+Any token type not in the v1 set — images, raw HTML, and the remaining GFM extensions (task lists) — falls through to a **defined fallback** that renders the token's plain text. It never crashes and never emits the corresponding element (no `<img>`). Support for a new token type is added by extending the internal token switch, with no structural rewrite.
 
 ### Sizing
 
