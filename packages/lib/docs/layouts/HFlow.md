@@ -36,7 +36,7 @@ The same options ([`HFlowOptions`](/api/layout/interfaces/HFlowOptions)) can be 
 
 Children are placed at their preferred size (clamped to their own min / max) from the start of the current line. Before each child, `HFlow` checks whether its right edge would pass the container's inner width; if so — and the child is not the first item on the line — the line wraps and the child starts a fresh line below. A child wider than the inner width takes its own line, clamped to the inner width so its right edge stays inside the container.
 
-`HFlow` never shrinks, stretches, or weights its children — wrapping *is* its overflow relief. There is no `mode`, `stretching`, or `weight` knob; for an equal-width single row, use [`HBox`](/layouts/HBox) with `mode: "equal"` instead.
+`HFlow` never shrinks or weights its children, and stretches one only on the cross axis when that child asks for it with a `fill` constraint (see [Per-child cross-axis alignment](#per-child-cross-axis-alignment-align-self)) — wrapping *is* its overflow relief otherwise. There is no `mode`, `stretching`, or `weight` knob; for an equal-width single row, use [`HBox`](/layouts/HBox) with `mode: "equal"` instead.
 
 ## Spacing
 
@@ -136,6 +136,24 @@ The distinction matters only for `"baseline"`, where aligning a high-baseline it
 
 The table says *cell*, not *item*, because a `uniform` height (or `"both"`) mode makes every cell the tallest item in the whole flow rather than the tallest in its own row — so every row is that tall. `"baseline"` can still exceed it, since it offsets each item by its own baseline inside the uniform cell.
 
+## Per-child cross-axis alignment (align-self)
+
+A single child can stretch to fill its wrapped row's full height, ignoring the row's `itemAlign`, by setting the **cross component** of its `fill` constraint. This is the flow's version of CSS `align-self: stretch` under `flex-wrap`, and it mirrors [`HBox`'s per-child align-self](/layouts/HBox#per-child-cross-axis-alignment-align-self):
+
+- `fill: FillType.VERTICAL` (or `FillType.BOTH`) — stretch the child to the **row it wrapped into**, not the container. Overrides `itemAlign` for that child only; the rest of the row keeps its usual placement.
+
+```typescript
+import { FillType } from '@jimka/typescript-ui/layout';
+// A vertical rule spans whichever row it wraps into.
+tags.addComponent(rule, { fill: FillType.VERTICAL });
+```
+
+The child's own `maxSize` still caps the stretch — `HFlow` hands over the full row height without clamping it itself. A child alone on a wrapped row still collapses to zero height: a row's cross extent comes from its members, and a lone filled child has no sibling to set one.
+
+`fill` is inert when `uniform` already fixes the row height (`uniform: "height"` or `"both"`): every cell is already that tall, so a cross-filled child changes nothing there — except under `itemAlign: "baseline"`, whose row height (`rowAscent + rowDescent`) can exceed the uniform cell height and still stretch the filled child past it.
+
+The **main component** of `fill` (`HORIZONTAL`/`BOTH` in `HFlow`) is always inert — `HFlow` owns main-axis sizing and wrapping — even under `uniform: "width"` or `"both"`, where the row's cells are wider than an unfilled child's own preferred width. A child stays at its own preferred width there rather than stretching into the uniform cell.
+
 ## Distribution
 
 Where `align` moves a line's content as one block, the `justify` option ([`AxisSpread`](/api/primitive/type-aliases/AxisSpread)) spreads a line's items across the inner width by growing the gaps between them:
@@ -178,7 +196,7 @@ When the host neither scrolls nor is allowed to grow, lines past the inner heigh
 
 [`LayoutConstraints`](/layouts/Constraints):
 
-- `fill` — [`FillType`](/api/layout/enumerations/FillType): `NONE` (preferred size, the default `HFlow` placement), `HORIZONTAL`, `VERTICAL`, `BOTH`. A stored constraint on the child takes precedence over `HFlow`'s default `NONE`.
+- `fill` — [`FillType`](/api/layout/enumerations/FillType): `NONE` (preferred size, the default `HFlow` placement), `HORIZONTAL`, `VERTICAL`, `BOTH`. A stored constraint on the child takes precedence over `HFlow`'s default `NONE`; the cross component (`VERTICAL`/`BOTH`) is a per-child align-self stretch to the row height — see [Per-child cross-axis alignment](#per-child-cross-axis-alignment-align-self).
 - `anchor` — [`AnchorType`](/api/layout/enumerations/AnchorType): positions the child when its cell is larger than the child — i.e. in a `uniform` mode. Defaults to centre.
 - `weight` — ignored; `HFlow` has no fixed line to distribute remainder across.
 

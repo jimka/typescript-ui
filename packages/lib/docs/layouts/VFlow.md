@@ -1,6 +1,6 @@
 # VFlow
 
-[`VFlow`](/api/layout/classes/VFlow) packs children top-to-bottom at their preferred size and wraps to a new column when the next child would exceed the container's inner height. It is the vertical transpose of [`HFlow`](/layouts/HFlow): where `HFlow` fills rows left-to-right and wraps downward, `VFlow` fills columns top-to-bottom and wraps rightward. Like `HFlow` it never shrinks or stretches children — wrapping *is* its overflow relief.
+[`VFlow`](/api/layout/classes/VFlow) packs children top-to-bottom at their preferred size and wraps to a new column when the next child would exceed the container's inner height. It is the vertical transpose of [`HFlow`](/layouts/HFlow): where `HFlow` fills rows left-to-right and wraps downward, `VFlow` fills columns top-to-bottom and wraps rightward. Like `HFlow` it never shrinks a child — wrapping *is* its overflow relief — and stretches one only on the cross axis, and only when that child asks for it with a cross-axis `fill`.
 
 ```
 +----------------------+
@@ -32,7 +32,7 @@ The same options ([`VFlowOptions`](/api/layout/interfaces/VFlowOptions)) can be 
 
 Children are placed at their preferred size (clamped to their own min / max) from the top of the current column. Before each child, `VFlow` checks whether its bottom edge would pass the container's inner height; if so — and the child is not the first item in the column — the column wraps and the child starts a fresh column to the right. A child taller than the inner height takes its own column, clamped to the inner height so its bottom edge stays inside the container.
 
-`VFlow` never shrinks, stretches, or weights its children. There is no `mode`, `stretching`, or `weight` knob; for an equal-height single column, use [`VBox`](/layouts/VBox) with `mode: "equal"` instead.
+`VFlow` never shrinks or weights its children, and stretches one only on the cross axis when that child asks for it with a `fill` constraint (see [Per-child cross-axis alignment](#per-child-cross-axis-alignment-align-self)). There is no `mode`, `stretching`, or `weight` knob; for an equal-height single column, use [`VBox`](/layouts/VBox) with `mode: "equal"` instead.
 
 ## Spacing
 
@@ -99,6 +99,24 @@ panel.setLayoutManager(VFlow({ itemAlign: "center", spacing: 8, lineSpacing: 8 }
 
 `itemAlign` positions the *cell* within the column; the per-child [`AnchorType`](/api/layout/enumerations/AnchorType) still positions the *child* within its cell. In a `uniform` width (or `"both"`) mode every cell already equals the column width, so `itemAlign` is a visual no-op there.
 
+## Per-child cross-axis alignment (align-self)
+
+A single child can stretch to fill its wrapped column's full width, ignoring the column's `itemAlign`, by setting the **cross component** of its `fill` constraint. This is the flow's version of CSS `align-self: stretch` under `flex-wrap`, and it mirrors [`HFlow`'s per-child align-self](/layouts/HFlow#per-child-cross-axis-alignment-align-self):
+
+- `fill: FillType.HORIZONTAL` (or `FillType.BOTH`) — stretch the child to the **column it wrapped into**, not the container. Overrides `itemAlign` for that child only; the rest of the column keeps its usual placement.
+
+```typescript
+import { FillType } from '@jimka/typescript-ui/layout';
+// A horizontal rule spans whichever column it wraps into.
+tags.addComponent(rule, { fill: FillType.HORIZONTAL });
+```
+
+The child's own `maxSize` still caps the stretch — `VFlow` hands over the full column width without clamping it itself. A child alone on a wrapped column still collapses to zero width: a column's cross extent comes from its members, and a lone filled child has no sibling to set one.
+
+`fill` is inert when `uniform` already fixes the column width (`uniform: "width"` or `"both"`): every cell is already that wide, so a cross-filled child changes nothing there.
+
+The **main component** of `fill` (`VERTICAL`/`BOTH` in `VFlow`) is always inert — `VFlow` owns main-axis sizing and wrapping — even under `uniform: "height"` or `"both"`, where the column's cells are taller than an unfilled child's own preferred height. A child stays at its own preferred height there rather than stretching into the uniform cell.
+
 ## Distribution
 
 Where `align` moves a column's content as one block, the `justify` option ([`AxisSpread`](/api/primitive/type-aliases/AxisSpread)) spreads a column's items across the inner height by growing the gaps between them:
@@ -135,7 +153,7 @@ When the host neither scrolls nor is allowed to grow, columns past the inner wid
 
 [`LayoutConstraints`](/layouts/Constraints):
 
-- `fill` — [`FillType`](/api/layout/enumerations/FillType): `NONE` (preferred size, the default `VFlow` placement), `HORIZONTAL`, `VERTICAL`, `BOTH`. A stored constraint on the child takes precedence over `VFlow`'s default `NONE`.
+- `fill` — [`FillType`](/api/layout/enumerations/FillType): `NONE` (preferred size, the default `VFlow` placement), `HORIZONTAL`, `VERTICAL`, `BOTH`. A stored constraint on the child takes precedence over `VFlow`'s default `NONE`; the cross component (`HORIZONTAL`/`BOTH`) is a per-child align-self stretch to the column width — see [Per-child cross-axis alignment](#per-child-cross-axis-alignment-align-self).
 - `anchor` — [`AnchorType`](/api/layout/enumerations/AnchorType): positions the child when its cell is larger than the child — i.e. in a `uniform` mode. Defaults to centre.
 - `weight` — ignored; `VFlow` has no fixed column to distribute remainder across.
 
