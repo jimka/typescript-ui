@@ -104,7 +104,7 @@ const UNCLAIMED_LISTENER_CLASSES: readonly string[] = [
     'MarkdownViewer', 'MenuBar', 'Notification', 'Panel', 'ParentHeaderCell', 'PickerCell',
     'PickerDay', 'PickerMonthLabel', 'PickerNavButton', 'Popover', 'RadioButton',
     'Rail', 'ResizeHandle', 'ScrollArrowButton', 'Scrollbar', 'Slider', 'SpinButton', 'SplitGutter',
-    'TabBar', 'TableBody', 'TextInput', 'TimeEditor', 'TimePickerDropdown', 'ToggleButton',
+    'TabBar', 'TableBody', 'TextInput', 'TextInputCellEditor', 'TimeEditor', 'TimePickerDropdown', 'ToggleButton',
     'ToolBar', 'Tree', 'TreeTable', 'WebGLCanvas', 'WindowBorder', 'WindowHeader',
 ];
 

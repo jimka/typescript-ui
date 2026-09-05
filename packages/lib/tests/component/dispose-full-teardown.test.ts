@@ -275,9 +275,12 @@ const REGISTRY: Array<{
     },
     // `_dropdown` is a LayerManager-mounted picker overlay, lazily built on
     // first focus and held in a private field — never a registered child.
+    // This row also covers `TextInputCellEditor`'s own destructor (disposes
+    // its `_contextMenu`, a Position.FIXED overlay never a registered
+    // child), reached through DateEditor's `super.destructor()` chain.
     {
         name: 'DateEditor',
-        covers: ['DateEditor'],
+        covers: ['DateEditor', 'TextInputCellEditor'],
         make: () => {
             const editor = new DateEditor();
 
