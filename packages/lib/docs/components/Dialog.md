@@ -27,6 +27,8 @@ if (result === 'confirm') {
 }
 ```
 
+The message body is selectable, and a right-click offers a Copy row for the selected text. Custom content (see below) is not, unless the consumer's own components provide it.
+
 ## Custom content
 
 Replace `message` with `contentComponent` to render any component as the dialog body:

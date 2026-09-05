@@ -37,6 +37,10 @@ panel.addComponent(Markdown('# Title\n\nSome **bold** text with a [link](https:/
 
 Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields (preferred size, background, foreground, etc.).
 
+## Selecting and copying
+
+Rendered prose is selectable, and a right-click offers a Copy row for whatever is currently selected — dimmed when nothing is selected.
+
 ## Supported syntax (v1)
 
 | Markdown | Renders as |

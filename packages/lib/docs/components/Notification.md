@@ -34,6 +34,7 @@ Notification.show(
 - **Manual dismiss** — every toast renders a × button (labelled "Dismiss notification" for assistive tech). The stack collapses upward once the exit transition completes. Both entrance and exit honour `prefers-reduced-motion: reduce`.
 - **Screen-reader announcement** — each toast is a live region so assistive tech announces it on appearance. `error` and `warning` toasts use `role="alert"` / `aria-live="assertive"` (interrupting); `info` and `success` use `role="status"` / `aria-live="polite"`. The decorative severity badge is `aria-hidden`, so only the message text is announced.
 - **Pause-on-modal** — opening the detail dialog calls [`Notification.pauseAll()`](/api/overlay/classes/Notification#pauseall) on the way in and [`Notification.resumeAll()`](/api/overlay/classes/Notification#resumeall) on the way out. The pair is refcounted, so it composes with the hover-pause refcount and with nested consumer-driven pause/resume calls. Resumed timers are clamped to a minimum of 8 seconds whenever the *last* release was a modal one, so the user has time to read the remaining toasts.
+- **Selectable, copyable message** — a toast's message and the detail dialog's full message are both selectable, and a right-click offers a Copy row for the selected text.
 
 ## Pausing toasts during your own modal flow
 

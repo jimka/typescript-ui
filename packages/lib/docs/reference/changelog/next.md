@@ -27,6 +27,8 @@ page resets to empty.
   consumer implementing its own `DOMSource` is affected.
 - **`DOMSource` gains one required member: `getSelectionRange()`.** Only a
   consumer implementing its own `DOMSource` is affected.
+- **`DOMSource` gains one required member: `getDocumentSelectionText()`.**
+  Only a consumer implementing its own `DOMSource` is affected.
 
 ## Changed
 
@@ -160,6 +162,11 @@ page resets to empty.
   `DateTimeField` accepts all seven. The typed text is left alone while
   typing and resolves to its formatted absolute value only when the field
   loses focus or Enter is pressed. No consumer action is needed.
+- **`SelectableText` gains a `copyMenu` option** (and `setCopyMenu()` /
+  `hasCopyMenu()`) offering a right-click Copy menu for text selected inside
+  it; `Dialog`'s message body, `Notification`'s toast and detail messages,
+  and the `Markdown` viewer all offer it, restoring what `Body.init`'s
+  native-context-menu suppression removed.
 
 ### Data
 
