@@ -39,6 +39,9 @@ Give the editor a sized host (a `Fit` panel, as above, or an explicit `preferred
 | `placeholder` | `string` | unset | Text shown in an empty document. |
 | `highlightWhitespace` | `boolean` | `false` | Whether spaces, tabs and trailing whitespace are rendered visibly. |
 | `lint` | `boolean` | `false` | Whether parser-error diagnostics are shown. Inert for a language with no lint source. |
+| `tabSize` | `number` | unset | Tab-stop width in columns — how wide a literal tab renders and how many columns Tab / auto-indent insert. Unset: CodeMirror's own defaults (4-column stops, 2-space indent unit). Distinct from `format()`'s `indentWidth` — see [Formatting options](#formatting-options). |
+| `lineNumbers` | `boolean` | `true` | Whether the line-number gutter is shown. |
+| `spellcheck` | `boolean` | `false` | Whether the browser's native spellcheck runs inside the editor. See [Spellcheck](#spellcheck). |
 | `listeners` | `{ change?: (payload) => void }` | — | Construction-time listener bag for the `"change"` event. |
 
 Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields (preferred size, background, foreground, etc.).
@@ -127,6 +130,11 @@ The options are a per-call argument — the editor stores none of them, so a cal
 | `htmlWhitespaceSensitivity` | Prettier `htmlWhitespaceSensitivity` | — | — | ✔ | — | — |
 | `keywordCase` | `sql-formatter` `keywordCase` | — | — | — | — | ✔ |
 
+`FormatOptions.indentWidth` only shapes `format()`'s one-shot reformat output; it has no
+effect on the live editor. The separate, always-in-effect `tabSize` construction option
+controls live tab-stop rendering and Tab-key / auto-indent width — see
+[Construction](#construction).
+
 ## Dirty state
 
 The editor reports itself dirty, via the framework's [`Component.isDirty()`](/api/core/classes/Component) mechanism, whenever its document differs from the text at the last clean point — the text it was constructed with, or the text `markClean()` last accepted. Typing, paste, `format()`, and `setValue()` all go through the same check, so an edit undone back to the clean text clears the flag on its own. `isDirty()` folds up into every ancestor container automatically. A host that loads a document with `setValue()` should follow it with `markClean()`, so the loaded text becomes the clean text.
@@ -170,6 +178,9 @@ Tab then moves focus again, and the same shortcut switches back to indenting.
 | `getPlaceholder()` / `setPlaceholder(text)` | Read, set, or (`null`) clear the text shown in an empty document. |
 | `getHighlightWhitespace()` / `setHighlightWhitespace(highlight)` | Read or toggle visible whitespace rendering. |
 | `getLint()` / `setLint(lint)` | Read or toggle parser-error diagnostics. |
+| `getTabSize()` / `setTabSize(size)` | Read, set, or (`null`) clear the tab-stop width, in columns. |
+| `getLineNumbers()` / `setLineNumbers(show)` | Read or toggle whether the line-number gutter is shown. |
+| `getSpellcheck()` / `setSpellcheck(spellcheck)` | Read or toggle whether the browser's native spellcheck runs inside the editor. |
 
 ## Theming
 
@@ -178,6 +189,16 @@ The editor's chrome (background, gutters, cursor, selection) reads the project's
 ## Linting
 
 Turning on [`lint`](#construction) shows diagnostics from the active language's lint source, when it has one (see the [built-in languages table](#built-in-languages) above). The built-in sources are all syntax-only — `collectSyntaxErrors`, exported from `component/editor`, walks the grammar's own parse tree for error nodes and reports each as an `"error"` diagnostic; it knows nothing about names, types, or other files. Switching language while lint is on swaps the diagnostics along with the grammar. A custom language wires this up the same way any other `LanguageDefinition` field does — see [Registering a language](#registering-a-language).
+
+## Spellcheck
+
+Turning on [`spellcheck`](#construction) sets the browser's native `spellcheck` attribute
+on the editor's content element, so the browser's own spellchecker underlines words it
+doesn't recognize — the same behaviour a plain `<textarea spellcheck>` has. This is
+unrelated to [`lint`](#linting): lint's squiggles come from the active language's own
+parser, flagging syntax errors, while spellcheck's squiggles come from the browser,
+flagging words outside its dictionary. Both can render as a similar-looking underline;
+only one is CodeMirror's own feature.
 
 ## Autocompletion
 

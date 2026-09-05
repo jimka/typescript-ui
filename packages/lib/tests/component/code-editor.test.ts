@@ -1433,6 +1433,72 @@ describe('CodeEditor lint', () => {
     });
 });
 
+describe('CodeEditor tabSize', () => {
+    it('getTabSize defaults to null', () => {
+        const editor = new CodeEditor();
+
+        expect(editor.getTabSize()).toBeNull();
+    });
+
+    it('round-trips through the constructor options bag', () => {
+        const editor = new CodeEditor(undefined, { tabSize: 4 });
+
+        expect(editor.getTabSize()).toBe(4);
+    });
+
+    it('setTabSize(null) clears a previously set tabSize', () => {
+        const editor = new CodeEditor();
+
+        editor.setTabSize(2);
+        expect(editor.getTabSize()).toBe(2);
+
+        editor.setTabSize(null);
+        expect(editor.getTabSize()).toBeNull();
+    });
+});
+
+describe('CodeEditor lineNumbers', () => {
+    it('getLineNumbers defaults to true', () => {
+        const editor = new CodeEditor();
+
+        expect(editor.getLineNumbers()).toBe(true);
+    });
+
+    it('round-trips through the constructor options bag', () => {
+        const editor = new CodeEditor(undefined, { lineNumbers: false });
+
+        expect(editor.getLineNumbers()).toBe(false);
+    });
+
+    it('setLineNumbers round-trips without a live view, with no throw', () => {
+        const editor = new CodeEditor();
+
+        expect(() => editor.setLineNumbers(false)).not.toThrow();
+        expect(editor.getLineNumbers()).toBe(false);
+    });
+});
+
+describe('CodeEditor spellcheck', () => {
+    it('getSpellcheck defaults to false', () => {
+        const editor = new CodeEditor();
+
+        expect(editor.getSpellcheck()).toBe(false);
+    });
+
+    it('round-trips through the constructor options bag', () => {
+        const editor = new CodeEditor(undefined, { spellcheck: true });
+
+        expect(editor.getSpellcheck()).toBe(true);
+    });
+
+    it('setSpellcheck round-trips without a live view, with no throw', () => {
+        const editor = new CodeEditor();
+
+        expect(() => editor.setSpellcheck(true)).not.toThrow();
+        expect(editor.getSpellcheck()).toBe(true);
+    });
+});
+
 describe('CodeEditor countFoldedLines', () => {
     function buildState(lineCount: number): EditorState {
         const doc = Array.from({ length: lineCount }, (_, i) => `line ${i + 1}`).join('\n');
