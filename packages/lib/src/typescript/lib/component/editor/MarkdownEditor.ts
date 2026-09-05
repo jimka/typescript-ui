@@ -8,6 +8,7 @@ import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { Card } from "~/layout/Card.js";
 import { Menu } from "~/overlay/Menu.js";
+import { Notification } from "~/overlay/Notification.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
 import { CodeEditor } from "~/component/editor/CodeEditor.js";
@@ -15,10 +16,10 @@ import type { CodeEditorChange } from "~/component/editor/CodeEditor.js";
 import {
     createEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $getRoot,
     $createParagraphNode, KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH,
-    IS_ALL_FORMATTING, $isTextNode,
+    IS_ALL_FORMATTING, $isTextNode, TEXT_TYPE_TO_FORMAT,
     $getNearestNodeFromDOMNode, isDOMNode, $findMatchingParent, $isElementNode, $isParagraphNode,
 } from "lexical";
-import type { LexicalEditor, ElementNode, LexicalNode, TextFormatType } from "lexical";
+import type { LexicalEditor, ElementNode, LexicalNode, TextFormatType, TextNode } from "lexical";
 import { $convertFromMarkdownString, $convertToMarkdownString, registerMarkdownShortcuts } from "@lexical/markdown";
 import { registerRichText, $createHeadingNode, $createQuoteNode } from "@lexical/rich-text";
 import type { HeadingTagType } from "@lexical/rich-text";
@@ -44,6 +45,17 @@ import { EDITOR_THEME, ensureMarkdownEditorClassRules } from "~/component/editor
  * merge into a single undo step, matching Lexical's own recommended default.
  */
 const HISTORY_DELAY_MS = 300;
+
+/** Shown when a context-menu Paste finds the clipboard read unavailable. */
+const CLIPBOARD_READ_DENIED_MESSAGE = "Clipboard read blocked by the browser — press Ctrl/Cmd+V to paste.";
+
+/**
+ * How long the clipboard-denied toast stays up (ms). Twice Notification's 3 s
+ * default because this message asks the user to do something rather than just
+ * reporting an outcome; 6 s is the duration the notifications recipe uses for
+ * a `"warning"`.
+ */
+const CLIPBOARD_HINT_DURATION_MS = 6000;
 
 /**
  * Payload of {@link MarkdownEditor}'s `"change"` event: the Markdown string
@@ -224,9 +236,9 @@ function $handleSeparatorShortcut(event: KeyboardEvent | null): boolean {
  * the non-barrel-exposed `mapFenceLangToEditorId`.
  */
 export type ContextMenuTarget =
-    | { kind: "table-cell"; bold: boolean; italic: boolean; strikethrough: boolean; code: boolean }
-    | { kind: "empty-line" }
-    | { kind: "text"; bold: boolean; italic: boolean; strikethrough: boolean; code: boolean };
+    | { kind: "table-cell"; hasSelectedText: boolean; bold: boolean; italic: boolean; strikethrough: boolean; code: boolean }
+    | { kind: "empty-line"; hasSelectedText: boolean }
+    | { kind: "text"; hasSelectedText: boolean; bold: boolean; italic: boolean; strikethrough: boolean; code: boolean };
 
 /**
  * Matches one "word" character for {@link $selectEnclosingWordIfCollapsed}'s
@@ -236,6 +248,66 @@ export type ContextMenuTarget =
  * ASCII-range run.
  */
 const WORD_CHARACTER = /[\p{L}\p{N}_]/u;
+
+/**
+ * The expansion {@link $selectEnclosingWordIfCollapsed} would make (or has
+ * made) to a collapsed selection: the text node it spans, the offsets within
+ * it, and the format bitmask the resulting selection would carry.
+ */
+interface WordExpansion {
+    node: TextNode;
+    start: number;
+    end: number;
+    format: number;
+}
+
+/**
+ * Computes what {@link $selectEnclosingWordIfCollapsed} would select for the
+ * current selection, without mutating anything — the read-only counterpart
+ * {@link $classifyContextMenuTarget} uses so classification can reflect what
+ * a subsequent action would operate on without performing that action's
+ * mutation. See {@link $selectEnclosingWordIfCollapsed} for the word/run
+ * semantics.
+ *
+ * @returns The would-be expansion, or `null` under the exact conditions that
+ * make {@link $selectEnclosingWordIfCollapsed} a no-op: the selection is not
+ * collapsed, is not anchored in a text node, or (plain prose only) the
+ * anchor sits on whitespace/punctuation with no adjacent word character.
+ */
+function $computeWordExpansion(): WordExpansion | null {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+        return null;
+    }
+
+    const anchorNode = selection.anchor.getNode();
+
+    if (!$isTextNode(anchorNode)) {
+        return null;
+    }
+
+    const text = anchorNode.getTextContent();
+
+    if (anchorNode.getFormat() !== 0) {
+        return text.length > 0
+            ? { node: anchorNode, start: 0, end: text.length, format: anchorNode.getFormat() }
+            : null;
+    }
+
+    let start = selection.anchor.offset;
+    let end = start;
+
+    while (start > 0 && WORD_CHARACTER.test(text[start - 1])) {
+        start -= 1;
+    }
+
+    while (end < text.length && WORD_CHARACTER.test(text[end])) {
+        end += 1;
+    }
+
+    return start !== end ? { node: anchorNode, start, end, format: 0 } : null;
+}
 
 /**
  * With a collapsed selection anchored in a text node, expands it so a
@@ -256,49 +328,30 @@ const WORD_CHARACTER = /[\p{L}\p{N}_]/u;
  * whitespace/punctuation with no adjacent word character.
  *
  * Exported (not part of the public `MarkdownEditor` callable) so it can be
- * tested directly, mirroring {@link $classifyContextMenuTarget}.
+ * tested directly, mirroring {@link $classifyContextMenuTarget}. Callers
+ * that need the menu's *checkbox state* rather than the mutation itself
+ * (i.e. {@link $classifyContextMenuTarget}) use the read-only
+ * {@link $computeWordExpansion} instead, so a right-click never widens the
+ * visible selection on its own — only an action that actually needs the
+ * wider selection (a format toggle, Cut, or Copy) triggers this mutation,
+ * immediately before doing its own work.
  */
 export function $selectEnclosingWordIfCollapsed(): void {
-    const selection = $getSelection();
+    const expansion = $computeWordExpansion();
 
-    if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+    if (expansion === null) {
         return;
     }
 
-    const anchorNode = selection.anchor.getNode();
+    const selection = expansion.node.select(expansion.start, expansion.end);
 
-    if (!$isTextNode(anchorNode)) {
-        return;
-    }
-
-    const text = anchorNode.getTextContent();
-
-    if (anchorNode.getFormat() !== 0) {
-        if (text.length > 0) {
-            // A RangeSelection caches its own `format` bitmask separately
-            // from the nodes it spans — `select()` does not refresh it to
-            // match the node just selected, so a later toggle command reads
-            // the stale (usually all-formats-off) cache instead of this
-            // run's actual format and silently no-ops. Sync it explicitly.
-            anchorNode.select(0, text.length).setFormat(anchorNode.getFormat());
-        }
-
-        return;
-    }
-
-    let start = selection.anchor.offset;
-    let end = start;
-
-    while (start > 0 && WORD_CHARACTER.test(text[start - 1])) {
-        start -= 1;
-    }
-
-    while (end < text.length && WORD_CHARACTER.test(text[end])) {
-        end += 1;
-    }
-
-    if (start !== end) {
-        anchorNode.select(start, end);
+    if (expansion.format !== 0) {
+        // A RangeSelection caches its own `format` bitmask separately from
+        // the nodes it spans — `select()` does not refresh it to match the
+        // node just selected, so a later toggle command reads the stale
+        // (usually all-formats-off) cache instead of this run's actual
+        // format and silently no-ops. Sync it explicitly.
+        selection.setFormat(expansion.format);
     }
 }
 
@@ -308,29 +361,40 @@ export function $selectEnclosingWordIfCollapsed(): void {
  * table is the insert context, and everything else is the format context —
  * the latter two both carry the current selection's inline-format state.
  *
+ * Read-only: a collapsed caret is never expanded here (that mutation is left
+ * to whichever action actually needs it — see {@link $selectEnclosingWordIfCollapsed}).
+ * The format-checkbox state and `hasSelectedText` instead reflect what
+ * {@link $computeWordExpansion} reports a collapsed caret *would* expand to,
+ * so the menu shows what an action would operate on without pre-emptively
+ * performing it.
+ *
  * @param node - The node the native `contextmenu` event's DOM target resolved to.
  * @returns The classified {@link ContextMenuTarget}.
  */
 export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget {
     const selection = $getSelection();
-    const hasFormat = (type: TextFormatType): boolean =>
-        $isRangeSelection(selection) && selection.hasFormat(type);
+    const expansion = $computeWordExpansion();
+    const hasFormat = (type: TextFormatType): boolean => expansion !== null
+        ? (expansion.format & TEXT_TYPE_TO_FORMAT[type]) !== 0
+        : $isRangeSelection(selection) && selection.hasFormat(type);
     const formatState = {
         bold: hasFormat("bold"), italic: hasFormat("italic"),
         strikethrough: hasFormat("strikethrough"), code: hasFormat("code"),
     };
+    const hasSelectedText = expansion !== null
+        || ($isRangeSelection(selection) && selection.getTextContent() !== "");
 
     if ($getTableCellNodeFromLexicalNode(node) !== null) {
-        return { kind: "table-cell", ...formatState };
+        return { kind: "table-cell", hasSelectedText, ...formatState };
     }
 
     const block = $findMatchingParent(node, (n) => $isElementNode(n) && !n.isInline());
 
     if ($isParagraphNode(block) && block.getTextContent() === "") {
-        return { kind: "empty-line" };
+        return { kind: "empty-line", hasSelectedText };
     }
 
-    return { kind: "text", ...formatState };
+    return { kind: "text", hasSelectedText, ...formatState };
 }
 
 // A text caret over the whole surface signals editability. The surface is also
@@ -536,7 +600,7 @@ class WysiwygSurface extends Component {
  * imperative command API (`toggleBold`, `toggleStrikethrough`, `clearFormatting`,
  * `setBlockType`, `toggleUnorderedList`, `toggleLink`, `insertTable`,
  * `insertTableRow`/`deleteTableRow`, `insertTableColumn`/`deleteTableColumn`,
- * `deleteTable`, …) a consumer can wire to their own `Button`s, and a
+ * `deleteTable`, `cut`/`copy`/`paste`, …) a consumer can wire to their own `Button`s, and a
  * self-wired right-click context menu on the WYSIWYG surface whose contents
  * depend on what was clicked (a word/selection, an empty line, or a table
  * cell) — the only one of the four that needs no consumer wiring at all.
@@ -844,46 +908,66 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Toggles bold on the current selection. No-op (without throwing) when there
-     * is no range selection.
+     * Toggles bold on the current selection, first expanding a collapsed
+     * caret to its enclosing word (see {@link $selectEnclosingWordIfCollapsed})
+     * so the toggle has more than an empty span to act on. No-op (without
+     * throwing) when there is no range selection.
      *
      * @returns This component, for method chaining.
      */
     toggleBold(): this {
-        this.ensureEditor().dispatchCommand(FORMAT_TEXT_COMMAND, "bold");
+        const editor = this.ensureEditor();
+
+        editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold");
 
         return this;
     }
 
     /**
-     * Toggles italic on the current selection. No-op without a range selection.
+     * Toggles italic on the current selection, first expanding a collapsed
+     * caret to its enclosing word (see {@link $selectEnclosingWordIfCollapsed}).
+     * No-op without a range selection.
      *
      * @returns This component, for method chaining.
      */
     toggleItalic(): this {
-        this.ensureEditor().dispatchCommand(FORMAT_TEXT_COMMAND, "italic");
+        const editor = this.ensureEditor();
+
+        editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic");
 
         return this;
     }
 
     /**
-     * Toggles inline code on the current selection. No-op without a range selection.
+     * Toggles inline code on the current selection, first expanding a
+     * collapsed caret to its enclosing word or run (see
+     * {@link $selectEnclosingWordIfCollapsed}). No-op without a range selection.
      *
      * @returns This component, for method chaining.
      */
     toggleInlineCode(): this {
-        this.ensureEditor().dispatchCommand(FORMAT_TEXT_COMMAND, "code");
+        const editor = this.ensureEditor();
+
+        editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "code");
 
         return this;
     }
 
     /**
-     * Toggles strikethrough on the current selection. No-op without a range selection.
+     * Toggles strikethrough on the current selection, first expanding a
+     * collapsed caret to its enclosing word (see {@link $selectEnclosingWordIfCollapsed}).
+     * No-op without a range selection.
      *
      * @returns This component, for method chaining.
      */
     toggleStrikethrough(): this {
-        this.ensureEditor().dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough");
+        const editor = this.ensureEditor();
+
+        editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough");
 
         return this;
     }
@@ -958,6 +1042,88 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         }, { discrete: true });
 
         return this;
+    }
+
+    /**
+     * Writes the current selection's text to the system clipboard, first
+     * expanding a collapsed caret to its enclosing word or run (see
+     * {@link $selectEnclosingWordIfCollapsed}) so Copy has something to act
+     * on — matching the right-click menu's own Cut/Copy-enabled state, which
+     * reflects that same hypothetical expansion without performing it (see
+     * {@link $classifyContextMenuTarget}). No-op (without throwing, and
+     * without writing) when there is no range selection, or the selection is
+     * collapsed with nothing to expand into.
+     *
+     * @returns This component, for method chaining.
+     */
+    copy(): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
+
+        const text = editor.read(() => {
+            const selection = $getSelection();
+
+            return $isRangeSelection(selection) ? selection.getTextContent() : "";
+        });
+
+        // Guarded: writing "" would clobber the clipboard with nothing.
+        if (text !== "") {
+            DOM.sink.writeClipboardText(text);
+        }
+
+        return this;
+    }
+
+    /**
+     * Writes the current selection's text to the system clipboard, then
+     * removes it from the document — first expanding a collapsed caret to
+     * its enclosing word via {@link MarkdownEditor.copy}. No-op (without
+     * throwing) when there is no range selection, or the selection is
+     * collapsed with nothing to expand into.
+     *
+     * @returns This component, for method chaining.
+     */
+    cut(): this {
+        this.copy();
+
+        this.ensureEditor().update(() => {
+            const selection = $getSelection();
+
+            if ($isRangeSelection(selection)) {
+                selection.removeText();   // a no-op on a collapsed selection
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Reads the system clipboard and inserts the text at the caret, replacing
+     * any current selection. No-op (without throwing) when there is no range
+     * selection.
+     *
+     * @returns A promise resolving `true` when the clipboard was read (even if
+     *   it was empty), or `false` when the read was unavailable or denied.
+     */
+    async paste(): Promise<boolean> {
+        const text = await DOM.source.readClipboardText();
+
+        if (text === null) {
+            return false;
+        }
+
+        if (text !== "") {
+            this.ensureEditor().update(() => {
+                const selection = $getSelection();
+
+                if ($isRangeSelection(selection)) {
+                    selection.insertRawText(text);
+                }
+            }, { discrete: true });
+        }
+
+        return true;
     }
 
     /**
@@ -1251,11 +1417,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * `WysiwygSurface`'s `"contextmenu"` handler: resolves the native event's
-     * DOM target to a Lexical node, expands a collapsed selection to the
-     * enclosing word so a format toggle applies to the word the caret landed
-     * in, classifies the (possibly now-widened) selection, and shows the
-     * resulting context menu at the click point. No-op when the target is
-     * not a DOM node, or when it does not resolve to a mounted Lexical node.
+     * DOM target to a Lexical node, classifies it (and the current
+     * selection) for the menu, and shows the resulting context menu at the
+     * click point. Read-only — a right-click never mutates the document's
+     * selection; classification reports what a collapsed caret's format
+     * toggles/Cut/Copy *would* operate on without performing that expansion
+     * (see {@link $classifyContextMenuTarget}), so a menu action that needs
+     * the wider selection (a format toggle, Cut, or Copy) performs it itself,
+     * right before doing its own work. No-op when the target is not a DOM
+     * node, or when it does not resolve to a mounted Lexical node.
      *
      * @param event - The native `contextmenu` event forwarded by the surface.
      */
@@ -1268,22 +1438,33 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const editor = this.ensureEditor();
         let context: ContextMenuTarget | null = null;
 
-        editor.update(() => {
+        editor.read(() => {
             const node = $getNearestNodeFromDOMNode(domTarget);
 
             if (node === null) {
                 return;
             }
 
-            $selectEnclosingWordIfCollapsed();
             context = $classifyContextMenuTarget(node);
-        }, { discrete: true });
+        });
 
         if (context === null) {
             return;
         }
 
         this._contextMenu.show(event.clientX, event.clientY, this.buildContextMenuItems(context));
+    }
+
+    /**
+     * The context menu's Paste handler: pastes at the live selection. Shows a
+     * toast when the clipboard read is unavailable — `paste()` itself stays
+     * silent, so a consumer wiring their own Paste button can show their own
+     * message.
+     */
+    private async pasteAtContextMenuSelection(): Promise<void> {
+        if (!await this.paste()) {
+            Notification.show(CLIPBOARD_READ_DENIED_MESSAGE, "warning", CLIPBOARD_HINT_DURATION_MS);
+        }
     }
 
     /**
@@ -1295,7 +1476,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     private buildContextMenuItems(context: ContextMenuTarget): MenuItemConfig[] {
         switch (context.kind) {
             case "table-cell": return this.buildTableCellContextMenuItems(context);
-            case "empty-line": return this.buildEmptyLineContextMenuItems();
+            case "empty-line": return this.buildEmptyLineContextMenuItems(context);
             case "text":       return this.buildTextContextMenuItems(context);
         }
     }
@@ -1333,6 +1514,25 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Builds the three clipboard items shared by all three context menus: Cut
+     * and Copy dim unless invoking them would have text to act on — the real
+     * current selection, or (collapsed) what {@link $selectEnclosingWordIfCollapsed}
+     * would expand into, which `cut()`/`copy()` themselves perform when
+     * invoked, so the enabled state always matches what activating the item
+     * actually does. Paste is always enabled and acts on the live selection.
+     *
+     * @param hasSelectedText - Whether the classified selection carries text.
+     * @returns The three `MenuItemConfig` entries: Cut, Copy, Paste.
+     */
+    private buildClipboardMenuItems(hasSelectedText: boolean): MenuItemConfig[] {
+        return [
+            { text: "Cut",   enabled: hasSelectedText, action: () => this.cut() },
+            { text: "Copy",  enabled: hasSelectedText, action: () => this.copy() },
+            { text: "Paste", action: () => void this.pasteAtContextMenuSelection() },
+        ];
+    }
+
+    /**
      * Builds the format menu shown over a word, a range selection, or an
      * ordinary (non-empty) block: the shared inline-format toggles, a
      * block-style submenu (paragraph, headings, a blockquote, or a fenced
@@ -1344,6 +1544,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      */
     private buildTextContextMenuItems(context: ContextMenuTarget & { kind: "text" }): MenuItemConfig[] {
         return [
+            ...this.buildClipboardMenuItems(context.hasSelectedText),
+            { separator: true },
             ...this.buildFormatToggleItems(context),
             { separator: true },
             {
@@ -1371,10 +1573,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * item — the classification already guarantees the caret sits in an empty
      * paragraph, so converting it to a paragraph is a guaranteed no-op.
      *
+     * @param context - The `"empty-line"` classification, carrying whether
+     *   the current selection has text (a drag-selection ending on an empty
+     *   line, which still classifies as `"empty-line"`).
      * @returns The `MenuItemConfig` array for {@link Menu.show}.
      */
-    private buildEmptyLineContextMenuItems(): MenuItemConfig[] {
+    private buildEmptyLineContextMenuItems(context: ContextMenuTarget & { kind: "empty-line" }): MenuItemConfig[] {
         return [
+            ...this.buildClipboardMenuItems(context.hasSelectedText),
+            { separator: true },
             { text: "Heading", submenu: { label: "Heading", items: this.buildHeadingMenuItems() } },
             { text: "Quote", action: () => this.setBlockType("quote") },
             { text: "Code block", action: () => this.setBlockType("code") },
@@ -1397,6 +1604,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      */
     private buildTableCellContextMenuItems(context: ContextMenuTarget & { kind: "table-cell" }): MenuItemConfig[] {
         return [
+            ...this.buildClipboardMenuItems(context.hasSelectedText),
+            { separator: true },
             ...this.buildFormatToggleItems(context),
             { separator: true },
             { text: "Clear formatting", action: () => this.clearFormatting() },

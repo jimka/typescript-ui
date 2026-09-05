@@ -1130,6 +1130,11 @@ export class ModelledDOMSource implements DOMSource {
         return null;
     }
 
+    /** No system clipboard offline; always reports the read as unavailable. */
+    readClipboardText(): Promise<string | null> {
+        return Promise.resolve(null);
+    }
+
     /** Modelled media query: never matches; change subscription is a no-op. */
     matchMedia(_query: string): { matches: boolean; addChangeListener(handler: (event: MediaQueryListEvent) => void): void } {
         return { matches: false, addChangeListener: (): void => {} };
