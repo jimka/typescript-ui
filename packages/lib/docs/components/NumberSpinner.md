@@ -38,6 +38,7 @@ panel.addComponent(quantity);
 - Pressing **↑** / **↓** increments / decrements by `step`.
 - Typing an out-of-range value and blurring reverts to the last valid value.
 - Display precision controls only how many digits are shown; the underlying value retains full precision.
+- Right-clicking the inner field opens a Cut/Copy/Paste menu. Cut/Paste act on the raw displayed text — uncommitted until blur or Enter, same as typing.
 
 ## See also
 
