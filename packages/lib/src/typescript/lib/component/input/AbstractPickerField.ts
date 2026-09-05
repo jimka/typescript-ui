@@ -193,6 +193,18 @@ abstract class AbstractPickerField<
     protected abstract getPreferredWidth(): number;
 
     /**
+     * Subclass hook: whether `raw` is a relative shorthand expression for
+     * this field. The base implementation always answers `false`, so a
+     * subclass that does not override it sees no shorthand behaviour.
+     *
+     * @param raw - The raw text typed into the input.
+     * @returns `true` when `raw` is a shorthand expression this field accepts.
+     */
+    protected isRawShorthand(_raw: string): boolean {
+        return false;
+    }
+
+    /**
      * Returns the default border restored when the invalid-border state clears
      * — the shared `--ts-ui-input-border` token, identical across all three
      * picker fields. The value is passed straight to {@link Component.setBorder}.
@@ -434,9 +446,14 @@ abstract class AbstractPickerField<
 
     /**
      * Clears non-empty unparseable text when the input loses focus, so the
-     * field doesn't carry an invalid string across interactions.
+     * field doesn't carry an invalid string across interactions. A pending
+     * relative-shorthand entry is committed to its absolute value first.
      */
     protected onBlur(): void {
+        if (this.commitShorthandIfPresent()) {
+            return;
+        }
+
         if (!this._invalid) {
             return;
         }
@@ -444,6 +461,35 @@ abstract class AbstractPickerField<
         this._input.setText("");
         this._value = null;
         this.setInvalid(false);
+    }
+
+    /**
+     * Commits a pending relative-shorthand entry: re-parses the typed text
+     * and, on success, rewrites the input to the resolved value's formatted
+     * text and notifies listeners. Called from {@link onBlur} and the Enter
+     * branch of {@link onKeyDown}, never from {@link onInput}, so the
+     * rewrite never fights the user mid-keystroke.
+     *
+     * @returns `true` when a shorthand entry was committed.
+     */
+    protected commitShorthandIfPresent(): boolean {
+        const raw = this._input.getText();
+
+        if (!raw || !this.isRawShorthand(raw)) {
+            return false;
+        }
+
+        const resolved = this.parseRaw(raw);
+
+        if (resolved === null) {
+            return false;
+        }
+
+        this.setValue(resolved);
+        this.notifyChange(resolved);
+        this.setInvalid(false);
+
+        return true;
     }
 
     /**
@@ -471,7 +517,8 @@ abstract class AbstractPickerField<
      * navigation keys (arrows for day grid / year scroller, PageUp/Down,
      * Home/End, Enter / Space, and digit-keys for the year-scroller's
      * type-ahead). Keys the dropdown does not consume fall through to the
-     * host input's own contract.
+     * host input's own contract, which also commits a pending relative-
+     * shorthand entry on Enter.
      *
      * @param e - The keyboard event.
      */
@@ -488,6 +535,10 @@ abstract class AbstractPickerField<
             return { prevent: true };
         } else if (e.key === "Escape") {
             this.closeDropdown();
+        } else if (e.key === "Enter") {
+            if (this.commitShorthandIfPresent()) {
+                return { prevent: true };
+            }
         }
     }
 
