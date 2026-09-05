@@ -57,8 +57,10 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | `> quote` | `<blockquote>` |
 | `[text](url)` | `<a href target="_blank" rel="noopener noreferrer">` |
 | pipe table | `<table>` with `<thead>`/`<tbody>` |
+| delimiter cell `{width=240}` | `<colgroup>` / `<col style="width:240px">` — see [Extension syntax](#extension-syntax) |
+| body cell `<<` / `^^` | merges into the preceding cell as `colspan`/`rowspan` — see [Extension syntax](#extension-syntax) |
 
-A delimiter row's alignment markers (`:---`, `:---:`, `---:`) apply as a CSS class to every cell in that column, header and body alike.
+A delimiter row's alignment markers (`:---`, `:---:`, `---:`) apply as a CSS class to every cell in that column, header and body alike. A delimiter cell's trailing `{width=240}` renders a `<colgroup>`/`<col style="width:240px">` for that column — the `<colgroup>` appears only when at least one column carries a width. A body cell's `<<` (covered from the left) or `^^` (covered from above) merges it into the preceding cell as a `colspan`/`rowspan`, rather than rendering its own `<td>`; a `<<`/`^^` with nothing to extend (column 0, or the table's first body row) renders as ordinary literal text instead, and a cell whose own text is literally `<<` or `^^` escapes to `\<<` / `\^^` to render as that literal text rather than being read as a marker.
 
 Every rendered heading carries a slugified `id` (lowercase, non-alphanumerics collapsed to single hyphens, ends trimmed), so a `#fragment` link can target it — `## Some Heading` renders `<h2 id="some-heading">`. Two headings with identical text get `-N` suffixes (`id="dup"`, `id="dup-1"`, …) so ids stay unique within one render; the counter resets on every `setMarkdown` re-render.
 
@@ -109,9 +111,9 @@ the reader actually scrolls to.
 
 ### Extension syntax
 
-CommonMark and GFM have no syntax for underline, colour, font, or size, so the dialect adds a small extension syntax of its own — `++text++` for underline, and `[text]{key=value ...}` for a coloured/sized/font-styled span. `MarkdownEditor` produces the same syntax when a document is edited, so a document round-trips between the two components unchanged.
+CommonMark and GFM have no syntax for underline, colour, font, size, table column widths, or merged table cells, so the dialect adds a small extension syntax of its own — `++text++` for underline, `[text]{key=value ...}` for a coloured/sized/font-styled span, a delimiter cell's trailing `{width=240}` for a column width, and a body cell's `<<` / `^^` for a merge continuation. `MarkdownEditor` produces the same syntax when a document is edited, so a document round-trips between the two components unchanged.
 
-A document using these constructs is **not portable**: a foreign Markdown renderer has no meaning for these markers and shows them as literal text (`++text++`, `[text]{...}`) rather than applying them. This is a deliberate trade for a small, safe, in-house grammar over embedding raw HTML or switching the persisted format away from Markdown. It renders correctly only in this library's `Markdown` viewer and `MarkdownEditor`.
+A document using these constructs is **not portable**: a foreign Markdown renderer has no meaning for these markers and shows them as literal text (`++text++`, `[text]{...}`, `<<`, `^^`) rather than applying them; a delimiter cell carrying `{width=240}` fails a foreign GFM parser's stricter delimiter-row check entirely, turning that whole table into paragraphs. This is a deliberate trade for a small, safe, in-house grammar over embedding raw HTML or switching the persisted format away from Markdown. It renders correctly only in this library's `Markdown` viewer and `MarkdownEditor`.
 
 Every attribute value is validated against a per-key allow-list before it is applied; a value that fails validation is dropped and the construct renders with that property unset (e.g. `[x]{color=not-a-color}` renders as plain `x`).
 
