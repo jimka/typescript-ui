@@ -1226,6 +1226,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         // Guarded: writing "" would clobber the clipboard with nothing.
         if (text !== "") {
             DOM.sink.writeClipboardText(text);
+
+            // $selectEnclosingWordIfCollapsed() above is a true no-op on an
+            // already non-collapsed selection — it never marks the selection
+            // dirty, so Lexical's reconciler skips its selection-sync step
+            // entirely, which is the only place that would otherwise
+            // incidentally restore focus (as it does for the collapsed-caret
+            // expansion case, which does mark it dirty). Calling focus()
+            // explicitly forces that resync unconditionally: its own
+            // documented behaviour marks an already-clean selection dirty via
+            // $setSelection(selection.clone()) — the same selection, not a
+            // different one — so nothing about what's selected changes.
+            this.ensureEditor().focus();
         }
 
         return this;
@@ -1266,6 +1278,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const text = await DOM.source.readClipboardText();
 
         if (text === null) {
+            // See copy()'s comment: restores focus after the context-menu
+            // row's click blurred the editor, even on a denied read.
+            this.ensureEditor().focus();
+
             return false;
         }
 
@@ -1278,6 +1294,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 }
             }, { discrete: true });
         }
+
+        // See copy()'s comment: restores focus after the context-menu row's
+        // click blurred the editor.
+        this.ensureEditor().focus();
 
         return true;
     }

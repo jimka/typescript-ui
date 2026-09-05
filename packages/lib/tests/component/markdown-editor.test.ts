@@ -670,6 +670,70 @@ describe('MarkdownEditor clipboard commands', () => {
         expect(editor.getValue()).toContain('1');
         expect(editor.getValue()).toContain('2');
     });
+
+    // Regression: an explicit (already non-collapsed) selection left the
+    // editor visibly unfocused after Copy/Cut/Paste, while a collapsed caret
+    // expanded to its enclosing word did not. Root cause: $selectEnclosingWord-
+    // IfCollapsed() is a true no-op on an already non-collapsed selection (it
+    // never marks the selection dirty), so Lexical's reconciler skips its
+    // selection-sync step entirely for that update — the *only* place that
+    // incidentally restores focus (Lexical.dev.mjs's updateDOMSelection, the
+    // "no DOM change needed" branch). Fixed by calling editor.focus()
+    // explicitly, which forces that resync unconditionally via its own
+    // documented behaviour: marking an already-clean selection dirty with
+    // $setSelection(selection.clone()) — the same selection, not a different
+    // one, so nothing about what's selected changes.
+    it('copy() with an explicit (already non-collapsed) selection also focuses the editor', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectWord(editor, 'world');
+        const focusSpy = vi.spyOn(lexicalOf(editor), 'focus');
+
+        editor.copy();
+
+        expect(focusSpy).toHaveBeenCalledOnce();
+    });
+
+    it('copy() with a collapsed caret expanded to a word also focuses the editor', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectStart(editor);
+        const focusSpy = vi.spyOn(lexicalOf(editor), 'focus');
+
+        editor.copy();
+
+        expect(focusSpy).toHaveBeenCalledOnce();
+    });
+
+    it('cut() with an explicit (already non-collapsed) selection also focuses the editor', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectWord(editor, 'world');
+        const focusSpy = vi.spyOn(lexicalOf(editor), 'focus');
+
+        editor.cut();
+
+        expect(focusSpy).toHaveBeenCalledOnce();
+    });
+
+    it('paste() focuses the editor on a successful insert, an empty clipboard, and a denied read alike', async () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        const focusSpy = vi.spyOn(lexicalOf(editor), 'focus');
+
+        selectStart(editor);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+        await editor.paste();
+        expect(focusSpy).toHaveBeenCalledTimes(1);
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('');
+        await editor.paste();
+        expect(focusSpy).toHaveBeenCalledTimes(2);
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue(null);
+        await editor.paste();
+        expect(focusSpy).toHaveBeenCalledTimes(3);
+    });
 });
 
 describe('MarkdownEditor dialect parity guard (packages-docs viewer-only additions)', () => {
