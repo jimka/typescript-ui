@@ -25,6 +25,8 @@ page resets to empty.
 
 - **`DOMSource` gains one required member: `readClipboardText()`.** Only a
   consumer implementing its own `DOMSource` is affected.
+- **`DOMSource` gains one required member: `getSelectionRange()`.** Only a
+  consumer implementing its own `DOMSource` is affected.
 
 ## Changed
 
