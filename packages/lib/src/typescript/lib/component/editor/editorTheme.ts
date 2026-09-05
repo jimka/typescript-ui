@@ -185,6 +185,10 @@ export function ensureMarkdownEditorClassRules(): void {
             border:     "1px solid var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
             padding:    "0.3em 0.6em",
             fontWeight: "600",
+            // Overrides the browser's centred <th> default so an unaligned
+            // header cell reads left, matching its unaligned body cells and
+            // the read-only viewer's own ts-ui-md-th rule.
+            textAlign:  "left",
         },
     });
 
