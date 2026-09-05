@@ -2,7 +2,7 @@
 
 [`Markdown`](/api/component/display/classes/Markdown) renders a Markdown source string as a live DOM subtree.
 
-Parsing uses the [`marked`](https://marked.js.org/) library's **lexer only** — `Markdown` walks the returned token AST and builds every prose element (`<h1>`–`<h6>`, `<p>`, `<ul>`/`<ol>`/`<li>`, `<blockquote>`, `<pre>`/`<code>`, `<strong>`, `<em>`, `<a>`) through the framework DOM sink. There is no HTML-string assignment path, so untrusted Markdown can never inject markup.
+Parsing uses the [`marked`](https://marked.js.org/) library's **lexer only** — `Markdown` walks the returned token AST and builds every prose element (`<h1>`–`<h6>`, `<p>`, `<ul>`/`<ol>`/`<li>`, `<blockquote>`, `<pre>`/`<code>`, `<strong>`, `<em>`, `<a>`) through the framework DOM sink. There is no HTML-string assignment path, so untrusted Markdown can never inject markup. The dialect's extension syntax (see [Extension syntax](#extension-syntax) below) carries a handful of styling attributes — colour, font, size — and every value is checked against an allow-list before it reaches the DOM; a value that fails validation is silently dropped rather than rendered, so the no-markup guarantee extends to these constructs too.
 
 Use this to render authored copy (help text, release notes, a README-style panel) without hand-building the element tree.
 
@@ -49,6 +49,8 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | paragraph text | `<p>` |
 | `**bold**`, `*italic*` | `<strong>`, `<em>` |
 | `~~struck~~` | `<del>` |
+| `++underlined++` | `<u>` |
+| `[text]{color=... font=... size=...}` | `<span>` with the resolved, validated style — see [Extension syntax](#extension-syntax) |
 | `` `inline code` `` | `<code>` |
 | fenced ```` ``` ```` block | `<pre>` › `<code>` (literal text, newlines preserved), or a syntax-highlighted `CodeEditor` for a supported language — see [Syntax highlighting](#syntax-highlighting-in-fenced-code-blocks) |
 | `-`/`*` and `1.` lists | `<ul>`/`<ol>` with `<li>` items |
@@ -104,6 +106,14 @@ deferred individually: it upgrades only once its wrapper comes within one
 viewport-height of the visible area, so a long document — a generated API
 page with hundreds of fenced blocks, for example — pays only for the blocks
 the reader actually scrolls to.
+
+### Extension syntax
+
+CommonMark and GFM have no syntax for underline, colour, font, or size, so the dialect adds a small extension syntax of its own — `++text++` for underline, and `[text]{key=value ...}` for a coloured/sized/font-styled span. `MarkdownEditor` produces the same syntax when a document is edited, so a document round-trips between the two components unchanged.
+
+A document using these constructs is **not portable**: a foreign Markdown renderer has no meaning for these markers and shows them as literal text (`++text++`, `[text]{...}`) rather than applying them. This is a deliberate trade for a small, safe, in-house grammar over embedding raw HTML or switching the persisted format away from Markdown. It renders correctly only in this library's `Markdown` viewer and `MarkdownEditor`.
+
+Every attribute value is validated against a per-key allow-list before it is applied; a value that fails validation is dropped and the construct renders with that property unset (e.g. `[x]{color=not-a-color}` renders as plain `x`).
 
 ### Fallback for unsupported tokens
 
