@@ -42,6 +42,17 @@ function isValidFontFamily(value: string): boolean {
 
 /** A positive integer, the accepted column-width pixel dimension. */
 const POSITIVE_INTEGER = /^[1-9][0-9]*$/;
+/** `left` / `center` / `right` / `justify`, the four accepted block alignments. */
+const ALIGN = /^(left|center|right|justify)$/;
+/** An integer 2–6, the accepted multi-column count. */
+const COLUMN_COUNT = /^[2-6]$/;
+
+/** A block's resolved, validated alignment/column layout — one field `null` per unset or invalid key. */
+export interface MarkdownBlockStyle {
+    textAlign:   string | null;
+    columnCount: number | null;
+    columnGap:   string | null;
+}
 
 /**
  * Reads a space-separated `key=value` attribute list. A value is either a
@@ -202,6 +213,51 @@ export function cssTextToAttributes(cssText: string): Record<string, string> {
         } else if (property === "font-size") {
             attributes.size = value;
         }
+    }
+
+    return attributes;
+}
+
+/**
+ * Validates and resolves the three block-style attribute keys (`align`,
+ * `columns`, `gap`). Follows the same drop-on-failure rule as
+ * {@link resolveSpanStyle}.
+ *
+ * @param attributes - The parsed attribute record.
+ * @returns The resolved block style.
+ */
+export function resolveBlockStyle(attributes: Record<string, string>): MarkdownBlockStyle {
+    const align = attributes.align;
+    const columns = attributes.columns;
+    const gap = attributes.gap;
+
+    return {
+        textAlign:   align !== undefined && ALIGN.test(align) ? align : null,
+        columnCount: columns !== undefined && COLUMN_COUNT.test(columns) ? Number(columns) : null,
+        columnGap:   gap !== undefined && isValidSize(gap) ? gap : null,
+    };
+}
+
+/**
+ * Reverses {@link resolveBlockStyle}: maps a resolved block style back to its
+ * `{key=value}` attribute record, omitting any unset field.
+ *
+ * @param style - The block style to serialise.
+ * @returns The attribute record.
+ */
+export function blockStyleToAttributes(style: MarkdownBlockStyle): Record<string, string> {
+    const attributes: Record<string, string> = {};
+
+    if (style.textAlign !== null) {
+        attributes.align = style.textAlign;
+    }
+
+    if (style.columnCount !== null) {
+        attributes.columns = String(style.columnCount);
+    }
+
+    if (style.columnGap !== null) {
+        attributes.gap = style.columnGap;
     }
 
     return attributes;

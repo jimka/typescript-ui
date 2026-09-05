@@ -62,12 +62,90 @@ const STYLED_SPAN_EXTENSION: TokenizerExtension = {
 };
 
 /**
+ * Extracts the `{key=value …}` attribute text from a fence's opening
+ * remainder (the text after `:::`), or `""` when the remainder carries no
+ * `{…}` group.
+ *
+ * @param remainder - The opening line's text after `:::`, trimmed.
+ * @returns The attribute text inside the first `{…}` group, or `""`.
+ */
+function extractFenceAttributeText(remainder: string): string {
+    const match = /\{([^{}]*)\}/.exec(remainder);
+
+    return match === null ? "" : match[1]!;
+}
+
+/**
+ * `::: {align=… columns=… gap=…}` … `:::` — a block alignment / multi-column
+ * region. A line whose trimmed form starts with `:::` and has a non-empty
+ * remainder opens a block; a line whose trimmed form is exactly `:::` closes
+ * one. The scan tracks depth so fences nest, and the inner content is
+ * re-lexed with `this.lexer.blockTokens` so nesting needs no special case.
+ */
+const BLOCK_EXTENSION: TokenizerExtension = {
+    name:  "mdblock",
+    level: "block",
+    tokenizer(src) {
+        const lines = src.split("\n");
+        const firstLine = lines[0]!.trim();
+
+        if (!firstLine.startsWith(":::")) {
+            return undefined;
+        }
+
+        const openingRemainder = firstLine.slice(3).trim();
+
+        // A bare ":::" with nothing to open is a stray closer, not an opener.
+        if (openingRemainder === "") {
+            return undefined;
+        }
+
+        let depth = 1;
+        let closingLineIndex = -1;
+
+        for (let lineIndex = 1; lineIndex < lines.length; lineIndex += 1) {
+            const trimmed = lines[lineIndex]!.trim();
+
+            if (trimmed === ":::") {
+                depth -= 1;
+
+                if (depth === 0) {
+                    closingLineIndex = lineIndex;
+
+                    break;
+                }
+            } else if (trimmed.startsWith(":::") && trimmed.slice(3).trim() !== "") {
+                depth += 1;
+            }
+        }
+
+        // No matching close anywhere in the remaining source: decline
+        // entirely, so the lines fall through to ordinary paragraphs.
+        if (closingLineIndex === -1) {
+            return undefined;
+        }
+
+        const raw = lines.slice(0, closingLineIndex + 1).join("\n");
+        const inner = lines.slice(1, closingLineIndex).join("\n");
+
+        return {
+            type:       "mdblock",
+            raw,
+            attributes: parseAttributes(extractFenceAttributeText(openingRemainder)),
+            tokens:     this.lexer.blockTokens(inner),
+        };
+    },
+};
+
+/**
  * The scoped `marked` instance the viewer's dialect extensions register
  * against — never the package's shared default instance, whose module-level
  * `use()` would change parsing for any other consumer of `marked` in the same
  * bundle.
  */
-const _marked = new Marked({ extensions: [UNDERLINE_EXTENSION, STYLED_SPAN_EXTENSION, TABLE_EXTENSION] });
+const _marked = new Marked({
+    extensions: [UNDERLINE_EXTENSION, STYLED_SPAN_EXTENSION, TABLE_EXTENSION, BLOCK_EXTENSION],
+});
 
 /**
  * Lexes Markdown source through this module's scoped, extended `marked`

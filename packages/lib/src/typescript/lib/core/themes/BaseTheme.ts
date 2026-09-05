@@ -29,6 +29,10 @@ export const BaseTheme: DeepPartial<Theme> = {
         // trying a few values. A `ch` value tracks the reading measure rather
         // than pinning a pixel width.
         maxMeasure: '80ch',
+        // A multi-column region's default gutter when its `::: {columns=…}`
+        // fence carries no explicit `gap` — a comfortable em-relative gap
+        // between reading columns, overridable per-fence.
+        columnGap: '2em',
     },
     border: {
         radius: '4px',

@@ -13,6 +13,7 @@ import {
     STRIKETHROUGH, HIGHLIGHT, CHECK_LIST,
 } from '@lexical/markdown';
 import { UNDERLINE, STYLED_TEXT } from '~/component/editor/markdownStyleTransformers';
+import { MarkdownBlockNode } from '~/component/editor/markdownBlockNode';
 import { TableNode, TableRowNode, TableCellNode, $createTableSelectionFrom, $isTableCellNode } from '@lexical/table';
 import {
     $getRoot, $getSelection, $isRangeSelection, $isParagraphNode, $isTextNode, $selectAll, $setSelection,
@@ -65,11 +66,13 @@ const CORPUS: Record<string, string> = {
     'underline':          'A ++word++ here.',
     'styled text color':  'A [red]{color=#cc0000} word.',
     'styled text font/size': 'A [big]{font=Georgia size=1.2em} word.',
+    'block alignment':       '::: {align=center}\ntext\n:::',
+    'block columns':         '::: {columns=2 gap=2em}\ntext\n:::',
 };
 
 // The exact token types the read-only `Markdown` viewer renders; anything else
 // falls to its plain-text fallback.
-const VIEWER_TOKENS = new Set(['heading', 'paragraph', 'list', 'blockquote', 'code', 'space', 'mdtable']);
+const VIEWER_TOKENS = new Set(['heading', 'paragraph', 'list', 'blockquote', 'code', 'space', 'mdtable', 'mdblock']);
 
 /** Normalises Lexical's markdown export for comparison: strip trailing spaces, collapse blank-line runs, trim. */
 function normalize(md: string): string {
@@ -154,8 +157,8 @@ function caretIsInAParagraph(editor: MarkdownEditor): boolean {
 }
 
 describe('markdownTransformers curation', () => {
-    it('contains exactly the thirteen dialect transformers', () => {
-        expect(TRANSFORMERS).toHaveLength(13);
+    it('contains exactly the fourteen dialect transformers', () => {
+        expect(TRANSFORMERS).toHaveLength(14);
         expect(TRANSFORMERS).toEqual(expect.arrayContaining([
             HEADING, QUOTE, CODE, UNORDERED_LIST, ORDERED_LIST,
             BOLD_STAR, ITALIC_STAR, INLINE_CODE, STRIKETHROUGH, LINK,
@@ -174,6 +177,10 @@ describe('editorNodes table registration', () => {
         expect(EDITOR_NODES).toContain(TableNode);
         expect(EDITOR_NODES).toContain(TableRowNode);
         expect(EDITOR_NODES).toContain(TableCellNode);
+    });
+
+    it('EDITOR_NODES contains MarkdownBlockNode', () => {
+        expect(EDITOR_NODES).toContain(MarkdownBlockNode);
     });
 });
 
@@ -1351,6 +1358,52 @@ describe('MarkdownEditor table commands', () => {
     });
 });
 
+describe('MarkdownEditor block alignment / columns', () => {
+    it('setBlockAlignment(\'center\') with the caret in a paragraph wraps it in a fence carrying align=center', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectStart(editor);
+
+        editor.setBlockAlignment('center');
+
+        expect(normalize(editor.getValue())).toBe('::: {align=center}\nhello world\n:::');
+    });
+
+    it('setBlockAlignment(null) inside a fence carrying only align removes the fence, leaving the paragraph at the top level', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: {align=center}\nhello world\n:::');
+        selectStart(editor);
+
+        editor.setBlockAlignment(null);
+
+        expect(normalize(editor.getValue())).toBe('hello world');
+        expect(childTypes(editor)).toEqual(['paragraph']);
+    });
+
+    it('setColumnCount(2) inside a fence that already carries align=center yields one fence carrying both attributes', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: {align=center}\nhello world\n:::');
+        selectStart(editor);
+
+        editor.setColumnCount(2);
+
+        expect(normalize(editor.getValue())).toBe('::: {align=center columns=2}\nhello world\n:::');
+        expect(childTypes(editor)).toEqual(['markdown-block']);
+    });
+
+    it('setBlockAlignment / setColumnCount do not throw on a fresh editor with no selection', () => {
+        const editor = new MarkdownEditor();
+
+        expect(() =>
+            editor
+                .setBlockAlignment('center')
+                .setBlockAlignment(null)
+                .setColumnCount(2, '2em')
+                .setColumnCount(null)
+        ).not.toThrow();
+    });
+});
+
 describe('$classifyContextMenuTarget', () => {
     it('classifies a text node inside ordinary prose as "text" with every format false', () => {
         const editor = new MarkdownEditor();
@@ -1938,41 +1991,41 @@ describe('MarkdownEditor context menu', () => {
         expect(rowOf(items[8]).isChecked()).toBe(false);
     });
 
-    it('a "text" context with linkUrl: null builds 17 entries: Cut/Copy/Paste, the format rows, Insert link, Block style, Text style, and Clear formatting', () => {
+    it('a "text" context with linkUrl: null builds 18 entries: Cut/Copy/Paste, the format rows, Insert link, Block style, Text style, Alignment, and Clear formatting', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(17);
+        expect(items).toHaveLength(18);
         expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
         ]);
         expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
-            '(separator)', 'Insert link…', '(separator)', 'Block style', '(separator)', 'Text style', '(separator)', 'Clear formatting',
+            '(separator)', 'Insert link…', '(separator)', 'Block style', '(separator)', 'Text style', 'Alignment', '(separator)', 'Clear formatting',
         ]);
     });
 
-    it('a "text" context with a linkUrl builds 18 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
+    it('a "text" context with a linkUrl builds 19 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'text', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(18);
+        expect(items).toHaveLength(19);
         expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
-            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Block style', '(separator)', 'Text style', '(separator)', 'Clear formatting',
+            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Block style', '(separator)', 'Text style', 'Alignment', '(separator)', 'Clear formatting',
         ]);
     });
 
-    it('a "text" context with hasEnclosingBlock builds 20 entries: the 17 (linkUrl: null) existing plus a separator and the two new items', () => {
+    it('a "text" context with hasEnclosingBlock builds 21 entries: the 18 (linkUrl: null) existing plus a separator and the two new items', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, hasEnclosingBlock: true,
         });
 
-        expect(items).toHaveLength(20);
-        expect(items.slice(17).map((item) => item.text ?? '(separator)')).toEqual([
+        expect(items).toHaveLength(21);
+        expect(items.slice(18).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Insert line before block', 'Insert line after block',
         ]);
     });
@@ -2173,10 +2226,10 @@ describe('MarkdownEditor context menu', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true });
 
-        expect(items).toHaveLength(9);
+        expect(items).toHaveLength(10);
         expect(items.map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
-            'Heading', 'Quote', 'Code block', '(separator)', 'Table',
+            'Heading', 'Quote', 'Code block', '(separator)', 'Table', 'Columns',
         ]);
     });
 

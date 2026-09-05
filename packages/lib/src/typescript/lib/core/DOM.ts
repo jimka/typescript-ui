@@ -860,6 +860,27 @@ export interface DOMSink {
     mountView<T>(handle: Handle, factory: (parent: HTMLElement) => T): T | null;
 
     /**
+     * Mints a detached element, applies a patch to it, and hands it to
+     * `factory` — the detached-element counterpart of {@link mountView},
+     * which instead hands a foreign widget an *existing* parent. For a
+     * Lexical (or similar) node whose `createDOM` must return a real element
+     * it created itself, rather than one the framework's `DOM.sink.apply`
+     * would otherwise own.
+     *
+     * @remarks Like `mountView`, this returns a live object rather than a
+     * forwardable one-way write, so a modelled sink returns `null` and the
+     * caller no-ops offline. `factory`'s parameter is deliberately left
+     * unannotated at call sites outside this seam, for the same
+     * `no-raw-dom`-hold-clause reason `mountView`'s is.
+     *
+     * @param tag - The HTML tag to create.
+     * @param patch - The batch of mutations to apply to the new element.
+     * @param factory - Builds and returns the caller's value given the new element.
+     * @returns Whatever `factory` returns, or `null` offline.
+     */
+    createViewElement<T>(tag: string, patch: ElementPatch, factory: (element: HTMLElement) => T): T | null;
+
+    /**
      * Starts (or resumes) playback of a media element. Wraps the `play()` IDL
      * method, whose returned promise is intentionally dropped — playback state is
      * observed through media events, not the promise.
@@ -1953,6 +1974,15 @@ export class ProductionDOMSink implements DOMSink {
     /** @inheritDoc */
     mountView<T>(handle: Handle, factory: (parent: HTMLElement) => T): T | null {
         return factory(_registry.resolve(handle) as HTMLElement);
+    }
+
+    /** @inheritDoc */
+    createViewElement<T>(tag: string, patch: ElementPatch, factory: (element: HTMLElement) => T): T | null {
+        const element = document.createElement(tag);
+
+        applyPatchTo(element, patch);
+
+        return factory(element);
     }
 
     /** @inheritDoc */

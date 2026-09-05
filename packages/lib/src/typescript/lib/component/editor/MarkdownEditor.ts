@@ -47,6 +47,7 @@ import { $setBlocksType, $patchStyleText } from "@lexical/selection";
 import { TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { EDITOR_NODES } from "~/component/editor/editorNodes.js";
 import { EDITOR_THEME, ensureMarkdownEditorClassRules } from "~/component/editor/editorTheme.js";
+import { MarkdownBlockNode, $createMarkdownBlockNode, $isMarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
 
 /**
  * The coalescing window (ms) for the undo/redo history: edits within this gap
@@ -93,6 +94,13 @@ export type MarkdownEditorMode = "wysiwyg" | "source";
  * @category Components
  */
 export type MarkdownBlockType = "paragraph" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "quote" | "code";
+
+/**
+ * A block alignment accepted by {@link MarkdownEditor.setBlockAlignment}.
+ *
+ * @category Components
+ */
+export type MarkdownBlockAlignment = "left" | "center" | "right" | "justify";
 
 /**
  * Construction-time options for {@link MarkdownEditor}.
@@ -254,6 +262,49 @@ function $findEnclosingInsertableBlock(node: LexicalNode): CodeNode | QuoteNode 
     const tableCell = $getTableCellNodeFromLexicalNode(node);
 
     return tableCell === null ? null : $getTableNodeFromLexicalNodeOrThrow(tableCell);
+}
+
+/**
+ * Wraps the top-level blocks the current selection spans in a fresh
+ * {@link MarkdownBlockNode}, inserted where the first of them sat. Assumes
+ * the caller already verified a range selection exists.
+ *
+ * @returns The new, now-populated block node.
+ */
+function $wrapSelectedTopLevelBlocks(): MarkdownBlockNode {
+    const selection = $getSelection();
+    const children = $getRoot().getChildren();
+
+    let firstIndex = children.length - 1;
+    let lastIndex = 0;
+
+    if ($isRangeSelection(selection)) {
+        for (const node of selection.getNodes()) {
+            const index = node.getTopLevelElementOrThrow().getIndexWithinParent();
+
+            firstIndex = Math.min(firstIndex, index);
+            lastIndex = Math.max(lastIndex, index);
+        }
+    }
+
+    // Defensive only: every caller already verified a range selection before
+    // reaching here, and any such selection's getNodes() resolves at least
+    // one top-level index — this fallback just avoids an inverted range if
+    // that ever isn't so, by wrapping the whole document instead.
+    if (lastIndex < firstIndex) {
+        firstIndex = 0;
+        lastIndex = children.length - 1;
+    }
+
+    const block = $createMarkdownBlockNode();
+
+    children[firstIndex]!.insertBefore(block);
+
+    for (let index = firstIndex; index <= lastIndex; index += 1) {
+        block.append(children[index]!);
+    }
+
+    return block;
 }
 
 /**
@@ -1437,6 +1488,97 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Sets (or, with `null`, clears) the block alignment of the top-level
+     * blocks the current selection spans, wrapping them in a `:::` fence (or
+     * updating the enclosing fence's alignment if the caret already sits
+     * inside one). Unwraps and removes the enclosing fence when clearing its
+     * alignment leaves it with no column count either. No-op without a range
+     * selection.
+     *
+     * @param align - The new block alignment, or `null` to clear it.
+     * @returns This component, for method chaining.
+     */
+    setBlockAlignment(align: MarkdownBlockAlignment | null): this {
+        this.ensureEditor().update(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                return;
+            }
+
+            const existing = $findMatchingParent(selection.anchor.getNode(), $isMarkdownBlockNode);
+
+            if (existing !== null) {
+                existing.setAlign(align);
+
+                if (existing.isEmptyOfAttributes()) {
+                    // Unwrap: move the children out, then drop the empty container.
+                    for (const child of existing.getChildren()) {
+                        existing.insertBefore(child);
+                    }
+
+                    existing.remove();
+                }
+
+                return;
+            }
+
+            if (align !== null) {
+                $wrapSelectedTopLevelBlocks().setAlign(align);
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Sets (or, with `null`, clears) the column count — and optionally the
+     * column gap — of the top-level blocks the current selection spans, with
+     * the same wrap/update/unwrap shape as {@link setBlockAlignment}. No-op
+     * without a range selection.
+     *
+     * @param count - The new column count, or `null` to clear it.
+     * @param gap - The new column gap override, or `null`/omitted to clear it.
+     * @returns This component, for method chaining.
+     */
+    setColumnCount(count: number | null, gap?: string | null): this {
+        this.ensureEditor().update(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                return;
+            }
+
+            const existing = $findMatchingParent(selection.anchor.getNode(), $isMarkdownBlockNode);
+
+            if (existing !== null) {
+                existing.setColumnCount(count);
+                existing.setColumnGap(gap ?? null);
+
+                if (existing.isEmptyOfAttributes()) {
+                    // Unwrap: move the children out, then drop the empty container.
+                    for (const child of existing.getChildren()) {
+                        existing.insertBefore(child);
+                    }
+
+                    existing.remove();
+                }
+
+                return;
+            }
+
+            if (count !== null) {
+                const block = $wrapSelectedTopLevelBlocks();
+
+                block.setColumnCount(count);
+                block.setColumnGap(gap ?? null);
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
      * Inserts an empty paragraph immediately before the blockquote, list,
      * fenced code block, or table enclosing the caret, and moves the caret
      * into it. For a list or a table cell, this is the whole list or table,
@@ -2131,6 +2273,19 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             },
             { separator: true },
             this.buildTextStyleMenuItem(),
+            {
+                text:    "Alignment",
+                submenu: {
+                    label: "Alignment",
+                    items: [
+                        { text: "Left", action: () => this.setBlockAlignment("left") },
+                        { text: "Center", action: () => this.setBlockAlignment("center") },
+                        { text: "Right", action: () => this.setBlockAlignment("right") },
+                        { text: "Justify", action: () => this.setBlockAlignment("justify") },
+                        { text: "Default", action: () => this.setBlockAlignment(null) },
+                    ],
+                },
+            },
             { separator: true },
             { text: "Clear formatting", action: () => this.clearFormatting() },
         ];
@@ -2166,6 +2321,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             { text: "Code block", action: () => this.setBlockType("code") },
             { separator: true },
             { text: "Table", action: () => this.insertTable(2, 3) },
+            {
+                text:    "Columns",
+                submenu: {
+                    label: "Columns",
+                    items: [
+                        { text: "2 columns", action: () => this.setColumnCount(2) },
+                        { text: "3 columns", action: () => this.setColumnCount(3) },
+                        { text: "4 columns", action: () => this.setColumnCount(4) },
+                        { text: "None", action: () => this.setColumnCount(null) },
+                    ],
+                },
+            },
         ];
     }
 

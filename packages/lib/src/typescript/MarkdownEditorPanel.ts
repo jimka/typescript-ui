@@ -30,6 +30,10 @@ A **WYSIWYG** editor whose value is a *Markdown* string, built on Lexical.
 | Tables | yes |
 | Merge | << |
 
+::: {align=center}
+A centred paragraph inside a fence.
+:::
+
 \`\`\`
 const editor = new MarkdownEditor("# Hello");
 \`\`\`
@@ -45,8 +49,9 @@ const editor = new MarkdownEditor("# Hello");
  * source editor via `setMode`; the viewer stays in sync in both modes. Four more
  * toolbar buttons expose the row/column command API (`insertTableRow` /
  * `deleteTableRow` / `insertTableColumn` / `deleteTableColumn`), all no-ops
- * (never throws) with the caret outside a table cell, and three more expose
- * `toggleUnderline` / `setTextColor` / `mergeTableCells`. The editor fills its
+ * (never throws) with the caret outside a table cell, and five more expose
+ * `toggleUnderline` / `setTextColor` / `mergeTableCells` / `setBlockAlignment`
+ * / `setColumnCount`. The editor fills its
  * `Fit` host and scrolls internally; the viewer sits in a vertically
  * scrolling panel. A status row below the editor reports the editor's own dirty
  * flag and the panel's own, the panel's arriving through the framework's
@@ -100,6 +105,12 @@ class MarkdownEditorPanel extends Panel {
         const mergeCellsButton = new Button('Merge cells');
         mergeCellsButton.on('action', this.handleMergeCells);
 
+        const alignCentreButton = new Button('Align centre');
+        alignCentreButton.on('action', this.handleAlignCentre);
+
+        const columnsButton = new Button('Columns');
+        columnsButton.on('action', this.handleColumns);
+
         // Writes nothing — only clears the dirty flag, standing in for a
         // host that has persisted the document.
         const saveBtn = new Button('Save');
@@ -115,6 +126,8 @@ class MarkdownEditorPanel extends Panel {
         toolbar.addComponent(underlineButton);
         toolbar.addComponent(colourButton);
         toolbar.addComponent(mergeCellsButton);
+        toolbar.addComponent(alignCentreButton);
+        toolbar.addComponent(columnsButton);
         toolbar.addComponent(saveBtn);
 
         const editorFit = new Panel({ layoutManager: new Fit() });
@@ -177,6 +190,14 @@ class MarkdownEditorPanel extends Panel {
 
     private readonly handleMergeCells = (): void => {
         this._editor.mergeTableCells();
+    };
+
+    private readonly handleAlignCentre = (): void => {
+        this._editor.setBlockAlignment('center');
+    };
+
+    private readonly handleColumns = (): void => {
+        this._editor.setColumnCount(2);
     };
 
     private readonly handleDirtyChange = (): void => {

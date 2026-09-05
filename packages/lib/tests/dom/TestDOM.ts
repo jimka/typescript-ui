@@ -765,6 +765,19 @@ export class RecordingDOMSink implements DOMSink {
         return null;
     }
 
+    /**
+     * A detached-element mint cannot be modelled or forwarded across a
+     * worker, so the recording sink records the request and returns `null`
+     * without calling `factory` — the signal that makes a
+     * `createViewElement`-based node (e.g. `MarkdownBlockNode`) no-op
+     * offline, mirroring {@link mountView}.
+     */
+    createViewElement<T>(_tag: string, _patch: ElementPatch, _factory: (element: HTMLElement) => T): T | null {
+        this.record('createViewElement');
+
+        return null;
+    }
+
     mediaPlay(handle: Handle): void {
         this.record('mediaPlay');
         _table.stub(handle).media.paused = false;

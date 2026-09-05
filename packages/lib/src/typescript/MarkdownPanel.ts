@@ -71,6 +71,18 @@ SELECT id, name, email, created_at, updated_at, status, role, last_login_at FROM
 | Column width | yes |
 | Merged cells | << |
 
+::: {align=center}
+This paragraph is centred inside a \`::: {align=center}\` fence.
+:::
+
+::: {columns=2 gap=2em}
+Fences also lay out block content across multiple CSS columns, splitting a
+longer run of prose into a newspaper-style two-column layout without any
+extra markup beyond the fence itself.
+
+A second paragraph flows into whichever column has room next.
+:::
+
 Unsupported tokens (images, raw HTML) fall back to plain text and never crash.`;
 
 /**

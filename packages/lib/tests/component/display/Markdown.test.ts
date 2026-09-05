@@ -378,6 +378,73 @@ describe('Markdown styled spans', () => {
     });
 });
 
+describe('Markdown block fence (alignment / columns)', () => {
+    /** Every `<div>` content handle the render produced, in creation order. */
+    function divHandles(md: Markdown): Handle[] {
+        return (md as unknown as { _contentHandles: Handle[] })._contentHandles
+            .filter((h) => DOM.source.getTagName(h) === 'DIV');
+    }
+
+    /** The uppercase tag names of children appended directly to `parent`, unlike `childTagsOf` which matches by tag name. */
+    function childTagsOfHandle(parent: Handle): string[] {
+        return sink.writes
+            .filter((w) => w.op === 'appendChild' && w.args[0] === parent)
+            .map((w) => DOM.source.getTagName(w.args[1] as Handle));
+    }
+
+    it('creates a div whose applied style is { textAlign: "center" }, containing a p, for ::: {align=center}', () => {
+        const md = new Markdown('::: {align=center}\ntext\n:::');
+        md.getElement(true);
+
+        const divs = divHandles(md);
+
+        expect(divs).toHaveLength(1);
+        expect(styleWrites(divs[0]!)).toEqual({ textAlign: 'center' });
+        expect(childTagsOfHandle(divs[0]!)).toEqual(['P']);
+    });
+
+    it('creates a div with { columnCount: "2", columnGap: "2em" } for ::: {columns=2 gap=2em}', () => {
+        const md = new Markdown('::: {columns=2 gap=2em}\ntext\n:::');
+        md.getElement(true);
+
+        expect(styleWrites(divHandles(md)[0]!)).toEqual({ columnCount: '2', columnGap: '2em' });
+    });
+
+    it('creates a div with no columnCount applied for ::: {columns=9}', () => {
+        const md = new Markdown('::: {columns=9}\ntext\n:::');
+        md.getElement(true);
+
+        expect(styleWrites(divHandles(md)[0]!)).toEqual({});
+    });
+
+    it('creates two nested divs for a fence nested inside another, the inner one carrying textAlign', () => {
+        const md = new Markdown(
+            '::: {columns=2}\nLeft column text.\n\n::: {align=center}\nCentred inside.\n:::\n\nMore text.\n:::',
+        );
+        md.getElement(true);
+
+        const divs = divHandles(md);
+
+        expect(divs).toHaveLength(2);
+        expect(styleWrites(divs[0]!)).toEqual({ columnCount: '2' });
+        expect(styleWrites(divs[1]!)).toEqual({ textAlign: 'center' });
+    });
+
+    it('extractMarkdownHeadings finds a heading nested inside a fence', () => {
+        const headings = extractMarkdownHeadings('::: {align=center}\n# T\n:::');
+
+        expect(headings).toEqual([{ id: 't', text: 'T', depth: 1 }]);
+    });
+
+    it('renders an unclosed fence as ordinary paragraphs, creating no div', () => {
+        const md = new Markdown('::: {align=center}\ntext with no closing fence');
+        md.getElement(true);
+
+        expect(divHandles(md)).toHaveLength(0);
+        expect(createdTags()).toContain('p');
+    });
+});
+
 describe('Markdown inline code', () => {
     it('builds a <code> with the codespan text', () => {
         new Markdown('`x`').getElement(true);

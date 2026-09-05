@@ -702,6 +702,12 @@ export interface Theme {
          * fall back to their own horizontal scroll within the capped column.
          */
         maxMeasure: string;
+        /**
+         * Default gutter between columns in a `::: {columns=…}` multi-column
+         * region whose fence carries no explicit `gap` attribute. A CSS length,
+         * typically `em`-relative so it scales with the surrounding font.
+         */
+        columnGap: string;
     };
 
     /**
@@ -1225,6 +1231,7 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-scroll-shadow-color'              : theme.scroll.shadowColor,
         '--ts-ui-md-line-height'                   : theme.markdown.lineHeight,
         '--ts-ui-md-max-measure'                   : theme.markdown.maxMeasure,
+        '--ts-ui-md-column-gap'                    : theme.markdown.columnGap,
         '--ts-ui-chart-axis'                       : theme.chart.axis,
         '--ts-ui-chart-grid'                       : theme.chart.grid,
         '--ts-ui-chart-label'                      : theme.chart.label,
