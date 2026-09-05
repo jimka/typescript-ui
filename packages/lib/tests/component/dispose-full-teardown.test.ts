@@ -43,6 +43,7 @@ import { Model } from '~/data/Model';
 import { Menu } from '~/overlay/Menu';
 import { Popover } from '~/overlay/Popover';
 import { Link } from '~/component/input/Link';
+import { SelectableText } from '~/component/input/SelectableText';
 import { TabBar } from '~/component/container/TabBar';
 import { ScrollStrip } from '~/component/container/ScrollStrip';
 import { MenuButton, MenuButtonOptions } from '~/component/button/MenuButton';
@@ -147,6 +148,26 @@ const REGISTRY: Array<{
     // recursion contract every `MenuItem` / `MenuSeparator` relies on
     // instead, for a real, non-synthetic class.
     { name: 'Menu',    covers: ['Menu'], make: () => new Menu([{ text: 'A' }], () => {}) },
+    // `_contextMenu` is lazily created (only on the first right-click), so a
+    // bare `new SelectableText(...)` never builds it — call the private
+    // handler directly once, mirroring the MenuButton/SplitButton
+    // `toggleMenu()` idiom below, to materialise it before disposing.
+    // `_contextMenu` is never a registered child (see SelectableText's field
+    // comment), so it is only reached by this row at all because
+    // SelectableText's own `destructor()` now disposes it explicitly.
+    {
+        name: 'SelectableText',
+        covers: ['SelectableText'],
+        make: () => {
+            const text = new SelectableText('x', { copyMenu: true });
+
+            text.getElement(true);
+            (text as unknown as { handleContextMenu(event: MouseEvent): unknown })
+                .handleContextMenu({ clientX: 0, clientY: 0 } as MouseEvent);
+
+            return text;
+        },
+    },
     // `_menu` is lazily created (only on the first toggle), so a bare
     // `new MenuButton(...)` never builds it — toggle the dropdown once to
     // materialise it, mirroring the Popover row's `ensureArrow()` idiom.

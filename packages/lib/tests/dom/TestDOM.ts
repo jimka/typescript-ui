@@ -1151,6 +1151,11 @@ export class ModelledDOMSource implements DOMSource {
         return null;
     }
 
+    /** No live Selection offline; always reports no selected text. */
+    getDocumentSelectionText(): string {
+        return "";
+    }
+
     /** No system clipboard offline; always reports the read as unavailable. */
     readClipboardText(): Promise<string | null> {
         return Promise.resolve(null);

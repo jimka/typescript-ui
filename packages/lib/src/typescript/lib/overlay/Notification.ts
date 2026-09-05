@@ -205,7 +205,7 @@ export class Notification extends Component {
         this._badge.getAria().setHidden(true);
         this.addComponent(this._badge);
 
-        this._messageText = new SelectableText(message);
+        this._messageText = new SelectableText(message, { copyMenu: true });
         // Webkit-prefixed line clamp is now cross-browser (Chrome, Edge, Safari,
         // Firefox 68+). Clamped to two lines so a long message gets a trailing
         // ellipsis — the full text is reachable via double-click → detail dialog.
@@ -522,7 +522,7 @@ export class Notification extends Component {
     static showDetail(message: string, type: NotificationType): void {
         Notification.pauseAll();
 
-        const content = new SelectableText(message);
+        const content = new SelectableText(message, { copyMenu: true });
         content.setAutoMeasure(false);
         content.setWhiteSpace("pre-wrap");
         content.setWordBreak("break-word");

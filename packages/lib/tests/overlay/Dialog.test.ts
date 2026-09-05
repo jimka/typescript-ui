@@ -152,6 +152,15 @@ describe('Dialog (LayerManager integration getters)', () => {
         expect(dialog.getContentComponent().getComponents()[0].getUserSelect()).toBe('text');
         expect(dialog.getContentComponent().getComponents()[0].getCursor()).toBe('text');
     });
+
+    it('opts a message dialog\'s body text into the right-click Copy menu', () => {
+        installTestDOM(CONFIG);
+
+        const dialog  = new Dialog({ title: 'T', message: 'M' });
+        const message = dialog.getContentComponent().getComponents()[0] as unknown as { hasCopyMenu(): boolean };
+
+        expect(message.hasCopyMenu()).toBe(true);
+    });
 });
 
 describe('Dialog — resizeToContent', () => {

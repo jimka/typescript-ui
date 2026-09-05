@@ -8,6 +8,8 @@ import { StyleRule } from "~/core/StyleTarget.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { Size } from "~/primitive/Size.js";
+import { Menu } from "~/overlay/Menu.js";
+import { buildSelectionCopyMenuItems } from "~/component/shared/buildSelectionCopyMenuItems.js";
 import { lexer } from "marked";
 import type { Token, Tokens } from "marked";
 // Type-only: erased at compile time. `CodeEditor` itself is loaded through a
@@ -609,6 +611,12 @@ class Markdown extends Component<MarkdownOptions> {
      */
     private _maxMeasure: string | null = null;
 
+    // Self-wired Copy replacement for the browser's own right-click menu,
+    // suppressed page-wide by Body.init (native-context-menu-suppression.md).
+    // Created on first right-click. Never a registered child — disposed
+    // explicitly in destructor().
+    private _contextMenu: Menu | null = null;
+
     /**
      * Constructs a Markdown component for the given source string.
      *
@@ -661,6 +669,11 @@ class Markdown extends Component<MarkdownOptions> {
         // element attached and width-assigned, so the `scrollHeight` read is
         // meaningful. Subsequent re-measures come from setWidth / setMarkdown / theme.
         this.onFirstLayout(() => this.measureContentHeight());
+
+        // A subtree listener, not an exact-target one: rendered prose is a
+        // whole tree of <h1>-<h6>/<p>/<ul>/<blockquote>/<pre>/<a>/<table>
+        // elements, so a right-click almost never targets this root directly.
+        Event.addSubtreeListener(this, "contextmenu", this.handleContextMenu);
     }
 
     /**
@@ -905,11 +918,36 @@ class Markdown extends Component<MarkdownOptions> {
     }
 
     /**
-     * Detaches the theme-change listener, then defers to the base class for
-     * the rest of teardown. Call when a dynamically-built Markdown is
-     * permanently removed from the page, mirroring `CodeEditor.destructor`.
+     * Opens the Copy menu for the text currently selected inside this
+     * Markdown's rendered prose.
+     *
+     * @param event - The `contextmenu` event being handled.
+     *
+     * @returns A stop-and-prevent disposition, always — every rendered
+     *   surface here is read-only, so this menu unconditionally claims the
+     *   event.
+     */
+    private handleContextMenu(event: MouseEvent): Event.ListenerResult {
+        const element = this.getElement();
+
+        if (element) {
+            this._contextMenu ??= new Menu();
+            this._contextMenu.show(event.clientX, event.clientY, buildSelectionCopyMenuItems(element));
+        }
+
+        return { stop: true, prevent: true };
+    }
+
+    /**
+     * Disposes the Copy menu (if one was ever opened) and detaches the
+     * theme-change listener, then defers to the base class for the rest of
+     * teardown. Call when a dynamically-built Markdown is permanently removed
+     * from the page, mirroring `CodeEditor.destructor`.
      */
     protected destructor(): void {
+        this._contextMenu?.dispose();
+        this._contextMenu = null;
+
         // Disposes every live CodeEditor: raw-DOM-appended (never through
         // addComponent), so the base class's own child-recursion below never
         // reaches them — Markdown must dispose them explicitly.
