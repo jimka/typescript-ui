@@ -6,8 +6,15 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { clock } from "~/glyphs/solid/clock.js";
 import { TimePickerDropdown } from "~/component/input/TimePickerDropdown.js";
 import { callable } from "~/core/Callable.js";
+import { resolveDateMath, tokenizeDateMath, DateMathUnit } from "~/component/input/dateMath.js";
 
 Glyph.register(clock);
+
+// Relative-shorthand units this field accepts. Date units (y/mo/w/d) are
+// excluded because the field formats only "HH:MM[:SS]", so a date offset
+// would move the stored Date without changing a character of the displayed
+// text.
+const TIME_FIELD_UNITS: readonly DateMathUnit[] = ["h", "mi", "s"];
 
 /**
  * Construction-time options for {@link TimeField}.
@@ -106,13 +113,23 @@ class TimeField extends AbstractPickerField<Date, TimePickerDropdown, TimeFieldO
     }
 
     /**
-     * Parses an "HH:MM" or "HH:MM:SS" string into a Date with today's date
+     * Parses a relative shorthand (e.g. "+30mi", "+1h30mi") resolved against
+     * now, or an "HH:MM" / "HH:MM:SS" string into a Date with today's date
      * portion. Returns null on parse failure.
      *
      * @param raw - The raw text typed into the input.
      * @returns The parsed Date, or null.
      */
     protected parseRaw(raw: string): Date | null {
+        const base = new Date();
+        base.setMilliseconds(0);
+
+        const relative = resolveDateMath(raw, TIME_FIELD_UNITS, base);
+
+        if (relative !== null) {
+            return relative;
+        }
+
         const [hStr, mStr, sStr] = raw.split(":");
         const h = Number(hStr);
         const m = Number(mStr);
@@ -131,6 +148,16 @@ class TimeField extends AbstractPickerField<Date, TimePickerDropdown, TimeFieldO
         d.setHours(h, m, s, 0);
 
         return d;
+    }
+
+    /**
+     * Whether `raw` is a relative shorthand expression this field accepts.
+     *
+     * @param raw - The raw text typed into the input.
+     * @returns `true` when `raw` tokenizes over {@link TIME_FIELD_UNITS}.
+     */
+    protected isRawShorthand(raw: string): boolean {
+        return tokenizeDateMath(raw, TIME_FIELD_UNITS) !== null;
     }
 
     /**

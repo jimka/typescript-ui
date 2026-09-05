@@ -4,7 +4,7 @@
 // bare (unmounted) field round-trips without a DOM event or TestDOM. All date
 // assertions use local accessors (getFullYear/getMonth/getDate) — never UTC —
 // so the suite is timezone-stable.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DateField } from '~/component/input/DateField';
 
 /** Returns DateField.parseRaw cast to reach the protected method. */
@@ -105,5 +105,189 @@ describe('DateField dirty state', () => {
         field._input.setText('2025-06-15');
         field.onInput();
         expect(field.isDirty()).toBe(false);
+    });
+});
+
+// Cases below pin the clock to 31 January 2026, 10:15:30.500 local — chosen
+// because it exercises the month-end rollover. `toFake: ["Date"]` leaves
+// every other timer real, since field construction subscribes to theme
+// changes.
+describe('DateField relative shorthand parseRaw', () => {
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date(2026, 0, 31, 10, 15, 30, 500));
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    const parse = parser();
+
+    it('15. "+0d" resolves to today at local midnight', () => {
+        const d = parse('+0d');
+
+        expect(d).not.toBe(null);
+        expect(d!.getFullYear()).toBe(2026);
+        expect(d!.getMonth()).toBe(0);
+        expect(d!.getDate()).toBe(31);
+        expect(d!.getHours()).toBe(0);
+        expect(d!.getMinutes()).toBe(0);
+        expect(d!.getSeconds()).toBe(0);
+        expect(d!.getMilliseconds()).toBe(0);
+    });
+
+    it('16. a signed year offset resolves relative to today, with a missing sign meaning +', () => {
+        const plus = parse('+9y');
+        expect(plus!.getFullYear()).toBe(2035);
+        expect(plus!.getMonth()).toBe(0);
+        expect(plus!.getDate()).toBe(31);
+
+        const unsigned = parse('9y');
+        expect(unsigned!.getTime()).toBe(plus!.getTime());
+
+        const minus = parse('-9y');
+        expect(minus!.getFullYear()).toBe(2017);
+        expect(minus!.getMonth()).toBe(0);
+        expect(minus!.getDate()).toBe(31);
+    });
+
+    it('17. "-2w3d" resolves to 20 January 2026', () => {
+        const d = parse('-2w3d');
+
+        expect(d!.getFullYear()).toBe(2026);
+        expect(d!.getMonth()).toBe(0);
+        expect(d!.getDate()).toBe(20);
+    });
+
+    it('18. "+1h" is rejected by both the shorthand and strict branches', () => {
+        expect(parse('+1h')).toBe(null);
+    });
+
+    it('19. an absolute string is still parsed by the untouched strict branch', () => {
+        const d = parse('2026-12-31');
+
+        expect(d!.getFullYear()).toBe(2026);
+        expect(d!.getMonth()).toBe(11);
+        expect(d!.getDate()).toBe(31);
+    });
+});
+
+describe('DateField relative shorthand live typing', () => {
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date(2026, 0, 31, 10, 15, 30, 500));
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('27. onInput leaves the typed text untouched, resolves the value, and fires change', () => {
+        const field = new DateField() as any;
+        let changed: Date | null | undefined;
+        field.on('change', (v: Date | null) => { changed = v; });
+
+        field._input.setText('+9y');
+        field.onInput();
+
+        expect(field._input.getText()).toBe('+9y');
+        expect(field.getValue()!.getFullYear()).toBe(2035);
+        expect(field._invalid).toBe(false);
+        expect(changed).not.toBeUndefined();
+        expect(changed!.getFullYear()).toBe(2035);
+    });
+
+    it('28. a shorthand using a unit outside this field\'s list leaves the field invalid and fires no change', () => {
+        const field = new DateField() as any;
+        let changed = false;
+        field.on('change', () => { changed = true; });
+
+        field._input.setText('+1h');
+        field.onInput();
+
+        expect(field._invalid).toBe(true);
+        expect(changed).toBe(false);
+    });
+
+    it('29. typing a shorthand resolving to a different instant is dirty; resolving to the same instant is clean', () => {
+        const field = new DateField({ value: new Date(2026, 0, 31) }) as any;
+
+        field._input.setText('+1d');
+        field.onInput();
+        expect(field.isDirty()).toBe(true);
+
+        field._input.setText('+0d');
+        field.onInput();
+        expect(field.isDirty()).toBe(false);
+    });
+});
+
+describe('DateField relative shorthand commit on blur and Enter', () => {
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date(2026, 0, 31, 10, 15, 30, 500));
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('30. onBlur rewrites a pending shorthand to its formatted absolute value', () => {
+        const field = new DateField() as any;
+
+        field._input.setText('+9y');
+        field.onInput();
+        field.onBlur();
+
+        expect(field._input.getText()).toBe('2035-01-31');
+        expect(field.getValue()!.getFullYear()).toBe(2035);
+    });
+
+    it('31. Enter commits a pending shorthand and prevents the default key action', () => {
+        const field = new DateField() as any;
+
+        field._input.setText('+9y');
+        field.onInput();
+        const result = field.onKeyDown({ key: 'Enter' });
+
+        expect(field._input.getText()).toBe('2035-01-31');
+        expect(result).toEqual({ prevent: true });
+    });
+
+    it('32. Enter leaves an already-absolute entry untouched and returns nothing', () => {
+        const field = new DateField() as any;
+
+        field._input.setText('2026-12-31');
+        field.onInput();
+        const result = field.onKeyDown({ key: 'Enter' });
+
+        expect(field._input.getText()).toBe('2026-12-31');
+        expect(result).toBeUndefined();
+    });
+
+    it('35. an out-of-range shorthand does not commit; existing invalid-blur behaviour clears it', () => {
+        const field = new DateField() as any;
+
+        field._input.setText('999999999y');
+        field.onInput();
+        expect(field._invalid).toBe(true);
+
+        expect(field.commitShorthandIfPresent()).toBe(false);
+
+        field.onBlur();
+        expect(field._input.getText()).toBe('');
+        expect(field.getValue()).toBe(null);
+    });
+
+    it('36. unparseable garbage is unaffected: existing behaviour clears text and value on blur', () => {
+        const field = new DateField() as any;
+
+        field._input.setText('garbage');
+        field.onInput();
+        field.onBlur();
+
+        expect(field._input.getText()).toBe('');
+        expect(field.getValue()).toBe(null);
     });
 });

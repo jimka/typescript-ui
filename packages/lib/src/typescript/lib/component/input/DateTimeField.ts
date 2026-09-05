@@ -6,8 +6,13 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { calendar } from "~/glyphs/solid/calendar.js";
 import { DateTimePickerDropdown } from "~/component/input/DateTimePickerDropdown.js";
 import { callable } from "~/core/Callable.js";
+import { resolveDateMath, tokenizeDateMath, DateMathUnit } from "~/component/input/dateMath.js";
 
 Glyph.register(calendar);
+
+// Relative-shorthand units this field accepts — every unit, since the field
+// formats both a date and a time portion.
+const DATE_TIME_FIELD_UNITS: readonly DateMathUnit[] = ["y", "mo", "w", "d", "h", "mi", "s"];
 
 /**
  * Construction-time options for {@link DateTimeField}.
@@ -119,12 +124,23 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
     }
 
     /**
-     * Parses the typed text into a Date. Returns null on parse failure.
+     * Parses a relative shorthand (e.g. "1y 6mo", "-1d2h") resolved against
+     * now, or the typed absolute text into a Date. Returns null on parse
+     * failure.
      *
      * @param raw - The raw text typed into the input.
      * @returns The parsed Date, or null.
      */
     protected parseRaw(raw: string): Date | null {
+        const base = new Date();
+        base.setMilliseconds(0);
+
+        const relative = resolveDateMath(raw, DATE_TIME_FIELD_UNITS, base);
+
+        if (relative !== null) {
+            return relative;
+        }
+
         // Require both a date and a time portion, ISO-anchored, so parsing is
         // the strict inverse of formatValue and not the locale-dependent,
         // time-optional `new Date(raw)`. Mirrors DateField/TimeField strictness.
@@ -136,6 +152,16 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
         const d = new Date(`${datePart}T${timePart}`);
 
         return isNaN(d.getTime()) ? null : d;
+    }
+
+    /**
+     * Whether `raw` is a relative shorthand expression this field accepts.
+     *
+     * @param raw - The raw text typed into the input.
+     * @returns `true` when `raw` tokenizes over {@link DATE_TIME_FIELD_UNITS}.
+     */
+    protected isRawShorthand(raw: string): boolean {
+        return tokenizeDateMath(raw, DATE_TIME_FIELD_UNITS) !== null;
     }
 
     /**

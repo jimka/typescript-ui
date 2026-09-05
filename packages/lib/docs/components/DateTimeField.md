@@ -48,6 +48,17 @@ The dropdown header carries three navigation affordances:
 
 Keyboard inside the day grid: arrow keys move the highlight (`±1` day / `±7` days), `PageUp`/`PageDown` advance by month, `Home`/`End` jump to the first / last in-range day, `Enter` or `Space` commits the highlighted day. Inside the year scroller the same arrow / Page / Home / End semantics walk the year list (`PageUp`/`PageDown` step `±10` years).
 
+## Relative shorthand
+
+The text input also accepts a relative shorthand instead of an absolute `YYYY-MM-DD HH:MM[:SS]` string — one or more signed `<number><unit>` terms, resolved against the moment the text is parsed. Accepted units are `y` (year), `mo` (month), `w` (week), `d` (day), `h` (hour), `mi` (minute), and `s` (second); a missing sign means `+`, and each term keeps its own sign (`-1d2h` is one day earlier *then* two hours later, not one day and two hours earlier).
+
+| Input | Meaning |
+| --- | --- |
+| `1y 6mo` | One year and six months from now |
+| `-1d2h` | One day earlier, then two hours later |
+
+The typed shorthand stays on screen while typing; it resolves to the absolute date-time only when the field loses focus or Enter is pressed.
+
 ## Notes
 
 - The dropdown stacks a month-view calendar over an hour/minute selector. Updates fire incrementally — every day/hour/minute click fires `input` with the latest aggregate value.
