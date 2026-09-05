@@ -259,3 +259,35 @@ describe('TableExporter.buildRectangularTSV', () => {
         expect(TableExporter.buildRectangularTSV([['a\tb', 'c"d', 'e\nf']])).toBe('"a\tb"\t"c""d"\t"e\nf"');
     });
 });
+
+describe('TableExporter.parseRectangularTSV', () => {
+    it('splits tab-delimited fields and newline-delimited rows', () => {
+        expect(TableExporter.parseRectangularTSV('Alice\t25\nBob\t30')).toEqual([['Alice', '25'], ['Bob', '30']]);
+    });
+
+    it('parses a single-cell, single-row grid with no delimiters', () => {
+        expect(TableExporter.parseRectangularTSV('only')).toEqual([['only']]);
+    });
+
+    it('unquotes a field and un-doubles an embedded quote, preserving an embedded tab or newline', () => {
+        // Inverse of the buildRectangularTSV quoting case above.
+        expect(TableExporter.parseRectangularTSV('"a\tb"\t"c""d"\t"e\nf"')).toEqual([['a\tb', 'c"d', 'e\nf']]);
+    });
+
+    it('parses the empty string to an empty grid', () => {
+        expect(TableExporter.parseRectangularTSV('')).toEqual([]);
+    });
+
+    it('round-trips through buildRectangularTSV for a grid mixing plain and special-character fields', () => {
+        const grid = [
+            ['Alice', '25', 'a\tb'],
+            ['c"d',   'e\nf', ''],
+        ];
+
+        expect(TableExporter.parseRectangularTSV(TableExporter.buildRectangularTSV(grid))).toEqual(grid);
+    });
+
+    it('treats a \\r\\n line ending the same as a bare \\n', () => {
+        expect(TableExporter.parseRectangularTSV('a\tb\r\nc\td')).toEqual(TableExporter.parseRectangularTSV('a\tb\nc\td'));
+    });
+});

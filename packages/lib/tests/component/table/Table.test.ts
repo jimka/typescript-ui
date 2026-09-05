@@ -8,6 +8,7 @@ import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Table } from '~/component/table/Table';
 import type { CellClickEvent } from '~/component/table/Body';
 import { TableExporter } from '~/component/table/TableExporter';
+import { Menu } from '~/overlay/Menu';
 import { TRACK_WIDTH } from '~/component/container/Scrollbar';
 import { tableRowHeight } from '~/component/table/RowMetrics';
 import { ThemeManager } from '~/core/Theme';
@@ -75,11 +76,10 @@ describe('Table cellclick event', () => {
     });
 });
 
-// Regression: `showCellMenu`'s "Copy" item declares `glyph: 'clipboard'`,
-// which must be registered at module load (mirroring the eager
-// `Glyph.register` call for the column menu's own glyphs) or building the
-// menu throws "Unknown glyph: clipboard" the moment a data cell is
-// right-clicked, before the menu ever displays.
+// `showCellMenu` builds its rows through the shared `buildClipboardMenuItems`
+// (see clipboard-context-menu-foundation.md / table-cell-context-menu-clipboard.md)
+// rather than a hand-rolled item list — this is now a general "menu
+// construction doesn't throw" smoke check, not a glyph-registration regression.
 describe('Table cellcontextmenu — right-click "Copy" menu', () => {
     it('constructs the context menu without throwing', async () => {
         const store = new MemoryStore(MODEL, [{ a: '1' }]);
@@ -89,6 +89,26 @@ describe('Table cellcontextmenu — right-click "Copy" menu', () => {
         table.getElement(true);
 
         expect(() => (table as any).showCellMenu(10, 10)).not.toThrow();
+    });
+});
+
+describe('Table cellcontextmenu — Cut/Copy/Paste menu', () => {
+    it('shows a menu with Cut, Copy, Paste in that order, Cut/Copy enabled, Paste present', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1' }]);
+        await store.load();
+
+        const table   = new Table(store);
+        table.getElement(true);
+        const showSpy = vi.spyOn(Menu.prototype, 'show');
+
+        (table as any).showCellMenu(10, 10);
+
+        expect(showSpy).toHaveBeenCalledTimes(1);
+        const items = showSpy.mock.calls[0][2] as { text?: string; enabled?: boolean }[];
+
+        expect(items.map(i => i.text)).toEqual(['Cut', 'Copy', 'Paste']);
+        expect(items[0].enabled).toBe(true);
+        expect(items[1].enabled).toBe(true);
     });
 });
 
