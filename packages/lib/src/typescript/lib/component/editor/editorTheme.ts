@@ -25,6 +25,7 @@ const TABLE_CELL_CLASS          = "ts-ui-mde-table-cell";
 const TABLE_CELL_HEADER_CLASS   = "ts-ui-mde-table-cell-header";
 const TABLE_CELL_SELECTED_CLASS = "ts-ui-mde-table-cell-selected";
 const BLOCK_CLASS                = "ts-ui-mde-block";
+const IMAGE_CLASS                = "ts-ui-mde-image";
 
 /** Guards the module-singleton class-rule registration in {@link ensureMarkdownEditorClassRules}. */
 let _classRulesEnsured = false;
@@ -234,6 +235,14 @@ export function ensureMarkdownEditorClassRules(): void {
         // (Markdown.ts).
         styles: { marginTop: "0" },
     });
+
+    new StyleRule({
+        scope:  "class",
+        name:   IMAGE_CLASS,
+        // Never spills past its host column, matching the viewer's own
+        // IMAGE_CLASS rule (Markdown.ts).
+        styles: { maxWidth: "100%" },
+    });
 }
 
 /**
@@ -274,7 +283,8 @@ export const EDITOR_THEME: EditorThemeClasses = {
     tableCell:         TABLE_CELL_CLASS,
     tableCellHeader:   TABLE_CELL_HEADER_CLASS,
     tableCellSelected: TABLE_CELL_SELECTED_CLASS,
-    // Custom key: EditorThemeClasses carries an index signature for exactly
+    // Custom keys: EditorThemeClasses carries an index signature for exactly
     // this, a node-specific class this theme map has no dedicated field for.
     mdBlock:           BLOCK_CLASS,
+    mdImage:           IMAGE_CLASS,
 };

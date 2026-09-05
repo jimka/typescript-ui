@@ -47,6 +47,17 @@ const ALIGN = /^(left|center|right|justify)$/;
 /** An integer 2–6, the accepted multi-column count. */
 const COLUMN_COUNT = /^[2-6]$/;
 
+/** A sized image's resolved, validated source/alt/dimensions. */
+export interface MarkdownImageSpec {
+    src:    string;
+    alt:    string;
+    width:  number | null;
+    height: number | null;
+}
+
+/** The `data:image/…` MIME types this dialect renders — deliberately excludes `svg+xml`, which can embed script. */
+const DATA_IMAGE_MIME = /^data:image\/(png|jpeg|gif|webp|avif);base64,/;
+
 /** A block's resolved, validated alignment/column layout — one field `null` per unset or invalid key. */
 export interface MarkdownBlockStyle {
     textAlign:   string | null;
@@ -285,4 +296,42 @@ export function resolveColumnWidth(text: string): number | null {
     const width = parseAttributes(match[1]!).width;
 
     return width !== undefined && POSITIVE_INTEGER.test(width) ? Number(width) : null;
+}
+
+/**
+ * Validates and resolves an image's `src` against a scheme allow-list
+ * (relative path, `http:`, `https:`, or an allow-listed `data:image/…`
+ * base64 URI) plus its optional `width`/`height` attributes.
+ *
+ * @param src - The image's authored source.
+ * @param alt - The image's alt text.
+ * @param attributes - The parsed attribute record (`width`, `height`).
+ * @returns The resolved image spec, or `null` when `src` fails the scheme allow-list.
+ *
+ * @example
+ * ```
+ * resolveImageSpec("/img/d.png", "Diagram", { width: "320" })
+ * // -> { src: "/img/d.png", alt: "Diagram", width: 320, height: null }
+ *
+ * resolveImageSpec("javascript:alert(1)", "x", {})   // -> null
+ * ```
+ */
+export function resolveImageSpec(src: string, alt: string, attributes: Record<string, string>): MarkdownImageSpec | null {
+    const isRelative = !src.includes(":");
+    const isHttp = src.startsWith("http:") || src.startsWith("https:");
+    const isDataImage = DATA_IMAGE_MIME.test(src);
+
+    if (!isRelative && !isHttp && !isDataImage) {
+        return null;
+    }
+
+    const width = attributes.width;
+    const height = attributes.height;
+
+    return {
+        src,
+        alt,
+        width:  width !== undefined && POSITIVE_INTEGER.test(width) ? Number(width) : null,
+        height: height !== undefined && POSITIVE_INTEGER.test(height) ? Number(height) : null,
+    };
 }

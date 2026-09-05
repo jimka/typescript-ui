@@ -16,6 +16,7 @@ import type { Transformer } from "@lexical/markdown";
 import { createTableTransformer } from "~/component/editor/markdownTableTransformer.js";
 import { UNDERLINE, STYLED_TEXT } from "~/component/editor/markdownStyleTransformers.js";
 import { createBlockTransformer } from "~/component/editor/markdownBlockTransformer.js";
+import { IMAGE } from "~/component/editor/markdownImageTransformer.js";
 
 // Lazy: called at import/export time rather than passed by value, so this
 // module can build TABLE/BLOCK from the very array they are about to join,
@@ -30,11 +31,12 @@ const BLOCK = createBlockTransformer(() => TRANSFORMERS);
  *
  * @remarks
  * This is deliberately **not** Lexical's full `TRANSFORMERS` preset. The preset
- * also carries `HIGHLIGHT`, `CHECK_LIST`, and an image transformer — constructs
- * the viewer drops to a plain-text fallback. Curating the list down to these
- * fourteen is the single source of truth that guarantees the editor can never
- * emit Markdown the viewer would fail to render: the same array is passed to
- * the import converter, the export converter, and the markdown-shortcut typing
+ * also carries `HIGHLIGHT` and `CHECK_LIST` — constructs the viewer drops to a
+ * plain-text fallback, and its own image transformer, which this dialect
+ * replaces with a validating one. Curating the list down to these fifteen is
+ * the single source of truth that guarantees the editor can never emit
+ * Markdown the viewer would fail to render: the same array is passed to the
+ * import converter, the export converter, and the markdown-shortcut typing
  * registration, so what the user types, what the editor stores, and what the
  * viewer reads all agree.
  *
@@ -54,6 +56,7 @@ const BLOCK = createBlockTransformer(() => TRANSFORMERS);
  * - `UNDERLINE` → `++u++` (underline)
  * - `STYLED_TEXT` → `[t]{color=…}` (styledspan)
  * - `BLOCK` → `::: {align=…}` … `:::` (mdblock)
+ * - `IMAGE` → `![alt](src)` (mdimage)
  *
  * Star (not underscore) emphasis variants are chosen so bold/italic export is
  * deterministic and matches the viewer's demo output. `STYLED_TEXT` sits after
@@ -77,4 +80,5 @@ export const TRANSFORMERS: Transformer[] = [
     LINK,
     UNDERLINE,
     STYLED_TEXT,
+    IMAGE,
 ];

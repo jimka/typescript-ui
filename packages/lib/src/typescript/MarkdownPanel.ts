@@ -83,7 +83,11 @@ extra markup beyond the fence itself.
 A second paragraph flows into whichever column has room next.
 :::
 
-Unsupported tokens (images, raw HTML) fall back to plain text and never crash.`;
+### Sized image
+
+![Diagram](https://placehold.co/320x160){width=320 height=160}
+
+Unsupported tokens (raw HTML, task lists) fall back to plain text and never crash.`;
 
 /**
  * Demo panel showcasing the [`MarkdownViewer`](/api/component/display/classes/MarkdownViewer)

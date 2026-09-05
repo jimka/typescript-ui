@@ -12,7 +12,7 @@ import { Menu } from "~/overlay/Menu.js";
 import { buildSelectionCopyMenuItems } from "~/component/shared/buildSelectionCopyMenuItems.js";
 import type { Token, Tokens } from "marked";
 import { lexMarkdown } from "~/component/display/markdownExtensions.js";
-import { resolveSpanStyle, resolveBlockStyle } from "~/component/display/markdownAttributes.js";
+import { resolveSpanStyle, resolveBlockStyle, resolveImageSpec } from "~/component/display/markdownAttributes.js";
 import type { MdTableToken, MdTableHeaderCell, MdTableBodyCell } from "~/component/display/markdownTableExtension.js";
 // Type-only: erased at compile time. `CodeEditor` itself is loaded through a
 // narrow dynamic import (see `loadCodeEditorUpgrade`) so a static top-level
@@ -41,6 +41,7 @@ const ALIGN_RIGHT_CLASS  = "ts-ui-md-align-right";
 const ALIGN_JUSTIFY_CLASS = "ts-ui-md-align-justify";
 const UNDERLINE_CLASS    = "ts-ui-md-underline";
 const BLOCK_CLASS         = "ts-ui-md-block";
+const IMAGE_CLASS         = "ts-ui-md-image";
 /**
  * The literal two-character sequence (backslash, `n`) `markdownTableTransformer.ts`'s
  * `escapeCellText` writes in place of a real newline in a `MarkdownEditor`
@@ -357,6 +358,14 @@ function ensureMarkdownClassRules(): void {
         // (editorTheme.ts).
         styles: { marginTop: "0" },
     });
+
+    new StyleRule({
+        scope:  "class",
+        name:   IMAGE_CLASS,
+        // Never spills past the prose column, matching the editor's own
+        // IMAGE_CLASS rule (editorTheme.ts).
+        styles: { maxWidth: "100%" },
+    });
 }
 
 /**
@@ -540,10 +549,12 @@ const _defaultMarkdownOptions: Partial<MarkdownOptions> = { userSelect: "text", 
  * and the render runs against the modelled DOM source in tests.
  *
  * The v1 token set covers headings, paragraphs, ordered/unordered lists,
- * blockquotes, fenced/inline code, bold, italic, links, and GFM pipe tables
- * (including per-column alignment). Any other token type (images, raw HTML,
- * the remaining GFM extensions) falls through to a defined fallback that
- * renders the token's plain text — never a crash, never markup.
+ * blockquotes, fenced/inline code, bold, italic, links, GFM pipe tables
+ * (including per-column alignment, widths, and merged cells), underline,
+ * coloured/sized/font-styled spans, `:::` alignment/multi-column fences, and
+ * sized images validated against a scheme allow-list. Any other token type
+ * (raw HTML, the remaining GFM extensions) falls through to a defined
+ * fallback that renders the token's plain text — never a crash, never markup.
  *
  * A fenced code block whose info string names a language
  * [`CodeEditor`](/components/CodeEditor) has a registered grammar for
@@ -1938,6 +1949,34 @@ class Markdown extends Component<MarkdownOptions> {
                 });
                 this.appendInlineTokens(wrapper, span.tokens ?? [], splitCellBreaks);
                 DOM.sink.appendChild(parent, wrapper);
+
+                break;
+            }
+
+            case "mdimage": {
+                const image = (token as Tokens.Generic);
+                const spec = resolveImageSpec(
+                    image.src as string, image.alt as string, image.attributes as Record<string, string>);
+
+                // A src failing the scheme allow-list renders nothing at
+                // all — never a broken/unsafe <img>.
+                if (spec === null) {
+                    break;
+                }
+
+                const img = this.create("img");
+                const setAttr: Record<string, string> = { src: spec.src, alt: spec.alt };
+
+                if (spec.width !== null) {
+                    setAttr.width = String(spec.width);
+                }
+
+                if (spec.height !== null) {
+                    setAttr.height = String(spec.height);
+                }
+
+                DOM.sink.apply(img, { addClass: [IMAGE_CLASS], setAttr });
+                DOM.sink.appendChild(parent, img);
 
                 break;
             }

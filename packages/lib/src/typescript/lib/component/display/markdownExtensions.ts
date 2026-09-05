@@ -6,6 +6,34 @@ import { parseAttributes } from "~/component/display/markdownAttributes.js";
 import { TABLE_EXTENSION } from "~/component/display/markdownTableExtension.js";
 
 /**
+ * `![alt](src){width=… height=…}` — replaces `marked`'s built-in image
+ * tokenizer entirely, so every image (sized or not) arrives as one `mdimage`
+ * token the viewer's own scheme allow-list validates before rendering.
+ */
+const IMAGE_EXTENSION: TokenizerExtension = {
+    name:  "mdimage",
+    level: "inline",
+    start(src) {
+        return src.indexOf("![");
+    },
+    tokenizer(src) {
+        const match = /^!\[([^[\]]*)\]\(([^()\s]+)\)(?:\{([^{}]*)\})?/.exec(src);
+
+        if (match === null) {
+            return undefined;
+        }
+
+        return {
+            type:       "mdimage",
+            raw:        match[0],
+            alt:        match[1],
+            src:        match[2],
+            attributes: parseAttributes(match[3] ?? ""),
+        };
+    },
+};
+
+/**
  * `++text++` — an inline-format-style extension so nested emphasis
  * (`**++b++**`) works with no special-casing: the tokenizer recurses into its
  * inner text through `this.lexer.inlineTokens`, exactly as `marked`'s
@@ -144,7 +172,9 @@ const BLOCK_EXTENSION: TokenizerExtension = {
  * bundle.
  */
 const _marked = new Marked({
-    extensions: [UNDERLINE_EXTENSION, STYLED_SPAN_EXTENSION, TABLE_EXTENSION, BLOCK_EXTENSION],
+    extensions: [
+        UNDERLINE_EXTENSION, STYLED_SPAN_EXTENSION, TABLE_EXTENSION, BLOCK_EXTENSION, IMAGE_EXTENSION,
+    ],
 });
 
 /**

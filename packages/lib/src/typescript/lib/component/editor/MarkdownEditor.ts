@@ -48,6 +48,8 @@ import { TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { EDITOR_NODES } from "~/component/editor/editorNodes.js";
 import { EDITOR_THEME, ensureMarkdownEditorClassRules } from "~/component/editor/editorTheme.js";
 import { MarkdownBlockNode, $createMarkdownBlockNode, $isMarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
+import { $createMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
+import { resolveImageSpec } from "~/component/display/markdownAttributes.js";
 
 /**
  * The coalescing window (ms) for the undo/redo history: edits within this gap
@@ -770,8 +772,9 @@ class WysiwygSurface extends Component {
  * [`Markdown`](/api/component/display/classes/Markdown) viewer. Its dialect is
  * deliberately the **exact subset** the viewer renders (headings, paragraphs,
  * bold, italic, strikethrough, underline, inline code, coloured/sized/font-styled
- * spans, ordered/unordered lists, blockquotes, fenced code, links, and GFM pipe
- * tables with per-column alignment); a curated transformer
+ * spans, ordered/unordered lists, blockquotes, fenced code, links, GFM pipe
+ * tables with per-column alignment/widths/merged cells, `:::` alignment /
+ * multi-column fences, and sized images); a curated transformer
  * list — not Lexical's full preset — guarantees the editor can never emit
  * Markdown the viewer would drop to plain text, so an edited document renders
  * identically in the viewer.
@@ -787,7 +790,9 @@ class WysiwygSurface extends Component {
  * `setBlockType`, `toggleUnorderedList`, `toggleLink`, `removeLink`, `insertTable`,
  * `insertParagraphBeforeBlock`/`insertParagraphAfterBlock`,
  * `insertTableRow`/`deleteTableRow`, `insertTableColumn`/`deleteTableColumn`,
- * `deleteTable`, `cut`/`copy`/`paste`, …) a consumer can wire to their own `Button`s, and a
+ * `deleteTable`, `mergeTableCells`, `unmergeTableCell`, `setTableColumnWidth`,
+ * `setBlockAlignment`, `setColumnCount`, `insertImage`,
+ * `cut`/`copy`/`paste`, …) a consumer can wire to their own `Button`s, and a
  * self-wired right-click context menu on the WYSIWYG surface whose contents
  * depend on what was clicked (a word/selection, an empty line, or a table
  * cell) — the only one of the four that needs no consumer wiring at all.
@@ -1638,6 +1643,50 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Inserts a sized, validated image at the caret. No-op when `src` fails
+     * the scheme allow-list — never inserts a broken or unsafe image.
+     *
+     * @param src - The image source (a relative path, `http:`/`https:` URL,
+     *   or an allow-listed `data:image/…` base64 URI).
+     * @param options - Optional `alt` text and explicit pixel `width`/`height`.
+     * @returns This component, for method chaining.
+     */
+    insertImage(src: string, options?: { alt?: string; width?: number; height?: number }): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            const attributes: Record<string, string> = {};
+
+            if (options?.width !== undefined) {
+                attributes.width = String(options.width);
+            }
+
+            if (options?.height !== undefined) {
+                attributes.height = String(options.height);
+            }
+
+            const spec = resolveImageSpec(src, options?.alt ?? "", attributes);
+
+            if (spec === null) {
+                return;
+            }
+
+            let selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                $getRoot().selectEnd();
+                selection = $getSelection();
+            }
+
+            if ($isRangeSelection(selection)) {
+                selection.insertNodes([$createMarkdownImageNode(spec)]);
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
      * Inserts a row after (default) or before the row holding the caret.
      * No-op without throwing when the caret is not inside a table cell.
      *
@@ -2094,6 +2143,19 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * The context menu's Image… handler: prompts for a source URL (see
+     * {@link MarkdownEditor.promptForText}), then inserts it via
+     * {@link insertImage}. No-op when the user cancels or submits empty text.
+     */
+    private async promptAndInsertImage(): Promise<void> {
+        const src = await this.promptForText("Insert image", "", "https://example.com/image.png");
+
+        if (src !== null) {
+            this.insertImage(src);
+        }
+    }
+
+    /**
      * Dispatches a classified right-click context to the item list for its kind.
      *
      * @param context - The classified {@link ContextMenuTarget}.
@@ -2333,6 +2395,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                     ],
                 },
             },
+            { text: "Image…", action: () => void this.promptAndInsertImage() },
         ];
     }
 

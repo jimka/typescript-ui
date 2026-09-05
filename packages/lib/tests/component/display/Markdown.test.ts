@@ -887,9 +887,43 @@ describe('Markdown nested inline in a heading', () => {
 });
 
 describe('Markdown fallback for unsupported tokens', () => {
-    it('renders an image as text without creating <img>', () => {
-        expect(() => new Markdown('![alt](x.png)').getElement(true)).not.toThrow();
+    it('renders raw HTML as its literal text without creating a <table>', () => {
+        expect(() => new Markdown('<table><tr><td>raw</td></tr></table>').getElement(true)).not.toThrow();
+        expect(createdTags()).not.toContain('table');
+        expect(textWrites().some((t) => t.includes('<table>'))).toBe(true);
+    });
+});
+
+describe('Markdown images', () => {
+    it('creates an <img> with src and alt for ![Diagram](/img/d.png)', () => {
+        new Markdown('![Diagram](/img/d.png)').getElement(true);
+
+        expect(createdTags()).toContain('img');
+        expect(attrWrites()).toContainEqual({ src: '/img/d.png', alt: 'Diagram' });
+    });
+
+    it('additionally sets width and height for ![d](/img/d.png){width=320 height=200}', () => {
+        new Markdown('![d](/img/d.png){width=320 height=200}').getElement(true);
+
+        expect(attrWrites()).toContainEqual({ src: '/img/d.png', alt: 'd', width: '320', height: '200' });
+    });
+
+    it('creates no <img> for ![d](javascript:alert(1))', () => {
+        new Markdown('![d](javascript:alert(1))').getElement(true);
+
         expect(createdTags()).not.toContain('img');
+    });
+
+    it('creates no <img> for ![d](data:image/svg+xml;base64,PHN2)', () => {
+        new Markdown('![d](data:image/svg+xml;base64,PHN2)').getElement(true);
+
+        expect(createdTags()).not.toContain('img');
+    });
+
+    it('creates an <img> for ![d](data:image/png;base64,iVBOR)', () => {
+        new Markdown('![d](data:image/png;base64,iVBOR)').getElement(true);
+
+        expect(createdTags()).toContain('img');
     });
 });
 

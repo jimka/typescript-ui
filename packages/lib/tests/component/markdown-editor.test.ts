@@ -14,6 +14,7 @@ import {
 } from '@lexical/markdown';
 import { UNDERLINE, STYLED_TEXT } from '~/component/editor/markdownStyleTransformers';
 import { MarkdownBlockNode } from '~/component/editor/markdownBlockNode';
+import { MarkdownImageNode } from '~/component/editor/markdownImageNode';
 import { TableNode, TableRowNode, TableCellNode, $createTableSelectionFrom, $isTableCellNode } from '@lexical/table';
 import {
     $getRoot, $getSelection, $isRangeSelection, $isParagraphNode, $isTextNode, $selectAll, $setSelection,
@@ -68,6 +69,7 @@ const CORPUS: Record<string, string> = {
     'styled text font/size': 'A [big]{font=Georgia size=1.2em} word.',
     'block alignment':       '::: {align=center}\ntext\n:::',
     'block columns':         '::: {columns=2 gap=2em}\ntext\n:::',
+    'sized image':           '![d](/img/d.png){width=320}',
 };
 
 // The exact token types the read-only `Markdown` viewer renders; anything else
@@ -157,8 +159,8 @@ function caretIsInAParagraph(editor: MarkdownEditor): boolean {
 }
 
 describe('markdownTransformers curation', () => {
-    it('contains exactly the fourteen dialect transformers', () => {
-        expect(TRANSFORMERS).toHaveLength(14);
+    it('contains exactly the fifteen dialect transformers', () => {
+        expect(TRANSFORMERS).toHaveLength(15);
         expect(TRANSFORMERS).toEqual(expect.arrayContaining([
             HEADING, QUOTE, CODE, UNORDERED_LIST, ORDERED_LIST,
             BOLD_STAR, ITALIC_STAR, INLINE_CODE, STRIKETHROUGH, LINK,
@@ -181,6 +183,10 @@ describe('editorNodes table registration', () => {
 
     it('EDITOR_NODES contains MarkdownBlockNode', () => {
         expect(EDITOR_NODES).toContain(MarkdownBlockNode);
+    });
+
+    it('EDITOR_NODES contains MarkdownImageNode', () => {
+        expect(EDITOR_NODES).toContain(MarkdownImageNode);
     });
 });
 
@@ -1404,6 +1410,31 @@ describe('MarkdownEditor block alignment / columns', () => {
     });
 });
 
+describe('MarkdownEditor insertImage', () => {
+    it('insertImage(\'/img/d.png\', { alt: \'d\', width: 320 }) on an empty editor yields exactly that Markdown', () => {
+        const editor = new MarkdownEditor();
+
+        editor.insertImage('/img/d.png', { alt: 'd', width: 320 });
+
+        expect(normalize(editor.getValue())).toBe('![d](/img/d.png){width=320}');
+    });
+
+    it('insertImage(\'javascript:alert(1)\') leaves the value unchanged', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello');
+
+        editor.insertImage('javascript:alert(1)');
+
+        expect(normalize(editor.getValue())).toBe('hello');
+    });
+
+    it('does not throw on a fresh editor with no selection', () => {
+        const editor = new MarkdownEditor();
+
+        expect(() => editor.insertImage('/img/d.png')).not.toThrow();
+    });
+});
+
 describe('$classifyContextMenuTarget', () => {
     it('classifies a text node inside ordinary prose as "text" with every format false', () => {
         const editor = new MarkdownEditor();
@@ -2222,14 +2253,14 @@ describe('MarkdownEditor context menu', () => {
         expect(submenuItemsOf(findItem(items, 'Heading'))).toHaveLength(6);
     });
 
-    it('an "empty-line" context builds 9 entries: Cut/Copy/Paste, then Heading, Quote, Code block, and Table', () => {
+    it('an "empty-line" context builds 11 entries: Cut/Copy/Paste, then Heading, Quote, Code block, Table, Columns, and Image', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true });
 
-        expect(items).toHaveLength(10);
+        expect(items).toHaveLength(11);
         expect(items.map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
-            'Heading', 'Quote', 'Code block', '(separator)', 'Table', 'Columns',
+            'Heading', 'Quote', 'Code block', '(separator)', 'Table', 'Columns', 'Image…',
         ]);
     });
 

@@ -34,6 +34,8 @@ A **WYSIWYG** editor whose value is a *Markdown* string, built on Lexical.
 A centred paragraph inside a fence.
 :::
 
+![Diagram](https://placehold.co/240x120){width=240 height=120}
+
 \`\`\`
 const editor = new MarkdownEditor("# Hello");
 \`\`\`
@@ -49,9 +51,9 @@ const editor = new MarkdownEditor("# Hello");
  * source editor via `setMode`; the viewer stays in sync in both modes. Four more
  * toolbar buttons expose the row/column command API (`insertTableRow` /
  * `deleteTableRow` / `insertTableColumn` / `deleteTableColumn`), all no-ops
- * (never throws) with the caret outside a table cell, and five more expose
+ * (never throws) with the caret outside a table cell, and six more expose
  * `toggleUnderline` / `setTextColor` / `mergeTableCells` / `setBlockAlignment`
- * / `setColumnCount`. The editor fills its
+ * / `setColumnCount` / `insertImage`. The editor fills its
  * `Fit` host and scrolls internally; the viewer sits in a vertically
  * scrolling panel. A status row below the editor reports the editor's own dirty
  * flag and the panel's own, the panel's arriving through the framework's
@@ -111,6 +113,9 @@ class MarkdownEditorPanel extends Panel {
         const columnsButton = new Button('Columns');
         columnsButton.on('action', this.handleColumns);
 
+        const insertImageButton = new Button('Insert image');
+        insertImageButton.on('action', this.handleInsertImage);
+
         // Writes nothing — only clears the dirty flag, standing in for a
         // host that has persisted the document.
         const saveBtn = new Button('Save');
@@ -128,6 +133,7 @@ class MarkdownEditorPanel extends Panel {
         toolbar.addComponent(mergeCellsButton);
         toolbar.addComponent(alignCentreButton);
         toolbar.addComponent(columnsButton);
+        toolbar.addComponent(insertImageButton);
         toolbar.addComponent(saveBtn);
 
         const editorFit = new Panel({ layoutManager: new Fit() });
@@ -198,6 +204,10 @@ class MarkdownEditorPanel extends Panel {
 
     private readonly handleColumns = (): void => {
         this._editor.setColumnCount(2);
+    };
+
+    private readonly handleInsertImage = (): void => {
+        this._editor.insertImage('https://placehold.co/240x120', { alt: 'Placeholder', width: 240, height: 120 });
     };
 
     private readonly handleDirtyChange = (): void => {
