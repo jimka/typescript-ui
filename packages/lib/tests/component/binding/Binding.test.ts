@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Binding } from '~/core/Binding';
+import { Component } from '~/core/Component';
 import { Model } from '~/data/Model';
 import { ModelRecord } from '~/data/ModelRecord';
 import type { BindingAccessors } from '~/core/Bindable';
@@ -79,6 +80,32 @@ describe('Binding', () => {
     it('clearValidation() does not throw', () => {
         const binding = new Binding();
         expect(() => binding.clearValidation()).not.toThrow();
+    });
+    // Regression: the FieldDecorator that addValidation builds on first failure
+    // used to always land at the end of the field's parent (Component.addComponent
+    // is append-only), visibly relocating the field. It must take the field's
+    // original slot instead — see Component.replaceComponent.
+    it('addValidation keeps a failed field in its original position among its siblings', () => {
+        const parent = new Component({});
+        const before = new Component({});
+        const field  = new TextField();
+        const after  = new Component({});
+        parent.addComponent(before);
+        parent.addComponent(field);
+        parent.addComponent(after);
+
+        const binding = new Binding()
+            .bind('name', field)
+            .addValidation('name', field, { type: 'required', message: 'Name is required.' });
+        binding.setRecord(new ModelRecord(MODEL, { name: 'Alice' }));
+
+        field.setText('');
+        expect(binding.validate()).toBe(false);
+
+        expect(parent.getComponents().length).toBe(3);
+        expect(parent.getComponents()[0]).toBe(before);
+        expect(parent.getComponents()[2]).toBe(after);
+        expect(parent.getComponents()[1].getComponents()).toEqual([field]);
     });
 });
 

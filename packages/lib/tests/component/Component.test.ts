@@ -325,6 +325,53 @@ describe('Component child lifecycle — wiring & teardown', () => {
         expect(parent.removeComponent(child)).toBe(constraints);
         expect(parent.getLayoutConstraints(child)).toBeUndefined();
     });
+    it('replaceComponent swaps in a new child at the same index and returns this', () => {
+        const parent      = new Component({});
+        const a           = new Component({});
+        const target      = new Component({});
+        const b           = new Component({});
+        const replacement = new Component({});
+        parent.addComponent(a);
+        parent.addComponent(target);
+        parent.addComponent(b);
+
+        expect(parent.replaceComponent(target, replacement)).toBe(parent);
+
+        expect(parent.getComponents()).toEqual([a, replacement, b]);
+        expect(target.getParentComponent()).toBeNull();
+        expect(replacement.getParentComponent()).toBe(parent);
+    });
+    it('replaceComponent carries the replaced child\'s constraints by default', () => {
+        const parent      = new Component({});
+        const target      = new Component({});
+        const replacement = new Component({});
+        const constraints = new LayoutConstraints();
+        parent.addComponent(target, constraints);
+
+        parent.replaceComponent(target, replacement);
+
+        expect(parent.getLayoutConstraints(replacement)).toBe(constraints);
+        expect(parent.getLayoutConstraints(target)).toBeUndefined();
+    });
+    it('replaceComponent accepts an explicit constraints override', () => {
+        const parent      = new Component({});
+        const target      = new Component({});
+        const replacement = new Component({});
+        const carried     = new LayoutConstraints();
+        const override    = new LayoutConstraints();
+        parent.addComponent(target, carried);
+
+        parent.replaceComponent(target, replacement, override);
+
+        expect(parent.getLayoutConstraints(replacement)).toBe(override);
+    });
+    it('replaceComponent throws when the old component is not a child of this container', () => {
+        const parent      = new Component({});
+        const notAChild   = new Component({});
+        const replacement = new Component({});
+
+        expect(() => parent.replaceComponent(notAChild, replacement)).toThrow('not a child of this container');
+    });
     it('does not re-enter the ex-parent when a removed child changes its constraints', () => {
         const parent = new Component({});
         const child  = new Component({});
