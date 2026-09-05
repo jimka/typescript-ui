@@ -64,7 +64,7 @@ There is no built-in toolbar in v1. Formatting is invoked four ways, all provide
 - **Markdown-shortcut typing** — `# ` → heading, `**b**` → bold, `- ` → bullet, `1. ` → numbered, `> ` → quote, ` ``` ` → code block, auto-applied as you type.
 - **Keyboard shortcuts** — `Ctrl/Cmd+B` (bold), `Ctrl/Cmd+I` (italic), `Ctrl/Cmd+Z` / `+Y` (undo/redo).
 - **Command API** — thin imperative methods you can wire to your own [`Button`](/components/Button)s to build a toolbar.
-- **Right-click context menu** — a self-wired menu on the WYSIWYG surface whose contents depend on what was clicked: a word or selection gets inline-format and block-style commands, an empty line gets block-insert commands, and a table cell gets row/column/table commands. No consumer wiring needed — right-clicking the surface shows it directly.
+- **Right-click context menu** — a self-wired menu on the WYSIWYG surface whose contents depend on what was clicked: a word or selection gets inline-format and block-style commands; an empty line gets block-insert commands; a table cell gets the same inline-format commands (no block style — a cell holds inline text only) plus Insert/Delete submenus for its row, column, and the whole table. A collapsed right-click inside a word first expands the selection to that whole word, so a format toggle applies to it. No consumer wiring needed — right-clicking the surface shows it directly.
 
 ### Command API
 
