@@ -8,14 +8,12 @@ import { callable } from "~/core/Callable.js";
 /**
  * A thin wrapper component that provides error visualisation for a field component.
  *
- * On construction the decorator removes the field from its current parent and inserts
- * itself in the parent, then re-adds the field as its own child. This means the error
+ * On construction the decorator replaces the field in its current parent — via
+ * {@link Component.replaceComponent}, so it takes the field's original index and
+ * layout constraints — then re-adds the field as its own child. This means the error
  * border is applied to the decorator — never to the field itself — so the field's own
- * border is left untouched and removing the validation state is a clean one-step reset.
- *
- * @remarks Due to the framework's append-only `addComponent` API the decorator is
- * placed at the end of the parent's children rather than in the field's original slot.
- * A future `addComponentAt(index, component)` enhancement could address this.
+ * border is left untouched, removing the validation state is a clean one-step reset,
+ * and the field's position among its siblings is preserved.
  *
  * @category Validation
  */
@@ -54,8 +52,7 @@ class FieldDecorator extends Component {
             this.setPreferredSize({ width: field.getWidth(), height: field.getHeight() });
         }
 
-        parent.removeComponent(field);
-        parent.addComponent(this);
+        parent.replaceComponent(field, this);
         this.addComponent(field);
     }
 

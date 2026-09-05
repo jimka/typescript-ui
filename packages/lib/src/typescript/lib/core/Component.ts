@@ -6660,6 +6660,38 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Replaces `oldComponent` with `newComponent` at the same index, in a single call.
+     *
+     * Expressed entirely through the existing {@link removeComponent} / {@link insertComponent}
+     * mutators, mirroring {@link moveComponent}'s composition — so subclass overrides of those
+     * methods are honoured. Use this to insert a wrapper around an existing child (or otherwise
+     * swap one component for another) without the replacement landing at the end of the parent's
+     * children, which a manual `removeComponent` + `addComponent` pair would do.
+     *
+     * @param oldComponent - The child to remove; must currently be a child of this container.
+     * @param newComponent - The component to insert in its place.
+     * @param constraints - Optional. Layout constraints for `newComponent`. When omitted,
+     *   `oldComponent`'s constraints are carried across.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @throws Error - If `oldComponent` is not currently a child of this container.
+     */
+    replaceComponent(oldComponent: Component, newComponent: Component, constraints?: LayoutConstraints): this {
+        const index = this._components.indexOf(oldComponent);
+
+        if (index === -1) {
+            throw new Error(`Component.replaceComponent: ${oldComponent.getId()} is not a child of this container.`);
+        }
+
+        const carried = this.removeComponent(oldComponent);
+
+        this.insertComponent(newComponent, index, constraints ?? carried);
+
+        return this;
+    }
+
+    /**
      * Removes a child component, detaches its element, and triggers layout.
      *
      * @param component - The Component instance to remove.
