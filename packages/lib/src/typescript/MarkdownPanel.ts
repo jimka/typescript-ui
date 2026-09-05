@@ -12,7 +12,8 @@ DOM sink — *no* \`innerHTML\` anywhere.
 ## Features
 
 - Headings \`#\` … \`######\`
-- **Bold**, *italic*, and \`inline code\`
+- **Bold**, *italic*, ++underlined++, and \`inline code\`
+- [Coloured]{color=#cc0000}, [sized]{size=1.3em}, and [font-styled]{font=Georgia} spans
 - Ordered and unordered lists
 - [Links](https://example.com) open in a new tab
 

@@ -41,7 +41,7 @@ import {
     INSERT_TABLE_COMMAND,
 } from "@lexical/table";
 import { mergeRegister, $getNearestNodeOfType } from "@lexical/utils";
-import { $setBlocksType } from "@lexical/selection";
+import { $setBlocksType, $patchStyleText } from "@lexical/selection";
 import { TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { EDITOR_NODES } from "~/component/editor/editorNodes.js";
 import { EDITOR_THEME, ensureMarkdownEditorClassRules } from "~/component/editor/editorTheme.js";
@@ -332,7 +332,7 @@ export type ContextMenuTarget =
     | {
           kind: "table-cell";
           hasSelectedText: boolean;
-          bold: boolean; italic: boolean; strikethrough: boolean; code: boolean;
+          bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean;
           hasEnclosingBlock?: boolean;
           linkUrl?: string | null;
       }
@@ -340,7 +340,7 @@ export type ContextMenuTarget =
     | {
           kind: "text";
           hasSelectedText: boolean;
-          bold: boolean; italic: boolean; strikethrough: boolean; code: boolean;
+          bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean;
           hasEnclosingBlock?: boolean;
           linkUrl?: string | null;
       };
@@ -485,6 +485,7 @@ export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget
     const formatState = {
         bold: hasFormat("bold"), italic: hasFormat("italic"),
         strikethrough: hasFormat("strikethrough"), code: hasFormat("code"),
+        underline: hasFormat("underline"),
     };
     const hasSelectedText = expansion !== null
         || ($isRangeSelection(selection) && selection.getTextContent() !== "");
@@ -695,8 +696,9 @@ class WysiwygSurface extends Component {
  * the editing counterpart to the read-only
  * [`Markdown`](/api/component/display/classes/Markdown) viewer. Its dialect is
  * deliberately the **exact subset** the viewer renders (headings, paragraphs,
- * bold, italic, strikethrough, inline code, ordered/unordered lists, blockquotes,
- * fenced code, links, and GFM pipe tables with per-column alignment); a curated transformer
+ * bold, italic, strikethrough, underline, inline code, coloured/sized/font-styled
+ * spans, ordered/unordered lists, blockquotes, fenced code, links, and GFM pipe
+ * tables with per-column alignment); a curated transformer
  * list — not Lexical's full preset — guarantees the editor can never emit
  * Markdown the viewer would drop to plain text, so an edited document renders
  * identically in the viewer.
@@ -707,7 +709,8 @@ class WysiwygSurface extends Component {
  * and Alt+Enter — with the caret in a table cell or a fenced code block —
  * to insert a paragraph after it, since a table's grid and a code block's
  * preformatted text otherwise give a click nowhere to land), a thin
- * imperative command API (`toggleBold`, `toggleStrikethrough`, `clearFormatting`,
+ * imperative command API (`toggleBold`, `toggleStrikethrough`, `toggleUnderline`,
+ * `setTextColor`, `setFontFamily`, `setFontSize`, `clearFormatting`,
  * `setBlockType`, `toggleUnorderedList`, `toggleLink`, `removeLink`, `insertTable`,
  * `insertParagraphBeforeBlock`/`insertParagraphAfterBlock`,
  * `insertTableRow`/`deleteTableRow`, `insertTableColumn`/`deleteTableColumn`,
@@ -1081,6 +1084,93 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough");
 
         return this;
+    }
+
+    /**
+     * Toggles underline on the current selection, first expanding a collapsed
+     * caret to its enclosing word. No-op without a range selection.
+     *
+     * @returns This component, for method chaining.
+     */
+    toggleUnderline(): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline");
+
+        return this;
+    }
+
+    /**
+     * Shared body of {@link setTextColor}, {@link setFontFamily}, and
+     * {@link setFontSize}: expands a collapsed caret to its enclosing word,
+     * then patches the resulting selection's inline CSS style. No-op without a
+     * range selection, or when the selection sits inside a link (see
+     * *Colour, font, and size are refused inside a link* in the plan's
+     * Architecture Decisions) — a styled span can never nest inside `[text](url)`.
+     *
+     * @param patch - Kebab-case CSS property names mapped to their new value,
+     *   or `null` to remove that property.
+     * @returns This component, for method chaining.
+     */
+    private patchSelectionStyle(patch: Record<string, string | null>): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection) || $findEnclosingLinkNode(selection.anchor.getNode()) !== null) {
+                return;
+            }
+
+            $selectEnclosingWordIfCollapsed();
+
+            // Re-read: the expansion above replaces the selection object.
+            const expanded = $getSelection();
+
+            if ($isRangeSelection(expanded)) {
+                $patchStyleText(expanded, patch);
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Sets (or clears, with `null`) the current selection's text colour. A
+     * collapsed caret first expands to its enclosing word. No-op without a
+     * range selection, or when the selection sits inside a link.
+     *
+     * @param color - A CSS colour value, or `null` to clear the override.
+     * @returns This component, for method chaining.
+     */
+    setTextColor(color: string | null): this {
+        return this.patchSelectionStyle({ color });
+    }
+
+    /**
+     * Sets (or clears, with `null`) the current selection's font family. A
+     * collapsed caret first expands to its enclosing word. No-op without a
+     * range selection, or when the selection sits inside a link.
+     *
+     * @param family - A CSS `font-family` value, or `null` to clear the override.
+     * @returns This component, for method chaining.
+     */
+    setFontFamily(family: string | null): this {
+        return this.patchSelectionStyle({ "font-family": family });
+    }
+
+    /**
+     * Sets (or clears, with `null`) the current selection's font size. A
+     * collapsed caret first expands to its enclosing word. No-op without a
+     * range selection, or when the selection sits inside a link.
+     *
+     * @param size - A CSS font-size value (e.g. `"1.2em"`), or `null` to clear
+     *   the override.
+     * @returns This component, for method chaining.
+     */
+    setFontSize(size: string | null): this {
+        return this.patchSelectionStyle({ "font-size": size });
     }
 
     /**
@@ -1740,7 +1830,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Builds the four inline-format toggle items shared by the text and
+     * Builds the five inline-format toggle items shared by the text and
      * table-cell context menus: real {@link CheckboxMenuRow} rows, so the
      * check renders as an actual checkbox rather than a text checkmark and
      * activating one leaves the menu open (matching the `MenuBar` demo's
@@ -1748,10 +1838,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * toggled in one right-click.
      *
      * @param format - The current selection's inline-format state.
-     * @returns The four `MenuItemConfig` entries: Bold, Italic, Strikethrough, Inline code.
+     * @returns The five `MenuItemConfig` entries: Bold, Italic, Strikethrough, Inline code, Underline.
      */
     private buildFormatToggleItems(
-        format: { bold: boolean; italic: boolean; strikethrough: boolean; code: boolean },
+        format: { bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean },
     ): MenuItemConfig[] {
         const toggleRow = (text: string, checked: boolean, toggle: () => void): MenuItemConfig => ({
             row: () => {
@@ -1768,7 +1858,63 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             toggleRow("Italic", format.italic, () => this.toggleItalic()),
             toggleRow("Strikethrough", format.strikethrough, () => this.toggleStrikethrough()),
             toggleRow("Inline code", format.code, () => this.toggleInlineCode()),
+            toggleRow("Underline", format.underline, () => this.toggleUnderline()),
         ];
+    }
+
+    /**
+     * Builds the "Text style" submenu shared by the text and table-cell
+     * context menus: three sub-submenus (Colour, Font, Size), each a fixed
+     * preset list plus a "Default" item that clears the override by calling
+     * the setter with `null`.
+     *
+     * @returns The `MenuItemConfig` for the "Text style" submenu.
+     */
+    private buildTextStyleMenuItem(): MenuItemConfig {
+        const presetItem = (text: string, action: () => void): MenuItemConfig => ({ text, action });
+
+        return {
+            text: "Text style",
+            submenu: {
+                label: "Text style",
+                items: [
+                    {
+                        text: "Colour",
+                        submenu: {
+                            label: "Colour",
+                            items: [
+                                presetItem("Red", () => this.setTextColor("#cc0000")),
+                                presetItem("Green", () => this.setTextColor("#008000")),
+                                presetItem("Blue", () => this.setTextColor("#2563eb")),
+                                presetItem("Default", () => this.setTextColor(null)),
+                            ],
+                        },
+                    },
+                    {
+                        text: "Font",
+                        submenu: {
+                            label: "Font",
+                            items: [
+                                presetItem("Serif", () => this.setFontFamily("Georgia, serif")),
+                                presetItem("Monospace", () => this.setFontFamily("monospace")),
+                                presetItem("Default", () => this.setFontFamily(null)),
+                            ],
+                        },
+                    },
+                    {
+                        text: "Size",
+                        submenu: {
+                            label: "Size",
+                            items: [
+                                presetItem("Small", () => this.setFontSize("0.8em")),
+                                presetItem("Large", () => this.setFontSize("1.2em")),
+                                presetItem("Default", () => this.setFontSize(null)),
+                            ],
+                        },
+                    },
+                ],
+            },
+        };
     }
 
     /**
@@ -1848,6 +1994,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 },
             },
             { separator: true },
+            this.buildTextStyleMenuItem(),
+            { separator: true },
             { text: "Clear formatting", action: () => this.clearFormatting() },
         ];
 
@@ -1904,6 +2052,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             ...this.buildFormatToggleItems(context),
             { separator: true },
             ...this.buildLinkMenuItems(context),
+            { separator: true },
+            this.buildTextStyleMenuItem(),
             { separator: true },
             { text: "Clear formatting", action: () => this.clearFormatting() },
             { separator: true },

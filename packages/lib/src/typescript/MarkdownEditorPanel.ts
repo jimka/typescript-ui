@@ -15,9 +15,10 @@ A **WYSIWYG** editor whose value is a *Markdown* string, built on Lexical.
 
 ## Try it
 
-- Type \`**bold**\`, \`*italic*\`, or \`\` \`code\` \`\`
+- Type \`**bold**\`, \`*italic*\`, \`++underline++\`, or \`\` \`code\` \`\`
 - Start a line with \`# \` for a heading, \`- \` for a bullet, \`> \` for a quote
 - Use Ctrl/Cmd+B and Ctrl/Cmd+I
+- Right-click a word for [coloured]{color=#cc0000} or [sized]{size=1.3em} text
 
 1. It emits only the [Markdown](https://commonmark.org) subset the viewer renders
 2. The panel on the right renders \`getValue()\` live
@@ -43,7 +44,8 @@ const editor = new MarkdownEditor("# Hello");
  * source editor via `setMode`; the viewer stays in sync in both modes. Four more
  * toolbar buttons expose the row/column command API (`insertTableRow` /
  * `deleteTableRow` / `insertTableColumn` / `deleteTableColumn`), all no-ops
- * (never throws) with the caret outside a table cell. The editor fills its
+ * (never throws) with the caret outside a table cell, and two more expose
+ * `toggleUnderline` / `setTextColor`. The editor fills its
  * `Fit` host and scrolls internally; the viewer sits in a vertically
  * scrolling panel. A status row below the editor reports the editor's own dirty
  * flag and the panel's own, the panel's arriving through the framework's
@@ -88,6 +90,12 @@ class MarkdownEditorPanel extends Panel {
         const deleteColumnButton = new Button('− Column');
         deleteColumnButton.on('action', this.handleDeleteColumn);
 
+        const underlineButton = new Button('Underline');
+        underlineButton.on('action', this.handleUnderline);
+
+        const colourButton = new Button('Colour');
+        colourButton.on('action', this.handleColour);
+
         // Writes nothing — only clears the dirty flag, standing in for a
         // host that has persisted the document.
         const saveBtn = new Button('Save');
@@ -100,6 +108,8 @@ class MarkdownEditorPanel extends Panel {
         toolbar.addComponent(deleteRowButton);
         toolbar.addComponent(insertColumnButton);
         toolbar.addComponent(deleteColumnButton);
+        toolbar.addComponent(underlineButton);
+        toolbar.addComponent(colourButton);
         toolbar.addComponent(saveBtn);
 
         const editorFit = new Panel({ layoutManager: new Fit() });
@@ -150,6 +160,14 @@ class MarkdownEditorPanel extends Panel {
 
     private readonly handleDeleteColumn = (): void => {
         this._editor.deleteTableColumn();
+    };
+
+    private readonly handleUnderline = (): void => {
+        this._editor.toggleUnderline();
+    };
+
+    private readonly handleColour = (): void => {
+        this._editor.setTextColor('#cc0000');
     };
 
     private readonly handleDirtyChange = (): void => {

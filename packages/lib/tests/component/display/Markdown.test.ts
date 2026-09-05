@@ -64,6 +64,29 @@ function classWrites(): string[][] {
         .map((w) => (w.args[1] as { addClass: string[] }).addClass);
 }
 
+/** Folds every `apply` patch's `style` payload for `handle` into the style state it produces (a `null` value removes the key, matching the seam's own semantics). */
+function styleWrites(handle: Handle): Record<string, string> {
+    const style: Record<string, string> = {};
+
+    for (const w of sink.writes) {
+        if (w.op !== 'apply' || w.args[0] !== handle) continue;
+
+        const patch = w.args[1] as { style?: Record<string, string | null> };
+
+        for (const key of Object.keys(patch.style ?? {})) {
+            const value = patch.style![key];
+
+            if (value === null) {
+                delete style[key];
+            } else {
+                style[key] = value;
+            }
+        }
+    }
+
+    return style;
+}
+
 /** The most recently `setRuleStyles`-written value for `prop`, or `undefined` if never written. */
 function lastRuleStyle(prop: string): string | null | undefined {
     const writes = sink.writes.filter((w) => w.op === 'setRuleStyles') as
@@ -287,6 +310,71 @@ describe('Markdown strikethrough', () => {
         expect(createdTags()).toContain('del');
         expect(childTagsOf('p')).toContain('DEL');
         expect(textWrites()).toContain('s');
+    });
+});
+
+describe('Markdown underline', () => {
+    it('builds <u> for ++word++ with the text inside it', () => {
+        new Markdown('A ++word++ here').getElement(true);
+
+        expect(createdTags()).toContain('u');
+        expect(childTagsOf('p')).toContain('U');
+        expect(textWrites()).toContain('word');
+    });
+
+    it('nests <u> inside <strong> for **++b++**', () => {
+        new Markdown('**++b++**').getElement(true);
+
+        expect(childTagsOf('strong')).toContain('U');
+        expect(textWrites()).toContain('b');
+    });
+});
+
+describe('Markdown styled spans', () => {
+    /** The lone `<span>` a single-token `[x]{…}` document's paragraph builds. */
+    function styledSpanHandle(md: Markdown): Handle {
+        const handles = (md as unknown as { _contentHandles: Handle[] })._contentHandles;
+
+        return handles.find((h) => DOM.source.getTagName(h) === 'SPAN')!;
+    }
+
+    it('creates a <span> whose applied style is { color: "#cc0000" } for [x]{color=#cc0000}', () => {
+        const md = new Markdown('[x]{color=#cc0000}');
+        md.getElement(true);
+
+        expect(styleWrites(styledSpanHandle(md))).toEqual({ color: '#cc0000' });
+        expect(textWrites()).toContain('x');
+    });
+
+    it('applies all three properties on one span for [x]{color=#cc0000 size=1.2em font=Georgia}', () => {
+        const md = new Markdown('[x]{color=#cc0000 size=1.2em font=Georgia}');
+        md.getElement(true);
+
+        expect(styleWrites(styledSpanHandle(md))).toEqual({
+            color: '#cc0000', fontSize: '1.2em', fontFamily: 'Georgia',
+        });
+    });
+
+    it('applies no style properties for [x]{color=red; background: url(y)}, and the text still renders', () => {
+        const md = new Markdown('[x]{color=red; background: url(y)}');
+        md.getElement(true);
+
+        expect(styleWrites(styledSpanHandle(md))).toEqual({});
+        expect(textWrites()).toContain('x');
+    });
+
+    it('applies no style properties for [x]{size=12} (no unit)', () => {
+        const md = new Markdown('[x]{size=12}');
+        md.getElement(true);
+
+        expect(styleWrites(styledSpanHandle(md))).toEqual({});
+    });
+
+    it('applies no style properties for [x]{bogus=1}', () => {
+        const md = new Markdown('[x]{bogus=1}');
+        md.getElement(true);
+
+        expect(styleWrites(styledSpanHandle(md))).toEqual({});
     });
 });
 

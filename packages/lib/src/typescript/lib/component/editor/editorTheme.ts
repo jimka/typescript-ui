@@ -17,6 +17,9 @@ const LINK_CLASS        = "ts-ui-mde-link";
 const BOLD_CLASS        = "ts-ui-mde-bold";
 const ITALIC_CLASS      = "ts-ui-mde-italic";
 const STRIKETHROUGH_CLASS = "ts-ui-mde-strikethrough";
+const UNDERLINE_CLASS = "ts-ui-mde-underline";
+/** Lexical uses this class *instead of* both `.ts-ui-mde-underline` and `.ts-ui-mde-strikethrough` when a run carries both formats. */
+const UNDERLINE_STRIKETHROUGH_CLASS = "ts-ui-mde-underline-strikethrough";
 const TABLE_CLASS               = "ts-ui-mde-table";
 const TABLE_CELL_CLASS          = "ts-ui-mde-table-cell";
 const TABLE_CELL_HEADER_CLASS   = "ts-ui-mde-table-cell-header";
@@ -141,6 +144,18 @@ export function ensureMarkdownEditorClassRules(): void {
 
     new StyleRule({
         scope:  "class",
+        name:   UNDERLINE_CLASS,
+        styles: { textDecoration: "underline" },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   UNDERLINE_STRIKETHROUGH_CLASS,
+        styles: { textDecoration: "underline line-through" },
+    });
+
+    new StyleRule({
+        scope:  "class",
         name:   TABLE_CLASS,
         styles: { borderCollapse: "collapse" },
     });
@@ -213,10 +228,12 @@ export const EDITOR_THEME: EditorThemeClasses = {
         ol: LIST_CLASS,
     },
     text: {
-        bold:          BOLD_CLASS,
-        italic:        ITALIC_CLASS,
-        strikethrough: STRIKETHROUGH_CLASS,
-        code:          INLINE_CODE_CLASS,
+        bold:                   BOLD_CLASS,
+        italic:                 ITALIC_CLASS,
+        strikethrough:          STRIKETHROUGH_CLASS,
+        code:                   INLINE_CODE_CLASS,
+        underline:              UNDERLINE_CLASS,
+        underlineStrikethrough: UNDERLINE_STRIKETHROUGH_CLASS,
     },
     link:              LINK_CLASS,
     table:             TABLE_CLASS,

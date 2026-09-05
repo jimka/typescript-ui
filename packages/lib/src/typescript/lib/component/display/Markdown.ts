@@ -10,8 +10,9 @@ import { callable } from "~/core/Callable.js";
 import { Size } from "~/primitive/Size.js";
 import { Menu } from "~/overlay/Menu.js";
 import { buildSelectionCopyMenuItems } from "~/component/shared/buildSelectionCopyMenuItems.js";
-import { lexer } from "marked";
 import type { Token, Tokens } from "marked";
+import { lexMarkdown } from "~/component/display/markdownExtensions.js";
+import { resolveSpanStyle } from "~/component/display/markdownAttributes.js";
 // Type-only: erased at compile time. `CodeEditor` itself is loaded through a
 // narrow dynamic import (see `loadCodeEditorUpgrade`) so a static top-level
 // value import here would force every `Markdown` consumer's bundler to
@@ -36,6 +37,7 @@ const TD_CLASS            = "ts-ui-md-td";
 const ALIGN_LEFT_CLASS   = "ts-ui-md-align-left";
 const ALIGN_CENTER_CLASS = "ts-ui-md-align-center";
 const ALIGN_RIGHT_CLASS  = "ts-ui-md-align-right";
+const UNDERLINE_CLASS    = "ts-ui-md-underline";
 /**
  * The literal two-character sequence (backslash, `n`) `markdownTableTransformer.ts`'s
  * `escapeCellText` writes in place of a real newline in a `MarkdownEditor`
@@ -307,6 +309,12 @@ function ensureMarkdownClassRules(): void {
         name:   CODE_HOST_CLASS,
         styles: { position: "relative" },
     });
+
+    new StyleRule({
+        scope:  "class",
+        name:   UNDERLINE_CLASS,
+        styles: { textDecoration: "underline" },
+    });
 }
 
 /**
@@ -481,8 +489,9 @@ const _defaultMarkdownOptions: Partial<MarkdownOptions> = { userSelect: "text", 
  * subtree.
  *
  * @remarks
- * Parsing uses the `marked` library's lexer only (`marked.lexer(src)`): the
- * component walks the returned token AST and builds every prose element
+ * Parsing goes through a scoped `marked` instance's lexer only (see
+ * `lexMarkdown` in `markdownExtensions.ts`): the component walks the returned
+ * token AST and builds every prose element
  * (`<h1>`–`<h6>`, `<p>`, `<ul>`/`<ol>`/`<li>`, `<blockquote>`, `<pre>`/`<code>`,
  * `<strong>`, `<em>`, `<a>`, `<table>`) through the DOM sink. There is no
  * HTML-string assignment path, so untrusted Markdown can never inject markup,
@@ -832,7 +841,7 @@ class Markdown extends Component<MarkdownOptions> {
 
         this.clearContent();
         ensureMarkdownClassRules();
-        this.appendBlockTokens(element, lexer(markdown), new Map<string, number>());
+        this.appendBlockTokens(element, lexMarkdown(markdown), new Map<string, number>());
 
         // Content changed — the flowed height did too; re-measure and let a host grow.
         this.measureContentHeight();
@@ -1024,7 +1033,7 @@ class Markdown extends Component<MarkdownOptions> {
         const element = super.render();
 
         ensureMarkdownClassRules();
-        this.appendBlockTokens(element, lexer(this.getMarkdown()), new Map<string, number>());
+        this.appendBlockTokens(element, lexMarkdown(this.getMarkdown()), new Map<string, number>());
 
         return element;
     }
@@ -1806,6 +1815,30 @@ class Markdown extends Component<MarkdownOptions> {
 
             case "link": this.appendLink(parent, token as Tokens.Link, splitCellBreaks); break;
 
+            case "underline": {
+                const underline = this.create("u");
+
+                DOM.sink.apply(underline, { addClass: [UNDERLINE_CLASS] });
+                this.appendInlineTokens(underline, (token as Tokens.Generic).tokens ?? [], splitCellBreaks);
+                DOM.sink.appendChild(parent, underline);
+
+                break;
+            }
+
+            case "styledspan": {
+                const span = (token as Tokens.Generic);
+                const wrapper = this.create("span");
+                const style = resolveSpanStyle(span.attributes as Record<string, string>);
+
+                DOM.sink.apply(wrapper, {
+                    style: { color: style.color, fontFamily: style.fontFamily, fontSize: style.fontSize },
+                });
+                this.appendInlineTokens(wrapper, span.tokens ?? [], splitCellBreaks);
+                DOM.sink.appendChild(parent, wrapper);
+
+                break;
+            }
+
             default: this.appendTextNode(parent, (token as Tokens.Text).text ?? token.raw ?? ""); break;
         }
     }
@@ -1969,7 +2002,7 @@ function collectHeadings(tokens: Token[], headingIds: Map<string, number>, out: 
 export function extractMarkdownHeadings(source: string): MarkdownHeading[] {
     const headings: MarkdownHeading[] = [];
 
-    collectHeadings(lexer(source), new Map<string, number>(), headings);
+    collectHeadings(lexMarkdown(source), new Map<string, number>(), headings);
 
     return headings;
 }
