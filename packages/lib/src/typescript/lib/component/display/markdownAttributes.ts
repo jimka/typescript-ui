@@ -40,6 +40,9 @@ function isValidFontFamily(value: string): boolean {
     return FONT_FAMILY.test(value);
 }
 
+/** A positive integer, the accepted column-width pixel dimension. */
+const POSITIVE_INTEGER = /^[1-9][0-9]*$/;
+
 /**
  * Reads a space-separated `key=value` attribute list. A value is either a
  * bare run with no whitespace or a double-quoted run (which may contain
@@ -202,4 +205,28 @@ export function cssTextToAttributes(cssText: string): Record<string, string> {
     }
 
     return attributes;
+}
+
+/**
+ * Reads a delimiter cell's trailing `{width=…}` attribute.
+ *
+ * @param text - The delimiter cell's text, e.g. `":--- {width=240}"`.
+ * @returns The column width in pixels, or `null` when unset or invalid.
+ *
+ * @example
+ * ```
+ * resolveColumnWidth(":--- {width=240}")   // -> 240
+ * resolveColumnWidth(":---")               // -> null
+ * ```
+ */
+export function resolveColumnWidth(text: string): number | null {
+    const match = /\{([^{}]*)\}/.exec(text);
+
+    if (match === null) {
+        return null;
+    }
+
+    const width = parseAttributes(match[1]!).width;
+
+    return width !== undefined && POSITIVE_INTEGER.test(width) ? Number(width) : null;
 }

@@ -3,6 +3,7 @@
 import { Marked } from "marked";
 import type { Token, TokenizerExtension } from "marked";
 import { parseAttributes } from "~/component/display/markdownAttributes.js";
+import { TABLE_EXTENSION } from "~/component/display/markdownTableExtension.js";
 
 /**
  * `++text++` — an inline-format-style extension so nested emphasis
@@ -66,7 +67,7 @@ const STYLED_SPAN_EXTENSION: TokenizerExtension = {
  * `use()` would change parsing for any other consumer of `marked` in the same
  * bundle.
  */
-const _marked = new Marked({ extensions: [UNDERLINE_EXTENSION, STYLED_SPAN_EXTENSION] });
+const _marked = new Marked({ extensions: [UNDERLINE_EXTENSION, STYLED_SPAN_EXTENSION, TABLE_EXTENSION] });
 
 /**
  * Lexes Markdown source through this module's scoped, extended `marked`

@@ -34,10 +34,12 @@ import type { LinkNode } from "@lexical/link";
 import { CodeNode, $createCodeNode, $isCodeNode } from "@lexical/code";
 import { registerHistory, createEmptyHistoryState } from "@lexical/history";
 import {
-    TableNode, registerTablePlugin, registerTableCellUnmergeTransform, registerTableSelectionObserver,
+    TableNode, registerTablePlugin, registerTableSelectionObserver,
     $getTableCellNodeFromLexicalNode, $getTableNodeFromLexicalNodeOrThrow,
     $insertTableRowAtSelection, $deleteTableRowAtSelection,
     $insertTableColumnAtSelection, $deleteTableColumnAtSelection,
+    $getTableColumnIndexFromTableCellNode, $isTableCellNode, $isTableRowNode,
+    $isTableSelection, $mergeCells, $unmergeCell,
     INSERT_TABLE_COMMAND,
 } from "@lexical/table";
 import { mergeRegister, $getNearestNodeOfType } from "@lexical/utils";
@@ -161,6 +163,26 @@ function $getEnclosingTableNode(): TableNode | null {
  */
 function $selectionIsInTableCell(): boolean {
     return $getEnclosingTableNode() !== null;
+}
+
+/**
+ * Sums the header row's cells' column spans to get the table's total column
+ * count — accurate even if a header cell were ever merged, unlike a bare
+ * child count.
+ *
+ * @param table - The table to measure.
+ * @returns The table's column count, or `0` when it has no rows.
+ */
+function $getTableColumnCount(table: TableNode): number {
+    const headerRow = table.getFirstChild();
+
+    if (!$isTableRowNode(headerRow)) {
+        return 0;
+    }
+
+    return headerRow.getChildren()
+        .filter($isTableCellNode)
+        .reduce((sum, cell) => sum + cell.getColSpan(), 0);
 }
 
 /**
@@ -1566,6 +1588,88 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Merges the cells of the current drag-selected `TableSelection` into
+     * one, carrying `<<`/`^^` continuations on export. No-op without throwing
+     * when the current selection is not a `TableSelection` spanning more than
+     * one cell.
+     *
+     * @returns This component, for method chaining.
+     */
+    mergeTableCells(): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            const selection = $getSelection();
+
+            if (!$isTableSelection(selection)) {
+                return;
+            }
+
+            const cells = selection.getNodes().filter($isTableCellNode);
+
+            if (cells.length > 1) {
+                $mergeCells(cells);
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Splits the merged cell containing the caret back into its individual
+     * cells. No-op without throwing when the caret is not inside a table cell.
+     *
+     * @returns This component, for method chaining.
+     */
+    unmergeTableCell(): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            if ($selectionIsInTableCell()) {
+                $unmergeCell();
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Sets (or, with `null`, clears) the width of the column the caret sits
+     * in, in pixels. No-op without throwing when the caret is not inside a
+     * table cell.
+     *
+     * @param width - The column width in pixels, or `null` to clear it.
+     * @returns This component, for method chaining.
+     */
+    setTableColumnWidth(width: number | null): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                return;
+            }
+
+            const cell = $getTableCellNodeFromLexicalNode(selection.anchor.getNode());
+
+            if (cell === null) {
+                return;
+            }
+
+            const table = $getTableNodeFromLexicalNodeOrThrow(cell);
+            const columnIndex = $getTableColumnIndexFromTableCellNode(cell);
+            const columnCount = $getTableColumnCount(table);
+            const colWidths = (table.getColWidths() ?? new Array<number>(columnCount).fill(0)).slice();
+
+            colWidths[columnIndex] = width ?? 0;
+            table.setColWidths(colWidths);
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
      * Registers a listener for the `"change"` event, fired whenever the document
      * content changes (typing, a command, or {@link MarkdownEditor.setValue}) in
      * whichever surface is active.
@@ -1681,7 +1785,6 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 registerRichText(editor),
                 registerList(editor),
                 registerTablePlugin(editor),
-                registerTableCellUnmergeTransform(editor),
                 registerHistory(editor, createEmptyHistoryState(), HISTORY_DELAY_MS),
                 registerMarkdownShortcuts(editor, TRANSFORMERS),
                 editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
@@ -1765,21 +1868,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Prompts for a URL via a `Dialog`: a bare `TextField` pre-filled with
-     * `defaultUrl`, Cancel/Confirm buttons — this codebase's established
-     * text-input-prompt pattern, since `Dialog` has no dedicated prompt
-     * method. The field receives initial focus as the first focusable
+     * Prompts for a line of text via a `Dialog`: a bare `TextField` pre-filled
+     * with `defaultValue`, Cancel/Confirm buttons — this codebase's
+     * established text-input-prompt pattern, since `Dialog` has no dedicated
+     * prompt method. The field receives initial focus as the first focusable
      * element in the dialog's content region, and Enter confirms because
      * Confirm is marked `primary`.
      *
      * @param title - The dialog's title-bar text.
-     * @param defaultUrl - The field's initial text — `""` for Insert, the
-     *   link's current URL for Edit.
-     * @returns The trimmed URL the user confirmed, or `null` on Cancel/close, or
-     *   an empty/whitespace-only confirmation.
+     * @param defaultValue - The field's initial text.
+     * @param placeholder - The field's placeholder text.
+     * @returns The trimmed text the user confirmed, or `null` on Cancel/close,
+     *   or an empty/whitespace-only confirmation.
      */
-    private async promptForLinkUrl(title: string, defaultUrl: string): Promise<string | null> {
-        const field = new TextField({ text: defaultUrl, placeholder: "https://example.com" });
+    private async promptForText(title: string, defaultValue: string, placeholder: string): Promise<string | null> {
+        const field = new TextField({ text: defaultValue, placeholder });
 
         const result = await Dialog.show({
             title,
@@ -1791,9 +1894,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             return null;
         }
 
-        const url = field.getValue().trim();
+        const value = field.getValue().trim();
 
-        return url === "" ? null : url;
+        return value === "" ? null : value;
+    }
+
+    /**
+     * Prompts for a URL — see {@link MarkdownEditor.promptForText}.
+     *
+     * @param title - The dialog's title-bar text.
+     * @param defaultUrl - The field's initial text — `""` for Insert, the
+     *   link's current URL for Edit.
+     * @returns The trimmed URL the user confirmed, or `null` on Cancel/close, or
+     *   an empty/whitespace-only confirmation.
+     */
+    private async promptForLinkUrl(title: string, defaultUrl: string): Promise<string | null> {
+        return this.promptForText(title, defaultUrl, "https://example.com");
     }
 
     /**
@@ -1812,6 +1928,26 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (url !== null && url !== defaultUrl) {
             this.toggleLink(url);
+        }
+    }
+
+    /**
+     * The context menu's Column width… handler: prompts for a pixel width
+     * (see {@link MarkdownEditor.promptForText}), then applies it via
+     * {@link setTableColumnWidth}. No-op when the user cancels, submits
+     * empty text, or submits a value that isn't a positive integer.
+     */
+    private async promptAndSetColumnWidth(): Promise<void> {
+        const value = await this.promptForText("Column width", "", "e.g. 240");
+
+        if (value === null) {
+            return;
+        }
+
+        const width = Number(value);
+
+        if (Number.isInteger(width) && width > 0) {
+            this.setTableColumnWidth(width);
         }
     }
 
@@ -2080,6 +2216,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                     ],
                 },
             },
+            { separator: true },
+            { text: "Merge cells", action: () => this.mergeTableCells() },
+            { text: "Unmerge cell", action: () => this.unmergeTableCell() },
+            { text: "Column width…", action: () => void this.promptAndSetColumnWidth() },
         ];
 
         if (context.hasEnclosingBlock) {

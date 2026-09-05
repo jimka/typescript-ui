@@ -25,9 +25,10 @@ A **WYSIWYG** editor whose value is a *Markdown* string, built on Lexical.
 
 > Edit on the left; the read-only Markdown viewer on the right stays in sync.
 
-| Column | Aligned |
+| Column {width=160} | Aligned |
 |:---|:---:|
 | Tables | yes |
+| Merge | << |
 
 \`\`\`
 const editor = new MarkdownEditor("# Hello");
@@ -44,8 +45,8 @@ const editor = new MarkdownEditor("# Hello");
  * source editor via `setMode`; the viewer stays in sync in both modes. Four more
  * toolbar buttons expose the row/column command API (`insertTableRow` /
  * `deleteTableRow` / `insertTableColumn` / `deleteTableColumn`), all no-ops
- * (never throws) with the caret outside a table cell, and two more expose
- * `toggleUnderline` / `setTextColor`. The editor fills its
+ * (never throws) with the caret outside a table cell, and three more expose
+ * `toggleUnderline` / `setTextColor` / `mergeTableCells`. The editor fills its
  * `Fit` host and scrolls internally; the viewer sits in a vertically
  * scrolling panel. A status row below the editor reports the editor's own dirty
  * flag and the panel's own, the panel's arriving through the framework's
@@ -96,6 +97,9 @@ class MarkdownEditorPanel extends Panel {
         const colourButton = new Button('Colour');
         colourButton.on('action', this.handleColour);
 
+        const mergeCellsButton = new Button('Merge cells');
+        mergeCellsButton.on('action', this.handleMergeCells);
+
         // Writes nothing — only clears the dirty flag, standing in for a
         // host that has persisted the document.
         const saveBtn = new Button('Save');
@@ -110,6 +114,7 @@ class MarkdownEditorPanel extends Panel {
         toolbar.addComponent(deleteColumnButton);
         toolbar.addComponent(underlineButton);
         toolbar.addComponent(colourButton);
+        toolbar.addComponent(mergeCellsButton);
         toolbar.addComponent(saveBtn);
 
         const editorFit = new Panel({ layoutManager: new Fit() });
@@ -168,6 +173,10 @@ class MarkdownEditorPanel extends Panel {
 
     private readonly handleColour = (): void => {
         this._editor.setTextColor('#cc0000');
+    };
+
+    private readonly handleMergeCells = (): void => {
+        this._editor.mergeTableCells();
     };
 
     private readonly handleDirtyChange = (): void => {

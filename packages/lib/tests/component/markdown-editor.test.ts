@@ -13,7 +13,7 @@ import {
     STRIKETHROUGH, HIGHLIGHT, CHECK_LIST,
 } from '@lexical/markdown';
 import { UNDERLINE, STYLED_TEXT } from '~/component/editor/markdownStyleTransformers';
-import { TableNode, TableRowNode, TableCellNode, $createTableSelectionFrom } from '@lexical/table';
+import { TableNode, TableRowNode, TableCellNode, $createTableSelectionFrom, $isTableCellNode } from '@lexical/table';
 import {
     $getRoot, $getSelection, $isRangeSelection, $isParagraphNode, $isTextNode, $selectAll, $setSelection,
     KEY_ENTER_COMMAND,
@@ -69,7 +69,7 @@ const CORPUS: Record<string, string> = {
 
 // The exact token types the read-only `Markdown` viewer renders; anything else
 // falls to its plain-text fallback.
-const VIEWER_TOKENS = new Set(['heading', 'paragraph', 'list', 'blockquote', 'code', 'space', 'table']);
+const VIEWER_TOKENS = new Set(['heading', 'paragraph', 'list', 'blockquote', 'code', 'space', 'mdtable']);
 
 /** Normalises Lexical's markdown export for comparison: strip trailing spaces, collapse blank-line runs, trim. */
 function normalize(md: string): string {
@@ -1138,7 +1138,7 @@ describe('MarkdownEditor table import/export edge cases', () => {
 
         const tokens = lexMarkdown(editor.getValue());
 
-        expect(tokens.some((token) => token.type === 'table')).toBe(false);
+        expect(tokens.some((token) => token.type === 'mdtable')).toBe(false);
         expect(editor.getValue()).not.toContain('---');
     });
 
@@ -1148,7 +1148,7 @@ describe('MarkdownEditor table import/export edge cases', () => {
 
         const tokens = lexMarkdown(editor.getValue());
 
-        expect(tokens.some((token) => token.type === 'table')).toBe(false);
+        expect(tokens.some((token) => token.type === 'mdtable')).toBe(false);
     });
 
     it('normalises a table authored without leading/trailing pipes to the canonical piped form', () => {
@@ -1166,6 +1166,47 @@ describe('MarkdownEditor table import/export edge cases', () => {
 
         expect(lines).toHaveLength(4);   // header, delimiter, and two body rows
         expect(lines[3]).toBe('| trailing prose |  |');
+    });
+
+    it('round-trips a column width to a fixpoint, and the reloaded table\'s colWidths is [240, 0]', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| :--- {width=240} | ---: |\n| 1 | 2 |');
+
+        const value = editor.getValue();
+        expect(normalize(value)).toBe('| a | b |\n| :--- {width=240} | ---: |\n| 1 | 2 |');
+
+        const reloaded = new MarkdownEditor();
+        reloaded.setValue(value);
+
+        const colWidths = lexicalOf(reloaded).read(() => (($getRoot().getFirstChild() as TableNode).getColWidths()));
+        expect(colWidths).toEqual([240, 0]);
+    });
+
+    it('round-trips a merged cell to a fixpoint, and the imported table\'s first body row has one cell with colSpan 2', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| d | << |');
+
+        const value = editor.getValue();
+        expect(normalize(value)).toBe('| a | b |\n| --- | --- |\n| d | << |');
+
+        const { cellCount, colSpan } = lexicalOf(editor).read(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+            const bodyRow = table.getChildAtIndex(1) as TableRowNode;
+            const bodyCells = bodyRow.getChildren().filter($isTableCellNode);
+
+            return { cellCount: bodyCells.length, colSpan: bodyCells[0]!.getColSpan() };
+        });
+
+        expect(cellCount).toBe(1);
+        expect(colSpan).toBe(2);
+    });
+
+    it('emits the << / ^^ markers again in the same positions after importing a merged table', () => {
+        const editor = new MarkdownEditor();
+        const doc = '| a | b | c |\n| --- | --- | --- |\n| d | << | f |\n| ^^ | ^^ | g |';
+        editor.setValue(doc);
+
+        expect(normalize(editor.getValue())).toBe(doc);
     });
 });
 
@@ -1231,7 +1272,7 @@ describe('MarkdownEditor table commands', () => {
 
         const tokens = lexMarkdown(editor.getValue());
 
-        expect(tokens.some((token) => token.type === 'table')).toBe(false);
+        expect(tokens.some((token) => token.type === 'mdtable')).toBe(false);
     });
 
     it('deleteTable no-throws when the caret is not inside a table cell', () => {
@@ -1250,6 +1291,62 @@ describe('MarkdownEditor table commands', () => {
                 .deleteTableRow()
                 .insertTableColumn()
                 .deleteTableColumn()
+        ).not.toThrow();
+    });
+
+    it('mergeTableCells() on a TableSelection spanning two cells yields << ; unmergeTableCell() removes it again', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+
+        lexicalOf(editor).update(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+            const bodyRow = table.getChildAtIndex(1) as TableRowNode;
+            const cells = bodyRow.getChildren().filter($isTableCellNode);
+            const selection = $createTableSelectionFrom(table, cells[0]!, cells[1]!);
+
+            $setSelection(selection);
+        }, { discrete: true });
+
+        editor.mergeTableCells();
+
+        expect(editor.getValue()).toContain('<<');
+
+        selectStart(editor);
+        lexicalOf(editor).update(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+            const bodyRow = table.getChildAtIndex(1) as TableRowNode;
+            const mergedCell = bodyRow.getChildren().filter($isTableCellNode)[0]!;
+
+            mergedCell.selectStart();
+        }, { discrete: true });
+
+        editor.unmergeTableCell();
+
+        expect(editor.getValue()).not.toContain('<<');
+    });
+
+    it('setTableColumnWidth(240) with the caret in the first column yields {width=240} in the first delimiter cell; setTableColumnWidth(null) removes it', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+        selectStart(editor);
+
+        editor.setTableColumnWidth(240);
+
+        expect(editor.getValue()).toContain('--- {width=240}');
+
+        editor.setTableColumnWidth(null);
+
+        expect(editor.getValue()).not.toContain('width=240');
+    });
+
+    it('mergeTableCells / unmergeTableCell / setTableColumnWidth do not throw on a fresh editor with no table', () => {
+        const editor = new MarkdownEditor();
+
+        expect(() =>
+            editor
+                .mergeTableCells()
+                .unmergeTableCell()
+                .setTableColumnWidth(240)
         ).not.toThrow();
     });
 });
@@ -2083,13 +2180,13 @@ describe('MarkdownEditor context menu', () => {
         ]);
     });
 
-    it('a "table-cell" context with linkUrl: null returns 18 entries: Cut/Copy/Paste, 5 format rows, Insert link, Text style, Clear formatting, then Insert and Delete submenus', () => {
+    it('a "table-cell" context with linkUrl: null returns 22 entries: Cut/Copy/Paste, 5 format rows, Insert link, Text style, Clear formatting, Insert/Delete submenus, then Merge/Unmerge/Column width', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(18);
+        expect(items).toHaveLength(22);
         expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
         ]);
@@ -2100,6 +2197,7 @@ describe('MarkdownEditor context menu', () => {
         expect(rowOf(items[8]).isChecked()).toBe(false);   // Underline
         expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Insert link…', '(separator)', 'Text style', '(separator)', 'Clear formatting', '(separator)', 'Insert', 'Delete',
+            '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…',
         ]);
 
         expect(submenuItemsOf(findItem(items, 'Insert'))?.map((item) => item.text)).toEqual([
@@ -2110,14 +2208,14 @@ describe('MarkdownEditor context menu', () => {
         ]);
     });
 
-    it('a "table-cell" context with hasEnclosingBlock builds 21 entries: the 18 existing (with no link) plus a separator and the two new items', () => {
+    it('a "table-cell" context with hasEnclosingBlock builds 25 entries: the 22 existing (with no link) plus a separator and the two new items', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, hasEnclosingBlock: true,
         });
 
-        expect(items).toHaveLength(21);
-        expect(items.slice(18).map((item) => item.text ?? '(separator)')).toEqual([
+        expect(items).toHaveLength(25);
+        expect(items.slice(22).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Insert line before block', 'Insert line after block',
         ]);
     });
@@ -2144,31 +2242,33 @@ describe('MarkdownEditor context menu', () => {
         expect(childTypes(after)).toEqual(['table', 'paragraph']);
     });
 
-    it('a "table-cell" context with a linkUrl returns 19 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
+    it('a "table-cell" context with a linkUrl returns 23 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(19);
+        expect(items).toHaveLength(23);
         expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Text style', '(separator)', 'Clear formatting', '(separator)', 'Insert', 'Delete',
+            '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…',
         ]);
     });
 
-    it('a "table-cell" context with both a linkUrl and hasEnclosingBlock combines all groups: link items, Text style, Clear formatting, Insert/Delete submenus, and the two block items, in that order', () => {
+    it('a "table-cell" context with both a linkUrl and hasEnclosingBlock combines all groups: link items, Text style, Clear formatting, Insert/Delete submenus, Merge/Unmerge/Column width, and the two block items, in that order', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS, hasEnclosingBlock: true,
         });
 
-        expect(items).toHaveLength(22);
+        expect(items).toHaveLength(26);
         expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
         ]);
         expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Text style', '(separator)', 'Clear formatting', '(separator)',
-            'Insert', 'Delete', '(separator)', 'Insert line before block', 'Insert line after block',
+            'Insert', 'Delete', '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…',
+            '(separator)', 'Insert line before block', 'Insert line after block',
         ]);
     });
 
@@ -2183,7 +2283,7 @@ describe('MarkdownEditor context menu', () => {
         submenuItemsOf(findItem(items, 'Delete'))?.find((item) => item.text === 'Table')?.action?.();
 
         const tokens = lexMarkdown(editor.getValue());
-        expect(tokens.some((token) => token.type === 'table')).toBe(false);
+        expect(tokens.some((token) => token.type === 'mdtable')).toBe(false);
     });
 
     it("the empty-line menu's Table item reaches MarkdownEditor.insertTable(2, 3)", () => {

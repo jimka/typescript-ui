@@ -13,6 +13,7 @@ import { buildSelectionCopyMenuItems } from "~/component/shared/buildSelectionCo
 import type { Token, Tokens } from "marked";
 import { lexMarkdown } from "~/component/display/markdownExtensions.js";
 import { resolveSpanStyle } from "~/component/display/markdownAttributes.js";
+import type { MdTableToken, MdTableHeaderCell, MdTableBodyCell } from "~/component/display/markdownTableExtension.js";
 // Type-only: erased at compile time. `CodeEditor` itself is loaded through a
 // narrow dynamic import (see `loadCodeEditorUpgrade`) so a static top-level
 // value import here would force every `Markdown` consumer's bundler to
@@ -1523,7 +1524,7 @@ class Markdown extends Component<MarkdownOptions> {
             case "list":       this.appendList(parent, token as Tokens.List, headingIds);             break;
             case "blockquote": this.appendBlockquote(parent, token as Tokens.Blockquote, headingIds); break;
             case "code":       this.appendCode(parent, token as Tokens.Code);                         break;
-            case "table":      this.appendTable(parent, token as Tokens.Table);                       break;
+            case "mdtable":    this.appendTable(parent, token as MdTableToken);                        break;
 
             // Blank line between blocks — nothing to render.
             case "space": break;
@@ -1617,14 +1618,16 @@ class Markdown extends Component<MarkdownOptions> {
     }
 
     /**
-     * Builds a wrapper `<div>` › `<table>` with a `<thead>` holding the header
-     * row and a `<tbody>` holding one row per body entry. The wrapper scrolls
-     * horizontally so an overlong table cannot spill sideways.
+     * Builds a wrapper `<div>` › `<table>` with a `<colgroup>` (only when at
+     * least one column carries a `{width=…}`), a `<thead>` holding the header
+     * row, and a `<tbody>` holding one row per body entry, each body cell
+     * carrying the `colspan`/`rowspan` its merge resolution produced. The
+     * wrapper scrolls horizontally so an overlong table cannot spill sideways.
      *
      * @param parent - The element handle to append into.
      * @param token - The table token.
      */
-    private appendTable(parent: Handle, token: Tokens.Table): void {
+    private appendTable(parent: Handle, token: MdTableToken): void {
         const wrapper = this.create("div");
 
         DOM.sink.apply(wrapper, { addClass: [TABLE_WRAP_CLASS] });
@@ -1632,6 +1635,22 @@ class Markdown extends Component<MarkdownOptions> {
         const table = this.create("table");
 
         DOM.sink.apply(table, { addClass: [TABLE_CLASS] });
+
+        if (token.widths.some((width) => width !== null)) {
+            const colgroup = this.create("colgroup");
+
+            for (const width of token.widths) {
+                const col = this.create("col");
+
+                if (width !== null) {
+                    DOM.sink.apply(col, { style: { width: width + "px" } });
+                }
+
+                DOM.sink.appendChild(colgroup, col);
+            }
+
+            DOM.sink.appendChild(table, colgroup);
+        }
 
         const thead = this.create("thead");
 
@@ -1651,15 +1670,16 @@ class Markdown extends Component<MarkdownOptions> {
 
     /**
      * Builds a `<tr>` with one `<th>` (header) or `<td>` (body) per cell,
-     * carrying the cell's alignment class (when the column is aligned) and
-     * inline content.
+     * carrying the cell's alignment class (when the column is aligned), its
+     * `colspan`/`rowspan` (body cells only, when greater than 1), and inline
+     * content.
      *
      * @param section - The `<thead>`/`<tbody>` element handle to append into.
      * @param cells - The row's cells.
-     * @param header - Whether this is the header row (`<th>` cells) or a body
-     *   row (`<td>` cells).
+     * @param header - Whether this is the header row (`<th>` cells, never
+     *   merged) or a body row (`<td>` cells, which may carry a merge span).
      */
-    private appendTableRow(section: Handle, cells: Tokens.TableCell[], header: boolean): void {
+    private appendTableRow(section: Handle, cells: Array<MdTableHeaderCell | MdTableBodyCell>, header: boolean): void {
         const row = this.create("tr");
 
         for (const cell of cells) {
@@ -1672,6 +1692,23 @@ class Markdown extends Component<MarkdownOptions> {
             }
 
             DOM.sink.apply(cellElement, { addClass: classes });
+
+            if (!header) {
+                const bodyCell = cell as MdTableBodyCell;
+                const setAttr: Record<string, string> = {};
+
+                if (bodyCell.colSpan > 1) {
+                    setAttr.colspan = String(bodyCell.colSpan);
+                }
+
+                if (bodyCell.rowSpan > 1) {
+                    setAttr.rowspan = String(bodyCell.rowSpan);
+                }
+
+                if (Object.keys(setAttr).length > 0) {
+                    DOM.sink.apply(cellElement, { setAttr });
+                }
+            }
 
             if (cell.tokens.length === 0) {
                 // An empty cell has no inline content to give its line box

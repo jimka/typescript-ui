@@ -64,6 +64,13 @@ SELECT id, name, email, created_at, updated_at, status, role, last_login_at FROM
 | Tables | yes | 0.05 |
 | Alignment | yes | left/center/right |
 
+### Sized and merged columns
+
+| Feature {width=200} | Support |
+| --- | --- |
+| Column width | yes |
+| Merged cells | << |
+
 Unsupported tokens (images, raw HTML) fall back to plain text and never crash.`;
 
 /**

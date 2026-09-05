@@ -972,6 +972,83 @@ describe('Markdown table', () => {
         expect(createdTags()).not.toContain('br');
         expect(textWrites()).toContain('a\\nb');
     });
+
+    it('a table immediately following a paragraph with no blank line still splits into paragraph + table', () => {
+        new Markdown('para\n' + TABLE).getElement(true);
+
+        expect(createdTags()).toContain('p');
+        expect(createdTags()).toContain('table');
+        expect(textWrites()).toContain('para');
+    });
+});
+
+describe('Markdown table column widths', () => {
+    it('creates a colgroup with two col children, the first carrying { width: "240px" }, for a widthed column', () => {
+        const md = new Markdown('| a | b |\n| :--- {width=240} | --- |\n| 1 | 2 |');
+        md.getElement(true);
+
+        expect(childTagsOf('table')).toContain('COLGROUP');
+
+        const cols = (md as unknown as { _contentHandles: Handle[] })._contentHandles
+            .filter((h) => DOM.source.getTagName(h) === 'COL');
+
+        expect(cols).toHaveLength(2);
+        expect(styleWrites(cols[0]!)).toEqual({ width: '240px' });
+        expect(styleWrites(cols[1]!)).toEqual({});
+    });
+
+    it('creates no colgroup for a table with no {width=…} attribute', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| 1 | 2 |').getElement(true);
+
+        expect(createdTags()).not.toContain('colgroup');
+    });
+});
+
+describe('Markdown merged table cells', () => {
+    it('creates one td for a row carrying colspan="2" when a body row ends with <<', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| d | << |').getElement(true);
+
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(1);
+        expect(attrWrites()).toContainEqual({ colspan: '2' });
+    });
+
+    it('creates a td for the anchor carrying rowspan="2", and the second row creates exactly one td, for a column-spanning ^^', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| d | e |\n| ^^ | f |').getElement(true);
+
+        expect(attrWrites()).toContainEqual({ rowspan: '2' });
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(3);   // d, e, f — ^^ is covered
+    });
+
+    it('produces the cells and spans of the 3x3 merge-grid worked example', () => {
+        new Markdown('| a | b | c |\n| --- | --- | --- |\n| d | << | f |\n| ^^ | ^^ | g |').getElement(true);
+
+        expect(attrWrites()).toContainEqual({ colspan: '2', rowspan: '2' });
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(3);   // d (merged), f, g
+        expect(textWrites()).toContain('f');
+        expect(textWrites()).toContain('g');
+    });
+
+    it('renders a ^^ in the first body row (nothing above but the header) as an ordinary td with literal text ^^', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| ^^ | x |').getElement(true);
+
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(2);
+        expect(textWrites()).toContain('^^');
+    });
+
+    it('renders a bare << in column 0 (nothing to extend left) as an ordinary td with literal text <<', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| << | x |').getElement(true);
+
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(2);
+        expect(textWrites()).toContain('<<');
+    });
+
+    it('renders an escaped literal \\<< as an ordinary td with text <<, not a merge marker', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| c | \\<< |').getElement(true);
+
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(2);
+        expect(attrWrites()).not.toContainEqual(expect.objectContaining({ colspan: expect.anything() }));
+        expect(textWrites()).toContain('<<');
+    });
 });
 
 describe('Markdown empty source', () => {
