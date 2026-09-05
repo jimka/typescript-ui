@@ -21,11 +21,13 @@ import {
 } from "lexical";
 import type { LexicalEditor, ElementNode, LexicalNode, TextFormatType, TextNode } from "lexical";
 import { $convertFromMarkdownString, $convertToMarkdownString, registerMarkdownShortcuts } from "@lexical/markdown";
-import { registerRichText, $createHeadingNode, $createQuoteNode } from "@lexical/rich-text";
+import { registerRichText, $createHeadingNode, $createQuoteNode, QuoteNode, $isQuoteNode } from "@lexical/rich-text";
 import type { HeadingTagType } from "@lexical/rich-text";
-import { registerList, INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND } from "@lexical/list";
+import {
+    registerList, INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, ListNode, $isListNode,
+} from "@lexical/list";
 import { $toggleLink } from "@lexical/link";
-import { CodeNode, $createCodeNode } from "@lexical/code";
+import { CodeNode, $createCodeNode, $isCodeNode } from "@lexical/code";
 import { registerHistory, createEmptyHistoryState } from "@lexical/history";
 import {
     TableNode, registerTablePlugin, registerTableCellUnmergeTransform, registerTableSelectionObserver,
@@ -177,6 +179,81 @@ function $findEnclosingSeparatorTarget(node: LexicalNode): TableNode | CodeNode 
 }
 
 /**
+ * Finds the blockquote, list, fenced code block, or table enclosing `node`,
+ * if any — the nearest of the first three, regardless of nesting order (a
+ * list inside a quote resolves to the list; a quote inside a list resolves to
+ * the quote), falling back to the enclosing table when `node` sits inside a
+ * table cell and none of the other three enclose it first. For a list, this
+ * is the whole {@link ListNode} the clicked item belongs to — its immediate
+ * parent, two levels up from the clicked `ListItemNode` — never just that one
+ * item, and never the outermost list when the list is nested inside another
+ * list. For a table cell, this is likewise the whole enclosing
+ * {@link TableNode} the clicked cell belongs to, never just that one cell.
+ *
+ * @remarks
+ * Shares its table-cell resolution ({@link $getTableCellNodeFromLexicalNode}
+ * + {@link $getTableNodeFromLexicalNodeOrThrow}) with
+ * {@link $findEnclosingSeparatorTarget}, which backs the Alt+Enter keyboard
+ * shortcut. The two stay separate functions because this one also resolves
+ * blockquotes and lists, which the keyboard shortcut does not.
+ *
+ * @param node - The node to search upward from (typically a selection anchor
+ *   or a right-click's resolved node).
+ * @returns The enclosing {@link CodeNode}, {@link QuoteNode},
+ *   {@link ListNode}, or {@link TableNode}, or `null` when `node` sits in
+ *   none of them.
+ */
+function $findEnclosingInsertableBlock(node: LexicalNode): CodeNode | QuoteNode | ListNode | TableNode | null {
+    const block = $findMatchingParent(
+        node,
+        (n): n is CodeNode | QuoteNode | ListNode => $isCodeNode(n) || $isQuoteNode(n) || $isListNode(n),
+    );
+
+    if (block !== null) {
+        return block;
+    }
+
+    const tableCell = $getTableCellNodeFromLexicalNode(node);
+
+    return tableCell === null ? null : $getTableNodeFromLexicalNodeOrThrow(tableCell);
+}
+
+/**
+ * Shared body of {@link MarkdownEditor.insertParagraphBeforeBlock} and
+ * {@link MarkdownEditor.insertParagraphAfterBlock}: resolves the block
+ * enclosing the caret (see {@link $findEnclosingInsertableBlock}) and inserts
+ * an empty paragraph immediately before or after it, moving the caret into
+ * the new paragraph. No-op when there is no range selection, or the caret is
+ * not inside a blockquote, list, fenced code block, or table cell.
+ *
+ * @param after - Whether to insert after (`true`) or before (`false`) the
+ *   enclosing block.
+ */
+function $insertParagraphAroundEnclosingBlock(after: boolean): void {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return;
+    }
+
+    const target = $findEnclosingInsertableBlock(selection.anchor.getNode());
+
+    if (target === null) {
+        return;
+    }
+
+    const paragraph = $createParagraphNode();
+
+    if (after) {
+        target.insertAfter(paragraph);
+    } else {
+        target.insertBefore(paragraph);
+    }
+
+    paragraph.selectStart();
+}
+
+/**
  * `KEY_ENTER_COMMAND` handler for Alt+Enter (Option+Enter on macOS): with the
  * caret inside a table or fenced code block, inserts an empty paragraph
  * immediately after that block and moves the caret into it.
@@ -236,9 +313,19 @@ function $handleSeparatorShortcut(event: KeyboardEvent | null): boolean {
  * the non-barrel-exposed `mapFenceLangToEditorId`.
  */
 export type ContextMenuTarget =
-    | { kind: "table-cell"; hasSelectedText: boolean; bold: boolean; italic: boolean; strikethrough: boolean; code: boolean }
+    | {
+          kind: "table-cell";
+          hasSelectedText: boolean;
+          bold: boolean; italic: boolean; strikethrough: boolean; code: boolean;
+          hasEnclosingBlock?: boolean;
+      }
     | { kind: "empty-line"; hasSelectedText: boolean }
-    | { kind: "text"; hasSelectedText: boolean; bold: boolean; italic: boolean; strikethrough: boolean; code: boolean };
+    | {
+          kind: "text";
+          hasSelectedText: boolean;
+          bold: boolean; italic: boolean; strikethrough: boolean; code: boolean;
+          hasEnclosingBlock?: boolean;
+      };
 
 /**
  * Matches one "word" character for {@link $selectEnclosingWordIfCollapsed}'s
@@ -385,7 +472,9 @@ export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget
         || ($isRangeSelection(selection) && selection.getTextContent() !== "");
 
     if ($getTableCellNodeFromLexicalNode(node) !== null) {
-        return { kind: "table-cell", hasSelectedText, ...formatState };
+        const hasEnclosingBlock = $findEnclosingInsertableBlock(node) !== null;
+
+        return { kind: "table-cell", hasSelectedText, hasEnclosingBlock, ...formatState };
     }
 
     const block = $findMatchingParent(node, (n) => $isElementNode(n) && !n.isInline());
@@ -394,7 +483,9 @@ export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget
         return { kind: "empty-line", hasSelectedText };
     }
 
-    return { kind: "text", hasSelectedText, ...formatState };
+    const hasEnclosingBlock = $findEnclosingInsertableBlock(node) !== null;
+
+    return { kind: "text", hasSelectedText, hasEnclosingBlock, ...formatState };
 }
 
 // A text caret over the whole surface signals editability. The surface is also
@@ -599,6 +690,7 @@ class WysiwygSurface extends Component {
  * preformatted text otherwise give a click nowhere to land), a thin
  * imperative command API (`toggleBold`, `toggleStrikethrough`, `clearFormatting`,
  * `setBlockType`, `toggleUnorderedList`, `toggleLink`, `insertTable`,
+ * `insertParagraphBeforeBlock`/`insertParagraphAfterBlock`,
  * `insertTableRow`/`deleteTableRow`, `insertTableColumn`/`deleteTableColumn`,
  * `deleteTable`, `cut`/`copy`/`paste`, …) a consumer can wire to their own `Button`s, and a
  * self-wired right-click context menu on the WYSIWYG surface whose contents
@@ -1148,6 +1240,36 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Inserts an empty paragraph immediately before the blockquote, list,
+     * fenced code block, or table enclosing the caret, and moves the caret
+     * into it. For a list or a table cell, this is the whole list or table,
+     * not just the clicked item or cell. No-op without throwing when the
+     * caret is not inside one of those four block types.
+     *
+     * @returns This component, for method chaining.
+     */
+    insertParagraphBeforeBlock(): this {
+        this.ensureEditor().update(() => { $insertParagraphAroundEnclosingBlock(false); }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Inserts an empty paragraph immediately after the blockquote, list,
+     * fenced code block, or table enclosing the caret, and moves the caret
+     * into it. For a list or a table cell, this is the whole list or table,
+     * not just the clicked item or cell. No-op without throwing when the
+     * caret is not inside one of those four block types.
+     *
+     * @returns This component, for method chaining.
+     */
+    insertParagraphAfterBlock(): this {
+        this.ensureEditor().update(() => { $insertParagraphAroundEnclosingBlock(true); }, { discrete: true });
+
+        return this;
+    }
+
+    /**
      * Inserts a table of `rows` rows by `columns` columns at the caret. The
      * first row is the header row, so `insertTable(2, 3)` gives a header row
      * plus one body row. The caret lands in the first header cell.
@@ -1543,7 +1665,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns The `MenuItemConfig` array for {@link Menu.show}.
      */
     private buildTextContextMenuItems(context: ContextMenuTarget & { kind: "text" }): MenuItemConfig[] {
-        return [
+        const items: MenuItemConfig[] = [
             ...this.buildClipboardMenuItems(context.hasSelectedText),
             { separator: true },
             ...this.buildFormatToggleItems(context),
@@ -1565,6 +1687,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             { separator: true },
             { text: "Clear formatting", action: () => this.clearFormatting() },
         ];
+
+        if (context.hasEnclosingBlock) {
+            items.push(
+                { separator: true },
+                { text: "Insert line before block", action: () => this.insertParagraphBeforeBlock() },
+                { text: "Insert line after block", action: () => this.insertParagraphAfterBlock() },
+            );
+        }
+
+        return items;
     }
 
     /**
@@ -1603,7 +1735,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns The `MenuItemConfig` array for {@link Menu.show}.
      */
     private buildTableCellContextMenuItems(context: ContextMenuTarget & { kind: "table-cell" }): MenuItemConfig[] {
-        return [
+        const items: MenuItemConfig[] = [
             ...this.buildClipboardMenuItems(context.hasSelectedText),
             { separator: true },
             ...this.buildFormatToggleItems(context),
@@ -1634,6 +1766,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 },
             },
         ];
+
+        if (context.hasEnclosingBlock) {
+            items.push(
+                { separator: true },
+                { text: "Insert line before block", action: () => this.insertParagraphBeforeBlock() },
+                { text: "Insert line after block", action: () => this.insertParagraphAfterBlock() },
+            );
+        }
+
+        return items;
     }
 
     /**
