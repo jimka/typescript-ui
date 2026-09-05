@@ -9,6 +9,7 @@ import { callable } from "~/core/Callable.js";
 import { Card } from "~/layout/Card.js";
 import { Menu } from "~/overlay/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
+import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
 import { CodeEditor } from "~/component/editor/CodeEditor.js";
 import type { CodeEditorChange } from "~/component/editor/CodeEditor.js";
 import {
@@ -212,30 +213,115 @@ function $handleSeparatorShortcut(event: KeyboardEvent | null): boolean {
 
 /**
  * The right-click context this plan's menu builds around a resolved Lexical
- * node: a table cell, an empty paragraph (outside any table), or ordinary
- * text/prose, carrying the current selection's inline-format state so the
- * format menu can show a checkmark on active toggles.
+ * node: a table cell or ordinary text/prose (both carrying the current
+ * selection's inline-format state, so the format toggles can show a
+ * checkmark on active formats — a table cell holds inline text too, so it
+ * gets the same toggles as plain prose, alongside its row/column/table
+ * commands), or an empty paragraph outside any table.
  *
  * @remarks Exported (not part of the public `MarkdownEditor` callable) so it
  * can be imported directly in tests, mirroring how `Markdown.test.ts` imports
  * the non-barrel-exposed `mapFenceLangToEditorId`.
  */
 export type ContextMenuTarget =
-    | { kind: "table-cell" }
+    | { kind: "table-cell"; bold: boolean; italic: boolean; strikethrough: boolean; code: boolean }
     | { kind: "empty-line" }
     | { kind: "text"; bold: boolean; italic: boolean; strikethrough: boolean; code: boolean };
 
 /**
+ * Matches one "word" character for {@link $selectEnclosingWordIfCollapsed}'s
+ * boundary scan: any Unicode letter or number, plus underscore. Unicode-aware
+ * (`\p{L}`/`\p{N}`, not the ASCII-only `\w`) so a right-click inside an
+ * accented, Cyrillic, or CJK word expands to the whole word, not just its
+ * ASCII-range run.
+ */
+const WORD_CHARACTER = /[\p{L}\p{N}_]/u;
+
+/**
+ * With a collapsed selection anchored in a text node, expands it so a
+ * subsequent format toggle applies to more than just text typed from that
+ * point on — the same as an explicit click-and-drag selection already gets.
+ * A specially-formatted run (bold/italic/strikethrough/code) is a single
+ * semantic unit the user deliberately created with one format action, so the
+ * whole run is selected; a code identifier or expression is often full of
+ * punctuation (`getValue()`) a dictionary-word scan would stop at, and the
+ * user toggling its format almost always means the whole thing. Plain,
+ * unformatted prose has no such run to fall back on — a paragraph's plain
+ * text is typically one contiguous node — so there the enclosing run of word
+ * characters is selected instead.
+ *
+ * @remarks A no-op when the selection is not collapsed (an explicit
+ * selection the user already made is left exactly as they made it), is not
+ * anchored in a text node, or (plain prose only) the anchor sits on
+ * whitespace/punctuation with no adjacent word character.
+ *
+ * Exported (not part of the public `MarkdownEditor` callable) so it can be
+ * tested directly, mirroring {@link $classifyContextMenuTarget}.
+ */
+export function $selectEnclosingWordIfCollapsed(): void {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+        return;
+    }
+
+    const anchorNode = selection.anchor.getNode();
+
+    if (!$isTextNode(anchorNode)) {
+        return;
+    }
+
+    const text = anchorNode.getTextContent();
+
+    if (anchorNode.getFormat() !== 0) {
+        if (text.length > 0) {
+            // A RangeSelection caches its own `format` bitmask separately
+            // from the nodes it spans — `select()` does not refresh it to
+            // match the node just selected, so a later toggle command reads
+            // the stale (usually all-formats-off) cache instead of this
+            // run's actual format and silently no-ops. Sync it explicitly.
+            anchorNode.select(0, text.length).setFormat(anchorNode.getFormat());
+        }
+
+        return;
+    }
+
+    let start = selection.anchor.offset;
+    let end = start;
+
+    while (start > 0 && WORD_CHARACTER.test(text[start - 1])) {
+        start -= 1;
+    }
+
+    while (end < text.length && WORD_CHARACTER.test(text[end])) {
+        end += 1;
+    }
+
+    if (start !== end) {
+        anchorNode.select(start, end);
+    }
+}
+
+/**
  * Classifies an already-resolved Lexical node for the right-click context
  * menu: a table cell wins even when empty, an empty paragraph outside any
- * table is the insert context, and everything else is the format context.
+ * table is the insert context, and everything else is the format context —
+ * the latter two both carry the current selection's inline-format state.
  *
  * @param node - The node the native `contextmenu` event's DOM target resolved to.
  * @returns The classified {@link ContextMenuTarget}.
  */
 export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget {
+    const selection = $getSelection();
+    const hasFormat = (type: TextFormatType): boolean =>
+        $isRangeSelection(selection) && selection.hasFormat(type);
+    const formatState = {
+        bold: hasFormat("bold"), italic: hasFormat("italic"),
+        strikethrough: hasFormat("strikethrough"), code: hasFormat("code"),
+    };
+
     if ($getTableCellNodeFromLexicalNode(node) !== null) {
-        return { kind: "table-cell" };
+        return { kind: "table-cell", ...formatState };
     }
 
     const block = $findMatchingParent(node, (n) => $isElementNode(n) && !n.isInline());
@@ -244,15 +330,7 @@ export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget
         return { kind: "empty-line" };
     }
 
-    const selection = $getSelection();
-    const hasFormat = (type: TextFormatType): boolean =>
-        $isRangeSelection(selection) && selection.hasFormat(type);
-
-    return {
-        kind: "text",
-        bold: hasFormat("bold"), italic: hasFormat("italic"),
-        strikethrough: hasFormat("strikethrough"), code: hasFormat("code"),
-    };
+    return { kind: "text", ...formatState };
 }
 
 // A text caret over the whole surface signals editability. The surface is also
@@ -1173,9 +1251,11 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * `WysiwygSurface`'s `"contextmenu"` handler: resolves the native event's
-     * DOM target to a Lexical node, classifies it, and shows the resulting
-     * context menu at the click point. No-op when the target is not a DOM
-     * node, or when it does not resolve to a mounted Lexical node.
+     * DOM target to a Lexical node, expands a collapsed selection to the
+     * enclosing word so a format toggle applies to the word the caret landed
+     * in, classifies the (possibly now-widened) selection, and shows the
+     * resulting context menu at the click point. No-op when the target is
+     * not a DOM node, or when it does not resolve to a mounted Lexical node.
      *
      * @param event - The native `contextmenu` event forwarded by the surface.
      */
@@ -1186,12 +1266,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         const domTarget = event.target;
         const editor = this.ensureEditor();
+        let context: ContextMenuTarget | null = null;
 
-        const context = editor.read(() => {
+        editor.update(() => {
             const node = $getNearestNodeFromDOMNode(domTarget);
 
-            return node === null ? null : $classifyContextMenuTarget(node);
-        });
+            if (node === null) {
+                return;
+            }
+
+            $selectEnclosingWordIfCollapsed();
+            context = $classifyContextMenuTarget(node);
+        }, { discrete: true });
 
         if (context === null) {
             return;
@@ -1208,17 +1294,49 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      */
     private buildContextMenuItems(context: ContextMenuTarget): MenuItemConfig[] {
         switch (context.kind) {
-            case "table-cell": return this.buildTableCellContextMenuItems();
+            case "table-cell": return this.buildTableCellContextMenuItems(context);
             case "empty-line": return this.buildEmptyLineContextMenuItems();
             case "text":       return this.buildTextContextMenuItems(context);
         }
     }
 
     /**
+     * Builds the four inline-format toggle items shared by the text and
+     * table-cell context menus: real {@link CheckboxMenuRow} rows, so the
+     * check renders as an actual checkbox rather than a text checkmark and
+     * activating one leaves the menu open (matching the `MenuBar` demo's
+     * "Options" menu, e.g. its `Auto-Save` row) — letting several formats be
+     * toggled in one right-click.
+     *
+     * @param format - The current selection's inline-format state.
+     * @returns The four `MenuItemConfig` entries: Bold, Italic, Strikethrough, Inline code.
+     */
+    private buildFormatToggleItems(
+        format: { bold: boolean; italic: boolean; strikethrough: boolean; code: boolean },
+    ): MenuItemConfig[] {
+        const toggleRow = (text: string, checked: boolean, toggle: () => void): MenuItemConfig => ({
+            row: () => {
+                const row = new CheckboxMenuRow({ text, checked });
+
+                row.on("action", toggle);
+
+                return row;
+            },
+        });
+
+        return [
+            toggleRow("Bold", format.bold, () => this.toggleBold()),
+            toggleRow("Italic", format.italic, () => this.toggleItalic()),
+            toggleRow("Strikethrough", format.strikethrough, () => this.toggleStrikethrough()),
+            toggleRow("Inline code", format.code, () => this.toggleInlineCode()),
+        ];
+    }
+
+    /**
      * Builds the format menu shown over a word, a range selection, or an
-     * ordinary (non-empty) block: inline-format toggles with active-state
-     * checkmarks, a block-style submenu scoped to paragraph/headings, and a
-     * clear-formatting action.
+     * ordinary (non-empty) block: the shared inline-format toggles, a
+     * block-style submenu (paragraph, headings, a blockquote, or a fenced
+     * code block), and a clear-formatting action.
      *
      * @param context - The `"text"` classification, carrying the current
      *   selection's inline-format state.
@@ -1226,10 +1344,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      */
     private buildTextContextMenuItems(context: ContextMenuTarget & { kind: "text" }): MenuItemConfig[] {
         return [
-            { text: "Bold", shortcut: "Ctrl+B", checked: context.bold, action: () => this.toggleBold() },
-            { text: "Italic", shortcut: "Ctrl+I", checked: context.italic, action: () => this.toggleItalic() },
-            { text: "Strikethrough", checked: context.strikethrough, action: () => this.toggleStrikethrough() },
-            { text: "Inline code", checked: context.code, action: () => this.toggleInlineCode() },
+            ...this.buildFormatToggleItems(context),
             { separator: true },
             {
                 text:    "Block style",
@@ -1239,6 +1354,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                         { text: "Paragraph", action: () => this.setBlockType("paragraph") },
                         { separator: true },
                         ...this.buildHeadingMenuItems(),
+                        { separator: true },
+                        { text: "Quote", action: () => this.setBlockType("quote") },
+                        { text: "Code block", action: () => this.setBlockType("code") },
                     ],
                 },
             },
@@ -1266,21 +1384,46 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Builds the menu shown over a table cell (populated or empty): the four
-     * directional row/column inserts, then row/column/whole-table deletion.
+     * Builds the menu shown over a table cell (populated or empty): the same
+     * shared inline-format toggles and Clear formatting as the text context
+     * menu — a cell holds inline text too, just never a heading or quote in
+     * this dialect, so no Block style submenu — then an Insert submenu (the
+     * four directional row/column inserts) and a Delete submenu (row, column,
+     * or the whole table).
      *
+     * @param context - The `"table-cell"` classification, carrying the
+     *   current selection's inline-format state.
      * @returns The `MenuItemConfig` array for {@link Menu.show}.
      */
-    private buildTableCellContextMenuItems(): MenuItemConfig[] {
+    private buildTableCellContextMenuItems(context: ContextMenuTarget & { kind: "table-cell" }): MenuItemConfig[] {
         return [
-            { text: "Insert row above", action: () => this.insertTableRow(false) },
-            { text: "Insert row below", action: () => this.insertTableRow(true) },
-            { text: "Insert column left", action: () => this.insertTableColumn(false) },
-            { text: "Insert column right", action: () => this.insertTableColumn(true) },
+            ...this.buildFormatToggleItems(context),
             { separator: true },
-            { text: "Delete row", action: () => this.deleteTableRow() },
-            { text: "Delete column", action: () => this.deleteTableColumn() },
-            { text: "Delete table", action: () => this.deleteTable() },
+            { text: "Clear formatting", action: () => this.clearFormatting() },
+            { separator: true },
+            {
+                text:    "Insert",
+                submenu: {
+                    label: "Insert",
+                    items: [
+                        { text: "Row above", action: () => this.insertTableRow(false) },
+                        { text: "Row below", action: () => this.insertTableRow(true) },
+                        { text: "Column left", action: () => this.insertTableColumn(false) },
+                        { text: "Column right", action: () => this.insertTableColumn(true) },
+                    ],
+                },
+            },
+            {
+                text:    "Delete",
+                submenu: {
+                    label: "Delete",
+                    items: [
+                        { text: "Row", action: () => this.deleteTableRow() },
+                        { text: "Column", action: () => this.deleteTableColumn() },
+                        { text: "Table", action: () => this.deleteTable() },
+                    ],
+                },
+            },
         ];
     }
 
