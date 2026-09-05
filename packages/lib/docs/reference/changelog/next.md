@@ -145,6 +145,12 @@ page resets to empty.
   user actually right-clicked at rather than the word the menu auto-selects
   for its format toggles, and shows a toast when the browser refuses the
   clipboard read.
+- **`MarkdownEditor`'s right-click context menu gains Insert link… / Edit
+  link… / Remove link**, over a word/selection or a table cell, prompting
+  for a URL via a dialog. `toggleLink(url)` now expands a collapsed caret to
+  its enclosing word before wrapping it, and `removeLink()` is a new command
+  that unwraps the whole enclosing link regardless of how much of it is
+  selected.
 
 ### Data
 
