@@ -1153,6 +1153,14 @@ export interface DOMSource {
     getDocumentSelection(): DocumentSelectionRange | null;
 
     /**
+     * The page's current selection flattened to plain text — the browser's own
+     * rendering of a selection that may span many nodes.
+     *
+     * @returns The selection's text, or `""` when nothing is selected.
+     */
+    getDocumentSelectionText(): string;
+
+    /**
      * Reads plain text from the system clipboard.
      *
      * @returns The clipboard text; `""` for an empty clipboard; `null` when
@@ -2391,6 +2399,11 @@ export class ProductionDOMSource implements DOMSource {
             endContainer:   _registry.intern(range.endContainer),
             endOffset:      endIsText ? range.endOffset : null,
         };
+    }
+
+    /** @inheritDoc */
+    getDocumentSelectionText(): string {
+        return window.getSelection()?.toString() ?? "";
     }
 
     /** @inheritDoc */

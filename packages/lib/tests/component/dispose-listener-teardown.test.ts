@@ -22,6 +22,7 @@
 import { describe, it, expect } from 'vitest';
 import { Component } from '~/core/Component';
 import { Link } from '~/component/input/Link';
+import { SelectableText } from '~/component/input/SelectableText';
 import { MenuItem } from '~/component/container/MenuItem';
 import { MenuBarButton } from '~/component/menubar/MenuBarButton';
 import { CollapseButton } from '~/component/container/CollapseButton';
@@ -55,6 +56,10 @@ const REGISTRY: Array<{
     ids?: (c: Component) => string[];
 }> = [
     { name: 'Link',           covers: ['Link'],           make: () => new Link('x') },
+    // Wired once for the component's whole life regardless of `copyMenu`
+    // (mirrors Link's keydown registration), so a bare `new SelectableText`
+    // already registers it.
+    { name: 'SelectableText', covers: ['SelectableText'], make: () => new SelectableText('x') },
     { name: 'MenuItem',       covers: ['MenuItem'],       make: () => new MenuItem({ text: 'A' }, () => {}, () => {}) },
     { name: 'MenuBarButton',  covers: ['MenuBarButton'],  make: () => new MenuBarButton('File', () => {}, () => {}) },
     { name: 'CollapseButton', covers: ['CollapseButton'], make: () => new CollapseButton() },

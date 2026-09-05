@@ -12,6 +12,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Notification } from '~/overlay/Notification';
 import { DOM } from '~/core/DOM';
+import { LayerManager } from '~/core/LayerManager';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -75,5 +76,27 @@ describe('Notification (pause/resume refcount, idle)', () => {
 
         expect(toast._messageText.getUserSelect()).toBe('text');
         expect(toast._messageText.getCursor()).toBe('text');
+    });
+
+    it("opts a toast's message text into the right-click Copy menu", () => {
+        installTestDOM(CONFIG);
+
+        Notification.show('msg');
+
+        const active = (Notification as unknown as { activeNotifications: unknown[] }).activeNotifications;
+        const toast  = active[active.length - 1] as { _messageText: { hasCopyMenu(): boolean } };
+
+        expect(toast._messageText.hasCopyMenu()).toBe(true);
+    });
+
+    it("opts the detail dialog's full message into the right-click Copy menu", () => {
+        installTestDOM(CONFIG);
+
+        Notification.showDetail('msg', 'info');
+
+        const dialog  = LayerManager.getTopLayer() as unknown as { getContentComponent(): { getComponents(): unknown[] } };
+        const message = dialog.getContentComponent().getComponents()[0] as { hasCopyMenu(): boolean };
+
+        expect(message.hasCopyMenu()).toBe(true);
     });
 });

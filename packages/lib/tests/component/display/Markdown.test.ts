@@ -7,7 +7,8 @@ import { Container } from '~/core/Container';
 import { Event } from '~/core/Event';
 import { Fit } from '~/layout/Fit';
 import { ThemeManager, DarkTheme, ModernTheme } from '~/core/Theme';
-import { installTestDOM, setScrollExtent, type RecordingDOMSink } from '../../dom/TestDOM';
+import { Menu } from '~/overlay/Menu';
+import { installTestDOM, setScrollExtent, makeEvent, type RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -78,6 +79,55 @@ function lastRuleStyle(prop: string): string | null | undefined {
 
     return undefined;
 }
+
+// MUST be the first describe block in this file, and its tests the only place
+// a real dispatched `contextmenu` event is used. Event's window-level base
+// listener is armed once per event TYPE for the lifetime of this module and
+// is not re-armed by a later installTestDOM() call unless the component
+// holding it is disposed first (see the file-level note in
+// tests/component/container/CollapseButton.test.ts, which documents the same
+// constraint) — every other Markdown constructed later in this file never
+// dispatches a real event, so it's unaffected by whichever sink last owned
+// the registration; both Markdowns below are disposed immediately after use
+// so the type is cleanly released regardless.
+describe('Markdown copy menu', () => {
+    /** The handle of the first appended element with the given (case-insensitive) tag. */
+    function firstChildHandleOfTag(tag: string): Handle {
+        const write = sink.writes.find(
+            (w) => w.op === 'appendChild' && DOM.source.getTagName(w.args[1] as Handle) === tag.toUpperCase(),
+        );
+
+        return write!.args[1] as Handle;
+    }
+
+    it('a right-click on a rendered prose element opens a one-row Copy menu', () => {
+        const showSpy = vi.spyOn(Menu.prototype, 'show');
+        const md = new Markdown('hello world');
+        md.getElement(true);
+
+        const paragraph = firstChildHandleOfTag('p');
+        Event.fireEvent(md, makeEvent(paragraph, 'contextmenu', { clientX: 5, clientY: 6 }));
+
+        expect(showSpy).toHaveBeenCalledTimes(1);
+        expect(showSpy.mock.calls[0][0]).toBe(5);
+        expect(showSpy.mock.calls[0][1]).toBe(6);
+        expect((showSpy.mock.calls[0][2] as { text?: string }[]).map((i) => i.text)).toEqual(['Copy']);
+
+        md.dispose();
+    });
+
+    it('disposing a Markdown that has opened its menu disposes that Menu', () => {
+        const disposeSpy = vi.spyOn(Menu.prototype, 'dispose');
+        const md = new Markdown('hello world');
+        md.getElement(true);
+
+        const paragraph = firstChildHandleOfTag('p');
+        Event.fireEvent(md, makeEvent(paragraph, 'contextmenu', { clientX: 0, clientY: 0 }));
+        md.dispose();
+
+        expect(disposeSpy).toHaveBeenCalledTimes(1);
+    });
+});
 
 describe('Markdown headings', () => {
     it('builds <h1>..<h6> from # .. ###### with the heading text', () => {
@@ -1567,6 +1617,14 @@ describe('Markdown viewport gate (private, called directly)', () => {
     });
 
     it('onViewportPass() loads a re-seeded queued block, empties the queue, and disarms the watch', () => {
+        // Markdown now always carries its own `contextmenu` subtree
+        // registration (the right-click Copy menu), so `md.getId()` is a
+        // permanent member of `_registeredComponentIds()` regardless of the
+        // viewport watch — a before/after delta on the viewport-specific
+        // count (mirrors Event.test.ts:330-343) is what actually isolates
+        // the watch's own registration.
+        const viewportBefore = Event.listenerCounts().viewport;
+
         const md = new Markdown('hello');
         md.getElement(true);
         const anyMd = md as any;
@@ -1585,7 +1643,7 @@ describe('Markdown viewport gate (private, called directly)', () => {
         expect(loadSpy).toHaveBeenCalledTimes(1);
         expect(anyMd._awaitingViewportKickoffs).toHaveLength(0);
         expect(anyMd._viewportWatchArmed).toBe(false);
-        expect(Event._registeredComponentIds()).not.toContain(md.getId());
+        expect(Event.listenerCounts().viewport).toBe(viewportBefore);
     });
 
     it('a queued block fully above the window stays queued after a pass — no upward lookahead', () => {
@@ -1735,6 +1793,13 @@ describe('Markdown code editor disposal', () => {
     });
 
     it('setMarkdown() drops any kickoff still awaiting visibility or viewport, queued before the rebuild', () => {
+        // See the matching comment in the viewport-gate describe block above:
+        // Markdown's own permanent `contextmenu` subtree registration means
+        // `md.getId()` never leaves `_registeredComponentIds()`, so the
+        // viewport watch's teardown is asserted via a before/after delta on
+        // the viewport-specific count instead.
+        const viewportBefore = Event.listenerCounts().viewport;
+
         const md = new Markdown('hello');
         md.getElement(true);
         const anyMd = md as any;
@@ -1754,7 +1819,7 @@ describe('Markdown code editor disposal', () => {
         expect(anyMd._awaitingVisibilityKickoffs).toHaveLength(0);
         expect(anyMd._awaitingViewportKickoffs).toHaveLength(0);
         expect(anyMd._viewportWatchArmed).toBe(false);
-        expect(Event._registeredComponentIds()).not.toContain(md.getId());
+        expect(Event.listenerCounts().viewport).toBe(viewportBefore);
         expect(anyMd._renderGeneration).toBeGreaterThan(generationBefore);
     });
 });
