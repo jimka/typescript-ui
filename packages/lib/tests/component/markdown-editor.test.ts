@@ -21,6 +21,8 @@ import type { LexicalEditor, ElementNode, LexicalNode } from 'lexical';
 import { lexer } from 'marked';
 import { DOM } from '~/core/DOM';
 import { Notification } from '~/overlay/Notification';
+import { _Dialog as Dialog } from '~/overlay/Dialog';
+import type { TextField } from '~/component/input/TextField';
 import { installTestDOM, ruleStyleWrites, type RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -96,11 +98,13 @@ function contextMenuMethodsOf(editor: MarkdownEditor): {
     buildContextMenuItems(context: ContextMenuTarget): MenuItemConfig[];
     handleWysiwygContextMenu(event: MouseEvent): void;
     pasteAtContextMenuSelection(): Promise<void>;
+    promptAndApplyLink(title: string, defaultUrl: string): Promise<void>;
 } {
     return editor as unknown as {
         buildContextMenuItems(context: ContextMenuTarget): MenuItemConfig[];
         handleWysiwygContextMenu(event: MouseEvent): void;
         pasteAtContextMenuSelection(): Promise<void>;
+        promptAndApplyLink(title: string, defaultUrl: string): Promise<void>;
     };
 }
 
@@ -313,6 +317,7 @@ describe('MarkdownEditor command API', () => {
                 .toggleOrderedList()
                 .toggleLink('https://example.com')
                 .toggleLink(null)
+                .removeLink()
                 .setBlockType('h1')
                 .clearFormatting()
                 .insertParagraphBeforeBlock()
@@ -378,6 +383,100 @@ describe('MarkdownEditor command API', () => {
         editor.toggleUnorderedList();
 
         expect(editor.getValue()).toContain('- list me');
+    });
+
+    it('toggleLink("https://x") with a collapsed caret inside "hello" wraps only the enclosing word', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const textNode = paragraph.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                textNode.select(2, 2);   // collapsed caret inside "hello"
+            }
+        }, { discrete: true });
+
+        editor.toggleLink('https://x');
+
+        expect(editor.getValue()).toContain('[hello](https://x) world');
+        expect(editor.getValue()).not.toContain('[hello world](https://x)');
+    });
+
+    it('toggleLink("https://new") with the caret collapsed inside an existing link updates its URL in place', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('A [text](https://old) link.');
+
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const linkNode = paragraph.getChildren().find((n) => n.getType() === 'link') as ElementNode;
+            const textNode = linkNode.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                textNode.select(2, 2);
+            }
+        }, { discrete: true });
+
+        editor.toggleLink('https://new');
+
+        const value = editor.getValue();
+        expect(value).toContain('[text](https://new)');
+        expect(value).not.toContain('https://old');
+        // No double-wrap: exactly one Markdown link in the document.
+        expect((value.match(/\]\(/g) ?? []).length).toBe(1);
+    });
+
+    it('removeLink() with the caret collapsed inside a link leaves plain text', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('A [text](https://x) link.');
+
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const linkNode = paragraph.getChildren().find((n) => n.getType() === 'link') as ElementNode;
+            const textNode = linkNode.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                textNode.select(2, 2);
+            }
+        }, { discrete: true });
+
+        editor.removeLink();
+
+        const value = editor.getValue();
+        expect(value).toContain('text');
+        expect(value).not.toContain('[');
+        expect(value).not.toContain('](');
+    });
+
+    it('removeLink() with only part of the link\'s text selected still removes the whole link', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('[hello world](https://x)');
+
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const linkNode = paragraph.getChildren().find((n) => n.getType() === 'link') as ElementNode;
+            const textNode = linkNode.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                textNode.select(0, 'hello'.length);   // only "hello" selected
+            }
+        }, { discrete: true });
+
+        editor.removeLink();
+
+        const value = editor.getValue();
+        expect(normalize(value)).toBe('hello world');
+        expect(value).not.toContain('[');
+    });
+
+    it('removeLink() no-throws and leaves the value unchanged when the caret is not inside a link', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('plain text');
+        selectStart(editor);
+
+        expect(() => editor.removeLink()).not.toThrow();
+        expect(normalize(editor.getValue())).toBe('plain text');
     });
 });
 
@@ -595,6 +694,30 @@ describe('MarkdownEditor dialect parity guard (packages-docs viewer-only additio
         editor.setValue('A [link text](https://example.com/path) here.');
 
         expect(editor.getValue()).toContain('[link text](https://example.com/path)');
+    });
+
+    it('round-trips a link whose URL was changed in place via toggleLink through a fresh setValue/getValue', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('A [text](https://old) link.');
+
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const linkNode = paragraph.getChildren().find((n) => n.getType() === 'link') as ElementNode;
+            const textNode = linkNode.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                textNode.select(2, 2);
+            }
+        }, { discrete: true });
+
+        editor.toggleLink('https://new');
+        const value = editor.getValue();
+
+        const reloaded = new MarkdownEditor();
+        reloaded.setValue(value);
+
+        expect(normalize(reloaded.getValue())).toBe(normalize(value));
+        expect(reloaded.getValue()).toContain('[text](https://new)');
     });
 });
 
@@ -1026,7 +1149,7 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'text', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
-            hasEnclosingBlock: false,
+            hasEnclosingBlock: false, linkUrl: null,
         });
     });
 
@@ -1046,7 +1169,7 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'text', hasSelectedText: true, bold: true, italic: false, strikethrough: false, code: false,
-            hasEnclosingBlock: false,
+            hasEnclosingBlock: false, linkUrl: null,
         });
     });
 
@@ -1164,7 +1287,7 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
-            hasEnclosingBlock: true,
+            hasEnclosingBlock: true, linkUrl: null,
         });
     });
 
@@ -1181,7 +1304,7 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
-            hasEnclosingBlock: true,
+            hasEnclosingBlock: true, linkUrl: null,
         });
     });
 
@@ -1203,8 +1326,43 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: true, bold: true, italic: false, strikethrough: false, code: false,
-            hasEnclosingBlock: true,
+            hasEnclosingBlock: true, linkUrl: null,
         });
+    });
+
+    it('classifies a node inside a link as "text" with linkUrl set to the link\'s URL', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('A [link](https://example.com) in prose.');
+
+        const result = lexicalOf(editor).read(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const linkNode = paragraph.getChildren().find((n) => n.getType() === 'link') as ElementNode;
+            const textNode = linkNode.getFirstChild() as LexicalNode;
+
+            return $classifyContextMenuTarget(textNode);
+        });
+
+        expect(result.kind).toBe('text');
+        expect((result as { linkUrl?: string | null }).linkUrl).toBe('https://example.com');
+    });
+
+    it('classifies a node inside a link within a table cell as "table-cell" with linkUrl set to the link\'s URL', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| [link](https://example.com) | b |\n| --- | --- |\n| 1 | 2 |');
+
+        const result = lexicalOf(editor).read(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+            const row = table.getFirstChild() as TableRowNode;
+            const cell = row.getFirstChild() as TableCellNode;
+            const paragraph = cell.getFirstChild() as ElementNode;
+            const linkNode = paragraph.getChildren().find((n) => n.getType() === 'link') as ElementNode;
+            const textNode = linkNode.getFirstChild() as LexicalNode;
+
+            return $classifyContextMenuTarget(textNode);
+        });
+
+        expect(result.kind).toBe('table-cell');
+        expect((result as { linkUrl?: string | null }).linkUrl).toBe('https://example.com');
     });
 });
 
@@ -1545,31 +1703,139 @@ describe('MarkdownEditor context menu', () => {
         expect(rowOf(items[7]).isChecked()).toBe(false);
     });
 
-    it('a "text" context builds 12 entries: Cut/Copy/Paste, the format rows, Block style, and Clear formatting', () => {
+    it('a "text" context with linkUrl: null builds 14 entries: Cut/Copy/Paste, the format rows, Insert link, Block style, and Clear formatting', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'text', hasSelectedText: true, ...SOME_FORMATS,
+            kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(12);
+        expect(items).toHaveLength(14);
         expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
         ]);
         expect(items.slice(8).map((item) => item.text ?? '(separator)')).toEqual([
-            '(separator)', 'Block style', '(separator)', 'Clear formatting',
+            '(separator)', 'Insert link…', '(separator)', 'Block style', '(separator)', 'Clear formatting',
         ]);
     });
 
-    it('a "text" context with hasEnclosingBlock builds 15 entries: the 12 existing plus a separator and the two new items', () => {
+    it('a "text" context with a linkUrl builds 15 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'text', hasSelectedText: true, ...SOME_FORMATS, hasEnclosingBlock: true,
+            kind: 'text', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS,
         });
 
         expect(items).toHaveLength(15);
-        expect(items.slice(12).map((item) => item.text ?? '(separator)')).toEqual([
+        expect(items.slice(8).map((item) => item.text ?? '(separator)')).toEqual([
+            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Block style', '(separator)', 'Clear formatting',
+        ]);
+    });
+
+    it('a "text" context with hasEnclosingBlock builds 17 entries: the 14 (linkUrl: null) existing plus a separator and the two new items', () => {
+        const editor = new MarkdownEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, hasEnclosingBlock: true,
+        });
+
+        expect(items).toHaveLength(17);
+        expect(items.slice(14).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Insert line before block', 'Insert line after block',
         ]);
+    });
+
+    it('"Insert link…" is enabled exactly when hasSelectedText is true, in both "text" and "table-cell" contexts', () => {
+        const editor = new MarkdownEditor();
+
+        for (const kind of ['text', 'table-cell'] as const) {
+            const enabled = contextMenuMethodsOf(editor).buildContextMenuItems({
+                kind, hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
+            });
+            const disabled = contextMenuMethodsOf(editor).buildContextMenuItems({
+                kind, hasSelectedText: false, linkUrl: null, ...SOME_FORMATS,
+            });
+
+            expect(findItem(enabled, 'Insert link…')?.enabled).toBe(true);
+            expect(findItem(enabled, 'Edit link…')).toBeUndefined();
+            expect(findItem(enabled, 'Remove link')).toBeUndefined();
+
+            expect(findItem(disabled, 'Insert link…')?.enabled).toBe(false);
+        }
+    });
+
+    it('"Edit link…" and "Remove link" are always enabled and replace "Insert link…", in both "text" and "table-cell" contexts', () => {
+        const editor = new MarkdownEditor();
+
+        for (const kind of ['text', 'table-cell'] as const) {
+            for (const hasSelectedText of [true, false]) {
+                const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+                    kind, hasSelectedText, linkUrl: 'https://x', ...SOME_FORMATS,
+                });
+
+                expect(findItem(items, 'Edit link…')?.enabled).toBeUndefined();
+                expect(findItem(items, 'Remove link')?.enabled).toBeUndefined();
+                expect(findItem(items, 'Insert link…')).toBeUndefined();
+            }
+        }
+    });
+
+    describe('link menu items\' wiring', () => {
+        afterEach(() => vi.restoreAllMocks());
+
+        it('the "Insert link…" item\'s action() calls promptAndApplyLink("Insert link", "")', () => {
+            const editor = new MarkdownEditor();
+            const spy = vi.spyOn(contextMenuMethodsOf(editor), 'promptAndApplyLink').mockResolvedValue(undefined);
+
+            const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+                kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
+            });
+
+            findItem(items, 'Insert link…')?.action?.();
+
+            expect(spy).toHaveBeenCalledWith('Insert link', '');
+        });
+
+        it('the "Edit link…" item\'s action() forwards the clicked link\'s URL as the prompt default', () => {
+            const editor = new MarkdownEditor();
+            const spy = vi.spyOn(contextMenuMethodsOf(editor), 'promptAndApplyLink').mockResolvedValue(undefined);
+
+            const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+                kind: 'text', hasSelectedText: false, linkUrl: 'https://x', ...SOME_FORMATS,
+            });
+
+            findItem(items, 'Edit link…')?.action?.();
+
+            expect(spy).toHaveBeenCalledWith('Edit link', 'https://x');
+        });
+
+        it('the "Remove link" item\'s action() reaches removeLink() specifically, not bare toggleLink(null)', () => {
+            // A partial-selection setup (only "hello" of "hello world"
+            // selected) is what distinguishes removeLink() from bare
+            // toggleLink(null) — see Architecture Decisions: toggleLink(null)
+            // on a non-collapsed selection only unwraps the selected portion
+            // via $splitLinkAtSelection, while removeLink() always collapses
+            // into the link first and unwraps the whole thing. A collapsed
+            // selection would not tell the two apart, since Lexical's own
+            // collapsed-selection branch already unwraps the whole link.
+            const editor = new MarkdownEditor();
+            editor.setValue('[hello world](https://x)');
+
+            lexicalOf(editor).update(() => {
+                const paragraph = $getRoot().getFirstChild() as ElementNode;
+                const linkNode = paragraph.getChildren().find((n) => n.getType() === 'link') as ElementNode;
+                const textNode = linkNode.getFirstChild();
+
+                if ($isTextNode(textNode)) {
+                    textNode.select(0, 'hello'.length);   // only "hello" selected
+                }
+            }, { discrete: true });
+
+            const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+                kind: 'text', hasSelectedText: true, linkUrl: 'https://x', ...SOME_FORMATS,
+            });
+
+            findItem(items, 'Remove link')?.action?.();
+
+            expect(normalize(editor.getValue())).toBe('hello world');
+        });
     });
 
     it('the "Insert line before/after block" items reach insertParagraphBeforeBlock/insertParagraphAfterBlock', () => {
@@ -1661,13 +1927,13 @@ describe('MarkdownEditor context menu', () => {
         ]);
     });
 
-    it('a "table-cell" context returns 13 entries: Cut/Copy/Paste, 4 format rows, Clear formatting, then Insert and Delete submenus', () => {
+    it('a "table-cell" context with linkUrl: null returns 15 entries: Cut/Copy/Paste, 4 format rows, Insert link, Clear formatting, then Insert and Delete submenus', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS,
+            kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(13);
+        expect(items).toHaveLength(15);
         expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
         ]);
@@ -1676,7 +1942,7 @@ describe('MarkdownEditor context menu', () => {
         expect(rowOf(items[6]).isChecked()).toBe(true);    // Strikethrough
         expect(rowOf(items[7]).isChecked()).toBe(false);   // Inline code
         expect(items.slice(8).map((item) => item.text ?? '(separator)')).toEqual([
-            '(separator)', 'Clear formatting', '(separator)', 'Insert', 'Delete',
+            '(separator)', 'Insert link…', '(separator)', 'Clear formatting', '(separator)', 'Insert', 'Delete',
         ]);
 
         expect(submenuItemsOf(findItem(items, 'Insert'))?.map((item) => item.text)).toEqual([
@@ -1687,14 +1953,14 @@ describe('MarkdownEditor context menu', () => {
         ]);
     });
 
-    it('a "table-cell" context with hasEnclosingBlock builds 16 entries: the 13 existing plus a separator and the two new items', () => {
+    it('a "table-cell" context with hasEnclosingBlock builds 18 entries: the 15 existing (with no link) plus a separator and the two new items', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS, hasEnclosingBlock: true,
+            kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, hasEnclosingBlock: true,
         });
 
-        expect(items).toHaveLength(16);
-        expect(items.slice(13).map((item) => item.text ?? '(separator)')).toEqual([
+        expect(items).toHaveLength(18);
+        expect(items.slice(15).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Insert line before block', 'Insert line after block',
         ]);
     });
@@ -1719,6 +1985,34 @@ describe('MarkdownEditor context menu', () => {
         }).find((item) => item.text === 'Insert line after block')?.action?.();
 
         expect(childTypes(after)).toEqual(['table', 'paragraph']);
+    });
+
+    it('a "table-cell" context with a linkUrl returns 16 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
+        const editor = new MarkdownEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'table-cell', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS,
+        });
+
+        expect(items).toHaveLength(16);
+        expect(items.slice(8).map((item) => item.text ?? '(separator)')).toEqual([
+            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Clear formatting', '(separator)', 'Insert', 'Delete',
+        ]);
+    });
+
+    it('a "table-cell" context with both a linkUrl and hasEnclosingBlock combines all groups: link items, Clear formatting, Insert/Delete submenus, and the two block items, in that order', () => {
+        const editor = new MarkdownEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'table-cell', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS, hasEnclosingBlock: true,
+        });
+
+        expect(items).toHaveLength(19);
+        expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
+            'Cut', 'Copy', 'Paste', '(separator)',
+        ]);
+        expect(items.slice(8).map((item) => item.text ?? '(separator)')).toEqual([
+            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Clear formatting', '(separator)',
+            'Insert', 'Delete', '(separator)', 'Insert line before block', 'Insert line after block',
+        ]);
     });
 
     it("the table-cell menu's Delete submenu's Table item reaches MarkdownEditor.deleteTable", () => {
@@ -1770,6 +2064,80 @@ describe('MarkdownEditor context menu', () => {
         const fakeEvent = { target: {} } as MouseEvent;
 
         expect(() => contextMenuMethodsOf(editor).handleWysiwygContextMenu(fakeEvent)).not.toThrow();
+    });
+
+    describe('"Insert link…" / "Edit link…" prompt flow (promptAndApplyLink)', () => {
+        afterEach(() => vi.restoreAllMocks());
+
+        it('confirming the prompt with a URL calls toggleLink with that URL ("Insert link…")', async () => {
+            const editor = new MarkdownEditor();
+            editor.setValue('hello world');
+            selectStart(editor);
+
+            vi.spyOn(Dialog, 'show').mockImplementation(async (config) => {
+                (config.contentComponent as TextField).setValue('https://new.example.com');
+
+                return 'confirm';
+            });
+
+            await contextMenuMethodsOf(editor).promptAndApplyLink('Insert link', '');
+
+            expect(editor.getValue()).toContain('https://new.example.com');
+        });
+
+        it('cancelling the prompt makes no change to the document', async () => {
+            const editor = new MarkdownEditor();
+            editor.setValue('hello world');
+            selectStart(editor);
+            const before = editor.getValue();
+
+            vi.spyOn(Dialog, 'show').mockResolvedValue('cancel');
+
+            await contextMenuMethodsOf(editor).promptAndApplyLink('Insert link', '');
+
+            expect(editor.getValue()).toBe(before);
+        });
+
+        it('confirming the prompt with an empty/whitespace-only URL makes no change to the document', async () => {
+            const editor = new MarkdownEditor();
+            editor.setValue('hello world');
+            selectStart(editor);
+            const before = editor.getValue();
+
+            vi.spyOn(Dialog, 'show').mockImplementation(async (config) => {
+                (config.contentComponent as TextField).setValue('   ');
+
+                return 'confirm';
+            });
+
+            await contextMenuMethodsOf(editor).promptAndApplyLink('Insert link', '');
+
+            expect(editor.getValue()).toBe(before);
+        });
+
+        it('"Edit link…" confirming with the URL left unchanged from its pre-filled default makes no change', async () => {
+            const editor = new MarkdownEditor();
+            editor.setValue('A [text](https://old) link.');
+
+            lexicalOf(editor).update(() => {
+                const paragraph = $getRoot().getFirstChild() as ElementNode;
+                const linkNode = paragraph.getChildren().find((n) => n.getType() === 'link') as ElementNode;
+                const textNode = linkNode.getFirstChild();
+
+                if ($isTextNode(textNode)) {
+                    textNode.select(2, 2);
+                }
+            }, { discrete: true });
+            const before = editor.getValue();
+
+            // Never mutates the field: the mock resolves 'confirm' with the
+            // field left at its pre-filled default ("https://old").
+            vi.spyOn(Dialog, 'show').mockResolvedValue('confirm');
+
+            await contextMenuMethodsOf(editor).promptAndApplyLink('Edit link', 'https://old');
+
+            expect(editor.getValue()).toBe(before);
+        });
     });
 });
 
@@ -1824,7 +2192,7 @@ describe('MarkdownEditor context-menu paste target', () => {
 
         expect(result).toEqual({
             kind: 'text', hasSelectedText: true, bold: false, italic: false, strikethrough: false, code: false,
-            hasEnclosingBlock: false,
+            hasEnclosingBlock: false, linkUrl: null,
         });
 
         const stillCollapsedAtCaret = lexicalOf(editor).read(() => {
@@ -1833,6 +2201,45 @@ describe('MarkdownEditor context-menu paste target', () => {
             return $isRangeSelection(selection)
                 && selection.isCollapsed()
                 && selection.anchor.offset === 'alpha beta'.indexOf('beta') + 2;
+        });
+
+        expect(stillCollapsedAtCaret).toBe(true);
+    });
+
+    it('classifying a collapsed caret inside a link does not mutate the selection, and reports the link\'s URL', () => {
+        // Same regression as above, for the linkUrl read: $findEnclosingLinkNode
+        // must be a pure read, never expanding or otherwise touching the
+        // collapsed caret it classifies.
+        const editor = new MarkdownEditor();
+        editor.setValue('A [link](https://example.com) in prose.');
+
+        // Collapse mid-way through the link text ("li|nk"), inside the
+        // LinkNode's own text child — not the paragraph's first child, which
+        // is the plain "A " text node preceding the link.
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const linkNode = paragraph.getChildren().find((n) => n.getType() === 'link') as ElementNode;
+            const textNode = linkNode.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                textNode.select(2, 2);
+            }
+        }, { discrete: true });
+
+        const result = lexicalOf(editor).read(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const linkNode = paragraph.getChildren().find((n) => n.getType() === 'link') as ElementNode;
+            const textNode = linkNode.getFirstChild() as LexicalNode;
+
+            return $classifyContextMenuTarget(textNode);
+        });
+
+        expect((result as { linkUrl?: string | null }).linkUrl).toBe('https://example.com');
+
+        const stillCollapsedAtCaret = lexicalOf(editor).read(() => {
+            const selection = $getSelection();
+
+            return $isRangeSelection(selection) && selection.isCollapsed() && selection.anchor.offset === 2;
         });
 
         expect(stillCollapsedAtCaret).toBe(true);

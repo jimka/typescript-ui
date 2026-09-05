@@ -491,6 +491,10 @@ New/updated exact item layouts (indices 0-based; supersedes the current 12/13-it
 
 ---
 
+## Implementation Notes
+
+- **The plan's own stated rationale for the "field is the dialog's only focusable element" claim (Architecture Decisions, and `promptForLinkUrl`'s doc comment) is factually wrong, and was corrected during implementation.** The dialog is not single-focusable — Cancel, Confirm, and (dismissable by default) the title-bar close button are all focusable too. The field receives initial focus because `Dialog.focusFirst` (`Dialog.ts:1017-1033`) prefers the first focusable element in the *content region* specifically, not because it is the dialog's only focusable element; Enter confirms because `Dialog.onEnter` (`Dialog.ts:1189-1206`) clicks whichever button is marked `primary` — but only while the field itself holds focus; `onEnter` explicitly skips confirming when a `<button>`, a `<textarea>`, or a `contenteditable` element is focused instead. The design conclusion the plan reached from this — no `initialFocus` override needed, Enter confirms — is unaffected and still correct; only the stated *why* was wrong. `promptForLinkUrl`'s JSDoc was reworded to state the actual mechanism instead of the plan's original (inaccurate) sentence.
+
 ## Notes
 
 [^optional-field]: Typed optional (`linkUrl?: string | null`) rather than required, even though `$classifyContextMenuTarget` always computes and includes it, so the many existing hand-built `ContextMenuTarget` object literals used elsewhere in the test suite as menu-builder *inputs* (not as assertions on `$classifyContextMenuTarget`'s output) continue to typecheck without every one of them being touched. This mirrors `plans/markdown-editor-insert-line-around-block.md`'s identical choice for its own new `hasEnclosingBlock` field on the same type, drafted independently but landing on the same pattern for the same reason.

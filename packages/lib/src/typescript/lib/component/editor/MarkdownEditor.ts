@@ -7,12 +7,14 @@ import { Insets } from "~/primitive/Insets.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { Card } from "~/layout/Card.js";
+import { Dialog, DialogButtons } from "~/overlay/Dialog.js";
 import { Menu } from "~/overlay/Menu.js";
 import { Notification } from "~/overlay/Notification.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
 import { CodeEditor } from "~/component/editor/CodeEditor.js";
 import type { CodeEditorChange } from "~/component/editor/CodeEditor.js";
+import { TextField } from "~/component/input/TextField.js";
 import {
     createEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $getRoot,
     $createParagraphNode, KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH,
@@ -26,7 +28,8 @@ import type { HeadingTagType } from "@lexical/rich-text";
 import {
     registerList, INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, ListNode, $isListNode,
 } from "@lexical/list";
-import { $toggleLink } from "@lexical/link";
+import { $toggleLink, $isLinkNode } from "@lexical/link";
+import type { LinkNode } from "@lexical/link";
 import { CodeNode, $createCodeNode, $isCodeNode } from "@lexical/code";
 import { registerHistory, createEmptyHistoryState } from "@lexical/history";
 import {
@@ -179,6 +182,18 @@ function $findEnclosingSeparatorTarget(node: LexicalNode): TableNode | CodeNode 
 }
 
 /**
+ * Finds the link enclosing `node`, if any — checking `node` itself first,
+ * then its ancestors, stopping at the document root.
+ *
+ * @param node - The node to search from (typically a selection anchor, or
+ *   the right-click's resolved DOM-target node).
+ * @returns The enclosing `LinkNode`, or `null` when `node` sits in neither.
+ */
+function $findEnclosingLinkNode(node: LexicalNode): LinkNode | null {
+    return $findMatchingParent(node, $isLinkNode);
+}
+
+/**
  * Finds the blockquote, list, fenced code block, or table enclosing `node`,
  * if any — the nearest of the first three, regardless of nesting order (a
  * list inside a quote resolves to the list; a quote inside a list resolves to
@@ -318,6 +333,7 @@ export type ContextMenuTarget =
           hasSelectedText: boolean;
           bold: boolean; italic: boolean; strikethrough: boolean; code: boolean;
           hasEnclosingBlock?: boolean;
+          linkUrl?: string | null;
       }
     | { kind: "empty-line"; hasSelectedText: boolean }
     | {
@@ -325,6 +341,7 @@ export type ContextMenuTarget =
           hasSelectedText: boolean;
           bold: boolean; italic: boolean; strikethrough: boolean; code: boolean;
           hasEnclosingBlock?: boolean;
+          linkUrl?: string | null;
       };
 
 /**
@@ -470,11 +487,12 @@ export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget
     };
     const hasSelectedText = expansion !== null
         || ($isRangeSelection(selection) && selection.getTextContent() !== "");
+    const linkUrl = $findEnclosingLinkNode(node)?.getURL() ?? null;
 
     if ($getTableCellNodeFromLexicalNode(node) !== null) {
         const hasEnclosingBlock = $findEnclosingInsertableBlock(node) !== null;
 
-        return { kind: "table-cell", hasSelectedText, hasEnclosingBlock, ...formatState };
+        return { kind: "table-cell", hasSelectedText, hasEnclosingBlock, linkUrl, ...formatState };
     }
 
     const block = $findMatchingParent(node, (n) => $isElementNode(n) && !n.isInline());
@@ -485,7 +503,7 @@ export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget
 
     const hasEnclosingBlock = $findEnclosingInsertableBlock(node) !== null;
 
-    return { kind: "text", hasSelectedText, hasEnclosingBlock, ...formatState };
+    return { kind: "text", hasSelectedText, hasEnclosingBlock, linkUrl, ...formatState };
 }
 
 // A text caret over the whole surface signals editability. The surface is also
@@ -689,7 +707,7 @@ class WysiwygSurface extends Component {
  * to insert a paragraph after it, since a table's grid and a code block's
  * preformatted text otherwise give a click nowhere to land), a thin
  * imperative command API (`toggleBold`, `toggleStrikethrough`, `clearFormatting`,
- * `setBlockType`, `toggleUnorderedList`, `toggleLink`, `insertTable`,
+ * `setBlockType`, `toggleUnorderedList`, `toggleLink`, `removeLink`, `insertTable`,
  * `insertParagraphBeforeBlock`/`insertParagraphAfterBlock`,
  * `insertTableRow`/`deleteTableRow`, `insertTableColumn`/`deleteTableColumn`,
  * `deleteTable`, `cut`/`copy`/`paste`, …) a consumer can wire to their own `Button`s, and a
@@ -1090,7 +1108,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Wraps the current selection in a link to `url`, or unwraps it when `url`
-     * is `null`. No-op without a range selection.
+     * is `null`. A collapsed caret first expands to its enclosing word (see
+     * `$selectEnclosingWordIfCollapsed`) when `url` is non-null, so wrapping a
+     * bare caret links just that word rather than the whole enclosing text run.
+     * When the selection already sits inside one existing link, updates that
+     * link's URL in place instead of double-wrapping (Lexical's own `$toggleLink`
+     * behavior). No-op without a range selection.
      *
      * @param url - The link target, or `null` to remove the link.
      * @returns This component, for method chaining.
@@ -1101,9 +1124,50 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         editor.update(() => {
             const selection = $getSelection();
 
-            if ($isRangeSelection(selection)) {
-                $toggleLink(url);
+            if (!$isRangeSelection(selection)) {
+                return;
             }
+
+            if (url !== null) {
+                $selectEnclosingWordIfCollapsed();
+            }
+
+            $toggleLink(url);
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Removes the link enclosing the current selection, unwrapping it back to
+     * plain text and keeping the text content — the whole link, regardless of
+     * how much of it (if any) is currently selected. No-op (without throwing)
+     * when there is no range selection, or it is not inside a link.
+     *
+     * @returns This component, for method chaining.
+     */
+    removeLink(): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                return;
+            }
+
+            const linkNode = $findEnclosingLinkNode(selection.anchor.getNode());
+
+            if (linkNode === null) {
+                return;
+            }
+
+            // Collapsing inside the link first routes $toggleLink(null) through
+            // its collapsed-selection branch, which always unwraps the whole
+            // link — its range-selection branch only unwraps the selected
+            // portion (see Architecture Decisions).
+            linkNode.selectStart();
+            $toggleLink(null);
         }, { discrete: true });
 
         return this;
@@ -1590,6 +1654,57 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Prompts for a URL via a `Dialog`: a bare `TextField` pre-filled with
+     * `defaultUrl`, Cancel/Confirm buttons — this codebase's established
+     * text-input-prompt pattern, since `Dialog` has no dedicated prompt
+     * method. The field receives initial focus as the first focusable
+     * element in the dialog's content region, and Enter confirms because
+     * Confirm is marked `primary`.
+     *
+     * @param title - The dialog's title-bar text.
+     * @param defaultUrl - The field's initial text — `""` for Insert, the
+     *   link's current URL for Edit.
+     * @returns The trimmed URL the user confirmed, or `null` on Cancel/close, or
+     *   an empty/whitespace-only confirmation.
+     */
+    private async promptForLinkUrl(title: string, defaultUrl: string): Promise<string | null> {
+        const field = new TextField({ text: defaultUrl, placeholder: "https://example.com" });
+
+        const result = await Dialog.show({
+            title,
+            contentComponent: field,
+            buttons: [DialogButtons.Cancel, { ...DialogButtons.Confirm, primary: true }],
+        });
+
+        if (result !== "confirm") {
+            return null;
+        }
+
+        const url = field.getValue().trim();
+
+        return url === "" ? null : url;
+    }
+
+    /**
+     * The context menu's Insert link / Edit link handler: prompts for a URL
+     * (see {@link MarkdownEditor.promptForLinkUrl}), then applies it via
+     * `toggleLink`. No-op when the user cancels, submits an empty URL, or
+     * resubmits `defaultUrl` unchanged (a real no-op for Edit; for Insert,
+     * `defaultUrl` is always `""`, which `promptForLinkUrl` never returns, so
+     * this check is a no-op there).
+     *
+     * @param title - Forwarded to {@link MarkdownEditor.promptForLinkUrl}.
+     * @param defaultUrl - Forwarded to {@link MarkdownEditor.promptForLinkUrl}.
+     */
+    private async promptAndApplyLink(title: string, defaultUrl: string): Promise<void> {
+        const url = await this.promptForLinkUrl(title, defaultUrl);
+
+        if (url !== null && url !== defaultUrl) {
+            this.toggleLink(url);
+        }
+    }
+
+    /**
      * Dispatches a classified right-click context to the item list for its kind.
      *
      * @param context - The classified {@link ContextMenuTarget}.
@@ -1655,6 +1770,33 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Builds the link item(s) shared by the text and table-cell context menus:
+     * "Insert link…" when the click is not inside a link (dimmed unless there
+     * is a selection or expandable word to wrap), or "Edit link…" plus "Remove
+     * link" when it is. The two states are mutually exclusive, so exactly one
+     * of these shapes is ever shown — never a permanently-disabled item.
+     *
+     * @param context - Carries `linkUrl` (`undefined`/`null` outside a link, the
+     *   URL inside one) and `hasSelectedText`.
+     * @returns One or two `MenuItemConfig` entries.
+     */
+    private buildLinkMenuItems(context: { linkUrl?: string | null; hasSelectedText: boolean }): MenuItemConfig[] {
+        const linkUrl = context.linkUrl ?? null;
+
+        if (linkUrl === null) {
+            return [{
+                text: "Insert link…", enabled: context.hasSelectedText,
+                action: () => void this.promptAndApplyLink("Insert link", ""),
+            }];
+        }
+
+        return [
+            { text: "Edit link…", action: () => void this.promptAndApplyLink("Edit link", linkUrl) },
+            { text: "Remove link", action: () => this.removeLink() },
+        ];
+    }
+
+    /**
      * Builds the format menu shown over a word, a range selection, or an
      * ordinary (non-empty) block: the shared inline-format toggles, a
      * block-style submenu (paragraph, headings, a blockquote, or a fenced
@@ -1669,6 +1811,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             ...this.buildClipboardMenuItems(context.hasSelectedText),
             { separator: true },
             ...this.buildFormatToggleItems(context),
+            { separator: true },
+            ...this.buildLinkMenuItems(context),
             { separator: true },
             {
                 text:    "Block style",
@@ -1739,6 +1883,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             ...this.buildClipboardMenuItems(context.hasSelectedText),
             { separator: true },
             ...this.buildFormatToggleItems(context),
+            { separator: true },
+            ...this.buildLinkMenuItems(context),
             { separator: true },
             { text: "Clear formatting", action: () => this.clearFormatting() },
             { separator: true },
