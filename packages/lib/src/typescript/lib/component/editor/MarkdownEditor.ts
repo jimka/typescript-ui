@@ -11,6 +11,7 @@ import { Dialog, DialogButtons } from "~/overlay/Dialog.js";
 import { Menu } from "~/overlay/Menu.js";
 import { Notification } from "~/overlay/Notification.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
+import { buildClipboardMenuItems } from "~/component/shared/buildClipboardMenuItems.js";
 import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
 import { CodeEditor } from "~/component/editor/CodeEditor.js";
 import type { CodeEditorChange } from "~/component/editor/CodeEditor.js";
@@ -1777,16 +1778,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * would expand into, which `cut()`/`copy()` themselves perform when
      * invoked, so the enabled state always matches what activating the item
      * actually does. Paste is always enabled and acts on the live selection.
-     *
-     * @param hasSelectedText - Whether the classified selection carries text.
-     * @returns The three `MenuItemConfig` entries: Cut, Copy, Paste.
      */
-    private buildClipboardMenuItems(hasSelectedText: boolean): MenuItemConfig[] {
-        return [
-            { text: "Cut",   enabled: hasSelectedText, action: () => this.cut() },
-            { text: "Copy",  enabled: hasSelectedText, action: () => this.copy() },
-            { text: "Paste", action: () => void this.pasteAtContextMenuSelection() },
-        ];
+    private clipboardMenuItems(hasSelectedText: boolean): MenuItemConfig[] {
+        return buildClipboardMenuItems({
+            hasSelectedText,
+            cut:   () => this.cut(),
+            copy:  () => this.copy(),
+            paste: () => void this.pasteAtContextMenuSelection(),
+        });
     }
 
     /**
@@ -1828,7 +1827,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      */
     private buildTextContextMenuItems(context: ContextMenuTarget & { kind: "text" }): MenuItemConfig[] {
         const items: MenuItemConfig[] = [
-            ...this.buildClipboardMenuItems(context.hasSelectedText),
+            ...this.clipboardMenuItems(context.hasSelectedText),
             { separator: true },
             ...this.buildFormatToggleItems(context),
             { separator: true },
@@ -1876,7 +1875,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      */
     private buildEmptyLineContextMenuItems(context: ContextMenuTarget & { kind: "empty-line" }): MenuItemConfig[] {
         return [
-            ...this.buildClipboardMenuItems(context.hasSelectedText),
+            ...this.clipboardMenuItems(context.hasSelectedText),
             { separator: true },
             { text: "Heading", submenu: { label: "Heading", items: this.buildHeadingMenuItems() } },
             { text: "Quote", action: () => this.setBlockType("quote") },
@@ -1900,7 +1899,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      */
     private buildTableCellContextMenuItems(context: ContextMenuTarget & { kind: "table-cell" }): MenuItemConfig[] {
         const items: MenuItemConfig[] = [
-            ...this.buildClipboardMenuItems(context.hasSelectedText),
+            ...this.clipboardMenuItems(context.hasSelectedText),
             { separator: true },
             ...this.buildFormatToggleItems(context),
             { separator: true },

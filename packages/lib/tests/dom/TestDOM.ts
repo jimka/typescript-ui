@@ -12,7 +12,7 @@
 // reads the recorded scroll / value / id state back off that stub. The shared
 // `TestHandleTable` is what lets a write through the sink be read by the source.
 
-import { DOM, type DOMSink, type DOMSource, type DocumentSelectionRange, type ElementPatch, type Handle, type TimerId, type PatchBuilder, type Rect, type ScrollMetrics, type OffsetSize, type MediaState } from '~/core/DOM';
+import { DOM, type DOMSink, type DOMSource, type DocumentSelectionRange, type TextSelectionRange, type ElementPatch, type Handle, type TimerId, type PatchBuilder, type Rect, type ScrollMetrics, type OffsetSize, type MediaState } from '~/core/DOM';
 import type { Component } from '~/core/Component';
 import type { Size } from '~/primitive/Size';
 import type { TextMeasureOptions, TextMeasureRequest, TextMetrics } from '~/core/Util';
@@ -97,6 +97,14 @@ interface HandleStub {
      * overflow was injected and the scroll extent equals the client box.
      */
     scrollExtent: { width: number; height: number } | null;
+    /**
+     * Modelled text-selection range, folded by the recording sink's
+     * `setSelectionRange` and read back by
+     * {@link ModelledDOMSource.getSelectionRange}. `null` (the default) models an
+     * element with no character range — a non-text control, or a control nothing
+     * has written a range to.
+     */
+    selection: { start: number; end: number } | null;
 }
 
 /**
@@ -155,6 +163,7 @@ class TestHandleTable {
             styleTransform: '',
             borderInset:    { top: 0, right: 0, bottom: 0, left: 0 },
             scrollExtent:   null,
+            selection:      null,
         });
 
         return handle;
@@ -539,8 +548,9 @@ export class RecordingDOMSink implements DOMSink {
         _table.stub(handle).value = value;
     }
 
-    setSelectionRange(_handle: Handle, start: number, end: number): void {
+    setSelectionRange(handle: Handle, start: number, end: number): void {
         this.record('setSelectionRange', start, end);
+        _table.stub(handle).selection = { start, end };
     }
 
     /**
@@ -1118,6 +1128,17 @@ export class ModelledDOMSource implements DOMSource {
     /** Reads the value recorded onto the stub by the recording sink. */
     getValue(handle: Handle): string {
         return _table.stub(handle).value;
+    }
+
+    /**
+     * Reads the range recorded onto the stub by the recording sink's
+     * `setSelectionRange`. Returns a copy so a caller cannot mutate the stub
+     * through the snapshot; `null` when no range was ever written.
+     */
+    getSelectionRange(handle: Handle): TextSelectionRange | null {
+        const range = _table.stub(handle).selection;
+
+        return range === null ? null : { ...range };
     }
 
     /** Reads the focused handle recorded by the sink's `focus`/`blur`. */
