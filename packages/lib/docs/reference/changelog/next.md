@@ -151,6 +151,13 @@ page resets to empty.
   its enclosing word before wrapping it, and `removeLink()` is a new command
   that unwraps the whole enclosing link regardless of how much of it is
   selected.
+- **`DateField`, `TimeField`, and `DateTimeField` now also accept a relative
+  shorthand entry** — one or more signed `<number><unit>` terms such as
+  `+9y`, `-2w3d`, or `1y 6mo`, resolved against the current moment.
+  `DateField` accepts `y`/`mo`/`w`/`d`; `TimeField` accepts `h`/`mi`/`s`;
+  `DateTimeField` accepts all seven. The typed text is left alone while
+  typing and resolves to its formatted absolute value only when the field
+  loses focus or Enter is pressed. No consumer action is needed.
 
 ### Data
 

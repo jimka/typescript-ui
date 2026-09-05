@@ -35,9 +35,20 @@ panel.addComponent(startTime);
 | `setEnabled(boolean)` / `setReadOnly(boolean)` | Inherited from [`AbstractInput`](/api/component/input/classes/AbstractInput); both forward to the inner [`PickerInput`](/api/component/input/classes/PickerInput). |
 | `setDropdownAnimated(boolean)` | Toggle the fade animation on the time dropdown. |
 
+## Relative shorthand
+
+The text input also accepts a relative shorthand instead of an absolute `HH:MM[:SS]` string — one or more signed `<number><unit>` terms, resolved against the moment the text is parsed. Accepted units are `h` (hour), `mi` (minute), and `s` (second); a missing sign means `+`, and each term keeps its own sign.
+
+| Input | Meaning |
+| --- | --- |
+| `+30mi` | Thirty minutes from now |
+| `+1h30mi` | One hour thirty minutes from now |
+
+The typed shorthand stays on screen while typing; it resolves to the absolute time only when the field loses focus or Enter is pressed. Unlike the absolute format, the resolved value carries whatever second the clock reads at that moment rather than defaulting it to `0` — typing `+30mi` twice a second apart can produce values a second apart even though both display the same `HH:MM`.
+
 ## Notes
 
-- Only hours and minutes are part of the user-facing input. Seconds default to `0` and the date portion comes from the local clock at the moment of the most recent input event.
+- For the absolute format, an omitted `:SS` segment defaults seconds to `0`; typing one sets it explicitly, independent of the `showSeconds` display option. The date portion comes from the local clock at the moment of the most recent input event.
 - The dropdown is intentionally minimal — extend [`TimePickerDropdown`](/api/component/input/classes/TimePickerDropdown) to add 12-hour formatting or seconds.
 
 ## See also
