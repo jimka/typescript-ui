@@ -22,7 +22,7 @@ Resolving a released or collected handle **throws**, turning a use-after-free in
 
 ## Why two interfaces
 
-Writes and reads have different shapes. Writes are fire-and-forget and already buffered by `StyleTarget`; reads are synchronous request/response that must return a value now. Keeping them separate lets a test sink be a pure recorder while a test source is an independent geometry model — and it matches a future worker transport, where writes post one-way but reads must round-trip.
+Writes and reads have different shapes. Writes are fire-and-forget and already buffered by `StyleTarget`; reads are synchronous request/response that must return a value now — `readClipboardText()` is the seam's one asynchronous read, because the `navigator.clipboard` API it wraps has no synchronous form. Keeping them separate lets a test sink be a pure recorder while a test source is an independent geometry model — and it matches a future worker transport, where writes post one-way but reads must round-trip.
 
 ## Swapping the seams
 

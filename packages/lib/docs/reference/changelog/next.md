@@ -21,6 +21,11 @@ page resets to empty.
   `setMin` / `getMin` / `setMax` / `getMax` and the `min` / `max` options.
   See [Migration](/reference/migration) for the full replacement.
 
+### Core
+
+- **`DOMSource` gains one required member: `readClipboardText()`.** Only a
+  consumer implementing its own `DOMSource` is affected.
+
 ## Changed
 
 ### Components
@@ -134,6 +139,12 @@ page resets to empty.
   label-level mechanism they run through — italicising a cell's label
   (the VS Code-style preview-tab treatment) with nothing else about the tab
   changed.
+- **`MarkdownEditor` gains `cut()` / `copy()` / `paste()`**, and its
+  right-click context menu now leads every context with Cut / Copy / Paste
+  (dimmed for Cut/Copy when nothing is selected). Paste targets the caret the
+  user actually right-clicked at rather than the word the menu auto-selects
+  for its format toggles, and shows a toast when the browser refuses the
+  clipboard read.
 
 ### Data
 
