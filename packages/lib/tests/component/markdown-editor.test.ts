@@ -125,6 +125,26 @@ function selectStart(editor: MarkdownEditor): void {
     lexicalOf(editor).update(() => { $getRoot().selectStart(); }, { discrete: true });
 }
 
+/** The root's children, by Lexical node type, in document order. */
+function childTypes(editor: MarkdownEditor): string[] {
+    return lexicalOf(editor).read(() => $getRoot().getChildren().map((node) => node.getType()));
+}
+
+/** Whether the caret sits in a (necessarily just-created, still empty) paragraph. */
+function caretIsInAParagraph(editor: MarkdownEditor): boolean {
+    return lexicalOf(editor).read(() => {
+        const selection = $getSelection();
+
+        if (!$isRangeSelection(selection)) {
+            return false;
+        }
+
+        const node = selection.anchor.getNode();
+
+        return $isParagraphNode(node) || $isParagraphNode(node.getParent());
+    });
+}
+
 describe('markdownTransformers curation', () => {
     it('contains exactly the eleven dialect transformers', () => {
         expect(TRANSFORMERS).toHaveLength(11);
@@ -295,6 +315,8 @@ describe('MarkdownEditor command API', () => {
                 .toggleLink(null)
                 .setBlockType('h1')
                 .clearFormatting()
+                .insertParagraphBeforeBlock()
+                .insertParagraphAfterBlock()
         ).not.toThrow();
     });
 
@@ -1004,6 +1026,7 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'text', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
+            hasEnclosingBlock: false,
         });
     });
 
@@ -1023,7 +1046,91 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'text', hasSelectedText: true, bold: true, italic: false, strikethrough: false, code: false,
+            hasEnclosingBlock: false,
         });
+    });
+
+    it('classifies a node inside a heading as "text" with hasEnclosingBlock false', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('# Heading');
+
+        const result = lexicalOf(editor).read(() => {
+            const heading = $getRoot().getFirstChild() as ElementNode;
+            const textNode = heading.getFirstChild() as LexicalNode;
+
+            return $classifyContextMenuTarget(textNode);
+        });
+
+        expect(result.kind).toBe('text');
+        expect((result as { hasEnclosingBlock?: boolean }).hasEnclosingBlock).toBe(false);
+    });
+
+    it('classifies a node inside a blockquote as "text" with hasEnclosingBlock true', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('> a quoted line');
+
+        const result = lexicalOf(editor).read(() => {
+            const quote = $getRoot().getFirstChild() as ElementNode;
+            const textNode = quote.getFirstChild() as LexicalNode;
+
+            return $classifyContextMenuTarget(textNode);
+        });
+
+        expect(result.kind).toBe('text');
+        expect((result as { hasEnclosingBlock?: boolean }).hasEnclosingBlock).toBe(true);
+    });
+
+    it('classifies a node inside a fenced code block as "text" with hasEnclosingBlock true', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('```\ncode\n```');
+
+        const result = lexicalOf(editor).read(() => {
+            const code = $getRoot().getFirstChild() as ElementNode;
+            const textNode = code.getFirstChild() as LexicalNode;
+
+            return $classifyContextMenuTarget(textNode);
+        });
+
+        expect(result.kind).toBe('text');
+        expect((result as { hasEnclosingBlock?: boolean }).hasEnclosingBlock).toBe(true);
+    });
+
+    it('classifies a node inside any item of a list as "text" with hasEnclosingBlock true, regardless of which item', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('- one\n- two\n- three');
+
+        const resultForEachItem = lexicalOf(editor).read(() => {
+            const list = $getRoot().getFirstChild() as ElementNode;
+
+            return list.getChildren().map((item) => {
+                const textNode = (item as ElementNode).getFirstChild() as LexicalNode;
+
+                return $classifyContextMenuTarget(textNode);
+            });
+        });
+
+        for (const result of resultForEachItem) {
+            expect(result.kind).toBe('text');
+            expect((result as { hasEnclosingBlock?: boolean }).hasEnclosingBlock).toBe(true);
+        }
+    });
+
+    it('classifies a node inside a nested list\'s inner item as "text" with hasEnclosingBlock true, resolving to the inner list', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('- outer\n    - inner one\n    - inner two');
+
+        const result = lexicalOf(editor).read(() => {
+            const outerList = $getRoot().getFirstChild() as ElementNode;
+            const outerSecondItem = outerList.getChildAtIndex(1) as ElementNode;
+            const innerList = outerSecondItem.getFirstChild() as ElementNode;
+            const innerFirstItem = innerList.getFirstChild() as ElementNode;
+            const textNode = innerFirstItem.getFirstChild() as LexicalNode;
+
+            return $classifyContextMenuTarget(textNode);
+        });
+
+        expect(result.kind).toBe('text');
+        expect((result as { hasEnclosingBlock?: boolean }).hasEnclosingBlock).toBe(true);
     });
 
     it('classifies the paragraph node of a genuinely empty paragraph as "empty-line"', () => {
@@ -1057,6 +1164,7 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
+            hasEnclosingBlock: true,
         });
     });
 
@@ -1073,6 +1181,7 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
+            hasEnclosingBlock: true,
         });
     });
 
@@ -1094,31 +1203,12 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: true, bold: true, italic: false, strikethrough: false, code: false,
+            hasEnclosingBlock: true,
         });
     });
 });
 
 describe('MarkdownEditor Alt+Enter block-separator shortcut', () => {
-    /** The root's children, by Lexical node type, in document order. */
-    function childTypes(editor: MarkdownEditor): string[] {
-        return lexicalOf(editor).read(() => $getRoot().getChildren().map((node) => node.getType()));
-    }
-
-    /** Whether the caret sits in a (necessarily just-created, still empty) paragraph. */
-    function caretIsInAParagraph(editor: MarkdownEditor): boolean {
-        return lexicalOf(editor).read(() => {
-            const selection = $getSelection();
-
-            if (!$isRangeSelection(selection)) {
-                return false;
-            }
-
-            const node = selection.anchor.getNode();
-
-            return $isParagraphNode(node) || $isParagraphNode(node.getParent());
-        });
-    }
-
     /** Selects into the end of the first cell of the document's first (only) table. */
     function selectInFirstTableCell(editor: MarkdownEditor): void {
         lexicalOf(editor).update(() => {
@@ -1209,6 +1299,214 @@ describe('MarkdownEditor Alt+Enter block-separator shortcut', () => {
         expect(handled).toBe(true);
         expect(childTypes(editor)).toEqual(['paragraph', 'paragraph']);
     });
+
+    it('with the caret inside a blockquote, still returns handled via Lexical\'s own native paragraph-insertion (the shortcut was not widened)', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('> quoted');
+        lexicalOf(editor).update(() => { $getRoot().selectEnd(); }, { discrete: true });
+
+        // $findEnclosingSeparatorTarget only ever resolves a table or code
+        // block, so this handler returns false here regardless of altKey;
+        // QuoteNode's own native Enter handling (registerRichText) is what
+        // inserts the paragraph.
+        const handled = dispatchEnter(editor, true);
+
+        expect(handled).toBe(true);
+        expect(childTypes(editor)).toEqual(['quote', 'paragraph']);
+    });
+
+    it('with the caret inside a list item, still returns handled via Lexical\'s own native list handling (the shortcut was not widened)', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('- one\n- two');
+        lexicalOf(editor).update(() => { $getRoot().selectEnd(); }, { discrete: true });
+
+        const handled = dispatchEnter(editor, true);
+
+        expect(handled).toBe(true);
+        expect(childTypes(editor)).toEqual(['list']);   // handled inside the list, no root-level paragraph
+    });
+});
+
+describe('MarkdownEditor insertParagraphBeforeBlock / insertParagraphAfterBlock', () => {
+    it('insertParagraphAfterBlock() with the caret inside a blockquote inserts a paragraph immediately after it, caret inside', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('> quoted');
+        lexicalOf(editor).update(() => { $getRoot().selectStart(); }, { discrete: true });   // caret inside the quote
+
+        editor.insertParagraphAfterBlock();
+
+        expect(childTypes(editor)).toEqual(['quote', 'paragraph']);
+        expect(caretIsInAParagraph(editor)).toBe(true);
+    });
+
+    it('insertParagraphBeforeBlock() with the caret inside a blockquote inserts a paragraph immediately before it, caret inside', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('> quoted');
+        lexicalOf(editor).update(() => { $getRoot().selectStart(); }, { discrete: true });
+
+        editor.insertParagraphBeforeBlock();
+
+        expect(childTypes(editor)).toEqual(['paragraph', 'quote']);
+        expect(caretIsInAParagraph(editor)).toBe(true);
+    });
+
+    it('both methods work the same way for a fenced code block', () => {
+        const after = new MarkdownEditor();
+        after.setValue('```\ncode\n```');
+        lexicalOf(after).update(() => { $getRoot().selectEnd(); }, { discrete: true });   // lands in the code block, its only child
+        after.insertParagraphAfterBlock();
+        expect(childTypes(after)).toEqual(['code', 'paragraph']);
+
+        const before = new MarkdownEditor();
+        before.setValue('```\ncode\n```');
+        lexicalOf(before).update(() => { $getRoot().selectEnd(); }, { discrete: true });
+        before.insertParagraphBeforeBlock();
+        expect(childTypes(before)).toEqual(['paragraph', 'code']);
+    });
+
+    it('both methods insert next to the whole list, never splitting it, regardless of which item the caret was in', () => {
+        /** Selects into the end of the `index`-th item of the document's first (top-level) list. */
+        function selectInListItem(editor: MarkdownEditor, index: number): void {
+            lexicalOf(editor).update(() => {
+                const list = $getRoot().getFirstChild() as ElementNode;
+                const item = list.getChildAtIndex(index) as ElementNode;
+
+                item.selectEnd();
+            }, { discrete: true });
+        }
+
+        const fromFirstItem = new MarkdownEditor();
+        fromFirstItem.setValue('- one\n- two\n- three');
+        selectInListItem(fromFirstItem, 0);
+        fromFirstItem.insertParagraphAfterBlock();
+        expect(childTypes(fromFirstItem)).toEqual(['list', 'paragraph']);
+
+        const fromLastItem = new MarkdownEditor();
+        fromLastItem.setValue('- one\n- two\n- three');
+        selectInListItem(fromLastItem, 2);
+        fromLastItem.insertParagraphAfterBlock();
+        expect(childTypes(fromLastItem)).toEqual(['list', 'paragraph']);
+
+        const before = new MarkdownEditor();
+        before.setValue('- one\n- two\n- three');
+        selectInListItem(before, 1);
+        before.insertParagraphBeforeBlock();
+        expect(childTypes(before)).toEqual(['paragraph', 'list']);
+    });
+
+    it('for a nested list, insertParagraphAfterBlock() inserts the paragraph as a sibling of the inner list, inside the outer item', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('- outer\n    - inner one\n    - inner two');
+
+        lexicalOf(editor).update(() => {
+            const outerList = $getRoot().getFirstChild() as ElementNode;
+            const outerSecondItem = outerList.getChildAtIndex(1) as ElementNode;
+            const innerList = outerSecondItem.getFirstChild() as ElementNode;
+            const innerFirstItem = innerList.getFirstChild() as ElementNode;
+
+            innerFirstItem.selectEnd();
+        }, { discrete: true });
+
+        editor.insertParagraphAfterBlock();
+
+        // Root-level structure is untouched — the new paragraph landed inside
+        // the outer item, beside the inner list, not after the outer list.
+        expect(childTypes(editor)).toEqual(['list']);
+
+        const outerSecondItemChildTypes = lexicalOf(editor).read(() => {
+            const outerList = $getRoot().getFirstChild() as ElementNode;
+            const outerSecondItem = outerList.getChildAtIndex(1) as ElementNode;
+
+            return outerSecondItem.getChildren().map((node) => node.getType());
+        });
+
+        expect(outerSecondItemChildTypes).toEqual(['list', 'paragraph']);
+    });
+
+    it('both methods insert next to the whole table, never inside it, regardless of which cell the caret was in', () => {
+        /** Selects into the end of the cell at (`rowIndex`, `colIndex`) of the document's first (only) table. */
+        function selectInTableCell(editor: MarkdownEditor, rowIndex: number, colIndex: number): void {
+            lexicalOf(editor).update(() => {
+                const table = $getRoot().getFirstChild() as TableNode;
+                const row = table.getChildAtIndex(rowIndex) as TableRowNode;
+                const cell = row.getChildAtIndex(colIndex) as TableCellNode;
+
+                cell.selectEnd();
+            }, { discrete: true });
+        }
+
+        const fromFirstCell = new MarkdownEditor();
+        fromFirstCell.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+        selectInTableCell(fromFirstCell, 0, 0);
+        fromFirstCell.insertParagraphAfterBlock();
+        expect(childTypes(fromFirstCell)).toEqual(['table', 'paragraph']);
+
+        const fromLastCell = new MarkdownEditor();
+        fromLastCell.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+        selectInTableCell(fromLastCell, 1, 1);
+        fromLastCell.insertParagraphAfterBlock();
+        expect(childTypes(fromLastCell)).toEqual(['table', 'paragraph']);
+
+        const before = new MarkdownEditor();
+        before.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+        selectInTableCell(before, 0, 1);
+        before.insertParagraphBeforeBlock();
+        expect(childTypes(before)).toEqual(['paragraph', 'table']);
+    });
+
+    it('both methods no-op without throwing when the caret is in a plain paragraph or a heading', () => {
+        const inParagraph = new MarkdownEditor();
+        inParagraph.setValue('plain prose');
+        selectStart(inParagraph);
+        expect(() => inParagraph.insertParagraphBeforeBlock().insertParagraphAfterBlock()).not.toThrow();
+        expect(childTypes(inParagraph)).toEqual(['paragraph']);
+
+        const inHeading = new MarkdownEditor();
+        inHeading.setValue('# Heading');
+        selectStart(inHeading);
+        expect(() => inHeading.insertParagraphBeforeBlock().insertParagraphAfterBlock()).not.toThrow();
+        expect(childTypes(inHeading)).toEqual(['heading']);
+    });
+
+    it('invoking insertParagraphAfterBlock() twice against the same still-present block (as two separate right-clicks) inserts two adjacent empty paragraphs', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('> quoted');
+        lexicalOf(editor).update(() => { $getRoot().selectStart(); }, { discrete: true });
+        editor.insertParagraphAfterBlock();
+
+        // A second right-click resolving back inside the still-present quote,
+        // rather than continuing from wherever the first call left the caret.
+        lexicalOf(editor).update(() => { ($getRoot().getFirstChild() as ElementNode).selectStart(); }, { discrete: true });
+        editor.insertParagraphAfterBlock();
+
+        expect(childTypes(editor)).toEqual(['quote', 'paragraph', 'paragraph']);
+    });
+
+    it('round-trips a blockquote plus content typed into the paragraph inserted after it', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('> quoted');
+        lexicalOf(editor).update(() => { $getRoot().selectStart(); }, { discrete: true });
+        editor.insertParagraphAfterBlock();
+
+        // A still-empty paragraph has no Markdown representation at all (the
+        // same is true of the pre-existing Alt+Enter separator's inserted
+        // paragraph) and so cannot itself survive export/re-import; what the
+        // round-trip actually needs to preserve is content the user goes on
+        // to type into it.
+        lexicalOf(editor).update(() => {
+            const selection = $getSelection();
+
+            if ($isRangeSelection(selection)) {
+                selection.insertText('new line');
+            }
+        }, { discrete: true });
+
+        const second = new MarkdownEditor();
+        second.setValue(editor.getValue());
+
+        expect(childTypes(second)).toEqual(childTypes(editor));
+        expect(second.getValue()).toContain('new line');
+    });
 });
 
 describe('MarkdownEditor context menu', () => {
@@ -1260,6 +1558,42 @@ describe('MarkdownEditor context menu', () => {
         expect(items.slice(8).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Block style', '(separator)', 'Clear formatting',
         ]);
+    });
+
+    it('a "text" context with hasEnclosingBlock builds 15 entries: the 12 existing plus a separator and the two new items', () => {
+        const editor = new MarkdownEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'text', hasSelectedText: true, ...SOME_FORMATS, hasEnclosingBlock: true,
+        });
+
+        expect(items).toHaveLength(15);
+        expect(items.slice(12).map((item) => item.text ?? '(separator)')).toEqual([
+            '(separator)', 'Insert line before block', 'Insert line after block',
+        ]);
+    });
+
+    it('the "Insert line before/after block" items reach insertParagraphBeforeBlock/insertParagraphAfterBlock', () => {
+        const before = new MarkdownEditor();
+        before.setValue('> quoted');
+        lexicalOf(before).update(() => { $getRoot().selectStart(); }, { discrete: true });
+
+        contextMenuMethodsOf(before).buildContextMenuItems({
+            kind: 'text', hasSelectedText: false, ...SOME_FORMATS, hasEnclosingBlock: true,
+        }).find((item) => item.text === 'Insert line before block')?.action?.();
+
+        expect(lexicalOf(before).read(() => $getRoot().getChildren().map((n) => n.getType())))
+            .toEqual(['paragraph', 'quote']);
+
+        const after = new MarkdownEditor();
+        after.setValue('> quoted');
+        lexicalOf(after).update(() => { $getRoot().selectStart(); }, { discrete: true });
+
+        contextMenuMethodsOf(after).buildContextMenuItems({
+            kind: 'text', hasSelectedText: false, ...SOME_FORMATS, hasEnclosingBlock: true,
+        }).find((item) => item.text === 'Insert line after block')?.action?.();
+
+        expect(lexicalOf(after).read(() => $getRoot().getChildren().map((n) => n.getType())))
+            .toEqual(['quote', 'paragraph']);
     });
 
     it('a "text" context offers an 11-item block-style submenu', () => {
@@ -1351,6 +1685,40 @@ describe('MarkdownEditor context menu', () => {
         expect(submenuItemsOf(findItem(items, 'Delete'))?.map((item) => item.text)).toEqual([
             'Row', 'Column', 'Table',
         ]);
+    });
+
+    it('a "table-cell" context with hasEnclosingBlock builds 16 entries: the 13 existing plus a separator and the two new items', () => {
+        const editor = new MarkdownEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS, hasEnclosingBlock: true,
+        });
+
+        expect(items).toHaveLength(16);
+        expect(items.slice(13).map((item) => item.text ?? '(separator)')).toEqual([
+            '(separator)', 'Insert line before block', 'Insert line after block',
+        ]);
+    });
+
+    it('the table-cell menu\'s "Insert line before/after block" items reach insertParagraphBeforeBlock/insertParagraphAfterBlock, targeting the whole table', () => {
+        const before = new MarkdownEditor();
+        before.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+        selectStart(before);   // caret lands in the first cell
+
+        contextMenuMethodsOf(before).buildContextMenuItems({
+            kind: 'table-cell', hasSelectedText: false, ...SOME_FORMATS, hasEnclosingBlock: true,
+        }).find((item) => item.text === 'Insert line before block')?.action?.();
+
+        expect(childTypes(before)).toEqual(['paragraph', 'table']);
+
+        const after = new MarkdownEditor();
+        after.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+        selectStart(after);
+
+        contextMenuMethodsOf(after).buildContextMenuItems({
+            kind: 'table-cell', hasSelectedText: false, ...SOME_FORMATS, hasEnclosingBlock: true,
+        }).find((item) => item.text === 'Insert line after block')?.action?.();
+
+        expect(childTypes(after)).toEqual(['table', 'paragraph']);
     });
 
     it("the table-cell menu's Delete submenu's Table item reaches MarkdownEditor.deleteTable", () => {
@@ -1456,6 +1824,7 @@ describe('MarkdownEditor context-menu paste target', () => {
 
         expect(result).toEqual({
             kind: 'text', hasSelectedText: true, bold: false, italic: false, strikethrough: false, code: false,
+            hasEnclosingBlock: false,
         });
 
         const stillCollapsedAtCaret = lexicalOf(editor).read(() => {
