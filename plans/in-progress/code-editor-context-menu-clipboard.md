@@ -401,3 +401,57 @@ No new files.
 [^menu-precedent]: `Table._columnContextMenu`/`showColumnMenu`/`showCellMenu` ([Table.ts:1711-1778](packages/lib/src/typescript/lib/component/table/Table.ts#L1711-L1778)) and `MarkdownEditor._contextMenu` both reuse one `Menu` field across every right-click, on the reasoning that `Menu.show()` fully rebuilds its item list on every call and only one context menu is ever open at a time. `CodeEditor` has only one context — there's no "which context" question at all — so the precedent applies even more directly here than it did for either of them.
 
 [^duplicate-message]: `plans/clipboard-context-menu-foundation.md` factored out the menu-item-shape builder (`buildClipboardMenuItems`) but not a shared message string — `MarkdownEditor`'s toast text is a local module constant in `MarkdownEditor.ts`, not an exported one. Duplicating the two-line constant here keeps the user-visible wording identical across every editor in this batch without introducing a new shared module for two string literals, matching Simplicity First. If a third editor in this batch needs the same message, extracting a shared constant becomes worth its own small plan; it is not yet, with only two consumers.
+
+---
+
+## Implementation Notes
+
+**The plan's central Architecture Decision — that `EditorView.domEventObservers` "sidesteps the trap entirely" — is wrong, confirmed by live manual verification (behaviour 20).** The implementation as specced (`EditorView.domEventObservers({ contextmenu: ... })`, added alongside the existing `domEventHandlers` block in `mount()`) passed every offline test and `npm run typecheck`/`npm run build`, exactly as the plan's own "Potential Challenges" section predicted — and then never once fired in a real browser, also exactly as predicted, just not for the reason predicted.
+
+Root cause, traced in the installed `@codemirror/view@6.43.8` source (`node_modules/@codemirror/view/dist/index.js`): both `domEventHandlers` and `domEventObservers` are dispatched from **one shared entry point**, `InputState.handleEvent`, not from the two independent code paths the plan's footnote analysed:
+
+```javascript
+// InputState.handleEvent
+handleEvent(event) {
+    if (!eventBelongsToEditor(this.view, event) || this.ignoreDuringComposition(event))
+        return;
+    ...
+    this.runHandlers(event.type, event);
+}
+
+function eventBelongsToEditor(view, event) {
+    if (!event.bubbles) return true;
+    if (event.defaultPrevented) return false;   // <-- gates BOTH loops below, before either runs
+    ...
+}
+
+runHandlers(type, event) {
+    let handlers = this.handlers[type];
+    if (handlers) {
+        for (let observer of handlers.observers) observer(this.view, event);   // the "no defaultPrevented check" loop the plan cites
+        for (let handler of handlers.handlers) { ... }
+    }
+}
+```
+
+The plan's footnote is a correct reading of `runHandlers`'s own two loops in isolation, but `runHandlers` is never reached at all for a bubbling `contextmenu` event once `event.defaultPrevented` is `true` — `eventBelongsToEditor` returns `false` first, and `handleEvent` returns before calling `runHandlers`. `Body`'s window-level capture-phase suppression always runs before *any* bubble-phase listener on `contentDOM`, so by the time either loop could run, `defaultPrevented` is already `true` and neither ever fires. This was verified two ways: (1) tracing the exact compiled source above; (2) live in a real Chromium tab (via chrome-devtools MCP), where a `contextmenu` dispatched at a selection first produced no menu and no console output from an instrumented `handleContextMenu`, and only started firing once the fix below replaced the `domEventObservers` extension.
+
+**Fix:** `contextmenu` is now hooked with a plain native listener, attached directly to the mounted `.cm-content` element via the existing `DOM.sink.addListener`/`removeListener` seam — the same mechanism `Video.ts` already uses for native media events that "never reach the `Event` class's window-level capture handler" (see that file's own module doc comment). A listener registered independently of CodeMirror's own facet system is a completely separate `addEventListener` registration on the same node; `preventDefault()` never stops *other* listeners from being called (it only suppresses the browser's own default action), so this listener fires regardless of `Body`'s suppression having already run. `EditorView.domEventHandlers`/`domEventObservers` are otherwise unaffected and unchanged — this is scoped to the one new hook.
+
+Concretely, relative to `## Internal Structure`:
+- The `EditorView.domEventObservers({ contextmenu: ... })` extensions-array entry (Ordered Implementation Step 8) is **not present** — it doesn't work, and leaving it in as dead-looking-functional code would mislead a future reader.
+- A new private field, `_contextMenuListener: ((event: MouseEvent) => void) | null`, holds the attached listener so it can be detached explicitly.
+- `mount()` attaches the listener to `this._contentElement` (already resolved via `DOM.source.querySelector` for `syncAutoHeight`'s own use) immediately after that resolution, wrapping `handleContextMenu` in a closure that re-reads `this._view` at fire time (mirroring `paste()`'s own post-await re-check) rather than closing over the view resolved at mount.
+- `destructor()` calls `DOM.sink.removeListener` before `_contentElement` is nulled, since detaching independently of `EditorView.destroy()` is not something CodeMirror's own teardown does for us.
+
+**Nothing else changes.** `copy()`/`cut()`/`paste()`, `buildContextMenuItems`, `handleContextMenu`'s own signature and body, and all 19 offline tests are exactly as specced and untouched by this fix — `handleContextMenu(event, view)` still takes a plain `EditorView`, just handed to it by a hand-written wrapper instead of CodeMirror's own callback plumbing. The Public API, `## Documentation Impact`, and manual behaviours 21-25 are unaffected.
+
+**Manual verification (behaviours 20-25), via chrome-devtools MCP against a dedicated dev server for this worktree (port 8020, to avoid disturbing another worktree's server already running on the project's usual 8015):**
+- **20 — CONFIRMED**, after the fix. Selecting text and dispatching a real `contextmenu` event opens the framework's own menu leading with Cut/Copy/Paste; before the fix, nothing opened. (No OS-level native context menu is reachable to check either way in a remote-debugged headless tab — that half of behaviour 20 is inherently outside what CDP-driven verification can observe, in either the broken or fixed state.)
+- **21 — CONFIRMED.** A collapsed caret's right-click menu shows Cut/Copy dimmed, Paste enabled.
+- **22 — CONFIRMED.** Toggling the demo's "Read-only" button and right-clicking a selection shows exactly one row, Copy, enabled.
+- **23 — CONFIRMED.** Copy and Cut each call the clipboard-write seam with the selected text ("greet"); Cut additionally removes it from the document. Verified by wrapping `navigator.clipboard.writeText` and reading the call log — real OS clipboard delivery could not be independently confirmed (no other application to paste into in this environment), but the call and its argument are exactly as `copy()`/`cut()` specify.
+- **24 — PARTIALLY CONFIRMED.** Clicking Paste with a real (non-empty) selection present triggered no document change and no toast; a direct `await navigator.clipboard.writeText(...)` call in the same page timed out, indicating the remote/headless Chromium session never resolves the Clipboard-API permission prompt one way or the other, rather than cleanly granting or denying it. This exercises neither of `paste()`'s two DOM-observable outcomes cleanly, so the toast-on-denied-read half of behaviour 24 is not independently confirmed beyond what the offline unit tests (behaviours 7-12, all passing) already prove for the same code path. Ctrl/Cmd+V's continued availability (unaffected by this plan, since it is CodeMirror's own native handling) was not separately re-checked.
+- **25 — NOT independently confirmed live.** A synthetic Alt+click sequence (CodeMirror's default add-a-cursor gesture) did not reproduce a second range in this environment (`window.getSelection()` read back empty), and no `Mod-d` "select next occurrence" binding is wired into this file's keymap to try instead. `copy()`/`cut()`/`paste()`'s implementation reads only `state.selection.main` with no code path touching `state.selection.ranges`, so acting on the primary range alone is a structural property of the code as written, not merely an assumption — but a live multi-cursor click-through was not obtained.
+
+**Unrelated, pre-existing flake noticed during verification:** `npm test` intermittently reports "1 error" (an uncaught error surfaced from `Table`/`Header`/`ColumnFilterRow` code) on roughly one full-suite run in three, while every individual test still passes (6438/6438) every time. Reproduces identically with this branch's changes stashed out, so it predates this plan and is unrelated to `CodeEditor`; not investigated further here.
