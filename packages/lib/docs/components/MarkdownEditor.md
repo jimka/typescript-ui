@@ -51,32 +51,36 @@ The editor edits, and emits, only the constructs the [`Markdown`](/components/Ma
 | Ordered list | `1. ` |
 | Blockquote | `> ` |
 | Fenced code | ` ``` ` fence |
+| Strikethrough | `~~struck~~` |
 | Link | `[text](url)` |
 | Table | pipe rows plus a `\| --- \|` delimiter row |
 
-Images, strikethrough, task lists, thematic breaks (`hr`), and raw HTML are **not** part of the dialect — they are excluded so the editor's output always round-trips cleanly through the viewer. A column's alignment (from the delimiter row's `:---` / `:---:` / `---:` markers) is **preserved** across a load/edit/save round-trip but is **not authorable** in the WYSIWYG surface — there is no command to change it; switch to source mode and edit the delimiter row directly.
+Images, task lists, thematic breaks (`hr`), and raw HTML are **not** part of the dialect — they are excluded so the editor's output always round-trips cleanly through the viewer. A column's alignment (from the delimiter row's `:---` / `:---:` / `---:` markers) is **preserved** across a load/edit/save round-trip but is **not authorable** in the WYSIWYG surface — there is no command to change it; switch to source mode and edit the delimiter row directly.
 
 ## Formatting
 
-There is no built-in toolbar in v1. Formatting is invoked three ways, all provided by Lexical:
+There is no built-in toolbar in v1. Formatting is invoked four ways, all provided by Lexical (the right-click menu is this component's own addition):
 
 - **Markdown-shortcut typing** — `# ` → heading, `**b**` → bold, `- ` → bullet, `1. ` → numbered, `> ` → quote, ` ``` ` → code block, auto-applied as you type.
 - **Keyboard shortcuts** — `Ctrl/Cmd+B` (bold), `Ctrl/Cmd+I` (italic), `Ctrl/Cmd+Z` / `+Y` (undo/redo).
 - **Command API** — thin imperative methods you can wire to your own [`Button`](/components/Button)s to build a toolbar.
+- **Right-click context menu** — a self-wired menu on the WYSIWYG surface whose contents depend on what was clicked: a word or selection gets inline-format and block-style commands; an empty line gets block-insert commands; a table cell gets the same inline-format commands (no block style — a cell holds inline text only) plus Insert/Delete submenus for its row, column, and the whole table. A collapsed right-click inside a word first expands the selection to that whole word, so a format toggle applies to it. No consumer wiring needed — right-clicking the surface shows it directly.
 
 ### Command API
 
 | Method | Effect on the current selection |
 | --- | --- |
-| `toggleBold()` / `toggleItalic()` / `toggleInlineCode()` | Toggle the inline format. |
+| `toggleBold()` / `toggleItalic()` / `toggleInlineCode()` / `toggleStrikethrough()` | Toggle the inline format. |
+| `clearFormatting()` | Clear every inline text format (bold, italic, strikethrough, inline code, …), leaving plain text. Block type is untouched. |
 | `toggleUnorderedList()` / `toggleOrderedList()` | Convert the selected blocks into (or out of) a list. |
 | `toggleLink(url)` | Wrap the selection in a link, or unwrap it when `url` is `null`. |
 | `setBlockType(type)` | Convert the selected blocks to `"paragraph"`, `"h1"`–`"h6"`, `"quote"`, or `"code"`. |
 | `insertTable(rows, columns)` | Insert a table at the caret; the first row is the header row. |
 | `insertTableRow(after?)` / `deleteTableRow()` | Insert a row after (default) or before the current row, or delete it. |
 | `insertTableColumn(after?)` / `deleteTableColumn()` | Insert a column after (default) or before the current column, or delete it. |
+| `deleteTable()` | Delete the entire table containing the caret, including every row and cell. |
 
-Each command operates on the current selection and no-ops (without throwing) when there is no selection. The four row/column commands additionally no-op when the caret is not inside a table cell.
+Each command operates on the current selection and no-ops (without throwing) when there is no selection. The row/column/table commands additionally no-op when the caret is not inside a table cell.
 
 ## Common methods
 

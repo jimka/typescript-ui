@@ -28,6 +28,7 @@ import { CollapseButton } from '~/component/container/CollapseButton';
 import { ChartLegend } from '~/component/chart/ChartLegend';
 import { LineChart } from '~/component/chart/LineChart';
 import { List } from '~/component/list/List';
+import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { Event } from '~/core/Event';
 import { classesRegisteringEventListeners } from '../helpers/libraryClassScan.mjs';
 
@@ -73,6 +74,15 @@ const REGISTRY: Array<{
 
             return ids;
         },
+    },
+    {
+        name:   'WysiwygSurface (via MarkdownEditor)',
+        covers: ['WysiwygSurface'],
+        // WysiwygSurface is a private inner class of MarkdownEditor.ts, not
+        // directly constructible from a test file — MarkdownEditor adds it as
+        // a registered child (`addComponent`), so disposing the editor reaches
+        // it through the same base-class recursion `_codeEditor` relies on.
+        make: () => new MarkdownEditor(),
     },
 ];
 

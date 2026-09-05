@@ -230,6 +230,16 @@ describe('Markdown emphasis', () => {
     });
 });
 
+describe('Markdown strikethrough', () => {
+    it('builds <del> for ~~struck~~ with the text inside it', () => {
+        new Markdown('~~s~~').getElement(true);
+
+        expect(createdTags()).toContain('del');
+        expect(childTagsOf('p')).toContain('DEL');
+        expect(textWrites()).toContain('s');
+    });
+});
+
 describe('Markdown inline code', () => {
     it('builds a <code> with the codespan text', () => {
         new Markdown('`x`').getElement(true);

@@ -1755,6 +1755,7 @@ class Markdown extends Component<MarkdownOptions> {
 
             case "strong": this.appendInlineWrapper(parent, "strong", (token as Tokens.Strong).tokens, splitCellBreaks); break;
             case "em":     this.appendInlineWrapper(parent, "em", (token as Tokens.Em).tokens, splitCellBreaks);         break;
+            case "del":    this.appendInlineWrapper(parent, "del", (token as Tokens.Del).tokens, splitCellBreaks);       break;
 
             case "codespan": {
                 const code = this.create("code");

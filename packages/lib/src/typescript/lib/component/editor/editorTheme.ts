@@ -16,6 +16,7 @@ const LIST_CLASS        = "ts-ui-mde-list";
 const LINK_CLASS        = "ts-ui-mde-link";
 const BOLD_CLASS        = "ts-ui-mde-bold";
 const ITALIC_CLASS      = "ts-ui-mde-italic";
+const STRIKETHROUGH_CLASS = "ts-ui-mde-strikethrough";
 const TABLE_CLASS               = "ts-ui-mde-table";
 const TABLE_CELL_CLASS          = "ts-ui-mde-table-cell";
 const TABLE_CELL_HEADER_CLASS   = "ts-ui-mde-table-cell-header";
@@ -134,6 +135,12 @@ export function ensureMarkdownEditorClassRules(): void {
 
     new StyleRule({
         scope:  "class",
+        name:   STRIKETHROUGH_CLASS,
+        styles: { textDecoration: "line-through" },
+    });
+
+    new StyleRule({
+        scope:  "class",
         name:   TABLE_CLASS,
         styles: { borderCollapse: "collapse" },
     });
@@ -187,7 +194,8 @@ export function ensureMarkdownEditorClassRules(): void {
  * @remarks
  * Every heading level maps to the one heading rule (the tag itself carries the
  * size); ordered and unordered lists share the indentation rule. Bold, italic,
- * and inline code are text-format entries, and links carry the accent colour.
+ * strikethrough, and inline code are text-format entries, and links carry the
+ * accent colour.
  */
 export const EDITOR_THEME: EditorThemeClasses = {
     heading: {
@@ -205,9 +213,10 @@ export const EDITOR_THEME: EditorThemeClasses = {
         ol: LIST_CLASS,
     },
     text: {
-        bold:   BOLD_CLASS,
-        italic: ITALIC_CLASS,
-        code:   INLINE_CODE_CLASS,
+        bold:          BOLD_CLASS,
+        italic:        ITALIC_CLASS,
+        strikethrough: STRIKETHROUGH_CLASS,
+        code:          INLINE_CODE_CLASS,
     },
     link:              LINK_CLASS,
     table:             TABLE_CLASS,

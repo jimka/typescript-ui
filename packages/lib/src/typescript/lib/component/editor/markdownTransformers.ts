@@ -9,6 +9,7 @@ import {
     BOLD_STAR,
     ITALIC_STAR,
     INLINE_CODE,
+    STRIKETHROUGH,
     LINK,
 } from "@lexical/markdown";
 import type { Transformer } from "@lexical/markdown";
@@ -26,13 +27,13 @@ const TABLE = createTableTransformer(() => TRANSFORMERS);
  *
  * @remarks
  * This is deliberately **not** Lexical's full `TRANSFORMERS` preset. The preset
- * also carries `STRIKETHROUGH`, `HIGHLIGHT`, `CHECK_LIST`, and an image
- * transformer — constructs the viewer drops to a plain-text fallback. Curating
- * the list down to these ten is the single source of truth that guarantees the
- * editor can never emit Markdown the viewer would fail to render: the same array
- * is passed to the import converter, the export converter, and the
- * markdown-shortcut typing registration, so what the user types, what the editor
- * stores, and what the viewer reads all agree.
+ * also carries `HIGHLIGHT`, `CHECK_LIST`, and an image transformer — constructs
+ * the viewer drops to a plain-text fallback. Curating the list down to these
+ * eleven is the single source of truth that guarantees the editor can never
+ * emit Markdown the viewer would fail to render: the same array is passed to
+ * the import converter, the export converter, and the markdown-shortcut typing
+ * registration, so what the user types, what the editor stores, and what the
+ * viewer reads all agree.
  *
  * The mapping to the viewer's supported tokens is:
  *
@@ -44,6 +45,7 @@ const TABLE = createTableTransformer(() => TRANSFORMERS);
  * - `BOLD_STAR` → `**b**` (strong)
  * - `ITALIC_STAR` → `*i*` (em)
  * - `INLINE_CODE` → `` `c` `` (codespan)
+ * - `STRIKETHROUGH` → `~~s~~` (del)
  * - `LINK` → `[t](url)` (link)
  * - `TABLE` → `| a | b |` (table)
  *
@@ -60,5 +62,6 @@ export const TRANSFORMERS: Transformer[] = [
     BOLD_STAR,
     ITALIC_STAR,
     INLINE_CODE,
+    STRIKETHROUGH,
     LINK,
 ];
