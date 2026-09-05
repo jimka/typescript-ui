@@ -1126,6 +1126,17 @@ export interface DOMSource {
     getValue(handle: Handle): string;
 
     /**
+     * Reads a text form control's selected character range — the read twin of
+     * {@link DOMSink.setSelectionRange}.
+     *
+     * @param handle - The text form control to read.
+     * @returns The selected range, with `start === end` for a bare caret; `null`
+     *   when the element exposes no character range (a non-text `<input>` type,
+     *   or any element that is not a text form control).
+     */
+    getSelectionRange(handle: Handle): TextSelectionRange | null;
+
+    /**
      * Returns the element that currently has focus, or null.
      *
      * @returns The active element handle, or null when nothing is focused.
@@ -1494,6 +1505,19 @@ export interface DocumentSelectionRange {
     endContainer:   Handle;
     /** Character offset into {@link endContainer}, or `null` when it is not a text node. */
     endOffset:      number | null;
+}
+
+/**
+ * Seam-friendly result of {@link DOMSource.getSelectionRange}: a text form
+ * control's selected character range.
+ *
+ * @category Core
+ */
+export interface TextSelectionRange {
+    /** Character offset of the range's start. */
+    start: number;
+    /** Character offset of the range's end. Equal to `start` for a bare caret. */
+    end:   number;
 }
 
 /**
@@ -2325,6 +2349,22 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     getValue(handle: Handle): string {
         return (_registry.resolve(handle) as HTMLInputElement).value;
+    }
+
+    /** @inheritDoc */
+    getSelectionRange(handle: Handle): TextSelectionRange | null {
+        const el    = _registry.resolve(handle) as HTMLInputElement;
+        const start = el.selectionStart;
+        const end   = el.selectionEnd;
+
+        // `typeof`, not `!== null`: the DOM types say `number | null`, but reading
+        // the property off an element that is not a form control at all yields
+        // `undefined` at runtime.
+        if (typeof start !== "number" || typeof end !== "number") {
+            return null;
+        }
+
+        return { start, end };
     }
 
     /** @inheritDoc */
