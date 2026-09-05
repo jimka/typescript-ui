@@ -64,7 +64,7 @@ There is no built-in toolbar in v1. Formatting is invoked four ways, all provide
 - **Markdown-shortcut typing** — `# ` → heading, `**b**` → bold, `- ` → bullet, `1. ` → numbered, `> ` → quote, ` ``` ` → code block, auto-applied as you type.
 - **Keyboard shortcuts** — `Ctrl/Cmd+B` (bold), `Ctrl/Cmd+I` (italic), `Ctrl/Cmd+Z` / `+Y` (undo/redo).
 - **Command API** — thin imperative methods you can wire to your own [`Button`](/components/Button)s to build a toolbar.
-- **Right-click context menu** — a self-wired menu on the WYSIWYG surface whose contents depend on what was clicked: a word or selection gets inline-format and block-style commands; an empty line gets block-insert commands; a table cell gets the same inline-format commands (no block style — a cell holds inline text only) plus Insert/Delete submenus for its row, column, and the whole table. A collapsed right-click inside a word first expands the selection to that whole word, so a format toggle applies to it. No consumer wiring needed — right-clicking the surface shows it directly.
+- **Right-click context menu** — a self-wired menu on the WYSIWYG surface whose contents depend on what was clicked: a word or selection gets inline-format and block-style commands; an empty line gets block-insert commands; a table cell gets the same inline-format commands (no block style — a cell holds inline text only) plus Insert/Delete submenus for its row, column, and the whole table. Every context leads with **Cut / Copy / Paste**; Cut and Copy are dimmed unless there is text to act on — a real selection, or (a collapsed caret) the enclosing word a format toggle, Cut, or Copy would expand into — and Paste is always enabled. Right-clicking never selects anything on its own: a collapsed caret inside a word stays a plain blinking caret while the menu is open. Choosing a format toggle, Cut, or Copy is what expands it to the whole word (visibly selecting it, so a follow-up action in the same still-open menu sees the same wider selection); Paste always acts on whatever is currently selected, so pasting right after opening the menu — before anything else — lands at the original caret, splitting the word rather than replacing it, while pasting after a format toggle (or Cut/Copy) replaces the word that toggle just selected. No consumer wiring needed — right-clicking the surface shows it directly.
 
 ### Command API
 
@@ -79,8 +79,12 @@ There is no built-in toolbar in v1. Formatting is invoked four ways, all provide
 | `insertTableRow(after?)` / `deleteTableRow()` | Insert a row after (default) or before the current row, or delete it. |
 | `insertTableColumn(after?)` / `deleteTableColumn()` | Insert a column after (default) or before the current column, or delete it. |
 | `deleteTable()` | Delete the entire table containing the caret, including every row and cell. |
+| `cut()` / `copy()` | Write the selected text to the system clipboard; `cut()` also removes it. |
+| `paste()` | Read the system clipboard and insert it at the caret, replacing any selection. Async: resolves `true` when the clipboard was read, `false` when the browser would not allow the read. |
 
 Each command operates on the current selection and no-ops (without throwing) when there is no selection. The row/column/table commands additionally no-op when the caret is not inside a table cell.
+
+`paste()` depends on the browser granting a clipboard-read permission, which some browsers prompt for and some refuse outright for page scripts; a refused or unavailable read resolves `false` rather than throwing. The context menu's own Paste item shows a toast asking the user to press Ctrl/Cmd+V instead when this happens — `paste()` itself stays silent, so a consumer wiring their own Paste button can show their own message.
 
 ## Common methods
 

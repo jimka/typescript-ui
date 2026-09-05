@@ -12,11 +12,15 @@ import {
     BOLD_STAR, ITALIC_STAR, INLINE_CODE, LINK,
     STRIKETHROUGH, HIGHLIGHT, CHECK_LIST,
 } from '@lexical/markdown';
-import { TableNode, TableRowNode, TableCellNode } from '@lexical/table';
-import { $getRoot, $getSelection, $isRangeSelection, $isParagraphNode, $isTextNode, $selectAll, KEY_ENTER_COMMAND } from 'lexical';
+import { TableNode, TableRowNode, TableCellNode, $createTableSelectionFrom } from '@lexical/table';
+import {
+    $getRoot, $getSelection, $isRangeSelection, $isParagraphNode, $isTextNode, $selectAll, $setSelection,
+    KEY_ENTER_COMMAND,
+} from 'lexical';
 import type { LexicalEditor, ElementNode, LexicalNode } from 'lexical';
 import { lexer } from 'marked';
 import { DOM } from '~/core/DOM';
+import { Notification } from '~/overlay/Notification';
 import { installTestDOM, ruleStyleWrites, type RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -91,10 +95,12 @@ function wysiwygOf(editor: MarkdownEditor): { getElement(createIfMissing?: boole
 function contextMenuMethodsOf(editor: MarkdownEditor): {
     buildContextMenuItems(context: ContextMenuTarget): MenuItemConfig[];
     handleWysiwygContextMenu(event: MouseEvent): void;
+    pasteAtContextMenuSelection(): Promise<void>;
 } {
     return editor as unknown as {
         buildContextMenuItems(context: ContextMenuTarget): MenuItemConfig[];
         handleWysiwygContextMenu(event: MouseEvent): void;
+        pasteAtContextMenuSelection(): Promise<void>;
     };
 }
 
@@ -350,6 +356,198 @@ describe('MarkdownEditor command API', () => {
         editor.toggleUnorderedList();
 
         expect(editor.getValue()).toContain('- list me');
+    });
+});
+
+describe('MarkdownEditor clipboard commands', () => {
+    /** Selects the exact substring `word` within the document's first paragraph's first text node. */
+    function selectWord(editor: MarkdownEditor, word: string): void {
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const textNode = paragraph.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                const text = textNode.getTextContent();
+                const start = text.indexOf(word);
+
+                textNode.select(start, start + word.length);
+            }
+        }, { discrete: true });
+    }
+
+    /** The clipboard-write args recorded by `copy()`/`cut()`, in call order. */
+    function clipboardWrites(): unknown[] {
+        return (DOM.sink as RecordingDOMSink).writes
+            .filter((w) => w.op === 'writeClipboardText')
+            .map((w) => w.args[0]);
+    }
+
+    it('copy() with the whole document selected records exactly one write carrying the text', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true });
+
+        editor.copy();
+
+        expect(clipboardWrites()).toEqual(['hello world']);
+    });
+
+    // copy()/cut() now expand a collapsed caret to its enclosing word first
+    // (see $selectEnclosingWordIfCollapsed), matching the right-click menu's
+    // own Cut/Copy-enabled state, which reflects that same hypothetical
+    // expansion (see $classifyContextMenuTarget) — so a menu item shown as
+    // enabled always does something when activated, instead of silently
+    // no-oping the way an un-expanded collapsed caret used to.
+
+    it('copy() with a collapsed caret inside a word copies the enclosing word', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectStart(editor);   // collapsed at the start of "hello"
+
+        editor.copy();
+
+        expect(clipboardWrites()).toEqual(['hello']);
+    });
+
+    it('copy() with a collapsed caret with no adjacent word character records no write', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('a  b');   // two spaces: offset 2 is isolated from both words
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const textNode = paragraph.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                textNode.select(2, 2);
+            }
+        }, { discrete: true });
+
+        editor.copy();
+
+        expect(clipboardWrites()).toHaveLength(0);
+    });
+
+    it('cut() with "world" selected records the write and removes it from the value', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectWord(editor, 'world');
+
+        editor.cut();
+
+        expect(clipboardWrites()).toEqual(['world']);
+        expect(editor.getValue()).not.toContain('world');
+    });
+
+    it('cut() with a collapsed caret inside a word cuts the enclosing word', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectStart(editor);   // collapsed at the start of "hello"
+
+        editor.cut();
+
+        expect(clipboardWrites()).toEqual(['hello']);
+        expect(editor.getValue()).not.toContain('hello');
+    });
+
+    it('cut() with a collapsed caret with no adjacent word character records no write and leaves the value unchanged', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('a  b');
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const textNode = paragraph.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                textNode.select(2, 2);
+            }
+        }, { discrete: true });
+
+        editor.cut();
+
+        expect(clipboardWrites()).toHaveLength(0);
+        expect(editor.getValue()).toContain('a  b');
+    });
+
+    it('paste() with the read stubbed to "X" and a collapsed caret resolves true and inserts X at the caret', async () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectStart(editor);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+
+        const result = await editor.paste();
+
+        expect(result).toBe(true);
+        expect(editor.getValue()).toContain('Xhello world');
+    });
+
+    it('paste() with the read stubbed to "X" and "world" selected resolves true and replaces world with X', async () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectWord(editor, 'world');
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+
+        const result = await editor.paste();
+
+        expect(result).toBe(true);
+        expect(editor.getValue()).toContain('hello X');
+        expect(editor.getValue()).not.toContain('world');
+    });
+
+    it('paste() with the read stubbed to null resolves false and leaves the value unchanged', async () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectStart(editor);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue(null);
+
+        const result = await editor.paste();
+
+        expect(result).toBe(false);
+        expect(editor.getValue()).toContain('hello world');
+    });
+
+    it('paste() with the read stubbed to "" resolves true and leaves the value unchanged', async () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectStart(editor);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('');
+
+        const result = await editor.paste();
+
+        expect(result).toBe(true);
+        expect(editor.getValue()).toContain('hello world');
+    });
+
+    it('paste() with the read stubbed to "X" and the selection explicitly cleared resolves true and inserts nothing', async () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        lexicalOf(editor).update(() => { $setSelection(null); }, { discrete: true });
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+
+        const result = await editor.paste();
+
+        expect(result).toBe(true);
+        expect(editor.getValue()).toContain('hello world');
+        expect(editor.getValue()).not.toContain('X');
+    });
+
+    it('copy() and cut() record no write for a multi-cell table selection, which is not a range selection', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+
+        lexicalOf(editor).update(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+            const row = table.getFirstChild() as TableRowNode;
+            const cellA = row.getFirstChild() as TableCellNode;
+            const cellB = cellA.getNextSibling() as TableCellNode;
+
+            $setSelection($createTableSelectionFrom(table, cellA, cellB));
+        }, { discrete: true });
+
+        editor.copy();
+        expect(clipboardWrites()).toHaveLength(0);
+
+        editor.cut();
+        expect(clipboardWrites()).toHaveLength(0);
+        expect(editor.getValue()).toContain('1');
+        expect(editor.getValue()).toContain('2');
     });
 });
 
@@ -795,6 +993,7 @@ describe('$classifyContextMenuTarget', () => {
     it('classifies a text node inside ordinary prose as "text" with every format false', () => {
         const editor = new MarkdownEditor();
         editor.setValue('hello world');
+        lexicalOf(editor).update(() => { $setSelection(null); }, { discrete: true });
 
         const result = lexicalOf(editor).read(() => {
             const paragraph = $getRoot().getFirstChild() as ElementNode;
@@ -803,7 +1002,9 @@ describe('$classifyContextMenuTarget', () => {
             return $classifyContextMenuTarget(textNode);
         });
 
-        expect(result).toEqual({ kind: 'text', bold: false, italic: false, strikethrough: false, code: false });
+        expect(result).toEqual({
+            kind: 'text', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
+        });
     });
 
     it('reflects the current selection\'s bold state', () => {
@@ -820,13 +1021,16 @@ describe('$classifyContextMenuTarget', () => {
             return $classifyContextMenuTarget(textNode);
         });
 
-        expect(result).toEqual({ kind: 'text', bold: true, italic: false, strikethrough: false, code: false });
+        expect(result).toEqual({
+            kind: 'text', hasSelectedText: true, bold: true, italic: false, strikethrough: false, code: false,
+        });
     });
 
     it('classifies the paragraph node of a genuinely empty paragraph as "empty-line"', () => {
         const editor = new MarkdownEditor();
 
         (editor as unknown as { ensureEditor(): LexicalEditor }).ensureEditor();
+        lexicalOf(editor).update(() => { $setSelection(null); }, { discrete: true });
 
         const result = lexicalOf(editor).read(() => {
             const paragraph = $getRoot().getFirstChild() as LexicalNode;
@@ -834,12 +1038,13 @@ describe('$classifyContextMenuTarget', () => {
             return $classifyContextMenuTarget(paragraph);
         });
 
-        expect(result).toEqual({ kind: 'empty-line' });
+        expect(result).toEqual({ kind: 'empty-line', hasSelectedText: false });
     });
 
     it('classifies a node inside a populated table cell as "table-cell", carrying the format state', () => {
         const editor = new MarkdownEditor();
         editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+        lexicalOf(editor).update(() => { $setSelection(null); }, { discrete: true });
 
         const result = lexicalOf(editor).read(() => {
             const table = $getRoot().getFirstChild() as TableNode;
@@ -850,7 +1055,9 @@ describe('$classifyContextMenuTarget', () => {
             return $classifyContextMenuTarget(textNode);
         });
 
-        expect(result).toEqual({ kind: 'table-cell', bold: false, italic: false, strikethrough: false, code: false });
+        expect(result).toEqual({
+            kind: 'table-cell', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
+        });
     });
 
     it('classifies a node inside an empty table cell as "table-cell", not "empty-line" (table check wins)', () => {
@@ -864,7 +1071,9 @@ describe('$classifyContextMenuTarget', () => {
             return $classifyContextMenuTarget(node as LexicalNode);
         });
 
-        expect(result).toEqual({ kind: 'table-cell', bold: false, italic: false, strikethrough: false, code: false });
+        expect(result).toEqual({
+            kind: 'table-cell', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
+        });
     });
 
     it('reflects the current selection\'s bold state inside a table cell too', () => {
@@ -883,7 +1092,9 @@ describe('$classifyContextMenuTarget', () => {
             return $classifyContextMenuTarget(textNode);
         });
 
-        expect(result).toEqual({ kind: 'table-cell', bold: true, italic: false, strikethrough: false, code: false });
+        expect(result).toEqual({
+            kind: 'table-cell', hasSelectedText: true, bold: true, italic: false, strikethrough: false, code: false,
+        });
     });
 });
 
@@ -1024,18 +1235,38 @@ describe('MarkdownEditor context menu', () => {
 
     it('a "text" context builds a real checkbox row per format, reflecting each active state', () => {
         const editor = new MarkdownEditor();
-        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'text', ...SOME_FORMATS });
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'text', hasSelectedText: true, ...SOME_FORMATS,
+        });
 
-        // Order from buildFormatToggleItems: Bold, Italic, Strikethrough, Inline code.
-        expect(rowOf(items[0]).isChecked()).toBe(true);
-        expect(rowOf(items[1]).isChecked()).toBe(false);
-        expect(rowOf(items[2]).isChecked()).toBe(true);
-        expect(rowOf(items[3]).isChecked()).toBe(false);
+        // Order: Cut, Copy, Paste, separator, then buildFormatToggleItems's
+        // Bold, Italic, Strikethrough, Inline code.
+        expect(rowOf(items[4]).isChecked()).toBe(true);
+        expect(rowOf(items[5]).isChecked()).toBe(false);
+        expect(rowOf(items[6]).isChecked()).toBe(true);
+        expect(rowOf(items[7]).isChecked()).toBe(false);
+    });
+
+    it('a "text" context builds 12 entries: Cut/Copy/Paste, the format rows, Block style, and Clear formatting', () => {
+        const editor = new MarkdownEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'text', hasSelectedText: true, ...SOME_FORMATS,
+        });
+
+        expect(items).toHaveLength(12);
+        expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
+            'Cut', 'Copy', 'Paste', '(separator)',
+        ]);
+        expect(items.slice(8).map((item) => item.text ?? '(separator)')).toEqual([
+            '(separator)', 'Block style', '(separator)', 'Clear formatting',
+        ]);
     });
 
     it('a "text" context offers an 11-item block-style submenu', () => {
         const editor = new MarkdownEditor();
-        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'text', ...SOME_FORMATS });
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'text', hasSelectedText: true, ...SOME_FORMATS,
+        });
 
         const blockStyleItems = submenuItemsOf(findItem(items, 'Block style'));
 
@@ -1053,7 +1284,9 @@ describe('MarkdownEditor context menu', () => {
         editor.setValue('hello world');
         lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true });
 
-        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'text', ...SOME_FORMATS });
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'text', hasSelectedText: true, ...SOME_FORMATS,
+        });
         const blockStyleItems = submenuItemsOf(findItem(items, 'Block style'));
 
         blockStyleItems?.find((item) => item.text === 'Quote')?.action?.();
@@ -1067,32 +1300,48 @@ describe('MarkdownEditor context menu', () => {
         lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true });
 
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'text', bold: false, italic: false, strikethrough: false, code: false,
+            kind: 'text', hasSelectedText: true, bold: false, italic: false, strikethrough: false, code: false,
         });
 
-        rowOf(items[0]).activate();
+        rowOf(items[4]).activate();
 
         expect(editor.getValue()).toContain('**word**');
     });
 
     it('an "empty-line" context omits Paragraph and offers a 6-item Heading submenu', () => {
         const editor = new MarkdownEditor();
-        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line' });
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true });
 
         expect(findItem(items, 'Paragraph')).toBeUndefined();
         expect(submenuItemsOf(findItem(items, 'Heading'))).toHaveLength(6);
     });
 
-    it('a "table-cell" context returns 9 entries: 4 format rows, Clear formatting, then Insert and Delete submenus', () => {
+    it('an "empty-line" context builds 9 entries: Cut/Copy/Paste, then Heading, Quote, Code block, and Table', () => {
         const editor = new MarkdownEditor();
-        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'table-cell', ...SOME_FORMATS });
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true });
 
         expect(items).toHaveLength(9);
-        expect(rowOf(items[0]).isChecked()).toBe(true);    // Bold
-        expect(rowOf(items[1]).isChecked()).toBe(false);   // Italic
-        expect(rowOf(items[2]).isChecked()).toBe(true);    // Strikethrough
-        expect(rowOf(items[3]).isChecked()).toBe(false);   // Inline code
-        expect(items.slice(4).map((item) => item.text ?? '(separator)')).toEqual([
+        expect(items.map((item) => item.text ?? '(separator)')).toEqual([
+            'Cut', 'Copy', 'Paste', '(separator)',
+            'Heading', 'Quote', 'Code block', '(separator)', 'Table',
+        ]);
+    });
+
+    it('a "table-cell" context returns 13 entries: Cut/Copy/Paste, 4 format rows, Clear formatting, then Insert and Delete submenus', () => {
+        const editor = new MarkdownEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS,
+        });
+
+        expect(items).toHaveLength(13);
+        expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
+            'Cut', 'Copy', 'Paste', '(separator)',
+        ]);
+        expect(rowOf(items[4]).isChecked()).toBe(true);    // Bold
+        expect(rowOf(items[5]).isChecked()).toBe(false);   // Italic
+        expect(rowOf(items[6]).isChecked()).toBe(true);    // Strikethrough
+        expect(rowOf(items[7]).isChecked()).toBe(false);   // Inline code
+        expect(items.slice(8).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Clear formatting', '(separator)', 'Insert', 'Delete',
         ]);
 
@@ -1108,7 +1357,9 @@ describe('MarkdownEditor context menu', () => {
         const editor = new MarkdownEditor();
         editor.insertTable(2, 3);   // caret lands in the first header cell
 
-        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'table-cell', ...SOME_FORMATS });
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS,
+        });
 
         submenuItemsOf(findItem(items, 'Delete'))?.find((item) => item.text === 'Table')?.action?.();
 
@@ -1118,7 +1369,7 @@ describe('MarkdownEditor context menu', () => {
 
     it("the empty-line menu's Table item reaches MarkdownEditor.insertTable(2, 3)", () => {
         const editor = new MarkdownEditor();
-        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line' });
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true });
 
         findItem(items, 'Table')?.action?.();
 
@@ -1126,11 +1377,166 @@ describe('MarkdownEditor context menu', () => {
         expect(lines).toHaveLength(3);   // header, delimiter, one body row
     });
 
+    it('Cut and Copy carry enabled: hasSelectedText in all three contexts; Paste never sets enabled', () => {
+        const editor = new MarkdownEditor();
+        const contexts: ContextMenuTarget[] = [
+            { kind: 'text', hasSelectedText: true, ...SOME_FORMATS },
+            { kind: 'text', hasSelectedText: false, ...SOME_FORMATS },
+            { kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS },
+            { kind: 'table-cell', hasSelectedText: false, ...SOME_FORMATS },
+            { kind: 'empty-line', hasSelectedText: true },
+            { kind: 'empty-line', hasSelectedText: false },
+        ];
+
+        for (const context of contexts) {
+            const items = contextMenuMethodsOf(editor).buildContextMenuItems(context);
+
+            expect(findItem(items, 'Cut')?.enabled).toBe(context.hasSelectedText);
+            expect(findItem(items, 'Copy')?.enabled).toBe(context.hasSelectedText);
+            expect(findItem(items, 'Paste')?.enabled).toBeUndefined();
+        }
+    });
+
     it('handleWysiwygContextMenu no-throws when event.target is not a DOM node', () => {
         const editor = new MarkdownEditor();
         const fakeEvent = { target: {} } as MouseEvent;
 
         expect(() => contextMenuMethodsOf(editor).handleWysiwygContextMenu(fakeEvent)).not.toThrow();
+    });
+});
+
+describe('MarkdownEditor context-menu paste target', () => {
+    // Notification's history and live-toast queue are private static state that
+    // persist across tests; clear both so each case starts clean (a stale toast
+    // left in the queue from a prior test would break restack() under the fresh
+    // sink), matching NotificationHistory.test.ts:25-28.
+    function clearNotificationStatics(): void {
+        (Notification as unknown as { history: unknown[]; activeNotifications: unknown[] }).history = [];
+        (Notification as unknown as { history: unknown[]; activeNotifications: unknown[] }).activeNotifications = [];
+    }
+
+    beforeEach(clearNotificationStatics);
+    afterEach(clearNotificationStatics);
+
+    /** Places a collapsed caret at `offset` inside the document's first paragraph's first text node. */
+    function collapseAt(editor: MarkdownEditor, offset: number): void {
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const textNode = paragraph.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                textNode.select(offset, offset);
+            }
+        }, { discrete: true });
+    }
+
+    it('classifying a collapsed caret inside a word does not mutate the selection, though it reports selectable text', () => {
+        // Regression: handleWysiwygContextMenu used to call
+        // $selectEnclosingWordIfCollapsed() unconditionally before showing the
+        // menu, visibly highlighting the enclosing word for as long as the
+        // menu stayed open — even though Paste (via the old capture/restore
+        // mechanism) ignored that highlight and landed on the untouched
+        // caret. Classification must stay read-only: it reports what a
+        // collapsed caret's format toggles/Cut/Copy *would* act on (see
+        // $computeWordExpansion) without performing that expansion, so the
+        // document's live selection is provably unchanged. Wrapped in
+        // editor.read() (rather than .update()), which throws if anything
+        // inside attempts to mutate — the strongest available guarantee that
+        // classification performs no write.
+        const editor = new MarkdownEditor();
+        editor.setValue('alpha beta');
+        collapseAt(editor, 'alpha beta'.indexOf('beta') + 2);   // collapsed caret inside "beta"
+
+        const result = lexicalOf(editor).read(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const textNode = paragraph.getFirstChild() as LexicalNode;
+
+            return $classifyContextMenuTarget(textNode);
+        });
+
+        expect(result).toEqual({
+            kind: 'text', hasSelectedText: true, bold: false, italic: false, strikethrough: false, code: false,
+        });
+
+        const stillCollapsedAtCaret = lexicalOf(editor).read(() => {
+            const selection = $getSelection();
+
+            return $isRangeSelection(selection)
+                && selection.isCollapsed()
+                && selection.anchor.offset === 'alpha beta'.indexOf('beta') + 2;
+        });
+
+        expect(stillCollapsedAtCaret).toBe(true);
+    });
+
+    it('paste() with nothing else done first inserts at the untouched caret, leaving the enclosing word\'s characters intact', async () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('alpha beta');
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+
+        collapseAt(editor, 'alpha beta'.indexOf('beta') + 2);   // collapsed caret inside "beta"; no menu action taken first
+
+        const result = await editor.paste();
+
+        expect(result).toBe(true);
+        // "beta" is neither removed nor replaced — "X" merely lands at the
+        // caret, splitting it into "be" + "X" + "ta".
+        expect(editor.getValue()).toContain('alpha beXta');
+    });
+
+    it('calling paste() directly after a manual expansion replaces the expanded word instead', async () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('alpha beta');
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+
+        collapseAt(editor, 'alpha beta'.indexOf('beta') + 2);
+        lexicalOf(editor).update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
+
+        await editor.paste();
+
+        expect(editor.getValue()).toContain('alpha X');
+        expect(editor.getValue()).not.toContain('beta');
+    });
+
+    it('a format toggle invoked first expands the selection, and a following paste() replaces the toggled word', async () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('alpha beta');
+        collapseAt(editor, 'alpha beta'.indexOf('beta') + 2);   // collapsed caret inside "beta"
+
+        // Leaves the menu conceptually "open" (a CheckboxMenuRow toggle does
+        // not close the menu): the word toggled bold is exactly what a
+        // following Paste, invoked from that same still-open menu, replaces.
+        editor.toggleBold();
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+        const result = await editor.paste();
+
+        expect(result).toBe(true);
+        // The whole word is replaced, not just split at the original caret
+        // (which would instead leave "alpha beXta").
+        expect(editor.getValue()).toBe('alpha X');
+    });
+
+    it('pasteAtContextMenuSelection shows a "warning" toast when the read is unavailable, and none on a successful paste', async () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectStart(editor);
+        const methods = contextMenuMethodsOf(editor);
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue(null);
+        await methods.pasteAtContextMenuSelection();
+
+        let history = Notification.getHistory();
+        expect(history).toHaveLength(1);
+        expect(history[0].type).toBe('warning');
+        // Mirrors MarkdownEditor.ts's private CLIPBOARD_READ_DENIED_MESSAGE constant.
+        expect(history[0].message).toBe('Clipboard read blocked by the browser — press Ctrl/Cmd+V to paste.');
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+        await methods.pasteAtContextMenuSelection();
+
+        history = Notification.getHistory();
+        expect(history).toHaveLength(1);   // unchanged: a successful paste appends nothing
     });
 });
 

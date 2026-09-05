@@ -1142,6 +1142,15 @@ export interface DOMSource {
     getDocumentSelection(): DocumentSelectionRange | null;
 
     /**
+     * Reads plain text from the system clipboard.
+     *
+     * @returns The clipboard text; `""` for an empty clipboard; `null` when
+     *   the read is unavailable or denied (no `navigator.clipboard`, a denied
+     *   permission, or a browser that refuses the read for page scripts).
+     */
+    readClipboardText(): Promise<string | null>;
+
+    /**
      * Evaluates a media query, returning its current match state and a
      * change-subscription hook. The live `MediaQueryList` never escapes the seam.
      *
@@ -2342,6 +2351,15 @@ export class ProductionDOMSource implements DOMSource {
             endContainer:   _registry.intern(range.endContainer),
             endOffset:      endIsText ? range.endOffset : null,
         };
+    }
+
+    /** @inheritDoc */
+    async readClipboardText(): Promise<string | null> {
+        try {
+            return (await navigator.clipboard?.readText()) ?? null;
+        } catch {
+            return null;
+        }
     }
 
     /** @inheritDoc */
