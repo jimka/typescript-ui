@@ -890,10 +890,17 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * however much text the formatter added or removed above it, never all
      * the way back to the top — when a reformat changes text throughout the
      * document, e.g. a first-time format of a wholly unformatted file.
+     * When `options` omits `indentWidth` and this editor's own tab-stop
+     * width ({@link CodeEditor.getTabSize}) is set, the formatter runs with
+     * `indentWidth` defaulted to it; an explicit `options.indentWidth`
+     * always overrides this default, and it has no effect when `tabSize` is
+     * unset.
      *
      * @param options - Style knobs forwarded to the active language's
      *   formatter. Ignored when the language has no formatter (the
-     *   re-indent fallback runs instead).
+     *   re-indent fallback runs instead). An omitted `indentWidth` is
+     *   defaulted from this editor's own `tabSize`, when set — see
+     *   `@remarks`.
      * @returns A promise that resolves once formatting completes, or rejects
      *   with the formatter's error.
      */
@@ -911,9 +918,36 @@ class CodeEditor extends Component<CodeEditorOptions> {
         const source       = this.getValue();
         const cursorOffset = this._view ? this._view.state.selection.main.head : 0;
 
-        const result = await formatter(source, cursorOffset, options);
+        const result = await formatter(source, cursorOffset, this.resolveFormatOptions(options));
 
         this.applyFormatted(result.formatted, result.cursorOffset);
+    }
+
+    /**
+     * Resolves the effective `FormatOptions` passed to the formatter: an
+     * explicit `options.indentWidth` always wins; when it is absent, this
+     * editor's own tab-stop width ({@link CodeEditor.getTabSize}) fills it in,
+     * if set, so a reformat's indent width matches what the live editor already
+     * renders. Returns `options` unchanged — by reference — whenever no default
+     * applies, so a caller that never touches `tabSize` sees exactly today's
+     * behaviour.
+     *
+     * Factored out of `format()` so the merge is unit-testable in isolation,
+     * mirroring how {@link CodeEditor.applyFormatted} and
+     * {@link CodeEditor.reindentFallback} are factored out for the same reason.
+     *
+     * @param options - The caller-supplied format options, or `undefined`.
+     * @returns `options` unchanged when no default applies, or a new object
+     *   carrying every field of `options` plus the defaulted `indentWidth`.
+     */
+    private resolveFormatOptions(options?: FormatOptions): FormatOptions | undefined {
+        const tabSize = this.getTabSize();
+
+        if (options?.indentWidth !== undefined || tabSize === null) {
+            return options;
+        }
+
+        return { ...options, indentWidth: tabSize };
     }
 
     /**

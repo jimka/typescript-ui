@@ -135,6 +135,23 @@ effect on the live editor. The separate, always-in-effect `tabSize` construction
 controls live tab-stop rendering and Tab-key / auto-indent width — see
 [Construction](#construction).
 
+When a `format()` call omits `indentWidth` and this editor's `tabSize` is
+set, `format()` defaults `indentWidth` to it, so a reformat's indent width
+matches what the editor already renders — the one place the two options
+interact. An explicit `indentWidth` always overrides this default:
+
+| Caller's `options` | `tabSize` | Effective `indentWidth` |
+| --- | --- | --- |
+| `{ indentWidth: 2 }` | `8` | `2` — explicit wins |
+| `{}` or omitted | `4` | `4` — defaulted from `tabSize` |
+| `{}` or omitted | unset | unset — today's behaviour, unchanged |
+
+This default reaches every built-in language that has a formatter
+(`javascript`, `json`, `html`, `sql`, `markdown`, `css`) — each maps
+`indentWidth` onto its own engine's `tabWidth`-equivalent option. `python`
+has no formatter at all, so `format()` re-indents instead and `options`
+(including this default) never reaches it.
+
 ## Dirty state
 
 The editor reports itself dirty, via the framework's [`Component.isDirty()`](/api/core/classes/Component) mechanism, whenever its document differs from the text at the last clean point — the text it was constructed with, or the text `markClean()` last accepted. Typing, paste, `format()`, and `setValue()` all go through the same check, so an edit undone back to the clean text clears the flag on its own. `isDirty()` folds up into every ancestor container automatically. A host that loads a document with `setValue()` should follow it with `markClean()`, so the loaded text becomes the clean text.

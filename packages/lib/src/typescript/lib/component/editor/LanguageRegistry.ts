@@ -12,7 +12,11 @@ import type { Diagnostic } from "@codemirror/lint";
  * @category Components
  */
 export interface FormatOptions {
-    /** Spaces per indent level. */
+    /**
+     * Spaces per indent level. When omitted, {@link CodeEditor.format}
+     * defaults this from the editor's own {@link CodeEditor.getTabSize |
+     * tabSize}, if set; pass an explicit value to opt out.
+     */
     indentWidth?: number;
     /** Indent with tab characters instead of spaces. */
     useTabs?: boolean;

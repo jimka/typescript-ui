@@ -120,7 +120,7 @@ class CodeEditorPanel extends Panel {
 
         this.setLayoutManager(new VBox());
 
-        this._editor = new CodeEditor(SAMPLE_JS, { language: 'javascript' });
+        this._editor = new CodeEditor(SAMPLE_JS, { language: 'javascript', tabSize: 4 });
 
         const formatBtn = new Button({ text: 'Format' });
         formatBtn.on('action', () => { void this._editor.format(); });
@@ -237,10 +237,9 @@ class CodeEditorPanel extends Panel {
     }
 
     private toggleTabSize(): void {
-        // Cycles through three presets. Unset (CodeMirror's own default,
-        // effectively 4) folds into the 4 slot, so the cycle always lands on
-        // one of the three shown values instead of a fourth ambiguous
-        // "unset" step.
+        // Cycles through three presets. The editor is constructed with
+        // tabSize: 4, so getTabSize() is never actually null here; the ?? 4
+        // is just a defensive fallback matching its number | null signature.
         const TAB_SIZE_PRESETS = [2, 4, 8];
         const current = this._editor.getTabSize() ?? 4;
         const next = TAB_SIZE_PRESETS[(TAB_SIZE_PRESETS.indexOf(current) + 1) % TAB_SIZE_PRESETS.length];

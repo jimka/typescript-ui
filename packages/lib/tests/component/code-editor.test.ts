@@ -1991,6 +1991,85 @@ describe('CodeEditor format() dispatch', () => {
     });
 });
 
+describe('CodeEditor format() indentWidth default from tabSize', () => {
+    const TAB_SIZE_DEFAULT_LANG = 'test-tabsize-default-lang';
+
+    function registerRecordingFormatter(received: (FormatOptions | undefined)[]): void {
+        const formatter: Formatter = async (source, _cursorOffset, options) => {
+            received.push(options);
+
+            return { formatted: source, cursorOffset: 0 };
+        };
+
+        registerLanguage({
+            id: TAB_SIZE_DEFAULT_LANG,
+            loadExtension: async () => [] as any,
+            loadFormatter: async () => formatter,
+        });
+    }
+
+    it('leaves options.indentWidth undefined when both options and tabSize are unset, unchanged from today', async () => {
+        const received: (FormatOptions | undefined)[] = [];
+        registerRecordingFormatter(received);
+
+        const editor = new CodeEditor('x', { language: TAB_SIZE_DEFAULT_LANG });
+
+        await editor.format();
+
+        expect(received[0]).toBeUndefined();
+    });
+
+    it('an explicit options.indentWidth wins over tabSize, forwarded unchanged', async () => {
+        const received: (FormatOptions | undefined)[] = [];
+        registerRecordingFormatter(received);
+
+        const editor  = new CodeEditor('x', { language: TAB_SIZE_DEFAULT_LANG, tabSize: 8 });
+        const options: FormatOptions = { indentWidth: 2 };
+
+        await editor.format(options);
+
+        expect(received[0]).toEqual({ indentWidth: 2 });
+        expect(received[0]).toBe(options);
+    });
+
+    it('defaults indentWidth from tabSize when format() is called with no options at all', async () => {
+        const received: (FormatOptions | undefined)[] = [];
+        registerRecordingFormatter(received);
+
+        const editor = new CodeEditor('x', { language: TAB_SIZE_DEFAULT_LANG, tabSize: 4 });
+
+        await editor.format();
+
+        expect(received[0]).toEqual({ indentWidth: 4 });
+    });
+
+    it('preserves the rest of a partial options object alongside the injected default', async () => {
+        const received: (FormatOptions | undefined)[] = [];
+        registerRecordingFormatter(received);
+
+        const editor  = new CodeEditor('x', { language: TAB_SIZE_DEFAULT_LANG, tabSize: 4 });
+        const options: FormatOptions = { lineWidth: 100 };
+
+        await editor.format(options);
+
+        expect(received[0]).toEqual({ lineWidth: 100, indentWidth: 4 });
+        expect(received[0]).not.toBe(options);
+        expect(options).toEqual({ lineWidth: 100 }); // caller's object is not mutated
+    });
+
+    it('forwards an empty options object unchanged when tabSize is unset', async () => {
+        const received: (FormatOptions | undefined)[] = [];
+        registerRecordingFormatter(received);
+
+        const editor  = new CodeEditor('x', { language: TAB_SIZE_DEFAULT_LANG });
+        const options: FormatOptions = {};
+
+        await editor.format(options);
+
+        expect(received[0]).toBe(options);
+    });
+});
+
 describe('sql-formatter cursor clamp', () => {
     it('clamps a cursor offset beyond the formatted length', async () => {
         const result = await formatWithSql('select 1', 1000);
