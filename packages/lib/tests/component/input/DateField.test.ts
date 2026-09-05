@@ -6,17 +6,42 @@
 // so the suite is timezone-stable.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DateField } from '~/component/input/DateField';
+import { DOM } from '~/core/DOM';
+import { installTestDOM } from '../../dom/TestDOM';
+import fontMetrics from '../../dom/font-metrics.test-font.json';
 
-/** Returns DateField.parseRaw cast to reach the protected method. */
+const CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
+
+/**
+ * Returns DateField.parseRaw cast to reach the protected method. Disposes
+ * the scratch field immediately — parseRaw reads only its `raw` argument,
+ * never `this` state, so disposal is safe, and it releases the "input"
+ * listener `TextInput`'s constructor now registers unconditionally; an
+ * undisposed field here would permanently pin that registration to
+ * whichever DOM was active at collection time and break every later
+ * real-dispatch test in this file (see the "DateField inner-input
+ * clipboard re-fire" describe block below).
+ */
 function parser(): (raw: string) => Date | null {
     const field = new DateField();
+    field.dispose();
 
     return (raw: string): Date | null => (field as any).parseRaw(raw);
 }
 
-/** Returns DateField.formatValue cast to reach the protected method. */
+/**
+ * Returns DateField.formatValue cast to reach the protected method. Disposed
+ * immediately for the same reason as {@link parser}.
+ */
 function formatter(): (date: Date) => string {
     const field = new DateField();
+    field.dispose();
 
     return (date: Date): string => (field as any).formatValue(date);
 }
@@ -82,6 +107,12 @@ describe('DateField value round-trip', () => {
         expect(out!.getFullYear()).toBe(2025);
         expect(out!.getMonth()).toBe(5);
         expect(out!.getDate()).toBe(15);
+
+        // Releases the "input" listener TextInput's constructor now
+        // registers unconditionally — see parser()/formatter()'s doc
+        // comments above for why an undisposed field here would break the
+        // "DateField inner-input clipboard re-fire" describe block below.
+        field.dispose();
     });
 });
 
@@ -90,6 +121,8 @@ describe('DateField dirty state', () => {
         const field = new DateField({ value: new Date(2025, 5, 15) });
 
         expect(field.isDirty()).toBe(false);
+
+        field.dispose();
     });
 
     it('typing a different date through the commit seam makes it dirty, and typing back to a fresh Date with the same Y/M/D clears it', () => {
@@ -105,6 +138,59 @@ describe('DateField dirty state', () => {
         field._input.setText('2025-06-15');
         field.onInput();
         expect(field.isDirty()).toBe(false);
+
+        field.dispose();
+    });
+});
+
+// Proves TextInput.cut()/paste()'s `Event.fireEvent(this, "input")` re-fire
+// (plans/text-input-context-menu-clipboard.md) reaches
+// AbstractPickerField.onInput — the *only* path that parses the inner
+// input's text into `_value` and fires the outer field's own on("change").
+// No source changes to DateField.ts/AbstractPickerField.ts back this: the
+// mechanism is inherited, not duplicated. Disposed in `afterEach` (not a
+// manual end-of-test call) so a thrown assertion still releases the
+// "input" listener registration — see TextInput.test.ts's file-level note
+// on why a skipped dispose would silently break a later real-dispatch test.
+describe('DateField inner-input clipboard re-fire', () => {
+    let field: DateField | undefined;
+
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => { field?.dispose(); field = undefined; DOM.reset(); });
+
+    it('pasting text into the inner _input fires the outer on("change", fn) with the newly parsed Date', async () => {
+        field = new DateField();
+        const input = (field as any)._input;
+        input.getElement(true);
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('2025-06-15');
+
+        let captured: Date | null | undefined;
+        field.on('change', (v: Date | null) => { captured = v; });
+
+        const result = await input.paste();
+
+        expect(result).toBe(true);
+        expect(captured).not.toBe(undefined);
+        expect(captured).not.toBe(null);
+        expect(captured!.getFullYear()).toBe(2025);
+        expect(captured!.getMonth()).toBe(5);
+        expect(captured!.getDate()).toBe(15);
+    });
+
+    it('cutting all the text out of the inner _input fires the outer on("change", fn) with null', () => {
+        field = new DateField({ value: new Date(2025, 5, 15) });
+        const input = (field as any)._input;
+        const el = input.getElement(true)!;
+
+        DOM.sink.setSelectionRange(el, 0, input.getText().length);
+
+        let captured: (Date | null) | undefined;
+        field.on('change', (v: Date | null) => { captured = v; });
+
+        input.cut();
+
+        expect(captured).toBe(null);
     });
 });
 

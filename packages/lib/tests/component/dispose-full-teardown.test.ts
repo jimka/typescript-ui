@@ -44,6 +44,7 @@ import { Menu } from '~/overlay/Menu';
 import { Popover } from '~/overlay/Popover';
 import { Link } from '~/component/input/Link';
 import { SelectableText } from '~/component/input/SelectableText';
+import { TextField } from '~/component/input/TextField';
 import { TabBar } from '~/component/container/TabBar';
 import { ScrollStrip } from '~/component/container/ScrollStrip';
 import { MenuButton, MenuButtonOptions } from '~/component/button/MenuButton';
@@ -480,6 +481,22 @@ const REGISTRY: Array<{
             tree.expandAll();
 
             return tree;
+        },
+    },
+    // `_contextMenu` is a non-nullable field, built eagerly, but writes no
+    // rule until the right-click handler actually shows it — same shape as
+    // `Table`'s `_columnContextMenu` row above.
+    {
+        name: 'TextInput (via TextField)',
+        covers: ['TextInput'],
+        make: () => {
+            const field = new TextField();
+
+            field.getElement(true);
+            (field as unknown as { handleContextMenu(e: MouseEvent): void })
+                .handleContextMenu({ clientX: 0, clientY: 0 } as MouseEvent);
+
+            return field;
         },
     },
 ];

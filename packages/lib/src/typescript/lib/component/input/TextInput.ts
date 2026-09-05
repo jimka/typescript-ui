@@ -10,6 +10,8 @@ import { Util } from "~/core/Util.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import { INPUT_CHROME_TRAIT } from "~/core/StyleTraits.js";
+import { Menu } from "~/overlay/Menu.js";
+import { buildClipboardMenuItems, ClipboardMenuConfig } from "~/component/shared/buildClipboardMenuItems.js";
 
 /**
  * Unified focus mark for every standalone TextInput subclass — `TextField`,
@@ -98,9 +100,13 @@ const _textInputClassStyleDefaults: StyleBag = {
  * text value cache, placeholder / maxLength / inputMode / autoComplete /
  * textAlign setters, the native `disabled` and `readonly` writes, and the
  * `getValue` / `setValue` aliases that satisfy the {@link AbstractInput}
- * value contract. Subclasses ({@link TextField}, {@link TextArea},
- * {@link PasswordField}, [`PickerInput`](/api/component/input/classes/PickerInput))
- * inherit the full surface.
+ * value contract. Also self-wires a right-click menu offering `cut()` /
+ * `copy()` / `paste()` — restoring the browser's own Cut/Copy/Paste menu,
+ * suppressed page-wide elsewhere in the framework — with Cut and Paste
+ * omitted (not dimmed) while the field is disabled or read-only. Subclasses
+ * ({@link TextField}, {@link TextArea}, {@link PasswordField},
+ * [`PickerInput`](/api/component/input/classes/PickerInput)) inherit the
+ * full surface.
  *
  * @category Components
  */
@@ -116,6 +122,12 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
     // plans/cross-class-style-groups.md.
     protected static readonly ownStyleTraits: readonly StyleTrait[] = [INPUT_CHROME_TRAIT];
 
+    // Self-wired Cut/Copy/Paste replacement for the browser's own right-click
+    // menu, suppressed page-wide by Body.init (native-context-menu-suppression.md).
+    // Never a registered child — disposed explicitly in destructor(), mirroring
+    // Table's _columnContextMenu ([Table.ts:214]).
+    private readonly _contextMenu: Menu = new Menu();
+
     constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
         super(
             options,
@@ -130,9 +142,23 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
         // current before `on("change")` reads it — the fix for the
         // one-keystroke-behind value bug.
         Event.addListener(this, "input", this.onInput);
+        Event.addListener(this, "contextmenu", this.handleContextMenu);
 
         // Establishes the clean baseline for dirty-state tracking — see AbstractInput.markClean().
         this.markClean();
+    }
+
+    /**
+     * Disposes the context menu, then runs the inherited teardown.
+     * `_contextMenu` is a LayerManager-mounted panel, never a registered
+     * child (see Menu.ts's class comment), so `super.destructor()`'s child
+     * recursion cannot reach it on its own — the same explicit-dispose shape
+     * `Table.destructor()` uses for `_columnContextMenu`.
+     */
+    protected destructor(): void {
+        this._contextMenu.dispose();
+
+        super.destructor();
     }
 
     /**
@@ -163,6 +189,38 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
 
         this.setText(element ? DOM.source.getValue(element) : "");
         this.notifyChange(this.getValue());
+    }
+
+    /**
+     * Native `contextmenu` handler: opens the Cut/Copy/Paste menu that
+     * replaces the browser's own. Copy is always offered; Cut and Paste are
+     * omitted (not dimmed) when the field is disabled or read-only.
+     *
+     * @param event - The native contextmenu event; its `clientX`/`clientY` seed
+     *   the menu's position.
+     * @returns Stops propagation and suppresses the browser's own menu.
+     */
+    private handleContextMenu(event: MouseEvent): Event.ListenerResult {
+        const element = this.getElement();
+
+        if (element) {
+            const range           = DOM.source.getSelectionRange(element);
+            const hasSelectedText = range !== null && range.start !== range.end;
+
+            const config: ClipboardMenuConfig = {
+                hasSelectedText,
+                copy: () => this.copy(),
+            };
+
+            if (this.isEnabled() && !this.isReadOnly()) {
+                config.cut   = () => this.cut();
+                config.paste = () => void this.paste();
+            }
+
+            this._contextMenu.show(event.clientX, event.clientY, buildClipboardMenuItems(config));
+        }
+
+        return { stop: true, prevent: true };
     }
 
     /**
@@ -640,6 +698,127 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
         DOM.sink.setSelectionRange(element, start, end);
 
         return this;
+    }
+
+    /**
+     * Copies the current selection to the system clipboard. No-op without a
+     * selection.
+     *
+     * @returns This component, for method chaining.
+     */
+    copy(): this {
+        const element = this.getElement();
+        if (!element) {
+            return this;
+        }
+
+        const range = DOM.source.getSelectionRange(element);
+        if (range === null || range.start === range.end) {
+            return this;
+        }
+
+        DOM.sink.writeClipboardText(this.getText().slice(range.start, range.end));
+
+        // The context-menu row that invoked this blurred the field via the
+        // browser's default mousedown-elsewhere behaviour (the same class of
+        // problem PickerColumn.handlePointerDown prevents for a picker cell);
+        // restore it so the field doesn't appear to have lost focus once the
+        // menu closes. preventScroll — the field is already on screen, this
+        // is where the user just right-clicked.
+        this.focus(true);
+
+        return this;
+    }
+
+    /**
+     * Copies the current selection to the system clipboard, then removes it
+     * from the field. No-op without a selection, or when the field is
+     * disabled or read-only.
+     *
+     * @returns This component, for method chaining.
+     */
+    cut(): this {
+        const element = this.getElement();
+        if (!element || !this.isEnabled() || this.isReadOnly()) {
+            return this;
+        }
+
+        const range = DOM.source.getSelectionRange(element);
+        if (range === null || range.start === range.end) {
+            return this;
+        }
+
+        const text = this.getText();
+        DOM.sink.writeClipboardText(text.slice(range.start, range.end));
+
+        this.setText(text.slice(0, range.start) + text.slice(range.end));
+        DOM.sink.setSelectionRange(element, range.start, range.start);
+
+        // Re-fires the native "input" event so a composing field's own raw-DOM
+        // listener (AbstractPickerField.onInput, AutoCompleteField's debounce
+        // trigger) notices a change made through code rather than a keystroke —
+        // see the "Cut and Paste re-fire" Architecture Decision.
+        Event.fireEvent(this, "input");
+
+        // See copy()'s identical comment: restores focus after the
+        // context-menu row's click blurred the field.
+        this.focus(true);
+
+        return this;
+    }
+
+    /**
+     * Reads the system clipboard and inserts it at the caret, replacing any
+     * selection; truncates the result to `maxLength` when one is set.
+     *
+     * @returns A promise resolving `true` when the clipboard was read (even if
+     *   it was empty), `false` when the browser denied the read, or when the
+     *   field is currently disabled or read-only (the read is never attempted
+     *   in that case).
+     */
+    async paste(): Promise<boolean> {
+        const element = this.getElement();
+        if (!element || !this.isEnabled() || this.isReadOnly()) {
+            return false;
+        }
+
+        const clip = await DOM.source.readClipboardText();
+        if (clip === null) {
+            // See copy()'s comment: restores focus after the context-menu
+            // row's click blurred the field, even on a denied read — a
+            // no-op if the field was destroyed while the read was in flight.
+            this.focus(true);
+
+            return false;
+        }
+
+        // Re-fetched: the field may have been destroyed while the read was in
+        // flight (e.g. its parent panel closed mid-permission-prompt).
+        const el = this.getElement();
+
+        if (clip !== "" && el) {
+            const text  = this.getText();
+            const range = DOM.source.getSelectionRange(el) ?? { start: text.length, end: text.length };
+
+            let combined = text.slice(0, range.start) + clip + text.slice(range.end);
+            const maxLength = this.getMaxLength();
+            if (maxLength !== null && combined.length > maxLength) {
+                combined = combined.slice(0, maxLength);
+            }
+
+            this.setText(combined);
+
+            const caret = Math.min(range.start + clip.length, combined.length);
+            DOM.sink.setSelectionRange(el, caret, caret);
+            Event.fireEvent(this, "input");
+        }
+
+        // See copy()'s comment: restores focus after the context-menu row's
+        // click blurred the field; a no-op if the field was destroyed while
+        // the read was in flight.
+        this.focus(true);
+
+        return true;
     }
 
     /**
