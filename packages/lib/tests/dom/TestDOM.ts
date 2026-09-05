@@ -1485,7 +1485,7 @@ export function installTestDOM(config: ModelledDOMConfig): RecordingDOMSink {
  * @param target - The element handle the event targets.
  * @param type - The event type (e.g. `"click"`).
  * @param init - Optional `clientX`/`clientY`/`key`/`keyCode`/`button`/`buttons`/
- * `deltaY`/`detail`/`code`/modifier-key/`relatedTarget`/`pointerId` fields.
+ * `deltaX`/`deltaY`/`detail`/`code`/modifier-key/`relatedTarget`/`pointerId` fields.
  * `relatedTarget`, when given, is wrapped in the same sentinel `target` uses,
  * so `DOM.source.isNode` / `.intern` resolve it back to that handle exactly
  * like `target` (see `ModelledDOMSource.isNode`'s doc comment).
@@ -1496,7 +1496,7 @@ export function makeEvent(
     type: string,
     init?: {
         clientX?: number; clientY?: number; key?: string; keyCode?: number; button?: number; buttons?: number;
-        deltaY?: number; detail?: unknown; code?: string; ctrlKey?: boolean; altKey?: boolean; shiftKey?: boolean;
+        deltaX?: number; deltaY?: number; detail?: unknown; code?: string; ctrlKey?: boolean; altKey?: boolean; shiftKey?: boolean;
         metaKey?: boolean; relatedTarget?: Handle; pointerId?: number;
     }
 ): Event {
@@ -1515,6 +1515,7 @@ export function makeEvent(
         keyCode:         init?.keyCode,
         button:          init?.button,
         buttons:         init?.buttons,
+        deltaX:          init?.deltaX,
         deltaY:          init?.deltaY,
         detail:          init?.detail,
         code:            init?.code,

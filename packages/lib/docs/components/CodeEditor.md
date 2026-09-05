@@ -4,7 +4,7 @@
 
 `CodeEditor` is a **live-only** component, the same category as [`Canvas`](/components/Canvas): CodeMirror's `EditorView` takes a real DOM element and mutates a whole region of it directly, so under the framework's offline test seam the editor mounts nothing and every operation (`format()`, `setLanguage()`, …) no-ops. In a real browser it mounts once the component is connected and sized, fills its assigned box, and scrolls internally.
 
-Wheel scrolling inside the editor is driven by the framework's eased scroller, the same glide every other scrolling surface uses — `CodeEditor` points the framework's scroll plumbing at CodeMirror's own viewport rather than at its outer box. The scrollbars themselves are still the browser's native ones: the custom overlay [`Scrollbar`](/components/Scrollbar) is a [`Panel`](/api/core/classes/Panel) feature and does not reach a foreign widget's internal scroller.
+Wheel scrolling inside the editor is driven by the framework's eased scroller, the same glide every other scrolling surface uses — `CodeEditor` points the framework's scroll plumbing at CodeMirror's own viewport rather than at its outer box. The scrollbars themselves are still the browser's native ones: the custom overlay [`Scrollbar`](/components/Scrollbar) is a [`Panel`](/api/core/classes/Panel) feature and does not reach a foreign widget's internal scroller. A wheel that lands on one of CodeMirror's own floating tooltips is left to the browser instead, as long as the tooltip still has room to move in that direction — the completion list, until the wheel direction reaches whichever end it's being scrolled toward. A tooltip with no further room in that direction (a hover or lint tooltip, which never scroll, or a completion list already scrolled as far as it goes that way) claims and eases the document underneath instead.
 
 Highlighting grammars, formatters and lint sources load lazily, per language, through `import()` — the base editor stays small and Prettier's much larger standalone bundle is only ever fetched behind a `format()` call.
 
@@ -219,7 +219,7 @@ only one is CodeMirror's own feature.
 
 ## Autocompletion
 
-Keyword and snippet completion is always on — there is no option to turn it off, since it costs nothing until a completion tooltip is actually shown. Every built-in grammar except `json` (which has no keywords of its own) publishes its own completion source through CodeMirror's language-data facet, which `autocompletion()` finds automatically; `json` gets a three-keyword list (`true`, `false`, `null`) attached the same way a consumer would for a custom grammar. Completions are bounded to what each grammar's own local/keyword tables know — no cross-file symbols, no type information.
+Keyword and snippet completion is always on — there is no option to turn it off, since it costs nothing until a completion tooltip is actually shown. Every built-in grammar except `json` (which has no keywords of its own) publishes its own completion source through CodeMirror's language-data facet, which `autocompletion()` finds automatically; `json` gets a three-keyword list (`true`, `false`, `null`) attached the same way a consumer would for a custom grammar. Completions are bounded to what each grammar's own local/keyword tables know — no cross-file symbols, no type information. A completion list longer than its `10em` cap scrolls with the wheel as well as with the arrow keys.
 
 ## See also
 

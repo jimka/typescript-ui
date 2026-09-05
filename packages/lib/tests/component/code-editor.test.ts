@@ -12,7 +12,7 @@ import type { FormatOptions } from '~/component/editor/LanguageRegistry';
 import '~/component/editor/index';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
-import { installTestDOM, setQuerySelectorResult } from '../dom/TestDOM';
+import { installTestDOM, setQuerySelectorResult, makeEvent } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { EditorState } from '@codemirror/state';
 import { codeFolding, foldEffect } from '@codemirror/language';
@@ -2252,6 +2252,376 @@ describe('CodeEditor smooth scrolling', () => {
         // resolve — every scroll read/write must stay on the editor's own box
         // rather than returning undefined and silently no-opping.
         expect((editor as any).getScrollElement()).toBe(element);
+    });
+
+    // isForeignWheelTarget is the carve-out CodeEditor.onWheelScroll's inherited
+    // guard must consult before claiming a wheel: CodeMirror parents its own
+    // tooltips (the completion list, hover/lint tooltips) inside `.cm-editor`
+    // with no `parent` configured, so they sit inside this component's subtree
+    // and would otherwise be claimed by the framework's eased wheel scroller —
+    // stranding the list's own native scroll. TestDOM has no selector engine
+    // (DOM.source.matches is an unconditional `false` stub), so the
+    // `.cm-tooltip`-class match a real browser performs is mocked here,
+    // mirroring how Scrollbar.test.ts's isScrollbarTarget suite mocks
+    // DOM.source reads; the ancestor walk itself (getParentElement) runs
+    // against the harness's real modelled parent/child structure, unmocked.
+    describe('isForeignWheelTarget', () => {
+        it('recognises a target under a .cm-tooltip ancestor with scroll room left (a completion list row)', () => {
+            const editor = new CodeEditor();
+            const editorElement = editor.getElement(true)!;
+
+            const tooltip = DOM.sink.createElement('div');
+            const list = DOM.sink.createElement('ul');
+            const row = DOM.sink.createElement('li');
+            DOM.sink.appendChild(editorElement, tooltip);
+            DOM.sink.appendChild(tooltip, list);
+            DOM.sink.appendChild(list, row);
+
+            vi.spyOn(DOM.source, 'matches').mockImplementation(
+                (h: unknown, selector: string) => selector === '.cm-tooltip' && h === tooltip
+            );
+            // `list` is the completion list's own scrollable `ul` — the only
+            // handle in this chain that is both `overflow-y: auto` and has
+            // anything left to scroll.
+            vi.spyOn(DOM.source, 'getComputedOverflow').mockImplementation((h: unknown) =>
+                h === list
+                    ? { overflow: 'hidden auto', overflowX: 'hidden', overflowY: 'auto' }
+                    : { overflow: 'visible', overflowX: 'visible', overflowY: 'visible' }
+            );
+            vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation((h: unknown) =>
+                h === list
+                    ? { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 300, clientWidth: 100, clientHeight: 100 }
+                    : { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 100, clientWidth: 100, clientHeight: 100 }
+            );
+
+            expect((editor as any).isForeignWheelTarget(makeEvent(row, 'wheel', { deltaY: 120 }))).toBe(true);
+        });
+
+        it('returns false for a .cm-tooltip ancestor with no scrollable descendant at all', () => {
+            const editor = new CodeEditor();
+            const editorElement = editor.getElement(true)!;
+
+            // A hover/lint tooltip: plain text with no `overflow: auto`
+            // anywhere. The default (unmocked) getComputedOverflow reports
+            // 'visible' and the default getScrollMetrics reports no extent,
+            // so this is exactly the fixture that shape needs.
+            const tooltip = DOM.sink.createElement('div');
+            const message = DOM.sink.createElement('div');
+            DOM.sink.appendChild(editorElement, tooltip);
+            DOM.sink.appendChild(tooltip, message);
+
+            vi.spyOn(DOM.source, 'matches').mockImplementation(
+                (h: unknown, selector: string) => selector === '.cm-tooltip' && h === tooltip
+            );
+
+            expect((editor as any).isForeignWheelTarget(makeEvent(message, 'wheel', { deltaY: 120 }))).toBe(false);
+        });
+
+        it('at the bottom bound: a further downward wheel has no room, but an upward one does', () => {
+            const editor = new CodeEditor();
+            const editorElement = editor.getElement(true)!;
+
+            const tooltip = DOM.sink.createElement('div');
+            const list = DOM.sink.createElement('ul');
+            const row = DOM.sink.createElement('li');
+            DOM.sink.appendChild(editorElement, tooltip);
+            DOM.sink.appendChild(tooltip, list);
+            DOM.sink.appendChild(list, row);
+
+            vi.spyOn(DOM.source, 'matches').mockImplementation(
+                (h: unknown, selector: string) => selector === '.cm-tooltip' && h === tooltip
+            );
+            vi.spyOn(DOM.source, 'getComputedOverflow').mockImplementation((h: unknown) =>
+                h === list
+                    ? { overflow: 'hidden auto', overflowX: 'hidden', overflowY: 'auto' }
+                    : { overflow: 'visible', overflowX: 'visible', overflowY: 'visible' }
+            );
+            // scrollTop + clientHeight === scrollHeight: already at the bottom,
+            // so a further downward wheel (deltaY > 0) has nowhere to go, but
+            // scrollTop > 0 means an upward one (deltaY < 0) does.
+            vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation((h: unknown) =>
+                h === list
+                    ? { scrollTop: 200, scrollLeft: 0, scrollWidth: 100, scrollHeight: 300, clientWidth: 100, clientHeight: 100 }
+                    : { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 100, clientWidth: 100, clientHeight: 100 }
+            );
+
+            expect((editor as any).isForeignWheelTarget(makeEvent(row, 'wheel', { deltaY: 120 }))).toBe(false);
+            expect((editor as any).isForeignWheelTarget(makeEvent(row, 'wheel', { deltaY: -120 }))).toBe(true);
+        });
+
+        it('at the top bound: a further upward wheel has no room, but a downward one does', () => {
+            const editor = new CodeEditor();
+            const editorElement = editor.getElement(true)!;
+
+            const tooltip = DOM.sink.createElement('div');
+            const list = DOM.sink.createElement('ul');
+            const row = DOM.sink.createElement('li');
+            DOM.sink.appendChild(editorElement, tooltip);
+            DOM.sink.appendChild(tooltip, list);
+            DOM.sink.appendChild(list, row);
+
+            vi.spyOn(DOM.source, 'matches').mockImplementation(
+                (h: unknown, selector: string) => selector === '.cm-tooltip' && h === tooltip
+            );
+            vi.spyOn(DOM.source, 'getComputedOverflow').mockImplementation((h: unknown) =>
+                h === list
+                    ? { overflow: 'hidden auto', overflowX: 'hidden', overflowY: 'auto' }
+                    : { overflow: 'visible', overflowX: 'visible', overflowY: 'visible' }
+            );
+            // Scrolled all the way to the top: room to go down, none to go up.
+            vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation((h: unknown) =>
+                h === list
+                    ? { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 300, clientWidth: 100, clientHeight: 100 }
+                    : { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 100, clientWidth: 100, clientHeight: 100 }
+            );
+
+            expect((editor as any).isForeignWheelTarget(makeEvent(row, 'wheel', { deltaY: 120 }))).toBe(true);
+            expect((editor as any).isForeignWheelTarget(makeEvent(row, 'wheel', { deltaY: -120 }))).toBe(false);
+        });
+
+        it('is direction-aware horizontally too: room to scroll right does not imply room to scroll left', () => {
+            const editor = new CodeEditor();
+            const editorElement = editor.getElement(true)!;
+
+            const tooltip = DOM.sink.createElement('div');
+            const list = DOM.sink.createElement('ul');
+            const row = DOM.sink.createElement('li');
+            DOM.sink.appendChild(editorElement, tooltip);
+            DOM.sink.appendChild(tooltip, list);
+            DOM.sink.appendChild(list, row);
+
+            vi.spyOn(DOM.source, 'matches').mockImplementation(
+                (h: unknown, selector: string) => selector === '.cm-tooltip' && h === tooltip
+            );
+            vi.spyOn(DOM.source, 'getComputedOverflow').mockImplementation((h: unknown) =>
+                h === list
+                    ? { overflow: 'auto', overflowX: 'auto', overflowY: 'visible' }
+                    : { overflow: 'visible', overflowX: 'visible', overflowY: 'visible' }
+            );
+
+            const metrics = vi.spyOn(DOM.source, 'getScrollMetrics');
+
+            // Scrolled all the way to the left: room to go right, none left.
+            metrics.mockImplementation((h: unknown) =>
+                h === list
+                    ? { scrollTop: 0, scrollLeft: 0, scrollWidth: 300, scrollHeight: 100, clientWidth: 100, clientHeight: 100 }
+                    : { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 100, clientWidth: 100, clientHeight: 100 }
+            );
+            expect((editor as any).isForeignWheelTarget(makeEvent(row, 'wheel', { deltaX: 60 }))).toBe(true);
+            expect((editor as any).isForeignWheelTarget(makeEvent(row, 'wheel', { deltaX: -60 }))).toBe(false);
+
+            // Scrolled all the way to the right: room to go left, none right.
+            metrics.mockImplementation((h: unknown) =>
+                h === list
+                    ? { scrollTop: 0, scrollLeft: 200, scrollWidth: 300, scrollHeight: 100, clientWidth: 100, clientHeight: 100 }
+                    : { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 100, clientWidth: 100, clientHeight: 100 }
+            );
+            expect((editor as any).isForeignWheelTarget(makeEvent(row, 'wheel', { deltaX: 60 }))).toBe(false);
+            expect((editor as any).isForeignWheelTarget(makeEvent(row, 'wheel', { deltaX: -60 }))).toBe(true);
+        });
+
+        // The concrete leak a second audit round found in a first pass at this
+        // fix, which checked extent alone: CodeMirror's own theme gives a
+        // completion row `overflow-x: hidden; text-overflow: ellipsis`, so a
+        // long label reports `scrollWidth > clientWidth` while being no more
+        // scrollable than plain clipped text. Extent without a matching
+        // `overflow: auto`/`scroll` must not count as room.
+        it('returns false for overflowing content that is not actually scrollable (an ellipsised row)', () => {
+            const editor = new CodeEditor();
+            const editorElement = editor.getElement(true)!;
+
+            const tooltip = DOM.sink.createElement('div');
+            const list = DOM.sink.createElement('ul');
+            const row = DOM.sink.createElement('li');
+            DOM.sink.appendChild(editorElement, tooltip);
+            DOM.sink.appendChild(tooltip, list);
+            DOM.sink.appendChild(list, row);
+
+            vi.spyOn(DOM.source, 'matches').mockImplementation(
+                (h: unknown, selector: string) => selector === '.cm-tooltip' && h === tooltip
+            );
+            // `row` is `overflow-x: hidden` (CodeMirror's own ellipsis theme)
+            // yet reports horizontal overflow — hidden, not scrollable.
+            vi.spyOn(DOM.source, 'getComputedOverflow').mockImplementation((h: unknown) =>
+                h === row
+                    ? { overflow: 'hidden', overflowX: 'hidden', overflowY: 'visible' }
+                    : { overflow: 'visible', overflowX: 'visible', overflowY: 'visible' }
+            );
+            vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation((h: unknown) =>
+                h === row
+                    ? { scrollTop: 0, scrollLeft: 0, scrollWidth: 300, scrollHeight: 100, clientWidth: 100, clientHeight: 100 }
+                    : { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 100, clientWidth: 100, clientHeight: 100 }
+            );
+
+            expect((editor as any).isForeignWheelTarget(makeEvent(row, 'wheel', { deltaX: 60 }))).toBe(false);
+        });
+
+        // The vertical analogue of the ellipsised-row case above: extent
+        // without a matching overflow-y value must not count as room either.
+        it('returns false for vertically overflowing content that is not actually scrollable (overflow-y hidden)', () => {
+            const editor = new CodeEditor();
+            const editorElement = editor.getElement(true)!;
+
+            const tooltip = DOM.sink.createElement('div');
+            const list = DOM.sink.createElement('ul');
+            const row = DOM.sink.createElement('li');
+            DOM.sink.appendChild(editorElement, tooltip);
+            DOM.sink.appendChild(tooltip, list);
+            DOM.sink.appendChild(list, row);
+
+            vi.spyOn(DOM.source, 'matches').mockImplementation(
+                (h: unknown, selector: string) => selector === '.cm-tooltip' && h === tooltip
+            );
+            // `list` reports vertical extent (scrollHeight > clientHeight) but
+            // its computed overflow-y is `hidden`, not `auto`/`scroll`.
+            vi.spyOn(DOM.source, 'getComputedOverflow').mockImplementation((h: unknown) =>
+                h === list
+                    ? { overflow: 'hidden', overflowX: 'visible', overflowY: 'hidden' }
+                    : { overflow: 'visible', overflowX: 'visible', overflowY: 'visible' }
+            );
+            vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation((h: unknown) =>
+                h === list
+                    ? { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 300, clientWidth: 100, clientHeight: 100 }
+                    : { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 100, clientWidth: 100, clientHeight: 100 }
+            );
+
+            expect((editor as any).isForeignWheelTarget(makeEvent(row, 'wheel', { deltaY: 120 }))).toBe(false);
+        });
+
+        it('returns false for ordinary editor content', () => {
+            const editor = new CodeEditor();
+            const editorElement = editor.getElement(true)!;
+
+            const line = DOM.sink.createElement('div');
+            DOM.sink.appendChild(editorElement, line);
+
+            vi.spyOn(DOM.source, 'matches').mockReturnValue(false);
+
+            expect((editor as any).isForeignWheelTarget(makeEvent(line, 'wheel', { deltaY: 120 }))).toBe(false);
+        });
+
+        it('returns false for a non-node target, without throwing', () => {
+            const editor = new CodeEditor();
+            editor.getElement(true);
+
+            expect((editor as any).isForeignWheelTarget({ target: null })).toBe(false);
+        });
+
+        it("stops the climb at the editor's own element", () => {
+            const editor = new CodeEditor();
+            const editorElement = editor.getElement(true)!;
+
+            const outer = DOM.sink.createElement('div');
+            const child = DOM.sink.createElement('div');
+            DOM.sink.appendChild(outer, editorElement);
+            DOM.sink.appendChild(editorElement, child);
+
+            // Matches `.cm-tooltip` only for `outer` — reachable only if the
+            // walk kept going past the editor's own element. `outer` is also
+            // given real scroll room: if the `handle === root` stop were ever
+            // removed, the climb would reach `outer`, match it, and
+            // `hasWheelExtent` would report `true` there, flipping this
+            // test's expectation instead of silently agreeing with it.
+            vi.spyOn(DOM.source, 'matches').mockImplementation(
+                (h: unknown, selector: string) => selector === '.cm-tooltip' && h === outer
+            );
+            vi.spyOn(DOM.source, 'getComputedOverflow').mockImplementation((h: unknown) =>
+                h === outer
+                    ? { overflow: 'hidden auto', overflowX: 'hidden', overflowY: 'auto' }
+                    : { overflow: 'visible', overflowX: 'visible', overflowY: 'visible' }
+            );
+            vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation((h: unknown) =>
+                h === outer
+                    ? { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 300, clientWidth: 100, clientHeight: 100 }
+                    : { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 100, clientWidth: 100, clientHeight: 100 }
+            );
+
+            expect((editor as any).isForeignWheelTarget(makeEvent(child, 'wheel', { deltaY: 120 }))).toBe(false);
+        });
+    });
+
+    describe('onWheelScroll and isForeignWheelTarget', () => {
+        it('claims a foreign-target wheel without preventing it', () => {
+            const editor = new CodeEditor();
+            const editorElement = editor.getElement(true)!;
+
+            const tooltip = DOM.sink.createElement('div');
+            const list = DOM.sink.createElement('ul');
+            const row = DOM.sink.createElement('li');
+            DOM.sink.appendChild(editorElement, tooltip);
+            DOM.sink.appendChild(tooltip, list);
+            DOM.sink.appendChild(list, row);
+
+            vi.spyOn(DOM.source, 'matches').mockImplementation(
+                (h: unknown, selector: string) => selector === '.cm-tooltip' && h === tooltip
+            );
+            vi.spyOn(DOM.source, 'getComputedOverflow').mockImplementation((h: unknown) =>
+                h === list
+                    ? { overflow: 'hidden auto', overflowX: 'hidden', overflowY: 'auto' }
+                    : { overflow: 'visible', overflowX: 'visible', overflowY: 'visible' }
+            );
+            vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation((h: unknown) =>
+                h === list
+                    ? { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 300, clientWidth: 100, clientHeight: 100 }
+                    : { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 100, clientWidth: 100, clientHeight: 100 }
+            );
+
+            const e = makeEvent(row, 'wheel', { deltaY: 120 });
+            const result = (editor as any).onWheelScroll(e);
+
+            expect(result).toBeUndefined();
+            expect((e as any)._tsScrollConsumed).toBe(true);
+        });
+
+        // The audit-driven fix behind `hasWheelExtent`: a tooltip with nothing
+        // left to scroll must not disarm an enclosing overlay's WheelTrap
+        // (core/WheelTrap.ts) by claiming a wheel it cannot itself absorb — see
+        // that helper's doc for the failure this closes (a wheel chaining past
+        // a modal's trap to the page behind it). Falling through to the normal
+        // claim-and-prevent path, exercised here, is the safe alternative: the
+        // editor's own eased scroller absorbs it instead.
+        it('falls through to claim-and-prevent when the matched tooltip has no scroll room', () => {
+            const editor = new CodeEditor();
+            const editorElement = editor.getElement(true)!;
+
+            const tooltip = DOM.sink.createElement('div');
+            const message = DOM.sink.createElement('div');
+            DOM.sink.appendChild(editorElement, tooltip);
+            DOM.sink.appendChild(tooltip, message);
+
+            vi.spyOn(DOM.source, 'matches').mockImplementation(
+                (h: unknown, selector: string) => selector === '.cm-tooltip' && h === tooltip
+            );
+            vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation((h: unknown) =>
+                h === editorElement
+                    ? { scrollTop: 0, scrollLeft: 0, scrollWidth: 400, scrollHeight: 900, clientWidth: 400, clientHeight: 300 }
+                    : { scrollTop: 0, scrollLeft: 0, scrollWidth: 100, scrollHeight: 100, clientWidth: 100, clientHeight: 100 }
+            );
+
+            const e = makeEvent(message, 'wheel', { deltaY: 120 });
+            const result = (editor as any).onWheelScroll(e);
+
+            expect(result).toEqual({ prevent: true });
+            expect((e as any)._tsScrollConsumed).toBe(true);
+        });
+
+        it('still claims and prevents an ordinary wheel over a scrollable axis', () => {
+            const editor = new CodeEditor();
+            const editorElement = editor.getElement(true)!;
+
+            vi.spyOn(DOM.source, 'matches').mockReturnValue(false);
+            vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+                scrollTop: 0, scrollLeft: 0,
+                scrollWidth: 400, scrollHeight: 900,
+                clientWidth: 400, clientHeight: 300,
+            });
+
+            const e = makeEvent(editorElement, 'wheel', { deltaY: 120 });
+            const result = (editor as any).onWheelScroll(e);
+
+            expect(result).toEqual({ prevent: true });
+            expect((e as any)._tsScrollConsumed).toBe(true);
+        });
     });
 });
 

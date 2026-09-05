@@ -4661,6 +4661,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Whether `e` landed on foreign DOM — DOM nested inside this component's
+     * element that the component did not create and does not scroll, such as a
+     * third-party widget's own floating panel. Such DOM scrolls itself through
+     * the browser's native handling, so the eased wheel scroller must stay out
+     * of its way.
+     *
+     * @param _e - The wheel event being routed. The default implementation
+     *   ignores it.
+     * @returns `true` to leave the gesture to the browser. `false` in the base
+     *   class: an ordinary component's subtree is entirely its own.
+     */
+    protected isForeignWheelTarget(_e: WheelEvent): boolean {
+        return false;
+    }
+
+    /**
      * Eases a wheel gesture into the element's native scroll offset. Only a
      * scrollable axis receives delta, and shift+wheel with a bare vertical delta
      * is redirected to horizontal.
@@ -4677,6 +4693,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * outward, as it does natively.
      */
     private onWheelScroll(e: WheelEvent): Event.ListenerResult {
+        if (this.isForeignWheelTarget(e)) {
+            // Claim so no ancestor scroller takes the gesture, but do not
+            // prevent: the browser scrolls the foreign element itself.
+            consumeWheel(e);
+
+            return;
+        }
+
         const canX = this.isOverflowScrollable(this.getOverflowX()) && this.getMaxScrollLeft() > 0;
         const canY = this.isOverflowScrollable(this.getOverflowY()) && this.getMaxScrollTop()  > 0;
 

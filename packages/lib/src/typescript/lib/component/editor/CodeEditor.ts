@@ -150,6 +150,50 @@ const CM_LINE_SELECTOR = ".cm-line";
 /** `.cm-content`'s last element child — the last rendered line, gap, or widget. */
 const CM_LAST_BLOCK_SELECTOR = ":scope > :last-child";
 
+/** Every CodeMirror tooltip root — the completion list, hover and lint tooltips. */
+const CM_TOOLTIP_SELECTOR = ".cm-tooltip";
+
+/**
+ * Whether `handle` can actually be scrolled by the browser's own default
+ * handling of `e` — its computed overflow permits scrolling on the axis `e`
+ * carries delta on, *and* it has extent left to move through in that
+ * direction. Mirrors {@link Component.onWheelScroll}'s own `canX`/`canY`
+ * test (overflow style conjoined with remaining extent), applied to foreign
+ * DOM instead of `this`.
+ *
+ * Gates {@link CodeEditor.isForeignWheelTarget}'s tooltip carve-out on the
+ * tooltip actually having somewhere to move, rather than on DOM shape or
+ * extent alone — content that merely overflows a non-scrolling box (e.g. an
+ * ellipsised completion row's `overflow-x: hidden`) reports extent without
+ * being scrollable, and claiming a wheel over it would be just as inert as
+ * claiming one with no overflow at all. A wheel claimed with nothing to
+ * absorb it defeats an enclosing overlay's wheel trap (`core/WheelTrap.ts`):
+ * the trap's `swallowUnconsumedWheel` stands down on any already-claimed
+ * wheel, on the assumption that a claim means the gesture was actually
+ * handled. Claiming a wheel over a non-scrollable tooltip (hover, lint), an
+ * overflowing-but-not-scrolling element, or a completion list already at its
+ * scroll bound would leave nothing to handle it while still disarming the
+ * trap, letting the browser's own scroll chaining carry the gesture past the
+ * trap to whatever real scroll container it finds next — potentially the
+ * page behind a modal `Dialog` or `AbstractWindow`.
+ *
+ * @param handle - The element to read computed overflow and scroll metrics from.
+ * @param e - The wheel event supplying the delta to check against.
+ * @returns `true` if `handle` can move further in the direction `e` requests.
+ */
+function hasWheelExtent(handle: Handle, e: WheelEvent): boolean {
+    const overflow = DOM.source.getComputedOverflow(handle);
+    const metrics  = DOM.source.getScrollMetrics(handle);
+
+    const scrollableY = overflow.overflowY === "auto" || overflow.overflowY === "scroll";
+    const scrollableX = overflow.overflowX === "auto" || overflow.overflowX === "scroll";
+
+    return (scrollableY && e.deltaY > 0 && metrics.scrollTop  + metrics.clientHeight < metrics.scrollHeight)
+        || (scrollableY && e.deltaY < 0 && metrics.scrollTop  > 0)
+        || (scrollableX && e.deltaX > 0 && metrics.scrollLeft + metrics.clientWidth  < metrics.scrollWidth)
+        || (scrollableX && e.deltaX < 0 && metrics.scrollLeft > 0);
+}
+
 // Padding-bottom applied once to an auto-height editor's `.cm-scroller`
 // (see the `_scrollElement` resolution in `mount`) so a sub-pixel content
 // overhang can never leave the scroller a fraction of a pixel short and
@@ -1151,6 +1195,55 @@ class CodeEditor extends Component<CodeEditorOptions> {
      */
     protected getScrollElement(): Handle | undefined {
         return this._scrollElement ?? super.getScrollElement();
+    }
+
+    /**
+     * Carves CodeMirror's own tooltips (the completion list, hover and lint
+     * tooltips) out of the framework's eased wheel scroller — but only when a
+     * scrollable descendant genuinely has somewhere to move, per
+     * {@link hasWheelExtent}. CodeMirror parents every tooltip inside
+     * `.cm-editor` with no `parent` configured, so they sit in this
+     * component's subtree and would otherwise have their wheel claimed by
+     * {@link Component.onWheelScroll} — stranding the completion list's own
+     * native, browser-driven scroll. A non-scrollable tooltip, or a
+     * completion list already at its scroll bound, reports `false` instead,
+     * so the wheel falls through to the normal claim-and-prevent path rather
+     * than being claimed with nothing to actually absorb it — see
+     * {@link hasWheelExtent}'s doc for why an inert claim matters.
+     *
+     * @param e - The wheel event being routed.
+     * @returns `true` when `e`'s target climbs to a `.cm-tooltip` ancestor
+     *   with scroll room left, before reaching this component's own element.
+     *
+     * @remarks The climb itself only calls `DOM.source.matches` — the same
+     * cheap, bounded walk as the base carve-out pattern — and defers every
+     * `hasWheelExtent` check (a `getComputedStyle` read plus a layout-forcing
+     * `getScrollMetrics` read) until a `.cm-tooltip` is actually found. An
+     * ordinary wheel over editor content, the overwhelming majority of ticks,
+     * pays only the `matches` cost; the extent checks run at most once per
+     * handle already walked, and only when a tooltip is present at all.
+     */
+    protected isForeignWheelTarget(e: WheelEvent): boolean {
+        if (!DOM.source.isNode(e.target)) {
+            return false;
+        }
+
+        const root = this.getElement();
+        const climbed: Handle[] = [];
+
+        for (let handle: Handle | null = DOM.source.intern(e.target); handle; handle = DOM.source.getParentElement(handle)) {
+            climbed.push(handle);
+
+            if (DOM.source.matches(handle, CM_TOOLTIP_SELECTOR)) {
+                return climbed.some((climbedHandle) => hasWheelExtent(climbedHandle, e));
+            }
+
+            if (handle === root) {
+                return false;
+            }
+        }
+
+        return false;
     }
 
     /**
