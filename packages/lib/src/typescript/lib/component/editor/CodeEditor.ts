@@ -7,6 +7,10 @@ import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
+import { Menu } from "~/overlay/Menu.js";
+import { MenuItemConfig } from "~/component/container/MenuItem.js";
+import { Notification } from "~/overlay/Notification.js";
+import { buildClipboardMenuItems } from "~/component/shared/buildClipboardMenuItems.js";
 import {
     EditorView, keymap, drawSelection, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
     placeholder, highlightWhitespace, highlightTrailingWhitespace, highlightSpecialChars,
@@ -223,6 +227,11 @@ const READONLY_FLASH_PEAK_OPACITY = 0.16;
  */
 const READONLY_FLASH_COLOR = "var(--ts-ui-validation-error-border, #dc2626)";
 
+/** Shown when the browser refuses a right-click Paste's clipboard read. */
+const CLIPBOARD_READ_DENIED_MESSAGE = "Clipboard read blocked by the browser — press Ctrl/Cmd+V to paste.";
+/** How long the denied-paste toast stays visible. */
+const CLIPBOARD_HINT_DURATION_MS = 6000;
+
 /**
  * Builds the readOnly-state extension: `EditorState.readOnly` blocks every
  * edit (including programmatic ones) while leaving the content DOM editable, so
@@ -265,6 +274,9 @@ function buildReadOnlyExtension(readOnly: boolean): Extension {
  * / `getLanguage` / `listLanguages`) — see that module and `languages.ts` for
  * the seven built-in languages (JavaScript/TypeScript, JSON, HTML, SQL,
  * Markdown, CSS, Python).
+ *
+ * Right-clicking the editor opens a Cut/Copy/Paste context menu, acting on
+ * the primary selection only.
  *
  * @example
  * ```typescript
@@ -322,6 +334,9 @@ class CodeEditor extends Component<CodeEditorOptions> {
     /** Custom-event fan-out for `"change"`. */
     private readonly _listeners: ListenerBag<CodeEditorEvent> = this.registerListenerBag(new ListenerBag<CodeEditorEvent>());
 
+    /** Right-click Cut/Copy/Paste menu; rebuilt on every `show()` call. */
+    private readonly _contextMenu: Menu = new Menu();
+
     /** Handle to detach the {@link ThemeManager.onThemeChange} listener on {@link CodeEditor.dispose}. */
     private readonly _unsubscribeTheme: () => void;
 
@@ -342,6 +357,19 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * shows.
      */
     private _contentElement: Handle | null = null;
+
+    /**
+     * The `contextmenu` listener attached directly to {@link CodeEditor._contentElement}
+     * via {@link DOM.sink.addListener}, bypassing CodeMirror's own `domEventHandlers`/
+     * `domEventObservers` facets entirely. Both facets are dispatched from inside
+     * CodeMirror's `InputState.handleEvent`, which drops any bubbling event whose
+     * `defaultPrevented` is already `true` before calling either facet — exactly the
+     * state `Body`'s page-wide `contextmenu` suppression leaves the event in by the
+     * time it reaches this component. A listener attached independently of that
+     * dispatcher is unaffected, since `preventDefault()` never stops other listeners
+     * from running. `null` until the view mounts (or forever, offline).
+     */
+    private _contextMenuListener: ((event: MouseEvent) => void) | null = null;
 
     // `syncAutoHeight` trusts a height GROWTH only on the call where the
     // document/width shape genuinely changed (a real edit or resize) — never
@@ -916,6 +944,97 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
+     * Copies the primary selection's text to the system clipboard. No-op
+     * before the view is mounted, or when the primary selection is collapsed.
+     *
+     * @returns This component, for method chaining.
+     */
+    copy(): this {
+        if (!this._view) {
+            return this;
+        }
+
+        const { main } = this._view.state.selection;
+
+        if (!main.empty) {
+            DOM.sink.writeClipboardText(this._view.state.sliceDoc(main.from, main.to));
+
+            // The context-menu row that invoked this blurred the view via the
+            // browser's default mousedown-elsewhere behaviour (the same class
+            // of problem PickerColumn.handlePointerDown prevents for a picker
+            // cell); restore it so the editor doesn't appear to have lost
+            // focus once the menu closes.
+            this.focus(true);
+        }
+
+        return this;
+    }
+
+    /**
+     * Copies the primary selection's text to the system clipboard, then
+     * removes it. No-op before the view is mounted, or when the primary
+     * selection is collapsed.
+     *
+     * @returns This component, for method chaining.
+     */
+    cut(): this {
+        this.copy();
+
+        if (this._view) {
+            const { main } = this._view.state.selection;
+
+            if (!main.empty) {
+                this._view.dispatch({ changes: { from: main.from, to: main.to }, scrollIntoView: true });
+            }
+        }
+
+        return this;
+    }
+
+    /**
+     * Reads the system clipboard and inserts it at the primary selection,
+     * replacing any selected text.
+     *
+     * @returns `true` when the clipboard was read (even if empty), `false`
+     *   when there is no mounted view or the browser refused the read.
+     */
+    async paste(): Promise<boolean> {
+        if (!this._view) {
+            return false;
+        }
+
+        const text = await DOM.source.readClipboardText();
+
+        if (text === null) {
+            // See copy()'s comment: restores focus after the context-menu
+            // row's click blurred the view, even on a denied read — a no-op
+            // if the view was destroyed while the read was in flight.
+            this.focus(true);
+
+            return false;
+        }
+
+        // Re-checked after the await: the component may be destroyed (nulling
+        // `_view`) while the clipboard read is in flight.
+        if (text !== "" && this._view) {
+            const { main } = this._view.state.selection;
+
+            this._view.dispatch({
+                changes:        { from: main.from, to: main.to, insert: text },
+                selection:      { anchor: main.from + text.length },
+                scrollIntoView: true,
+            });
+        }
+
+        // See copy()'s comment: restores focus after the context-menu row's
+        // click blurred the view; a no-op if the view was destroyed while
+        // the read was in flight.
+        this.focus(true);
+
+        return true;
+    }
+
+    /**
      * Formats the document via the active language's formatter, or re-indents
      * it (CodeMirror's own indentation service) when the language has none.
      *
@@ -1159,6 +1278,18 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         this._unsubscribeTheme();
 
+        // `Menu` is never registered via `addComponent` (see its own class comment),
+        // so the base class's child-recursion teardown cannot reach it.
+        this._contextMenu.dispose();
+
+        // Before `_contentElement` is nulled below: attached independently of
+        // CodeMirror's own teardown (see `_contextMenuListener`'s own comment),
+        // so it is not removed as a side effect of `this._view.destroy()`.
+        if (this._contentElement && this._contextMenuListener) {
+            DOM.sink.removeListener(this._contentElement, "contextmenu", this._contextMenuListener);
+            this._contextMenuListener = null;
+        }
+
         // Before the view is destroyed below, so any later scroll read (the
         // base destructor's own teardown, a queued layout) resolves through the
         // base element rather than a handle whose node CodeMirror has removed.
@@ -1365,6 +1496,18 @@ class CodeEditor extends Component<CodeEditorOptions> {
             // itself is resolved.
             if (this._scrollElement) {
                 this._contentElement = DOM.source.querySelector(this._scrollElement, CM_CONTENT_SELECTOR);
+            }
+
+            // Attached directly, bypassing CodeMirror's own domEventHandlers /
+            // domEventObservers facets — see `_contextMenuListener`'s own comment
+            // for why neither facet actually fires here.
+            if (this._contentElement) {
+                this._contextMenuListener = (event) => {
+                    if (this._view) {
+                        this.handleContextMenu(event, this._view);
+                    }
+                };
+                DOM.sink.addListener<MouseEvent>(this._contentElement, "contextmenu", this._contextMenuListener);
             }
 
             // Auto-height mode only: two fixed, one-time styles, never
@@ -1891,6 +2034,29 @@ class CodeEditor extends Component<CodeEditorOptions> {
             durationMs: READONLY_FLASH_MS,
             properties: ["opacity"],
         });
+    }
+
+    private buildContextMenuItems(hasSelectedText: boolean): MenuItemConfig[] {
+        const readOnly = this.getReadOnly();
+
+        return buildClipboardMenuItems({
+            hasSelectedText,
+            cut:   readOnly ? undefined : () => this.cut(),
+            copy:  () => this.copy(),
+            paste: readOnly ? undefined : () => void this.pasteFromContextMenu(),
+        });
+    }
+
+    private handleContextMenu(event: MouseEvent, view: EditorView): void {
+        const hasSelectedText = !view.state.selection.main.empty;
+
+        this._contextMenu.show(event.clientX, event.clientY, this.buildContextMenuItems(hasSelectedText));
+    }
+
+    private async pasteFromContextMenu(): Promise<void> {
+        if (!await this.paste()) {
+            Notification.show(CLIPBOARD_READ_DENIED_MESSAGE, "warning", CLIPBOARD_HINT_DURATION_MS);
+        }
     }
 }
 

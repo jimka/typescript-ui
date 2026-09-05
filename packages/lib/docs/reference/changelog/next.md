@@ -162,6 +162,10 @@ page resets to empty.
   `DateTimeField` accepts all seven. The typed text is left alone while
   typing and resolves to its formatted absolute value only when the field
   loses focus or Enter is pressed. No consumer action is needed.
+- **`CodeEditor` gains `cut()` / `copy()` / `paste()`** and a right-click menu
+  leading with Cut / Copy / Paste (dimmed for Cut/Copy when nothing is
+  selected; a read-only editor shows only Copy), acting on the primary
+  selection only.
 - **`SelectableText` gains a `copyMenu` option** (and `setCopyMenu()` /
   `hasCopyMenu()`) offering a right-click Copy menu for text selected inside
   it; `Dialog`'s message body, `Notification`'s toast and detail messages,

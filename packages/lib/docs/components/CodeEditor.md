@@ -178,6 +178,10 @@ Tab then moves focus again, and the same shortcut switches back to indenting.
 | `{` / `(` / `[` (typed) | Insert the matching closing bracket, caret between |
 | `Backspace` (over a bracket pair) | Delete both brackets |
 
+## Right-click menu
+
+Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / Paste**. Cut and Copy are dimmed when nothing is selected; a read-only editor (`readOnly: true`) shows only Copy. A browser that refuses the clipboard read shows a toast asking the user to press Ctrl/Cmd+V instead — Ctrl/Cmd+V itself still works either way. With a multi-cursor selection active, only the primary cursor's range is acted on.
+
 ## Common methods
 
 | Method | Purpose |
@@ -198,6 +202,8 @@ Tab then moves focus again, and the same shortcut switches back to indenting.
 | `getTabSize()` / `setTabSize(size)` | Read, set, or (`null`) clear the tab-stop width, in columns. |
 | `getLineNumbers()` / `setLineNumbers(show)` | Read or toggle whether the line-number gutter is shown. |
 | `getSpellcheck()` / `setSpellcheck(spellcheck)` | Read or toggle whether the browser's native spellcheck runs inside the editor. |
+| `cut()` / `copy()` | Cut or copy the primary selection's text to the system clipboard. |
+| `paste()` | Read the system clipboard and insert it at the primary selection, replacing any selected text. Async: resolves `true` when the clipboard was read, `false` when there is no mounted view or the browser refused the read. |
 
 ## Theming
 

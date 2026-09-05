@@ -15,9 +15,13 @@ import { DOM } from '~/core/DOM';
 import { installTestDOM, setQuerySelectorResult, makeEvent } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { EditorState } from '@codemirror/state';
+import type { EditorView } from '@codemirror/view';
 import { codeFolding, foldEffect } from '@codemirror/language';
 import { json } from '@codemirror/lang-json';
 import { collectSyntaxErrors } from '~/component/editor/syntaxDiagnostics';
+import type { MenuItemConfig } from '~/component/container/MenuItem';
+import { Notification } from '~/overlay/Notification';
+import type { RecordingDOMSink } from '../dom/TestDOM';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -2636,5 +2640,348 @@ describe('CodeEditor DOM seam: mountView', () => {
         expect(result).toBeNull();
         expect(factory).not.toHaveBeenCalled();
         expect(recorder.writes.some((w) => w.op === 'mountView')).toBe(true);
+    });
+});
+
+describe('CodeEditor clipboard commands', () => {
+    /** A minimal duck-typed `EditorView`, matching this file's `_view` convention (see `'CodeEditor format() dispatch'`). */
+    function fakeView(text: string, from: number, to: number, dispatch: (spec: unknown) => void = vi.fn()) {
+        return {
+            state: {
+                sliceDoc:  (f: number, t: number) => text.slice(f, t),
+                selection: { main: { from, to, empty: from === to } },
+            },
+            dispatch,
+            focus: vi.fn(),
+        };
+    }
+
+    /** The clipboard-write args recorded by `copy()`/`cut()`, in call order. */
+    function clipboardWrites(): unknown[] {
+        return (DOM.sink as RecordingDOMSink).writes
+            .filter((w) => w.op === 'writeClipboardText')
+            .map((w) => w.args[0]);
+    }
+
+    it('copy() records a write carrying the primary selection\'s text when it is non-empty', () => {
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('hello world', 0, 5);
+
+        editor.copy();
+
+        expect(clipboardWrites()).toEqual(['hello']);
+    });
+
+    it('copy() records no write when the primary selection is collapsed', () => {
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('hello world', 3, 3);
+
+        editor.copy();
+
+        expect(clipboardWrites()).toHaveLength(0);
+    });
+
+    it('copy() is a no-op when _view is null', () => {
+        const editor = new CodeEditor() as any;
+
+        expect(() => editor.copy()).not.toThrow();
+        expect(clipboardWrites()).toHaveLength(0);
+    });
+
+    it('cut() records the write and dispatches a delete of the primary selection when it is non-empty', () => {
+        const editor = new CodeEditor() as any;
+        const dispatchSpy = vi.fn();
+        editor._view = fakeView('hello world', 0, 5, dispatchSpy);
+
+        editor.cut();
+
+        expect(clipboardWrites()).toEqual(['hello']);
+        expect(dispatchSpy).toHaveBeenCalledOnce();
+
+        const spec = dispatchSpy.mock.calls[0][0] as { changes: { from: number; to: number; insert?: string } };
+
+        expect(spec.changes).toEqual({ from: 0, to: 5 });
+        expect(spec.changes.insert).toBeUndefined();
+    });
+
+    it('cut() records no write and dispatches nothing when the primary selection is collapsed', () => {
+        const editor = new CodeEditor() as any;
+        const dispatchSpy = vi.fn();
+        editor._view = fakeView('hello world', 3, 3, dispatchSpy);
+
+        editor.cut();
+
+        expect(clipboardWrites()).toHaveLength(0);
+        expect(dispatchSpy).not.toHaveBeenCalled();
+    });
+
+    it('cut() is a no-op when _view is null', () => {
+        const editor = new CodeEditor() as any;
+
+        expect(() => editor.cut()).not.toThrow();
+        expect(clipboardWrites()).toHaveLength(0);
+    });
+
+    it('paste() resolves false and never calls readClipboardText when _view is null', async () => {
+        const editor = new CodeEditor() as any;
+        const readSpy = vi.spyOn(DOM.source, 'readClipboardText');
+
+        const result = await editor.paste();
+
+        expect(result).toBe(false);
+        expect(readSpy).not.toHaveBeenCalled();
+    });
+
+    it('paste() resolves false and dispatches nothing when the clipboard read resolves null', async () => {
+        const editor = new CodeEditor() as any;
+        const dispatchSpy = vi.fn();
+        editor._view = fakeView('hello world', 3, 3, dispatchSpy);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue(null);
+
+        const result = await editor.paste();
+
+        expect(result).toBe(false);
+        expect(dispatchSpy).not.toHaveBeenCalled();
+    });
+
+    it('paste() resolves true and dispatches nothing when the clipboard read resolves ""', async () => {
+        const editor = new CodeEditor() as any;
+        const dispatchSpy = vi.fn();
+        editor._view = fakeView('hello world', 3, 3, dispatchSpy);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('');
+
+        const result = await editor.paste();
+
+        expect(result).toBe(true);
+        expect(dispatchSpy).not.toHaveBeenCalled();
+    });
+
+    it('paste() dispatches an insert at a collapsed caret, with the anchor after the inserted text', async () => {
+        const editor = new CodeEditor() as any;
+        const dispatchSpy = vi.fn();
+        editor._view = fakeView('hello world', 5, 5, dispatchSpy);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('XY');
+
+        const result = await editor.paste();
+
+        expect(result).toBe(true);
+        expect(dispatchSpy).toHaveBeenCalledOnce();
+        expect(dispatchSpy.mock.calls[0][0]).toMatchObject({
+            changes:   { from: 5, to: 5, insert: 'XY' },
+            selection: { anchor: 7 },
+        });
+    });
+
+    it('paste() dispatches a replace of a non-empty selection, with the same anchor formula', async () => {
+        const editor = new CodeEditor() as any;
+        const dispatchSpy = vi.fn();
+        editor._view = fakeView('hello world', 0, 5, dispatchSpy);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('XY');
+
+        const result = await editor.paste();
+
+        expect(result).toBe(true);
+        expect(dispatchSpy.mock.calls[0][0]).toMatchObject({
+            changes:   { from: 0, to: 5, insert: 'XY' },
+            selection: { anchor: 2 },
+        });
+    });
+
+    it('dispatches a clipboard read containing a newline verbatim, with no splitting', async () => {
+        const editor = new CodeEditor() as any;
+        const dispatchSpy = vi.fn();
+        editor._view = fakeView('hello world', 0, 0, dispatchSpy);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('a\nb');
+
+        await editor.paste();
+
+        expect(dispatchSpy.mock.calls[0][0]).toMatchObject({ changes: { from: 0, to: 0, insert: 'a\nb' } });
+    });
+
+    // Clicking a context-menu row blurs the view via the browser's default
+    // mousedown-elsewhere behaviour (the same class of problem PickerColumn.ts's
+    // handlePointerDown prevents for a picker cell, and TextInput.copy/cut/paste
+    // now guard against too); each command restores focus afterward so the
+    // editor doesn't appear to have lost it once the menu closes.
+    it('copy() with a selection restores focus to the view', () => {
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('hello world', 0, 5);
+
+        editor.copy();
+
+        expect(editor._view.focus).toHaveBeenCalledOnce();
+    });
+
+    it('cut() with a selection restores focus to the view', () => {
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('hello world', 0, 5);
+
+        editor.cut();
+
+        expect(editor._view.focus).toHaveBeenCalledOnce();
+    });
+
+    it('paste() with clipboard content restores focus to the view', async () => {
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('hello world', 5, 5);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('XY');
+
+        await editor.paste();
+
+        expect(editor._view.focus).toHaveBeenCalledOnce();
+    });
+
+    it('paste() with an empty clipboard still restores focus to the view', async () => {
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('hello world', 3, 3);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('');
+
+        await editor.paste();
+
+        expect(editor._view.focus).toHaveBeenCalledOnce();
+    });
+
+    it('paste() with a denied read still restores focus to the view', async () => {
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('hello world', 3, 3);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue(null);
+
+        await editor.paste();
+
+        expect(editor._view.focus).toHaveBeenCalledOnce();
+    });
+});
+
+describe('CodeEditor context menu', () => {
+    /** Reaches CodeEditor's private context-menu builder/handler methods for white-box assertions. */
+    function contextMenuMethodsOf(editor: CodeEditor): {
+        buildContextMenuItems(hasSelectedText: boolean): MenuItemConfig[];
+        handleContextMenu(event: MouseEvent, view: EditorView): void;
+        pasteFromContextMenu(): Promise<void>;
+        _contextMenu: { show: (...args: unknown[]) => void };
+    } {
+        return editor as unknown as {
+            buildContextMenuItems(hasSelectedText: boolean): MenuItemConfig[];
+            handleContextMenu(event: MouseEvent, view: EditorView): void;
+            pasteFromContextMenu(): Promise<void>;
+            _contextMenu: { show: (...args: unknown[]) => void };
+        };
+    }
+
+    /** Strips each item's `action` closure so two separately-built item arrays compare structurally equal. */
+    function withoutActions(items: MenuItemConfig[]): unknown[] {
+        return items.map(({ action, ...rest }) => rest);
+    }
+
+    // Notification's history and live-toast queue are private static state that
+    // persist across tests; clear both so each case starts clean, matching
+    // markdown-editor.test.ts's 'MarkdownEditor context-menu paste target' setup.
+    function clearNotificationStatics(): void {
+        (Notification as unknown as { history: unknown[]; activeNotifications: unknown[] }).history = [];
+        (Notification as unknown as { history: unknown[]; activeNotifications: unknown[] }).activeNotifications = [];
+    }
+
+    beforeEach(clearNotificationStatics);
+    afterEach(clearNotificationStatics);
+
+    it('buildContextMenuItems(true) on a non-read-only editor returns Cut/Copy (enabled) and Paste, in order', () => {
+        const editor = new CodeEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems(true);
+
+        expect(items.map((item) => item.text)).toEqual(['Cut', 'Copy', 'Paste']);
+        expect(items[0].enabled).toBe(true);
+        expect(items[1].enabled).toBe(true);
+        expect(items[2].enabled).toBeUndefined();
+    });
+
+    it('buildContextMenuItems(false) on a non-read-only editor dims Cut and Copy', () => {
+        const editor = new CodeEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems(false);
+
+        expect(items.map((item) => item.text)).toEqual(['Cut', 'Copy', 'Paste']);
+        expect(items[0].enabled).toBe(false);
+        expect(items[1].enabled).toBe(false);
+    });
+
+    it('buildContextMenuItems(true) on a read-only editor returns exactly one row: Copy, enabled', () => {
+        const editor = new CodeEditor();
+        editor.setReadOnly(true);
+
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems(true);
+
+        expect(items).toHaveLength(1);
+        expect(items[0]).toMatchObject({ text: 'Copy', enabled: true });
+    });
+
+    it('buildContextMenuItems(false) on a read-only editor returns exactly one row: Copy, dimmed', () => {
+        const editor = new CodeEditor();
+        editor.setReadOnly(true);
+
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems(false);
+
+        expect(items).toHaveLength(1);
+        expect(items[0]).toMatchObject({ text: 'Copy', enabled: false });
+    });
+
+    it('each row\'s action reaches the matching command exactly once', () => {
+        const editor = new CodeEditor() as any;
+        const cutSpy = vi.spyOn(editor, 'cut').mockImplementation(() => editor);
+        const copySpy = vi.spyOn(editor, 'copy').mockImplementation(() => editor);
+        const pasteSpy = vi.spyOn(editor, 'pasteFromContextMenu').mockResolvedValue(undefined);
+
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems(true);
+
+        items.find((item) => item.text === 'Cut')?.action?.();
+        items.find((item) => item.text === 'Copy')?.action?.();
+        items.find((item) => item.text === 'Paste')?.action?.();
+
+        expect(cutSpy).toHaveBeenCalledOnce();
+        expect(copySpy).toHaveBeenCalledOnce();
+        expect(pasteSpy).toHaveBeenCalledOnce();
+    });
+
+    it('handleContextMenu forwards clientX/clientY and the built items to _contextMenu.show', () => {
+        const editor = new CodeEditor() as any;
+        const showSpy = vi.spyOn(contextMenuMethodsOf(editor)._contextMenu, 'show').mockImplementation(() => {});
+
+        for (const empty of [true, false]) {
+            showSpy.mockClear();
+
+            const event = { clientX: 42, clientY: 99 } as MouseEvent;
+            const view = { state: { selection: { main: { empty } } } } as EditorView;
+
+            contextMenuMethodsOf(editor).handleContextMenu(event, view);
+
+            const expectedItems = contextMenuMethodsOf(editor).buildContextMenuItems(!empty);
+
+            expect(showSpy).toHaveBeenCalledOnce();
+
+            const [x, y, items] = showSpy.mock.calls[0];
+
+            expect(x).toBe(42);
+            expect(y).toBe(99);
+            expect(withoutActions(items as MenuItemConfig[])).toEqual(withoutActions(expectedItems));
+        }
+    });
+
+    it('pasteFromContextMenu shows a "warning" toast when paste() resolves false, and none when it resolves true', async () => {
+        const editor = new CodeEditor() as any;
+
+        // _view stays null, so paste() resolves false without reading the clipboard.
+        await contextMenuMethodsOf(editor).pasteFromContextMenu();
+
+        let history = Notification.getHistory();
+        expect(history).toHaveLength(1);
+        expect(history[0].type).toBe('warning');
+        // Mirrors CodeEditor.ts's private CLIPBOARD_READ_DENIED_MESSAGE constant.
+        expect(history[0].message).toBe('Clipboard read blocked by the browser — press Ctrl/Cmd+V to paste.');
+
+        editor._view = { state: { sliceDoc: () => '', selection: { main: { from: 0, to: 0, empty: true } } }, dispatch: vi.fn(), focus: vi.fn() };
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+
+        await contextMenuMethodsOf(editor).pasteFromContextMenu();
+
+        history = Notification.getHistory();
+        expect(history).toHaveLength(1);   // unchanged: a successful paste appends nothing
     });
 });
