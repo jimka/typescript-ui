@@ -36,6 +36,16 @@ page resets to empty.
   layered under its own `{ tag: "form" }` default — the same forwarding
   shape every other generic base class already uses. No consumer action is
   needed; existing `new Form(options)` calls are unaffected.
+- **`CodeEditor` gains code folding, line wrapping, a search panel, parser-error
+  linting, and keyword/snippet completion**, plus the CSS and Python
+  languages. Four new options — `lineWrap`, `placeholder`,
+  `highlightWhitespace`, and `lint` — join their matching accessors;
+  everything else (folding, search, selection ergonomics, and completion)
+  installs unconditionally. `LanguageDefinition` gains an optional
+  `loadLintSource` field mirroring `loadFormatter`, and `LintSource` and
+  `collectSyntaxErrors` (a syntax-only diagnostics source built from a
+  grammar's own parse tree) are newly exported from `component/editor`. No
+  consumer action is needed.
 
 ### Menu
 

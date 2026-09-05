@@ -10,6 +10,7 @@
 import { registerLanguage } from "~/component/editor/LanguageRegistry.js";
 import { formatWithPrettier } from "~/component/editor/formatters/prettier.js";
 import { formatWithSql } from "~/component/editor/formatters/sql.js";
+import { collectSyntaxErrors } from "~/component/editor/syntaxDiagnostics.js";
 
 /** Loads the babel + estree plugins Prettier's `babel-ts` and `json` parsers need. */
 async function loadBabelPlugins() {
@@ -30,17 +31,27 @@ registerLanguage({
         return javascript({ typescript: true });
     },
     loadFormatter: async () => formatWithPrettier("babel-ts", loadBabelPlugins),
+    loadLintSource: async () => collectSyntaxErrors,
 });
 
 registerLanguage({
     id: "json",
     label: "JSON",
     loadExtension: async () => {
-        const { json } = await import("@codemirror/lang-json");
+        // The only built-in grammar with no completion source of its own
+        // (every other language publishes one through its own <lang>Language.data
+        // facet, which autocompletion() reads without being told); attached here
+        // using the same language-data idiom a consumer would use for a custom
+        // grammar.
+        const [{ json, jsonLanguage }, { completeFromList }] = await Promise.all([
+            import("@codemirror/lang-json"),
+            import("@codemirror/autocomplete"),
+        ]);
 
-        return json();
+        return [json(), jsonLanguage.data.of({ autocomplete: completeFromList(["true", "false", "null"]) })];
     },
     loadFormatter: async () => formatWithPrettier("json", loadBabelPlugins),
+    loadLintSource: async () => collectSyntaxErrors,
 });
 
 registerLanguage({
@@ -52,6 +63,7 @@ registerLanguage({
         return html();
     },
     loadFormatter: async () => formatWithPrettier("html", async () => [await import("prettier/plugins/html")]),
+    loadLintSource: async () => collectSyntaxErrors,
 });
 
 registerLanguage({
@@ -63,6 +75,7 @@ registerLanguage({
         return sql();
     },
     loadFormatter: async () => formatWithSql,
+    loadLintSource: async () => collectSyntaxErrors,
 });
 
 registerLanguage({
@@ -74,4 +87,28 @@ registerLanguage({
         return markdown();
     },
     loadFormatter: async () => formatWithPrettier("markdown", async () => [await import("prettier/plugins/markdown")]),
+});
+
+registerLanguage({
+    id: "css",
+    label: "CSS",
+    loadExtension: async () => {
+        const { css } = await import("@codemirror/lang-css");
+
+        return css();
+    },
+    loadFormatter: async () => formatWithPrettier("css", async () => [await import("prettier/plugins/postcss")]),
+    loadLintSource: async () => collectSyntaxErrors,
+});
+
+registerLanguage({
+    id: "python",
+    label: "Python",
+    loadExtension: async () => {
+        const { python } = await import("@codemirror/lang-python");
+
+        return python();
+    },
+    // No formatter: format() falls back to CodeMirror's own re-indent.
+    loadLintSource: async () => collectSyntaxErrors,
 });

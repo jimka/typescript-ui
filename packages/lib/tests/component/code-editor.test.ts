@@ -14,6 +14,10 @@ import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, setQuerySelectorResult } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
+import { EditorState } from '@codemirror/state';
+import { codeFolding, foldEffect } from '@codemirror/language';
+import { json } from '@codemirror/lang-json';
+import { collectSyntaxErrors } from '~/component/editor/syntaxDiagnostics';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -51,10 +55,33 @@ describe('LanguageRegistry', () => {
         expect(getLanguage('nope-not-registered')).toBeUndefined();
     });
 
-    it('lists the five built-in languages after the barrel side-effect import', () => {
+    it('round-trips a registered loadLintSource intact', () => {
+        const source = async () => [];
+        const def = {
+            id: 'test-registry-lang-with-lint',
+            loadExtension: async () => [] as any,
+            loadLintSource: async () => source,
+        };
+
+        registerLanguage(def);
+
+        expect(getLanguage('test-registry-lang-with-lint')?.loadLintSource).toBe(def.loadLintSource);
+    });
+
+    it('leaves loadLintSource undefined for a definition registered without one', () => {
+        registerLanguage({
+            id: 'test-registry-lang-no-lint',
+            loadExtension: async () => [] as any,
+        });
+
+        expect(getLanguage('test-registry-lang-no-lint')?.loadLintSource).toBeUndefined();
+    });
+
+    it('lists the seven built-in languages after the barrel side-effect import', () => {
         const ids = listLanguages().map((def) => def.id);
 
-        expect(ids).toEqual(expect.arrayContaining(['javascript', 'json', 'html', 'sql', 'markdown']));
+        expect(ids).toEqual(expect.arrayContaining(
+            ['javascript', 'json', 'html', 'sql', 'markdown', 'css', 'python']));
     });
 });
 
@@ -1281,6 +1308,379 @@ describe('CodeEditor syncAutoHeight per-line measurement', () => {
         // perLineHeight = (28 - 8) / 1 = 20; cap = 20 * 3 + 8 = 68, matching
         // the real content height, so the cap never binds here.
         expect(editor.getHeight()).toBe(28);
+    });
+});
+
+describe('CodeEditor lineWrap', () => {
+    it('getLineWrap defaults to false', () => {
+        const editor = new CodeEditor();
+
+        expect(editor.getLineWrap()).toBe(false);
+    });
+
+    it('round-trips through the constructor options bag', () => {
+        const editor = new CodeEditor(undefined, { lineWrap: true });
+
+        expect(editor.getLineWrap()).toBe(true);
+    });
+
+    it('setLineWrap round-trips without a live view, with no throw', () => {
+        const editor = new CodeEditor();
+
+        expect(() => editor.setLineWrap(true)).not.toThrow();
+        expect(editor.getLineWrap()).toBe(true);
+    });
+});
+
+describe('CodeEditor placeholder', () => {
+    it('getPlaceholder defaults to null', () => {
+        const editor = new CodeEditor();
+
+        expect(editor.getPlaceholder()).toBeNull();
+    });
+
+    it('round-trips through the constructor options bag', () => {
+        const editor = new CodeEditor(undefined, { placeholder: 'Type…' });
+
+        expect(editor.getPlaceholder()).toBe('Type…');
+    });
+
+    it('setPlaceholder(null) clears a previously set placeholder', () => {
+        const editor = new CodeEditor();
+
+        editor.setPlaceholder('x');
+        expect(editor.getPlaceholder()).toBe('x');
+
+        editor.setPlaceholder(null);
+        expect(editor.getPlaceholder()).toBeNull();
+    });
+});
+
+describe('CodeEditor highlightWhitespace', () => {
+    it('getHighlightWhitespace defaults to false', () => {
+        const editor = new CodeEditor();
+
+        expect(editor.getHighlightWhitespace()).toBe(false);
+    });
+
+    it('round-trips through the constructor options bag', () => {
+        const editor = new CodeEditor(undefined, { highlightWhitespace: true });
+
+        expect(editor.getHighlightWhitespace()).toBe(true);
+    });
+
+    it('setHighlightWhitespace round-trips without a live view, with no throw', () => {
+        const editor = new CodeEditor();
+
+        expect(() => editor.setHighlightWhitespace(true)).not.toThrow();
+        expect(editor.getHighlightWhitespace()).toBe(true);
+    });
+});
+
+describe('CodeEditor lint', () => {
+    it('getLint defaults to false', () => {
+        const editor = new CodeEditor();
+
+        expect(editor.getLint()).toBe(false);
+    });
+
+    it('round-trips through the constructor options bag', () => {
+        const editor = new CodeEditor(undefined, { lint: true });
+
+        expect(editor.getLint()).toBe(true);
+    });
+
+    it('setLint round-trips without a live view, with no throw', () => {
+        const editor = new CodeEditor();
+
+        expect(() => editor.setLint(true)).not.toThrow();
+        expect(editor.getLint()).toBe(true);
+    });
+
+    it('setLint(true) for a language with no loadLintSource clears the compartment synchronously (no linter installed)', () => {
+        registerLanguage({
+            id: 'test-lint-no-source-lang',
+            loadExtension: async () => [] as any,
+        });
+        const editor = new CodeEditor(undefined, { language: 'test-lint-no-source-lang' }) as any;
+        const dispatch = vi.fn();
+        editor._view = { dispatch };
+
+        editor.setLint(true);
+
+        expect(dispatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('setLint(true) for a language with a loadLintSource asynchronously installs the linter', async () => {
+        const source = async () => [];
+
+        registerLanguage({
+            id: 'test-lint-with-source-lang',
+            loadExtension: async () => [] as any,
+            loadLintSource: async () => source,
+        });
+        const editor = new CodeEditor(undefined, { language: 'test-lint-with-source-lang' }) as any;
+        const dispatch = vi.fn();
+        editor._view = { dispatch };
+
+        editor.setLint(true);
+        expect(dispatch).not.toHaveBeenCalled();
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(dispatch).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('CodeEditor countFoldedLines', () => {
+    function buildState(lineCount: number): EditorState {
+        const doc = Array.from({ length: lineCount }, (_, i) => `line ${i + 1}`).join('\n');
+
+        return EditorState.create({ doc, extensions: [codeFolding()] });
+    }
+
+    it('returns 0 with no folds', () => {
+        const editor = new CodeEditor() as any;
+        const state = buildState(10);
+
+        expect(editor.countFoldedLines(state)).toBe(0);
+    });
+
+    it('counts a single fold spanning lines 3-8 as 5', () => {
+        const editor = new CodeEditor() as any;
+        const initial = buildState(10);
+        const from = initial.doc.line(3).from;
+        const to   = initial.doc.line(8).to;
+        const state = initial.update({ effects: foldEffect.of({ from, to }) }).state;
+
+        expect(editor.countFoldedLines(state)).toBe(5);
+    });
+
+    it('sums two disjoint folds spanning 5 and 2 lines as 7', () => {
+        const editor = new CodeEditor() as any;
+        const initial = buildState(15);
+        const foldA = { from: initial.doc.line(2).from, to: initial.doc.line(7).to };
+        const foldB = { from: initial.doc.line(9).from, to: initial.doc.line(11).to };
+        const state = initial.update({ effects: [foldEffect.of(foldA), foldEffect.of(foldB)] }).state;
+
+        expect(editor.countFoldedLines(state)).toBe(7);
+    });
+});
+
+describe('collectSyntaxErrors', () => {
+    function buildJsonState(doc: string): EditorState {
+        return EditorState.create({ doc, extensions: [json()] });
+    }
+
+    it('returns [] for valid JSON', () => {
+        const state = buildJsonState('{"a": 1}');
+
+        expect(collectSyntaxErrors(state)).toEqual([]);
+    });
+
+    it('reports at least one "error"-severity diagnostic for invalid JSON', () => {
+        const state = buildJsonState('{"a": }');
+        const diagnostics = collectSyntaxErrors(state);
+
+        expect(diagnostics.length).toBeGreaterThanOrEqual(1);
+        expect(diagnostics.every((d) => d.severity === 'error')).toBe(true);
+    });
+
+    it('reports a single diagnostic for an empty document, not []', () => {
+        // Deviates from the plan's original expectation (`""` -> `[]`):
+        // `@codemirror/lang-json`'s grammar treats an empty document as a
+        // missing top-level value -- a genuine parse error, matching
+        // collectSyntaxErrors's own contract of reporting wherever the
+        // grammar fails. See the plan's Implementation Notes.
+        const state = buildJsonState('');
+        const diagnostics = collectSyntaxErrors(state);
+
+        expect(diagnostics).toHaveLength(1);
+        expect(diagnostics[0]).toMatchObject({ from: 0, to: 0, severity: 'error' });
+    });
+
+    it('merges adjacent error nodes into one diagnostic', () => {
+        // Ten consecutive, individually-invalid `]` tokens with no JSON value
+        // ever opened -- each is its own zero-width-adjacent error node
+        // (from[n] === to[n-1]), so they must merge into a single diagnostic
+        // spanning the whole run rather than staying ten separate ones.
+        const state = buildJsonState(']]]]]]]]]]');
+        const diagnostics = collectSyntaxErrors(state);
+
+        expect(diagnostics).toHaveLength(1);
+        expect(diagnostics[0].from).toBe(0);
+        expect(diagnostics[0].to).toBe(10);
+    });
+
+    it('caps output at 100 diagnostics for a document producing more error nodes', () => {
+        // 250 single-character error tokens, each separated by a space so
+        // none are adjacent (no merging) -- this exercises the cap itself,
+        // not the merge logic above.
+        const doc = Array.from({ length: 250 }, () => ']').join(' ');
+        const state = buildJsonState(doc);
+        const diagnostics = collectSyntaxErrors(state);
+
+        expect(diagnostics).toHaveLength(100);
+    });
+});
+
+describe('CodeEditor measureContentExtent (via syncAutoHeight)', () => {
+    it('commits the measured content extent from the last rendered block, regardless of doc.lines', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 40 } },
+            documentPadding: { top: 0, bottom: 4 },
+        };
+        editor._scrollElement  = DOM.sink.createElement('div');
+        editor._contentElement = DOM.sink.createElement('div');
+
+        const lastBlock = DOM.sink.createElement('div');
+        setQuerySelectorResult(':scope > :last-child', lastBlock);
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight: 5000,
+            clientWidth: 500, clientHeight: 5000,
+        });
+        // Neutralises the horizontal-scrollbar reserve and the
+        // fractional-undershoot correction, so this assertion isolates
+        // measureContentExtent's own contribution.
+        vi.spyOn(DOM.source, 'getOffsetSize').mockReturnValue({ offsetTop: 0, offsetHeight: 0 });
+        vi.spyOn(DOM.source, 'getElementRect').mockImplementation((handle: unknown) => {
+            if (handle === lastBlock) {
+                return { x: 0, y: 0, width: 0, height: 100, top: 0, left: 0, right: 0, bottom: 100 };
+            }
+            if (handle === editor._contentElement) {
+                return { x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 };
+            }
+            return { x: 0, y: 0, width: 0, height: 1000, top: 0, left: 0, right: 0, bottom: 1000 };
+        });
+
+        editor.syncAutoHeight();
+
+        // 100 (last block's bottom) - 0 (content top) + 4 (documentPadding.bottom)
+        // = 104, independent of the 40-line document a scrollHeight-derived
+        // reading would report.
+        expect(editor.getHeight()).toBe(104);
+    });
+
+    it('falls back to the per-row formula when no :scope > :last-child result is seeded, even with a resolved _contentElement', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 5 } },
+            documentPadding: { top: 4, bottom: 4 },
+        };
+        editor._scrollElement  = DOM.sink.createElement('div');
+        editor._contentElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight: 100,
+            clientWidth: 500, clientHeight: 100,
+        });
+        // Neutralises the (separate, unrelated) fractional-undershoot
+        // correction, so this assertion isolates the fallback alone: the
+        // content rect matches the scroller's content box exactly (100 =
+        // 101 - SUBPIXEL_HEIGHT_SLOP_PX).
+        vi.spyOn(DOM.source, 'getElementRect').mockImplementation((handle: unknown) => {
+            const height = handle === editor._contentElement ? 100 : 101;
+
+            return { x: 0, y: 0, width: 0, height, top: 0, left: 0, right: 0, bottom: height };
+        });
+
+        editor.syncAutoHeight();
+
+        // measureContentExtent() resolves _contentElement but DOM.source.querySelector
+        // returns null offline unless a result was seeded for the exact selector, so
+        // it returns null here and this reproduces today's exact per-row numbers.
+        expect(editor.getHeight()).toBe(100);
+    });
+});
+
+describe('CodeEditor syncAutoHeight shape tuple (fold count / wrap flag)', () => {
+    it('trusts a content shrink when only _foldedLines changed between calls (fold shrinks the box)', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 10, length: 200 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        let scrollHeight = 200;
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation(() => ({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight,
+            clientWidth: 500, clientHeight: scrollHeight,
+        }));
+
+        editor.syncAutoHeight(); // free first commit
+        expect(editor.getHeight()).toBe(200);
+
+        // Fold 6 lines: the rendered content genuinely shrinks, but the line
+        // count, doc length and width (the old three-element tuple) are all
+        // unchanged -- only the fold count (the new fourth component) moved.
+        editor._foldedLines = 6;
+        scrollHeight = 80;
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(80);
+    });
+
+    it('trusts a content growth when only lineWrap changed between calls', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 4, length: 80 } },
+            documentPadding: { top: 0, bottom: 0 },
+            defaultLineHeight: 40,
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight: 100,
+            clientWidth: 500, clientHeight: 100,
+        });
+
+        editor.syncAutoHeight(); // free first commit, wrap off
+        expect(editor.getHeight()).toBe(100);
+
+        // Toggle wrap on: line count, doc length and width (the old
+        // three-element tuple) are all unchanged, but the wrap-aware
+        // perRowHeight now reads CodeMirror's own defaultLineHeight (40)
+        // instead of the scrollHeight-derived estimate, genuinely growing
+        // the content height to 160.
+        editor._options.lineWrap = true;
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(160);
+    });
+
+    it('still rejects a growth when all five shape components are held constant (echo guard unchanged)', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 4, length: 80 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        let scrollHeight = 100;
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation(() => ({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight,
+            clientWidth: 500, clientHeight: scrollHeight,
+        }));
+
+        editor.syncAutoHeight(); // free first commit
+        expect(editor.getHeight()).toBe(100);
+
+        // Nothing in the five-element shape changed (lines, docLength,
+        // clientWidth, foldedLines, wrapFlag all identical) -- only
+        // scrollHeight moved, CodeMirror's own geometry-echo signature.
+        scrollHeight = 150;
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(100);
     });
 });
 

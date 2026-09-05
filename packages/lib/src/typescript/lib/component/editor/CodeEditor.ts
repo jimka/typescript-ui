@@ -7,11 +7,18 @@ import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
-import { EditorView, keymap, drawSelection, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view";
+import {
+    EditorView, keymap, drawSelection, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
+    placeholder, highlightWhitespace, highlightTrailingWhitespace, highlightSpecialChars,
+    dropCursor, rectangularSelection, crosshairCursor,
+} from "@codemirror/view";
 import { EditorState, Compartment } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { indentOnInput, bracketMatching, indentRange } from "@codemirror/language";
+import { indentOnInput, bracketMatching, indentRange, codeFolding, foldGutter, foldKeymap, foldedRanges } from "@codemirror/language";
+import { search, highlightSelectionMatches, searchKeymap } from "@codemirror/search";
+import { linter, lintGutter } from "@codemirror/lint";
+import { autocompletion, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { getLanguage } from "~/component/editor/LanguageRegistry.js";
 import type { FormatOptions } from "~/component/editor/LanguageRegistry.js";
 import { codeEditorTheme } from "~/component/editor/theme.js";
@@ -73,6 +80,14 @@ export interface CodeEditorOptions extends ComponentOptions {
      * the floor win outright, silently defeating the cap.
      */
     autoHeightMinRows?: number;
+    /** Whether long lines wrap instead of scrolling horizontally. Default `false`. */
+    lineWrap?: boolean;
+    /** Text shown in an empty document. Unset: nothing is shown. */
+    placeholder?: string;
+    /** Whether spaces, tabs and trailing whitespace are rendered visibly. Default `false`. */
+    highlightWhitespace?: boolean;
+    /** Whether parser-error diagnostics are shown. Default `false`; inert for a language with no lint source. */
+    lint?: boolean;
     /** Construction-time listener bag; the events are `"change"`, `"readonlyedit"`, and `"heightchange"`. */
     listeners?: { change?: (payload: CodeEditorChange) => void; readonlyedit?: () => void; heightchange?: (payload: CodeEditorHeightChange) => void };
 }
@@ -104,6 +119,9 @@ const CM_CONTENT_SELECTOR = ".cm-content";
 
 /** One rendered document line, inside `.cm-content`. */
 const CM_LINE_SELECTOR = ".cm-line";
+
+/** `.cm-content`'s last element child — the last rendered line, gap, or widget. */
+const CM_LAST_BLOCK_SELECTOR = ":scope > :last-child";
 
 // Padding-bottom applied once to an auto-height editor's `.cm-scroller`
 // (see the `_scrollElement` resolution in `mount`) so a sub-pixel content
@@ -153,9 +171,12 @@ function buildReadOnlyExtension(readOnly: boolean): Extension {
  * A syntax-highlighting, formatting code editor wrapping CodeMirror 6.
  *
  * @remarks
- * `CodeEditor` deliberately omits IntelliSense (no autocomplete, no lint, no
- * language service) — its scope is highlighting plus one-command formatting.
- * CodeMirror's `EditorView` is a *foreign live widget*: it takes a real parent
+ * `CodeEditor`'s scope is highlighting, formatting, folding, search,
+ * parser-level diagnostics (lint) and keyword/snippet completion — every one
+ * of them bounded to what a grammar's own parse tree already knows. Anything
+ * needing semantic understanding — cross-file symbols, type information,
+ * hovers, go-to-definition, a real language server — or collaborative
+ * editing is out of scope. CodeMirror's `EditorView` is a *foreign live widget*: it takes a real parent
  * element and mutates a whole DOM region it owns directly, exactly like the
  * `CanvasRenderingContext2D` a [`Canvas`](/api/component/display/classes/Canvas)
  * obtains from the seam. So `CodeEditor` is **live-only** — under the modelled
@@ -168,10 +189,11 @@ function buildReadOnlyExtension(readOnly: boolean): Extension {
  * internally; give it a sized host (a `Fit` panel or an explicit
  * `preferredSize`), the same as `Canvas`.
  *
- * Highlighting grammars and formatters load lazily, per language, through the
- * registry in `LanguageRegistry.ts` (`registerLanguage` / `getLanguage` /
- * `listLanguages`) — see that module and `languages.ts` for the five built-in
- * languages (JavaScript/TypeScript, JSON, HTML, SQL, Markdown).
+ * Highlighting grammars, formatters and lint sources load lazily, per
+ * language, through the registry in `LanguageRegistry.ts` (`registerLanguage`
+ * / `getLanguage` / `listLanguages`) — see that module and `languages.ts` for
+ * the seven built-in languages (JavaScript/TypeScript, JSON, HTML, SQL,
+ * Markdown, CSS, Python).
  *
  * @example
  * ```typescript
@@ -204,6 +226,18 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
     /** Reconfigured on a theme change to recolour the editor. */
     private readonly _themeCompartment: Compartment = new Compartment();
+
+    /** Reconfigured by {@link CodeEditor.setLineWrap} to toggle line wrapping. */
+    private readonly _lineWrapCompartment: Compartment = new Compartment();
+
+    /** Reconfigured by {@link CodeEditor.setPlaceholder}. */
+    private readonly _placeholderCompartment: Compartment = new Compartment();
+
+    /** Reconfigured by {@link CodeEditor.setHighlightWhitespace}. */
+    private readonly _whitespaceCompartment: Compartment = new Compartment();
+
+    /** Reconfigured by {@link CodeEditor.refreshLint}. */
+    private readonly _lintCompartment: Compartment = new Compartment();
 
     /** Custom-event fan-out for `"change"`. */
     private readonly _listeners: ListenerBag<CodeEditorEvent> = this.registerListenerBag(new ListenerBag<CodeEditorEvent>());
@@ -256,14 +290,27 @@ class CodeEditor extends Component<CodeEditorOptions> {
     // first, always-free commit undershoots true content is a distinct bug (the
     // initial measurement itself, not this guard) to fix at the source.
     /**
-     * `[lines, docLength, clientWidth]` as of the last call to
-     * `syncAutoHeight`, or `null` before the first call. Used to tell a
-     * genuine content/width change from a self-triggered geometry echo — a
+     * `[lines, docLength, clientWidth, foldedLines, wrapFlag]` as of the last
+     * call to `syncAutoHeight`, or `null` before the first call. Used to tell
+     * a genuine content/width change from a self-triggered geometry echo — a
      * growth is trusted only when this differs from the previous call, and
      * so is a content shrink of a pixel or more (a smaller, sub-pixel
-     * content shrink is rounding noise regardless of this tuple).
+     * content shrink is rounding noise regardless of this tuple). Folding and
+     * toggling wrap both change the rendered height without moving the first
+     * three components, so `foldedLines` / `wrapFlag` are what earn trust for
+     * the resulting shrink or growth.
      */
-    private _lastSyncedShape: readonly [number, number, number] | null = null;
+    private _lastSyncedShape: readonly [number, number, number, number, number] | null = null;
+
+    /**
+     * Document lines currently hidden inside folded ranges, refreshed by the
+     * update listener in {@link CodeEditor.mount} before it calls
+     * {@link CodeEditor.syncAutoHeight}. Read there as a plain number rather
+     * than recomputed from `foldedRanges(this._view.state)` inline, since
+     * roughly twenty existing offline tests stub `_view.state` as a bare
+     * `{ doc: { lines: n } }` object with no `field` method.
+     */
+    private _foldedLines = 0;
 
     /**
      * Horizontal-scrollbar height reserve, re-measured on every call to
@@ -331,6 +378,10 @@ class CodeEditor extends Component<CodeEditorOptions> {
         if (options.readOnly !== undefined) this._options.readOnly = options.readOnly;
         if (options.autoHeightMaxRows !== undefined) this._options.autoHeightMaxRows = options.autoHeightMaxRows;
         if (options.autoHeightMinRows !== undefined) this._options.autoHeightMinRows = options.autoHeightMinRows;
+        if (options.lineWrap !== undefined) this._options.lineWrap = options.lineWrap;
+        if (options.placeholder !== undefined) this._options.placeholder = options.placeholder;
+        if (options.highlightWhitespace !== undefined) this._options.highlightWhitespace = options.highlightWhitespace;
+        if (options.lint !== undefined) this._options.lint = options.lint;
 
         return this;
     }
@@ -404,7 +455,11 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * mounted and the id names a registered language, kicks off the grammar's
      * lazy `loadExtension()` and reconfigures the grammar compartment once it
      * resolves — guarded against a stale resolution by re-checking the active
-     * language id, so a rapid double-swap applies only the latest.
+     * language id, so a rapid double-swap applies only the latest. Also
+     * refreshes lint, resolving the new language's lint source (if any) and
+     * reconfiguring the lint compartment, so switching language swaps the
+     * diagnostics along with the grammar instead of leaving stale markers
+     * from the previous language.
      *
      * @param id - A registered language id, or `null` to clear highlighting.
      * @returns This component, for method chaining.
@@ -415,6 +470,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
         if (!this._view) {
             return this;
         }
+
+        this.refreshLint();
 
         if (!id) {
             this._view.dispatch({ effects: this._langCompartment.reconfigure([]) });
@@ -438,6 +495,47 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
+     * Resolves the active language's lint source (if any) and reconfigures
+     * the lint compartment. Called from {@link CodeEditor.setLint} and
+     * {@link CodeEditor.setLanguage} whenever a view is mounted; a no-op
+     * otherwise (both callers already guard on `this._view`).
+     *
+     * Mirrors `setLanguage`'s async stale-guard: the resolved source is only
+     * applied if `this._view` still exists, {@link CodeEditor.getLint} is
+     * still `true`, and {@link CodeEditor.getLanguage} still equals the id
+     * this call started for — so a rapid language or lint toggle applies only
+     * the latest.
+     */
+    private refreshLint(): void {
+        if (!this._view) {
+            return;
+        }
+
+        if (!this.getLint()) {
+            this._view.dispatch({ effects: this._lintCompartment.reconfigure([]) });
+
+            return;
+        }
+
+        const id  = this.getLanguage();
+        const def = id ? getLanguage(id) : undefined;
+
+        if (!def?.loadLintSource) {
+            this._view.dispatch({ effects: this._lintCompartment.reconfigure([]) });
+
+            return;
+        }
+
+        void def.loadLintSource().then((source) => {
+            if (this._view && this.getLint() && this.getLanguage() === id) {
+                this._view.dispatch({
+                    effects: this._lintCompartment.reconfigure([linter((view) => source(view.state)), lintGutter()]),
+                });
+            }
+        });
+    }
+
+    /**
      * Returns whether the editor currently rejects edits.
      *
      * @returns The readOnly state.
@@ -458,6 +556,119 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         if (this._view) {
             this._view.dispatch({ effects: this._readOnlyCompartment.reconfigure(buildReadOnlyExtension(readOnly)) });
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether long lines currently wrap instead of scrolling
+     * horizontally.
+     *
+     * @returns The lineWrap state.
+     */
+    getLineWrap(): boolean {
+        return this._options.lineWrap ?? false;
+    }
+
+    /**
+     * Sets whether long lines wrap instead of scrolling horizontally. Caches
+     * the state; when a view is mounted, also reconfigures the line-wrap
+     * compartment.
+     *
+     * @param wrap - Whether long lines should wrap.
+     * @returns This component, for method chaining.
+     */
+    setLineWrap(wrap: boolean): this {
+        this._options.lineWrap = wrap;
+
+        if (this._view) {
+            this._view.dispatch({ effects: this._lineWrapCompartment.reconfigure(wrap ? EditorView.lineWrapping : []) });
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the text shown in an empty document.
+     *
+     * @returns The placeholder text, or `null` when unset.
+     */
+    getPlaceholder(): string | null {
+        return this._options.placeholder ?? null;
+    }
+
+    /**
+     * Sets (or clears) the text shown in an empty document. Caches the value;
+     * when a view is mounted, also reconfigures the placeholder compartment.
+     *
+     * @param text - The placeholder text, or `null` to clear it.
+     * @returns This component, for method chaining.
+     */
+    setPlaceholder(text: string | null): this {
+        this._options.placeholder = text ?? undefined;
+
+        if (this._view) {
+            this._view.dispatch({ effects: this._placeholderCompartment.reconfigure(text ? placeholder(text) : []) });
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether spaces, tabs and trailing whitespace are currently
+     * rendered visibly.
+     *
+     * @returns The highlightWhitespace state.
+     */
+    getHighlightWhitespace(): boolean {
+        return this._options.highlightWhitespace ?? false;
+    }
+
+    /**
+     * Sets whether spaces, tabs and trailing whitespace are rendered visibly.
+     * Caches the state; when a view is mounted, also reconfigures the
+     * whitespace compartment.
+     *
+     * @param highlight - Whether whitespace should render visibly.
+     * @returns This component, for method chaining.
+     */
+    setHighlightWhitespace(highlight: boolean): this {
+        this._options.highlightWhitespace = highlight;
+
+        if (this._view) {
+            this._view.dispatch({
+                effects: this._whitespaceCompartment.reconfigure(
+                    highlight ? [highlightWhitespace(), highlightTrailingWhitespace()] : []),
+            });
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether parser-error diagnostics are currently shown.
+     *
+     * @returns The lint state.
+     */
+    getLint(): boolean {
+        return this._options.lint ?? false;
+    }
+
+    /**
+     * Sets whether parser-error diagnostics are shown. Caches the state;
+     * when a view is mounted, also resolves the active language's lint
+     * source (if any) and reconfigures the lint compartment. Inert for a
+     * language with no lint source.
+     *
+     * @param lint - Whether diagnostics should be shown.
+     * @returns This component, for method chaining.
+     */
+    setLint(lint: boolean): this {
+        this._options.lint = lint;
+
+        if (this._view) {
+            this.refreshLint();
         }
 
         return this;
@@ -806,20 +1017,47 @@ class CodeEditor extends Component<CodeEditorOptions> {
             // the escape hatch: Ctrl-m (Alt-Shift-m on macOS) toggles
             // CodeMirror's tab-focus mode, after which Tab moves focus again.
             // Listed last so its Tab / Shift-Tab bindings take precedence.
-            keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+            keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap, ...closeBracketsKeymap, indentWithTab]),
             drawSelection(),
             lineNumbers(),
             highlightActiveLine(),
             highlightActiveLineGutter(),
             indentOnInput(),
             bracketMatching(),
+            codeFolding(),
+            foldGutter(),
+            highlightSpecialChars(),
+            dropCursor(),
+            rectangularSelection(),
+            crosshairCursor(),
+            EditorState.allowMultipleSelections.of(true),
+            search(),
+            highlightSelectionMatches(),
+            // completionKeymap is deliberately not added to the keymap array
+            // above: autocompletion() installs it itself, at Prec.highest, so
+            // adding it again here would bind the same keys at a lower
+            // precedence. closeBrackets() is not self-installing, so its
+            // Backspace binding (closeBracketsKeymap) is added explicitly.
+            autocompletion(),
+            closeBrackets(),
             this._readOnlyCompartment.of(buildReadOnlyExtension(this.getReadOnly())),
             this._themeCompartment.of(codeEditorTheme(dark)),
             this._langCompartment.of([]),
+            this._lineWrapCompartment.of(this.getLineWrap() ? EditorView.lineWrapping : []),
+            this._placeholderCompartment.of(this.getPlaceholder() ? placeholder(this.getPlaceholder()!) : []),
+            this._whitespaceCompartment.of(
+                this.getHighlightWhitespace() ? [highlightWhitespace(), highlightTrailingWhitespace()] : []),
+            // Left empty here rather than seeded from getLint(): an editor
+            // mounted with a language runs setLanguage(language) a few lines
+            // below, which calls refreshLint() itself; one mounted without a
+            // language has nothing to lint, so [] is already right.
+            this._lintCompartment.of([]),
             EditorView.updateListener.of((update) => {
                 if (update.docChanged) {
                     this.onDocChange(update.state.doc.toString());
                 }
+
+                this._foldedLines = this.countFoldedLines(update.state);
 
                 if (update.heightChanged || update.geometryChanged) {
                     this.syncAutoHeight(update.selectionSet && !update.docChanged);
@@ -927,6 +1165,54 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
+     * The document's true rendered height: `.cm-content`'s top to its last
+     * child's bottom, plus the document's bottom padding. Immune to
+     * `.cm-content`'s `min-height: 100%` because that stretch trails *after*
+     * the last child, and correct under folding, wrapping, and CodeMirror's
+     * viewport virtualisation (out-of-viewport regions are `.cm-gap` widget
+     * elements with explicit heights, themselves element children of
+     * `.cm-content`).
+     *
+     * @returns The measured extent in pixels, or `null` when nothing is
+     *   resolvable (offline, pre-mount, or no rendered content), so the
+     *   caller can fall back to the per-row estimate.
+     */
+    private measureContentExtent(): number | null {
+        if (!this._contentElement || !this._view) {
+            return null;
+        }
+
+        const lastBlock = DOM.source.querySelector(this._contentElement, CM_LAST_BLOCK_SELECTOR);
+
+        if (!lastBlock) {
+            return null;
+        }
+
+        const contentTop  = DOM.source.getElementRect(this._contentElement).top;
+        const blockBottom = DOM.source.getElementRect(lastBlock).bottom;
+
+        return blockBottom - contentTop + this._view.documentPadding.bottom;
+    }
+
+    /**
+     * Counts the document lines hidden by folds. Pure over the state — no
+     * DOM, no view — so it is directly unit-testable against a real
+     * `EditorState`.
+     *
+     * @param state - The editor state to count folded lines in.
+     * @returns The number of document lines currently hidden inside folded ranges.
+     */
+    private countFoldedLines(state: EditorState): number {
+        let hidden = 0;
+
+        foldedRanges(state).between(0, state.doc.length, (from, to) => {
+            hidden += state.doc.lineAt(to).number - state.doc.lineAt(from).number;
+        });
+
+        return hidden;
+    }
+
+    /**
      * Computes this editor's desired height when {@link CodeEditorOptions.autoHeightMaxRows}
      * is set — the real rendered content height, plus the horizontal scrollbar's
      * measured thickness when `.cm-scroller` is showing one, capped at the row
@@ -946,7 +1232,9 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * metrics force a real reflow on every read and are accurate regardless of
      * that gate, since CodeMirror always renders a short document's line DOM
      * eagerly at construction. The row cap's per-row pixel height is derived
-     * the same way — from the live line count, not `defaultLineHeight`.
+     * the same way — from the live line count, not `defaultLineHeight` —
+     * except while {@link CodeEditor.getLineWrap} is on, where a `.cm-line`'s
+     * own rect no longer measures one row (see `perRowHeight` below).
      *
      * `.cm-scroller` carries a one-time `SUBPIXEL_HEIGHT_SLOP_PX` padding-
      * bottom (applied once, in `mount`) rather than this method adding it to
@@ -1003,18 +1291,22 @@ class CodeEditor extends Component<CodeEditorOptions> {
         // formula only when no line is rendered yet — always true for a mounted,
         // laid-out editor (even an empty document renders one empty `.cm-line`),
         // so this is a defensive floor, not an expected path.
-        const lineElement   = this._contentElement && DOM.source.querySelector(this._contentElement, CM_LINE_SELECTOR);
-        const perLineHeight = lineElement
-            ? DOM.source.getElementRect(lineElement).height
-            : (metrics.scrollHeight - padding) / this._view.state.doc.lines;
-        const capPx         = perLineHeight * maxRows + padding;
-        const minRows       = this.getAutoHeightMinRows();
-        const floorPx       = minRows !== null ? perLineHeight * minRows + padding : 0;
+        const lineElement  = this._contentElement && DOM.source.querySelector(this._contentElement, CM_LINE_SELECTOR);
+        // A `.cm-line` is exactly one row tall only while wrapping is off. With
+        // wrapping on it is as tall as the rows it wraps to, so the per-row unit
+        // comes from CodeMirror's own default line height instead.
+        const perRowHeight = this.getLineWrap() && this._view.defaultLineHeight > 0
+            ? this._view.defaultLineHeight
+            : (lineElement ? DOM.source.getElementRect(lineElement).height
+                           : (metrics.scrollHeight - padding) / this._view.state.doc.lines);
+        const capPx        = perRowHeight * maxRows + padding;
+        const minRows      = this.getAutoHeightMinRows();
+        const floorPx      = minRows !== null ? perRowHeight * minRows + padding : 0;
 
         // The document's genuine content height, built purely from the
         // per-line measurement above times the current line count —
         // deliberately NOT `metrics.scrollHeight` itself, which suffers the
-        // exact same `.cm-content` self-referential floor `perLineHeight`
+        // exact same `.cm-content` self-referential floor `perRowHeight`
         // above was rescued from: once an earlier call has committed a
         // taller box, `scrollHeight` can never report less than that
         // committed height, no matter how many lines are later deleted.
@@ -1025,12 +1317,18 @@ class CodeEditor extends Component<CodeEditorOptions> {
         // a "shape change" (`doc.lines` genuinely differs) and so was never
         // blocked by the shrink-noise guard in the `else` branch below; the
         // content-height reading it trusted was simply never smaller.
-        // `perLineHeight * lines + padding` carries no memory of the box's
+        // `perRowHeight * lines + padding` carries no memory of the box's
         // own height, so it reports the correct, smaller figure the moment a
         // line is removed. Identical to `metrics.scrollHeight` on the
         // fallback path above (same two terms, rearranged), so that path's
-        // behaviour is unchanged.
-        const naturalContentHeight = perLineHeight * this._view.state.doc.lines + padding;
+        // behaviour is unchanged. Used only as a fallback now:
+        // `measureContentExtent()` is tried first, since (unlike this
+        // formula) it stays correct under folding and wrapping, neither of
+        // which `doc.lines` reflects; it resolves to `null` offline and
+        // before `.cm-content` has rendered any children, which is when this
+        // formula still applies.
+        const naturalContentHeight = this.measureContentExtent()
+            ?? (perRowHeight * this._view.state.doc.lines + padding);
 
         let contentDesired = Math.max(Math.min(naturalContentHeight, capPx), floorPx);
 
@@ -1038,7 +1336,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
             return;
         }
 
-        const shape = [this._view.state.doc.lines, this._view.state.doc.length, metrics.clientWidth] as const;
+        const shape = [this._view.state.doc.lines, this._view.state.doc.length, metrics.clientWidth, this._foldedLines, this.getLineWrap() ? 1 : 0] as const;
         const shapeChanged = this._lastSyncedShape === null || shape.some((v, i) => v !== this._lastSyncedShape![i]);
 
         this._lastSyncedShape = shape;
@@ -1250,10 +1548,11 @@ class CodeEditor extends Component<CodeEditorOptions> {
                 position:      "absolute",
                 inset:         "0",
                 pointerEvents: "none",
-                // Above CodeMirror's sticky line-number gutter (z-index 200) so the
-                // wash covers the gutter too; `.cm-editor` forms no stacking context,
-                // so the gutter would otherwise paint over a lower overlay.
-                zIndex:        "300",
+                // Above CodeMirror's sticky line-number gutter (z-index 200) and its
+                // own panels (search, lint — z-index 300) so the wash covers both;
+                // `.cm-editor` forms no stacking context, so either would otherwise
+                // paint over a lower overlay.
+                zIndex:        "400",
                 backgroundColor: READONLY_FLASH_COLOR,
                 opacity:       "0",
             },

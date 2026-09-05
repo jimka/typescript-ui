@@ -478,7 +478,11 @@ Throughout, `TEST` means
     *Check:* `TEST`.
 29. `packages/lib/src/typescript/CodeEditorPanel.ts` — add a `Lint: off` toggle
     button.
-    *Check:* dev app, type `function (` into the JavaScript sample with lint on.
+    *Check:* dev app, type `)))` into the JavaScript sample with lint on (not
+    `function (`: phase 5's `closeBrackets()` auto-inserts the matching `)`
+    as it's typed, and `function ()` parses with no error node — a bare `)`
+    has no opening counterpart for `closeBrackets()` to pair, so `)))`
+    inserts literally and produces three real error nodes).
 
 ### Phase 5 — Keyword autocompletion
 
@@ -499,7 +503,10 @@ Throughout, `TEST` means
     `.cm-tooltip-autocomplete > ul > li[aria-selected]`,
     `.cm-completionMatchedText`, `.cm-completionDetail` and
     `.cm-completionIcon` rules.
-    *Check:* dev app, type `docu` in the JavaScript sample.
+    *Check:* dev app, type `gree` in the JavaScript sample (not `docu`:
+    `@codemirror/lang-javascript`'s `localCompletionSource` only offers
+    keywords and locally-scoped bindings, not DOM globals like `document` —
+    `gree` matches the sample's own top-level `greet` function).
 
 ### Documentation and closeout
 
@@ -641,17 +648,21 @@ section) unless noted, in **both** light and dark themes.
   box height and does not start a height drift.[^panel-height]
 
 **Phase 4.**
-- With `Lint: on` and the JavaScript sample, typing `function (` shows a gutter
+- With `Lint: on` and the JavaScript sample, typing `)))` shows a gutter
   marker and a wavy underline; hovering the marker shows a themed tooltip.
+  (Not `function (`: phase 5's `closeBrackets()` auto-inserts the matching
+  `)`, and the resulting `function ()` parses with no error node.)
 - Fixing the syntax clears both.
 - With `Lint: on` and a Markdown document, nothing ever appears.
 - Switching language while lint is on swaps the diagnostics without leaving stale
   markers.
 
 **Phase 5.**
-- Typing a partial identifier in the JavaScript sample opens the completion
-  tooltip; ArrowDown/Enter accepts. The tooltip matches project chrome in both
-  themes.
+- Typing `gree` in the JavaScript sample (matching the sample's own top-level
+  `greet` function — not `docu`: `localCompletionSource` only offers keywords
+  and locally-scoped bindings, not DOM globals like `document`) opens the
+  completion tooltip; ArrowDown/Enter accepts. The tooltip matches project
+  chrome in both themes.
 - Typing `{` inserts `{}` with the caret between; Backspace over the pair deletes
   both.
 - Ctrl-Space opens completions explicitly.
@@ -958,3 +969,172 @@ already exists and needs no change.
     and no amount of static reading proves that loop settles. The design above is
     the best available from the code alone; phase 1's wrap checks are where it
     gets confirmed or corrected.
+
+---
+
+## Implementation Notes
+
+- **`collectSyntaxErrors('')` reports one diagnostic, not `[]`.** The plan's
+  `## Expected Behaviour` table for `collectSyntaxErrors` listed an empty
+  document as `[]`, alongside valid JSON. Verified directly against the
+  installed `@codemirror/lang-json` (via `syntaxTree(state).cursor()` on a
+  state built from `EditorState.create({ doc: "", extensions: [json()] })`):
+  an empty document parses to a single zero-length error node
+  (`JsonText(⚠)` at `0–0`), because JSON requires exactly one top-level
+  value and an empty document supplies none. This is the correct behaviour
+  for `collectSyntaxErrors` to surface — the function's whole contract is
+  "wherever the grammar failed" — so the implementation reports it and the
+  test in `code-editor.test.ts` (`'reports a single diagnostic for an empty
+  document, not []'`) was written against the verified real output instead
+  of the plan's table entry.
+- **`@codemirror/search` briefly drifted to `6.7.2`.** `npm install -w
+  packages/lib @codemirror/search@^6.7.1` (phase 3, step 18) resolved to
+  `6.7.2` — newer than the `6.7.1` the plan's `## Potential Challenges`
+  recorded as already-transitively-resolved — because an explicit
+  command-line install target fetches the latest version satisfying the
+  given range rather than preferring whatever the lockfile already pinned.
+  Re-run as `npm install -w packages/lib @codemirror/search@6.7.1` (the
+  exact version, not a range) to pin it back to the pre-existing resolution,
+  satisfying the plan's `## Verification` requirement that none of the four
+  already-resolved packages move the tree. `package.json` still records the
+  plan's stated `^6.7.1` range; only the resolved version was at risk of
+  drifting.
+- **`npm run docs:api` has 3 pre-existing warnings, not 0.** The plan's
+  `## Verification` says this command must finish with 0 warnings. It
+  finishes with 3 (all `component/display.MarkdownViewer` links to the
+  non-exported `MarkdownContentPane`, none of it touched by this plan) —
+  confirmed pre-existing by checking out `master`, where the same three
+  warnings already fire against `MarkdownViewer.ts`. This plan's own changes
+  introduce 0 new warnings: two `{@link CodeEditor.refreshLint}` references
+  (a private method) and one `{@link MAX_SYNTAX_DIAGNOSTICS}` reference (a
+  non-exported constant) were caught by the same command and rewritten as
+  prose per `CODE_CONVENTIONS.md`'s "Don't `{@link}` internal symbols from
+  public JSDoc" rule before this run.
+- **The `grep -rl "cm-searchMatch" packages/lib/dist` no-inlining check
+  reports a match, but not a real one.** `## Verification` expects no match,
+  on the premise that the string only appears if CodeMirror's own package
+  code got bundled. That premise no longer holds once this plan's own
+  `theme.ts` legitimately writes `".cm-searchMatch"` as a CSS-in-JS object
+  key — the match is that literal, in our own first-party source, not
+  CodeMirror's. Confirmed via the built bundle's own import statements
+  (`dist/lib/CodeEditor-*.js`): every `@codemirror/*` symbol
+  (`search`/`searchKeymap`/`highlightSelectionMatches`,
+  `linter`/`lintGutter`, `autocompletion`/`closeBrackets`/`closeBracketsKeymap`,
+  and all of phase 1-2's additions) is still a bare `from "@codemirror/…"`
+  import, exactly like the pre-existing `@codemirror/language` /
+  `@codemirror/view` imports — nothing from those packages is inlined.
+- **`.cm-searchMatch` / `.cm-searchMatch.cm-searchMatch-selected` derive from
+  `--ts-ui-indicator-focus`, not `--ts-ui-indicator-selection` as `##
+  Expected Behaviour` › Theme token mapping specifies.** That table entry's
+  premise doesn't hold: `--ts-ui-indicator-selection`'s real, actively
+  consumed shape is a dashed **outline** shorthand
+  (`AbstractSelectableList.ts:261`, `Cell.ts:166`, both
+  `outline: var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))`),
+  not a colour — confirmed live via the mounted theme's own custom-property
+  value. Used as a `background-color` source it is invalid at
+  computed-value time and, since the property is genuinely set (not
+  merely unset), the `var()` fallback never activates either — silently
+  painting nothing. `--ts-ui-indicator-focus` (`rgb(30, 100, 200)` live,
+  confirmed via `getComputedStyle`), the framework's actual single accent
+  colour token and already read elsewhere in this same file
+  (`.cm-completionMatchedText`), is used instead via the same `color-mix`
+  recipe as `ScrollShadow.scrollShadowEdgeValue`, confirmed live to resolve
+  to the real theme colour rather than the fallback. The pre-existing
+  `.cm-selectionBackground` rule (`theme.ts:60`, predating this plan) has
+  the identical defect; it is out of this plan's scope and left untouched.
+- **`CodeEditorPanel`'s main demo editor cannot exercise Wrap or folding
+  driving auto-height growth/shrink, so a second, purpose-built editor was
+  added.** The plan's phase-1 manual-verify list requires observing both
+  wrap-driven height growth and fold-driven height shrink in the dev app,
+  and step 11 added a `Wrap` button to the existing `SAMPLE_JS` editor on
+  the assumption that it could show this — but that editor has no
+  `autoHeightMaxRows` (it fills a `Fit` host instead), so `syncAutoHeight()`
+  early-returns unconditionally and no height change is observable there
+  regardless of wrap or fold state (confirmed live: folding `SAMPLE_JS`'s
+  `describePerson` left its box at a fixed 1723px). A second editor
+  (`_wrapFoldDemo`, a small foldable function plus a deliberately-long line,
+  `autoHeightMaxRows: 6`, `preferredSize: { width: 400, height: 60 }` so
+  `VBox`'s default non-stretching cross-axis layout gives it a fixed width
+  for the line to actually overflow — confirmed against `VBox.ts`'s
+  `layoutPreferredMode`: `if (!size || this.isStretching()) defaultWidth =
+  containerSize.width`) was added below the toolbar, its Wrap driven by the
+  same `Wrap` button and its fold by its own gutter arrow. Confirmed live:
+  unwrapped height 63px with a horizontal scrollbar; wrapped height 127px (5
+  visibly wrapped rows) with the scrollbar gone; toggling back returns to
+  exactly 63px. Separately, folding the function shrank the box 133px→103px
+  with no blank band.
+- **No manual-verify surface existed anywhere in the dev app for `css`,
+  `python`, or `json`-specific behaviour**, so a `Language` row (`JS` /
+  `CSS` / `Python` / `JSON`) was added that swaps the main editor's language
+  and content to a small per-language sample. This covers the plan's phase-2
+  check ("selecting `css` and `python` highlights correctly; `format()`
+  reformats CSS and re-indents Python") and phase-5's JSON-specific check
+  ("in a JSON document, typing `t` at a value position offers `true`"),
+  neither of which any editor in the demo app could exercise before (every
+  `CodeEditor` there was constructed with `language: 'javascript'`, and no
+  docs page has a `css`/`python` fenced block). Confirmed live for all four:
+  CSS's irregular spacing (`color:blue;`, `padding:  4px   8px;`) reformats
+  to `color: blue;` / `padding: 4px 8px;` on Format; Python highlights
+  correctly and Format's re-indent fallback runs with no error; JSON
+  highlights correctly and, after deleting `true` and typing `t` at that
+  same value position, the completion tooltip offers `true`.
+- **A pre-existing, non-deterministic test flake was observed and is
+  unrelated to this branch.** `npm -w packages/lib run test` intermittently
+  (roughly half of ~6 runs during this implementation) reports a stray
+  `Errors: 1 error` alongside "6104/6104 tests passed" — a `ProductionDOMSink.apply`
+  exception whose stack trace runs entirely through
+  `TableHeader.onStoreFilterChange` → `renderColumnWindow` →
+  `positionColumnCells` → `HeaderCell.applyBounds`, attributed by Vitest to
+  whichever test file (`ColumnFilterRow.test.ts`) happened to be running
+  when it fired. `ColumnFilterRow.test.ts` passes cleanly every time run in
+  isolation, and immediately-repeated full-suite runs against the identical
+  tree hash alternate between clean and this error, confirming it is a
+  cross-test-file timing leak (consistent with this codebase's documented
+  `Animation.ts`/viewport-listener test-isolation flakes) and not a
+  regression — nothing in this diff touches `component/table/` or
+  `HeaderCell`.
+- **`.cm-trailingSpace` also hardcoded a literal instead of deriving from a
+  theme token — the same defect class as the `.cm-searchMatch` fix above,
+  missed in that pass.** `## Expected Behaviour` › Theme token mapping
+  specifies `--ts-ui-validation-error-border` at low opacity; the
+  implementation had `rgba(220, 38, 38, 0.15)` (that token's literal
+  fallback value) instead. Fixed with the same `color-mix(in srgb,
+  var(--ts-ui-validation-error-border, #dc2626) 15%, transparent)` recipe
+  the lint rules a few lines below it already use — confirmed live that this
+  token, unlike `--ts-ui-indicator-selection`, genuinely is a plain colour
+  (`rgb(200, 50, 50)` in the live theme), so `color-mix` resolves correctly.
+- **The wrap+fold auto-height demo's row cap saturated before Wrap was even
+  toggled, hiding real growth behind a no-op — a demo-config bug, not a
+  `syncAutoHeight` bug.** Live-tested at the previous `autoHeightMaxRows: 6`:
+  toggling Wrap *shrank* the box (133px→126px) instead of growing it.
+  Root-caused before treating it as the `[^wrap-open]` gate failing: with
+  `SAMPLE_WRAP_FOLD` already 6 logical lines unwrapped, `capPx` (`perRowHeight
+  * 6`) bound the committed height in *both* the unwrapped and wrapped
+  states, leaving no headroom for the long line's real wrapped extent
+  (~9 rows) to show through `measureContentExtent()` — the small shrink was
+  the wrap-aware `perRowHeight` source (`defaultLineHeight`) reading
+  marginally lower than the unwrapped source (`.cm-line`'s own measured
+  rect), a second-order effect only visible because the cap masked the real,
+  much larger first-order growth. Raised `autoHeightMaxRows` to 15 (well
+  above both the 6-row unwrapped and ~9-row wrapped extents) and re-tested
+  live: unwrapped 141px → wrapped 205px (real growth, no horizontal
+  scrollbar) → back to 142px on toggle-off (1px of the same sub-pixel noise
+  every other case in this plan already documents, not drift). This confirms
+  the underlying `syncAutoHeight`/`measureContentExtent`/shape-tuple logic in
+  `CodeEditor.ts` is correct as designed; no source change was needed, only
+  the demo's own row cap.
+- **Two Ordered Implementation Steps / Manual verification checks (phase 4's
+  lint check and phase 5's completion check) were stale against phase 5's own
+  `closeBrackets()`, and are corrected in the plan text itself** (steps 29 and
+  33, and the Phase 4 / Phase 5 manual-verification bullets): `function (`
+  no longer reaches lint as an error once `closeBrackets()` auto-inserts the
+  matching `)` — `function ()` has no error node in the installed
+  `@codemirror/lang-javascript` grammar. Replaced with `)))`, which has no
+  opening counterpart for `closeBrackets()` to pair, inserts literally, and
+  produces three real (non-zero-width) error nodes — confirmed live: a red
+  gutter marker plus a wavy underline (`text-decoration-style: wavy`,
+  colour resolving to the live `--ts-ui-validation-error-border`). Similarly,
+  `docu` never opens the completion tooltip, since `localCompletionSource`
+  only offers keywords and locally-scoped bindings, not DOM globals like
+  `document`; replaced with `gree`, which matches the sample's own top-level
+  `greet` function — confirmed live, tooltip opens offering `greet`.

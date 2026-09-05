@@ -62,6 +62,115 @@ export function codeEditorTheme(dark: boolean): Extension {
         ".cm-activeLine, .cm-activeLineGutter": {
             backgroundColor: "rgba(127, 127, 127, 0.08)",
         },
+        ".cm-foldGutter .cm-gutterElement": {
+            color:  "var(--ts-ui-text-color, #1a1a1a)",
+            opacity: "0.6",
+            cursor: "pointer",
+        },
+        ".cm-foldPlaceholder": {
+            backgroundColor: "var(--ts-ui-button-bg, #f3f4f6)",
+            border:          "1px solid var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
+            borderRadius:    "var(--ts-ui-border-radius, 4px)",
+        },
+        ".cm-placeholder": {
+            color: "var(--ts-ui-autocomplete-item-disabled-color, #aaaaaa)",
+        },
+        ".cm-specialChar, .cm-highlightSpace, .cm-highlightTab": {
+            color: "var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
+        },
+        ".cm-trailingSpace": {
+            // Same color-mix recipe as .cm-searchMatch below.
+            backgroundColor: "color-mix(in srgb, var(--ts-ui-validation-error-border, #dc2626) 15%, transparent)",
+        },
+        ".cm-panels": {
+            backgroundColor: "var(--ts-ui-toolbar-bg, #f5f5f5)",
+            color:           "var(--ts-ui-text-color, #1a1a1a)",
+        },
+        ".cm-panels-top": {
+            borderBottom: "1px solid var(--ts-ui-toolbar-border, #dcdcdc)",
+        },
+        ".cm-panels-bottom": {
+            borderTop: "1px solid var(--ts-ui-toolbar-border, #dcdcdc)",
+        },
+        ".cm-textfield": {
+            backgroundColor: "var(--ts-ui-input-bg, #ffffff)",
+            color:           "var(--ts-ui-text-color, #1a1a1a)",
+            border:          "var(--ts-ui-input-border, 1px solid #a0a0a0)",
+            borderRadius:    "var(--ts-ui-border-radius, 4px)",
+            fontFamily:      "var(--ts-ui-font-family, sans-serif)",
+            fontSize:        "var(--ts-ui-font-size, 14px)",
+        },
+        ".cm-button": {
+            backgroundColor: "var(--ts-ui-button-bg, #f3f4f6)",
+            border:          "1px solid var(--ts-ui-button-border, #d6d9de)",
+            borderRadius:    "var(--ts-ui-border-radius, 4px)",
+            backgroundImage: "none",
+        },
+        ".cm-button:hover": {
+            backgroundColor: "var(--ts-ui-button-hover-bg, #eaecef)",
+        },
+        ".cm-button:active": {
+            backgroundColor: "var(--ts-ui-button-pressed-bg, #ced2d8)",
+        },
+        ".cm-searchMatch": {
+            // Derived from the framework's single accent token (the same one
+            // `.cm-completionMatchedText` below reads) rather than
+            // `--ts-ui-indicator-selection`: that token's real, actively
+            // consumed shape is a dashed *outline* shorthand (see
+            // AbstractSelectableList.ts / Cell.ts), not a colour, so it is
+            // invalid as a `background-color` source. Reduced-opacity variant
+            // of the selected match's colour below, so a consumer's
+            // `--ts-ui-indicator-focus` override reaches both — same
+            // `color-mix` recipe as ScrollShadow.scrollShadowEdgeValue.
+            backgroundColor: "color-mix(in srgb, var(--ts-ui-indicator-focus, #2563eb) 15%, transparent)",
+        },
+        ".cm-searchMatch.cm-searchMatch-selected": {
+            backgroundColor: "color-mix(in srgb, var(--ts-ui-indicator-focus, #2563eb) 25%, transparent)",
+        },
+        ".cm-selectionMatch": {
+            backgroundColor: "rgba(127, 127, 127, 0.2)",
+        },
+        ".cm-lintRange-error": {
+            backgroundImage: "none",
+            textDecoration:  "underline wavy var(--ts-ui-validation-error-border, #dc2626)",
+        },
+        ".cm-diagnostic-error": {
+            borderLeft: "4px solid var(--ts-ui-validation-error-border, #dc2626)",
+        },
+        ".cm-diagnosticSource": {
+            color: "var(--ts-ui-autocomplete-item-disabled-color, #aaaaaa)",
+        },
+        ".cm-tooltip-lint .cm-diagnostic": {
+            backgroundColor: "var(--ts-ui-tooltip-bg, #fffff0)",
+            color:           "var(--ts-ui-tooltip-color, #000000)",
+        },
+        ".cm-tooltip.cm-tooltip-autocomplete": {
+            backgroundColor: "var(--ts-ui-autocomplete-bg, #ffffff)",
+            border:          "1px solid var(--ts-ui-autocomplete-border, #c8c8c8)",
+            boxShadow:       "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))",
+            color:           "var(--ts-ui-text-color, #1a1a1a)",
+        },
+        ".cm-tooltip-autocomplete > ul > li": {
+            color: "var(--ts-ui-text-color, #1a1a1a)",
+        },
+        ".cm-tooltip-autocomplete > ul > li:hover": {
+            backgroundColor: "var(--ts-ui-autocomplete-item-hover-bg, rgba(37, 99, 235, 0.08))",
+        },
+        ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
+            backgroundColor: "var(--ts-ui-autocomplete-item-highlight-bg, rgba(37, 99, 235, 0.18))",
+            color:           "var(--ts-ui-autocomplete-item-highlight-color, inherit)",
+        },
+        ".cm-completionMatchedText": {
+            color:          "var(--ts-ui-indicator-focus, #2563eb)",
+            fontWeight:     "bold",
+            textDecoration: "none",
+        },
+        ".cm-completionDetail": {
+            color: "var(--ts-ui-autocomplete-item-disabled-color, #aaaaaa)",
+        },
+        ".cm-completionIcon": {
+            color: "var(--ts-ui-autocomplete-item-disabled-color, #aaaaaa)",
+        },
     }, { dark });
 
     const highlight = syntaxHighlighting(HighlightStyle.define([

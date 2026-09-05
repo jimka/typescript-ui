@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import type { Extension } from "@codemirror/state";
+import type { Extension, EditorState } from "@codemirror/state";
+import type { Diagnostic } from "@codemirror/lint";
 
 /**
  * Style knobs a {@link Formatter} may honour. Every field is optional;
@@ -55,9 +56,16 @@ export type Formatter = (
     | { formatted: string; cursorOffset: number };
 
 /**
+ * Produces parser-level diagnostics for a document state. Takes an
+ * `EditorState`, not a view, so a source is DOM-free and unit-testable;
+ * `CodeEditor` adapts it to what CodeMirror's `linter()` wants.
+ */
+export type LintSource = (state: EditorState) => Diagnostic[] | Promise<Diagnostic[]>;
+
+/**
  * Describes one language {@link CodeEditor} can be configured with: its
  * grammar (a lazily-loaded CodeMirror `Extension`) and, optionally, its
- * formatter.
+ * formatter and lint source.
  *
  * @category Components
  */
@@ -70,6 +78,8 @@ export interface LanguageDefinition {
     loadExtension: () => Promise<Extension>;
     /** Dynamically imports and builds this language's formatter, when one exists. */
     loadFormatter?: () => Promise<Formatter>;
+    /** Dynamically imports and builds this language's lint source, when one exists. */
+    loadLintSource?: () => Promise<LintSource>;
 }
 
 /** Module-level registry, keyed by {@link LanguageDefinition.id}. */
