@@ -392,6 +392,31 @@ No new files. `packages/lib/src/typescript/MarkdownEditorPanel.ts` (the demo) ne
 
 ---
 
+## Implementation Notes
+
+**`copy()`'s Internal Structure snippet contradicted this plan's own Architecture Decision, and the contradiction shipped as a bug caught only by audit.** The `## Architecture Decisions` section states plainly: "Each no-ops without throwing when there is no range selection" (the "Cut, Copy, and Paste become public command methods" entry), and `## Expected Behaviour`'s classification table and `## Non-Goals`'s "Multi-cell table-selection cut/copy" entry both say a table (grid) selection is not a range selection and Cut/Copy must dim/no-op there. But the `## Internal Structure` code block for `copy()` reads `$getSelection()?.getTextContent() ?? ""` with no `$isRangeSelection` guard — and `TableSelection.getTextContent()` (the type `$getSelection()` returns for a multi-cell drag-selection) happily concatenates every selected cell's text. Implemented literally, `copy()` copied a multi-cell table selection to the clipboard, and `cut()` — which calls `copy()` then separately guards its own `removeText()` with `$isRangeSelection` — silently degraded to a copy-only operation instead of the documented no-op, contradicting the menu's own `hasSelectedText` dimming (which correctly reports `false` for a table selection) and the public command API it wires to.
+
+Fixed by reading the selection inside `copy()`'s own guard, matching `cut()`'s existing one:
+
+```typescript
+copy(): this {
+    const text = this.ensureEditor().read(() => {
+        const selection = $getSelection();
+
+        return $isRangeSelection(selection) ? selection.getTextContent() : "";
+    });
+    // …
+}
+```
+
+A regression test (`'copy() and cut() record no write for a multi-cell table selection, which is not a range selection'`, `markdown-editor.test.ts`) builds a real `TableSelection` via `@lexical/table`'s `$createTableSelectionFrom` and asserts zero clipboard writes from both `copy()` and `cut()`. Found and fixed during the audit loop, not at initial implementation — the Internal Structure snippet was followed as written, per this skill's own instruction to honour the plan's prescribed code, and the mismatch was a plan defect rather than an implementer choice.
+
+**The capture/restore design (`## Internal Structure`'s "The pre-expansion selection is captured per right-click and restored only for Paste", and behaviours 13-14) shipped a genuine UX bug, caught only by live user testing.** `handleWysiwygContextMenu`, implemented exactly as specified, called `$selectEnclosingWordIfCollapsed()` unconditionally before the menu was even built — mutating the live Lexical selection, so a right-click on a collapsed caret inside a word visibly highlighted that whole word in the contenteditable surface for as long as the menu stayed open. `_contextMenuSelection` captured the selection *before* that mutation specifically so Paste could restore it and land on the original caret instead of the highlighted word — meaning the UI's own visible selection lied about what Paste would do: it looked like Paste would replace the highlighted word, but it never did.
+
+Fixed by making classification read-only instead of mutate-then-classify: `$selectEnclosingWordIfCollapsed()` was split into a pure query (`$computeWordExpansion()`, computing the offsets/format bitmask a collapsed caret would expand to) and the original mutating action, now built on top of it. `$classifyContextMenuTarget` calls only the pure query, so a right-click never touches the document's selection, and `handleWysiwygContextMenu` reverted to `editor.read()`. Each action that actually needs the wider selection — `toggleBold`/`toggleItalic`/`toggleStrikethrough`/`toggleInlineCode`, `cut`, and `copy` — now performs the mutating expansion itself, immediately before its own work, so the menu's checkbox/Cut+Copy-enabled state always matches what activating that item will do. `paste()` no longer captures or restores anything: it acts on whatever selection is live at the moment it's invoked, which — since nothing upstream mutates on open — is the user's actual untouched caret unless a format toggle (or Cut/Copy) already ran earlier in the same still-open menu. `_contextMenuSelection`, `restoreContextMenuSelection()`, and the stale-`$getNodeByKey` guard (footnote below) are gone entirely — they existed only to fight the eager mutation this fix removes. `## Expected Behaviour`'s items 13-14 and the third **Manual** bullet above describe the superseded capture/restore contract and are left as the historical record of what was originally specified and implemented (matching how the unguarded `copy()` snippet above stays uncorrected in `## Internal Structure`); `markdown-editor.test.ts` replaces the two tests behind items 13-14 with tests pinning the corrected contract instead (a right-click leaves the selection collapsed and unmutated; a bare `paste()` lands at the untouched caret; a format toggle invoked first, followed by `paste()`, replaces the now-expanded selection), and this fix was live-verified in the browser in place of the superseded manual bullet.
+
+---
+
 ## Notes
 
 [^base-branch]: The frontmatter spec (`~/.claude/skills/_shared/plan-frontmatter.md`) has fields for plan dependencies and shared files, but none for a base branch. `depends-on: [markdown-editor-context-menu]` is nonetheless literally true and does the right thing: that plan sits in `plans/implemented/` on `feature/markdown-editor-context-menu` and nowhere else, so the dependency is satisfied exactly when the worktree is cut from that branch and unsatisfied when it is cut from `master`. The explicit `git worktree add` command in the Overview is the operative instruction; the frontmatter is the machine-readable echo of it. Do not rebase this work onto `master` first — every line it edits in `MarkdownEditor.ts` was added by that branch.
