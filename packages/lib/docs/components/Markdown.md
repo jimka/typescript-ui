@@ -2,7 +2,7 @@
 
 [`Markdown`](/api/component/display/classes/Markdown) renders a Markdown source string as a live DOM subtree.
 
-Parsing uses the [`marked`](https://marked.js.org/) library's **lexer only** — `Markdown` walks the returned token AST and builds every prose element (`<h1>`–`<h6>`, `<p>`, `<ul>`/`<ol>`/`<li>`, `<blockquote>`, `<pre>`/`<code>`, `<strong>`, `<em>`, `<a>`) through the framework DOM sink. There is no HTML-string assignment path, so untrusted Markdown can never inject markup. The dialect's extension syntax (see [Extension syntax](#extension-syntax) below) carries a handful of styling attributes — colour, font, size — and every value is checked against an allow-list before it reaches the DOM; a value that fails validation is silently dropped rather than rendered, so the no-markup guarantee extends to these constructs too.
+Parsing uses the [`marked`](https://marked.js.org/) library's **lexer only** — `Markdown` walks the returned token AST and builds every prose element (`<h1>`–`<h6>`, `<p>`, `<ul>`/`<ol>`/`<li>`, `<blockquote>`, `<pre>`/`<code>`, `<strong>`, `<em>`, `<a>`) through the framework DOM sink. There is no HTML-string assignment path, so untrusted Markdown can never inject markup. The dialect's extension syntax (see [Extension syntax](#extension-syntax) below) carries a handful of styling attributes — colour, font, size — plus an image's `src` scheme, and every value is checked against an allow-list before it reaches the DOM; a value that fails validation is silently dropped (or, for an image, renders nothing at all) rather than rendered, so the no-markup guarantee extends to these constructs too.
 
 Use this to render authored copy (help text, release notes, a README-style panel) without hand-building the element tree.
 
@@ -60,6 +60,7 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | delimiter cell `{width=240}` | `<colgroup>` / `<col style="width:240px">` — see [Extension syntax](#extension-syntax) |
 | body cell `<<` / `^^` | merges into the preceding cell as `colspan`/`rowspan` — see [Extension syntax](#extension-syntax) |
 | `::: {align=... columns=... gap=...}` … `:::` | `<div>` with the resolved, validated alignment / multi-column style — see [Extension syntax](#extension-syntax) |
+| `![alt](src){width=... height=...}` | `<img>`, or nothing at all when `src` fails the scheme allow-list — see [Extension syntax](#extension-syntax) |
 
 A delimiter row's alignment markers (`:---`, `:---:`, `---:`) apply as a CSS class to every cell in that column, header and body alike. A delimiter cell's trailing `{width=240}` renders a `<colgroup>`/`<col style="width:240px">` for that column — the `<colgroup>` appears only when at least one column carries a width. A body cell's `<<` (covered from the left) or `^^` (covered from above) merges it into the preceding cell as a `colspan`/`rowspan`, rather than rendering its own `<td>`; a `<<`/`^^` with nothing to extend (column 0, or the table's first body row) renders as ordinary literal text instead, and a cell whose own text is literally `<<` or `^^` escapes to `\<<` / `\^^` to render as that literal text rather than being read as a marker.
 
@@ -116,13 +117,15 @@ the reader actually scrolls to.
 
 CommonMark and GFM have no syntax for underline, colour, font, size, table column widths, merged table cells, block alignment, or multi-column layout, so the dialect adds a small extension syntax of its own — `++text++` for underline, `[text]{key=value ...}` for a coloured/sized/font-styled span, a delimiter cell's trailing `{width=240}` for a column width, a body cell's `<<` / `^^` for a merge continuation, and `::: {align=... columns=... gap=...}` … `:::` for a block-level fence wrapping one or more blocks. `MarkdownEditor` produces the same syntax when a document is edited, so a document round-trips between the two components unchanged.
 
-A document using these constructs is **not portable**: a foreign Markdown renderer has no meaning for these markers and shows them as literal text (`++text++`, `[text]{...}`, `<<`, `^^`) rather than applying them; a delimiter cell carrying `{width=240}` fails a foreign GFM parser's stricter delimiter-row check entirely, turning that whole table into paragraphs. This is a deliberate trade for a small, safe, in-house grammar over embedding raw HTML or switching the persisted format away from Markdown. It renders correctly only in this library's `Markdown` viewer and `MarkdownEditor`.
+Sized images reuse this same trailing `{key=value}` grammar on top of CommonMark's own `![alt](src)` image syntax, e.g. `![Diagram](/img/d.png){width=320 height=200}`; the `src` scheme is additionally checked against an allow-list (a relative path, `http:`, `https:`, or an allow-listed `data:image/…` base64 URI — `data:image/svg+xml` is refused since it can embed script), and an image whose `src` fails that check renders nothing at all rather than a broken or unsafe `<img>`.
+
+A document using these constructs is **not portable**: a foreign Markdown renderer has no meaning for the non-standard markers and shows them as literal text (`++text++`, `[text]{...}`, `<<`, `^^`) rather than applying them; a delimiter cell carrying `{width=240}` fails a foreign GFM parser's stricter delimiter-row check entirely, turning that whole table into paragraphs; and a sized image's trailing `{width=...}` renders as visible text after an otherwise-ordinary image. This is a deliberate trade for a small, safe, in-house grammar over embedding raw HTML or switching the persisted format away from Markdown. It renders correctly only in this library's `Markdown` viewer and `MarkdownEditor`.
 
 Every attribute value is validated against a per-key allow-list before it is applied; a value that fails validation is dropped and the construct renders with that property unset (e.g. `[x]{color=not-a-color}` renders as plain `x`).
 
 ### Fallback for unsupported tokens
 
-Any token type not in the v1 set — images, raw HTML, and the remaining GFM extensions (task lists) — falls through to a **defined fallback** that renders the token's plain text. It never crashes and never emits the corresponding element (no `<img>`). Support for a new token type is added by extending the internal token switch, with no structural rewrite.
+Any token type not in the v1 set — raw HTML and the remaining GFM extensions (task lists) — falls through to a **defined fallback** that renders the token's plain text. It never crashes and never emits the corresponding element. Support for a new token type is added by extending the internal token switch, with no structural rewrite.
 
 ### Sizing
 
