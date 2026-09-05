@@ -131,6 +131,12 @@ page resets to empty.
   double-clicked, carrying that tab's content and its zero-based index. It
   does not fire for a double-click on the strip's blank area or fixed
   chrome, nor for a lazy tab whose deferred content has not been built.
+- **`HFlow` and `VFlow` now honour a per-child cross-axis `fill` constraint**
+  as align-self: a child whose stored `fill` carries the flow's cross axis
+  (`FillType.VERTICAL`/`BOTH` in an `HFlow`, `FillType.HORIZONTAL`/`BOTH` in
+  a `VFlow`) stretches to its own wrapped line's cross extent — the row
+  height or column width — overriding `itemAlign` for that child only. No
+  consumer action is needed; a child with no `fill` constraint is unaffected.
 
 ### Core
 

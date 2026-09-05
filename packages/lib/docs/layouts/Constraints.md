@@ -13,7 +13,7 @@ The base [`LayoutConstraints`](/api/layout/classes/LayoutConstraints) exposes tw
 | `fill` | [`FillType`](#filltype) — how the child expands to use available cell space. |
 | `anchor` | [`AnchorType`](#anchortype) — where to position the child within its cell when it doesn't fill it. |
 
-Beyond the grid-style managers, the box layouts [`HBox`](/layouts/HBox#per-child-cross-axis-alignment-align-self) and [`VBox`](/layouts/VBox#per-child-cross-axis-alignment-align-self) read the **cross-axis component** of `fill` / `anchor` as per-child align-self (in both `"preferred"` and `"equal"` mode): a cross-axis fill stretches the child across its row/column, and a cross-axis anchor edge pins it to the leading/trailing cross edge. `CENTER` and the main-axis component are ignored by the box, which owns main-axis sequencing.
+Beyond the grid-style managers, the box layouts [`HBox`](/layouts/HBox#per-child-cross-axis-alignment-align-self) and [`VBox`](/layouts/VBox#per-child-cross-axis-alignment-align-self) read the **cross-axis component** of `fill` / `anchor` as per-child align-self (in both `"preferred"` and `"equal"` mode): a cross-axis fill stretches the child across its row/column, and a cross-axis anchor edge pins it to the leading/trailing cross edge. `CENTER` and the main-axis component are ignored by the box, which owns main-axis sequencing. The wrapping flows [`HFlow`](/layouts/HFlow#per-child-cross-axis-alignment-align-self) and [`VFlow`](/layouts/VFlow#per-child-cross-axis-alignment-align-self) read the same cross-axis `fill` component as align-self, but only `fill` — they do not consult `anchor` for it — and stretch the child against its own **wrapped line** rather than the container's full cross band.
 
 Plus optional metadata:
 

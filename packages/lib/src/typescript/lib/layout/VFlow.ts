@@ -38,9 +38,11 @@ interface VFlowColumn {
  * column when the next child would exceed the container's inner height. The
  * vertical transpose of {@link HFlow}: where `HFlow` packs rows left-to-right
  * and wraps downward, `VFlow` packs columns top-to-bottom and wraps rightward.
- * Like `HFlow` it never shrinks or stretches children — each keeps its preferred
- * size. A scroll-enabled host (`Panel.setAutoScroll`) gains a horizontal
- * scrollbar once the columns exceed its inner width.
+ * Like `HFlow` it never shrinks a child, and stretches one only on the cross
+ * axis and only when that child asks for it with a cross-axis `fill`; each
+ * child otherwise keeps its preferred size. A scroll-enabled host
+ * (`Panel.setAutoScroll`) gains a horizontal scrollbar once the columns
+ * exceed its inner width.
  *
  * @remarks Shares its flow configuration (item/line spacing, cell uniformity,
  * line alignment) with `HFlow` through the {@link FlowLayout} base. Here
@@ -350,8 +352,9 @@ class VFlow extends FlowLayout {
      * when `justify` is `"start"`), and resolves each cell's bounds within the
      * column width per the `itemAlign` mode. The cross axis is width, which has
      * no text baseline, so `"baseline"` degrades to `"start"`. Each child keeps
-     * its preferred size (`FillType.NONE`); its own {@link AnchorType} positions
-     * it within its cell.
+     * its preferred size (`FillType.NONE`) unless its own constraints set a
+     * cross-axis `fill`, which sizes it to the column's cross extent instead;
+     * its own {@link AnchorType} positions it within its cell.
      *
      * @param columns - The columns produced by {@link VFlow.groupIntoColumns}.
      * @param topInset - The container's top content inset (the column's leading edge).
@@ -374,10 +377,20 @@ class VFlow extends FlowLayout {
             let y = topInset + blockLead + lead;
 
             for (const cell of column.cells) {
+                const crossFilled = this.isCrossFilled(cell.component, false);
+                const cellWidth   = crossFilled ? column.columnWidth : cell.width;
                 // rowAscent null → "baseline" degrades to "start"; cross axis is width.
-                const x = column.x + this.crossOffset(cell.width, column.columnWidth, null, null, 0);
+                const x           = column.x + (crossFilled ? 0 : this.crossOffset(cell.width, column.columnWidth, null, null, 0));
 
-                placements.push({ component: cell.component, ...this.resolveBounds(cell.component, x, y, cell.width, cell.height, FillType.NONE) });
+                // A raw fill naming this flow's main (vertical) axis is a
+                // mismatched orientation the flow does not implement — hand
+                // resolveBounds the cell's own clamped preferred height instead
+                // of the (possibly uniform-widened) packed height, so it can't
+                // silently stretch into the uniform grid slot.
+                const mainFilled = this.isMainFilled(cell.component, false);
+                const cellHeight = mainFilled ? this.clampedPreferredSize(cell.component).height : cell.height;
+
+                placements.push({ component: cell.component, ...this.resolveBounds(cell.component, x, y, cellWidth, cellHeight, FillType.NONE) });
 
                 y += cell.height + gap;
             }

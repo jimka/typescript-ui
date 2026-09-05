@@ -5,6 +5,9 @@ import { Insets } from '~/primitive/Insets';
 import { HFlow } from '~/layout/HFlow';
 import type { FlowItemAlign } from '~/layout/FlowLayout';
 import { VBox } from '~/layout/VBox';
+import { FillType } from '~/layout/FillType';
+import { LayoutConstraints } from '~/layout/LayoutConstraints';
+import { UNBOUNDED } from '~/primitive/Size';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import { expectNoSelfReschedule } from '../../helpers/layoutStability';
@@ -355,6 +358,115 @@ describe('HFlow item alignment within the row', () => {
         // Row height 60 less the 20-tall cell.
         expect(short.getY()).toBe(40);
         expect(tall.getY()).toBe(0);
+    });
+});
+
+describe('HFlow per-child cross-axis fill (align-self: stretch)', () => {
+    afterEach(() => DOM.reset());
+
+    /**
+     * A vertical rule: 1px wide, no intrinsic height, and a cross-axis (VERTICAL)
+     * fill constraint — the divider shape `## Expected Behaviour` models.
+     */
+    function rule(maxHeight: number = UNBOUNDED): { component: Component; constraints: LayoutConstraints } {
+        const component = new Component({
+            preferredSize: { width: 1, height: 0 },
+            minSize:       { width: 1, height: 0 },
+            maxSize:       { width: 1, height: maxHeight },
+        });
+        const constraints = Object.assign(new LayoutConstraints(), { fill: FillType.VERTICAL });
+
+        return { component: component, constraints: constraints };
+    }
+
+    it('H1 — a rule child spans its row', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostHFlow(300, 200, new HFlow({ spacing: 5 }));
+        const a = new Component({ preferredSize: { width: 40, height: 20 } });
+        const { component: r, constraints } = rule();
+        const c = new Component({ preferredSize: { width: 60, height: 30 } });
+
+        host.addComponent(a);
+        host.addComponent(r, constraints);
+        host.addComponent(c);
+        host.doLayout();
+
+        expect(r.getHeight()).toBe(30);
+        expect(r.getY()).toBe(0);
+        expect(r.getWidth()).toBe(1);
+        expect(r.getX()).toBe(45);
+        expect(a.getHeight()).toBe(20);
+        expect(c.getHeight()).toBe(30);
+    });
+
+    it('H2 — fill overrides itemAlign for that child only', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostHFlow(300, 200, new HFlow({ spacing: 5, itemAlign: 'center' }));
+        const a = new Component({ preferredSize: { width: 40, height: 20 } });
+        const { component: r, constraints } = rule();
+        const c = new Component({ preferredSize: { width: 60, height: 30 } });
+
+        host.addComponent(a);
+        host.addComponent(r, constraints);
+        host.addComponent(c);
+        host.doLayout();
+
+        // A centres in the 30-tall row (30 - 20) / 2.
+        expect(a.getY()).toBe(5);
+        expect(r.getY()).toBe(0);
+        expect(r.getHeight()).toBe(30);
+    });
+
+    it("H3 — the child's maximum caps the stretch", () => {
+        installTestDOM(CONFIG);
+
+        const host = hostHFlow(300, 200, new HFlow({ spacing: 5 }));
+        const a = new Component({ preferredSize: { width: 40, height: 20 } });
+        const { component: r, constraints } = rule(12);
+        const c = new Component({ preferredSize: { width: 60, height: 30 } });
+
+        host.addComponent(a);
+        host.addComponent(r, constraints);
+        host.addComponent(c);
+        host.doLayout();
+
+        // The flow offers the 30-tall row; the child's own max refuses it.
+        expect(r.getHeight()).toBe(12);
+        expect(r.getY()).toBe(0);
+    });
+
+    it('H4 — a rule alone on a wrapped row stays zero-tall', () => {
+        installTestDOM(CONFIG);
+
+        // 95 + 5 + 1 = 101 > 100: the rule does not fit beside A and wraps alone.
+        const host = hostHFlow(100, 300, new HFlow({ spacing: 5, lineSpacing: 8 }));
+        const a = new Component({ preferredSize: { width: 95, height: 20 } });
+        const { component: r, constraints } = rule();
+
+        host.addComponent(a);
+        host.addComponent(r, constraints);
+        host.doLayout();
+
+        // A line's cross extent comes from its members, and r is its only member.
+        expect(r.getHeight()).toBe(0);
+    });
+
+    it('H5 — an unconstrained child is untouched', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostHFlow(300, 200, new HFlow({ spacing: 5 }));
+        const a = new Component({ preferredSize: { width: 40, height: 20 } });
+        const { component: r } = rule();
+        const c = new Component({ preferredSize: { width: 60, height: 30 } });
+
+        host.addComponent(a);
+        host.addComponent(r);
+        host.addComponent(c);
+        host.doLayout();
+
+        expect(r.getHeight()).toBe(0);
     });
 });
 

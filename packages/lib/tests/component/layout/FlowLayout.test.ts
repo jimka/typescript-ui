@@ -7,6 +7,9 @@ import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
 import { HFlow } from '~/layout/HFlow';
 import { VFlow } from '~/layout/VFlow';
+import { FillType } from '~/layout/FillType';
+import { LayoutConstraints } from '~/layout/LayoutConstraints';
+import { UNBOUNDED } from '~/primitive/Size';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -449,5 +452,153 @@ describe('FlowLayout keeps the maximum at or above the preferred size', () => {
         // Wrapped extent 76, single-column maximum 500. The larger wins.
         expect(container.getPreferredSize()!.width).toBe(76);
         expect(container.getMaxSize()!.width).toBe(500);
+    });
+});
+
+describe('FlowLayout cross-axis fill vs uniform cells and size reports', () => {
+    afterEach(() => DOM.reset());
+
+    /** A vertical rule matching HFlow.test.ts's H1 rule shape. */
+    function hRule(): { component: Component; constraints: LayoutConstraints } {
+        const component = new Component({
+            preferredSize: { width: 1, height: 0 },
+            minSize:       { width: 1, height: 0 },
+            maxSize:       { width: 1, height: UNBOUNDED },
+        });
+        const constraints = Object.assign(new LayoutConstraints(), { fill: FillType.VERTICAL });
+
+        return { component: component, constraints: constraints };
+    }
+
+    /** A horizontal rule matching VFlow.test.ts's V1 rule shape. */
+    function vRule(): { component: Component; constraints: LayoutConstraints } {
+        const component = new Component({
+            preferredSize: { width: 0, height: 1 },
+            minSize:       { width: 0, height: 1 },
+            maxSize:       { width: UNBOUNDED, height: 1 },
+        });
+        const constraints = Object.assign(new LayoutConstraints(), { fill: FillType.HORIZONTAL });
+
+        return { component: component, constraints: constraints };
+    }
+
+    it('U1 — fill is inert when uniform already fixes the cross axis (HFlow)', () => {
+        installTestDOM(CONFIG);
+
+        const container = new Container({ layoutManager: new HFlow({ uniform: 'height', spacing: 5 }) });
+        container.getElement(true);
+        container.setWidth(300);
+        container.setHeight(200);
+        container.clearInsets();
+
+        const a = new Component({ preferredSize: { width: 40, height: 20 } });
+        const { component: r, constraints } = hRule();
+        const c = new Component({ preferredSize: { width: 60, height: 30 } });
+
+        container.addComponent(a);
+        container.addComponent(r, constraints);
+        container.addComponent(c);
+        container.doLayout();
+
+        // Every cell is 30 tall (the uniform height): the same value with or
+        // without the fill constraint.
+        expect(r.getHeight()).toBe(30);
+    });
+
+    it('U2 — fill is inert when uniform already fixes the cross axis (VFlow)', () => {
+        installTestDOM(CONFIG);
+
+        const container = new Container({ layoutManager: new VFlow({ uniform: 'width', spacing: 5 }) });
+        container.getElement(true);
+        container.setWidth(300);
+        container.setHeight(200);
+        container.clearInsets();
+
+        const a = new Component({ preferredSize: { width: 20, height: 40 } });
+        const { component: r, constraints } = vRule();
+        const c = new Component({ preferredSize: { width: 30, height: 60 } });
+
+        container.addComponent(a);
+        container.addComponent(r, constraints);
+        container.addComponent(c);
+        container.doLayout();
+
+        expect(r.getWidth()).toBe(30);
+    });
+
+    it('U3 — fill on the main axis stays inert even when uniform widens its cell (HFlow)', () => {
+        installTestDOM(CONFIG);
+
+        const container = new Container({ layoutManager: new HFlow({ uniform: 'width', spacing: 5 }) });
+        container.getElement(true);
+        container.setWidth(300);
+        container.setHeight(200);
+        container.clearInsets();
+
+        // A wide sibling forces the uniform width (100) well past the rule's own
+        // 0 preferred width, so a naive "stretch to the cell" would move it.
+        const a = new Component({ preferredSize: { width: 100, height: 20 } });
+        const { component: r, constraints } = vRule();
+
+        container.addComponent(a);
+        container.addComponent(r, constraints);
+        container.doLayout();
+
+        // fill: HORIZONTAL names HFlow's main axis, which the flow owns — the
+        // rule stays at its own preferred width regardless of the uniform cell.
+        expect(r.getWidth()).toBe(0);
+    });
+
+    it('U4 — fill on the main axis stays inert even when uniform widens its cell (VFlow)', () => {
+        installTestDOM(CONFIG);
+
+        const container = new Container({ layoutManager: new VFlow({ uniform: 'height', spacing: 5 }) });
+        container.getElement(true);
+        container.setWidth(300);
+        container.setHeight(200);
+        container.clearInsets();
+
+        // A tall sibling forces the uniform height (100) well past the rule's
+        // own 0 preferred height, so a naive "stretch to the cell" would move it.
+        const a = new Component({ preferredSize: { width: 20, height: 100 } });
+        const { component: r, constraints } = hRule();
+
+        container.addComponent(a);
+        container.addComponent(r, constraints);
+        container.doLayout();
+
+        // fill: VERTICAL names VFlow's main axis, which the flow owns — the
+        // rule stays at its own preferred height regardless of the uniform cell.
+        expect(r.getHeight()).toBe(0);
+    });
+
+    it("S1 — the flow's reported sizes are unaffected", () => {
+        installTestDOM(CONFIG);
+
+        function buildHost(applyFill: boolean): Container {
+            const container = new Container({ layoutManager: new HFlow({ spacing: 5 }) });
+            container.getElement(true);
+            container.setWidth(300);
+            container.setHeight(200);
+            container.clearInsets();
+
+            const a = new Component({ preferredSize: { width: 40, height: 20 } });
+            const { component: r, constraints } = hRule();
+            const c = new Component({ preferredSize: { width: 60, height: 30 } });
+
+            container.addComponent(a);
+            container.addComponent(r, applyFill ? constraints : undefined);
+            container.addComponent(c);
+            container.doLayout();
+
+            return container;
+        }
+
+        const filled = buildHost(true);
+        const plain  = buildHost(false);
+
+        expect(filled.getPreferredSize()).toEqual(plain.getPreferredSize());
+        expect(filled.getMinSize()).toEqual(plain.getMinSize());
+        expect(filled.getMaxSize()).toEqual(plain.getMaxSize());
     });
 });
