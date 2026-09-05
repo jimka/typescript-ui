@@ -28,6 +28,7 @@ import { DynamicCell } from '~/component/table/cell/Dynamic';
 import { ComboCell } from '~/component/table/cell/Combo';
 import { NumberCell } from '~/component/table/cell/Number';
 import { StringCell } from '~/component/table/cell/String';
+import { StringRenderer } from '~/component/table/cell/renderer/String';
 import type { ColumnConfig } from '~/component/table/ColumnConfig';
 
 const CONFIG = {
@@ -1305,6 +1306,642 @@ describe('Body range selection — right-click / context menu', () => {
 
         const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
         expect(writes).toHaveLength(0);
+    });
+
+    // Clicking the menu's Copy row blurs the body via the browser's default
+    // mousedown-elsewhere behaviour (the same class of problem
+    // PickerColumn.ts's handlePointerDown prevents for a picker cell, and
+    // TextInput.copy/cut/paste guard against too); restores focus afterward
+    // so keyboard navigation still works once the menu closes.
+    it('copyContextMenuSelection restores focus to the body', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const record = store.getAll()[0];
+        (b as any)._contextMenuCell = { record, col: 0 };
+
+        b.copyContextMenuSelection();
+
+        expect((DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'focus')).toHaveLength(1);
+    });
+});
+
+describe('Body range selection — cut', () => {
+    it('cutSelectionToClipboard writes nothing and changes no record when no range is selected', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        b.cutSelectionToClipboard();
+
+        const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
+        expect(writes).toHaveLength(0);
+        expect(store.getAll()[0].get('b')).toBe('2');
+    });
+
+    it('cutting a single string cell writes its value to the clipboard and sets the record\'s field to null', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b      = new Body(store);
+        b.getElement(true);
+        const record = store.getAll()[0];
+
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 1 };
+
+        b.cutSelectionToClipboard();
+
+        const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
+        expect(writes[0].args[0]).toBe('2');
+        expect(record.get('b')).toBeNull();
+    });
+
+    it('cutting a multi-cell, multi-column range writes the pre-cut text (identical to Copy) and clears every cell', async () => {
+        const store = new MemoryStore(MODEL, [
+            { a: '1', b: '2', c: '3' },
+            { a: '4', b: '5', c: '6' },
+        ]);
+        await store.load();
+
+        const b       = new Body(store);
+        b.getElement(true);
+        const records = store.getAll();
+
+        (b as any)._rangeAnchor = { record: records[0], col: 1 };
+        (b as any)._rangeFocus  = { record: records[1], col: 2 };
+
+        b.cutSelectionToClipboard();
+
+        const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
+        expect(writes[0].args[0]).toBe('2\t3\n5\t6');
+        expect(records[0].get('b')).toBeNull();
+        expect(records[0].get('c')).toBeNull();
+        expect(records[1].get('b')).toBeNull();
+        expect(records[1].get('c')).toBeNull();
+        // The key column, outside the cut range, is untouched.
+        expect(records[0].get('a')).toBe('1');
+        expect(records[1].get('a')).toBe('4');
+    });
+
+    it('a read-only cell in the cut range keeps its value; every other cell in the range still clears', async () => {
+        const model = new Model([
+            { name: 'id', type: 'string', order: 0 },
+            { name: 'ro', type: 'string', order: 1 },
+            { name: 'rw', type: 'string', order: 2 },
+        ], 'id');
+        const store = new MemoryStore(model, [{ id: 'r1', ro: 'locked', rw: 'open' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.setColumnConfigs(new Map([['ro', { field: 'ro', readOnly: true }]]));
+        b.getElement(true);
+        const record = store.getAll()[0];
+
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 2 };
+
+        b.cutSelectionToClipboard();
+
+        expect(record.get('ro')).toBe('locked');
+        expect(record.get('rw')).toBeNull();
+    });
+
+    it('a glyph, custom-renderer, or cellType-dynamic column\'s cells in the range keep their value; the rest of the range still clears', async () => {
+        const model = new Model([
+            { name: 'id',   type: 'string', order: 0 },
+            { name: 'norm', type: 'string', order: 1 },
+            { name: 'gly',  type: 'glyph',  order: 2 },
+            { name: 'rend', type: 'string', order: 3 },
+            { name: 'dyn',  type: 'string', order: 4 },
+        ], 'id');
+        const store = new MemoryStore(model, [{ id: 'r1', norm: 'X', gly: 'caret-down', rend: 'R', dyn: 'D' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.setColumnConfigs(new Map<string, ColumnConfig>([
+            ['rend', { field: 'rend', renderer: () => new StringRenderer() }],
+            ['dyn',  { field: 'dyn',  cellType: () => null }],
+        ]));
+        b.getElement(true);
+        const record = store.getAll()[0];
+
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 4 };
+
+        b.cutSelectionToClipboard();
+
+        expect(record.get('norm')).toBeNull();
+        expect(record.get('gly')).toBe('caret-down');
+        expect(record.get('rend')).toBe('R');
+        expect(record.get('dyn')).toBe('D');
+    });
+
+    it('cutting a boolean cell sets it to null (indeterminate), not skipped', async () => {
+        const model = new Model([
+            { name: 'id',     type: 'string',  order: 0 },
+            { name: 'active', type: 'boolean', order: 1 },
+        ], 'id');
+        const store = new MemoryStore(model, [{ id: 'r1', active: true }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        const record = store.getAll()[0];
+
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 1 };
+
+        b.cutSelectionToClipboard();
+
+        expect(record.get('active')).toBeNull();
+    });
+
+    it('a separator row inside the cut range keeps its own field values; its neighbours still clear', async () => {
+        const store = new MemoryStore(MODEL, [
+            { a: '1',   b: '2', c: '3' },
+            { a: 'SEP', b: '',  c: '' },
+            { a: '4',   b: '5', c: '6' },
+        ]);
+        await store.load();
+
+        const b = new Body(store);
+        b.setRowSeparator(record => record.get('a') === 'SEP' ? { label: 'SEP', color: null } : null);
+        b.getElement(true);
+        b.renderWindow();
+        const records = store.getAll();
+
+        (b as any)._rangeAnchor = { record: records[0], col: 1 };
+        (b as any)._rangeFocus  = { record: records[2], col: 2 };
+
+        b.cutSelectionToClipboard();
+
+        expect(records[0].get('b')).toBeNull();
+        expect(records[0].get('c')).toBeNull();
+        expect(records[1].get('b')).toBe('');   // separator row untouched
+        expect(records[1].get('c')).toBe('');
+        expect(records[2].get('b')).toBeNull();
+        expect(records[2].get('c')).toBeNull();
+    });
+
+    it('Ctrl+X and Cmd+X both call cutSelectionToClipboard; a bare "x" keypress does not', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const record = store.getAll()[0];
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 1 };
+
+        const spy = vi.spyOn(b, 'cutSelectionToClipboard');
+
+        expect((b as any).onKeyDown(makeEvent(b.getElement()!, 'keydown', { key: 'x', ctrlKey: true })))
+            .toEqual({ prevent: true });
+        expect(spy).toHaveBeenCalledTimes(1);
+
+        (b as any).onKeyDown(makeEvent(b.getElement()!, 'keydown', { key: 'x', metaKey: true }));
+        expect(spy).toHaveBeenCalledTimes(2);
+
+        (b as any).onKeyDown(makeEvent(b.getElement()!, 'keydown', { key: 'x' }));
+        expect(spy).toHaveBeenCalledTimes(2);
+    });
+
+    it('cutContextMenuSelection resolves its target exactly like copyContextMenuSelection: inside vs outside the current range', async () => {
+        const store = new MemoryStore(MODEL, [
+            { a: '1', b: '2', c: '3' },
+            { a: '4', b: '5', c: '6' },
+        ]);
+        await store.load();
+
+        const b       = new Body(store);
+        b.getElement(true);
+        const records = store.getAll();
+
+        (b as any)._rangeAnchor    = { record: records[0], col: 0 };
+        (b as any)._rangeFocus     = { record: records[1], col: 1 };
+        (b as any)._contextMenuCell = { record: records[0], col: 0 };
+
+        b.cutContextMenuSelection();
+
+        expect(records[0].get('a')).toBeNull();
+        expect(records[0].get('b')).toBeNull();
+        expect(records[1].get('a')).toBeNull();
+        expect(records[1].get('b')).toBeNull();
+        expect(records[0].get('c')).toBe('3');   // outside the range, untouched
+    });
+
+    it('cutContextMenuSelection is a no-op when no cell was right-clicked, or when the right-clicked record is no longer visible', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+        const otherStore = new MemoryStore(MODEL, [{ a: 'x', b: 'y', c: 'z' }]);
+        await otherStore.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        b.cutContextMenuSelection();
+        expect(store.getAll()[0].get('b')).toBe('2');
+
+        (b as any)._contextMenuCell = { record: otherStore.getAll()[0], col: 0 };
+        expect(() => b.cutContextMenuSelection()).not.toThrow();
+        expect(store.getAll()[0].get('b')).toBe('2');
+    });
+
+    // See copyContextMenuSelection's identical test for why this is needed.
+    it('cutContextMenuSelection restores focus to the body', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const record = store.getAll()[0];
+        (b as any)._contextMenuCell = { record, col: 0 };
+
+        b.cutContextMenuSelection();
+
+        expect((DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'focus')).toHaveLength(1);
+    });
+});
+
+describe('Body range selection — paste', () => {
+    afterEach(() => { vi.restoreAllMocks(); });
+
+    it('pastes a "X\\tY" clipboard at the anchor, writing into that row\'s two columns', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X\tY');
+
+        const b      = new Body(store);
+        b.getElement(true);
+        const record = store.getAll()[0];
+
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 1 };
+
+        await b.pasteAtSelection();
+
+        expect(record.get('b')).toBe('X');
+        expect(record.get('c')).toBe('Y');
+    });
+
+    it('pasting a grid larger than the remaining rows/columns writes only what fits; the rest is silently dropped', async () => {
+        const store = new MemoryStore(MODEL, [
+            { a: '1', b: '2', c: '3' },
+            { a: '4', b: '5', c: '6' },
+        ]);
+        await store.load();
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X\tY\nP\tQ');
+
+        const b       = new Body(store);
+        b.getElement(true);
+        const records = store.getAll();
+
+        // Anchored at the table's last row and last column — a 2x2 clipboard
+        // grid has nowhere to place its second row or second column.
+        (b as any)._rangeAnchor = { record: records[1], col: 2 };
+        (b as any)._rangeFocus  = { record: records[1], col: 2 };
+
+        await b.pasteAtSelection();
+
+        expect(records[1].get('c')).toBe('X');
+        expect(records[1].get('b')).toBe('5');   // untouched — the dropped column
+    });
+
+    it('a read-only cell inside the paste destination keeps its value; sibling writable cells still write', async () => {
+        const model = new Model([
+            { name: 'id', type: 'string', order: 0 },
+            { name: 'ro', type: 'string', order: 1 },
+            { name: 'rw', type: 'string', order: 2 },
+        ], 'id');
+        const store = new MemoryStore(model, [{ id: 'r1', ro: 'locked', rw: 'open' }]);
+        await store.load();
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('NEW1\tNEW2');
+
+        const b = new Body(store);
+        b.setColumnConfigs(new Map([['ro', { field: 'ro', readOnly: true }]]));
+        b.getElement(true);
+        const record = store.getAll()[0];
+
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 1 };
+
+        await b.pasteAtSelection();
+
+        expect(record.get('ro')).toBe('locked');
+        expect(record.get('rw')).toBe('NEW2');
+    });
+
+    it('an empty pasted field ("") writes null to a writable destination cell; a sibling non-empty field still writes', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: 'kept', c: 'kept' }]);
+        await store.load();
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('\tX');
+
+        const b      = new Body(store);
+        b.getElement(true);
+        const record = store.getAll()[0];
+
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 1 };
+
+        await b.pasteAtSelection();
+
+        expect(record.get('b')).toBeNull();
+        expect(record.get('c')).toBe('X');
+    });
+
+    it('a non-numeric string pasted into a number column\'s cell leaves it unchanged; other cells in the paste still write', async () => {
+        const model = new Model([
+            { name: 'id',     type: 'string', order: 0 },
+            { name: 'amount', type: 'number', order: 1 },
+            { name: 'other',  type: 'string', order: 2 },
+        ], 'id');
+        const store = new MemoryStore(model, [{ id: 'r1', amount: 5, other: 'orig' }]);
+        await store.load();
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('abc\tgood');
+
+        const b = new Body(store);
+        b.getElement(true);
+        const record = store.getAll()[0];
+
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 1 };
+
+        await b.pasteAtSelection();
+
+        expect(record.get('amount')).toBe(5);
+        expect(record.get('other')).toBe('good');
+    });
+
+    it('an unparseable date string pasted into a date column\'s cell leaves it unchanged', async () => {
+        const model  = new Model([
+            { name: 'id',  type: 'string', order: 0 },
+            { name: 'due', type: 'date',   order: 1 },
+        ], 'id');
+        const original = new Date(2021, 4, 17);
+        const store  = new MemoryStore(model, [{ id: 'r1', due: original }]);
+        await store.load();
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('not-a-date');
+
+        const b = new Body(store);
+        b.getElement(true);
+        const record = store.getAll()[0];
+
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 1 };
+
+        await b.pasteAtSelection();
+
+        expect(record.get('due')).toEqual(original);
+    });
+
+    it('any non-empty string pasted into a boolean column\'s cell always writes (never skipped)', async () => {
+        const model = new Model([
+            { name: 'id',     type: 'string',  order: 0 },
+            { name: 'active', type: 'boolean', order: 1 },
+        ], 'id');
+        const store = new MemoryStore(model, [{ id: 'r1', active: false }]);
+        await store.load();
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('maybe');
+
+        const b = new Body(store);
+        b.getElement(true);
+        const record = store.getAll()[0];
+
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 1 };
+
+        await b.pasteAtSelection();
+
+        // Field.convertValue's boolean coercion never fails: any string outside
+        // its truthy/falsy lists (e.g. "maybe") falls through to Boolean(raw).
+        expect(record.get('active')).toBe(true);
+    });
+
+    it('pasting into a glyph, custom-renderer, or cellType-dynamic column\'s cell is a no-op for that cell', async () => {
+        const model = new Model([
+            { name: 'id',   type: 'string', order: 0 },
+            { name: 'gly',  type: 'glyph',  order: 1 },
+            { name: 'rend', type: 'string', order: 2 },
+            { name: 'dyn',  type: 'string', order: 3 },
+        ], 'id');
+        const store = new MemoryStore(model, [{ id: 'r1', gly: 'caret-down', rend: 'R', dyn: 'D' }]);
+        await store.load();
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X\tY\tZ');
+
+        const b = new Body(store);
+        b.setColumnConfigs(new Map<string, ColumnConfig>([
+            ['rend', { field: 'rend', renderer: () => new StringRenderer() }],
+            ['dyn',  { field: 'dyn',  cellType: () => null }],
+        ]));
+        b.getElement(true);
+        const record = store.getAll()[0];
+
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 1 };
+
+        await b.pasteAtSelection();
+
+        expect(record.get('gly')).toBe('caret-down');
+        expect(record.get('rend')).toBe('R');
+        expect(record.get('dyn')).toBe('D');
+    });
+
+    it('a destination row that is a separator is skipped without consuming a clipboard row for it', async () => {
+        const store = new MemoryStore(MODEL, [
+            { a: '1',   b: 'orig1', c: '3' },
+            { a: 'SEP', b: '',      c: '' },
+            { a: '4',   b: 'orig2', c: '6' },
+        ]);
+        await store.load();
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X\nY');
+
+        const b = new Body(store);
+        b.setRowSeparator(record => record.get('a') === 'SEP' ? { label: 'SEP', color: null } : null);
+        b.getElement(true);
+        b.renderWindow();
+        const records = store.getAll();
+
+        (b as any)._rangeAnchor = { record: records[0], col: 1 };
+        (b as any)._rangeFocus  = { record: records[0], col: 1 };
+
+        await b.pasteAtSelection();
+
+        expect(records[0].get('b')).toBe('X');
+        expect(records[1].get('b')).toBe('');       // separator, never written
+        expect(records[2].get('b')).toBe('Y');      // second clipboard row, not consumed by the separator
+    });
+
+    it('clipboard null (read denied) and "" (empty) each leave every record unchanged', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+        const record = store.getAll()[0];
+
+        const b = new Body(store);
+        b.getElement(true);
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 1 };
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue(null);
+        await b.pasteAtSelection();
+        expect(record.get('b')).toBe('2');
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('');
+        await b.pasteAtSelection();
+        expect(record.get('b')).toBe('2');
+    });
+
+    it('pasteAtContextMenuSelection resolves its target exactly like copyContextMenuSelection/cutContextMenuSelection', async () => {
+        const store = new MemoryStore(MODEL, [
+            { a: '1', b: '2', c: '3' },
+            { a: '4', b: '5', c: '6' },
+        ]);
+        await store.load();
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X\tY');
+
+        const b       = new Body(store);
+        b.getElement(true);
+        const records = store.getAll();
+
+        (b as any)._rangeAnchor    = { record: records[0], col: 0 };
+        (b as any)._rangeFocus     = { record: records[1], col: 1 };
+        (b as any)._contextMenuCell = { record: records[0], col: 0 };
+
+        await b.pasteAtContextMenuSelection();
+
+        // Writes at the resolved range's own top-left corner (row0, col0).
+        expect(records[0].get('a')).toBe('X');
+        expect(records[0].get('b')).toBe('Y');
+    });
+
+    it('pasteAtContextMenuSelection is a no-op when no cell was right-clicked, or when the right-clicked record is no longer visible', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+        const otherStore = new MemoryStore(MODEL, [{ a: 'x', b: 'y', c: 'z' }]);
+        await otherStore.load();
+        const readSpy = vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        await b.pasteAtContextMenuSelection();
+        expect(readSpy).not.toHaveBeenCalled();
+
+        (b as any)._contextMenuCell = { record: otherStore.getAll()[0], col: 0 };
+        await expect(b.pasteAtContextMenuSelection()).resolves.toBeUndefined();
+        expect(store.getAll()[0].get('b')).toBe('2');
+    });
+
+    // See copyContextMenuSelection's identical test for why this is needed.
+    // Covers a successful paste, an empty clipboard, and a denied read —
+    // the menu-click blur happens regardless of the read's outcome.
+    it('pasteAtContextMenuSelection restores focus to the body, regardless of the clipboard read outcome', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+        const record = store.getAll()[0];
+
+        const b = new Body(store);
+        b.getElement(true);
+        (b as any)._contextMenuCell = { record, col: 0 };
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+        await b.pasteAtContextMenuSelection();
+        expect((DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'focus')).toHaveLength(1);
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('');
+        await b.pasteAtContextMenuSelection();
+        expect((DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'focus')).toHaveLength(2);
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue(null);
+        await b.pasteAtContextMenuSelection();
+        expect((DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'focus')).toHaveLength(3);
+    });
+
+    it('Ctrl+V and Cmd+V both call pasteAtSelection; a bare "v" keypress does not', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const record = store.getAll()[0];
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 1 };
+
+        const spy = vi.spyOn(b, 'pasteAtSelection');
+
+        expect((b as any).onKeyDown(makeEvent(b.getElement()!, 'keydown', { key: 'v', ctrlKey: true })))
+            .toEqual({ prevent: true });
+        expect(spy).toHaveBeenCalledTimes(1);
+
+        (b as any).onKeyDown(makeEvent(b.getElement()!, 'keydown', { key: 'v', metaKey: true }));
+        expect(spy).toHaveBeenCalledTimes(2);
+
+        (b as any).onKeyDown(makeEvent(b.getElement()!, 'keydown', { key: 'v' }));
+        expect(spy).toHaveBeenCalledTimes(2);
+    });
+
+    it('pasting two fields into the same record fires exactly one setMany call, not one per field', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X\tY');
+
+        const b      = new Body(store);
+        b.getElement(true);
+        const record = store.getAll()[0];
+        const setManySpy = vi.spyOn(record, 'setMany');
+
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 1 };
+
+        await b.pasteAtSelection();
+
+        expect(setManySpy).toHaveBeenCalledTimes(1);
+    });
+
+    // Regression: buildCopyText formats a `time` cell through
+    // TableExporter.formatValue only when a real Column is wired via
+    // setColumns (exactly how Table wires it) — every other test in this
+    // block leaves `_columns` empty, which skips that formatting entirely
+    // and never exercises this path.
+    it('cutting then pasting a time cell round-trips the same time (formatValue\'s locale text must still be convertValue-parseable)', async () => {
+        const model = new Model([
+            { name: 'id',      type: 'string', order: 0 },
+            { name: 'meeting', type: 'time',   order: 1 },
+        ], 'id');
+        // :00 seconds: the column has no `showSeconds` config, so its
+        // formatted display text (and thus its round-tripped precision)
+        // is minutes-only, matching TimeRenderer's own default.
+        const sample = new Date(1970, 0, 1, 13, 45, 0);
+        const store  = new MemoryStore(model, [{ id: 'r1', meeting: sample }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.setColumns(Column.resolve(model.getFields()));
+        b.getElement(true);
+        const record = store.getAll()[0];
+
+        (b as any)._rangeAnchor = { record, col: 1 };
+        (b as any)._rangeFocus  = { record, col: 1 };
+
+        b.cutSelectionToClipboard();
+
+        const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
+        const copiedText = writes[0].args[0] as string;
+        expect(record.get('meeting')).toBeNull();
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue(copiedText);
+        await b.pasteAtSelection();
+
+        expect(record.get('meeting')).toEqual(sample);
     });
 });
 

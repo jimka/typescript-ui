@@ -176,6 +176,11 @@ page resets to empty.
   `DateField`, `DateTimeField`, `TimeField`) gains a right-click Cut/Copy/Paste
   menu and public `cut()` / `copy()` / `paste()` methods**, restoring what
   `Body.init`'s native-context-menu suppression removed.
+- **`Table`/`TreeTable` cell ranges gain Cut and Paste**, alongside the
+  existing Copy — via Ctrl/Cmd+X/V and the cell right-click menu.
+  `DateEditor`/`TimeEditor`/`DateTimeEditor` (in-place cell editing) also
+  gain a right-click Cut/Copy/Paste menu, matching `StringEditor`/`NumberEditor`,
+  which already had one through their composed `TextField`.
 
 ### Data
 

@@ -1790,30 +1790,265 @@ class TableBody extends VirtualRowView<Row> {
     }
 
     /**
+     * Reports whether `field` has a real, statically-typed editor per
+     * {@link Row.createCellForField}'s own precedence — the same test that
+     * decides whether Cut may clear it or Paste may write it.
+     *
+     * @param field - The field to test.
+     * @param config - The field's column config, if any.
+     *
+     * @returns `true` when the field has a real, statically-typed editor.
+     */
+    private isFieldClearable(field: Field, config: ColumnConfig | undefined): boolean {
+        if (config?.renderer || config?.cellType) {
+            return false;
+        }
+
+        if (config?.values && config.values.length > 0) {
+            return true;
+        }
+
+        switch (field.getType()) {
+            case 'string':
+            case 'number':
+            case 'boolean':
+            case 'date':
+            case 'time':
+            case 'datetime':
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * The right-click target: the current range when the right-clicked cell
+     * falls inside it, otherwise just that one cell. Shared by the menu's
+     * Copy/Cut/Paste paths.
+     *
+     * @returns The resolved bounds, or `null` when no cell was right-clicked
+     *   or the right-clicked record is no longer visible.
+     */
+    private resolveContextMenuBounds(): CellRangeBounds | null {
+        if (!this._contextMenuCell) {
+            return null;
+        }
+
+        const currentRange = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus);
+
+        // Falls through to `getCellRangeBounds` (rather than a non-null
+        // assertion above) so a `_contextMenuCell` whose record was removed
+        // from the store between the right-click and the menu click —
+        // `getCellRangeBounds` returns null for both branches in that case —
+        // resolves to null instead of throwing.
+        return this.isCellWithinBounds(this._contextMenuCell, currentRange)
+            ? currentRange
+            : this.getCellRangeBounds(this._contextMenuCell, this._contextMenuCell);
+    }
+
+    /**
      * Copies the effective right-click copy target — the current range when
      * the right-clicked cell falls inside it, otherwise just that one cell.
      * The menu "Copy" path. No-op when no cell was right-clicked.
      */
     copyContextMenuSelection(): void {
-        if (!this._contextMenuCell) {
-            return;
-        }
-
-        const currentRange = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus);
-        const bounds        = this.isCellWithinBounds(this._contextMenuCell, currentRange)
-            ? currentRange
-            : this.getCellRangeBounds(this._contextMenuCell, this._contextMenuCell);
-
-        // Falls through here (rather than a non-null assertion above) so a
-        // `_contextMenuCell` whose record was removed from the store between
-        // the right-click and the menu click — `getCellRangeBounds` returns
-        // null for both branches in that case — copies nothing instead of
-        // throwing.
+        const bounds = this.resolveContextMenuBounds();
         if (!bounds) {
             return;
         }
 
         DOM.sink.writeClipboardText(this.buildCopyText(bounds));
+
+        // The menu row that invoked this blurred the body via the browser's
+        // default mousedown-elsewhere behaviour (the same class of problem
+        // PickerColumn.handlePointerDown prevents for a picker cell); restore
+        // it so keyboard navigation still works once the menu closes.
+        this.focus(true);
+    }
+
+    /**
+     * Copies `bounds` (unchanged from Copy's own formatting), then clears
+     * every clearable, non-read-only cell in it to `null`, one `setMany` per
+     * touched row.
+     *
+     * @param bounds - The rectangular range to cut.
+     */
+    private cutRange(bounds: CellRangeBounds): void {
+        DOM.sink.writeClipboardText(this.buildCopyText(bounds));
+
+        const records = this.getVisibleRecords();
+        const fields  = this.computeVisibleFields();
+
+        for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+            const record = records[r];
+            if (this._rowSeparator?.(record)) {
+                continue;
+            }
+
+            const clears: Record<string, null> = {};
+
+            for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                const field  = fields[c];
+                const config = this._columnConfigs.get(field.getName());
+
+                if (this.isFieldClearable(field, config) && !this.isRecordFieldReadOnly(record, field.getName())) {
+                    clears[field.getName()] = null;
+                }
+            }
+
+            if (Object.keys(clears).length > 0) {
+                record.setMany(clears);
+            }
+        }
+
+        // See copyContextMenuSelection's identical comment: restores focus
+        // after the menu row's click blurred the body. Shared by the
+        // keyboard path too, where it's a harmless no-op — the body is
+        // already focused for Ctrl/Cmd+X's keydown to have fired at all.
+        this.focus(true);
+    }
+
+    /**
+     * Reads the clipboard, parses it as TSV, and writes it starting at
+     * `bounds`' top-left corner — see the Architecture Decision on paste
+     * shape.
+     *
+     * @param bounds - The destination range; only its top-left corner (`minRow`/`minCol`) is used.
+     */
+    private async pasteIntoRange(bounds: CellRangeBounds): Promise<void> {
+        const clip = await DOM.source.readClipboardText();
+        if (clip === null || clip === '') {
+            // See copyContextMenuSelection's identical comment: restores
+            // focus after the menu row's click blurred the body, even on a
+            // denied or empty read. Shared by the keyboard path too, where
+            // it's a harmless no-op.
+            this.focus(true);
+
+            return;
+        }
+
+        const parsedRows = TableExporter.parseRectangularTSV(clip);
+        const records    = this.getVisibleRecords();
+        const fields     = this.computeVisibleFields();
+
+        let destRow = bounds.minRow;
+
+        for (const parsedRow of parsedRows) {
+            while (destRow < records.length && this._rowSeparator?.(records[destRow])) {
+                destRow++;
+            }
+
+            if (destRow >= records.length) {
+                break;
+            }
+
+            const record = records[destRow];
+            const values: Record<string, any> = {};
+
+            for (let pc = 0; pc < parsedRow.length; pc++) {
+                const destCol = bounds.minCol + pc;
+                if (destCol >= fields.length) {
+                    break;
+                }
+
+                const field  = fields[destCol];
+                const config = this._columnConfigs.get(field.getName());
+
+                if (!this.isFieldClearable(field, config) || this.isRecordFieldReadOnly(record, field.getName())) {
+                    continue;
+                }
+
+                const raw = parsedRow[pc];
+
+                if (raw === '') {
+                    values[field.getName()] = null;
+                    continue;
+                }
+
+                // A `time` field's copied text is its locale-formatted display
+                // (e.g. "02:30 PM" via TableExporter.formatValue), which carries
+                // no date component — Date's parser can never resolve that alone,
+                // unlike `date`/`datetime`'s locale text, which already round-trips
+                // through a bare `new Date(...)`. Pad it onto the same fixed
+                // reference date TimeEditor's own onInput/onTimeSelected store a
+                // time value against, mirroring DateEditor.onInput's identical
+                // padding for the opposite (date-only) case.
+                const candidate = field.getType() === 'time' ? `1/1/1970 ${raw}` : raw;
+
+                const coerced = field.convertValue(candidate);
+                const failed  = coerced === undefined || (typeof coerced === 'number' && isNaN(coerced));
+
+                if (!failed) {
+                    values[field.getName()] = candidate;
+                }
+            }
+
+            if (Object.keys(values).length > 0) {
+                record.setMany(values);
+            }
+
+            destRow++;
+        }
+
+        // See copyContextMenuSelection's identical comment: restores focus
+        // after the menu row's click blurred the body. Shared by the
+        // keyboard path too, where it's a harmless no-op.
+        this.focus(true);
+    }
+
+    /**
+     * Cuts the current cell-range selection: copies it, then clears every
+     * clearable, non-read-only cell in it. The Ctrl/Cmd+X path. No-op when
+     * nothing is selected.
+     */
+    cutSelectionToClipboard(): void {
+        const bounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus);
+        if (!bounds) {
+            return;
+        }
+
+        this.cutRange(bounds);
+    }
+
+    /**
+     * Reads the clipboard and writes it into the grid starting at the
+     * current selection's top-left corner. The Ctrl/Cmd+V path. No-op when
+     * nothing is selected, or the clipboard is empty/unavailable.
+     */
+    async pasteAtSelection(): Promise<void> {
+        const bounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus);
+        if (!bounds) {
+            return;
+        }
+
+        await this.pasteIntoRange(bounds);
+    }
+
+    /**
+     * The menu's Cut path. Resolves its target exactly like
+     * {@link copyContextMenuSelection}. No-op when no cell was right-clicked.
+     */
+    cutContextMenuSelection(): void {
+        const bounds = this.resolveContextMenuBounds();
+        if (!bounds) {
+            return;
+        }
+
+        this.cutRange(bounds);
+    }
+
+    /**
+     * The menu's Paste path. Resolves its target exactly like
+     * {@link copyContextMenuSelection}; writes at that target's top-left
+     * corner.  No-op when no cell was right-clicked.
+     */
+    async pasteAtContextMenuSelection(): Promise<void> {
+        const bounds = this.resolveContextMenuBounds();
+        if (!bounds) {
+            return;
+        }
+
+        await this.pasteIntoRange(bounds);
     }
 
     /**
@@ -2198,18 +2433,31 @@ class TableBody extends VirtualRowView<Row> {
      *   changed when its own record and column are both unchanged.
      */
     private applyReadOnlyState(row: Row, record: ModelRecord, retargeted?: RetargetedCell[]): void {
-        const rowOverride = this._rowReadOnly?.(record) === true;
-        const entries     = retargeted
+        const entries = retargeted
             ?? row.getComponents().map((cell, i) => ({ cell: cell as Cell<any>, fieldName: row.getFieldNames()[i] }));
 
         for (const { cell, fieldName } of entries) {
-            const config     = this._columnConfigs.get(fieldName);
-            const colStatic  = config?.readOnly === true;
-            const cellPredOk = config?.cellReadOnly?.(record) === true;
-            const union      = colStatic || rowOverride || cellPredOk;
-
-            cell.setReadOnly(union);
+            cell.setReadOnly(this.isRecordFieldReadOnly(record, fieldName));
         }
+    }
+
+    /**
+     * The same read-only union {@link applyReadOnlyState} paints onto pooled
+     * cells, usable for a record/field pair with no live `Cell` — a cut/paste
+     * range can extend beyond the rendered row-pool window, exactly like
+     * {@link buildCopyText} already does.
+     *
+     * @param record - The record to test.
+     * @param fieldName - The field to test.
+     *
+     * @returns `true` when the record/field pair is read-only.
+     */
+    private isRecordFieldReadOnly(record: ModelRecord, fieldName: string): boolean {
+        const config = this._columnConfigs.get(fieldName);
+
+        return config?.readOnly === true
+            || this._rowReadOnly?.(record) === true
+            || config?.cellReadOnly?.(record) === true;
     }
 
     /**
@@ -2473,6 +2721,18 @@ class TableBody extends VirtualRowView<Row> {
             }
 
             this.copySelectionToClipboard();
+
+            return { prevent: true };
+        }
+
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x') {
+            this.cutSelectionToClipboard();
+
+            return { prevent: true };
+        }
+
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+            void this.pasteAtSelection();
 
             return { prevent: true };
         }

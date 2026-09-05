@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { Event } from '~/core/Event';
 import { Container } from '~/core/Container';
+import { Menu } from '~/overlay/Menu';
 import { installTestDOM, makeEvent } from '../../../dom/TestDOM';
 import fontMetrics from '../../../dom/font-metrics.test-font.json';
 import { StringEditor } from '~/component/table/cell/editor/String';
@@ -421,6 +422,174 @@ describe('Cell.onKeyDown commit / cancel contract', () => {
     });
 });
 
+describe('TextInputCellEditor Cut/Copy/Paste', () => {
+    afterEach(() => { vi.restoreAllMocks(); });
+
+    /** Recorded `writeClipboardText` writes, in call order. */
+    function clipboardWrites(): unknown[][] {
+        return (DOM.sink as any).writes
+            .filter((w: { op: string }) => w.op === 'writeClipboardText')
+            .map((w: { args: unknown[] }) => w.args);
+    }
+
+    it('copy() with text selected writes that substring to the clipboard; a collapsed caret writes nothing', () => {
+        const editor = new DateEditor();
+        const el     = editor.getElement(true)!;
+        DOM.sink.setValue(el, '2024-01-01');
+        DOM.sink.setSelectionRange(el, 0, 4);
+
+        editor.copy();
+        expect(clipboardWrites()).toEqual([['2024']]);
+
+        DOM.sink.setSelectionRange(el, 4, 4);
+        editor.copy();
+        expect(clipboardWrites()).toEqual([['2024']]);   // no second write
+    });
+
+    // Offline, a component's "input" listener is armed against the
+    // window-level base listener only for the FIRST such registration in this
+    // whole file (see this file's own header comment on `typeInto`) — by the
+    // point this describe block runs, other editors constructed earlier have
+    // already claimed it, so a real `Event.fireEvent(editor, "input")` (which
+    // cut()/paste() call internally to re-sync the subclass's cached value)
+    // is not delivered here. `onInput()` is called directly afterward, the
+    // same substitute `typeInto` uses, to exercise the resync it would
+    // otherwise drive.
+    it("cut() with text selected writes the substring to the clipboard, removes it from the input, and re-syncs the editor's cached value; a collapsed caret is a no-op", () => {
+        const editor = new DateEditor();
+        const el     = editor.getElement(true)!;
+        DOM.sink.setValue(el, 'X2024-01-01');
+        DOM.sink.setSelectionRange(el, 0, 1);
+
+        editor.cut();
+        (editor as any).onInput();
+
+        expect(clipboardWrites()).toEqual([['X']]);
+        expect(DOM.source.getValue(el)).toBe('2024-01-01');
+        expect(editor.getValue()).toEqual(new Date('2024-01-01T00:00:00'));
+
+        DOM.sink.setSelectionRange(el, 2, 2);
+        editor.cut();
+        expect(clipboardWrites()).toEqual([['X']]);   // no second write
+        expect(DOM.source.getValue(el)).toBe('2024-01-01');
+    });
+
+    it("paste() with the clipboard stubbed inserts at the caret and re-syncs the cached value; a null clipboard resolves false with no change", async () => {
+        const editor = new DateEditor();
+        const el     = editor.getElement(true)!;
+        DOM.sink.setValue(el, '');
+        DOM.sink.setSelectionRange(el, 0, 0);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('2024-01-01');
+
+        const result = await editor.paste();
+        (editor as any).onInput();
+
+        expect(result).toBe(true);
+        expect(DOM.source.getValue(el)).toBe('2024-01-01');
+        expect(editor.getValue()).toEqual(new Date('2024-01-01T00:00:00'));
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue(null);
+        const result2 = await editor.paste();
+
+        expect(result2).toBe(false);
+        expect(DOM.source.getValue(el)).toBe('2024-01-01');   // unchanged
+    });
+
+    // Same offline dispatch limitation as above applies to "contextmenu":
+    // `handleContextMenu` is called directly rather than through a real
+    // dispatched event.
+    it('right-clicking with text selected opens a menu with Cut/Copy/Paste all enabled; a collapsed caret opens Cut/Copy disabled and Paste present/enabled', () => {
+        const editor  = new DateEditor();
+        const el      = editor.getElement(true)!;
+        const showSpy = vi.spyOn(Menu.prototype, 'show');
+
+        DOM.sink.setValue(el, '2024-01-01');
+        DOM.sink.setSelectionRange(el, 0, 4);
+        (editor as any).handleContextMenu({ clientX: 5, clientY: 6 } as MouseEvent);
+
+        expect(showSpy).toHaveBeenCalledTimes(1);
+        expect(showSpy.mock.calls[0][0]).toBe(5);
+        expect(showSpy.mock.calls[0][1]).toBe(6);
+        const selectedItems = showSpy.mock.calls[0][2] as { text?: string; enabled?: boolean }[];
+        expect(selectedItems.map(i => i.text)).toEqual(['Cut', 'Copy', 'Paste']);
+        expect(selectedItems[0].enabled).toBe(true);
+        expect(selectedItems[1].enabled).toBe(true);
+
+        DOM.sink.setSelectionRange(el, 4, 4);
+        (editor as any).handleContextMenu({ clientX: 1, clientY: 1 } as MouseEvent);
+
+        const collapsedItems = showSpy.mock.calls[1][2] as { text?: string; enabled?: boolean }[];
+        expect(collapsedItems.map(i => i.text)).toEqual(['Cut', 'Copy', 'Paste']);
+        expect(collapsedItems[0].enabled).toBe(false);
+        expect(collapsedItems[1].enabled).toBe(false);
+    });
+
+    /** Recorded `focus` writes, in call order. */
+    function focusWrites(): unknown[] {
+        return (DOM.sink as any).writes.filter((w: { op: string }) => w.op === 'focus');
+    }
+
+    // Clicking a context-menu row blurs the editor via the browser's default
+    // mousedown-elsewhere behaviour (the same class of problem
+    // PickerColumn.ts's handlePointerDown prevents for a picker cell, and
+    // TextInput.copy/cut/paste guard against too); each command restores
+    // focus afterward so the editor doesn't appear to have lost it once the
+    // menu closes.
+    it('copy() with a selection restores focus to the editor', () => {
+        const editor = new DateEditor();
+        const el     = editor.getElement(true)!;
+        DOM.sink.setValue(el, '2024-01-01');
+        DOM.sink.setSelectionRange(el, 0, 4);
+
+        editor.copy();
+
+        expect(focusWrites().length).toBe(1);
+    });
+
+    it('cut() with a selection restores focus to the editor', () => {
+        const editor = new DateEditor();
+        const el     = editor.getElement(true)!;
+        DOM.sink.setValue(el, 'X2024-01-01');
+        DOM.sink.setSelectionRange(el, 0, 1);
+
+        editor.cut();
+
+        expect(focusWrites().length).toBe(1);
+    });
+
+    it('paste() with clipboard content restores focus to the editor', async () => {
+        const editor = new DateEditor();
+        const el     = editor.getElement(true)!;
+        DOM.sink.setValue(el, '');
+        DOM.sink.setSelectionRange(el, 0, 0);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('2024-01-01');
+
+        await editor.paste();
+
+        expect(focusWrites().length).toBe(1);
+    });
+
+    it('paste() with an empty clipboard still restores focus to the editor', async () => {
+        const editor = new DateEditor();
+        editor.getElement(true);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('');
+
+        await editor.paste();
+
+        expect(focusWrites().length).toBe(1);
+    });
+
+    it('paste() with a denied read still restores focus to the editor', async () => {
+        const editor = new DateEditor();
+        editor.getElement(true);
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue(null);
+
+        await editor.paste();
+
+        expect(focusWrites().length).toBe(1);
+    });
+});
+
 describe('StringEditor', () => {
     it('a fresh editor caches null', () => {
         expect(new StringEditor().getValue()).toBe(null);
@@ -461,6 +630,24 @@ describe('StringEditor', () => {
         e.setValue('world');
         expect(e.getValue()).toBe('world');
         expect((e as any)._textField.getText()).toBe('world');
+    });
+
+    it('right-clicking the composed _textField opens the same Cut/Copy/Paste menu TextInput builds (no source change to String.ts)', () => {
+        const e = new StringEditor();
+        e.getElement(true);
+        const field   = (e as any)._textField;
+        field.getElement(true);
+        const showSpy = vi.spyOn(Menu.prototype, 'show');
+
+        // Same offline dispatch limitation as TextInputCellEditor's own
+        // describe block above: handleContextMenu is called directly rather
+        // than through a real dispatched event.
+        (field as any).handleContextMenu({ clientX: 1, clientY: 1 } as MouseEvent);
+
+        expect(showSpy).toHaveBeenCalledTimes(1);
+        const items = showSpy.mock.calls[0][2] as { text?: string }[];
+        expect(items.map(i => i.text)).toEqual(['Cut', 'Copy', 'Paste']);
+        showSpy.mockRestore();
     });
 });
 
@@ -512,6 +699,24 @@ describe('NumberEditor parse contract', () => {
         e.setValue(7);
         expect(e.getValue()).toBe(7);
         expect((e as any)._textField.getText()).toBe('7');
+    });
+
+    it('right-clicking the composed _textField opens the same Cut/Copy/Paste menu TextInput builds (no source change to Number.ts)', () => {
+        const e = new NumberEditor();
+        e.getElement(true);
+        const field   = (e as any)._textField;
+        field.getElement(true);
+        const showSpy = vi.spyOn(Menu.prototype, 'show');
+
+        // Same offline dispatch limitation as TextInputCellEditor's own
+        // describe block above: handleContextMenu is called directly rather
+        // than through a real dispatched event.
+        (field as any).handleContextMenu({ clientX: 1, clientY: 1 } as MouseEvent);
+
+        expect(showSpy).toHaveBeenCalledTimes(1);
+        const items = showSpy.mock.calls[0][2] as { text?: string }[];
+        expect(items.map(i => i.text)).toEqual(['Cut', 'Copy', 'Paste']);
+        showSpy.mockRestore();
     });
 });
 

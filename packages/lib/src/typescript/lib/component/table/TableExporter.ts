@@ -187,6 +187,63 @@ export class TableExporter {
     }
 
     /**
+     * Parses tab/newline-delimited clipboard text into a row-major grid of cell
+     * strings — the exact inverse of {@link buildRectangularTSV}, including its
+     * quoting for a field containing a tab, `"`, or newline. `""` parses to `[]`.
+     *
+     * @param text - The clipboard text to parse.
+     * @returns The parsed row-major grid of cell strings.
+     *
+     * @internal
+     */
+    static parseRectangularTSV(text: string): string[][] {
+        if (text === '') {
+            return [];
+        }
+
+        const rows: string[][] = [];
+        let row: string[] = [];
+        let field = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < text.length; i++) {
+            const c = text[i];
+
+            if (inQuotes) {
+                if (c === '"') {
+                    if (text[i + 1] === '"') {
+                        field += '"';
+                        i++;
+                    } else {
+                        inQuotes = false;
+                    }
+                } else {
+                    field += c;
+                }
+            } else if (c === '"' && field === '') {
+                inQuotes = true;
+            } else if (c === '\t') {
+                row.push(field);
+                field = '';
+            } else if (c === '\n') {
+                row.push(field);
+                rows.push(row);
+                row = [];
+                field = '';
+            } else if (c === '\r') {
+                // Dropped: a real spreadsheet paste uses `\r\n` line endings.
+            } else {
+                field += c;
+            }
+        }
+
+        row.push(field);
+        rows.push(row);
+
+        return rows;
+    }
+
+    /**
      * Escapes a single TSV field value.
      *
      * @param value - The already-stringified value to escape.

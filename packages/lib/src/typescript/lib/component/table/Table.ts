@@ -16,6 +16,7 @@ import { Insets } from "~/primitive/Insets.js";
 import { Menu } from "~/overlay/Menu.js";
 import { Dialog, DialogButtons } from "~/overlay/Dialog.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
+import { buildClipboardMenuItems } from "~/component/shared/buildClipboardMenuItems.js";
 import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
 import { TRACK_WIDTH } from "~/component/container/Scrollbar.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -24,7 +25,6 @@ import { undo } from "~/glyphs/solid/undo.js";
 import { file_csv } from "~/glyphs/solid/file_csv.js";
 import { file_code } from "~/glyphs/solid/file_code.js";
 import { file_lines } from "~/glyphs/solid/file_lines.js";
-import { clipboard } from "~/glyphs/solid/clipboard.js";
 import { Column } from "~/component/table/Column.js";
 import type { CellType, ColumnConfig, ComboOption } from "~/component/table/ColumnConfig.js";
 import { ColumnSpec, normalizeComboOptions } from "~/component/table/ColumnConfig.js";
@@ -46,7 +46,7 @@ import { chainRoom, distributeDragChain, DRAG_DISTRIBUTION_EPSILON } from "~/cor
 // Register the column context menu's item glyphs eagerly at module load —
 // same pattern as PaginationBar's nav glyphs — so a consumer never has to
 // pre-register them before the menu can open.
-Glyph.register(table_columns, undo, file_csv, file_code, file_lines, clipboard);
+Glyph.register(table_columns, undo, file_csv, file_code, file_lines);
 
 /** Events emitted by {@link Table}. */
 export type TableEvent = "selection" | "cellclick";
@@ -1762,9 +1762,9 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Displays the body's right-click "Copy" menu over a data cell, reusing
-     * the same rebuild-mode `Menu` instance {@link showColumnMenu} shows over
-     * a header cell — a column-header right-click and a body-cell
+     * Displays the body's right-click Cut/Copy/Paste menu over a data cell,
+     * reusing the same rebuild-mode `Menu` instance {@link showColumnMenu}
+     * shows over a header cell — a column-header right-click and a body-cell
      * right-click never happen at once, and `Menu.show()` fully rebuilds its
      * item list on every call, so there is nothing to reset between uses.
      *
@@ -1772,9 +1772,12 @@ class Table extends Component<TableOptions> {
      * @param y - Viewport y coordinate for the menu.
      */
     private showCellMenu(x: number, y: number): void {
-        this._columnContextMenu.show(x, y, [
-            { text: 'Copy', glyph: 'clipboard', action: () => this._body.copyContextMenuSelection() },
-        ]);
+        this._columnContextMenu.show(x, y, buildClipboardMenuItems({
+            hasSelectedText: true,
+            cut:   () => this._body.cutContextMenuSelection(),
+            copy:  () => this._body.copyContextMenuSelection(),
+            paste: () => void this._body.pasteAtContextMenuSelection(),
+        }));
     }
 
     /**
