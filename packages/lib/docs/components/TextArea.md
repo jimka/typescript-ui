@@ -32,6 +32,9 @@ panel.addComponent(notes);
 | `on("change", fn)` | Inherited from [`AbstractInput`](/api/component/input/classes/AbstractInput); fires on every keystroke with the current text value. |
 | `setEnabled(boolean)` / `setReadOnly(boolean)` | Inherited from [`AbstractInput`](/api/component/input/classes/AbstractInput); writes the native `disabled` / `readonly` attributes on the underlying `<textarea>`. |
 | `setRows(n)` / `setColumns(n)` | DOM-level row / column hints. |
+| `copy()` / `cut()` / `paste()` | Inherited from [`TextInput`](/api/component/input/classes/TextInput). Act on the current selection; `cut()`/`paste()` no-op when the field is disabled or read-only. |
+
+Right-clicking the field opens a Cut/Copy/Paste menu (replacing the browser's own, suppressed elsewhere in the framework); Cut and Paste are omitted while the field is disabled or read-only.
 
 ## See also
 

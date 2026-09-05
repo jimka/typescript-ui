@@ -62,6 +62,7 @@ The typed shorthand stays on screen while typing; it resolves to the absolute da
 ## Notes
 
 - The dropdown stacks a month-view calendar over an hour/minute selector. Updates fire incrementally — every day/hour/minute click fires `input` with the latest aggregate value.
+- Right-clicking the inner text input opens a Cut/Copy/Paste menu; Cut/Paste re-parse the field the same way typing does.
 
 ## See also
 

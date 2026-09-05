@@ -4,7 +4,7 @@
 // reached via an `any` cast confined to this file. getValue/setValue delegate
 // to the inner TextField and round-trip on a bare (unmounted) field. Debounce
 // timing and the dropdown/store paths are out of scope (Non-Goals).
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AutoCompleteField } from '~/component/input/AutoCompleteField';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
@@ -18,9 +18,21 @@ const CONFIG = {
     themeVars:       {},
 };
 
-/** Builds a field in the given match mode and returns its private `matches`. */
+/**
+ * Builds a field in the given match mode and returns its private `matches`.
+ * Disposes the scratch field immediately — `matches` reads only its own
+ * arguments, never `this` state, so disposal is safe, and it releases the
+ * "input" listener `TextInput`'s constructor now registers unconditionally;
+ * an undisposed field here would permanently pin that registration to
+ * whichever DOM was active at collection time (this helper is called
+ * directly inside several `describe` bodies below, not inside an `it`) and
+ * break the "AutoCompleteField paste debounce" describe block further down
+ * this file, which needs a real "input" dispatch to reach the debounce
+ * trigger.
+ */
 function matcherFor(matchMode?: string): (candidate: string, query: string) => boolean {
     const field = new AutoCompleteField(matchMode ? { matchMode: matchMode as any } : undefined);
+    field.dispose();
 
     // matches is the private unit under test; cast to reach it.
     return (candidate: string, query: string): boolean => (field as any).matches(candidate, query);
@@ -93,15 +105,23 @@ describe('AutoCompleteField value delegation', () => {
 
         field.setValue('Cherry');
         expect(field.getValue()).toBe('Cherry');
+
+        // Releases the "input" listener TextInput's constructor now
+        // registers unconditionally — see matcherFor()'s doc comment above
+        // for why an undisposed field here would break a later real-dispatch
+        // test in this file.
+        field.dispose();
     });
 });
 
 describe('AutoCompleteField select event routing', () => {
+    let field: AutoCompleteField | undefined;
+
     beforeEach(() => installTestDOM(CONFIG));
-    afterEach(() => DOM.reset());
+    afterEach(() => { field?.dispose(); field = undefined; DOM.reset(); });
 
     it('fires both on("select") and addSelectListener on a suggestion pick, and off("select") stops only the framework listener', () => {
-        const field = new AutoCompleteField({ suggestions: ['Apple'] });
+        field = new AutoCompleteField({ suggestions: ['Apple'] });
         field.getElement(true);
 
         let viaOn     = 0;
@@ -130,5 +150,47 @@ describe('AutoCompleteField select event routing', () => {
         // addSelectListener (also routed through the bag) still does.
         expect(viaOn).toBe(1);
         expect(viaLegacy).toBe(2);
+    });
+});
+
+// Proves TextInput.paste()'s `Event.fireEvent(this, "input")` re-fire
+// (plans/text-input-context-menu-clipboard.md) reaches AutoCompleteField's
+// own debounce-triggering listener — a smaller-stake instance of the same
+// gap DateField.test.ts's "inner-input clipboard re-fire" block proves for
+// AbstractPickerField, since this field's on("change") bridge would have
+// worked either way (it goes through AbstractInput's "change" event
+// TextInput.notifyChange fires) but the suggestion refresh would not. No
+// source changes to AutoCompleteField.ts back this: the mechanism is
+// inherited, not duplicated. Disposed in `afterEach` (not a manual
+// end-of-test call) so a thrown assertion still releases the "input"
+// listener registration — see TextInput.test.ts's file-level note on why a
+// skipped dispose would silently break a later real-dispatch test.
+describe('AutoCompleteField paste debounce', () => {
+    let field: AutoCompleteField | undefined;
+
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => { field?.dispose(); field = undefined; DOM.reset(); vi.restoreAllMocks(); });
+
+    it('pasting text matching a suggestion into _textField, then advancing the debounce timer, shows that suggestion', async () => {
+        vi.useFakeTimers();
+
+        field = new AutoCompleteField({ suggestions: ['Apple', 'Banana'], debounceMs: 50 });
+        const textField = (field as any)._textField;
+        textField.getElement(true);
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('Apple');
+
+        const dropdown = (field as any)._dropdown;
+        const showSpy = vi.spyOn(dropdown, 'show');
+
+        const result = await textField.paste();
+        expect(result).toBe(true);
+
+        vi.advanceTimersByTime(50);
+
+        expect(showSpy).toHaveBeenCalledTimes(1);
+        expect(showSpy.mock.calls[0][1]).toEqual(['Apple']);
+
+        vi.useRealTimers();
     });
 });

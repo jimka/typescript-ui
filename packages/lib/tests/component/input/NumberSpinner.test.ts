@@ -4,8 +4,19 @@
 // jsdom and exposes its value math without a layout pass, so no TestDOM ritual
 // is needed here — every assertion reads a getter immediately after a
 // construct or setter call.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { NumberSpinner } from '~/component/input/NumberSpinner';
+import { DOM } from '~/core/DOM';
+import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
+import fontMetrics from '../../dom/font-metrics.test-font.json';
+
+const CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
 
 describe('NumberSpinner defaults', () => {
     it('defaults value to 0, step to 1, and bounds to ±Infinity', () => {
@@ -109,5 +120,36 @@ describe('NumberSpinner bound setters', () => {
         ns.setStep(4);
 
         expect(ns.getStep()).toBe(4);
+    });
+});
+
+// Confirms NumberSpinner needs no code of its own for TextInput.cut() —
+// unlike AbstractPickerField/AutoCompleteField, NumberSpinner wires only
+// "blur"/"keydown" on `_input` (NumberSpinner.ts:210-211), never "input", so
+// cut()'s Event.fireEvent(this, "input") re-fire has no listener to reach
+// here; a cut behaves like typing arbitrary uncommitted text already does
+// today. No source changes to NumberSpinner.ts back this.
+describe('NumberSpinner inner-input cut', () => {
+    let sink: RecordingDOMSink;
+    let spinner: NumberSpinner | undefined;
+
+    beforeEach(() => { sink = installTestDOM(CONFIG); });
+    afterEach(() => { spinner?.dispose(); spinner = undefined; DOM.reset(); });
+
+    it('cutting from the inner _input records a clipboard write and changes its displayed text, leaving the committed value unchanged until blur', () => {
+        spinner = new NumberSpinner({ value: 42 });
+        const input = (spinner as any)._input;
+        const el = input.getElement(true)!;
+        const displayed = input.getText();
+
+        DOM.sink.setSelectionRange(el, 0, displayed.length);
+
+        input.cut();
+
+        const writes = sink.writes.filter(w => w.op === 'writeClipboardText');
+        expect(writes.length).toBe(1);
+        expect(writes[0].args[0]).toBe(displayed);
+        expect(input.getText()).toBe('');
+        expect(spinner.getValue()).toBe(42);
     });
 });

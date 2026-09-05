@@ -50,6 +50,7 @@ The typed shorthand stays on screen while typing; it resolves to the absolute ti
 
 - For the absolute format, an omitted `:SS` segment defaults seconds to `0`; typing one sets it explicitly, independent of the `showSeconds` display option. The date portion comes from the local clock at the moment of the most recent input event.
 - The dropdown is intentionally minimal — extend [`TimePickerDropdown`](/api/component/input/classes/TimePickerDropdown) to add 12-hour formatting or seconds.
+- Right-clicking the inner text input opens a Cut/Copy/Paste menu; Cut/Paste re-parse the field the same way typing does.
 
 ## See also
 

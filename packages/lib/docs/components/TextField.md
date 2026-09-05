@@ -34,6 +34,9 @@ panel.addComponent(nameField);
 | `on("binding", fn)` | Subscribe to user-driven changes (used by `Binding`). |
 | `setEnabled(boolean)` / `setReadOnly(boolean)` | Inherited from [`AbstractInput`](/api/component/input/classes/AbstractInput); writes the native `disabled` / `readonly` attributes on the underlying `<input>`. |
 | `select()` | Select all current text. |
+| `copy()` / `cut()` / `paste()` | Inherited from [`TextInput`](/api/component/input/classes/TextInput). Act on the current selection; `cut()`/`paste()` no-op when the field is disabled or read-only. |
+
+Right-clicking the field opens a Cut/Copy/Paste menu (replacing the browser's own, suppressed elsewhere in the framework); Cut and Paste are omitted while the field is disabled or read-only.
 
 ## Binding
 

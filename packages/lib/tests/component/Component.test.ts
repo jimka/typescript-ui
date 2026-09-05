@@ -659,13 +659,17 @@ describe('Component — theme listener teardown', () => {
     it('releases a surface component\'s (TextField) theme subscriptions on destructor', () => {
         const base = ThemeManager._themeListenerCount();
 
-        // +2, not +1: TextInput's default `border` option (TextInput.ts:72)
+        // +3, not +1: TextInput's default `border` option (TextInput.ts:72)
         // dispatches setBorder during construction (Component's applyOptions
         // always-dispatches a class-default border), which folds its own
         // subscription into the bag, on top of TextField's own unconditional
-        // updateHeight subscription.
+        // updateHeight subscription — and TextInput's constructor now also
+        // eagerly builds a `_contextMenu` (Menu) for the right-click
+        // Cut/Copy/Paste menu, whose own rebuild-mode chrome dispatches a
+        // themed `setBorder` (Menu.ts's applyRebuildChrome) with its own
+        // subscription.
         const t = new TextField({});
-        expect(ThemeManager._themeListenerCount()).toBe(base + 2);
+        expect(ThemeManager._themeListenerCount()).toBe(base + 3);
 
         (t as unknown as { destructor(): void }).destructor();
         expect(ThemeManager._themeListenerCount()).toBe(base);

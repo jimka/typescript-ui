@@ -167,6 +167,11 @@ page resets to empty.
   it; `Dialog`'s message body, `Notification`'s toast and detail messages,
   and the `Markdown` viewer all offer it, restoring what `Body.init`'s
   native-context-menu suppression removed.
+- **`TextInput` (and every text field built on it — `TextField`, `TextArea`,
+  `PasswordField`, `UsernameField`, `NumberSpinner`, `AutoCompleteField`,
+  `DateField`, `DateTimeField`, `TimeField`) gains a right-click Cut/Copy/Paste
+  menu and public `cut()` / `copy()` / `paste()` methods**, restoring what
+  `Body.init`'s native-context-menu suppression removed.
 
 ### Data
 
