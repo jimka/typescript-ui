@@ -28,6 +28,7 @@
 import { describe, it, expect } from 'vitest';
 import { Component } from '~/core/Component';
 import { Markdown } from '~/component/display/Markdown';
+import { Image } from '~/component/display/Image';
 import { Video } from '~/component/display/Video';
 import { VideoPlayer } from '~/component/display/VideoPlayer';
 import { Canvas } from '~/component/display/Canvas';
@@ -109,6 +110,7 @@ const REGISTRY: Array<{
     undisposedBaseline?: number;
 }> = [
     { name: 'Markdown',      covers: ['Markdown'], make: () => new Markdown('# A') },
+    { name: 'Image',         covers: ['Image'],    make: () => new Image('/x.png') },
     { name: 'Video',         covers: ['Video'],    make: () => new Video() },
     // VideoPlayer keeps its narrowing for a reason unrelated to the gutters
     // fixed above: its `Border` manager creates none, and its residual two
