@@ -173,7 +173,8 @@ When children of mixed heights share a row (e.g. a `Text` label next to a `TextF
 Each component reports a baseline via `getBaseline()`:
 
 - Text-bearing components (`Text`, `Label`, `Button`, `TextField`, `ComboBox`, `NumberSpinner`, …) return their inner-text baseline (font ascent), measured from the top of the component. `HBox` lines up these baselines.
-- Graphical / replaced components (`ProgressBar`, `Image`, `Slider`, `Checkbox`, the inner radio of `RadioButton`, …) return `null`. `HBox` treats them like CSS `vertical-align: middle`: their **vertical center sits on the row baseline**, so a radio circle or checkbox aligns nicely with the surrounding text rather than sitting on top of the line.
+- Graphical / replaced components (`ProgressBar`, `Slider`, `Checkbox`, the inner radio of `RadioButton`, …) return `null`. `HBox` treats them like CSS `vertical-align: middle`: their **vertical center sits on the row baseline**, so a radio circle or checkbox aligns nicely with the surrounding text rather than sitting on top of the line.
+- `Image` is an exception among graphical components: it reports a real baseline at the bottom edge of its *preferred* size (matching the CSS default baseline for a replaced element), so it generally aligns flush with the row's text baseline rather than centering. If a pinned `preferredSize` is smaller than `Image`'s auto-derived `minSize` floor, the committed size can grow past the reported baseline and the image sits slightly below the line instead.
 
 `HBox` picks the largest reported baseline in the row, augments it with half the tallest null-baseline child (so a tall graphical control like `ProgressSpinner` doesn't push the row off-screen), and offsets each child so the rule above holds. The row's preferred height grows to `ascent + descent` where `ascent` and `descent` each take the larger of the text-baseline contribution and the null-child half-height.
 
