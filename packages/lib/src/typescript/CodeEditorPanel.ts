@@ -109,10 +109,10 @@ class CodeEditorPanel extends Panel {
     private readonly _lowerStatusText: Text;
 
     private readonly handleUpperStatusChange = (): void => {
-        const { line, column } = this._editor.getCursorPosition();
+        const { line, column, offset } = this._editor.getCursorPosition();
 
         this._upperStatusText.setText(
-            `Ln ${line}, Col ${column} · Dirty: ${this._editor.isDirty() ? 'yes' : 'no'}`);
+            `Ln ${line}, Col ${column} · Pos ${offset} · Dirty: ${this._editor.isDirty() ? 'yes' : 'no'}`);
     };
 
     private readonly handleLowerDirtyChange = (dirty: boolean): void => {

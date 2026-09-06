@@ -1542,62 +1542,69 @@ describe('CodeEditor cursor position', () => {
     it('returns the document start before the view is mounted', () => {
         const editor = new CodeEditor();
 
-        expect(editor.getCursorPosition()).toEqual({ line: 1, column: 1 });
+        expect(editor.getCursorPosition()).toEqual({ line: 1, column: 1, offset: 0 });
+    });
+
+    it('exposes offset from the getter for a duck-typed mounted view', () => {
+        const editor = new CodeEditor() as any;
+        editor._view = { state: EditorState.create({ doc: 'ab\ncd', selection: { anchor: 4 } }) };
+
+        expect(editor.getCursorPosition()).toEqual({ line: 2, column: 2, offset: 4 });
     });
 
     it('returns the document start when constructed with content but still unmounted', () => {
         const editor = new CodeEditor('several\nlines\nhere');
 
-        expect(editor.getCursorPosition()).toEqual({ line: 1, column: 1 });
+        expect(editor.getCursorPosition()).toEqual({ line: 1, column: 1, offset: 0 });
     });
 
     it('derives line 1, column 1 for the caret before the first character', () => {
         const editor = new CodeEditor() as any;
         editor._view = { state: EditorState.create({ doc: 'ab\ncd', selection: { anchor: 0 } }) };
 
-        expect(editor.getCursorPosition()).toEqual({ line: 1, column: 1 });
+        expect(editor.getCursorPosition()).toEqual({ line: 1, column: 1, offset: 0 });
     });
 
     it('derives line 1, column 3 for the caret at the end of the first line', () => {
         const editor = new CodeEditor() as any;
         editor._view = { state: EditorState.create({ doc: 'ab\ncd', selection: { anchor: 2 } }) };
 
-        expect(editor.getCursorPosition()).toEqual({ line: 1, column: 3 });
+        expect(editor.getCursorPosition()).toEqual({ line: 1, column: 3, offset: 2 });
     });
 
     it('derives line 2, column 1 for the caret at the start of the second line', () => {
         const editor = new CodeEditor() as any;
         editor._view = { state: EditorState.create({ doc: 'ab\ncd', selection: { anchor: 3 } }) };
 
-        expect(editor.getCursorPosition()).toEqual({ line: 2, column: 1 });
+        expect(editor.getCursorPosition()).toEqual({ line: 2, column: 1, offset: 3 });
     });
 
     it('derives line 2, column 3 for the caret after the last character', () => {
         const editor = new CodeEditor() as any;
         editor._view = { state: EditorState.create({ doc: 'ab\ncd', selection: { anchor: 5 } }) };
 
-        expect(editor.getCursorPosition()).toEqual({ line: 2, column: 3 });
+        expect(editor.getCursorPosition()).toEqual({ line: 2, column: 3, offset: 5 });
     });
 
     it('counts a literal tab as one column regardless of its rendered width', () => {
         const editor = new CodeEditor() as any;
         editor._view = { state: EditorState.create({ doc: '\tx', selection: { anchor: 1 } }) };
 
-        expect(editor.getCursorPosition()).toEqual({ line: 1, column: 2 });
+        expect(editor.getCursorPosition()).toEqual({ line: 1, column: 2, offset: 1 });
     });
 
     it('counts a character outside the Basic Multilingual Plane as two columns', () => {
         const editor = new CodeEditor() as any;
         editor._view = { state: EditorState.create({ doc: '😀x', selection: { anchor: 2 } }) };
 
-        expect(editor.getCursorPosition()).toEqual({ line: 1, column: 3 });
+        expect(editor.getCursorPosition()).toEqual({ line: 1, column: 3, offset: 2 });
     });
 
     it('reports the selection head, not the anchor', () => {
         const editor = new CodeEditor() as any;
         editor._view = { state: EditorState.create({ doc: 'ab\ncd', selection: { anchor: 0, head: 5 } }) };
 
-        expect(editor.getCursorPosition()).toEqual({ line: 2, column: 3 });
+        expect(editor.getCursorPosition()).toEqual({ line: 2, column: 3, offset: 5 });
     });
 
     it('reports the range named by mainIndex, not the first range, with multiple selections', () => {
@@ -1610,7 +1617,7 @@ describe('CodeEditor cursor position', () => {
             }),
         };
 
-        expect(editor.getCursorPosition()).toEqual({ line: 2, column: 2 });
+        expect(editor.getCursorPosition()).toEqual({ line: 2, column: 2, offset: 4 });
     });
 
     it('emits nothing when the caret is still at the seeded document start', () => {
@@ -1630,7 +1637,7 @@ describe('CodeEditor cursor position', () => {
 
         editor.onCursorChange(EditorState.create({ doc: 'ab\ncd', selection: { anchor: 4 } }));
 
-        expect(payloads).toEqual([{ line: 2, column: 2 }]);
+        expect(payloads).toEqual([{ line: 2, column: 2, offset: 4 }]);
     });
 
     it('does not emit again when called twice with the same position', () => {
@@ -1642,7 +1649,7 @@ describe('CodeEditor cursor position', () => {
         editor.onCursorChange(state);
         editor.onCursorChange(state);
 
-        expect(payloads).toEqual([{ line: 2, column: 2 }]);
+        expect(payloads).toEqual([{ line: 2, column: 2, offset: 4 }]);
     });
 
     it('emits once per distinct move across two different positions', () => {
@@ -1653,7 +1660,18 @@ describe('CodeEditor cursor position', () => {
         editor.onCursorChange(EditorState.create({ doc: 'ab\ncd', selection: { anchor: 4 } }));
         editor.onCursorChange(EditorState.create({ doc: 'ab\ncd', selection: { anchor: 1 } }));
 
-        expect(payloads).toEqual([{ line: 2, column: 2 }, { line: 1, column: 2 }]);
+        expect(payloads).toEqual([{ line: 2, column: 2, offset: 4 }, { line: 1, column: 2, offset: 1 }]);
+    });
+
+    it('emits again when offset drifts while line and column hold', () => {
+        const editor = new CodeEditor() as any;
+        const payloads: CodeEditorCursorPosition[] = [];
+        editor.on('cursorchange', (payload: CodeEditorCursorPosition) => payloads.push(payload));
+
+        editor.onCursorChange(EditorState.create({ doc: 'ab\ncd', selection: { anchor: 3 } }));
+        editor.onCursorChange(EditorState.create({ doc: 'xab\ncd', selection: { anchor: 4 } }));
+
+        expect(payloads).toEqual([{ line: 2, column: 1, offset: 3 }, { line: 2, column: 1, offset: 4 }]);
     });
 
     it('on() / off() register and remove a cursorchange listener', () => {
@@ -1662,11 +1680,11 @@ describe('CodeEditor cursor position', () => {
         const listener = (): void => { fired += 1; };
 
         editor.on('cursorchange', listener);
-        (editor as any).emit('cursorchange', { line: 1, column: 1 });
+        (editor as any).emit('cursorchange', { line: 1, column: 1, offset: 0 });
         expect(fired).toBe(1);
 
         editor.off('cursorchange', listener);
-        (editor as any).emit('cursorchange', { line: 2, column: 2 });
+        (editor as any).emit('cursorchange', { line: 2, column: 2, offset: 4 });
         expect(fired).toBe(1);
     });
 
@@ -1675,9 +1693,9 @@ describe('CodeEditor cursor position', () => {
         const editor = new CodeEditor(undefined,
             { listeners: { cursorchange: (payload) => { received = payload; } } });
 
-        (editor as any).emit('cursorchange', { line: 3, column: 4 });
+        (editor as any).emit('cursorchange', { line: 3, column: 4, offset: 30 });
 
-        expect(received).toEqual({ line: 3, column: 4 });
+        expect(received).toEqual({ line: 3, column: 4, offset: 30 });
     });
 });
 
