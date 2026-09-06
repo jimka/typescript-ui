@@ -91,7 +91,8 @@ const longLine = "this line is deliberately long enough that, with Wrap turned o
  * other manual-verify handle for auto-height growth/shrink.
  *
  * A status line below each editor reports that editor's own dirty flag,
- * wired directly to its `onDirtyChange`.
+ * wired directly to its `onDirtyChange`; the upper line also reports that
+ * editor's caret position, wired to its `"cursorchange"` event.
  */
 class CodeEditorPanel extends Panel {
 
@@ -107,8 +108,11 @@ class CodeEditorPanel extends Panel {
     private readonly _upperStatusText: Text;
     private readonly _lowerStatusText: Text;
 
-    private readonly handleUpperDirtyChange = (dirty: boolean): void => {
-        this._upperStatusText.setText(`Dirty: ${dirty ? 'yes' : 'no'}`);
+    private readonly handleUpperStatusChange = (): void => {
+        const { line, column } = this._editor.getCursorPosition();
+
+        this._upperStatusText.setText(
+            `Ln ${line}, Col ${column} · Dirty: ${this._editor.isDirty() ? 'yes' : 'no'}`);
     };
 
     private readonly handleLowerDirtyChange = (dirty: boolean): void => {
@@ -170,8 +174,9 @@ class CodeEditorPanel extends Panel {
 
         this._upperStatusText = new Text('');
         this.addComponent(this._upperStatusText);
-        this._editor.onDirtyChange(this.handleUpperDirtyChange);
-        this.handleUpperDirtyChange(this._editor.isDirty());
+        this._editor.onDirtyChange(this.handleUpperStatusChange);
+        this._editor.on('cursorchange', this.handleUpperStatusChange);
+        this.handleUpperStatusChange();
 
         this.addComponent(new ToolBarSeparator({ orientation: 'horizontal' }));
 

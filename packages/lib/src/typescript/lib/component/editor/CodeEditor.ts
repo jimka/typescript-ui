@@ -48,6 +48,21 @@ export interface CodeEditorHeightChange {
 }
 
 /**
+ * A caret position inside a {@link CodeEditor}'s document — the payload of its
+ * `"cursorchange"` event, and what {@link CodeEditor.getCursorPosition}
+ * returns. Both fields count from 1, so they render directly as
+ * "Ln 12, Col 5".
+ *
+ * @category Components
+ */
+export interface CodeEditorCursorPosition {
+    /** 1-based line number in the document. */
+    line: number;
+    /** 1-based character offset into that line. A literal tab counts as one column. */
+    column: number;
+}
+
+/**
  * The events {@link CodeEditor} exposes through its custom `on` / `off` surface:
  *
  * - `"change"` — the document text changed (payload {@link CodeEditorChange}).
@@ -55,8 +70,10 @@ export interface CodeEditorHeightChange {
  *   (no payload); see {@link CodeEditor.on}.
  * - `"heightchange"` — {@link CodeEditorOptions.autoHeightMaxRows} is set and the
  *   editor's own computed height changed (payload {@link CodeEditorHeightChange}).
+ * - `"cursorchange"` — the primary caret moved to a different line or column
+ *   (payload {@link CodeEditorCursorPosition}).
  */
-type CodeEditorEvent = "change" | "readonlyedit" | "heightchange";
+type CodeEditorEvent = "change" | "readonlyedit" | "heightchange" | "cursorchange";
 
 /**
  * Construction-time options for {@link CodeEditor}.
@@ -119,8 +136,8 @@ export interface CodeEditorOptions extends ComponentOptions {
      * as a squiggly underline but come from the grammar, not the browser.
      */
     spellcheck?: boolean;
-    /** Construction-time listener bag; the events are `"change"`, `"readonlyedit"`, and `"heightchange"`. */
-    listeners?: { change?: (payload: CodeEditorChange) => void; readonlyedit?: () => void; heightchange?: (payload: CodeEditorHeightChange) => void };
+    /** Construction-time listener bag; the events are `"change"`, `"readonlyedit"`, `"heightchange"`, and `"cursorchange"`. */
+    listeners?: { change?: (payload: CodeEditorChange) => void; readonlyedit?: () => void; heightchange?: (payload: CodeEditorHeightChange) => void; cursorchange?: (payload: CodeEditorCursorPosition) => void };
 }
 
 /**
@@ -440,6 +457,15 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * again. Mirrors `ModelRecord._original`.
      */
     private _cleanValue: string;
+
+    /**
+     * The caret position as of the last `"cursorchange"` emit, seeded to the
+     * document start — where a freshly mounted view's caret actually sits, since
+     * `mount()` creates its `EditorState` with no `selection` spec. Compared
+     * against on every update so the event fires once per real move, never per
+     * transaction.
+     */
+    private _lastCursorPosition: CodeEditorCursorPosition = { line: 1, column: 1 };
 
     /**
      * Constructs a code editor.
@@ -944,6 +970,26 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
+     * Returns the primary caret's position: read live from the view when mounted,
+     * else the document start.
+     *
+     * Both fields count from 1, ready to render as "Ln 12, Col 5". `column` is a
+     * character count, so a literal tab counts as one column regardless of
+     * {@link CodeEditorOptions.tabSize}. With a selection active the moving end
+     * (the caret) is reported; with several selection ranges active, only the
+     * primary one is.
+     *
+     * @returns The caret's 1-based line and column.
+     */
+    getCursorPosition(): CodeEditorCursorPosition {
+        if (this._view) {
+            return this.readCursorPosition(this._view.state);
+        }
+
+        return { line: 1, column: 1 };
+    }
+
+    /**
      * Copies the primary selection's text to the system clipboard. No-op
      * before the view is mounted, or when the primary selection is collapsed.
      *
@@ -1188,6 +1234,40 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
+     * Derives the primary caret's 1-based line and column from a CodeMirror state.
+     * `doc.lineAt` already numbers lines from 1; the column is the caret's offset
+     * into its line, plus one.
+     *
+     * @param state - The state to read the selection and document from.
+     * @returns The caret's 1-based line and column.
+     */
+    private readCursorPosition(state: EditorState): CodeEditorCursorPosition {
+        const head = state.selection.main.head;
+        const line = state.doc.lineAt(head);
+
+        return { line: line.number, column: head - line.from + 1 };
+    }
+
+    /**
+     * Emits `"cursorchange"` when the primary caret's line or column differs from
+     * the last position emitted, and does nothing otherwise. Factored out of the
+     * update listener in `mount()` so the offline harness — where no `EditorView`
+     * ever mounts — can drive the same path directly, mirroring `onDocChange`.
+     *
+     * @param state - The state carrying the caret to report.
+     */
+    private onCursorChange(state: EditorState): void {
+        const position = this.readCursorPosition(state);
+
+        if (position.line === this._lastCursorPosition.line && position.column === this._lastCursorPosition.column) {
+            return;
+        }
+
+        this._lastCursorPosition = position;
+        this.emit("cursorchange", position);
+    }
+
+    /**
      * Registers a listener for the `"change"` event, fired whenever the
      * document changes (including via {@link CodeEditor.format} / {@link CodeEditor.setValue}).
      *
@@ -1215,6 +1295,15 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * @returns This component, for method chaining.
      */
     on(event: "heightchange", listener: (payload: CodeEditorHeightChange) => void): this;
+    /**
+     * Registers a listener for the `"cursorchange"` event, fired when the
+     * primary caret moves to a different line or column.
+     *
+     * @param event - Must be `"cursorchange"`.
+     * @param listener - Invoked with the caret's new line and column.
+     * @returns This component, for method chaining.
+     */
+    on(event: "cursorchange", listener: (payload: CodeEditorCursorPosition) => void): this;
     on(event: CodeEditorEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -1245,6 +1334,14 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * @returns This component, for method chaining.
      */
     off(event: "heightchange", listener: (payload: CodeEditorHeightChange) => void): this;
+    /**
+     * Removes a previously registered `"cursorchange"` listener.
+     *
+     * @param event - Must be `"cursorchange"`.
+     * @param listener - The exact callback reference to remove.
+     * @returns This component, for method chaining.
+     */
+    off(event: "cursorchange", listener: (payload: CodeEditorCursorPosition) => void): this;
     off(event: CodeEditorEvent, listener: Function): this {
         this._listeners.remove(event, listener);
 
@@ -1255,12 +1352,13 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * Fans an event out to its registered listeners.
      *
      * @param event - The event name.
-     * @param payload - The event payload (`"change"`/`"heightchange"`; `"readonlyedit"` has none).
+     * @param payload - The event payload (`"change"`/`"heightchange"`/`"cursorchange"`; `"readonlyedit"` has none).
      */
     protected emit(event: "change", payload: CodeEditorChange): void;
     protected emit(event: "readonlyedit"): void;
     protected emit(event: "heightchange", payload: CodeEditorHeightChange): void;
-    protected emit(event: CodeEditorEvent, payload?: CodeEditorChange | CodeEditorHeightChange): void {
+    protected emit(event: "cursorchange", payload: CodeEditorCursorPosition): void;
+    protected emit(event: CodeEditorEvent, payload?: CodeEditorChange | CodeEditorHeightChange | CodeEditorCursorPosition): void {
         this._listeners.fire(event, ...(payload ? [payload] : []));
     }
 
@@ -1449,6 +1547,13 @@ class CodeEditor extends Component<CodeEditorOptions> {
             EditorView.updateListener.of((update) => {
                 if (update.docChanged) {
                     this.onDocChange(update.state.doc.toString());
+                }
+
+                // Both flags are needed: a caret move sets `selectionSet`, while a
+                // document replace (setValue, format) maps the caret through the change
+                // without setting it. `onCursorChange` drops the redundant ones.
+                if (update.selectionSet || update.docChanged) {
+                    this.onCursorChange(update.state);
                 }
 
                 this._foldedLines = this.countFoldedLines(update.state);
