@@ -193,11 +193,33 @@ Tab then moves focus again, and the same shortcut switches back to indenting.
 | `Mod-/` | Toggle line comment |
 | `Alt-A` | Toggle block comment |
 | `Ctrl-Shift-[` / `Ctrl-Shift-]` | Fold / unfold at the cursor |
-| `Ctrl-F` (`Cmd-F` on macOS) | Open the search panel |
-| `Escape` | Close the search panel |
+| `Ctrl-F` (`Cmd-F` on macOS) | Open the floating search panel |
+| `Escape` | Close the floating search panel |
+| `Enter` (find field) | Find the next match |
+| `Shift-Enter` (find field) | Find the previous match |
+| `Enter` (replace field) | Replace the current match |
 | `Ctrl-Space` | Open completions explicitly |
 | `{` / `(` / `[` (typed) | Insert the matching closing bracket, caret between |
 | `Backspace` (over a bracket pair) | Delete both brackets |
+
+## Search and replace
+
+`Ctrl-F` (`Cmd-F` on macOS) opens a rounded, shadowed card pinned to the editor's upper-right corner, overlaying the document instead of docking a strip that reserves space for it. Every match in the document stays tinted while the card is open, with the current match tinted more strongly. `Escape` — in the document or in either of the card's fields — closes it and returns focus to the document.
+
+The card has nine controls, each a glyph-only button whose hover tooltip names its action:
+
+| Control | Behaviour |
+| --- | --- |
+| Match case | Toggles case-sensitive matching |
+| Whole word | Toggles whole-word matching |
+| Regular expression | Reads the find field as a regular expression |
+| Find previous / Find next | Moves the selection to the previous / next match, wrapping at the document ends |
+| Select all matches | Creates one selection range per match |
+| Replace | Replaces the current match and advances |
+| Replace all | Replaces every match in one undo step |
+| Close | Closes the card |
+
+Replace and Replace all are inert while the editor is `readOnly: true`.
 
 ## Right-click menu
 
@@ -230,7 +252,7 @@ Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / P
 
 ## Theming
 
-The editor's chrome (background, gutters, cursor, selection) reads the project's CSS custom-property tokens directly, so a [`ThemeManager.setTheme`](/api/core/classes/ThemeManager) toggle recolours it immediately with no rebuild. The search panel, the completion tooltip, the fold gutter and the lint markers/tooltip are themed from the same tokens. Syntax colours come from a fixed, IDE-conventional palette (there is no per-token-kind theme token in the framework).
+The editor's chrome (background, gutters, cursor, selection) reads the project's CSS custom-property tokens directly, so a [`ThemeManager.setTheme`](/api/core/classes/ThemeManager) toggle recolours it immediately with no rebuild. The floating search panel is built from ordinary framework components, so it follows the same tokens automatically, with no theming code of its own; the match highlighting it drives, the completion tooltip, the fold gutter, and the lint markers/tooltip are themed here from the same tokens. Syntax colours come from a fixed, IDE-conventional palette (there is no per-token-kind theme token in the framework).
 
 ## Linting
 

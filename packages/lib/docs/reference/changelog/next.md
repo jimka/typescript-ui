@@ -76,6 +76,15 @@ page resets to empty.
   width matching what the live editor already renders without requiring
   every caller to pass `tabSize` into every `format()` call by hand. No
   consumer action is needed.
+- **`CodeEditor`'s search panel is now a framework-built floating card**,
+  pinned to the editor's upper-right corner and overlaying the document,
+  instead of CodeMirror's own panel docking a strip that pushed the
+  document down. `Ctrl-F` (`Cmd-F` on macOS) and `Escape` still open and
+  close it, and every match still tints while it's open; its nine controls
+  (match case, whole word, regular expression, find previous/next, select
+  all, close, replace, replace all) are now glyph-only `Button`/
+  `ToggleButton` controls with hover tooltips rather than CodeMirror's own
+  inline form. No consumer action is needed.
 
 ### Menu
 
