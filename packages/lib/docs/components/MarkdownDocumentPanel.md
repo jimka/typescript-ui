@@ -29,7 +29,9 @@ The toolbar groups its buttons the same way `MarkdownEditor`'s own right-click c
 | Columns | Dropdown: 2/3/4 columns, None |
 | Edit Markdown source | Toggle pinned to the toolbar's far right, switching `getEditor()`'s mode |
 
-Every entry calls straight through to the matching method on the owned `MarkdownEditor` — see [MarkdownEditor › Command API](/components/MarkdownEditor#command-api) for what each one does, including which commands no-op (without throwing) outside a table cell. The Table dropdown is always enabled: it never inspects the caret's live position the way a right-click classification does, so its entries are simply no-ops when the caret isn't where the command needs it to be.
+Every entry calls straight through to the matching method on the owned `MarkdownEditor` — see [MarkdownEditor › Command API](/components/MarkdownEditor#command-api) for what each one does, including which commands no-op (without throwing) outside a table cell. The Insert, Text style, Alignment, and Columns dropdowns stay always-enabled and no-op-safe: an entry is simply a no-op when the caret isn't where the command needs it to be.
+
+The toolbar itself is live, reflecting [MarkdownEditor › Live selection state](/components/MarkdownEditor#live-selection-state): the five format buttons are `ToggleButton`s that press and release as the caret's bold/italic/underline/strikethrough/code state changes; the Table button is disabled (via `Button.setEnabled`) except while the caret is inside a table, since every one of its entries would otherwise no-op; and the Alignment, Columns, and Table dropdowns show a checkmark on whichever value currently applies (an alignment/column-count/column-alignment fully outside their tracked range — e.g. a column count above 4 — leaves every entry unchecked).
 
 ## Delegated methods and events
 

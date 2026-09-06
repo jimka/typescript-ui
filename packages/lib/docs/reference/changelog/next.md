@@ -231,6 +231,11 @@ page resets to empty.
   context, and block alignment/column count at the current selection. The
   event does not fire for the editor's initial position; seed a listener
   with the getter. No consumer action is needed.
+- **`MarkdownDocumentPanel`'s toolbar is now live**: the five format
+  buttons are `ToggleButton`s whose pressed state tracks the current
+  selection; the Table button is disabled except while the caret is
+  inside a table; and the Alignment, Columns, and Table dropdowns show a
+  checkmark on the current value. No consumer action is needed.
 
 ### Data
 
