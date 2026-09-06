@@ -11,3 +11,6 @@ export { collectSyntaxErrors } from '~/component/editor/syntaxDiagnostics.js';
 
 export { MarkdownEditor } from '~/component/editor/MarkdownEditor.js';
 export type { MarkdownEditorOptions, MarkdownEditorChange, MarkdownBlockType, MarkdownEditorMode, MarkdownBlockAlignment, MarkdownTableAlignment } from '~/component/editor/MarkdownEditor.js';
+
+export { MarkdownDocumentPanel } from '~/component/editor/MarkdownDocumentPanel.js';
+export type { MarkdownDocumentPanelOptions } from '~/component/editor/MarkdownDocumentPanel.js';
