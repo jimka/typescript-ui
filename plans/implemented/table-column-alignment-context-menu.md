@@ -450,6 +450,13 @@ Unit-testable headlessly. The offline harness runs the whole Lexical state path 
 
 ---
 
+## Implementation Notes
+
+- **One additional doc sentence, beyond Ordered Implementation Steps §17.** The dialect-summary paragraph near the top of `MarkdownEditor.md` stated that column alignment "is preserved... but is not authorable in the WYSIWYG surface — there is no command to change it; switch to source mode and edit the delimiter row directly." That claim is exactly what this plan makes false, but it sits outside the three locations §17 named (the Command API table, the no-op sentence, and the "Right-click context menu" bullet). Left alone it would ship a doc page contradicting the feature it describes, so it was updated in the same documentation commit to state that alignment is now authorable via the Align column submenu or `setTableColumnAlignment()`.
+- `npm run docs:api` reports its pre-existing 10 warnings (`FieldDecorator`/`MarkdownViewer`/`$selectEnclosingWordIfCollapsed`/`$classifyContextMenuTarget` external-link resolutions) unchanged on both the base commit and this branch — none reference anything this plan added, so the "zero warnings" verification bullet is read as "zero *new* warnings."
+
+---
+
 ## Notes
 
 [^column-wide]: Three consumers read the alignment, and they disagree about which cells they look at, so only a column-wide write keeps all three consistent. The exported Markdown is built from the **header row's** cells alone (`headerCells.map((cell) => cell.getFormatType())`, [markdownTableTransformer.ts:256](packages/lib/src/typescript/lib/component/editor/markdownTableTransformer.ts#L256)). The read-only viewer applies the delimiter row's marker to **every** cell of the column, header and body alike ([Markdown.ts:1658-1659](packages/lib/src/typescript/lib/component/display/Markdown.ts#L1658-L1659)). The WYSIWYG surface renders **each cell's own** format: Lexical's reconciler writes `element.style.textAlign` per element whenever an `ElementNode`'s format is non-zero, on both the create path and the update path. Writing only the clicked cell would therefore produce three different results at once — a correct delimiter row but a half-aligned editor if the clicked cell happened to be in the header, or a correctly-painted single cell and an unchanged delimiter row if it was not. The import path already resolves this the same way: its loop calls `cell.setFormat(alignments[column] ?? "")` for every row's cell, not just the header's ([markdownTableTransformer.ts:206-221](packages/lib/src/typescript/lib/component/editor/markdownTableTransformer.ts#L206-L221)). Keeping the whole column in sync is therefore the rule the document is already built to satisfy, not a new one this feature invents.

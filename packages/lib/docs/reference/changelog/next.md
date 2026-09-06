@@ -189,6 +189,12 @@ page resets to empty.
   `listeners` bag alongside `change` / `readonlyedit` / `heightchange`. The
   payload type `CodeEditorCursorPosition` is newly exported from
   `component/editor`. No consumer action is needed.
+- **`MarkdownEditor` gains a table-cell right-click "Align column" submenu**
+  (Left, Center, Right, None — the four alignments a GFM delimiter row can
+  express) and a matching `setTableColumnAlignment(alignment)` command,
+  along with the exported `MarkdownTableAlignment` type. Alignment is a
+  whole-column property, so choosing one re-aligns every cell of the
+  caret's column, header included.
 
 ### Data
 
@@ -352,3 +358,7 @@ page resets to empty.
   framework's eased wheel scroller no longer claims a wheel over one of
   CodeMirror's own tooltips when that tooltip can scroll itself. No
   consumer action is needed.
+- `MarkdownEditor`'s table header cells now read left-aligned when
+  unaligned, matching the read-only `Markdown` viewer's own header cells —
+  previously they kept the browser's centred `<th>` default. No consumer
+  action is needed.

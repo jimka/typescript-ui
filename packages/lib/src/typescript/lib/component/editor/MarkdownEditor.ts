@@ -22,7 +22,7 @@ import {
     IS_ALL_FORMATTING, $isTextNode, TEXT_TYPE_TO_FORMAT,
     $getNearestNodeFromDOMNode, isDOMNode, $findMatchingParent, $isElementNode, $isParagraphNode,
 } from "lexical";
-import type { LexicalEditor, ElementNode, LexicalNode, TextFormatType, TextNode } from "lexical";
+import type { LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode } from "lexical";
 import { $convertFromMarkdownString, $convertToMarkdownString, registerMarkdownShortcuts } from "@lexical/markdown";
 import { registerRichText, $createHeadingNode, $createQuoteNode, QuoteNode, $isQuoteNode } from "@lexical/rich-text";
 import type { HeadingTagType } from "@lexical/rich-text";
@@ -34,8 +34,8 @@ import type { LinkNode } from "@lexical/link";
 import { CodeNode, $createCodeNode, $isCodeNode } from "@lexical/code";
 import { registerHistory, createEmptyHistoryState } from "@lexical/history";
 import {
-    TableNode, registerTablePlugin, registerTableSelectionObserver,
-    $getTableCellNodeFromLexicalNode, $getTableNodeFromLexicalNodeOrThrow,
+    TableNode, TableCellNode, registerTablePlugin, registerTableSelectionObserver,
+    $getTableCellNodeFromLexicalNode, $getTableNodeFromLexicalNodeOrThrow, $computeTableMap,
     $insertTableRowAtSelection, $deleteTableRowAtSelection,
     $insertTableColumnAtSelection, $deleteTableColumnAtSelection,
     $getTableColumnIndexFromTableCellNode, $isTableCellNode, $isTableRowNode,
@@ -107,6 +107,14 @@ export type MarkdownBlockType = "paragraph" | "h1" | "h2" | "h3" | "h4" | "h5" |
 export type MarkdownBlockAlignment = "left" | "center" | "right" | "justify";
 
 /**
+ * A GFM table column's alignment: the three markers a delimiter row can carry,
+ * plus `"none"` for a column with no marker.
+ *
+ * @category Components
+ */
+export type MarkdownTableAlignment = "left" | "center" | "right" | "none";
+
+/**
  * Construction-time options for {@link MarkdownEditor}.
  *
  * @category Components
@@ -149,21 +157,29 @@ function createBlockNode(type: MarkdownBlockType): ElementNode {
 }
 
 /**
+ * Finds the table cell containing the caret, if any.
+ *
+ * @returns The enclosing {@link TableCellNode}, or `null` when the selection
+ *   is not a range selection anchored inside a table cell.
+ */
+function $getEnclosingTableCellNode(): TableCellNode | null {
+    const selection = $getSelection();
+
+    return $isRangeSelection(selection)
+        ? $getTableCellNodeFromLexicalNode(selection.anchor.getNode())
+        : null;
+}
+
+/**
  * Finds the table containing the current selection, if any.
  *
  * @returns The enclosing {@link TableNode}, or `null` when the selection is
  *   not a range selection anchored inside a table cell.
  */
 function $getEnclosingTableNode(): TableNode | null {
-    const selection = $getSelection();
+    const cell = $getEnclosingTableCellNode();
 
-    if (!$isRangeSelection(selection)) {
-        return null;
-    }
-
-    const tableCell = $getTableCellNodeFromLexicalNode(selection.anchor.getNode());
-
-    return tableCell === null ? null : $getTableNodeFromLexicalNodeOrThrow(tableCell);
+    return cell === null ? null : $getTableNodeFromLexicalNodeOrThrow(cell);
 }
 
 /**
@@ -195,6 +211,44 @@ function $getTableColumnCount(table: TableNode): number {
     return headerRow.getChildren()
         .filter($isTableCellNode)
         .reduce((sum, cell) => sum + cell.getColSpan(), 0);
+}
+
+/**
+ * Reads a table cell's alignment as the GFM-expressible subset.
+ *
+ * @param cell - The cell to read.
+ * @returns The cell's alignment; `"none"` for any format GFM cannot express.
+ */
+function $tableCellAlignment(cell: TableCellNode): MarkdownTableAlignment {
+    switch (cell.getFormatType()) {
+        case "left":   return "left";
+        case "center": return "center";
+        case "right":  return "right";
+        default:       return "none";
+    }
+}
+
+/**
+ * Sets `alignment` on every cell of the column holding the caret — the whole
+ * column, because a GFM delimiter row carries one marker per column, not per
+ * cell. No-op when the caret is not inside a table cell.
+ *
+ * @param alignment - The alignment to apply to the column.
+ */
+function $setEnclosingColumnAlignment(alignment: MarkdownTableAlignment): void {
+    const cell = $getEnclosingTableCellNode();
+
+    if (cell === null) {
+        return;
+    }
+
+    const table = $getTableNodeFromLexicalNodeOrThrow(cell);
+    const [tableMap, cellValue] = $computeTableMap(table, cell, cell);
+    const format: ElementFormatType = alignment === "none" ? "" : alignment;
+
+    for (const row of tableMap) {
+        row[cellValue.startColumn]?.cell.setFormat(format);
+    }
 }
 
 /**
@@ -475,6 +529,7 @@ export type ContextMenuTarget =
           bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean;
           hasEnclosingBlock?: boolean;
           linkUrl?: string | null;
+          columnAlignment?: MarkdownTableAlignment;
       }
     | { kind: "empty-line"; hasSelectedText: boolean }
     | {
@@ -631,10 +686,13 @@ export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget
         || ($isRangeSelection(selection) && selection.getTextContent() !== "");
     const linkUrl = $findEnclosingLinkNode(node)?.getURL() ?? null;
 
-    if ($getTableCellNodeFromLexicalNode(node) !== null) {
-        const hasEnclosingBlock = $findEnclosingInsertableBlock(node) !== null;
+    const tableCell = $getTableCellNodeFromLexicalNode(node);
 
-        return { kind: "table-cell", hasSelectedText, hasEnclosingBlock, linkUrl, ...formatState };
+    if (tableCell !== null) {
+        const hasEnclosingBlock = $findEnclosingInsertableBlock(node) !== null;
+        const columnAlignment   = $tableCellAlignment(tableCell);
+
+        return { kind: "table-cell", hasSelectedText, hasEnclosingBlock, linkUrl, columnAlignment, ...formatState };
     }
 
     const block = $findMatchingParent(node, (n) => $isElementNode(n) && !n.isInline());
@@ -856,7 +914,7 @@ class WysiwygSurface extends Component {
  * `insertParagraphBeforeBlock`/`insertParagraphAfterBlock`,
  * `insertTableRow`/`deleteTableRow`, `insertTableColumn`/`deleteTableColumn`,
  * `deleteTable`, `mergeTableCells`, `unmergeTableCell`, `setTableColumnWidth`,
- * `setBlockAlignment`, `setColumnCount`, `insertImage`,
+ * `setTableColumnAlignment`, `setBlockAlignment`, `setColumnCount`, `insertImage`,
  * `cut`/`copy`/`paste`, …) a consumer can wire to their own `Button`s, and a
  * self-wired right-click context menu on the WYSIWYG surface whose contents
  * depend on what was clicked (a word/selection, an empty line, or a table
@@ -1824,6 +1882,24 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Sets the alignment of the column holding the caret, on every cell in
+     * that column. No-op without throwing when the caret is not inside a
+     * table cell.
+     *
+     * @param alignment - The alignment to apply to the column.
+     * @returns This component, for method chaining.
+     */
+    setTableColumnAlignment(alignment: MarkdownTableAlignment): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            $setEnclosingColumnAlignment(alignment);
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
      * Deletes the entire table containing the caret, including every row and
      * cell. No-op without throwing when the caret is not inside a table cell.
      *
@@ -2523,6 +2599,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             { text: "Merge cells", action: () => this.mergeTableCells() },
             { text: "Unmerge cell", action: () => this.unmergeTableCell() },
             { text: "Column width…", action: () => void this.promptAndSetColumnWidth() },
+            {
+                text:    "Align column",
+                submenu: {
+                    label: "Align column",
+                    items: this.buildColumnAlignmentItems(context.columnAlignment ?? "none"),
+                },
+            },
         ];
 
         if (context.hasEnclosingBlock) {
@@ -2546,6 +2629,23 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         return ([1, 2, 3, 4, 5, 6] as const).map((level) => ({
             text:   `Heading ${level}`,
             action: () => this.setBlockType(`h${level}` as MarkdownBlockType),
+        }));
+    }
+
+    /**
+     * Builds the four mutually-exclusive alignment items of the table-cell menu's
+     * "Align column" submenu. Exactly one carries `checked: true`.
+     *
+     * @param current - The clicked column's current alignment.
+     * @returns The four `MenuItemConfig` entries: Left, Center, Right, None.
+     */
+    private buildColumnAlignmentItems(current: MarkdownTableAlignment): MenuItemConfig[] {
+        return ([
+            ["Left", "left"], ["Center", "center"], ["Right", "right"], ["None", "none"],
+        ] as const).map(([text, alignment]) => ({
+            text,
+            checked: current === alignment,
+            action:  () => { this.setTableColumnAlignment(alignment); },
         }));
     }
 

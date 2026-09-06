@@ -134,6 +134,23 @@ function attrsOf(sink: RecordingDOMSink, handle: unknown): Record<string, string
     return attrs;
 }
 
+/**
+ * The class-rule style writes `ensureMarkdownEditorClassRules` makes. The
+ * registrar is a module singleton guarded by `_classRulesEnsured`, so only
+ * the first caller in this file records anything — this memo captures that
+ * one run so several tests can assert against it.
+ */
+let _editorClassRuleWrites: ReturnType<typeof ruleStyleWrites> | null = null;
+
+function editorClassRuleWrites(): ReturnType<typeof ruleStyleWrites> {
+    if (_editorClassRuleWrites === null) {
+        ensureMarkdownEditorClassRules();
+        _editorClassRuleWrites = ruleStyleWrites(DOM.sink as RecordingDOMSink);
+    }
+
+    return _editorClassRuleWrites;
+}
+
 /** Places a collapsed range selection at the start of the document, so a block command has a selection to act on. */
 function selectStart(editor: MarkdownEditor): void {
     lexicalOf(editor).update(() => { $getRoot().selectStart(); }, { discrete: true });
@@ -233,17 +250,23 @@ describe('MarkdownEditor WYSIWYG surface line-height', () => {
     });
 
     it('resets fenced- and inline-code lineHeight to normal, matching the read-only Markdown viewer\'s own reset (Markdown.ts:163,183)', () => {
-        // Calls the class-rule registrar directly rather than mounting the
+        // Uses the editorClassRuleWrites() memo rather than mounting the
         // WYSIWYG surface: `ensureMarkdownEditorClassRules` only runs from
         // `WysiwygSurface.mount`, gated on the surface's first *layout* pass
         // (`onFirstLayout`), which `getElement(true)` alone does not drive
         // in this offline harness.
-        ensureMarkdownEditorClassRules();
-
-        const rows = ruleStyleWrites(DOM.sink as RecordingDOMSink).filter((w) => w.key === 'lineHeight');
+        const rows = editorClassRuleWrites().filter((w) => w.key === 'lineHeight');
 
         expect(rows.some((w) => w.selector.includes('ts-ui-mde-code') && w.value === 'normal')).toBe(true);
         expect(rows.some((w) => w.selector.includes('ts-ui-mde-inline-code') && w.value === 'normal')).toBe(true);
+    });
+});
+
+describe('MarkdownEditor WYSIWYG surface table-header alignment parity', () => {
+    it('writes textAlign: "left" on the table-cell-header rule, matching the read-only viewer\'s ts-ui-md-th rule', () => {
+        const rows = editorClassRuleWrites().filter((w) => w.key === 'textAlign');
+
+        expect(rows.some((w) => w.selector.includes('ts-ui-mde-table-cell-header') && w.value === 'left')).toBe(true);
     });
 });
 
@@ -1299,7 +1322,7 @@ describe('MarkdownEditor table commands', () => {
         expect(() => editor.deleteTable()).not.toThrow();
     });
 
-    it('all five commands chain on a fresh editor with no prior selection and no table, without throwing', () => {
+    it('all six commands chain on a fresh editor with no prior selection and no table, without throwing', () => {
         const editor = new MarkdownEditor();
 
         expect(() =>
@@ -1309,6 +1332,7 @@ describe('MarkdownEditor table commands', () => {
                 .deleteTableRow()
                 .insertTableColumn()
                 .deleteTableColumn()
+                .setTableColumnAlignment('center')
         ).not.toThrow();
     });
 
@@ -1584,6 +1608,130 @@ describe('MarkdownEditor insertImage', () => {
     });
 });
 
+describe('MarkdownEditor setTableColumnAlignment', () => {
+    /** The exported delimiter-row line — the second line of a normalized value. */
+    function delimiterRow(editor: MarkdownEditor): string {
+        return normalize(editor.getValue()).split('\n')[1];
+    }
+
+    /** Every cell's `getFormatType()`, by row, for the (single) table in `editor`'s document. */
+    function cellFormats(editor: MarkdownEditor): string[][] {
+        return lexicalOf(editor).read(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+
+            return table.getChildren().map((row) =>
+                (row as TableRowNode).getChildren().map((cell) => (cell as TableCellNode).getFormatType()));
+        });
+    }
+
+    it('sets only the caret\'s column, leaving the other column untouched', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+        selectStart(editor);   // caret lands in the first header cell
+
+        editor.setTableColumnAlignment('center');
+
+        expect(normalize(editor.getValue())).toBe('| a | b |\n| :---: | --- |\n| 1 | 2 |');
+    });
+
+    it('formats every cell of the column, header and body alike, and no cell of the other column', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+        selectStart(editor);
+
+        editor.setTableColumnAlignment('center');
+
+        const formats = cellFormats(editor);
+
+        expect(formats.map((row) => row[0])).toEqual(['center', 'center']);
+        expect(formats.map((row) => row[1])).toEqual(['', '']);
+    });
+
+    it('produces the delimiter segment matching each of the four choices', () => {
+        for (const [alignment, segment] of [
+            ['left', ':---'], ['center', ':---:'], ['right', '---:'], ['none', '---'],
+        ] as const) {
+            const editor = new MarkdownEditor();
+            editor.setValue('| a |\n| --- |\n| 1 |');
+            selectStart(editor);
+
+            editor.setTableColumnAlignment(alignment);
+
+            expect(delimiterRow(editor)).toBe(`| ${segment} |`);
+        }
+    });
+
+    it('"none" clears an imported alignment back to "---", clearing the format on every cell', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a |\n| :---: |\n| 1 |');
+        selectStart(editor);
+
+        editor.setTableColumnAlignment('none');
+
+        expect(delimiterRow(editor)).toBe('| --- |');
+        expect(cellFormats(editor).map((row) => row[0])).toEqual(['', '']);
+    });
+
+    it('re-importing the exported value after aligning reproduces the same value (fixpoint)', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+        selectStart(editor);
+
+        editor.setTableColumnAlignment('right');
+        const exported = normalize(editor.getValue());
+
+        expect(normalize(new MarkdownEditor(exported).getValue())).toBe(exported);
+    });
+
+    it('no-throws and changes nothing when the caret is not inside a table cell', () => {
+        const noTable = new MarkdownEditor();
+        expect(() => noTable.setTableColumnAlignment('center')).not.toThrow();
+
+        const prose = new MarkdownEditor();
+        prose.setValue('hello world');
+        selectStart(prose);
+        const before = prose.getValue();
+
+        prose.setTableColumnAlignment('center');
+        expect(prose.getValue()).toBe(before);
+    });
+
+    it('fires "change" once and sets isDirty() true when the call actually changes an alignment', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a |\n| --- |\n| 1 |');
+        editor.markClean();
+        selectStart(editor);
+
+        let fired = 0;
+        editor.on('change', () => { fired += 1; });
+
+        editor.setTableColumnAlignment('center');
+
+        expect(fired).toBe(1);
+        expect(editor.isDirty()).toBe(true);
+    });
+
+    it('survives insertTableRow: the added row does not reset the column\'s exported alignment', () => {
+        const editor = new MarkdownEditor();
+        editor.insertTable(2, 2);   // caret lands in the first header cell
+        editor.setTableColumnAlignment('center');
+
+        editor.insertTableRow();
+
+        expect(delimiterRow(editor)).toBe('| :---: | --- |');
+    });
+
+    it('a column added by insertTableColumn starts unaligned, leaving the existing column\'s marker untouched', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a |\n| :---: |\n| 1 |');
+        selectStart(editor);
+
+        editor.insertTableColumn();
+
+        expect(delimiterRow(editor)).toBe('| :---: | --- |');
+    });
+});
+
 describe('$classifyContextMenuTarget', () => {
     it('classifies a text node inside ordinary prose as "text" with every format false', () => {
         const editor = new MarkdownEditor();
@@ -1754,7 +1902,7 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
-            underline: false, hasEnclosingBlock: true, linkUrl: null,
+            underline: false, hasEnclosingBlock: true, linkUrl: null, columnAlignment: 'none',
         });
     });
 
@@ -1771,7 +1919,7 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
-            underline: false, hasEnclosingBlock: true, linkUrl: null,
+            underline: false, hasEnclosingBlock: true, linkUrl: null, columnAlignment: 'none',
         });
     });
 
@@ -1793,8 +1941,32 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: true, bold: true, italic: false, strikethrough: false, code: false,
-            underline: false, hasEnclosingBlock: true, linkUrl: null,
+            underline: false, hasEnclosingBlock: true, linkUrl: null, columnAlignment: 'none',
         });
+    });
+
+    it('reports the clicked column\'s alignment, mapping each GFM delimiter marker to its MarkdownTableAlignment', () => {
+        for (const [markdown, expected] of [
+            ['| a |\n| :--- |\n| 1 |',  'left'],
+            ['| a |\n| :---: |\n| 1 |', 'center'],
+            ['| a |\n| ---: |\n| 1 |',  'right'],
+            ['| a |\n| --- |\n| 1 |',   'none'],
+        ] as const) {
+            const editor = new MarkdownEditor();
+            editor.setValue(markdown);
+            lexicalOf(editor).update(() => { $setSelection(null); }, { discrete: true });
+
+            const result = lexicalOf(editor).read(() => {
+                const table = $getRoot().getFirstChild() as TableNode;
+                const row = table.getFirstChild() as TableRowNode;
+                const cell = row.getFirstChild() as TableCellNode;
+                const textNode = (cell.getFirstChild() as ElementNode).getFirstChild() as LexicalNode;
+
+                return $classifyContextMenuTarget(textNode);
+            });
+
+            expect((result as { columnAlignment?: string }).columnAlignment).toBe(expected);
+        }
     });
 
     it('classifies a node inside a link as "text" with linkUrl set to the link\'s URL', () => {
@@ -2413,13 +2585,13 @@ describe('MarkdownEditor context menu', () => {
         ]);
     });
 
-    it('a "table-cell" context with linkUrl: null returns 22 entries: Cut/Copy/Paste, 5 format rows, Insert link, Text style, Clear formatting, Insert/Delete submenus, then Merge/Unmerge/Column width', () => {
+    it('a "table-cell" context with linkUrl: null returns 23 entries: Cut/Copy/Paste, 5 format rows, Insert link, Text style, Clear formatting, Insert/Delete submenus, then Merge/Unmerge/Column width/Align column', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(22);
+        expect(items).toHaveLength(23);
         expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
         ]);
@@ -2430,7 +2602,7 @@ describe('MarkdownEditor context menu', () => {
         expect(rowOf(items[8]).isChecked()).toBe(false);   // Underline
         expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Insert link…', '(separator)', 'Text style', '(separator)', 'Clear formatting', '(separator)', 'Insert', 'Delete',
-            '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…',
+            '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…', 'Align column',
         ]);
 
         expect(submenuItemsOf(findItem(items, 'Insert'))?.map((item) => item.text)).toEqual([
@@ -2441,14 +2613,14 @@ describe('MarkdownEditor context menu', () => {
         ]);
     });
 
-    it('a "table-cell" context with hasEnclosingBlock builds 25 entries: the 22 existing (with no link) plus a separator and the two new items', () => {
+    it('a "table-cell" context with hasEnclosingBlock builds 26 entries: the 23 existing (with no link) plus a separator and the two new items', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, hasEnclosingBlock: true,
         });
 
-        expect(items).toHaveLength(25);
-        expect(items.slice(22).map((item) => item.text ?? '(separator)')).toEqual([
+        expect(items).toHaveLength(26);
+        expect(items.slice(23).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Insert line before block', 'Insert line after block',
         ]);
     });
@@ -2475,32 +2647,32 @@ describe('MarkdownEditor context menu', () => {
         expect(childTypes(after)).toEqual(['table', 'paragraph']);
     });
 
-    it('a "table-cell" context with a linkUrl returns 23 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
+    it('a "table-cell" context with a linkUrl returns 24 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(23);
+        expect(items).toHaveLength(24);
         expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Text style', '(separator)', 'Clear formatting', '(separator)', 'Insert', 'Delete',
-            '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…',
+            '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…', 'Align column',
         ]);
     });
 
-    it('a "table-cell" context with both a linkUrl and hasEnclosingBlock combines all groups: link items, Text style, Clear formatting, Insert/Delete submenus, Merge/Unmerge/Column width, and the two block items, in that order', () => {
+    it('a "table-cell" context with both a linkUrl and hasEnclosingBlock combines all groups: link items, Text style, Clear formatting, Insert/Delete submenus, Merge/Unmerge/Column width/Align column, and the two block items, in that order', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS, hasEnclosingBlock: true,
         });
 
-        expect(items).toHaveLength(26);
+        expect(items).toHaveLength(27);
         expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
         ]);
         expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Text style', '(separator)', 'Clear formatting', '(separator)',
-            'Insert', 'Delete', '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…',
+            'Insert', 'Delete', '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…', 'Align column',
             '(separator)', 'Insert line before block', 'Insert line after block',
         ]);
     });
@@ -2517,6 +2689,60 @@ describe('MarkdownEditor context menu', () => {
 
         const tokens = lexMarkdown(editor.getValue());
         expect(tokens.some((token) => token.type === 'mdtable')).toBe(false);
+    });
+
+    it('the table-cell menu\'s "Align column" submenu offers exactly Left, Center, Right, None, in that order', () => {
+        const editor = new MarkdownEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS,
+        });
+
+        expect(submenuItemsOf(findItem(items, 'Align column'))?.map((item) => item.text)).toEqual([
+            'Left', 'Center', 'Right', 'None',
+        ]);
+    });
+
+    it('exactly one "Align column" item is checked, matching context.columnAlignment (or "None" when omitted)', () => {
+        const editor = new MarkdownEditor();
+
+        const rightChecked = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS, columnAlignment: 'right',
+        });
+        const rightItems = submenuItemsOf(findItem(rightChecked, 'Align column'));
+        expect(rightItems?.map((item) => item.checked)).toEqual([false, false, true, false]);
+
+        const omitted = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS,
+        });
+        const omittedItems = submenuItemsOf(findItem(omitted, 'Align column'));
+        expect(omittedItems?.map((item) => item.checked)).toEqual([false, false, false, true]);
+    });
+
+    it('each "Align column" item\'s action() reaches MarkdownEditor.setTableColumnAlignment with its own alignment', () => {
+        const editor = new MarkdownEditor();
+        editor.insertTable(2, 3);   // caret lands in the first header cell
+
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS,
+        });
+
+        submenuItemsOf(findItem(items, 'Align column'))?.find((item) => item.text === 'Center')?.action?.();
+
+        expect(normalize(editor.getValue()).split('\n')[1]).toBe('| :---: | --- | --- |');
+    });
+
+    it('"text" and "empty-line" contexts build no "Align column" item', () => {
+        const editor = new MarkdownEditor();
+
+        const textItems = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'text', hasSelectedText: true, ...SOME_FORMATS,
+        });
+        const emptyLineItems = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'empty-line', hasSelectedText: true,
+        });
+
+        expect(findItem(textItems, 'Align column')).toBeUndefined();
+        expect(findItem(emptyLineItems, 'Align column')).toBeUndefined();
     });
 
     it("the empty-line menu's Table item reaches MarkdownEditor.insertTable(2, 3)", () => {
