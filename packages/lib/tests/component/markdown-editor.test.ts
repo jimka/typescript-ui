@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MarkdownEditor, $classifyContextMenuTarget, $selectEnclosingWordIfCollapsed } from '~/component/editor/MarkdownEditor';
-import type { MarkdownEditorChange, ContextMenuTarget } from '~/component/editor/MarkdownEditor';
+import type { MarkdownEditorChange, MarkdownEditorSelectionState, ContextMenuTarget } from '~/component/editor/MarkdownEditor';
 import type { MenuItemConfig } from '~/component/container/MenuItem';
 import type { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
 import { Component } from '~/core/Component';
@@ -2002,6 +2002,198 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result.kind).toBe('table-cell');
         expect((result as { linkUrl?: string | null }).linkUrl).toBe('https://example.com');
+    });
+});
+
+describe('MarkdownEditor.getSelectionState() / "selectionstate"', () => {
+    const NEUTRAL: MarkdownEditorSelectionState = {
+        bold: false, italic: false, strikethrough: false, code: false, underline: false,
+        inTable: false, tableColumnAlignment: null, blockAlignment: null, columnCount: 1,
+    };
+
+    it('a fresh, never-built editor returns the neutral default', () => {
+        const editor = new MarkdownEditor();
+
+        expect(editor.getSelectionState()).toEqual(NEUTRAL);
+    });
+
+    it('reports bold: true with the selection inside a bold run, and true again for a caret collapsed at its very start', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('**bold** word');
+
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const boldText = paragraph.getFirstChild();
+
+            if ($isTextNode(boldText)) {
+                boldText.select(2, 2);   // collapsed, inside the bold run
+            }
+        }, { discrete: true });
+
+        const insideRun = editor.getSelectionState();
+        expect(insideRun).toEqual({ ...NEUTRAL, bold: true });
+
+        selectStart(editor);   // collapsed at the very start of the bold run
+        expect(editor.getSelectionState()).toEqual({ ...NEUTRAL, bold: true });
+    });
+
+    it('blockAlignment reflects an enclosing :::-fence alignment, columnCount stays 1 outside a columns region', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: {align=center}\ntext\n:::');
+        selectStart(editor);
+
+        const state = editor.getSelectionState();
+        expect(state.blockAlignment).toBe('center');
+        expect(state.columnCount).toBe(1);
+    });
+
+    it('columnCount reflects the enclosing column region\'s column count from either column, blockAlignment null with no alignment', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: columns\nA\n|||\nB\n:::');
+
+        lexicalOf(editor).update(() => {
+            (($getRoot().getFirstChild() as MarkdownBlockNode).getColumns()[0]!).selectStart();
+        }, { discrete: true });
+
+        let state = editor.getSelectionState();
+        expect(state.columnCount).toBe(2);
+        expect(state.blockAlignment).toBeNull();
+
+        lexicalOf(editor).update(() => {
+            (($getRoot().getFirstChild() as MarkdownBlockNode).getColumns()[1]!).selectStart();
+        }, { discrete: true });
+
+        state = editor.getSelectionState();
+        expect(state.columnCount).toBe(2);
+    });
+
+    it('inTable / tableColumnAlignment reflect the caret\'s own column: center for :---:, none for a plain --- column', () => {
+        const centerEditor = new MarkdownEditor();
+        centerEditor.setValue('| a | b |\n| :---: | --- |\n| 1 | 2 |');
+        selectStart(centerEditor);   // first header cell -> the :---: column
+
+        const centerState = centerEditor.getSelectionState();
+        expect(centerState.inTable).toBe(true);
+        expect(centerState.tableColumnAlignment).toBe('center');
+
+        const noneEditor = new MarkdownEditor();
+        noneEditor.setValue('| a | b |\n| :---: | --- |\n| 1 | 2 |');
+        lexicalOf(noneEditor).update(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+            const row = table.getFirstChild() as TableRowNode;
+            const cell = row.getChildAtIndex(1) as TableCellNode;
+
+            cell.selectStart();
+        }, { discrete: true });
+
+        const noneState = noneEditor.getSelectionState();
+        expect(noneState.inTable).toBe(true);
+        expect(noneState.tableColumnAlignment).toBe('none');
+    });
+
+    it('inTable is false and tableColumnAlignment null with the caret outside any table', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectStart(editor);
+
+        const state = editor.getSelectionState();
+        expect(state.inTable).toBe(false);
+        expect(state.tableColumnAlignment).toBeNull();
+    });
+
+    it('reports every field at its default for a multi-cell TableSelection, which carries no RangeSelection anchor', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+
+        lexicalOf(editor).update(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+            const row = table.getChildAtIndex(1) as TableRowNode;
+            const cellA = row.getChildAtIndex(0) as TableCellNode;
+            const cellB = row.getChildAtIndex(1) as TableCellNode;
+
+            $setSelection($createTableSelectionFrom(table, cellA, cellB));
+        }, { discrete: true });
+
+        expect(editor.getSelectionState()).toEqual(NEUTRAL);
+    });
+
+    it('does not fire for the editor\'s initial load', () => {
+        const editor = new MarkdownEditor('**bold** word');
+        const listener = vi.fn();
+
+        editor.on('selectionstate', listener);
+        // The initial markdown->state conversion inside ensureEditor() runs
+        // before the update-listener registration that follows it, so the
+        // very first commit is never observed by a listener wired beforehand.
+        (editor as unknown as { ensureEditor(): LexicalEditor }).ensureEditor();
+
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('fires once when the caret enters a bold run, then not again for a further move that changes no tracked field', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('**bold** more text');
+        const listener = vi.fn();
+        editor.on('selectionstate', listener);
+
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const boldText = paragraph.getFirstChild();
+
+            if ($isTextNode(boldText)) {
+                boldText.select(2, 2);
+            }
+        }, { discrete: true });
+
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(listener.mock.calls[0][0].bold).toBe(true);
+
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const boldText = paragraph.getFirstChild();
+
+            if ($isTextNode(boldText)) {
+                boldText.select(3, 3);   // still inside the same bold run
+            }
+        }, { discrete: true });
+
+        expect(listener).toHaveBeenCalledTimes(1);   // no additional emit
+    });
+
+    it('off("selectionstate", fn) stops delivery', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('word');
+        const listener = vi.fn();
+
+        editor.on('selectionstate', listener);
+        editor.off('selectionstate', listener);
+
+        lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true });
+        editor.toggleBold();
+
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('a format toggle that does not move the selection still triggers a "selectionstate" emit', async () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('word');
+        lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true });
+
+        const listener = vi.fn();
+        editor.on('selectionstate', listener);
+
+        // toggleBold() dispatches FORMAT_TEXT_COMMAND, whose update is not
+        // `{ discrete: true }` and so — unlike setValue()'s discrete commits,
+        // which every other test in this suite exercises synchronously —
+        // settles on the next microtask in this headless harness rather than
+        // before this call returns (see this file's own updateSelectionState
+        // registration: it runs from the same registerUpdateListener callback
+        // handleChange() already relies on, which has the identical deferral).
+        editor.toggleBold();
+        await Promise.resolve();
+
+        expect(listener).toHaveBeenCalled();
+        expect(listener.mock.calls[listener.mock.calls.length - 1][0].bold).toBe(true);
     });
 });
 
