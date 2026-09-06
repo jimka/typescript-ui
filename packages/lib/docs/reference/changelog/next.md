@@ -226,6 +226,11 @@ page resets to empty.
   owned editor, and exposes `getEditor()`/`getToolbar()` for anything
   else. The `MarkdownEditorPanel` demo now builds one of these instead of
   its own hand-rolled toolbar.
+- **`MarkdownEditor` gains a `"selectionstate"` event and `getSelectionState()`
+  getter** reporting the five inline-format flags, table/column-alignment
+  context, and block alignment/column count at the current selection. The
+  event does not fire for the editor's initial position; seed a listener
+  with the getter. No consumer action is needed.
 
 ### Data
 
