@@ -2315,7 +2315,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * toggled in one right-click.
      *
      * @param format - The current selection's inline-format state.
-     * @returns The five `MenuItemConfig` entries: Bold, Italic, Strikethrough, Inline code, Underline.
+     * @returns The five `MenuItemConfig` entries: Bold, Italic, Underline, Strikethrough, Code.
      */
     private buildFormatToggleItems(
         format: { bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean },
@@ -2333,9 +2333,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         return [
             toggleRow("Bold", format.bold, () => this.toggleBold()),
             toggleRow("Italic", format.italic, () => this.toggleItalic()),
-            toggleRow("Strikethrough", format.strikethrough, () => this.toggleStrikethrough()),
-            toggleRow("Inline code", format.code, () => this.toggleInlineCode()),
             toggleRow("Underline", format.underline, () => this.toggleUnderline()),
+            toggleRow("Strikethrough", format.strikethrough, () => this.toggleStrikethrough()),
+            toggleRow("Code", format.code, () => this.toggleInlineCode()),
         ];
     }
 
@@ -2524,10 +2524,11 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Builds the insert menu shown over an empty line (outside any table):
-     * headings, quote, code block, and table insertion. Omits a "Paragraph"
-     * item — the classification already guarantees the caret sits in an empty
-     * paragraph, so converting it to a paragraph is a guaranteed no-op.
+     * Builds the insert menu shown over an empty line (outside any table): a
+     * Heading submenu, an Insert submenu (block conversions plus new-object
+     * insertion), and the Columns submenu. Omits a "Paragraph" item — the
+     * classification already guarantees the caret sits in an empty paragraph,
+     * so converting it to a paragraph is a guaranteed no-op.
      *
      * @param context - The `"empty-line"` classification, carrying whether
      *   the current selection has text (a drag-selection ending on an empty
@@ -2539,12 +2540,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             ...this.clipboardMenuItems(context.hasSelectedText),
             { separator: true },
             { text: "Heading", submenu: { label: "Heading", items: this.buildHeadingMenuItems() } },
-            { text: "Quote", action: () => this.setBlockType("quote") },
-            { text: "Code block", action: () => this.setBlockType("code") },
-            { separator: true },
-            { text: "Table", action: () => this.insertTable(2, 3) },
+            {
+                text:    "Insert",
+                submenu: {
+                    label: "Insert",
+                    items: [
+                        { text: "Quote", action: () => this.setBlockType("quote") },
+                        { text: "Code block", action: () => this.setBlockType("code") },
+                        { text: "Bulleted list", action: () => this.toggleUnorderedList() },
+                        { text: "Numbered list", action: () => this.toggleOrderedList() },
+                        { separator: true },
+                        { text: "Table", action: () => this.insertTable(2, 3) },
+                        { text: "Image…", action: () => void this.promptAndInsertImage() },
+                    ],
+                },
+            },
             this.buildColumnsMenuItem(),
-            { text: "Image…", action: () => void this.promptAndInsertImage() },
         ];
     }
 
@@ -2552,9 +2563,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Builds the menu shown over a table cell (populated or empty): the same
      * shared inline-format toggles and Clear formatting as the text context
      * menu — a cell holds inline text too, just never a heading or quote in
-     * this dialect, so no Block style submenu — then an Insert submenu (the
-     * four directional row/column inserts) and a Delete submenu (row, column,
-     * or the whole table).
+     * this dialect, so no Block style submenu — then a Table submenu holding
+     * every table-structure action.
      *
      * @param context - The `"table-cell"` classification, carrying the
      *   current selection's inline-format state.
@@ -2572,40 +2582,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             { separator: true },
             { text: "Clear formatting", action: () => this.clearFormatting() },
             { separator: true },
-            {
-                text:    "Insert",
-                submenu: {
-                    label: "Insert",
-                    items: [
-                        { text: "Row above", action: () => this.insertTableRow(false) },
-                        { text: "Row below", action: () => this.insertTableRow(true) },
-                        { text: "Column left", action: () => this.insertTableColumn(false) },
-                        { text: "Column right", action: () => this.insertTableColumn(true) },
-                    ],
-                },
-            },
-            {
-                text:    "Delete",
-                submenu: {
-                    label: "Delete",
-                    items: [
-                        { text: "Row", action: () => this.deleteTableRow() },
-                        { text: "Column", action: () => this.deleteTableColumn() },
-                        { text: "Table", action: () => this.deleteTable() },
-                    ],
-                },
-            },
-            { separator: true },
-            { text: "Merge cells", action: () => this.mergeTableCells() },
-            { text: "Unmerge cell", action: () => this.unmergeTableCell() },
-            { text: "Column width…", action: () => void this.promptAndSetColumnWidth() },
-            {
-                text:    "Align column",
-                submenu: {
-                    label: "Align column",
-                    items: this.buildColumnAlignmentItems(context.columnAlignment ?? "none"),
-                },
-            },
+            this.buildTableMenuItem(context.columnAlignment ?? "none"),
         ];
 
         if (context.hasEnclosingBlock) {
@@ -2647,6 +2624,62 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             checked: current === alignment,
             action:  () => { this.setTableColumnAlignment(alignment); },
         }));
+    }
+
+    /**
+     * Builds the "Table" submenu shown in the table-cell context menu: an
+     * Insert submenu (the four directional row/column inserts), a Delete
+     * submenu (row, column, or the whole table), Merge cells, Unmerge cell,
+     * Column width…, and the Align column submenu — every table-structure
+     * action gathered under one entry, at the same nesting depth "Text style"
+     * already uses for its Colour/Font/Size sub-submenus.
+     *
+     * @param columnAlignment - The clicked column's current alignment, forwarded to {@link buildColumnAlignmentItems}.
+     * @returns The `MenuItemConfig` for the "Table" submenu.
+     */
+    private buildTableMenuItem(columnAlignment: MarkdownTableAlignment): MenuItemConfig {
+        return {
+            text:    "Table",
+            submenu: {
+                label: "Table",
+                items: [
+                    {
+                        text:    "Insert",
+                        submenu: {
+                            label: "Insert",
+                            items: [
+                                { text: "Row above", action: () => this.insertTableRow(false) },
+                                { text: "Row below", action: () => this.insertTableRow(true) },
+                                { text: "Column left", action: () => this.insertTableColumn(false) },
+                                { text: "Column right", action: () => this.insertTableColumn(true) },
+                            ],
+                        },
+                    },
+                    {
+                        text:    "Delete",
+                        submenu: {
+                            label: "Delete",
+                            items: [
+                                { text: "Row", action: () => this.deleteTableRow() },
+                                { text: "Column", action: () => this.deleteTableColumn() },
+                                { text: "Table", action: () => this.deleteTable() },
+                            ],
+                        },
+                    },
+                    { separator: true },
+                    { text: "Merge cells", action: () => this.mergeTableCells() },
+                    { text: "Unmerge cell", action: () => this.unmergeTableCell() },
+                    { text: "Column width…", action: () => void this.promptAndSetColumnWidth() },
+                    {
+                        text:    "Align column",
+                        submenu: {
+                            label: "Align column",
+                            items: this.buildColumnAlignmentItems(columnAlignment),
+                        },
+                    },
+                ],
+            },
+        };
     }
 
     /**

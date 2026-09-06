@@ -85,6 +85,17 @@ page resets to empty.
   all, close, replace, replace all) are now glyph-only `Button`/
   `ToggleButton` controls with hover tooltips rather than CodeMirror's own
   inline form. No consumer action is needed.
+- **`MarkdownEditor`'s right-click context menu is reorganized**: the
+  table-cell menu's row/column **Insert**/**Delete** submenus and its
+  **Merge cells** / **Unmerge cell** / **Column width…** / **Align column**
+  items now nest under one **Table** submenu; the empty-line menu's
+  **Quote** / **Code block** / **Table** / **Image…** items now nest under
+  one **Insert** submenu, which also gains **Bulleted list** and
+  **Numbered list** items wired to the existing `toggleUnorderedList()` /
+  `toggleOrderedList()` commands. The inline-format toggles reorder to
+  Bold / Italic / Underline / Strikethrough / Code, and **Inline code** is
+  renamed to **Code**. No consumer action is needed — every item still
+  calls the same command method it did before.
 
 ### Menu
 
