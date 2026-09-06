@@ -42,7 +42,7 @@ Give the editor a sized host (a `Fit` panel, as above, or an explicit `preferred
 | `tabSize` | `number` | unset | Tab-stop width in columns — how wide a literal tab renders and how many columns Tab / auto-indent insert. Unset: CodeMirror's own defaults (4-column stops, 2-space indent unit). Distinct from `format()`'s `indentWidth` — see [Formatting options](#formatting-options). |
 | `lineNumbers` | `boolean` | `true` | Whether the line-number gutter is shown. |
 | `spellcheck` | `boolean` | `false` | Whether the browser's native spellcheck runs inside the editor. See [Spellcheck](#spellcheck). |
-| `listeners` | `{ change?: (payload) => void }` | — | Construction-time listener bag for the `"change"` event. |
+| `listeners` | `{ change?, readonlyedit?, heightchange?, cursorchange? }` | — | Construction-time listener bag, one optional callback per event the editor exposes through `on()`. |
 
 Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields (preferred size, background, foreground, etc.).
 
@@ -156,6 +156,22 @@ has no formatter at all, so `format()` re-indents instead and `options`
 
 The editor reports itself dirty, via the framework's [`Component.isDirty()`](/api/core/classes/Component) mechanism, whenever its document differs from the text at the last clean point — the text it was constructed with, or the text `markClean()` last accepted. Typing, paste, `format()`, and `setValue()` all go through the same check, so an edit undone back to the clean text clears the flag on its own. `isDirty()` folds up into every ancestor container automatically. A host that loads a document with `setValue()` should follow it with `markClean()`, so the loaded text becomes the clean text.
 
+## Cursor position
+
+`getCursorPosition()` returns the primary caret's `{ line, column }`, both
+counting from 1 so they render directly as "Ln 12, Col 5", and
+`on('cursorchange', fn)` fires whenever the caret moves to a different line
+or column — once per real move, not once per keystroke or transaction. The
+event does not fire for the editor's initial position, so a status bar seeds
+itself by calling `getCursorPosition()` once when it wires the listener.
+
+`column` counts characters, so a literal tab is one column regardless of
+[`tabSize`](#construction), and an emoji counts as two. With a selection
+active the moving end is reported; with a multi-cursor selection, only the
+primary range, matching the [right-click menu](#right-click-menu)'s own rule.
+Before the editor mounts, `getCursorPosition()` reports the document start
+(`{ line: 1, column: 1 }`) — where a freshly mounted editor's caret sits.
+
 ## Keyboard
 
 The editor uses CodeMirror's default keymap plus its history, fold, search,
@@ -204,6 +220,8 @@ Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / P
 | `getSpellcheck()` / `setSpellcheck(spellcheck)` | Read or toggle whether the browser's native spellcheck runs inside the editor. |
 | `cut()` / `copy()` | Cut or copy the primary selection's text to the system clipboard. |
 | `paste()` | Read the system clipboard and insert it at the primary selection, replacing any selected text. Async: resolves `true` when the clipboard was read, `false` when there is no mounted view or the browser refused the read. |
+| `getCursorPosition()` | Read the primary caret's 1-based `{ line, column }`. Returns the document start when the editor is not mounted. |
+| `on('cursorchange', fn)` / `off('cursorchange', fn)` | Subscribe to caret moves — fires once per real move to a different line or column. |
 
 ## Theming
 
