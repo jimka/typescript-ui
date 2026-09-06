@@ -219,13 +219,26 @@ page resets to empty.
   caret's column, header included.
 - **New component `MarkdownDocumentPanel`** (`component/editor`), a
   `Container` combining a `MarkdownEditor` with a glyph-only toolbar:
-  format toggles (Bold/Italic/Underline/Strikethrough/Code), Insert and
-  Table dropdowns, Text style/Alignment/Columns dropdowns, and an "Edit
-  Markdown source" toggle pinned to the toolbar's far right. Delegates
-  `getValue()`/`setValue()`/`markClean()`/the `"change"` event to the
-  owned editor, and exposes `getEditor()`/`getToolbar()` for anything
-  else. The `MarkdownEditorPanel` demo now builds one of these instead of
-  its own hand-rolled toolbar.
+  format toggles (Bold/Italic/Underline/Strikethrough/Code), a Link
+  button, Insert and Table dropdowns, Text style/Alignment/Columns
+  dropdowns, and an "Edit Markdown source" toggle pinned to the toolbar's
+  far right. Delegates `getValue()`/`setValue()`/`markClean()`/the
+  `"change"` event to the owned editor, and exposes
+  `getEditor()`/`getToolbar()` for anything else. The `MarkdownEditorPanel`
+  demo now builds one of these instead of its own hand-rolled toolbar.
+- **`MarkdownEditor` gains a `"selectionstate"` event and `getSelectionState()`
+  getter** reporting the five inline-format flags, whether there's a
+  selection to act on, the enclosing link's URL (if any), table/column-alignment
+  context, and block alignment/column count at the current selection. The
+  event does not fire for the editor's initial position; seed a listener
+  with the getter. No consumer action is needed.
+- **`MarkdownDocumentPanel`'s toolbar is now live**: the five format
+  buttons are `ToggleButton`s whose pressed state tracks the current
+  selection; the Table button is disabled except while the caret is
+  inside a table; the Link button is enabled with a text selection or
+  while the caret is inside a link; and the Alignment, Columns, and Table
+  dropdowns show a checkmark on the current value. No consumer action is
+  needed.
 
 ### Data
 

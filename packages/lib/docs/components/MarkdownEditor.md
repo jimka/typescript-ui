@@ -32,7 +32,7 @@ Give the editor a sized host (a `Fit` panel, as above, or an explicit `preferred
 | `value` | `string` | `""` | Initial Markdown source. |
 | `readOnly` | `boolean` | `false` | Whether the editor rejects edits. |
 | `mode` | `"wysiwyg" \| "source"` | `"wysiwyg"` | Which editing surface is shown — see [Source / WYSIWYG mode](#source-wysiwyg-mode). |
-| `listeners` | `{ change?: (payload) => void }` | — | Construction-time listener bag for the `"change"` event. |
+| `listeners` | `{ change?: (payload) => void, selectionstate?: (payload) => void }` | — | Construction-time listener bag for the `"change"` and `"selectionstate"` events. |
 
 Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields (preferred size, background, foreground, etc.).
 
@@ -102,6 +102,34 @@ Each command operates on the current selection and no-ops (without throwing) whe
 
 `paste()` depends on the browser granting a clipboard-read permission, which some browsers prompt for and some refuse outright for page scripts; a refused or unavailable read resolves `false` rather than throwing. The context menu's own Paste item shows a toast asking the user to press Ctrl/Cmd+V instead when this happens — `paste()` itself stays silent, so a consumer wiring their own Paste button can show their own message.
 
+## Live selection state
+
+`getSelectionState()` returns a snapshot of what the caret currently sits
+in — the five inline-format flags (`bold`/`italic`/`strikethrough`/`code`/`underline`),
+whether there's a selection to act on, the URL of an enclosing link (if any),
+whether it's inside a table cell and that column's alignment, and the
+enclosing `:::` block's alignment and column count — and `on('selectionstate', fn)`
+fires whenever that snapshot changes, for building a toolbar whose buttons
+press, enable, or check themselves to match the caret's position (as
+[`MarkdownDocumentPanel`](/components/MarkdownDocumentPanel)'s own toolbar
+does):
+
+```typescript
+editor.on('selectionstate', (state) => {
+    boldButton.setSelected(state.bold);
+    tableButton.setEnabled(state.inTable);
+});
+```
+
+The event does not fire for the editor's initial position, so a toolbar
+seeds itself by calling `getSelectionState()` once when it wires the
+listener. It fires on every editor commit whose resulting state differs
+from the last one reported — including a same-position format toggle
+(clicking a format button doesn't move the caret, but still changes what
+it reports), not just a caret move. Outside a table, `tableColumnAlignment`
+is `null`; outside a `:::` block, `blockAlignment` is `null` and
+`columnCount` is `1`.
+
 ## Common methods
 
 | Method | Purpose |
@@ -110,6 +138,8 @@ Each command operates on the current selection and no-ops (without throwing) whe
 | `getMode()` / `setMode(mode)` | Read or switch the editing surface — see [Source / WYSIWYG mode](#source-wysiwyg-mode). |
 | `getReadOnly()` / `setReadOnly(readOnly)` | Read or toggle whether the editor accepts edits. |
 | `on('change', fn)` / `off('change', fn)` | Subscribe to content changes (the payload carries the new Markdown). |
+| `getSelectionState()` | Read the caret's current tracked state — see [Live selection state](#live-selection-state). |
+| `on('selectionstate', fn)` / `off('selectionstate', fn)` | Subscribe to changes in that state. |
 | `dispose()` | Detach the Lexical registrations and the editor root — call before discarding a dynamically-built `MarkdownEditor`. |
 | `markClean()` | Clear the dirty flag, accepting the current document as the clean baseline. |
 

@@ -22,7 +22,9 @@ import {
     IS_ALL_FORMATTING, $isTextNode, TEXT_TYPE_TO_FORMAT,
     $getNearestNodeFromDOMNode, isDOMNode, $findMatchingParent, $isElementNode, $isParagraphNode,
 } from "lexical";
-import type { LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode } from "lexical";
+import type {
+    LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
+} from "lexical";
 import { $convertFromMarkdownString, $convertToMarkdownString, registerMarkdownShortcuts } from "@lexical/markdown";
 import { registerRichText, $createHeadingNode, $createQuoteNode, QuoteNode, $isQuoteNode } from "@lexical/rich-text";
 import type { HeadingTagType } from "@lexical/rich-text";
@@ -80,8 +82,45 @@ export interface MarkdownEditorChange {
     value: string;
 }
 
-/** The event {@link MarkdownEditor} exposes through its custom `on` / `off` surface. */
-type MarkdownEditorEvent = "change";
+/**
+ * Payload of {@link MarkdownEditor}'s `"selectionstate"` event, and what
+ * {@link MarkdownEditor.getSelectionState} returns: the five inline-format
+ * flags, whether there's a selection to act on, the enclosing link's URL (if
+ * any), table/column-alignment context, and block alignment/column count at
+ * the current selection.
+ *
+ * @category Components
+ */
+export interface MarkdownEditorSelectionState {
+    bold: boolean;
+    italic: boolean;
+    strikethrough: boolean;
+    code: boolean;
+    underline: boolean;
+    /** Whether there's a real selection, or a collapsed caret that would expand into one. */
+    hasSelectedText: boolean;
+    /** The enclosing link's URL, or `null` outside one. */
+    linkUrl: string | null;
+    /** Whether the selection is anchored inside a table cell. */
+    inTable: boolean;
+    /** The caret's table column's alignment; `null` when {@link inTable} is `false`. */
+    tableColumnAlignment: MarkdownTableAlignment | null;
+    /** The enclosing `:::` block's alignment; `null` outside one, or when it carries none. */
+    blockAlignment: MarkdownBlockAlignment | null;
+    /** The enclosing `:::` block's column count; `1` outside one. */
+    columnCount: number;
+}
+
+/**
+ * The events {@link MarkdownEditor} exposes through its custom `on` / `off` surface:
+ *
+ * - `"change"` — the document content changed (payload {@link MarkdownEditorChange}).
+ * - `"selectionstate"` — the selection's tracked format/table/block state
+ *   changed (payload {@link MarkdownEditorSelectionState}); fires on every
+ *   editor commit whose resulting state differs from the last reported one,
+ *   including a format toggle that leaves the selection itself unmoved.
+ */
+type MarkdownEditorEvent = "change" | "selectionstate";
 
 /**
  * The editing surface a {@link MarkdownEditor} currently shows: the WYSIWYG
@@ -126,8 +165,11 @@ export interface MarkdownEditorOptions extends ComponentOptions {
     readOnly?: boolean;
     /** Which surface is shown. Default `"wysiwyg"`. */
     mode?: MarkdownEditorMode;
-    /** Construction-time listener bag; the only event is `"change"`. */
-    listeners?: { change?: (payload: MarkdownEditorChange) => void };
+    /** Construction-time listener bag; the events are `"change"` and `"selectionstate"`. */
+    listeners?: {
+        change?:         (payload: MarkdownEditorChange) => void;
+        selectionstate?: (payload: MarkdownEditorSelectionState) => void;
+    };
 }
 
 /**
@@ -656,6 +698,38 @@ export function $selectEnclosingWordIfCollapsed(): void {
 }
 
 /**
+ * Reads the current selection's five inline-format flags — bold, italic,
+ * strikethrough, code, underline — the way a subsequent format toggle would
+ * see them: a non-null `expansion` (a collapsed caret's would-be word/run
+ * expansion, from {@link $computeWordExpansion}) is consulted directly
+ * rather than the raw selection, so a collapsed caret reports the format the
+ * enclosing run carries, not the empty-selection default. Shared by
+ * {@link $classifyContextMenuTarget} (the right-click menu's checkbox state)
+ * and {@link $readSelectionState} (the toolbar's live state), so both report
+ * exactly the same thing a format toggle would actually act on.
+ *
+ * @param selection - The current Lexical selection.
+ * @param expansion - The would-be word/run expansion for a collapsed caret,
+ *   or `null` when the selection is already a non-collapsed range (or not a
+ *   range selection at all).
+ * @returns The five format flags.
+ */
+function $readFormatFlags(
+    selection: BaseSelection | null,
+    expansion: WordExpansion | null,
+): { bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean } {
+    const hasFormat = (type: TextFormatType): boolean => expansion !== null
+        ? (expansion.format & TEXT_TYPE_TO_FORMAT[type]) !== 0
+        : $isRangeSelection(selection) && selection.hasFormat(type);
+
+    return {
+        bold: hasFormat("bold"), italic: hasFormat("italic"),
+        strikethrough: hasFormat("strikethrough"), code: hasFormat("code"),
+        underline: hasFormat("underline"),
+    };
+}
+
+/**
  * Classifies an already-resolved Lexical node for the right-click context
  * menu: a table cell wins even when empty, an empty paragraph outside any
  * table is the insert context, and everything else is the format context —
@@ -674,14 +748,7 @@ export function $selectEnclosingWordIfCollapsed(): void {
 export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget {
     const selection = $getSelection();
     const expansion = $computeWordExpansion();
-    const hasFormat = (type: TextFormatType): boolean => expansion !== null
-        ? (expansion.format & TEXT_TYPE_TO_FORMAT[type]) !== 0
-        : $isRangeSelection(selection) && selection.hasFormat(type);
-    const formatState = {
-        bold: hasFormat("bold"), italic: hasFormat("italic"),
-        strikethrough: hasFormat("strikethrough"), code: hasFormat("code"),
-        underline: hasFormat("underline"),
-    };
+    const formatState = $readFormatFlags(selection, expansion);
     const hasSelectedText = expansion !== null
         || ($isRangeSelection(selection) && selection.getTextContent() !== "");
     const linkUrl = $findEnclosingLinkNode(node)?.getURL() ?? null;
@@ -704,6 +771,64 @@ export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget
     const hasEnclosingBlock = $findEnclosingInsertableBlock(node) !== null;
 
     return { kind: "text", hasSelectedText, hasEnclosingBlock, linkUrl, ...formatState };
+}
+
+/**
+ * Reads the toolbar's live selection state directly off `$getSelection()` —
+ * the five format flags (via {@link $readFormatFlags}), whether there's a
+ * selection to act on, the enclosing link's URL (if any), table-cell
+ * presence and its column's alignment, and the enclosing `:::` block's
+ * alignment and column count. Unlike {@link $classifyContextMenuTarget},
+ * this takes no node parameter: the toolbar has no click target to resolve
+ * one from, so it reads the same way the file's own
+ * {@link $getEnclosingTableCellNode} does.
+ *
+ * @returns The current {@link MarkdownEditorSelectionState}.
+ */
+function $readSelectionState(): MarkdownEditorSelectionState {
+    const selection = $getSelection();
+    const expansion = $computeWordExpansion();
+    const format = $readFormatFlags(selection, expansion);
+    const hasSelectedText = expansion !== null
+        || ($isRangeSelection(selection) && selection.getTextContent() !== "");
+    const cell = $getEnclosingTableCellNode();
+    const anchor = $isRangeSelection(selection) ? selection.anchor.getNode() : null;
+    const block = anchor === null ? null : $findMatchingParent(anchor, $isMarkdownBlockNode);
+    const linkUrl = anchor === null ? null : ($findEnclosingLinkNode(anchor)?.getURL() ?? null);
+
+    return {
+        ...format,
+        hasSelectedText,
+        linkUrl,
+        inTable:              cell !== null,
+        tableColumnAlignment: cell !== null ? $tableCellAlignment(cell) : null,
+        blockAlignment:       (block?.getAlign() ?? null) as MarkdownBlockAlignment | null,
+        columnCount:          block !== null ? block.getColumns().length : 1,
+    };
+}
+
+/** The {@link MarkdownEditorSelectionState} reported before the Lexical editor is built, or when nothing tracked applies. */
+const NEUTRAL_SELECTION_STATE: MarkdownEditorSelectionState = {
+    bold: false, italic: false, strikethrough: false, code: false, underline: false,
+    hasSelectedText: false, linkUrl: null,
+    inTable: false, tableColumnAlignment: null, blockAlignment: null, columnCount: 1,
+};
+
+/**
+ * Whether two {@link MarkdownEditorSelectionState} values are field-for-field
+ * equal — what {@link MarkdownEditor.updateSelectionState} uses to decide
+ * whether a commit's resulting state is worth a `"selectionstate"` emit.
+ *
+ * @param a - The first state.
+ * @param b - The second state.
+ * @returns Whether every field of `a` matches the same field of `b`.
+ */
+function selectionStatesEqual(a: MarkdownEditorSelectionState, b: MarkdownEditorSelectionState): boolean {
+    return a.bold === b.bold && a.italic === b.italic && a.strikethrough === b.strikethrough
+        && a.code === b.code && a.underline === b.underline
+        && a.hasSelectedText === b.hasSelectedText && a.linkUrl === b.linkUrl
+        && a.inTable === b.inTable && a.tableColumnAlignment === b.tableColumnAlignment
+        && a.blockAlignment === b.blockAlignment && a.columnCount === b.columnCount;
 }
 
 // A text caret over the whole surface signals editability. The surface is also
@@ -1000,6 +1125,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     private _cleanValue: string;
 
     /**
+     * The {@link MarkdownEditorSelectionState} as of the last `"selectionstate"`
+     * emit (or the neutral default before the first one). Compared against on
+     * every commit so a commit that changes nothing tracked emits nothing.
+     */
+    private _lastSelectionState: MarkdownEditorSelectionState = NEUTRAL_SELECTION_STATE;
+
+    /**
      * Constructs a Markdown editor.
      *
      * @param value - Initial Markdown source (optional; defaults to `""`).
@@ -1124,6 +1256,23 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         }
 
         return this._options.value ?? "";
+    }
+
+    /**
+     * Reads the current selection's tracked state — the five inline-format
+     * flags, table/column-alignment context, and enclosing-block
+     * alignment/column count — recomputed fresh from the live Lexical state
+     * on every call, mirroring `CodeEditor.getCursorPosition`'s own
+     * always-fresh contract; nothing is cached here beyond what
+     * `updateSelectionState` needs for its own emit-dedup.
+     *
+     * @returns The current {@link MarkdownEditorSelectionState}, or the
+     *   neutral default before the Lexical editor is built.
+     */
+    getSelectionState(): MarkdownEditorSelectionState {
+        const editor = this._editor;
+
+        return editor ? editor.read(() => $readSelectionState()) : NEUTRAL_SELECTION_STATE;
     }
 
     /**
@@ -2006,7 +2155,17 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @param listener - Invoked with the new Markdown value.
      * @returns This component, for method chaining.
      */
-    on(event: MarkdownEditorEvent, listener: (payload: MarkdownEditorChange) => void): this {
+    on(event: "change", listener: (payload: MarkdownEditorChange) => void): this;
+    /**
+     * Registers a listener for the `"selectionstate"` event, fired whenever the
+     * selection's tracked format/table/block state changes.
+     *
+     * @param event - Must be `"selectionstate"`.
+     * @param listener - Invoked with the new {@link MarkdownEditorSelectionState}.
+     * @returns This component, for method chaining.
+     */
+    on(event: "selectionstate", listener: (payload: MarkdownEditorSelectionState) => void): this;
+    on(event: MarkdownEditorEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
         return this;
@@ -2019,19 +2178,30 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @param listener - The exact callback reference to remove.
      * @returns This component, for method chaining.
      */
-    off(event: MarkdownEditorEvent, listener: (payload: MarkdownEditorChange) => void): this {
+    off(event: "change", listener: (payload: MarkdownEditorChange) => void): this;
+    /**
+     * Removes a previously registered `"selectionstate"` listener.
+     *
+     * @param event - Must be `"selectionstate"`.
+     * @param listener - The exact callback reference to remove.
+     * @returns This component, for method chaining.
+     */
+    off(event: "selectionstate", listener: (payload: MarkdownEditorSelectionState) => void): this;
+    off(event: MarkdownEditorEvent, listener: Function): this {
         this._listeners.remove(event, listener);
 
         return this;
     }
 
     /**
-     * Fans the `"change"` event out to its registered listeners.
+     * Fans an event out to its registered listeners.
      *
-     * @param event - Must be `"change"`.
-     * @param payload - The event payload.
+     * @param event - The event name.
+     * @param payload - The event payload (`"change"`/`"selectionstate"`).
      */
-    protected emit(event: MarkdownEditorEvent, payload: MarkdownEditorChange): void {
+    protected emit(event: "change", payload: MarkdownEditorChange): void;
+    protected emit(event: "selectionstate", payload: MarkdownEditorSelectionState): void;
+    protected emit(event: MarkdownEditorEvent, payload: MarkdownEditorChange | MarkdownEditorSelectionState): void {
         this._listeners.fire(event, payload);
     }
 
@@ -2116,7 +2286,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 registerHistory(editor, createEmptyHistoryState(), HISTORY_DELAY_MS),
                 registerMarkdownShortcuts(editor, TRANSFORMERS),
                 editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
-                editor.registerUpdateListener(() => this.handleChange()),
+                editor.registerUpdateListener(() => {
+                    this.handleChange();
+                    this.updateSelectionState();
+                }),
             );
 
             this._editor = editor;
@@ -2716,6 +2889,31 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         }
 
         this.onDocChange(editor.read(() => $convertToMarkdownString(TRANSFORMERS)));
+    }
+
+    /**
+     * Recomputes the selection's tracked state after a Lexical update and
+     * emits `"selectionstate"` when it differs from the last one reported —
+     * the update-driven counterpart to {@link handleChange}, registered on
+     * the same `registerUpdateListener` callback so every commit that would
+     * change the toolbar's live state (typing, a caret move, undo/redo, or a
+     * same-position format toggle) is observed, not just a selection change.
+     */
+    private updateSelectionState(): void {
+        const editor = this._editor;
+
+        if (!editor) {
+            return;
+        }
+
+        const state = editor.read(() => $readSelectionState());
+
+        if (selectionStatesEqual(state, this._lastSelectionState)) {
+            return;
+        }
+
+        this._lastSelectionState = state;
+        this.emit("selectionstate", state);
     }
 
     /**
