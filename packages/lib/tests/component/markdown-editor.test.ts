@@ -2008,6 +2008,7 @@ describe('$classifyContextMenuTarget', () => {
 describe('MarkdownEditor.getSelectionState() / "selectionstate"', () => {
     const NEUTRAL: MarkdownEditorSelectionState = {
         bold: false, italic: false, strikethrough: false, code: false, underline: false,
+        hasSelectedText: false, linkUrl: null,
         inTable: false, tableColumnAlignment: null, blockAlignment: null, columnCount: 1,
     };
 
@@ -2030,11 +2031,95 @@ describe('MarkdownEditor.getSelectionState() / "selectionstate"', () => {
             }
         }, { discrete: true });
 
+        // hasSelectedText is true here (not the NEUTRAL default): a collapsed
+        // caret anywhere inside a formatted run always yields a non-null
+        // $computeWordExpansion, per that function's own format !== 0 branch.
         const insideRun = editor.getSelectionState();
-        expect(insideRun).toEqual({ ...NEUTRAL, bold: true });
+        expect(insideRun).toEqual({ ...NEUTRAL, bold: true, hasSelectedText: true });
 
         selectStart(editor);   // collapsed at the very start of the bold run
-        expect(editor.getSelectionState()).toEqual({ ...NEUTRAL, bold: true });
+        expect(editor.getSelectionState()).toEqual({ ...NEUTRAL, bold: true, hasSelectedText: true });
+    });
+
+    it('hasSelectedText is true for a collapsed caret mid-word, false with no word to expand into', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const textNode = paragraph.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                textNode.select(2, 2);   // collapsed, inside "hello"
+            }
+        }, { discrete: true });
+
+        expect(editor.getSelectionState().hasSelectedText).toBe(true);
+
+        // Two spaces: a collapsed caret between them has no adjacent word
+        // character in either direction, mirroring
+        // $selectEnclosingWordIfCollapsed's own "no-op" precedent above.
+        const spaced = new MarkdownEditor();
+        spaced.setValue('a  b');
+
+        lexicalOf(spaced).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const textNode = paragraph.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                textNode.select(2, 2);
+            }
+        }, { discrete: true });
+
+        expect(spaced.getSelectionState().hasSelectedText).toBe(false);
+    });
+
+    it('linkUrl reports the enclosing link\'s URL, null outside one', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('A [text](https://old) link.');
+
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const linkNode = paragraph.getChildren().find((n) => n.getType() === 'link') as ElementNode;
+            const textNode = linkNode.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                textNode.select(2, 2);
+            }
+        }, { discrete: true });
+
+        expect(editor.getSelectionState().linkUrl).toBe('https://old');
+
+        const plain = new MarkdownEditor();
+        plain.setValue('plain text');
+        selectStart(plain);
+
+        expect(plain.getSelectionState().linkUrl).toBeNull();
+    });
+
+    it('"selectionstate" fires when only linkUrl changes, e.g. moving from plain text into a link', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('aaa [bbb](https://old) ccc');
+        selectStart(editor);   // collapsed at the start of "aaa", outside the link
+
+        const listener = vi.fn();
+        editor.on('selectionstate', listener);
+
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const linkNode = paragraph.getChildren().find((n) => n.getType() === 'link') as ElementNode;
+            const textNode = linkNode.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                textNode.select(1, 1);   // collapsed, mid "bbb"
+            }
+        }, { discrete: true });
+
+        expect(listener).toHaveBeenCalledTimes(1);
+
+        const state = listener.mock.calls[0][0];
+        expect(state.linkUrl).toBe('https://old');
+        expect(state.hasSelectedText).toBe(true);
     });
 
     it('blockAlignment reflects an enclosing :::-fence alignment, columnCount stays 1 outside a columns region', () => {

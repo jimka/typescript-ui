@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Container, ContainerOptions } from "~/core/Container.js";
+import { Component } from "~/core/Component.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
+import type { Rect } from "~/core/DOM.js";
 import { Border } from "~/layout/Border.js";
+import { VBox } from "~/layout/VBox.js";
+import { HBox } from "~/layout/HBox.js";
 import { Placement } from "~/primitive/Placement.js";
+import { Button } from "~/component/button/Button.js";
 import { ToggleButton } from "~/component/button/ToggleButton.js";
 import { MenuButton } from "~/component/button/MenuButton.js";
 import type { MenuButtonOptions } from "~/component/button/MenuButton.js";
+import { PopupButton } from "~/component/button/PopupButton.js";
+import type { PopupButtonOptions } from "~/component/button/PopupButton.js";
 import { ToolBar } from "~/component/menubar/ToolBar.js";
 import { ToolBarSeparator } from "~/component/menubar/ToolBarSeparator.js";
 import { Spacer } from "~/component/container/Spacer.js";
@@ -15,6 +22,7 @@ import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { MarkdownEditor } from "~/component/editor/MarkdownEditor.js";
 import type { MarkdownEditorChange, MarkdownEditorSelectionState } from "~/component/editor/MarkdownEditor.js";
 import { Dialog, DialogButtons } from "~/overlay/Dialog.js";
+import { PopupPanel } from "~/overlay/PopupPanel.js";
 import { TextField } from "~/component/input/TextField.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { bold }          from "~/glyphs/solid/bold.js";
@@ -28,8 +36,9 @@ import { palette }       from "~/glyphs/solid/palette.js";
 import { align_left }    from "~/glyphs/solid/align_left.js";
 import { columns }       from "~/glyphs/solid/columns.js";
 import { file_code }     from "~/glyphs/solid/file_code.js";
+import { link }          from "~/glyphs/solid/link.js";
 
-Glyph.register(bold, italic, underline, strikethrough, code, plus, table, palette, align_left, columns, file_code);
+Glyph.register(bold, italic, underline, strikethrough, code, plus, table, palette, align_left, columns, file_code, link);
 
 /**
  * Construction-time options for {@link MarkdownDocumentPanel}.
@@ -42,6 +51,92 @@ export interface MarkdownDocumentPanelOptions extends ContainerOptions {
 }
 
 /**
+ * The Link toolbar button's popup content: a URL field and an Insert/Update
+ * action, plus a Remove action while editing an existing link. Exported
+ * (not part of `component/editor/index.ts`'s barrel) so tests can construct
+ * and drive it directly, mirroring how `MarkdownEditor.ts`'s own
+ * `$classifyContextMenuTarget` is exported for the same reason.
+ */
+export class LinkPopupPanel extends PopupPanel {
+    private readonly _urlField:   TextField;
+    private readonly _submitBtn:  Button;
+    private readonly _removeBtn:  Button;
+    private readonly _getLinkUrl: () => string | null;
+    private readonly _onSubmit:   (url: string) => void;
+    private readonly _onRemove:   () => void;
+
+    // The URL the popup was last opened with — null outside a link, its URL
+    // inside one. Set by showAt(), read by handleSubmit() to skip a no-op
+    // resubmit of the same URL (mirrors promptAndApplyLink's defaultUrl check).
+    private _openedWithUrl: string | null = null;
+
+    /**
+     * @param getLinkUrl - Reads the enclosing link's URL (or `null`) at the
+     *   moment the popup opens.
+     * @param onSubmit - Called with the field's trimmed value when the user
+     *   confirms a new or changed URL.
+     * @param onRemove - Called when the user clicks Remove link.
+     */
+    constructor(getLinkUrl: () => string | null, onSubmit: (url: string) => void, onRemove: () => void) {
+        super({ layoutManager: new VBox({ spacing: 6, stretching: true }) });
+
+        this._getLinkUrl = getLinkUrl;
+        this._onSubmit   = onSubmit;
+        this._onRemove   = onRemove;
+
+        this._urlField  = new TextField({ placeholder: "https://example.com" });
+        this._submitBtn = new Button("Insert link");
+        this._removeBtn = new Button("Remove link");
+
+        this._submitBtn.on("action", () => this.handleSubmit());
+        this._removeBtn.on("action", () => this.handleRemove());
+
+        this.addComponents(
+            this._urlField,
+            new Component({
+                layoutManager: new HBox({ spacing: 4 }),
+                components:    [this._submitBtn, this._removeBtn],
+            }),
+        );
+    }
+
+    /**
+     * Refreshes the field/buttons from {@link _getLinkUrl} before delegating
+     * to the inherited placement/measurement logic, so the popup's content
+     * is current on every open.
+     *
+     * @param anchorRect - The trigger's bounding rect to place against.
+     * @returns This panel, for method chaining.
+     */
+    showAt(anchorRect: Rect): this {
+        this._openedWithUrl = this._getLinkUrl();
+
+        this._urlField.setValue(this._openedWithUrl ?? "");
+        this._submitBtn.setText(this._openedWithUrl === null ? "Insert link" : "Update link");
+        this._removeBtn.setVisible(this._openedWithUrl !== null);
+
+        return super.showAt(anchorRect);
+    }
+
+    /** Submits the field's trimmed value via `onSubmit`, unless it's empty or unchanged from the URL the popup was opened with, then closes the popup. */
+    private handleSubmit(): void {
+        const url = this._urlField.getValue().trim();
+
+        if (url !== "" && url !== this._openedWithUrl) {
+            this._onSubmit(url);
+        }
+
+        this.requestClose();
+    }
+
+    /** Calls `onRemove`, regardless of the field's contents, then closes the popup. */
+    private handleRemove(): void {
+        this._onRemove();
+        this.requestClose();
+    }
+}
+
+/**
  * A [`Container`](/api/core/classes/Container) that docks a glyph-only
  * [`ToolBar`](/api/component/menubar/classes/ToolBar) `NORTH` and a
  * [`MarkdownEditor`](/api/component/editor/classes/MarkdownEditor) `CENTER`
@@ -49,9 +144,9 @@ export interface MarkdownDocumentPanelOptions extends ContainerOptions {
  * content, both owned" shape [`TablePanel`](/api/component/table/classes/TablePanel)
  * uses for `Table`. The toolbar groups its buttons the same way the editor's
  * own right-click context menu is grouped: five format toggles
- * (Bold/Italic/Underline/Strikethrough/Code), an Insert dropdown, a Table
- * dropdown, Text style/Alignment/Columns dropdowns, and an "Edit Markdown
- * source" toggle pinned to the toolbar's far right.
+ * (Bold/Italic/Underline/Strikethrough/Code), a Link button, an Insert
+ * dropdown, a Table dropdown, Text style/Alignment/Columns dropdowns, and an
+ * "Edit Markdown source" toggle pinned to the toolbar's far right.
  *
  * This class delegates only `getValue()` / `setValue()` / `markClean()` /
  * the `"change"` event — anything else `MarkdownEditor` exposes is reached
@@ -80,6 +175,7 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
     private _underlineBtn!:     ToggleButton;
     private _strikethroughBtn!: ToggleButton;
     private _codeBtn!:          ToggleButton;
+    private _linkBtn!:          PopupButton<PopupButtonOptions>;
     private _tableBtn!:         MenuButton<MenuButtonOptions>;
 
     private readonly _listeners: ListenerBag<"change"> =
@@ -114,10 +210,10 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
     }
 
     /**
-     * Builds the toolbar: the five format toggles, Insert and Table dropdowns
-     * on the far left, Text style/Alignment/Columns dropdowns beside them, a
-     * flex spacer, then the "Edit Markdown source" toggle pinned to the far
-     * right.
+     * Builds the toolbar: the five format toggles and the Link button,
+     * Insert and Table dropdowns on the far left, Text style/Alignment/Columns
+     * dropdowns beside them, a flex spacer, then the "Edit Markdown source"
+     * toggle pinned to the far right.
      *
      * @returns The constructed ToolBar, not yet parented.
      */
@@ -135,6 +231,20 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
         this._underlineBtn.on("action",     () => { this._editor.toggleUnderline(); });
         this._strikethroughBtn.on("action", () => { this._editor.toggleStrikethrough(); });
         this._codeBtn.on("action",          () => { this._editor.toggleInlineCode(); });
+
+        // The generic <PopupButtonOptions> argument is required for the same
+        // reason as <MenuButtonOptions> below: PopupButton's options-only
+        // overload accepts its generic TOptions directly, so an inline
+        // literal would otherwise narrow TOptions to that literal's shape
+        // and fail the widening check when passed to addComponents.
+        this._linkBtn = new PopupButton<PopupButtonOptions>({
+            glyph: "link", text: "Link…", showText: false,
+            panel: () => new LinkPopupPanel(
+                () => this._editor.getSelectionState().linkUrl,
+                (url) => this._editor.toggleLink(url),
+                () => this._editor.removeLink(),
+            ),
+        });
 
         // The generic <MenuButtonOptions> argument is required on every call
         // below: MenuButton's options-only overload accepts its generic
@@ -171,7 +281,7 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
         sourceToggle.on("action", () => { this._editor.setMode(sourceToggle.isSelected() ? "source" : "wysiwyg"); });
 
         bar.addComponents(
-            this._boldBtn, this._italicBtn, this._underlineBtn, this._strikethroughBtn, this._codeBtn,
+            this._boldBtn, this._italicBtn, this._underlineBtn, this._strikethroughBtn, this._codeBtn, this._linkBtn,
             ToolBarSeparator(),
             insertBtn, this._tableBtn,
             ToolBarSeparator(),
@@ -365,14 +475,16 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
 
     /**
      * Applies a {@link MarkdownEditorSelectionState} snapshot to the toolbar:
-     * presses/releases the five format toggles and enables the Table button
-     * only while the caret is inside a table — reusing `Button`'s existing
-     * enabled/disabled state rather than a bespoke highlight, since every
-     * command the Table dropdown calls is a no-op outside a table anyway.
-     * The Alignment, Columns, and Table dropdowns need no push here — their
-     * `menuItems` are providers that call {@link MarkdownEditor.getSelectionState}
-     * directly at open time, so they are always current without a second
-     * copy of this state.
+     * presses/releases the five format toggles; enables the Link button with
+     * a text selection or while the caret is inside a link; and enables the
+     * Table button only while the caret is inside a table — reusing
+     * `Button`'s existing enabled/disabled state rather than a bespoke
+     * highlight, since every command the Link popup or Table dropdown calls
+     * is a no-op outside its respective context anyway. The Alignment,
+     * Columns, and Table dropdowns need no push here — their `menuItems` are
+     * providers that call {@link MarkdownEditor.getSelectionState} directly
+     * at open time, so they are always current without a second copy of this
+     * state.
      *
      * @param state - The selection state to reflect onto the toolbar.
      */
@@ -382,6 +494,7 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
         this._underlineBtn.setSelected(state.underline);
         this._strikethroughBtn.setSelected(state.strikethrough);
         this._codeBtn.setSelected(state.code);
+        this._linkBtn.setEnabled(state.hasSelectedText || state.linkUrl !== null);
         this._tableBtn.setEnabled(state.inTable);
     }
 

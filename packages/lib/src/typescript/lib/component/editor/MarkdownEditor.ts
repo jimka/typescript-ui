@@ -85,7 +85,8 @@ export interface MarkdownEditorChange {
 /**
  * Payload of {@link MarkdownEditor}'s `"selectionstate"` event, and what
  * {@link MarkdownEditor.getSelectionState} returns: the five inline-format
- * flags, table/column-alignment context, and block alignment/column count at
+ * flags, whether there's a selection to act on, the enclosing link's URL (if
+ * any), table/column-alignment context, and block alignment/column count at
  * the current selection.
  *
  * @category Components
@@ -96,6 +97,10 @@ export interface MarkdownEditorSelectionState {
     strikethrough: boolean;
     code: boolean;
     underline: boolean;
+    /** Whether there's a real selection, or a collapsed caret that would expand into one. */
+    hasSelectedText: boolean;
+    /** The enclosing link's URL, or `null` outside one. */
+    linkUrl: string | null;
     /** Whether the selection is anchored inside a table cell. */
     inTable: boolean;
     /** The caret's table column's alignment; `null` when {@link inTable} is `false`. */
@@ -770,11 +775,13 @@ export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget
 
 /**
  * Reads the toolbar's live selection state directly off `$getSelection()` —
- * the five format flags (via {@link $readFormatFlags}), table-cell presence
- * and its column's alignment, and the enclosing `:::` block's alignment and
- * column count. Unlike {@link $classifyContextMenuTarget}, this takes no
- * node parameter: the toolbar has no click target to resolve one from, so it
- * reads the same way the file's own {@link $getEnclosingTableCellNode} does.
+ * the five format flags (via {@link $readFormatFlags}), whether there's a
+ * selection to act on, the enclosing link's URL (if any), table-cell
+ * presence and its column's alignment, and the enclosing `:::` block's
+ * alignment and column count. Unlike {@link $classifyContextMenuTarget},
+ * this takes no node parameter: the toolbar has no click target to resolve
+ * one from, so it reads the same way the file's own
+ * {@link $getEnclosingTableCellNode} does.
  *
  * @returns The current {@link MarkdownEditorSelectionState}.
  */
@@ -782,12 +789,17 @@ function $readSelectionState(): MarkdownEditorSelectionState {
     const selection = $getSelection();
     const expansion = $computeWordExpansion();
     const format = $readFormatFlags(selection, expansion);
+    const hasSelectedText = expansion !== null
+        || ($isRangeSelection(selection) && selection.getTextContent() !== "");
     const cell = $getEnclosingTableCellNode();
     const anchor = $isRangeSelection(selection) ? selection.anchor.getNode() : null;
     const block = anchor === null ? null : $findMatchingParent(anchor, $isMarkdownBlockNode);
+    const linkUrl = anchor === null ? null : ($findEnclosingLinkNode(anchor)?.getURL() ?? null);
 
     return {
         ...format,
+        hasSelectedText,
+        linkUrl,
         inTable:              cell !== null,
         tableColumnAlignment: cell !== null ? $tableCellAlignment(cell) : null,
         blockAlignment:       (block?.getAlign() ?? null) as MarkdownBlockAlignment | null,
@@ -798,6 +810,7 @@ function $readSelectionState(): MarkdownEditorSelectionState {
 /** The {@link MarkdownEditorSelectionState} reported before the Lexical editor is built, or when nothing tracked applies. */
 const NEUTRAL_SELECTION_STATE: MarkdownEditorSelectionState = {
     bold: false, italic: false, strikethrough: false, code: false, underline: false,
+    hasSelectedText: false, linkUrl: null,
     inTable: false, tableColumnAlignment: null, blockAlignment: null, columnCount: 1,
 };
 
@@ -813,6 +826,7 @@ const NEUTRAL_SELECTION_STATE: MarkdownEditorSelectionState = {
 function selectionStatesEqual(a: MarkdownEditorSelectionState, b: MarkdownEditorSelectionState): boolean {
     return a.bold === b.bold && a.italic === b.italic && a.strikethrough === b.strikethrough
         && a.code === b.code && a.underline === b.underline
+        && a.hasSelectedText === b.hasSelectedText && a.linkUrl === b.linkUrl
         && a.inTable === b.inTable && a.tableColumnAlignment === b.tableColumnAlignment
         && a.blockAlignment === b.blockAlignment && a.columnCount === b.columnCount;
 }
