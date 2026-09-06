@@ -100,6 +100,7 @@ export const groups = [
         { task: "Markdown viewer with minimap and zoom controls", symbol: "MarkdownViewer" },
         { task: "Syntax-highlighted code editor with formatting, folding, search, lint and completion", symbol: "CodeEditor" },
         { task: "WYSIWYG rich-text editor whose value is a Markdown string", symbol: "MarkdownEditor" },
+        { task: "WYSIWYG Markdown editor with a built-in glyph toolbar", symbol: "MarkdownDocumentPanel" },
         { task: "Determinate/indeterminate progress bar", symbol: "ProgressBar" },
         { task: "Spinning busy indicator", symbol: "ProgressSpinner" },
         { task: "Page-through pagination controls", symbol: "PaginationBar" },

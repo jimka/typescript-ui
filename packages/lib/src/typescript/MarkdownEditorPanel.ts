@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { callable, Panel } from '@jimka/typescript-ui/core';
-import { Border, Fit, Split } from '@jimka/typescript-ui/layout';
+import { callable, Component, Panel } from '@jimka/typescript-ui/core';
+import { Border, Fit, HBox, Split } from '@jimka/typescript-ui/layout';
 import { Placement } from '@jimka/typescript-ui/primitive';
-import { Button, ToggleButton } from '@jimka/typescript-ui/component/button';
-import { ToolBar } from '@jimka/typescript-ui/component/menubar';
+import { Button } from '@jimka/typescript-ui/component/button';
 import { Markdown } from '@jimka/typescript-ui/component/display';
-import { MarkdownEditor } from '@jimka/typescript-ui/component/editor';
+import { MarkdownDocumentPanel } from '@jimka/typescript-ui/component/editor';
 import { Text } from '@jimka/typescript-ui/component/input';
 
 const SAMPLE = `# MarkdownEditor
@@ -48,27 +47,19 @@ const editor = new MarkdownEditor("# Hello");
 `;
 
 /**
- * Demo panel showcasing the [`MarkdownEditor`](/api/component/editor/classes/MarkdownEditor)
+ * Demo panel showcasing the [`MarkdownDocumentPanel`](/api/component/editor/classes/MarkdownDocumentPanel)
  * component beside the read-only [`Markdown`](/api/component/display/classes/Markdown)
- * viewer. Editing on the left drives the viewer on the right through the
- * editor's `"change"` event and `getValue()`, visually proving the dialect
- * round-trips: what you edit renders identically in the viewer. A toolbar toggle
- * over the editor switches it between the WYSIWYG surface and a raw-Markdown
- * source editor via `setMode`; the viewer stays in sync in both modes. Four more
- * toolbar buttons expose the row/column command API (`insertTableRow` /
- * `deleteTableRow` / `insertTableColumn` / `deleteTableColumn`), all no-ops
- * (never throws) with the caret outside a table cell, and six more expose
- * `toggleUnderline` / `setTextColor` / `mergeTableCells` / `setBlockAlignment`
- * / `setColumnCount` / `insertImage`. The editor fills its
- * `Fit` host and scrolls internally; the viewer sits in a vertically
- * scrolling panel. A status row below the editor reports the editor's own dirty
- * flag and the panel's own, the panel's arriving through the framework's
+ * viewer. Editing on the left drives the viewer on the right through
+ * `MarkdownDocumentPanel`'s own `"change"` event and `getValue()`, visually
+ * proving the dialect round-trips: what you edit renders identically in the
+ * viewer. A status row below the editor reports the editor's own dirty flag
+ * and the panel's own, the panel's arriving through the framework's
  * parent-to-child relay three containers up; Save clears it, and so does
  * undoing an edit back to the last-saved text.
  */
 class MarkdownEditorPanel extends Panel {
 
-    private readonly _editor: MarkdownEditor;
+    private readonly _editorPanel: MarkdownDocumentPanel;
     private readonly _viewer: Markdown;
     private readonly _statusText: Text;
 
@@ -77,80 +68,23 @@ class MarkdownEditorPanel extends Panel {
 
         this.setLayoutManager(new Split());
 
-        this._editor = new MarkdownEditor(SAMPLE);
+        this._editorPanel = new MarkdownDocumentPanel({ value: SAMPLE });
         this._viewer = new Markdown(SAMPLE);
-
-        // A toolbar toggle drives the editor's WYSIWYG / raw-Markdown source mode;
-        // the mode API is consumer-wired (the editor ships no built-in chrome).
-        const sourceToggle = new ToggleButton('Edit Markdown source');
-        sourceToggle.on('action', () => { this._editor.setMode(sourceToggle.isSelected() ? 'source' : 'wysiwyg'); });
-
-        // The table command API is consumer-wired, like the mode toggle above;
-        // a named method (not an inline arrow) is the listener-wiring convention.
-        const insertTableButton = new Button('Insert table');
-        insertTableButton.on('action', this.handleInsertTable);
-
-        // The row/column commands are no-ops (not throws) without the caret in
-        // a table cell, so these need no enabled/disabled state to stay safe.
-        const insertRowButton = new Button('+ Row');
-        insertRowButton.on('action', this.handleInsertRow);
-
-        const deleteRowButton = new Button('− Row');
-        deleteRowButton.on('action', this.handleDeleteRow);
-
-        const insertColumnButton = new Button('+ Column');
-        insertColumnButton.on('action', this.handleInsertColumn);
-
-        const deleteColumnButton = new Button('− Column');
-        deleteColumnButton.on('action', this.handleDeleteColumn);
-
-        const underlineButton = new Button('Underline');
-        underlineButton.on('action', this.handleUnderline);
-
-        const colourButton = new Button('Colour');
-        colourButton.on('action', this.handleColour);
-
-        const mergeCellsButton = new Button('Merge cells');
-        mergeCellsButton.on('action', this.handleMergeCells);
-
-        const alignCentreButton = new Button('Align centre');
-        alignCentreButton.on('action', this.handleAlignCentre);
-
-        const columnsButton = new Button('Columns');
-        columnsButton.on('action', this.handleColumns);
-
-        const insertImageButton = new Button('Insert image');
-        insertImageButton.on('action', this.handleInsertImage);
 
         // Writes nothing — only clears the dirty flag, standing in for a
         // host that has persisted the document.
         const saveBtn = new Button('Save');
-        saveBtn.on('action', () => { this._editor.markClean(); });
-
-        const toolbar = new ToolBar();
-        toolbar.addComponent(sourceToggle);
-        toolbar.addComponent(insertTableButton);
-        toolbar.addComponent(insertRowButton);
-        toolbar.addComponent(deleteRowButton);
-        toolbar.addComponent(insertColumnButton);
-        toolbar.addComponent(deleteColumnButton);
-        toolbar.addComponent(underlineButton);
-        toolbar.addComponent(colourButton);
-        toolbar.addComponent(mergeCellsButton);
-        toolbar.addComponent(alignCentreButton);
-        toolbar.addComponent(columnsButton);
-        toolbar.addComponent(insertImageButton);
-        toolbar.addComponent(saveBtn);
-
-        const editorFit = new Panel({ layoutManager: new Fit() });
-        editorFit.addComponent(this._editor);
-
-        const editorHost = new Panel({ layoutManager: new Border() });
-        editorHost.addComponent(toolbar,    { placement: Placement.NORTH });
-        editorHost.addComponent(editorFit,  { placement: Placement.CENTER });
+        saveBtn.on('action', () => { this._editorPanel.markClean(); });
 
         this._statusText = new Text('');
-        editorHost.addComponent(this._statusText, { placement: Placement.SOUTH });
+
+        const statusRow = new Component({ layoutManager: new HBox() });
+        statusRow.addComponent(saveBtn);
+        statusRow.addComponent(this._statusText);
+
+        const editorHost = new Panel({ layoutManager: new Border() });
+        editorHost.addComponent(this._editorPanel, { placement: Placement.CENTER });
+        editorHost.addComponent(statusRow,          { placement: Placement.SOUTH });
 
         this.addComponent(editorHost);
 
@@ -159,66 +93,18 @@ class MarkdownEditorPanel extends Panel {
         viewerHost.addComponent(this._viewer);
         this.addComponent(viewerHost);
 
-        this._editor.on('change', () => this.syncViewer());
+        this._editorPanel.on('change', () => this.syncViewer());
         this.onDirtyChange(this.handleDirtyChange);
         this.handleDirtyChange();
     }
 
     private syncViewer(): void {
-        this._viewer.setMarkdown(this._editor.getValue());
+        this._viewer.setMarkdown(this._editorPanel.getValue());
     }
-
-    // An arrow-function field, not a method: passed as a bare `this.handler`
-    // reference to `on("action", ...)`, which calls it unbound — a prototype
-    // method would lose its `this`. Matches the VideoPlayer._onPlayButton /
-    // ScrollStrip.leadClicked precedent.
-    private readonly handleInsertTable = (): void => {
-        this._editor.insertTable(2, 3);
-    };
-
-    private readonly handleInsertRow = (): void => {
-        this._editor.insertTableRow();
-    };
-
-    private readonly handleDeleteRow = (): void => {
-        this._editor.deleteTableRow();
-    };
-
-    private readonly handleInsertColumn = (): void => {
-        this._editor.insertTableColumn();
-    };
-
-    private readonly handleDeleteColumn = (): void => {
-        this._editor.deleteTableColumn();
-    };
-
-    private readonly handleUnderline = (): void => {
-        this._editor.toggleUnderline();
-    };
-
-    private readonly handleColour = (): void => {
-        this._editor.setTextColor('#cc0000');
-    };
-
-    private readonly handleMergeCells = (): void => {
-        this._editor.mergeTableCells();
-    };
-
-    private readonly handleAlignCentre = (): void => {
-        this._editor.setBlockAlignment('center');
-    };
-
-    private readonly handleColumns = (): void => {
-        this._editor.setColumnCount(2);
-    };
-
-    private readonly handleInsertImage = (): void => {
-        this._editor.insertImage('https://placehold.co/240x120', { alt: 'Placeholder', width: 240, height: 120 });
-    };
 
     private readonly handleDirtyChange = (): void => {
         this._statusText.setText(
-            `Dirty — editor: ${this._editor.isDirty() ? 'yes' : 'no'}`
+            `Dirty — editor: ${this._editorPanel.isDirty() ? 'yes' : 'no'}`
             + `, panel (3 levels up): ${this.isDirty() ? 'yes' : 'no'}`);
     };
 }

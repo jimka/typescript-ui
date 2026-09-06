@@ -88,6 +88,7 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | [`Markdown`](/components/Markdown) | Renders a Markdown source string as a live DOM subtree (lexer-only, no HTML injection) |
 | [`CodeEditor`](/components/CodeEditor) | CodeMirror-backed syntax highlighting, formatting, folding, search, lint and completion (JS/TS, JSON, HTML, SQL, Markdown, CSS, Python) |
 | [`MarkdownEditor`](/components/MarkdownEditor) | WYSIWYG rich-text editor (Lexical) whose value is a Markdown string — the editing counterpart to `Markdown` |
+| [`MarkdownDocumentPanel`](/components/MarkdownDocumentPanel) | `MarkdownEditor` + a built-in glyph-only toolbar |
 | [`FieldSet`](/api/component/container/classes/FieldSet) | Grouped form section with optional [`Legend`](/api/component/container/classes/Legend) |
 | [`LabeledFieldSet`](/components/LabeledFieldSet) | [`FieldSet`](/api/component/container/classes/FieldSet) of baseline-aligned title/field rows in one or more columns |
 | [`LabeledGrid`](/components/LabeledGrid) | Chrome-less baseline-aligned title/field grid — the layout `LabeledFieldSet` composes, without the border/legend |

@@ -217,6 +217,15 @@ page resets to empty.
   along with the exported `MarkdownTableAlignment` type. Alignment is a
   whole-column property, so choosing one re-aligns every cell of the
   caret's column, header included.
+- **New component `MarkdownDocumentPanel`** (`component/editor`), a
+  `Container` combining a `MarkdownEditor` with a glyph-only toolbar:
+  format toggles (Bold/Italic/Underline/Strikethrough/Code), Insert and
+  Table dropdowns, Text style/Alignment/Columns dropdowns, and an "Edit
+  Markdown source" toggle pinned to the toolbar's far right. Delegates
+  `getValue()`/`setValue()`/`markClean()`/the `"change"` event to the
+  owned editor, and exposes `getEditor()`/`getToolbar()` for anything
+  else. The `MarkdownEditorPanel` demo now builds one of these instead of
+  its own hand-rolled toolbar.
 
 ### Data
 
