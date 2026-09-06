@@ -65,6 +65,7 @@ import { FloatingPanel } from '~/component/container/FloatingPanel';
 import { MarkdownMinimap } from '~/component/display/MarkdownMinimap';
 import { MarkdownViewer } from '~/component/display/MarkdownViewer';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
+import { CodeEditorSearchPanel } from '~/component/editor/CodeEditorSearchPanel';
 import { SelectableText } from '~/component/input/SelectableText';
 import { StringCell } from '~/component/table/cell/String';
 import { NumberRenderer } from '~/component/table/cell/renderer/Number';
@@ -424,6 +425,10 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'MarkdownMinimap backgroundColor (rendered)', resolve: () => { const m = new MarkdownMinimap({}); m.getElement(true); return m.getBackgroundColor(); }, expected: 'var(--ts-ui-input-bg, rgb(255, 255, 255))' },
     { label: 'MarkdownMinimap shadow (rendered)',        resolve: () => { const m = new MarkdownMinimap({}); m.getElement(true); return m.getShadow(); },        expected: 'var(--ts-ui-popover-shadow, 2px 4px 12px rgba(0, 0, 0, 0.18))' },
     { label: 'MarkdownMinimap borderRadius (rendered)',  resolve: () => { const m = new MarkdownMinimap({}); m.getElement(true); return m.getBorderRadius(); },  expected: 'var(--ts-ui-border-radius, 4px)' },
+    { label: 'CodeEditorSearchPanel backgroundColor (rendered)', resolve: () => { const p = new CodeEditorSearchPanel(); p.getElement(true); return p.getBackgroundColor(); }, expected: 'var(--ts-ui-toolbar-bg, #f5f5f5)' },
+    { label: 'CodeEditorSearchPanel shadow (rendered)',        resolve: () => { const p = new CodeEditorSearchPanel(); p.getElement(true); return p.getShadow(); },        expected: 'var(--ts-ui-popover-shadow, 2px 4px 12px rgba(0, 0, 0, 0.18))' },
+    { label: 'CodeEditorSearchPanel borderRadius (rendered)',  resolve: () => { const p = new CodeEditorSearchPanel(); p.getElement(true); return p.getBorderRadius(); },  expected: 'var(--ts-ui-border-radius, 4px)' },
+    { label: 'CodeEditorSearchPanel insets',                   resolve: () => { const p = new CodeEditorSearchPanel(); const i = p.getInsets(); return [i.getTop(), i.getRight(), i.getBottom(), i.getLeft()]; }, expected: [6, 8, 6, 8] },
     { label: 'MarkdownViewer showMinimap',   resolve: () => new MarkdownViewer({}).isMinimapVisible(),                   expected: true },
     { label: 'MarkdownViewer showControls',  resolve: () => new MarkdownViewer({}).isControlsVisible(),                  expected: true },
     { label: 'MarkdownEditor readOnly',      resolve: () => new MarkdownEditor().getReadOnly(),                         expected: false },

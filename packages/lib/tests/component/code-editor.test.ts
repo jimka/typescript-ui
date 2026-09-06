@@ -11,6 +11,7 @@ import type { FormatOptions } from '~/component/editor/LanguageRegistry';
 // Barrel import triggers the five-built-in registration side effect.
 import '~/component/editor/index';
 import { Component } from '~/core/Component';
+import { Anchor } from '~/layout/Anchor';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, setQuerySelectorResult, makeEvent } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -3144,5 +3145,89 @@ describe('CodeEditor context menu', () => {
 
         history = Notification.getHistory();
         expect(history).toHaveLength(1);   // unchanged: a successful paste appends nothing
+    });
+});
+
+describe('CodeEditor floating search panel', () => {
+    it('registers exactly one child, undisplayed, with no controls built yet', () => {
+        const editor = new CodeEditor() as any;
+
+        expect(editor.getComponents().length).toBe(1);
+        expect(editor.getComponents()[0]).toBe(editor._searchPanel);
+        expect(editor._searchPanel.isDisplayed()).toBe(false);
+        expect(editor._searchPanel.isBuilt()).toBe(false);
+    });
+
+    it('uses a per-instance Anchor layout manager', () => {
+        const a = new CodeEditor();
+        const b = new CodeEditor();
+
+        expect(a.getLayoutManager()).toBeInstanceOf(Anchor);
+        expect(b.getLayoutManager()).toBeInstanceOf(Anchor);
+        expect(a.getLayoutManager()).not.toBe(b.getLayoutManager());
+    });
+
+    it('setSearchPanelOpen(true) builds controls and displays the panel; setSearchPanelOpen(false) hides it', () => {
+        const editor = new CodeEditor() as any;
+
+        editor.setSearchPanelOpen(true);
+        expect(editor._searchPanel.isBuilt()).toBe(true);
+        expect(editor._searchPanel.isDisplayed()).toBe(true);
+
+        const childCountAfterFirstOpen = editor._searchPanel.getComponents().length;
+
+        editor.setSearchPanelOpen(false);
+        expect(editor._searchPanel.isDisplayed()).toBe(false);
+
+        // A second open does not rebuild the already-built controls — the
+        // panel's own buildControls() no-ops past the first call (see
+        // code-editor-search-panel.test.ts), so the child count is unchanged.
+        editor.setSearchPanelOpen(true);
+        expect(editor._searchPanel.isDisplayed()).toBe(true);
+        expect(editor._searchPanel.getComponents().length).toBe(childCountAfterFirstOpen);
+    });
+
+    it('buildSearchQuery maps every field, leaving literal at its default of false', () => {
+        const editor = new CodeEditor() as any;
+
+        const query = editor.buildSearchQuery({
+            search: 'ab', replace: 'cd', caseSensitive: true, wholeWord: false, regexp: true,
+        });
+
+        expect(query.search).toBe('ab');
+        expect(query.replace).toBe('cd');
+        expect(query.caseSensitive).toBe(true);
+        expect(query.wholeWord).toBe(false);
+        expect(query.regexp).toBe(true);
+        expect(query.literal).toBe(false);
+    });
+
+    it('runSearchCommand and applySearchQuery are no-ops with no mounted view', () => {
+        const editor = new CodeEditor() as any;
+
+        expect(editor._view).toBeNull();
+
+        expect(() => editor.runSearchCommand('findnext')).not.toThrow();
+        expect(() => editor.applySearchQuery({
+            search: 'x', replace: '', caseSensitive: false, wholeWord: false, regexp: false,
+        })).not.toThrow();
+    });
+
+    // Regression, found live: the find field's own uncommitted-edit tracking
+    // (it's a real TextField/AbstractInput child) folds up through
+    // Component.wireChild with no opt-out, so typing a search query used to
+    // flip this editor's own document-dirty isDirty() true — see
+    // CodeEditorSearchPanel.notifyQueryChange's markClean() calls.
+    it('typing into the search panel\'s find field does not mark the editor dirty', () => {
+        const editor = new CodeEditor() as any;
+
+        expect(editor.isDirty()).toBe(false);
+
+        editor.setSearchPanelOpen(true);
+        editor._searchPanel._findField.setText('needle');
+        editor._searchPanel._findField.notifyChange('needle');
+        editor._searchPanel.handleFindFieldChange();
+
+        expect(editor.isDirty()).toBe(false);
     });
 });

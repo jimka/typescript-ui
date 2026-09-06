@@ -11,16 +11,22 @@ import { Menu } from "~/overlay/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { Notification } from "~/overlay/Notification.js";
 import { buildClipboardMenuItems } from "~/component/shared/buildClipboardMenuItems.js";
+import { Anchor } from "~/layout/Anchor.js";
+import { CodeEditorSearchPanel } from "~/component/editor/CodeEditorSearchPanel.js";
+import type { CodeEditorSearchFields, CodeEditorSearchCommand } from "~/component/editor/CodeEditorSearchPanel.js";
 import {
     EditorView, keymap, drawSelection, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
     placeholder, highlightWhitespace, highlightTrailingWhitespace, highlightSpecialChars,
     dropCursor, rectangularSelection, crosshairCursor,
 } from "@codemirror/view";
-import { EditorState, Compartment } from "@codemirror/state";
+import { EditorState, Compartment, Prec } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { indentOnInput, bracketMatching, indentRange, codeFolding, foldGutter, foldKeymap, foldedRanges, indentUnit } from "@codemirror/language";
-import { search, highlightSelectionMatches, searchKeymap } from "@codemirror/search";
+import {
+    search, highlightSelectionMatches, searchKeymap, getSearchQuery, setSearchQuery, searchPanelOpen,
+    openSearchPanel, closeSearchPanel, findNext, findPrevious, selectMatches, replaceNext, replaceAll, SearchQuery,
+} from "@codemirror/search";
 import { linter, lintGutter } from "@codemirror/lint";
 import { autocompletion, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { getLanguage } from "~/component/editor/LanguageRegistry.js";
@@ -253,6 +259,15 @@ const READONLY_FLASH_PEAK_OPACITY = 0.16;
  */
 const READONLY_FLASH_COLOR = "var(--ts-ui-validation-error-border, #dc2626)";
 
+/**
+ * Stacking order for the floating search panel: above CodeMirror's own
+ * gutters (200) and panels (300), below this editor's own read-only
+ * rejection overlay (400) and CodeMirror's own tooltips (500) — so the
+ * search panel covers the document while the rejection wash still covers
+ * everything and a completion list still covers the search panel.
+ */
+const SEARCH_PANEL_Z_INDEX = 350;
+
 /** Shown when the browser refuses a right-click Paste's clipboard read. */
 const CLIPBOARD_READ_DENIED_MESSAGE = "Clipboard read blocked by the browser — press Ctrl/Cmd+V to paste.";
 /** How long the denied-paste toast stays visible. */
@@ -476,6 +491,17 @@ class CodeEditor extends Component<CodeEditorOptions> {
      */
     private _lastCursorPosition: CodeEditorCursorPosition = { line: 1, column: 1, offset: 0 };
 
+    // Definite-assignment, not `declare`: no cascade-dispatched setter writes
+    // it, and it is assigned in the constructor body — mirrors MarkdownViewer._controls.
+    private _searchPanel!: CodeEditorSearchPanel;
+
+    // Named handler fields, per ARCHITECTURE.md's "listeners must reference a
+    // named function" rule — the shape MarkdownViewer.handleMinimapSelect uses.
+    private readonly handleSearchQueryChange: (fields: CodeEditorSearchFields) => void =
+        (fields) => this.applySearchQuery(fields);
+    private readonly handleSearchCommand: (command: CodeEditorSearchCommand) => void =
+        (command) => this.runSearchCommand(command);
+
     /**
      * Constructs a code editor.
      *
@@ -486,7 +512,16 @@ class CodeEditor extends Component<CodeEditorOptions> {
      *   constant here.
      */
     constructor(value?: string, options?: CodeEditorOptions, subclassDefaults?: Partial<CodeEditorOptions>) {
-        super(options, { ..._defaultCodeEditorOptions, ...(subclassDefaults ?? {}) });
+        super(options, {
+            ..._defaultCodeEditorOptions,
+            ...(subclassDefaults ?? {}),
+            // Last, so a subclass default can't silently swap out the Anchor
+            // the search panel's addComponent call below depends on. (A
+            // caller passing its own `options.layoutManager` still wins, per
+            // Component's own dispatch — the same pre-existing tradeoff
+            // MarkdownViewer's own Anchor-dependent constructor carries.)
+            layoutManager: new Anchor(),
+        } as Partial<CodeEditorOptions>);
 
         // Positional argument: cache it only when the caller didn't also pass
         // `options.value` (which the super-time cascade already stored).
@@ -495,6 +530,12 @@ class CodeEditor extends Component<CodeEditorOptions> {
         }
 
         this._cleanValue = this.getValue();
+
+        this._searchPanel = new CodeEditorSearchPanel({ zIndex: SEARCH_PANEL_Z_INDEX });
+        this._searchPanel.setDisplayed(false);
+        this._searchPanel.on("querychange", this.handleSearchQueryChange);
+        this._searchPanel.on("command", this.handleSearchCommand);
+        this.addComponent(this._searchPanel, this._searchPanel.getAnchorConstraints());
 
         this._unsubscribeTheme = ThemeManager.onThemeChange(() => this.onThemeChange());
 
@@ -1424,6 +1465,149 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
+     * Flips the search state (which the `updateListener` in {@link
+     * CodeEditor.mount} turns into a visible search panel) and seeds the
+     * query from the current selection. Called even when the state is
+     * already open, because this method also has to re-focus the find field.
+     *
+     * @param view - The live CodeMirror view.
+     * @returns `true`, so the keymap binding this backs consumes the key.
+     */
+    private openSearch(view: EditorView): boolean {
+        openSearchPanel(view);
+        this.setSearchPanelOpen(true);
+        this.syncSearchPanelFields(view.state);
+        this._searchPanel.focusFind();
+
+        return true;
+    }
+
+    /**
+     * Closes the search state and hides the search panel, returning focus to
+     * the document.
+     *
+     * @param view - The live CodeMirror view.
+     * @returns `false` when the search panel is already closed, so `Escape`
+     *   keeps falling through to `defaultKeymap`'s own `simplifySelection`
+     *   binding; `true` otherwise.
+     */
+    private closeSearch(view: EditorView): boolean {
+        if (!this._searchPanel.isDisplayed()) {
+            return false;
+        }
+
+        closeSearchPanel(view);
+        this.setSearchPanelOpen(false);
+        this.focus();
+
+        return true;
+    }
+
+    /**
+     * Runs the `@codemirror/search` command matching one of the search
+     * panel's `"command"` events against the live view. A no-op with no
+     * mounted view.
+     *
+     * @param command - The command the search panel's button or key asked for.
+     */
+    private runSearchCommand(command: CodeEditorSearchCommand): void {
+        if (!this._view) {
+            return;
+        }
+
+        if (command === "close") {
+            this.closeSearch(this._view);
+
+            return;
+        }
+
+        // Every other command is wrapped in the library's own `searchCommand`,
+        // which silently falls back to openSearchPanel — and so to re-seeding
+        // the query from the selection — on an invalid query. Skip instead, so
+        // an empty or malformed query (nothing to find) does not silently
+        // overwrite whatever the user has typed in the find field.
+        if (!getSearchQuery(this._view.state).valid) {
+            return;
+        }
+
+        switch (command) {
+            case "findnext":     findNext(this._view);     break;
+            case "findprevious": findPrevious(this._view); break;
+            case "selectall":    selectMatches(this._view); break;
+            case "replacenext":  replaceNext(this._view);  break;
+            case "replaceall":   replaceAll(this._view);   break;
+        }
+    }
+
+    /**
+     * Dispatches the search panel's current fields into the live view as a
+     * `setSearchQuery` effect. A no-op with no mounted view.
+     *
+     * @param fields - The search panel's current field/toggle snapshot.
+     */
+    private applySearchQuery(fields: CodeEditorSearchFields): void {
+        if (this._view) {
+            this._view.dispatch({ effects: setSearchQuery.of(this.buildSearchQuery(fields)) });
+        }
+    }
+
+    /**
+     * Maps the search panel's field snapshot onto a `SearchQuery`. Factored
+     * out so the field-to-query mapping is unit-testable with no view, the
+     * same reason `resolveFormatOptions` / `applyFormatted` are factored out.
+     * Leaves `literal` at its default of `false`, matching what CodeMirror's
+     * own panel builds.
+     *
+     * @param fields - The search panel's current field/toggle snapshot.
+     * @returns The equivalent `SearchQuery`.
+     */
+    private buildSearchQuery(fields: CodeEditorSearchFields): SearchQuery {
+        return new SearchQuery({
+            search:        fields.search,
+            replace:       fields.replace,
+            caseSensitive: fields.caseSensitive,
+            wholeWord:     fields.wholeWord,
+            regexp:        fields.regexp,
+        });
+    }
+
+    /**
+     * The whole framework-side effect of the search state opening or
+     * closing — the seam offline tests drive.
+     *
+     * @param open - Whether the search state (and so the search panel) is open.
+     */
+    private setSearchPanelOpen(open: boolean): void {
+        if (open) {
+            this._searchPanel.buildControls();
+        }
+
+        this._searchPanel.setDisplayed(open);
+        // setDisplayed writes CSS only; a component entering or leaving
+        // getLaidOutComponents() needs an explicit pass to be placed.
+        this.scheduleLayout();
+    }
+
+    /**
+     * Writes the live view's current search query into the search panel's
+     * fields, without emitting `"querychange"` (see {@link
+     * CodeEditorSearchPanel.setFields}).
+     *
+     * @param state - The state carrying the search query to mirror.
+     */
+    private syncSearchPanelFields(state: EditorState): void {
+        const query = getSearchQuery(state);
+
+        this._searchPanel.setFields({
+            search:        query.search,
+            replace:       query.replace,
+            caseSensitive: query.caseSensitive,
+            wholeWord:     query.wholeWord,
+            regexp:        query.regexp,
+        });
+    }
+
+    /**
      * Routes every framework scroll read/write onto CodeMirror's own scrolling
      * viewport (`.cm-scroller`) rather than the editor's outer box, so the
      * eased wheel scroller, the scroll-offset cache, and
@@ -1521,6 +1705,18 @@ class CodeEditor extends Component<CodeEditorOptions> {
             // CodeMirror's tab-focus mode, after which Tab moves focus again.
             // Listed last so its Tab / Shift-Tab bindings take precedence.
             keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap, ...closeBracketsKeymap, indentWithTab]),
+            // Prec.high, so these two win over the search extension's own
+            // Mod-f / Escape entries without disturbing the rest of them —
+            // relying on those bindings almost works, but Mod-f while the
+            // search panel is already open and nothing is selected dispatches
+            // no transaction at all (so focus never returns to the find
+            // field), and Escape's close path needs to hand focus back to the
+            // document, which closeSearchPanel only does when CodeMirror's own
+            // panel holds the active element — a display:none panel never can.
+            Prec.high(keymap.of([
+                { key: "Mod-f",  run: (view) => this.openSearch(view), preventDefault: true },
+                { key: "Escape", run: (view) => this.closeSearch(view) },
+            ])),
             drawSelection(),
             highlightActiveLine(),
             highlightActiveLineGutter(),
@@ -1577,6 +1773,20 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
                 if (update.heightChanged || update.geometryChanged) {
                     this.syncAutoHeight(update.selectionSet && !update.docChanged);
+                }
+
+                // searchPanelOpen(state) is the single source of truth for
+                // whether the search panel shows, so a path that opens
+                // CodeMirror's own search state without going through Mod-f
+                // (F3 on an empty query falls through to openSearchPanel)
+                // still opens the search panel.
+                if (searchPanelOpen(update.state) !== searchPanelOpen(update.startState)) {
+                    this.setSearchPanelOpen(searchPanelOpen(update.state));
+                }
+
+                if (searchPanelOpen(update.state)
+                    && !getSearchQuery(update.state).eq(getSearchQuery(update.startState))) {
+                    this.syncSearchPanelFields(update.state);
                 }
             }),
             EditorView.domEventHandlers({
@@ -2179,6 +2389,30 @@ class CodeEditor extends Component<CodeEditorOptions> {
         if (!await this.paste()) {
             Notification.show(CLIPBOARD_READ_DENIED_MESSAGE, "warning", CLIPBOARD_HINT_DURATION_MS);
         }
+    }
+
+    /**
+     * Lays out the search panel as usual via the inherited `Anchor`, then
+     * clamps its committed width so a narrow editor cannot be forced to
+     * overflow — `Anchor` commits a child at its preferred size without
+     * capping it to the container, and this component's own box is
+     * `overflow: auto`, so an oversized search panel would raise a real
+     * scrollbar on it.
+     *
+     * @returns This component, for method chaining.
+     */
+    doLayout(): this {
+        super.doLayout();
+
+        // Guards the super() cascade's own layout pass, which can run before
+        // the constructor body assigns _searchPanel — mirrors MarkdownViewer.doLayout.
+        const innerSize = this._searchPanel ? this.getInnerSize() : null;
+
+        if (innerSize) {
+            this._searchPanel.fitWithin(innerSize.width);
+        }
+
+        return this;
     }
 }
 

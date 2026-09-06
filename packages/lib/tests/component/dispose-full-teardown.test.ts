@@ -133,7 +133,23 @@ const REGISTRY: Array<{
     { name: 'AbstractCanvasSurface (via Canvas)', covers: ['AbstractCanvasSurface'], make: () => new Canvas() },
     { name: 'ChartLegend',   make: () => new ChartLegend() },
     { name: 'MenuBarButton', make: () => new MenuBarButton('File', () => {}, () => {}) },
-    { name: 'CodeEditor',    covers: ['CodeEditor'], make: () => new CodeEditor() },
+    // `_searchPanel`'s controls are lazily built (only on first open), so a
+    // bare `new CodeEditor()` never constructs them — open the search panel
+    // once to materialise its ~13-component subtree (two TextFields, six
+    // Buttons, three ToggleButtons, two rows), mirroring the MenuButton row's
+    // `toggleMenu()` idiom below for the same "lazily-built subtree" shape.
+    {
+        name: 'CodeEditor',
+        covers: ['CodeEditor'],
+        make: () => {
+            const editor = new CodeEditor();
+
+            editor.getElement(true);
+            (editor as unknown as { setSearchPanelOpen(open: boolean): void }).setSearchPanelOpen(true);
+
+            return editor;
+        },
+    },
     { name: 'MarkdownEditor', covers: ['MarkdownEditor'], make: () => new MarkdownEditor() },
     {
         name: 'PaginationBar',

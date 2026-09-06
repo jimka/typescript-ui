@@ -92,6 +92,17 @@ export function codeEditorTheme(dark: boolean): Extension {
         ".cm-panels-bottom": {
             borderTop: "1px solid var(--ts-ui-toolbar-border, #dcdcdc)",
         },
+        // CodeMirror's own search panel is kept installed and open (it still
+        // drives searchHighlighter's match tinting) but its DOM is hidden — a
+        // framework-built floating CodeEditorSearchPanel replaces it visually.
+        // Scoped to `.cm-search` so the go-to-line dialog and any lint panel,
+        // which share `.cm-panels`/`.cm-panel`, keep their container.
+        ".cm-panel.cm-search": {
+            display: "none",
+        },
+        ".cm-panels:has(> .cm-panel.cm-search:only-child)": {
+            display: "none",
+        },
         ".cm-textfield": {
             backgroundColor: "var(--ts-ui-input-bg, #ffffff)",
             color:           "var(--ts-ui-text-color, #1a1a1a)",
