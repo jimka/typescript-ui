@@ -25,6 +25,7 @@ const TABLE_CELL_CLASS          = "ts-ui-mde-table-cell";
 const TABLE_CELL_HEADER_CLASS   = "ts-ui-mde-table-cell-header";
 const TABLE_CELL_SELECTED_CLASS = "ts-ui-mde-table-cell-selected";
 const BLOCK_CLASS                = "ts-ui-mde-block";
+const COLUMN_CLASS               = "ts-ui-mde-column";
 const IMAGE_CLASS                = "ts-ui-mde-image";
 
 /** Guards the module-singleton class-rule registration in {@link ensureMarkdownEditorClassRules}. */
@@ -159,10 +160,11 @@ export function ensureMarkdownEditorClassRules(): void {
     new StyleRule({
         scope:  "class",
         name:   TABLE_CLASS,
-        // A `::: {columns=…}` fence's multi-column flow otherwise breaks the
-        // table's rows across the column boundary — the header lands in one
-        // column and its body rows in the next, with no header of their own.
-        // Matches the viewer's own TABLE_CLASS rule (Markdown.ts).
+        // A general page/column fragmentation guard: without it, a browser
+        // that paginates or column-fragments this content is free to slice a
+        // table's rows across the break — the header lands on one side and
+        // its body rows, headerless, on the other. Matches the viewer's own
+        // TABLE_CLASS rule (Markdown.ts).
         styles: { borderCollapse: "collapse", breakInside: "avoid" },
     });
 
@@ -211,7 +213,8 @@ export function ensureMarkdownEditorClassRules(): void {
         scope:  "class",
         name:   BLOCK_CLASS,
         styles: {
-            margin: "1em 0",
+            display: "flex",
+            margin:  "1em 0",
             // The gap **default** lives here, so a fence with no `gap`
             // attribute still gets one; an explicit `gap` (MarkdownBlockNode's
             // own inline style) overrides it, since inline beats a class rule.
@@ -220,19 +223,28 @@ export function ensureMarkdownEditorClassRules(): void {
     });
 
     new StyleRule({
+        scope:  "class",
+        name:   COLUMN_CLASS,
+        styles: {
+            flex: "1 1 0",
+            // A flex item's default `min-width: auto` lets one long
+            // unbreakable token (a URL, a wide code line) push its column
+            // past its equal share and squeeze the others.
+            minWidth: "0",
+        },
+    });
+
+    new StyleRule({
         scope: "selector",
-        name:  `.${BLOCK_CLASS} > :first-child`,
-        // A multi-column fence establishes a new block-formatting context,
+        name:  `.${BLOCK_CLASS} > .${COLUMN_CLASS} > :first-child`,
+        // A column is a flex item and therefore a formatting-context root,
         // so its first child's own top margin no longer collapses through
-        // it — it renders as real space below the fence's own top edge.
-        // Every *later* column's first line gets no such gap: the browser
-        // discards a box's top margin at a forced column break. Left alone,
-        // that asymmetry pushes column 1's content down by one margin
-        // relative to every other column. Zeroing it here matches what a
-        // single-column fence already shows (there the margin collapses
-        // through invisibly), so every column's first line now starts flush
-        // with the fence's top. Matches the viewer's own BLOCK_CLASS rule
-        // (Markdown.ts).
+        // it — it renders as real space below the column's own top edge,
+        // pushing every column's content down by one margin relative to a
+        // plain block. Zeroing it here matches what an ordinary block
+        // already shows (there the margin collapses through invisibly), so
+        // every column's first line starts flush with the fence's top.
+        // Matches the viewer's own BLOCK_CLASS rule (Markdown.ts).
         styles: { marginTop: "0" },
     });
 
@@ -286,5 +298,6 @@ export const EDITOR_THEME: EditorThemeClasses = {
     // Custom keys: EditorThemeClasses carries an index signature for exactly
     // this, a node-specific class this theme map has no dedicated field for.
     mdBlock:           BLOCK_CLASS,
+    mdColumn:          COLUMN_CLASS,
     mdImage:           IMAGE_CLASS,
 };

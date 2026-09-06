@@ -13,7 +13,7 @@ import {
     STRIKETHROUGH, HIGHLIGHT, CHECK_LIST,
 } from '@lexical/markdown';
 import { UNDERLINE, STYLED_TEXT } from '~/component/editor/markdownStyleTransformers';
-import { MarkdownBlockNode } from '~/component/editor/markdownBlockNode';
+import { MarkdownBlockNode, MarkdownColumnNode } from '~/component/editor/markdownBlockNode';
 import { MarkdownImageNode } from '~/component/editor/markdownImageNode';
 import { TableNode, TableRowNode, TableCellNode, $createTableSelectionFrom, $isTableCellNode } from '@lexical/table';
 import {
@@ -68,7 +68,8 @@ const CORPUS: Record<string, string> = {
     'styled text color':  'A [red]{color=#cc0000} word.',
     'styled text font/size': 'A [big]{font=Georgia size=1.2em} word.',
     'block alignment':       '::: {align=center}\ntext\n:::',
-    'block columns':         '::: {columns=2 gap=2em}\ntext\n:::',
+    'block columns':         '::: columns\nLeft\n|||\nRight\n:::',
+    'block columns aligned': '::: columns {align=center}\nA\n|||\nB\n:::',
     'sized image':           '![d](/img/d.png){width=320}',
 };
 
@@ -183,6 +184,10 @@ describe('editorNodes table registration', () => {
 
     it('EDITOR_NODES contains MarkdownBlockNode', () => {
         expect(EDITOR_NODES).toContain(MarkdownBlockNode);
+    });
+
+    it('EDITOR_NODES contains MarkdownColumnNode', () => {
+        expect(EDITOR_NODES).toContain(MarkdownColumnNode);
     });
 
     it('EDITOR_NODES contains MarkdownImageNode', () => {
@@ -1393,8 +1398,129 @@ describe('MarkdownEditor block alignment / columns', () => {
 
         editor.setColumnCount(2);
 
-        expect(normalize(editor.getValue())).toBe('::: {align=center columns=2}\nhello world\n:::');
+        expect(normalize(editor.getValue())).toBe('::: columns {align=center}\nhello world\n|||\n\n:::');
         expect(childTypes(editor)).toEqual(['markdown-block']);
+    });
+
+    it('setColumnCount(2) with the caret in a lone paragraph wraps it in a two-column fence', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectStart(editor);
+
+        editor.setColumnCount(2);
+
+        expect(normalize(editor.getValue())).toBe('::: columns\nhello world\n|||\n\n:::');
+        expect(childTypes(editor)).toEqual(['markdown-block']);
+    });
+
+    it('setColumnCount(3) inside a two-column region appends a third column and leaves both existing columns\' text unchanged', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: columns\nA\n|||\nB\n:::');
+        selectStart(editor);
+
+        editor.setColumnCount(3);
+
+        expect(normalize(editor.getValue())).toBe('::: columns\nA\n|||\nB\n|||\n\n:::');
+    });
+
+    it('setColumnCount(2) inside a three-column region A / B / C yields two columns, the second holding B followed by C', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: columns\nA\n|||\nB\n|||\nC\n:::');
+        selectStart(editor);
+
+        editor.setColumnCount(2);
+
+        expect(normalize(editor.getValue())).toBe('::: columns\nA\n|||\nB\n\nC\n:::');
+    });
+
+    it('setColumnCount(3) then setColumnCount(2) on a two-column region returns the original value exactly', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: columns\nA\n|||\nB\n:::');
+        const original = normalize(editor.getValue());
+        selectStart(editor);
+
+        editor.setColumnCount(3);
+        editor.setColumnCount(2);
+
+        expect(normalize(editor.getValue())).toBe(original);
+    });
+
+    it('setColumnCount(1) inside a region carrying align=center yields one column holding every block in order, fence intact', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: columns {align=center}\nA\n|||\nB\n:::');
+        selectStart(editor);
+
+        editor.setColumnCount(1);
+
+        expect(normalize(editor.getValue())).toBe('::: {align=center}\nA\n\nB\n:::');
+        expect(childTypes(editor)).toEqual(['markdown-block']);
+    });
+
+    it('setColumnCount(null) inside a two-column region with no alignment removes the fence, keeping the columns\' blocks in order', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: columns\nA\n|||\nB\n:::');
+        selectStart(editor);
+
+        editor.setColumnCount(null);
+
+        expect(normalize(editor.getValue())).toBe('A\n\nB');
+        expect(childTypes(editor)).toEqual(['paragraph', 'paragraph']);
+    });
+
+    it('setColumnCount(2, gap) writes the gap; a following bare setColumnCount keeps it; passing null clears it', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectStart(editor);
+
+        editor.setColumnCount(2, '3em');
+        expect(editor.getValue()).toContain('gap=3em');
+
+        editor.setColumnCount(3);
+        expect(editor.getValue()).toContain('gap=3em');
+
+        editor.setColumnCount(3, null);
+        expect(editor.getValue()).not.toContain('gap=');
+    });
+
+    it('setColumnCount(99) clamps to six columns', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectStart(editor);
+
+        editor.setColumnCount(99);
+
+        const columnCount = lexicalOf(editor).read(
+            () => ($getRoot().getFirstChild() as MarkdownBlockNode).getColumns().length,
+        );
+
+        expect(columnCount).toBe(6);
+    });
+
+    it('setBlockAlignment(null) inside a two-column region keeps the fence and yields the ::: columns opener', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: columns\nA\n|||\nB\n:::');
+        selectStart(editor);
+
+        editor.setBlockAlignment(null);
+
+        expect(normalize(editor.getValue()).startsWith('::: columns')).toBe(true);
+        expect(childTypes(editor)).toEqual(['markdown-block']);
+    });
+
+    it('setBlockType(\'quote\') with the caret in a column\'s paragraph converts that paragraph only', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: columns\nA\n|||\nB\n:::');
+        selectStart(editor);
+
+        editor.setBlockType('quote');
+
+        expect(childTypes(editor)).toEqual(['markdown-block']);
+
+        const columnTypes = lexicalOf(editor).read(() => ($getRoot().getFirstChild() as MarkdownBlockNode)
+            .getColumns()
+            .map((column) => column.getFirstChild()!.getType()));
+
+        expect(columnTypes).toEqual(['quote', 'paragraph']);
     });
 
     it('setBlockAlignment / setColumnCount do not throw on a fresh editor with no selection', () => {
@@ -1407,6 +1533,29 @@ describe('MarkdownEditor block alignment / columns', () => {
                 .setColumnCount(2, '2em')
                 .setColumnCount(null)
         ).not.toThrow();
+    });
+
+    it('the old {columns=2} attribute degrades to a plain paragraph that survives a second round-trip unchanged', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: {columns=2}\ntext\n:::');
+
+        expect(childTypes(editor)).toEqual(['paragraph']);
+
+        const value = editor.getValue();
+        expect(normalize(value)).toBe('text');
+
+        const reloaded = new MarkdownEditor();
+        reloaded.setValue(value);
+
+        expect(normalize(reloaded.getValue())).toBe(normalize(value));
+    });
+
+    it('a one-column fence carrying only a gap is not unwrapped on import: the gap survives a round-trip', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: {gap=2em}\ntext\n:::');
+
+        expect(childTypes(editor)).toEqual(['markdown-block']);
+        expect(normalize(editor.getValue())).toBe('::: {gap=2em}\ntext\n:::');
     });
 });
 
@@ -2022,41 +2171,41 @@ describe('MarkdownEditor context menu', () => {
         expect(rowOf(items[8]).isChecked()).toBe(false);
     });
 
-    it('a "text" context with linkUrl: null builds 18 entries: Cut/Copy/Paste, the format rows, Insert link, Block style, Text style, Alignment, and Clear formatting', () => {
+    it('a "text" context with linkUrl: null builds 19 entries: Cut/Copy/Paste, the format rows, Insert link, Block style, Text style, Alignment, Columns, and Clear formatting', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(18);
+        expect(items).toHaveLength(19);
         expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
         ]);
         expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
-            '(separator)', 'Insert link…', '(separator)', 'Block style', '(separator)', 'Text style', 'Alignment', '(separator)', 'Clear formatting',
+            '(separator)', 'Insert link…', '(separator)', 'Block style', '(separator)', 'Text style', 'Alignment', 'Columns', '(separator)', 'Clear formatting',
         ]);
     });
 
-    it('a "text" context with a linkUrl builds 19 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
+    it('a "text" context with a linkUrl builds 20 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'text', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(19);
+        expect(items).toHaveLength(20);
         expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
-            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Block style', '(separator)', 'Text style', 'Alignment', '(separator)', 'Clear formatting',
+            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Block style', '(separator)', 'Text style', 'Alignment', 'Columns', '(separator)', 'Clear formatting',
         ]);
     });
 
-    it('a "text" context with hasEnclosingBlock builds 21 entries: the 18 (linkUrl: null) existing plus a separator and the two new items', () => {
+    it('a "text" context with hasEnclosingBlock builds 22 entries: the 19 (linkUrl: null) existing plus a separator and the two new items', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, hasEnclosingBlock: true,
         });
 
-        expect(items).toHaveLength(21);
-        expect(items.slice(18).map((item) => item.text ?? '(separator)')).toEqual([
+        expect(items).toHaveLength(22);
+        expect(items.slice(19).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Insert line before block', 'Insert line after block',
         ]);
     });

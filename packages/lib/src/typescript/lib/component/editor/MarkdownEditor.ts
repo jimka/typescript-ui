@@ -47,7 +47,9 @@ import { $setBlocksType, $patchStyleText } from "@lexical/selection";
 import { TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { EDITOR_NODES } from "~/component/editor/editorNodes.js";
 import { EDITOR_THEME, ensureMarkdownEditorClassRules } from "~/component/editor/editorTheme.js";
-import { MarkdownBlockNode, $createMarkdownBlockNode, $isMarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
+import {
+    MarkdownBlockNode, $createMarkdownBlockNode, $isMarkdownBlockNode, $createMarkdownColumnNode,
+} from "~/component/editor/markdownBlockNode.js";
 import { $createMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { resolveImageSpec } from "~/component/display/markdownAttributes.js";
 
@@ -268,8 +270,9 @@ function $findEnclosingInsertableBlock(node: LexicalNode): CodeNode | QuoteNode 
 
 /**
  * Wraps the top-level blocks the current selection spans in a fresh
- * {@link MarkdownBlockNode}, inserted where the first of them sat. Assumes
- * the caller already verified a range selection exists.
+ * {@link MarkdownBlockNode} holding one {@link MarkdownColumnNode} column,
+ * inserted where the first of them sat. Assumes the caller already verified
+ * a range selection exists.
  *
  * @returns The new, now-populated block node.
  */
@@ -299,14 +302,76 @@ function $wrapSelectedTopLevelBlocks(): MarkdownBlockNode {
     }
 
     const block = $createMarkdownBlockNode();
+    const column = $createMarkdownColumnNode();
 
     children[firstIndex]!.insertBefore(block);
+    block.append(column);
 
     for (let index = firstIndex; index <= lastIndex; index += 1) {
-        block.append(children[index]!);
+        column.append(children[index]!);
     }
 
     return block;
+}
+
+/**
+ * Moves `block`'s columns' children back to the top level, in column order,
+ * then removes `block`. Walks every column rather than assuming exactly one,
+ * so a malformed block with more than one column (which `canUnwrap()` never
+ * actually permits) still unwraps correctly.
+ *
+ * @param block - The block to unwrap and remove.
+ */
+function $unwrapMarkdownBlock(block: MarkdownBlockNode): void {
+    for (const column of block.getColumns()) {
+        for (const child of column.getChildren()) {
+            block.insertBefore(child);
+        }
+    }
+
+    block.remove();
+}
+
+/** The most columns `setColumnCount` will build — beyond this a region is unreadable at any prose width. */
+const MAX_COLUMN_COUNT = 6;
+
+/**
+ * Grows or shrinks `block` to `target` columns: growth appends empty
+ * columns, shrinkage moves the surplus columns' content into the last column
+ * kept — except a surplus column that is still exactly as `setColumnCount`
+ * created it (a single empty paragraph and nothing else), which is dropped
+ * instead of merged, so growing and then shrinking returns the original
+ * document. Assumes `target` is already clamped to 1–{@link MAX_COLUMN_COUNT}.
+ *
+ * @param block - The block to resize.
+ * @param target - The column count to resize to.
+ */
+function $setBlockColumnCount(block: MarkdownBlockNode, target: number): void {
+    const columns = block.getColumns();
+
+    for (let index = columns.length; index < target; index += 1) {
+        const column = $createMarkdownColumnNode();
+
+        column.append($createParagraphNode());
+        block.append(column);
+    }
+
+    const keep = columns[target - 1];
+
+    for (let index = target; index < columns.length; index += 1) {
+        const surplus = columns[index]!;
+        const only = surplus.getFirstChild();
+        const isUntouched = surplus.getChildrenSize() === 1
+            && $isParagraphNode(only) && only.getChildrenSize() === 0;
+
+        if (!isUntouched && keep !== undefined) {
+            for (const child of surplus.getChildren()) {
+                keep.append(child);
+            }
+        }
+
+        surplus.remove();
+    }
 }
 
 /**
@@ -774,7 +839,7 @@ class WysiwygSurface extends Component {
  * bold, italic, strikethrough, underline, inline code, coloured/sized/font-styled
  * spans, ordered/unordered lists, blockquotes, fenced code, links, GFM pipe
  * tables with per-column alignment/widths/merged cells, `:::` alignment /
- * multi-column fences, and sized images); a curated transformer
+ * column-region fences, and sized images); a curated transformer
  * list — not Lexical's full preset — guarantees the editor can never emit
  * Markdown the viewer would drop to plain text, so an edited document renders
  * identically in the viewer.
@@ -1497,8 +1562,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * blocks the current selection spans, wrapping them in a `:::` fence (or
      * updating the enclosing fence's alignment if the caret already sits
      * inside one). Unwraps and removes the enclosing fence when clearing its
-     * alignment leaves it with no column count either. No-op without a range
-     * selection.
+     * alignment leaves it with no more than one column either. No-op
+     * without a range selection.
      *
      * @param align - The new block alignment, or `null` to clear it.
      * @returns This component, for method chaining.
@@ -1516,13 +1581,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             if (existing !== null) {
                 existing.setAlign(align);
 
-                if (existing.isEmptyOfAttributes()) {
-                    // Unwrap: move the children out, then drop the empty container.
-                    for (const child of existing.getChildren()) {
-                        existing.insertBefore(child);
-                    }
-
-                    existing.remove();
+                if (existing.canUnwrap()) {
+                    $unwrapMarkdownBlock(existing);
                 }
 
                 return;
@@ -1537,16 +1597,25 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Sets (or, with `null`, clears) the column count — and optionally the
-     * column gap — of the top-level blocks the current selection spans, with
-     * the same wrap/update/unwrap shape as {@link setBlockAlignment}. No-op
-     * without a range selection.
+     * Grows or shrinks the number of explicit column regions of the block
+     * the current selection sits in (or wraps the top-level blocks the
+     * selection spans in a new one), and optionally sets the column gap.
+     * Growing appends empty columns; shrinking merges the surplus columns'
+     * content into the last column kept, except a surplus column that is
+     * still exactly as this method created it (a single empty paragraph and
+     * nothing else), which is dropped instead — so growing and then
+     * shrinking back returns the original document. Unwraps and removes the
+     * enclosing fence when the result leaves it with no more than one
+     * column and no alignment. `count` is clamped to 1–6; `null` means one
+     * column. No-op without a range selection.
      *
      * @param count - The new column count, or `null` to clear it.
-     * @param gap - The new column gap override, or `null`/omitted to clear it.
+     * @param gap - The new column gap override; omitted leaves the existing gap untouched, `null` clears it.
      * @returns This component, for method chaining.
      */
     setColumnCount(count: number | null, gap?: string | null): this {
+        const target = Math.max(1, Math.min(count ?? 1, MAX_COLUMN_COUNT));
+
         this.ensureEditor().update(() => {
             const selection = $getSelection();
 
@@ -1555,28 +1624,20 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             const existing = $findMatchingParent(selection.anchor.getNode(), $isMarkdownBlockNode);
+            const block = existing ?? (target > 1 ? $wrapSelectedTopLevelBlocks() : null);
 
-            if (existing !== null) {
-                existing.setColumnCount(count);
-                existing.setColumnGap(gap ?? null);
-
-                if (existing.isEmptyOfAttributes()) {
-                    // Unwrap: move the children out, then drop the empty container.
-                    for (const child of existing.getChildren()) {
-                        existing.insertBefore(child);
-                    }
-
-                    existing.remove();
-                }
-
+            if (block === null) {
                 return;
             }
 
-            if (count !== null) {
-                const block = $wrapSelectedTopLevelBlocks();
+            $setBlockColumnCount(block, target);
 
-                block.setColumnCount(count);
-                block.setColumnGap(gap ?? null);
+            if (gap !== undefined) {
+                block.setColumnGap(gap);
+            }
+
+            if (block.canUnwrap()) {
+                $unwrapMarkdownBlock(block);
             }
         }, { discrete: true });
 
@@ -2258,6 +2319,28 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Builds the "Columns" submenu shared by the text and empty-line context
+     * menus: fixed 2/3/4-column presets plus a "None" item that clears the
+     * column region entirely, each applying {@link setColumnCount}.
+     *
+     * @returns The `MenuItemConfig` for the "Columns" submenu.
+     */
+    private buildColumnsMenuItem(): MenuItemConfig {
+        return {
+            text:    "Columns",
+            submenu: {
+                label: "Columns",
+                items: [
+                    { text: "2 columns", action: () => this.setColumnCount(2) },
+                    { text: "3 columns", action: () => this.setColumnCount(3) },
+                    { text: "4 columns", action: () => this.setColumnCount(4) },
+                    { text: "None", action: () => this.setColumnCount(null) },
+                ],
+            },
+        };
+    }
+
+    /**
      * Builds the three clipboard items shared by all three context menus: Cut
      * and Copy dim unless invoking them would have text to act on — the real
      * current selection, or (collapsed) what {@link $selectEnclosingWordIfCollapsed}
@@ -2348,6 +2431,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                     ],
                 },
             },
+            this.buildColumnsMenuItem(),
             { separator: true },
             { text: "Clear formatting", action: () => this.clearFormatting() },
         ];
@@ -2383,18 +2467,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             { text: "Code block", action: () => this.setBlockType("code") },
             { separator: true },
             { text: "Table", action: () => this.insertTable(2, 3) },
-            {
-                text:    "Columns",
-                submenu: {
-                    label: "Columns",
-                    items: [
-                        { text: "2 columns", action: () => this.setColumnCount(2) },
-                        { text: "3 columns", action: () => this.setColumnCount(3) },
-                        { text: "4 columns", action: () => this.setColumnCount(4) },
-                        { text: "None", action: () => this.setColumnCount(null) },
-                    ],
-                },
-            },
+            this.buildColumnsMenuItem(),
             { text: "Image…", action: () => void this.promptAndInsertImage() },
         ];
     }

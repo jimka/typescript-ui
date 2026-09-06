@@ -75,12 +75,13 @@ SELECT id, name, email, created_at, updated_at, status, role, last_login_at FROM
 This paragraph is centred inside a \`::: {align=center}\` fence.
 :::
 
-::: {columns=2 gap=2em}
-Fences also lay out block content across multiple CSS columns, splitting a
-longer run of prose into a newspaper-style two-column layout without any
-extra markup beyond the fence itself.
-
-A second paragraph flows into whichever column has room next.
+::: columns {gap=2em}
+Left column: each \`|||\` line inside a fence starts a new, independently
+authored column, laid out with flexbox so every column is an equal share of
+the container's width.
+|||
+Right column: content never reflows between columns as the container is
+resized — what you author here is exactly where it stays.
 :::
 
 ### Sized image

@@ -8,9 +8,8 @@ import { resolveBlockStyle, blockStyleToAttributes } from "~/component/display/m
 /** The JSON shape a {@link MarkdownBlockNode} (de)serialises to/from. */
 export type SerializedMarkdownBlockNode = Spread<
     {
-        align:       string | null;
-        columnCount: number | null;
-        columnGap:   string | null;
+        align:     string | null;
+        columnGap: string | null;
     },
     SerializedElementNode
 >;
@@ -25,13 +24,87 @@ function keepElement<T>(element: T): T {
 }
 
 /**
- * A `::: {align=… columns=… gap=…}` fence: a container carrying block
- * alignment and/or a multi-column layout over the block-level children it
- * wraps. Alignment and multi-column regions share this one node — a fence
- * carrying both attributes is one node with two attributes, not a wrapper
- * inside a wrapper — and the same viewer element (`Markdown.ts`'s `mdblock`
- * arm), since both are visually and structurally the same thing: a region of
- * blocks carrying presentation attributes.
+ * One column of a {@link MarkdownBlockNode} region: a self-contained span of
+ * block content laid out as one flex item. Copies the four region-node
+ * overrides `@lexical/table`'s `TableCellNode` uses to keep a region
+ * self-contained: `isShadowRoot` stops `getTopLevelElement()` walking out of
+ * a column, `canBeEmpty() === false` keeps a block-type conversion scoped to
+ * the paragraph the caret is in rather than the whole region, `canIndent()
+ * === false` keeps a column from picking up list/quote indentation, and
+ * `collapseAtStart()` keeps backspace at a column's start from merging it
+ * into the previous column.
+ */
+export class MarkdownColumnNode extends ElementNode {
+    static getType(): string {
+        return "markdown-column";
+    }
+
+    static clone(node: MarkdownColumnNode): MarkdownColumnNode {
+        return new MarkdownColumnNode(node.__key);
+    }
+
+    static importJSON(): MarkdownColumnNode {
+        return new MarkdownColumnNode();
+    }
+
+    exportJSON(): SerializedElementNode {
+        return {
+            ...super.exportJSON(),
+            type:    "markdown-column",
+            version: 1,
+        };
+    }
+
+    createDOM(config: EditorConfig) {
+        const element = DOM.sink.createViewElement("div", {
+            addClass: config.theme.mdColumn ? [config.theme.mdColumn] : [],
+        }, keepElement);
+
+        if (element === null) {
+            throw new Error("MarkdownColumnNode.createDOM requires a mounted view");
+        }
+
+        return element;
+    }
+
+    updateDOM(): boolean {
+        // Always true: the node has no way to touch an existing element
+        // under the seam rule, so Lexical must rebuild it on any change.
+        return true;
+    }
+
+    isShadowRoot(): boolean {
+        return true;
+    }
+
+    canBeEmpty(): false {
+        return false;
+    }
+
+    canIndent(): false {
+        return false;
+    }
+
+    collapseAtStart(): true {
+        return true;
+    }
+}
+
+export function $createMarkdownColumnNode(): MarkdownColumnNode {
+    return new MarkdownColumnNode();
+}
+
+export function $isMarkdownColumnNode(node: LexicalNode | null | undefined): node is MarkdownColumnNode {
+    return node instanceof MarkdownColumnNode;
+}
+
+/**
+ * A `::: {align=… gap=…}` fence: a container of {@link MarkdownColumnNode}
+ * columns, carrying an optional block alignment and/or column-gap override
+ * over the region as a whole. The same viewer element renders it
+ * (`Markdown.ts`'s `mdblock` arm), since a one-column region with no
+ * alignment or gap is visually and structurally the same construct as a
+ * multi-column one — just with one column.
  *
  * `createDOM` mints its element through the DOM seam's `createViewElement`
  * escape rather than `document.createElement`, so this file never names or
@@ -40,9 +113,8 @@ function keepElement<T>(element: T): T {
  * where the framework's own components use `DOM.sink.apply` instead.
  */
 export class MarkdownBlockNode extends ElementNode {
-    __align:       string | null = null;
-    __columnCount: number | null = null;
-    __columnGap:   string | null = null;
+    __align:     string | null = null;
+    __columnGap: string | null = null;
 
     static getType(): string {
         return "markdown-block";
@@ -52,7 +124,6 @@ export class MarkdownBlockNode extends ElementNode {
         const clone = new MarkdownBlockNode(node.__key);
 
         clone.__align = node.__align;
-        clone.__columnCount = node.__columnCount;
         clone.__columnGap = node.__columnGap;
 
         return clone;
@@ -62,7 +133,6 @@ export class MarkdownBlockNode extends ElementNode {
         const node = new MarkdownBlockNode();
 
         node.__align = json.align;
-        node.__columnCount = json.columnCount;
         node.__columnGap = json.columnGap;
 
         return node;
@@ -92,29 +162,6 @@ export class MarkdownBlockNode extends ElementNode {
     }
 
     /**
-     * Returns this block's column count, or `null` when unset (a single column).
-     *
-     * @returns The block's column count, or `null`.
-     */
-    getColumnCount(): number | null {
-        return this.getLatest().__columnCount;
-    }
-
-    /**
-     * Sets (or, with `null`, clears) this block's column count.
-     *
-     * @param count - The new column count, or `null` to clear it.
-     * @returns The writable node.
-     */
-    setColumnCount(count: number | null): this {
-        const writable = this.getWritable();
-
-        writable.__columnCount = count;
-
-        return writable;
-    }
-
-    /**
      * Returns this block's column gap override, or `null` when unset (the
      * theme's `--ts-ui-md-column-gap` default applies).
      *
@@ -139,14 +186,23 @@ export class MarkdownBlockNode extends ElementNode {
     }
 
     /**
-     * True when neither an alignment nor a column count is set — the caller
-     * should unwrap this node's children and remove it rather than leave a
-     * fence with nothing left to carry.
+     * This block's column children, in document order.
      *
-     * @returns Whether this block carries no attributes.
+     * @returns The block's columns.
      */
-    isEmptyOfAttributes(): boolean {
-        return this.getAlign() === null && this.getColumnCount() === null;
+    getColumns(): MarkdownColumnNode[] {
+        return this.getChildren().filter($isMarkdownColumnNode);
+    }
+
+    /**
+     * True when this block carries no alignment and holds at most one
+     * column — the caller should unwrap this node's children and remove it
+     * rather than leave a fence with nothing left to justify it.
+     *
+     * @returns Whether this block has nothing left to justify the fence.
+     */
+    canUnwrap(): boolean {
+        return this.getAlign() === null && this.getColumns().length <= 1;
     }
 
     /**
@@ -157,20 +213,18 @@ export class MarkdownBlockNode extends ElementNode {
      */
     toAttributes(): Record<string, string> {
         return blockStyleToAttributes({
-            textAlign:   this.getAlign(),
-            columnCount: this.getColumnCount(),
-            columnGap:   this.getColumnGap(),
+            textAlign: this.getAlign(),
+            columnGap: this.getColumnGap(),
         });
     }
 
     exportJSON(): SerializedMarkdownBlockNode {
         return {
             ...super.exportJSON(),
-            type:        "markdown-block",
-            version:     1,
-            align:       this.getAlign(),
-            columnCount: this.getColumnCount(),
-            columnGap:   this.getColumnGap(),
+            type:      "markdown-block",
+            version:   1,
+            align:     this.getAlign(),
+            columnGap: this.getColumnGap(),
         };
     }
 
@@ -178,11 +232,7 @@ export class MarkdownBlockNode extends ElementNode {
         const style = resolveBlockStyle(this.toAttributes());
         const element = DOM.sink.createViewElement("div", {
             addClass: config.theme.mdBlock ? [config.theme.mdBlock] : [],
-            style:    {
-                textAlign:   style.textAlign,
-                columnCount: style.columnCount === null ? null : String(style.columnCount),
-                columnGap:   style.columnGap,
-            },
+            style:    { textAlign: style.textAlign, columnGap: style.columnGap },
         }, keepElement);
 
         if (element === null) {

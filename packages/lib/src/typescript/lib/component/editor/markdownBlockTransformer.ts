@@ -2,8 +2,12 @@
 
 import { $convertFromMarkdownString, $convertToMarkdownString } from "@lexical/markdown";
 import type { MultilineElementTransformer, Transformer } from "@lexical/markdown";
-import { parseAttributes, formatAttributes, resolveBlockStyle } from "~/component/display/markdownAttributes.js";
-import { MarkdownBlockNode, $createMarkdownBlockNode, $isMarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
+import {
+    parseAttributes, formatAttributes, resolveBlockStyle, splitColumnSections, joinColumnSections,
+} from "~/component/display/markdownAttributes.js";
+import {
+    MarkdownBlockNode, MarkdownColumnNode, $createMarkdownBlockNode, $createMarkdownColumnNode, $isMarkdownBlockNode,
+} from "~/component/editor/markdownBlockNode.js";
 
 /** Any line that could plausibly open or close a `:::` fence — the coarse pre-filter `handleImportAfterStartMatch` refines. */
 const FENCE_LINE_REG_EXP = /^\s*:::/;
@@ -24,9 +28,12 @@ function extractFenceAttributeText(remainder: string): string {
 
 /**
  * Builds the `:::` fence transformer: a `MultilineElementTransformer` that
- * consumes a whole alignment/multi-column region in one pass — the same
- * `handleImportAfterStartMatch` hook and lazy-transformer-list trick the
- * curated `TABLE` transformer (`markdownTableTransformer.ts`) uses.
+ * consumes a whole alignment/column-region fence in one pass, importing and
+ * exporting each `|||`-separated section as its own {@link MarkdownColumnNode}
+ * column — the same `handleImportAfterStartMatch` hook, per-region
+ * `$convertFromMarkdownString`-then-append order, and lazy-transformer-list
+ * trick the curated `TABLE` transformer (`markdownTableTransformer.ts`) uses
+ * for its rows and cells.
  *
  * @param getTransformers - Returns the curated transformer array, including
  *   this one. Called at import/export time, not at construction time, so the
@@ -37,7 +44,7 @@ function extractFenceAttributeText(remainder: string): string {
  */
 export function createBlockTransformer(getTransformers: () => Transformer[]): MultilineElementTransformer {
     return {
-        dependencies: [MarkdownBlockNode],
+        dependencies: [MarkdownBlockNode, MarkdownColumnNode],
         regExpStart:  FENCE_LINE_REG_EXP,
         type:         "multiline-element",
 
@@ -77,21 +84,44 @@ export function createBlockTransformer(getTransformers: () => Transformer[]): Mu
             }
 
             const inner = lines.slice(startLineIndex + 1, closingLineIndex).join("\n");
+            const style = resolveBlockStyle(parseAttributes(extractFenceAttributeText(openingRemainder)));
             const block = $createMarkdownBlockNode();
 
-            $convertFromMarkdownString(inner, getTransformers(), block);
-
-            // AFTER the conversion: it clears the node's children, and
-            // applying attributes first risks the clear taking them with it
-            // — the same ordering the table transformer's cell-format
-            // assignment follows.
-            const style = resolveBlockStyle(parseAttributes(extractFenceAttributeText(openingRemainder)));
-
             block.setAlign(style.textAlign);
-            block.setColumnCount(style.columnCount);
             block.setColumnGap(style.columnGap);
 
-            rootNode.append(block);
+            for (const section of splitColumnSections(inner)) {
+                const column = $createMarkdownColumnNode();
+
+                // Converts into a detached column, then appends it — the
+                // same order the table transformer uses for a cell, since
+                // the conversion clears the node it converts into.
+                $convertFromMarkdownString(section, getTransformers(), column);
+                block.append(column);
+            }
+
+            // A block with one column and no attributes at all (not even a
+            // gap) has nothing left to justify a fence — this is what an
+            // old-syntax fence with only unrecognised attributes degrades to.
+            // Appending it anyway would round-trip through `export` as a
+            // bare ":::" opener, which neither fence scan can re-open (a
+            // non-empty remainder is required), corrupting the document on
+            // the next save. Unwrapping here instead — appending the sole
+            // column's children directly — keeps the degrade graceful.
+            // Mirrors export's own bare-opener condition exactly, rather
+            // than the broader canUnwrap() (which also fires when a
+            // one-column block carries only a gap, and unwrapping *that*
+            // would silently drop a real attribute export can serialise
+            // fine as `::: {gap=...}`).
+            if (block.getColumns().length <= 1 && Object.keys(block.toAttributes()).length === 0) {
+                for (const column of block.getColumns()) {
+                    for (const child of column.getChildren()) {
+                        rootNode.append(child);
+                    }
+                }
+            } else {
+                rootNode.append(block);
+            }
 
             return [true, closingLineIndex];
         },
@@ -105,12 +135,23 @@ export function createBlockTransformer(getTransformers: () => Transformer[]): Mu
                 return null;
             }
 
-            const attributes = node.toAttributes();
-            const opening = Object.keys(attributes).length === 0
-                ? ":::"
-                : `::: {${formatAttributes(attributes)}}`;
+            const columns = node.getColumns();
 
-            return `${opening}\n${$convertToMarkdownString(getTransformers(), node)}\n:::`;
+            // A block with no column children is malformed; declining lets
+            // the default child export preserve its content instead of
+            // dropping it.
+            if (columns.length === 0) {
+                return null;
+            }
+
+            const attributes = node.toAttributes();
+            const opening = ":::"
+                + (columns.length > 1 ? " columns" : "")
+                + (Object.keys(attributes).length === 0 ? "" : ` {${formatAttributes(attributes)}}`);
+            const body = joinColumnSections(
+                columns.map((column) => $convertToMarkdownString(getTransformers(), column)));
+
+            return `${opening}\n${body}\n:::`;
         },
     };
 }

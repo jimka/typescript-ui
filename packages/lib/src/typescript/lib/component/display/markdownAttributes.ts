@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 /**
- * The shared `{key=value …}` attribute grammar for the Markdown dialect's
- * extension syntax (underline/colour/font/size spans, table column widths,
- * block alignment/columns, and sized images) — parsed, validated, and
- * re-serialised in exactly one place so both the read-only `Markdown` viewer
- * and the `MarkdownEditor` agree on what is safe to render. A value that
- * fails validation is dropped rather than rendered; see each `resolve*`
- * function below.
+ * The dialect's shared grammar — both the `{key=value …}` attribute grammar
+ * (underline/colour/font/size spans, table column widths, block alignment,
+ * and sized images) and the line-level `|||` column-separator grammar — kept
+ * in exactly one place so both the read-only `Markdown` viewer and the
+ * `MarkdownEditor` agree on what is safe to render and where a column region
+ * splits. A value that fails attribute validation is dropped rather than
+ * rendered; see each `resolve*` function below.
  */
 
 /** A span's resolved, validated colour/font/size — one field `null` per unset or invalid key. */
@@ -44,8 +44,114 @@ function isValidFontFamily(value: string): boolean {
 const POSITIVE_INTEGER = /^[1-9][0-9]*$/;
 /** `left` / `center` / `right` / `justify`, the four accepted block alignments. */
 const ALIGN = /^(left|center|right|justify)$/;
-/** An integer 2–6, the accepted multi-column count. */
-const COLUMN_COUNT = /^[2-6]$/;
+
+/** The line-level marker separating one column region from the next inside a `:::` fence. */
+export const COLUMN_SEPARATOR = "|||";
+
+/**
+ * Splits a `:::` fence's inner text into one section per column, on any line
+ * whose trimmed form is exactly {@link COLUMN_SEPARATOR} — but only at the
+ * fence's own nesting level: a separator line inside a fenced code block or a
+ * nested `:::` fence is ordinary content. A line that is the separator
+ * preceded by a backslash (`\|||`) is unescaped to a literal `|||` and kept
+ * as content rather than splitting. Always returns at least one section, so
+ * a fence always has at least one column.
+ *
+ * @param inner - The fence's inner text (between its opening and closing lines).
+ * @returns The column sections, in document order.
+ *
+ * @example
+ * ```
+ * splitColumnSections("A\n|||\nB")     // -> ["A", "B"]
+ * splitColumnSections("A\n\\|||\nB")   // -> ["A\n|||\nB"]
+ * ```
+ */
+export function splitColumnSections(inner: string): string[] {
+    const sections: string[] = [];
+    let current: string[] = [];
+    let depth = 0;
+    let inCode = false;
+
+    for (const line of inner.split("\n")) {
+        const trimmed = line.trim();
+
+        if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+            inCode = !inCode;
+        } else if (!inCode) {
+            if (trimmed === ":::") {
+                depth = Math.max(0, depth - 1);
+            } else if (trimmed.startsWith(":::") && trimmed.slice(3).trim() !== "") {
+                depth += 1;
+            } else if (depth === 0 && trimmed === COLUMN_SEPARATOR) {
+                sections.push(current.join("\n"));
+                current = [];
+
+                continue;
+            }
+        }
+
+        // Only unescaped at this fence's own level: a `\|||` line inside a
+        // nested fence or a code block is left untouched here so the later
+        // recursive parse of that nested content (which runs this same
+        // function again, at its own depth 0) is the one that unescapes it —
+        // unescaping it here too would double-consume the backslash.
+        current.push(!inCode && depth === 0 ? line.replace(/^(\s*)\\\|\|\|$/, "$1|||") : line);
+    }
+
+    sections.push(current.join("\n"));
+
+    return sections;
+}
+
+/**
+ * Reverses {@link splitColumnSections}: joins column sections back into one
+ * fence body, escaping any line whose trimmed form is exactly
+ * {@link COLUMN_SEPARATOR} so it re-imports as content rather than a split —
+ * but, symmetrically with the split side, only at that line's own nesting
+ * level. A section's content can itself contain an already-exported nested
+ * `:::` fence or a fenced code block (e.g. one column's content is another
+ * whole column-region fence); a `|||` line inside either of those is left
+ * untouched, since it is not a threat to *this* join — re-splitting the
+ * joined whole only ever looks for a separator at depth 0, outside code.
+ * Escaping it anyway would still be undone correctly on the next import (an
+ * unescape with nothing to undo is a no-op), but it would mean the exported
+ * Markdown no longer matches what a nested import round-trip produces.
+ *
+ * @param sections - The column sections, in document order.
+ * @returns The joined fence inner text.
+ *
+ * @example
+ * ```
+ * joinColumnSections(["A", "B"])   // -> "A\n|||\nB"
+ * joinColumnSections(["|||"])      // -> "\\|||"
+ * ```
+ */
+export function joinColumnSections(sections: string[]): string {
+    return sections
+        .map((section) => {
+            let depth = 0;
+            let inCode = false;
+
+            return section.split("\n").map((line) => {
+                const trimmed = line.trim();
+
+                if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+                    inCode = !inCode;
+                } else if (!inCode) {
+                    if (trimmed === ":::") {
+                        depth = Math.max(0, depth - 1);
+                    } else if (trimmed.startsWith(":::") && trimmed.slice(3).trim() !== "") {
+                        depth += 1;
+                    }
+                }
+
+                return !inCode && depth === 0 && trimmed === COLUMN_SEPARATOR
+                    ? line.replace(COLUMN_SEPARATOR, `\\${COLUMN_SEPARATOR}`)
+                    : line;
+            }).join("\n");
+        })
+        .join(`\n${COLUMN_SEPARATOR}\n`);
+}
 
 /** A sized image's resolved, validated source/alt/dimensions. */
 export interface MarkdownImageSpec {
@@ -58,11 +164,10 @@ export interface MarkdownImageSpec {
 /** The `data:image/…` MIME types this dialect renders — deliberately excludes `svg+xml`, which can embed script. */
 const DATA_IMAGE_MIME = /^data:image\/(png|jpeg|gif|webp|avif);base64,/;
 
-/** A block's resolved, validated alignment/column layout — one field `null` per unset or invalid key. */
+/** A block's resolved, validated alignment/column-gap style — one field `null` per unset or invalid key. */
 export interface MarkdownBlockStyle {
-    textAlign:   string | null;
-    columnCount: number | null;
-    columnGap:   string | null;
+    textAlign: string | null;
+    columnGap: string | null;
 }
 
 /**
@@ -230,22 +335,19 @@ export function cssTextToAttributes(cssText: string): Record<string, string> {
 }
 
 /**
- * Validates and resolves the three block-style attribute keys (`align`,
- * `columns`, `gap`). Follows the same drop-on-failure rule as
- * {@link resolveSpanStyle}.
+ * Validates and resolves the two block-style attribute keys (`align`,
+ * `gap`). Follows the same drop-on-failure rule as {@link resolveSpanStyle}.
  *
  * @param attributes - The parsed attribute record.
  * @returns The resolved block style.
  */
 export function resolveBlockStyle(attributes: Record<string, string>): MarkdownBlockStyle {
     const align = attributes.align;
-    const columns = attributes.columns;
     const gap = attributes.gap;
 
     return {
-        textAlign:   align !== undefined && ALIGN.test(align) ? align : null,
-        columnCount: columns !== undefined && COLUMN_COUNT.test(columns) ? Number(columns) : null,
-        columnGap:   gap !== undefined && isValidSize(gap) ? gap : null,
+        textAlign: align !== undefined && ALIGN.test(align) ? align : null,
+        columnGap: gap !== undefined && isValidSize(gap) ? gap : null,
     };
 }
 
@@ -261,10 +363,6 @@ export function blockStyleToAttributes(style: MarkdownBlockStyle): Record<string
 
     if (style.textAlign !== null) {
         attributes.align = style.textAlign;
-    }
-
-    if (style.columnCount !== null) {
-        attributes.columns = String(style.columnCount);
     }
 
     if (style.columnGap !== null) {
