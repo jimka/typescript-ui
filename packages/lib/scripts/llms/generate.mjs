@@ -74,8 +74,11 @@ const GITHUB_BLOB = "https://github.com/jimka/typescript-ui/blob/master/";
  * the new "Charts / Diagrams" group (LineChart, BarChart, ChartLegend,
  * DiagramView) pushed the site variant to ~6931/6440 — seven more
  * minimally-worded rows plus one new group heading.
+ *
+ * Raised again from 6940: the MarkdownDocumentPanel catalog entry pushed
+ * the site variant to ~7023/6940 — one more minimally-worded row.
  */
-const TOKEN_BUDGET = 6940;
+const TOKEN_BUDGET = 7030;
 
 /** Max summary length (chars). Bounds a single row so the catalog stays under budget. */
 const SUMMARY_CAP = 140;

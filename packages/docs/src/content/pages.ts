@@ -222,6 +222,7 @@ export function getNav(): NavGroup[] {
         { path: '/components/MarkdownViewer',  label: 'MarkdownViewer' },
         { path: '/components/CodeEditor',      label: 'CodeEditor' },
         { path: '/components/MarkdownEditor',  label: 'MarkdownEditor' },
+        { path: '/components/MarkdownDocumentPanel', label: 'MarkdownDocumentPanel' },
         { path: '/components/FieldSet',        label: 'FieldSet' },
         { path: '/components/LabeledFieldSet', label: 'LabeledFieldSet' },
         { path: '/components/LabeledGrid',     label: 'LabeledGrid' },

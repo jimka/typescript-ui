@@ -211,7 +211,7 @@ describe('llms generator — doc resolution & budget', () => {
 
     it('passes a within-budget document and throws past the ceiling', () => {
         expect(assertBudget('small.txt', 'a'.repeat(400))).toBe(100);
-        // ceil(28000 / 4) = 7000 tokens, over any ceiling the constant has carried.
-        expect(() => assertBudget('big.txt', 'a'.repeat(28000))).toThrow(/budget/i);
+        // ceil(40000 / 4) = 10000 tokens, comfortably over any ceiling the constant has carried.
+        expect(() => assertBudget('big.txt', 'a'.repeat(40000))).toThrow(/budget/i);
     });
 });
