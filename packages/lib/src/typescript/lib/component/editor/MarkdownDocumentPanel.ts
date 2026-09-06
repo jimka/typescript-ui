@@ -5,7 +5,6 @@ import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { Border } from "~/layout/Border.js";
 import { Placement } from "~/primitive/Placement.js";
-import { Button } from "~/component/button/Button.js";
 import { ToggleButton } from "~/component/button/ToggleButton.js";
 import { MenuButton } from "~/component/button/MenuButton.js";
 import type { MenuButtonOptions } from "~/component/button/MenuButton.js";
@@ -14,7 +13,7 @@ import { ToolBarSeparator } from "~/component/menubar/ToolBarSeparator.js";
 import { Spacer } from "~/component/container/Spacer.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { MarkdownEditor } from "~/component/editor/MarkdownEditor.js";
-import type { MarkdownEditorChange } from "~/component/editor/MarkdownEditor.js";
+import type { MarkdownEditorChange, MarkdownEditorSelectionState } from "~/component/editor/MarkdownEditor.js";
 import { Dialog, DialogButtons } from "~/overlay/Dialog.js";
 import { TextField } from "~/component/input/TextField.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -74,11 +73,23 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
     private readonly _editor:  MarkdownEditor;
     private readonly _toolbar: ToolBar;
 
+    // Definite-assignment: assigned inside buildToolbar(), not the
+    // constructor body directly, mirroring Button.ts's `private _text!: Text;`.
+    private _boldBtn!:          ToggleButton;
+    private _italicBtn!:        ToggleButton;
+    private _underlineBtn!:     ToggleButton;
+    private _strikethroughBtn!: ToggleButton;
+    private _codeBtn!:          ToggleButton;
+    private _tableBtn!:         MenuButton<MenuButtonOptions>;
+
     private readonly _listeners: ListenerBag<"change"> =
         this.registerListenerBag(new ListenerBag<"change">());
 
     private readonly handleEditorChange: (payload: MarkdownEditorChange) => void =
         (payload) => this.emit("change", payload);
+
+    private readonly handleSelectionState: (state: MarkdownEditorSelectionState) => void =
+        (state) => this.applySelectionState(state);
 
     /**
      * Constructs a `MarkdownDocumentPanel`, its owned `MarkdownEditor`, and its toolbar.
@@ -92,11 +103,14 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
 
         this._editor = new MarkdownEditor(options?.value ?? "");
         this._editor.on("change", this.handleEditorChange);
+        this._editor.on("selectionstate", this.handleSelectionState);
 
         this._toolbar = this.buildToolbar();
 
         super.addComponent(this._toolbar, { placement: Placement.NORTH });
         super.addComponent(this._editor,  { placement: Placement.CENTER });
+
+        this.applySelectionState(this._editor.getSelectionState());
     }
 
     /**
@@ -110,17 +124,17 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
     private buildToolbar(): ToolBar {
         const bar = new ToolBar();
 
-        const boldBtn          = new Button({ glyph: "bold", text: "Bold", showText: false });
-        const italicBtn        = new Button({ glyph: "italic", text: "Italic", showText: false });
-        const underlineBtn     = new Button({ glyph: "underline", text: "Underline", showText: false });
-        const strikethroughBtn = new Button({ glyph: "strikethrough", text: "Strikethrough", showText: false });
-        const codeBtn          = new Button({ glyph: "code", text: "Code", showText: false });
+        this._boldBtn          = new ToggleButton("Bold", { glyph: "bold", showText: false });
+        this._italicBtn        = new ToggleButton("Italic", { glyph: "italic", showText: false });
+        this._underlineBtn     = new ToggleButton("Underline", { glyph: "underline", showText: false });
+        this._strikethroughBtn = new ToggleButton("Strikethrough", { glyph: "strikethrough", showText: false });
+        this._codeBtn          = new ToggleButton("Code", { glyph: "code", showText: false });
 
-        boldBtn.on("action",          () => { this._editor.toggleBold(); });
-        italicBtn.on("action",        () => { this._editor.toggleItalic(); });
-        underlineBtn.on("action",     () => { this._editor.toggleUnderline(); });
-        strikethroughBtn.on("action", () => { this._editor.toggleStrikethrough(); });
-        codeBtn.on("action",          () => { this._editor.toggleInlineCode(); });
+        this._boldBtn.on("action",          () => { this._editor.toggleBold(); });
+        this._italicBtn.on("action",        () => { this._editor.toggleItalic(); });
+        this._underlineBtn.on("action",     () => { this._editor.toggleUnderline(); });
+        this._strikethroughBtn.on("action", () => { this._editor.toggleStrikethrough(); });
+        this._codeBtn.on("action",          () => { this._editor.toggleInlineCode(); });
 
         // The generic <MenuButtonOptions> argument is required on every call
         // below: MenuButton's options-only overload accepts its generic
@@ -133,9 +147,9 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
             menuItems: this.buildInsertMenuItems(),
         });
 
-        const tableBtn = new MenuButton<MenuButtonOptions>({
+        this._tableBtn = new MenuButton<MenuButtonOptions>({
             glyph: "table", text: "Table…", showText: false,
-            menuItems: this.buildTableMenuItems(),
+            menuItems: () => this.buildTableMenuItems(),
         });
 
         const textStyleBtn = new MenuButton<MenuButtonOptions>({
@@ -145,21 +159,21 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
 
         const alignmentBtn = new MenuButton<MenuButtonOptions>({
             glyph: "align-left", text: "Alignment…", showText: false,
-            menuItems: this.buildAlignmentMenuItems(),
+            menuItems: () => this.buildAlignmentMenuItems(),
         });
 
         const columnsBtn = new MenuButton<MenuButtonOptions>({
             glyph: "columns", text: "Columns…", showText: false,
-            menuItems: this.buildColumnsMenuItems(),
+            menuItems: () => this.buildColumnsMenuItems(),
         });
 
         const sourceToggle = new ToggleButton("Edit Markdown source", { glyph: "file-code", showText: false });
         sourceToggle.on("action", () => { this._editor.setMode(sourceToggle.isSelected() ? "source" : "wysiwyg"); });
 
         bar.addComponents(
-            boldBtn, italicBtn, underlineBtn, strikethroughBtn, codeBtn,
+            this._boldBtn, this._italicBtn, this._underlineBtn, this._strikethroughBtn, this._codeBtn,
             ToolBarSeparator(),
-            insertBtn, tableBtn,
+            insertBtn, this._tableBtn,
             ToolBarSeparator(),
             textStyleBtn, alignmentBtn, columnsBtn,
             Spacer.flex(),
@@ -182,8 +196,10 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
         ];
     }
 
-    /** Table dropdown contents — mirrors the sibling plan's table-cell "Table" submenu. */
+    /** Table dropdown contents — mirrors the sibling plan's table-cell "Table" submenu, with a live Align column checkmark. */
     private buildTableMenuItems(): MenuItemConfig[] {
+        const currentAlignment = this._editor.getSelectionState().tableColumnAlignment;
+
         return [
             {
                 text: "Insert",
@@ -217,10 +233,10 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
                 submenu: {
                     label: "Align column",
                     items: [
-                        { text: "Left", action: () => this._editor.setTableColumnAlignment("left") },
-                        { text: "Center", action: () => this._editor.setTableColumnAlignment("center") },
-                        { text: "Right", action: () => this._editor.setTableColumnAlignment("right") },
-                        { text: "None", action: () => this._editor.setTableColumnAlignment("none") },
+                        { text: "Left", checked: currentAlignment === "left", action: () => this._editor.setTableColumnAlignment("left") },
+                        { text: "Center", checked: currentAlignment === "center", action: () => this._editor.setTableColumnAlignment("center") },
+                        { text: "Right", checked: currentAlignment === "right", action: () => this._editor.setTableColumnAlignment("right") },
+                        { text: "None", checked: currentAlignment === "none", action: () => this._editor.setTableColumnAlignment("none") },
                     ],
                 },
             },
@@ -267,24 +283,28 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
         ];
     }
 
-    /** Alignment dropdown contents — verbatim from MarkdownEditor's own inline "Alignment" submenu. */
+    /** Alignment dropdown contents — verbatim from MarkdownEditor's own inline "Alignment" submenu, with a live checkmark. */
     private buildAlignmentMenuItems(): MenuItemConfig[] {
+        const current = this._editor.getSelectionState().blockAlignment;
+
         return [
-            { text: "Left", action: () => this._editor.setBlockAlignment("left") },
-            { text: "Center", action: () => this._editor.setBlockAlignment("center") },
-            { text: "Right", action: () => this._editor.setBlockAlignment("right") },
-            { text: "Justify", action: () => this._editor.setBlockAlignment("justify") },
-            { text: "Default", action: () => this._editor.setBlockAlignment(null) },
+            { text: "Left", checked: current === "left", action: () => this._editor.setBlockAlignment("left") },
+            { text: "Center", checked: current === "center", action: () => this._editor.setBlockAlignment("center") },
+            { text: "Right", checked: current === "right", action: () => this._editor.setBlockAlignment("right") },
+            { text: "Justify", checked: current === "justify", action: () => this._editor.setBlockAlignment("justify") },
+            { text: "Default", checked: current === null, action: () => this._editor.setBlockAlignment(null) },
         ];
     }
 
-    /** Columns dropdown contents — verbatim from MarkdownEditor's own buildColumnsMenuItem. */
+    /** Columns dropdown contents — verbatim from MarkdownEditor's own buildColumnsMenuItem, with a live checkmark. */
     private buildColumnsMenuItems(): MenuItemConfig[] {
+        const current = this._editor.getSelectionState().columnCount;
+
         return [
-            { text: "2 columns", action: () => this._editor.setColumnCount(2) },
-            { text: "3 columns", action: () => this._editor.setColumnCount(3) },
-            { text: "4 columns", action: () => this._editor.setColumnCount(4) },
-            { text: "None", action: () => this._editor.setColumnCount(null) },
+            { text: "2 columns", checked: current === 2, action: () => this._editor.setColumnCount(2) },
+            { text: "3 columns", checked: current === 3, action: () => this._editor.setColumnCount(3) },
+            { text: "4 columns", checked: current === 4, action: () => this._editor.setColumnCount(4) },
+            { text: "None", checked: current === 1, action: () => this._editor.setColumnCount(null) },
         ];
     }
 
@@ -341,6 +361,28 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
         if (Number.isInteger(width) && width > 0) {
             this._editor.setTableColumnWidth(width);
         }
+    }
+
+    /**
+     * Applies a {@link MarkdownEditorSelectionState} snapshot to the toolbar:
+     * presses/releases the five format toggles and enables the Table button
+     * only while the caret is inside a table — reusing `Button`'s existing
+     * enabled/disabled state rather than a bespoke highlight, since every
+     * command the Table dropdown calls is a no-op outside a table anyway.
+     * The Alignment, Columns, and Table dropdowns need no push here — their
+     * `menuItems` are providers that call {@link MarkdownEditor.getSelectionState}
+     * directly at open time, so they are always current without a second
+     * copy of this state.
+     *
+     * @param state - The selection state to reflect onto the toolbar.
+     */
+    private applySelectionState(state: MarkdownEditorSelectionState): void {
+        this._boldBtn.setSelected(state.bold);
+        this._italicBtn.setSelected(state.italic);
+        this._underlineBtn.setSelected(state.underline);
+        this._strikethroughBtn.setSelected(state.strikethrough);
+        this._codeBtn.setSelected(state.code);
+        this._tableBtn.setEnabled(state.inTable);
     }
 
     /**

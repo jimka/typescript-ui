@@ -81,6 +81,19 @@ function findMenuButton(panel: MarkdownDocumentPanel, text: string): MenuButton 
     return button;
 }
 
+/** Finds a toolbar ToggleButton by its tooltip/accessible text (e.g. "Bold"). */
+function findToggleButton(panel: MarkdownDocumentPanel, text: string): ToggleButton {
+    const button = panel.getToolbar().getComponents().find(
+        (c): c is ToggleButton => c instanceof ToggleButton && c.getText() === text,
+    );
+
+    if (!button) {
+        throw new Error(`ToggleButton "${text}" not found`);
+    }
+
+    return button;
+}
+
 // MUST be the first test in this file, and the only place `.click()` runs.
 // Event's window-level base listener for "click" (and, for the trailing
 // toggle, "change") installs lazily on its first registration and is never
@@ -89,7 +102,7 @@ function findMenuButton(panel: MarkdownDocumentPanel, text: string): MenuButton 
 // every other test below drives its assertions through the MenuButton
 // menuItems configs directly (plain function calls, no DOM dispatch) instead.
 describe('MarkdownDocumentPanel toolbar action wiring (native click dispatch)', () => {
-    it('the five format-toggle buttons and the Edit Markdown source toggle fire their wired MarkdownEditor commands', () => {
+    it('the five format-toggle buttons and the Edit Markdown source toggle fire their wired MarkdownEditor commands', async () => {
         const cases: Array<[string, string]> = [
             ['Bold', '**word**'],
             ['Italic', '*word*'],
@@ -104,21 +117,38 @@ describe('MarkdownDocumentPanel toolbar action wiring (native click dispatch)', 
             panel.setValue('word');
 
             const button = panel.getToolbar().getComponents().find(
-                (c): c is Button => c instanceof Button && c.getText() === label,
+                (c): c is ToggleButton => c instanceof ToggleButton && c.getText() === label,
             );
 
             expect(button).toBeDefined();
 
             selectStart(panel.getEditor());
+
+            // Deliberately desynced beforehand: the button's own click-driven
+            // self-flip (ToggleButton.onAction, which runs before the wired
+            // "action" handler) would guess `false` here, the wrong answer —
+            // proving the correct end state comes from the live
+            // "selectionstate" emit inside toggleXxx()'s own editor.update()/
+            // dispatchCommand() calls, not from the self-flip.
+            button!.setSelected(true);
+
             button!.getElement(true);
             button!.click();
 
             expect(panel.getValue()).toContain(marker);
+
+            // toggleXxx() dispatches a text-format command, whose update is
+            // not `{ discrete: true }` and so settles on the next microtask
+            // in this headless harness (see MarkdownEditor's own
+            // "selectionstate" tests for the same deferral).
+            await Promise.resolve();
+
+            expect(button!.isSelected()).toBe(true);
         }
 
         const panel = new MarkdownDocumentPanel();
         const toggle = panel.getToolbar().getComponents().find(
-            (c): c is ToggleButton => c instanceof ToggleButton,
+            (c): c is ToggleButton => c instanceof ToggleButton && c.getText() === 'Edit Markdown source',
         );
 
         expect(toggle).toBeDefined();
@@ -212,8 +242,7 @@ describe('MarkdownDocumentPanel toolbar structure', () => {
         const formatLabels = ['Bold', 'Italic', 'Underline', 'Strikethrough', 'Code'];
 
         for (let i = 0; i < formatLabels.length; i++) {
-            expect(children[i]).toBeInstanceOf(Button);
-            expect(children[i]).not.toBeInstanceOf(MenuButton);
+            expect(children[i]).toBeInstanceOf(ToggleButton);
             expect((children[i] as Button).getText()).toBe(formatLabels[i]);
         }
 
@@ -238,6 +267,104 @@ describe('MarkdownDocumentPanel toolbar structure', () => {
 
         expect(children[13]).toBeInstanceOf(ToggleButton);
         expect((children[13] as ToggleButton).getText()).toBe('Edit Markdown source');
+    });
+});
+
+describe('MarkdownDocumentPanel live toolbar state', () => {
+    it('all five format buttons and the Table button report their neutral state immediately after construction', () => {
+        const panel = new MarkdownDocumentPanel();
+
+        for (const label of ['Bold', 'Italic', 'Underline', 'Strikethrough', 'Code']) {
+            expect(findToggleButton(panel, label).isSelected()).toBe(false);
+        }
+
+        expect(findMenuButton(panel, 'Table…').isEnabled()).toBe(false);
+    });
+
+    it('the Bold button presses when the caret sits inside a bold run, and no other format button does', () => {
+        const panel = new MarkdownDocumentPanel();
+
+        panel.setValue('**bold**');
+        selectStart(panel.getEditor());   // collapsed at the very start of the bold run
+
+        expect(findToggleButton(panel, 'Bold').isSelected()).toBe(true);
+
+        for (const label of ['Italic', 'Underline', 'Strikethrough', 'Code']) {
+            expect(findToggleButton(panel, label).isSelected()).toBe(false);
+        }
+    });
+
+    it('the Table button enables while the caret is inside a table, and disables again when it moves out', () => {
+        const panel = new MarkdownDocumentPanel();
+
+        panel.setValue('| a |\n| --- |\n| 1 |\n\nplain text');
+        selectStart(panel.getEditor());   // first header cell
+
+        expect(findMenuButton(panel, 'Table…').isEnabled()).toBe(true);
+
+        lexicalOf(panel.getEditor()).update(() => { $getRoot().selectEnd(); }, { discrete: true });
+
+        expect(findMenuButton(panel, 'Table…').isEnabled()).toBe(false);
+    });
+
+    it('the Alignment dropdown checks the current block alignment, and only that entry', () => {
+        const panel = new MarkdownDocumentPanel();
+
+        panel.setValue('::: {align=center}\ntext\n:::');
+        selectStart(panel.getEditor());
+
+        const items = resolveItems(findMenuButton(panel, 'Alignment…').getMenuItems());
+
+        expect(findItem(items, 'Center').checked).toBe(true);
+
+        for (const label of ['Left', 'Right', 'Justify', 'Default']) {
+            expect(findItem(items, label).checked).toBeFalsy();
+        }
+    });
+
+    it('the Columns dropdown checks "None" with the caret outside any ::: block', () => {
+        const panel = new MarkdownDocumentPanel();
+
+        panel.setValue('plain text');
+        selectStart(panel.getEditor());
+
+        const items = resolveItems(findMenuButton(panel, 'Columns…').getMenuItems());
+
+        expect(findItem(items, 'None').checked).toBe(true);
+
+        for (const label of ['2 columns', '3 columns', '4 columns']) {
+            expect(findItem(items, label).checked).toBeFalsy();
+        }
+    });
+
+    it('the Table dropdown\'s Align column submenu checks nothing with the caret outside a table', () => {
+        const panel = new MarkdownDocumentPanel();
+
+        panel.setValue('plain text');
+        selectStart(panel.getEditor());
+
+        const items = resolveItems(findMenuButton(panel, 'Table…').getMenuItems());
+        const alignSub = resolveItems(findItem(items, 'Align column').submenu!.items);
+
+        for (const item of alignSub) {
+            expect(item.checked).toBeFalsy();
+        }
+    });
+
+    it('the Table dropdown\'s Align column submenu checks the caret\'s own column alignment', () => {
+        const panel = new MarkdownDocumentPanel();
+
+        panel.setValue('| a |\n| :---: |\n| 1 |');
+        selectStart(panel.getEditor());   // the :---: column
+
+        const items = resolveItems(findMenuButton(panel, 'Table…').getMenuItems());
+        const alignSub = resolveItems(findItem(items, 'Align column').submenu!.items);
+
+        expect(findItem(alignSub, 'Center').checked).toBe(true);
+
+        for (const label of ['Left', 'Right', 'None']) {
+            expect(findItem(alignSub, label).checked).toBeFalsy();
+        }
     });
 });
 
