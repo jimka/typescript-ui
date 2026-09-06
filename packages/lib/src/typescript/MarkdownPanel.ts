@@ -12,7 +12,8 @@ DOM sink — *no* \`innerHTML\` anywhere.
 ## Features
 
 - Headings \`#\` … \`######\`
-- **Bold**, *italic*, and \`inline code\`
+- **Bold**, *italic*, ++underlined++, and \`inline code\`
+- [Coloured]{color=#cc0000}, [sized]{size=1.3em}, and [font-styled]{font=Georgia} spans
 - Ordered and unordered lists
 - [Links](https://example.com) open in a new tab
 
@@ -63,7 +64,30 @@ SELECT id, name, email, created_at, updated_at, status, role, last_login_at FROM
 | Tables | yes | 0.05 |
 | Alignment | yes | left/center/right |
 
-Unsupported tokens (images, raw HTML) fall back to plain text and never crash.`;
+### Sized and merged columns
+
+| Feature {width=200} | Support |
+| --- | --- |
+| Column width | yes |
+| Merged cells | << |
+
+::: {align=center}
+This paragraph is centred inside a \`::: {align=center}\` fence.
+:::
+
+::: {columns=2 gap=2em}
+Fences also lay out block content across multiple CSS columns, splitting a
+longer run of prose into a newspaper-style two-column layout without any
+extra markup beyond the fence itself.
+
+A second paragraph flows into whichever column has room next.
+:::
+
+### Sized image
+
+![Diagram](https://placehold.co/320x160){width=320 height=160}
+
+Unsupported tokens (raw HTML, task lists) fall back to plain text and never crash.`;
 
 /**
  * Demo panel showcasing the [`MarkdownViewer`](/api/component/display/classes/MarkdownViewer)

@@ -12,13 +12,16 @@ import {
     BOLD_STAR, ITALIC_STAR, INLINE_CODE, LINK,
     STRIKETHROUGH, HIGHLIGHT, CHECK_LIST,
 } from '@lexical/markdown';
-import { TableNode, TableRowNode, TableCellNode, $createTableSelectionFrom } from '@lexical/table';
+import { UNDERLINE, STYLED_TEXT } from '~/component/editor/markdownStyleTransformers';
+import { MarkdownBlockNode } from '~/component/editor/markdownBlockNode';
+import { MarkdownImageNode } from '~/component/editor/markdownImageNode';
+import { TableNode, TableRowNode, TableCellNode, $createTableSelectionFrom, $isTableCellNode } from '@lexical/table';
 import {
     $getRoot, $getSelection, $isRangeSelection, $isParagraphNode, $isTextNode, $selectAll, $setSelection,
     KEY_ENTER_COMMAND,
 } from 'lexical';
 import type { LexicalEditor, ElementNode, LexicalNode } from 'lexical';
-import { lexer } from 'marked';
+import { lexMarkdown } from '~/component/display/markdownExtensions';
 import { DOM } from '~/core/DOM';
 import { Notification } from '~/overlay/Notification';
 import { _Dialog as Dialog } from '~/overlay/Dialog';
@@ -61,11 +64,17 @@ const CORPUS: Record<string, string> = {
     'table':            '| a | b |\n| --- | --- |\n| 1 | 2 |',
     'table aligned':    '| a | b | c |\n| :--- | :---: | ---: |\n| 1 | 2 | 3 |',
     'table escaped pipe': '| a | b |\n| --- | --- |\n| x | `p \\| q` |',
+    'underline':          'A ++word++ here.',
+    'styled text color':  'A [red]{color=#cc0000} word.',
+    'styled text font/size': 'A [big]{font=Georgia size=1.2em} word.',
+    'block alignment':       '::: {align=center}\ntext\n:::',
+    'block columns':         '::: {columns=2 gap=2em}\ntext\n:::',
+    'sized image':           '![d](/img/d.png){width=320}',
 };
 
 // The exact token types the read-only `Markdown` viewer renders; anything else
 // falls to its plain-text fallback.
-const VIEWER_TOKENS = new Set(['heading', 'paragraph', 'list', 'blockquote', 'code', 'space', 'table']);
+const VIEWER_TOKENS = new Set(['heading', 'paragraph', 'list', 'blockquote', 'code', 'space', 'mdtable', 'mdblock']);
 
 /** Normalises Lexical's markdown export for comparison: strip trailing spaces, collapse blank-line runs, trim. */
 function normalize(md: string): string {
@@ -150,11 +159,12 @@ function caretIsInAParagraph(editor: MarkdownEditor): boolean {
 }
 
 describe('markdownTransformers curation', () => {
-    it('contains exactly the eleven dialect transformers', () => {
-        expect(TRANSFORMERS).toHaveLength(11);
+    it('contains exactly the fifteen dialect transformers', () => {
+        expect(TRANSFORMERS).toHaveLength(15);
         expect(TRANSFORMERS).toEqual(expect.arrayContaining([
             HEADING, QUOTE, CODE, UNORDERED_LIST, ORDERED_LIST,
             BOLD_STAR, ITALIC_STAR, INLINE_CODE, STRIKETHROUGH, LINK,
+            UNDERLINE, STYLED_TEXT,
         ]));
     });
 
@@ -169,6 +179,14 @@ describe('editorNodes table registration', () => {
         expect(EDITOR_NODES).toContain(TableNode);
         expect(EDITOR_NODES).toContain(TableRowNode);
         expect(EDITOR_NODES).toContain(TableCellNode);
+    });
+
+    it('EDITOR_NODES contains MarkdownBlockNode', () => {
+        expect(EDITOR_NODES).toContain(MarkdownBlockNode);
+    });
+
+    it('EDITOR_NODES contains MarkdownImageNode', () => {
+        expect(EDITOR_NODES).toContain(MarkdownImageNode);
     });
 });
 
@@ -313,6 +331,13 @@ describe('MarkdownEditor command API', () => {
                 .toggleItalic()
                 .toggleInlineCode()
                 .toggleStrikethrough()
+                .toggleUnderline()
+                .setTextColor('#cc0000')
+                .setTextColor(null)
+                .setFontFamily('Georgia')
+                .setFontFamily(null)
+                .setFontSize('1.2em')
+                .setFontSize(null)
                 .toggleUnorderedList()
                 .toggleOrderedList()
                 .toggleLink('https://example.com')
@@ -323,6 +348,50 @@ describe('MarkdownEditor command API', () => {
                 .insertParagraphBeforeBlock()
                 .insertParagraphAfterBlock()
         ).not.toThrow();
+    });
+
+    it('toggleUnderline() on a document with the caret in a word yields ++word++ in the value', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('word');
+
+        selectStart(editor);
+        editor.toggleUnderline();
+
+        expect(editor.getValue()).toContain('++word++');
+    });
+
+    it('setTextColor(\'#cc0000\') with the caret in a word yields [word]{color=#cc0000}; calling it again with null yields word', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('word');
+
+        selectStart(editor);
+        editor.setTextColor('#cc0000');
+
+        expect(editor.getValue()).toContain('[word]{color=#cc0000}');
+
+        editor.setTextColor(null);
+
+        expect(normalize(editor.getValue())).toBe('word');
+    });
+
+    it('with the caret inside a link, setTextColor leaves the value unchanged', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('A [text](https://x) link.');
+
+        lexicalOf(editor).update(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const linkNode = paragraph.getChildren().find((n) => n.getType() === 'link') as ElementNode;
+            const textNode = linkNode.getFirstChild();
+
+            if ($isTextNode(textNode)) {
+                textNode.select(2, 2);
+            }
+        }, { discrete: true });
+
+        const before = editor.getValue();
+        editor.setTextColor('#cc0000');
+
+        expect(editor.getValue()).toBe(before);
     });
 
     it('toggleStrikethrough round-trips ~~x~~ through setValue/getValue on a selected word', () => {
@@ -1058,7 +1127,7 @@ describe('MarkdownEditor dialect fidelity (viewer token set)', () => {
             const editor = new MarkdownEditor();
             editor.setValue(doc);
 
-            const tokens = lexer(editor.getValue());
+            const tokens = lexMarkdown(editor.getValue());
             const types = tokens.map((token) => token.type);
 
             for (const type of types) {
@@ -1080,9 +1149,9 @@ describe('MarkdownEditor table import/export edge cases', () => {
         const editor = new MarkdownEditor();
         editor.setValue('| a | b |\n| 1 | 2 |');
 
-        const tokens = lexer(editor.getValue());
+        const tokens = lexMarkdown(editor.getValue());
 
-        expect(tokens.some((token) => token.type === 'table')).toBe(false);
+        expect(tokens.some((token) => token.type === 'mdtable')).toBe(false);
         expect(editor.getValue()).not.toContain('---');
     });
 
@@ -1090,9 +1159,9 @@ describe('MarkdownEditor table import/export edge cases', () => {
         const editor = new MarkdownEditor();
         editor.setValue('| a | b |\n| --- |\n| 1 | 2 |');
 
-        const tokens = lexer(editor.getValue());
+        const tokens = lexMarkdown(editor.getValue());
 
-        expect(tokens.some((token) => token.type === 'table')).toBe(false);
+        expect(tokens.some((token) => token.type === 'mdtable')).toBe(false);
     });
 
     it('normalises a table authored without leading/trailing pipes to the canonical piped form', () => {
@@ -1110,6 +1179,47 @@ describe('MarkdownEditor table import/export edge cases', () => {
 
         expect(lines).toHaveLength(4);   // header, delimiter, and two body rows
         expect(lines[3]).toBe('| trailing prose |  |');
+    });
+
+    it('round-trips a column width to a fixpoint, and the reloaded table\'s colWidths is [240, 0]', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| :--- {width=240} | ---: |\n| 1 | 2 |');
+
+        const value = editor.getValue();
+        expect(normalize(value)).toBe('| a | b |\n| :--- {width=240} | ---: |\n| 1 | 2 |');
+
+        const reloaded = new MarkdownEditor();
+        reloaded.setValue(value);
+
+        const colWidths = lexicalOf(reloaded).read(() => (($getRoot().getFirstChild() as TableNode).getColWidths()));
+        expect(colWidths).toEqual([240, 0]);
+    });
+
+    it('round-trips a merged cell to a fixpoint, and the imported table\'s first body row has one cell with colSpan 2', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| d | << |');
+
+        const value = editor.getValue();
+        expect(normalize(value)).toBe('| a | b |\n| --- | --- |\n| d | << |');
+
+        const { cellCount, colSpan } = lexicalOf(editor).read(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+            const bodyRow = table.getChildAtIndex(1) as TableRowNode;
+            const bodyCells = bodyRow.getChildren().filter($isTableCellNode);
+
+            return { cellCount: bodyCells.length, colSpan: bodyCells[0]!.getColSpan() };
+        });
+
+        expect(cellCount).toBe(1);
+        expect(colSpan).toBe(2);
+    });
+
+    it('emits the << / ^^ markers again in the same positions after importing a merged table', () => {
+        const editor = new MarkdownEditor();
+        const doc = '| a | b | c |\n| --- | --- | --- |\n| d | << | f |\n| ^^ | ^^ | g |';
+        editor.setValue(doc);
+
+        expect(normalize(editor.getValue())).toBe(doc);
     });
 });
 
@@ -1173,9 +1283,9 @@ describe('MarkdownEditor table commands', () => {
 
         editor.deleteTable();
 
-        const tokens = lexer(editor.getValue());
+        const tokens = lexMarkdown(editor.getValue());
 
-        expect(tokens.some((token) => token.type === 'table')).toBe(false);
+        expect(tokens.some((token) => token.type === 'mdtable')).toBe(false);
     });
 
     it('deleteTable no-throws when the caret is not inside a table cell', () => {
@@ -1196,6 +1306,133 @@ describe('MarkdownEditor table commands', () => {
                 .deleteTableColumn()
         ).not.toThrow();
     });
+
+    it('mergeTableCells() on a TableSelection spanning two cells yields << ; unmergeTableCell() removes it again', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+
+        lexicalOf(editor).update(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+            const bodyRow = table.getChildAtIndex(1) as TableRowNode;
+            const cells = bodyRow.getChildren().filter($isTableCellNode);
+            const selection = $createTableSelectionFrom(table, cells[0]!, cells[1]!);
+
+            $setSelection(selection);
+        }, { discrete: true });
+
+        editor.mergeTableCells();
+
+        expect(editor.getValue()).toContain('<<');
+
+        selectStart(editor);
+        lexicalOf(editor).update(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+            const bodyRow = table.getChildAtIndex(1) as TableRowNode;
+            const mergedCell = bodyRow.getChildren().filter($isTableCellNode)[0]!;
+
+            mergedCell.selectStart();
+        }, { discrete: true });
+
+        editor.unmergeTableCell();
+
+        expect(editor.getValue()).not.toContain('<<');
+    });
+
+    it('setTableColumnWidth(240) with the caret in the first column yields {width=240} in the first delimiter cell; setTableColumnWidth(null) removes it', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+        selectStart(editor);
+
+        editor.setTableColumnWidth(240);
+
+        expect(editor.getValue()).toContain('--- {width=240}');
+
+        editor.setTableColumnWidth(null);
+
+        expect(editor.getValue()).not.toContain('width=240');
+    });
+
+    it('mergeTableCells / unmergeTableCell / setTableColumnWidth do not throw on a fresh editor with no table', () => {
+        const editor = new MarkdownEditor();
+
+        expect(() =>
+            editor
+                .mergeTableCells()
+                .unmergeTableCell()
+                .setTableColumnWidth(240)
+        ).not.toThrow();
+    });
+});
+
+describe('MarkdownEditor block alignment / columns', () => {
+    it('setBlockAlignment(\'center\') with the caret in a paragraph wraps it in a fence carrying align=center', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectStart(editor);
+
+        editor.setBlockAlignment('center');
+
+        expect(normalize(editor.getValue())).toBe('::: {align=center}\nhello world\n:::');
+    });
+
+    it('setBlockAlignment(null) inside a fence carrying only align removes the fence, leaving the paragraph at the top level', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: {align=center}\nhello world\n:::');
+        selectStart(editor);
+
+        editor.setBlockAlignment(null);
+
+        expect(normalize(editor.getValue())).toBe('hello world');
+        expect(childTypes(editor)).toEqual(['paragraph']);
+    });
+
+    it('setColumnCount(2) inside a fence that already carries align=center yields one fence carrying both attributes', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('::: {align=center}\nhello world\n:::');
+        selectStart(editor);
+
+        editor.setColumnCount(2);
+
+        expect(normalize(editor.getValue())).toBe('::: {align=center columns=2}\nhello world\n:::');
+        expect(childTypes(editor)).toEqual(['markdown-block']);
+    });
+
+    it('setBlockAlignment / setColumnCount do not throw on a fresh editor with no selection', () => {
+        const editor = new MarkdownEditor();
+
+        expect(() =>
+            editor
+                .setBlockAlignment('center')
+                .setBlockAlignment(null)
+                .setColumnCount(2, '2em')
+                .setColumnCount(null)
+        ).not.toThrow();
+    });
+});
+
+describe('MarkdownEditor insertImage', () => {
+    it('insertImage(\'/img/d.png\', { alt: \'d\', width: 320 }) on an empty editor yields exactly that Markdown', () => {
+        const editor = new MarkdownEditor();
+
+        editor.insertImage('/img/d.png', { alt: 'd', width: 320 });
+
+        expect(normalize(editor.getValue())).toBe('![d](/img/d.png){width=320}');
+    });
+
+    it('insertImage(\'javascript:alert(1)\') leaves the value unchanged', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello');
+
+        editor.insertImage('javascript:alert(1)');
+
+        expect(normalize(editor.getValue())).toBe('hello');
+    });
+
+    it('does not throw on a fresh editor with no selection', () => {
+        const editor = new MarkdownEditor();
+
+        expect(() => editor.insertImage('/img/d.png')).not.toThrow();
+    });
 });
 
 describe('$classifyContextMenuTarget', () => {
@@ -1213,7 +1450,7 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'text', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
-            hasEnclosingBlock: false, linkUrl: null,
+            underline: false, hasEnclosingBlock: false, linkUrl: null,
         });
     });
 
@@ -1233,8 +1470,25 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'text', hasSelectedText: true, bold: true, italic: false, strikethrough: false, code: false,
-            hasEnclosingBlock: false, linkUrl: null,
+            underline: false, hasEnclosingBlock: false, linkUrl: null,
         });
+    });
+
+    it('reports underline: true for a caret inside an underlined run', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+
+        lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true });
+        editor.toggleUnderline();
+
+        const result = lexicalOf(editor).read(() => {
+            const paragraph = $getRoot().getFirstChild() as ElementNode;
+            const textNode = paragraph.getFirstChild() as LexicalNode;
+
+            return $classifyContextMenuTarget(textNode);
+        });
+
+        expect((result as { underline: boolean }).underline).toBe(true);
     });
 
     it('classifies a node inside a heading as "text" with hasEnclosingBlock false', () => {
@@ -1351,7 +1605,7 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
-            hasEnclosingBlock: true, linkUrl: null,
+            underline: false, hasEnclosingBlock: true, linkUrl: null,
         });
     });
 
@@ -1368,7 +1622,7 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
-            hasEnclosingBlock: true, linkUrl: null,
+            underline: false, hasEnclosingBlock: true, linkUrl: null,
         });
     });
 
@@ -1390,7 +1644,7 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: true, bold: true, italic: false, strikethrough: false, code: false,
-            hasEnclosingBlock: true, linkUrl: null,
+            underline: false, hasEnclosingBlock: true, linkUrl: null,
         });
     });
 
@@ -1733,8 +1987,8 @@ describe('MarkdownEditor insertParagraphBeforeBlock / insertParagraphAfterBlock'
 
 describe('MarkdownEditor context menu', () => {
     /** A representative fully-mixed format state: some formats on, some off. */
-    const SOME_FORMATS: { bold: boolean; italic: boolean; strikethrough: boolean; code: boolean } =
-        { bold: true, italic: false, strikethrough: true, code: false };
+    const SOME_FORMATS: { bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean } =
+        { bold: true, italic: false, strikethrough: true, code: false, underline: false };
 
     /** Finds the config for the item with the given `text`, in a possibly-nested submenu list. */
     function findItem(items: MenuItemConfig[], text: string): MenuItemConfig | undefined {
@@ -1760,48 +2014,49 @@ describe('MarkdownEditor context menu', () => {
         });
 
         // Order: Cut, Copy, Paste, separator, then buildFormatToggleItems's
-        // Bold, Italic, Strikethrough, Inline code.
+        // Bold, Italic, Strikethrough, Inline code, Underline.
         expect(rowOf(items[4]).isChecked()).toBe(true);
         expect(rowOf(items[5]).isChecked()).toBe(false);
         expect(rowOf(items[6]).isChecked()).toBe(true);
         expect(rowOf(items[7]).isChecked()).toBe(false);
+        expect(rowOf(items[8]).isChecked()).toBe(false);
     });
 
-    it('a "text" context with linkUrl: null builds 14 entries: Cut/Copy/Paste, the format rows, Insert link, Block style, and Clear formatting', () => {
+    it('a "text" context with linkUrl: null builds 18 entries: Cut/Copy/Paste, the format rows, Insert link, Block style, Text style, Alignment, and Clear formatting', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(14);
+        expect(items).toHaveLength(18);
         expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
         ]);
-        expect(items.slice(8).map((item) => item.text ?? '(separator)')).toEqual([
-            '(separator)', 'Insert link…', '(separator)', 'Block style', '(separator)', 'Clear formatting',
+        expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
+            '(separator)', 'Insert link…', '(separator)', 'Block style', '(separator)', 'Text style', 'Alignment', '(separator)', 'Clear formatting',
         ]);
     });
 
-    it('a "text" context with a linkUrl builds 15 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
+    it('a "text" context with a linkUrl builds 19 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'text', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(15);
-        expect(items.slice(8).map((item) => item.text ?? '(separator)')).toEqual([
-            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Block style', '(separator)', 'Clear formatting',
+        expect(items).toHaveLength(19);
+        expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
+            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Block style', '(separator)', 'Text style', 'Alignment', '(separator)', 'Clear formatting',
         ]);
     });
 
-    it('a "text" context with hasEnclosingBlock builds 17 entries: the 14 (linkUrl: null) existing plus a separator and the two new items', () => {
+    it('a "text" context with hasEnclosingBlock builds 21 entries: the 18 (linkUrl: null) existing plus a separator and the two new items', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, hasEnclosingBlock: true,
         });
 
-        expect(items).toHaveLength(17);
-        expect(items.slice(14).map((item) => item.text ?? '(separator)')).toEqual([
+        expect(items).toHaveLength(21);
+        expect(items.slice(18).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Insert line before block', 'Insert line after block',
         ]);
     });
@@ -1955,7 +2210,24 @@ describe('MarkdownEditor context menu', () => {
 
         blockStyleItems?.find((item) => item.text === 'Quote')?.action?.();
 
-        expect(lexer(editor.getValue()).some((token) => token.type === 'blockquote')).toBe(true);
+        expect(lexMarkdown(editor.getValue()).some((token) => token.type === 'blockquote')).toBe(true);
+    });
+
+    it('the "Text style" submenu\'s Colour ▸ Red item reaches setTextColor, and Colour ▸ Default clears it', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('word');
+        selectStart(editor);
+
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'text', hasSelectedText: true, ...SOME_FORMATS,
+        });
+        const colorItems = submenuItemsOf(findItem(submenuItemsOf(findItem(items, 'Text style')) ?? [], 'Colour'));
+
+        colorItems?.find((item) => item.text === 'Red')?.action?.();
+        expect(editor.getValue()).toContain('[word]{color=#cc0000}');
+
+        colorItems?.find((item) => item.text === 'Default')?.action?.();
+        expect(normalize(editor.getValue())).toBe('word');
     });
 
     it('a "text" context\'s Bold checkbox row reaches MarkdownEditor.toggleBold on activation', () => {
@@ -1965,6 +2237,7 @@ describe('MarkdownEditor context menu', () => {
 
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'text', hasSelectedText: true, bold: false, italic: false, strikethrough: false, code: false,
+            underline: false,
         });
 
         rowOf(items[4]).activate();
@@ -1980,24 +2253,24 @@ describe('MarkdownEditor context menu', () => {
         expect(submenuItemsOf(findItem(items, 'Heading'))).toHaveLength(6);
     });
 
-    it('an "empty-line" context builds 9 entries: Cut/Copy/Paste, then Heading, Quote, Code block, and Table', () => {
+    it('an "empty-line" context builds 11 entries: Cut/Copy/Paste, then Heading, Quote, Code block, Table, Columns, and Image', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true });
 
-        expect(items).toHaveLength(9);
+        expect(items).toHaveLength(11);
         expect(items.map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
-            'Heading', 'Quote', 'Code block', '(separator)', 'Table',
+            'Heading', 'Quote', 'Code block', '(separator)', 'Table', 'Columns', 'Image…',
         ]);
     });
 
-    it('a "table-cell" context with linkUrl: null returns 15 entries: Cut/Copy/Paste, 4 format rows, Insert link, Clear formatting, then Insert and Delete submenus', () => {
+    it('a "table-cell" context with linkUrl: null returns 22 entries: Cut/Copy/Paste, 5 format rows, Insert link, Text style, Clear formatting, Insert/Delete submenus, then Merge/Unmerge/Column width', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(15);
+        expect(items).toHaveLength(22);
         expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
         ]);
@@ -2005,8 +2278,10 @@ describe('MarkdownEditor context menu', () => {
         expect(rowOf(items[5]).isChecked()).toBe(false);   // Italic
         expect(rowOf(items[6]).isChecked()).toBe(true);    // Strikethrough
         expect(rowOf(items[7]).isChecked()).toBe(false);   // Inline code
-        expect(items.slice(8).map((item) => item.text ?? '(separator)')).toEqual([
-            '(separator)', 'Insert link…', '(separator)', 'Clear formatting', '(separator)', 'Insert', 'Delete',
+        expect(rowOf(items[8]).isChecked()).toBe(false);   // Underline
+        expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
+            '(separator)', 'Insert link…', '(separator)', 'Text style', '(separator)', 'Clear formatting', '(separator)', 'Insert', 'Delete',
+            '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…',
         ]);
 
         expect(submenuItemsOf(findItem(items, 'Insert'))?.map((item) => item.text)).toEqual([
@@ -2017,14 +2292,14 @@ describe('MarkdownEditor context menu', () => {
         ]);
     });
 
-    it('a "table-cell" context with hasEnclosingBlock builds 18 entries: the 15 existing (with no link) plus a separator and the two new items', () => {
+    it('a "table-cell" context with hasEnclosingBlock builds 25 entries: the 22 existing (with no link) plus a separator and the two new items', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, hasEnclosingBlock: true,
         });
 
-        expect(items).toHaveLength(18);
-        expect(items.slice(15).map((item) => item.text ?? '(separator)')).toEqual([
+        expect(items).toHaveLength(25);
+        expect(items.slice(22).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Insert line before block', 'Insert line after block',
         ]);
     });
@@ -2051,31 +2326,33 @@ describe('MarkdownEditor context menu', () => {
         expect(childTypes(after)).toEqual(['table', 'paragraph']);
     });
 
-    it('a "table-cell" context with a linkUrl returns 16 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
+    it('a "table-cell" context with a linkUrl returns 23 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(16);
-        expect(items.slice(8).map((item) => item.text ?? '(separator)')).toEqual([
-            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Clear formatting', '(separator)', 'Insert', 'Delete',
+        expect(items).toHaveLength(23);
+        expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
+            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Text style', '(separator)', 'Clear formatting', '(separator)', 'Insert', 'Delete',
+            '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…',
         ]);
     });
 
-    it('a "table-cell" context with both a linkUrl and hasEnclosingBlock combines all groups: link items, Clear formatting, Insert/Delete submenus, and the two block items, in that order', () => {
+    it('a "table-cell" context with both a linkUrl and hasEnclosingBlock combines all groups: link items, Text style, Clear formatting, Insert/Delete submenus, Merge/Unmerge/Column width, and the two block items, in that order', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS, hasEnclosingBlock: true,
         });
 
-        expect(items).toHaveLength(19);
+        expect(items).toHaveLength(26);
         expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
         ]);
-        expect(items.slice(8).map((item) => item.text ?? '(separator)')).toEqual([
-            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Clear formatting', '(separator)',
-            'Insert', 'Delete', '(separator)', 'Insert line before block', 'Insert line after block',
+        expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
+            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Text style', '(separator)', 'Clear formatting', '(separator)',
+            'Insert', 'Delete', '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…',
+            '(separator)', 'Insert line before block', 'Insert line after block',
         ]);
     });
 
@@ -2089,8 +2366,8 @@ describe('MarkdownEditor context menu', () => {
 
         submenuItemsOf(findItem(items, 'Delete'))?.find((item) => item.text === 'Table')?.action?.();
 
-        const tokens = lexer(editor.getValue());
-        expect(tokens.some((token) => token.type === 'table')).toBe(false);
+        const tokens = lexMarkdown(editor.getValue());
+        expect(tokens.some((token) => token.type === 'mdtable')).toBe(false);
     });
 
     it("the empty-line menu's Table item reaches MarkdownEditor.insertTable(2, 3)", () => {
@@ -2256,7 +2533,7 @@ describe('MarkdownEditor context-menu paste target', () => {
 
         expect(result).toEqual({
             kind: 'text', hasSelectedText: true, bold: false, italic: false, strikethrough: false, code: false,
-            hasEnclosingBlock: false, linkUrl: null,
+            underline: false, hasEnclosingBlock: false, linkUrl: null,
         });
 
         const stillCollapsedAtCaret = lexicalOf(editor).read(() => {

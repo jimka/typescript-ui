@@ -6,6 +6,8 @@ import { LinkNode } from "@lexical/link";
 import { CodeNode, CodeHighlightNode } from "@lexical/code";
 import { TableNode, TableRowNode, TableCellNode } from "@lexical/table";
 import type { Klass, LexicalNode } from "lexical";
+import { MarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
+import { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 
 /**
  * The Lexical node classes registered on every `MarkdownEditor`'s editor.
@@ -15,10 +17,12 @@ import type { Klass, LexicalNode } from "lexical";
  * created with, so this set must cover every construct the curated transformer
  * list produces: headings (`HeadingNode`), blockquotes (`QuoteNode`),
  * ordered/unordered lists (`ListNode` + `ListItemNode`), links (`LinkNode`),
- * fenced code (`CodeNode` + its `CodeHighlightNode` children), and GFM tables
- * (`TableNode` + `TableRowNode` + `TableCellNode`). The remaining dialect
- * constructs — bold, italic, inline code, paragraphs — are plain text formats
- * on the always-present built-in text/paragraph nodes and need no registration.
+ * fenced code (`CodeNode` + its `CodeHighlightNode` children), GFM tables
+ * (`TableNode` + `TableRowNode` + `TableCellNode`), `:::` alignment /
+ * multi-column fences (`MarkdownBlockNode`), and sized images
+ * (`MarkdownImageNode`). The remaining dialect constructs — bold, italic,
+ * inline code, paragraphs — are plain text formats on the always-present
+ * built-in text/paragraph nodes and need no registration.
  */
 export const EDITOR_NODES: ReadonlyArray<Klass<LexicalNode>> = [
     HeadingNode,
@@ -31,4 +35,6 @@ export const EDITOR_NODES: ReadonlyArray<Klass<LexicalNode>> = [
     TableNode,
     TableRowNode,
     TableCellNode,
+    MarkdownBlockNode,
+    MarkdownImageNode,
 ];

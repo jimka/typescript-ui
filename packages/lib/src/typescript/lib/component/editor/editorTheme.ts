@@ -17,10 +17,15 @@ const LINK_CLASS        = "ts-ui-mde-link";
 const BOLD_CLASS        = "ts-ui-mde-bold";
 const ITALIC_CLASS      = "ts-ui-mde-italic";
 const STRIKETHROUGH_CLASS = "ts-ui-mde-strikethrough";
+const UNDERLINE_CLASS = "ts-ui-mde-underline";
+/** Lexical uses this class *instead of* both `.ts-ui-mde-underline` and `.ts-ui-mde-strikethrough` when a run carries both formats. */
+const UNDERLINE_STRIKETHROUGH_CLASS = "ts-ui-mde-underline-strikethrough";
 const TABLE_CLASS               = "ts-ui-mde-table";
 const TABLE_CELL_CLASS          = "ts-ui-mde-table-cell";
 const TABLE_CELL_HEADER_CLASS   = "ts-ui-mde-table-cell-header";
 const TABLE_CELL_SELECTED_CLASS = "ts-ui-mde-table-cell-selected";
+const BLOCK_CLASS                = "ts-ui-mde-block";
+const IMAGE_CLASS                = "ts-ui-mde-image";
 
 /** Guards the module-singleton class-rule registration in {@link ensureMarkdownEditorClassRules}. */
 let _classRulesEnsured = false;
@@ -141,8 +146,24 @@ export function ensureMarkdownEditorClassRules(): void {
 
     new StyleRule({
         scope:  "class",
+        name:   UNDERLINE_CLASS,
+        styles: { textDecoration: "underline" },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   UNDERLINE_STRIKETHROUGH_CLASS,
+        styles: { textDecoration: "underline line-through" },
+    });
+
+    new StyleRule({
+        scope:  "class",
         name:   TABLE_CLASS,
-        styles: { borderCollapse: "collapse" },
+        // A `::: {columns=…}` fence's multi-column flow otherwise breaks the
+        // table's rows across the column boundary — the header lands in one
+        // column and its body rows in the next, with no header of their own.
+        // Matches the viewer's own TABLE_CLASS rule (Markdown.ts).
+        styles: { borderCollapse: "collapse", breakInside: "avoid" },
     });
 
     new StyleRule({
@@ -185,6 +206,43 @@ export function ensureMarkdownEditorClassRules(): void {
         // so a selected cell reads the same way here as it does there.
         styles: { backgroundColor: "var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))" },
     });
+
+    new StyleRule({
+        scope:  "class",
+        name:   BLOCK_CLASS,
+        styles: {
+            margin: "1em 0",
+            // The gap **default** lives here, so a fence with no `gap`
+            // attribute still gets one; an explicit `gap` (MarkdownBlockNode's
+            // own inline style) overrides it, since inline beats a class rule.
+            columnGap: "var(--ts-ui-md-column-gap, 2em)",
+        },
+    });
+
+    new StyleRule({
+        scope: "selector",
+        name:  `.${BLOCK_CLASS} > :first-child`,
+        // A multi-column fence establishes a new block-formatting context,
+        // so its first child's own top margin no longer collapses through
+        // it — it renders as real space below the fence's own top edge.
+        // Every *later* column's first line gets no such gap: the browser
+        // discards a box's top margin at a forced column break. Left alone,
+        // that asymmetry pushes column 1's content down by one margin
+        // relative to every other column. Zeroing it here matches what a
+        // single-column fence already shows (there the margin collapses
+        // through invisibly), so every column's first line now starts flush
+        // with the fence's top. Matches the viewer's own BLOCK_CLASS rule
+        // (Markdown.ts).
+        styles: { marginTop: "0" },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   IMAGE_CLASS,
+        // Never spills past its host column, matching the viewer's own
+        // IMAGE_CLASS rule (Markdown.ts).
+        styles: { maxWidth: "100%" },
+    });
 }
 
 /**
@@ -213,14 +271,20 @@ export const EDITOR_THEME: EditorThemeClasses = {
         ol: LIST_CLASS,
     },
     text: {
-        bold:          BOLD_CLASS,
-        italic:        ITALIC_CLASS,
-        strikethrough: STRIKETHROUGH_CLASS,
-        code:          INLINE_CODE_CLASS,
+        bold:                   BOLD_CLASS,
+        italic:                 ITALIC_CLASS,
+        strikethrough:          STRIKETHROUGH_CLASS,
+        code:                   INLINE_CODE_CLASS,
+        underline:              UNDERLINE_CLASS,
+        underlineStrikethrough: UNDERLINE_STRIKETHROUGH_CLASS,
     },
     link:              LINK_CLASS,
     table:             TABLE_CLASS,
     tableCell:         TABLE_CELL_CLASS,
     tableCellHeader:   TABLE_CELL_HEADER_CLASS,
     tableCellSelected: TABLE_CELL_SELECTED_CLASS,
+    // Custom keys: EditorThemeClasses carries an index signature for exactly
+    // this, a node-specific class this theme map has no dedicated field for.
+    mdBlock:           BLOCK_CLASS,
+    mdImage:           IMAGE_CLASS,
 };

@@ -10,8 +10,10 @@ import { callable } from "~/core/Callable.js";
 import { Size } from "~/primitive/Size.js";
 import { Menu } from "~/overlay/Menu.js";
 import { buildSelectionCopyMenuItems } from "~/component/shared/buildSelectionCopyMenuItems.js";
-import { lexer } from "marked";
 import type { Token, Tokens } from "marked";
+import { lexMarkdown } from "~/component/display/markdownExtensions.js";
+import { resolveSpanStyle, resolveBlockStyle, resolveImageSpec } from "~/component/display/markdownAttributes.js";
+import type { MdTableToken, MdTableHeaderCell, MdTableBodyCell } from "~/component/display/markdownTableExtension.js";
 // Type-only: erased at compile time. `CodeEditor` itself is loaded through a
 // narrow dynamic import (see `loadCodeEditorUpgrade`) so a static top-level
 // value import here would force every `Markdown` consumer's bundler to
@@ -36,6 +38,10 @@ const TD_CLASS            = "ts-ui-md-td";
 const ALIGN_LEFT_CLASS   = "ts-ui-md-align-left";
 const ALIGN_CENTER_CLASS = "ts-ui-md-align-center";
 const ALIGN_RIGHT_CLASS  = "ts-ui-md-align-right";
+const ALIGN_JUSTIFY_CLASS = "ts-ui-md-align-justify";
+const UNDERLINE_CLASS    = "ts-ui-md-underline";
+const BLOCK_CLASS         = "ts-ui-md-block";
+const IMAGE_CLASS         = "ts-ui-md-image";
 /**
  * The literal two-character sequence (backslash, `n`) `markdownTableTransformer.ts`'s
  * `escapeCellText` writes in place of a real newline in a `MarkdownEditor`
@@ -258,7 +264,11 @@ function ensureMarkdownClassRules(): void {
     new StyleRule({
         scope:  "class",
         name:   TABLE_CLASS,
-        styles: { borderCollapse: "collapse" },
+        // A `::: {columns=…}` fence's multi-column flow otherwise breaks the
+        // table's rows across the column boundary — the header lands in one
+        // column and its body rows in the next, with no header of their own.
+        // Matches the editor's own TABLE_CLASS rule (editorTheme.ts).
+        styles: { borderCollapse: "collapse", breakInside: "avoid" },
     });
 
     new StyleRule({
@@ -304,25 +314,74 @@ function ensureMarkdownClassRules(): void {
 
     new StyleRule({
         scope:  "class",
+        name:   ALIGN_JUSTIFY_CLASS,
+        styles: { textAlign: "justify" },
+    });
+
+    new StyleRule({
+        scope:  "class",
         name:   CODE_HOST_CLASS,
         styles: { position: "relative" },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   UNDERLINE_CLASS,
+        styles: { textDecoration: "underline" },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   BLOCK_CLASS,
+        styles: {
+            margin: "1em 0",
+            // The gap **default** lives here (matching the editor's own
+            // BLOCK_CLASS rule), so a fence with no `gap` attribute still
+            // gets one; an explicit `gap` overrides it as an inline style.
+            columnGap: "var(--ts-ui-md-column-gap, 2em)",
+        },
+    });
+
+    new StyleRule({
+        scope: "selector",
+        name:  `.${BLOCK_CLASS} > :first-child`,
+        // A multi-column fence establishes a new block-formatting context,
+        // so its first child's own top margin no longer collapses through
+        // it — it renders as real space below the fence's own top edge.
+        // Every *later* column's first line gets no such gap: the browser
+        // discards a box's top margin at a forced column break. Left alone,
+        // that asymmetry pushes column 1's content down by one margin
+        // relative to every other column. Zeroing it here matches what a
+        // single-column fence already shows (there the margin collapses
+        // through invisibly), so every column's first line now starts flush
+        // with the fence's top. Matches the editor's own BLOCK_CLASS rule
+        // (editorTheme.ts).
+        styles: { marginTop: "0" },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   IMAGE_CLASS,
+        // Never spills past the prose column, matching the editor's own
+        // IMAGE_CLASS rule (editorTheme.ts).
+        styles: { maxWidth: "100%" },
     });
 }
 
 /**
- * Maps marked's per-column alignment to the class that applies it.
+ * Maps an alignment keyword — a table column's (from marked's per-cell
+ * report) or a `::: {align=…}` block's — to the class that applies it.
  *
- * @param align - The column's alignment, as reported per-cell by marked's
- *   table token.
- * @returns The alignment class, or `null` when the column carries no
- *   alignment marker.
+ * @param align - The alignment keyword, or `null`/unset.
+ * @returns The alignment class, or `null` when there is no alignment marker.
  */
-function alignmentClass(align: "center" | "left" | "right" | null): string | null {
+function alignmentClass(align: "center" | "left" | "right" | "justify" | null): string | null {
     switch (align) {
-        case "left":   return ALIGN_LEFT_CLASS;
-        case "center": return ALIGN_CENTER_CLASS;
-        case "right":  return ALIGN_RIGHT_CLASS;
-        default:       return null;
+        case "left":    return ALIGN_LEFT_CLASS;
+        case "center":  return ALIGN_CENTER_CLASS;
+        case "right":   return ALIGN_RIGHT_CLASS;
+        case "justify": return ALIGN_JUSTIFY_CLASS;
+        default:        return null;
     }
 }
 
@@ -481,18 +540,21 @@ const _defaultMarkdownOptions: Partial<MarkdownOptions> = { userSelect: "text", 
  * subtree.
  *
  * @remarks
- * Parsing uses the `marked` library's lexer only (`marked.lexer(src)`): the
- * component walks the returned token AST and builds every prose element
+ * Parsing goes through a scoped `marked` instance's lexer only (see
+ * `lexMarkdown` in `markdownExtensions.ts`): the component walks the returned
+ * token AST and builds every prose element
  * (`<h1>`–`<h6>`, `<p>`, `<ul>`/`<ol>`/`<li>`, `<blockquote>`, `<pre>`/`<code>`,
  * `<strong>`, `<em>`, `<a>`, `<table>`) through the DOM sink. There is no
  * HTML-string assignment path, so untrusted Markdown can never inject markup,
  * and the render runs against the modelled DOM source in tests.
  *
  * The v1 token set covers headings, paragraphs, ordered/unordered lists,
- * blockquotes, fenced/inline code, bold, italic, links, and GFM pipe tables
- * (including per-column alignment). Any other token type (images, raw HTML,
- * the remaining GFM extensions) falls through to a defined fallback that
- * renders the token's plain text — never a crash, never markup.
+ * blockquotes, fenced/inline code, bold, italic, links, GFM pipe tables
+ * (including per-column alignment, widths, and merged cells), underline,
+ * coloured/sized/font-styled spans, `:::` alignment/multi-column fences, and
+ * sized images validated against a scheme allow-list. Any other token type
+ * (raw HTML, the remaining GFM extensions) falls through to a defined
+ * fallback that renders the token's plain text — never a crash, never markup.
  *
  * A fenced code block whose info string names a language
  * [`CodeEditor`](/components/CodeEditor) has a registered grammar for
@@ -832,7 +894,7 @@ class Markdown extends Component<MarkdownOptions> {
 
         this.clearContent();
         ensureMarkdownClassRules();
-        this.appendBlockTokens(element, lexer(markdown), new Map<string, number>());
+        this.appendBlockTokens(element, lexMarkdown(markdown), new Map<string, number>());
 
         // Content changed — the flowed height did too; re-measure and let a host grow.
         this.measureContentHeight();
@@ -1024,7 +1086,7 @@ class Markdown extends Component<MarkdownOptions> {
         const element = super.render();
 
         ensureMarkdownClassRules();
-        this.appendBlockTokens(element, lexer(this.getMarkdown()), new Map<string, number>());
+        this.appendBlockTokens(element, lexMarkdown(this.getMarkdown()), new Map<string, number>());
 
         return element;
     }
@@ -1514,7 +1576,8 @@ class Markdown extends Component<MarkdownOptions> {
             case "list":       this.appendList(parent, token as Tokens.List, headingIds);             break;
             case "blockquote": this.appendBlockquote(parent, token as Tokens.Blockquote, headingIds); break;
             case "code":       this.appendCode(parent, token as Tokens.Code);                         break;
-            case "table":      this.appendTable(parent, token as Tokens.Table);                       break;
+            case "mdtable":    this.appendTable(parent, token as MdTableToken);                        break;
+            case "mdblock":    this.appendBlock(parent, token as Tokens.Generic, headingIds);          break;
 
             // Blank line between blocks — nothing to render.
             case "space": break;
@@ -1608,14 +1671,16 @@ class Markdown extends Component<MarkdownOptions> {
     }
 
     /**
-     * Builds a wrapper `<div>` › `<table>` with a `<thead>` holding the header
-     * row and a `<tbody>` holding one row per body entry. The wrapper scrolls
-     * horizontally so an overlong table cannot spill sideways.
+     * Builds a wrapper `<div>` › `<table>` with a `<colgroup>` (only when at
+     * least one column carries a `{width=…}`), a `<thead>` holding the header
+     * row, and a `<tbody>` holding one row per body entry, each body cell
+     * carrying the `colspan`/`rowspan` its merge resolution produced. The
+     * wrapper scrolls horizontally so an overlong table cannot spill sideways.
      *
      * @param parent - The element handle to append into.
      * @param token - The table token.
      */
-    private appendTable(parent: Handle, token: Tokens.Table): void {
+    private appendTable(parent: Handle, token: MdTableToken): void {
         const wrapper = this.create("div");
 
         DOM.sink.apply(wrapper, { addClass: [TABLE_WRAP_CLASS] });
@@ -1623,6 +1688,22 @@ class Markdown extends Component<MarkdownOptions> {
         const table = this.create("table");
 
         DOM.sink.apply(table, { addClass: [TABLE_CLASS] });
+
+        if (token.widths.some((width) => width !== null)) {
+            const colgroup = this.create("colgroup");
+
+            for (const width of token.widths) {
+                const col = this.create("col");
+
+                if (width !== null) {
+                    DOM.sink.apply(col, { style: { width: width + "px" } });
+                }
+
+                DOM.sink.appendChild(colgroup, col);
+            }
+
+            DOM.sink.appendChild(table, colgroup);
+        }
 
         const thead = this.create("thead");
 
@@ -1642,15 +1723,16 @@ class Markdown extends Component<MarkdownOptions> {
 
     /**
      * Builds a `<tr>` with one `<th>` (header) or `<td>` (body) per cell,
-     * carrying the cell's alignment class (when the column is aligned) and
-     * inline content.
+     * carrying the cell's alignment class (when the column is aligned), its
+     * `colspan`/`rowspan` (body cells only, when greater than 1), and inline
+     * content.
      *
      * @param section - The `<thead>`/`<tbody>` element handle to append into.
      * @param cells - The row's cells.
-     * @param header - Whether this is the header row (`<th>` cells) or a body
-     *   row (`<td>` cells).
+     * @param header - Whether this is the header row (`<th>` cells, never
+     *   merged) or a body row (`<td>` cells, which may carry a merge span).
      */
-    private appendTableRow(section: Handle, cells: Tokens.TableCell[], header: boolean): void {
+    private appendTableRow(section: Handle, cells: Array<MdTableHeaderCell | MdTableBodyCell>, header: boolean): void {
         const row = this.create("tr");
 
         for (const cell of cells) {
@@ -1663,6 +1745,23 @@ class Markdown extends Component<MarkdownOptions> {
             }
 
             DOM.sink.apply(cellElement, { addClass: classes });
+
+            if (!header) {
+                const bodyCell = cell as MdTableBodyCell;
+                const setAttr: Record<string, string> = {};
+
+                if (bodyCell.colSpan > 1) {
+                    setAttr.colspan = String(bodyCell.colSpan);
+                }
+
+                if (bodyCell.rowSpan > 1) {
+                    setAttr.rowspan = String(bodyCell.rowSpan);
+                }
+
+                if (Object.keys(setAttr).length > 0) {
+                    DOM.sink.apply(cellElement, { setAttr });
+                }
+            }
 
             if (cell.tokens.length === 0) {
                 // An empty cell has no inline content to give its line box
@@ -1695,6 +1794,30 @@ class Markdown extends Component<MarkdownOptions> {
         DOM.sink.apply(quote, { addClass: [QUOTE_CLASS] });
         this.appendBlockTokens(quote, token.tokens, headingIds);
         DOM.sink.appendChild(parent, quote);
+    }
+
+    /**
+     * Builds a `<div>` carrying a `::: {…}` fence's resolved alignment and/or
+     * multi-column style, and recurses into its block-level children.
+     *
+     * @param parent - The element handle to append into.
+     * @param token - The `mdblock` token.
+     * @param headingIds - The current render pass's heading-id dedupe counter.
+     */
+    private appendBlock(parent: Handle, token: Tokens.Generic, headingIds: Map<string, number>): void {
+        const block = this.create("div");
+        const style = resolveBlockStyle(token.attributes as Record<string, string>);
+
+        DOM.sink.apply(block, {
+            addClass: [BLOCK_CLASS],
+            style:    {
+                textAlign:   style.textAlign,
+                columnCount: style.columnCount === null ? null : String(style.columnCount),
+                columnGap:   style.columnGap,
+            },
+        });
+        this.appendBlockTokens(block, token.tokens ?? [], headingIds);
+        DOM.sink.appendChild(parent, block);
     }
 
     /**
@@ -1805,6 +1928,58 @@ class Markdown extends Component<MarkdownOptions> {
             }
 
             case "link": this.appendLink(parent, token as Tokens.Link, splitCellBreaks); break;
+
+            case "underline": {
+                const underline = this.create("u");
+
+                DOM.sink.apply(underline, { addClass: [UNDERLINE_CLASS] });
+                this.appendInlineTokens(underline, (token as Tokens.Generic).tokens ?? [], splitCellBreaks);
+                DOM.sink.appendChild(parent, underline);
+
+                break;
+            }
+
+            case "styledspan": {
+                const span = (token as Tokens.Generic);
+                const wrapper = this.create("span");
+                const style = resolveSpanStyle(span.attributes as Record<string, string>);
+
+                DOM.sink.apply(wrapper, {
+                    style: { color: style.color, fontFamily: style.fontFamily, fontSize: style.fontSize },
+                });
+                this.appendInlineTokens(wrapper, span.tokens ?? [], splitCellBreaks);
+                DOM.sink.appendChild(parent, wrapper);
+
+                break;
+            }
+
+            case "mdimage": {
+                const image = (token as Tokens.Generic);
+                const spec = resolveImageSpec(
+                    image.src as string, image.alt as string, image.attributes as Record<string, string>);
+
+                // A src failing the scheme allow-list renders nothing at
+                // all — never a broken/unsafe <img>.
+                if (spec === null) {
+                    break;
+                }
+
+                const img = this.create("img");
+                const setAttr: Record<string, string> = { src: spec.src, alt: spec.alt };
+
+                if (spec.width !== null) {
+                    setAttr.width = String(spec.width);
+                }
+
+                if (spec.height !== null) {
+                    setAttr.height = String(spec.height);
+                }
+
+                DOM.sink.apply(img, { addClass: [IMAGE_CLASS], setAttr });
+                DOM.sink.appendChild(parent, img);
+
+                break;
+            }
 
             default: this.appendTextNode(parent, (token as Tokens.Text).text ?? token.raw ?? ""); break;
         }
@@ -1931,8 +2106,9 @@ function inlineText(tokens: Token[]): string {
 
 /**
  * Recursively walks `tokens` for heading tokens, the same block-token shapes
- * {@link Markdown.appendBlockToken} recurses into for headings: top-level, and
- * nested inside a blockquote or a (loose) list item.
+ * {@link Markdown.appendBlockToken} recurses into for headings: top-level,
+ * nested inside a blockquote or a (loose) list item, and nested inside a
+ * `::: {…}` fence — so a heading inside a fence still reaches the minimap.
  *
  * @param tokens - The block tokens to walk.
  * @param headingIds - The current pass's dedupe counter — see `nextHeadingId`.
@@ -1951,6 +2127,8 @@ function collectHeadings(tokens: Token[], headingIds: Map<string, number>, out: 
             for (const item of (token as Tokens.List).items) {
                 collectHeadings(item.tokens, headingIds, out);
             }
+        } else if (token.type === "mdblock") {
+            collectHeadings((token as Tokens.Generic).tokens ?? [], headingIds, out);
         }
     }
 }
@@ -1969,7 +2147,7 @@ function collectHeadings(tokens: Token[], headingIds: Map<string, number>, out: 
 export function extractMarkdownHeadings(source: string): MarkdownHeading[] {
     const headings: MarkdownHeading[] = [];
 
-    collectHeadings(lexer(source), new Map<string, number>(), headings);
+    collectHeadings(lexMarkdown(source), new Map<string, number>(), headings);
 
     return headings;
 }

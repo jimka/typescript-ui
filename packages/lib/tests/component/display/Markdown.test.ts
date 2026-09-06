@@ -64,6 +64,29 @@ function classWrites(): string[][] {
         .map((w) => (w.args[1] as { addClass: string[] }).addClass);
 }
 
+/** Folds every `apply` patch's `style` payload for `handle` into the style state it produces (a `null` value removes the key, matching the seam's own semantics). */
+function styleWrites(handle: Handle): Record<string, string> {
+    const style: Record<string, string> = {};
+
+    for (const w of sink.writes) {
+        if (w.op !== 'apply' || w.args[0] !== handle) continue;
+
+        const patch = w.args[1] as { style?: Record<string, string | null> };
+
+        for (const key of Object.keys(patch.style ?? {})) {
+            const value = patch.style![key];
+
+            if (value === null) {
+                delete style[key];
+            } else {
+                style[key] = value;
+            }
+        }
+    }
+
+    return style;
+}
+
 /** The most recently `setRuleStyles`-written value for `prop`, or `undefined` if never written. */
 function lastRuleStyle(prop: string): string | null | undefined {
     const writes = sink.writes.filter((w) => w.op === 'setRuleStyles') as
@@ -287,6 +310,138 @@ describe('Markdown strikethrough', () => {
         expect(createdTags()).toContain('del');
         expect(childTagsOf('p')).toContain('DEL');
         expect(textWrites()).toContain('s');
+    });
+});
+
+describe('Markdown underline', () => {
+    it('builds <u> for ++word++ with the text inside it', () => {
+        new Markdown('A ++word++ here').getElement(true);
+
+        expect(createdTags()).toContain('u');
+        expect(childTagsOf('p')).toContain('U');
+        expect(textWrites()).toContain('word');
+    });
+
+    it('nests <u> inside <strong> for **++b++**', () => {
+        new Markdown('**++b++**').getElement(true);
+
+        expect(childTagsOf('strong')).toContain('U');
+        expect(textWrites()).toContain('b');
+    });
+});
+
+describe('Markdown styled spans', () => {
+    /** The lone `<span>` a single-token `[x]{…}` document's paragraph builds. */
+    function styledSpanHandle(md: Markdown): Handle {
+        const handles = (md as unknown as { _contentHandles: Handle[] })._contentHandles;
+
+        return handles.find((h) => DOM.source.getTagName(h) === 'SPAN')!;
+    }
+
+    it('creates a <span> whose applied style is { color: "#cc0000" } for [x]{color=#cc0000}', () => {
+        const md = new Markdown('[x]{color=#cc0000}');
+        md.getElement(true);
+
+        expect(styleWrites(styledSpanHandle(md))).toEqual({ color: '#cc0000' });
+        expect(textWrites()).toContain('x');
+    });
+
+    it('applies all three properties on one span for [x]{color=#cc0000 size=1.2em font=Georgia}', () => {
+        const md = new Markdown('[x]{color=#cc0000 size=1.2em font=Georgia}');
+        md.getElement(true);
+
+        expect(styleWrites(styledSpanHandle(md))).toEqual({
+            color: '#cc0000', fontSize: '1.2em', fontFamily: 'Georgia',
+        });
+    });
+
+    it('applies no style properties for [x]{color=red; background: url(y)}, and the text still renders', () => {
+        const md = new Markdown('[x]{color=red; background: url(y)}');
+        md.getElement(true);
+
+        expect(styleWrites(styledSpanHandle(md))).toEqual({});
+        expect(textWrites()).toContain('x');
+    });
+
+    it('applies no style properties for [x]{size=12} (no unit)', () => {
+        const md = new Markdown('[x]{size=12}');
+        md.getElement(true);
+
+        expect(styleWrites(styledSpanHandle(md))).toEqual({});
+    });
+
+    it('applies no style properties for [x]{bogus=1}', () => {
+        const md = new Markdown('[x]{bogus=1}');
+        md.getElement(true);
+
+        expect(styleWrites(styledSpanHandle(md))).toEqual({});
+    });
+});
+
+describe('Markdown block fence (alignment / columns)', () => {
+    /** Every `<div>` content handle the render produced, in creation order. */
+    function divHandles(md: Markdown): Handle[] {
+        return (md as unknown as { _contentHandles: Handle[] })._contentHandles
+            .filter((h) => DOM.source.getTagName(h) === 'DIV');
+    }
+
+    /** The uppercase tag names of children appended directly to `parent`, unlike `childTagsOf` which matches by tag name. */
+    function childTagsOfHandle(parent: Handle): string[] {
+        return sink.writes
+            .filter((w) => w.op === 'appendChild' && w.args[0] === parent)
+            .map((w) => DOM.source.getTagName(w.args[1] as Handle));
+    }
+
+    it('creates a div whose applied style is { textAlign: "center" }, containing a p, for ::: {align=center}', () => {
+        const md = new Markdown('::: {align=center}\ntext\n:::');
+        md.getElement(true);
+
+        const divs = divHandles(md);
+
+        expect(divs).toHaveLength(1);
+        expect(styleWrites(divs[0]!)).toEqual({ textAlign: 'center' });
+        expect(childTagsOfHandle(divs[0]!)).toEqual(['P']);
+    });
+
+    it('creates a div with { columnCount: "2", columnGap: "2em" } for ::: {columns=2 gap=2em}', () => {
+        const md = new Markdown('::: {columns=2 gap=2em}\ntext\n:::');
+        md.getElement(true);
+
+        expect(styleWrites(divHandles(md)[0]!)).toEqual({ columnCount: '2', columnGap: '2em' });
+    });
+
+    it('creates a div with no columnCount applied for ::: {columns=9}', () => {
+        const md = new Markdown('::: {columns=9}\ntext\n:::');
+        md.getElement(true);
+
+        expect(styleWrites(divHandles(md)[0]!)).toEqual({});
+    });
+
+    it('creates two nested divs for a fence nested inside another, the inner one carrying textAlign', () => {
+        const md = new Markdown(
+            '::: {columns=2}\nLeft column text.\n\n::: {align=center}\nCentred inside.\n:::\n\nMore text.\n:::',
+        );
+        md.getElement(true);
+
+        const divs = divHandles(md);
+
+        expect(divs).toHaveLength(2);
+        expect(styleWrites(divs[0]!)).toEqual({ columnCount: '2' });
+        expect(styleWrites(divs[1]!)).toEqual({ textAlign: 'center' });
+    });
+
+    it('extractMarkdownHeadings finds a heading nested inside a fence', () => {
+        const headings = extractMarkdownHeadings('::: {align=center}\n# T\n:::');
+
+        expect(headings).toEqual([{ id: 't', text: 'T', depth: 1 }]);
+    });
+
+    it('renders an unclosed fence as ordinary paragraphs, creating no div', () => {
+        const md = new Markdown('::: {align=center}\ntext with no closing fence');
+        md.getElement(true);
+
+        expect(divHandles(md)).toHaveLength(0);
+        expect(createdTags()).toContain('p');
     });
 });
 
@@ -732,9 +887,43 @@ describe('Markdown nested inline in a heading', () => {
 });
 
 describe('Markdown fallback for unsupported tokens', () => {
-    it('renders an image as text without creating <img>', () => {
-        expect(() => new Markdown('![alt](x.png)').getElement(true)).not.toThrow();
+    it('renders raw HTML as its literal text without creating a <table>', () => {
+        expect(() => new Markdown('<table><tr><td>raw</td></tr></table>').getElement(true)).not.toThrow();
+        expect(createdTags()).not.toContain('table');
+        expect(textWrites().some((t) => t.includes('<table>'))).toBe(true);
+    });
+});
+
+describe('Markdown images', () => {
+    it('creates an <img> with src and alt for ![Diagram](/img/d.png)', () => {
+        new Markdown('![Diagram](/img/d.png)').getElement(true);
+
+        expect(createdTags()).toContain('img');
+        expect(attrWrites()).toContainEqual({ src: '/img/d.png', alt: 'Diagram' });
+    });
+
+    it('additionally sets width and height for ![d](/img/d.png){width=320 height=200}', () => {
+        new Markdown('![d](/img/d.png){width=320 height=200}').getElement(true);
+
+        expect(attrWrites()).toContainEqual({ src: '/img/d.png', alt: 'd', width: '320', height: '200' });
+    });
+
+    it('creates no <img> for ![d](javascript:alert(1))', () => {
+        new Markdown('![d](javascript:alert(1))').getElement(true);
+
         expect(createdTags()).not.toContain('img');
+    });
+
+    it('creates no <img> for ![d](data:image/svg+xml;base64,PHN2)', () => {
+        new Markdown('![d](data:image/svg+xml;base64,PHN2)').getElement(true);
+
+        expect(createdTags()).not.toContain('img');
+    });
+
+    it('creates an <img> for ![d](data:image/png;base64,iVBOR)', () => {
+        new Markdown('![d](data:image/png;base64,iVBOR)').getElement(true);
+
+        expect(createdTags()).toContain('img');
     });
 });
 
@@ -883,6 +1072,83 @@ describe('Markdown table', () => {
 
         expect(createdTags()).not.toContain('br');
         expect(textWrites()).toContain('a\\nb');
+    });
+
+    it('a table immediately following a paragraph with no blank line still splits into paragraph + table', () => {
+        new Markdown('para\n' + TABLE).getElement(true);
+
+        expect(createdTags()).toContain('p');
+        expect(createdTags()).toContain('table');
+        expect(textWrites()).toContain('para');
+    });
+});
+
+describe('Markdown table column widths', () => {
+    it('creates a colgroup with two col children, the first carrying { width: "240px" }, for a widthed column', () => {
+        const md = new Markdown('| a | b |\n| :--- {width=240} | --- |\n| 1 | 2 |');
+        md.getElement(true);
+
+        expect(childTagsOf('table')).toContain('COLGROUP');
+
+        const cols = (md as unknown as { _contentHandles: Handle[] })._contentHandles
+            .filter((h) => DOM.source.getTagName(h) === 'COL');
+
+        expect(cols).toHaveLength(2);
+        expect(styleWrites(cols[0]!)).toEqual({ width: '240px' });
+        expect(styleWrites(cols[1]!)).toEqual({});
+    });
+
+    it('creates no colgroup for a table with no {width=…} attribute', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| 1 | 2 |').getElement(true);
+
+        expect(createdTags()).not.toContain('colgroup');
+    });
+});
+
+describe('Markdown merged table cells', () => {
+    it('creates one td for a row carrying colspan="2" when a body row ends with <<', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| d | << |').getElement(true);
+
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(1);
+        expect(attrWrites()).toContainEqual({ colspan: '2' });
+    });
+
+    it('creates a td for the anchor carrying rowspan="2", and the second row creates exactly one td, for a column-spanning ^^', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| d | e |\n| ^^ | f |').getElement(true);
+
+        expect(attrWrites()).toContainEqual({ rowspan: '2' });
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(3);   // d, e, f — ^^ is covered
+    });
+
+    it('produces the cells and spans of the 3x3 merge-grid worked example', () => {
+        new Markdown('| a | b | c |\n| --- | --- | --- |\n| d | << | f |\n| ^^ | ^^ | g |').getElement(true);
+
+        expect(attrWrites()).toContainEqual({ colspan: '2', rowspan: '2' });
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(3);   // d (merged), f, g
+        expect(textWrites()).toContain('f');
+        expect(textWrites()).toContain('g');
+    });
+
+    it('renders a ^^ in the first body row (nothing above but the header) as an ordinary td with literal text ^^', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| ^^ | x |').getElement(true);
+
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(2);
+        expect(textWrites()).toContain('^^');
+    });
+
+    it('renders a bare << in column 0 (nothing to extend left) as an ordinary td with literal text <<', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| << | x |').getElement(true);
+
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(2);
+        expect(textWrites()).toContain('<<');
+    });
+
+    it('renders an escaped literal \\<< as an ordinary td with text <<, not a merge marker', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| c | \\<< |').getElement(true);
+
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(2);
+        expect(attrWrites()).not.toContainEqual(expect.objectContaining({ colspan: expect.anything() }));
+        expect(textWrites()).toContain('<<');
     });
 });
 

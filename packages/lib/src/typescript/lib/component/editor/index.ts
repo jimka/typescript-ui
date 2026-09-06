@@ -10,4 +10,4 @@ export type { LanguageDefinition, Formatter, FormatOptions, LintSource } from '~
 export { collectSyntaxErrors } from '~/component/editor/syntaxDiagnostics.js';
 
 export { MarkdownEditor } from '~/component/editor/MarkdownEditor.js';
-export type { MarkdownEditorOptions, MarkdownEditorChange, MarkdownBlockType, MarkdownEditorMode } from '~/component/editor/MarkdownEditor.js';
+export type { MarkdownEditorOptions, MarkdownEditorChange, MarkdownBlockType, MarkdownEditorMode, MarkdownBlockAlignment } from '~/component/editor/MarkdownEditor.js';

@@ -34,17 +34,22 @@ import type { LinkNode } from "@lexical/link";
 import { CodeNode, $createCodeNode, $isCodeNode } from "@lexical/code";
 import { registerHistory, createEmptyHistoryState } from "@lexical/history";
 import {
-    TableNode, registerTablePlugin, registerTableCellUnmergeTransform, registerTableSelectionObserver,
+    TableNode, registerTablePlugin, registerTableSelectionObserver,
     $getTableCellNodeFromLexicalNode, $getTableNodeFromLexicalNodeOrThrow,
     $insertTableRowAtSelection, $deleteTableRowAtSelection,
     $insertTableColumnAtSelection, $deleteTableColumnAtSelection,
+    $getTableColumnIndexFromTableCellNode, $isTableCellNode, $isTableRowNode,
+    $isTableSelection, $mergeCells, $unmergeCell,
     INSERT_TABLE_COMMAND,
 } from "@lexical/table";
 import { mergeRegister, $getNearestNodeOfType } from "@lexical/utils";
-import { $setBlocksType } from "@lexical/selection";
+import { $setBlocksType, $patchStyleText } from "@lexical/selection";
 import { TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { EDITOR_NODES } from "~/component/editor/editorNodes.js";
 import { EDITOR_THEME, ensureMarkdownEditorClassRules } from "~/component/editor/editorTheme.js";
+import { MarkdownBlockNode, $createMarkdownBlockNode, $isMarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
+import { $createMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
+import { resolveImageSpec } from "~/component/display/markdownAttributes.js";
 
 /**
  * The coalescing window (ms) for the undo/redo history: edits within this gap
@@ -91,6 +96,13 @@ export type MarkdownEditorMode = "wysiwyg" | "source";
  * @category Components
  */
 export type MarkdownBlockType = "paragraph" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "quote" | "code";
+
+/**
+ * A block alignment accepted by {@link MarkdownEditor.setBlockAlignment}.
+ *
+ * @category Components
+ */
+export type MarkdownBlockAlignment = "left" | "center" | "right" | "justify";
 
 /**
  * Construction-time options for {@link MarkdownEditor}.
@@ -164,6 +176,26 @@ function $selectionIsInTableCell(): boolean {
 }
 
 /**
+ * Sums the header row's cells' column spans to get the table's total column
+ * count — accurate even if a header cell were ever merged, unlike a bare
+ * child count.
+ *
+ * @param table - The table to measure.
+ * @returns The table's column count, or `0` when it has no rows.
+ */
+function $getTableColumnCount(table: TableNode): number {
+    const headerRow = table.getFirstChild();
+
+    if (!$isTableRowNode(headerRow)) {
+        return 0;
+    }
+
+    return headerRow.getChildren()
+        .filter($isTableCellNode)
+        .reduce((sum, cell) => sum + cell.getColSpan(), 0);
+}
+
+/**
  * Finds the table or fenced code block enclosing `node`, if any.
  *
  * @param node - The node to search upward from (typically a selection anchor).
@@ -232,6 +264,49 @@ function $findEnclosingInsertableBlock(node: LexicalNode): CodeNode | QuoteNode 
     const tableCell = $getTableCellNodeFromLexicalNode(node);
 
     return tableCell === null ? null : $getTableNodeFromLexicalNodeOrThrow(tableCell);
+}
+
+/**
+ * Wraps the top-level blocks the current selection spans in a fresh
+ * {@link MarkdownBlockNode}, inserted where the first of them sat. Assumes
+ * the caller already verified a range selection exists.
+ *
+ * @returns The new, now-populated block node.
+ */
+function $wrapSelectedTopLevelBlocks(): MarkdownBlockNode {
+    const selection = $getSelection();
+    const children = $getRoot().getChildren();
+
+    let firstIndex = children.length - 1;
+    let lastIndex = 0;
+
+    if ($isRangeSelection(selection)) {
+        for (const node of selection.getNodes()) {
+            const index = node.getTopLevelElementOrThrow().getIndexWithinParent();
+
+            firstIndex = Math.min(firstIndex, index);
+            lastIndex = Math.max(lastIndex, index);
+        }
+    }
+
+    // Defensive only: every caller already verified a range selection before
+    // reaching here, and any such selection's getNodes() resolves at least
+    // one top-level index — this fallback just avoids an inverted range if
+    // that ever isn't so, by wrapping the whole document instead.
+    if (lastIndex < firstIndex) {
+        firstIndex = 0;
+        lastIndex = children.length - 1;
+    }
+
+    const block = $createMarkdownBlockNode();
+
+    children[firstIndex]!.insertBefore(block);
+
+    for (let index = firstIndex; index <= lastIndex; index += 1) {
+        block.append(children[index]!);
+    }
+
+    return block;
 }
 
 /**
@@ -332,7 +407,7 @@ export type ContextMenuTarget =
     | {
           kind: "table-cell";
           hasSelectedText: boolean;
-          bold: boolean; italic: boolean; strikethrough: boolean; code: boolean;
+          bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean;
           hasEnclosingBlock?: boolean;
           linkUrl?: string | null;
       }
@@ -340,7 +415,7 @@ export type ContextMenuTarget =
     | {
           kind: "text";
           hasSelectedText: boolean;
-          bold: boolean; italic: boolean; strikethrough: boolean; code: boolean;
+          bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean;
           hasEnclosingBlock?: boolean;
           linkUrl?: string | null;
       };
@@ -485,6 +560,7 @@ export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget
     const formatState = {
         bold: hasFormat("bold"), italic: hasFormat("italic"),
         strikethrough: hasFormat("strikethrough"), code: hasFormat("code"),
+        underline: hasFormat("underline"),
     };
     const hasSelectedText = expansion !== null
         || ($isRangeSelection(selection) && selection.getTextContent() !== "");
@@ -695,8 +771,10 @@ class WysiwygSurface extends Component {
  * the editing counterpart to the read-only
  * [`Markdown`](/api/component/display/classes/Markdown) viewer. Its dialect is
  * deliberately the **exact subset** the viewer renders (headings, paragraphs,
- * bold, italic, strikethrough, inline code, ordered/unordered lists, blockquotes,
- * fenced code, links, and GFM pipe tables with per-column alignment); a curated transformer
+ * bold, italic, strikethrough, underline, inline code, coloured/sized/font-styled
+ * spans, ordered/unordered lists, blockquotes, fenced code, links, GFM pipe
+ * tables with per-column alignment/widths/merged cells, `:::` alignment /
+ * multi-column fences, and sized images); a curated transformer
  * list — not Lexical's full preset — guarantees the editor can never emit
  * Markdown the viewer would drop to plain text, so an edited document renders
  * identically in the viewer.
@@ -707,11 +785,14 @@ class WysiwygSurface extends Component {
  * and Alt+Enter — with the caret in a table cell or a fenced code block —
  * to insert a paragraph after it, since a table's grid and a code block's
  * preformatted text otherwise give a click nowhere to land), a thin
- * imperative command API (`toggleBold`, `toggleStrikethrough`, `clearFormatting`,
+ * imperative command API (`toggleBold`, `toggleStrikethrough`, `toggleUnderline`,
+ * `setTextColor`, `setFontFamily`, `setFontSize`, `clearFormatting`,
  * `setBlockType`, `toggleUnorderedList`, `toggleLink`, `removeLink`, `insertTable`,
  * `insertParagraphBeforeBlock`/`insertParagraphAfterBlock`,
  * `insertTableRow`/`deleteTableRow`, `insertTableColumn`/`deleteTableColumn`,
- * `deleteTable`, `cut`/`copy`/`paste`, …) a consumer can wire to their own `Button`s, and a
+ * `deleteTable`, `mergeTableCells`, `unmergeTableCell`, `setTableColumnWidth`,
+ * `setBlockAlignment`, `setColumnCount`, `insertImage`,
+ * `cut`/`copy`/`paste`, …) a consumer can wire to their own `Button`s, and a
  * self-wired right-click context menu on the WYSIWYG surface whose contents
  * depend on what was clicked (a word/selection, an empty line, or a table
  * cell) — the only one of the four that needs no consumer wiring at all.
@@ -1084,6 +1165,93 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Toggles underline on the current selection, first expanding a collapsed
+     * caret to its enclosing word. No-op without a range selection.
+     *
+     * @returns This component, for method chaining.
+     */
+    toggleUnderline(): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline");
+
+        return this;
+    }
+
+    /**
+     * Shared body of {@link setTextColor}, {@link setFontFamily}, and
+     * {@link setFontSize}: expands a collapsed caret to its enclosing word,
+     * then patches the resulting selection's inline CSS style. No-op without a
+     * range selection, or when the selection sits inside a link (see
+     * *Colour, font, and size are refused inside a link* in the plan's
+     * Architecture Decisions) — a styled span can never nest inside `[text](url)`.
+     *
+     * @param patch - Kebab-case CSS property names mapped to their new value,
+     *   or `null` to remove that property.
+     * @returns This component, for method chaining.
+     */
+    private patchSelectionStyle(patch: Record<string, string | null>): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection) || $findEnclosingLinkNode(selection.anchor.getNode()) !== null) {
+                return;
+            }
+
+            $selectEnclosingWordIfCollapsed();
+
+            // Re-read: the expansion above replaces the selection object.
+            const expanded = $getSelection();
+
+            if ($isRangeSelection(expanded)) {
+                $patchStyleText(expanded, patch);
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Sets (or clears, with `null`) the current selection's text colour. A
+     * collapsed caret first expands to its enclosing word. No-op without a
+     * range selection, or when the selection sits inside a link.
+     *
+     * @param color - A CSS colour value, or `null` to clear the override.
+     * @returns This component, for method chaining.
+     */
+    setTextColor(color: string | null): this {
+        return this.patchSelectionStyle({ color });
+    }
+
+    /**
+     * Sets (or clears, with `null`) the current selection's font family. A
+     * collapsed caret first expands to its enclosing word. No-op without a
+     * range selection, or when the selection sits inside a link.
+     *
+     * @param family - A CSS `font-family` value, or `null` to clear the override.
+     * @returns This component, for method chaining.
+     */
+    setFontFamily(family: string | null): this {
+        return this.patchSelectionStyle({ "font-family": family });
+    }
+
+    /**
+     * Sets (or clears, with `null`) the current selection's font size. A
+     * collapsed caret first expands to its enclosing word. No-op without a
+     * range selection, or when the selection sits inside a link.
+     *
+     * @param size - A CSS font-size value (e.g. `"1.2em"`), or `null` to clear
+     *   the override.
+     * @returns This component, for method chaining.
+     */
+    setFontSize(size: string | null): this {
+        return this.patchSelectionStyle({ "font-size": size });
+    }
+
+    /**
      * Converts the selected blocks into an unordered (bulleted) list, or out of
      * one when already a list. No-op without a range selection.
      *
@@ -1325,6 +1493,97 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Sets (or, with `null`, clears) the block alignment of the top-level
+     * blocks the current selection spans, wrapping them in a `:::` fence (or
+     * updating the enclosing fence's alignment if the caret already sits
+     * inside one). Unwraps and removes the enclosing fence when clearing its
+     * alignment leaves it with no column count either. No-op without a range
+     * selection.
+     *
+     * @param align - The new block alignment, or `null` to clear it.
+     * @returns This component, for method chaining.
+     */
+    setBlockAlignment(align: MarkdownBlockAlignment | null): this {
+        this.ensureEditor().update(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                return;
+            }
+
+            const existing = $findMatchingParent(selection.anchor.getNode(), $isMarkdownBlockNode);
+
+            if (existing !== null) {
+                existing.setAlign(align);
+
+                if (existing.isEmptyOfAttributes()) {
+                    // Unwrap: move the children out, then drop the empty container.
+                    for (const child of existing.getChildren()) {
+                        existing.insertBefore(child);
+                    }
+
+                    existing.remove();
+                }
+
+                return;
+            }
+
+            if (align !== null) {
+                $wrapSelectedTopLevelBlocks().setAlign(align);
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Sets (or, with `null`, clears) the column count — and optionally the
+     * column gap — of the top-level blocks the current selection spans, with
+     * the same wrap/update/unwrap shape as {@link setBlockAlignment}. No-op
+     * without a range selection.
+     *
+     * @param count - The new column count, or `null` to clear it.
+     * @param gap - The new column gap override, or `null`/omitted to clear it.
+     * @returns This component, for method chaining.
+     */
+    setColumnCount(count: number | null, gap?: string | null): this {
+        this.ensureEditor().update(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                return;
+            }
+
+            const existing = $findMatchingParent(selection.anchor.getNode(), $isMarkdownBlockNode);
+
+            if (existing !== null) {
+                existing.setColumnCount(count);
+                existing.setColumnGap(gap ?? null);
+
+                if (existing.isEmptyOfAttributes()) {
+                    // Unwrap: move the children out, then drop the empty container.
+                    for (const child of existing.getChildren()) {
+                        existing.insertBefore(child);
+                    }
+
+                    existing.remove();
+                }
+
+                return;
+            }
+
+            if (count !== null) {
+                const block = $wrapSelectedTopLevelBlocks();
+
+                block.setColumnCount(count);
+                block.setColumnGap(gap ?? null);
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
      * Inserts an empty paragraph immediately before the blockquote, list,
      * fenced code block, or table enclosing the caret, and moves the caret
      * into it. For a list or a table cell, this is the whole list or table,
@@ -1379,6 +1638,50 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             rows:           String(rows),
             includeHeaders: { rows: true, columns: false },
         });
+
+        return this;
+    }
+
+    /**
+     * Inserts a sized, validated image at the caret. No-op when `src` fails
+     * the scheme allow-list — never inserts a broken or unsafe image.
+     *
+     * @param src - The image source (a relative path, `http:`/`https:` URL,
+     *   or an allow-listed `data:image/…` base64 URI).
+     * @param options - Optional `alt` text and explicit pixel `width`/`height`.
+     * @returns This component, for method chaining.
+     */
+    insertImage(src: string, options?: { alt?: string; width?: number; height?: number }): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            const attributes: Record<string, string> = {};
+
+            if (options?.width !== undefined) {
+                attributes.width = String(options.width);
+            }
+
+            if (options?.height !== undefined) {
+                attributes.height = String(options.height);
+            }
+
+            const spec = resolveImageSpec(src, options?.alt ?? "", attributes);
+
+            if (spec === null) {
+                return;
+            }
+
+            let selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                $getRoot().selectEnd();
+                selection = $getSelection();
+            }
+
+            if ($isRangeSelection(selection)) {
+                selection.insertNodes([$createMarkdownImageNode(spec)]);
+            }
+        }, { discrete: true });
 
         return this;
     }
@@ -1470,6 +1773,88 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         editor.update(() => {
             $getEnclosingTableNode()?.remove();
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Merges the cells of the current drag-selected `TableSelection` into
+     * one, carrying `<<`/`^^` continuations on export. No-op without throwing
+     * when the current selection is not a `TableSelection` spanning more than
+     * one cell.
+     *
+     * @returns This component, for method chaining.
+     */
+    mergeTableCells(): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            const selection = $getSelection();
+
+            if (!$isTableSelection(selection)) {
+                return;
+            }
+
+            const cells = selection.getNodes().filter($isTableCellNode);
+
+            if (cells.length > 1) {
+                $mergeCells(cells);
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Splits the merged cell containing the caret back into its individual
+     * cells. No-op without throwing when the caret is not inside a table cell.
+     *
+     * @returns This component, for method chaining.
+     */
+    unmergeTableCell(): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            if ($selectionIsInTableCell()) {
+                $unmergeCell();
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Sets (or, with `null`, clears) the width of the column the caret sits
+     * in, in pixels. No-op without throwing when the caret is not inside a
+     * table cell.
+     *
+     * @param width - The column width in pixels, or `null` to clear it.
+     * @returns This component, for method chaining.
+     */
+    setTableColumnWidth(width: number | null): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                return;
+            }
+
+            const cell = $getTableCellNodeFromLexicalNode(selection.anchor.getNode());
+
+            if (cell === null) {
+                return;
+            }
+
+            const table = $getTableNodeFromLexicalNodeOrThrow(cell);
+            const columnIndex = $getTableColumnIndexFromTableCellNode(cell);
+            const columnCount = $getTableColumnCount(table);
+            const colWidths = (table.getColWidths() ?? new Array<number>(columnCount).fill(0)).slice();
+
+            colWidths[columnIndex] = width ?? 0;
+            table.setColWidths(colWidths);
         }, { discrete: true });
 
         return this;
@@ -1591,7 +1976,6 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 registerRichText(editor),
                 registerList(editor),
                 registerTablePlugin(editor),
-                registerTableCellUnmergeTransform(editor),
                 registerHistory(editor, createEmptyHistoryState(), HISTORY_DELAY_MS),
                 registerMarkdownShortcuts(editor, TRANSFORMERS),
                 editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
@@ -1675,21 +2059,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Prompts for a URL via a `Dialog`: a bare `TextField` pre-filled with
-     * `defaultUrl`, Cancel/Confirm buttons — this codebase's established
-     * text-input-prompt pattern, since `Dialog` has no dedicated prompt
-     * method. The field receives initial focus as the first focusable
+     * Prompts for a line of text via a `Dialog`: a bare `TextField` pre-filled
+     * with `defaultValue`, Cancel/Confirm buttons — this codebase's
+     * established text-input-prompt pattern, since `Dialog` has no dedicated
+     * prompt method. The field receives initial focus as the first focusable
      * element in the dialog's content region, and Enter confirms because
      * Confirm is marked `primary`.
      *
      * @param title - The dialog's title-bar text.
-     * @param defaultUrl - The field's initial text — `""` for Insert, the
-     *   link's current URL for Edit.
-     * @returns The trimmed URL the user confirmed, or `null` on Cancel/close, or
-     *   an empty/whitespace-only confirmation.
+     * @param defaultValue - The field's initial text.
+     * @param placeholder - The field's placeholder text.
+     * @returns The trimmed text the user confirmed, or `null` on Cancel/close,
+     *   or an empty/whitespace-only confirmation.
      */
-    private async promptForLinkUrl(title: string, defaultUrl: string): Promise<string | null> {
-        const field = new TextField({ text: defaultUrl, placeholder: "https://example.com" });
+    private async promptForText(title: string, defaultValue: string, placeholder: string): Promise<string | null> {
+        const field = new TextField({ text: defaultValue, placeholder });
 
         const result = await Dialog.show({
             title,
@@ -1701,9 +2085,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             return null;
         }
 
-        const url = field.getValue().trim();
+        const value = field.getValue().trim();
 
-        return url === "" ? null : url;
+        return value === "" ? null : value;
+    }
+
+    /**
+     * Prompts for a URL — see {@link MarkdownEditor.promptForText}.
+     *
+     * @param title - The dialog's title-bar text.
+     * @param defaultUrl - The field's initial text — `""` for Insert, the
+     *   link's current URL for Edit.
+     * @returns The trimmed URL the user confirmed, or `null` on Cancel/close, or
+     *   an empty/whitespace-only confirmation.
+     */
+    private async promptForLinkUrl(title: string, defaultUrl: string): Promise<string | null> {
+        return this.promptForText(title, defaultUrl, "https://example.com");
     }
 
     /**
@@ -1726,6 +2123,39 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * The context menu's Column width… handler: prompts for a pixel width
+     * (see {@link MarkdownEditor.promptForText}), then applies it via
+     * {@link setTableColumnWidth}. No-op when the user cancels, submits
+     * empty text, or submits a value that isn't a positive integer.
+     */
+    private async promptAndSetColumnWidth(): Promise<void> {
+        const value = await this.promptForText("Column width", "", "e.g. 240");
+
+        if (value === null) {
+            return;
+        }
+
+        const width = Number(value);
+
+        if (Number.isInteger(width) && width > 0) {
+            this.setTableColumnWidth(width);
+        }
+    }
+
+    /**
+     * The context menu's Image… handler: prompts for a source URL (see
+     * {@link MarkdownEditor.promptForText}), then inserts it via
+     * {@link insertImage}. No-op when the user cancels or submits empty text.
+     */
+    private async promptAndInsertImage(): Promise<void> {
+        const src = await this.promptForText("Insert image", "", "https://example.com/image.png");
+
+        if (src !== null) {
+            this.insertImage(src);
+        }
+    }
+
+    /**
      * Dispatches a classified right-click context to the item list for its kind.
      *
      * @param context - The classified {@link ContextMenuTarget}.
@@ -1740,7 +2170,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Builds the four inline-format toggle items shared by the text and
+     * Builds the five inline-format toggle items shared by the text and
      * table-cell context menus: real {@link CheckboxMenuRow} rows, so the
      * check renders as an actual checkbox rather than a text checkmark and
      * activating one leaves the menu open (matching the `MenuBar` demo's
@@ -1748,10 +2178,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * toggled in one right-click.
      *
      * @param format - The current selection's inline-format state.
-     * @returns The four `MenuItemConfig` entries: Bold, Italic, Strikethrough, Inline code.
+     * @returns The five `MenuItemConfig` entries: Bold, Italic, Strikethrough, Inline code, Underline.
      */
     private buildFormatToggleItems(
-        format: { bold: boolean; italic: boolean; strikethrough: boolean; code: boolean },
+        format: { bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean },
     ): MenuItemConfig[] {
         const toggleRow = (text: string, checked: boolean, toggle: () => void): MenuItemConfig => ({
             row: () => {
@@ -1768,7 +2198,63 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             toggleRow("Italic", format.italic, () => this.toggleItalic()),
             toggleRow("Strikethrough", format.strikethrough, () => this.toggleStrikethrough()),
             toggleRow("Inline code", format.code, () => this.toggleInlineCode()),
+            toggleRow("Underline", format.underline, () => this.toggleUnderline()),
         ];
+    }
+
+    /**
+     * Builds the "Text style" submenu shared by the text and table-cell
+     * context menus: three sub-submenus (Colour, Font, Size), each a fixed
+     * preset list plus a "Default" item that clears the override by calling
+     * the setter with `null`.
+     *
+     * @returns The `MenuItemConfig` for the "Text style" submenu.
+     */
+    private buildTextStyleMenuItem(): MenuItemConfig {
+        const presetItem = (text: string, action: () => void): MenuItemConfig => ({ text, action });
+
+        return {
+            text: "Text style",
+            submenu: {
+                label: "Text style",
+                items: [
+                    {
+                        text: "Colour",
+                        submenu: {
+                            label: "Colour",
+                            items: [
+                                presetItem("Red", () => this.setTextColor("#cc0000")),
+                                presetItem("Green", () => this.setTextColor("#008000")),
+                                presetItem("Blue", () => this.setTextColor("#2563eb")),
+                                presetItem("Default", () => this.setTextColor(null)),
+                            ],
+                        },
+                    },
+                    {
+                        text: "Font",
+                        submenu: {
+                            label: "Font",
+                            items: [
+                                presetItem("Serif", () => this.setFontFamily("Georgia, serif")),
+                                presetItem("Monospace", () => this.setFontFamily("monospace")),
+                                presetItem("Default", () => this.setFontFamily(null)),
+                            ],
+                        },
+                    },
+                    {
+                        text: "Size",
+                        submenu: {
+                            label: "Size",
+                            items: [
+                                presetItem("Small", () => this.setFontSize("0.8em")),
+                                presetItem("Large", () => this.setFontSize("1.2em")),
+                                presetItem("Default", () => this.setFontSize(null)),
+                            ],
+                        },
+                    },
+                ],
+            },
+        };
     }
 
     /**
@@ -1848,6 +2334,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 },
             },
             { separator: true },
+            this.buildTextStyleMenuItem(),
+            {
+                text:    "Alignment",
+                submenu: {
+                    label: "Alignment",
+                    items: [
+                        { text: "Left", action: () => this.setBlockAlignment("left") },
+                        { text: "Center", action: () => this.setBlockAlignment("center") },
+                        { text: "Right", action: () => this.setBlockAlignment("right") },
+                        { text: "Justify", action: () => this.setBlockAlignment("justify") },
+                        { text: "Default", action: () => this.setBlockAlignment(null) },
+                    ],
+                },
+            },
+            { separator: true },
             { text: "Clear formatting", action: () => this.clearFormatting() },
         ];
 
@@ -1882,6 +2383,19 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             { text: "Code block", action: () => this.setBlockType("code") },
             { separator: true },
             { text: "Table", action: () => this.insertTable(2, 3) },
+            {
+                text:    "Columns",
+                submenu: {
+                    label: "Columns",
+                    items: [
+                        { text: "2 columns", action: () => this.setColumnCount(2) },
+                        { text: "3 columns", action: () => this.setColumnCount(3) },
+                        { text: "4 columns", action: () => this.setColumnCount(4) },
+                        { text: "None", action: () => this.setColumnCount(null) },
+                    ],
+                },
+            },
+            { text: "Image…", action: () => void this.promptAndInsertImage() },
         ];
     }
 
@@ -1904,6 +2418,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             ...this.buildFormatToggleItems(context),
             { separator: true },
             ...this.buildLinkMenuItems(context),
+            { separator: true },
+            this.buildTextStyleMenuItem(),
             { separator: true },
             { text: "Clear formatting", action: () => this.clearFormatting() },
             { separator: true },
@@ -1930,6 +2446,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                     ],
                 },
             },
+            { separator: true },
+            { text: "Merge cells", action: () => this.mergeTableCells() },
+            { text: "Unmerge cell", action: () => this.unmergeTableCell() },
+            { text: "Column width…", action: () => void this.promptAndSetColumnWidth() },
         ];
 
         if (context.hasEnclosingBlock) {

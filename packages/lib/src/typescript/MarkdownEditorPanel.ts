@@ -15,18 +15,26 @@ A **WYSIWYG** editor whose value is a *Markdown* string, built on Lexical.
 
 ## Try it
 
-- Type \`**bold**\`, \`*italic*\`, or \`\` \`code\` \`\`
+- Type \`**bold**\`, \`*italic*\`, \`++underline++\`, or \`\` \`code\` \`\`
 - Start a line with \`# \` for a heading, \`- \` for a bullet, \`> \` for a quote
 - Use Ctrl/Cmd+B and Ctrl/Cmd+I
+- Right-click a word for [coloured]{color=#cc0000} or [sized]{size=1.3em} text
 
 1. It emits only the [Markdown](https://commonmark.org) subset the viewer renders
 2. The panel on the right renders \`getValue()\` live
 
 > Edit on the left; the read-only Markdown viewer on the right stays in sync.
 
-| Column | Aligned |
+| Column {width=160} | Aligned |
 |:---|:---:|
 | Tables | yes |
+| Merge | << |
+
+::: {align=center}
+A centred paragraph inside a fence.
+:::
+
+![Diagram](https://placehold.co/240x120){width=240 height=120}
 
 \`\`\`
 const editor = new MarkdownEditor("# Hello");
@@ -43,7 +51,9 @@ const editor = new MarkdownEditor("# Hello");
  * source editor via `setMode`; the viewer stays in sync in both modes. Four more
  * toolbar buttons expose the row/column command API (`insertTableRow` /
  * `deleteTableRow` / `insertTableColumn` / `deleteTableColumn`), all no-ops
- * (never throws) with the caret outside a table cell. The editor fills its
+ * (never throws) with the caret outside a table cell, and six more expose
+ * `toggleUnderline` / `setTextColor` / `mergeTableCells` / `setBlockAlignment`
+ * / `setColumnCount` / `insertImage`. The editor fills its
  * `Fit` host and scrolls internally; the viewer sits in a vertically
  * scrolling panel. A status row below the editor reports the editor's own dirty
  * flag and the panel's own, the panel's arriving through the framework's
@@ -88,6 +98,24 @@ class MarkdownEditorPanel extends Panel {
         const deleteColumnButton = new Button('− Column');
         deleteColumnButton.on('action', this.handleDeleteColumn);
 
+        const underlineButton = new Button('Underline');
+        underlineButton.on('action', this.handleUnderline);
+
+        const colourButton = new Button('Colour');
+        colourButton.on('action', this.handleColour);
+
+        const mergeCellsButton = new Button('Merge cells');
+        mergeCellsButton.on('action', this.handleMergeCells);
+
+        const alignCentreButton = new Button('Align centre');
+        alignCentreButton.on('action', this.handleAlignCentre);
+
+        const columnsButton = new Button('Columns');
+        columnsButton.on('action', this.handleColumns);
+
+        const insertImageButton = new Button('Insert image');
+        insertImageButton.on('action', this.handleInsertImage);
+
         // Writes nothing — only clears the dirty flag, standing in for a
         // host that has persisted the document.
         const saveBtn = new Button('Save');
@@ -100,6 +128,12 @@ class MarkdownEditorPanel extends Panel {
         toolbar.addComponent(deleteRowButton);
         toolbar.addComponent(insertColumnButton);
         toolbar.addComponent(deleteColumnButton);
+        toolbar.addComponent(underlineButton);
+        toolbar.addComponent(colourButton);
+        toolbar.addComponent(mergeCellsButton);
+        toolbar.addComponent(alignCentreButton);
+        toolbar.addComponent(columnsButton);
+        toolbar.addComponent(insertImageButton);
         toolbar.addComponent(saveBtn);
 
         const editorFit = new Panel({ layoutManager: new Fit() });
@@ -150,6 +184,30 @@ class MarkdownEditorPanel extends Panel {
 
     private readonly handleDeleteColumn = (): void => {
         this._editor.deleteTableColumn();
+    };
+
+    private readonly handleUnderline = (): void => {
+        this._editor.toggleUnderline();
+    };
+
+    private readonly handleColour = (): void => {
+        this._editor.setTextColor('#cc0000');
+    };
+
+    private readonly handleMergeCells = (): void => {
+        this._editor.mergeTableCells();
+    };
+
+    private readonly handleAlignCentre = (): void => {
+        this._editor.setBlockAlignment('center');
+    };
+
+    private readonly handleColumns = (): void => {
+        this._editor.setColumnCount(2);
+    };
+
+    private readonly handleInsertImage = (): void => {
+        this._editor.insertImage('https://placehold.co/240x120', { alt: 'Placeholder', width: 240, height: 120 });
     };
 
     private readonly handleDirtyChange = (): void => {
