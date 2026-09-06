@@ -21,12 +21,10 @@ export type ImageMediaEvent = "load" | "error";
  *
  * @remarks Supplying `preferredSize` pins the component's preferred size and
  * disables the default natural-dimension auto-fit `getPreferredSize()` would
- * otherwise publish on load. It does not pin the *rendered* size on its
- * own: `getMinSize()` still auto-derives a floor from the natural size once
- * loaded (capped at 100px per axis), independently of `preferredSize`, and a
- * parent layout floors the committed size to that minimum — call
- * `setMinSize()` explicitly if a smaller pinned size must render exactly as
- * given.
+ * otherwise publish on load. `getMinSize()` reports `{0, 0}` (no minimum)
+ * until either an explicit `setMinSize` or `preserveAspectRatio`'s own
+ * `setWidth`/`setHeight`-driven floor (see `preserveAspectRatio` below) has
+ * raised it.
  *
  * @category Components
  */
@@ -45,6 +43,12 @@ export interface ImageOptions extends ComponentOptions {
     crossOrigin?: "anonymous" | "use-credentials";
     /** Referrer policy for the image request (`referrerpolicy` attribute). */
     referrerPolicy?: ReferrerPolicy; // TypeScript's built-in DOM-lib global type
+    /** CSS `object-fit`: how the image content fits its box when the box's aspect ratio doesn't match the image's. */
+    objectFit?: "fill" | "contain" | "cover" | "none" | "scale-down";
+    /** CSS `object-position`: alignment of the image content within its box. */
+    objectPosition?: string;
+    /** Keeps width and height proportional to the natural aspect ratio as the box is resized. Opt-in; off by default. */
+    preserveAspectRatio?: boolean;
 
     /**
      * Construction-time listener bag — the declarative form of `on()`, one key
@@ -55,11 +59,6 @@ export interface ImageOptions extends ComponentOptions {
         error?: () => void;
     };
 }
-
-// Upper bound for the auto-derived `minSize` per axis. Small images report
-// their intrinsic size (so a 16×16 favicon stays sharp at full natural size);
-// larger images cap here so their parent layout can always shrink them down.
-const IMAGE_AUTO_MIN_CAP_PX = 100;
 
 /**
  * Class-level defaults forwarded to `super` so the cascade hits Component's
@@ -88,6 +87,13 @@ const _defaultImageOptions: Partial<ImageOptions> = {
  * instead of reporting the previous image's dimensions; an explicit
  * `preferredSize` survives a source change.
  *
+ * `objectFit` / `objectPosition` are plain CSS pass-throughs (no default
+ * effect until set). `preserveAspectRatio` is an opt-in sizing behaviour,
+ * off by default: once enabled, `setWidth`/`setHeight` re-derive the other
+ * axis from the natural aspect ratio and raise `getMinSize()`'s floor to
+ * match, so a parent's layout pass keeps the image's proportions locked as
+ * its box is resized.
+ *
  * @category Components
  */
 class Image extends Component<ImageOptions> {
@@ -95,6 +101,20 @@ class Image extends Component<ImageOptions> {
     // Cached once per load — see `handleLoad`. `null` before the image has
     // decoded. Content-box dimensions (no perimeter).
     private _naturalSize: Size | null = null;
+
+    // The {width, height} pair last derived by setWidth/setHeight under
+    // preserveAspectRatio, used as getMinSize()'s floor. Null until the
+    // parent has assigned a concrete width or height at least once — see
+    // `applyAspectRatio`.
+    private _aspectMinSize: Size | null = null;
+
+    // The _naturalSize reference applyAspectRatio last derived
+    // _aspectMinSize from. setWidth/setHeight compare this against the
+    // current _naturalSize (by reference — handleLoad always assigns a
+    // fresh object) to force one extra re-derivation after setSrc swaps in
+    // a differently-shaped image, even when the committed value on that
+    // axis happens to repeat — see setWidth's doc comment.
+    private _aspectDerivedFrom: Size | null = null;
 
     /** Custom-event fan-out for the re-emitted load/error events. */
     private _listeners: ListenerBag<ImageMediaEvent> =
@@ -170,6 +190,9 @@ class Image extends Component<ImageOptions> {
         if (options.fetchPriority  !== undefined) this.setFetchPriority(options.fetchPriority);
         if (options.crossOrigin    !== undefined) this.setCrossOrigin(options.crossOrigin);
         if (options.referrerPolicy !== undefined) this.setReferrerPolicy(options.referrerPolicy);
+        if (options.objectFit            !== undefined) this.setObjectFit(options.objectFit);
+        if (options.objectPosition       !== undefined) this.setObjectPosition(options.objectPosition);
+        if (options.preserveAspectRatio  !== undefined) this.setPreserveAspectRatio(options.preserveAspectRatio);
 
         return this;
     }
@@ -341,6 +364,84 @@ class Image extends Component<ImageOptions> {
     }
 
     /**
+     * Returns the CSS `object-fit` value.
+     *
+     * @returns The `objectFit` value, or `null` when unset.
+     */
+    getObjectFit(): "fill" | "contain" | "cover" | "none" | "scale-down" | null {
+        return this._options.objectFit ?? null;
+    }
+
+    /**
+     * Sets the CSS `object-fit` property, controlling how the image content
+     * fits its box when the box's aspect ratio doesn't match the image's.
+     *
+     * @param value - One of `"fill"`, `"contain"`, `"cover"`, `"none"`,
+     *   `"scale-down"`.
+     *
+     * @returns This component, for method chaining.
+     */
+    setObjectFit(value: "fill" | "contain" | "cover" | "none" | "scale-down"): this {
+        this._options.objectFit = value;
+        this.setElementCSSRule("objectFit", value);
+
+        return this;
+    }
+
+    /**
+     * Returns the CSS `object-position` value.
+     *
+     * @returns The `objectPosition` value, or `null` when unset.
+     */
+    getObjectPosition(): string | null {
+        return this._options.objectPosition ?? null;
+    }
+
+    /**
+     * Sets the CSS `object-position` property, aligning the image content
+     * within its box.
+     *
+     * @param value - A CSS `object-position` value (e.g. `"top center"`).
+     *
+     * @returns This component, for method chaining.
+     */
+    setObjectPosition(value: string): this {
+        this._options.objectPosition = value;
+        this.setElementCSSRule("objectPosition", value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether `preserveAspectRatio` is enabled.
+     *
+     * @returns `true` when `setWidth`/`setHeight` re-derive the dependent
+     *   axis from the natural aspect ratio; `false` (the default) otherwise.
+     */
+    getPreserveAspectRatio(): boolean {
+        return this._options.preserveAspectRatio ?? false;
+    }
+
+    /**
+     * Enables or disables aspect-ratio-preserving sizing (see
+     * `applyAspectRatio`). Clears the `_aspectMinSize` floor so a stale
+     * value computed under the opposite setting can't leak into
+     * `getMinSize()`; the new floor is derived on the next
+     * `setWidth`/`setHeight` call.
+     *
+     * @param value - `true` to keep width and height proportional to the
+     *   natural aspect ratio as the box is resized.
+     *
+     * @returns This component, for method chaining.
+     */
+    setPreserveAspectRatio(value: boolean): this {
+        this._options.preserveAspectRatio = value;
+        this._aspectMinSize = null;
+
+        return this;
+    }
+
+    /**
      * Pins an explicit preferred size, marking it as caller-supplied so
      * `handleLoad()` never overwrites it with an auto-derived natural size.
      *
@@ -418,21 +519,145 @@ class Image extends Component<ImageOptions> {
     }
 
     /**
-     * Returns a minimum size derived from the image's cached natural
-     * dimensions (mirrors the `Math.min(natural, 100)` cap that `Text`
-     * applies), so small images keep their full size while large images stay
-     * shrinkable by their parent layout. An explicit `setMinSize` from the
-     * caller always wins.
+     * Re-derives the height from the current width under `preserveAspectRatio`
+     * and republishes the preferred size (see `applyAspectRatio`).
      *
-     * @returns The minimum `{width, height}` from the cached natural size, or
-     *   `{0, 0}` (no minimum) before the image has loaded.
+     * Clears a stale width floor `applyAspectRatio` may have left on
+     * `_aspectMinSize` from an earlier `setHeight`-driven derivation, before
+     * `super.setWidth`'s own clamp reads `getMinSize()` — otherwise a later,
+     * smaller `setWidth` call could be clamped back up by a floor that had
+     * nothing left to protect (nothing follows `setHeight` within the same
+     * `writeBounds` pass, since it always runs last — see
+     * `applyAspectRatio`'s doc comment). `setHeight` below has no matching
+     * clear: a non-zero height floor only ever comes from the `setWidth`
+     * call immediately preceding it in the same pass, which is exactly the
+     * protection that floor exists to provide.
+     *
+     * Skips re-deriving when the committed width didn't actually change
+     * (mirrors `Text.setWidth`'s own idempotency guard, `Text.ts:690-699`)
+     * — otherwise a parent that keeps re-asserting the same box every layout
+     * pass (one that can never become aspect-correct, e.g. a fixed-size
+     * `Fit`/`Split` allocation) would have this and `setHeight` perpetually
+     * disagree on the published preferred size, notifying forever instead
+     * of settling once idempotent. Re-derives anyway when `_naturalSize` has
+     * moved on since the last derivation — otherwise a `setSrc` swap whose
+     * next committed width happens to repeat the previous value would leave
+     * `_aspectMinSize` and the published preferred size locked to the old
+     * image's aspect ratio forever, since nothing else would ever trigger a
+     * re-derivation for that axis again.
+     *
+     * @param width - The new width in pixels.
+     *
+     * @returns This component, for method chaining.
+     */
+    setWidth(width: number): this {
+        const previous = this.getWidth();
+
+        if (this._aspectMinSize) {
+            this._aspectMinSize = { ...this._aspectMinSize, width: 0 };
+        }
+
+        super.setWidth(width);
+
+        if (this.getWidth() !== previous || this._naturalSize !== this._aspectDerivedFrom) {
+            this.applyAspectRatio("width");
+        }
+
+        return this;
+    }
+
+    /**
+     * Re-derives the width from the current height under `preserveAspectRatio`
+     * and republishes the preferred size (see `applyAspectRatio`). Skips
+     * re-deriving when the committed height didn't actually change and
+     * `_naturalSize` hasn't moved on since the last derivation, mirroring
+     * `setWidth`'s own idempotency guard (see its doc comment for why).
+     *
+     * @param height - The new height in pixels.
+     *
+     * @returns This component, for method chaining.
+     */
+    setHeight(height: number): this {
+        const previous = this.getHeight();
+
+        super.setHeight(height);
+
+        if (this.getHeight() !== previous || this._naturalSize !== this._aspectDerivedFrom) {
+            this.applyAspectRatio("height");
+        }
+
+        return this;
+    }
+
+    /**
+     * Re-derives the axis `setWidth`/`setHeight` did *not* just commit, from
+     * the cached natural aspect ratio, and republishes both as the preferred
+     * size — bypassing any explicit-preferred-size bookkeeping this class's
+     * own `setPreferredSize` override adds, since this is a derived value,
+     * not a caller override. Also raises `_aspectMinSize`'s floor on the
+     * *derived* axis only (the driving axis is left at `0`) — a floor on the
+     * driving axis would block a later call from shrinking that same axis
+     * again. The derived-axis floor still protects a same-pass companion
+     * call (a parent's `writeBounds` always calls `setWidth` then
+     * `setHeight`) from clipping below the aspect-correct size — `setWidth`
+     * always runs first, so only the floor `setHeight` reads (on height) is
+     * ever a live same-pass protection; the floor `setWidth` would read (on
+     * width) is always stale from an earlier pass, which is why only
+     * `setWidth` clears it. No-op before the first `load` (`_naturalSize`
+     * still `null`), for a malformed zero-dimension natural size, or when
+     * `preserveAspectRatio` is off — in all three no-op cases,
+     * `_aspectDerivedFrom` is left untouched. On an actual derivation, it is
+     * set to the `_naturalSize` reference just used, so `setWidth`/
+     * `setHeight`'s idempotency guard can tell a genuinely unchanged box from
+     * one that only looks unchanged because a `setSrc` swap hasn't been
+     * accounted for yet.
+     *
+     * @param drivingAxis - The axis `setWidth`/`setHeight` just committed;
+     *   the other axis is derived from it.
+     */
+    private applyAspectRatio(drivingAxis: "width" | "height"): void {
+        if (!this._options.preserveAspectRatio
+            || !this._naturalSize
+            || this._naturalSize.width === 0
+            || this._naturalSize.height === 0) {
+            return;
+        }
+
+        const ratio     = this._naturalSize.width / this._naturalSize.height;
+        const perimeter = this.getPerimeterSize();
+
+        const size: Size = drivingAxis === "width"
+            ? {
+                  width:  this.getWidth(),
+                  height: (this.getWidth() - perimeter.left - perimeter.right) / ratio
+                          + perimeter.top + perimeter.bottom,
+              }
+            : {
+                  width:  (this.getHeight() - perimeter.top - perimeter.bottom) * ratio
+                          + perimeter.left + perimeter.right,
+                  height: this.getHeight(),
+              };
+
+        this._aspectMinSize = drivingAxis === "width"
+            ? { width: 0, height: size.height }
+            : { width: size.width, height: 0 };
+
+        this._aspectDerivedFrom = this._naturalSize;
+
+        super.setPreferredSize(size);
+    }
+
+    /**
+     * Returns a minimum size: the `preserveAspectRatio`-derived floor raised
+     * by the last `setWidth`/`setHeight` call (see `applyAspectRatio`), when
+     * present. An explicit `setMinSize` from the caller always wins.
+     *
+     * @returns The minimum `{width, height}` from `_aspectMinSize`, or
+     *   `{0, 0}` (no minimum) before `preserveAspectRatio` has derived one.
      */
     getMinSize(): Size | null {
-        if (!this.instanceLayer().authored.minSize && this._naturalSize) {
-            return {
-                width:  Math.min(this._naturalSize.width,  IMAGE_AUTO_MIN_CAP_PX),
-                height: Math.min(this._naturalSize.height, IMAGE_AUTO_MIN_CAP_PX),
-            };
+        if (!this.instanceLayer().authored.minSize && this._aspectMinSize) {
+            return this._aspectMinSize;
         }
 
         return super.getMinSize();

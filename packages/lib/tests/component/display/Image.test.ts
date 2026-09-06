@@ -65,7 +65,7 @@ describe('Image size reporting', () => {
         expect(img.getMinSize()).toEqual({ width: 0, height: 0 });
     });
 
-    it('publishes the natural size on load when no explicit size was set', () => {
+    it('publishes the natural size on load when no explicit size was set, with no auto-derived min-size floor', () => {
         const img = new Image('/x.png');
 
         img.getElement(true);
@@ -73,20 +73,20 @@ describe('Image size reporting', () => {
         (img as unknown as Bridged)._onLoad();
 
         expect(img.getPreferredSize()).toEqual({ width: 300, height: 200 });
-        expect(img.getMinSize()).toEqual({ width: 100, height: 100 });
+        expect(img.getMinSize()).toEqual({ width: 0, height: 0 });
     });
 
-    it('reports the natural size unclamped when under the auto-min cap', () => {
+    it('reports {0,0} min size after load even when the natural size is small', () => {
         const img = new Image('/x.png');
 
         img.getElement(true);
         setNaturalSize(img.getElement()!, 16, 16);
         (img as unknown as Bridged)._onLoad();
 
-        expect(img.getMinSize()).toEqual({ width: 16, height: 16 });
+        expect(img.getMinSize()).toEqual({ width: 0, height: 0 });
     });
 
-    it('keeps an explicit preferredSize unchanged after load, but still auto-derives minSize', () => {
+    it('keeps an explicit preferredSize unchanged after load, minSize staying {0,0} without preserveAspectRatio', () => {
         const img = new Image('/x.png', { preferredSize: { width: 120, height: 40 } });
 
         img.getElement(true);
@@ -94,7 +94,7 @@ describe('Image size reporting', () => {
         (img as unknown as Bridged)._onLoad();
 
         expect(img.getPreferredSize()).toEqual({ width: 120, height: 40 });
-        expect(img.getMinSize()).toEqual({ width: 100, height: 100 });
+        expect(img.getMinSize()).toEqual({ width: 0, height: 0 });
     });
 
     it('lets an explicit setMinSize win regardless of load state, without gating the preferredSize publish', () => {
@@ -405,7 +405,7 @@ describe('Image setSrc cache invalidation and re-measure', () => {
         (img as unknown as Bridged)._onLoad();
 
         expect(img.getPreferredSize()).toEqual({ width: 300, height: 200 });
-        expect(img.getMinSize()).toEqual({ width: 100, height: 100 });
+        expect(img.getMinSize()).toEqual({ width: 0, height: 0 });
 
         img.setSrc('/new.png');
 
@@ -416,7 +416,7 @@ describe('Image setSrc cache invalidation and re-measure', () => {
         (img as unknown as Bridged)._onLoad();
 
         expect(img.getPreferredSize()).toEqual({ width: 50, height: 50 });
-        expect(img.getMinSize()).toEqual({ width: 50, height: 50 });
+        expect(img.getMinSize()).toEqual({ width: 0, height: 0 });
     });
 
     it('keeps an explicit preferredSize unchanged across a setSrc reload', () => {
@@ -439,6 +439,218 @@ describe('Image setSrc cache invalidation and re-measure', () => {
         const img = new Image('/x.png');
 
         expect(() => img.setSrc('/new.png')).not.toThrow();
+    });
+});
+
+describe('Image objectFit / objectPosition', () => {
+    it('round-trips objectFit through getObjectFit', () => {
+        const img = new Image('/x.png');
+
+        img.setObjectFit('contain');
+
+        expect(img.getObjectFit()).toBe('contain');
+    });
+
+    it('round-trips objectPosition through getObjectPosition', () => {
+        const img = new Image('/x.png');
+
+        img.setObjectPosition('top center');
+
+        expect(img.getObjectPosition()).toBe('top center');
+    });
+
+    it('reports null from getObjectFit/getObjectPosition before their setters are ever called', () => {
+        const img = new Image('/x.png');
+
+        expect(img.getObjectFit()).toBeNull();
+        expect(img.getObjectPosition()).toBeNull();
+    });
+
+    it('applies objectFit from the construction options bag', () => {
+        const img = new Image('/x.png', { objectFit: 'cover' });
+
+        img.getElement(true);
+
+        expect(img.getObjectFit()).toBe('cover');
+    });
+});
+
+describe('Image preserveAspectRatio', () => {
+    it('defaults to false and round-trips through setPreserveAspectRatio', () => {
+        const img = new Image('/x.png');
+
+        expect(img.getPreserveAspectRatio()).toBe(false);
+
+        img.setPreserveAspectRatio(true);
+
+        expect(img.getPreserveAspectRatio()).toBe(true);
+    });
+
+    it('derives the dependent axis from setWidth/setHeight and floors only that axis, until toggled off', () => {
+        const img = new Image('/x.png', { preserveAspectRatio: true });
+
+        img.getElement(true);
+        setNaturalSize(img.getElement()!, 300, 150);
+        (img as unknown as Bridged)._onLoad();
+
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 150 });
+        expect(img.getMinSize()).toEqual({ width: 0, height: 0 });
+
+        img.setWidth(120);
+
+        // The just-derived height is floored (protects a same-pass setHeight
+        // call from clipping below it); width itself is never floored — it
+        // was just set explicitly and must stay free to shrink again later.
+        expect(img.getPreferredSize()).toEqual({ width: 120, height: 60 });
+        expect(img.getMinSize()).toEqual({ width: 0, height: 60 });
+
+        img.setHeight(150);
+
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 150 });
+        expect(img.getMinSize()).toEqual({ width: 300, height: 0 });
+
+        img.setPreserveAspectRatio(false);
+        img.setWidth(90);
+
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 150 });
+        expect(img.getMinSize()).toEqual({ width: 0, height: 0 });
+    });
+
+    it('lets the image shrink again after growing, across repeated setWidth/setHeight passes', () => {
+        const img = new Image('/x.png', { preserveAspectRatio: true });
+
+        img.getElement(true);
+        setNaturalSize(img.getElement()!, 300, 150);
+        (img as unknown as Bridged)._onLoad();
+
+        // A single standalone setWidth call must never be blocked from
+        // shrinking by a floor an earlier setWidth call left behind.
+        img.setWidth(300);
+        img.setWidth(100);
+
+        expect(img.getWidth()).toBe(100);
+
+        // A realistic layout pass calls setWidth then setHeight together
+        // (Component.writeBounds's own order). An ill-fitting box (2:1
+        // image, 1.5:1 box) grows width past what the parent asked to stay
+        // proportional — but a later, identical re-allocation from the same
+        // parent (e.g. a fixed-size Split pane re-committing on the next
+        // layout pass) must not stay stuck at the grown size.
+        img.setWidth(300);
+        img.setHeight(200);
+
+        expect(img.getWidth()).toBe(300);
+        expect(img.getHeight()).toBe(200);
+
+        img.setWidth(300);
+        img.setHeight(200);
+
+        expect(img.getWidth()).toBe(300);
+        expect(img.getHeight()).toBe(200);
+
+        // A subsequent, smaller allocation is also honoured.
+        img.setWidth(150);
+        img.setHeight(100);
+
+        expect(img.getWidth()).toBe(150);
+        expect(img.getHeight()).toBe(100);
+    });
+
+    it('stops notifying once a mismatched box repeats, instead of looping forever', () => {
+        const img = new Image('/x.png', { preserveAspectRatio: true });
+        const preferredSpy = vi.fn();
+
+        img.getElement(true);
+        setNaturalSize(img.getElement()!, 300, 150);
+        (img as unknown as Bridged)._onLoad();
+        (img as unknown as { _onPreferredSizeChange: unknown })._onPreferredSizeChange = preferredSpy;
+
+        // Pass 1: an ill-fitting box (2:1 image, 1.5:1 box) — preserveAspectRatio
+        // grows the published preferred size past the box to stay proportional.
+        img.setWidth(300);
+        img.setHeight(200);
+
+        const callsAfterFirstPass = preferredSpy.mock.calls.length;
+        expect(callsAfterFirstPass).toBeGreaterThan(0);
+
+        // Pass 2: the parent hands the identical box again (a fixed-size
+        // container that doesn't defer to the child's preferred size, e.g.
+        // Fit or a Split pane holding its allocation). Nothing further
+        // should fire — the box can never become aspect-correct, so without
+        // an idempotency guard this pair would notify forever.
+        img.setWidth(300);
+        img.setHeight(200);
+
+        expect(preferredSpy.mock.calls.length).toBe(callsAfterFirstPass);
+    });
+
+    it('re-derives after a setSrc swap even when the committed width happens to repeat', () => {
+        const img = new Image('/x.png', { preserveAspectRatio: true });
+
+        img.getElement(true);
+        setNaturalSize(img.getElement()!, 300, 150); // 2:1
+        (img as unknown as Bridged)._onLoad();
+
+        img.setWidth(300);
+
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 150 });
+
+        // Swap to a differently-shaped image, then have a rigid parent
+        // re-commit the exact same width as before — the idempotency guard
+        // must not mistake this for "nothing changed" and keep the stale,
+        // old-ratio height around.
+        img.setSrc('/square.png');
+        setNaturalSize(img.getElement()!, 100, 100); // 1:1
+        (img as unknown as Bridged)._onLoad();
+
+        img.setWidth(300);
+
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 300 });
+    });
+
+    it('an explicit preferredSize wins for the initial load, but a later setWidth call re-derives from the aspect ratio', () => {
+        const img = new Image('/x.png', {
+            preferredSize:       { width: 120, height: 40 },
+            preserveAspectRatio: true,
+        });
+
+        img.getElement(true);
+        setNaturalSize(img.getElement()!, 300, 150);
+        (img as unknown as Bridged)._onLoad();
+
+        expect(img.getPreferredSize()).toEqual({ width: 120, height: 40 });
+
+        img.setWidth(300);
+
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 150 });
+    });
+
+    it('derives against the perimeter (padding), not the outer width/height', () => {
+        const img = new Image('/x.png', {
+            padding:             new Insets(10, 10, 10, 10),
+            preserveAspectRatio: true,
+        });
+
+        img.getElement(true);
+        setNaturalSize(img.getElement()!, 300, 150);
+        (img as unknown as Bridged)._onLoad();
+
+        img.setWidth(140);
+
+        expect(img.getPreferredSize()).toEqual({ width: 140, height: 80 });
+    });
+
+    it('does not re-derive when the natural size has a zero-length axis', () => {
+        const img = new Image('/x.png', { preserveAspectRatio: true });
+
+        img.getElement(true);
+        setNaturalSize(img.getElement()!, 0, 150);
+        (img as unknown as Bridged)._onLoad();
+
+        img.setWidth(120);
+
+        expect(img.getPreferredSize()).toEqual({ width: 0, height: 150 });
+        expect(img.getMinSize()).toEqual({ width: 0, height: 0 });
     });
 });
 
