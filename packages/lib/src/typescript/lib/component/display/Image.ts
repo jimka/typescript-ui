@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import { type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -22,8 +23,9 @@ export type ImageMediaEvent = "load" | "error";
  * @remarks Supplying `preferredSize` pins the component's preferred size and
  * disables the default natural-dimension auto-fit `getPreferredSize()` would
  * otherwise publish on load. `getMinSize()` reports `{0, 0}` (no minimum)
- * until either an explicit `setMinSize` or `preserveAspectRatio`'s own
- * `setWidth`/`setHeight`-driven floor (see `preserveAspectRatio` below) has
+ * until an explicit `setMinSize`, `preserveAspectRatio`'s own
+ * `setWidth`/`setHeight`-driven floor (see `preserveAspectRatio` below), or
+ * a failed decode's fixed placeholder floor (see `isBroken()` below) has
  * raised it.
  *
  * @category Components
@@ -68,6 +70,23 @@ const _defaultImageOptions: Partial<ImageOptions> = {
     tag: "img",
 };
 
+// Fallback square size published as the broken image's preferred/min size
+// when no explicit size was requested, so a failed decode still reserves a
+// visible box instead of collapsing to nothing. A fixed literal, not
+// theme-scaled: this is a layout decision (big enough to read as a
+// deliberate placeholder), not a chrome token.
+const IMAGE_BROKEN_PLACEHOLDER_PX = 48;
+
+/** `.loading`'s chrome — a flat neutral wash while the image decodes. */
+const IMAGE_LOADING_DECLARATIONS: StyleBag = {
+    backgroundColor: "var(--ts-ui-image-loading-bg, rgba(0, 0, 0, 0.06))",
+};
+
+/** `.broken`'s chrome — a flat, distinct wash marking a failed decode. */
+const IMAGE_BROKEN_DECLARATIONS: StyleBag = {
+    backgroundColor: "var(--ts-ui-image-broken-bg, rgba(220, 60, 60, 0.08))",
+};
+
 /**
  * An image component backed by an `<img>` element.
  *
@@ -94,9 +113,27 @@ const _defaultImageOptions: Partial<ImageOptions> = {
  * match, so a parent's layout pass keeps the image's proportions locked as
  * its box is resized.
  *
+ * While a source is decoding, `Image` carries a declared `.loading` visual
+ * state (a neutral background wash); if the decode fails, it carries
+ * `.broken` instead (a distinct wash) and publishes a fixed 48x48 placeholder
+ * size in place of the failed image, so a broken source still reserves a
+ * visible box rather than collapsing to nothing. `isLoading()` / `isBroken()`
+ * report which applies — both are derived from the native `load`/`error`
+ * events, with no public setter.
+ *
  * @category Components
  */
 class Image extends Component<ImageOptions> {
+
+    // `.loading`'s and `.broken`'s chrome — see `resetLoadState()` /
+    // `handleLoad()` / `handleError()` for when each is toggled. Not
+    // restating Component's own `.undisplayed`/`.invisible` entries — a
+    // subclass with its own `ownStyleStates` isn't required to (Component.ts
+    // 408-410).
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        { selector: ".loading", extract: (): StyleBag => IMAGE_LOADING_DECLARATIONS },
+        { selector: ".broken",  extract: (): StyleBag => IMAGE_BROKEN_DECLARATIONS },
+    ];
 
     // Cached once per load — see `handleLoad`. `null` before the image has
     // decoded. Content-box dimensions (no perimeter).
@@ -123,7 +160,7 @@ class Image extends Component<ImageOptions> {
     // Stable per-instance references so `destructor()` removes the exact
     // listener `init()` registered — mirrors Video's `_mediaHandlers` entries.
     private readonly _onLoad:  () => void = () => this.handleLoad();
-    private readonly _onError: () => void = () => this.emit("error");
+    private readonly _onError: () => void = () => this.handleError();
 
     // Whether the current preferredSize constraint came from the caller (a
     // constructor `preferredSize` option or a direct setPreferredSize /
@@ -158,6 +195,7 @@ class Image extends Component<ImageOptions> {
         // gate. A no-default instance still seeds `false`, unchanged.
         this._hasExplicitPreferredSize ??= this.getPreferredSizeConstraint() !== null;
         this.clearInsets();
+        this.resetLoadState();
 
         // Positional `src` argument: applied only when `options.src` didn't
         // already win via the applyOptions cascade above. See "src stays a
@@ -216,6 +254,7 @@ class Image extends Component<ImageOptions> {
      * @returns This component, for method chaining.
      */
     setSrc(src: string): this {
+        this.resetLoadState();
         this._options.src = src;
         this.setElementAttribute("src", src);
         this._naturalSize = null; // new source — the cached natural size is stale; re-measure on the next load
@@ -469,9 +508,40 @@ class Image extends Component<ImageOptions> {
     }
 
     /**
+     * Whether the image is currently decoding — active from construction (or
+     * a source change, via `setSrc`) until `load` or `error` fires.
+     *
+     * @returns True while `.loading` is the active visual state.
+     */
+    isLoading(): boolean {
+        return this.isStyleState(".loading");
+    }
+
+    /**
+     * Whether the most recent decode attempt failed.
+     *
+     * @returns True while `.broken` is the active visual state.
+     */
+    isBroken(): boolean {
+        return this.isStyleState(".broken");
+    }
+
+    /**
+     * Re-enters the loading state: clears `.broken` and sets `.loading`.
+     * Called from the constructor (initial entry) and from `setSrc`
+     * (re-entry on a source change).
+     */
+    private resetLoadState(): void {
+        this.setStyleState(".broken", false);
+        this.setStyleState(".loading", true);
+    }
+
+    /**
      * Caches the image's natural intrinsic size and, unless the caller already
      * set an explicit `preferredSize`, publishes it (natural size plus this
-     * component's own perimeter) so it reaches layout. Re-emits `"load"`
+     * component's own perimeter) so it reaches layout. Clears both `.loading`
+     * and `.broken` unconditionally, so this is correct regardless of which
+     * state the instance was in before `load` fired. Re-emits `"load"`
      * either way.
      */
     private handleLoad(): void {
@@ -483,6 +553,9 @@ class Image extends Component<ImageOptions> {
 
         const natural = DOM.source.getNaturalSize(element);
         this._naturalSize = { width: natural.width, height: natural.height };
+
+        this.setStyleState(".loading", false);
+        this.setStyleState(".broken", false);
 
         if (this._hasExplicitPreferredSize) {
             // An explicit preferredSize means the natural size isn't
@@ -504,6 +577,37 @@ class Image extends Component<ImageOptions> {
         }
 
         this.emit("load");
+    }
+
+    /**
+     * Marks the decode as failed: sets `.broken` and clears `.loading`, and —
+     * unless the caller already set an explicit `preferredSize` — publishes a
+     * fixed placeholder size so a broken source still reserves a visible box
+     * instead of collapsing to nothing. `getMinSize()` floors to the same
+     * placeholder regardless of the preferred-size constraint (see its own
+     * override). Re-emits `"error"` either way.
+     */
+    private handleError(): void {
+        this.setStyleState(".loading", false);
+        this.setStyleState(".broken", true);
+
+        if (this._hasExplicitPreferredSize) {
+            // preferredSize itself is unchanged, but getMinSize()'s new
+            // `.broken` floor still needs relaying upward — mirrors
+            // handleLoad()'s own explicit-size branch above.
+            this.notifyIntrinsicSizeChanged();
+        } else {
+            const perimeter = this.getPerimeterSize();
+
+            // Calls the base setter directly, matching handleLoad() above, so
+            // this auto-publish does not itself trip `_hasExplicitPreferredSize`.
+            super.setPreferredSize({
+                width:  IMAGE_BROKEN_PLACEHOLDER_PX + perimeter.left + perimeter.right,
+                height: IMAGE_BROKEN_PLACEHOLDER_PX + perimeter.top  + perimeter.bottom,
+            });
+        }
+
+        this.emit("error");
     }
 
     /**
@@ -648,14 +752,21 @@ class Image extends Component<ImageOptions> {
     }
 
     /**
-     * Returns a minimum size: the `preserveAspectRatio`-derived floor raised
-     * by the last `setWidth`/`setHeight` call (see `applyAspectRatio`), when
-     * present. An explicit `setMinSize` from the caller always wins.
+     * Returns a minimum size: the fixed broken-image placeholder while
+     * `.broken` is active, else the `preserveAspectRatio`-derived floor
+     * raised by the last `setWidth`/`setHeight` call (see
+     * `applyAspectRatio`), when present. An explicit `setMinSize` from the
+     * caller always wins over either.
      *
-     * @returns The minimum `{width, height}` from `_aspectMinSize`, or
-     *   `{0, 0}` (no minimum) before `preserveAspectRatio` has derived one.
+     * @returns The minimum `{width, height}` from the broken-state
+     *   placeholder or `_aspectMinSize`, or `{0, 0}` (no minimum) before
+     *   either applies.
      */
     getMinSize(): Size | null {
+        if (!this.instanceLayer().authored.minSize && this.isBroken()) {
+            return { width: IMAGE_BROKEN_PLACEHOLDER_PX, height: IMAGE_BROKEN_PLACEHOLDER_PX };
+        }
+
         if (!this.instanceLayer().authored.minSize && this._aspectMinSize) {
             return this._aspectMinSize;
         }
