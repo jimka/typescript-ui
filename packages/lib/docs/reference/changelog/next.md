@@ -34,6 +34,8 @@ page resets to empty.
   consumer implementing its own `DOMSource` is affected.
 - **`DOMSource` gains one required member: `getDocumentSelectionText()`.**
   Only a consumer implementing its own `DOMSource` is affected.
+- **`DOMSink` gains one required member: `decodeImage()`.** Only a consumer
+  implementing its own `DOMSink` is affected.
 
 ## Changed
 
@@ -143,6 +145,20 @@ page resets to empty.
   `preferredSize` alone does not suppress the minimum floor), instead of
   collapsing to nothing behind the browser's unstyled broken-image icon. No
   consumer action is needed.
+- **`Image` gains `srcset` / `sizes` for responsive candidate selection**,
+  with matching `getSrcset`/`setSrcset` and `getSizes`/`setSizes` accessors,
+  and now proactively calls the browser's `decode()` on the current source —
+  at first render and after any source change via `setSrc`/`setSrcset`/
+  `setSizes` — so its natural size is usually known before first paint
+  instead of only once the `load` event fires (skipped when `loading` is
+  `"lazy"`, since forcing a decode would defeat lazy loading). Because a
+  `srcset` candidate swap can refire `load` for the same settled candidate a
+  proactive `decode()` already published, `Image` now republishes its
+  preferred size and re-emits `"load"` only when the freshly measured
+  natural size actually differs from what is cached — unless the instance is
+  currently `.broken`, in which case a same-size recovery still republishes
+  and re-emits, so a failed decode never strands `.broken` once the source
+  actually recovers. No consumer action is needed.
 - **`MarkdownEditor`'s right-click context menu is reorganized**: the
   table-cell menu's row/column **Insert**/**Delete** submenus and its
   **Merge cells** / **Unmerge cell** / **Column width…** / **Align column**

@@ -23,6 +23,8 @@ panel.addComponent(logo);
 | Method | Purpose |
 | --- | --- |
 | `getSrc()` / `setSrc(url)` | Read / write the image source (`src` attribute); swaps the displayed image and re-measures on the next load. |
+| `getSrcset()` / `setSrcset(value)` | Candidate image sources for responsive selection (`srcset` attribute). |
+| `getSizes()` / `setSizes(value)` | Viewport-relative size hints used to pick a `srcset` candidate (`sizes` attribute). |
 | `getAlt()` / `setAlt(text)` | Accessible text alternative (`alt` attribute) — pass `""` for a decorative image. |
 | `getLoading()` / `setLoading('lazy' \| 'eager')` | Native lazy-loading hint. |
 | `getDecoding()` / `setDecoding('sync' \| 'async' \| 'auto')` | Native decode hint. |
@@ -71,6 +73,18 @@ re-emits them through its own `on` / `off` surface: `load`, `error`.
 > [Open the Image page](https://jimka.github.io/typescript-ui/components/Image)
 <!-- /demo -->
 
+## Responsive sources
+
+`srcset` / `sizes` let the browser pick a candidate source based on the image's declared display size — pass a width-descriptor `srcset` (e.g. `"small.jpg 480w, large.jpg 1024w"`) alongside a `sizes` hint (e.g. `"480px"`, or a media-query list), and the browser resolves the best match on its own, no framework logic involved.
+
+<!-- demo: image-srcset -->
+> **Live demo** — an `Image` with a `sizes` hint that crosses a breakpoint at
+> 600px viewport width; reload the page below and above that width to see the
+> browser resolve a different candidate and the reported natural size change
+> to match.
+> [Open the Image page](https://jimka.github.io/typescript-ui/components/Image)
+<!-- /demo -->
+
 ## Loading and error states
 
 An `Image` visually distinguishes decoding from a failed load: it carries `.loading` while a source is still decoding, and `.broken` instead once `error` fires in place of `load` (see the Notes below for the two states' theme variables and the broken-state placeholder size).
@@ -90,6 +104,8 @@ An `Image` visually distinguishes decoding from a failed load: it carries `.load
 - An `Image` with no explicit `setMinSize` reports `{0, 0}` as its minimum (no automatic floor) while decoding or once loaded, so a parent layout can shrink it freely; use `preserveAspectRatio` or an explicit `setMinSize` if a floor is wanted. A failed decode is the one exception — see the `.broken` bullet below.
 - For a CDN-hosted image, ensure CORS headers permit the request. The framework does not enforce a fetch policy beyond the browser default; set `crossOrigin` when the CORS response needs it.
 - `Image` shows a neutral placeholder wash (`.loading`) while a source is decoding, and a distinct wash (`.broken`) if the decode fails — check `isLoading()` / `isBroken()`, or style the states directly via the theme variables `--ts-ui-image-loading-bg` / `--ts-ui-image-broken-bg`. A broken image reports a fixed 48x48 placeholder size instead of collapsing to nothing.
+- `Image` calls the browser's `decode()` on the current source automatically — at first render and after any source change — so its natural size is usually known before first paint instead of only once the `load` event fires. This is skipped when `loading` is `"lazy"`, since forcing a decode would defeat lazy loading.
+- For a responsive `srcset` / `sizes` image, resizing across a breakpoint can make the browser swap candidates; `Image` re-measures and republishes its preferred size only when the new candidate's natural size actually differs from the previous one — unless the image is currently `.broken`, in which case a same-size recovery still republishes, so a failed decode never strands `.broken` once the source recovers.
 
 ## See also
 
