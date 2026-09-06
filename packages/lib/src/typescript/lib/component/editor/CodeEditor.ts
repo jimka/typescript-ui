@@ -50,8 +50,8 @@ export interface CodeEditorHeightChange {
 /**
  * A caret position inside a {@link CodeEditor}'s document — the payload of its
  * `"cursorchange"` event, and what {@link CodeEditor.getCursorPosition}
- * returns. Both fields count from 1, so they render directly as
- * "Ln 12, Col 5".
+ * returns. `line` and `column` count from 1, so they render directly as
+ * "Ln 12, Col 5"; `offset` counts from 0, like a string or array index.
  *
  * @category Components
  */
@@ -60,6 +60,15 @@ export interface CodeEditorCursorPosition {
     line: number;
     /** 1-based character offset into that line. A literal tab counts as one column. */
     column: number;
+    /**
+     * 0-based character offset of the caret into the whole document — the
+     * same raw position CodeMirror itself uses, and what `format()` calls
+     * `cursorOffset`. Usable directly with `getValue().slice(0, offset)` or
+     * as a CodeMirror selection anchor, with no adjustment. Counts UTF-16
+     * code units, like `column`: a character outside the Basic Multilingual
+     * Plane (an emoji) counts as two.
+     */
+    offset: number;
 }
 
 /**
@@ -70,8 +79,8 @@ export interface CodeEditorCursorPosition {
  *   (no payload); see {@link CodeEditor.on}.
  * - `"heightchange"` — {@link CodeEditorOptions.autoHeightMaxRows} is set and the
  *   editor's own computed height changed (payload {@link CodeEditorHeightChange}).
- * - `"cursorchange"` — the primary caret moved to a different line or column
- *   (payload {@link CodeEditorCursorPosition}).
+ * - `"cursorchange"` — the primary caret moved to a different line, column, or
+ *   document offset (payload {@link CodeEditorCursorPosition}).
  */
 type CodeEditorEvent = "change" | "readonlyedit" | "heightchange" | "cursorchange";
 
@@ -465,7 +474,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * against on every update so the event fires once per real move, never per
      * transaction.
      */
-    private _lastCursorPosition: CodeEditorCursorPosition = { line: 1, column: 1 };
+    private _lastCursorPosition: CodeEditorCursorPosition = { line: 1, column: 1, offset: 0 };
 
     /**
      * Constructs a code editor.
@@ -973,20 +982,22 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * Returns the primary caret's position: read live from the view when mounted,
      * else the document start.
      *
-     * Both fields count from 1, ready to render as "Ln 12, Col 5". `column` is a
-     * character count, so a literal tab counts as one column regardless of
+     * Both `line` and `column` count from 1, ready to render as "Ln 12, Col 5".
+     * `offset` counts from 0 — CodeMirror's own raw document position, usable
+     * directly for slicing the document or as a selection anchor. `column` and
+     * `offset` are character counts, so a literal tab counts as one regardless of
      * {@link CodeEditorOptions.tabSize}. With a selection active the moving end
      * (the caret) is reported; with several selection ranges active, only the
      * primary one is.
      *
-     * @returns The caret's 1-based line and column.
+     * @returns The caret's 1-based line and column, and 0-based document offset.
      */
     getCursorPosition(): CodeEditorCursorPosition {
         if (this._view) {
             return this.readCursorPosition(this._view.state);
         }
 
-        return { line: 1, column: 1 };
+        return { line: 1, column: 1, offset: 0 };
     }
 
     /**
@@ -1234,32 +1245,38 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
-     * Derives the primary caret's 1-based line and column from a CodeMirror state.
-     * `doc.lineAt` already numbers lines from 1; the column is the caret's offset
-     * into its line, plus one.
+     * Derives the primary caret's 1-based line and column, and its 0-based raw
+     * document offset, from a CodeMirror state. `doc.lineAt` already numbers
+     * lines from 1; the column is the caret's offset into its line, plus one.
      *
      * @param state - The state to read the selection and document from.
-     * @returns The caret's 1-based line and column.
+     * @returns The caret's 1-based line and column, and 0-based document offset.
      */
     private readCursorPosition(state: EditorState): CodeEditorCursorPosition {
         const head = state.selection.main.head;
         const line = state.doc.lineAt(head);
 
-        return { line: line.number, column: head - line.from + 1 };
+        return { line: line.number, column: head - line.from + 1, offset: head };
     }
 
     /**
-     * Emits `"cursorchange"` when the primary caret's line or column differs from
-     * the last position emitted, and does nothing otherwise. Factored out of the
-     * update listener in `mount()` so the offline harness — where no `EditorView`
-     * ever mounts — can drive the same path directly, mirroring `onDocChange`.
+     * Emits `"cursorchange"` when the primary caret's line, column, or offset
+     * differs from the last position emitted, and does nothing otherwise.
+     * Factored out of the update listener in `mount()` so the offline harness —
+     * where no `EditorView` ever mounts — can drive the same path directly,
+     * mirroring `onDocChange`.
      *
      * @param state - The state carrying the caret to report.
      */
     private onCursorChange(state: EditorState): void {
         const position = this.readCursorPosition(state);
 
-        if (position.line === this._lastCursorPosition.line && position.column === this._lastCursorPosition.column) {
+        // Comparing offset too, not just line/column: an edit earlier in the
+        // document can shift offset while line/column stay the same (see the
+        // dedup example in plans/implemented/code-editor-document-offset.md).
+        if (position.line === this._lastCursorPosition.line
+            && position.column === this._lastCursorPosition.column
+            && position.offset === this._lastCursorPosition.offset) {
             return;
         }
 
@@ -1297,10 +1314,10 @@ class CodeEditor extends Component<CodeEditorOptions> {
     on(event: "heightchange", listener: (payload: CodeEditorHeightChange) => void): this;
     /**
      * Registers a listener for the `"cursorchange"` event, fired when the
-     * primary caret moves to a different line or column.
+     * primary caret moves to a different line, column, or document offset.
      *
      * @param event - Must be `"cursorchange"`.
-     * @param listener - Invoked with the caret's new line and column.
+     * @param listener - Invoked with the caret's new line, column, and document offset.
      * @returns This component, for method chaining.
      */
     on(event: "cursorchange", listener: (payload: CodeEditorCursorPosition) => void): this;

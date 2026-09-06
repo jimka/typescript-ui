@@ -158,19 +158,24 @@ The editor reports itself dirty, via the framework's [`Component.isDirty()`](/ap
 
 ## Cursor position
 
-`getCursorPosition()` returns the primary caret's `{ line, column }`, both
-counting from 1 so they render directly as "Ln 12, Col 5", and
-`on('cursorchange', fn)` fires whenever the caret moves to a different line
-or column — once per real move, not once per keystroke or transaction. The
-event does not fire for the editor's initial position, so a status bar seeds
-itself by calling `getCursorPosition()` once when it wires the listener.
+`getCursorPosition()` returns the primary caret's `{ line, column, offset }`,
+and `on('cursorchange', fn)` fires whenever any of the three changes —
+once per real move, not once per keystroke or transaction. The event does
+not fire for the editor's initial position, so a status bar seeds itself
+by calling `getCursorPosition()` once when it wires the listener.
 
-`column` counts characters, so a literal tab is one column regardless of
-[`tabSize`](#construction), and an emoji counts as two. With a selection
-active the moving end is reported; with a multi-cursor selection, only the
-primary range, matching the [right-click menu](#right-click-menu)'s own rule.
-Before the editor mounts, `getCursorPosition()` reports the document start
-(`{ line: 1, column: 1 }`) — where a freshly mounted editor's caret sits.
+`line` and `column` count from 1, rendering directly as "Ln 12, Col 5".
+`offset` counts from 0, like a string or array index — it is CodeMirror's
+own raw document position, the same value `format()` maps through a
+reformat as `cursorOffset`, so it can be sliced or used as a selection
+anchor with no adjustment. `column` and `offset` both count characters, so
+a literal tab is one regardless of [`tabSize`](#construction), and an
+emoji counts as two. With a selection active the moving end is reported;
+with a multi-cursor selection, only the primary range, matching the
+[right-click menu](#right-click-menu)'s own rule. Before the editor
+mounts, `getCursorPosition()` reports the document start
+(`{ line: 1, column: 1, offset: 0 }`) — where a freshly mounted editor's
+caret sits.
 
 ## Keyboard
 
@@ -220,8 +225,8 @@ Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / P
 | `getSpellcheck()` / `setSpellcheck(spellcheck)` | Read or toggle whether the browser's native spellcheck runs inside the editor. |
 | `cut()` / `copy()` | Cut or copy the primary selection's text to the system clipboard. |
 | `paste()` | Read the system clipboard and insert it at the primary selection, replacing any selected text. Async: resolves `true` when the clipboard was read, `false` when there is no mounted view or the browser refused the read. |
-| `getCursorPosition()` | Read the primary caret's 1-based `{ line, column }`. Returns the document start when the editor is not mounted. |
-| `on('cursorchange', fn)` / `off('cursorchange', fn)` | Subscribe to caret moves — fires once per real move to a different line or column. |
+| `getCursorPosition()` | Read the primary caret's `{ line, column, offset }` — `line`/`column` 1-based, `offset` a 0-based raw document position. Returns the document start when the editor is not mounted. |
+| `on('cursorchange', fn)` / `off('cursorchange', fn)` | Subscribe to caret moves — fires once per real move to a different line, column, or offset. |
 
 ## Theming
 

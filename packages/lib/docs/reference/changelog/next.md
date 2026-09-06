@@ -182,10 +182,12 @@ page resets to empty.
   gain a right-click Cut/Copy/Paste menu, matching `StringEditor`/`NumberEditor`,
   which already had one through their composed `TextField`.
 - **`CodeEditor` gains `getCursorPosition()` and a `"cursorchange"` event**,
-  for building a "Ln 12, Col 5" status-bar readout. `getCursorPosition()`
-  returns the primary caret's `{ line, column }`, both 1-based, reading the
-  document start before the editor mounts. `"cursorchange"` fires once per
-  real move to a different line or column, and joins the construction-time
+  for building a "Ln 12, Col 5 · Pos 245" status-bar readout.
+  `getCursorPosition()` returns the primary caret's `{ line, column, offset }`
+  — `line`/`column` 1-based, `offset` a 0-based raw document position, the
+  same value `format()` uses internally — reading the document start before
+  the editor mounts. `"cursorchange"` fires once per real move to a
+  different line, column, or offset, and joins the construction-time
   `listeners` bag alongside `change` / `readonlyedit` / `heightchange`. The
   payload type `CodeEditorCursorPosition` is newly exported from
   `component/editor`. No consumer action is needed.

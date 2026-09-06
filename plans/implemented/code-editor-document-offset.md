@@ -549,3 +549,35 @@ enumerating fields, which stays true.
     passes its getter's value straight through with no adjustment; adding one
     silent `+1` only here would make the demo misrepresent what
     `getCursorPosition()` actually returns.
+
+---
+
+## Implementation Notes
+
+**The `on('cursorchange', fn)` row in `CodeEditor.md`'s methods table was
+changed, not left unchanged as `## Documentation Impact` declared.** That
+section reasoned the row needed no edit because "'caret moves' already
+covers a move detected via any of the three fields" — but the row's actual
+text was "fires once per real move to a different line or column", which
+does enumerate the two fields by name and would have gone stale the moment
+`offset` became a third way to trigger a real move. It now reads "…to a
+different line, column, or offset." The audit that caught this also found
+two more doc sites the plan didn't mention at all and that had the same
+"line or column" phrasing baked in: the `on(event: "cursorchange", …)`
+overload's description in `CodeEditor.ts` and the class-level `CodeEditorEvent`
+doc-comment list above `CodeEditorChange`. Both were widened to name `offset`
+alongside `line`/`column`, for the same reason.
+
+**The `onCursorChange` dedup comment's plan citation was corrected to
+`plans/implemented/code-editor-document-offset.md`.** The plan's own
+`## Internal Structure` snippet for that comment cites the bare path
+`plans/code-editor-document-offset.md` — but by the time `onCursorChange` is
+implemented (Work Instructions step 5, before step 6), this skill has already
+moved the plan to `plans/in-progress/`, and it moves again to
+`plans/implemented/` before the branch is done — so the bare path never
+exists on disk at any point a future reader could follow it. The codebase's
+dominant precedent for a source comment citing its own plan
+(`RadioButton.ts`, `NumberSpinner.ts`, `Diagnostics.ts`, `TabBar.ts`, `Text.ts`,
+and dozens more) is the `plans/implemented/<slug>.md` form, matching where the
+plan actually lands; the shipped comment now uses that form instead of the
+plan's literal (non-existent) snippet text.
