@@ -106,6 +106,7 @@ Each command operates on the current selection and no-ops (without throwing) whe
 
 `getSelectionState()` returns a snapshot of what the caret currently sits
 in — the five inline-format flags (`bold`/`italic`/`strikethrough`/`code`/`underline`),
+whether there's a selection to act on, the URL of an enclosing link (if any),
 whether it's inside a table cell and that column's alignment, and the
 enclosing `:::` block's alignment and column count — and `on('selectionstate', fn)`
 fires whenever that snapshot changes, for building a toolbar whose buttons
