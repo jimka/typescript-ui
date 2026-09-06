@@ -32,6 +32,8 @@ panel.addComponent(logo);
 | `getObjectFit()` / `setObjectFit('fill' \| 'contain' \| 'cover' \| 'none' \| 'scale-down')` | CSS `object-fit` — how the image content fits its box. |
 | `getObjectPosition()` / `setObjectPosition(value)` | CSS `object-position` — alignment of the image content within its box. |
 | `getPreserveAspectRatio()` / `setPreserveAspectRatio(value)` | Keeps width and height proportional to the natural aspect ratio as the box is resized. |
+| `isLoading()` | Whether the source is currently decoding — active from construction (or a source change) until `load` or `error` fires. |
+| `isBroken()` | Whether the most recent decode attempt failed. |
 | `setPreferredSize(size)` | Pin a preferred display size (inherited from `Component`) — see the note below on its interaction with the auto-derived minimum. |
 | `getPreferredSize()` | Reports the pinned size, or the image's natural dimensions once loaded. |
 | `on(event, fn)` / `off(event, fn)` | Subscribe to re-emitted image events. |
@@ -69,13 +71,25 @@ re-emits them through its own `on` / `off` surface: `load`, `error`.
 > [Open the Image page](https://jimka.github.io/typescript-ui/components/Image)
 <!-- /demo -->
 
+## Loading and error states
+
+An `Image` visually distinguishes decoding from a failed load: it carries `.loading` while a source is still decoding, and `.broken` instead once `error` fires in place of `load` (see the Notes below for the two states' theme variables and the broken-state placeholder size).
+
+<!-- demo: image-loading-error -->
+> **Live demo** — one `Image` with a source that loads normally next to one
+> with a source that fails, each with a status line reporting `isLoading()` /
+> `isBroken()` as they change.
+> [Open the Image page](https://jimka.github.io/typescript-ui/components/Image)
+<!-- /demo -->
+
 ## Notes
 
 - `setSrc(url)` swaps the displayed image and re-measures on the next load, unless an explicit `preferredSize` is set (which survives a source change). Pass `alt` — an empty string for a purely decorative image — so screen readers get a label instead of the raw URL.
 - If you don't call `setPreferredSize`, the component reports the image's natural dimensions once loaded. Layout will run again at that point.
 - Before the image has loaded (and with no explicit `preferredSize`), `getPreferredSize()` returns `null` — no placeholder size is reported.
-- An `Image` with no explicit `setMinSize` reports `{0, 0}` as its minimum (no automatic floor), so a parent layout can shrink it freely; use `preserveAspectRatio` or an explicit `setMinSize` if a floor is wanted.
+- An `Image` with no explicit `setMinSize` reports `{0, 0}` as its minimum (no automatic floor) while decoding or once loaded, so a parent layout can shrink it freely; use `preserveAspectRatio` or an explicit `setMinSize` if a floor is wanted. A failed decode is the one exception — see the `.broken` bullet below.
 - For a CDN-hosted image, ensure CORS headers permit the request. The framework does not enforce a fetch policy beyond the browser default; set `crossOrigin` when the CORS response needs it.
+- `Image` shows a neutral placeholder wash (`.loading`) while a source is decoding, and a distinct wash (`.broken`) if the decode fails — check `isLoading()` / `isBroken()`, or style the states directly via the theme variables `--ts-ui-image-loading-bg` / `--ts-ui-image-broken-bg`. A broken image reports a fixed 48x48 placeholder size instead of collapsing to nothing.
 
 ## See also
 
