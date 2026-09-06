@@ -2335,11 +2335,11 @@ describe('MarkdownEditor context menu', () => {
         });
 
         // Order: Cut, Copy, Paste, separator, then buildFormatToggleItems's
-        // Bold, Italic, Strikethrough, Inline code, Underline.
+        // Bold, Italic, Underline, Strikethrough, Code.
         expect(rowOf(items[4]).isChecked()).toBe(true);
         expect(rowOf(items[5]).isChecked()).toBe(false);
-        expect(rowOf(items[6]).isChecked()).toBe(true);
-        expect(rowOf(items[7]).isChecked()).toBe(false);
+        expect(rowOf(items[6]).isChecked()).toBe(false);
+        expect(rowOf(items[7]).isChecked()).toBe(true);
         expect(rowOf(items[8]).isChecked()).toBe(false);
     });
 
@@ -2574,53 +2574,65 @@ describe('MarkdownEditor context menu', () => {
         expect(submenuItemsOf(findItem(items, 'Heading'))).toHaveLength(6);
     });
 
-    it('an "empty-line" context builds 11 entries: Cut/Copy/Paste, then Heading, Quote, Code block, Table, Columns, and Image', () => {
+    it('an "empty-line" context builds 7 entries: Cut/Copy/Paste, then Heading, Insert, and Columns', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true });
 
-        expect(items).toHaveLength(11);
+        expect(items).toHaveLength(7);
         expect(items.map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
-            'Heading', 'Quote', 'Code block', '(separator)', 'Table', 'Columns', 'Image…',
+            'Heading', 'Insert', 'Columns',
         ]);
     });
 
-    it('a "table-cell" context with linkUrl: null returns 23 entries: Cut/Copy/Paste, 5 format rows, Insert link, Text style, Clear formatting, Insert/Delete submenus, then Merge/Unmerge/Column width/Align column', () => {
+    it('an "empty-line" context\'s Insert submenu offers Quote, Code block, Bulleted list, Numbered list, Table, and Image…, in that order', () => {
+        const editor = new MarkdownEditor();
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true });
+
+        expect(submenuItemsOf(findItem(items, 'Insert'))?.map((item) => item.text ?? '(separator)')).toEqual([
+            'Quote', 'Code block', 'Bulleted list', 'Numbered list', '(separator)', 'Table', 'Image…',
+        ]);
+    });
+
+    it('a "table-cell" context with linkUrl: null returns 17 entries: Cut/Copy/Paste, 5 format rows, Insert link, Text style, Clear formatting, then a Table submenu', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(23);
+        expect(items).toHaveLength(17);
         expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
         ]);
         expect(rowOf(items[4]).isChecked()).toBe(true);    // Bold
         expect(rowOf(items[5]).isChecked()).toBe(false);   // Italic
-        expect(rowOf(items[6]).isChecked()).toBe(true);    // Strikethrough
-        expect(rowOf(items[7]).isChecked()).toBe(false);   // Inline code
-        expect(rowOf(items[8]).isChecked()).toBe(false);   // Underline
+        expect(rowOf(items[6]).isChecked()).toBe(false);   // Underline
+        expect(rowOf(items[7]).isChecked()).toBe(true);    // Strikethrough
+        expect(rowOf(items[8]).isChecked()).toBe(false);   // Code
         expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
-            '(separator)', 'Insert link…', '(separator)', 'Text style', '(separator)', 'Clear formatting', '(separator)', 'Insert', 'Delete',
-            '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…', 'Align column',
+            '(separator)', 'Insert link…', '(separator)', 'Text style', '(separator)', 'Clear formatting', '(separator)', 'Table',
         ]);
 
-        expect(submenuItemsOf(findItem(items, 'Insert'))?.map((item) => item.text)).toEqual([
+        const tableItems = submenuItemsOf(findItem(items, 'Table'));
+        expect(tableItems?.map((item) => item.text ?? '(separator)')).toEqual([
+            'Insert', 'Delete', '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…', 'Align column',
+        ]);
+        expect(submenuItemsOf(findItem(tableItems ?? [], 'Insert'))?.map((item) => item.text)).toEqual([
             'Row above', 'Row below', 'Column left', 'Column right',
         ]);
-        expect(submenuItemsOf(findItem(items, 'Delete'))?.map((item) => item.text)).toEqual([
+        expect(submenuItemsOf(findItem(tableItems ?? [], 'Delete'))?.map((item) => item.text)).toEqual([
             'Row', 'Column', 'Table',
         ]);
     });
 
-    it('a "table-cell" context with hasEnclosingBlock builds 26 entries: the 23 existing (with no link) plus a separator and the two new items', () => {
+    it('a "table-cell" context with hasEnclosingBlock builds 20 entries: the 17 existing (with no link) plus a separator and the two new items', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, hasEnclosingBlock: true,
         });
 
-        expect(items).toHaveLength(26);
-        expect(items.slice(23).map((item) => item.text ?? '(separator)')).toEqual([
+        expect(items).toHaveLength(20);
+        expect(items.slice(17).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Insert line before block', 'Insert line after block',
         ]);
     });
@@ -2647,57 +2659,57 @@ describe('MarkdownEditor context menu', () => {
         expect(childTypes(after)).toEqual(['table', 'paragraph']);
     });
 
-    it('a "table-cell" context with a linkUrl returns 24 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
+    it('a "table-cell" context with a linkUrl returns 18 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS,
         });
 
-        expect(items).toHaveLength(24);
+        expect(items).toHaveLength(18);
         expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
-            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Text style', '(separator)', 'Clear formatting', '(separator)', 'Insert', 'Delete',
-            '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…', 'Align column',
+            '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Text style', '(separator)', 'Clear formatting', '(separator)', 'Table',
         ]);
     });
 
-    it('a "table-cell" context with both a linkUrl and hasEnclosingBlock combines all groups: link items, Text style, Clear formatting, Insert/Delete submenus, Merge/Unmerge/Column width/Align column, and the two block items, in that order', () => {
+    it('a "table-cell" context with both a linkUrl and hasEnclosingBlock combines all groups: link items, Text style, Clear formatting, the Table submenu, and the two block items, in that order', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS, hasEnclosingBlock: true,
         });
 
-        expect(items).toHaveLength(27);
+        expect(items).toHaveLength(21);
         expect(items.slice(0, 4).map((item) => item.text ?? '(separator)')).toEqual([
             'Cut', 'Copy', 'Paste', '(separator)',
         ]);
         expect(items.slice(9).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Edit link…', 'Remove link', '(separator)', 'Text style', '(separator)', 'Clear formatting', '(separator)',
-            'Insert', 'Delete', '(separator)', 'Merge cells', 'Unmerge cell', 'Column width…', 'Align column',
-            '(separator)', 'Insert line before block', 'Insert line after block',
+            'Table', '(separator)', 'Insert line before block', 'Insert line after block',
         ]);
     });
 
-    it("the table-cell menu's Delete submenu's Table item reaches MarkdownEditor.deleteTable", () => {
+    it("the table-cell menu's Table ▸ Delete ▸ Table item reaches MarkdownEditor.deleteTable", () => {
         const editor = new MarkdownEditor();
         editor.insertTable(2, 3);   // caret lands in the first header cell
 
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS,
         });
+        const tableItems = submenuItemsOf(findItem(items, 'Table'));
 
-        submenuItemsOf(findItem(items, 'Delete'))?.find((item) => item.text === 'Table')?.action?.();
+        submenuItemsOf(findItem(tableItems ?? [], 'Delete'))?.find((item) => item.text === 'Table')?.action?.();
 
         const tokens = lexMarkdown(editor.getValue());
         expect(tokens.some((token) => token.type === 'mdtable')).toBe(false);
     });
 
-    it('the table-cell menu\'s "Align column" submenu offers exactly Left, Center, Right, None, in that order', () => {
+    it("the table-cell menu's Table ▸ Align column submenu offers exactly Left, Center, Right, None, in that order", () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS,
         });
+        const tableItems = submenuItemsOf(findItem(items, 'Table'));
 
-        expect(submenuItemsOf(findItem(items, 'Align column'))?.map((item) => item.text)).toEqual([
+        expect(submenuItemsOf(findItem(tableItems ?? [], 'Align column'))?.map((item) => item.text)).toEqual([
             'Left', 'Center', 'Right', 'None',
         ]);
     });
@@ -2708,13 +2720,15 @@ describe('MarkdownEditor context menu', () => {
         const rightChecked = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS, columnAlignment: 'right',
         });
-        const rightItems = submenuItemsOf(findItem(rightChecked, 'Align column'));
+        const rightTableItems = submenuItemsOf(findItem(rightChecked, 'Table'));
+        const rightItems = submenuItemsOf(findItem(rightTableItems ?? [], 'Align column'));
         expect(rightItems?.map((item) => item.checked)).toEqual([false, false, true, false]);
 
         const omitted = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS,
         });
-        const omittedItems = submenuItemsOf(findItem(omitted, 'Align column'));
+        const omittedTableItems = submenuItemsOf(findItem(omitted, 'Table'));
+        const omittedItems = submenuItemsOf(findItem(omittedTableItems ?? [], 'Align column'));
         expect(omittedItems?.map((item) => item.checked)).toEqual([false, false, false, true]);
     });
 
@@ -2725,8 +2739,9 @@ describe('MarkdownEditor context menu', () => {
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS,
         });
+        const tableItems = submenuItemsOf(findItem(items, 'Table'));
 
-        submenuItemsOf(findItem(items, 'Align column'))?.find((item) => item.text === 'Center')?.action?.();
+        submenuItemsOf(findItem(tableItems ?? [], 'Align column'))?.find((item) => item.text === 'Center')?.action?.();
 
         expect(normalize(editor.getValue()).split('\n')[1]).toBe('| :---: | --- | --- |');
     });
@@ -2745,14 +2760,34 @@ describe('MarkdownEditor context menu', () => {
         expect(findItem(emptyLineItems, 'Align column')).toBeUndefined();
     });
 
-    it("the empty-line menu's Table item reaches MarkdownEditor.insertTable(2, 3)", () => {
+    it("the empty-line menu's Insert ▸ Table item reaches MarkdownEditor.insertTable(2, 3)", () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true });
 
-        findItem(items, 'Table')?.action?.();
+        submenuItemsOf(findItem(items, 'Insert'))?.find((item) => item.text === 'Table')?.action?.();
 
         const lines = normalize(editor.getValue()).split('\n');
         expect(lines).toHaveLength(3);   // header, delimiter, one body row
+    });
+
+    it("the empty-line menu's Insert ▸ Bulleted list / Numbered list items reach toggleUnorderedList / toggleOrderedList", () => {
+        const bulleted = new MarkdownEditor();
+        bulleted.setValue('word');
+        selectStart(bulleted);
+        const bulletedItems = contextMenuMethodsOf(bulleted).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: false });
+
+        submenuItemsOf(findItem(bulletedItems, 'Insert'))?.find((item) => item.text === 'Bulleted list')?.action?.();
+
+        expect(bulleted.getValue()).toContain('- word');
+
+        const numbered = new MarkdownEditor();
+        numbered.setValue('word');
+        selectStart(numbered);
+        const numberedItems = contextMenuMethodsOf(numbered).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: false });
+
+        submenuItemsOf(findItem(numberedItems, 'Insert'))?.find((item) => item.text === 'Numbered list')?.action?.();
+
+        expect(numbered.getValue()).toContain('1. word');
     });
 
     it('Cut and Copy carry enabled: hasSelectedText in all three contexts; Paste never sets enabled', () => {
