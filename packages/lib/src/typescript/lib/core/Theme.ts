@@ -703,9 +703,9 @@ export interface Theme {
          */
         maxMeasure: string;
         /**
-         * Default gutter between columns in a `::: {columns=…}` multi-column
-         * region whose fence carries no explicit `gap` attribute. A CSS length,
-         * typically `em`-relative so it scales with the surrounding font.
+         * Default gutter between columns in a `:::` column region whose fence
+         * carries no explicit `gap` attribute. A CSS length, typically
+         * `em`-relative so it scales with the surrounding font.
          */
         columnGap: string;
     };

@@ -1,24 +1,26 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-// Regression coverage for the `::: {columns=…}` fence's two CSS multi-column
-// layout defects (see plans/implemented/markdown-rich-formatting-extension.md
-// and the matching bug write-up); the editor-side twin of
-// Markdown.multicolumn.test.ts, which carries the full explanation:
+// Regression coverage for the `:::` column-region fence's flexbox layout
+// declarations (see plans/implemented/markdown-explicit-column-regions.md);
+// the editor-side twin of Markdown.multicolumn.test.ts, which carries the
+// full explanation:
 //
-// 1. A multi-column `.ts-ui-mde-block` establishes a new block-formatting
-//    context, so its first child's own top margin no longer collapses
-//    through it, while the browser discards that same margin at every later
-//    forced column break — pushing column 1's content down relative to
-//    every other column's. Fixed by zeroing the first child's top margin.
-// 2. A `<table>` has no `break-inside` guard, so the browser is free to slice
-//    it mid-row across a column boundary. Fixed by setting
-//    `break-inside: avoid` on the table.
+// 1. The block container is `display: flex` and each column is `flex: 1 1 0`
+//    with `min-width: 0`, so every column is an equal fraction of the
+//    container's width at any width — the fix for the old CSS `column-count`
+//    auto-reflow, whose break point depended on the container's rendered
+//    height and so disagreed between the editor's and the viewer's differently
+//    sized surfaces.
+// 2. A column is a flex item and therefore a formatting-context root, so its
+//    first child's own top margin no longer collapses through it. Fixed by
+//    zeroing the first child's top margin, scoped to a column's direct child
+//    rather than the block's.
 //
-// Both are real-browser CSS fragmentation/paint behaviour — this project's
-// offline `TestDOM` models component layout geometry, not CSS multi-column
-// text flow, so this suite only pins the CSS declarations `editorTheme.ts`
-// registers, not the resulting on-screen geometry. The visual fix was
-// verified manually against a live dev server: see the commit message.
+// This project's offline `TestDOM` models component layout geometry, not
+// real flexbox measurement, so this suite only pins the CSS declarations
+// `editorTheme.ts` registers, not the resulting on-screen geometry. The
+// visual result was verified manually against a live dev server: see the
+// commit message for `markdown-explicit-column-regions`.
 //
 // A fresh, dedicated test file (rather than adding to
 // markdown-editor.test.ts) is deliberate: `ensureMarkdownEditorClassRules()`
@@ -41,17 +43,21 @@ const CONFIG = {
     themeVars:       {},
 };
 
-describe('MarkdownEditor multi-column fence CSS (fragmentation-margin and table-split fixes)', () => {
-    it('zeroes the top margin of a multi-column block\'s first child, and marks its table break-inside: avoid', () => {
+describe('MarkdownEditor column-region fence CSS (flexbox layout declarations)', () => {
+    it('lays out the block as a flex container and each column as an equal flex item, zeroing a column\'s first child\'s top margin', () => {
         installTestDOM(CONFIG);
         ensureMarkdownEditorClassRules();
 
         const rows = ruleStyleWrites(DOM.sink as RecordingDOMSink);
 
-        const firstChildRows = rows.filter((w) => w.selector === '.ts-ui-mde-block > :first-child');
-        expect(firstChildRows.some((w) => w.key === 'marginTop' && w.value === '0')).toBe(true);
+        const blockRows = rows.filter((w) => w.selector === '.ts-ui-mde-block');
+        expect(blockRows.some((w) => w.key === 'display' && w.value === 'flex')).toBe(true);
 
-        const tableRows = rows.filter((w) => w.selector === '.ts-ui-mde-table');
-        expect(tableRows.some((w) => w.key === 'breakInside' && w.value === 'avoid')).toBe(true);
+        const columnRows = rows.filter((w) => w.selector === '.ts-ui-mde-column');
+        expect(columnRows.some((w) => w.key === 'flex' && w.value === '1 1 0')).toBe(true);
+        expect(columnRows.some((w) => w.key === 'minWidth' && w.value === '0')).toBe(true);
+
+        const firstChildRows = rows.filter((w) => w.selector === '.ts-ui-mde-block > .ts-ui-mde-column > :first-child');
+        expect(firstChildRows.some((w) => w.key === 'marginTop' && w.value === '0')).toBe(true);
     });
 });

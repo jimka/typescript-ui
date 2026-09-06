@@ -12,6 +12,7 @@ import { Menu } from "~/overlay/Menu.js";
 import { buildSelectionCopyMenuItems } from "~/component/shared/buildSelectionCopyMenuItems.js";
 import type { Token, Tokens } from "marked";
 import { lexMarkdown } from "~/component/display/markdownExtensions.js";
+import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
 import { resolveSpanStyle, resolveBlockStyle, resolveImageSpec } from "~/component/display/markdownAttributes.js";
 import type { MdTableToken, MdTableHeaderCell, MdTableBodyCell } from "~/component/display/markdownTableExtension.js";
 // Type-only: erased at compile time. `CodeEditor` itself is loaded through a
@@ -41,6 +42,7 @@ const ALIGN_RIGHT_CLASS  = "ts-ui-md-align-right";
 const ALIGN_JUSTIFY_CLASS = "ts-ui-md-align-justify";
 const UNDERLINE_CLASS    = "ts-ui-md-underline";
 const BLOCK_CLASS         = "ts-ui-md-block";
+const COLUMN_CLASS        = "ts-ui-md-column";
 const IMAGE_CLASS         = "ts-ui-md-image";
 /**
  * The literal two-character sequence (backslash, `n`) `markdownTableTransformer.ts`'s
@@ -264,10 +266,11 @@ function ensureMarkdownClassRules(): void {
     new StyleRule({
         scope:  "class",
         name:   TABLE_CLASS,
-        // A `::: {columns=…}` fence's multi-column flow otherwise breaks the
-        // table's rows across the column boundary — the header lands in one
-        // column and its body rows in the next, with no header of their own.
-        // Matches the editor's own TABLE_CLASS rule (editorTheme.ts).
+        // A general page/column fragmentation guard: without it, a browser
+        // that paginates or column-fragments this content is free to slice a
+        // table's rows across the break — the header lands on one side and
+        // its body rows, headerless, on the other. Matches the editor's own
+        // TABLE_CLASS rule (editorTheme.ts).
         styles: { borderCollapse: "collapse", breakInside: "avoid" },
     });
 
@@ -334,7 +337,8 @@ function ensureMarkdownClassRules(): void {
         scope:  "class",
         name:   BLOCK_CLASS,
         styles: {
-            margin: "1em 0",
+            display: "flex",
+            margin:  "1em 0",
             // The gap **default** lives here (matching the editor's own
             // BLOCK_CLASS rule), so a fence with no `gap` attribute still
             // gets one; an explicit `gap` overrides it as an inline style.
@@ -343,19 +347,28 @@ function ensureMarkdownClassRules(): void {
     });
 
     new StyleRule({
+        scope:  "class",
+        name:   COLUMN_CLASS,
+        styles: {
+            flex: "1 1 0",
+            // A flex item's default `min-width: auto` lets one long
+            // unbreakable token (a URL, a wide code line) push its column
+            // past its equal share and squeeze the others.
+            minWidth: "0",
+        },
+    });
+
+    new StyleRule({
         scope: "selector",
-        name:  `.${BLOCK_CLASS} > :first-child`,
-        // A multi-column fence establishes a new block-formatting context,
+        name:  `.${BLOCK_CLASS} > .${COLUMN_CLASS} > :first-child`,
+        // A column is a flex item and therefore a formatting-context root,
         // so its first child's own top margin no longer collapses through
-        // it — it renders as real space below the fence's own top edge.
-        // Every *later* column's first line gets no such gap: the browser
-        // discards a box's top margin at a forced column break. Left alone,
-        // that asymmetry pushes column 1's content down by one margin
-        // relative to every other column. Zeroing it here matches what a
-        // single-column fence already shows (there the margin collapses
-        // through invisibly), so every column's first line now starts flush
-        // with the fence's top. Matches the editor's own BLOCK_CLASS rule
-        // (editorTheme.ts).
+        // it — it renders as real space below the column's own top edge,
+        // pushing every column's content down by one margin relative to a
+        // plain block. Zeroing it here matches what an ordinary block
+        // already shows (there the margin collapses through invisibly), so
+        // every column's first line starts flush with the fence's top.
+        // Matches the editor's own BLOCK_CLASS rule (editorTheme.ts).
         styles: { marginTop: "0" },
     });
 
@@ -1577,7 +1590,7 @@ class Markdown extends Component<MarkdownOptions> {
             case "blockquote": this.appendBlockquote(parent, token as Tokens.Blockquote, headingIds); break;
             case "code":       this.appendCode(parent, token as Tokens.Code);                         break;
             case "mdtable":    this.appendTable(parent, token as MdTableToken);                        break;
-            case "mdblock":    this.appendBlock(parent, token as Tokens.Generic, headingIds);          break;
+            case "mdblock":    this.appendBlock(parent, token as MdBlockToken, headingIds);             break;
 
             // Blank line between blocks — nothing to render.
             case "space": break;
@@ -1798,25 +1811,30 @@ class Markdown extends Component<MarkdownOptions> {
 
     /**
      * Builds a `<div>` carrying a `::: {…}` fence's resolved alignment and/or
-     * multi-column style, and recurses into its block-level children.
+     * column-gap style, plus one child `<div>` per column laid out with
+     * flexbox, and recurses into each column's block-level children.
      *
      * @param parent - The element handle to append into.
      * @param token - The `mdblock` token.
      * @param headingIds - The current render pass's heading-id dedupe counter.
      */
-    private appendBlock(parent: Handle, token: Tokens.Generic, headingIds: Map<string, number>): void {
+    private appendBlock(parent: Handle, token: MdBlockToken, headingIds: Map<string, number>): void {
         const block = this.create("div");
-        const style = resolveBlockStyle(token.attributes as Record<string, string>);
+        const style = resolveBlockStyle(token.attributes);
 
         DOM.sink.apply(block, {
             addClass: [BLOCK_CLASS],
-            style:    {
-                textAlign:   style.textAlign,
-                columnCount: style.columnCount === null ? null : String(style.columnCount),
-                columnGap:   style.columnGap,
-            },
+            style:    { textAlign: style.textAlign, columnGap: style.columnGap },
         });
-        this.appendBlockTokens(block, token.tokens ?? [], headingIds);
+
+        for (const columnTokens of token.columns) {
+            const column = this.create("div");
+
+            DOM.sink.apply(column, { addClass: [COLUMN_CLASS] });
+            this.appendBlockTokens(column, columnTokens, headingIds);
+            DOM.sink.appendChild(block, column);
+        }
+
         DOM.sink.appendChild(parent, block);
     }
 
@@ -2128,7 +2146,9 @@ function collectHeadings(tokens: Token[], headingIds: Map<string, number>, out: 
                 collectHeadings(item.tokens, headingIds, out);
             }
         } else if (token.type === "mdblock") {
-            collectHeadings((token as Tokens.Generic).tokens ?? [], headingIds, out);
+            for (const columnTokens of (token as MdBlockToken).columns) {
+                collectHeadings(columnTokens, headingIds, out);
+            }
         }
     }
 }

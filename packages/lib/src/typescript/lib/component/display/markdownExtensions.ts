@@ -2,8 +2,16 @@
 
 import { Marked } from "marked";
 import type { Token, TokenizerExtension } from "marked";
-import { parseAttributes } from "~/component/display/markdownAttributes.js";
+import { parseAttributes, splitColumnSections } from "~/component/display/markdownAttributes.js";
 import { TABLE_EXTENSION } from "~/component/display/markdownTableExtension.js";
+
+/** The `mdblock` token the fence extension emits — one token list per column. */
+export interface MdBlockToken {
+    type:       "mdblock";
+    raw:        string;
+    attributes: Record<string, string>;
+    columns:    Token[][];
+}
 
 /**
  * `![alt](src){width=… height=…}` — replaces `marked`'s built-in image
@@ -104,11 +112,14 @@ function extractFenceAttributeText(remainder: string): string {
 }
 
 /**
- * `::: {align=… columns=… gap=…}` … `:::` — a block alignment / multi-column
- * region. A line whose trimmed form starts with `:::` and has a non-empty
- * remainder opens a block; a line whose trimmed form is exactly `:::` closes
- * one. The scan tracks depth so fences nest, and the inner content is
- * re-lexed with `this.lexer.blockTokens` so nesting needs no special case.
+ * `::: {align=… gap=…}` … `:::` — a block alignment / column-region fence. A
+ * line whose trimmed form starts with `:::` and has a non-empty remainder
+ * opens a block; a line whose trimmed form is exactly `:::` closes one. The
+ * scan tracks depth so fences nest. The inner content is split into one
+ * section per `|||` line (`splitColumnSections`, which itself tracks fence
+ * depth and code-fence state so a separator inside a nested fence or a code
+ * block is ordinary content), and each section is re-lexed on its own with
+ * `this.lexer.blockTokens` into its own column's token list.
  */
 const BLOCK_EXTENSION: TokenizerExtension = {
     name:  "mdblock",
@@ -160,8 +171,8 @@ const BLOCK_EXTENSION: TokenizerExtension = {
             type:       "mdblock",
             raw,
             attributes: parseAttributes(extractFenceAttributeText(openingRemainder)),
-            tokens:     this.lexer.blockTokens(inner),
-        };
+            columns:    splitColumnSections(inner).map((section) => this.lexer.blockTokens(section)),
+        } satisfies MdBlockToken;
     },
 };
 

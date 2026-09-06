@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Markdown, mapFenceLangToEditorId, extractMarkdownHeadings, findActiveHeading } from '~/component/display/Markdown';
+import { splitColumnSections, joinColumnSections } from '~/component/display/markdownAttributes';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { Component } from '~/core/Component';
@@ -392,42 +393,99 @@ describe('Markdown block fence (alignment / columns)', () => {
             .map((w) => DOM.source.getTagName(w.args[1] as Handle));
     }
 
-    it('creates a div whose applied style is { textAlign: "center" }, containing a p, for ::: {align=center}', () => {
+    it('::: {align=center} creates one block div holding exactly one column div holding one p, styled { textAlign: "center" }', () => {
         const md = new Markdown('::: {align=center}\ntext\n:::');
         md.getElement(true);
 
         const divs = divHandles(md);
 
-        expect(divs).toHaveLength(1);
+        expect(divs).toHaveLength(2);   // block + its one column
         expect(styleWrites(divs[0]!)).toEqual({ textAlign: 'center' });
-        expect(childTagsOfHandle(divs[0]!)).toEqual(['P']);
+        expect(childTagsOfHandle(divs[0]!)).toEqual(['DIV']);
+        expect(childTagsOfHandle(divs[1]!)).toEqual(['P']);
     });
 
-    it('creates a div with { columnCount: "2", columnGap: "2em" } for ::: {columns=2 gap=2em}', () => {
-        const md = new Markdown('::: {columns=2 gap=2em}\ntext\n:::');
+    it('::: columns creates one block div holding two column divs, the first a p with A and the second a p with B', () => {
+        const md = new Markdown('::: columns\nA\n|||\nB\n:::');
         md.getElement(true);
 
-        expect(styleWrites(divHandles(md)[0]!)).toEqual({ columnCount: '2', columnGap: '2em' });
+        const divs = divHandles(md);
+
+        expect(divs).toHaveLength(3);   // block + 2 columns
+        expect(childTagsOfHandle(divs[0]!)).toEqual(['DIV', 'DIV']);
+        expect(childTagsOfHandle(divs[1]!)).toEqual(['P']);
+        expect(childTagsOfHandle(divs[2]!)).toEqual(['P']);
+        expect(textWrites()).toEqual(['A', 'B']);
     });
 
-    it('creates a div with no columnCount applied for ::: {columns=9}', () => {
-        const md = new Markdown('::: {columns=9}\ntext\n:::');
+    it('::: columns {gap=3em} applies { columnGap: "3em" } to the block div, and nothing to the column divs', () => {
+        const md = new Markdown('::: columns {gap=3em}\nA\n|||\nB\n:::');
+        md.getElement(true);
+
+        const divs = divHandles(md);
+
+        expect(styleWrites(divs[0]!)).toEqual({ columnGap: '3em' });
+        expect(styleWrites(divs[1]!)).toEqual({});
+        expect(styleWrites(divs[2]!)).toEqual({});
+    });
+
+    it('::: columns {gap=3} (no unit) applies no style to the block div', () => {
+        const md = new Markdown('::: columns {gap=3}\nA\n|||\nB\n:::');
         md.getElement(true);
 
         expect(styleWrites(divHandles(md)[0]!)).toEqual({});
     });
 
-    it('creates two nested divs for a fence nested inside another, the inner one carrying textAlign', () => {
+    it('no render of any fence applies a columnCount style to any element', () => {
+        const md = new Markdown('::: columns {gap=3em}\nA\n|||\nB\n:::');
+        md.getElement(true);
+
+        for (const div of divHandles(md)) {
+            expect(styleWrites(div)).not.toHaveProperty('columnCount');
+        }
+    });
+
+    it('a ||| line inside a fenced code block is ordinary content: the first column holds a pre whose text is |||', () => {
+        const md = new Markdown('::: columns\n```\n|||\n```\n|||\nB\n:::');
+        md.getElement(true);
+
+        const divs = divHandles(md);
+
+        expect(divs).toHaveLength(3);
+        expect(childTagsOfHandle(divs[1]!)).toEqual(['PRE']);
+        expect(textWrites()).toContain('|||');
+    });
+
+    it('a fence nested inside a column keeps its own separators', () => {
         const md = new Markdown(
-            '::: {columns=2}\nLeft column text.\n\n::: {align=center}\nCentred inside.\n:::\n\nMore text.\n:::',
+            '::: columns\nA\n\n::: columns\nInner one\n|||\nInner two\n:::\n\n|||\nB\n:::',
         );
         md.getElement(true);
 
         const divs = divHandles(md);
 
-        expect(divs).toHaveLength(2);
-        expect(styleWrites(divs[0]!)).toEqual({ columnCount: '2' });
-        expect(styleWrites(divs[1]!)).toEqual({ textAlign: 'center' });
+        // Outer block + 2 outer columns, one of which nests an inner block + 2 inner columns.
+        expect(divs).toHaveLength(6);
+
+        const [outerBlock, outerCol1, innerBlock, innerCol1, innerCol2, outerCol2] = divs;
+
+        expect(childTagsOfHandle(outerBlock!)).toEqual(['DIV', 'DIV']);
+        expect(childTagsOfHandle(outerCol1!)).toEqual(['P', 'DIV']);
+        expect(childTagsOfHandle(innerBlock!)).toEqual(['DIV', 'DIV']);
+        expect(childTagsOfHandle(innerCol1!)).toEqual(['P']);
+        expect(childTagsOfHandle(innerCol2!)).toEqual(['P']);
+        expect(childTagsOfHandle(outerCol2!)).toEqual(['P']);
+    });
+
+    it('an escaped \\||| line unescapes to a literal ||| line of content in the first column', () => {
+        const md = new Markdown('::: columns\n\\|||\n|||\nB\n:::');
+        md.getElement(true);
+
+        const divs = divHandles(md);
+
+        expect(divs).toHaveLength(3);
+        expect(childTagsOfHandle(divs[1]!)).toEqual(['P']);
+        expect(textWrites()).toEqual(['|||', 'B']);
     });
 
     it('extractMarkdownHeadings finds a heading nested inside a fence', () => {
@@ -436,12 +494,79 @@ describe('Markdown block fence (alignment / columns)', () => {
         expect(headings).toEqual([{ id: 't', text: 'T', depth: 1 }]);
     });
 
+    it('extractMarkdownHeadings returns headings from every column, in column order', () => {
+        const headings = extractMarkdownHeadings('::: columns\n# A\n|||\n# B\n:::');
+
+        expect(headings).toEqual([
+            { id: 'a', text: 'A', depth: 1 },
+            { id: 'b', text: 'B', depth: 1 },
+        ]);
+    });
+
     it('renders an unclosed fence as ordinary paragraphs, creating no div', () => {
-        const md = new Markdown('::: {align=center}\ntext with no closing fence');
+        const md = new Markdown('::: columns\ntext with no closing fence');
         md.getElement(true);
 
         expect(divHandles(md)).toHaveLength(0);
         expect(createdTags()).toContain('p');
+    });
+
+    it('the old {columns=2} attribute is unrecognised: creates one block div with one column and no applied style', () => {
+        const md = new Markdown('::: {columns=2}\ntext\n:::');
+        md.getElement(true);
+
+        const divs = divHandles(md);
+
+        expect(divs).toHaveLength(2);
+        expect(styleWrites(divs[0]!)).toEqual({});
+        expect(childTagsOfHandle(divs[1]!)).toEqual(['P']);
+    });
+});
+
+describe('splitColumnSections / joinColumnSections', () => {
+    it('splitColumnSections("A\\n|||\\nB") splits into two sections', () => {
+        expect(splitColumnSections('A\n|||\nB')).toEqual(['A', 'B']);
+    });
+
+    it('splitColumnSections("") returns one empty section', () => {
+        expect(splitColumnSections('')).toEqual(['']);
+    });
+
+    it('splitColumnSections unescapes a backslash-prefixed separator into one section of literal content', () => {
+        expect(splitColumnSections('A\n\\|||\nB')).toEqual(['A\n|||\nB']);
+    });
+
+    it('joinColumnSections(["A", "B"]) joins with a ||| separator line', () => {
+        expect(joinColumnSections(['A', 'B'])).toBe('A\n|||\nB');
+    });
+
+    it('joinColumnSections(["|||"]) escapes a section that is itself the separator', () => {
+        expect(joinColumnSections(['|||'])).toBe('\\|||');
+    });
+
+    it('leaves an escaped separator inside a nested fence untouched, for that fence\'s own recursive split to unescape', () => {
+        expect(splitColumnSections('::: {align=center}\n\\|||\n:::\n|||\nB')).toEqual([
+            '::: {align=center}\n\\|||\n:::',
+            'B',
+        ]);
+    });
+
+    it('a section containing a nested column-region fence round-trips through join then split unchanged', () => {
+        const sections = ['A', '::: columns\nInner one\n|||\nInner two\n:::'];
+
+        expect(splitColumnSections(joinColumnSections(sections))).toEqual(sections);
+    });
+
+    it('a section containing a ||| inside a fenced code block round-trips through join then split unchanged', () => {
+        const sections = ['```\n|||\n```', 'B'];
+
+        expect(splitColumnSections(joinColumnSections(sections))).toEqual(sections);
+    });
+
+    it('leaves an escaped separator inside a fenced code block untouched, unlike at depth 0', () => {
+        const sections = ['```\n\\|||\n```', 'B'];
+
+        expect(splitColumnSections(joinColumnSections(sections))).toEqual(sections);
     });
 });
 

@@ -34,6 +34,12 @@ A **WYSIWYG** editor whose value is a *Markdown* string, built on Lexical.
 A centred paragraph inside a fence.
 :::
 
+::: columns
+Left column.
+|||
+Right column.
+:::
+
 ![Diagram](https://placehold.co/240x120){width=240 height=120}
 
 \`\`\`
