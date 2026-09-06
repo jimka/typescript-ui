@@ -67,6 +67,8 @@ interface HandleStub {
     /** Intrinsic image size, seeded by {@link setNaturalSize} (default 0). */
     naturalWidth:  number;
     naturalHeight: number;
+    /** Modelled `decode()` outcome, seeded by {@link setDecodeResult}. */
+    decodeResult: "resolve" | "reject";
     /**
      * Modelled media playback state, folded by the recording sink's media
      * writes and seeded by {@link setMediaState}, read back by
@@ -147,6 +149,7 @@ class TestHandleTable {
             scrollTop:      0,
             naturalWidth:   0,
             naturalHeight:  0,
+            decodeResult:   'resolve',
             media:          {
                 currentTime:  0,
                 duration:     0,
@@ -816,6 +819,14 @@ export class RecordingDOMSink implements DOMSink {
     exitFullscreen(): void {
         this.record('exitFullscreen');
         _fullscreenHandle = null;
+    }
+
+    decodeImage(handle: Handle): Promise<void> {
+        this.record('decodeImage');
+
+        return _table.stub(handle).decodeResult === 'reject'
+            ? Promise.reject(new Error('decodeImage: modelled rejection'))
+            : Promise.resolve();
     }
 }
 
@@ -1587,6 +1598,18 @@ export function setNaturalSize(handle: Handle, width: number, height: number): v
 
     stub.naturalWidth  = width;
     stub.naturalHeight = height;
+}
+
+/**
+ * Seeds a handle's modelled `decode()` outcome, read back by
+ * {@link RecordingDOMSink.decodeImage}. Default `'resolve'` — call this only
+ * to test the rejection path.
+ *
+ * @param handle - The image element handle.
+ * @param result - `'resolve'` (the default) or `'reject'`.
+ */
+export function setDecodeResult(handle: Handle, result: "resolve" | "reject"): void {
+    _table.stub(handle).decodeResult = result;
 }
 
 /**

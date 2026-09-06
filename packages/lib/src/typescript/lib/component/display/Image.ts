@@ -51,6 +51,10 @@ export interface ImageOptions extends ComponentOptions {
     objectPosition?: string;
     /** Keeps width and height proportional to the natural aspect ratio as the box is resized. Opt-in; off by default. */
     preserveAspectRatio?: boolean;
+    /** Candidate image sources for responsive selection (`srcset` attribute). */
+    srcset?: string;
+    /** Viewport-relative size hints the browser uses to pick a `srcset` candidate (`sizes` attribute). */
+    sizes?: string;
 
     /**
      * Construction-time listener bag — the declarative form of `on()`, one key
@@ -97,14 +101,26 @@ const IMAGE_BROKEN_DECLARATIONS: StyleBag = {
  * own `on` / `off` surface, since neither DOM event bubbles. Before the image
  * has loaded, `getPreferredSize()` reports no opinion (`null`).
  *
- * Every standard `<img>` attribute (`src`, `alt`, `loading`, `decoding`,
- * `fetchPriority`, `crossOrigin`, `referrerPolicy`) has a typed getter/setter
- * pair and a matching `ImageOptions` field. `alt` is the native accessible
- * name for an image — always pass one (an empty string for a purely
- * decorative image). `setSrc` swaps the displayed source after construction
- * and invalidates the cached natural size, so the next `load` re-measures
- * instead of reporting the previous image's dimensions; an explicit
- * `preferredSize` survives a source change.
+ * Every standard `<img>` attribute (`src`, `srcset`, `sizes`, `alt`, `loading`,
+ * `decoding`, `fetchPriority`, `crossOrigin`, `referrerPolicy`) has a typed
+ * getter/setter pair and a matching `ImageOptions` field. `alt` is the native
+ * accessible name for an image — always pass one (an empty string for a
+ * purely decorative image). `setSrc` / `setSrcset` / `setSizes` each swap the
+ * displayed source (or its candidate selection) after construction and
+ * invalidate the cached natural size, so the next settle re-measures instead
+ * of reporting the previous candidate's dimensions; an explicit
+ * `preferredSize` survives any of the three.
+ *
+ * `Image` also calls the browser's `decode()` on the current source
+ * automatically — at first render and after any source change — so its
+ * natural size is usually known before first paint instead of only once the
+ * `load` event fires; this is skipped when `loading` is `"lazy"`. Because a
+ * `srcset` candidate swap can refire `load` for the same settled candidate a
+ * proactive `decode()` already published, the natural-size publish and the
+ * `"load"` re-emit are both skipped when the freshly measured size matches
+ * what is already cached — unless the instance is currently `.broken`, in
+ * which case a same-size recovery still republishes and re-emits, so a
+ * failed decode never strands `.broken` once the source actually recovers.
  *
  * `objectFit` / `objectPosition` are plain CSS pass-throughs (no default
  * effect until set). `preserveAspectRatio` is an opt-in sizing behaviour,
@@ -173,6 +189,13 @@ class Image extends Component<ImageOptions> {
     // silently wipe a cascade-set `true` back to `false`.
     declare private _hasExplicitPreferredSize: boolean;
 
+    // Bumped once per triggerDecode() call. A decode() settlement whose captured
+    // generation no longer matches this field belongs to a source that has since
+    // been replaced (setSrc/setSrcset/setSizes ran again before it finished) and
+    // is silently ignored — see "Two guards protect every decode() settlement"
+    // in the plan's Architecture Decisions.
+    private _decodeGeneration = 0;
+
     /**
      * @param src - Image source URL.
      * @param options - Optional construction options.
@@ -222,6 +245,8 @@ class Image extends Component<ImageOptions> {
         super.applyOptions(options);
 
         if (options.src            !== undefined) this.setSrc(options.src);
+        if (options.srcset         !== undefined) this.setSrcset(options.srcset);
+        if (options.sizes          !== undefined) this.setSizes(options.sizes);
         if (options.alt            !== undefined) this.setAlt(options.alt);
         if (options.loading        !== undefined) this.setLoading(options.loading);
         if (options.decoding       !== undefined) this.setDecoding(options.decoding);
@@ -258,6 +283,85 @@ class Image extends Component<ImageOptions> {
         this._options.src = src;
         this.setElementAttribute("src", src);
         this._naturalSize = null; // new source — the cached natural size is stale; re-measure on the next load
+
+        const element = this.getElement();
+
+        if (element) {
+            this.triggerDecode(element);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the candidate image sources for responsive selection.
+     *
+     * @returns The `srcset` value, or `null` when unset.
+     */
+    getSrcset(): string | null {
+        return this._options.srcset ?? null;
+    }
+
+    /**
+     * Sets the candidate image sources for responsive selection (writes the
+     * `srcset` attribute) and invalidates the cached natural size, so the
+     * next settled candidate re-measures instead of reporting the previous
+     * one's dimensions. Re-enters the loading state (see `resetLoadState`),
+     * so a `.broken` image is given a fresh chance to settle or fail again —
+     * without this, `handleError()`'s already-broken guard would silently
+     * swallow a repeat failure on the new candidate set.
+     *
+     * @param value - The `srcset` candidate list.
+     *
+     * @returns This component, for method chaining.
+     */
+    setSrcset(value: string): this {
+        this.resetLoadState();
+        this._options.srcset = value;
+        this.setElementAttribute("srcset", value);
+        this._naturalSize = null; // a new candidate set is stale — re-measure on the next settle
+
+        const element = this.getElement();
+
+        if (element) {
+            this.triggerDecode(element);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the viewport-relative size hints used to pick a `srcset`
+     * candidate.
+     *
+     * @returns The `sizes` value, or `null` when unset.
+     */
+    getSizes(): string | null {
+        return this._options.sizes ?? null;
+    }
+
+    /**
+     * Sets the viewport-relative size hints used to pick a `srcset` candidate
+     * (writes the `sizes` attribute) and invalidates the cached natural size,
+     * since a new `sizes` value changes which candidate the browser resolves.
+     * Re-enters the loading state (see `resetLoadState`), for the same reason
+     * `setSrcset` does.
+     *
+     * @param value - The `sizes` hint.
+     *
+     * @returns This component, for method chaining.
+     */
+    setSizes(value: string): this {
+        this.resetLoadState();
+        this._options.sizes = value;
+        this.setElementAttribute("sizes", value);
+        this._naturalSize = null; // sizes changes which candidate the browser resolves — re-measure
+
+        const element = this.getElement();
+
+        if (element) {
+            this.triggerDecode(element);
+        }
 
         return this;
     }
@@ -528,8 +632,8 @@ class Image extends Component<ImageOptions> {
 
     /**
      * Re-enters the loading state: clears `.broken` and sets `.loading`.
-     * Called from the constructor (initial entry) and from `setSrc`
-     * (re-entry on a source change).
+     * Called from the constructor (initial entry) and from `setSrc` /
+     * `setSrcset` / `setSizes` (re-entry on a source change).
      */
     private resetLoadState(): void {
         this.setStyleState(".broken", false);
@@ -537,12 +641,54 @@ class Image extends Component<ImageOptions> {
     }
 
     /**
+     * Proactively decodes the current source so its natural size is known
+     * before first paint — the resource is fetched either way; this only
+     * changes when `Image` learns the result. Skipped for `loading: "lazy"`,
+     * where forcing a decode would defeat the whole point of lazy loading. Each
+     * call supersedes any decode still in flight from a previous source; a
+     * stale settlement (this call's generation no longer current, or the
+     * component destroyed while the decode was in flight) is silently ignored.
+     *
+     * @param element - The rendered `<img>` element to decode.
+     */
+    private triggerDecode(element: Handle): void {
+        if (this.getLoading() === "lazy") {
+            return;
+        }
+
+        const generation = ++this._decodeGeneration;
+
+        void DOM.sink.decodeImage(element)
+            .then(() => {
+                if (generation === this._decodeGeneration && this.getElement()) {
+                    this.handleLoad();
+                }
+            })
+            .catch(() => {
+                if (generation === this._decodeGeneration && this.getElement()) {
+                    this._onError();
+                }
+            });
+    }
+
+    /**
      * Caches the image's natural intrinsic size and, unless the caller already
      * set an explicit `preferredSize`, publishes it (natural size plus this
      * component's own perimeter) so it reaches layout. Clears both `.loading`
-     * and `.broken` unconditionally, so this is correct regardless of which
-     * state the instance was in before `load` fired. Re-emits `"load"`
-     * either way.
+     * and `.broken`, so this is correct regardless of which state the
+     * instance was in before `load` fired. Re-emits `"load"`.
+     *
+     * Returns early, before caching or publishing anything, when the freshly
+     * measured natural size equals the size already cached *and* the instance
+     * isn't currently `.broken` — a same-size resettle (a `decode()` followed
+     * by a native `load` for the same candidate, or a `srcset` candidate swap
+     * with identical natural pixel dimensions) has nothing new to announce, so
+     * it skips the style-state churn and doesn't emit a second `"load"`. The
+     * `.broken` exemption keeps a same-size recovery (an errored candidate
+     * followed by a `load` for a same-size candidate) from stranding `.broken`
+     * forever: `handleError()` doesn't clear `_naturalSize`, so without this
+     * exemption a recovery whose size matches the pre-error cache would
+     * early-return before ever clearing `.broken`.
      */
     private handleLoad(): void {
         const element = this.getElement();
@@ -552,6 +698,14 @@ class Image extends Component<ImageOptions> {
         }
 
         const natural = DOM.source.getNaturalSize(element);
+
+        if (!this.isBroken()
+            && this._naturalSize
+            && this._naturalSize.width === natural.width
+            && this._naturalSize.height === natural.height) {
+            return; // same size already published, and not recovering from an error — nothing changed to re-announce
+        }
+
         this._naturalSize = { width: natural.width, height: natural.height };
 
         this.setStyleState(".loading", false);
@@ -586,8 +740,20 @@ class Image extends Component<ImageOptions> {
      * instead of collapsing to nothing. `getMinSize()` floors to the same
      * placeholder regardless of the preferred-size constraint (see its own
      * override). Re-emits `"error"` either way.
+     *
+     * Returns early, before doing anything, when the instance is already
+     * `.broken` — a rejected `decode()` and the native `error` event can both
+     * independently fire for the same failed source (`decode()` forces the
+     * fetch that the native listener also observes completing), and without
+     * this guard both would run this method's full body, double-setting
+     * `.broken`, double-publishing the placeholder size, and emitting
+     * `"error"` twice. Mirrors `handleLoad()`'s own same-state early return.
      */
     private handleError(): void {
+        if (this.isBroken()) {
+            return; // already broken — nothing changed to re-announce
+        }
+
         this.setStyleState(".loading", false);
         this.setStyleState(".broken", true);
 
@@ -845,6 +1011,7 @@ class Image extends Component<ImageOptions> {
 
         DOM.sink.addListener(el, "load", this._onLoad);
         DOM.sink.addListener(el, "error", this._onError);
+        this.triggerDecode(el);
 
         return this;
     }
