@@ -12,7 +12,7 @@
 
 ```typescript
 import { Image } from '@jimka/typescript-ui/component/display';
-const logo = Image('/assets/logo.png');
+const logo = Image('/assets/logo.png', { alt: 'Company logo' });
 logo.setPreferredSize({ width: 120, height: 40 });
 
 panel.addComponent(logo);
@@ -22,6 +22,13 @@ panel.addComponent(logo);
 
 | Method | Purpose |
 | --- | --- |
+| `getSrc()` / `setSrc(url)` | Read / write the image source (`src` attribute); swaps the displayed image and re-measures on the next load. |
+| `getAlt()` / `setAlt(text)` | Accessible text alternative (`alt` attribute) — pass `""` for a decorative image. |
+| `getLoading()` / `setLoading('lazy' \| 'eager')` | Native lazy-loading hint. |
+| `getDecoding()` / `setDecoding('sync' \| 'async' \| 'auto')` | Native decode hint. |
+| `getFetchPriority()` / `setFetchPriority('high' \| 'low' \| 'auto')` | Native fetch-priority hint. |
+| `getCrossOrigin()` / `setCrossOrigin('anonymous' \| 'use-credentials')` | CORS mode for the image request. |
+| `getReferrerPolicy()` / `setReferrerPolicy(policy)` | Referrer policy for the image request. |
 | `setPreferredSize(size)` | Pin a preferred display size (inherited from `Component`) — see the note below on its interaction with the auto-derived minimum. |
 | `getPreferredSize()` | Reports the pinned size, or the image's natural dimensions once loaded. |
 | `on(event, fn)` / `off(event, fn)` | Subscribe to re-emitted image events. |
@@ -41,11 +48,11 @@ re-emits them through its own `on` / `off` surface: `load`, `error`.
 
 ## Notes
 
-- The image URL is fixed at construction (`Image(src)`); there is no `setSrc` / `setAlt`. Construct a new `Image` to display a different source.
+- `setSrc(url)` swaps the displayed image and re-measures on the next load, unless an explicit `preferredSize` is set (which survives a source change). Pass `alt` — an empty string for a purely decorative image — so screen readers get a label instead of the raw URL.
 - If you don't call `setPreferredSize`, the component reports the image's natural dimensions once loaded. Layout will run again at that point.
 - Before the image has loaded (and with no explicit `preferredSize`), `getPreferredSize()` returns `null` — no placeholder size is reported.
 - An explicit `preferredSize` pins the *preferred* size, but not necessarily the rendered one: `getMinSize()` still auto-derives a floor from the natural size once loaded (capped at 100px per axis), independently of `preferredSize`, so a parent layout can still floor the committed size above a smaller pinned value. Call `setMinSize()` explicitly if a smaller pinned size must render exactly as given.
-- For a CDN-hosted image, ensure CORS headers permit the request. The framework does not enforce a fetch policy beyond the browser default.
+- For a CDN-hosted image, ensure CORS headers permit the request. The framework does not enforce a fetch policy beyond the browser default; set `crossOrigin` when the CORS response needs it.
 
 ## See also
 

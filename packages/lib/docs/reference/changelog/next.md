@@ -20,6 +20,11 @@ page resets to empty.
   `getMaxValue` and the `minValue` / `maxValue` options are removed.** Use
   `setMin` / `getMin` / `setMax` / `getMax` and the `min` / `max` options.
   See [Migration](/reference/migration) for the full replacement.
+- **`Image.render()` is no longer public.** It falls back to `Component`'s
+  own `protected render()` now that `Image`'s dead pass-through override —
+  which only wrote the `src` attribute, now handled by the new `setSrc`
+  typed setter — is deleted. Call `getElement(true)` to force rendering
+  instead. See [Migration](/reference/migration) for the full replacement.
 
 ### Core
 
@@ -101,6 +106,15 @@ page resets to empty.
   media-event bridge. No consumer action is needed for the common case; a
   consumer that depended on the live-DOM read or the `20×20` fallback should
   switch to `on('load', ...)`.
+- **`Image` gains a typed attribute options surface.** `ImageOptions` adds
+  `src`, `alt`, `loading`, `decoding`, `fetchPriority`, `crossOrigin`, and
+  `referrerPolicy`, each with a typed getter/setter pair (`getSrc`/`setSrc`,
+  `getAlt`/`setAlt`, and so on), mirroring `Video`'s shape. `src` is now
+  settable post-construction via `setSrc(url)`, which invalidates the
+  cached natural size so the next `load` re-measures instead of reporting
+  the previous image's dimensions — an explicit `preferredSize` survives a
+  source change. Pass `alt` (an empty string for a purely decorative image)
+  for the image's accessible name. No consumer action is needed.
 - **`MarkdownEditor`'s right-click context menu is reorganized**: the
   table-cell menu's row/column **Insert**/**Delete** submenus and its
   **Merge cells** / **Unmerge cell** / **Column width…** / **Align column**
