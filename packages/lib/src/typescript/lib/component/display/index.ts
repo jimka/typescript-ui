@@ -9,7 +9,7 @@ export type { WebGLCanvasOptions, WebGLContextInitCallback, WebGLFrameCallback }
 export { Header } from '~/component/display/Header.js';
 export type { HeaderOptions } from '~/component/display/Header.js';
 export { Image } from '~/component/display/Image.js';
-export type { ImageOptions } from '~/component/display/Image.js';
+export type { ImageOptions, ImageMediaEvent } from '~/component/display/Image.js';
 export { Glyph } from '~/component/display/Glyph.js';
 export type { GlyphAnimation, GlyphOptions } from '~/component/display/Glyph.js';
 export type { GlyphDef, NamedGlyphDef } from '~/component/display/Glyphs.js';

@@ -85,6 +85,22 @@ page resets to empty.
   all, close, replace, replace all) are now glyph-only `Button`/
   `ToggleButton` controls with hover tooltips rather than CodeMirror's own
   inline form. No consumer action is needed.
+- **`Image` now caches and publishes its natural intrinsic size**, instead of
+  reading the DOM element live from every `getPreferredSize()`/`getMinSize()`
+  call (which threw before the element rendered). A native `load` handler
+  caches the decoded size and publishes it through `setPreferredSize` unless
+  the caller already set an explicit `preferredSize`; `getPreferredSize()`
+  returns `null` until that happens, and `getMinSize()`'s pre-load default is
+  the inherited `{0, 0}` "no minimum", not the previous undocumented `20×20`
+  fallback. `Image` also gains `getBaseline()` (the bottom edge of its
+  preferred size, so it participates in row baseline alignment like `Glyph`)
+  and a typed
+  `on(event, fn)` / `off(event, fn)` surface — plus a construction-time
+  `listeners` option and the exported `ImageMediaEvent` type — re-emitting
+  the native, non-bubbling `load` / `error` events, mirroring `Video`'s
+  media-event bridge. No consumer action is needed for the common case; a
+  consumer that depended on the live-DOM read or the `20×20` fallback should
+  switch to `on('load', ...)`.
 - **`MarkdownEditor`'s right-click context menu is reorganized**: the
   table-cell menu's row/column **Insert**/**Delete** submenus and its
   **Merge cells** / **Unmerge cell** / **Column width…** / **Align column**
