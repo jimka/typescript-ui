@@ -28,7 +28,7 @@ export function create(): Component {
 
     const logo = Image(
         `data:image/svg+xml,${encodeURIComponent(svg)}`,
-        { preferredSize: { width: 80, height: 80 } },
+        { preferredSize: { width: 80, height: 80 }, alt: 'Circle logo' },
     );
 
     return Panel({

@@ -59,6 +59,29 @@ slider.setMin(5);
 slider.getMax();
 ```
 
+## `Image.render()` is no longer public
+
+**What changed and why.** `Image` had a `render()` override with no access
+modifier — implicitly public — that wrote the `src` attribute through a raw
+`DOM.sink.apply` call after the base render. That write now happens in the
+new `setSrc` typed setter, whose write the base attribute buffer replays at
+render time, so `Image`'s override had nothing `Image`-specific left to do
+and is deleted. `render()` now falls back to `Component`'s own `protected
+render()`.
+
+**Who needs to act.** Any direct call to `image.render()` is now a compile
+error. Call `getElement(true)` instead — it renders the element if one
+doesn't already exist and returns its handle, the supported way to force
+rendering:
+
+```typescript
+// Before
+image.render();
+
+// After
+image.getElement(true);
+```
+
 ## `ChartStoreBinding` is removed
 
 **What changed and why.** `ChartStoreBinding` described a store-bound
