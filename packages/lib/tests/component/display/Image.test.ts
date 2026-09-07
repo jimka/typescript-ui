@@ -373,6 +373,28 @@ describe('Image attribute round-trip', () => {
         expect(lastAttr(recorder, 'referrerpolicy')).toBe('no-referrer');
     });
 
+    it('round-trips srcset through getSrcset and writes the srcset attribute', () => {
+        const img = new Image('/x.png');
+        const recorder = DOM.sink as unknown as Recorder;
+
+        img.getElement(true);
+        img.setSrcset('a.jpg 1x, b.jpg 2x');
+
+        expect(img.getSrcset()).toBe('a.jpg 1x, b.jpg 2x');
+        expect(lastAttr(recorder, 'srcset')).toBe('a.jpg 1x, b.jpg 2x');
+    });
+
+    it('round-trips sizes through getSizes and writes the sizes attribute', () => {
+        const img = new Image('/x.png');
+        const recorder = DOM.sink as unknown as Recorder;
+
+        img.getElement(true);
+        img.setSizes('(min-width: 600px) 480px, 100vw');
+
+        expect(img.getSizes()).toBe('(min-width: 600px) 480px, 100vw');
+        expect(lastAttr(recorder, 'sizes')).toBe('(min-width: 600px) 480px, 100vw');
+    });
+
     it('reports null from every attribute getter before its setter is ever called', () => {
         const img = new Image('/x.png');
 
@@ -382,6 +404,8 @@ describe('Image attribute round-trip', () => {
         expect(img.getFetchPriority()).toBeNull();
         expect(img.getCrossOrigin()).toBeNull();
         expect(img.getReferrerPolicy()).toBeNull();
+        expect(img.getSrcset()).toBeNull();
+        expect(img.getSizes()).toBeNull();
     });
 });
 
@@ -396,6 +420,21 @@ describe('Image options-bag construction', () => {
         expect(lastAttr(recorder, 'alt')).toBe('Logo');
         expect(lastAttr(recorder, 'crossorigin')).toBe('anonymous');
         expect(lastAttr(recorder, 'loading')).toBe('lazy');
+    });
+
+    it('writes srcset and sizes attributes from the options bag on first render', () => {
+        const img = new Image('/a.png', {
+            srcset: 'a.jpg 1x, b.jpg 2x',
+            sizes:  '(min-width: 600px) 480px, 100vw',
+        });
+        const recorder = DOM.sink as unknown as Recorder;
+
+        img.getElement(true);
+
+        expect(img.getSrcset()).toBe('a.jpg 1x, b.jpg 2x');
+        expect(img.getSizes()).toBe('(min-width: 600px) 480px, 100vw');
+        expect(lastAttr(recorder, 'srcset')).toBe('a.jpg 1x, b.jpg 2x');
+        expect(lastAttr(recorder, 'sizes')).toBe('(min-width: 600px) 480px, 100vw');
     });
 
     it('uses the positional src when the options bag has no src key', () => {
@@ -460,6 +499,291 @@ describe('Image setSrc cache invalidation and re-measure', () => {
         const img = new Image('/x.png');
 
         expect(() => img.setSrc('/new.png')).not.toThrow();
+    });
+});
+
+describe('Image srcset/sizes invalidate the cache and re-trigger decode', () => {
+    it('setSrcset on an already-rendered Image calls decodeImage again', () => {
+        const img = new Image('/x.png');
+        const decodeSpy = vi.spyOn(DOM.sink, 'decodeImage');
+
+        img.getElement(true);
+        expect(decodeSpy).toHaveBeenCalledTimes(1);
+
+        img.setSrcset('a.jpg 1x, b.jpg 2x');
+
+        expect(decodeSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('setSrcset clears _naturalSize, so a same-size settle after it still republishes instead of hitting the size-diff guard', () => {
+        const img = new Image('/x.png');
+        const handle = img.getElement(true)!;
+
+        setNaturalSize(handle, 300, 200);
+        (img as unknown as Bridged)._onLoad();
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 200 });
+
+        img.setSrcset('a.jpg 1x, b.jpg 2x');
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 200 }); // unchanged until the next settle
+
+        let fired = 0;
+        img.on('load', () => { fired += 1; });
+
+        setNaturalSize(handle, 300, 200); // same size as the candidate srcset replaced
+        (img as unknown as Bridged)._onLoad();
+
+        expect(fired).toBe(1); // would be 0 if setSrcset hadn't cleared the cache
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 200 });
+    });
+
+    it('setSizes on an already-rendered Image calls decodeImage again', () => {
+        const img = new Image('/x.png');
+        const decodeSpy = vi.spyOn(DOM.sink, 'decodeImage');
+
+        img.getElement(true);
+        expect(decodeSpy).toHaveBeenCalledTimes(1);
+
+        img.setSizes('(min-width: 600px) 480px, 100vw');
+
+        expect(decodeSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('setSizes clears _naturalSize, so a same-size settle after it still republishes instead of hitting the size-diff guard', () => {
+        const img = new Image('/x.png');
+        const handle = img.getElement(true)!;
+
+        setNaturalSize(handle, 300, 200);
+        (img as unknown as Bridged)._onLoad();
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 200 });
+
+        img.setSizes('(min-width: 600px) 480px, 100vw');
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 200 }); // unchanged until the next settle
+
+        let fired = 0;
+        img.on('load', () => { fired += 1; });
+
+        setNaturalSize(handle, 300, 200); // same size as the candidate sizes replaced
+        (img as unknown as Bridged)._onLoad();
+
+        expect(fired).toBe(1); // would be 0 if setSizes hadn't cleared the cache
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 200 });
+    });
+
+    it('does not throw when setSrcset/setSizes are called before the element ever renders, and defers decodeImage until it does', () => {
+        const img = new Image('/x.png');
+        const decodeSpy = vi.spyOn(DOM.sink, 'decodeImage');
+
+        expect(() => img.setSrcset('a.jpg 1x, b.jpg 2x')).not.toThrow();
+        expect(() => img.setSizes('100vw')).not.toThrow();
+        expect(decodeSpy).not.toHaveBeenCalled();
+
+        img.getElement(true);
+
+        expect(decodeSpy).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('Image automatic decode trigger', () => {
+    it('calls DOM.sink.decodeImage exactly once for a freshly rendered, default-loading Image', () => {
+        const img = new Image('/x.png');
+        const decodeSpy = vi.spyOn(DOM.sink, 'decodeImage');
+
+        img.getElement(true);
+
+        expect(decodeSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('never calls DOM.sink.decodeImage for an Image constructed with loading: "lazy"', () => {
+        const img = new Image('/x.png', { loading: 'lazy' });
+        const decodeSpy = vi.spyOn(DOM.sink, 'decodeImage');
+
+        img.getElement(true);
+
+        expect(decodeSpy).not.toHaveBeenCalled();
+    });
+
+    it('setSrc on an already-rendered Image increases the decodeImage call count by one', () => {
+        const img = new Image('/x.png');
+        const decodeSpy = vi.spyOn(DOM.sink, 'decodeImage');
+
+        img.getElement(true);
+        expect(decodeSpy).toHaveBeenCalledTimes(1);
+
+        img.setSrc('/new.png');
+
+        expect(decodeSpy).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('Image decode() converges with handleLoad/_onError', () => {
+    it('a successful decode() publishes the natural size and fires "load" before any native load', async () => {
+        const img = new Image('/x.png');
+        const handle = img.getElement(true)!;
+        setNaturalSize(handle, 300, 200);
+
+        let fired = 0;
+        img.on('load', () => { fired += 1; });
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 200 });
+        expect(fired).toBe(1);
+    });
+
+    it('a same-size native load after decode() resolves does not double-publish', async () => {
+        const img = new Image('/x.png');
+        const handle = img.getElement(true)!;
+        setNaturalSize(handle, 300, 200);
+
+        let fired = 0;
+        img.on('load', () => { fired += 1; });
+
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(fired).toBe(1);
+
+        (img as unknown as Bridged)._onLoad();
+
+        expect(fired).toBe(1);
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 200 });
+    });
+
+    it('a later, size-different native load still republishes', async () => {
+        const img = new Image('/x.png');
+        const handle = img.getElement(true)!;
+        setNaturalSize(handle, 300, 200);
+
+        let fired = 0;
+        img.on('load', () => { fired += 1; });
+
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(fired).toBe(1);
+
+        setNaturalSize(handle, 600, 400);
+        (img as unknown as Bridged)._onLoad();
+
+        expect(fired).toBe(2);
+        expect(img.getPreferredSize()).toEqual({ width: 600, height: 400 });
+    });
+
+    it('a rejected decode() converges on the error path, firing "error"', async () => {
+        const img = new Image('/x.png');
+        vi.spyOn(DOM.sink, 'decodeImage').mockRejectedValue(new Error('decode failed'));
+
+        let fired = 0;
+        img.on('error', () => { fired += 1; });
+
+        img.getElement(true);
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(fired).toBe(1);
+    });
+
+    it('a rejected decode() followed by the native error event for the same failed source does not double-fire "error"', async () => {
+        // Regression: a genuinely broken source can fail both signals
+        // independently (decode() forces the same fetch the native listener
+        // observes completing) — handleError() must not re-run its full body
+        // for the second settlement.
+        const img = new Image('/x.png');
+        vi.spyOn(DOM.sink, 'decodeImage').mockRejectedValue(new Error('decode failed'));
+
+        let fired = 0;
+        img.on('error', () => { fired += 1; });
+
+        img.getElement(true);
+
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(fired).toBe(1);
+
+        (img as unknown as Bridged)._onError();
+
+        expect(fired).toBe(1);
+        expect(img.isBroken()).toBe(true);
+    });
+});
+
+describe('Image decode() settlement guards', () => {
+    it('a superseded decode settlement is silently ignored', async () => {
+        const img = new Image('/x.png');
+        let rejectFirst: (reason: unknown) => void = () => {};
+        const pending = new Promise<void>((_resolve, reject) => { rejectFirst = reject; });
+
+        vi.spyOn(DOM.sink, 'decodeImage')
+            .mockReturnValueOnce(pending)
+            .mockReturnValueOnce(Promise.resolve());
+
+        img.getElement(true); // consumes the 1st mocked return, starts the pending decode
+
+        let errorFired = 0;
+        img.on('error', () => { errorFired += 1; });
+
+        img.setSrc('/new.png'); // consumes the 2nd mocked return, bumps the generation
+
+        rejectFirst(new Error('superseded'));
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(errorFired).toBe(0);
+    });
+
+    // The two tests below pin "a decode settlement after disposal does not
+    // throw" (triggerDecode's live-element recheck) — but cannot independently
+    // exercise that recheck's own getElement() branch offline: Component's
+    // destructor() clears `_element`, so getElement() falls back to
+    // DOM.source.getElementById(this.getId()), and the modelled
+    // TestHandleTable._byId index is never evicted on element removal (see
+    // Component.ts's own comment on this exact gap, next to its
+    // clearContentFrame() ordering discussion). TextInput.test.ts's own
+    // disposal-guard test for paste() has the identical limitation. `fired`
+    // stays 0 here because registerListenerBag's onDestroy hook clears the
+    // ListenerBag on dispose, not because the guard's getElement() check
+    // no-oped — so what these tests actually prove is "no throw and no
+    // listener fan-out reaches a disposed instance's consumers"; the
+    // getElement()-based no-op itself is the same, already-proven pattern
+    // TextInput.paste() uses (TextInput.ts:795-797) and is verified by code
+    // inspection against Component.ts's documented contract, not by this
+    // offline harness.
+    it('a decode settlement after disposal does not throw and does not fire "load"', async () => {
+        const img = new Image('/x.png');
+        let resolvePending: () => void = () => {};
+        const pending = new Promise<void>(resolve => { resolvePending = resolve; });
+        vi.spyOn(DOM.sink, 'decodeImage').mockReturnValue(pending);
+
+        let fired = 0;
+        img.on('load', () => { fired += 1; });
+
+        img.getElement(true);
+        img.dispose();
+        resolvePending();
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(fired).toBe(0);
+    });
+
+    it('a decode settlement after disposal does not throw and does not fire "error"', async () => {
+        const img = new Image('/x.png');
+        let rejectPending: (reason: unknown) => void = () => {};
+        const pending = new Promise<void>((_resolve, reject) => { rejectPending = reject; });
+        vi.spyOn(DOM.sink, 'decodeImage').mockReturnValue(pending);
+
+        let fired = 0;
+        img.on('error', () => { fired += 1; });
+
+        img.getElement(true);
+        img.dispose();
+        rejectPending(new Error('post-dispose'));
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(fired).toBe(0);
     });
 });
 
@@ -537,6 +861,80 @@ describe('Image loading and error visual states', () => {
 
         expect(img.isLoading()).toBe(true);
         expect(img.isBroken()).toBe(false);
+    });
+
+    it('re-enters loading, clears broken, and re-emits error on a later failure after setSrcset following a prior error', () => {
+        // Regression: handleError()'s already-broken guard is only re-armed
+        // by resetLoadState(), which setSrc already called but setSrcset
+        // didn't — so a retry pattern like
+        // `img.on('error', () => img.setSrcset(next))` would silently stop
+        // re-emitting after the first failure.
+        const img = new Image('/x.png');
+        let errorCount = 0;
+        img.on('error', () => { errorCount += 1; });
+
+        img.getElement(true);
+        (img as unknown as Bridged)._onError();
+
+        expect(errorCount).toBe(1);
+
+        img.setSrcset('a.jpg 1x, b.jpg 2x');
+
+        expect(img.isLoading()).toBe(true);
+        expect(img.isBroken()).toBe(false);
+
+        (img as unknown as Bridged)._onError();
+
+        expect(errorCount).toBe(2);
+        expect(img.isBroken()).toBe(true);
+    });
+
+    it('re-enters loading, clears broken, and re-emits error on a later failure after setSizes following a prior error', () => {
+        const img = new Image('/x.png');
+        let errorCount = 0;
+        img.on('error', () => { errorCount += 1; });
+
+        img.getElement(true);
+        (img as unknown as Bridged)._onError();
+
+        expect(errorCount).toBe(1);
+
+        img.setSizes('(min-width: 600px) 480px, 100vw');
+
+        expect(img.isLoading()).toBe(true);
+        expect(img.isBroken()).toBe(false);
+
+        (img as unknown as Bridged)._onError();
+
+        expect(errorCount).toBe(2);
+        expect(img.isBroken()).toBe(true);
+    });
+
+    it('a same-size load after an error still clears broken and republishes, instead of being swallowed by the size-diff guard', () => {
+        // Regression: handleError() doesn't clear _naturalSize, so a load
+        // whose measured size matches the pre-error cache must not hit
+        // handleLoad()'s same-size early return — otherwise .broken (and the
+        // 48x48 placeholder size) would strand forever on an image that
+        // actually recovered.
+        const img = new Image('/x.png');
+        const handle = img.getElement(true)!;
+
+        setNaturalSize(handle, 300, 200);
+        (img as unknown as Bridged)._onLoad();
+        (img as unknown as Bridged)._onError();
+
+        expect(img.isBroken()).toBe(true);
+
+        let fired = 0;
+        img.on('load', () => { fired += 1; });
+
+        setNaturalSize(handle, 300, 200); // same size as before the error
+        (img as unknown as Bridged)._onLoad();
+
+        expect(img.isBroken()).toBe(false);
+        expect(img.isLoading()).toBe(false);
+        expect(img.getPreferredSize()).toEqual({ width: 300, height: 200 });
+        expect(fired).toBe(1);
     });
 });
 

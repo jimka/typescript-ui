@@ -942,6 +942,20 @@ export interface DOMSink {
      * Exits fullscreen for the document. No-op when nothing is fullscreen.
      */
     exitFullscreen(): void;
+
+    /**
+     * Forces the browser to fetch and fully decode an image, resolving once
+     * it is ready to paint — the same readiness point the element's own
+     * `load` event settles at, reached earlier and as an awaitable signal
+     * instead of only an event. Rejects if the resource fails to load or the
+     * decode is aborted (e.g. a `src` change before this decode finished);
+     * the caller is responsible for ignoring a rejection that arrives after
+     * a newer request has superseded it.
+     *
+     * @param handle - The `<img>` element handle.
+     * @returns A promise that resolves once decoded, or rejects on failure/abort.
+     */
+    decodeImage(handle: Handle): Promise<void>;
 }
 
 /**
@@ -2029,6 +2043,20 @@ export class ProductionDOMSink implements DOMSink {
         if (document.fullscreenElement) {
             void document.exitFullscreen().catch(() => {});
         }
+    }
+
+    /** @inheritDoc */
+    decodeImage(handle: Handle): Promise<void> {
+        const element = _registry.resolve(handle) as HTMLImageElement;
+
+        // No `decode()` in this environment (SSR, a worker, or a plain jsdom
+        // setup without full HTMLImageElement support) — degrade to an
+        // already-resolved promise, mirroring matchMedia's environment guard.
+        if (typeof element.decode !== "function") {
+            return Promise.resolve();
+        }
+
+        return element.decode();
     }
 }
 
