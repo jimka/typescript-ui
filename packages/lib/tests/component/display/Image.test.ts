@@ -38,6 +38,27 @@ const lastAttr = (recorder: Recorder, key: string): string | undefined => {
     return value;
 };
 
+/** Replays every `addClass`/`removeClass` write touching `token` on `handle`,
+ *  in order, and returns whether the token ends up present — mirrors
+ *  `Button.pressedState.test.ts`'s `isPressed` helper, generalised to any
+ *  class token instead of just `"pressed"`. */
+const lastClassState = (recorder: Recorder, handle: unknown, token: string): boolean => {
+    let state = false;
+
+    for (const w of recorder.writes) {
+        if (w.op !== 'apply' || w.args[0] !== handle) {
+            continue;
+        }
+
+        const patch = w.args[1] as { addClass?: readonly string[]; removeClass?: readonly string[] };
+
+        if (patch.addClass?.includes(token)) state = true;
+        if (patch.removeClass?.includes(token)) state = false;
+    }
+
+    return state;
+};
+
 // The native load/error → custom `emit` bridge. The offline harness cannot
 // dispatch a non-bubbling event at a non-window element, so instead of a real
 // `load`/`error` event these tests invoke the stored native handler directly
@@ -439,6 +460,138 @@ describe('Image setSrc cache invalidation and re-measure', () => {
         const img = new Image('/x.png');
 
         expect(() => img.setSrc('/new.png')).not.toThrow();
+    });
+});
+
+describe('Image loading and error visual states', () => {
+    it('is loading and not broken immediately after construction', () => {
+        const img = new Image('/x.png');
+
+        expect(img.isLoading()).toBe(true);
+        expect(img.isBroken()).toBe(false);
+    });
+
+    it('is neither loading nor broken after _onLoad fires', () => {
+        const img = new Image('/x.png');
+
+        img.getElement(true);
+        setNaturalSize(img.getElement()!, 300, 200);
+        (img as unknown as Bridged)._onLoad();
+
+        expect(img.isLoading()).toBe(false);
+        expect(img.isBroken()).toBe(false);
+    });
+
+    it('is broken and not loading after _onError fires', () => {
+        const img = new Image('/x.png');
+
+        img.getElement(true);
+        (img as unknown as Bridged)._onError();
+
+        expect(img.isLoading()).toBe(false);
+        expect(img.isBroken()).toBe(true);
+    });
+
+    it('carries the loading DOM class and not broken after first render', () => {
+        const img = new Image('/x.png');
+        const recorder = DOM.sink as unknown as Recorder;
+
+        const handle = img.getElement(true);
+
+        expect(lastClassState(recorder, handle, 'loading')).toBe(true);
+        expect(lastClassState(recorder, handle, 'broken')).toBe(false);
+    });
+
+    it('carries neither DOM class after _onLoad fires', () => {
+        const img = new Image('/x.png');
+        const recorder = DOM.sink as unknown as Recorder;
+
+        const handle = img.getElement(true)!;
+        setNaturalSize(handle, 300, 200);
+        (img as unknown as Bridged)._onLoad();
+
+        expect(lastClassState(recorder, handle, 'loading')).toBe(false);
+        expect(lastClassState(recorder, handle, 'broken')).toBe(false);
+    });
+
+    it('carries the broken DOM class and not loading after _onError fires', () => {
+        const img = new Image('/x.png');
+        const recorder = DOM.sink as unknown as Recorder;
+
+        const handle = img.getElement(true);
+        (img as unknown as Bridged)._onError();
+
+        expect(lastClassState(recorder, handle, 'broken')).toBe(true);
+        expect(lastClassState(recorder, handle, 'loading')).toBe(false);
+    });
+
+    it('re-enters loading and clears broken on setSrc after a prior error', () => {
+        const img = new Image('/x.png');
+
+        img.getElement(true);
+        (img as unknown as Bridged)._onError();
+
+        expect(img.isBroken()).toBe(true);
+
+        img.setSrc('/y.png');
+
+        expect(img.isLoading()).toBe(true);
+        expect(img.isBroken()).toBe(false);
+    });
+});
+
+describe('Image broken-state placeholder size', () => {
+    it('reports a 48x48 placeholder for both preferred and min size when no explicit size is set', () => {
+        const img = new Image('/x.png');
+
+        img.getElement(true);
+        (img as unknown as Bridged)._onError();
+
+        expect(img.getPreferredSize()).toEqual({ width: 48, height: 48 });
+        expect(img.getMinSize()).toEqual({ width: 48, height: 48 });
+    });
+
+    it('keeps an explicit preferredSize unchanged but still floors minSize at 48x48', () => {
+        const img = new Image('/x.png', { preferredSize: { width: 120, height: 40 } });
+
+        img.getElement(true);
+        (img as unknown as Bridged)._onError();
+
+        expect(img.getPreferredSize()).toEqual({ width: 120, height: 40 });
+        expect(img.getMinSize()).toEqual({ width: 48, height: 48 });
+    });
+
+    it('lets an explicit setMinSize win over the broken placeholder floor', () => {
+        const img = new Image('/x.png');
+
+        img.setMinSize({ width: 10, height: 10 });
+        img.getElement(true);
+        (img as unknown as Bridged)._onError();
+
+        expect(img.getMinSize()).toEqual({ width: 10, height: 10 });
+    });
+
+    it('adds the perimeter (padding) to the broken placeholder preferred size', () => {
+        const img = new Image('/x.png', { padding: new Insets(5, 5, 5, 5) });
+
+        img.getElement(true);
+        (img as unknown as Bridged)._onError();
+
+        expect(img.getPreferredSize()).toEqual({ width: 58, height: 58 });
+    });
+
+    it('relays a min-size change upward when an explicit preferredSize skips the publish on error', () => {
+        const img = new Image('/x.png', { preferredSize: { width: 120, height: 40 } });
+        const preferredSpy  = vi.fn();
+        const constraintSpy = vi.fn();
+
+        img.getElement(true);
+        (img as unknown as { _onPreferredSizeChange: unknown })._onPreferredSizeChange  = preferredSpy;
+        (img as unknown as { _onConstraintSizeChange: unknown })._onConstraintSizeChange = constraintSpy;
+        (img as unknown as Bridged)._onError();
+
+        expect(preferredSpy).toHaveBeenCalledTimes(1);
+        expect(constraintSpy).toHaveBeenCalledTimes(1);
     });
 });
 

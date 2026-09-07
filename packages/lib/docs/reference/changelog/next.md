@@ -132,6 +132,17 @@ page resets to empty.
   consumer action is needed for the common case; a consumer that relied on
   the implicit up-to-`100px` floor to keep a small image from collapsing
   should call `setMinSize()` explicitly or enable `preserveAspectRatio`.
+- **`Image` gains `.loading` / `.broken` visual states, with `isLoading()` /
+  `isBroken()` accessors.** `Image` carries `.loading` while a source is
+  decoding — from construction, or a `setSrc` call, until `load`/`error`
+  fires — and `.broken` instead if the decode fails, each a themed
+  background wash (`--ts-ui-image-loading-bg` / `--ts-ui-image-broken-bg`).
+  A broken image now publishes a fixed 48x48 placeholder as its preferred
+  size (unless an explicit `preferredSize` overrides it) and as its minimum
+  size (unless an explicit `setMinSize` overrides it — an explicit
+  `preferredSize` alone does not suppress the minimum floor), instead of
+  collapsing to nothing behind the browser's unstyled broken-image icon. No
+  consumer action is needed.
 - **`MarkdownEditor`'s right-click context menu is reorganized**: the
   table-cell menu's row/column **Insert**/**Delete** submenus and its
   **Merge cells** / **Unmerge cell** / **Column width…** / **Align column**
