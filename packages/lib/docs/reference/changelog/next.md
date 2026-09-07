@@ -115,6 +115,23 @@ page resets to empty.
   the previous image's dimensions — an explicit `preferredSize` survives a
   source change. Pass `alt` (an empty string for a purely decorative image)
   for the image's accessible name. No consumer action is needed.
+- **`Image` gains an `objectFit` / `objectPosition` / `preserveAspectRatio`
+  fit model**, with matching `getObjectFit`/`setObjectFit`,
+  `getObjectPosition`/`setObjectPosition`, and
+  `getPreserveAspectRatio`/`setPreserveAspectRatio` accessors.
+  `objectFit`/`objectPosition` are plain CSS `object-fit`/`object-position`
+  pass-throughs — no default effect until set. `preserveAspectRatio`
+  (opt-in, off by default) makes `setWidth`/`setHeight` re-derive the other
+  axis from the image's natural aspect ratio and republish it as the
+  preferred size, since CSS `aspect-ratio` has no effect once this
+  framework's always-both-axes-assigned positioning sets both explicitly.
+  The `100px`-per-axis auto-min-floor `getMinSize()` previously derived
+  from the natural size is also removed: an `Image` with no explicit
+  `setMinSize` now reports `{0, 0}` post-load, letting a parent shrink it
+  freely, unless `preserveAspectRatio` has derived its own floor. No
+  consumer action is needed for the common case; a consumer that relied on
+  the implicit up-to-`100px` floor to keep a small image from collapsing
+  should call `setMinSize()` explicitly or enable `preserveAspectRatio`.
 - **`MarkdownEditor`'s right-click context menu is reorganized**: the
   table-cell menu's row/column **Insert**/**Delete** submenus and its
   **Merge cells** / **Unmerge cell** / **Column width…** / **Align column**
