@@ -21,7 +21,15 @@
  *                 (auto-derived); supply it when the page name differs (data layer).
  *
  * Internal/abstract exports (AbstractInput, DragManager, BaseObject, …) are
- * deliberately absent — the catalog is task-facing, not an export dump.
+ * deliberately absent — the catalog is task-facing, not an export dump. A TS-`abstract`
+ * class is skipped automatically by `check-coverage.mjs` (it never appears as a
+ * candidate); every other deliberately-omitted concrete class — a sub-part composed by
+ * a bigger catalogued component (TabButton, MenuItem, table cell/editor/renderer
+ * classes, …) or a framework primitive (Component, Event, ThemeManager, …) — must be
+ * named in `excludedSymbols` below, or `check-coverage.mjs` fails the build: it treats
+ * any concrete, non-abstract class in a public module that is in neither `groups` nor
+ * `excludedSymbols` as a newly-shipped component nobody has triaged into the catalog
+ * yet. Run `node scripts/llms/check-coverage.mjs` after adding a public component.
  */
 
 export const groups = [
@@ -36,6 +44,9 @@ export const groups = [
         { task: "Collapsible accordion sections", symbol: "Accordion" },
         { task: "Stretch a single child to fill the container", symbol: "Fit" },
         { task: "Wrap children like text that reflows (horizontal flow)", symbol: "HFlow" },
+        { task: "Wrap children like text that reflows (vertical flow)", symbol: "VFlow" },
+        { task: "Position children manually at explicit x/y (no automatic layout)", symbol: "Absolute" },
+        { task: "Pin or stretch children to container edges by proportional offset, re-resolved on resize", symbol: "Anchor" },
     ] },
 
     { name: "Containers / Windows", entries: [
@@ -45,9 +56,12 @@ export const groups = [
         { task: "Self-managing tab container (add/close/select tabs)", symbol: "TabPanel" },
         { task: "Self-managing accordion of collapsible sections", symbol: "AccordionPanel" },
         { task: "Bottom status bar with segments", symbol: "StatusBar" },
+        { task: "Menu bar (File/Edit/View-style strip of top-level menu buttons)", symbol: "MenuBar" },
+        { task: "Toolbar strip of buttons, with overflow", symbol: "ToolBar" },
         { task: "Virtualize a huge child list (render only visible rows)", symbol: "VirtualScroller" },
         { task: "Mutually-exclusive group of toggle buttons", symbol: "ButtonGroup" },
         { task: "Corner-pinned floating panel", symbol: "FloatingPanel" },
+        { task: "Reserve or absorb layout space with an invisible spacer", symbol: "Spacer" },
     ] },
 
     { name: "Inputs / Forms", entries: [
@@ -70,14 +84,19 @@ export const groups = [
         { task: "Dropdown select bound to a store", symbol: "ComboBox" },
         { task: "Type-ahead field with autocomplete suggestions", symbol: "AutoCompleteField" },
         { task: "Date picker field", symbol: "DateField" },
+        { task: "Time picker field", symbol: "TimeField" },
         { task: "Combined date-and-time picker field", symbol: "DateTimeField" },
         { task: "File chooser field", symbol: "FileField" },
+        { task: "Drag-and-drop file upload zone", symbol: "FileDropZone" },
+        { task: "Standalone display text", symbol: "Text" },
+        { task: "Text label associated with a form control", symbol: "Label" },
     ] },
 
     { name: "Data / Tables / Trees", entries: [
         { task: "Editable data grid / spreadsheet-style table, with per-column or per-cell editor/renderer types", symbol: "Table", doc: "docs/components/Table.md" },
         { task: "Store-bound table with a scroll frame and toolbar", symbol: "TablePanel" },
         { task: "Table whose rows form an expandable tree", symbol: "TreeTable" },
+        { task: "Store-bound tree table with a scroll frame and toolbar", symbol: "TreeTablePanel" },
         { task: "Expandable tree of nodes", symbol: "Tree" },
         { task: "Single-select scrollable list", symbol: "List" },
         { task: "Multi-select list", symbol: "MultiSelectList" },
@@ -95,6 +114,7 @@ export const groups = [
         { task: "Image", symbol: "Image" },
         { task: "Font-Awesome icon glyph", symbol: "Glyph" },
         { task: "Icon paired with a label", symbol: "IconLabel" },
+        { task: "Icon paired with free-floating text (not a form-control label)", symbol: "IconText" },
         { task: "Render a Markdown string as formatted content", symbol: "Markdown" },
         { task: "Floating heading-outline minimap", symbol: "MarkdownMinimap" },
         { task: "Markdown viewer with minimap and zoom controls", symbol: "MarkdownViewer" },
@@ -117,6 +137,8 @@ export const groups = [
         { task: "Window whose body is a tab container", symbol: "TabWindow" },
         { task: "Modal dialog (alert/confirm/prompt/custom)", symbol: "Dialog" },
         { task: "Edge-anchored sliding drawer", symbol: "Drawer" },
+        { task: "Persistent edge-anchored launcher strip (holds drawer/window handles)", symbol: "Rail" },
+        { task: "Rearrangeable dockable panel workspace (VS Code / GoldenLayout style)", symbol: "Dock" },
         { task: "Context / dropdown menu", symbol: "Menu" },
         { task: "Checkbox row in a menu", symbol: "CheckboxMenuRow" },
         { task: "Radio row in a menu", symbol: "RadioMenuRow" },
@@ -145,6 +167,76 @@ export const groups = [
         { task: "Map the URL to a top-level app section", symbol: "Router", doc: "docs/concepts/routing.md" },
         { task: "Give the app a browser-tab icon", symbol: "Favicon", doc: "docs/components/Body.md" },
     ] },
+];
+
+/**
+ * Every concrete, non-abstract class deliberately left out of `groups` — checked by
+ * `check-coverage.mjs`. Grouped by module and reason so a reviewer can tell an
+ * intentional omission from one nobody has looked at yet. Add to this list (not to
+ * `groups`) when a new sub-part or framework primitive ships; add to `groups` instead
+ * when it's a component someone would reach for directly.
+ */
+export const excludedSymbols = [
+    // core: framework primitives and base classes, not task-facing widgets
+    "AnimatedDropdown", "Aria", "AutoRepeat", "BaseObject", "Body", "Component", "Container",
+    "ElementAttributes", "InlineStyle", "ListenerBag", "Panel", "PatchBuilder", "ProductionDOMSink",
+    "ProductionDOMSource", "RovingTabIndex", "SmoothScroller", "StyleRule", "ThemeManager",
+
+    // data: proxy/association internals behind Store / AjaxStore / TreeStore / Association
+    "AjaxError", "AjaxProxy", "BelongsToAssociation", "HasManyAssociation", "JsonReader",
+    "JsonWriter", "MemoryProxy", "MemoryStore", "WebStorageProxy",
+
+    // diagnostics: sampler/view internals behind DiagnosticsOverlay / StyleAuditOverlay
+    "DiagnosticsSampler", "StyleAuditView",
+
+    // layout: constraint types and Dock's single-region primitive, not standalone managers
+    "AccordionConstraints", "AnchorConstraints", "DockRegion", "GridConstraints", "LayoutConstraints",
+
+    // overlay: sub-parts (Dialog's title bar, Rail's handle) and drag/drop visual internals
+    "DialogTitleBar", "DragFeedback", "DragGhost", "DropZoneOverlay", "RailHandle", "ReorderIndicator",
+
+    // primitive: geometry value types, not components
+    "Insets", "Point",
+
+    // validation: cross-cutting decorator, documented under Field rather than standalone
+    "FieldDecorator",
+
+    // component/button: sub-parts of Tab
+    "TabButton", "TabCloseButton",
+
+    // component/container: chrome/composition sub-parts of a bigger catalogued component
+    "AccordionHeader", "AccordionIndicator", "CollapseButton", "Legend", "MenuItem", "MenuSeparator",
+    "Scrollbar", "ScrollStrip", "Separator", "SplitGutter", "TabBar", "WindowBorder", "WindowHeader",
+
+    // component/diagram: internals composed by DiagramView
+    "DiagramEdgeLayer", "DiagramGroupNode", "DiagramNode", "ElkLayoutEngine",
+
+    // component/display: internal engines behind MarkdownViewer / VideoPlayer
+    "HeadingScrollTracker", "ProgressiveEngine",
+
+    // component/input: dropdown/picker plumbing and sub-parts behind Date*Field / NumberSpinner /
+    // TextField; SelectableText has no docs/components page yet — give it one before catalog­uing it
+    "DatePickerDropdown", "DateTimePickerDropdown", "PickerButton", "PickerCell", "PickerCellList",
+    "PickerColumn", "PickerInput", "SelectableText", "SpinButton", "TextInput", "TimePickerDropdown",
+
+    // component/list: renderer/row sub-parts behind List / MultiSelectList / BulletedList / NumberedList
+    "GlyphListItemRenderer", "LabelListItemRenderer", "ListItem",
+
+    // component/menubar: sub-parts of MenuBar / ToolBar
+    "MenuBarButton", "ToolBarSeparator",
+
+    // component/table: cell/editor/renderer/row/column internals behind Table / TablePanel /
+    // TreeTable / TreeTablePanel ("Body" here is the table-row-body class, distinct from core's Body)
+    "Body", "BooleanCell", "BooleanEditor", "Cell", "CellEditorPool", "Column", "ComboCell", "ComboEditor",
+    "ComboRenderer", "DateCell", "DateEditor", "DateRenderer", "DateTimeCell", "DateTimeEditor",
+    "DateTimeRenderer", "DefaultCell", "DynamicCell", "FilterCell", "FilterCellRenderer", "FooterRow",
+    "GlyphCell", "GlyphRenderer", "GroupSeparatorCell", "HeaderCell", "LinkCellRenderer", "NumberCell",
+    "NumberEditor", "NumberRenderer", "ParentHeaderCell", "Row", "StringCell", "StringEditor",
+    "StringRenderer", "TableExporter", "TableHeader", "TimeCell", "TimeEditor", "TimeRenderer",
+    "TreeBody", "TreeCellRenderer",
+
+    // component/tree: renderer sub-parts behind Tree
+    "IconLabelTreeNodeRenderer", "LabelTreeNodeRenderer",
 ];
 
 export const conventions = [

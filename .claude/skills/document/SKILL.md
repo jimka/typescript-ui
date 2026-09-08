@@ -23,6 +23,10 @@ The library has subpath-only exports — every public symbol lives in exactly on
 
 TypeDoc entry points live in [typedoc.json](../../../packages/lib/typedoc.json) — one per subpath barrel. The custom [typedoc-callable-plugin.mjs](../../../packages/lib/typedoc-callable-plugin.mjs) promotes `callable()`-wrapped exports (`export { ButtonCallable as Button }`) from `/api/<bucket>/variables/X.md` back to `/api/<bucket>/classes/X.md` so the rendered API page carries the full class documentation. The plugin is automatic — new callable classes are picked up without configuration as long as the export form is `callable(_Inner)` with a real class on the inside.
 
+## The `llms.txt` capability catalog
+
+A brand-new public **class** (not a sub-part of an existing catalogued component, not a framework primitive) needs a row in [`packages/lib/scripts/llms/manifest.data.mjs`](../../../packages/lib/scripts/llms/manifest.data.mjs)'s `groups` — that's the only hand-edited seam for `llms.txt`; a method/behaviour added to an already-catalogued component does not (its one-line summary stays stable, detail lives in the doc page). Run `npm run docs:llms:check` after `docs:api` to find out which: it fails if the new class is in neither `groups` nor `excludedSymbols`, naming exactly what's uncatalogued. Add it to `groups` (with a `task` phrase) if a consumer would reach for it directly, or to `excludedSymbols` with a reason if it's a sub-part/internal. Then run `npm run docs:llms` to regenerate `llms.txt` — this may require raising `generate.mjs`'s `TOKEN_BUDGET` by the reported overage (see the constant's comment history for the pattern).
+
 ## Verification
 
-After any change that affects the public API surface or symbol locations, run `npm run docs:api` and confirm **0 errors and 0 link warnings** (the lone acceptable warning is typedoc's pre-existing "unsupported TypeScript version" notice).
+After any change that affects the public API surface or symbol locations, run `npm run docs:api` and confirm **0 errors and 0 link warnings** (the lone acceptable warning is typedoc's pre-existing "unsupported TypeScript version" notice). Then run `npm run docs:llms:check` (see above).

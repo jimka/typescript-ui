@@ -16,9 +16,10 @@
     "test": "npm -w packages/lib run test",
     "lint": "npm -w packages/lib run lint",
     "docs:api": "npm -w packages/lib run docs:api",
+    "docs:llms:check": "npm -w packages/lib run docs:llms:check",
     "docs:llms": "npm -w packages/lib run docs:llms",
     "docs:dev": "npm -w packages/docs run dev",
     "build:docs": "npm -w packages/docs run build",
-    "build:pages": "npm run build:lib && npm run docs:api && npm run docs:llms && npm run build:docs"
+    "build:pages": "npm run build:lib && npm run docs:api && npm run docs:llms:check && npm run docs:llms && npm run build:docs"
   }
 }

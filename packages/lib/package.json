@@ -150,6 +150,7 @@
     "typecheck": "tsc -p tsconfig.lib.json --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
     "docs:api": "typedoc",
+    "docs:llms:check": "node scripts/llms/check-coverage.mjs",
     "docs:llms": "node scripts/llms/generate.mjs",
     "clean": "rimraf dist/*",
     "lint": "eslint src",

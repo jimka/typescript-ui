@@ -21,6 +21,9 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - Collapsible accordion sections → **Accordion** · `@jimka/typescript-ui/layout` · A layout manager that stacks vertically collapsible sections, each with a clickable header and an animated content panel. · docs/layouts/Accordion.md
 - Stretch a single child to fill the container → **Fit** · `@jimka/typescript-ui/layout` · A layout manager that expects exactly one child component and positions it inside the container's entire inner bounds. The default fill mod… · docs/layouts/Fit.md
 - Wrap children like text that reflows (horizontal flow) → **HFlow** · `@jimka/typescript-ui/layout` · A layout manager that packs children in horizontal rows, wrapping to a new line when the next child would exceed the container's inner widt… · docs/layouts/HFlow.md
+- Wrap children like text that reflows (vertical flow) → **VFlow** · `@jimka/typescript-ui/layout` · A layout manager that packs children in vertical columns, wrapping to a new column when the next child would exceed the container's inner h… · docs/layouts/VFlow.md
+- Position children manually at explicit x/y (no automatic layout) → **Absolute** · `@jimka/typescript-ui/layout` · A layout manager that places each child at its preferred (or current) size at the position the application has already set on the child. No… · docs/layouts/Absolute.md
+- Pin or stretch children to container edges by proportional offset, re-resolved on resize → **Anchor** · `@jimka/typescript-ui/layout` · A resize-reactive layout manager that positions each child by edge-relative and proportional offsets, re-resolving them on every `doLayout`… · docs/layouts/Anchor.md
 
 ### Containers / Windows
 - Group labelled form fields in a bordered box → **FieldSet** · `@jimka/typescript-ui/component/container` · A fieldset component with an embedded legend title. · docs/components/FieldSet.md
@@ -29,9 +32,12 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - Self-managing tab container (add/close/select tabs) → **TabPanel** · `@jimka/typescript-ui/component/container` · A `Container` subclass that owns an internal `Tab` layout manager and exposes a tab-typed factory-accepting `addTab` / `addLazyTab` surface… · docs/components/TabPanel.md
 - Self-managing accordion of collapsible sections → **AccordionPanel** · `@jimka/typescript-ui/component/container` · A `Container` subclass that owns an internal `Accordion` layout manager and exposes a section-typed `addSection` surface so consumers do no… · docs/components/AccordionPanel.md
 - Bottom status bar with segments → **StatusBar** · `@jimka/typescript-ui/component/container` · A thin horizontal strip mounted at the bottom of a window or panel that surfaces a transient status message and small persistent indicators. · docs/components/StatusBar.md
+- Menu bar (File/Edit/View-style strip of top-level menu buttons) → **MenuBar** · `@jimka/typescript-ui/component/menubar` · A persistent horizontal menu bar that hosts top-level dropdown menus. · docs/components/MenuBar.md
+- Toolbar strip of buttons, with overflow → **ToolBar** · `@jimka/typescript-ui/component/menubar` · A horizontal (or vertical) strip of related controls — e.g. Bold / Italic / Underline in a text editor, or Cut / Copy / Paste in a file man… · docs/components/ToolBar.md
 - Virtualize a huge child list (render only visible rows) → **VirtualScroller** · `@jimka/typescript-ui/component/container` · Shared scroll machinery for transform-based virtual lists (e.g. table body, tree). Owns the rows-container element, two custom Scrollbar ov… · docs/components/VirtualScroller.md
 - Mutually-exclusive group of toggle buttons → **ButtonGroup** · `@jimka/typescript-ui/overlay` · Manages mutual exclusivity among a set of RadioButton or ToggleButton instances. · docs/components/ButtonGroup.md
 - Corner-pinned floating panel → **FloatingPanel** · `@jimka/typescript-ui/component/container` · A `Panel` that pins itself to one corner of its host's inner box, via an owned AnchorConstraints instance. · docs/components/FloatingPanel.md
+- Reserve or absorb layout space with an invisible spacer → **Spacer** · `@jimka/typescript-ui/component/container` · A deliberately invisible leaf Component whose only job is to take up space inside a layout. Two modes: · docs/components/Spacer.md
 
 ### Inputs / Forms
 - Semantic <form> container with submit handling → **Form** · `@jimka/typescript-ui/core` · A Panel that bakes the semantic `<form>` tag and wires the native `submit` event to a single `onSubmit` callback. · docs/components/Form.md
@@ -53,13 +59,18 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - Dropdown select bound to a store → **ComboBox** · `@jimka/typescript-ui/component/input` · A drop-down combo box backed by a styled `<div>` surface and an `AnimatedDropdown` panel. · docs/components/ComboBox.md
 - Type-ahead field with autocomplete suggestions → **AutoCompleteField** · `@jimka/typescript-ui/component/input` · A typeahead/autocomplete text field. · docs/components/AutoCompleteField.md
 - Date picker field → **DateField** · `@jimka/typescript-ui/component/input` · A date-picker input component. · docs/components/DateField.md
+- Time picker field → **TimeField** · `@jimka/typescript-ui/component/input` · A time-picker input component. · docs/components/TimeField.md
 - Combined date-and-time picker field → **DateTimeField** · `@jimka/typescript-ui/component/input` · A date-time-picker input component. · docs/components/DateTimeField.md
 - File chooser field → **FileField** · `@jimka/typescript-ui/component/input` · A styled file-selection control: a trigger `Button` that opens the OS file picker, plus a filename label. Wraps a hidden native `<input typ… · docs/components/FileField.md
+- Drag-and-drop file upload zone → **FileDropZone** · `@jimka/typescript-ui/component/input` · A bordered drag-and-drop surface that *composes* a `FileField` and additionally accepts OS file drops through the HTML5 `DataTransfer.files… · docs/components/FileDropZone.md
+- Standalone display text → **Text** · `@jimka/typescript-ui/component/input` · A text-displaying component with comprehensive font and layout controls. · docs/components/Text.md
+- Text label associated with a form control → **Label** · `@jimka/typescript-ui/component/input` · A label component backed by a `<label>` element. · docs/components/Label.md
 
 ### Data / Tables / Trees
 - Editable data grid / spreadsheet-style table, with per-column or per-cell editor/renderer types → **Table** · `@jimka/typescript-ui/component/table` · A data-bound table component rendered as an HTML `<table>` element. · docs/components/Table.md
 - Store-bound table with a scroll frame and toolbar → **TablePanel** · `@jimka/typescript-ui/component/table` · A composite panel that combines a Table with an add/remove/sync toolbar. · docs/components/TablePanel.md
 - Table whose rows form an expandable tree → **TreeTable** · `@jimka/typescript-ui/component/table` · A data-bound table whose rows form a parent/child hierarchy. · docs/components/TreeTable.md
+- Store-bound tree table with a scroll frame and toolbar → **TreeTablePanel** · `@jimka/typescript-ui/component/table` · A composite panel that combines a TreeTable with an add/remove/sync toolbar — the tree counterpart to TablePanel. · docs/components/TreeTablePanel.md
 - Expandable tree of nodes → **Tree** · `@jimka/typescript-ui/component/tree` · A hierarchical data view with collapsible nodes and virtual scrolling. · docs/components/Tree.md
 - Single-select scrollable list → **List** · `@jimka/typescript-ui/component/list` · A scrollable single-selection list box. · docs/components/List.md
 - Multi-select list → **MultiSelectList** · `@jimka/typescript-ui/component/list` · A scrollable multi-selection list box. · docs/components/MultiSelectList.md
@@ -75,6 +86,7 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - Image → **Image** · `@jimka/typescript-ui/component/display` · An image component backed by an `<img>` element. · docs/components/Image.md
 - Font-Awesome icon glyph → **Glyph** · `@jimka/typescript-ui/component/display` · A small icon rendered from the internal `Glyphs` registry. · docs/components/Glyph.md
 - Icon paired with a label → **IconLabel** · `@jimka/typescript-ui/component/display` · A small composite pairing a leading `Glyph` with a trailing `Label`, laid out horizontally with a configurable gap (default 2). · docs/components/IconLabel.md
+- Icon paired with free-floating text (not a form-control label) → **IconText** · `@jimka/typescript-ui/component/display` · A small composite pairing a leading `Glyph` with a trailing standalone `Text`, laid out horizontally with a configurable gap (default 2). · docs/components/IconText.md
 - Render a Markdown string as formatted content → **Markdown** · `@jimka/typescript-ui/component/display` · A display component that renders a Markdown source string as a live DOM subtree. · docs/components/Markdown.md
 - Floating heading-outline minimap → **MarkdownMinimap** · `@jimka/typescript-ui/component/display` · A floating card showing a document's heading outline as a `Tree`. · docs/components/MarkdownMinimap.md
 - Markdown viewer with minimap and zoom controls → **MarkdownViewer** · `@jimka/typescript-ui/component/display` · A single-document Markdown viewer with a floating outline minimap and width/zoom controls, both pinned over the prose. · docs/components/MarkdownViewer.md
@@ -96,6 +108,8 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - Window whose body is a tab container → **TabWindow** · `@jimka/typescript-ui/overlay` · A floating, resizable, draggable window whose interior *is* a Tab layout — no separate title-bar header. The tab strip serves as both the w… · docs/components/TabWindow.md
 - Modal dialog (alert/confirm/prompt/custom) → **Dialog** · `@jimka/typescript-ui/overlay` · A modal dialog component with a title bar, scrollable content area, and button row. · docs/components/Dialog.md
 - Edge-anchored sliding drawer → **Drawer** · `@jimka/typescript-ui/overlay` · An edge-anchored panel that rests off-screen against a viewport edge and slides into view when opened, overlaying the rest of the UI. · docs/components/Drawer.md
+- Persistent edge-anchored launcher strip (holds drawer/window handles) → **Rail** · `@jimka/typescript-ui/overlay` · An edge-anchored launcher strip that floats over the app content along one viewport edge, holding a column (WEST/EAST) or row (NORTH/SOUTH)… · docs/components/Rail.md
+- Rearrangeable dockable panel workspace (VS Code / GoldenLayout style) → **Dock** · `@jimka/typescript-ui/overlay` · A user-configurable, rearrangeable panel layout — the VS Code / GoldenLayout style dock. It hosts a tree of `Split` / `Tab` regions whose p… · docs/components/Dock.md
 - Context / dropdown menu → **Menu** · `@jimka/typescript-ui/overlay` · A floating menu panel that operates in one of two modes: · docs/components/Menu.md
 - Checkbox row in a menu → **CheckboxMenuRow** · `@jimka/typescript-ui/component/container` · A `Menu` row hosting a real `Checkbox`, for a multi-select menu. · docs/components/CheckboxMenuRow.md
 - Radio row in a menu → **RadioMenuRow** · `@jimka/typescript-ui/component/container` · A `Menu` row hosting a real `RadioButton`, for a single-choice menu. · docs/components/RadioMenuRow.md

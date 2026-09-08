@@ -77,8 +77,15 @@ const GITHUB_BLOB = "https://github.com/jimka/typescript-ui/blob/master/";
  *
  * Raised again from 6940: the MarkdownDocumentPanel catalog entry pushed
  * the site variant to ~7023/6940 — one more minimally-worded row.
+ *
+ * Raised again from 7030: a coverage sweep against the public export surface
+ * found MenuBar, ToolBar, Dock, Rail, FileDropZone, Label, Text, IconText,
+ * TimeField, TreeTablePanel, Absolute, Anchor, VFlow, and Spacer missing
+ * from the catalog — genuine components with their own doc pages that had
+ * never been curated in. Adding the fourteen rows pushed the site variant
+ * to ~8002/7030.
  */
-const TOKEN_BUDGET = 7030;
+const TOKEN_BUDGET = 8010;
 
 /** Max summary length (chars). Bounds a single row so the catalog stays under budget. */
 const SUMMARY_CAP = 140;

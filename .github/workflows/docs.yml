@@ -30,8 +30,10 @@ jobs:
             # preview build and its separate output-merging step are gone —
             # there is only one site to build now.
             #
-            # build:pages runs build:lib, docs:api (TypeDoc), docs:llms, and
-            # the docs app's own build in sequence. The NODE_OPTIONS heap pin
+            # build:pages runs build:lib, docs:api (TypeDoc), docs:llms:check
+            # (fails if a new public component is in neither manifest.data.mjs's
+            # groups nor excludedSymbols), docs:llms, and the docs app's own
+            # build in sequence. The NODE_OPTIONS heap pin
             # is set at the step level so TypeDoc inherits it while it emits
             # the ~105 MB model — the one remaining build step heavy enough to
             # need it now that the old static-site build is gone. That
