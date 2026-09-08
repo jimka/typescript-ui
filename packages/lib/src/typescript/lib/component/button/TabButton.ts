@@ -11,6 +11,15 @@ import { Animation } from "~/core/Animation.js";
 import { BorderOptions } from "~/primitive/Border.js";
 import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { GLYPH_XS_INK_TRAIT } from "~/core/StyleTraits.js";
+import { Glyph } from "~/component/display/Glyph.js";
+import { circle } from "~/glyphs/solid/circle.js";
+
+// Idempotent registration — see RadioButton.ts's own registration of this
+// same glyph for its selection dot.
+Glyph.register(circle);
+
+/** Registry name of the trailing "unsaved changes" dot — a plain filled disc. */
+const MODIFIED_GLYPH = "circle";
 
 /**
  * Construction-time options for {@link TabButton}.
@@ -216,6 +225,17 @@ class TabButton extends ToggleButton {
     // The busy wash, built on the first setBusy(true) and reused thereafter.
     private _busyIndicator: TabBusyIndicator | null = null;
 
+    // Whether this tab is marked modified (unsaved changes). Runtime state, not
+    // configuration, so it carries no options-bag field — matching `_busy`.
+    private _modified: boolean = false;
+
+    // The trailing "unsaved changes" dot, built lazily on the first
+    // setModified(true) and reused thereafter, matching `_busyIndicator`. Added
+    // to and removed from `_content` directly (not merely shown/hidden) so a
+    // clean tab's label keeps the full row width instead of always reserving
+    // blank space for a dot it isn't showing.
+    private _modifiedGlyph: Glyph | null = null;
+
     /**
      * Builds a tab-styled toggle button with the given label, applying the
      * `--ts-ui-tab-button-*` fill/border/hover/selected styling and, when
@@ -271,14 +291,23 @@ class TabButton extends ToggleButton {
     }
 
     /**
-     * Disposes the overlaid close button and busy indicator, then runs the
-     * inherited teardown. Both are raw-appended onto this button's own element
-     * rather than registered via `addComponent` (see `buildCloseButton`'s doc
-     * comment), so `super.destructor()`'s child recursion cannot reach them.
+     * Disposes the overlaid close button, busy indicator, and modified dot, then
+     * runs the inherited teardown. The close button and busy indicator are
+     * raw-appended onto this button's own element rather than registered via
+     * `addComponent` (see `buildCloseButton`'s doc comment), so `Component`'s own
+     * child-disposal recursion cannot reach them. The modified dot *is* a
+     * registered `_content` child, but only while shown — `setModified(false)`
+     * detaches it (`removeComponent` is detach-only), so a clean tab that was
+     * dirty at least once still has an undisposed instance the recursion would
+     * never find. All three are disposed explicitly for that reason; a
+     * currently-attached dot being disposed twice (here, then again via
+     * `_content`'s own recursion inside `super.destructor()`) is a documented
+     * no-op.
      */
     protected destructor(): void {
         this._closeButton?.dispose();
         this._busyIndicator?.dispose();
+        this._modifiedGlyph?.dispose();
 
         super.destructor();
     }
@@ -426,6 +455,72 @@ class TabButton extends ToggleButton {
      */
     isBusy(): boolean {
         return this._busy;
+    }
+
+    /**
+     * Shows or hides the trailing "unsaved changes" dot in the tab's content
+     * row, after the label. Unlike the busy overlay, this is a real row child,
+     * not an absolute overlay: only the label truncates when the tab narrows
+     * (`Text`'s own ellipsis), so the dot — like the leading glyph — always
+     * keeps its full size and is never clipped away.
+     *
+     * @param modified - True to show the dot, false to hide it.
+     *
+     * @returns This button, for method chaining.
+     */
+    setModified(modified: boolean): this {
+        if (this._modified === modified) {
+            return this;
+        }
+
+        this._modified = modified;
+
+        if (!this._modifiedGlyph) {
+            if (!modified) {
+                return this;
+            }
+
+            this._modifiedGlyph = new Glyph(MODIFIED_GLYPH);
+
+            const dotSize = ThemeManager.getResolvedScale().glyphXs;
+
+            this._modifiedGlyph.setPreferredSize({ width: dotSize, height: dotSize });
+            this._modifiedGlyph.setForegroundColor("var(--ts-ui-tab-indicator-color, #1a73e8)");
+        }
+
+        if (modified) {
+            this._content.addComponent(this._modifiedGlyph);
+        } else {
+            this._content.removeComponent(this._modifiedGlyph);
+        }
+
+        return this;
+    }
+
+    /**
+     * Reports whether the trailing "unsaved changes" dot is currently shown.
+     *
+     * @returns True when this tab is marked modified.
+     */
+    isModified(): boolean {
+        return this._modified;
+    }
+
+    /**
+     * Re-appends the modified dot after a content-row rebuild, mirroring
+     * `SplitButton`'s own override for its trailing chevron — `_rebuildContentRow`
+     * empties `_content` wholesale on any label/glyph/writing-mode change (e.g. a
+     * cross-type Save As calling `setGlyph`), which would otherwise silently
+     * drop the dot until the next explicit `setModified` call.
+     *
+     * @remarks Guarded on both `_modified` and `_modifiedGlyph`: a clean tab (or
+     * one that has never been marked modified) must not gain a dot it was never
+     * asked to show.
+     */
+    protected override _afterRebuildContentRow(): void {
+        if (this._modified && this._modifiedGlyph) {
+            this._content.addComponent(this._modifiedGlyph);
+        }
     }
 }
 

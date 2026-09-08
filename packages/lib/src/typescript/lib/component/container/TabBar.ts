@@ -1656,6 +1656,32 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
+     * Shows or hides the cell with `id`'s trailing "unsaved changes" dot. No-op
+     * for an unknown id.
+     *
+     * @param id - The cell id whose modified state changed.
+     * @param modified - True to show the dot, false to hide it.
+     *
+     * @returns This tab strip, for method chaining.
+     */
+    setEntryModified(id: string, modified: boolean): this {
+        this.entryById(id)?.button.setModified(modified);
+
+        return this;
+    }
+
+    /**
+     * Reports whether the cell with `id`'s modified dot is currently shown.
+     *
+     * @param id - The cell id to query.
+     *
+     * @returns True when the cell is modified; false for an unknown id.
+     */
+    isEntryModified(id: string): boolean {
+        return this.entryById(id)?.button.isModified() ?? false;
+    }
+
+    /**
      * Returns the id of the cell's tab button — the owner reads it to set the
      * content panel's ARIA `aria-labelledby` back to the button.
      *

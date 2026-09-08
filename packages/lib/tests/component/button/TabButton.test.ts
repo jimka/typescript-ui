@@ -173,6 +173,85 @@ describe('TabButton busy overlay', () => {
     });
 });
 
+describe('TabButton modified indicator', () => {
+    /** Reaches TabButton's protected `_content` row, the same private-surface-reach pattern SplitButton.test.ts uses for `_chevron`. */
+    function contentChildren(btn: TabButton): unknown[] {
+        return (btn as unknown as { _content: { getComponents(): unknown[] } })._content.getComponents();
+    }
+
+    it('defaults to not modified, with no dot among its content-row children', () => {
+        const btn = new TabButton('Home');
+
+        expect(btn.isModified()).toBe(false);
+        expect(contentChildren(btn)).toHaveLength(1); // just the label
+    });
+
+    it('setModified(true) sets isModified(), is chainable, and adds exactly one content-row child', () => {
+        const btn = new TabButton('Home');
+        const baseline = contentChildren(btn).length;
+
+        expect(btn.setModified(true)).toBe(btn);
+        expect(btn.isModified()).toBe(true);
+        expect(contentChildren(btn)).toHaveLength(baseline + 1);
+    });
+
+    it('setModified(true) twice adds exactly one dot', () => {
+        const btn = new TabButton('Home');
+        const baseline = contentChildren(btn).length;
+
+        btn.setModified(true);
+        btn.setModified(true);
+
+        expect(contentChildren(btn)).toHaveLength(baseline + 1);
+    });
+
+    it('setModified(true) then setModified(false) clears isModified() and removes the dot', () => {
+        const btn = new TabButton('Home');
+        const baseline = contentChildren(btn).length;
+
+        btn.setModified(true);
+        btn.setModified(false);
+
+        expect(btn.isModified()).toBe(false);
+        expect(contentChildren(btn)).toHaveLength(baseline);
+    });
+
+    it('setModified(true) again after a show/hide cycle reuses the same Glyph instance', () => {
+        const btn = new TabButton('Home');
+
+        btn.setModified(true);
+
+        const firstDot = contentChildren(btn)[contentChildren(btn).length - 1];
+
+        btn.setModified(false);
+        btn.setModified(true);
+
+        const secondDot = contentChildren(btn)[contentChildren(btn).length - 1];
+
+        expect(secondDot).toBe(firstDot);
+    });
+
+    it('_afterRebuildContentRow re-appends the dot while modified, and adds nothing while clean', () => {
+        const modifiedBtn = new TabButton('Home');
+
+        modifiedBtn.setModified(true);
+        modifiedBtn.setGlyph('xmark'); // triggers a content-row rebuild
+
+        // Glyph + label + dot: the rebuild re-appended the dot alongside the
+        // new leading glyph rather than dropping it.
+        expect(contentChildren(modifiedBtn)).toHaveLength(3);
+        expect(modifiedBtn.isModified()).toBe(true);
+
+        const cleanBtn = new TabButton('Home');
+        const baseline = contentChildren(cleanBtn).length;
+
+        cleanBtn.setGlyph('xmark'); // triggers a content-row rebuild
+
+        expect(contentChildren(cleanBtn)).toHaveLength(baseline + 1); // just the new glyph
+        expect(cleanBtn.isModified()).toBe(false);
+    });
+});
+
 describe('TabButton listeners bag', () => {
     // ToggleButton routes on("action") to the DOM "change" event. A subclass
     // that takes its options after `super(text)` must wire the inherited
