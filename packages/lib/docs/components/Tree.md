@@ -1,6 +1,6 @@
 # Tree
 
-[`Tree`](/api/component/tree/classes/Tree) is a hierarchical data view with collapsible nodes and virtual scrolling. Pass root nodes via `setNodes(nodes[])` — the tree flattens the visible subtree into a single scrollable list and recycles internal row components, rebinding rows only when their data index changes.
+[`Tree`](/api/component/tree/classes/Tree) is a hierarchical data view with collapsible nodes and virtual scrolling. Pass root nodes via `setNodes(nodes[])` — the tree flattens the visible subtree into a single scrollable list and recycles internal row components, rebinding a row only when what it was last bound to has actually changed.
 
 <!-- demo: tree-nodes -->
 > **Live demo** — a small file/folder hierarchy as node literals, with
