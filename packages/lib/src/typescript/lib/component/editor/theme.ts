@@ -4,6 +4,7 @@ import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import type { Extension } from "@codemirror/state";
+import { StyleRule } from "~/core/StyleTarget.js";
 
 // The syntax palette has no dedicated project theme tokens (the framework
 // defines chrome/surface/accent tokens, not a per-token-kind syntax scheme),
@@ -17,6 +18,32 @@ const SYNTAX_LITERAL  = "#d97706"; // amber — numbers/booleans/null
 const SYNTAX_FUNCTION = "#7c3aed"; // violet — function/variable definitions
 const SYNTAX_TYPE     = "#0891b2"; // teal — type names
 const SYNTAX_PROPERTY = "#be185d"; // pink — object/attribute property names
+
+/** Class the reveal highlight's decoration carries; styled below, inside the editor's theme scope. */
+export const REVEAL_CLASS = "ts-ui-cm-reveal";
+
+/** Added alongside {@link REVEAL_CLASS} to run the entrance flash once. Omitted under reduced motion. */
+export const REVEAL_FLASH_CLASS = "ts-ui-cm-reveal-flash";
+
+/** Name of the reveal flash's `@keyframes` block, registered once below. */
+const REVEAL_FLASH_KEYFRAME = "ts-ui-code-editor-reveal-flash";
+
+// Long enough to register as a flash rather than a repaint, short enough that
+// it has finished by the time the eye reaches the range — the same order as
+// READONLY_FLASH_MS (300ms) in CodeEditor.ts, doubled because this animation
+// has to be caught rather than merely felt.
+const REVEAL_FLASH_MS = 600;
+
+/** Resting tint of the reveal highlight — the same strength as a selected search match. */
+const REVEAL_RESTING_TINT = "color-mix(in srgb, var(--ts-ui-indicator-focus, #2563eb) 25%, transparent)";
+
+/** Peak tint the flash starts from, decaying to {@link REVEAL_RESTING_TINT}. */
+const REVEAL_PEAK_TINT = "color-mix(in srgb, var(--ts-ui-indicator-focus, #2563eb) 50%, transparent)";
+
+StyleRule.ensureKeyframes(
+    REVEAL_FLASH_KEYFRAME,
+    `from { background-color: ${REVEAL_PEAK_TINT}; } to { background-color: ${REVEAL_RESTING_TINT}; }`
+);
 
 /**
  * Builds the editor's theme extension: the chrome (background, gutters,
@@ -140,6 +167,14 @@ export function codeEditorTheme(dark: boolean): Extension {
         },
         ".cm-selectionMatch": {
             backgroundColor: "rgba(127, 127, 127, 0.2)",
+        },
+        [`.${REVEAL_CLASS}`]: {
+            backgroundColor: REVEAL_RESTING_TINT,
+        },
+        [`.${REVEAL_CLASS}.${REVEAL_FLASH_CLASS}`]: {
+            // No fill-mode: the animation ends on the resting tint the rule above
+            // already declares, so the mark settles with nothing to clean up.
+            animation: `${REVEAL_FLASH_KEYFRAME} ${REVEAL_FLASH_MS}ms ease-out`,
         },
         ".cm-lintRange-error": {
             backgroundImage: "none",
