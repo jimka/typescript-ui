@@ -15,6 +15,17 @@ page resets to empty.
   tab's label, marking unsaved changes, that survives label truncation since
   it is a real content-row child rather than baked into the label text.
 
+- **`CodeEditor` gains `revealRange(at, options?)`**, for jumping the editor to
+  a range a host computed elsewhere — a search hit, a diagnostic, a stack
+  frame. It selects the 1-based `{ line, column, length }` range, scrolls it
+  into view, and paints an accent highlight over it that survives the editor
+  not having focus, which a native selection does not. `options.focus: false`
+  previews a location without stealing focus; `options.highlight: false`
+  suppresses the highlight. The target is clamped against the live document, so
+  a stale position lands at the nearest valid range instead of throwing. The
+  new types `CodeEditorRevealTarget` and `CodeEditorRevealOptions` are exported
+  from `component/editor`. No consumer action is needed.
+
 ### Layouts
 
 - **`Tab.setTabModified(content, modified)` / `isTabModified(content)`** show
