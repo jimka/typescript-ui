@@ -937,3 +937,63 @@ already documents.
     because `CodeEditorCursorPosition` — the same class's existing line/column
     surface — is 1-based on both fields, and a class publishing two conflicting
     column conventions would be worse than one conversion at one call site.
+
+---
+
+## Implementation Notes
+
+- **All twelve `## Expected Behaviour` › *Manual verification only* cases were
+  driven live** via `npm run dev` (port 8015) against a real Chrome instance
+  (chrome-devtools MCP), using the dev app's **CodeEditor** section and its new
+  Reveal / Preview buttons, and inspected through both the accessibility-tree
+  snapshot and `document.querySelectorAll('.ts-ui-cm-reveal')` /
+  `getComputedStyle` reads rather than screenshots alone:
+  1. **Reveal** selected `parts` on line 12 (`Ln 12, Col 10 · Pos 305` — the
+     head, at `column + length`), moved focus into the editor, and painted
+     `class="ts-ui-cm-reveal ts-ui-cm-reveal-flash"` over it. This is the case
+     `## Potential Challenges` calls out as the one that would catch
+     `view.focus()` clearing the highlight it just set — it did not.
+  2. **Preview** selected `message` on line 2, left `document.activeElement`
+     on the Preview button (confirmed via the a11y snapshot showing it
+     `focusable focused`), and still painted the highlight.
+  3. Reveal → Preview → Reveal left exactly one `.ts-ui-cm-reveal` element at
+     each step (never two), moving from `parts` to `message` and back.
+  4. Clicking inside the document (on the editor's textbox) dropped the
+     highlight count to 0.
+  5. With the caret in the document (via a direct `.cm-content.focus()`,
+     which — like `view.focus()` — dispatches no transaction and left the
+     highlight in place) pressing `ArrowRight` dropped the count to 0.
+  6. Typing a character after re-arming Preview dropped the count to 0 (and
+     set `Dirty: yes`, confirming the keystroke actually reached the
+     document).
+  7. Dispatching a `wheel` event at the scroller left the count at 1,
+     unchanged.
+  8. Cycling the Misc panel's theme button to the dark theme left the count
+     at 1 and changed the mark's computed `background-color` from
+     `color(srgb 0.117647 0.392157 0.784314 / 0.25)` (light) — recolouring
+     with the rest of the editor via `--ts-ui-indicator-focus` as designed.
+  9. With `window.matchMedia` patched so `(prefers-reduced-motion: reduce)`
+     reports `matches: true`, **Reveal**'s mark class was `ts-ui-cm-reveal`
+     with no `-flash` suffix, still present at the resting tint.
+  10. With the floating search panel open on `greet` (2 matches, away from
+      the `parts` target), a **Reveal** left both `.cm-searchMatch` (15%
+      tint) and `.ts-ui-cm-reveal` (25% tint) present simultaneously — same
+      hue, distinct strengths, both legible, confirmed by both a screenshot
+      and the two elements' computed backgrounds.
+  11. Switching to the four-line **CSS** sample then pressing **Reveal**
+      (still targeting line 12) landed the caret at `Ln 5, Col 1` — the end
+      of the sample's last (blank) line — with 0 `.ts-ui-cm-reveal` elements
+      and no console error (`list_console_messages` was empty across every
+      navigation in the session).
+  12. Shrinking the viewport to 900×400 (so the editor's `.cm-scroller` had
+      `scrollHeight` 517 against a `clientHeight` of 77) and scrolling to the
+      bottom (`scrollTop` 440, putting line 12 off-screen), then pressing
+      **Reveal**, moved `scrollTop` to 216 and brought the `parts` mark's
+      bounding rect fully inside the scroller's — confirmed geometrically,
+      not just by absence of error.
+
+  The mutations these cases made to the dev app's in-memory document
+  (case 6's typed character; the theme left on dark) live only in the
+  browser tab, which was closed afterward; `git status` in the worktree
+  stayed clean throughout, and the dev server was stopped at the end of the
+  session.
