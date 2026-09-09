@@ -135,7 +135,7 @@ A `Tree` with no explicit `preferredSize` reports a width of `200` and a height 
 
 ## Custom row renderers
 
-Each pool slot's content (everything to the right of the expand/collapse toggle) is owned by a [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer) instance. The tree holds a zero-argument factory; one renderer is created per pool slot when the pool grows and rebound via `update(context)` when the slot is mapped to a different node.
+Each pool slot's content (everything to the right of the expand/collapse toggle) is owned by a [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer) instance. The tree holds a zero-argument factory; one renderer is created per pool slot when the pool grows. A slot keeps its node across an expand/collapse now, so its renderer is only re-`update`d via `update(context)` in the uncommon case — when the slot is genuinely handed different content, not merely because a reflatten shifted which node used to sit at that position.
 
 Built-in renderers:
 

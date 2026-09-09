@@ -53,3 +53,15 @@ page resets to empty.
   node/state — a caller mutating a node's fields in place before calling
   `setNodes` again, or a fresh renderer with no cached content to compare
   against. No consumer action is needed.
+
+- **Expanding or collapsing a `Tree` node deep in a scrolled, densely
+  expanded tree no longer rebinds most of the visible rows.** A pool slot was
+  assigned by flat position, so inserting or removing a run of rows shifted
+  every row below the change point into a different slot than the one
+  already correctly showing it, forcing a rebind and — for an expandable row
+  — a toggle-caret rebuild, even though the row's own content never changed.
+  A render pass now re-matches each pool slot to the node it was already
+  showing, by identity, before deciding which slots to rebind, so a node
+  that stays on screen keeps its slot, its DOM element, and its caret across
+  an unrelated toggle and pays only a reposition. No consumer action is
+  needed.
