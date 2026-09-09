@@ -102,10 +102,12 @@ const _defaultTreeOptions: Partial<TreeOptions> = {
  *
  * Pass root nodes via {@link Tree.setNodes}. The tree flattens the currently
  * visible subtree into a single scrollable list and recycles a fixed pool of
- * internal row components — a pooled row rebinds only when the node, depth,
- * expanded/loading state, or other content it was last bound to has actually
- * changed, not merely because a reflatten shifted which node its pool slot
- * happens to be showing.
+ * internal row components. A reflatten first re-matches each pool slot to the
+ * node it was already showing, by identity, so a node that stays on screen
+ * keeps its slot — and therefore its DOM element and renderer state — across
+ * an expand/collapse instead of following a shifted flat position; only then
+ * does a slot rebind, and only when the node, depth, expanded/loading state,
+ * or other content it was last bound to has actually changed.
  *
  * Scrolling is delegated to a `VirtualScroller` that owns the
  * rows-container transform, two custom scrollbar overlays, and the wheel/touch
@@ -131,6 +133,13 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     private _nodes              : TreeNode[]                                              = [];
     private _expandedNodes      : Set<TreeNode>                                           = new Set();
     private _flatRows           : FlatRow[]                                               = [];
+    // Set by `_flatten`, cleared by the render pass that consumes it. Tells
+    // `renderWindow` whether the pool has to be re-matched to its nodes by
+    // identity (a reflatten moved rows between flat positions) or can take the
+    // base's cheap scroll rotation (the row set is unchanged; only the window
+    // moved). Framework-managed bookkeeping, so per ARCHITECTURE.md's third
+    // DOM-write rule it gets no `TreeOptions` field and no public setter.
+    private _flatRowsDirty      : boolean                                                 = false;
     private _lastRowWidth       : number                                                  = 0;
     // Widest row content measured so far across the current flattened set. Only
     // the *visible* window is measured each frame, so tracking a running maximum
@@ -698,6 +707,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      */
     private _flatten(): void {
         this._flatRows = [];
+        this._flatRowsDirty = true;
 
         // The visible set is changing, so the widest-row running maximum no
         // longer describes it — reset it and let the next render pass re-derive
@@ -723,8 +733,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
-     * Re-flattens the visible subtree and re-renders; each row rebinds only
-     * when `TreeRow.isBoundTo` reports its content actually changed.
+     * Re-flattens the visible subtree and re-renders; the render pass first
+     * re-matches pool slots to nodes by identity, then rebinds only the slots
+     * whose content — per `TreeRow.isBoundTo` — actually changed.
      *
      * @remarks
      * Called from the collapse path, the synchronous expand path, and the async
@@ -1365,7 +1376,24 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
         const poolTarget = this.computePoolTarget(win.windowSize, visibleHeight, totalRows);
         this.growRowPool(poolTarget);
-        this.alignPoolWindow(win.firstRow);
+
+        // A pure scroll leaves `_flatRows` untouched, so every slot's node shifts
+        // by the same amount and the base's rotation is the cheapest correct
+        // answer. A reflatten moves rows by differing amounts either side of the
+        // change point, so which slot keeps which node has to be resolved by node
+        // identity instead.
+        if (this._flatRowsDirty) {
+            this._flatRowsDirty = false;
+
+            this.reconcilePoolByKey(
+                win.firstRow,
+                win.windowSize,
+                (dataIndex) => this._flatRows[dataIndex].node,
+                (slot) => this._rowPool[slot].getNode(),
+            );
+        } else {
+            this.alignPoolWindow(win.firstRow);
+        }
 
         const { reboundFlags, maxContentWidth } =
             this._bindAndMeasure(win.firstRow, win.windowSize);
