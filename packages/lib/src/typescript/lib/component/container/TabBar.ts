@@ -1656,11 +1656,11 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Shows or hides the cell with `id`'s trailing "unsaved changes" dot. No-op
+     * Shows or hides the cell with `id`'s "unsaved changes" badge. No-op
      * for an unknown id.
      *
      * @param id - The cell id whose modified state changed.
-     * @param modified - True to show the dot, false to hide it.
+     * @param modified - True to show the badge, false to hide it.
      *
      * @returns This tab strip, for method chaining.
      */
@@ -1671,7 +1671,7 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Reports whether the cell with `id`'s modified dot is currently shown.
+     * Reports whether the cell with `id`'s modified badge is currently shown.
      *
      * @param id - The cell id to query.
      *
@@ -2755,6 +2755,17 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
+     * Re-pins every modified tab's badge to its leading glyph's current
+     * corner. Cheap to call unconditionally each layout pass — `TabButton`
+     * itself no-ops for a tab that isn't modified or carries no glyph.
+     */
+    private positionModifiedBadges(): void {
+        for (const entry of this._entries) {
+            entry.button.positionModifiedBadge();
+        }
+    }
+
+    /**
      * Pixels to scroll per overflow-arrow click ≈ one tab, so a click pages by a
      * tab at any font size. Derived from the first tab's predicted main-axis
      * extent (which collapses width-mode sizing and raw content width into the
@@ -2898,6 +2909,7 @@ class TabBar extends Container<TabBarOptions> {
         this.positionLeadGroup(thickness, crossLead, mainLead);
         this.positionIndicator();
         this.positionCloseButtons();
+        this.positionModifiedBadges();
     }
 
     /**

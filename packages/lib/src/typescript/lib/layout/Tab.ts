@@ -1420,11 +1420,12 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Shows or hides the trailing "unsaved changes" dot on the tab hosting
-     * `content`. Nothing else about the tab changes.
+     * Shows or hides the "unsaved changes" badge on the tab hosting `content`
+     * — a small dot pinned over the upper-left corner of the tab's leading
+     * file-type glyph, half-covering it. Nothing else about the tab changes.
      *
      * @param content - The content component whose tab to mark.
-     * @param modified - True to show the dot, false to hide it.
+     * @param modified - True to show the badge, false to hide it.
      *
      * @returns `true` when a matching tab was found, `false` otherwise.
      *
@@ -1450,11 +1451,11 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Reports whether the tab hosting `content` currently shows the modified dot.
+     * Reports whether the tab hosting `content` currently shows the modified badge.
      *
      * @param content - The content component whose tab to query.
      *
-     * @returns `true` when that tab's dot is shown; `false` when no tab matches.
+     * @returns `true` when that tab's badge is shown; `false` when no tab matches.
      */
     isTabModified(content: Component): boolean {
         const entry = this._contents.find(e => e.component === content);

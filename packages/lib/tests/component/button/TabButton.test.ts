@@ -174,46 +174,64 @@ describe('TabButton busy overlay', () => {
 });
 
 describe('TabButton modified indicator', () => {
-    /** Reaches TabButton's protected `_content` row, the same private-surface-reach pattern SplitButton.test.ts uses for `_chevron`. */
-    function contentChildren(btn: TabButton): unknown[] {
-        return (btn as unknown as { _content: { getComponents(): unknown[] } })._content.getComponents();
+    /** Counts recorded appendChild writes whose parent is `el` — the same overlay-append idiom the busy-overlay tests above use. */
+    function appendCountOnto(el: unknown): number {
+        return sink.writes.filter(w => w.op === 'appendChild' && w.args[0] === el).length;
     }
 
-    it('defaults to not modified, with no dot among its content-row children', () => {
+    type PositionedComponent = { getX(): number, setX(x: number): void, getY(): number, setY(y: number): void, getWidth(): number };
+
+    /** Reaches TabButton's protected `_content` row, the same private-surface-reach pattern SplitButton.test.ts uses for `_chevron`. */
+    function contentRow(btn: TabButton): { getComponents(): unknown[] } & PositionedComponent {
+        return (btn as unknown as { _content: { getComponents(): unknown[] } & PositionedComponent })._content;
+    }
+
+    /** Reaches TabButton's private `_modifiedGlyph` badge, or `null` before the first `setModified(true)`. */
+    function badgeOf(btn: TabButton): PositionedComponent | null {
+        return (btn as unknown as { _modifiedGlyph: PositionedComponent | null })._modifiedGlyph;
+    }
+
+    it('defaults to not modified, with no badge appended to its element and the content row untouched', () => {
         const btn = new TabButton('Home');
+        const el  = btn.getElement(true)!;
+        const baseline = appendCountOnto(el);
 
         expect(btn.isModified()).toBe(false);
-        expect(contentChildren(btn)).toHaveLength(1); // just the label
+        expect(appendCountOnto(el)).toBe(baseline);
+        expect(contentRow(btn).getComponents()).toHaveLength(1); // just the label
     });
 
-    it('setModified(true) sets isModified(), is chainable, and adds exactly one content-row child', () => {
+    it('setModified(true) sets isModified(), is chainable, appends exactly one overlay, and leaves the content row unchanged', () => {
         const btn = new TabButton('Home');
-        const baseline = contentChildren(btn).length;
+        const el  = btn.getElement(true)!;
+        const baseline = appendCountOnto(el);
+        const rowLength = contentRow(btn).getComponents().length;
 
         expect(btn.setModified(true)).toBe(btn);
         expect(btn.isModified()).toBe(true);
-        expect(contentChildren(btn)).toHaveLength(baseline + 1);
+        expect(appendCountOnto(el)).toBe(baseline + 1);
+        expect(contentRow(btn).getComponents()).toHaveLength(rowLength);
     });
 
-    it('setModified(true) twice adds exactly one dot', () => {
+    it('setModified(true) twice builds exactly one badge', () => {
         const btn = new TabButton('Home');
-        const baseline = contentChildren(btn).length;
+        const el  = btn.getElement(true)!;
+        const baseline = appendCountOnto(el);
 
         btn.setModified(true);
         btn.setModified(true);
 
-        expect(contentChildren(btn)).toHaveLength(baseline + 1);
+        expect(appendCountOnto(el)).toBe(baseline + 1);
     });
 
-    it('setModified(true) then setModified(false) clears isModified() and removes the dot', () => {
+    it('setModified(true) then setModified(false) clears isModified() and hides the badge', () => {
         const btn = new TabButton('Home');
-        const baseline = contentChildren(btn).length;
 
         btn.setModified(true);
         btn.setModified(false);
 
         expect(btn.isModified()).toBe(false);
-        expect(contentChildren(btn)).toHaveLength(baseline);
+        expect(badgeOf(btn)).not.toBe(null); // still built, just hidden
     });
 
     it('setModified(true) again after a show/hide cycle reuses the same Glyph instance', () => {
@@ -221,34 +239,54 @@ describe('TabButton modified indicator', () => {
 
         btn.setModified(true);
 
-        const firstDot = contentChildren(btn)[contentChildren(btn).length - 1];
+        const firstBadge = badgeOf(btn);
 
         btn.setModified(false);
         btn.setModified(true);
 
-        const secondDot = contentChildren(btn)[contentChildren(btn).length - 1];
-
-        expect(secondDot).toBe(firstDot);
+        expect(badgeOf(btn)).toBe(firstBadge);
     });
 
-    it('_afterRebuildContentRow re-appends the dot while modified, and adds nothing while clean', () => {
-        const modifiedBtn = new TabButton('Home');
+    it('a content-row rebuild (e.g. setGlyph) while modified leaves the badge appended and isModified() true', () => {
+        const btn = new TabButton('Home');
+        const el  = btn.getElement(true)!;
 
-        modifiedBtn.setModified(true);
-        modifiedBtn.setGlyph('xmark'); // triggers a content-row rebuild
+        btn.setModified(true);
 
-        // Glyph + label + dot: the rebuild re-appended the dot alongside the
-        // new leading glyph rather than dropping it.
-        expect(contentChildren(modifiedBtn)).toHaveLength(3);
-        expect(modifiedBtn.isModified()).toBe(true);
+        const baseline = appendCountOnto(el);
 
-        const cleanBtn = new TabButton('Home');
-        const baseline = contentChildren(cleanBtn).length;
+        btn.setGlyph('xmark'); // triggers a content-row rebuild, which never touched the badge to begin with
 
-        cleanBtn.setGlyph('xmark'); // triggers a content-row rebuild
+        expect(appendCountOnto(el)).toBe(baseline); // no re-append, no drop
+        expect(btn.isModified()).toBe(true);
+    });
 
-        expect(contentChildren(cleanBtn)).toHaveLength(baseline + 1); // just the new glyph
-        expect(cleanBtn.isModified()).toBe(false);
+    it("positionModifiedBadge centres the badge on the leading glyph's current corner", () => {
+        const btn = new TabButton('Home', { glyph: 'xmark' });
+
+        btn.setModified(true);
+
+        contentRow(btn).setX(10);
+        contentRow(btn).setY(4);
+
+        const glyph = btn.getGlyph()! as unknown as PositionedComponent;
+
+        glyph.setX(0);
+        glyph.setY(6);
+
+        btn.positionModifiedBadge();
+
+        const badge = badgeOf(btn)!;
+        const dotSize = badge.getWidth();
+
+        expect(badge.getX()).toBe(Math.round(10 + 0 - dotSize / 2));
+        expect(badge.getY()).toBe(Math.round(4 + 6 - dotSize / 2));
+    });
+
+    it('positionModifiedBadge no-ops when the tab is not modified or carries no glyph', () => {
+        const btn = new TabButton('Home'); // no glyph, not modified
+
+        expect(() => btn.positionModifiedBadge()).not.toThrow();
     });
 });
 
