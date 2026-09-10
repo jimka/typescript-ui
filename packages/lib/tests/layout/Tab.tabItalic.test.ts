@@ -106,7 +106,7 @@ describe('Tab label italics', () => {
         expect(host.isLayoutDirty()).toBe(true);
     });
 
-    it('17 — setTabItalic leaves the tab\'s LayoutConstraints untouched', () => {
+    it('17 — setTabItalic writes the flag back to the stored constraint', () => {
         installTestDOM(CONFIG);
 
         const { host, tab } = hostTab();
@@ -119,7 +119,36 @@ describe('Tab label italics', () => {
 
         tab.setTabItalic(content, true);
 
-        expect(tab.getLayoutConstraints(content)).toBeUndefined();
+        expect(tab.getLayoutConstraints(content)!.italic).toBe(true);
+    });
+
+    it('setTabItalic on a tab added but not yet laid out still records durably and applies once the cell is created', () => {
+        installTestDOM(CONFIG);
+
+        const { host, tab } = hostTab();
+        const content = new Component({});
+
+        host.addComponent(content); // no doLayout() yet — no strip cell exists
+
+        expect(tab.setTabItalic(content, true)).toBe(true);
+        expect(tab.getLayoutConstraints(content)!.italic).toBe(true);
+
+        host.doLayout();
+
+        expect(barEntries(tab)[0].button.getFontStyle()).toBe('italic');
+    });
+
+    it('isTabItalic reads the constraint back before the cell exists', () => {
+        installTestDOM(CONFIG);
+
+        const { host, tab } = hostTab();
+        const content = new Component({});
+
+        host.addComponent(content); // no doLayout() yet — no strip cell exists
+
+        tab.setTabItalic(content, true);
+
+        expect(tab.isTabItalic(content)).toBe(true);
     });
 
     it('18 — setTabName after setTabItalic keeps the tab italic', () => {

@@ -1745,6 +1745,14 @@ class TabBar extends Container<TabBarOptions> {
             Tooltip.attach(tabButton, constraints.tooltip);
         }
 
+        if (constraints?.italic) {
+            tabButton.setFontStyle("italic");
+        }
+
+        if (constraints?.modified) {
+            tabButton.setModified(true);
+        }
+
         tabButton.on("action", () => this.onTabPressed(tabButton));
 
         const closeButton = tabButton.getCloseButton() ?? undefined;

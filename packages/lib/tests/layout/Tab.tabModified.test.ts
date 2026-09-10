@@ -106,7 +106,7 @@ describe('Tab modified indicator', () => {
         expect(host.isLayoutDirty()).toBe(true);
     });
 
-    it('23 — setTabModified leaves the tab\'s LayoutConstraints untouched', () => {
+    it('23 — setTabModified writes the flag back to the stored constraint', () => {
         installTestDOM(CONFIG);
 
         const { host, tab } = hostTab();
@@ -119,7 +119,36 @@ describe('Tab modified indicator', () => {
 
         tab.setTabModified(content, true);
 
-        expect(tab.getLayoutConstraints(content)).toBeUndefined();
+        expect(tab.getLayoutConstraints(content)!.modified).toBe(true);
+    });
+
+    it('setTabModified on a tab added but not yet laid out still records durably and applies once the cell is created', () => {
+        installTestDOM(CONFIG);
+
+        const { host, tab } = hostTab();
+        const content = new Component({});
+
+        host.addComponent(content); // no doLayout() yet — no strip cell exists
+
+        expect(tab.setTabModified(content, true)).toBe(true);
+        expect(tab.getLayoutConstraints(content)!.modified).toBe(true);
+
+        host.doLayout();
+
+        expect(barEntries(tab)[0].button.isModified()).toBe(true);
+    });
+
+    it('isTabModified reads the constraint back before the cell exists', () => {
+        installTestDOM(CONFIG);
+
+        const { host, tab } = hostTab();
+        const content = new Component({});
+
+        host.addComponent(content); // no doLayout() yet — no strip cell exists
+
+        tab.setTabModified(content, true);
+
+        expect(tab.isTabModified(content)).toBe(true);
     });
 
     it('24 — setTabName after setTabModified keeps the dot shown', () => {
