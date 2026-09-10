@@ -70,10 +70,32 @@ page resets to empty.
 
 ### Overlay
 
+- **`Dock` gains four panel-id-keyed presentation setters**:
+  `setPanelTitle(id, title)`, `setPanelGlyph(id, glyph)`,
+  `setPanelItalic(id, italic)`, `setPanelModified(id, modified)`. Each is
+  durable — surviving a tear-off, a re-dock, and a `setLayoutState`
+  restore — and accepts a panel whose tab cell has not been created yet,
+  returning `true` when the panel is registered and `false` for an unknown
+  id.
+
+- **`Dock` gains `setTabOptions(options)` / `DockOptions.tabOptions`**,
+  applying a `TabOptions` presentation bag to every region the dock owns,
+  now and later — including a region a drag-driven edge split creates.
+  `reorderable`, `listeners`, and `tools` are dropped rather than
+  forwarded, since `Dock` owns the first two as invariants and the third
+  may carry a live component that can only ever have one parent.
+
 - **`AbstractWindow` gains the vetoable `"beforeclose"` event** and a new
   `WindowCloseController` type. `requestClose()` fires it first; a listener
   calling `preventDefault()` on the controller aborts the close. The
   programmatic `onExitAction()` is not guarded by it.
+
+- **`Dock` gains the `"beforeclose"` and `"dblclick"` events**.
+  `"beforeclose"` fires for a tab's ✕ (tiled or floated) and a float
+  window's chrome ✕, forwarding the same controller `Tab`/`AbstractWindow`
+  handed it; `removePanel` stays the unguarded programmatic path.
+  `"dblclick"` fires when a tab button is double-clicked, mirroring `Tab`'s
+  own `"tabdblclick"`.
 
 ## Fixed
 
