@@ -68,6 +68,13 @@ page resets to empty.
   focuses it — the mechanism `FocusHistory.back()` / `forward()` now use (see
   Changed, below). Most consumers won't call this directly.
 
+### Overlay
+
+- **`AbstractWindow` gains the vetoable `"beforeclose"` event** and a new
+  `WindowCloseController` type. `requestClose()` fires it first; a listener
+  calling `preventDefault()` on the controller aborts the close. The
+  programmatic `onExitAction()` is not guarded by it.
+
 ## Fixed
 
 ### Components
@@ -108,3 +115,10 @@ page resets to empty.
   to return `false` and write nothing for a tab added moments ago but not yet
   laid out; they now record the write durably and return `true`, applying it
   once the cell is created.
+
+### Overlay
+
+- **A `Window`'s header ✕ now goes through the same close path as
+  `TabWindow`'s close tool**, so it can be vetoed via `AbstractWindow`'s new
+  `"beforeclose"` event. Previously it called the unguarded
+  `onExitAction()` directly, bypassing `requestClose()` entirely.
