@@ -61,6 +61,7 @@ The `"tearoffrequested"` / `"detach"` pair is driven purely by whether the drag 
 | `setEntryBusy(id, busy)` / `isEntryBusy(id)` | Push the cell's loading state (the owner pushes it by cell id, same as `setEntryContentId`) — shows the tab button's loading overlay. |
 | `setEntryGlyph(id, glyph)` / `clearEntryGlyph(id)` / `getEntryGlyph(id)` | Swap, remove or read a cell's leading icon after creation. |
 | `setEntryItalic(id, italic)` / `isEntryItalic(id)` | Italicise a cell's label (VS Code-style preview tab), or read the flag back. View-only, like `setEntryGlyph`. |
+| `setEntryModified(id, modified)` / `isEntryModified(id)` | Show or hide a cell's trailing "unsaved changes" dot, or read the flag back. View-only, like `setEntryItalic`. |
 | `isEntryCloseable(id)` / `getEntryName(id)` / `getEntryButtonId(id)` | Per-cell reads the owner needs (window title, ARIA `aria-labelledby`, …). |
 
 ## Layout

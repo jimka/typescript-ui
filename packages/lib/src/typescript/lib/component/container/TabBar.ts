@@ -1656,6 +1656,32 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
+     * Shows or hides the cell with `id`'s "unsaved changes" badge. No-op
+     * for an unknown id.
+     *
+     * @param id - The cell id whose modified state changed.
+     * @param modified - True to show the badge, false to hide it.
+     *
+     * @returns This tab strip, for method chaining.
+     */
+    setEntryModified(id: string, modified: boolean): this {
+        this.entryById(id)?.button.setModified(modified);
+
+        return this;
+    }
+
+    /**
+     * Reports whether the cell with `id`'s modified badge is currently shown.
+     *
+     * @param id - The cell id to query.
+     *
+     * @returns True when the cell is modified; false for an unknown id.
+     */
+    isEntryModified(id: string): boolean {
+        return this.entryById(id)?.button.isModified() ?? false;
+    }
+
+    /**
      * Returns the id of the cell's tab button — the owner reads it to set the
      * content panel's ARIA `aria-labelledby` back to the button.
      *
@@ -2729,6 +2755,17 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
+     * Re-pins every modified tab's badge to its leading glyph's current
+     * corner. Cheap to call unconditionally each layout pass — `TabButton`
+     * itself no-ops for a tab that isn't modified or carries no glyph.
+     */
+    private positionModifiedBadges(): void {
+        for (const entry of this._entries) {
+            entry.button.positionModifiedBadge();
+        }
+    }
+
+    /**
      * Pixels to scroll per overflow-arrow click ≈ one tab, so a click pages by a
      * tab at any font size. Derived from the first tab's predicted main-axis
      * extent (which collapses width-mode sizing and raw content width into the
@@ -2872,6 +2909,7 @@ class TabBar extends Container<TabBarOptions> {
         this.positionLeadGroup(thickness, crossLead, mainLead);
         this.positionIndicator();
         this.positionCloseButtons();
+        this.positionModifiedBadges();
     }
 
     /**

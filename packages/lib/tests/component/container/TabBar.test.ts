@@ -237,6 +237,49 @@ describe('TabBar busy state', () => {
     });
 });
 
+describe('TabBar modified state', () => {
+    afterEach(() => DOM.reset());
+
+    it('setEntryModified(id, true) marks the entry modified; setEntryModified(id, false) clears it', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha');
+        bar.setEntryModified('a', true);
+
+        expect(bar.isEntryModified('a')).toBe(true);
+
+        bar.setEntryModified('a', false);
+
+        expect(bar.isEntryModified('a')).toBe(false);
+    });
+
+    it('setEntryModified on an unknown id is a no-op and chainable; isEntryModified is false', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new TabBar();
+
+        expect(bar.setEntryModified('nope', true)).toBe(bar);
+        expect(bar.isEntryModified('nope')).toBe(false);
+    });
+
+    it('isEntryModified is false for a cell never marked modified, and false again after removeBarEntry', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha');
+
+        expect(bar.isEntryModified('a')).toBe(false);
+
+        bar.setEntryModified('a', true);
+        bar.removeBarEntry('a');
+
+        expect(bar.isEntryModified('a')).toBe(false);
+    });
+});
+
 describe('TabBar entry metadata', () => {
     afterEach(() => DOM.reset());
 

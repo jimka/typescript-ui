@@ -11,6 +11,15 @@ import { Animation } from "~/core/Animation.js";
 import { BorderOptions } from "~/primitive/Border.js";
 import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { GLYPH_XS_INK_TRAIT } from "~/core/StyleTraits.js";
+import { Glyph } from "~/component/display/Glyph.js";
+import { circle } from "~/glyphs/solid/circle.js";
+
+// Idempotent registration — see RadioButton.ts's own registration of this
+// same glyph for its selection dot.
+Glyph.register(circle);
+
+/** Registry name of the trailing "unsaved changes" dot — a plain filled disc. */
+const MODIFIED_GLYPH = "circle";
 
 /**
  * Construction-time options for {@link TabButton}.
@@ -216,6 +225,19 @@ class TabButton extends ToggleButton {
     // The busy wash, built on the first setBusy(true) and reused thereafter.
     private _busyIndicator: TabBusyIndicator | null = null;
 
+    // Whether this tab is marked modified (unsaved changes). Runtime state, not
+    // configuration, so it carries no options-bag field — matching `_busy`.
+    private _modified: boolean = false;
+
+    // The "unsaved changes" badge, built lazily on the first setModified(true)
+    // and reused thereafter, matching `_busyIndicator`. Raw-appended onto this
+    // button's own element (the same overlay technique as `_closeButton` and
+    // `_busyIndicator`) rather than added to `_content` — it pins to the
+    // leading glyph's corner via `positionModifiedBadge`, so it must live
+    // outside the content row's own flow to overlap the glyph instead of
+    // sitting beside it.
+    private _modifiedGlyph: Glyph | null = null;
+
     /**
      * Builds a tab-styled toggle button with the given label, applying the
      * `--ts-ui-tab-button-*` fill/border/hover/selected styling and, when
@@ -271,14 +293,16 @@ class TabButton extends ToggleButton {
     }
 
     /**
-     * Disposes the overlaid close button and busy indicator, then runs the
-     * inherited teardown. Both are raw-appended onto this button's own element
-     * rather than registered via `addComponent` (see `buildCloseButton`'s doc
-     * comment), so `super.destructor()`'s child recursion cannot reach them.
+     * Disposes the overlaid close button, busy indicator, and modified badge,
+     * then runs the inherited teardown. All three are raw-appended onto this
+     * button's own element rather than registered via `addComponent` (see
+     * `buildCloseButton`'s doc comment), so `Component`'s own child-disposal
+     * recursion cannot reach them and each must be disposed explicitly here.
      */
     protected destructor(): void {
         this._closeButton?.dispose();
         this._busyIndicator?.dispose();
+        this._modifiedGlyph?.dispose();
 
         super.destructor();
     }
@@ -426,6 +450,131 @@ class TabButton extends ToggleButton {
      */
     isBusy(): boolean {
         return this._busy;
+    }
+
+    /**
+     * Shows or hides the "unsaved changes" badge — a small dot pinned over the
+     * upper-left corner of the tab's leading file-type glyph, half-covering
+     * it. Raw-appended onto this button's own element, like the close button
+     * and the busy wash, rather than added to the content row: a row child
+     * would either sit beside the leading glyph (not on its corner) or, sized
+     * to overlap it, eat into the label's own space. The overlay never
+     * displaces the label or resizes the tab.
+     *
+     * @param modified - True to show the badge, false to hide it.
+     *
+     * @returns This button, for method chaining.
+     */
+    setModified(modified: boolean): this {
+        if (this._modified === modified) {
+            return this;
+        }
+
+        this._modified = modified;
+
+        if (!this._modifiedGlyph) {
+            if (!modified) {
+                return this;
+            }
+
+            const badge = new Glyph(MODIFIED_GLYPH);
+
+            // Sizing is left to positionModifiedBadge() below — it re-derives
+            // the size from the resolved scale on every call (construction
+            // included), the same "re-pin, don't just pin once" reasoning
+            // `positionCloseButtons` documents for the close button.
+            badge.setForegroundColor("var(--ts-ui-tab-indicator-color, #1a73e8)");
+            // Above the leading glyph it half-covers and above the busy wash
+            // (left at the default z-index), so a tab that is both busy and
+            // modified still shows the badge through the pulse; decorative
+            // only, so it must not steal hover/click from the glyph or the
+            // tab body beneath it.
+            badge.setZIndex(2);
+            badge.setPointerEvents("none");
+
+            DOM.sink.appendChild(this.getElement(true)!, badge.getElement(true)!);
+
+            this._modifiedGlyph = badge;
+        }
+
+        this.positionModifiedBadge();
+
+        return this;
+    }
+
+    /**
+     * Reports whether the "unsaved changes" badge is currently shown.
+     *
+     * @returns True when this tab is marked modified.
+     */
+    isModified(): boolean {
+        return this._modified;
+    }
+
+    /**
+     * Shows or hides the modified badge and, when shown, re-pins it to the
+     * leading glyph's current upper-left corner (centring the badge on that
+     * corner point so it half-covers the glyph on every side). The badge is
+     * shown only while both {@link isModified} and a leading glyph are true —
+     * a lazy tab can be marked modified before its glyph resolves, or have its
+     * glyph cleared later, and the badge must track that rather than sitting
+     * stranded at a stale position. No-ops (leaves the badge, if any, hidden)
+     * once — or before — {@link setModified} has ever built one.
+     *
+     * `TabBar` calls this on every entry each layout pass, mirroring how it
+     * drives {@link getCloseButton}'s per-layout re-pin — the glyph's own
+     * position shifts with the tab's insets (a compact toggle, a base
+     * font-size change) and can be swapped outright (a cross-type Save As),
+     * so the badge cannot just be pinned once. The same re-pin also re-reads
+     * the resolved scale's `glyphXs` step and re-applies it as the badge's
+     * size — the same "re-pinning here is what lets an existing ✕ follow a
+     * base-size change" reasoning `positionCloseButtons` documents for the
+     * close button; every setter here no-ops when the value is unchanged, so
+     * a same-scale, same-position pass costs nothing.
+     *
+     * @remarks The glyph's position is read relative to `_content` (its DOM
+     * parent) and `_content`'s own position is read relative to this button
+     * (its own DOM parent) — the two sum to the glyph's position relative to
+     * this button's element, the coordinate space `setX`/`setY` (CSS `left`/
+     * `top`) resolve against for a raw-appended overlay child. `_content` sets
+     * its own insets to zero, so the leading glyph — its first child — is
+     * flush with `_content`'s own origin, but this reads both positions live
+     * rather than assuming that.
+     */
+    positionModifiedBadge(): void {
+        const badge = this._modifiedGlyph;
+
+        if (!badge) {
+            return;
+        }
+
+        const glyph = this.getGlyph();
+        const shown = this._modified && glyph !== null;
+
+        badge.setVisible(shown);
+
+        if (!shown || !glyph) {
+            return;
+        }
+
+        const dotSize = ThemeManager.getResolvedScale().glyphXs;
+
+        // `Glyph`'s own constructor pins minSize/maxSize to its 16px default
+        // (see `_defaultGlyphOptions`), so a bare setWidth/setHeight below
+        // would clamp right back to it on any scale where glyphXs isn't 16.
+        // setPreferredSize re-pins min/max to dotSize first (Glyph's own
+        // override), so the explicit setWidth/setHeight that follows — which
+        // is what actually drives the rendered box for this raw-appended,
+        // unmanaged overlay — passes through unclamped.
+        badge.setPreferredSize({ width: dotSize, height: dotSize });
+        badge.setWidth(dotSize);
+        badge.setHeight(dotSize);
+
+        const anchorX = this._content.getX() + glyph.getX();
+        const anchorY = this._content.getY() + glyph.getY();
+
+        badge.setX(Math.round(anchorX - dotSize / 2));
+        badge.setY(Math.round(anchorY - dotSize / 2));
     }
 }
 

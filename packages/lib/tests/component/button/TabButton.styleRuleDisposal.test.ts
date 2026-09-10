@@ -89,4 +89,58 @@ describe('TabButton — close-button style-rule disposal', () => {
         // not throw.
         expect(() => destroy(button)).not.toThrow();
     });
+
+    it('destructor() after a setModified(true) → setModified(false) cycle leaves no trace of the modified dot', () => {
+        installTestDOM(CONFIG);
+
+        // Warm-up pass, mirroring the registry harness: keeps any
+        // process-global rule these classes materialise on first use out of
+        // the diff below.
+        {
+            const warmup = new TabButton('Warmup');
+
+            warmup.getElement(true);
+            warmup.setModified(true);
+            warmup.setModified(false);
+            destroy(warmup);
+        }
+
+        const before = new Set(_ruleCacheKeys());
+
+        const button = new TabButton('A');
+
+        button.getElement(true);
+        button.setModified(true);
+
+        const modifiedGlyphId = (button as unknown as { _modifiedGlyph: { getId(): string } })._modifiedGlyph.getId();
+
+        // Sanity check that a rule really materialised — setForegroundColor
+        // and setPreferredSize are both explicit per-instance writes with no
+        // class-tier default on a bare Glyph to dedupe against.
+        expect(_ruleCacheKeys().some((key) => key.includes(modifiedGlyphId))).toBe(true);
+
+        // setModified(false) detaches the dot from `_content` (removeComponent
+        // is detach-only) without disposing it — the regression this test pins.
+        button.setModified(false);
+
+        destroy(button);
+
+        const leaked = _ruleCacheKeys().filter((key) => !before.has(key));
+
+        expect(leaked.some((key) => key.includes(modifiedGlyphId))).toBe(false);
+    });
+
+    it('destructor() on a TabButton never marked modified is unaffected (no dot to dispose)', () => {
+        installTestDOM(CONFIG);
+
+        const button = new TabButton('A');
+
+        button.getElement(true);
+
+        expect(button.isModified()).toBe(false);
+
+        // The new `_modifiedGlyph?.dispose()` call is a no-op here; this must
+        // not throw.
+        expect(() => destroy(button)).not.toThrow();
+    });
 });

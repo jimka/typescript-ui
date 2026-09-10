@@ -1420,6 +1420,50 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Shows or hides the "unsaved changes" badge on the tab hosting `content`
+     * — a small dot pinned over the upper-left corner of the tab's leading
+     * file-type glyph, half-covering it. Nothing else about the tab changes.
+     *
+     * @param content - The content component whose tab to mark.
+     * @param modified - True to show the badge, false to hide it.
+     *
+     * @returns `true` when a matching tab was found, `false` otherwise.
+     *
+     * @remarks
+     * A lazy tab whose factory has not run yet has no content component to key
+     * on, so this returns `false` for it. {@link TabBar.setEntryModified} reaches
+     * such a cell directly, by its owner-minted id.
+     *
+     * The flag is view-only: it is not written to the tab's `LayoutConstraints`,
+     * so it does not survive a tear-off, a re-dock, or a saved layout.
+     */
+    setTabModified(content: Component, modified: boolean): boolean {
+        const entry = this._contents.find(e => e.component === content);
+
+        if (!entry) {
+            return false;
+        }
+
+        this._bar.setEntryModified(entry.id, modified);
+        this.getContainer()?.scheduleLayout();
+
+        return true;
+    }
+
+    /**
+     * Reports whether the tab hosting `content` currently shows the modified badge.
+     *
+     * @param content - The content component whose tab to query.
+     *
+     * @returns `true` when that tab's badge is shown; `false` when no tab matches.
+     */
+    isTabModified(content: Component): boolean {
+        const entry = this._contents.find(e => e.component === content);
+
+        return entry ? this._bar.isEntryModified(entry.id) : false;
+    }
+
+    /**
      * Strip `"dockrequested"` handler: a foreign tab was dropped here. Resolves the
      * live content from the shared registry and docks it as a new tab.
      *

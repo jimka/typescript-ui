@@ -54,6 +54,9 @@ class TabDemoPanel extends Component {
         const toggleItalicBtn = new Button("Toggle Italic");
         toolbar.addComponent(toggleItalicBtn);
 
+        const toggleModifiedBtn = new Button("Toggle Modified");
+        toolbar.addComponent(toggleModifiedBtn);
+
         const toggleBorderBtn = new Button("Toggle Under-border");
         toolbar.addComponent(toggleBorderBtn);
 
@@ -340,6 +343,14 @@ class TabDemoPanel extends Component {
 
             if (content) {
                 this.tabPanel.getTab().setTabItalic(content, !this.tabPanel.getTab().isTabItalic(content));
+            }
+        });
+
+        toggleModifiedBtn.on("action", () => {
+            const content = this.tabPanel.getTab().getActiveContent();
+
+            if (content) {
+                this.tabPanel.getTab().setTabModified(content, !this.tabPanel.getTab().isTabModified(content));
             }
         });
 

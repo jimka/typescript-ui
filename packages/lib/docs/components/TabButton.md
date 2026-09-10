@@ -25,6 +25,17 @@ tab.setBusy(false);  // clear it
 
 The wash colour reads `--ts-ui-tab-busy-color`, falling back to the strip's `--ts-ui-tab-indicator-color` accent when unset — override the former for a distinct busy colour without a full theme change.
 
+## Modified indicator
+
+[`setModified(true)`](/api/component/button/classes/TabButton#setmodified) shows a small filled dot trailing the label, marking unsaved changes; [`isModified()`](/api/component/button/classes/TabButton#ismodified) reports the current state.
+
+```typescript
+tab.setModified(true);   // show the dot
+tab.setModified(false);  // hide it
+```
+
+Unlike the busy wash, the dot is a real content-row child, not an overlay — it rides beside the label the way the leading identity glyph does, so only the label truncates when the tab narrows and the dot is never clipped away. Its colour reads `--ts-ui-tab-indicator-color`, the same accent the strip's active-tab underline and the busy wash's fallback already use.
+
 ## Notes
 
 - Extends `ToggleButton`, so it slots into a `ButtonGroup` and a roving tab index unchanged and exposes the inherited `setSelected` / `isSelected` selection state.

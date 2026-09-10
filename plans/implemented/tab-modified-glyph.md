@@ -688,6 +688,38 @@ rendered-pixel assertions, so the dot's actual paint, size, and truncation survi
 
 ---
 
+## Revision: corner badge over the leading glyph
+
+Superseded after audit: the trailing content-row dot this plan built (above)
+shipped and worked, but a later design pass moved it to a raw-appended
+overlay pinned over the upper-left corner of the tab's leading file-type
+glyph, half-covering it — the treatment several editors use for an unsaved
+indicator that reads at a glance without competing with the label for space.
+The public API (`Tab.setTabModified`/`isTabModified`,
+`TabBar.setEntryModified`/`isEntryModified`, `TabButton.setModified`/
+`isModified`) is unchanged; only `TabButton`'s internals moved:
+
+- `_modifiedGlyph` is now raw-appended onto the button's own element (like
+  `_closeButton` and `_busyIndicator`), not added to `_content` — it is no
+  longer a content-row child, so `_afterRebuildContentRow`'s re-append hook
+  (this plan's own `dispose-correction`-adjacent machinery) is gone; a
+  content-row rebuild never touched it in the first place.
+- A new `TabButton.positionModifiedBadge()` re-pins the badge to the leading
+  glyph's live corner and re-syncs its size from the resolved scale, called
+  from `TabBar.layoutChrome` every layout pass — the same per-pass re-pin
+  `positionCloseButtons` already does for the overlaid ✕, for the same reason
+  (the anchor and the scale can both change after construction).
+- The badge is shown only while both `isModified()` and a leading glyph are
+  true, since it now anchors to that glyph rather than sitting in the row
+  unconditionally.
+
+The architecture-decision rationale above (three-layer delegation, the
+`circle` glyph choice, explicit disposal, no extra relayout call) all still
+holds; only the "real content-row child" placement decision was superseded.
+Current source is ground truth for the exact shape.
+
+---
+
 ## Notes
 
 [^why-italic-not-busy]: `Tab.setTabBusy` routes through a private `setEntryBusy(entry, busy)`
