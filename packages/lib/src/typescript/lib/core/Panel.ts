@@ -8,6 +8,8 @@ import { InlineStyle, StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import { FocusReveal } from "~/core/FocusReveal.js";
+import type { FocusRevealer } from "~/core/FocusReveal.js";
 import { scrollShadowBoxShadow, scrollShadowEdgeValue, scrollShadowRamp, quantizeShadowEdge, ScrollShadowEdges } from "~/core/ScrollShadow.js";
 import { Scrollbar } from "~/component/container/Scrollbar.js";
 
@@ -167,7 +169,7 @@ function ensureOverlayScrollerClassRule(): void {
  *
  * @category Core
  */
-class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOptions> {
+class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOptions> implements FocusRevealer {
 
     // `declare` rather than initialiser to dodge the class-field super-cascade
     // trap: a `= "none"` initialiser runs *after* super() returns, which
@@ -357,6 +359,14 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
                 break;
         }
 
+        // Only a scrolling mode can ever need to reveal a target by scrolling
+        // it into view; both calls are idempotent (backed by a `Set`).
+        if (mode === "none") {
+            FocusReveal.unregister(this);
+        } else {
+            FocusReveal.register(this);
+        }
+
         // Mode switched — drop any cached gutter from the previous mode so
         // the next `doLayout` re-measures against the new overflow setting.
         // ("none" never has a gutter; the other modes recompute below.)
@@ -496,6 +506,46 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      */
     protected getScrollElement(): Handle | undefined {
         return this._overlayScrollElement ?? this.getElement();
+    }
+
+    /** @inheritDoc */
+    getRevealElement(): Handle | null {
+        return this.getElement() ?? null;
+    }
+
+    /**
+     * {@link FocusRevealer.revealDescendant}: scrolls `target` into view along
+     * whichever axis it currently sits outside of, through the cached scroll
+     * API — never the browser's native scroll-into-view method. Reads the
+     * viewport rect through the panel's own scroll element rather than its
+     * outer element, since under `scrollbarStyle: "overlay"` the panel's own
+     * element never scrolls — the narrower inner overlay-scroll element does,
+     * and reading the outer element's rect would treat the scrollbar gutter
+     * band as already-visible and under-scroll a target sitting there.
+     *
+     * @param target - The element to scroll into view.
+     */
+    revealDescendant(target: Handle): void {
+        const el = this.getScrollElement() ?? this.getElement();
+
+        if (!el) {
+            return;
+        }
+
+        const view = DOM.source.getElementRect(el);
+        const rect = DOM.source.getElementRect(target);
+
+        if (rect.top < view.top) {
+            this.setScrollTop(this.getScrollTop() - (view.top - rect.top));
+        } else if (rect.bottom > view.bottom) {
+            this.setScrollTop(this.getScrollTop() + (rect.bottom - view.bottom));
+        }
+
+        if (rect.left < view.left) {
+            this.setScrollLeft(this.getScrollLeft() - (view.left - rect.left));
+        } else if (rect.right > view.right) {
+            this.setScrollLeft(this.getScrollLeft() + (rect.right - view.right));
+        }
     }
 
     /**
@@ -678,6 +728,8 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * cleanup.
      */
     protected destructor(): void {
+        FocusReveal.unregister(this);
+
         this.removeScrollShadows();
         this.removeOverlayScrollbars();
 

@@ -6,6 +6,7 @@
 // Event/FocusHistory code runs unchanged (see TestDOM.ts's dispatchEvent).
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { FocusHistory, type FocusHistoryChange } from '~/core/FocusHistory';
+import { FocusReveal } from '~/core/FocusReveal';
 import { DOM, type Handle } from '~/core/DOM';
 import { LayerManager, type DismissableLayer } from '~/core/LayerManager';
 import { installTestDOM, makeEvent, setConnected } from '../../dom/TestDOM';
@@ -175,7 +176,100 @@ describe('FocusHistory', () => {
         expect(FocusHistory.canGoBack()).toBe(false);
     });
 
-    it('the _navigating guard suppresses ANY focusin fired synchronously during a service-driven focus, not merely a deduped repeat', () => {
+    it('navigate skips an entry that cannot take focus, without dropping it from the trail', () => {
+        installTestDOM(CONFIG);
+        FocusHistory.enable();
+
+        const a = liveHandle();
+        focusIn(a);
+        const middle = liveHandle();
+        focusIn(middle);
+        const c = liveHandle();
+        focusIn(c);
+
+        // `middle` refuses focus (unlike a stale entry, it stays connected) —
+        // the offline stand-in for a container that cannot be revealed.
+        const realFocus = DOM.sink.focus.bind(DOM.sink);
+        const spy = vi.spyOn(DOM.sink, 'focus').mockImplementation((handle: Handle, options?: { preventScroll?: boolean }) => {
+            if (handle === middle) {
+                return;
+            }
+
+            realFocus(handle, options);
+        });
+
+        // back(): c -> middle (refused, skipped) -> a (succeeds).
+        expect(FocusHistory.back()).toBe(true);
+        expect(DOM.source.getActiveElement()).toBe(a);
+        // Nothing revealable before `a`.
+        expect(FocusHistory.canGoBack()).toBe(false);
+
+        // Un-refuse `middle` and prove it is still in the trail — forward()
+        // lands ON it rather than jumping straight to `c`.
+        spy.mockRestore();
+        expect(FocusHistory.forward()).toBe(true);
+        expect(DOM.source.getActiveElement()).toBe(middle);
+    });
+
+    it('navigate returns false and leaves the trail position unchanged when nothing in that direction can take focus', () => {
+        installTestDOM(CONFIG);
+        FocusHistory.enable();
+
+        const a = liveHandle();
+        focusIn(a);
+        const b = liveHandle();
+        focusIn(b);
+
+        // Nothing can ever take focus — no entry before `b` is reachable.
+        vi.spyOn(DOM.sink, 'focus').mockImplementation(() => {});
+
+        expect(FocusHistory.back()).toBe(false);
+        expect(DOM.source.getActiveElement()).toBe(b);
+    });
+
+    it('reveals the target before focusing it', () => {
+        installTestDOM(CONFIG);
+        FocusHistory.enable();
+
+        const a = liveHandle();
+        focusIn(a);
+        const b = liveHandle();
+        focusIn(b);
+
+        const order: string[] = [];
+
+        vi.spyOn(FocusReveal, 'reveal').mockImplementation((target: Handle) => {
+            order.push('reveal');
+
+            return DOM.source.isConnected(target);
+        });
+
+        const realFocus = DOM.sink.focus.bind(DOM.sink);
+        vi.spyOn(DOM.sink, 'focus').mockImplementation((handle: Handle, options?: { preventScroll?: boolean }) => {
+            order.push('focus');
+            realFocus(handle, options);
+        });
+
+        expect(FocusHistory.back()).toBe(true);
+        expect(order).toEqual(['reveal', 'focus']);
+    });
+
+    it('passes preventScroll: true to the service-driven focus', () => {
+        installTestDOM(CONFIG);
+        FocusHistory.enable();
+
+        const a = liveHandle();
+        focusIn(a);
+        const b = liveHandle();
+        focusIn(b);
+
+        const spy = vi.spyOn(DOM.sink, 'focus');
+
+        expect(FocusHistory.back()).toBe(true);
+        expect(spy).toHaveBeenCalledWith(a, { preventScroll: true });
+    });
+
+    it('the _navigating guard suppresses ANY focusin fired synchronously during a service-driven reveal or focus, not merely a deduped repeat', () => {
         installTestDOM(CONFIG);
         FocusHistory.enable();
 
@@ -186,13 +280,21 @@ describe('FocusHistory', () => {
 
         const decoy = liveHandle();
 
-        // Real browsers fire `focusin` synchronously inside `element.focus()`.
-        // The offline sink's `focus()` does not model that, so this simulates
-        // it directly: while back() is mid-call (the guard window), a focusin
-        // for a DIFFERENT handle than the navigation target fires. Because it
-        // targets a different handle than the current entry, ordinary
+        // Real browsers fire `focusin` synchronously inside `element.focus()`,
+        // and a revealer's own state change (a tab select, say) can likewise
+        // move focus mid-reveal. The offline sink models neither directly, so
+        // both are simulated here: while back() is mid-call (the guard
+        // window), a focusin for a DIFFERENT handle than the navigation
+        // target fires from each phase — reveal and focus. Because it targets
+        // a different handle than the current entry, ordinary
         // consecutive-dedupe would NOT catch it — only the `_navigating`
         // guard can, so this isolates the guard's own contribution.
+        vi.spyOn(FocusReveal, 'reveal').mockImplementation((target: Handle) => {
+            DOM.sink.dispatchEvent(DOM.source.getWindow(), makeEvent(decoy, 'focusin'));
+
+            return DOM.source.isConnected(target);
+        });
+
         const realFocus = DOM.sink.focus.bind(DOM.sink);
         vi.spyOn(DOM.sink, 'focus').mockImplementation((handle: Handle, options?: { preventScroll?: boolean }) => {
             realFocus(handle, options);
@@ -201,7 +303,7 @@ describe('FocusHistory', () => {
             DOM.sink.dispatchEvent(DOM.source.getWindow(), makeEvent(decoy, 'focusin'));
         });
 
-        FocusHistory.back(); // navigates b -> a; the mocked focus() also fires the decoy focusin
+        FocusHistory.back(); // navigates b -> a; both the mocked reveal() and focus() fire the decoy focusin
 
         // The decoy must not have been recorded: the forward branch to `b`
         // must still be intact (an unguarded decoy would have truncated it).
@@ -360,6 +462,31 @@ describe('FocusHistory', () => {
         // back()/forward() are not gated by enablement, so this is checkable
         // directly without re-enabling (which would itself re-seed from the
         // now-current active element, `c`).
+        expect(FocusHistory.canGoBack()).toBe(true);
+        expect(FocusHistory.back()).toBe(true);
+        expect(DOM.source.getActiveElement()).toBe(a);
+    });
+
+    it('does not record a focusin landing inside a table cell, while a plain element still records', () => {
+        installTestDOM(CONFIG);
+        FocusHistory.enable();
+
+        const a = liveHandle();
+        focusIn(a);
+
+        const td = DOM.sink.createElement('td');
+        setConnected(td, true);
+        const cellInput = DOM.sink.createElement('div'); // an in-cell editor's inner control
+        DOM.sink.appendChild(td, cellInput);
+        setConnected(cellInput, true);
+
+        focusIn(cellInput); // lands inside a <td> — must not be recorded
+
+        expect(FocusHistory.canGoBack()).toBe(false); // trail still just [a]
+
+        const b = liveHandle();
+        focusIn(b); // a plain element — still records
+
         expect(FocusHistory.canGoBack()).toBe(true);
         expect(FocusHistory.back()).toBe(true);
         expect(DOM.source.getActiveElement()).toBe(a);

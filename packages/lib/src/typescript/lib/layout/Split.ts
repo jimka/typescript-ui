@@ -10,6 +10,9 @@ import { Size, UNBOUNDED } from "~/primitive/Size.js";
 import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant, CollapseTransition } from "~/layout/CollapseSupport.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
+import { FocusReveal } from "~/core/FocusReveal.js";
+import type { FocusRevealer } from "~/core/FocusReveal.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { LayoutSize, LayoutSizeUnit, toLayoutSizes, fromLayoutSizes, isRestorableSizes, normalizeRatios } from "~/layout/LayoutSizes.js";
 import type { AxisOrientation } from "~/primitive/Axis.js";
@@ -104,7 +107,7 @@ interface SplitPlacement extends ResolvedPlacement {
  *
  * @category Layouts
  */
-class Split extends LayoutManager {
+class Split extends LayoutManager implements FocusRevealer {
 
     private _orientation: AxisOrientation = "horizontal";
     private _collapseTrigger: CollapseTrigger = "dblclick";
@@ -1273,9 +1276,59 @@ class Split extends LayoutManager {
     }
 
     /**
+     * Associates this layout manager with a container component, then
+     * registers with {@link FocusReveal} so a hidden target inside a collapsed
+     * pane can be revealed before it is focused.
+     *
+     * @param container - The container component to attach to.
+     */
+    attach(container: Component): this {
+        super.attach(container);
+
+        FocusReveal.register(this);
+
+        return this;
+    }
+
+    /** @inheritDoc */
+    getRevealElement(): Handle | null {
+        return this.getContainer()?.getElement() ?? null;
+    }
+
+    /**
+     * {@link FocusRevealer.revealDescendant}: expands whichever pane is on the
+     * DOM path to `target`, if it is currently collapsed.
+     *
+     * @param target - The element to reveal.
+     */
+    revealDescendant(target: Handle): void {
+        const container = this.getContainer();
+
+        if (!container) {
+            return;
+        }
+
+        const panes = container.getLaidOutComponents();
+
+        for (let i = 0; i < panes.length; i++) {
+            const el = panes[i].getElement();
+
+            if (el && DOM.source.contains(el, target)) {
+                if (this.isPaneCollapsed(i)) {
+                    this.setPaneCollapsed(i, false);
+                }
+
+                return;
+            }
+        }
+    }
+
+    /**
      * Detaches from the container and removes all gutter elements from the DOM.
      */
     detach() : this {
+        FocusReveal.unregister(this);
+
         // Abandon any in-flight collapse first: its primed transitions carry
         // fallback timers that would otherwise outlive the element handles
         // teardown releases.

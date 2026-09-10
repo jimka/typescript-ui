@@ -6,6 +6,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { LayerManager } from "~/core/LayerManager.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
+import { FocusReveal } from "~/core/FocusReveal.js";
 
 /**
  * A physical-key chord. `code` is a `KeyboardEvent.code` value (layout-independent).
@@ -147,33 +148,73 @@ function record(handle: Handle): void {
     fireChange();
 }
 
-/** Re-focuses `handle` under the re-entrancy guard, then fires `"change"`. */
-function focusEntry(handle: Handle): void {
+/**
+ * Reveals `handle`'s ancestry (selecting hiding tabs, expanding collapsed
+ * regions, scrolling it into view) then focuses it, the whole operation
+ * guarded so any focus side effect the reveal triggers is not recorded as a
+ * new trail entry.
+ *
+ * @returns True only when focus actually landed on `handle` — a still-hidden
+ *   element silently refuses focus, which is the operational "unrevealable" signal.
+ */
+function revealAndFocus(handle: Handle): boolean {
     _navigating = true;
-    DOM.sink.focus(handle);
-    _navigating = false;
-    fireChange();
+
+    try {
+        if (!FocusReveal.reveal(handle)) {
+            return false;
+        }
+
+        DOM.sink.focus(handle, { preventScroll: true });
+
+        return DOM.source.getActiveElement() === handle;
+    } finally {
+        _navigating = false;
+    }
 }
 
 /**
- * Prunes stale entries, then moves `_index` by `direction` and re-focuses the
- * entry there, if one exists.
+ * Prunes stale entries, then walks `_index` by `direction`, skipping any
+ * entry that cannot be revealed and focused, and stops at the first one that
+ * actually takes focus.
  *
  * @returns True if focus moved.
  */
 function navigate(direction: -1 | 1): boolean {
     pruneStale();
 
-    const target = _index + direction;
+    let target = _index + direction;
 
-    if (target < 0 || target >= _entries.length) {
-        return false;
+    while (target >= 0 && target < _entries.length) {
+        if (revealAndFocus(_entries[target])) {
+            _index = target;
+            fireChange();
+
+            return true;
+        }
+
+        target += direction;
     }
 
-    _index = target;
-    focusEntry(_entries[_index]);
+    return false;
+}
 
-    return true;
+/**
+ * Ancestor walk for the record-time filter: whether `handle` is a table cell
+ * or lives inside one (cell content, an in-cell editor). Every framework cell
+ * renders as `<td>` or `<th>`, so this is the only marker needed — no
+ * `closest`/`matches` DOM-seam addition required.
+ */
+function isInTableCell(handle: Handle): boolean {
+    for (let h: Handle | null = handle; h !== null; h = DOM.source.getParentNode(h)) {
+        const tag = DOM.source.getTagName(h);
+
+        if (tag === "TD" || tag === "TH") {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /** Whether a `KeyboardEvent` matches a configured combo. */
@@ -193,7 +234,13 @@ function onFocusIn(e: FocusEvent): void {
         return;
     }
 
-    record(DOM.source.intern(e.target));
+    const handle = DOM.source.intern(e.target);
+
+    if (isInTableCell(handle)) {
+        return;
+    }
+
+    record(handle);
 }
 
 /**
