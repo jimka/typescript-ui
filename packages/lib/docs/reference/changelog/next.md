@@ -156,3 +156,11 @@ page resets to empty.
   `TabWindow`'s close tool**, so it can be vetoed via `AbstractWindow`'s new
   `"beforeclose"` event. Previously it called the unguarded
   `onExitAction()` directly, bypassing `requestClose()` entirely.
+
+- **A `setLayoutState` restore no longer permanently drops a tiled root
+  region's tab wiring.** Previously, closing a tab in the dock's original
+  group after a restore did not fire `"beforeclose"`/`"close"`, and
+  `setTabOptions`/`DockOptions.tabOptions` stopped reaching that region,
+  because the restore rebuilds the root's `Tab` in place and the sweep's
+  idempotency guard mistook the unchanged container for an already-wired
+  one. No consumer action is needed.
