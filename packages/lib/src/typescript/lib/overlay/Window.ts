@@ -81,7 +81,7 @@ class Window extends AbstractWindow {
             placement: Placement.NORTH,
             ignoreParentInsets: true
         });
-        this._header.addExitButtonListener(() => this.onExitAction());
+        this._header.addExitButtonListener(() => this.requestClose());
         this._header.addMinimizeButtonListener(() => this.toggleMinimize());
         this._header.addMaximizeButtonListener(() => this.toggleMaximize());
         this._header.addHeaderDoubleClickListener((e: MouseEvent) => this.onHeaderDoubleClick(e));

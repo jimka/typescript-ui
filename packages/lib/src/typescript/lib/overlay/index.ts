@@ -5,7 +5,7 @@ export type { ButtonGroupOptions, ButtonGroupEvent } from '~/overlay/ButtonGroup
 export { AbstractWindow } from '~/overlay/AbstractWindow.js';
 export { Window } from '~/overlay/Window.js';
 export { TabWindow } from '~/overlay/TabWindow.js';
-export type { WindowOptions, WindowState, WindowEvent, WindowMaximizeBounds, WindowSnapModifier, WindowRect } from '~/overlay/AbstractWindow.js';
+export type { WindowOptions, WindowState, WindowEvent, WindowMaximizeBounds, WindowSnapModifier, WindowRect, WindowCloseController } from '~/overlay/AbstractWindow.js';
 export { Menu } from '~/overlay/Menu.js';
 export { Tooltip } from '~/overlay/Tooltip.js';
 export type { TooltipColors } from '~/overlay/Tooltip.js';

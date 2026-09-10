@@ -96,16 +96,30 @@ export type WindowState = "normal" | "minimized" | "maximized";
 
 /**
  * Typed events an {@link AbstractWindow} emits. `"minimize"` fires when the
- * window enters `"minimized"`, `"restore"` when it leaves it, `"close"` when
- * the window is closed, and `"activate"` when the window becomes the active
- * layer (a raise / focus). A [`Rail`](/api/overlay/classes/Rail) subscribes to
- * the first three to mirror a window minimized into it as a launcher handle; a
+ * window enters `"minimized"`, `"restore"` when it leaves it, `"beforeclose"`
+ * fires first on the advisory {@link AbstractWindow.requestClose} path (a
+ * listener calling `preventDefault()` on its {@link WindowCloseController}
+ * aborts the close), `"close"` when the window is actually closed, and
+ * `"activate"` when the window becomes the active layer (a raise / focus). A
+ * [`Rail`](/api/overlay/classes/Rail) subscribes to `"minimize"`/`"restore"`/
+ * `"close"` to mirror a window minimized into it as a launcher handle; a
  * [`Dock`](/api/overlay/classes/Dock) subscribes to `"activate"` to track which
  * floated panel is focused.
  *
  * @category Core
  */
-export type WindowEvent = "minimize" | "restore" | "close" | "activate";
+export type WindowEvent = "minimize" | "restore" | "close" | "beforeclose" | "activate";
+
+/**
+ * Controller handed to a `"beforeclose"` listener. Calling `preventDefault()`
+ * aborts the close that is about to run.
+ *
+ * @category Core
+ */
+export interface WindowCloseController {
+    /** Aborts the close that is about to run. */
+    preventDefault(): void;
+}
 
 /**
  * Snap-resize modifier key. Matches the matching property names exposed by
@@ -876,10 +890,23 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
-     * Advisory close request from the manager. A window owns its own close
-     * affordance, so this routes to the same teardown.
+     * Advisory close request from the manager. Fires the vetoable
+     * `"beforeclose"` first; a listener calling `preventDefault()` on its
+     * {@link WindowCloseController} aborts the close. The programmatic
+     * {@link onExitAction} is not guarded by it.
      */
     requestClose(): void {
+        let prevented = false;
+        const controller: WindowCloseController = {
+            preventDefault: (): void => { prevented = true; },
+        };
+
+        this.emit("beforeclose", controller);
+
+        if (prevented) {
+            return;
+        }
+
         this.onExitAction();
     }
 
@@ -1351,12 +1378,15 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     /**
      * Registers a listener for one of the window's lifecycle events.
      *
-     * @param event - `"minimize"` / `"restore"` / `"close"` / `"activate"`.
+     * @param event - `"minimize"` / `"restore"` / `"close"` / `"beforeclose"` /
+     *   `"activate"`.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This window, for method chaining.
      */
-    on(event: WindowEvent, listener: () => void): this {
+    on(event: "beforeclose", listener: (controller: WindowCloseController) => void): this;
+    on(event: Exclude<WindowEvent, "beforeclose">, listener: () => void): this;
+    on(event: WindowEvent, listener: Function): this {
         this._windowListeners.add(event, listener);
 
         return this;
@@ -1371,19 +1401,25 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      *
      * @returns This window, for method chaining.
      */
-    off(event: WindowEvent, listener: () => void): this {
+    off(event: "beforeclose", listener: (controller: WindowCloseController) => void): this;
+    off(event: Exclude<WindowEvent, "beforeclose">, listener: () => void): this;
+    off(event: WindowEvent, listener: Function): this {
         this._windowListeners.remove(event, listener);
 
         return this;
     }
 
     /**
-     * Fires every listener registered for `event`, in registration order.
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order.
      *
      * @param event - The event to emit.
+     * @param payload - Forwarded to each listener (only `"beforeclose"` carries one).
      */
-    protected emit(event: WindowEvent): void {
-        this._windowListeners.fire(event);
+    protected emit(event: "beforeclose", controller: WindowCloseController): void;
+    protected emit(event: Exclude<WindowEvent, "beforeclose">): void;
+    protected emit(event: WindowEvent, ...payload: unknown[]): void {
+        this._windowListeners.fire(event, ...payload);
     }
 
     /**
