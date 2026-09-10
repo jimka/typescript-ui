@@ -1870,6 +1870,33 @@ describe('CodeEditor revealRange', () => {
 
         expect(dispatch.mock.calls[0][0].effects.value).toEqual({ from: 0, to: 2, flash: false });
     });
+
+    it('keeps the plain scrollIntoView flag, with a single effect, when scrollAlign is "nearest" (the default)', () => {
+        const dispatch = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', dispatch);
+
+        editor.revealRange({ line: 1, column: 1, length: 2 }, { scrollAlign: 'nearest' });
+
+        const spec = dispatch.mock.calls[0][0];
+        expect(spec.scrollIntoView).toBe(true);
+        expect(spec.effects.is(setRevealHighlight)).toBe(true);
+    });
+
+    it('dispatches an explicit scrollIntoView effect, centered on both axes, when scrollAlign is "center"', () => {
+        const dispatch = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', dispatch);
+
+        editor.revealRange({ line: 1, column: 1, length: 2 }, { scrollAlign: 'center' });
+
+        const spec = dispatch.mock.calls[0][0];
+        expect(spec.scrollIntoView).toBeUndefined();
+        expect(Array.isArray(spec.effects)).toBe(true);
+        expect(spec.effects).toHaveLength(2);
+        expect(spec.effects[0].is(setRevealHighlight)).toBe(true);
+        expect(spec.effects[1].value).toMatchObject({ y: 'center', x: 'center', range: EditorSelection.range(0, 2) });
+    });
 });
 
 describe('CodeEditor reveal highlight field', () => {

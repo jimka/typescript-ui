@@ -20,7 +20,7 @@ import {
     dropCursor, rectangularSelection, crosshairCursor, Decoration,
 } from "@codemirror/view";
 import type { DecorationSet } from "@codemirror/view";
-import { EditorState, Compartment, Prec, StateEffect, StateField } from "@codemirror/state";
+import { EditorState, EditorSelection, Compartment, Prec, StateEffect, StateField } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { indentOnInput, bracketMatching, indentRange, codeFolding, foldGutter, foldKeymap, foldedRanges, indentUnit } from "@codemirror/language";
@@ -118,6 +118,20 @@ export interface CodeEditorRevealOptions {
      * highlight a previous call left.
      */
     highlight?: boolean;
+    /**
+     * Where the revealed range lands within the viewport once scrolled into
+     * view, applied to both axes. Defaults to `"nearest"`: the minimum
+     * scroll needed to bring it on screen, CodeMirror's own default.
+     * `"center"` scrolls it to the middle both vertically and horizontally
+     * instead — useful when the caller wants the surrounding context visible
+     * on every side, e.g. a search result opened from a results list, which
+     * may sit at any column. `"start"`/`"end"` pin it to the viewport's
+     * leading/trailing margin on each axis (top/bottom vertically,
+     * left/right horizontally). There is no separate per-axis control; both
+     * of CodeMirror's own `EditorView.scrollIntoView` `x`/`y` options
+     * receive this same value.
+     */
+    scrollAlign?: "nearest" | "center" | "start" | "end";
 }
 
 /**
@@ -1165,7 +1179,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * pre-mount), like every other view operation.
      *
      * @param at - The range to reveal.
-     * @param options - Whether to take focus, and whether to paint the highlight.
+     * @param options - Whether to take focus, whether to paint the highlight,
+     *   and where to land it within the viewport.
      * @returns This component, for method chaining.
      */
     revealRange(at: CodeEditorRevealTarget, options?: CodeEditorRevealOptions): this {
@@ -1185,11 +1200,20 @@ class CodeEditor extends Component<CodeEditorOptions> {
             ? { from, to, flash: !Animation.isReducedMotion() }
             : null;
 
-        this._view.dispatch({
-            selection:      { anchor: from, head: to },
-            effects:        setRevealHighlight.of(highlight),
-            scrollIntoView: true,
-        });
+        const highlightEffect = setRevealHighlight.of(highlight);
+        const align = options?.scrollAlign ?? "nearest";
+
+        // "nearest" keeps the original transaction-level flag, which already
+        // does exactly that (and is what the existing test suite pins) —
+        // only a non-default alignment needs the explicit scroll effect,
+        // dispatched instead of (not alongside) the flag, since the two
+        // would otherwise fight over the same scroll.
+        this._view.dispatch(align === "nearest"
+            ? { selection: { anchor: from, head: to }, effects: highlightEffect, scrollIntoView: true }
+            : {
+                    selection: { anchor: from, head: to },
+                    effects:   [highlightEffect, EditorView.scrollIntoView(EditorSelection.range(from, to), { y: align, x: align })],
+                });
 
         if (options?.focus ?? true) {
             this.focus();
