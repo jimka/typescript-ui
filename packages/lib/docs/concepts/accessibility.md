@@ -145,3 +145,5 @@ status.getAria().setRole('status');
 - [API: RovingTabIndex](/api/core/classes/RovingTabIndex)
 - [`ButtonGroup`](/components/ButtonGroup) — uses `RovingTabIndex` internally
 - [Focus history navigation](/recipes/focus-history) — a keyboard back/forward accelerator over the app's focus trail, an opt-in aid for keyboard navigation
+
+`back()` / `forward()` reveal a hidden trail entry before focusing it — selecting the `Tab` it lives in, expanding a collapsed `Border` region, `Accordion` section, or `Split` pane, and scrolling an `autoScroll` `Panel` — rather than silently failing to move focus onto an element the browser cannot currently see.
