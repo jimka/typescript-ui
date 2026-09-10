@@ -291,6 +291,29 @@ describe('Dock.setTabOptions', () => {
         flush();
     });
 
+    it('is picked up by the root region a setLayoutState restore rebuilds in place', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        dock.setTabOptions({ maxWidth: 250 });
+
+        // populateContainer rebuilds the root's Tab manager in place on the
+        // same Component, with no knowledge of Dock._tabOptions at all, so
+        // this only passes once the sweep's wireRegion pass re-applies it.
+        const state = dock.getLayoutState();
+
+        dock.setLayoutState(state);
+        flush();
+
+        expect((dock.getRootRegion().getLayoutManager() as Tab).getMaxWidth()).toBe(250);
+    });
+
     it('applies via DockOptions.tabOptions from the dock\'s first construction', () => {
         installTestDOM(CONFIG);
         captureRaf();

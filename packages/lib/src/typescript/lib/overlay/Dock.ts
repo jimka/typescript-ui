@@ -211,8 +211,15 @@ export interface DockExceptionEvent {
 interface RegionWiring {
     /** The region's edge/centre drop coordinator (torn down on teardown). */
     dockRegion: DockRegion;
-    /** Whether `setReorderable(true)` + the prune-on-`"empty"` subscription were applied (Tab regions only). */
-    tabWired:   boolean;
+    /**
+     * The `Tab` instance last wired with `setReorderable(true)` + the
+     * prune-on-`"empty"` subscription + the seven `tab.on(...)` handlers, or
+     * `null` before that has run for this region's current manager. Compared
+     * by identity against `region.getLayoutManager()` on every sweep, so a
+     * manager rebuilt in place on the same `Component` (a `setLayoutState`
+     * restore) is re-wired instead of permanently skipped.
+     */
+    wiredTab:   Tab | null;
 }
 
 /**
@@ -1316,7 +1323,9 @@ class Dock extends Container<DockOptions> {
      * Idempotently wires a region and recurses into its child regions: makes a
      * `Tab` region reorderable and prunes it when its last tab leaves, and gives
      * every region a `DockRegion` so it accepts edge/centre drops and notifies
-     * the dock after a drop mutates the tree.
+     * the dock after a drop mutates the tree. Idempotent per `Tab` instance, not
+     * per region `Component`: a manager rebuilt in place on the same `Component`
+     * (a `setLayoutState` restore) is re-wired, not skipped.
      *
      * @param region - The region to wire.
      */
@@ -1324,41 +1333,45 @@ class Dock extends Container<DockOptions> {
         let wiring = this._wiring.get(region);
 
         if (!wiring) {
-            wiring = { dockRegion: new DockRegion(region, this.requestSweep), tabWired: false };
+            wiring = { dockRegion: new DockRegion(region, this.requestSweep), wiredTab: null };
 
             this._wiring.set(region, wiring);
         }
 
-        const manager = region.getLayoutManager();
+        if (this.isTab(region)) {
+            const tab: Tab = region.getLayoutManager() as Tab;
 
-        if (this.isTab(region) && !wiring.tabWired) {
-            const tab: Tab = manager as Tab;
+            if (wiring.wiredTab !== tab) {
+                tab.setReorderable(true);
+                // Applies the dock-wide presentation to a Tab instance this sweep
+                // is wiring for the first time — the only way setTabOptions's
+                // "every region it builds later" promise reaches a region a
+                // drag-driven edge split creates (DockRegion.newStack() builds
+                // its own plain Tab, with no knowledge of Dock's _tabOptions at
+                // all) or a setLayoutState restore rebuilds in place
+                // (LayoutSerialization's populateContainer calls
+                // container.setLayoutManager(new Tab(...)) on the SAME region
+                // Component this method already wired once); an already-wired
+                // Tab instance got it immediately from setTabOptions's own loop.
+                this.applyTabOptions(tab, this._tabOptions);
+                // Per-region prune; the named const carries the region the shared
+                // handler set otherwise could not (ARCHITECTURE: a listener is a named
+                // reference, never an inline arrow).
+                const onEmpty: () => void = (): void => { this.pruneRegion(region); };
 
-            tab.setReorderable(true);
-            // Applies the dock-wide presentation to a region this sweep is
-            // wiring for the first time — the only way setTabOptions's "every
-            // region it builds later" promise reaches a region a drag-driven
-            // edge split creates (DockRegion.newStack() builds its own plain
-            // Tab, with no knowledge of Dock's _tabOptions at all); an already-
-            // wired region got it immediately from setTabOptions's own loop.
-            this.applyTabOptions(tab, this._tabOptions);
-            // Per-region prune; the named const carries the region the shared
-            // handler set otherwise could not (ARCHITECTURE: a listener is a named
-            // reference, never an inline arrow).
-            const onEmpty: () => void = (): void => { this.pruneRegion(region); };
+                tab.on("empty", onEmpty);
+                // The lifecycle handlers are shared bound methods: their payloads (the
+                // closed/activated content, the torn-off window) carry the identity
+                // they need, so no per-region capture is required.
+                tab.on("tabclose",  this.onPanelClosed);
+                tab.on("activate", this.onPanelFocused);
+                tab.on("detach",  this.onPanelDetached);
+                tab.on("dock",    this.onPanelDocked);
+                tab.on("beforetabclose", this.onPanelBeforeClose);
+                tab.on("tabdblclick",    this.onPanelDoubleClicked);
 
-            tab.on("empty", onEmpty);
-            // The lifecycle handlers are shared bound methods: their payloads (the
-            // closed/activated content, the torn-off window) carry the identity
-            // they need, so no per-region capture is required.
-            tab.on("tabclose",  this.onPanelClosed);
-            tab.on("activate", this.onPanelFocused);
-            tab.on("detach",  this.onPanelDetached);
-            tab.on("dock",    this.onPanelDocked);
-            tab.on("beforetabclose", this.onPanelBeforeClose);
-            tab.on("tabdblclick",    this.onPanelDoubleClicked);
-
-            wiring.tabWired = true;
+                wiring.wiredTab = tab;
+            }
         }
 
         for (const child of region.getComponents()) {
@@ -1982,7 +1995,8 @@ class Dock extends Container<DockOptions> {
      * apply to every region it builds later. `reorderable`, `listeners`, and
      * `tools` are ignored (Dock-owned invariants — a caller's
      * `reorderable: false` would silently break drag-and-drop, since
-     * `wireRegion` force-sets it on every region exactly once at first wire;
+     * `wireRegion` force-sets it on every `Tab` instance exactly once, at
+     * first wire;
      * a `listeners` bag is construction-time per-instance wiring with no
      * sensible "apply the same bag to every region" operation, and `Dock`
      * already owns each region's `Tab` event wiring itself; `tools` may carry

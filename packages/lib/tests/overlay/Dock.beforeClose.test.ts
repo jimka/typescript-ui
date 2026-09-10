@@ -157,6 +157,85 @@ describe('Dock "beforeclose" — tiled tab ✕', () => {
         expect(dock.removePanel('a')).toBe(true);
         expect(beforeCloseSpy).not.toHaveBeenCalled();
     });
+
+    it('still fires after a setLayoutState restore rebuilds the root region in place', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush(); // wires the root region's Tab once
+
+        // populateContainer rebuilds the root's Tab manager in place on the
+        // same Component — the buggy path this test pins.
+        const state = dock.getLayoutState();
+
+        dock.setLayoutState(state);
+        flush();
+
+        const frameA = frameOf(dock, 'a');
+        const closeSpy = vi.fn();
+
+        dock.on('close', closeSpy);
+        dock.on('beforeclose', (_e: DockPanelEvent, controller: TabCloseController) => {
+            controller.preventDefault();
+        });
+
+        driveBarClose(rootTab(dock), barEntryId(rootTab(dock), frameA));
+
+        expect(closeSpy).not.toHaveBeenCalled();
+        expect(frameA.getParentComponent()).not.toBeNull();
+    });
+
+    it('close still fires once for a non-vetoed close after the same restore', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const state = dock.getLayoutState();
+
+        dock.setLayoutState(state);
+        flush();
+
+        const frameA = frameOf(dock, 'a');
+        const events: DockPanelEvent[] = [];
+
+        dock.on('close', e => events.push(e));
+
+        driveBarClose(rootTab(dock), barEntryId(rootTab(dock), frameA));
+
+        expect(events.map(e => e.id)).toEqual(['a']);
+    });
+
+    it('does not double-register a Tab instance\'s listeners across a repeated sweep', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        // An extra sweep against the same, unchanged root Tab instance.
+        priv(dock).runSweep();
+
+        const frameA = frameOf(dock, 'a');
+        const events: DockPanelEvent[] = [];
+
+        dock.on('close', e => events.push(e));
+
+        driveBarClose(rootTab(dock), barEntryId(rootTab(dock), frameA));
+
+        expect(events.map(e => e.id)).toEqual(['a']);
+    });
 });
 
 describe('Dock "beforeclose" — float chrome ✕', () => {
