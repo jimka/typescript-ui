@@ -14,6 +14,9 @@ import { Size, UNBOUNDED } from "~/primitive/Size.js";
 import type { AxisEnd } from "~/primitive/Axis.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
+import { FocusReveal } from "~/core/FocusReveal.js";
+import type { FocusRevealer } from "~/core/FocusReveal.js";
 import { Util } from "~/core/Util.js";
 import { chainRoom, distributeDragChain } from "~/core/DragChain.js";
 
@@ -136,7 +139,7 @@ export interface AccordionOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-class Accordion extends LayoutManager {
+class Accordion extends LayoutManager implements FocusRevealer {
 
     private _headers: AccordionHeader[] = [];
     private _panelWrappers: Component[] = [];
@@ -1065,12 +1068,62 @@ class Accordion extends LayoutManager {
     }
 
     /**
+     * Associates this layout manager with a container component, then
+     * registers with {@link FocusReveal} so a hidden target inside a closed
+     * section can be revealed before it is focused.
+     *
+     * @param container - The container component to attach to.
+     */
+    attach(container: Component): this {
+        super.attach(container);
+
+        FocusReveal.register(this);
+
+        return this;
+    }
+
+    /** @inheritDoc */
+    getRevealElement(): Handle | null {
+        return this.getContainer()?.getElement() ?? null;
+    }
+
+    /**
+     * {@link FocusRevealer.revealDescendant}: opens whichever section is on
+     * the DOM path to `target`, if it is currently closed.
+     *
+     * @param target - The element to reveal.
+     */
+    revealDescendant(target: Handle): void {
+        const container = this.getContainer();
+
+        if (!container) {
+            return;
+        }
+
+        const components = container.getComponents();
+
+        for (let i = 0; i < components.length; i++) {
+            const el = components[i].getElement();
+
+            if (el && DOM.source.contains(el, target)) {
+                if (!this.isSectionOpen(i)) {
+                    this.openSection(i);
+                }
+
+                return;
+            }
+        }
+    }
+
+    /**
      * Detaches from the container, moving each section's content element back
      * to the container and disposing every header and panel wrapper — they
      * are raw-appended to the container's element rather than registered as
      * children, so nothing else reaches their teardown.
      */
     detach(): this {
+        FocusReveal.unregister(this);
+
         const container = this.getContainer();
 
         for (const animation of this._shrinkAnimations.values()) {

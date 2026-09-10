@@ -21,6 +21,9 @@ import { TabBar } from "~/component/container/TabBar.js";
 import type { TabToolDescriptor } from "~/component/container/TabBar.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
+import { FocusReveal } from "~/core/FocusReveal.js";
+import type { FocusRevealer } from "~/core/FocusReveal.js";
 import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
 
 /**
@@ -305,7 +308,7 @@ interface ContentEntry {
  *
  * @category Layouts
  */
-class Tab extends LayoutManager {
+class Tab extends LayoutManager implements FocusRevealer {
 
     // The composable tab strip — the toolbar element, buttons, indicator, reorder
     // bar, tool group, overflow scroll, and tab DnD. `Tab` raw-appends its element
@@ -977,6 +980,8 @@ class Tab extends LayoutManager {
     attach(container: Component): this {
         super.attach(container);
 
+        FocusReveal.register(this);
+
         DOM.sink.appendChild(container.getElement(true)!, this._bar.getElement(true)!);
 
         this._bar.on("tabpressed",       this._onBarTabPressed);
@@ -997,6 +1002,8 @@ class Tab extends LayoutManager {
      * down, removes the theme subscription, and removes the strip element.
      */
     detach(): this {
+        FocusReveal.unregister(this);
+
         this._tabFadeAnimation?.cancel();
         this._tabFadeAnimation = null;
 
@@ -2272,6 +2279,35 @@ class Tab extends LayoutManager {
      */
     indexOfContent(content: Component): number {
         return this._contents.findIndex(entry => entry.component === content);
+    }
+
+    /** @inheritDoc */
+    getRevealElement(): Handle | null {
+        return this.getContainer()?.getElement() ?? null;
+    }
+
+    /**
+     * {@link FocusRevealer.revealDescendant}: selects whichever tab's content
+     * is on the DOM path to `target`, forcing a synchronous layout so the
+     * newly-active content's `visibility: hidden` clears before the caller
+     * focuses it — `doLayout`'s own selection re-layout is otherwise deferred
+     * via `scheduleLayout()`.
+     *
+     * @param target - The element to reveal.
+     */
+    revealDescendant(target: Handle): void {
+        for (const entry of this._contents) {
+            const el = entry.component?.getElement();
+
+            if (el && DOM.source.contains(el, target)) {
+                if (this.getVisibleComponent() !== entry.component) {
+                    this.setActiveContent(entry.component!);
+                    this.getContainer()?.doLayout();
+                }
+
+                return;
+            }
+        }
     }
 
     /**

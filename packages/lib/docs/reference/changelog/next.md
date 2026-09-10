@@ -5,6 +5,20 @@ tied to a version number yet. Once this release is tagged, its content moves
 onto its own numbered page (see [Changelog](/reference/changelog)) and this
 page resets to empty.
 
+## Changed
+
+### Core
+
+- **`FocusHistory.back()` / `forward()` now reveal a hidden trail entry before
+  focusing it**, rather than silently failing to move focus onto an element
+  the browser cannot currently see. Reveal selects the `Tab` a target lives
+  in, expands a collapsed `Border` region / `Accordion` section / `Split`
+  pane, and scrolls an `autoScroll` `Panel` — in each case only if needed. A
+  trail entry that still cannot be brought into a focusable state after
+  revealing is skipped rather than failing the whole navigation. Public
+  signatures are unchanged; existing consumers see focus land where it
+  previously could not.
+
 ## Added
 
 ### Components
@@ -37,6 +51,16 @@ page resets to empty.
   or hide a live tab's "unsaved changes" dot. Like `setTabItalic`, the flag
   is view-only — it is not written to the tab's `LayoutConstraints`, so it
   does not survive a tear-off, a re-dock, or a saved layout.
+
+### Core
+
+- **New `FocusReveal` broker**, exported from `core` alongside
+  `FocusHistory`. Hiding containers (`Tab`, `Border`, `Accordion`, `Split`,
+  and the scroll `Panel`) register as `FocusRevealer`s; `FocusReveal.reveal(target)`
+  invokes every registered revealer containing `target`, outermost-first, so
+  a hidden descendant can be brought into a focusable state before something
+  focuses it — the mechanism `FocusHistory.back()` / `forward()` now use (see
+  Changed, below). Most consumers won't call this directly.
 
 ## Fixed
 

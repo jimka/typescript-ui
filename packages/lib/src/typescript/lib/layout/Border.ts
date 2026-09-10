@@ -11,6 +11,9 @@ import { Size, UNBOUNDED, saturate } from "~/primitive/Size.js";
 import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant, CollapseTransition } from "~/layout/CollapseSupport.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
+import { FocusReveal } from "~/core/FocusReveal.js";
+import type { FocusRevealer } from "~/core/FocusReveal.js";
 
 // Pixel thickness of a region's transparent collapse track in its expanded
 // state — just enough to carry the (overflowing) chevron at the region's inner
@@ -50,7 +53,7 @@ export interface BorderOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-class Border extends LayoutManager {
+class Border extends LayoutManager implements FocusRevealer {
 
     private _northComponent: Component | null = null;
     private _southComponent: Component | null = null;
@@ -1135,6 +1138,47 @@ class Border extends LayoutManager {
     }
 
     /**
+     * Associates this layout manager with a container component, then
+     * registers with {@link FocusReveal} so a hidden target inside a collapsed
+     * region can be revealed before it is focused.
+     *
+     * @param container - The container component to attach to.
+     */
+    attach(container: Component): this {
+        super.attach(container);
+
+        FocusReveal.register(this);
+
+        return this;
+    }
+
+    /** @inheritDoc */
+    getRevealElement(): Handle | null {
+        return this.getContainer()?.getElement() ?? null;
+    }
+
+    /**
+     * {@link FocusRevealer.revealDescendant}: expands whichever region is on
+     * the DOM path to `target`, if it is currently collapsed.
+     *
+     * @param target - The element to reveal.
+     */
+    revealDescendant(target: Handle): void {
+        for (const placement of [Placement.NORTH, Placement.SOUTH, Placement.WEST, Placement.EAST]) {
+            const comp = this.getRegionComponent(placement);
+            const el   = comp?.getElement();
+
+            if (el && DOM.source.contains(el, target)) {
+                if (this.isRegionCollapsed(placement)) {
+                    this.setRegionCollapsed(placement, false);
+                }
+
+                return;
+            }
+        }
+    }
+
+    /**
      * Detaches from the container, removing every lazily-created collapse gutter
      * from the DOM and tearing down its event listeners so a layout-manager swap
      * leaves no orphaned affordances. Also clears the clip frame installed on
@@ -1144,6 +1188,8 @@ class Border extends LayoutManager {
      * region element. `clearClipFrame` is a no-op for an unframed region.
      */
     detach(): this {
+        FocusReveal.unregister(this);
+
         // Abandon any in-flight collapse first: the primed CSS transitions
         // carry fallback timers that would otherwise outlive the element
         // handles teardown releases.
