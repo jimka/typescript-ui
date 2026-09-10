@@ -932,6 +932,13 @@ class Dialog extends Component implements DismissableLayer {
         // dialog stays inert, matching modality.
         trapWheel(this);
 
+        // Claims the Tab key for the whole dialog subtree so the framework's
+        // opt-in FocusTraversal service (if enabled) stands down entirely
+        // while this dialog is open, leaving the trap below in exclusive
+        // control — same mechanism CodeEditor/MarkdownEditor/Table use for
+        // their own Tab handling. See FocusTraversal's Architecture Decisions.
+        this.setTabKeyOwner(true);
+
         this.scheduleLayout();
         this.center();
         this.animateIn();
@@ -1282,6 +1289,10 @@ class Dialog extends Component implements DismissableLayer {
      * cancelling it is a no-op.
      */
     protected destructor(): void {
+        // Releases the Tab-key claim `open()` set, on every teardown path
+        // (hide()'s finalize and a direct dispose() both reach here).
+        this.setTabKeyOwner(false);
+
         this._panelInAnimation?.cancel();
         this._panelInAnimation = null;
         this._backdropInAnimation?.cancel();

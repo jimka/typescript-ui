@@ -163,6 +163,9 @@ export interface ComponentOptions {
     /** Attaches this single instance to a shared, declared `StyleTrait`
      *  regardless of its class. `null` clears it. See `setStyleTrait`. */
     styleTrait?:      StyleTrait | null;
+    /** Marks this component as owning the Tab key for its subtree — see
+     *  `setTabKeyOwner`. */
+    tabKeyOwner?:     boolean;
 }
 
 // Module-level state for the rAF-coalesced layout queue. Setters and event handlers call
@@ -813,6 +816,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (options.writingMode     !== undefined) this.setWritingMode(options.writingMode);
         if (options.touchAction     !== undefined) this.setTouchAction(options.touchAction);
         if (options.styleTrait      !== undefined) this.setStyleTrait(options.styleTrait);
+        // Always-dispatch, not gated on `!== undefined`: the marker's whole
+        // effect is the construction-time data-attribute write below, with no
+        // render-time re-read to fall back on later, so a subclass default
+        // (`subclassDefaults: { tabKeyOwner: true }`) must fire the setter
+        // here or the attribute is never written. See ARCHITECTURE.md's
+        // "Class-level defaults must survive the getter".
+        this.setTabKeyOwner(options.tabKeyOwner ?? this.isTabKeyOwner());
 
         if (options.attributes !== undefined) {
             // The options bag's `attributes` is a raw-HTML-attribute escape
@@ -2072,6 +2082,42 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const dataKey = key.startsWith("data-") ? key : `data-${key}`;
 
         return this.removeElementAttribute(dataKey);
+    }
+
+    /**
+     * Marks (or unmarks) this component as owning the Tab key for its
+     * subtree — a persistent, passive claim discovered by an ancestor walk
+     * from wherever focus currently sits, read by the framework's opt-in Tab
+     * traversal service rather than any Component-level machinery. Mirrors the
+     * flag onto the element as `data-ts-ui-tab-key-owner` via
+     * {@link setDataAttribute} (present only while `value` is `true`), so a
+     * consumer with no `Component` reference for the focused element — a
+     * third-party editor's own keydown handling, say — can still discover the
+     * claim from the DOM alone.
+     *
+     * @param value - Whether this component now owns the Tab key.
+     * @returns This component, for method chaining.
+     */
+    setTabKeyOwner(value: boolean): this {
+        this._options.tabKeyOwner = value;
+
+        if (value) {
+            this.setDataAttribute("ts-ui-tab-key-owner", "true");
+        } else {
+            this.delDataAttribute("ts-ui-tab-key-owner");
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether this component currently owns the Tab key for its
+     * subtree.
+     *
+     * @returns The cached `tabKeyOwner` flag, or the class default when never set.
+     */
+    isTabKeyOwner(): boolean {
+        return this._options.tabKeyOwner ?? this._defaultOptions.tabKeyOwner ?? false;
     }
 
     /**

@@ -456,6 +456,31 @@ describe('Dialog — keydown scoped to the topmost layer', () => {
     });
 });
 
+describe('Dialog — Tab key ownership (FocusTraversal arbitration)', () => {
+    afterEach(() => DOM.reset());
+
+    // Regression: FocusTraversal.ts:309 vs this file's own onKeyDown — enabling
+    // the opt-in traversal service used to double-move focus inside an open
+    // dialog, because both register a viewport keydown listener and the
+    // dispatcher (core/Event.ts's baseViewportListener) runs every registered
+    // listener regardless of an earlier one's disposition. Marking the dialog
+    // as a Tab-key owner while open makes FocusTraversal's ancestor walk find
+    // it and stand down completely, leaving this file's own trap in exclusive
+    // control — the same mechanism CodeEditor/MarkdownEditor/Table already use.
+    it('claims the Tab key once open, releasing it on dispose', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new Dialog({ title: 'T', message: 'M' });
+        expect(dialog.isTabKeyOwner()).toBe(false);
+
+        void dialog.show();
+        expect(dialog.isTabKeyOwner()).toBe(true);
+
+        dialog.dispose();
+        expect(dialog.isTabKeyOwner()).toBe(false);
+    });
+});
+
 describe('Dialog — dismissable', () => {
     afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
 

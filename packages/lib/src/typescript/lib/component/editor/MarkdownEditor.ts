@@ -1143,6 +1143,11 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     constructor(value?: string, options?: MarkdownEditorOptions, subclassDefaults?: Partial<MarkdownEditorOptions>) {
         super(options, subclassDefaults);
 
+        // Owns Tab while focus is inside: Lexical's table plugin handles Tab
+        // cell-to-cell, which the framework's opt-in traversal service must
+        // not steal. See FocusTraversal's Architecture Decisions.
+        this.setTabKeyOwner(true);
+
         // Positional argument: cache it only when the caller didn't also pass
         // `options.value` (which the super-time cascade already stored).
         if (value !== undefined && this._options.value === undefined) {

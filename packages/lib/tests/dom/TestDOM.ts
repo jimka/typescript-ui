@@ -114,6 +114,14 @@ interface HandleStub {
      * `{}` — an unwritten attribute reads as absent.
      */
     attributes: Record<string, string>;
+    /**
+     * Modelled `display`/`visibility` rendering state, seeded by
+     * {@link setRenderedVisible}. There is no computed style offline, so this is
+     * an explicit injected input read back (climbing the modelled tree) by
+     * {@link ModelledDOMSource.isRenderedVisible}. Default `true` — an unseeded
+     * handle renders.
+     */
+    renderedVisible: boolean;
 }
 
 /**
@@ -177,6 +185,7 @@ class TestHandleTable {
             scrollExtent:   null,
             selection:      null,
             attributes:     {},
+            renderedVisible: true,
         });
 
         return handle;
@@ -1353,6 +1362,21 @@ export class ModelledDOMSource implements DOMSource {
         return { overflow: 'visible', overflowX: 'visible', overflowY: 'visible' };
     }
 
+    /**
+     * Climbs the modelled tree checking each ancestor's (and the handle's own)
+     * `renderedVisible` flag, seeded by {@link setRenderedVisible} — there is no
+     * computed style offline to derive it from.
+     */
+    isRenderedVisible(handle: Handle): boolean {
+        for (let h: Handle | null = handle; h !== null; h = _table.parent(h)) {
+            if (!_table.stub(h).renderedVisible) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /** Offline document root — a fresh stub handle for overlay mounting. */
     getDocumentElement(): Handle {
         return _table.mint('html');
@@ -1690,6 +1714,20 @@ export function setDecodeResult(handle: Handle, result: "resolve" | "reject"): v
  */
 export function setConnected(handle: Handle, connected: boolean): void {
     _table.setConnected(handle, connected);
+}
+
+/**
+ * Seeds a handle's modelled `display`/`visibility` rendering state, read back
+ * by {@link ModelledDOMSource.isRenderedVisible} (which has no computed style
+ * to derive it from offline). Default `true` — a handle renders until marked
+ * otherwise; marking an ancestor hidden also hides its modelled descendants,
+ * since the read climbs the tree.
+ *
+ * @param handle - The element handle.
+ * @param visible - Whether it (and, transitively, its descendants) should read as rendered.
+ */
+export function setRenderedVisible(handle: Handle, visible: boolean): void {
+    _table.stub(handle).renderedVisible = visible;
 }
 
 /**

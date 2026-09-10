@@ -309,6 +309,11 @@ class Table extends Component<TableOptions> {
         this.setOverflow("hidden");
         this.setMinSize({ width: 100, height: 100 });
 
+        // Owns Tab while focus is inside: Body/Cell handle Tab for
+        // cell-to-cell navigation, which the framework's opt-in traversal
+        // service must not steal. See FocusTraversal's Architecture Decisions.
+        this.setTabKeyOwner(true);
+
         this._store = store;
         this._spec = spec;
         this._headerVisible = true;

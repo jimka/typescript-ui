@@ -44,6 +44,8 @@ export { FocusHistory } from '~/core/FocusHistory.js';
 export type { FocusHistoryOptions, FocusHistoryKeyCombo, FocusHistoryEvent, FocusHistoryChange } from '~/core/FocusHistory.js';
 export { FocusReveal } from '~/core/FocusReveal.js';
 export type { FocusRevealer } from '~/core/FocusReveal.js';
+export { FocusTraversal } from '~/core/FocusTraversal.js';
+export type { FocusTraversalOptions } from '~/core/FocusTraversal.js';
 
 export { ThemeManager, BaseTheme, ClassicTheme, DarkTheme, ModernTheme, defineTheme } from '~/core/Theme.js';
 export type { Theme, DeepPartial, ScaleToken, ResolvedScale, FontSizeToken } from '~/core/Theme.js';
