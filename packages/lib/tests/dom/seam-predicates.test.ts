@@ -84,6 +84,46 @@ describe('Seam predicate — escapeSelector', () => {
     });
 });
 
+describe('Seam predicate — hasAttribute / getAttribute', () => {
+    afterEach(() => DOM.reset());
+
+    // Case 5: a setAttr write is reflected by both hasAttribute and
+    // getAttribute; a later removeAttr in a separate patch clears it again.
+    // Exercises the modelled fold `core/Focusable.ts`'s `disabled` filter (and
+    // Dialog's identical one) relies on to be genuinely offline-testable.
+    it('reflects a setAttr write, and a subsequent removeAttr clears it', () => {
+        installTestDOM(CONFIG);
+
+        const el = DOM.sink.createElement('button');
+
+        expect(DOM.source.hasAttribute(el, 'disabled')).toBe(false);
+        expect(DOM.source.getAttribute(el, 'disabled')).toBe(null);
+
+        DOM.sink.apply(el, { setAttr: { disabled: '' } });
+
+        expect(DOM.source.hasAttribute(el, 'disabled')).toBe(true);
+        expect(DOM.source.getAttribute(el, 'disabled')).toBe('');
+
+        DOM.sink.apply(el, { removeAttr: ['disabled'] });
+
+        expect(DOM.source.hasAttribute(el, 'disabled')).toBe(false);
+        expect(DOM.source.getAttribute(el, 'disabled')).toBe(null);
+    });
+
+    // Case 6: within one patch, removeAttr is applied before setAttr — so a
+    // patch that both removes and re-sets the same key ends with it present.
+    it('applies removeAttr before setAttr within the same patch', () => {
+        installTestDOM(CONFIG);
+
+        const el = DOM.sink.createElement('button');
+
+        DOM.sink.apply(el, { setAttr: { disabled: '' } });
+        DOM.sink.apply(el, { removeAttr: ['disabled'], setAttr: { disabled: '' } });
+
+        expect(DOM.source.hasAttribute(el, 'disabled')).toBe(true);
+    });
+});
+
 describe('Seam dispatch — dispatchCustomEvent', () => {
     afterEach(() => DOM.reset());
 

@@ -25,6 +25,7 @@ import { circle_exclamation } from "~/glyphs/solid/circle_exclamation.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { ThemeManager } from "~/core/Theme.js";
+import { FOCUSABLE_SELECTOR } from "~/core/Focusable.js";
 
 /**
  * Square edge length used for the dialog's title-bar glyph — the theme's
@@ -177,13 +178,6 @@ const SEVERITY_GLYPH: Record<DialogSeverity, string> = {
  * fade and the panel's opacity + scale all run for this many milliseconds.
  */
 const DIALOG_ANIM_DURATION_MS: number = 150;
-
-/**
- * CSS selector matching the focusable elements inside a dialog — the Tab
- * focus-trap boundary set, the initial-focus candidates, and the primary-button
- * lookup all share it so the notion of "focusable" stays single-sourced.
- */
-const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 /**
  * Vertical breathing room reserved above and below the title text inside the
