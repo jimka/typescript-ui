@@ -19,6 +19,12 @@ page resets to empty.
   signatures are unchanged; existing consumers see focus land where it
   previously could not.
 
+### Layouts
+
+- **`Tab.setTabItalic(content, italic)` is no longer view-only.** It now
+  writes to the tab's `LayoutConstraints` the same way `setTabGlyph` does,
+  so the flag survives a tear-off, a re-dock, or a restored layout.
+
 ## Added
 
 ### Components
@@ -48,9 +54,9 @@ page resets to empty.
 ### Layouts
 
 - **`Tab.setTabModified(content, modified)` / `isTabModified(content)`** show
-  or hide a live tab's "unsaved changes" dot. Like `setTabItalic`, the flag
-  is view-only — it is not written to the tab's `LayoutConstraints`, so it
-  does not survive a tear-off, a re-dock, or a saved layout.
+  or hide a live tab's "unsaved changes" dot. The flag is written to the
+  tab's `LayoutConstraints`, so it survives a tear-off, a re-dock, or a
+  saved layout, and accepts a tab added but not yet laid out.
 
 ### Core
 
@@ -94,3 +100,11 @@ page resets to empty.
   that stays on screen keeps its slot, its DOM element, and its caret across
   an unrelated toggle and pays only a reposition. No consumer action is
   needed.
+
+### Layouts
+
+- **`Tab.setTabGlyph(content, glyph)` / `clearTabGlyph(content)` no longer
+  silently drop a write made before the tab's strip cell exists.** Both used
+  to return `false` and write nothing for a tab added moments ago but not yet
+  laid out; they now record the write durably and return `true`, applying it
+  once the cell is created.
