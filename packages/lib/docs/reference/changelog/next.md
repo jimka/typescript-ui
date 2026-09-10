@@ -51,6 +51,18 @@ page resets to empty.
   new types `CodeEditorRevealTarget` and `CodeEditorRevealOptions` are exported
   from `component/editor`. No consumer action is needed.
 
+- **`CodeEditor` gains `getSelection()` and a `"selectionchange"` event**,
+  for building a "12 characters, 2 lines selected" status-bar readout.
+  `getSelection()` returns the primary selection's
+  `{ characterCount, lineCount }` — 0 characters across 1 line for a
+  collapsed selection (a bare caret) — reading that same default before the
+  editor mounts. `"selectionchange"` fires once per real change to either
+  count, independently of `"cursorchange"`: selecting all text while the
+  caret is already at the document's last position leaves the caret in
+  place (no `"cursorchange"`) but still changes the selection's extent (a
+  `"selectionchange"`). The payload type `CodeEditorSelection` is newly
+  exported from `component/editor`. No consumer action is needed.
+
 ### Layouts
 
 - **`Tab.setTabModified(content, modified)` / `isTabModified(content)`** show
