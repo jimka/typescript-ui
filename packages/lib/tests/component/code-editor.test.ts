@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CodeEditor } from '~/component/editor/CodeEditor';
+import { CodeEditor, setRevealHighlight, revealHighlightField } from '~/component/editor/CodeEditor';
 import type { CodeEditorChange, CodeEditorCursorPosition } from '~/component/editor/CodeEditor';
 import { registerLanguage, getLanguage, listLanguages } from '~/component/editor/LanguageRegistry';
 import type { Formatter } from '~/component/editor/LanguageRegistry';
@@ -1697,6 +1697,267 @@ describe('CodeEditor cursor position', () => {
         (editor as any).emit('cursorchange', { line: 3, column: 4, offset: 30 });
 
         expect(received).toEqual({ line: 3, column: 4, offset: 30 });
+    });
+});
+
+describe('CodeEditor revealRange', () => {
+    /**
+     * A duck-typed `EditorView` carrying a **real** `EditorState`, so
+     * `doc.line()` and `doc.lines` behave exactly as they do live.
+     */
+    function fakeView(doc: string, dispatch = vi.fn(), focus = vi.fn()) {
+        return { state: EditorState.create({ doc }), dispatch, focus };
+    }
+
+    it('returns the editor itself and does nothing before the view is mounted', () => {
+        const editor = new CodeEditor();
+        let result: CodeEditor | undefined;
+
+        expect(() => { result = editor.revealRange({ line: 1, column: 1, length: 1 }); }).not.toThrow();
+        expect(result).toBe(editor);
+    });
+
+    it('returns the editor itself for chaining once a view is mounted', () => {
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd');
+
+        expect(editor.revealRange({ line: 1, column: 1, length: 1 })).toBe(editor);
+    });
+
+    it('clamp: column 1 is the line\'s first character (doc "ab\\ncd")', () => {
+        const dispatch = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', dispatch);
+
+        editor.revealRange({ line: 1, column: 1, length: 2 });
+
+        expect(dispatch).toHaveBeenCalledTimes(1);
+        const spec = dispatch.mock.calls[0][0];
+        expect(spec.selection).toEqual({ anchor: 0, head: 2 });
+        expect(spec.scrollIntoView).toBe(true);
+    });
+
+    it('clamp: line 2 starts at offset 3, so column 2 is offset 4', () => {
+        const dispatch = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', dispatch);
+
+        editor.revealRange({ line: 2, column: 2, length: 1 });
+
+        expect(dispatch.mock.calls[0][0].selection).toEqual({ anchor: 4, head: 5 });
+    });
+
+    it('clamp: an out-of-range line clamps to the last line', () => {
+        const dispatch = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', dispatch);
+
+        editor.revealRange({ line: 7, column: 1, length: 1 });
+
+        expect(dispatch.mock.calls[0][0].selection).toEqual({ anchor: 3, head: 4 });
+    });
+
+    it('clamp: a column past the line\'s end clamps to the end, collapsing the range', () => {
+        const dispatch = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', dispatch);
+
+        editor.revealRange({ line: 1, column: 7, length: 2 });
+
+        expect(dispatch.mock.calls[0][0].selection).toEqual({ anchor: 2, head: 2 });
+    });
+
+    it('clamp: a length running past the line\'s end clamps to the end', () => {
+        const dispatch = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', dispatch);
+
+        editor.revealRange({ line: 1, column: 2, length: 9 });
+
+        expect(dispatch.mock.calls[0][0].selection).toEqual({ anchor: 1, head: 2 });
+    });
+
+    it('clamp: line and column below 1 are floored to 1', () => {
+        const dispatch = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', dispatch);
+
+        editor.revealRange({ line: 0, column: 0, length: 1 });
+
+        expect(dispatch.mock.calls[0][0].selection).toEqual({ anchor: 0, head: 1 });
+    });
+
+    it('focuses the view by default', () => {
+        const focus = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', vi.fn(), focus);
+
+        editor.revealRange({ line: 1, column: 1, length: 1 });
+
+        expect(focus).toHaveBeenCalledOnce();
+    });
+
+    it('focuses the view when options.focus is true', () => {
+        const focus = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', vi.fn(), focus);
+
+        editor.revealRange({ line: 1, column: 1, length: 1 }, { focus: true });
+
+        expect(focus).toHaveBeenCalledOnce();
+    });
+
+    it('does not focus the view when options.focus is false', () => {
+        const focus = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', vi.fn(), focus);
+
+        editor.revealRange({ line: 1, column: 1, length: 1 }, { focus: false });
+
+        expect(focus).not.toHaveBeenCalled();
+    });
+
+    it('the highlight effect carries the clamped range with flash: true', () => {
+        const dispatch = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', dispatch);
+
+        editor.revealRange({ line: 1, column: 1, length: 2 });
+
+        const effect = dispatch.mock.calls[0][0].effects;
+        expect(effect.is(setRevealHighlight)).toBe(true);
+        expect(effect.value).toEqual({ from: 0, to: 2, flash: true });
+    });
+
+    it('the highlight effect is null when options.highlight is false', () => {
+        const dispatch = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', dispatch);
+
+        editor.revealRange({ line: 1, column: 1, length: 2 }, { highlight: false });
+
+        expect(dispatch.mock.calls[0][0].effects.value).toBeNull();
+    });
+
+    it('the highlight effect is null for a zero-length range', () => {
+        const dispatch = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', dispatch);
+
+        editor.revealRange({ line: 1, column: 1, length: 0 });
+
+        expect(dispatch.mock.calls[0][0].effects.value).toBeNull();
+    });
+
+    it('the highlight effect is null when the range clamps down to empty', () => {
+        const dispatch = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', dispatch);
+
+        editor.revealRange({ line: 1, column: 7, length: 2 });
+
+        expect(dispatch.mock.calls[0][0].effects.value).toBeNull();
+    });
+
+    it('the highlight effect carries flash: false under prefers-reduced-motion', () => {
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
+
+        const dispatch = vi.fn();
+        const editor = new CodeEditor() as any;
+        editor._view = fakeView('ab\ncd', dispatch);
+
+        editor.revealRange({ line: 1, column: 1, length: 2 });
+
+        expect(dispatch.mock.calls[0][0].effects.value).toEqual({ from: 0, to: 2, flash: false });
+    });
+});
+
+describe('CodeEditor reveal highlight field', () => {
+    function freshState(): EditorState {
+        return EditorState.create({ doc: 'ab\ncd', extensions: [revealHighlightField] });
+    }
+
+    function stateHoldingRange(): EditorState {
+        return freshState().update({ effects: setRevealHighlight.of({ from: 0, to: 2, flash: true }) }).state;
+    }
+
+    function fieldOf(state: EditorState) {
+        return state.field(revealHighlightField);
+    }
+
+    it('starts empty', () => {
+        expect(fieldOf(freshState()).size).toBe(0);
+    });
+
+    it('holds the range set by setRevealHighlight, with the flash class', () => {
+        const state = freshState().update({ effects: setRevealHighlight.of({ from: 0, to: 2, flash: true }) }).state;
+        const field = fieldOf(state);
+
+        expect(field.size).toBe(1);
+        const cursor = field.iter();
+        expect(cursor.from).toBe(0);
+        expect(cursor.to).toBe(2);
+        expect(cursor.value?.spec.class).toBe('ts-ui-cm-reveal ts-ui-cm-reveal-flash');
+    });
+
+    it('holds the range without the flash class when flash is false', () => {
+        const state = freshState().update({ effects: setRevealHighlight.of({ from: 0, to: 2, flash: false }) }).state;
+
+        expect(fieldOf(state).iter().value?.spec.class).toBe('ts-ui-cm-reveal');
+    });
+
+    it('replaces rather than stacks on a second setRevealHighlight', () => {
+        const state = stateHoldingRange().update({ effects: setRevealHighlight.of({ from: 3, to: 5, flash: true }) }).state;
+        const field = fieldOf(state);
+
+        expect(field.size).toBe(1);
+        const cursor = field.iter();
+        expect(cursor.from).toBe(3);
+        expect(cursor.to).toBe(5);
+    });
+
+    it('clears on setRevealHighlight(null)', () => {
+        const state = stateHoldingRange().update({ effects: setRevealHighlight.of(null) }).state;
+
+        expect(fieldOf(state).size).toBe(0);
+    });
+
+    it('clears on a user-driven selection change', () => {
+        const state = stateHoldingRange().update({ selection: { anchor: 4 }, userEvent: 'select' }).state;
+
+        expect(fieldOf(state).size).toBe(0);
+    });
+
+    it('clears on a document change', () => {
+        const state = stateHoldingRange().update({ changes: { from: 0, insert: 'x' } }).state;
+
+        expect(fieldOf(state).size).toBe(0);
+    });
+
+    it('survives a selection change with no user-event annotation', () => {
+        const state = stateHoldingRange().update({ selection: { anchor: 4 } }).state;
+
+        expect(fieldOf(state).size).toBe(1);
+    });
+
+    it('survives an unrelated empty transaction', () => {
+        const state = stateHoldingRange().update({}).state;
+
+        expect(fieldOf(state).size).toBe(1);
+    });
+
+    it('the effect wins over a simultaneous user-driven selection change', () => {
+        const state = stateHoldingRange().update({
+            selection: { anchor: 4 },
+            userEvent:  'select',
+            effects:    setRevealHighlight.of({ from: 3, to: 5, flash: true }),
+        }).state;
+        const field = fieldOf(state);
+
+        expect(field.size).toBe(1);
+        const cursor = field.iter();
+        expect(cursor.from).toBe(3);
+        expect(cursor.to).toBe(5);
     });
 });
 

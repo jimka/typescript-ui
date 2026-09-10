@@ -78,6 +78,8 @@ const longLine = "this line is deliberately long enough that, with Wrap turned o
  * re-runs the active language's formatter (or CodeMirror's own re-indent when
  * it has none), Read-only/Wrap/Lint toggle those three states, Save clears
  * the dirty flag (standing in for a host that has persisted the document),
+ * Reveal and Preview jump the editor to a fixed range — Preview without
+ * taking focus, to demonstrate the highlight surviving an unfocused editor —
  * and the Language row swaps the editor between JavaScript, CSS, Python, and
  * JSON samples. The editor sits in a `Fit` panel so it fills the available
  * space and scrolls internally — which also means it has no
@@ -152,6 +154,20 @@ class CodeEditorPanel extends Panel {
         const saveBtn = new Button({ text: 'Save' });
         saveBtn.on('action', () => { this._editor.markClean(); });
 
+        // Line 12, columns 5-9 of SAMPLE_JS: the `parts` identifier inside the
+        // `if (person.role)` block. Deliberately not the same range as Preview
+        // below, so pressing them alternately shows one highlight moving rather
+        // than two accumulating.
+        const revealBtn = new Button({ text: 'Reveal' });
+        revealBtn.on('action', () => { this._editor.revealRange({ line: 12, column: 5, length: 5 }); });
+
+        // Line 2, columns 9-15: the `message` identifier. focus: false, so the
+        // pressed button keeps focus and the highlight is the only cue.
+        const previewBtn = new Button({ text: 'Preview' });
+        previewBtn.on('action', () => {
+            this._editor.revealRange({ line: 2, column: 9, length: 7 }, { focus: false });
+        });
+
         const upperToolbar = new ToolBar();
         upperToolbar.addComponent(formatBtn);
         upperToolbar.addComponent(this._readOnlyBtn);
@@ -161,6 +177,8 @@ class CodeEditorPanel extends Panel {
         upperToolbar.addComponent(this._lineNumbersBtn);
         upperToolbar.addComponent(this._spellcheckBtn);
         upperToolbar.addComponent(saveBtn);
+        upperToolbar.addComponent(revealBtn);
+        upperToolbar.addComponent(previewBtn);
         upperToolbar.addComponent(new Text('Language:'));
         upperToolbar.addComponent(this.makeLanguageButton('JS', 'javascript', SAMPLE_JS));
         upperToolbar.addComponent(this.makeLanguageButton('CSS', 'css', SAMPLE_CSS));

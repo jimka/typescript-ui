@@ -17,9 +17,10 @@ import type { CodeEditorSearchFields, CodeEditorSearchCommand } from "~/componen
 import {
     EditorView, keymap, drawSelection, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
     placeholder, highlightWhitespace, highlightTrailingWhitespace, highlightSpecialChars,
-    dropCursor, rectangularSelection, crosshairCursor,
+    dropCursor, rectangularSelection, crosshairCursor, Decoration,
 } from "@codemirror/view";
-import { EditorState, Compartment, Prec } from "@codemirror/state";
+import type { DecorationSet } from "@codemirror/view";
+import { EditorState, Compartment, Prec, StateEffect, StateField } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { indentOnInput, bracketMatching, indentRange, codeFolding, foldGutter, foldKeymap, foldedRanges, indentUnit } from "@codemirror/language";
@@ -31,7 +32,7 @@ import { linter, lintGutter } from "@codemirror/lint";
 import { autocompletion, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { getLanguage } from "~/component/editor/LanguageRegistry.js";
 import type { FormatOptions } from "~/component/editor/LanguageRegistry.js";
-import { codeEditorTheme } from "~/component/editor/theme.js";
+import { codeEditorTheme, REVEAL_CLASS, REVEAL_FLASH_CLASS } from "~/component/editor/theme.js";
 
 /**
  * Payload of {@link CodeEditor}'s `"change"` event: the document text after
@@ -75,6 +76,48 @@ export interface CodeEditorCursorPosition {
      * Plane (an emoji) counts as two.
      */
     offset: number;
+}
+
+/**
+ * A range to reveal in a {@link CodeEditor}, as passed to
+ * {@link CodeEditor.revealRange}. `line` and `column` count from 1, matching
+ * {@link CodeEditorCursorPosition}; `length` is a character count. All three
+ * are clamped against the live document, so a position computed from a stale
+ * copy of the text lands at the nearest valid range instead of throwing.
+ *
+ * @category Components
+ */
+export interface CodeEditorRevealTarget {
+    /** 1-based line number in the document. */
+    line: number;
+    /** 1-based character offset into that line. A literal tab counts as one column. */
+    column: number;
+    /**
+     * Length of the range in characters, from `column`. A range that would run
+     * past the end of its line is cut off there — a revealed range never spans
+     * a line break.
+     */
+    length: number;
+}
+
+/**
+ * Options for {@link CodeEditor.revealRange}.
+ *
+ * @category Components
+ */
+export interface CodeEditorRevealOptions {
+    /**
+     * Whether to move keyboard focus into the editor. Defaults to `true`. Pass
+     * `false` when previewing a location from another control that should keep
+     * focus — a search-results list being arrowed through, say.
+     */
+    focus?: boolean;
+    /**
+     * Whether to paint the reveal highlight over the range. Defaults to `true`.
+     * `false` moves the caret and scrolls with no highlight, and clears any
+     * highlight a previous call left.
+     */
+    highlight?: boolean;
 }
 
 /**
@@ -287,6 +330,64 @@ const CLIPBOARD_HINT_DURATION_MS = 6000;
 function buildReadOnlyExtension(readOnly: boolean): Extension {
     return EditorState.readOnly.of(readOnly);
 }
+
+/** The reveal highlight's mark, without the entrance flash (reduced motion). */
+const REVEAL_MARK = Decoration.mark({ class: REVEAL_CLASS });
+
+/** The reveal highlight's mark, with the entrance flash. */
+const REVEAL_FLASH_MARK = Decoration.mark({ class: `${REVEAL_CLASS} ${REVEAL_FLASH_CLASS}` });
+
+/**
+ * Carries a range for {@link revealHighlightField} to highlight, or `null` to
+ * clear whatever it holds. `flash` asks for the entrance animation; the caller
+ * decides it, so `prefers-reduced-motion` is read once per reveal rather than
+ * baked into the field.
+ *
+ * @internal
+ */
+export const setRevealHighlight = StateEffect.define<{ from: number; to: number; flash: boolean } | null>();
+
+/**
+ * Holds the single range {@link CodeEditor.revealRange} last highlighted, as a
+ * CodeMirror decoration drawn over the text independently of the native
+ * selection. At most one range is ever held: a new reveal replaces the old one
+ * rather than stacking.
+ *
+ * The highlight is cleared by any document change and by any user-driven
+ * selection change (CodeMirror annotates those with a `"select"` user event —
+ * clicks, arrow keys, find-next), so it never lingers over text the user has
+ * moved on from. Every other transaction, scrolling and theme toggles included,
+ * leaves it alone. A transaction carrying the effect wins over both rules,
+ * which is what lets one transaction set the selection and the highlight
+ * together.
+ *
+ * @internal
+ */
+export const revealHighlightField = StateField.define<DecorationSet>({
+    create(): DecorationSet {
+        return Decoration.none;
+    },
+
+    update(highlight: DecorationSet, tr): DecorationSet {
+        for (const effect of tr.effects) {
+            if (effect.is(setRevealHighlight)) {
+                const value = effect.value;
+
+                return value === null
+                    ? Decoration.none
+                    : Decoration.set([(value.flash ? REVEAL_FLASH_MARK : REVEAL_MARK).range(value.from, value.to)]);
+            }
+        }
+
+        if (tr.docChanged || tr.isUserEvent("select")) {
+            return Decoration.none;
+        }
+
+        return highlight;
+    },
+
+    provide: (field) => EditorView.decorations.from(field),
+});
 
 /**
  * A syntax-highlighting, formatting code editor wrapping CodeMirror 6.
@@ -1042,6 +1143,62 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
+     * Selects a range given by line, column and length, scrolls it into view, and
+     * paints a brief accent highlight over it.
+     *
+     * @remarks Built for a host that computed the position somewhere else — a
+     * project-wide search's results list, a compiler diagnostic, a stack frame —
+     * and needs the editor to jump there. `line` and `column` count from 1, the
+     * same convention {@link CodeEditor.getCursorPosition} reports.
+     *
+     * All three fields are clamped against the live document, so a position taken
+     * from a copy of the text that has since changed lands at the nearest valid
+     * range instead of throwing. A range that would run past its line's end is cut
+     * off there — a revealed range never spans a line break.
+     *
+     * The highlight is drawn over the text independently of the native selection,
+     * which is deliberately faint while the editor is unfocused; it stays until
+     * another reveal replaces it, the document changes, or the user moves the
+     * caret. Under `prefers-reduced-motion` it appears with no entrance animation
+     * rather than not at all. A selection-only transaction — it changes no text, so
+     * it emits no `"change"`. No-op before the view is mounted (offline /
+     * pre-mount), like every other view operation.
+     *
+     * @param at - The range to reveal.
+     * @param options - Whether to take focus, and whether to paint the highlight.
+     * @returns This component, for method chaining.
+     */
+    revealRange(at: CodeEditorRevealTarget, options?: CodeEditorRevealOptions): this {
+        if (!this._view) {
+            return this;
+        }
+
+        const doc  = this._view.state.doc;
+        const line = doc.line(Math.min(Math.max(at.line, 1), doc.lines));
+        const from = Math.min(line.from + Math.max(at.column, 1) - 1, line.to);
+        const to   = Math.min(from + Math.max(at.length, 0), line.to);
+
+        // An empty range would make an empty mark decoration, which CodeMirror
+        // rejects; a caret with no highlight is the honest rendering of a target
+        // that clamped down to nothing.
+        const highlight = (options?.highlight ?? true) && to > from
+            ? { from, to, flash: !Animation.isReducedMotion() }
+            : null;
+
+        this._view.dispatch({
+            selection:      { anchor: from, head: to },
+            effects:        setRevealHighlight.of(highlight),
+            scrollIntoView: true,
+        });
+
+        if (options?.focus ?? true) {
+            this.focus();
+        }
+
+        return this;
+    }
+
+    /**
      * Copies the primary selection's text to the system clipboard. No-op
      * before the view is mounted, or when the primary selection is collapsed.
      *
@@ -1731,6 +1888,9 @@ class CodeEditor extends Component<CodeEditorOptions> {
             EditorState.allowMultipleSelections.of(true),
             search(),
             highlightSelectionMatches(),
+            // The programmatic counterpart to the two above: the highlight
+            // revealRange() paints over a range the host supplied.
+            revealHighlightField,
             // completionKeymap is deliberately not added to the keymap array
             // above: autocompletion() installs it itself, at Prec.highest, so
             // adding it again here would bind the same keys at a lower

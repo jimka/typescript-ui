@@ -221,6 +221,29 @@ The card has nine controls, each a glyph-only button whose hover tooltip names i
 
 Replace and Replace all are inert while the editor is `readOnly: true`.
 
+## Revealing a range
+
+`revealRange({ line, column, length })` jumps the editor to a range a host
+computed somewhere else — a project-wide search hit, a compiler diagnostic, a
+stack frame. It selects the range, scrolls it into view, takes focus, and
+paints an accent highlight over it. `line` and `column` count from 1, the
+same convention [`getCursorPosition()`](#cursor-position) reports.
+
+Pass `{ focus: false }` when the caller should keep focus — previewing hits
+from a results list, say. That is why the highlight exists: an unfocused
+selection is too faint to find. The highlight is drawn over the text
+independently of the selection, and stays until another `revealRange` call
+replaces it, the document changes, or the user moves the caret. Pass
+`{ highlight: false }` for a silent jump, which also clears any highlight a
+previous call left.
+
+All three fields are clamped against the live document, so a position taken
+from a copy of the text that has since changed lands at the nearest valid
+range rather than throwing. A range that would run past its line's end is cut
+off there — a revealed range never spans a line break. The highlight animates
+in once; under `prefers-reduced-motion` it appears without the animation
+rather than not at all.
+
 ## Right-click menu
 
 Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / Paste**. Cut and Copy are dimmed when nothing is selected; a read-only editor (`readOnly: true`) shows only Copy. A browser that refuses the clipboard read shows a toast asking the user to press Ctrl/Cmd+V instead — Ctrl/Cmd+V itself still works either way. With a multi-cursor selection active, only the primary cursor's range is acted on.
@@ -249,6 +272,7 @@ Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / P
 | `paste()` | Read the system clipboard and insert it at the primary selection, replacing any selected text. Async: resolves `true` when the clipboard was read, `false` when there is no mounted view or the browser refused the read. |
 | `getCursorPosition()` | Read the primary caret's `{ line, column, offset }` — `line`/`column` 1-based, `offset` a 0-based raw document position. Returns the document start when the editor is not mounted. |
 | `on('cursorchange', fn)` / `off('cursorchange', fn)` | Subscribe to caret moves — fires once per real move to a different line, column, or offset. |
+| `revealRange(at, options?)` | Select, scroll to and highlight a 1-based `{ line, column, length }` range. `options.focus` (default `true`) takes keyboard focus; `options.highlight` (default `true`) paints the highlight. No-op before the editor is mounted. |
 
 ## Theming
 
