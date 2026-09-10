@@ -15,6 +15,18 @@ function rotateLeft<T>(arr: T[], shift: number): void {
 }
 
 /**
+ * Reorders `arr` in place so `arr[i]` becomes what was at `arr[order[i]]`.
+ * `order` must be a permutation of `arr`'s own indices.
+ */
+function reorder<T>(arr: T[], order: number[]): void {
+    const source = arr.slice();
+
+    for (let i = 0; i < order.length; i++) {
+        arr[i] = source[order[i]];
+    }
+}
+
+/**
  * Shared transform-windowed virtual-scroll base for the data views —
  * `table/Body` and `tree/Tree` are its only two subclasses. It owns the
  * recycled row pool (`_rowPool` and the parallel `_boundIndices` / `_rowGeom` /
@@ -37,7 +49,8 @@ function rotateLeft<T>(arr: T[], shift: number): void {
  * because the content-width derivation genuinely diverges; the base exposes the
  * shared primitives it calls ({@link computeVisibleWindow},
  * {@link computePoolTarget}, {@link growRowPool}, {@link positionRow},
- * {@link hideExcessPoolRows}).
+ * {@link hideExcessPoolRows}, {@link reconcilePoolByKey} — currently called only
+ * by `Tree`).
  *
  * @typeParam TRow - The concrete pooled row component type.
  * @typeParam TOptions - The subclass's options bag.
@@ -390,6 +403,103 @@ abstract class VirtualRowView<
         rotateLeft(this._boundIndices, shift);
         rotateLeft(this._rowGeom, shift);
         rotateLeft(this._rowDisplayed, shift);
+    }
+
+    /**
+     * Re-matches the pool to the window by key identity instead of by
+     * position, and permutes the four parallel bookkeeping arrays into the
+     * resulting order.
+     *
+     * @param firstRow - The new window's first data index.
+     * @param windowSize - The number of rows in the window.
+     * @param keyAtRow - Returns the identity key for the row at a given data index.
+     * @param keyInSlot - Returns the identity key currently held by a pool slot,
+     *   or `null` when the slot holds nothing comparable.
+     *
+     * @remarks
+     * This is the structural-change counterpart to {@link alignPoolWindow}'s
+     * scroll rotation: where a pure scroll shifts every slot's data index by
+     * the same delta, a structural change (rows inserted or removed at an
+     * arbitrary point) can shift different window positions by different
+     * amounts, so slot assignment has to be re-derived from identity rather
+     * than from a uniform shift. A slot whose `_boundIndices` entry is `-1`
+     * is deliberately excluded from matching — that sentinel marks a slot a
+     * caller has already decided must be rebound regardless of content, and
+     * handing it back its old node without a rebind would defeat that. This
+     * method only decides which slot each window position lands in; whether
+     * the slot ends up rebound is still entirely up to the caller's own bind
+     * pass, exactly as it is after {@link alignPoolWindow}.
+     */
+    protected reconcilePoolByKey(
+        firstRow: number,
+        windowSize: number,
+        keyAtRow: (dataIndex: number) => object,
+        keyInSlot: (slot: number) => object | null,
+    ): void {
+        const n = this._rowPool.length;
+
+        // Recorded even when nothing else happens, so the next pure-scroll
+        // `alignPoolWindow` derives its rotation from this pass's window.
+        this._lastWindowStart = firstRow;
+
+        if (n === 0 || windowSize === 0) {
+            return;
+        }
+
+        const heldBy = new Map<object, number>();
+
+        for (let slot = 0; slot < n; slot++) {
+            if (this._boundIndices[slot] < 0) {
+                continue;
+            }
+
+            const key = keyInSlot(slot);
+
+            if (key !== null && !heldBy.has(key)) {
+                heldBy.set(key, slot);
+            }
+        }
+
+        const order = new Array<number>(n).fill(-1);
+        const taken = new Array<boolean>(n).fill(false);
+        let   matches = 0;
+
+        for (let i = 0; i < windowSize; i++) {
+            const slot = heldBy.get(keyAtRow(firstRow + i));
+
+            if (slot !== undefined && !taken[slot]) {
+                order[i]    = slot;
+                taken[slot] = true;
+                matches++;
+            }
+        }
+
+        if (matches === 0) {
+            return;
+        }
+
+        // Every unmatched window position, and every slot past the window, takes
+        // the next unclaimed slot. Which one it gets does not matter: an
+        // unmatched position is rebound either way.
+        let next = 0;
+
+        for (let i = 0; i < n; i++) {
+            if (order[i] !== -1) {
+                continue;
+            }
+
+            while (taken[next]) {
+                next++;
+            }
+
+            order[i]    = next;
+            taken[next] = true;
+        }
+
+        reorder(this._rowPool, order);
+        reorder(this._boundIndices, order);
+        reorder(this._rowGeom, order);
+        reorder(this._rowDisplayed, order);
     }
 
     /**

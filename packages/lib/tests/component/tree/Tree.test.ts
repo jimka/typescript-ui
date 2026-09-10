@@ -1352,6 +1352,151 @@ describe('Tree virtual-scroll — characterization', () => {
 });
 
 // ---------------------------------------------------------------------------
+// VirtualRowView.reconcilePoolByKey — the base primitive the identity
+// reconciliation is built on. Exercised through a mounted Tree, the same
+// idiom the characterization block above uses for the other shared
+// primitives; the keys passed in are plain marker objects rather than real
+// TreeNodes, since the primitive itself is generic over `object` keys.
+// ---------------------------------------------------------------------------
+describe('VirtualRowView.reconcilePoolByKey — pool reconciliation by key identity', () => {
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => DOM.reset());
+
+    function bigTree(n: number): TreeNode[] {
+        return Array.from({ length: n }, (_, i) => ({ label: 'n' + i }));
+    }
+
+    function mount(n: number, height: number): _Tree {
+        const tree = new _Tree();
+        tree.getElement(true);
+        tree.setWidth(200);
+        tree.setHeight(height);
+        tree.setNodes(bigTree(n));
+        (tree as any).renderWindow();
+        return tree;
+    }
+
+    it('matches surviving slots to their window position by key and fills the rest with leftovers, reordering all four parallel arrays identically', () => {
+        const p = mount(1, ROW_HEIGHT) as any;
+
+        const keyA = { k: 'A' }, keyB = { k: 'B' }, keyC = { k: 'C' }, keyD = { k: 'D' }, keyX = { k: 'X' };
+        const slotKeys = [keyA, keyB, keyC, keyD];
+
+        const rowMarkers = [{ id: 'r0' }, { id: 'r1' }, { id: 'r2' }, { id: 'r3' }, { id: 'r4' }];
+        const geomMarkers = [{ ty: 0, w: 0, h: 0 }, { ty: 1, w: 1, h: 1 }, { ty: 2, w: 2, h: 2 }, { ty: 3, w: 3, h: 3 }, null];
+
+        p._rowPool      = rowMarkers.slice();
+        p._boundIndices = [0, 1, 2, 3, -1];
+        p._rowGeom      = geomMarkers.slice();
+        p._rowDisplayed = [true, true, true, true, false];
+
+        const windowKeys = [keyA, keyB, keyX, keyC, keyD];
+
+        p.reconcilePoolByKey(
+            0, 5,
+            (dataIndex: number) => windowKeys[dataIndex],
+            (slot: number) => slotKeys[slot] ?? null,
+        );
+
+        expect(p._rowPool).toEqual([rowMarkers[0], rowMarkers[1], rowMarkers[4], rowMarkers[2], rowMarkers[3]]);
+        expect(p._boundIndices).toEqual([0, 1, -1, 2, 3]);
+        expect(p._rowGeom).toEqual([geomMarkers[0], geomMarkers[1], geomMarkers[4], geomMarkers[2], geomMarkers[3]]);
+        expect(p._rowDisplayed).toEqual([true, true, false, true, true]);
+    });
+
+    it('leaves all four arrays byte-for-byte unchanged when no slot is reusable', () => {
+        const p = mount(1, ROW_HEIGHT) as any;
+
+        const rowMarkers = [{ id: 'r0' }, { id: 'r1' }, { id: 'r2' }];
+        const geomMarkers = [{ ty: 0, w: 0, h: 0 }, null, { ty: 2, w: 2, h: 2 }];
+
+        p._rowPool      = rowMarkers.slice();
+        p._boundIndices = [-1, -1, -1];
+        p._rowGeom      = geomMarkers.slice();
+        p._rowDisplayed = [false, true, false];
+
+        p.reconcilePoolByKey(0, 3, () => ({ k: 'anything' }), () => null);
+
+        expect(p._rowPool).toEqual(rowMarkers);
+        expect(p._boundIndices).toEqual([-1, -1, -1]);
+        expect(p._rowGeom).toEqual(geomMarkers);
+        expect(p._rowDisplayed).toEqual([false, true, false]);
+    });
+
+    it('never matches a slot whose _boundIndices entry is -1, even when it would otherwise hold the requested key', () => {
+        const p = mount(1, ROW_HEIGHT) as any;
+
+        // slot 1 is unbound (-1) but its keyInSlot would (wrongly) answer the
+        // same key as slot 2, which IS legitimately bound to it. Iteration
+        // order visits slot 1 before slot 2, so a reconciliation that failed
+        // to skip unbound slots would let slot 1's answer shadow slot 2's in
+        // the key→slot map, changing which slot every later match resolves
+        // to. This fixture is built so that mistake is observable in the
+        // final pool order rather than merely in which slot handles a tie.
+        const keyA = { k: 'A' }, keyB = { k: 'B' }, keyC = { k: 'C' }, keyD = { k: 'D' };
+        const rowMarkers = [{ id: 'r0' }, { id: 'r1' }, { id: 'r2' }, { id: 'r3' }];
+
+        p._rowPool      = rowMarkers.slice();
+        p._boundIndices = [0, -1, 2, 3];
+        p._rowGeom      = [null, null, null, null];
+        p._rowDisplayed = [true, false, true, true];
+
+        const slotKeys: Record<number, object> = { 0: keyA, 1: keyB, 2: keyB, 3: keyC };
+        const windowKeys = [keyB, keyA, keyC, keyD];
+
+        p.reconcilePoolByKey(
+            0, 4,
+            (dataIndex: number) => windowKeys[dataIndex],
+            (slot: number) => slotKeys[slot] ?? null,
+        );
+
+        // Correct: keyB resolves to slot 2 (the legitimately bound holder),
+        // so position 0 gets r2, position 1 gets r0 (keyA), position 2 gets
+        // r3 (keyC), and the unmatched position 3 (keyD) takes the only
+        // leftover slot — slot 1, the unbound one.
+        expect(p._rowPool).toEqual([rowMarkers[2], rowMarkers[0], rowMarkers[3], rowMarkers[1]]);
+    });
+
+    it('records the window start even when nothing is reusable, so a following alignPoolWindow derives its rotation from it', () => {
+        const p = mount(1, ROW_HEIGHT) as any;
+
+        const rowMarkers = [{ id: 'r0' }, { id: 'r1' }, { id: 'r2' }];
+
+        p._rowPool      = rowMarkers.slice();
+        p._boundIndices = [-1, -1, -1];
+        p._rowGeom      = [null, null, null];
+        p._rowDisplayed = [false, false, false];
+
+        p.reconcilePoolByKey(5, 3, () => ({ k: 'unmatched' }), () => null);
+        p.alignPoolWindow(6);
+
+        expect(p._rowPool).toEqual([rowMarkers[1], rowMarkers[2], rowMarkers[0]]);
+    });
+
+    it('windowSize === 0 and an empty pool both return without throwing and leave the arrays unchanged', () => {
+        const p = mount(1, ROW_HEIGHT) as any;
+
+        const rowMarkers = [{ id: 'r0' }, { id: 'r1' }];
+        p._rowPool      = rowMarkers.slice();
+        p._boundIndices = [0, 1];
+        p._rowGeom      = [null, null];
+        p._rowDisplayed = [true, true];
+
+        expect(() => p.reconcilePoolByKey(0, 0, () => ({ k: 'x' }), () => null)).not.toThrow();
+        expect(p._rowPool).toEqual(rowMarkers);
+        expect(p._boundIndices).toEqual([0, 1]);
+
+        p._rowPool      = [];
+        p._boundIndices = [];
+        p._rowGeom      = [];
+        p._rowDisplayed = [];
+
+        expect(() => p.reconcilePoolByKey(0, 5, () => ({ k: 'x' }), () => null)).not.toThrow();
+        expect(p._rowPool).toEqual([]);
+    });
+});
+
+// ---------------------------------------------------------------------------
 // Rebind gating after a reflatten (expand/collapse/setNodes/renderer swap) —
 // TreeRow.isBoundTo replacing index identity as the signal _bindAndMeasure
 // reads. See the plan's "Rebind gating moves from index identity to content
@@ -1381,17 +1526,14 @@ describe('Tree — rebind gating after a reflatten (isBoundTo)', () => {
         return tree;
     }
 
-    it("toggling a middle branch never rebinds a row entirely before it, and reuses an unrelated row's pooled toggle Glyph across a shifted node of the same shape", () => {
+    it('toggling a middle branch never rebinds a row entirely before it, and a row after it keeps its own node and toggle Glyph instead of shifting to a neighbour', () => {
         // 6 branches, all visible and collapsed. Toggling n3 (the middle one)
-        // inserts a new "n3-child" flat row after it, which — because pool
-        // slots map to a flat *position*, not a node — shifts every later
-        // branch (n4, n5) into a different pool slot than it held before. A
-        // row entirely before the toggle (n2) is untouched on every axis; a
-        // row after it (n5, whose slot ends up showing the shifted n4) still
-        // gets a real setRowData call for its new node, but its *toggle*
-        // Glyph is reused rather than torn down, because n4 and n5 are both
-        // collapsed branches with a child — the same hasChildren/expanded/
-        // loading triple `isBoundTo`'s toggle-skip gate compares.
+        // inserts a new "n3-child" flat row after it. A pool slot now follows
+        // its node across that reflatten instead of following a flat
+        // *position*, so a row entirely before the toggle (n2) is untouched
+        // on every axis, and a row after it (n5) keeps showing n5 — and keeps
+        // its own toggle Glyph instance — rather than being handed whichever
+        // node used to sit one slot earlier.
         const BRANCH_COUNT = 6;
         const tree = mountBranches(BRANCH_COUNT, (BRANCH_COUNT + 1) * ROW_HEIGHT) as any;
         const nodes: TreeNode[] = tree._nodes;
@@ -1409,7 +1551,125 @@ describe('Tree — rebind gating after a reflatten (isBoundTo)', () => {
 
         expect(beforeRowSpy).not.toHaveBeenCalled();
         expect(rowsByLabel['n5'].getToggle()).toBe(laterRowToggleBefore);
-        expect(rowsByLabel['n5'].getNode()).toBe(nodes[4]);
+        expect(rowsByLabel['n5'].getNode()).toBe(nodes[5]);
+    });
+
+    it('expanding the middle branch rebinds exactly one pre-existing row, plus the freshly grown slot for its child', () => {
+        const BRANCH_COUNT = 6;
+        const tree = mountBranches(BRANCH_COUNT, (BRANCH_COUNT + 1) * ROW_HEIGHT) as any;
+        const nodes: TreeNode[] = tree._nodes;
+        const middle = nodes[3];
+
+        // Spied per pre-existing pool row: the fresh slot for n3's child
+        // does not exist yet, so it cannot be spied on until after
+        // growRowPool creates it mid-toggle — its own rebind is asserted
+        // indirectly, via the pool's growth.
+        const poolBefore = (tree._rowPool as Array<{ setRowData(...args: unknown[]): unknown }>).slice();
+        const poolSizeBefore = poolBefore.length;
+        const setRowDataSpies = poolBefore.map((row) => vi.spyOn(row, 'setRowData'));
+
+        tree._onToggle(middle);
+
+        const totalRebinds = setRowDataSpies.reduce((n, s) => n + s.mock.calls.length, 0);
+        expect(totalRebinds).toBe(1);
+        expect(tree._rowPool.length).toBe(poolSizeBefore + 1);
+    });
+
+    it('after expanding the middle branch, the rows below it keep their own node and their own toggle Glyph instance', () => {
+        const BRANCH_COUNT = 6;
+        const tree = mountBranches(BRANCH_COUNT, (BRANCH_COUNT + 1) * ROW_HEIGHT) as any;
+        const nodes: TreeNode[] = tree._nodes;
+        const middle = nodes[3];
+
+        const rowsByLabel: Record<string, any> = {};
+        for (const row of tree._rowPool) {
+            rowsByLabel[row.getNode().label] = row;
+        }
+
+        const n4Row = rowsByLabel['n4'];
+        const n5Row = rowsByLabel['n5'];
+        const n4ToggleBefore = n4Row.getToggle();
+        const n5ToggleBefore = n5Row.getToggle();
+
+        tree._onToggle(middle);
+
+        expect(n4Row.getNode()).toBe(nodes[4]);
+        expect(n5Row.getNode()).toBe(nodes[5]);
+        expect(n4Row.getToggle()).toBe(n4ToggleBefore);
+        expect(n5Row.getToggle()).toBe(n5ToggleBefore);
+    });
+
+    it('after expanding the middle branch, its own row gets a fresh caret-down Glyph — the one case an index-keyed diff would miss', () => {
+        const BRANCH_COUNT = 6;
+        const tree = mountBranches(BRANCH_COUNT, (BRANCH_COUNT + 1) * ROW_HEIGHT) as any;
+        const nodes: TreeNode[] = tree._nodes;
+        const middle = nodes[3];
+
+        const middleRow = (tree._rowPool as any[]).find((r) => r.getNode() === middle);
+        const toggleBefore = middleRow.getToggle();
+
+        tree._onToggle(middle);
+
+        expect(middleRow.getToggle()).not.toBe(toggleBefore);
+        expect(middleRow.getToggle().getGlyphName()).toBe('caret-down');
+    });
+
+    it('collapsing the middle branch again rebinds exactly one row and returns its caret to caret-right, without touching the rows after it', () => {
+        const BRANCH_COUNT = 6;
+        const tree = mountBranches(BRANCH_COUNT, (BRANCH_COUNT + 1) * ROW_HEIGHT) as any;
+        const nodes: TreeNode[] = tree._nodes;
+        const middle = nodes[3];
+
+        tree._onToggle(middle);
+
+        const middleRow = (tree._rowPool as any[]).find((r) => r.getNode() === middle);
+        const n4Row = (tree._rowPool as any[]).find((r) => r.getNode() === nodes[4]);
+        const n5Row = (tree._rowPool as any[]).find((r) => r.getNode() === nodes[5]);
+        const n4ToggleBefore = n4Row.getToggle();
+        const n5ToggleBefore = n5Row.getToggle();
+
+        const pool = tree._rowPool as Array<{ setRowData(...args: unknown[]): unknown }>;
+        const setRowDataSpies = pool.map((row) => vi.spyOn(row, 'setRowData'));
+
+        tree._onToggle(middle);
+
+        const totalRebinds = setRowDataSpies.reduce((n, s) => n + s.mock.calls.length, 0);
+        expect(totalRebinds).toBe(1);
+        expect(middleRow.getToggle().getGlyphName()).toBe('caret-right');
+        expect(n4Row.getToggle()).toBe(n4ToggleBefore);
+        expect(n5Row.getToggle()).toBe(n5ToggleBefore);
+    });
+
+    it('expanding the middle branch translates the rows below it down one row and leaves the rows above it untouched', () => {
+        const BRANCH_COUNT = 6;
+        const tree = mountBranches(BRANCH_COUNT, (BRANCH_COUNT + 1) * ROW_HEIGHT) as any;
+        const nodes: TreeNode[] = tree._nodes;
+        const middle = nodes[3];
+
+        const rowsByLabel: Record<string, any> = {};
+        for (const row of tree._rowPool) {
+            rowsByLabel[row.getNode().label] = row;
+        }
+
+        // Pin _lastRowWidth first, exactly as the neighbouring last-branch
+        // test does: a width change calls invalidateGeom() and repositions
+        // every row, which would make this case pass or fail for an
+        // unrelated reason.
+        const rowWidthBefore = tree._lastRowWidth;
+
+        const aboveSpies = ['n0', 'n1', 'n2'].map((label) => vi.spyOn(rowsByLabel[label], 'setTranslate'));
+        const belowSpies = ['n4', 'n5'].map((label) => vi.spyOn(rowsByLabel[label], 'setTranslate'));
+
+        tree._onToggle(middle);
+
+        expect(tree._lastRowWidth).toBe(rowWidthBefore);
+
+        for (const spy of aboveSpies) {
+            expect(spy).not.toHaveBeenCalled();
+        }
+        for (const spy of belowSpies) {
+            expect(spy).toHaveBeenCalledTimes(1);
+        }
     });
 
     it('toggling the last branch repositions no pre-existing row — the pool only grows by the newly-revealed child row', () => {
@@ -1436,6 +1696,26 @@ describe('Tree — rebind gating after a reflatten (isBoundTo)', () => {
         const totalRepositions = setTranslateSpies.reduce((n, s) => n + s.mock.calls.length, 0);
         expect(totalRepositions).toBe(0);
         expect(tree._rowPool.length).toBe(poolSizeBefore + 1);
+    });
+
+    it('selection and focus survive a toggle above the selected node, because the row keeps the node', () => {
+        const BRANCH_COUNT = 6;
+        const tree = mountBranches(BRANCH_COUNT, (BRANCH_COUNT + 1) * ROW_HEIGHT) as any;
+        const nodes: TreeNode[] = tree._nodes;
+        const middle = nodes[3];
+        const selected = nodes[5];
+
+        tree.selectNode(selected);
+
+        const selectedRow = (tree._rowPool as any[]).find((r) => r.getNode() === selected);
+
+        tree._onToggle(middle);
+
+        expect(tree.getSelectedNodes()).toEqual([selected]);
+        expect(tree.getSelectedNode()).toBe(selected);
+        expect(selectedRow.getNode()).toBe(selected);
+        expect(selectedRow.isStyleState('.selected')).toBe(true);
+        expect(tree.getAria().getActiveDescendant()).toBe(selectedRow.getId());
     });
 
     it('setNodes() with wholly new node identities still rebinds every visible row', () => {
@@ -1484,6 +1764,80 @@ describe('Tree — rebind gating after a reflatten (isBoundTo)', () => {
         for (const spy of setRowDataSpies) {
             expect(spy).toHaveBeenCalledTimes(1);
         }
+    });
+
+    it('a lazy expand still repaints its own row: the node keeps its slot through the reconciliation and its spinner is replaced by a caret', async () => {
+        const lazyNode: TreeNode = {
+            label: 'lazy',
+            hasChildren: true,
+            loadChildren: async () => [{ label: 'lazy-child' }],
+        };
+
+        const tree = new _Tree() as any;
+        tree.getElement(true);
+        tree.setWidth(200);
+        tree.setHeight(3 * ROW_HEIGHT);
+        tree.setNodes([lazyNode, { label: 'sibling' }]);
+        tree.renderWindow();
+
+        const row = (tree._rowPool as any[]).find((r) => r.getNode() === lazyNode);
+        expect(row.getToggle()?.getGlyphName()).toBe('caret-right');
+
+        const expandPromise = tree.expandNodeAsync(lazyNode);
+
+        // Mid-flight: loading flipped true synchronously (before the first
+        // await inside _loadAndExpand), so the toggle is already replaced by
+        // a spinner — and it is still the very same row.
+        expect((tree._rowPool as any[]).find((r) => r.getNode() === lazyNode)).toBe(row);
+        expect(row.getToggle()).toBeNull();
+
+        await expandPromise;
+
+        expect((tree._rowPool as any[]).find((r) => r.getNode() === lazyNode)).toBe(row);
+        expect(row.getToggle()?.getGlyphName()).toBe('caret-down');
+    });
+
+    it('economy at scale: toggling a branch deep in a large, densely expanded tree rebinds only a handful of rows', () => {
+        // One folder, 47 file branches of 4 leaves each — 236 flat rows, a
+        // 300x600 viewport, scrolled so the window sits deep inside the
+        // dataset. Mirrors the offline measurement this plan is built
+        // against: today the same fixture rebinds 27 of 31 pool rows and
+        // replaces 12 toggle glyphs; the reconciliation should rebind only
+        // the toggled branch and the slot(s) that genuinely enter or leave
+        // the window.
+        const FILES_PER_FOLDER = 47;
+        const LEAVES_PER_FILE  = 4;
+        const folder: TreeNode = {
+            label: 'folder',
+            children: Array.from({ length: FILES_PER_FOLDER }, (_, i) => ({
+                label: 'file' + i,
+                children: Array.from({ length: LEAVES_PER_FILE }, (_, j) => ({ label: 'file' + i + '-leaf' + j })),
+            })),
+        };
+
+        const tree = new _Tree() as any;
+        tree.getElement(true);
+        tree.setWidth(300);
+        tree.setHeight(600);
+        tree.setNodes([folder]);
+        tree.expandAll();
+        tree.renderWindow();
+        tree._scroller.setScrollY(60 * ROW_HEIGHT);
+        tree.renderWindow();
+
+        const target = folder.children![12];
+
+        const pool = tree._rowPool as Array<{ setRowData(...args: unknown[]): unknown, getToggle(): unknown }>;
+        const setRowDataSpies = pool.map((row) => vi.spyOn(row, 'setRowData'));
+        const toggleBeforeByRow = new Map(pool.map((row) => [row, row.getToggle()]));
+
+        tree._onToggle(target);
+
+        const totalRebinds = setRowDataSpies.reduce((n, s) => n + s.mock.calls.length, 0);
+        expect(totalRebinds).toBeLessThanOrEqual(6);
+
+        const unchangedToggles = pool.filter((row) => row.getToggle() === toggleBeforeByRow.get(row)).length;
+        expect(unchangedToggles).toBeGreaterThanOrEqual(25);
     });
 });
 
