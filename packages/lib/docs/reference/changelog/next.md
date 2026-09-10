@@ -19,6 +19,12 @@ page resets to empty.
   signatures are unchanged; existing consumers see focus land where it
   previously could not.
 
+### Layouts
+
+- **`Tab.setTabItalic(content, italic)` is no longer view-only.** It now
+  writes to the tab's `LayoutConstraints` the same way `setTabGlyph` does,
+  so the flag survives a tear-off, a re-dock, or a restored layout.
+
 ## Added
 
 ### Components
@@ -48,9 +54,9 @@ page resets to empty.
 ### Layouts
 
 - **`Tab.setTabModified(content, modified)` / `isTabModified(content)`** show
-  or hide a live tab's "unsaved changes" dot. Like `setTabItalic`, the flag
-  is view-only — it is not written to the tab's `LayoutConstraints`, so it
-  does not survive a tear-off, a re-dock, or a saved layout.
+  or hide a live tab's "unsaved changes" dot. The flag is written to the
+  tab's `LayoutConstraints`, so it survives a tear-off, a re-dock, or a
+  saved layout, and accepts a tab added but not yet laid out.
 
 ### Core
 
@@ -61,6 +67,35 @@ page resets to empty.
   a hidden descendant can be brought into a focusable state before something
   focuses it — the mechanism `FocusHistory.back()` / `forward()` now use (see
   Changed, below). Most consumers won't call this directly.
+
+### Overlay
+
+- **`Dock` gains four panel-id-keyed presentation setters**:
+  `setPanelTitle(id, title)`, `setPanelGlyph(id, glyph)`,
+  `setPanelItalic(id, italic)`, `setPanelModified(id, modified)`. Each is
+  durable — surviving a tear-off, a re-dock, and a `setLayoutState`
+  restore — and accepts a panel whose tab cell has not been created yet,
+  returning `true` when the panel is registered and `false` for an unknown
+  id.
+
+- **`Dock` gains `setTabOptions(options)` / `DockOptions.tabOptions`**,
+  applying a `TabOptions` presentation bag to every region the dock owns,
+  now and later — including a region a drag-driven edge split creates.
+  `reorderable`, `listeners`, and `tools` are dropped rather than
+  forwarded, since `Dock` owns the first two as invariants and the third
+  may carry a live component that can only ever have one parent.
+
+- **`AbstractWindow` gains the vetoable `"beforeclose"` event** and a new
+  `WindowCloseController` type. `requestClose()` fires it first; a listener
+  calling `preventDefault()` on the controller aborts the close. The
+  programmatic `onExitAction()` is not guarded by it.
+
+- **`Dock` gains the `"beforeclose"` and `"dblclick"` events**.
+  `"beforeclose"` fires for a tab's ✕ (tiled or floated) and a float
+  window's chrome ✕, forwarding the same controller `Tab`/`AbstractWindow`
+  handed it; `removePanel` stays the unguarded programmatic path.
+  `"dblclick"` fires when a tab button is double-clicked, mirroring `Tab`'s
+  own `"tabdblclick"`.
 
 ## Fixed
 
@@ -94,3 +129,18 @@ page resets to empty.
   that stays on screen keeps its slot, its DOM element, and its caret across
   an unrelated toggle and pays only a reposition. No consumer action is
   needed.
+
+### Layouts
+
+- **`Tab.setTabGlyph(content, glyph)` / `clearTabGlyph(content)` no longer
+  silently drop a write made before the tab's strip cell exists.** Both used
+  to return `false` and write nothing for a tab added moments ago but not yet
+  laid out; they now record the write durably and return `true`, applying it
+  once the cell is created.
+
+### Overlay
+
+- **A `Window`'s header ✕ now goes through the same close path as
+  `TabWindow`'s close tool**, so it can be vetoed via `AbstractWindow`'s new
+  `"beforeclose"` event. Previously it called the unguarded
+  `onExitAction()` directly, bypassing `requestClose()` entirely.

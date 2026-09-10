@@ -72,6 +72,18 @@ export class LayoutConstraints {
      */
     disposeOnClose?: boolean;
     /**
+     * Whether the tab's label is italicised. Read by the
+     * [`Tab`](/api/layout/classes/Tab) manager into the button's font style;
+     * ignored by other layout managers.
+     */
+    italic?: boolean;
+    /**
+     * Whether the tab shows the unsaved-changes badge. Read by the
+     * [`Tab`](/api/layout/classes/Tab) manager into the button's modified
+     * dot; ignored by other layout managers.
+     */
+    modified?: boolean;
+    /**
      * Marks a child as chrome that participates in layout but is excluded from
      * layout serialization. A `transient` child is laid out normally (it can be a
      * real tab or pane), but [`serializeLayout`](/api/layout/functions/serializeLayout)

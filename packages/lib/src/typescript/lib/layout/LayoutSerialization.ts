@@ -66,6 +66,10 @@ export interface PanelNode {
     closeable?: boolean;
     /** Captured from the leaf's {@link LayoutConstraints.disposeOnClose}. */
     disposeOnClose?: boolean;
+    /** Captured from the leaf's {@link LayoutConstraints.italic}. */
+    italic?: boolean;
+    /** Captured from the leaf's {@link LayoutConstraints.modified}. */
+    modified?: boolean;
 }
 
 /**
@@ -241,6 +245,8 @@ function nodeFor(component: Component): LayoutNode {
         tooltip,
         closeable:      constraints?.closeable,
         disposeOnClose: constraints?.disposeOnClose,
+        italic:         constraints?.italic,
+        modified:       constraints?.modified,
     };
 }
 
@@ -435,7 +441,9 @@ function constraintsFor(node: LayoutNode): LayoutConstraints | undefined {
     const carries = node.glyph != null
         || node.tooltip != null
         || node.closeable !== undefined
-        || node.disposeOnClose !== undefined;
+        || node.disposeOnClose !== undefined
+        || node.italic !== undefined
+        || node.modified !== undefined;
 
     if (!carries) {
         return undefined;
@@ -447,6 +455,8 @@ function constraintsFor(node: LayoutNode): LayoutConstraints | undefined {
     constraints.tooltip        = node.tooltip ?? null;
     constraints.closeable      = node.closeable;
     constraints.disposeOnClose = node.disposeOnClose;
+    constraints.italic         = node.italic;
+    constraints.modified       = node.modified;
 
     return constraints;
 }

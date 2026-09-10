@@ -113,6 +113,7 @@ describe('PanelNode presentation and disposal constraints', () => {
 
         tabHost.addComponent(a, Object.assign(new LayoutConstraints(), {
             glyph: 'circle-check', tooltip: 'T', closeable: true, disposeOnClose: false,
+            italic: true, modified: true,
         }));
 
         const state = serializeLayout(tabHost);
@@ -126,6 +127,8 @@ describe('PanelNode presentation and disposal constraints', () => {
         expect(constraints?.tooltip).toBe('T');
         expect(constraints?.closeable).toBe(true);
         expect(constraints?.disposeOnClose).toBe(false);
+        expect(constraints?.italic).toBe(true);
+        expect(constraints?.modified).toBe(true);
     });
 
     it('S2 — a state written without the new fields still restores', () => {
@@ -148,6 +151,27 @@ describe('PanelNode presentation and disposal constraints', () => {
         expect(constraints?.glyph).toBe('star');
         expect(constraints?.closeable).toBeUndefined();
         expect(constraints?.disposeOnClose).toBeUndefined();
+    });
+
+    it('S3 — a state written before italic/modified existed still restores, with both undefined', () => {
+        installTestDOM(CONFIG);
+
+        const a = new Component({}); a.setId('a');
+        const freshRoot = new Container({});
+
+        const state = {
+            version: 1 as const,
+            root:    { kind: 'panel' as const, panelId: 'a', glyph: 'star' },
+            windows: [],
+        };
+
+        restoreLayout(freshRoot, state, instanceFactory({ a }));
+
+        const constraints = freshRoot.getLayoutConstraints(a);
+
+        expect(freshRoot.getComponents()).toContain(a);
+        expect(constraints?.italic).toBeUndefined();
+        expect(constraints?.modified).toBeUndefined();
     });
 });
 

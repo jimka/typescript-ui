@@ -3,10 +3,10 @@
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { Component } from "~/core/Component.js";
 import type { ComponentFactory } from "~/core/Component.js";
-import { AbstractWindow } from "~/overlay/AbstractWindow.js";
+import { AbstractWindow, WindowCloseController } from "~/overlay/AbstractWindow.js";
 import { TabWindow } from "~/overlay/TabWindow.js";
 import { Fit } from "~/layout/Fit.js";
-import { Tab } from "~/layout/Tab.js";
+import { Tab, TabOptions, TabCloseController } from "~/layout/Tab.js";
 import { Split } from "~/layout/Split.js";
 import { DockRegion } from "~/layout/DockRegion.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
@@ -85,6 +85,13 @@ export interface DockOptions extends ContainerOptions {
      */
     emptyContent?: Component;
     /**
+     * Tab-strip presentation applied to every region this dock builds, now and
+     * later. Equivalent to calling {@link Dock.setTabOptions} right after
+     * construction. `reorderable`, `listeners`, and `tools` are ignored — see
+     * `setTabOptions`.
+     */
+    tabOptions?: TabOptions;
+    /**
      * Construction-time listener bag — the declarative form of {@link Dock.on},
      * so a consumer can wire dock events (notably `emptychange`, the empty↔
      * populated aggregate) in the options bag instead of a separate post-build
@@ -98,6 +105,8 @@ export interface DockOptions extends ContainerOptions {
         move?:        (event: DockPanelEvent) => void;
         focus?:       (event: DockPanelEvent | null) => void;
         close?:       (event: DockPanelEvent) => void;
+        beforeclose?: (event: DockPanelEvent, controller: TabCloseController) => void;
+        dblclick?:    (event: DockPanelEvent) => void;
         emptychange?: (event: DockEmptyEvent) => void;
         exception?:   (event: DockExceptionEvent) => void;
     };
@@ -135,9 +144,19 @@ export interface DockOptions extends ContainerOptions {
  * because the failure tears the whole docked panel down; the panel stays
  * registered, so re-adding the same id rebuilds it and retries.
  *
+ * `"beforeclose"` fires for a tab's ✕ (tiled or floated in a `TabWindow`) and a
+ * float window's chrome ✕, carrying the same {@link TabCloseController} /
+ * {@link WindowCloseController} `Tab`/`AbstractWindow` handed Dock — calling
+ * its `preventDefault()` aborts the close. `removePanel(id)` stays the
+ * unguarded programmatic path, matching `Tab.closeTab`. `"dblclick"` fires
+ * when a tab button is double-clicked (mirrors `Tab`'s own `"tabdblclick"`);
+ * like that event, it does not fire for a lazy tab whose content hasn't built
+ * yet.
+ *
  * @category Core
  */
-export type DockEvent = "attach" | "detach" | "move" | "focus" | "close" | "emptychange" | "exception";
+export type DockEvent =
+    "attach" | "detach" | "move" | "focus" | "close" | "beforeclose" | "dblclick" | "emptychange" | "exception";
 
 /**
  * Payload for a {@link Dock} lifecycle event, identifying the panel by its
@@ -257,6 +276,12 @@ class Dock extends Container<DockOptions> {
     // guard that stops a re-sweep stacking duplicate listeners.
     private _floatSubscribed: Set<AbstractWindow> = new Set<AbstractWindow>();
 
+    // Presentation-only TabOptions applied to every region this dock builds, now
+    // and later — see setTabOptions. Never contains "reorderable" / "listeners"
+    // (Dock-owned invariants). A plain initializer is safe: no cascade-dispatched
+    // setter touches it (see the constructor note below).
+    private _tabOptions: TabOptions = {};
+
     // Overlay highlighting the dock as a drop target while it is empty (every
     // panel torn off) and a tab is dragged over it.
     private _emptyDropOverlay: DropZoneOverlay = new DropZoneOverlay();
@@ -299,6 +324,16 @@ class Dock extends Container<DockOptions> {
      */
     constructor(options?: DockOptions, subclassDefaults?: Partial<DockOptions>) {
         super(options, { layoutManager: new Fit(), ...subclassDefaults });
+
+        // Handled here, outside applyOptions, for the same reason options?.layout
+        // is below: applyOptions runs inside super(), before this._tabOptions'
+        // field initializer runs, so a write there would be silently reverted by
+        // the initializer immediately afterward (the super()-cascade field trap —
+        // see CODE_CONVENTIONS.md). Applied before the first region is built, so
+        // even the dock's very first region picks it up.
+        if (options?.tabOptions) {
+            this.setTabOptions(options.tabOptions);
+        }
 
         const root = options?.layout ? this.compileLayout(options.layout) : this.newTabRegion();
 
@@ -767,7 +802,7 @@ class Dock extends Container<DockOptions> {
      * @returns The new `Tab` region.
      */
     private newTabRegion(): Component {
-        return new Container({ layoutManager: new Tab({ reorderable: true, compact: true }) });
+        return new Container({ layoutManager: new Tab({ compact: true, ...this._tabOptions, reorderable: true }) });
     }
 
     /**
@@ -1057,19 +1092,32 @@ class Dock extends Container<DockOptions> {
                 continue;
             }
 
-            const onFloatActivate: () => void = (): void => { this.onFloatActivated(win); };
-            const onFloatClose:    () => void = (): void => { this.onFloatClosed(win); };
+            const onFloatActivate:    () => void = (): void => { this.onFloatActivated(win); };
+            const onFloatClose:       () => void = (): void => { this.onFloatClosed(win); };
+            const onFloatBeforeClose: (controller: WindowCloseController) => void =
+                (controller): void => { this.onFloatBeforeClose(win, controller); };
 
-            win.on("activate", onFloatActivate);
-            win.on("close",    onFloatClose);
+            win.on("activate",    onFloatActivate);
+            win.on("close",       onFloatClose);
+            win.on("beforeclose", onFloatBeforeClose);
 
             if (win instanceof TabWindow) {
                 const tab = win.getLayoutManager() as Tab;
+
+                // Applies the dock-wide presentation the first time this
+                // TabWindow is seen — the same reason wireRegion applies it to
+                // a freshly-wired tiled/adopted region: TabWindow's own
+                // constructor builds its Tab with hardcoded options, with no
+                // knowledge of Dock._tabOptions, so a plain tab tear-off (the
+                // default detachWindowMode) would otherwise never pick it up.
+                this.applyTabOptions(tab, this._tabOptions);
 
                 tab.on("activate", this.onPanelFocused);
                 tab.on("tabclose",  this.onPanelClosed);
                 tab.on("detach",  this.onPanelDetached);
                 tab.on("dock",    this.onPanelDocked);
+                tab.on("beforetabclose", this.onPanelBeforeClose);
+                tab.on("tabdblclick",    this.onPanelDoubleClicked);
             }
 
             this._floatSubscribed.add(win);
@@ -1287,6 +1335,13 @@ class Dock extends Container<DockOptions> {
             const tab: Tab = manager as Tab;
 
             tab.setReorderable(true);
+            // Applies the dock-wide presentation to a region this sweep is
+            // wiring for the first time — the only way setTabOptions's "every
+            // region it builds later" promise reaches a region a drag-driven
+            // edge split creates (DockRegion.newStack() builds its own plain
+            // Tab, with no knowledge of Dock's _tabOptions at all); an already-
+            // wired region got it immediately from setTabOptions's own loop.
+            this.applyTabOptions(tab, this._tabOptions);
             // Per-region prune; the named const carries the region the shared
             // handler set otherwise could not (ARCHITECTURE: a listener is a named
             // reference, never an inline arrow).
@@ -1300,6 +1355,8 @@ class Dock extends Container<DockOptions> {
             tab.on("activate", this.onPanelFocused);
             tab.on("detach",  this.onPanelDetached);
             tab.on("dock",    this.onPanelDocked);
+            tab.on("beforetabclose", this.onPanelBeforeClose);
+            tab.on("tabdblclick",    this.onPanelDoubleClicked);
 
             wiring.tabWired = true;
         }
@@ -1621,6 +1678,60 @@ class Dock extends Container<DockOptions> {
     };
 
     /**
+     * `"beforetabclose"` handler for every wired `Tab` (tiled or float): a
+     * tab's ✕ (or the context menu's *Close*) was actioned. Re-emits the
+     * vetoable `"beforeclose"`, forwarding the same `TabCloseController` `Tab`
+     * handed it — calling `preventDefault()` on it aborts the close the same
+     * way it would for `Tab` itself.
+     *
+     * @param content - The tab's content (a Dock identity frame) about to close.
+     * @param controller - Forwarded verbatim to `"beforeclose"` listeners.
+     */
+    private onPanelBeforeClose = (content: Component, controller: TabCloseController): void => {
+        const id = content.getId();
+
+        if (this._frames.get(id) !== content) {
+            return;
+        }
+
+        this.emit("beforeclose", { id, content, window: this.hostForFrame(content, this.getRootRegion()) }, controller);
+    };
+
+    /**
+     * Window `"beforeclose"` handler for an owned float: its chrome ✕ was
+     * actioned. Emits one vetoable `"beforeclose"` per frame the float holds —
+     * a bare-`Window` mini-dock can hold several — passing the *same*
+     * `WindowCloseController` to each, since `preventDefault()` from any one
+     * listener aborts the shared window close.
+     *
+     * @param window - The float window about to close.
+     * @param controller - Forwarded verbatim to `"beforeclose"` listeners.
+     */
+    private onFloatBeforeClose = (window: AbstractWindow, controller: WindowCloseController): void => {
+        for (const frame of this.framesInWindow(window)) {
+            this.emit("beforeclose", { id: frame.getId(), content: frame, window }, controller);
+        }
+    };
+
+    /**
+     * `"tabdblclick"` handler for every wired `Tab` (tiled or float): a tab
+     * button was double-clicked. Re-emits the public `"dblclick"`.
+     *
+     * @param content - The double-clicked tab's content (a Dock identity frame).
+     * @param _index - The tab's index within its strip (unused; the payload
+     *   identifies the panel by id).
+     */
+    private onPanelDoubleClicked = (content: Component, _index: number): void => {
+        const id = content.getId();
+
+        if (this._frames.get(id) !== content) {
+            return;
+        }
+
+        this.emit("dblclick", { id, content, window: this.hostForFrame(content, this.getRootRegion()) });
+    };
+
+    /**
      * Window `"activate"` handler for an owned float: the float became the active
      * layer. Emits `"focus"` for the float's active panel, gated on a genuine
      * focused-panel change.
@@ -1794,6 +1905,146 @@ class Dock extends Container<DockOptions> {
         }
 
         return (region.getLayoutManager() as Tab).closeTab(frame);
+    }
+
+    /**
+     * Relabels panel `id`'s tab and tear-off window title. Durable — written
+     * onto the panel's own identity frame's name, the same channel a
+     * tear-off/re-dock/restore already preserves title through, so no
+     * `LayoutConstraints` write is needed here.
+     *
+     * @param id - The panel id to relabel.
+     * @param title - The new title.
+     *
+     * @returns `true` when the panel is registered, `false` for an unknown id.
+     */
+    setPanelTitle(id: string, title: string): boolean {
+        const frame = this._frames.get(id);
+
+        if (!frame) {
+            return false;
+        }
+
+        frame.setName(title);
+        this.ownerTab(frame)?.setTabName(frame, title);
+
+        return true;
+    }
+
+    /**
+     * Replaces panel `id`'s tab glyph. Durable — survives a tear-off, a
+     * re-dock, and a `setLayoutState` restore. Accepts a panel whose tab cell
+     * has not been created yet.
+     *
+     * @param id - The panel id to re-icon.
+     * @param glyph - Registry glyph name to display.
+     *
+     * @returns `true` when the panel is registered, `false` for an unknown id.
+     */
+    setPanelGlyph(id: string, glyph: string): boolean {
+        const frame = this._frames.get(id);
+
+        return frame ? this.ownerTab(frame)?.setTabGlyph(frame, glyph) ?? false : false;
+    }
+
+    /**
+     * Italicises (or un-italicises) panel `id`'s tab label. Durable; accepts a
+     * not-yet-celled panel — see {@link setPanelGlyph}.
+     *
+     * @param id - The panel id to style.
+     * @param italic - True to italicise the label, false to restore it upright.
+     *
+     * @returns `true` when the panel is registered, `false` for an unknown id.
+     */
+    setPanelItalic(id: string, italic: boolean): boolean {
+        const frame = this._frames.get(id);
+
+        return frame ? this.ownerTab(frame)?.setTabItalic(frame, italic) ?? false : false;
+    }
+
+    /**
+     * Shows or hides the unsaved-changes dot on panel `id`'s tab. Durable;
+     * accepts a not-yet-celled panel — see {@link setPanelGlyph}.
+     *
+     * @param id - The panel id to mark.
+     * @param modified - True to show the badge, false to hide it.
+     *
+     * @returns `true` when the panel is registered, `false` for an unknown id.
+     */
+    setPanelModified(id: string, modified: boolean): boolean {
+        const frame = this._frames.get(id);
+
+        return frame ? this.ownerTab(frame)?.setTabModified(frame, modified) ?? false : false;
+    }
+
+    /**
+     * Applies `options` to every region this dock owns now, and stores it to
+     * apply to every region it builds later. `reorderable`, `listeners`, and
+     * `tools` are ignored (Dock-owned invariants — a caller's
+     * `reorderable: false` would silently break drag-and-drop, since
+     * `wireRegion` force-sets it on every region exactly once at first wire;
+     * a `listeners` bag is construction-time per-instance wiring with no
+     * sensible "apply the same bag to every region" operation, and `Dock`
+     * already owns each region's `Tab` event wiring itself; `tools` may carry
+     * a live `Component`, which can only ever have one parent, so replaying
+     * the same stored array into a second region's constructor would throw
+     * when that region is built). A caller passing any of the three gets no
+     * error — they are silently dropped, the same as `moveComponent`'s
+     * constraints-mismatch elsewhere in this codebase.
+     *
+     * @param options - The tab-strip presentation to apply.
+     *
+     * @returns This dock, for chaining.
+     */
+    setTabOptions(options: TabOptions): this {
+        const { reorderable: _reorderable, listeners: _listeners, tools: _tools, ...forwarded } = options;
+
+        this._tabOptions = forwarded;
+
+        for (const region of this.allTabRegions()) {
+            this.applyTabOptions(region.getLayoutManager() as Tab, forwarded);
+        }
+
+        return this;
+    }
+
+    /**
+     * Applies the forwardable subset of `options` (everything `setTabOptions`
+     * did not strip) onto one `Tab` region.
+     *
+     * @param tab - The region's `Tab` manager to configure.
+     * @param options - The already-filtered presentation options.
+     */
+    private applyTabOptions(tab: Tab, options: TabOptions): void {
+        if (options.widthMode !== undefined) tab.setWidthMode(options.widthMode);
+        if (options.maxWidth !== undefined) tab.setMaxWidth(options.maxWidth);
+        if (options.fixedWidth !== undefined) tab.setFixedWidth(options.fixedWidth);
+        if (options.underBorderFullWidth !== undefined) tab.setUnderBorderFullWidth(options.underBorderFullWidth);
+        if (options.side !== undefined) tab.setSide(options.side);
+        if (options.align !== undefined) tab.setAlign(options.align);
+        if (options.orientation !== undefined) tab.setOrientation(options.orientation);
+        if (options.textAlign !== undefined) tab.setTextAlign(options.textAlign);
+        if (options.scrollable !== undefined) tab.setScrollable(options.scrollable);
+        if (options.compact !== undefined) tab.setCompact(options.compact);
+        if (options.barIgnoreParentInsets !== undefined) tab.setBarIgnoreParentInsets(options.barIgnoreParentInsets);
+        if (options.detachWindowMode !== undefined) tab.setDetachWindowMode(options.detachWindowMode);
+    }
+
+    /**
+     * The `Tab` currently governing `frame`'s tab, resolved from `frame`'s own
+     * parent container rather than searched for by cell — so it resolves even
+     * before a layout pass has built the cell. `null` when `frame` has no
+     * parent (mid-teardown) or its parent isn't `Tab`-managed (should not
+     * happen for a registered Dock frame).
+     *
+     * @param frame - The identity frame whose owning `Tab` to resolve.
+     *
+     * @returns The owning `Tab`, or `null`.
+     */
+    private ownerTab(frame: Component): Tab | null {
+        const manager = frame.getParentComponent()?.getLayoutManager();
+
+        return manager instanceof Tab ? manager : null;
     }
 
     /**
@@ -1988,6 +2239,30 @@ class Dock extends Container<DockOptions> {
      * @returns This dock, for method chaining.
      */
     on(event: "exception", listener: (event: DockExceptionEvent) => void): this;
+    /**
+     * Registers a listener for the vetoable `"beforeclose"` event, which fires
+     * for a tab's ✕ (tiled or floated in a `TabWindow`) and a float window's
+     * chrome ✕. Calling `preventDefault()` on the controller aborts the
+     * close. `removePanel(id)` never fires this — it stays the unguarded
+     * programmatic path.
+     *
+     * @param event - The `"beforeclose"` event.
+     * @param listener - Invoked with the affected panel and its close controller.
+     *
+     * @returns This dock, for method chaining.
+     */
+    on(event: "beforeclose", listener: (event: DockPanelEvent, controller: TabCloseController) => void): this;
+    /**
+     * Registers a listener for the `"dblclick"` event, which fires when a tab
+     * button is double-clicked. Mirrors `Tab`'s own `"tabdblclick"`: it does
+     * not fire for a lazy tab whose content hasn't built yet.
+     *
+     * @param event - The `"dblclick"` event.
+     * @param listener - Invoked with the double-clicked panel.
+     *
+     * @returns This dock, for method chaining.
+     */
+    on(event: "dblclick", listener: (event: DockPanelEvent) => void): this;
     on(event: DockEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -2031,6 +2306,24 @@ class Dock extends Container<DockOptions> {
      * @returns This dock, for method chaining.
      */
     off(event: "exception", listener: (event: DockExceptionEvent) => void): this;
+    /**
+     * Removes a previously registered `"beforeclose"` listener.
+     *
+     * @param event - The `"beforeclose"` event.
+     * @param listener - The exact listener reference passed to `on`.
+     *
+     * @returns This dock, for method chaining.
+     */
+    off(event: "beforeclose", listener: (event: DockPanelEvent, controller: TabCloseController) => void): this;
+    /**
+     * Removes a previously registered `"dblclick"` listener.
+     *
+     * @param event - The `"dblclick"` event.
+     * @param listener - The exact listener reference passed to `on`.
+     *
+     * @returns This dock, for method chaining.
+     */
+    off(event: "dblclick", listener: (event: DockPanelEvent) => void): this;
     off(event: DockEvent, listener: Function): this {
         this._listeners.remove(event, listener);
 
@@ -2048,8 +2341,10 @@ class Dock extends Container<DockOptions> {
     protected emit(event: "focus", payload: DockPanelEvent | null): void;
     protected emit(event: "emptychange", payload: DockEmptyEvent): void;
     protected emit(event: "exception", payload: DockExceptionEvent): void;
-    protected emit(event: DockEvent, payload: DockPanelEvent | DockEmptyEvent | DockExceptionEvent | null): void {
-        this._listeners.fire(event, payload);
+    protected emit(event: "beforeclose", payload: DockPanelEvent, controller: TabCloseController | WindowCloseController): void;
+    protected emit(event: "dblclick", payload: DockPanelEvent): void;
+    protected emit(event: DockEvent, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
     }
 
     /**

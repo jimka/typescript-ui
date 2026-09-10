@@ -92,7 +92,7 @@ layout.setTabGlyph(consolePanel, 'triangle-exclamation');
 layout.clearTabGlyph(consolePanel);
 ```
 
-Both return `true` when `content` has a tab, `false` otherwise — including for a lazy tab whose factory has not run yet, since it has no content component to key on. [`TabBar`](/components/TabBar)'s own `setEntryGlyph(id, glyph)` / `clearEntryGlyph(id)` reach such a cell directly, by its owner-minted id, but change only the live button — they don't write the `glyph` constraint, so the change does not survive a tear-off, a re-dock, or a saved layout the way `setTabGlyph` does.
+Both return `true` when `content` is a tab of this strip, `false` otherwise — including one already added but not yet laid out, which now also durably records the write (it applies to the live cell once one is created). Only a component never added to the strip at all returns `false`. [`TabBar`](/components/TabBar)'s own `setEntryGlyph(id, glyph)` / `clearEntryGlyph(id)` reach a cell directly, by its owner-minted id, but change only the live button — they don't write the `glyph` constraint, so the change does not survive a tear-off, a re-dock, or a saved layout the way `setTabGlyph` does.
 
 `setTabItalic(content, italic)` italicises (or restores) a tab's label — the VS Code-style preview-tab treatment, with nothing else about the tab changed — and `isTabItalic(content)` reads the flag back:
 
@@ -102,7 +102,7 @@ layout.setTabItalic(consolePanel, true);
 layout.setTabItalic(consolePanel, false);
 ```
 
-Unlike `setTabGlyph`, the italic flag is **view-only**: it is not written to the tab's `LayoutConstraints`, so a tear-off, a re-dock, or a restored layout brings the tab back upright.
+Like `setTabGlyph`, this writes to the tab's `LayoutConstraints`, so the flag survives a tear-off, a re-dock, or a restored layout — and, the same as `setTabGlyph`, it accepts a tab already added but not yet laid out.
 
 `setTabModified(content, modified)` shows or hides a small filled dot trailing a tab's label — a persistent "unsaved changes" marker that survives label truncation, since it is a real content-row child rather than baked into the label text — and `isTabModified(content)` reads the flag back:
 
@@ -112,7 +112,7 @@ layout.setTabModified(consolePanel, true);
 layout.setTabModified(consolePanel, false);
 ```
 
-Like the italic flag, and unlike `setTabGlyph`, the modified flag is **view-only**: it is not written to the tab's `LayoutConstraints`, so a tear-off, a re-dock, or a restored layout brings the tab back clean.
+Like the italic flag and `setTabGlyph`, this writes to the tab's `LayoutConstraints`, so it survives a tear-off, a re-dock, or a restored layout, and accepts a tab already added but not yet laid out.
 
 ## Selecting a tab
 

@@ -80,7 +80,7 @@ Once a panel is docked, the gestures come from the composed primitives:
 
 ## Panel lifecycle
 
-The model is **host-centric**: a live panel always occupies one Dock-managed **host** — the **tiled tree** (the main dock) or a **float** [`Window`](/components/Window) — and a destroyed panel is **gone**. `Dock` emits five per-panel events — typed as [`DockEvent`](/api/overlay/type-aliases/DockEvent) with a [`DockPanelEvent`](/api/overlay/interfaces/DockPanelEvent) payload — naming the host transitions and intra-host relocations:
+The model is **host-centric**: a live panel always occupies one Dock-managed **host** — the **tiled tree** (the main dock) or a **float** [`Window`](/components/Window) — and a destroyed panel is **gone**. `Dock` emits seven per-panel events — typed as [`DockEvent`](/api/overlay/type-aliases/DockEvent) with a [`DockPanelEvent`](/api/overlay/interfaces/DockPanelEvent) payload — naming the host transitions, intra-host relocations, and the tab-close/double-click gestures:
 
 | Event | Fires when | Payload |
 | --- | --- | --- |
@@ -88,7 +88,9 @@ The model is **host-centric**: a live panel always occupies one Dock-managed **h
 | `detach` | a panel **leaves** a host while staying alive | `{ id, content, window }` |
 | `move` | a panel **relocates within** its current host — a different region in the same tiled tree, or repositioned in the same float | `{ id, content, window }` |
 | `focus` | the dock-wide active panel changes, across tiled tabs **and** floats | `{ id, content, window }` or `null` |
+| `beforeclose` | a tab's ✕ (tiled or floated) or a float window's chrome ✕ is clicked — vetoable via the controller's `preventDefault()` | `{ id, content, window }`, controller |
 | `close` | a panel is genuinely destroyed — a tab ✕, `removePanel`, or a float window's chrome ✕ | `{ id, content, window: null }` |
+| `dblclick` | a tab button is double-clicked | `{ id, content, window }` |
 
 The payload's **`window`** names which host the event concerns: `null` for the tiled tree, otherwise the float [`Window`](/components/Window). A host change is a **pair** of events — a panel leaves one host and enters another — while an intra-host relocation is a single `move`:
 
@@ -113,6 +115,7 @@ A few rules make the events predictable:
 
 - **A move is `detach` then `attach`.** Leaving one host and entering another is two real transitions, in that order — so a tear-off is `detach`(tiled) + `attach`(float), and a re-dock is `detach`(float) + `attach`(tiled). The `window` field tells the two apart.
 - **`close` is never paired with a `detach`.** A destroy (tab ✕, `removePanel`, float ✕) fires `close` alone — the frame is gone, so no phantom host-leave is emitted. A panel torn off and *then* closed produces the tear-off pair first, then `close` when destroyed. Once the event has been delivered to every listener, the panel's content is destroyed — releasing its element, handles, and per-instance stylesheet rules — unless the spec set `disposeOnClose: false`.
+- **`removePanel` never fires `beforeclose`.** It is the unguarded programmatic path, matching `Tab.closeTab` — a standing veto registered on `beforeclose` does not stop it. A float's chrome ✕ fires one `beforeclose` per frame the float holds (a bare `Window` mini-dock can hold several), passing every listener the *same* controller, so `preventDefault()` from any one of them aborts the whole float's close.
 - **A relocation within one host fires `move`, not `attach`/`detach`.** Dragging a panel to a *different region* in the same host — between `Split` panes, or onto another `Tab` region's bar — keeps its host, so it fires a single `move` whose `window` names that (unchanged) host. A host change fires `detach`+`attach` and **never** `move`; a first appearance fires `attach` alone. A pure **reorder within one strip** repositions a panel within the same place, not to a different one, so it fires **nothing**. `move` carries no region detail (regions are anonymous) — a listener reacting to a layout change re-reads `getLayoutState()`. A `setLayoutState` restore rebuilds the tree but is not a user relocation, so it stays silent for `move`.
 - **`focus` is one nullable event — there is no `blur`.** The previously-focused panel is whatever the last non-null `focus` named; the `null` payload covers "nothing focused now" (e.g. the last panel closed). Re-activating the already-focused panel is silent. A non-null `focus` payload's `window` names the focused panel's current host.
 - **Re-dock and layout restore fire `focus` too.** A re-dock and a `setLayoutState` both genuinely change the active panel, so each fires a `focus` for the now-active panel in addition to the host-transition events.
@@ -144,7 +147,7 @@ No error UI is shown — presenting the failure is the consumer's job.
 
 ## Programmatic control
 
-Two methods drive the lifecycle from code, each returning whether it found the panel:
+Six methods drive the lifecycle and presentation from code, each keyed by panel `id` and each returning whether it found the panel:
 
 ```typescript
 if (dock.focusPanel('search')) {
@@ -152,10 +155,28 @@ if (dock.focusPanel('search')) {
 }
 
 dock.removePanel('editor'); // closes through the user-close path -> fires `close`
+
+dock.setPanelTitle('search', 'Search results');
+dock.setPanelGlyph('search', 'magnifying-glass');
+dock.setPanelItalic('search', true);   // preview-tab treatment
+dock.setPanelModified('editor', true); // unsaved-changes dot
 ```
 
 - **`focusPanel(id)`** activates the host tab and raises the host float when the panel is floated, so a buried panel surfaces. A successful activation naturally produces a `focus`. Returns `false` for an unknown id or one registered but never docked.
 - **`removePanel(id)`** closes the panel through the same path a tab ✕ takes, firing exactly one `close`. Returns `false` for an unknown id or one in no region. The cached frame is evicted (a later `addPanel` rebuilds it from the registered factory) while the registration is kept.
+- **`setPanelTitle`/`setPanelGlyph`/`setPanelItalic`/`setPanelModified`** relabel, re-icon, italicise, or mark modified a panel's tab — the same durable presentation [`Tab`](/api/layout/classes/Tab) itself exposes ([`setTabName`](/layouts/Tab#renaming-re-iconing-italicising-and-marking-a-tab-modified) / `setTabGlyph` / `setTabItalic` / `setTabModified`), reached by panel `id` instead of by the live content component. Each accepts a panel whose tab cell has not been created yet (durably recorded, applied once the cell exists) and returns `false` only for an id never registered via `addPanel`/`addLazyPanel`.
+
+`setTabOptions(options)` applies a [`TabOptions`](/api/layout/interfaces/TabOptions) bag's presentation fields — width mode, scrolling, orientation, and the rest — to every region this dock owns, immediately, and stores it to apply to every region it builds afterward:
+
+```typescript
+dock.setTabOptions({ widthMode: 'content', scrollable: true });
+```
+
+`reorderable`, `listeners`, and `tools` are silently dropped rather than forwarded: `Dock` force-enables reordering on every region it wires and owns each region's `Tab` event wiring itself, so forwarding either would fight `Dock`'s own invariants; `tools` may carry a live component, which can only ever have one parent, so replaying the same stored array into a second region would throw. Passing any of the three is not an error — it is simply ignored, the same way an inapplicable `moveComponent` constraint is the caller's own responsibility elsewhere in this library. `DockOptions.tabOptions` applies the same options from construction, before the dock's very first region is built:
+
+```typescript
+const dock = Dock({ tabOptions: { maxWidth: 200 } });
+```
 
 ### Async panel content
 

@@ -1273,54 +1273,27 @@ class Tab extends LayoutManager implements FocusRevealer {
     }
 
     /**
-     * Replaces the leading icon of the tab hosting `content`.
+     * Applies a presentation field to the tab hosting `content`: always durably,
+     * into its `LayoutConstraints` (creating one if needed); additionally onto the
+     * live `TabBar` cell when one currently exists. `content` need not have a
+     * cell yet — `createTab`/`TabBar.createBarEntry` read the same constraints
+     * fields when the cell is eventually built, so a write made before that still
+     * takes effect once it is.
      *
-     * @param content - The content component whose tab to re-icon.
-     * @param glyph - Registry glyph name to display.
+     * @param content - The content component whose tab to update. Must already be
+     *   a child of this strip's container (celled or not).
+     * @param mutate - Writes the field onto `constraints`.
+     * @param applyLive - Pushes the same value onto the live cell with id `entryId`.
      *
-     * @returns `true` when a matching tab was found, `false` otherwise.
-     *
-     * @remarks
-     * A lazy tab whose factory has not run yet has no content component to
-     * key on, so this returns `false` for it. {@link TabBar.setEntryGlyph}
-     * reaches such a cell directly, by its owner-minted id.
+     * @returns `true` when `content` is a child of this strip; `false` when it is
+     *   not a child at all.
      */
-    setTabGlyph(content: Component, glyph: string): boolean {
-        return this.applyTabGlyph(content, glyph);
-    }
-
-    /**
-     * Removes the leading icon of the tab hosting `content`.
-     *
-     * @param content - The content component whose tab to clear.
-     *
-     * @returns `true` when a matching tab was found, `false` otherwise.
-     *
-     * @remarks
-     * Same lazy-tab limitation as {@link setTabGlyph}: a tab whose factory
-     * has not run yet has no content component to key on, so this returns
-     * `false` for it. {@link TabBar.clearEntryGlyph} reaches such a cell
-     * directly, by its owner-minted id.
-     */
-    clearTabGlyph(content: Component): boolean {
-        return this.applyTabGlyph(content, null);
-    }
-
-    /**
-     * Shared implementation for {@link setTabGlyph} / {@link clearTabGlyph}.
-     * Writes `glyph` back to the tab's stored `LayoutConstraints` — the
-     * glyph's durable home, re-read by `createTab` on a re-dock and captured
-     * by layout serialization — in addition to swapping the live button icon.
-     *
-     * @param content - The content component whose tab to update.
-     * @param glyph - Registry glyph name to display, or `null` to clear it.
-     *
-     * @returns `true` when a matching tab was found, `false` otherwise.
-     */
-    private applyTabGlyph(content: Component, glyph: string | null): boolean {
-        const entry = this._contents.find(e => e.component === content);
-
-        if (!entry) {
+    private applyDurableTabState(
+        content: Component,
+        mutate: (constraints: LayoutConstraints) => void,
+        applyLive: (entryId: string) => void,
+    ): boolean {
+        if (!(this.getContainer()?.getComponents().includes(content) ?? false)) {
             return false;
         }
 
@@ -1331,53 +1304,79 @@ class Tab extends LayoutManager implements FocusRevealer {
             this.setLayoutConstraints(content, constraints);
         }
 
-        constraints.glyph = glyph;
+        mutate(constraints);
 
-        if (glyph === null) {
-            this._bar.clearEntryGlyph(entry.id);
-        } else {
-            this._bar.setEntryGlyph(entry.id, glyph);
+        const entry = this._contents.find(e => e.component === content);
+
+        if (entry) {
+            applyLive(entry.id);
+            this.getContainer()?.scheduleLayout();
         }
 
-        this.getContainer()?.scheduleLayout();
-
         return true;
+    }
+
+    /**
+     * Replaces the leading icon of the tab hosting `content`. Durable — written
+     * to the tab's stored `LayoutConstraints`, re-read by `createTab` on a
+     * re-dock and captured by layout serialization — in addition to swapping the
+     * live button icon when the tab's strip cell already exists.
+     *
+     * @param content - The content component whose tab to re-icon.
+     * @param glyph - Registry glyph name to display.
+     *
+     * @returns `true` when `content` is a child of this strip (celled or not),
+     *   `false` when it is not a child at all.
+     */
+    setTabGlyph(content: Component, glyph: string): boolean {
+        return this.applyDurableTabState(
+            content,
+            constraints => { constraints.glyph = glyph; },
+            entryId => this._bar.setEntryGlyph(entryId, glyph),
+        );
+    }
+
+    /**
+     * Removes the leading icon of the tab hosting `content`. Durable, the same
+     * way {@link setTabGlyph} is.
+     *
+     * @param content - The content component whose tab to clear.
+     *
+     * @returns `true` when `content` is a child of this strip (celled or not),
+     *   `false` when it is not a child at all.
+     */
+    clearTabGlyph(content: Component): boolean {
+        return this.applyDurableTabState(
+            content,
+            constraints => { constraints.glyph = null; },
+            entryId => this._bar.clearEntryGlyph(entryId),
+        );
     }
 
     /**
      * Italicises (or un-italicises) the label of the tab hosting `content` —
      * the VS Code-style preview-tab treatment. Nothing else about the tab
-     * changes.
+     * changes. Durable — written to the tab's stored `LayoutConstraints`, so it
+     * survives a tear-off, a re-dock, or a saved layout.
      *
      * @param content - The content component whose tab to style.
      * @param italic - True to italicise the label, false to restore it upright.
      *
-     * @returns `true` when a matching tab was found, `false` otherwise.
-     *
-     * @remarks
-     * A lazy tab whose factory has not run yet has no content component to
-     * key on, so this returns `false` for it. {@link TabBar.setEntryItalic}
-     * reaches such a cell directly, by its owner-minted id.
-     *
-     * The flag is view-only: it is not written to the tab's
-     * `LayoutConstraints`, so it does not survive a tear-off, a re-dock, or a
-     * saved layout.
+     * @returns `true` when `content` is a child of this strip (celled or not),
+     *   `false` when it is not a child at all.
      */
     setTabItalic(content: Component, italic: boolean): boolean {
-        const entry = this._contents.find(e => e.component === content);
-
-        if (!entry) {
-            return false;
-        }
-
-        this._bar.setEntryItalic(entry.id, italic);
-        this.getContainer()?.scheduleLayout();
-
-        return true;
+        return this.applyDurableTabState(
+            content,
+            constraints => { constraints.italic = italic; },
+            entryId => this._bar.setEntryItalic(entryId, italic),
+        );
     }
 
     /**
      * Reports whether the tab hosting `content` is currently italicised.
+     * Falls back to the stored `LayoutConstraints` when no cell exists yet, so
+     * a value set before the cell exists reads back correctly.
      *
      * @param content - The content component whose tab to query.
      *
@@ -1386,7 +1385,11 @@ class Tab extends LayoutManager implements FocusRevealer {
     isTabItalic(content: Component): boolean {
         const entry = this._contents.find(e => e.component === content);
 
-        return entry ? this._bar.isEntryItalic(entry.id) : false;
+        if (entry) {
+            return this._bar.isEntryItalic(entry.id);
+        }
+
+        return this.getLayoutConstraints(content)?.italic ?? false;
     }
 
     /**
@@ -1434,31 +1437,25 @@ class Tab extends LayoutManager implements FocusRevealer {
      * @param content - The content component whose tab to mark.
      * @param modified - True to show the badge, false to hide it.
      *
-     * @returns `true` when a matching tab was found, `false` otherwise.
+     * @returns `true` when `content` is a child of this strip (celled or not),
+     *   `false` when it is not a child at all.
      *
      * @remarks
-     * A lazy tab whose factory has not run yet has no content component to key
-     * on, so this returns `false` for it. {@link TabBar.setEntryModified} reaches
-     * such a cell directly, by its owner-minted id.
-     *
-     * The flag is view-only: it is not written to the tab's `LayoutConstraints`,
-     * so it does not survive a tear-off, a re-dock, or a saved layout.
+     * Durable — written to the tab's stored `LayoutConstraints`, so it survives
+     * a tear-off, a re-dock, or a saved layout.
      */
     setTabModified(content: Component, modified: boolean): boolean {
-        const entry = this._contents.find(e => e.component === content);
-
-        if (!entry) {
-            return false;
-        }
-
-        this._bar.setEntryModified(entry.id, modified);
-        this.getContainer()?.scheduleLayout();
-
-        return true;
+        return this.applyDurableTabState(
+            content,
+            constraints => { constraints.modified = modified; },
+            entryId => this._bar.setEntryModified(entryId, modified),
+        );
     }
 
     /**
-     * Reports whether the tab hosting `content` currently shows the modified badge.
+     * Reports whether the tab hosting `content` currently shows the modified
+     * badge. Falls back to the stored `LayoutConstraints` when no cell exists
+     * yet, so a value set before the cell exists reads back correctly.
      *
      * @param content - The content component whose tab to query.
      *
@@ -1467,7 +1464,11 @@ class Tab extends LayoutManager implements FocusRevealer {
     isTabModified(content: Component): boolean {
         const entry = this._contents.find(e => e.component === content);
 
-        return entry ? this._bar.isEntryModified(entry.id) : false;
+        if (entry) {
+            return this._bar.isEntryModified(entry.id);
+        }
+
+        return this.getLayoutConstraints(content)?.modified ?? false;
     }
 
     /**

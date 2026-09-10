@@ -182,4 +182,36 @@ describe('Tab glyph swapping', () => {
         expect(tab.setTabGlyph(content, 'file')).toBe(true);
         expect(tab.getLayoutConstraints(content)!.glyph).toBe('file');
     });
+
+    it('setTabGlyph on a tab added but not yet laid out still records durably and applies once the cell is created', () => {
+        installTestDOM(CONFIG);
+
+        const { host, tab } = hostTab();
+        const content = new Component({});
+
+        host.addComponent(content); // no doLayout() yet — no strip cell exists
+
+        expect(tab.setTabGlyph(content, 'file')).toBe(true);
+        expect(tab.getLayoutConstraints(content)!.glyph).toBe('file');
+
+        host.doLayout();
+
+        expect(barEntries(tab)[0].button.getGlyph()!.getGlyphName()).toBe('file');
+    });
+
+    it('clearTabGlyph on a tab added but not yet laid out still records durably and applies once the cell is created', () => {
+        installTestDOM(CONFIG);
+
+        const { host, tab } = hostTab();
+        const content = new Component({});
+
+        host.addComponent(content, glyphed('file')); // no doLayout() yet — no strip cell exists
+
+        expect(tab.clearTabGlyph(content)).toBe(true);
+        expect(tab.getLayoutConstraints(content)!.glyph).toBeNull();
+
+        host.doLayout();
+
+        expect(barEntries(tab)[0].button.getGlyph()).toBeNull();
+    });
 });
