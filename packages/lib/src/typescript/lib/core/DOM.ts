@@ -1357,6 +1357,20 @@ export interface DOMSource {
     getComputedOverflow(handle: Handle): { overflow: string; overflowX: string; overflowY: string };
 
     /**
+     * Whether an element is actually rendered — `false` when the element or any
+     * ancestor computes `display: none` or `visibility: hidden`. Unlike
+     * {@link Component.isEffectivelyVisible}, which walks the component tree,
+     * this reads the live computed style, so it also catches an element hidden
+     * by the browser's own attribute/CSS (a `<template>`'s inert content, a
+     * closed native `<details>`), not only the framework's own display/visible
+     * setters.
+     *
+     * @param handle - The element to test.
+     * @returns `true` when the element is actually rendered.
+     */
+    isRenderedVisible(handle: Handle): boolean;
+
+    /**
      * Reads a single inline style property off an element.
      *
      * @param handle - The element to read.
@@ -2592,6 +2606,23 @@ export class ProductionDOMSource implements DOMSource {
             overflowX: cs.overflowX,
             overflowY: cs.overflowY
         };
+    }
+
+    /** @inheritDoc */
+    isRenderedVisible(handle: Handle): boolean {
+        let el: Element | null = _registry.resolve(handle) as Element;
+
+        while (el) {
+            const cs = getComputedStyle(el);
+
+            if (cs.display === "none" || cs.visibility === "hidden") {
+                return false;
+            }
+
+            el = el.parentElement;
+        }
+
+        return true;
     }
 
     /** @inheritDoc */

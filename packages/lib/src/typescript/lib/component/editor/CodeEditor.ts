@@ -638,6 +638,11 @@ class CodeEditor extends Component<CodeEditorOptions> {
             layoutManager: new Anchor(),
         } as Partial<CodeEditorOptions>);
 
+        // Owns Tab while focus is inside: CodeMirror treats Tab as an indent
+        // gesture, which the framework's opt-in traversal service must not
+        // steal. See FocusTraversal's Architecture Decisions.
+        this.setTabKeyOwner(true);
+
         // Positional argument: cache it only when the caller didn't also pass
         // `options.value` (which the super-time cascade already stored).
         if (value !== undefined && this._options.value === undefined) {

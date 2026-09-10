@@ -640,4 +640,167 @@ editors, or the browser's own traversal:
     to the page behind it, while on the page itself a user reaching the end of
     the document expects to land in the browser's address bar, not to be looped
     back.
+
+---
+
+## Implementation Notes
+
+- **`core/Focusable.ts`'s `FOCUSABLE_SELECTOR` does not exclude a native
+  `tabindex="-1"` element.** Step 7's composite-widget audit
+  (`tests/core/FocusTraversalCompositeWidgets.test.ts`) found `Tree` and
+  `Table`'s body genuinely reduce to one tab stop, but `MenuBar`, `ToolBar`,
+  `ButtonGroup`, and a `Tab` layout's `TabBar` do not — each currently exposes
+  one stop per `RovingTabIndex`-managed item, not one for the whole group.
+  Root cause, confirmed against real rendered markup: the selector
+  `'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'`
+  is a comma-separated list of independent branches, and its
+  `:not([tabindex="-1"])` guard binds only to the trailing `[tabindex]`
+  branch. A native `<button>` (or `<a href>` / `<input>` / `<select>` /
+  `<textarea>`) still matches its own branch regardless of `tabindex`, so
+  `RovingTabIndex.add`'s `tabindex="-1"` on the inactive items never excludes
+  them when the managed items render as one of those native tags — which
+  `MenuBarButton`, `ToolBar`/`ButtonGroup`'s `Button`/`ToggleButton` items, and
+  a `Tab` layout's `TabButton` items all do. This is a pre-existing gap in
+  `core/Focusable.ts`, owned by `directional-panel-navigation.md`; per this
+  plan's own Architecture Decisions this plan reads from that module and never
+  edits it, so the gap is tracked via `it.todo(...)` rows (with the reasoning
+  above repeated in-file) rather than patched here. It also means, beyond the
+  audit itself, that `FocusTraversal.next()`/`previous()` currently visit each
+  button of a `MenuBar`/`ToolBar`/`ButtonGroup`/`TabBar` individually rather
+  than treating the group as one stop, on any real page that has one — a
+  correctness gap in the *feature*, not only in its test coverage, worth
+  fixing `FOCUSABLE_SELECTOR` for (e.g. wrapping the whole list in
+  `:is(...):not([tabindex="-1"])`) before this service is enabled by default
+  anywhere.
+
+- **A resting `CodeEditor` exposes zero tab stops of its own, not one** —
+  found during audit review and pinned by
+  `tests/core/FocusTraversalCompositeWidgets.test.ts`'s "A Tab-key owner's own
+  tab stop (CodeEditor)" block. CodeMirror's `.cm-content` is
+  `contenteditable="true"` with no `tabindex` attribute; a real browser still
+  tabs into it natively (`contenteditable` carries an implicit tabIndex of 0),
+  but `FOCUSABLE_SELECTOR` has no `[contenteditable]` branch, so
+  `findFocusable` never matches it. The search panel contributes nothing
+  either, but not because `isRenderedVisible` filters it out — its
+  find/replace rows are built lazily by `CodeEditorSearchPanel.buildControls()`,
+  which only runs once the panel is actually opened, so a resting panel has
+  zero child components and thus zero rendered elements for the selector to
+  find in the first place. With `FocusTraversal` enabled, a plain `Tab` from
+  outside a `CodeEditor` therefore skips over it entirely rather than landing
+  inside it. Same class of gap as the `RovingTabIndex` one above — a
+  pre-existing `core/Focusable.ts`
+  limitation this plan must not edit — tracked via `it.todo` rather than
+  patched here.
+
+- **`stopAfterOwner`/`stopBeforeOwner` (the Escape-release landing spot) fall
+  back to "first/last stop of the root" when the Tab-key owner contains no
+  focusable descendant of its own — which, per the finding above, is true for
+  `CodeEditor` and (since it embeds one for its source view) `MarkdownEditor`
+  today, not just a hypothetical case.** The plan's "moves focus to the first
+  stop after the owner's element" wording assumes a way to compare two
+  elements' document position; the `DOMSource` seam has no such primitive
+  (only `contains`, `getParentNode`/`getParentElement`, and `getFirstChild` —
+  no next-sibling walk). The implementation derives "after"/"before" from
+  `getTabStops(root)`'s own DOM order plus `contains`, which is exact whenever
+  the owner has at least one focusable descendant in that list (true for
+  `Table`, and for `CodeEditor`/`MarkdownEditor` once the gap above is fixed)
+  and degrades to the documented fallback otherwise. The demo-app check
+  described below observed the fallback landing on a plausible control, not a
+  verified "next" computation — corrected from an earlier draft of this note
+  that overstated it as exact for all three owners. Not a numbered footnote
+  because it does not change any decision already made — it documents how a
+  genuinely underspecified detail was resolved.
+
+- **Manually verified in the demo app** (`npm run dev`, `FocusTraversal.enable()`
+  added temporarily beside `FocusHistory.enable()` in `main.ts` as the plan's
+  own Verification section describes, then reverted — nothing calls `enable()`
+  from library code, matching the plan's Non-Goals): Tab inside a `CodeEditor`
+  indents without leaving the editor; `Escape` then `Tab` leaves it and lands
+  on a real control elsewhere on the page (the `stopAfterOwner` fallback
+  described above, given the zero-internal-stops finding); `disable()`/normal
+  Tab traversal across ordinary controls works. A `Dialog`'s own Tab trap was
+  also checked, and found to already lose focus to `<body>` on the second
+  `Tab` press (Cancel → Confirm → escapes, instead of wrapping back to
+  Cancel) — originally recorded here as a **pre-existing bug in `Dialog`'s
+  own trap**, unrelated to this plan. A later audit round found that
+  attribution wrong: it is the `Dialog`/`FocusTraversal` Tab arbitration gap
+  described in the bullet below, not an independent `Dialog` defect — see
+  that bullet for the root cause and the fix (`overlay/Dialog.ts` is no
+  longer untouched, contradicting step 4 and this section's "unmodified by
+  this plan" wording; both are left as the historical record of what was
+  originally planned/observed, corrected here rather than rewritten there).
+  `MarkdownEditor`'s WYSIWYG table, `Table`'s own cell-to-cell
+  Tab handling, and `ToolBar`'s arrow-key behaviour were not separately
+  re-verified beyond the automated suite — they share the same
+  `setTabKeyOwner(true)` mechanism already confirmed working for `CodeEditor`.
+
+- **Two implementation bugs found and fixed during the audit loop, folded into
+  the code commit rather than left as follow-ups:** (1) the Escape-release
+  flag was cleared by a bare modifier keydown, so a real `Shift+Tab`
+  keystroke — which fires a `Shift` keydown before the combined `Tab`
+  keydown — could never consume the release; `onKeyDown` now exempts
+  `Shift`/`Control`/`Alt`/`Meta` from the "any other key expires the release"
+  branch. (2) `tabKeyOwner` was dispatched only when the caller explicitly
+  passed the option, so a hypothetical future subclass defaulting it via
+  `subclassDefaults` would answer `isTabKeyOwner() === true` while never
+  writing the marker attribute — a violation of ARCHITECTURE.md's "Class-level
+  defaults must survive the getter" (the always-dispatch case, since the
+  setter's effect is construction-time with no render re-read).
+  `applyOptions` now always calls `setTabKeyOwner`, matching `ToolBar`'s own
+  `applyOrientation`/`setCompact` precedent for the same rule.
+
+- **A third bug found in a later audit round: the release also expired on a
+  `focusin` that stayed inside the same owner, not only one that left it,**
+  contradicting the arbitration table's own "focus moved **elsewhere**"
+  wording. Concretely, `Table`'s cell-editor cancel path re-focuses the body
+  — still inside `Table` — which silently disarmed a release the user had
+  just requested with `Escape`, so a single Escape-then-Tab out of an
+  in-progress cell edit did not work. The one-shot flag is now
+  `_releaseOwner: Handle | null` instead of a bare boolean: `onFocusIn` clears
+  it only when the newly-focused element is no longer contained by the owner
+  that armed it (`DOM.source.contains`), and `onKeyDown`'s `Tab` branch checks
+  `owner === _releaseOwner` rather than a flag with no owner identity.
+  `tests/core/FocusTraversal.test.ts` gained two `focusin`-dispatching cases
+  (previously none did) covering both the "stays inside" and "moves outside"
+  halves. The same round also found the Escape branch's "no `preventDefault`"
+  half — load-bearing so `LayerManager` can still close a dialog around an
+  editor on the same keystroke — was asserted nowhere; now covered. Finally,
+  the `CodeEditor` zero-stop test added in the previous round never actually
+  triggered `onFirstLayout`'s lazy CodeMirror mount (a bare `getElement(true)`
+  leaves only the undisplayed search panel as a child), so it passed for the
+  wrong reason; it now forces the mount via `setPreferredSize` +
+  `flushLayout()` and sanity-checks `.cm-content` exists before asserting the
+  zero-stop count.
+
+- **A fourth bug found in a later audit round: `Dialog` needed a change after
+  all, contradicting step 4 and the Expected Behaviour bullet "A Dialog still
+  traps Tab at both ends."** Enabling `FocusTraversal` double-moved focus
+  inside an open `Dialog`: both register a viewport `keydown` listener, and
+  `core/Event.ts`'s `baseViewportListener` runs every registered listener for
+  an event type regardless of an earlier one's disposition (it has no
+  propagation-stopped check between listeners, unlike the subtree-listener
+  path just above it in the same file) — so `FocusTraversal` moved focus first
+  and `Dialog.onKeyDown` then re-read the already-changed active element and
+  moved it again. `overlay/Dialog.ts` now calls `this.setTabKeyOwner(true)` in
+  `open()` and `this.setTabKeyOwner(false)` in `destructor()` (reached from
+  both `hide()`'s finalize and a direct `dispose()`), the same marker
+  mechanism `CodeEditor`/`MarkdownEditor`/`Table` already use — `Dialog`'s own
+  `getLayerElement()` is `this.getElement()`, an ancestor of everything
+  rendered inside it, so `FocusTraversal`'s ancestor walk finds the dialog and
+  stands down completely while it is open, leaving `Dialog.onKeyDown` in
+  exclusive control exactly as before this plan existed. Covered by a new
+  `tests/overlay/Dialog.test.ts` case asserting `isTabKeyOwner()` toggles
+  correctly across `show()`/`dispose()`.
+
+  The same round added two more findings' worth of coverage without changing
+  behaviour: `tests/core/FocusTraversal.test.ts` gained two cases (forward and
+  `Shift+Tab`) exercising `stopAfterOwner`/`stopBeforeOwner`'s "owner has no
+  focusable descendant of its own" fallback — the path already described above
+  as the actual one taken for `CodeEditor`/`MarkdownEditor`, but previously
+  asserted by no test, since every prior Escape-release test seeded a stop
+  inside the owner. `tests/core/FocusTraversalCompositeWidgets.test.ts` gained
+  a case asserting a plain `tabindex="-1"` element is excluded by
+  `findFocusable` against the real selector engine (jsdom) — the eligibility
+  table's `tabindex="-1"` row had no test in either the selector-less offline
+  harness or a jsdom file until now.
 </content>

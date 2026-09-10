@@ -763,6 +763,41 @@ describe('isVisible folds a subclass visible default', () => {
     });
 });
 
+describe('isTabKeyOwner folds a subclass tabKeyOwner default', () => {
+    class TabOwnerByDefault extends Component {
+        constructor(options?: ComponentOptions) {
+            super(options, { tabKeyOwner: true } as Partial<ComponentOptions>);
+        }
+    }
+
+    it('a subclass defaulting tabKeyOwner:true reports true when never set', () => {
+        expect(new TabOwnerByDefault().isTabKeyOwner()).toBe(true);
+    });
+
+    it('a subclass defaulting tabKeyOwner:true also renders the marker attribute — the always-dispatch path, not just the folding getter', () => {
+        const c = new TabOwnerByDefault();
+        expect(c.getDataAttribute('ts-ui-tab-key-owner')).toBe('true');
+    });
+
+    it('a plain Component is false; an explicit value still wins', () => {
+        expect(new Component({}).isTabKeyOwner()).toBe(false);
+        const c = new TabOwnerByDefault();
+        c.setTabKeyOwner(false);
+        expect(c.isTabKeyOwner()).toBe(false);
+    });
+
+    it('constructing with { tabKeyOwner: true } renders data-ts-ui-tab-key-owner="true"', () => {
+        const c = new Component({ tabKeyOwner: true });
+        expect(c.getDataAttribute('ts-ui-tab-key-owner')).toBe('true');
+    });
+
+    it('setTabKeyOwner(false) removes the marker attribute', () => {
+        const c = new Component({ tabKeyOwner: true });
+        c.setTabKeyOwner(false);
+        expect(c.getDataAttribute('ts-ui-tab-key-owner')).toBeUndefined();
+    });
+});
+
 describe('clear*() suppresses a class-level default (does not revert to it)', () => {
     it('clearPadding suppresses a subclass padding default', () => {
         const field = new TextField() as any;
