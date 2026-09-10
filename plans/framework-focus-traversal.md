@@ -1,9 +1,15 @@
 ---
-depends-on: [focus-reveal-on-navigation]
+depends-on: [directional-panel-navigation]
 touches-shared:
   - packages/lib/src/typescript/lib/core/Component.ts
   - packages/lib/src/typescript/lib/core/DOM.ts
   - packages/lib/src/typescript/lib/core/index.ts
+  - packages/lib/src/typescript/lib/overlay/Dialog.ts
+  - packages/lib/src/typescript/lib/component/editor/MarkdownEditor.ts
+  - packages/lib/src/typescript/lib/component/editor/CodeEditor.ts
+  - packages/lib/src/typescript/lib/component/table/Table.ts
+  - packages/lib/tests/dom/TestDOM.ts
+  - packages/lib/tests/component/default-options-fallback.test.ts
   - packages/lib/docs/concepts/accessibility.md
 ---
 
@@ -29,30 +35,39 @@ This plan describes a framework-level keyboard traversal service: an opt-in
 module that intercepts `Tab` / `Shift+Tab`, computes the ordered set of tab
 stops inside a traversal root, skips ineligible ones, and moves focus. It lives
 in a new `packages/lib/src/typescript/lib/core/FocusTraversal.ts`, exported from
-[`core/index.ts`](packages/lib/src/typescript/lib/core/index.ts#L27) beside
+[`core/index.ts`](packages/lib/src/typescript/lib/core/index.ts#L43) beside
 `FocusHistory` and `RovingTabIndex`.
 
-The library has no Tab handling today outside one place: `Dialog` traps Tab
-inside itself ([`Dialog.onKeyDown`](packages/lib/src/typescript/lib/overlay/Dialog.ts#L992))
-using a shared focusable selector
-([`FOCUSABLE_SELECTOR`](packages/lib/src/typescript/lib/overlay/Dialog.ts#L154)).
-Everything else — `ToolBar`, `TabBar`, `ButtonGroup`, `Tree`, `Table`, `MenuBar` —
-handles arrow keys only and leaves Tab to the browser.
+The library's Tab handling today is narrower than it looks, but it is not limited
+to one place. `Dialog` traps Tab inside itself
+([`Dialog.onKeyDown`](packages/lib/src/typescript/lib/overlay/Dialog.ts#L1121))
+using a shared focusable selector, now
+[`core/Focusable.ts`](packages/lib/src/typescript/lib/core/Focusable.ts) (moved
+there by [`plans/directional-panel-navigation.md`](plans/directional-panel-navigation.md),
+which this plan depends on). `Table` also owns Tab while focus is inside it:
+[`Body.onKeyDown`](packages/lib/src/typescript/lib/component/table/Body.ts#L2807)
+navigates to the next/previous cell, and
+[`Cell.onKeyDown`](packages/lib/src/typescript/lib/component/table/cell/Cell.ts#L595)
+does the same from an open cell editor. Everything else — `ToolBar`, `TabBar`,
+`ButtonGroup`, `Tree`, `MenuBar` — handles arrow keys only and leaves Tab to the
+browser.
 
-The hard part is not walking the tab order. It is **arbitration**: two components
-legitimately own the Tab key while focus is inside them. `MarkdownEditor` hosts
-Lexical, whose table plugin registers a `KEY_TAB_COMMAND` handler that moves the
+The hard part is not walking the tab order. It is **arbitration**: more than one
+component legitimately owns the Tab key while focus is inside it. `MarkdownEditor`
+hosts Lexical, whose table plugin registers a `KEY_TAB_COMMAND` handler that moves the
 caret cell-to-cell (`node_modules/@lexical/table/src/LexicalTableSelectionHelpers.ts`,
 `applyTableHandlers`, line 787). `CodeEditor` hosts CodeMirror, where Tab is an
-indent gesture. A traversal service that swallows Tab unconditionally breaks both.
+indent gesture. `Table` is framework-authored but wants the same subtree-wide claim.
+A traversal service that swallows Tab unconditionally breaks all three.
 [`## Architecture Decisions`](#architecture-decisions) centres on how a component
 claims the key and how focus eventually leaves it.
 
 **This plan does not fix any current bug.** The idea surfaced while debugging a
 `MarkdownEditor` WYSIWYG table where Tab left the editor instead of advancing to
-the next cell. Grepping `core/` established the library has no Tab handler, which
-ruled out the framework as the culprit — it did not make a framework handler the
-cure. That bug is an editor/Lexical integration problem and is tracked separately.
+the next cell. Grepping `core/` established the library has no *framework-level*
+Tab handler, which ruled out a missing framework service as the culprit — it did
+not make building one the cure. That bug is an editor/Lexical integration problem
+and is tracked separately.
 
 ---
 
@@ -81,7 +96,7 @@ is a situation the browser's native traversal genuinely cannot handle.
 
 If the trigger is only "it would be nice to own Tab", stop. The cost is a global
 `keydown` interceptor plus a permanent obligation to arbitrate with every
-third-party editor the library ever embeds.
+third-party editor the library ever embeds, and with `Table`.
 
 ---
 
@@ -96,7 +111,7 @@ mixin and not a `LayoutManager` concern.[^singleton]
 
 Precedent: [`core/FocusHistory.ts`](packages/lib/src/typescript/lib/core/FocusHistory.ts#L234)
 — the same shape (namespace, `_owner` sentinel `Component` at line 65,
-`Event.addViewportListener(_owner, "keydown", …)` at line 255, opt-in `enable()`,
+`Event.addViewportListener(_owner, "keydown", …)` at line 260, opt-in `enable()`,
 state as module-private `let` bindings).
 
 ### A component claims the Tab key with a data-attribute marker, read by an ancestor walk
@@ -104,14 +119,42 @@ state as module-private `let` bindings).
 `Component` gets a typed `setTabKeyOwner(value: boolean)` / `isTabKeyOwner()` pair
 backed by a `tabKeyOwner?: boolean` field on `ComponentOptions`. The setter mirrors
 the flag onto the element as `data-ts-ui-tab-key-owner` via the existing
-[`Component.setDataAttribute`](packages/lib/src/typescript/lib/core/Component.ts#L1503).
+[`Component.setDataAttribute`](packages/lib/src/typescript/lib/core/Component.ts#L2055).
 On `Tab`, the service walks from the focused element up through
 `DOM.source.getParentNode` and stops at the first ancestor carrying the marker.
 If it finds one, the service does nothing at all — no `preventDefault`, no focus
-move — and Lexical or CodeMirror receives the key exactly as it does today.[^marker]
+move — and Lexical, CodeMirror, or `Table`'s own handlers receive the key exactly
+as they do today.[^marker]
 
-`MarkdownEditor` and `CodeEditor` set the flag in their own constructors. No
-consumer action is required for those two.
+`MarkdownEditor`, `CodeEditor`, and `Table` set the flag in their own constructors.
+No consumer action is required for those three.
+
+### The marker shape is the inverse of `directional-panel-navigation.md`'s `claimsKey` guard, for a real reason
+
+[`plans/directional-panel-navigation.md`](plans/directional-panel-navigation.md)'s
+ten arrow-key owners each call `PanelNavigation.claimsKey(e)` at the top of their
+own handler — an active, per-keystroke check made by the exact component whose
+listener is about to fire. This plan's Tab owners do the opposite: they mark
+themselves once, and the service discovers the marker by walking up from wherever
+focus currently sits.
+
+The shapes differ because the two problems differ. `directional-panel-navigation.md`'s
+owners decide, on each arrow keystroke, whether *this specific handler* should
+act — a local, momentary question the handler is always in a position to ask.
+This plan's owners want something more persistent: "while focus is anywhere
+inside me, Tab is mine," for as long as that holds, regardless of which
+descendant element currently has focus. `MarkdownEditor` and `CodeEditor` need
+the marker for an additional, harder reason: they wrap third-party editors
+(Lexical, CodeMirror) whose own internal keydown handling cannot be edited to
+call a framework guard function, so ownership has to be discoverable from the
+outside, passively. `Table` is framework-authored and *could* call an active
+guard — but it wants the same subtree-wide, persistent claim the other two
+owners want (Tab is `Table`'s whenever focus is inside it, cell or editor, not
+just at the instant one specific handler runs), so it uses the same marker
+rather than adding a second arbitration shape for one case.
+`directional-panel-navigation.md`'s `## Critical Files` lists this plan as one it
+must not collide with; this section is the resolution — the two shapes are
+deliberately different, not an accidental inconsistency.
 
 ### Escape releases the claim for exactly one Tab press
 
@@ -132,9 +175,11 @@ first tab stop after the owner's own element; anything else clears it.[^escape]
 
 ### Tab order is DOM order; there is no explicit order option
 
-The service collects candidates with `DOM.source.querySelectorAll(root, FOCUSABLE_SELECTOR)`,
-which returns document order, and traverses that array. No `tabOrder` option is
-added, and geometry is never read.[^dom-order]
+The service collects candidates via `findFocusable(root)` (from `core/Focusable.ts`),
+which resolves to `DOM.source.querySelectorAll(root, FOCUSABLE_SELECTOR)` under the
+hood and returns document order; the service traverses that array, filtered further
+by `isRenderedVisible`. No `tabOrder` option is added, and geometry is never
+read.[^dom-order]
 
 DOM order equals component-tree order here — `addComponent` appends — but neither
 necessarily equals *visual* order, because layout managers place children by
@@ -150,22 +195,27 @@ Worked case:
 The second row is the fix for the first — reorder the `addComponent` calls, do not
 add an ordering option.
 
-### Eligibility reuses `FOCUSABLE_SELECTOR`, plus a `disabled` filter and one new seam read
+### Eligibility reuses `core/Focusable.ts`, plus a new `isRenderedVisible` filter layered on top
 
-`FOCUSABLE_SELECTOR` moves from `Dialog.ts` to `FocusTraversal.ts`; `Dialog`
-imports it. The service filters the selector's matches by `!hasAttribute(el, "disabled")`
-(as `Dialog.getFocusable` already does, line 973) and by a new
-`DOMSource.isRenderedVisible(handle)` read.[^visibility]
+`FOCUSABLE_SELECTOR` is not re-introduced here.
+[`plans/directional-panel-navigation.md`](plans/directional-panel-navigation.md)
+already ships it as an internal
+[`core/Focusable.ts`](packages/lib/src/typescript/lib/core/Focusable.ts) (selector +
+`disabled` filter, deliberately **not** exported from `core/index.ts`) — and, being
+unimplemented and deferred, this plan yields to the sibling that will exist
+first.[^focusable-yield] `core/FocusTraversal.ts` imports `FOCUSABLE_SELECTOR` and
+`findFocusable` from there and applies one more filter on top —
+`!isRenderedVisible` — rather than broadening `core/Focusable.ts` itself.
 
 | Candidate | Eligible | Why |
 |---|---|---|
 | visible enabled `<button>` | yes | matches the selector |
-| `<button disabled>` | no | `disabled` filter |
+| `<button disabled>` | no | `disabled` filter (in `core/Focusable.ts`) |
 | `tabindex="-1"` element | no | excluded by the selector |
 | `RovingTabIndex` non-active item (`tabindex="-1"`) | no | the group is a single stop |
 | `RovingTabIndex` active item (`tabindex="0"`) | yes | the group's one stop |
-| element under a `visibility: hidden` ancestor (inactive `Tab` content) | no | `isRenderedVisible` is false |
-| element under a `display: none` ancestor | no | `isRenderedVisible` is false |
+| element under a `visibility: hidden` ancestor (inactive `Tab` content) | no | `isRenderedVisible` is false (this plan's own filter) |
+| element under a `display: none` ancestor | no | `isRenderedVisible` is false (this plan's own filter) |
 
 The roving rows are the reason this plan adds no roving machinery: `RovingTabIndex`
 already leaves exactly one `tabindex="0"` per group, so the selector produces
@@ -173,7 +223,7 @@ already leaves exactly one `tabindex="0"` per group, so the selector produces
 
 ### The traversal root is the topmost dismissable layer, else `<body>`
 
-`FocusTraversal` asks [`LayerManager.getTopLayer()`](packages/lib/src/typescript/lib/core/LayerManager.ts#L323)
+`FocusTraversal` asks [`LayerManager.getTopLayer()`](packages/lib/src/typescript/lib/core/LayerManager.ts#L331)
 for the current top layer and uses that layer's element as the root when one
 exists; otherwise `DOM.source.getBody()`. Traversal wraps at the ends of the root
 only when the root is a modal layer; on `<body>` it stops at the ends and lets the
@@ -184,12 +234,13 @@ browser move focus to the browser chrome.[^root]
 Every focus move goes through `DOM.sink.focus(handle, { preventScroll: true })`.
 Native `focus()` scrolls `overflow: hidden` ancestors and corrupts the framework's
 custom scroll models — the same reason `RovingTabIndex` takes a `preventScroll`
-option ([`RovingTabIndex`](packages/lib/src/typescript/lib/core/RovingTabIndex.ts#L26))
+option ([`RovingTabIndex`](packages/lib/src/typescript/lib/core/RovingTabIndex.ts#L29))
 and `TabBar` passes `true`
-([`TabBar`](packages/lib/src/typescript/lib/component/container/TabBar.ts#L485)).
-Bringing an off-screen tab stop into view is `FocusReveal`'s job, from
-[`plans/focus-reveal-on-navigation.md`](plans/focus-reveal-on-navigation.md), which
-is why that plan is a hard dependency in this one's frontmatter.
+([`TabBar`](packages/lib/src/typescript/lib/component/container/TabBar.ts#L496)).
+Bringing an off-screen tab stop into view would be
+[`plans/focus-reveal-on-navigation.md`](plans/focus-reveal-on-navigation.md)'s
+`FocusReveal` broker's job, if this plan ever needed it — it does not: nothing here
+calls `FocusReveal`, and this is a "would be nice" observation, not a dependency.
 
 ### Scope is keyboard traversal only
 
@@ -214,9 +265,6 @@ export interface FocusTraversalOptions {
     wrap?: boolean;
 }
 
-/** CSS selector matching every element the framework treats as a tab stop. */
-export const FOCUSABLE_SELECTOR: string;
-
 export namespace FocusTraversal {
     export function enable(options?: FocusTraversalOptions): void;
     export function disable(): void;
@@ -232,6 +280,9 @@ export namespace FocusTraversal {
 }
 ```
 
+`FOCUSABLE_SELECTOR` is **not** re-exported here — it stays a single, internal
+definition in `core/Focusable.ts` (see *Eligibility reuses `core/Focusable.ts`*).
+
 Added to `Component` ([`core/Component.ts`](packages/lib/src/typescript/lib/core/Component.ts)):
 
 ```typescript
@@ -244,7 +295,7 @@ setTabKeyOwner(value: boolean): this;   // caches in this._options.tabKeyOwner;
 isTabKeyOwner(): boolean;               // this._options.tabKeyOwner ?? this._defaultOptions.tabKeyOwner ?? false
 ```
 
-Added to `DOMSource` ([`core/DOM.ts`](packages/lib/src/typescript/lib/core/DOM.ts#L1005)):
+Added to `DOMSource` ([`core/DOM.ts`](packages/lib/src/typescript/lib/core/DOM.ts#L1153)):
 
 ```typescript
 /** Whether the element is actually rendered — false under a `display: none` or `visibility: hidden` ancestor. */
@@ -271,17 +322,21 @@ picked up. Each step is a self-contained, independently verifiable slice.
    as ARCHITECTURE.md requires for any defaulted field. Verify: constructing with
    `{ tabKeyOwner: true }` renders `data-ts-ui-tab-key-owner="true"`.
 
-3. **Create `core/FocusTraversal.ts` with the pure parts only** — move
-   `FOCUSABLE_SELECTOR` here, implement `getTabStops`, `next`, `previous`, and the
-   root resolution. No listeners yet. Export from
+3. **Create `core/FocusTraversal.ts` with the pure parts only** — import
+   `FOCUSABLE_SELECTOR` and `findFocusable` from `core/Focusable.ts` (do **not**
+   redefine or re-export the selector; see *Eligibility reuses `core/Focusable.ts`*),
+   implement `getTabStops` (the imported candidates filtered by the new
+   `isRenderedVisible`), `next`, `previous`, and the root resolution. No listeners
+   yet. Export `FocusTraversal` from
    [`core/index.ts`](packages/lib/src/typescript/lib/core/index.ts). Verify: unit
    tests over `getTabStops` covering every row of the eligibility table.
 
-4. **Point `Dialog` at the shared selector.** Delete the local
-   `FOCUSABLE_SELECTOR` in [`overlay/Dialog.ts`](packages/lib/src/typescript/lib/overlay/Dialog.ts#L154)
-   and import it from `~/core/FocusTraversal.js`. Leave `Dialog.onKeyDown`
-   otherwise untouched. Verify: `grep -rn "FOCUSABLE_SELECTOR" packages/lib/src/` —
-   exactly one definition; the existing dialog tests still pass.
+4. **Confirm `Dialog` needs no change.** `Dialog` already imports
+   `FOCUSABLE_SELECTOR` from `core/Focusable.ts`, added by
+   [`plans/directional-panel-navigation.md`](plans/directional-panel-navigation.md)'s
+   own step 2. This plan does not touch `overlay/Dialog.ts`. Verify:
+   `grep -rn "FOCUSABLE_SELECTOR" packages/lib/src/` — exactly one definition,
+   still in `core/Focusable.ts`.
 
 5. **Wire the keydown handler.** `enable()` / `disable()` register and remove a
    viewport `keydown` listener plus a `focusin` listener (for clearing the release
@@ -290,15 +345,21 @@ picked up. Each step is a self-contained, independently verifiable slice.
    focus move with `preventScroll: true`. Verify: unit tests driving synthetic
    keydown events through the offline DOM for every row of the arbitration table.
 
-6. **Mark the two editors as Tab owners.** `setTabKeyOwner(true)` in the
-   constructors of
-   [`component/editor/MarkdownEditor.ts`](packages/lib/src/typescript/lib/component/editor/MarkdownEditor.ts)
-   and [`component/editor/CodeEditor.ts`](packages/lib/src/typescript/lib/component/editor/CodeEditor.ts).
-   Verify manually in the demo app: with traversal enabled, Tab inside a code
-   editor still indents, and Escape-then-Tab leaves it.
+6. **Mark `MarkdownEditor`, `CodeEditor`, and `Table` as Tab owners.**
+   `setTabKeyOwner(true)` in the constructors of
+   [`component/editor/MarkdownEditor.ts`](packages/lib/src/typescript/lib/component/editor/MarkdownEditor.ts),
+   [`component/editor/CodeEditor.ts`](packages/lib/src/typescript/lib/component/editor/CodeEditor.ts),
+   and [`component/table/Table.ts`](packages/lib/src/typescript/lib/component/table/Table.ts) —
+   `Table` needs it too, since its own Tab handling
+   ([`Body.onKeyDown`](packages/lib/src/typescript/lib/component/table/Body.ts#L2807),
+   [`Cell.onKeyDown`](packages/lib/src/typescript/lib/component/table/cell/Cell.ts#L595))
+   operates on ordinary tab-stop elements the traversal service would otherwise
+   also try to walk. Verify manually in the demo app: with traversal enabled, Tab
+   inside a code editor still indents, Tab inside a table still moves cell-to-cell,
+   and Escape-then-Tab leaves each of the three.
 
 7. **Audit composite widgets for the one-stop rule.** Confirm `Tree`
-   ([`Tree.ts`](packages/lib/src/typescript/lib/component/tree/Tree.ts#L119) already
+   ([`Tree.ts`](packages/lib/src/typescript/lib/component/tree/Tree.ts#L164) already
    sets `tabIndex(0)` on the tree root), `Table`'s body, `MenuBar`, `ToolBar`,
    `TabBar`, and `ButtonGroup` each expose exactly one `tabindex >= 0` element.
    This step adds a test, not a fix: a widget exposing more than one stop is a bug
@@ -307,10 +368,9 @@ picked up. Each step is a self-contained, independently verifiable slice.
    exactly one handle inside it.
 
 8. **Document.** Add the traversal section to
-   [`docs/concepts/accessibility.md`](packages/lib/docs/concepts/accessibility.md)
-   and the `FocusTraversal` entry to
-   [`packages/lib/llms.txt`](packages/lib/llms.txt). Verify: `npm run docs:build`
-   finishes with zero warnings.
+   [`docs/concepts/accessibility.md`](packages/lib/docs/concepts/accessibility.md).
+   No `llms.txt` change — see *Documentation Impact*.
+   Verify: `npm run docs:api` — zero warnings; `npm run build:docs` — clean.
 
 ---
 
@@ -322,20 +382,25 @@ picked up. Each step is a self-contained, independently verifiable slice.
 | Create | `packages/lib/tests/core/FocusTraversal.test.ts` |
 | Modify | `packages/lib/src/typescript/lib/core/DOM.ts` — add `isRenderedVisible` to `DOMSource` + `ProductionDOMSource` |
 | Modify | `packages/lib/src/typescript/lib/core/Component.ts` — `tabKeyOwner` option, `setTabKeyOwner` / `isTabKeyOwner` |
-| Modify | `packages/lib/src/typescript/lib/core/index.ts` — export `FocusTraversal`, `FOCUSABLE_SELECTOR` |
-| Modify | `packages/lib/src/typescript/lib/overlay/Dialog.ts` — import the shared `FOCUSABLE_SELECTOR`, delete the local one |
+| Modify | `packages/lib/src/typescript/lib/core/index.ts` — export `FocusTraversal` |
 | Modify | `packages/lib/src/typescript/lib/component/editor/MarkdownEditor.ts` — `setTabKeyOwner(true)` |
 | Modify | `packages/lib/src/typescript/lib/component/editor/CodeEditor.ts` — `setTabKeyOwner(true)` |
+| Modify | `packages/lib/src/typescript/lib/component/table/Table.ts` — `setTabKeyOwner(true)` |
 | Modify | `packages/lib/tests/dom/TestDOM.ts` — offline `isRenderedVisible` |
 | Modify | `packages/lib/tests/component/default-options-fallback.test.ts` — `tabKeyOwner` row |
 | Modify | `packages/lib/docs/concepts/accessibility.md` — traversal section |
-| Modify | `packages/lib/llms.txt` — `FocusTraversal` entry |
+
+`overlay/Dialog.ts` is read but not modified (see step 4) — listed in this plan's
+`touches-shared` frontmatter for coordination, not in this table.
 
 ---
 
 ## Expected Behaviour
 
-Unit-testable against the offline DOM source:
+Unit-testable against the offline DOM source — including the `disabled` filter,
+since `hasAttribute` is genuinely modelled (not the hardcoded always-`false` stub it
+started as) by [`directional-panel-navigation.md`](plans/directional-panel-navigation.md)'s
+own `TestDOM.ts` step, which this plan inherits:
 
 - `getTabStops` returns document order for a flat container of three buttons.
 - `getTabStops` omits a `<button disabled>`.
@@ -365,7 +430,9 @@ editors, or the browser's own traversal:
 - Tab inside a `CodeEditor` still indents; Escape then Tab leaves the editor and
   lands on the next control.
 - Tab inside a `MarkdownEditor` WYSIWYG table still advances cell-to-cell.
-- A `Dialog` still traps Tab at both ends after step 4.
+- Tab inside a `Table` in edit mode still moves cell-to-cell, via `Table`'s own
+  handling, not the traversal service's.
+- A `Dialog` still traps Tab at both ends.
 - Tabbing across a scrolling `Panel` does not jump the panel's scroll offset
   (the `preventScroll: true` guarantee).
 - Tabbing into a `ToolBar` lands on its active item; arrow keys then move within
@@ -380,34 +447,41 @@ editors, or the browser's own traversal:
   module goes through `DOM.sink` / `DOM.source`.
 - `npm test` — the new `tests/core/FocusTraversal.test.ts` plus the existing
   `tests/core/RovingTabIndex.test.ts` and the dialog tests.
-- `grep -rn "FOCUSABLE_SELECTOR" packages/lib/src/` — exactly one definition.
+- `grep -rn "FOCUSABLE_SELECTOR" packages/lib/src/` — exactly one definition, in
+  `core/Focusable.ts` — this plan must not add a second.
 - `grep -rn "activeElement\|\.focus(" packages/lib/src/typescript/lib/core/FocusTraversal.ts` —
   every hit is a `DOM.source` / `DOM.sink` call.
-- `npm run docs:build` — zero warnings.
+- `npm run docs:api` — zero warnings. `npm run build:docs` — clean.
 - Manual smoke test in the demo app (`npm run dev`, http://localhost:8015): the
-  editor demo panel, a dialog, and the toolbar/tab demo panels, with
+  editor demo panel, a table panel, a dialog, and the toolbar/tab demo panels, with
   `FocusTraversal.enable()` added to `packages/lib/src/typescript/main.ts`
-  temporarily beside the existing `FocusHistory.enable()` call at line 40.
+  temporarily beside the existing `FocusHistory.enable()` call at line 45.
 
 ---
 
 ## Documentation Impact
 
-- `FocusTraversal` and `FOCUSABLE_SELECTOR` are exported from
+- `FocusTraversal` is exported from
   [`core/index.ts`](packages/lib/src/typescript/lib/core/index.ts), so TypeDoc
-  renders them under the `Core` category. Give the namespace and each exported
+  renders it under the `Core` category. Give the namespace and each exported
   function a `@category Core` JSDoc block, as `FocusHistory` does.
 - [`docs/concepts/accessibility.md`](packages/lib/docs/concepts/accessibility.md)
   gains a "Tab traversal" section after "Keyboard navigation: RovingTabIndex",
   covering `enable()`, the Tab-owner flag, and the Escape release. Its
   **Testing** section's keyboard-only bullet should reference the new service.
-- The `Component` additions are consumer-facing options, so
-  [`packages/lib/llms.txt`](packages/lib/llms.txt) gets a `FocusTraversal` line.
+- No `llms.txt` change: `FocusTraversal` is a `namespace`, not a concrete class, so
+  the coverage manifest (`scripts/llms/manifest.data.mjs`, checked by
+  `check-coverage.mjs`) needs no entry — the same reasoning
+  `focus-reveal-on-navigation.md` and `directional-panel-navigation.md` use for
+  their own namespace exports. The two new `Component` methods need no entry
+  either: `Component` is already in `manifest.data.mjs`'s `excludedSymbols` list as
+  a framework primitive, and the manifest catalogues classes, not per-method
+  surfaces.
 - Per [CODE_CONVENTIONS.md](CODE_CONVENTIONS.md), public JSDoc may not `{@link}`
   private or non-exported symbols — describe the ancestor walk in prose rather
-  than naming the internal helper.
+  than naming the internal helper, and do not link `core/Focusable.ts`.
 - No sidebar entry is needed: the concepts sidebar already lists Accessibility
-  (`packages/lib/docs/.vitepress/config.*`, line 56).
+  ([`packages/docs/src/content/pages.ts:155`](packages/docs/src/content/pages.ts#L155)).
 
 ---
 
@@ -417,12 +491,14 @@ editors, or the browser's own traversal:
   uses `Event.addViewportListener`, not `addSubtreeListener`, so this does not
   bite — but any future per-component variant would need a consume-once marker.
 - **The service cannot resolve an element back to its `Component`.** No
-  element→`Component` map exists, and `plans/focus-reveal-on-navigation.md`
-  deliberately avoids adding one. Every check the service performs must therefore
-  be expressible as a DOM read — which is why the Tab-owner flag is an attribute
-  and eligibility is a selector plus two predicates.
+  element→`Component` map exists, and
+  [`plans/focus-reveal-on-navigation.md`](plans/focus-reveal-on-navigation.md)
+  and [`plans/directional-panel-navigation.md`](plans/directional-panel-navigation.md)
+  both deliberately avoid adding one. Every check the service performs must
+  therefore be expressible as a DOM read — which is why the Tab-owner flag is an
+  attribute and eligibility is a selector plus predicates.
 - **`Escape` is already owned by `LayerManager`**, which closes the topmost
-  non-manual layer on it. The release flag must be set without calling
+  non-modal layer on it. The release flag must be set without calling
   `preventDefault`, so an Escape inside an editor in a dialog still closes the
   dialog. Check `LayerManager.getTopLayer()` before assuming the key is free.
 - **A third editor arrives later.** Anything embedding a third-party editing
@@ -431,6 +507,15 @@ editors, or the browser's own traversal:
   next such component copies it.
 - **`isRenderedVisible` costs a style read per candidate.** Compute tab stops
   lazily inside the Tab handler, never on a timer or per layout pass.
+- **`Ctrl+Shift`+arrow is already spoken for.** By the time this plan is picked
+  up, [`plans/directional-panel-navigation.md`](plans/directional-panel-navigation.md)'s
+  `PanelNavigation` service will very likely already own `Ctrl+Shift`+arrow for
+  pane navigation — do not propose that chord for anything here.
+  [`core/Focusable.ts`](packages/lib/src/typescript/lib/core/Focusable.ts) will
+  also already exist as the shared, internal focusable-eligibility helper this
+  plan builds on (see *Eligibility reuses `core/Focusable.ts`*) — re-read it
+  before implementing step 3, since its exact shape may have moved on since this
+  plan was last drafted.
 
 ---
 
@@ -439,20 +524,32 @@ editors, or the browser's own traversal:
 - [`packages/lib/src/typescript/lib/core/FocusHistory.ts`](packages/lib/src/typescript/lib/core/FocusHistory.ts) —
   **the precedent.** Namespace singleton, `_owner` sentinel, viewport listeners,
   opt-in `enable()`, `LayerManager` deference. Copy this shape.
+- [`packages/lib/src/typescript/lib/core/Focusable.ts`](packages/lib/src/typescript/lib/core/Focusable.ts) —
+  **the shared eligibility helper this plan builds on, not duplicates.** Owned by
+  `directional-panel-navigation.md`; read it before writing step 3.
 - [`packages/lib/src/typescript/lib/core/RovingTabIndex.ts`](packages/lib/src/typescript/lib/core/RovingTabIndex.ts) —
   the existing composite-widget focus manager; this plan reuses it rather than
   replacing it.
-- [`packages/lib/src/typescript/lib/overlay/Dialog.ts`](packages/lib/src/typescript/lib/overlay/Dialog.ts#L960) —
-  the only existing Tab handler, and the source of `FOCUSABLE_SELECTOR`.
+- [`packages/lib/src/typescript/lib/overlay/Dialog.ts`](packages/lib/src/typescript/lib/overlay/Dialog.ts#L1121) —
+  the only existing whole-surface Tab trap; `onKeyDown` (line 1121).
+- [`packages/lib/src/typescript/lib/component/table/Body.ts`](packages/lib/src/typescript/lib/component/table/Body.ts#L2807) —
+  `Table`'s own Tab handling while `Body` holds focus; the reason `Table` is a
+  third Tab owner (see step 6).
+- [`packages/lib/src/typescript/lib/component/table/cell/Cell.ts`](packages/lib/src/typescript/lib/component/table/cell/Cell.ts#L595) —
+  `Table`'s Tab handling from an open cell editor; the other half of the reason
+  above.
 - [`packages/lib/src/typescript/lib/core/DOM.ts`](packages/lib/src/typescript/lib/core/DOM.ts) —
   the seam every focus and `activeElement` access must route through.
-- [`packages/lib/src/typescript/lib/core/Component.ts`](packages/lib/src/typescript/lib/core/Component.ts#L1698) —
-  `isEffectivelyVisible`, `isDisplayed`, `setDataAttribute`, `focus(preventScroll)`.
-- [`packages/lib/src/typescript/lib/component/menubar/ToolBar.ts`](packages/lib/src/typescript/lib/component/menubar/ToolBar.ts#L484) —
+- [`packages/lib/src/typescript/lib/core/Component.ts`](packages/lib/src/typescript/lib/core/Component.ts) —
+  `isEffectivelyVisible` (line 2266), `isDisplayed` (line 2236), `setDataAttribute`
+  (line 2055), `focus(preventScroll)` (line 5209).
+- [`packages/lib/src/typescript/lib/component/menubar/ToolBar.ts`](packages/lib/src/typescript/lib/component/menubar/ToolBar.ts#L537) —
   auto-registers focusable children into a `RovingTabIndex`; the model for the
   step-7 audit.
-- [`plans/focus-reveal-on-navigation.md`](plans/focus-reveal-on-navigation.md) —
-  the hard dependency; supplies the reveal step that `preventScroll: true` needs.
+- [`plans/directional-panel-navigation.md`](plans/directional-panel-navigation.md) —
+  the hard dependency; supplies `core/Focusable.ts`'s shared selector, and owns
+  `Ctrl+Shift`+arrow (a different key, but read its `## Critical Files` entry for
+  this plan to keep the cross-reference current).
 - [ARCHITECTURE.md](ARCHITECTURE.md) — DOM seam rule, typed-setter rule,
   options-bag-as-cache rule.
 
@@ -466,15 +563,17 @@ editors, or the browser's own traversal:
 - **An explicit `tabOrder` / `tabStop` option.** Tab order is DOM order; a
   container that wants a different order reorders its children. Adding a numeric
   order recreates the positive-`tabindex` mess the platform learned to avoid.
-- **Replacing `Dialog`'s focus trap.** Step 4 shares the selector only. Folding
-  the trap into the service is a follow-on, gated on a second overlay needing it.
+- **Replacing `Dialog`'s focus trap.** This plan shares `core/Focusable.ts`'s
+  selector with `Dialog` and nothing else; folding the trap into the service is a
+  follow-on, gated on a second overlay needing it.
 - **New roving-tabindex machinery.** `RovingTabIndex` already exists and already
   produces the one-stop-per-widget property this plan relies on.
 - **Arrow-key navigation inside composite widgets.** `Tree`, `Table`, `MenuBar`,
   `ToolBar`, and `TabBar` keep owning their own arrow keys.
 - **Focus rings, ARIA attributes, and screen-reader semantics.** Owned by
   `focusRing.ts` and `Aria.ts`.
-- **Scrolling a focused stop into view.** Owned by `FocusReveal`.
+- **Scrolling a focused stop into view.** A related but separate concern; see
+  *Focus moves with `preventScroll: true`*.
 - **Enabling traversal by default.** Nothing in the library calls `enable()`;
   the demo app calls it only during the manual smoke test.
 
@@ -493,10 +592,11 @@ editors, or the browser's own traversal:
     feature inert by default.
 
 [^marker]: The service has only a `Handle` for the focused element and no way to
-    resolve it to a `Component` — `plans/focus-reveal-on-navigation.md` records
-    that no element→`Component` map exists and that adding one is out of bounds.
-    A DOM attribute is therefore the only claim channel that survives the seam.
-    The same ancestor-walk technique is used in that plan to detect a `<td>`/`<th>`
+    resolve it to a `Component` — `plans/focus-reveal-on-navigation.md` and
+    `plans/directional-panel-navigation.md` both record that no element→`Component`
+    map exists and that adding one is out of bounds. A DOM attribute is therefore
+    the only claim channel that survives the seam. The same ancestor-walk
+    technique is used in `focus-reveal-on-navigation.md` to detect a `<td>`/`<th>`
     ancestor, for the same reason: the seam offers no `closest`. Routing the flag
     through `setDataAttribute` rather than the low-level `setElementAttribute` also
     gets construction-time replay for free — `_attributes` is flushed onto the
@@ -522,21 +622,22 @@ editors, or the browser's own traversal:
     accessibility anti-pattern because one wrong value reorders the entire
     document, and a framework-level equivalent inherits that failure mode.
 
-[^visibility]: The seam has no visibility read today — `getComputedOverflow` and
-    `getInlineStyle` are the closest, and neither sees an ancestor's
-    `display: none`. `Component.isEffectivelyVisible` computes exactly the right
-    answer but needs a `Component`, which the service does not have.
-    `getElementRect` is not a substitute: a `visibility: hidden` element still
-    reports a non-zero rect, and that is the case that matters most, since `Tab`
-    hides inactive content that way. The production implementation is
-    `Element.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: true })`;
-    the offline implementation walks the modelled parent chain, which `TestDOM`
-    already supports.
+[^focusable-yield]: Two shapes were considered for adding the missing
+    `isRenderedVisible` check: broadening `core/Focusable.ts`'s shared helper with
+    an optional visibility parameter, or leaving that module untouched and
+    filtering on top in `FocusTraversal.ts`. The second was chosen because
+    `core/Focusable.ts` is owned by `directional-panel-navigation.md`, which will
+    already be implemented and shipping by the time this deferred plan is picked
+    up; changing its contract from here risks breaking an invariant that plan's
+    own tests already pin. Layering the extra filter costs one array `.filter()`
+    call and keeps the dependency one-directional: this plan reads from
+    `core/Focusable.ts` and never edits it.
 
 [^root]: Scoping to the top layer reproduces what `Dialog` does today and is what
     `FocusHistory` already does when it suppresses its accelerator for a modal
-    layer (`FocusHistory.ts` line 215). Wrapping only inside a modal is the
+    layer (`FocusHistory.ts` line 219). Wrapping only inside a modal is the
     difference between a trap and a traversal: a modal must not let focus escape
     to the page behind it, while on the page itself a user reaching the end of
     the document expects to land in the browser's address bar, not to be looped
     back.
+</content>
