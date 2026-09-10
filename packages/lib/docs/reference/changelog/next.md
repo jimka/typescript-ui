@@ -21,8 +21,13 @@ page resets to empty.
   into view, and paints an accent highlight over it that survives the editor
   not having focus, which a native selection does not. `options.focus: false`
   previews a location without stealing focus; `options.highlight: false`
-  suppresses the highlight. The target is clamped against the live document, so
-  a stale position lands at the nearest valid range instead of throwing. The
+  suppresses the highlight; `options.scrollAlign` (`"nearest"` by default, or
+  `"center"`/`"start"`/`"end"`) chooses where the range lands in the viewport
+  once scrolled into view, on both axes — `"center"` keeps surrounding
+  context visible on every side, useful when the reveal comes from a results
+  list rather than in-place navigation. The target is clamped against the
+  live document, so a stale position lands at the nearest valid range
+  instead of throwing. The
   new types `CodeEditorRevealTarget` and `CodeEditorRevealOptions` are exported
   from `component/editor`. No consumer action is needed.
 
