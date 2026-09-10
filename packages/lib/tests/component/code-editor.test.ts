@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CodeEditor, setRevealHighlight, revealHighlightField } from '~/component/editor/CodeEditor';
-import type { CodeEditorChange, CodeEditorCursorPosition } from '~/component/editor/CodeEditor';
+import type { CodeEditorChange, CodeEditorCursorPosition, CodeEditorSelection } from '~/component/editor/CodeEditor';
 import { registerLanguage, getLanguage, listLanguages } from '~/component/editor/LanguageRegistry';
 import type { Formatter } from '~/component/editor/LanguageRegistry';
 import { formatWithSql } from '~/component/editor/formatters/sql';
@@ -1697,6 +1697,173 @@ describe('CodeEditor cursor position', () => {
         (editor as any).emit('cursorchange', { line: 3, column: 4, offset: 30 });
 
         expect(received).toEqual({ line: 3, column: 4, offset: 30 });
+    });
+});
+
+describe('CodeEditor selection', () => {
+    it('reports a collapsed selection as zero characters across one line', () => {
+        const editor = new CodeEditor() as any;
+        editor._view = { state: EditorState.create({ doc: 'ab\ncd', selection: { anchor: 0, head: 0 } }) };
+
+        expect(editor.getSelection()).toEqual({ characterCount: 0, lineCount: 1 });
+    });
+
+    it('reports the character count for a single-line forward selection', () => {
+        const editor = new CodeEditor() as any;
+        editor._view = { state: EditorState.create({ doc: 'abcdef', selection: { anchor: 1, head: 4 } }) };
+
+        expect(editor.getSelection()).toEqual({ characterCount: 3, lineCount: 1 });
+    });
+
+    it('reports the same character count for a selection dragged backward', () => {
+        const editor = new CodeEditor() as any;
+        editor._view = { state: EditorState.create({ doc: 'abcdef', selection: { anchor: 4, head: 1 } }) };
+
+        expect(editor.getSelection()).toEqual({ characterCount: 3, lineCount: 1 });
+    });
+
+    it('reports the line count for a selection spanning multiple lines', () => {
+        const editor = new CodeEditor() as any;
+        editor._view = { state: EditorState.create({ doc: 'ab\ncd\nef', selection: { anchor: 1, head: 7 } }) };
+
+        expect(editor.getSelection()).toEqual({ characterCount: 6, lineCount: 3 });
+    });
+
+    it('reports the whole document for a select-all', () => {
+        const editor = new CodeEditor() as any;
+        editor._view = { state: EditorState.create({ doc: 'ab\ncd\nef', selection: { anchor: 0, head: 8 } }) };
+
+        expect(editor.getSelection()).toEqual({ characterCount: 8, lineCount: 3 });
+    });
+
+    it('returns a collapsed selection at the document start before the view is mounted', () => {
+        const editor = new CodeEditor();
+
+        expect(editor.getSelection()).toEqual({ characterCount: 0, lineCount: 1 });
+    });
+
+    it('returns a collapsed selection at the document start when constructed with content but still unmounted', () => {
+        const editor = new CodeEditor('several\nlines\nhere');
+
+        expect(editor.getSelection()).toEqual({ characterCount: 0, lineCount: 1 });
+    });
+
+    it('reports the range named by mainIndex, not the first range, with multiple selections', () => {
+        const editor = new CodeEditor() as any;
+        editor._view = {
+            state: EditorState.create({
+                doc: 'ab\ncd',
+                selection: EditorSelection.create([EditorSelection.range(0, 1), EditorSelection.range(3, 5)], 1),
+                extensions: [EditorState.allowMultipleSelections.of(true)],
+            }),
+        };
+
+        expect(editor.getSelection()).toEqual({ characterCount: 2, lineCount: 1 });
+    });
+
+    it('emits nothing when the selection is still the seeded collapsed selection', () => {
+        const editor = new CodeEditor() as any;
+        const payloads: CodeEditorSelection[] = [];
+        editor.on('selectionchange', (payload: CodeEditorSelection) => payloads.push(payload));
+
+        editor.onSelectionChange(EditorState.create({ doc: 'ab\ncd', selection: { anchor: 0, head: 0 } }));
+
+        expect(payloads).toEqual([]);
+    });
+
+    it('emits once when the selection changes', () => {
+        const editor = new CodeEditor() as any;
+        const payloads: CodeEditorSelection[] = [];
+        editor.on('selectionchange', (payload: CodeEditorSelection) => payloads.push(payload));
+
+        editor.onSelectionChange(EditorState.create({ doc: 'ab\ncd', selection: { anchor: 0, head: 4 } }));
+
+        expect(payloads).toEqual([{ characterCount: 4, lineCount: 2 }]);
+    });
+
+    it('does not emit again when called twice with the same selection', () => {
+        const editor = new CodeEditor() as any;
+        const payloads: CodeEditorSelection[] = [];
+        editor.on('selectionchange', (payload: CodeEditorSelection) => payloads.push(payload));
+
+        const state = EditorState.create({ doc: 'ab\ncd', selection: { anchor: 0, head: 4 } });
+        editor.onSelectionChange(state);
+        editor.onSelectionChange(state);
+
+        expect(payloads).toEqual([{ characterCount: 4, lineCount: 2 }]);
+    });
+
+    it('emits again when the selection shrinks back toward the start', () => {
+        const editor = new CodeEditor() as any;
+        const payloads: CodeEditorSelection[] = [];
+        editor.on('selectionchange', (payload: CodeEditorSelection) => payloads.push(payload));
+
+        editor.onSelectionChange(EditorState.create({ doc: 'ab\ncd', selection: { anchor: 0, head: 4 } }));
+        editor.onSelectionChange(EditorState.create({ doc: 'ab\ncd', selection: { anchor: 1, head: 0 } }));
+
+        expect(payloads).toEqual([{ characterCount: 4, lineCount: 2 }, { characterCount: 1, lineCount: 1 }]);
+    });
+
+    it('emits again when the line count changes even though the character count ties', () => {
+        const editor = new CodeEditor() as any;
+        const payloads: CodeEditorSelection[] = [];
+        editor.on('selectionchange', (payload: CodeEditorSelection) => payloads.push(payload));
+
+        editor.onSelectionChange(EditorState.create({ doc: 'ab\ncd\nef', selection: { anchor: 1, head: 3 } }));
+        editor.onSelectionChange(EditorState.create({ doc: 'ab\ncd\nef', selection: { anchor: 3, head: 5 } }));
+
+        expect(payloads).toEqual([{ characterCount: 2, lineCount: 2 }, { characterCount: 2, lineCount: 1 }]);
+    });
+
+    it('emits selectionchange but not cursorchange for a select-all that leaves the caret in place', () => {
+        const editor = new CodeEditor() as any;
+        const cursorPayloads: CodeEditorCursorPosition[] = [];
+        const selectionPayloads: CodeEditorSelection[] = [];
+        editor.on('cursorchange', (payload: CodeEditorCursorPosition) => cursorPayloads.push(payload));
+        editor.on('selectionchange', (payload: CodeEditorSelection) => selectionPayloads.push(payload));
+
+        // Prime both dedup fields to "caret at the document's last position,
+        // nothing selected" before observing the regression this plan exists
+        // to fix.
+        const atEnd = EditorState.create({ doc: 'ab\ncd', selection: { anchor: 5 } });
+        editor.onCursorChange(atEnd);
+        editor.onSelectionChange(atEnd);
+        cursorPayloads.length = 0;
+        selectionPayloads.length = 0;
+
+        // Ctrl/Cmd+A: selects the whole document but leaves the head at the
+        // same offset, so onCursorChange's own dedup suppresses it while the
+        // selection's extent still changed.
+        const selectAll = EditorState.create({ doc: 'ab\ncd', selection: { anchor: 0, head: 5 } });
+        editor.onCursorChange(selectAll);
+        editor.onSelectionChange(selectAll);
+
+        expect(cursorPayloads).toEqual([]);
+        expect(selectionPayloads).toEqual([{ characterCount: 5, lineCount: 2 }]);
+    });
+
+    it('on() / off() register and remove a selectionchange listener', () => {
+        const editor = new CodeEditor();
+        let fired = 0;
+        const listener = (): void => { fired += 1; };
+
+        editor.on('selectionchange', listener);
+        (editor as any).emit('selectionchange', { characterCount: 4, lineCount: 2 });
+        expect(fired).toBe(1);
+
+        editor.off('selectionchange', listener);
+        (editor as any).emit('selectionchange', { characterCount: 1, lineCount: 1 });
+        expect(fired).toBe(1);
+    });
+
+    it('wires a constructor listeners.selectionchange bag through applyListeners', () => {
+        let received: CodeEditorSelection | null = null;
+        const editor = new CodeEditor(undefined,
+            { listeners: { selectionchange: (payload) => { received = payload; } } });
+
+        (editor as any).emit('selectionchange', { characterCount: 5, lineCount: 2 });
+
+        expect(received).toEqual({ characterCount: 5, lineCount: 2 });
     });
 });
 

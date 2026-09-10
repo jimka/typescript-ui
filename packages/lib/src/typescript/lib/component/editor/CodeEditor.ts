@@ -79,6 +79,25 @@ export interface CodeEditorCursorPosition {
 }
 
 /**
+ * The primary selection's extent inside a {@link CodeEditor}'s document — the
+ * payload of its `"selectionchange"` event, and what
+ * {@link CodeEditor.getSelection} returns.
+ *
+ * @category Components
+ */
+export interface CodeEditorSelection {
+    /**
+     * Number of characters in the primary selection. 0 for a collapsed
+     * selection (a bare caret). Counts UTF-16 code units, like
+     * {@link CodeEditorCursorPosition.offset}: a character outside the Basic
+     * Multilingual Plane (an emoji) counts as two.
+     */
+    characterCount: number;
+    /** Number of lines the primary selection spans. 1 for a selection confined to a single line, including a collapsed one. */
+    lineCount: number;
+}
+
+/**
  * A range to reveal in a {@link CodeEditor}, as passed to
  * {@link CodeEditor.revealRange}. `line` and `column` count from 1, matching
  * {@link CodeEditorCursorPosition}; `length` is a character count. All three
@@ -144,8 +163,10 @@ export interface CodeEditorRevealOptions {
  *   editor's own computed height changed (payload {@link CodeEditorHeightChange}).
  * - `"cursorchange"` — the primary caret moved to a different line, column, or
  *   document offset (payload {@link CodeEditorCursorPosition}).
+ * - `"selectionchange"` — the primary selection's extent (its character count
+ *   or line count) changed (payload {@link CodeEditorSelection}).
  */
-type CodeEditorEvent = "change" | "readonlyedit" | "heightchange" | "cursorchange";
+type CodeEditorEvent = "change" | "readonlyedit" | "heightchange" | "cursorchange" | "selectionchange";
 
 /**
  * Construction-time options for {@link CodeEditor}.
@@ -208,8 +229,8 @@ export interface CodeEditorOptions extends ComponentOptions {
      * as a squiggly underline but come from the grammar, not the browser.
      */
     spellcheck?: boolean;
-    /** Construction-time listener bag; the events are `"change"`, `"readonlyedit"`, `"heightchange"`, and `"cursorchange"`. */
-    listeners?: { change?: (payload: CodeEditorChange) => void; readonlyedit?: () => void; heightchange?: (payload: CodeEditorHeightChange) => void; cursorchange?: (payload: CodeEditorCursorPosition) => void };
+    /** Construction-time listener bag; the events are `"change"`, `"readonlyedit"`, `"heightchange"`, `"cursorchange"`, and `"selectionchange"`. */
+    listeners?: { change?: (payload: CodeEditorChange) => void; readonlyedit?: () => void; heightchange?: (payload: CodeEditorHeightChange) => void; cursorchange?: (payload: CodeEditorCursorPosition) => void; selectionchange?: (payload: CodeEditorSelection) => void };
 }
 
 /**
@@ -605,6 +626,17 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * transaction.
      */
     private _lastCursorPosition: CodeEditorCursorPosition = { line: 1, column: 1, offset: 0 };
+
+    /**
+     * The primary selection's extent as of the last `"selectionchange"` emit,
+     * seeded to a collapsed selection at the document start — the same shape
+     * `_lastCursorPosition` seeds, and for the same reason: `mount()` creates its
+     * `EditorState` with no `selection` spec, so a freshly mounted view's
+     * selection really is empty. Compared against on every update so the event
+     * fires once per real change to the character or line count, never per
+     * transaction.
+     */
+    private _lastSelection: CodeEditorSelection = { characterCount: 0, lineCount: 1 };
 
     // Definite-assignment, not `declare`: no cascade-dispatched setter writes
     // it, and it is assigned in the constructor body — mirrors MarkdownViewer._controls.
@@ -1162,6 +1194,28 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
+     * Returns the primary selection's extent: read live from the view when
+     * mounted, else the offline default of a collapsed selection at the document
+     * start.
+     *
+     * `characterCount` is 0 and `lineCount` is 1 for a collapsed selection (a
+     * bare caret with nothing highlighted) — the same shape a freshly mounted
+     * editor reports. Both are derived from the selection's normalized bounds,
+     * so a selection dragged backward reports the same values as one dragged
+     * forward. With several selection ranges active, only the primary one is
+     * measured, matching {@link CodeEditor.getCursorPosition}.
+     *
+     * @returns The primary selection's character count and the number of lines it spans.
+     */
+    getSelection(): CodeEditorSelection {
+        if (this._view) {
+            return this.readSelection(this._view.state);
+        }
+
+        return { characterCount: 0, lineCount: 1 };
+    }
+
+    /**
      * Selects a range given by line, column and length, scrolls it into view, and
      * paints a brief accent highlight over it.
      *
@@ -1512,6 +1566,45 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
+     * Derives the primary selection's character count and line count from a
+     * CodeMirror state. Uses `main.from`/`main.to` — the range's normalized
+     * bounds — rather than `anchor`/`head`, so a selection dragged backward
+     * (head before anchor) still reports a non-negative count. `doc.lineAt`
+     * already numbers lines from 1.
+     *
+     * @param state - The state to read the selection and document from.
+     * @returns The primary selection's character count and the number of lines it spans.
+     */
+    private readSelection(state: EditorState): CodeEditorSelection {
+        const { from, to } = state.selection.main;
+
+        return {
+            characterCount: to - from,
+            lineCount: state.doc.lineAt(to).number - state.doc.lineAt(from).number + 1,
+        };
+    }
+
+    /**
+     * Emits `"selectionchange"` when the primary selection's character count or
+     * line count differs from the last one emitted, and does nothing otherwise.
+     * Takes an `EditorState`, mirroring `onCursorChange`, so the offline harness
+     * — where no `EditorView` ever mounts — can drive it directly.
+     *
+     * @param state - The state carrying the selection to report.
+     */
+    private onSelectionChange(state: EditorState): void {
+        const selection = this.readSelection(state);
+
+        if (selection.characterCount === this._lastSelection.characterCount
+            && selection.lineCount === this._lastSelection.lineCount) {
+            return;
+        }
+
+        this._lastSelection = selection;
+        this.emit("selectionchange", selection);
+    }
+
+    /**
      * Registers a listener for the `"change"` event, fired whenever the
      * document changes (including via {@link CodeEditor.format} / {@link CodeEditor.setValue}).
      *
@@ -1548,6 +1641,15 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * @returns This component, for method chaining.
      */
     on(event: "cursorchange", listener: (payload: CodeEditorCursorPosition) => void): this;
+    /**
+     * Registers a listener for the `"selectionchange"` event, fired when the
+     * primary selection's character count or line count changes.
+     *
+     * @param event - Must be `"selectionchange"`.
+     * @param listener - Invoked with the selection's new character and line counts.
+     * @returns This component, for method chaining.
+     */
+    on(event: "selectionchange", listener: (payload: CodeEditorSelection) => void): this;
     on(event: CodeEditorEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -1586,6 +1688,14 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * @returns This component, for method chaining.
      */
     off(event: "cursorchange", listener: (payload: CodeEditorCursorPosition) => void): this;
+    /**
+     * Removes a previously registered `"selectionchange"` listener.
+     *
+     * @param event - Must be `"selectionchange"`.
+     * @param listener - The exact callback reference to remove.
+     * @returns This component, for method chaining.
+     */
+    off(event: "selectionchange", listener: (payload: CodeEditorSelection) => void): this;
     off(event: CodeEditorEvent, listener: Function): this {
         this._listeners.remove(event, listener);
 
@@ -1596,13 +1706,14 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * Fans an event out to its registered listeners.
      *
      * @param event - The event name.
-     * @param payload - The event payload (`"change"`/`"heightchange"`/`"cursorchange"`; `"readonlyedit"` has none).
+     * @param payload - The event payload (`"change"`/`"heightchange"`/`"cursorchange"`/`"selectionchange"`; `"readonlyedit"` has none).
      */
     protected emit(event: "change", payload: CodeEditorChange): void;
     protected emit(event: "readonlyedit"): void;
     protected emit(event: "heightchange", payload: CodeEditorHeightChange): void;
     protected emit(event: "cursorchange", payload: CodeEditorCursorPosition): void;
-    protected emit(event: CodeEditorEvent, payload?: CodeEditorChange | CodeEditorHeightChange | CodeEditorCursorPosition): void {
+    protected emit(event: "selectionchange", payload: CodeEditorSelection): void;
+    protected emit(event: CodeEditorEvent, payload?: CodeEditorChange | CodeEditorHeightChange | CodeEditorCursorPosition | CodeEditorSelection): void {
         this._listeners.fire(event, ...(payload ? [payload] : []));
     }
 
@@ -1953,9 +2064,11 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
                 // Both flags are needed: a caret move sets `selectionSet`, while a
                 // document replace (setValue, format) maps the caret through the change
-                // without setting it. `onCursorChange` drops the redundant ones.
+                // without setting it. `onCursorChange`/`onSelectionChange` each drop
+                // their own redundant calls.
                 if (update.selectionSet || update.docChanged) {
                     this.onCursorChange(update.state);
+                    this.onSelectionChange(update.state);
                 }
 
                 this._foldedLines = this.countFoldedLines(update.state);
