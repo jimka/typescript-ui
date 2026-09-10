@@ -107,6 +107,13 @@ interface HandleStub {
      * has written a range to.
      */
     selection: { start: number; end: number } | null;
+    /**
+     * Modelled element attributes, folded by {@link RecordingDOMSink.apply}
+     * (`removeAttr` then `setAttr`, mirroring production's own order) and read
+     * back by {@link ModelledDOMSource.hasAttribute} / `getAttribute`. Default
+     * `{}` — an unwritten attribute reads as absent.
+     */
+    attributes: Record<string, string>;
 }
 
 /**
@@ -121,6 +128,8 @@ class TestHandleTable {
     private readonly _byId = new Map<string, Handle>();
     /** Selector → handle, seeded by {@link setQuerySelectorResult}. There is no selector engine offline. */
     private readonly _bySelector = new Map<string, Handle>();
+    /** Root → selector → handles, seeded by {@link setQuerySelectorAllResult}. There is no selector engine offline. */
+    private readonly _byRootSelector = new Map<Handle, Map<string, Handle[]>>();
     private readonly _connected = new Set<Handle>();
     private _focus: Handle | null = null;
     private _next = 1;
@@ -167,6 +176,7 @@ class TestHandleTable {
             borderInset:    { top: 0, right: 0, bottom: 0, left: 0 },
             scrollExtent:   null,
             selection:      null,
+            attributes:     {},
         });
 
         return handle;
@@ -308,6 +318,37 @@ class TestHandleTable {
     }
 
     /**
+     * Seeds the handles a root-scoped `querySelectorAll` resolves to, read
+     * back by {@link ModelledDOMSource.querySelectorAll}.
+     *
+     * @param root - The root the query is scoped to.
+     * @param selector - The exact selector string the code under test passes.
+     * @param handles - The handles that query should find, in order.
+     */
+    setQuerySelectorAllResult(root: Handle, selector: string, handles: Handle[]): void {
+        let bySelector = this._byRootSelector.get(root);
+
+        if (!bySelector) {
+            bySelector = new Map<string, Handle[]>();
+            this._byRootSelector.set(root, bySelector);
+        }
+
+        bySelector.set(selector, handles);
+    }
+
+    /**
+     * Reads the handles seeded for a root-scoped selector. Default `[]` — an
+     * unseeded root/selector pair matches nothing.
+     *
+     * @param root - The root the query is scoped to.
+     * @param selector - The selector to resolve.
+     * @returns The seeded handles, or `[]`.
+     */
+    querySelectorAllResult(root: Handle, selector: string): Handle[] {
+        return this._byRootSelector.get(root)?.get(selector) ?? [];
+    }
+
+    /**
      * Returns the modelled `location.hash`.
      *
      * @returns The current hash, including its leading `"#"`, or `""` when empty.
@@ -440,6 +481,7 @@ export class RecordingDOMSink implements DOMSink {
         }
 
         this.foldGeometry(stub, patch);
+        this.foldAttributes(stub, patch);
     }
 
     /**
@@ -470,6 +512,28 @@ export class RecordingDOMSink implements DOMSink {
         fold('width', 'styleWidth');
         fold('height', 'styleHeight');
         fold('transform', 'styleTransform');
+    }
+
+    /**
+     * Folds a patch's attribute writes onto the stub's modelled attribute set,
+     * removals before sets — mirroring production's own application order
+     * ({@link ElementPatch}).
+     *
+     * @param stub - The target handle's stub.
+     * @param patch - The applied patch.
+     */
+    private foldAttributes(stub: HandleStub, patch: ElementPatch): void {
+        if (patch.removeAttr) {
+            for (const key of patch.removeAttr) {
+                delete stub.attributes[key];
+            }
+        }
+
+        if (patch.setAttr) {
+            for (const key of Object.keys(patch.setAttr)) {
+                stub.attributes[key] = patch.setAttr[key];
+            }
+        }
     }
 
     edit(handle: Handle): PatchBuilder {
@@ -1240,9 +1304,13 @@ export class ModelledDOMSource implements DOMSource {
         return _table.selectorResult(selector);
     }
 
-    /** No DOM tree offline; selector queries find nothing. */
-    querySelectorAll(_root: Handle, _selector: string): Handle[] {
-        return [];
+    /**
+     * No selector engine offline: resolves only to the handles a test seeded
+     * for that exact root + selector pair with {@link setQuerySelectorAllResult},
+     * and `[]` otherwise.
+     */
+    querySelectorAll(root: Handle, selector: string): Handle[] {
+        return _table.querySelectorAllResult(root, selector);
     }
 
     /** No selector engine offline; nothing to count. */
@@ -1339,12 +1407,12 @@ export class ModelledDOMSource implements DOMSource {
         return _table.stub(handle).tagName;
     }
 
-    hasAttribute(_handle: Handle, _key: string): boolean {
-        return false;
+    hasAttribute(handle: Handle, key: string): boolean {
+        return key in _table.stub(handle).attributes;
     }
 
-    getAttribute(_handle: Handle, _key: string): string | null {
-        return null;
+    getAttribute(handle: Handle, key: string): string | null {
+        return _table.stub(handle).attributes[key] ?? null;
     }
 
     /** Reads the intrinsic size seeded by {@link setNaturalSize} (default 0). */
@@ -1635,6 +1703,21 @@ export function setConnected(handle: Handle, connected: boolean): void {
  */
 export function setQuerySelectorResult(selector: string, handle: Handle): void {
     _table.setSelectorResult(selector, handle);
+}
+
+/**
+ * Seeds the handles `querySelectorAll(root, selector)` returns offline, read
+ * back by {@link ModelledDOMSource.querySelectorAll}. Offline there is no
+ * selector engine, so a query finds elements only when a test has declared
+ * the match for that exact root + selector pair; an unseeded pair still
+ * returns `[]`.
+ *
+ * @param root - The root the query is scoped to.
+ * @param selector - The exact selector string the code under test passes.
+ * @param handles - The handles that query should find, in order.
+ */
+export function setQuerySelectorAllResult(root: Handle, selector: string, handles: Handle[]): void {
+    _table.setQuerySelectorAllResult(root, selector, handles);
 }
 
 /**
