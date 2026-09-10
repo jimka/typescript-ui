@@ -70,6 +70,53 @@ tabs.moveTo(0); // button1 is now the active item
 
 [`ButtonGroup`](/components/ButtonGroup) uses `RovingTabIndex` automatically for [`ToggleButton`](/components/ToggleButton) groups when you call `setContainer(container)`. For [`RadioButton`](/components/RadioButton) groups, the browser's built-in radio-group navigation handles arrow keys, so `RovingTabIndex` isn't needed.
 
+## Tab traversal
+
+[`FocusTraversal`](/api/core/namespaces/FocusTraversal) intercepts `Tab` /
+`Shift+Tab`, computes the ordered set of tab stops inside the topmost overlay
+layer (or `<body>` when none is open), and moves focus directly rather than
+leaving it to the browser's own traversal. The browser's native traversal is
+correct for almost every screen this framework renders, because the library
+writes real focusable elements and real `tabindex` values — so, like
+[`FocusHistory`](#keyboard-navigation-rovingtabindex), it is opt-in:
+
+```typescript
+import { FocusTraversal } from '@jimka/typescript-ui/core';
+
+FocusTraversal.enable();
+```
+
+Tab order follows DOM order, which matches component-tree order (`addComponent`
+always appends) but not necessarily *visual* order, since a layout manager can
+paint children somewhere other than the sequence they were added in. A
+container whose visual order must differ from its child order should reorder
+the `addComponent` calls rather than reach for an explicit ordering option —
+`FocusTraversal` deliberately has none.
+
+A component that owns a third-party editing surface — one whose own keydown
+handling treats Tab as something other than "move to the next stop," such as
+an indent gesture or a cell-to-cell navigation — marks itself with
+`setTabKeyOwner(true)`:
+
+```typescript
+this.setTabKeyOwner(true);
+```
+
+While focus is anywhere inside a Tab-key owner, the service leaves Tab alone
+entirely, so the owner's own handling (CodeMirror's indent, a Lexical table's
+cell navigation, [`Table`](/components/Table)'s own cell-to-cell Tab) keeps
+working unmodified. Pressing `Escape` while focus is inside an owner arms a
+one-shot release: the next `Tab` (or `Shift+Tab`) steps past the owner instead
+of reaching it, so a keyboard user is never trapped inside one with no way
+out. Any other keystroke, or focus moving elsewhere by any other means,
+expires the release without arming it a second time.
+
+`FocusTraversal.enable({ wrap: true })` wraps from the last stop back to the
+first at the ends of the root; by default this only happens inside a modal
+overlay (where focus must not escape to the page behind it) — on `<body>`, the
+end of the traversal hands focus to the browser's own chrome, matching what a
+keyboard user expects when they reach the end of the page.
+
 ## Building an accessible custom widget
 
 A custom selectable list is the simplest non-trivial case:
@@ -135,7 +182,7 @@ status.getAria().setRole('status');
 
 ## Testing
 
-- **Keyboard-only** — unplug your mouse and verify every interaction works with `Tab`, `Shift+Tab`, arrow keys, and `Space`/`Enter`.
+- **Keyboard-only** — unplug your mouse and verify every interaction works with `Tab`, `Shift+Tab`, arrow keys, and `Space`/`Enter`; if [Tab traversal](#tab-traversal) is enabled, also check `Escape` then `Tab` escapes any Tab-key owner (an embedded editor, a table in edit mode).
 - **Screen reader** — VoiceOver (macOS) and NVDA (Windows) are the two readers most commonly tested against. Both should announce roles and labels for built-in components correctly.
 - **Browser dev tools** — Chrome's "Accessibility" panel under DevTools shows the computed accessibility tree for each element.
 
