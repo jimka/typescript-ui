@@ -102,8 +102,10 @@ const _defaultTreeOptions: Partial<TreeOptions> = {
  *
  * Pass root nodes via {@link Tree.setNodes}. The tree flattens the currently
  * visible subtree into a single scrollable list and recycles a fixed pool of
- * internal row components — rebinding rows only when their data index changes,
- * mirroring the approach used in `table/Body.ts`.
+ * internal row components — a pooled row rebinds only when the node, depth,
+ * expanded/loading state, or other content it was last bound to has actually
+ * changed, not merely because a reflatten shifted which node its pool slot
+ * happens to be showing.
  *
  * Scrolling is delegated to a `VirtualScroller` that owns the
  * rows-container transform, two custom scrollbar overlays, and the wheel/touch
@@ -251,6 +253,16 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * Replaces the root nodes, collapses all nodes, clears selection, and re-renders.
      *
      * @param nodes - The new array of root {@link TreeNode} objects.
+     *
+     * @remarks
+     * Every visible row is force-rebound, even one whose node happens to keep
+     * the same identity and `isBoundTo`-tracked flags across the call — a
+     * caller may hand back the same (possibly in-place-mutated) node objects
+     * specifically to pick up a content change (e.g. a relabel), and
+     * `isBoundTo` has no way to see a mutation to a node it already holds a
+     * reference to. `setRendererFactory` forces a rebind the same way and for
+     * the same class of reason: fresh content `isBoundTo`'s eight compared
+     * values cannot detect.
      */
     setNodes(nodes: TreeNode[]): this {
         this._nodes = nodes;
@@ -642,6 +654,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             row.setRenderer(factory());
         }
 
+        // Renderer identity isn't part of TreeRow.isBoundTo's comparison, so
+        // every row needs a real rebind here — see "setRendererFactory keeps
+        // its blanket invalidation" in plans/implemented/tree-row-toggle-rebind-perf.md.
         this._boundIndices.fill(-1);
         this.invalidateGeom();
 
@@ -708,8 +723,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
-     * Re-flattens the visible subtree and forces a full rebind of the pool so
-     * every row reflects the current expanded/loading state.
+     * Re-flattens the visible subtree and re-renders; each row rebinds only
+     * when `TreeRow.isBoundTo` reports its content actually changed.
      *
      * @remarks
      * Called from the collapse path, the synchronous expand path, and the async
@@ -718,8 +733,6 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      */
     private _reflattenAndRender(): void {
         this._flatten();
-        this._boundIndices.fill(-1);
-        this.invalidateGeom();
         this.renderWindow();
     }
 
@@ -1421,14 +1434,30 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             const hasChildren = this._isExpandable(flatRow.node);
             const expanded    = this._expandedNodes.has(flatRow.node);
             const loading     = this._loadingNodes.has(flatRow.node);
-            const wasRebound  = this._boundIndices[i] !== dataIndex;
+            const selected    = this._selectedNodes.has(flatRow.node);
+
+            // `_boundIndices[i] === -1` is the forced-rebind sentinel a caller
+            // sets when a slot's cached binding cannot be trusted regardless of
+            // content identity — none of these cases are visible to
+            // `isBoundTo`'s eight compared values: a freshly grown slot
+            // (`growRowPool`) or a freshly-hidden one (`hideExcessPoolRows`);
+            // `setRendererFactory`, whose fresh renderer has no cached icon or
+            // label text; `setNodes`, whose caller may hand back the very same
+            // (possibly in-place-mutated) node objects specifically to pick up
+            // a content change; and the inherited `VirtualRowView.onThemeReflow`,
+            // whose font swap can change every row's measured content without
+            // touching any of the eight values. Without this check, `isBoundTo`
+            // alone would report an untouched-looking row as unchanged — its
+            // node/depth/etc. really are identical — and silently skip the real
+            // `setRowData` call one of these cases actually needs.
+            const wasRebound = this._boundIndices[i] === -1
+                || !row.isBoundTo(flatRow.node, flatRow.depth, hasChildren, expanded, flatRow.siblingCount, flatRow.posInSet, selected, loading);
 
             if (wasRebound) {
-                const selected = this._selectedNodes.has(flatRow.node);
                 row.setRowData(flatRow.node, flatRow.depth, hasChildren, expanded, flatRow.siblingCount, flatRow.posInSet, selected, loading);
-                this._boundIndices[i] = dataIndex;
             }
 
+            this._boundIndices[i] = dataIndex;
             reboundFlags[i] = wasRebound;
 
             const cw = row.getContentWidth(INDENT_PX);

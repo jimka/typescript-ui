@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, beforeEach, beforeAll, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { _Tree } from '~/component/tree/Tree';
+import { _TreeRow } from '~/component/tree/TreeRow';
 import type { TreeNode } from '~/component/tree/TreeNode';
 import type { TreeNodeRenderContext } from '~/component/tree/TreeNodeRenderContext';
 import { TreeNodeRenderer } from '~/component/tree/TreeNodeRenderer';
@@ -53,6 +54,98 @@ function fruitTree(): TreeNode[] {
         { label: 'World' },
     ];
 }
+
+// ---------------------------------------------------------------------------
+// TreeRow.isBoundTo / toggle memoization — standalone, no mounted Tree. A
+// fresh row constructed directly and bound via setRowData() mirrors how
+// renderer.test.ts:64-118 exercises GlyphListItemRenderer's own
+// compare-then-rebuild icon caching in isolation. See the plan's "The caret
+// fix mirrors the codebase's own compare-then-rebuild pattern".
+// ---------------------------------------------------------------------------
+describe('TreeRow.isBoundTo / toggle memoization', () => {
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => DOM.reset());
+
+    const branch: TreeNode = { label: 'branch', children: [{ label: 'child' }] };
+    const otherBranch: TreeNode = { label: 'other', children: [{ label: 'child2' }] };
+
+    function makeRow(): _TreeRow {
+        const row = new _TreeRow();
+        row.getElement(true);
+        return row;
+    }
+
+    it("a fresh row's first bind constructs a collapsed-branch toggle", () => {
+        const row = makeRow();
+
+        row.setRowData(branch, 0, true, false, 1, 1, false, false);
+
+        expect(row.getToggle()?.getGlyphName()).toBe('caret-right');
+    });
+
+    it('rebinding with the same hasChildren/expanded/loading (only selected flips) keeps the same toggle instance', () => {
+        const row = makeRow();
+        row.setRowData(branch, 0, true, false, 1, 1, false, false);
+        const toggle = row.getToggle();
+
+        row.setRowData(branch, 0, true, false, 1, 1, true, false);
+
+        expect(row.getToggle()).toBe(toggle);
+    });
+
+    it('rebinding with a different expanded value swaps the toggle to a new caret-down instance', () => {
+        const row = makeRow();
+        row.setRowData(branch, 0, true, false, 1, 1, false, false);
+        const toggle = row.getToggle();
+
+        row.setRowData(branch, 0, true, true, 1, 1, false, false);
+
+        expect(row.getToggle()).not.toBe(toggle);
+        expect(row.getToggle()?.getGlyphName()).toBe('caret-down');
+    });
+
+    it('rebinding into loading disposes the toggle for a spinner, and back out reconstructs a toggle', () => {
+        const row = makeRow();
+        row.setRowData(branch, 0, true, false, 1, 1, false, false);
+
+        row.setRowData(branch, 0, true, false, 1, 1, false, true);
+        expect(row.getToggle()).toBe(null);
+
+        row.setRowData(branch, 0, true, false, 1, 1, false, false);
+        expect(row.getToggle()).not.toBe(null);
+    });
+
+    it('isBoundTo reports true only when every one of the eight arguments matches the last bind', () => {
+        const row = makeRow();
+        const args: [TreeNode, number, boolean, boolean, number, number, boolean, boolean] =
+            [branch, 0, true, false, 1, 1, false, false];
+
+        row.setRowData(...args);
+
+        expect(row.isBoundTo(...args)).toBe(true);
+        expect(row.isBoundTo(otherBranch, args[1], args[2], args[3], args[4], args[5], args[6], args[7])).toBe(false);
+        expect(row.isBoundTo(args[0], 1, args[2], args[3], args[4], args[5], args[6], args[7])).toBe(false);
+        expect(row.isBoundTo(args[0], args[1], false, args[3], args[4], args[5], args[6], args[7])).toBe(false);
+        expect(row.isBoundTo(args[0], args[1], args[2], true, args[4], args[5], args[6], args[7])).toBe(false);
+        expect(row.isBoundTo(args[0], args[1], args[2], args[3], 2, args[5], args[6], args[7])).toBe(false);
+        expect(row.isBoundTo(args[0], args[1], args[2], args[3], args[4], 2, args[6], args[7])).toBe(false);
+        expect(row.isBoundTo(args[0], args[1], args[2], args[3], args[4], args[5], true, args[7])).toBe(false);
+        expect(row.isBoundTo(args[0], args[1], args[2], args[3], args[4], args[5], args[6], true)).toBe(false);
+    });
+
+    it('setRenderer clears the bound-node snapshot, so isBoundTo no longer reports a stale match', () => {
+        const row = makeRow();
+        const args: [TreeNode, number, boolean, boolean, number, number, boolean, boolean] =
+            [branch, 0, true, false, 1, 1, false, false];
+
+        row.setRowData(...args);
+        expect(row.isBoundTo(...args)).toBe(true);
+
+        row.setRenderer(new LabelTreeNodeRenderer());
+
+        expect(row.isBoundTo(...args)).toBe(false);
+    });
+});
 
 describe('Tree — construction contract', () => {
     it('wires ARIA role tree, tabIndex 0, and multiselectable', () => {
@@ -1255,6 +1348,142 @@ describe('Tree virtual-scroll — characterization', () => {
 
         expect(totalRebinds).toBe(1);
         expect(totalRepositions).toBe(1);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Rebind gating after a reflatten (expand/collapse/setNodes/renderer swap) —
+// TreeRow.isBoundTo replacing index identity as the signal _bindAndMeasure
+// reads. See the plan's "Rebind gating moves from index identity to content
+// identity".
+// ---------------------------------------------------------------------------
+describe('Tree — rebind gating after a reflatten (isBoundTo)', () => {
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => DOM.reset());
+
+    // Each branch has exactly one child, so toggling one branch adds exactly
+    // one new flat row — mirrors `bigTree`'s shape (above) but with children
+    // instead of leaves.
+    function branchTree(n: number): TreeNode[] {
+        return Array.from({ length: n }, (_, i) => ({
+            label: 'n' + i,
+            children: [{ label: 'n' + i + '-child' }],
+        }));
+    }
+
+    function mountBranches(n: number, height: number): _Tree {
+        const tree = new _Tree();
+        tree.getElement(true);
+        tree.setWidth(200);
+        tree.setHeight(height);
+        tree.setNodes(branchTree(n));
+        (tree as any).renderWindow();
+        return tree;
+    }
+
+    it("toggling a middle branch never rebinds a row entirely before it, and reuses an unrelated row's pooled toggle Glyph across a shifted node of the same shape", () => {
+        // 6 branches, all visible and collapsed. Toggling n3 (the middle one)
+        // inserts a new "n3-child" flat row after it, which — because pool
+        // slots map to a flat *position*, not a node — shifts every later
+        // branch (n4, n5) into a different pool slot than it held before. A
+        // row entirely before the toggle (n2) is untouched on every axis; a
+        // row after it (n5, whose slot ends up showing the shifted n4) still
+        // gets a real setRowData call for its new node, but its *toggle*
+        // Glyph is reused rather than torn down, because n4 and n5 are both
+        // collapsed branches with a child — the same hasChildren/expanded/
+        // loading triple `isBoundTo`'s toggle-skip gate compares.
+        const BRANCH_COUNT = 6;
+        const tree = mountBranches(BRANCH_COUNT, (BRANCH_COUNT + 1) * ROW_HEIGHT) as any;
+        const nodes: TreeNode[] = tree._nodes;
+        const middle = nodes[3];
+
+        const rowsByLabel: Record<string, any> = {};
+        for (const row of tree._rowPool) {
+            rowsByLabel[row.getNode().label] = row;
+        }
+
+        const beforeRowSpy = vi.spyOn(rowsByLabel['n2'], 'setRowData');
+        const laterRowToggleBefore = rowsByLabel['n5'].getToggle();
+
+        tree._onToggle(middle);
+
+        expect(beforeRowSpy).not.toHaveBeenCalled();
+        expect(rowsByLabel['n5'].getToggle()).toBe(laterRowToggleBefore);
+        expect(rowsByLabel['n5'].getNode()).toBe(nodes[4]);
+    });
+
+    it('toggling the last branch repositions no pre-existing row — the pool only grows by the newly-revealed child row', () => {
+        // Nothing follows the last branch, so no later row's flat position
+        // shifts; every pre-existing pool slot keeps the exact Y offset it
+        // already had, and `positionRow`'s own geometry-cache comparison
+        // (unchanged by this plan) reports no change for any of them.
+        const BRANCH_COUNT = 4;
+        const tree = mountBranches(BRANCH_COUNT, (BRANCH_COUNT + 1) * ROW_HEIGHT) as any;
+        const nodes: TreeNode[] = tree._nodes;
+        const last = nodes[BRANCH_COUNT - 1];
+
+        const pool = tree._rowPool as Array<{ setTranslate(...args: unknown[]): unknown }>;
+        const poolSizeBefore = pool.length;
+        const setTranslateSpies = pool.map((row) => vi.spyOn(row, 'setTranslate'));
+        // The zero-setTranslate claim only holds while the row width itself
+        // is stable too — pin that explicitly so a future wider label turns
+        // into a clear rowWidth-changed failure here, not a silent pass.
+        const rowWidthBefore = tree._lastRowWidth;
+
+        tree._onToggle(last);
+
+        expect(tree._lastRowWidth).toBe(rowWidthBefore);
+        const totalRepositions = setTranslateSpies.reduce((n, s) => n + s.mock.calls.length, 0);
+        expect(totalRepositions).toBe(0);
+        expect(tree._rowPool.length).toBe(poolSizeBefore + 1);
+    });
+
+    it('setNodes() with wholly new node identities still rebinds every visible row', () => {
+        const tree = mountBranches(6, 7 * ROW_HEIGHT) as any;
+
+        const pool = tree._rowPool as Array<{ setRowData(...args: unknown[]): unknown }>;
+        const setRowDataSpies = pool.map((row) => vi.spyOn(row, 'setRowData'));
+
+        tree.setNodes(branchTree(6));
+
+        for (const spy of setRowDataSpies) {
+            expect(spy).toHaveBeenCalled();
+        }
+    });
+
+    it('setNodes() called again with the SAME node objects (content mutated in place) still re-renders the change', () => {
+        // "Mutate a node's fields in place, then setNodes(getNodes())" is a
+        // real, load-bearing refresh idiom (e.g. DocsSidebar.ts, Loom's
+        // FileTree.ts appending `node.children = children;
+        // this.setNodes(this.getNodes())`) — setNodes's own contract
+        // ("replaces the root nodes... and re-renders") must keep re-running
+        // renderer.update() unconditionally even when the node *references*
+        // handed back are identical to what it already held, since
+        // isBoundTo has no way to see a mutation to a node it already holds
+        // a reference to. setNodes therefore keeps its own blanket
+        // _boundIndices reset rather than relying on isBoundTo.
+        const tree = mountBranches(3, 4 * ROW_HEIGHT) as any;
+        const nodes: TreeNode[] = tree._nodes;
+
+        nodes[0].label = 'renamed';
+        tree.setNodes(nodes);
+
+        const row = (tree._rowPool as any[]).find((r) => r.getNode() === nodes[0]);
+        const renderer = row.getRenderer() as LabelTreeNodeRenderer;
+        expect(renderer.getLabel().getText()).toBe('renamed');
+    });
+
+    it('setRendererFactory() still forces a real rebind of every visible row', () => {
+        const tree = mountBranches(6, 7 * ROW_HEIGHT) as any;
+
+        const pool = tree._rowPool as Array<{ setRowData(...args: unknown[]): unknown }>;
+        const setRowDataSpies = pool.map((row) => vi.spyOn(row, 'setRowData'));
+
+        tree.setRendererFactory(() => new LabelTreeNodeRenderer());
+
+        for (const spy of setRowDataSpies) {
+            expect(spy).toHaveBeenCalledTimes(1);
+        }
     });
 });
 

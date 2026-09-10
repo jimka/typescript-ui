@@ -38,7 +38,7 @@ The table [`Body`](/api/component/table/classes/Body):
 - Scrolling is JS-owned via [`VirtualScroller`](/components/VirtualScroller): the rows live inside a transform-positioned container and two custom [`Scrollbar`](/components/Scrollbar) overlays drive both axes. Wheel, touch (with fling momentum), and keyboard nav all funnel through the same entry points.
 - Only rows whose data index changed get rebound on scroll — the rest sit at the same DOM position.
 
-[`Tree`](/components/Tree) uses the same approach; it flattens the visible subtree into a linear list and recycles a row pool.
+[`Tree`](/components/Tree) recycles a row pool the same way for scrolling; it flattens the visible subtree into a linear list, but rebinds a row when what it was last bound to has actually changed rather than purely by data index — see [Performance](/concepts/performance#virtual-scrolling).
 
 ## Sort and filter offload to a Worker
 

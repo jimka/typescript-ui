@@ -69,6 +69,15 @@ class TreeRow extends Component {
     private _node:     TreeNode | null   = null;
     private _depth:    number            = 0;
 
+    // Snapshot of everything setRowData() last bound this row to. isBoundTo()
+    // compares against it so Tree can skip a rebind that would be a no-op.
+    private _hasChildren:  boolean = false;
+    private _expanded:     boolean = false;
+    private _siblingCount: number  = 0;
+    private _posInSet:     number  = 0;
+    private _selected:     boolean = false;
+    private _loading:      boolean = false;
+
     constructor(rendererFactory: () => TreeNodeRenderer = () => new LabelTreeNodeRenderer()) {
         super();
 
@@ -119,6 +128,10 @@ class TreeRow extends Component {
      * Tree's next render pass) so the renderer receives an `update()` before
      * being laid out. The replaced renderer is disposed, so a caller holding
      * a reference from {@link getRenderer} must not reuse it afterward.
+     * Clears the bound-node snapshot so {@link isBoundTo} cannot report a
+     * stale match against the old renderer's content — the fresh renderer
+     * has nothing cached for the row's current node yet, regardless of
+     * whether node/depth/etc. would otherwise compare equal.
      */
     setRenderer(renderer: TreeNodeRenderer): this {
         const el = this.getElement();
@@ -130,6 +143,7 @@ class TreeRow extends Component {
         }
 
         this._renderer = renderer;
+        this._node = null;
 
         return this;
     }
@@ -153,6 +167,31 @@ class TreeRow extends Component {
     }
 
     /**
+     * Reports whether a call to {@link setRowData} with these exact arguments
+     * would be a pure no-op.
+     *
+     * @param node - The tree node to compare against the last bind.
+     * @param depth - The zero-based nesting depth to compare.
+     * @param hasChildren - Whether the node has child nodes.
+     * @param expanded - Whether the node is currently expanded.
+     * @param siblingCount - Total number of siblings at this level under the same parent.
+     * @param posInSet - 1-based position of this node among its siblings.
+     * @param selected - Whether the node is currently selected.
+     * @param loading - Whether this node's lazy children are currently loading.
+     * @returns True when every argument matches what {@link setRowData} last bound this row to.
+     */
+    isBoundTo(node: TreeNode, depth: number, hasChildren: boolean, expanded: boolean, siblingCount: number, posInSet: number, selected: boolean, loading: boolean): boolean {
+        return node === this._node
+            && depth === this._depth
+            && hasChildren === this._hasChildren
+            && expanded === this._expanded
+            && siblingCount === this._siblingCount
+            && posInSet === this._posInSet
+            && selected === this._selected
+            && loading === this._loading;
+    }
+
+    /**
      * Binds this pool slot to a new node, updating the toggle icon, content
      * renderer, and ARIA positional attributes.
      *
@@ -165,42 +204,60 @@ class TreeRow extends Component {
      * @param selected - Whether the node is currently selected.
      * @param loading - Whether this node's lazy children are currently loading;
      *   when true a spinner replaces the toggle caret.
+     *
+     * @remarks
+     * The toggle/spinner block is skipped when `hasChildren`/`expanded`/`loading`
+     * all match what this row was last bound to — the same compare-then-rebuild
+     * pattern `IconLabelTreeNodeRenderer.update` and `GlyphListItemRenderer.update`
+     * already use for their own icons.
      */
     setRowData(node: TreeNode, depth: number, hasChildren: boolean, expanded: boolean, siblingCount: number, posInSet: number, selected: boolean, loading: boolean): this {
-        this._node = node;
-        this._depth = depth;
+        const toggleUnchanged = hasChildren === this._hasChildren
+            && expanded === this._expanded
+            && loading === this._loading;
 
-        if (this._toggle) {
-            this._toggle.dispose();
-            this._toggle = null;
-        }
+        this._node         = node;
+        this._depth        = depth;
+        this._hasChildren  = hasChildren;
+        this._expanded     = expanded;
+        this._siblingCount = siblingCount;
+        this._posInSet     = posInSet;
+        this._selected     = selected;
+        this._loading      = loading;
 
-        if (this._spinner) {
-            this._spinner.dispose();
-            this._spinner = null;
-        }
-
-        if (loading) {
-            // No explicit size: the spinner tracks the theme font-size so it
-            // reads as the same visual weight as the caret glyph it replaces,
-            // and `layoutChildren` fits it into the TOGGLE_WIDTH box.
-            const spinner = new ProgressSpinner();
-            this._spinner = spinner;
-
-            const el = this.getElement();
-            if (el) {
-                DOM.sink.appendChild(el, spinner.getElement(true)!);
+        if (!toggleUnchanged) {
+            if (this._toggle) {
+                this._toggle.dispose();
+                this._toggle = null;
             }
-        } else if (hasChildren) {
-            const toggle = new Glyph(expanded ? "caret-down" : "caret-right");
-            toggle.setCursor("pointer");
-            toggle.clearInsets();
-            toggle.getAria().setHidden(true);
-            this._toggle = toggle;
 
-            const el = this.getElement();
-            if (el) {
-                DOM.sink.appendChild(el, toggle.getElement(true)!);
+            if (this._spinner) {
+                this._spinner.dispose();
+                this._spinner = null;
+            }
+
+            if (loading) {
+                // No explicit size: the spinner tracks the theme font-size so it
+                // reads as the same visual weight as the caret glyph it replaces,
+                // and `layoutChildren` fits it into the TOGGLE_WIDTH box.
+                const spinner = new ProgressSpinner();
+                this._spinner = spinner;
+
+                const el = this.getElement();
+                if (el) {
+                    DOM.sink.appendChild(el, spinner.getElement(true)!);
+                }
+            } else if (hasChildren) {
+                const toggle = new Glyph(expanded ? "caret-down" : "caret-right");
+                toggle.setCursor("pointer");
+                toggle.clearInsets();
+                toggle.getAria().setHidden(true);
+                this._toggle = toggle;
+
+                const el = this.getElement();
+                if (el) {
+                    DOM.sink.appendChild(el, toggle.getElement(true)!);
+                }
             }
         }
 

@@ -32,3 +32,24 @@ page resets to empty.
   or hide a live tab's "unsaved changes" dot. Like `setTabItalic`, the flag
   is view-only — it is not written to the tab's `LayoutConstraints`, so it
   does not survive a tear-off, a re-dock, or a saved layout.
+
+## Fixed
+
+### Components
+
+- **Expanding or collapsing a `Tree` node no longer rebuilds every visible
+  row's toggle caret, nor repositions every visible row, when most of what's
+  on screen hasn't actually changed.** Internally, `TreeRow.setRowData` tore
+  down and reconstructed the expand/collapse caret `Glyph` on every bind of
+  a row with children, even when the row's `hasChildren`/`expanded`/
+  `loading` triple was unchanged, and `Tree`'s reflatten path unconditionally
+  marked every pooled row unbound before every expand/collapse/lazy-load
+  transition. A row is now rebound only when what it was last bound to has
+  actually changed, so collapsing or re-expanding a folder costs work
+  proportional to the rows that actually changed rather than to how many
+  other expandable rows happen to be visible. `setNodes` and
+  `setRendererFactory` still force a full rebind of every visible row, since
+  either can hand a row genuinely different content behind an unchanged
+  node/state — a caller mutating a node's fields in place before calling
+  `setNodes` again, or a fresh renderer with no cached content to compare
+  against. No consumer action is needed.

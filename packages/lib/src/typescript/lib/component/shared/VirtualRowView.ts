@@ -560,8 +560,9 @@ abstract class VirtualRowView<
      * @remarks Pooled rows do not ride `ThemeManager`'s reflow for free. Both
      * subclasses render through renderers whose `Text` runs with
      * `setAutoMeasure(false)`, so a bound row only re-measures inside the
-     * renderer's `update()` — which {@link renderWindow} skips for a slot that
-     * is already bound to its data index. Without the `_boundIndices` reset a
+     * renderer's `update()` — which {@link renderWindow} skips for a slot
+     * whose binding hasn't changed (an index match in `Body`; a content match
+     * per `TreeRow.isBoundTo` in `Tree`). Without the `_boundIndices` reset a
      * visible row therefore keeps the width it measured against whichever font
      * was active when it was bound, clipping the wider glyphs of the real face
      * once it arrives. Subclasses that cache metrics-derived state of their own
