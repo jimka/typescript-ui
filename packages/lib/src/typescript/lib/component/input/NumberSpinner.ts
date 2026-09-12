@@ -3,6 +3,7 @@
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { TextField, TextFieldOptions } from "~/component/input/TextField.js";
 import { TextInput } from "~/component/input/TextInput.js";
 import { SpinButton, SpinButtonOptions } from "~/component/input/SpinButton.js";
@@ -503,6 +504,8 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
      * @param e - The keyboard event.
      */
     private onKeyDown(e: KeyboardEvent): Event.ListenerResult {
+        if (SpatialNavigation.claimsKey(e)) { return; }
+
         if (e.key === "ArrowUp") {
             this.applyValue(this.getValue() + this.getStep());
 

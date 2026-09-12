@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { _List } from '~/component/list/List';
 import type { SelectableListItem } from '~/component/list/AbstractSelectableList';
+import { SpatialNavigation } from '~/core/SpatialNavigation';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 
@@ -274,6 +275,29 @@ describe('AbstractSelectableList (via List) — navigation from an unfocused lis
         list.handleKey(key('ArrowDown'));
         expect(list.getFocusedIndex()).toBe(0);
         expect(list.getSelectedIndex()).toBe(-1);
+    });
+});
+
+// directional-panel-navigation plan, Expected Behaviour #20: SpatialNavigation's
+// chord claims the arrow key first, so handleNavigationKey must stand down
+// (return false, not move focus) entirely while it does. The unclaimed half
+// is exercised throughout the "navigation from an unfocused list" cases above.
+describe('AbstractSelectableList (via List) — stands down while SpatialNavigation claims the key', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('a claimed ArrowDown returns false from handleKey and does not move focus', () => {
+        const list = new _List({ items: FRUITS });
+        const moveFocus = vi.spyOn(list as any, 'moveFocus');
+
+        vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+
+        const consumed = list.handleKey(key('ArrowDown'));
+
+        expect(consumed).toBe(false);
+        expect(list.getFocusedIndex()).toBe(-1);
+        expect(moveFocus).not.toHaveBeenCalled();
     });
 });
 

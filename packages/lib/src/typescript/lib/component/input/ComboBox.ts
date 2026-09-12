@@ -20,11 +20,19 @@ import { Fit } from "~/layout/Fit.js";
 import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { chevron_down } from "~/glyphs/solid/chevron_down.js";
 import { callable } from "~/core/Callable.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import type { StyleBag, StyleTrait } from "~/core/ClassStyleRules.js";
 import { GLYPH_MD_INK_TRAIT, INPUT_CHROME_TRAIT } from "~/core/StyleTraits.js";
 import { ThemeManager } from "~/core/Theme.js";
+import { registerFocusVisibleRing } from "~/component/input/focusRing.js";
 
 Glyph.register(chevron_down);
+
+// A leaf, self-focusing, click-activated control (the host ComboBox surface
+// keeps DOM focus throughout the dropdown's lifetime, never the dropdown or
+// its inner list) — see `registerFocusVisibleRing`'s own doc comment for the
+// full rationale.
+registerFocusVisibleRing(".ComboBox");
 
 // Preferred width on the very first call, before any caller constraint has
 // been resolved.
@@ -989,6 +997,8 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @param e - The keyboard event.
      */
     private onKeyDown(e: KeyboardEvent): Event.ListenerResult {
+        if (SpatialNavigation.claimsKey(e)) { return; }
+
         if (this._dropdown.isOpen()) {
             if (this._dropdown.handleKey(e)) {
                 return { prevent: true };

@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { RadioButton } from "~/component/input/RadioButton.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
@@ -280,6 +281,8 @@ class ButtonGroup {
         }
 
         Event.addSubtreeListener(container, "keydown", (e: KeyboardEvent): Event.ListenerResult => {
+            if (SpatialNavigation.claimsKey(e)) { return; }
+
             if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
                 this._rovingTabIndex!.moveNext();
             } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {

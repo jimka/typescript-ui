@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AutoCompleteField } from '~/component/input/AutoCompleteField';
 import { DOM } from '~/core/DOM';
+import { SpatialNavigation } from '~/core/SpatialNavigation';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -150,6 +151,37 @@ describe('AutoCompleteField select event routing', () => {
         // addSelectListener (also routed through the bag) still does.
         expect(viaOn).toBe(1);
         expect(viaLegacy).toBe(2);
+    });
+});
+
+// spatial-focus-navigation plan, Implementation Notes: AutoCompleteField's
+// own ArrowDown open gesture (fire the query on a closed dropdown) must
+// stand down while SpatialNavigation claims the key, or the query fires
+// alongside/instead of focus moving.
+describe('AutoCompleteField onKeyDown — stands down while SpatialNavigation claims the key', () => {
+    let field: AutoCompleteField | undefined;
+
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => { field?.dispose(); field = undefined; DOM.reset(); vi.restoreAllMocks(); });
+
+    it('ArrowDown fires the query on a closed dropdown when the key is unclaimed', () => {
+        field = new AutoCompleteField({ suggestions: ['Apple'] });
+        const querySuggestions = vi.spyOn(field as any, 'querySuggestions');
+
+        (field as any).onKeyDown({ key: 'ArrowDown' });
+
+        expect(querySuggestions).toHaveBeenCalled();
+    });
+
+    it('a claimed ArrowDown does not call querySuggestions', () => {
+        field = new AutoCompleteField({ suggestions: ['Apple'] });
+        const querySuggestions = vi.spyOn(field as any, 'querySuggestions');
+
+        vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+
+        (field as any).onKeyDown({ key: 'ArrowDown' });
+
+        expect(querySuggestions).not.toHaveBeenCalled();
     });
 });
 

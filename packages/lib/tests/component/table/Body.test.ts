@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { Event } from '~/core/Event';
+import { SpatialNavigation } from '~/core/SpatialNavigation';
 import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Body, resolveClickedColumn } from '~/component/table/Body';
@@ -622,6 +623,38 @@ describe('Body selection event — fires only when the set changes', () => {
 
         (b as any).onKeyDown({ key: 'ArrowDown', preventDefault: () => {} });
         expect(emitted).toBe(1); // moved to a different row — a real change
+    });
+});
+
+// directional-panel-navigation plan, Expected Behaviour #17: SpatialNavigation's
+// chord claims ArrowDown/Up/etc first, so Body's own row navigation must stand
+// down entirely while it does. The unclaimed half is already proven by the
+// "keyboard row navigation" case just above (claimsKey() defaults to false —
+// isEnabled() is false with the service never enabled in this file).
+describe('Body.onKeyDown — stands down while SpatialNavigation claims the key', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('a claimed ArrowDown moves neither the selection nor calls renderWindow', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1' }, { a: '2' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.selectRecord(store.getAll()[0]);
+
+        vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+        const renderWindowSpy = vi.spyOn(b, 'renderWindow');
+
+        let emitted = 0;
+        b.on('selection', () => { emitted += 1; });
+
+        (b as any).onKeyDown({ key: 'ArrowDown', preventDefault: () => {} });
+
+        expect(emitted).toBe(0);
+        expect(renderWindowSpy).not.toHaveBeenCalled();
+        expect(b.getSelectedRecord()).toBe(store.getAll()[0]);
     });
 });
 

@@ -6,7 +6,9 @@ import { Util } from "~/core/Util.js";
 import { UNBOUNDED } from "~/primitive/Size.js";
 import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { callable } from "~/core/Callable.js";
+import { registerFocusVisibleRing } from "~/component/input/focusRing.js";
 import type { AxisOrientation } from "~/primitive/Axis.js";
 
 /**
@@ -43,6 +45,12 @@ const _defaultSliderOptions: Partial<SliderOptions> = {
     outline: "none",
     cursor:  "pointer",
 };
+
+// A leaf, self-focusing control — see `registerFocusVisibleRing`'s own doc
+// comment for the full rationale. Unlike Toggle/RadioButton/Checkbox, the
+// track fill doesn't touch the root's own edges, so the plain ring needs no
+// extra treatment.
+registerFocusVisibleRing(".Slider");
 
 const _defaultSliderTrackOptions: Partial<ComponentOptions> = {
     backgroundColor: "var(--ts-ui-slider-track-bg, rgb(220, 220, 220))",
@@ -589,6 +597,8 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         Event.addListener(this, "lostpointercapture", release);
 
         Event.addListener(this, "keydown", (e: KeyboardEvent): Event.ListenerResult => {
+            if (SpatialNavigation.claimsKey(e)) { return; }
+
             if (!this.isEnabled() || this.isReadOnly()) {
                 return;
             }

@@ -5,6 +5,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import type { Size } from "~/primitive/Size.js";
 import { Event } from "~/core/Event.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { VirtualRowView } from "~/component/shared/VirtualRowView.js";
 import { selectionsEqual } from "~/component/shared/selectionsEqual.js";
@@ -1047,6 +1048,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * @param e - The keyboard event fired on the tree element.
      */
     private _onKeyDown(e: KeyboardEvent): Event.ListenerResult {
+        if (SpatialNavigation.claimsKey(e)) { return; }
+
         const navigable = new Set(['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End']);
         if (!navigable.has(e.key)) {
             return;

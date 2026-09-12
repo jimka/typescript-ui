@@ -17,6 +17,20 @@ import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 import { Util } from "~/core/Util.js";
+import { registerFocusVisibleRing } from "~/component/input/focusRing.js";
+
+// A leaf, self-focusing, click-activated control — see
+// `registerFocusVisibleRing`'s own doc comment for the full rationale
+// (`:focus-visible` over `:focus`, and the `[data-ts-ui-focus-visible]`
+// marker `SpatialNavigation` needs for its Ctrl-modified chords). Keyed off
+// `.Button`, which every subclass (`ToggleButton`, `SpinButton`) also
+// carries in its class list, so this single rule covers them too.
+//
+// `borderColor: "transparent"` hides Button's own 2px ridge border while
+// focus-visible, so the inset ring (which can't move outward to meet that
+// border — see the option's own doc) reads as a single themed border rather
+// than a smaller ring nested inside a separate, still-visible outer one.
+registerFocusVisibleRing(".Button", { baseStyles: { borderColor: "transparent" } });
 
 /**
  * String-literal union of the events emitted by {@link Button}. A typed
@@ -753,6 +767,15 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             options as TOptions,
             { ..._defaultButtonOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
         );
+
+        // A native `<button>` needs no `tabindex` to be keyboard-focusable, so
+        // this was never set — but that leaves the Aria model's tabIndex at
+        // its default `null`, indistinguishable from a decorative, genuinely
+        // non-focusable component (e.g. `Text`) that also never sets one.
+        // `ToolBar`'s roving-tabindex membership check reads this value to
+        // decide which children join the group, so a real button needs an
+        // explicit `0` to tell them apart.
+        this.getAria().setTabIndex(0);
 
         // Structural state — can't go through the bag because consumers must
         // not be able to override it.

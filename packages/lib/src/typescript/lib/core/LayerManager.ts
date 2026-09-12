@@ -376,6 +376,18 @@ export namespace LayerManager {
     }
 
     /**
+     * Returns whether any registered layer's dismiss mode is not `"manual"`,
+     * anywhere in the stack — not only at the top. Reuses the same internal
+     * walk {@link isTopmostInputLayer} is built on, which already treats a
+     * `"manual"` layer as decorative and keeps looking beneath it.
+     *
+     * @returns `true` when at least one registered layer is not `"manual"`.
+     */
+    export function hasActiveInputLayer(): boolean {
+        return topmostInputLayer() !== null;
+    }
+
+    /**
      * Re-stamps `layer` (and its descendant layers) with fresh top-of-band
      * z-indices and marks it active. Used by surfaces that raise on click
      * (e.g. a window brought to front), so the raised layer — and anything it

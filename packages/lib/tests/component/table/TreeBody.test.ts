@@ -12,8 +12,9 @@
 // store sync" bullet. The latter needs a store-sync seam whose re-render path
 // (renderWindow) reaches live geometry the offline source zeroes out, so it is
 // deferred rather than asserted here.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
+import { SpatialNavigation } from '~/core/SpatialNavigation';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { TreeBody } from '~/component/table/TreeBody';
@@ -218,6 +219,41 @@ describe('TreeBody moveFocusTo — selection event fires only on a real change',
         (tb as any).moveFocusTo(rec(tb, 1));
 
         expect(emitted).toBe(1);
+    });
+});
+
+// directional-panel-navigation plan, Expected Behaviour #18: SpatialNavigation's
+// chord claims ArrowRight/Left first, so TreeBody's own expand/collapse must
+// stand down entirely while it does.
+describe('TreeBody.onKeyDown — stands down while SpatialNavigation claims the key', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('ArrowRight expands a collapsed branch when the key is unclaimed', () => {
+        const tb = tree([
+            { id: 1, parent: null, name: 'root' },
+            { id: 2, parent: 1,    name: 'child' },
+        ]);
+        tb.selectRecord(rec(tb, 1));
+
+        (tb as any).onKeyDown({ key: 'ArrowRight', preventDefault: () => {} });
+
+        expect(tb.isExpanded(rec(tb, 1))).toBe(true);
+    });
+
+    it('a claimed ArrowRight does not expand the branch', () => {
+        const tb = tree([
+            { id: 1, parent: null, name: 'root' },
+            { id: 2, parent: 1,    name: 'child' },
+        ]);
+        tb.selectRecord(rec(tb, 1));
+
+        vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+
+        (tb as any).onKeyDown({ key: 'ArrowRight', preventDefault: () => {} });
+
+        expect(tb.isExpanded(rec(tb, 1))).toBe(false);
     });
 });
 

@@ -3,11 +3,28 @@
 import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 
+// Marks every member of a group — active or currently roved to `-1` —
+// independent of which one currently carries `tabindex="0"`. Read by
+// `SpatialNavigation`'s component tier, which needs to reach a roved-off,
+// non-native-tag member (a `ComboBox`, say) that `FOCUSABLE_SELECTOR`'s
+// `[tabindex]:not([tabindex="-1"])` clause alone would hide entirely.
+// Deliberately not folded into that shared selector: doing so would also
+// widen plain Tab-key traversal to visit every member individually, which is
+// exactly what roving tabindex exists to prevent (see
+// `tests/core/FocusTraversalCompositeWidgets.test.ts`'s "one stop per
+// composite widget" audit). Exported so `SpatialNavigation` reads the exact
+// string this module writes, instead of keeping its own hand-typed copy.
+export const ROVING_MEMBER_ATTR     = "data-ts-ui-roving-member";
+export const ROVING_MEMBER_SELECTOR = "[data-ts-ui-roving-member]";
+
 /**
  * Manages the roving tabindex pattern for a group of sibling {@link Component} items.
  *
  * Exactly one item in the group has `tabindex=0` at any time; all others have `tabindex=-1`.
  * Calling {@link moveTo} updates the tabindices and transfers DOM focus to the new active item.
+ * Every member, active or not, also carries a stable `data-ts-ui-roving-member`
+ * marker for the whole time it is in the group — see this module's own
+ * `ROVING_MEMBER_ATTR` comment for why.
  *
  * @example
  * ```typescript
@@ -66,6 +83,7 @@ export class RovingTabIndex {
 
         this._items.push(component);
         component.getAria().setTabIndex(isFirst ? 0 : -1);
+        component.setDataAttribute(ROVING_MEMBER_ATTR, "true");
 
         return this;
     }
@@ -84,6 +102,7 @@ export class RovingTabIndex {
         }
 
         this._items.splice(idx, 1);
+        component.delDataAttribute(ROVING_MEMBER_ATTR);
 
         if (this._items.length === 0) {
             this._activeIndex = 0;

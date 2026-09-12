@@ -26,6 +26,9 @@ export interface MenuBarOptions extends ComponentOptions {
 const _defaultMenuBarOptions: Partial<MenuBarOptions> = {
     backgroundColor: "var(--ts-ui-menu-bar-bg, rgb(245, 245, 245))",
     minSize: { width: 0, height: MENU_BAR_BUTTON_HEIGHT },
+    // A menu bar is a distinct chrome region — coarse spatial navigation
+    // should be able to jump into it directly, same as ToolBar/TabBar.
+    navigationTarget: true,
 };
 
 /**

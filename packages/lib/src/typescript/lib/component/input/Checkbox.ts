@@ -11,11 +11,28 @@ import { type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { check } from "~/glyphs/solid/check.js";
+import { registerFocusVisibleRing } from "~/component/input/focusRing.js";
 
 // Idempotent registration: the registry tolerates re-registration of the same
 // glyph definition, and this side-effect import lets Checkbox stand on its own
 // without an outside-the-class `Glyph.register` call.
 Glyph.register(check);
+
+// A leaf, self-focusing, click-activated control — see
+// `registerFocusVisibleRing`'s own doc comment for the full rationale. Its
+// ring paints on a `::after` overlay rather than `outline`, so it never
+// competes with the `.Checkbox { outline: none; }` rule `outline: "none"`
+// below resolves to — that rule exists only to suppress the browser's own
+// default focus outline.
+//
+// The extra inset `boxShadow` adds a thin themed-background separator just
+// inside the ring's own border, so a checked/indeterminate box — whose fill
+// is the same accent blue as the ring (`CHECKBOX_SELECTED_DECLARATIONS`
+// below) — still reads as "ring, then box" instead of the ring blending
+// into the fill it surrounds.
+registerFocusVisibleRing(".Checkbox", {
+    ringStyles: { boxShadow: "inset 0 0 0 1px var(--ts-ui-form-bg, rgb(255, 255, 255))" },
+});
 
 // Physical width of `_box`'s own border on every side — fixed regardless of
 // theme, matching the "1px" embedded in `_defaultCheckboxBoxOptions.border`

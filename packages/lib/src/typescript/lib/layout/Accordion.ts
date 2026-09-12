@@ -8,6 +8,7 @@ import { SplitGutter } from "~/component/container/SplitGutter.js";
 import { Animation } from "~/core/Animation.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { LayoutSize, LayoutSizeUnit, toLayoutSizes, fromLayoutSizes, isRestorableSizes } from "~/layout/LayoutSizes.js";
 import { Size, UNBOUNDED } from "~/primitive/Size.js";
@@ -2499,6 +2500,8 @@ class Accordion extends LayoutManager implements FocusRevealer {
      * @param index - Zero-based index of the header that received the event.
      */
     private onHeaderKeyDown(e: KeyboardEvent, index: number): Event.ListenerResult {
+        if (SpatialNavigation.claimsKey(e)) { return; }
+
         const count = this._headers.length;
 
         if (count === 0) {

@@ -166,6 +166,9 @@ export interface ComponentOptions {
     /** Marks this component as owning the Tab key for its subtree — see
      *  `setTabKeyOwner`. */
     tabKeyOwner?:     boolean;
+    /** Marks this component as a coarse-tier spatial-navigation target — see
+     *  `setNavigationTarget`. */
+    navigationTarget?: boolean;
 }
 
 // Module-level state for the rAF-coalesced layout queue. Setters and event handlers call
@@ -399,6 +402,15 @@ const FRAMEWORK_BASELINE_KEYS: ReadonlySet<string> = new Set([
     "userSelect", "cursor", "margin", "minWidth", "minHeight",
     "maxWidth", "maxHeight", "overflowX", "overflowY",
 ]);
+
+// Mirrored onto the element by `setTabKeyOwner`, `setNavigationTarget`, and
+// `setClipFrame` respectively — exported so `FocusTraversal` and
+// `SpatialNavigation` read the exact same string they were written with,
+// instead of keeping their own hand-typed copy.
+export const TAB_KEY_OWNER_ATTR         = "data-ts-ui-tab-key-owner";
+export const NAVIGATION_TARGET_ATTR     = "data-ts-ui-navigation-target";
+export const NAVIGATION_TARGET_SELECTOR = "[data-ts-ui-navigation-target]";
+export const CLIP_FRAME_ATTR            = "data-ts-ui-clip-frame";
 
 class Component<TOptions extends ComponentOptions = ComponentOptions> extends BaseObject {
 
@@ -823,6 +835,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // here or the attribute is never written. See ARCHITECTURE.md's
         // "Class-level defaults must survive the getter".
         this.setTabKeyOwner(options.tabKeyOwner ?? this.isTabKeyOwner());
+        // Always-dispatch for the same reason as `tabKeyOwner` above: the
+        // marker's only effect is the construction-time data-attribute write,
+        // so a subclass default must fire the setter here.
+        this.setNavigationTarget(options.navigationTarget ?? this.isNavigationTarget());
 
         if (options.attributes !== undefined) {
             // The options bag's `attributes` is a raw-HTML-attribute escape
@@ -1382,7 +1398,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * yet in the DOM — the layout manager drives this from a layout pass, by
      * which point the element exists. The frame carries no id and no listeners,
      * so subtree event delegation (which keys off element ids while walking
-     * ancestors) routes through it unaffected.
+     * ancestors) routes through it unaffected. It does carry a
+     * `data-ts-ui-clip-frame` marker, read by `SpatialNavigation` to recover
+     * the visually clipped rect for ranking, since the parked element's own
+     * rect can spill past it.
      */
     setClipFrame(x: number, y: number, width: number, height: number): this {
         const element = this.getElement();
@@ -1399,6 +1418,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             // `overflow: hidden` clips a child larger than the cell rect.
             const frame = this.createFrame(this._clipFrameStyle, { overflow: "hidden" });
             this._clipFrame = frame;
+
+            // Read by `SpatialNavigation` to recover the visually clipped rect:
+            // the parked element itself keeps its full, unclipped natural size,
+            // so its own `getElementRect` can spill past this frame's edges.
+            DOM.sink.edit(frame).attr(CLIP_FRAME_ATTR, "true").commit();
 
             if (parent) {
                 DOM.sink.insertBefore(parent, frame, element);
@@ -2102,9 +2126,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._options.tabKeyOwner = value;
 
         if (value) {
-            this.setDataAttribute("ts-ui-tab-key-owner", "true");
+            this.setDataAttribute(TAB_KEY_OWNER_ATTR, "true");
         } else {
-            this.delDataAttribute("ts-ui-tab-key-owner");
+            this.delDataAttribute(TAB_KEY_OWNER_ATTR);
         }
 
         return this;
@@ -2118,6 +2142,41 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     isTabKeyOwner(): boolean {
         return this._options.tabKeyOwner ?? this._defaultOptions.tabKeyOwner ?? false;
+    }
+
+    /**
+     * Marks (or unmarks) this component as a coarse-tier spatial-navigation
+     * target — a container the `Ctrl+Shift`+arrow chord can land focus on,
+     * discovered by the framework's opt-in spatial-navigation service through
+     * the DOM rather than any Component-level registry. Mirrors the flag onto
+     * the element as `data-ts-ui-navigation-target` via
+     * {@link setDataAttribute} (present only while `value` is `true`), so a
+     * consumer with no `Component` reference for the target element can still
+     * discover the claim from the DOM alone.
+     *
+     * @param value - Whether this component is now a navigation target.
+     * @returns This component, for method chaining.
+     */
+    setNavigationTarget(value: boolean): this {
+        this._options.navigationTarget = value;
+
+        if (value) {
+            this.setDataAttribute(NAVIGATION_TARGET_ATTR, "true");
+        } else {
+            this.delDataAttribute(NAVIGATION_TARGET_ATTR);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether this component is currently a spatial-navigation
+     * target.
+     *
+     * @returns The cached `navigationTarget` flag, or the class default when never set.
+     */
+    isNavigationTarget(): boolean {
+        return this._options.navigationTarget ?? this._defaultOptions.navigationTarget ?? false;
     }
 
     /**

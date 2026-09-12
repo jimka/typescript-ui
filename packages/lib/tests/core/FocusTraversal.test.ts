@@ -1,12 +1,12 @@
-// FocusTraversal is a module singleton (mirrors FocusHistory/PanelNavigation),
+// FocusTraversal is a module singleton (mirrors FocusHistory/SpatialNavigation),
 // so every test disables it in afterEach. The keydown/focusin wiring is driven
 // offline via DOM.sink.dispatchEvent(DOM.source.getWindow(), makeEvent(...)) —
 // the recording sink invokes window-registered viewport listeners, so the real
 // Event/FocusTraversal code runs unchanged (see FocusHistory.test.ts /
-// PanelNavigation.test.ts, the precedents this mirrors). `getTabStops`'s
+// SpatialNavigation.test.ts, the precedents this mirrors). `getTabStops`'s
 // candidates come from the seeded `querySelectorAll(root, FOCUSABLE_SELECTOR)`
 // result — there is no real selector engine offline (see
-// Border.panelNavigation.test.ts, which seeds the same way for `findFocusable`).
+// SpatialNavigation.test.ts, which seeds the same way for `findFocusable`).
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { FocusTraversal } from '~/core/FocusTraversal';
 import { FOCUSABLE_SELECTOR } from '~/core/Focusable';
@@ -60,6 +60,14 @@ function stableBody(): Handle {
     vi.spyOn(DOM.source, 'getBody').mockReturnValue(body);
 
     return body;
+}
+
+/** Same as {@link stableBody}, for `DOM.source.getDocumentElement()`. */
+function stableDocumentElement(): Handle {
+    const documentElement = DOM.source.getDocumentElement();
+    vi.spyOn(DOM.source, 'getDocumentElement').mockReturnValue(documentElement);
+
+    return documentElement;
 }
 
 /** Dispatches a keydown through the window-registered viewport listeners; returns the event (with `preventDefault`/`stopPropagation` spied) so the disposition can be asserted. */
@@ -416,6 +424,39 @@ describe('FocusTraversal keydown arbitration', () => {
         dispatchKeyDown({ key: 'Tab' });
 
         expect(DOM.source.getActiveElement()).toBe(a);
+    });
+
+    it('does not walk past documentElement looking for an owner of an element mounted outside <body>', () => {
+        // e.g. a LayerManager-portaled Window: its root is appended directly
+        // onto documentElement (see LayerManager.ts), bypassing <body>
+        // entirely, so an element inside one never reaches the `body` handle
+        // findTabKeyOwner used to bound its walk at — it would otherwise run
+        // past documentElement into the real `document` node, whose
+        // `hasAttribute` is not a function (the exact production crash).
+        installTestDOM(CONFIG);
+        FocusTraversal.enable();
+
+        stableBody(); // never an ancestor of `origin` below
+        const documentElement = stableDocumentElement();
+        const documentNode = liveHandle(); // stands in for `document` itself
+        const overlayRoot   = liveHandle(); // e.g. a Window's portaled root
+        const origin         = liveHandle();
+
+        DOM.sink.appendChild(documentNode, documentElement);
+        DOM.sink.appendChild(documentElement, overlayRoot);
+        DOM.sink.appendChild(overlayRoot, origin);
+        DOM.sink.focus(origin);
+
+        const realHasAttribute = DOM.source.hasAttribute.bind(DOM.source);
+        vi.spyOn(DOM.source, 'hasAttribute').mockImplementation((handle: Handle, key: string) => {
+            if (handle === documentNode) {
+                throw new TypeError('hasAttribute is not a function');
+            }
+
+            return realHasAttribute(handle, key);
+        });
+
+        expect(() => dispatchKeyDown({ key: 'Tab' })).not.toThrow();
     });
 });
 

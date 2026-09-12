@@ -6,6 +6,7 @@ import { Glyph } from '~/component/display/Glyph';
 import { file } from '~/glyphs/solid/file';
 import { file_lines } from '~/glyphs/solid/file_lines';
 import { DOM } from '~/core/DOM';
+import { SpatialNavigation } from '~/core/SpatialNavigation';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -88,6 +89,79 @@ describe('TabBar entry tracking', () => {
         bar.setActiveEntry('nope');
 
         expect(bar.getActiveEntryId()).toBe('b');
+    });
+});
+
+// directional-panel-navigation plan, Expected Behaviour #22: SpatialNavigation's
+// chord claims ArrowRight/Left first, so the strip's own active-tab step must
+// stand down entirely while it does.
+describe('TabBar onToolbarKeyDown — stands down while SpatialNavigation claims the key', () => {
+    afterEach(() => {
+        DOM.reset();
+        vi.restoreAllMocks();
+    });
+
+    it('ArrowRight activates the next tab when the key is unclaimed', () => {
+        installTestDOM(CONFIG);
+
+        const bar = threeEntryBar();
+
+        (bar as any).onToolbarKeyDown({ key: 'ArrowRight' } as KeyboardEvent);
+
+        expect(bar.getActiveEntryId()).toBe('b');
+    });
+
+    it('a claimed ArrowRight does not change the active tab', () => {
+        installTestDOM(CONFIG);
+
+        const bar = threeEntryBar();
+
+        vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+
+        (bar as any).onToolbarKeyDown({ key: 'ArrowRight' } as KeyboardEvent);
+
+        expect(bar.getActiveEntryId()).toBe('a');
+    });
+});
+
+// SpatialNavigation can move DOM focus onto a TabButton directly (a plain
+// .focus() call) without ever running it through onTabPressed, so the active
+// id can lag behind wherever focus actually is. A bare ArrowRight/Left must
+// still step from the focused tab, or it silently "skips" — jumping relative
+// to the stale active tab instead of the one the user is looking at.
+describe('TabBar onToolbarKeyDown — steps from the focused tab, not a stale active id', () => {
+    afterEach(() => DOM.reset());
+
+    it('steps from the tab that holds DOM focus when it differs from the active tab', () => {
+        installTestDOM(CONFIG);
+
+        const bar = threeEntryBar(); // a, b, c — 'a' active by construction
+        bar.getElement(true);
+
+        const entries = barEntries(bar);
+
+        // Simulate a SpatialNavigation move: focus lands on 'c' directly,
+        // bypassing onTabPressed, so getActiveEntryId() still reports 'a'.
+        entries[2].button.focus();
+        expect(bar.getActiveEntryId()).toBe('a');
+
+        (bar as any).onToolbarKeyDown({ key: 'ArrowRight' } as KeyboardEvent);
+
+        // Wraps from the focused tab ('c', index 2) to 'a' (index 0) — not a
+        // step from the stale active tab ('a', index 0) to 'b'.
+        expect(bar.getActiveEntryId()).toBe('a');
+    });
+
+    it('falls back to the active tab when DOM focus is outside this strip', () => {
+        installTestDOM(CONFIG);
+
+        const bar = threeEntryBar();
+        bar.getElement(true);
+        bar.setActiveEntry('b');
+
+        (bar as any).onToolbarKeyDown({ key: 'ArrowRight' } as KeyboardEvent);
+
+        expect(bar.getActiveEntryId()).toBe('c');
     });
 });
 

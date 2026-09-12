@@ -3,6 +3,7 @@
 import { Text, TextOptions } from "~/component/input/Text.js";
 import { Event } from "~/core/Event.js";
 import { StyleRule } from "~/core/StyleTarget.js";
+import { registerFocusVisibleRing } from "~/component/input/focusRing.js";
 import { callable } from "~/core/Callable.js";
 import type { ClickListener } from "~/component/button/Button.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
@@ -24,14 +25,11 @@ const LINK_COLOR_CSS = "var(--ts-ui-link-color, rgb(21, 101, 192))";
  * to an `#<id>` selector, and an id outranks a class, so the caller's rule wins
  * on specificity without any ordering subtlety.
  *
- * The focus mark uses `:focus-visible` rather than the `:focus` the text inputs
- * use: a link is activated by clicking it, and `:focus` would leave the ring
- * painted after the click. A plain `outline` suffices — the `::after` ring in
- * `focusRing.ts` exists for composite inputs painting onto outer chrome,
- * whereas a link is a leaf element that focuses itself. Note `outlineOffset`
- * pushes the ring *outward*, so it does not protect against an ancestor's
- * `overflow: hidden`; if clipping ever shows up, that `::after` inset ring is
- * the fallback.
+ * The focus mark uses `registerFocusVisibleRing` — `:focus-visible` rather
+ * than the `:focus` the text inputs use, since a link is activated by
+ * clicking it and `:focus` would leave the ring painted after the click; see
+ * that helper for the `[data-ts-ui-focus-visible]` half and for why it paints
+ * on an inset `::after` overlay rather than `outline`.
  *
  * Both rules key off `.Link`, which comes from the class name, so a subclass
  * would not inherit them — `Link` is not designed for extension.
@@ -45,14 +43,7 @@ const LINK_COLOR_CSS = "var(--ts-ui-link-color, rgb(21, 101, 192))";
         },
     });
 
-    new StyleRule({
-        scope:  "selector",
-        name:   ".Link:focus-visible",
-        styles: {
-            outline:       "2px solid var(--ts-ui-indicator-focus, rgb(30, 100, 200))",
-            outlineOffset: "1px",
-        },
-    });
+    registerFocusVisibleRing(".Link");
 })();
 
 /**

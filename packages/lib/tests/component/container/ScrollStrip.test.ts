@@ -5,7 +5,8 @@ import { Button } from '~/component/button/Button';
 import { HBox } from '~/layout/HBox';
 import { VBox } from '~/layout/VBox';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { FocusReveal } from '~/core/FocusReveal';
+import { installTestDOM, setConnected } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -200,5 +201,45 @@ describe('ScrollStrip.revealItem arrow refresh (regression)', () => {
 
         expect(strip.mainScroll()).toBeGreaterThan(before); // the reveal actually scrolled
         expect(refreshSpy).toHaveBeenCalled();              // and re-evaluated the arrows
+    });
+});
+
+describe('ScrollStrip as a FocusRevealer (regression)', () => {
+    // A keyboard-driven focus move (e.g. SpatialNavigation's `.focus()` call)
+    // never goes through `revealItem` on its own — it only calls
+    // `FocusReveal.reveal(target)`. Before this fix, ScrollStrip never
+    // registered with that broker, so a tab clipped out of the strip's own
+    // overflow:hidden port stayed invisible after gaining keyboard focus.
+    it('registers as a FocusRevealer, so FocusReveal.reveal scrolls a clipped-out item into view', () => {
+        const strip = new ScrollStrip();
+        strip.getClipElement(true);
+        const item = new Button({ text: 'Z' });
+        strip.addItem(item);
+        const itemEl = item.getElement(true)!;
+
+        setConnected(strip.getElement(true)!, true);
+        setConnected(itemEl, true);
+
+        const rect = (left: number, right: number) =>
+            ({ left, right, top: 0, bottom: 20, width: right - left, height: 20, x: left, y: 0 } as any);
+
+        // revealItem reads the clip rect first, then the item rect — same
+        // fixture as the `revealItem` test above: the item sits fully to the
+        // right of the clip's own viewport, so it must scroll right.
+        vi.spyOn(DOM.source, 'getElementRect')
+            .mockReturnValueOnce(rect(0, 100))
+            .mockReturnValueOnce(rect(150, 200));
+
+        const before = strip.mainScroll();
+
+        expect(FocusReveal.reveal(itemEl)).toBe(true);
+        expect(strip.mainScroll()).toBeGreaterThan(before);
+    });
+
+    it('getRevealElement returns the strip\'s own element', () => {
+        const strip = new ScrollStrip();
+        const element = strip.getElement(true);
+
+        expect(strip.getRevealElement()).toBe(element);
     });
 });

@@ -11,6 +11,7 @@ import { Insets } from "~/primitive/Insets.js";
 import { registerFocusWithinRing } from "~/component/input/focusRing.js";
 import { Util } from "~/core/Util.js";
 import { INPUT_CHROME_TRAIT } from "~/core/StyleTraits.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 
 // Focus ring highlighting the picker root whenever the inner PickerInput is
 // focused. The three concrete selectors share the one helper-registered overlay
@@ -523,6 +524,8 @@ abstract class AbstractPickerField<
      * @param e - The keyboard event.
      */
     protected onKeyDown(e: KeyboardEvent): Event.ListenerResult {
+        if (SpatialNavigation.claimsKey(e)) { return; }
+
         if (this._dropdown && this._dropdown.isOpen()) {
             if (this._dropdown.handleKey(e)) {
                 return { prevent: true };

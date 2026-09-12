@@ -17,7 +17,7 @@ class SplitPanel extends Panel {
 
         this.addComponent(mainSplit);
 
-        let northComponent = new Component();
+        let northComponent = new Component({ navigationTarget: true });
         northComponent.setLayoutManager(new Split());
         mainSplit.addComponent(northComponent);
 
@@ -27,12 +27,12 @@ class SplitPanel extends Panel {
         let sliderText = new Text("0%");
         northComponent.addComponent(sliderText);
 
-        let southComponent = new Component();
+        let southComponent = new Component({ navigationTarget: true });
         let southSplit = new Split();
         southComponent.setLayoutManager(southSplit);
         mainSplit.addComponent(southComponent);
 
-        let list = new List();
+        let list = new List({ navigationTarget: true });
         // Pin the list to a fixed width (resize weight 0): when the window (and
         // so this split's container) grows or shrinks, the list keeps its px size
         // and the text area / slider absorb the delta — a fixed sidebar beside
@@ -56,7 +56,7 @@ class SplitPanel extends Panel {
         // Logs paneresize/panecollapse — the list pane is pinned (weight 0), so
         // dragging its gutter reports a "px" entry that survives a window
         // resize verbatim, while the text area / slider report "ratio" entries.
-        let textArea = new TextArea("Drag the list's gutter or collapse a pane to see paneresize / panecollapse events here.");
+        let textArea = new TextArea("Drag the list's gutter or collapse a pane to see paneresize / panecollapse events here.", { navigationTarget: true });
         southComponent.addComponent(textArea);
 
         southSplit.on("paneresize", (sizes) => {
@@ -69,7 +69,7 @@ class SplitPanel extends Panel {
             textArea.setText(`${textArea.getText()}\npanecollapse: pane ${index} ${collapsed ? "collapsed" : "expanded"}`);
         });
 
-        let slider = new Slider();
+        let slider = new Slider({ navigationTarget: true });
         sliderText.setText(slider.getValue().toString() + "%");
         slider.on("action", () => {
             sliderText.setText(slider.getValue().toString() + "%");

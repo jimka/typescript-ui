@@ -8,6 +8,7 @@ import { DOM, type Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
 import { callable } from "~/core/Callable.js";
+import { registerFocusVisibleRing } from "~/component/input/focusRing.js";
 
 /**
  * Construction-time options for {@link Toggle}.
@@ -21,6 +22,23 @@ export interface ToggleOptions extends AbstractBooleanInputOptions {
 const _defaultToggleOptions: Partial<ToggleOptions> = {
     outline: "none",
 };
+
+// A leaf, self-focusing, click-activated control — see
+// `registerFocusVisibleRing`'s own doc comment for the full rationale. The
+// ring uses the framework's standard corner radius rather than the track's
+// own pill shape (999px): `.Toggle` includes an optional inline `label`
+// alongside the track (both laid out by the same HBox), so its own box is
+// often much wider than the track alone — a pill-shaped ring sized to that
+// whole box renders as a huge, badly-distorted oval rather than hugging the
+// switch. The `boxShadow` separator is the same one `Checkbox` uses: the
+// "on" track fill (`TOGGLE_TRACK_SELECTED_DECLARATIONS` below) is the same
+// accent blue as the ring.
+registerFocusVisibleRing(".Toggle", {
+    ringStyles: {
+        borderRadius: "var(--ts-ui-border-radius, 4px)",
+        boxShadow:    "inset 0 0 0 1px var(--ts-ui-form-bg, rgb(255, 255, 255))",
+    },
+});
 
 // The track owns the click + cursor surface so the pointer/click area
 // matches the visible pill exactly. The root stays inert (default

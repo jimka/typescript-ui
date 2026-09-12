@@ -213,8 +213,8 @@ class MiscPanel extends Panel {
 
         this.setLayoutManager(new HBox({ stretching: true }));
 
-        const leftColumn  = new Panel({ layoutManager: new VBox(), autoScroll: 'auto'  });
-        const rightColumn = new Panel({ layoutManager: new VBox(), autoScroll: 'auto' });
+        const leftColumn  = new Panel({ layoutManager: new VBox(), autoScroll: 'auto', navigationTarget: true  });
+        const rightColumn = new Panel({ layoutManager: new VBox(), autoScroll: 'auto', navigationTarget: true });
 
         this.addComponent(leftColumn);
         this.addComponent(rightColumn);

@@ -1,11 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ToolBar } from '~/component/menubar/ToolBar';
 import { ToolBarSeparator } from '~/component/menubar/ToolBarSeparator';
 import { Button } from '~/component/button/Button';
+import { Text } from '~/component/input/Text';
 import { HBox } from '~/layout/HBox';
 import { VBox } from '~/layout/VBox';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
+import { SpatialNavigation } from '~/core/SpatialNavigation';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -119,5 +121,56 @@ describe('ToolBar child registration', () => {
         bar.addComponent(new ToolBarSeparator());
 
         expect(childCount(bar)).toBe(3);
+    });
+
+    it('does not sweep a non-interactive Text caption into the roving-tabindex group', () => {
+        // A caption placed before its control (the "label + control" pattern
+        // several demo toolbars use) must not become the group's sole active
+        // member merely because it never explicitly opted out with `-1` —
+        // that pins the whole bar's tab stop to unfocusable decoration and
+        // roves every real control off to `-1`, unreachable by Tab.
+        const bar = new ToolBar();
+        const caption = new Text('Uniform:');
+        const button = new Button('Uniform');
+
+        bar.addComponent(caption);
+        bar.addComponent(button);
+
+        expect((bar as any)._rovingTabIndex.getItems()).toEqual([button]);
+        expect(caption.getAria().getTabIndex()).toBe(null);
+        expect(button.getAria().getTabIndex()).toBe(0);
+    });
+});
+
+// directional-panel-navigation plan, Expected Behaviour #21: SpatialNavigation's
+// chord claims ArrowRight/Left first, so the toolbar's own roving-tabindex
+// step must stand down entirely while it does.
+describe('ToolBar keydown — stands down while SpatialNavigation claims the key', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('ArrowRight moves the roving tab index forward when the key is unclaimed', () => {
+        const bar = new ToolBar();
+        bar.addComponent(new Button('Cut'));
+        bar.addComponent(new Button('Copy'));
+
+        (bar as any)._onKeyDown({ key: 'ArrowRight' } as KeyboardEvent);
+
+        expect((bar as any)._rovingTabIndex.getActiveIndex()).toBe(1);
+    });
+
+    it('a claimed ArrowRight does not move the roving tab index', () => {
+        const bar = new ToolBar();
+        bar.addComponent(new Button('Cut'));
+        bar.addComponent(new Button('Copy'));
+
+        vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+        const moveNext = vi.spyOn((bar as any)._rovingTabIndex, 'moveNext');
+
+        (bar as any)._onKeyDown({ key: 'ArrowRight' } as KeyboardEvent);
+
+        expect(moveNext).not.toHaveBeenCalled();
+        expect((bar as any)._rovingTabIndex.getActiveIndex()).toBe(0);
     });
 });

@@ -11,6 +11,7 @@ import { type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { circle } from "~/glyphs/solid/circle.js";
+import { registerFocusVisibleRing } from "~/component/input/focusRing.js";
 
 // Idempotent registration: makes the `"circle"` glyph available for the dot
 // regardless of which control imports first.
@@ -155,6 +156,23 @@ export interface RadioButtonOptions extends AbstractBooleanInputOptions {
 const _defaultRadioButtonOptions: Partial<RadioButtonOptions> = {
     outline: "none",
 };
+
+// A leaf, self-focusing, click-activated control — see
+// `registerFocusVisibleRing`'s own doc comment for the full rationale. The
+// ring uses the framework's standard corner radius rather than the ring
+// delegate's own circle (50%): `.RadioButton` can carry an optional inline
+// `text` label alongside `_ring` (both laid out by the same HBox), so its
+// own box is often much wider than the ring alone — a circular ring sized
+// to that whole box would render as a squashed, badly-distorted ellipse
+// rather than hugging the circle. The `boxShadow` separator is the same one
+// `Checkbox` uses: the selected ring's fill (`RADIO_SELECTED_DECLARATIONS`
+// above) is the same accent blue as the focus ring.
+registerFocusVisibleRing(".RadioButton", {
+    ringStyles: {
+        borderRadius: "var(--ts-ui-border-radius, 4px)",
+        boxShadow:    "inset 0 0 0 1px var(--ts-ui-form-bg, rgb(255, 255, 255))",
+    },
+});
 
 /**
  * A custom-drawn radio button rendered as a focusable `<div>` with
