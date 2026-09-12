@@ -1424,12 +1424,18 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         const rowWidth = this.getRowOverflow() === "clip"
             ? scroller.getViewportWidth()
             : Math.max(scroller.getViewportWidth(), this._maxContentWidth);
-        if (rowWidth !== this._lastRowWidth) {
+        const widthChanged = rowWidth !== this._lastRowWidth;
+
+        if (widthChanged) {
             this._lastRowWidth = rowWidth;
             this.invalidateGeom();
         }
 
-        this._positionRows(win.firstRow, win.windowSize, rowWidth, reboundFlags);
+        // While a live pane resize keeps moving the row width, each row's children
+        // keep the layout the previous pass gave them; the settle pass catches them up.
+        const deferChildLayout = this.deferRowLayoutWhileResizing(widthChanged);
+
+        this._positionRows(win.firstRow, win.windowSize, rowWidth, reboundFlags, deferChildLayout);
         this.hideExcessPoolRows(win.windowSize);
 
         this._updateSelectionStyle();
@@ -1503,14 +1509,17 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     /**
      * Second pass: positions visible rows at `dataIndex * ROW_HEIGHT`, sizes
      * them to `rowWidth`, marks them displayed, and re-lays out their children
-     * only when the row was rebound or its geometry changed.
+     * when the row was rebound, or when its geometry changed and no live
+     * resize is withholding the pass.
      *
      * @param firstRow - The first data index covered by the visible window.
      * @param windowSize - The number of rows in the window.
      * @param rowWidth - The horizontal extent of each row in pixels.
      * @param reboundFlags - The per-slot rebind flags produced by {@link _bindAndMeasure}.
+     * @param deferChildLayout - Whether a live resize is withholding the
+     *   width-driven child relayout this pass.
      */
-    private _positionRows(firstRow: number, windowSize: number, rowWidth: number, reboundFlags: boolean[]): void {
+    private _positionRows(firstRow: number, windowSize: number, rowWidth: number, reboundFlags: boolean[], deferChildLayout: boolean): void {
         for (let i = 0; i < windowSize; i++) {
             const row        = this._rowPool[i];
             const dataIndex  = firstRow + i;
@@ -1518,7 +1527,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
             const geomChanged = this.positionRow(i, dataIndex * ROW_HEIGHT, rowWidth);
 
-            if (wasRebound || geomChanged) {
+            if (wasRebound || (geomChanged && !deferChildLayout)) {
                 row.layoutChildren(ROW_HEIGHT, INDENT_PX);
             }
         }
