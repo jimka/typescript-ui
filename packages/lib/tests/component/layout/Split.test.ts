@@ -1288,6 +1288,61 @@ describe('Split events', () => {
         expect(listener).not.toHaveBeenCalled();
     });
 
+    it('coalesces a burst of gutter drag events, applying only the latest position', () => {
+        installTestDOM(CONFIG);
+        const { host, split } = emptyHost(400, 300);
+        const p0 = new Component({ preferredSize: { width: 100, height: 50 } });
+        const p1 = new Component({ preferredSize: { width: 100, height: 50 } });
+        host.addComponent(p0);
+        host.addComponent(p1);
+        host.doLayout();
+
+        const before = split.getPaneSize(p0)!;
+        const onDragSpy = vi.spyOn(split as any, 'onDrag');
+
+        // Driven through the gutter's own DOM handlers (as a real mousedown /
+        // mousemove... sequence would), not the direct Split.onDrag calls the
+        // tests above use — this is the path scheduleDrag actually sits on.
+        const gutter = (split as any)._gutters[0];
+        gutter.onDragStart({ clientX: 0 } as MouseEvent);
+        gutter.onDrag({ clientX: 10 } as MouseEvent);
+        gutter.onDrag({ clientX: 20 } as MouseEvent);
+        gutter.onDrag({ clientX: 40 } as MouseEvent);
+
+        // No animation frame has run yet — the offline DOM sink drops its
+        // requestAnimationFrame callback (see DOM.sink's docs) — so nothing
+        // is applied until something forces a flush.
+        expect(onDragSpy).not.toHaveBeenCalled();
+        expect(split.getPaneSize(p0)!).toBeCloseTo(before, 4);
+
+        gutter.onDragStop(); // dragend flushes the buffered position synchronously
+
+        expect(onDragSpy).toHaveBeenCalledTimes(1);
+        expect(onDragSpy).toHaveBeenCalledWith(host, gutter, 40); // only the last of the three moves
+        expect(split.getPaneSize(p0)!).toBeGreaterThan(before);
+    });
+
+    it('paneresize still fires exactly once at drag end for a coalesced burst', () => {
+        installTestDOM(CONFIG);
+        const { host, split } = emptyHost(400, 300);
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host.doLayout();
+
+        const listener = vi.fn();
+        split.on('paneresize', listener);
+
+        const gutter = (split as any)._gutters[0];
+        gutter.onDragStart({ clientX: 0 } as MouseEvent);
+        gutter.onDrag({ clientX: 10 } as MouseEvent);
+        gutter.onDrag({ clientX: 20 } as MouseEvent);
+        gutter.onDrag({ clientX: 40 } as MouseEvent);
+        gutter.onDragStop();
+
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(listener).toHaveBeenCalledWith(split.getPaneSizes());
+    });
+
     it('the listeners option bag is equivalent to on(), and off() removes the listener', () => {
         installTestDOM(CONFIG);
 

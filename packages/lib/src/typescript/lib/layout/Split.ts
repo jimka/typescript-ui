@@ -159,6 +159,12 @@ class Split extends LayoutManager implements FocusRevealer {
     private _dragOriginLhsSize: number = 0;
     private _dragOriginRhsSize: number = 0;
 
+    // The most recent not-yet-applied `drag` event, and the animation frame
+    // scheduled to apply it — see `scheduleDrag`. `null`/`null` while no
+    // gutter is mid-drag or every buffered event has already been flushed.
+    private _pendingDrag: { container: Component; gutter: SplitGutter; position: number } | null = null;
+    private _dragRafHandle: number | null = null;
+
     // The available (net-of-gutters) main-axis extent the stored `_sizes`
     // were last normalised against. Lets `recalculateSizes` rescale the
     // frozen pane sizes when the container grows or shrinks, so panes keep
@@ -1072,11 +1078,68 @@ class Split extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * Buffers a gutter's `drag` event and applies at most one per animation
+     * frame, via {@link flushDrag}. A native `mousemove` fires far more often
+     * than the screen repaints, and `onDrag` is not cheap: it triggers a real
+     * `doLayout()` of both adjacent panes on every call — for two plain
+     * panels that is negligible, but a pane hosting something like a mounted
+     * `CodeEditor` reacts to its own width change with an internal remeasure,
+     * so an unthrottled drag can end up running that whole chain once per
+     * raw pointer-move rather than once per rendered frame, visibly
+     * stuttering the gutter under a fast real drag. Only the most recent
+     * event before a frame lands is kept — an intermediate position between
+     * two `mousemove` events was never going to be visible anyway.
+     *
+     * @param container - The gutter's owning container, forwarded to `onDrag`.
+     * @param gutter - The gutter being dragged, forwarded to `onDrag`.
+     * @param position - The absolute pointer coordinate (`clientX`/`clientY`)
+     *   in the split axis for this move.
+     */
+    private scheduleDrag(container: Component, gutter: SplitGutter, position: number): void {
+        this._pendingDrag = { container, gutter, position };
+
+        if (this._dragRafHandle === null) {
+            this._dragRafHandle = DOM.sink.requestAnimationFrame(() => this.flushDrag());
+        }
+    }
+
+    /**
+     * Applies the most recently buffered {@link scheduleDrag} call, if one is
+     * pending — a no-op otherwise, which makes it safe to call unconditionally
+     * from both the scheduled animation frame and {@link onDragEnd}.
+     */
+    private flushDrag(): void {
+        this._dragRafHandle = null;
+
+        const pending = this._pendingDrag;
+
+        if (pending === null) {
+            return;
+        }
+
+        this._pendingDrag = null;
+
+        this.onDrag(pending.container, pending.gutter, pending.position);
+    }
+
+    /**
      * Fires `paneresize` with the post-drag sizes once a gutter drag ends —
      * the commit-grained signal a consumer persists, as opposed to the
-     * per-frame `drag` a gutter itself emits.
+     * per-frame `drag` a gutter itself emits. Cancels and synchronously
+     * flushes any animation frame {@link scheduleDrag} still has pending
+     * first, so the committed sizes always reflect the pointer's actual last
+     * position rather than whichever buffered position a frame boundary
+     * happened to catch — and so this resolves at all offline, where the
+     * `requestAnimationFrame` this scheduled never fires (see DOMSink).
      */
     private onDragEnd(): void {
+        if (this._dragRafHandle !== null) {
+            DOM.sink.cancelAnimationFrame(this._dragRafHandle);
+            this._dragRafHandle = null;
+        }
+
+        this.flushDrag();
+
         this.emit("paneresize", this.getPaneSizes());
     }
 
@@ -1344,6 +1407,15 @@ class Split extends LayoutManager implements FocusRevealer {
         this._collapseAnimation?.();
         this._collapseAnimation = null;
 
+        // Same idea for a still-buffered drag frame (see scheduleDrag): left
+        // alone, it would fire after this detach and call onDrag against
+        // panes `gutter.dispose()` below is about to tear down.
+        if (this._dragRafHandle !== null) {
+            DOM.sink.cancelAnimationFrame(this._dragRafHandle);
+            this._dragRafHandle = null;
+        }
+        this._pendingDrag = null;
+
         // Two shapes of detach. A manager swap leaves the panes mounted, so
         // their primed transitions must be settled — cleared — or each keeps a
         // live transition and a permanent compositor layer. A dispose reaches
@@ -1505,7 +1577,7 @@ class Split extends LayoutManager implements FocusRevealer {
                 me.onDragStart(<Component>container, gutter, position);
             });
             gutter.on("drag", function (position: number) {
-                me.onDrag(<Component>container, gutter, position);
+                me.scheduleDrag(<Component>container, gutter, position);
             });
             gutter.on("dragend", () => this.onDragEnd());
             gutter.on("collapse", function () {
