@@ -428,6 +428,21 @@ page resets to empty.
   position and size, and the edge shadow all briefly lag a fast resize
   instead, catching up once it settles. No consumer action is needed.
 
+- **Dragging a `Split` gutter that resizes a pane holding a `Tree` no longer
+  re-lays out every visible row's children on every animation frame of the
+  drag.** A live resize changes the row width on each frame, which made
+  every row's cached geometry report "changed" every frame, and `Tree`
+  answered that by calling `TreeRow.layoutChildren` once per visible row,
+  every frame — roughly 80 calls per frame in a real sidebar, each rebuilding
+  the row's renderer and label layout from scratch. The first width change of
+  a drag still lays out in full, so a one-off resize (a sidebar toggle, a
+  window resize) is never delayed; only the second and later changes of a
+  live drag now withhold the child relayout, catching every visible row up
+  in one pass on the first animation frame the width stops moving. A row's
+  own width, translate, and height are still written every frame regardless,
+  so its selection tint and hover wash never lag behind the drag. `Table` is
+  unaffected. No consumer action is needed.
+
 ### Layouts
 
 - **`Tab.setTabGlyph(content, glyph)` / `clearTabGlyph(content)` no longer
