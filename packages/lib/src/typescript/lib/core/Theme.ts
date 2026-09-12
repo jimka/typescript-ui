@@ -235,6 +235,8 @@ export interface Theme {
 
     gutter: {
         background: string;
+        /** Wash painted across a movable SplitGutter's widened hit box on hover. */
+        hoverBackground: string;
     };
 
     collapse: {
@@ -1048,6 +1050,7 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-radio-dot-color'                  : theme.form.radio.dotColor,
         '--ts-ui-radio-size'                       : theme.form.radio.size,
         '--ts-ui-gutter-bg'                        : theme.gutter.background,
+        '--ts-ui-gutter-hover-bg'                  : theme.gutter.hoverBackground,
         '--ts-ui-collapse-strip-bg'                : theme.collapse.strip.background,
         '--ts-ui-collapse-strip-size'              : theme.collapse.strip.size,
         '--ts-ui-collapse-button-color'            : theme.collapse.button.color,

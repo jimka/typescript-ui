@@ -191,7 +191,7 @@ A saved array whose length or per-index unit no longer matches the live panes (e
 ## Notes
 
 - A `Split` reports a content-derived **preferred** (and **minimum**) size, like [`HBox`](/layouts/HBox) / [`VBox`](/layouts/VBox): pane sizes summed along the split axis plus the gutter footprint, and the largest pane across it. So a host layout sizes the split to fit its panes (a vertical split prefers the sum of its panes' heights; a horizontal split, the sum of their widths). This is a hint to the host and is separate from the dragged per-pane sizes, which only distribute the split's actual extent.
-- Gutter visuals are themed via the `gutter.background` token — see [Theming](/concepts/theming#theme-keys).
+- Gutter visuals are themed via the `gutter.background` token — see [Theming](/concepts/theming#theme-keys). A movable gutter's real hit box extends a few pixels past its visual footprint into each neighbouring pane, and fades in a `gutter.hoverBackground` wash on hover, mirroring VS Code's sash.
 - Drag interactions disable body pointer events during the drag to suppress text selection.
 - For a non-resizable two-region split, use [`Border`](/layouts/Border) instead.
 

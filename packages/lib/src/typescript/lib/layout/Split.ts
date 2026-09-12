@@ -28,6 +28,12 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 // reservation and the gutter placement in `doLayout`.
 const GUTTER_SIZE = 4;
 
+// Extra px a movable gutter's real hit box extends past its GUTTER_SIZE
+// visual footprint on each side (so its total hit width is GUTTER_SIZE +
+// 2 × GUTTER_HIT_OVERHANG = 10px). Chosen to match CollapseButton's own
+// GRIP_ACROSS (10px) — see SplitGutter.ts's `.hover` state.
+const GUTTER_HIT_OVERHANG = 3;
+
 // Probe weight for the refill's resize-pin test. Any positive value works: it
 // exists only so a pane with *no* weight set resolves through
 // `effectiveResizeWeight`'s fallback to a non-zero weight and stays flexible,
@@ -1133,7 +1139,10 @@ class Split extends LayoutManager implements FocusRevealer {
                 row: () => {
                     const row = new CheckboxMenuRow({ text: "Lock gutter", checked: !gutter.isMovable() });
 
-                    row.on("action", () => { gutter.setMovable(!gutter.isMovable()); });
+                    row.on("action", () => {
+                        gutter.setMovable(!gutter.isMovable());
+                        container.scheduleLayout();
+                    });
 
                     return row;
                 },
@@ -1599,17 +1608,20 @@ class Split extends LayoutManager implements FocusRevealer {
                     if (target >= 0) {
                         gutter.setCollapseDirection(this.paneDirection(components[target]));
                     }
-                    gutter.setX(x);
-                    gutter.setY(y);
+                    const overhang = gutter.isMovable() ? GUTTER_HIT_OVERHANG : 0;
 
                     if (horizontal) {
-                        gutter.setWidth(GUTTER_SIZE);
+                        gutter.setX(x - overhang);
+                        gutter.setY(y);
+                        gutter.setWidth(GUTTER_SIZE + 2 * overhang);
                         gutter.setHeight(crossSize);
 
                         x += GUTTER_SIZE;
                     } else {
+                        gutter.setX(x);
+                        gutter.setY(y - overhang);
                         gutter.setWidth(crossSize);
-                        gutter.setHeight(GUTTER_SIZE);
+                        gutter.setHeight(GUTTER_SIZE + 2 * overhang);
 
                         y += GUTTER_SIZE;
                     }

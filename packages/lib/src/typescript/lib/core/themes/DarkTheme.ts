@@ -88,7 +88,7 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
             dotColor          : 'rgb(20, 20, 20)',
         },
     },
-    gutter: { background: '#555' },
+    gutter: { background: '#555', hoverBackground: 'rgba(120, 170, 240, 0.3)' },
     collapse: {
         strip:  { background: '#555', size: '18px' },
         button: { color: 'rgb(160,160,160)' },

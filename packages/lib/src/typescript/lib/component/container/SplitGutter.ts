@@ -10,6 +10,7 @@ import { beginViewportDrag, endViewportDrag } from "~/core/PointerDrag.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { callable } from "~/core/Callable.js";
+import { Animation } from "~/core/Animation.js";
 
 /**
  * String-literal union of the events emitted by {@link SplitGutter}.
@@ -93,6 +94,14 @@ const OPAQUE_DECLARATIONS: StyleBag = {
     border:          "1px solid var(--ts-ui-button-border, #c8c8c8)",
 };
 
+/** Mirrors Checkbox's crossfade and Scrollbar's arrow fade (both 120ms ease-out). */
+const HOVER_FADE_DURATION_MS = 120;
+
+/** `.hover`'s wash, read by `ownStyleStates`' `.hover` entry below. */
+const HOVER_DECLARATIONS: StyleBag = {
+    backgroundColor: "var(--ts-ui-gutter-hover-bg, rgba(30, 100, 200, 0.3))",
+};
+
 /**
  * A gutter component shared by [`Split`](/api/layout/classes/Split) and the
  * [`Border`](/api/layout/classes/Border) layout that doubles as both a divider
@@ -123,6 +132,10 @@ class SplitGutter extends Component<SplitGutterOptions> {
             selector: ".opaque",
             extract: (): StyleBag => OPAQUE_DECLARATIONS,
         },
+        {
+            selector: ".hover",
+            extract: (): StyleBag => HOVER_DECLARATIONS,
+        },
     ];
 
     declare private _direction: String;
@@ -130,6 +143,15 @@ class SplitGutter extends Component<SplitGutterOptions> {
     declare private _movable: boolean;
     declare private _collapseButton: CollapseButton;
     private _opaque: boolean = false;
+    // Tracked independently, mirroring Scrollbar's `_thumbHovered`/
+    // `_thumbDragging` split (see ScrollbarThumb.applyHoverState /
+    // Scrollbar.updateThumbFill): `beginPointerDrag` suppresses pointer events
+    // on every `<body>` descendant for the duration of a drag — including this
+    // gutter itself — which fires a real `mouseout` the instant the drag
+    // starts. Deriving `.hover` from `_hovered || _dragging` (applyHoverState)
+    // keeps the highlight on for the whole drag regardless of that mouseout.
+    private _hovered: boolean = false;
+    private _dragging: boolean = false;
     private _collapseDirection: CollapseDirection = "west";
     private _collapseTrigger: CollapseTrigger = "dblclick";
     private _expandedBackground: string = "var(--ts-ui-gutter-bg, #AAAAAA)";
@@ -198,6 +220,15 @@ class SplitGutter extends Component<SplitGutterOptions> {
         // wiring itself, so `setMovable` takes effect at any time, on any
         // gutter (including one Border constructed with `movable: false`).
         Event.addListener(this, 'mousedown', this.onDragStart);
+        // Subtree, not exact-target: `addListener` only fires when `evnt.target`
+        // is this gutter's own element, but the raw-appended chevron child
+        // (`_collapseButton`) is a real hit-testable descendant — a mouseover/
+        // mouseout that enters or leaves the gutter's rendered footprint via
+        // the chevron targets the chevron itself, which `addListener` would
+        // silently miss, leaving `_hovered` stuck once the pointer exits
+        // through the chevron instead of the gutter's own background.
+        Event.addSubtreeListener(this, "mouseover", this.onMouseOver);
+        Event.addSubtreeListener(this, "mouseout",  this.onMouseOut);
 
         this.applyListeners(options?.listeners);
 
@@ -298,6 +329,14 @@ class SplitGutter extends Component<SplitGutterOptions> {
      */
     setMovable(value: boolean): this {
         this._movable = value;
+
+        // A gutter locked while the mouse sits stationary over it gets no
+        // native mouseout to clear the hover wash itself (mouseover/mouseout
+        // only fire on an actual pointer move) — drop it here instead.
+        if (!value) {
+            this._hovered = false;
+            this.applyHoverState();
+        }
 
         this.applyCursor();
 
@@ -561,6 +600,12 @@ class SplitGutter extends Component<SplitGutterOptions> {
 
         this.emit("dragstart", position);
 
+        // Forces the hover wash on for the whole drag — see `_dragging`'s
+        // field comment for why a real mouseout fires the instant
+        // `beginViewportDrag` suppresses pointer events below.
+        this._dragging = true;
+        this.applyHoverState();
+
         beginViewportDrag(this, this.onDrag, this.onDragStop, this.dragCursor());
     }
 
@@ -573,6 +618,9 @@ class SplitGutter extends Component<SplitGutterOptions> {
      */
     onDragStop(): Event.ListenerResult {
         endViewportDrag(this, this.onDrag, this.onDragStop);
+
+        this._dragging = false;
+        this.applyHoverState();
 
         this.emit("dragend");
 
@@ -621,6 +669,74 @@ class SplitGutter extends Component<SplitGutterOptions> {
         } else {
             this.setCursor("default");
         }
+    }
+
+    /**
+     * Records a real hover enter and re-derives the hover wash. A no-op for a
+     * locked or opaque gutter — hit-widening and the hover fade both gate on
+     * the same `isMovable() && !isOpaque()` condition the resize cursor uses.
+     * Ignores a boundary crossing onto the gutter's own chevron child, which
+     * is not a real enter.
+     *
+     * @param evnt - The mouseover event; only `relatedTarget` is read.
+     */
+    onMouseOver(evnt: MouseEvent): void {
+        if (!this._movable || this._opaque || this.containsEventTarget(evnt.relatedTarget)) {
+            return;
+        }
+
+        this._hovered = true;
+        this.applyHoverState();
+    }
+
+    /**
+     * Records a real hover leave and re-derives the hover wash. Ignores a
+     * boundary crossing onto the gutter's own chevron child, which is not a
+     * real leave.
+     *
+     * @param evnt - The mouseout event; only `relatedTarget` is read.
+     */
+    onMouseOut(evnt: MouseEvent): void {
+        if (this.containsEventTarget(evnt.relatedTarget)) {
+            return;
+        }
+
+        this._hovered = false;
+        this.applyHoverState();
+    }
+
+    /**
+     * Applies the hover wash whenever the pointer is really over the gutter or
+     * a drag is in progress, and clears it otherwise — so the highlight
+     * persists for the whole drag even once `beginPointerDrag`'s pointer-events
+     * suppression fires a native mouseout mid-drag (see `_dragging`'s field
+     * comment). Mirrors `Scrollbar.updateThumbFill`. Re-asserts the fade
+     * transition on every call rather than once at construction:
+     * `CollapseSupport.primeCollapse` clears every gutter's `transition`
+     * during a `Split` collapse/restore pass, which would otherwise silently
+     * strip a transition set only once.
+     */
+    private applyHoverState(): void {
+        this.setTransition(Animation.isReducedMotion() ? "none" : `background-color ${HOVER_FADE_DURATION_MS}ms ease-out`);
+        this.setStyleState(".hover", this._hovered || this._dragging);
+    }
+
+    /**
+     * Whether `target` is the gutter's own element or a descendant of it (e.g.
+     * the collapse chevron) — used to tell a real hover boundary crossing from
+     * an internal move onto a child.
+     *
+     * @param target - The related mouse-event target to test.
+     * @returns True when `target` is inside the gutter's own element.
+     */
+    private containsEventTarget(target: EventTarget | null): boolean {
+        const element = this.getElement();
+
+        if (!element || !DOM.source.isNode(target)) {
+            return false;
+        }
+
+        return DOM.source.contains(element, DOM.source.intern(target));
     }
 
     /**
