@@ -2,8 +2,11 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { ButtonGroup } from '~/overlay/ButtonGroup';
 import { ToggleButton } from '~/component/button/ToggleButton';
 import { RadioButton } from '~/component/input/RadioButton';
+import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../dom/TestDOM';
+import { Event } from '~/core/Event';
+import { SpatialNavigation } from '~/core/SpatialNavigation';
+import { installTestDOM, makeEvent } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -243,5 +246,75 @@ describe('ButtonGroup.dispose()', () => {
         group.dispose();
 
         expect(() => group.dispose()).not.toThrow();
+    });
+});
+
+// directional-panel-navigation plan, Expected Behaviour #23: SpatialNavigation's
+// chord claims the arrow key first, so the group's own roving-focus step must
+// stand down entirely while it does.
+describe('ButtonGroup keydown — stands down while SpatialNavigation claims the key', () => {
+    afterEach(() => {
+        DOM.reset();
+        vi.restoreAllMocks();
+    });
+
+    /**
+     * `installBaseListener` (core/Event.ts) attaches its native "keydown"
+     * window listener only on the type's first-ever registration in this
+     * file, and every Button constructed by an earlier test (every `Button`
+     * registers its own "keydown" listener — see Button.ts's `_onSpaceDown`)
+     * already left one behind, pinned to that test's now-torn-down window
+     * (see Button.pressedState.test.ts's file header for the same landmine)
+     * — so a plain `installTestDOM` here would silently receive no "keydown"
+     * delivery at all. Purging every currently-registered component via the
+     * sanctioned test-only escape hatch (`Event._registeredComponentIds` /
+     * `Event.purgeComponent`) drops "keydown" back to uninstalled, so the
+     * container wired right after re-attaches it to THIS window.
+     */
+    function freshKeydownWindow(): void {
+        installTestDOM(CONFIG);
+
+        for (const id of Event._registeredComponentIds()) {
+            Event.purgeComponent(id);
+        }
+    }
+
+    /** A materialised container wired to `group` via setContainer, ready to dispatch a real keydown onto. */
+    function wiredContainer(group: ButtonGroup): Component {
+        const container = new Component();
+        container.getElement(true);
+        group.setContainer(container);
+
+        return container;
+    }
+
+    it('ArrowRight moves the roving tab index forward when the key is unclaimed', () => {
+        freshKeydownWindow();
+
+        const a = new ToggleButton('A');
+        const b = new ToggleButton('B');
+        const group = new ButtonGroup({ buttons: [a, b] });
+        const container = wiredContainer(group);
+
+        Event.fireEvent(container, makeEvent(container.getElement(true)!, 'keydown', { key: 'ArrowRight' }) as any);
+
+        expect((group as any)._rovingTabIndex.getActiveIndex()).toBe(1);
+    });
+
+    it('a claimed ArrowRight does not move the roving tab index', () => {
+        freshKeydownWindow();
+
+        const a = new ToggleButton('A');
+        const b = new ToggleButton('B');
+        const group = new ButtonGroup({ buttons: [a, b] });
+        const container = wiredContainer(group);
+
+        vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+        const moveNext = vi.spyOn((group as any)._rovingTabIndex, 'moveNext');
+
+        Event.fireEvent(container, makeEvent(container.getElement(true)!, 'keydown', { key: 'ArrowRight' }) as any);
+
+        expect(moveNext).not.toHaveBeenCalled();
+        expect((group as any)._rovingTabIndex.getActiveIndex()).toBe(0);
     });
 });

@@ -7,6 +7,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Panel } from "~/core/Panel.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { Type } from "~/core/Type.js";
@@ -2091,6 +2092,8 @@ abstract class AbstractSelectableList<
      * @returns `true` when the key was handled.
      */
     protected handleNavigationKey(e: KeyboardEvent, ctrl: boolean): boolean {
+        if (SpatialNavigation.claimsKey(e)) { return false; }
+
         const navigable = new Set([
             "ArrowDown", "ArrowUp", "Home", "End", "PageDown", "PageUp",
         ]);

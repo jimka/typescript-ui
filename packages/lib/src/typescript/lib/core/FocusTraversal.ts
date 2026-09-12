@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "~/core/Component.js";
+import { Component, TAB_KEY_OWNER_ATTR } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { LayerManager } from "~/core/LayerManager.js";
-import { findFocusable } from "~/core/Focusable.js";
+import { focusScopeRoot, visibleFocusable, ancestorsToDocument } from "~/core/Focusable.js";
 
 /**
  * Options for {@link FocusTraversal.enable} / {@link FocusTraversal.configure}.
@@ -16,10 +16,6 @@ export interface FocusTraversalOptions {
     /** Wrap from the last stop to the first at the ends of the root. Default: only inside a modal layer. */
     wrap?: boolean;
 }
-
-// The DOM attribute a Tab-key-owning component's element carries — mirrored by
-// `Component.setTabKeyOwner` via `setDataAttribute("ts-ui-tab-key-owner", ...)`.
-const TAB_KEY_OWNER_ATTR = "data-ts-ui-tab-key-owner";
 
 // A bare modifier keydown must not expire the Escape release: pressing
 // Shift+Tab fires two keydowns (Shift, then Tab with shiftKey: true), and the
@@ -45,17 +41,6 @@ let _wrapOption: boolean | undefined = undefined;
 // release the user just requested.
 let _releaseOwner: Handle | null = null;
 
-/**
- * Returns the traversal root: the topmost layer's element when one is
- * registered, else `<body>`.
- */
-function resolveRoot(): Handle {
-    const top = LayerManager.getTopLayer();
-    const layerElement = top?.getLayerElement() ?? null;
-
-    return layerElement ?? DOM.source.getBody();
-}
-
 /** Whether `root` is a registered modal layer's own element. */
 function isModalRoot(root: Handle): boolean {
     const top = LayerManager.getTopLayer();
@@ -69,38 +54,21 @@ function shouldWrap(root: Handle): boolean {
 }
 
 /**
- * Walks from `handle` up to (and including) `<body>` looking for the first
- * ancestor carrying the Tab-key-owner marker. Bounded at `<body>` rather than
- * climbing to `<html>`/`document` — every framework component tree lives
- * under `<body>`, and the seam's `hasAttribute` assumes a real `Element`,
- * which the `document` node above `<html>` is not.
+ * Walks from `handle` up to (and including) `<html>` — see {@link
+ * ancestorsToDocument} for why the walk is bounded there — looking for the
+ * first ancestor carrying the Tab-key-owner marker.
  *
  * @param handle - The element to start the walk from (typically the focused element).
  * @returns The nearest owning ancestor's handle, or `null` when none claims it.
  */
 function findTabKeyOwner(handle: Handle): Handle | null {
-    const body = DOM.source.getBody();
-
-    for (let h: Handle | null = handle; h !== null; h = DOM.source.getParentNode(h)) {
+    for (const h of ancestorsToDocument(handle)) {
         if (DOM.source.hasAttribute(h, TAB_KEY_OWNER_ATTR)) {
             return h;
-        }
-
-        if (h === body) {
-            break;
         }
     }
 
     return null;
-}
-
-/**
- * The eligible tab stops inside `root`, in DOM order: `findFocusable`'s
- * candidates (the shared selector plus the `disabled` filter), further
- * filtered to those actually rendered.
- */
-function collectTabStops(root: Handle): Handle[] {
-    return findFocusable(root).filter(handle => DOM.source.isRenderedVisible(handle));
 }
 
 /**
@@ -143,7 +111,7 @@ function stepFrom(root: Handle, stops: Handle[], active: Handle | null, directio
  * to continue from" landing {@link stepFrom} uses: the first stop of `root`.
  */
 function stopAfterOwner(root: Handle, owner: Handle): Handle | null {
-    const stops = collectTabStops(root);
+    const stops = visibleFocusable(root);
     let lastInside = -1;
 
     for (let i = 0; i < stops.length; i++) {
@@ -163,7 +131,7 @@ function stopAfterOwner(root: Handle, owner: Handle): Handle | null {
 
 /** {@link stopAfterOwner}'s mirror for `Shift+Tab` — the last stop before every stop `owner` contains. */
 function stopBeforeOwner(root: Handle, owner: Handle): Handle | null {
-    const stops = collectTabStops(root);
+    const stops = visibleFocusable(root);
     let firstInside = -1;
 
     for (let i = 0; i < stops.length; i++) {
@@ -255,7 +223,7 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         return; // the owner keeps Tab.
     }
 
-    const root = resolveRoot();
+    const root = focusScopeRoot();
     let moved: boolean;
 
     if (owner !== null) {
@@ -263,7 +231,7 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         _releaseOwner = null;
         moved = focusStop(e.shiftKey ? stopBeforeOwner(root, owner) : stopAfterOwner(root, owner));
     } else {
-        moved = focusStop(stepFrom(root, collectTabStops(root), active, e.shiftKey ? -1 : 1));
+        moved = focusStop(stepFrom(root, visibleFocusable(root), active, e.shiftKey ? -1 : 1));
     }
 
     if (!moved) {
@@ -349,7 +317,7 @@ export namespace FocusTraversal {
      *   element, or `<body>` when no layer is registered.
      */
     export function getTabStops(root?: Handle): Handle[] {
-        return collectTabStops(root ?? resolveRoot());
+        return visibleFocusable(root ?? focusScopeRoot());
     }
 
     /**
@@ -358,9 +326,9 @@ export namespace FocusTraversal {
      * @returns `true` if focus moved.
      */
     export function next(): boolean {
-        const root = resolveRoot();
+        const root = focusScopeRoot();
 
-        return focusStop(stepFrom(root, collectTabStops(root), DOM.source.getActiveElement(), 1));
+        return focusStop(stepFrom(root, visibleFocusable(root), DOM.source.getActiveElement(), 1));
     }
 
     /**
@@ -369,8 +337,8 @@ export namespace FocusTraversal {
      * @returns `true` if focus moved.
      */
     export function previous(): boolean {
-        const root = resolveRoot();
+        const root = focusScopeRoot();
 
-        return focusStop(stepFrom(root, collectTabStops(root), DOM.source.getActiveElement(), -1));
+        return focusStop(stepFrom(root, visibleFocusable(root), DOM.source.getActiveElement(), -1));
     }
 }

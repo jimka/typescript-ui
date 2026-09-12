@@ -8,13 +8,15 @@
 //    unmounted Slider, so the `setValue` round-trip + `change`-listener block
 //    mounts the slider via the TestDOM ritual copied from
 //    tests/component/layout/Tab.test.ts and resets the DOM after each case.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Slider } from '~/component/input/Slider';
 import { Container } from '~/core/Container';
 import { Insets } from '~/primitive/Insets';
 import { UNBOUNDED } from '~/primitive/Size';
 import { DOM } from '~/core/DOM';
-import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
+import { Event } from '~/core/Event';
+import { SpatialNavigation } from '~/core/SpatialNavigation';
+import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
 import { _ruleCacheHas } from '~/core/StyleTarget';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -217,6 +219,68 @@ describe('Slider setValue round-trip (mounted)', () => {
 
         expect(slider.getValue()).toBe(20);
         expect(changes).toBe(0);
+    });
+});
+
+// directional-panel-navigation plan, Expected Behaviour #25: SpatialNavigation's
+// chord claims ArrowRight/Left first, so the slider's own value step must
+// stand down entirely while it does.
+describe('Slider keydown — stands down while SpatialNavigation claims the key', () => {
+    afterEach(() => {
+        DOM.reset();
+        vi.restoreAllMocks();
+    });
+
+    /**
+     * `installBaseListener` (core/Event.ts) attaches its native "keydown"
+     * window listener only on the type's first-ever registration in this
+     * file, and every Slider constructed by an earlier test already left one
+     * behind, pinned to that test's now-torn-down window (see
+     * Button.pressedState.test.ts's file header for the same landmine) — so a
+     * plain `installTestDOM` here would silently receive no "keydown"
+     * delivery at all. Purging every currently-registered component via the
+     * sanctioned test-only escape hatch (`Event._registeredComponentIds` /
+     * `Event.purgeComponent`) drops "keydown" back to uninstalled, so the
+     * Slider constructed right after re-attaches it to THIS window.
+     */
+    function freshKeydownWindow(): void {
+        installTestDOM(CONFIG);
+
+        for (const id of Event._registeredComponentIds()) {
+            Event.purgeComponent(id);
+        }
+    }
+
+    it('ArrowRight steps the value up when the key is unclaimed', () => {
+        freshKeydownWindow();
+
+        const host   = new Container({});
+        const slider: Slider = new Slider({ min: 0, max: 100, step: 10 });
+        host.addComponent(slider);
+        host.getElement(true);
+        slider.getElement(true);
+        quiesce(host, slider);
+
+        Event.fireEvent(slider, makeEvent(slider.getElement(true)!, 'keydown', { key: 'ArrowRight' }) as any);
+
+        expect(slider.getValue()).toBe(10);
+    });
+
+    it('a claimed ArrowRight does not change the value', () => {
+        freshKeydownWindow();
+
+        const host   = new Container({});
+        const slider: Slider = new Slider({ min: 0, max: 100, step: 10 });
+        host.addComponent(slider);
+        host.getElement(true);
+        slider.getElement(true);
+        quiesce(host, slider);
+
+        vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+
+        Event.fireEvent(slider, makeEvent(slider.getElement(true)!, 'keydown', { key: 'ArrowRight' }) as any);
+
+        expect(slider.getValue()).toBe(0);
     });
 });
 

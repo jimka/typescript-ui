@@ -593,3 +593,184 @@ The public `claimsKey` — the single predicate both the service and the ten gua
 [^new-pattern]: The precedent search covered the focus family (`FocusHistory`, `FocusReveal`, `FocusTraversal`, `Focusable`, `RovingTabIndex`), the layout managers, and every `getElementRect` call site in the library. Geometry is read in this codebase for anchoring overlays, scroll-into-view arithmetic, hit testing, and text measurement — never to rank a set of elements against a direction. `RovingTabIndex` is the nearest relative and is ordinal, not spatial. So this is the "no comparable problem already solved" case in `pattern-conformance.md`, and the algorithm is adapted from the CSS Spatial Navigation specification rather than invented — see `[^weight]` for what was taken and what was dropped.
 
 [^offline-caveats]: The offline seam models everything the service touches: `getElementRect` composes from the inline-style `left`/`top`/`width`/`height` writes a test applies, `querySelectorAll` resolves seeded root+selector pairs, `hasAttribute` reads the folded `setAttr` writes, `isRenderedVisible` and `isConnected` read seeded flags, and `getActiveElement` reads the sink's recorded focus. The two gaps are `matches`, which always returns `false` offline, and `getBody`, which mints a fresh handle per call — both are covered in `## Potential Challenges` and both already have established workarounds in `FocusTraversal.test.ts`.
+
+---
+
+## Implementation Notes
+
+- **Rebase-clean checkpoint skipped as a literal `git rebase`, verified by
+  merge-base equality instead.** `implement/worker.md`'s generic checkpoint
+  calls for rebasing the branch onto its start point before declaring done.
+  This branch's start point is `master` at `f4213bb5`, which had not moved
+  by the time this checkpoint was reached (`git merge-base
+  feature/spatial-focus-navigation master` still resolves to `f4213bb5`), so
+  there was nothing new on `master` to replay onto. Running `git rebase
+  master` anyway was tried and reverted: `git rebase` drops merge commits
+  and linearises their parents, so it tried to individually replay
+  `feature/directional-panel-navigation`'s six original commits — including
+  `0d52bd08`'s `core/Focusable.ts` addition — on top of this branch's own
+  later edits to that same file, producing exactly the "different conflict
+  set" Step 1's own text warns a rebase (as opposed to the mandated `git
+  merge`) would hit. Forcing that rebase through would have flattened the
+  deliberate two-parent merge commit Step 1 built, undoing the one part of
+  this plan that seven audit rounds specifically verified. Since the
+  merge-base already equals `master`'s tip, the branch is rebase-clean in
+  the sense the checkpoint exists to guarantee (it merges onto current
+  `master` without conflict) without needing a rebase to prove it; the
+  checkpoint's other half — re-running typecheck, lint, and the full test
+  suite — still ran and passed.
+
+- **Superseding the above: the branch was later restructured onto a rebased
+  `feature/directional-panel-navigation`, at the user's explicit request,
+  after this plan's own implementation and audit had already finished.** By
+  this point `master` had gained 31 more commits since the bullet above was
+  written, including `f88e0fad` — a byte-identical `core/Focusable.ts` add
+  (confirmed via `git patch-id`) merged in separately via
+  `feature/focusable-element-helper`. That changes the rebase math the
+  bullet above describes: `feature/directional-panel-navigation` was rebased
+  onto `master` first, and `git rebase`'s patch-id cherry-detection now
+  correctly skipped its own `0d52bd08` copy as already-applied (there was no
+  longer a real divergence to fight), leaving three conflicts to resolve by
+  hand — `core/index.ts` (keep both export blocks, same as Step 1), and two
+  hunks in `docs/concepts/accessibility.md` / one in
+  `docs/reference/changelog/next.md` where the two sides had independently
+  added adjacent doc sections (keep both). This branch's own five commits
+  (`... in-progress.` through `... implemented.`) were then cherry-picked
+  directly onto the new `feature/directional-panel-navigation` tip, replacing
+  the deliberate two-parent merge Step 1 built with a linear stack. The merge
+  is not wrong in retrospect, just superseded: once
+  `feature/directional-panel-navigation` sits on `master`, its content is
+  already an ancestor of this branch's new base, so there is nothing left
+  for a merge commit to bring in — reusing that same merge commit unmodified
+  was not an option once its second parent's own history had been rewritten
+  by the rebase.
+
+  Re-applying this branch's own docs commit (`... replacing the
+  panel-navigation section ...`) on top of the rebased
+  `feature/directional-panel-navigation` surfaced one latent bug in the
+  conflict resolution above: the first hand-resolution of
+  `changelog/next.md` (`core/index.ts`'s neighbour) placed the new
+  "PanelNavigation service" changelog bullet after the unrelated `### Overlay`
+  section's bullets instead of under `### Core`, right after `FocusReveal`,
+  where every sibling "new service" bullet in this file lives. A three-way
+  merge only flags a conflict where context actually disagrees, so the
+  misplacement did not surface as a conflict on its own — it was caught by
+  re-reading the resulting file structure (`grep -n "^### "`) rather than by
+  the merge tool, and fixed before it was ever committed to this branch.
+
+  Verified with a fresh `typecheck`/`lint`/full-suite pass (7128 tests, 0
+  failures) and the same zero-stray-reference (`PanelNavigation|
+  PanelNavigator|PanelDirection|panelNavigation`) and
+  thirteen-`SpatialNavigation.claimsKey` greps the last audit round ran.
+
+- **Three guards added beyond Step 9's ten-file table, found by a post-implementation
+  audit.** `ComboBox.onKeyDown` (`component/input/ComboBox.ts`),
+  `AbstractPickerField.onKeyDown` (`component/input/AbstractPickerField.ts`,
+  shared by `DateField`/`TimeField`/`DateTimeField`), and
+  `AutoCompleteField.onKeyDown` (`component/input/AutoCompleteField.ts`) each
+  switch on a bare `ArrowDown`/`ArrowUp` with no `SpatialNavigation.claimsKey`
+  guard, to open their own dropdown when it's closed. None of these three
+  appear in Step 9's guard table or in the "exactly ten matches" grep the
+  plan's `## Verification` section specifies — Step 9 carried the ten-guard
+  table forward verbatim from the superseded `PanelNavigation` plan without
+  re-deriving it for the new fine (`Ctrl+Alt`) tier, and manual case 33 above
+  only exercised the dropdown-*open* state, so the closed-dropdown collision
+  was never looked for during the original implementation pass. Fixed by
+  adding the same `if (SpatialNavigation.claimsKey(e)) { return; }` guard used
+  by all ten planned sites, plus matching "stands down while SpatialNavigation
+  claims the key" tests (`ComboBox.test.ts`, `DateField.test.ts` — exercised
+  once for the shared `AbstractPickerField` base rather than in triplicate,
+  `AutoCompleteField.test.ts`). `grep -rn "SpatialNavigation.claimsKey"
+  packages/lib/src/` now returns 13 matches, not the plan's originally stated
+  ten; the plan's own Step 9 table and verification count are left as
+  originally written (the historical record of what was planned) rather than
+  rewritten to match after the fact.
+
+- **Manual verification (Expected Behaviour 29-34) run against the live demo.**
+  `npm run dev`, Chrome via `chrome-devtools`, Split and ToolBar tabs.
+
+  - **29 — PASS with a caveat on the second half.** `Ctrl+Alt+→` from
+    "Hello World button!" moved to the `Charts` tab button. Confirmed
+    correct, not a bug: the button's own rendered rect fills its whole pane
+    (`left:4 top:35 right:2187 bottom:975` — `Button`'s content is
+    centred text inside a stretched element, not a small auto-sized
+    widget), so every tab left of `x:2187` has a negative primary gap and
+    is correctly excluded; `Charts` (`left:2227`) is the nearest survivor.
+    `Ctrl+Alt+↓` moved to the **textarea**, not "the lower pane's list" as
+    the case text says. Also confirmed correct, not a bug: the list
+    (`left:4-204`) and the textarea (`left:208-1373`) tie exactly on score
+    (both primary-gap 4, perpendicular-gap 0, since the button's rect spans
+    both their columns), and the documented tie-break — smaller
+    perpendicular-centre distance (Expected Behaviour 8) — picks the
+    textarea (centre delta 305 vs. the list's 991.5). The plan's case text
+    is imprecise about which element wins in this specific demo geometry;
+    the algorithm itself matches its own contract exactly.
+  - **30 — PASS.** Focused the Slider (not the pane's first control), moved
+    to the north pane and back with `Ctrl+Shift+↑`/`↓`; landed back on the
+    Slider, confirming the remembered-descendant path over the
+    first-focusable fallback.
+  - **31 — PASS.** Collapsed the list pane (real double-click via CDP input,
+    not a synthetic DOM event — see below), then `Ctrl+Alt+←` from the
+    textarea expanded it and landed focus inside in the same keypress
+    (`clip-path` went from `inset(0px 100% 0px 0px)` to `inset(0px)`
+    synchronously with the focus move). The animation-frame-level "nothing
+    flickers back" claim is not independently re-verified frame-by-frame
+    here; it follows from the same synchronous reveal-before-focus ordering
+    already pinned by the automated suite's "calls FocusReveal.reveal for
+    each landing candidate before its focus attempt" case.
+  - **32 — PASS (Slider, ToolBar checked; Tree/Table/TabBar not separately
+    driven live).** Slider: bare `ArrowRight` changed its value in place
+    (50→51) without moving focus; `Ctrl+Alt+←` then moved focus out to the
+    textarea, value unchanged. ToolBar: bare `ArrowRight` did not trigger
+    navigation; `Ctrl+Alt+↓` moved focus out to a button in a different
+    toolbar row. TabBar is exercised implicitly throughout (every
+    component-tier move in this run that landed on a tab button proves the
+    guard stands down there too); Tree and Table were not separately driven
+    live in this pass — their guards are covered by the automated
+    `Tree.test.ts` / `Body.test.ts` / `TreeBody.test.ts` suites instead.
+  - **33 — PASS (ComboBox half); Window half not independently re-driven
+    live.** With the ToolBar demo's font-size ComboBox dropdown open,
+    neither `Ctrl+Alt+↓` nor `Ctrl+Shift+↓` moved focus or closed it. The
+    non-modal-`Window` half was not separately driven live (no Window demo
+    surface was in reach within this pass); it relies on the unchanged
+    `LayerManager.hasActiveInputLayer()` codepath, verbatim from the
+    superseded service and covered by the automated suite's case 16.
+  - **34 — GNOME collision not observable (this machine has no desktop
+    environment — headless WSL2, `XDG_CURRENT_DESKTOP` empty); the
+    `configure()` escape hatch verified live instead.** Reconfigured
+    `SpatialNavigation.configure({ componentModifiers: { alt: true } })` via
+    a dynamic `import()` of the running module in the page's own context
+    (not a re-implementation): the old `Ctrl+Alt` combo stopped moving
+    focus, the new bare-`Alt` combo did, then defaults were restored.
+
+  One collapse-trigger mechanics note, unrelated to `SpatialNavigation`
+  itself: `SplitGutter`/`CollapseButton`'s default `dblclick` activation
+  did not fire from a JS-constructed `new MouseEvent('dblclick', …)`
+  dispatched on the element (window-level capture listener received it,
+  but no `panecollapse` followed); a real double-click via the devtools
+  protocol's own input dispatch (`click` tool with `dblClick: true`) did.
+  Left uninvestigated as pre-existing, unrelated `Split`/`CollapseButton`
+  behaviour outside this plan's scope — flagging in case it recurs for a
+  future manual pass.
+
+- **`feature/directional-panel-navigation`'s own five commits dropped from
+  this branch's history entirely, at the user's explicit request.** A
+  duplication-focused audit of this branch alongside
+  `feature/directional-panel-navigation` confirmed the latter's production
+  code contributes nothing to this branch's final tree: `core/
+  PanelNavigation.ts` and its tests are deleted outright, and `Split.ts` /
+  `Border.ts` revert to their pre-`directional` content byte-for-byte — with
+  one exception, `core/LayerManager.ts`'s `hasActiveInputLayer()`, which
+  `directional` added and this branch's own code keeps and reuses rather
+  than reverting. Every commit on this branch up to that point had been
+  authored as a diff against a tree that already carried `directional`'s
+  edits, so cherry-picking them directly onto `master` (still at `f4213bb5`,
+  unmoved since this branch's own start point) conflicted immediately on
+  every file `directional` touched — confirmed by attempting it — rather
+  than applying as a clean no-op. Rebuilt instead by resetting to `master`
+  and recreating each commit's file state directly from the pre-purge tree
+  (tagged `pre-purge-rebase-13`, deleted once verified identical
+  file-for-file) instead of replaying its historical patch.
+  `feature/directional-panel-navigation` itself is untouched by this — only
+  this branch's own copy of that lineage is dropped. Full suite and
+  typecheck green throughout.

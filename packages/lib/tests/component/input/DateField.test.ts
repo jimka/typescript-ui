@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DateField } from '~/component/input/DateField';
 import { DOM } from '~/core/DOM';
+import { SpatialNavigation } from '~/core/SpatialNavigation';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -375,5 +376,39 @@ describe('DateField relative shorthand commit on blur and Enter', () => {
 
         expect(field._input.getText()).toBe('');
         expect(field.getValue()).toBe(null);
+    });
+});
+
+// spatial-focus-navigation plan, Implementation Notes: AbstractPickerField's
+// own ArrowDown open gesture (shared by DateField/TimeField/DateTimeField)
+// must stand down while SpatialNavigation claims the key, or the dropdown
+// pops alongside/instead of focus moving. Exercised once here since the
+// guard lives entirely in the shared base class.
+describe('AbstractPickerField onKeyDown (via DateField) — stands down while SpatialNavigation claims the key', () => {
+    afterEach(() => {
+        DOM.reset();
+        vi.restoreAllMocks();
+    });
+
+    it('ArrowDown opens the (closed) dropdown when the key is unclaimed', () => {
+        installTestDOM(CONFIG);
+        const field = new DateField() as any;
+        const openDropdown = vi.spyOn(field, 'openDropdown');
+
+        field.onKeyDown({ key: 'ArrowDown' });
+
+        expect(openDropdown).toHaveBeenCalled();
+    });
+
+    it('a claimed ArrowDown does not call openDropdown', () => {
+        installTestDOM(CONFIG);
+        const field = new DateField() as any;
+        const openDropdown = vi.spyOn(field, 'openDropdown');
+
+        vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+
+        field.onKeyDown({ key: 'ArrowDown' });
+
+        expect(openDropdown).not.toHaveBeenCalled();
     });
 });

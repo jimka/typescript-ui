@@ -798,6 +798,41 @@ describe('isTabKeyOwner folds a subclass tabKeyOwner default', () => {
     });
 });
 
+describe('isNavigationTarget folds a subclass navigationTarget default', () => {
+    class NavigationTargetByDefault extends Component {
+        constructor(options?: ComponentOptions) {
+            super(options, { navigationTarget: true } as Partial<ComponentOptions>);
+        }
+    }
+
+    it('a subclass defaulting navigationTarget:true reports true when never set', () => {
+        expect(new NavigationTargetByDefault().isNavigationTarget()).toBe(true);
+    });
+
+    it('a subclass defaulting navigationTarget:true also renders the marker attribute — the always-dispatch path, not just the folding getter', () => {
+        const c = new NavigationTargetByDefault();
+        expect(c.getDataAttribute('ts-ui-navigation-target')).toBe('true');
+    });
+
+    it('a plain Component is false; an explicit value still wins', () => {
+        expect(new Component({}).isNavigationTarget()).toBe(false);
+        const c = new NavigationTargetByDefault();
+        c.setNavigationTarget(false);
+        expect(c.isNavigationTarget()).toBe(false);
+    });
+
+    it('constructing with { navigationTarget: true } renders data-ts-ui-navigation-target="true"', () => {
+        const c = new Component({ navigationTarget: true });
+        expect(c.getDataAttribute('ts-ui-navigation-target')).toBe('true');
+    });
+
+    it('setNavigationTarget(false) removes the marker attribute', () => {
+        const c = new Component({ navigationTarget: true });
+        c.setNavigationTarget(false);
+        expect(c.getDataAttribute('ts-ui-navigation-target')).toBeUndefined();
+    });
+});
+
 describe('clear*() suppresses a class-level default (does not revert to it)', () => {
     it('clearPadding suppresses a subclass padding default', () => {
         const field = new TextField() as any;

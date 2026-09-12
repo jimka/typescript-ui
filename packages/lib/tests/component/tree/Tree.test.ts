@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach, beforeAll, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
+import { SpatialNavigation } from '~/core/SpatialNavigation';
 import { _Tree } from '~/component/tree/Tree';
 import { _TreeRow } from '~/component/tree/TreeRow';
 import type { TreeNode } from '~/component/tree/TreeNode';
@@ -428,6 +429,26 @@ describe('Tree (white-box) — selection event fires only on a real change', () 
 
         priv._onKeyDown({ key: 'ArrowDown', shiftKey: false, preventDefault: () => {} } as KeyboardEvent);
         expect(emitted).toBe(1); // moved to a different row — a real change
+    });
+
+    // directional-panel-navigation plan, Expected Behaviour #19: SpatialNavigation's
+    // chord claims ArrowDown/Up first, so Tree's own selection move must stand
+    // down entirely while it does. The unclaimed half is the case just above.
+    it('a claimed ArrowDown does not move the selection', () => {
+        const tree = new _Tree();
+        tree.setNodes(fruitTree());
+        const priv = asPrivate(tree);
+
+        priv._selectAtIndex(0);
+
+        const claimsKey = vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+        let emitted = 0;
+        tree.on('selection', () => { emitted += 1; });
+
+        priv._onKeyDown({ key: 'ArrowDown', shiftKey: false, preventDefault: () => {} } as KeyboardEvent);
+
+        expect(emitted).toBe(0);
+        claimsKey.mockRestore();
     });
 });
 

@@ -1,8 +1,9 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { ComboBox } from '~/component/input/ComboBox';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import { DOM } from '~/core/DOM';
+import { SpatialNavigation } from '~/core/SpatialNavigation';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import { _ruleCacheHas } from '~/core/StyleTarget';
 import { Util } from '~/core/Util';
@@ -233,6 +234,37 @@ describe('ComboBox — keyboard reducer forwarding', () => {
             ._dropdown.handleKey(key('ArrowDown'));
 
         expect(combo.getSelectedIndex()).toBe(1);      // observed through the public delegate
+    });
+});
+
+// spatial-focus-navigation plan, Implementation Notes: a closed ComboBox's
+// own ArrowDown/Up open gesture must stand down while SpatialNavigation
+// claims the key, or the dropdown pops alongside/instead of focus moving.
+describe('ComboBox onKeyDown — stands down while SpatialNavigation claims the key', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('ArrowDown opens the (closed) dropdown when the key is unclaimed', () => {
+        installTestDOM(CONFIG);
+        const combo = new ComboBox();
+        const toggleDropdown = vi.spyOn(combo as any, 'toggleDropdown');
+
+        (combo as any).onKeyDown(key('ArrowDown'));
+
+        expect(toggleDropdown).toHaveBeenCalled();
+    });
+
+    it('a claimed ArrowDown does not call toggleDropdown', () => {
+        installTestDOM(CONFIG);
+        const combo = new ComboBox();
+        const toggleDropdown = vi.spyOn(combo as any, 'toggleDropdown');
+
+        vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+
+        (combo as any).onKeyDown(key('ArrowDown'));
+
+        expect(toggleDropdown).not.toHaveBeenCalled();
     });
 });
 

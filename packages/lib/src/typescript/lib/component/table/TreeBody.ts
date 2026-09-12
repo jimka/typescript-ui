@@ -5,6 +5,7 @@ import { AbstractStore } from "~/data/AbstractStore.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { DragEventDetail, DragManager } from "~/overlay/DragManager.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Row } from "~/component/table/Row.js";
@@ -803,6 +804,8 @@ class TreeBody extends _Body {
      * @param e - The keyboard event fired on the body element.
      */
     protected onKeyDown(e: KeyboardEvent): Event.ListenerResult {
+        if (SpatialNavigation.claimsKey(e)) { return; }
+
         if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") {
             return super.onKeyDown(e);
         }

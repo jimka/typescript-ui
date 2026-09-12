@@ -4,6 +4,8 @@ import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import { FocusReveal } from "~/core/FocusReveal.js";
+import type { FocusRevealer } from "~/core/FocusReveal.js";
 import { Button, ButtonOptions } from "~/component/button/Button.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -143,7 +145,7 @@ class ScrollStripArrowButton extends Button {
  *
  * @category Components
  */
-class ScrollStrip extends Panel<ScrollStripOptions> {
+class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
 
     // The scroll axis. Written by `setOrientation` from `applyOptions` during the
     // super() cascade, so it must be `declare`d (a real initializer would revert
@@ -216,6 +218,15 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
         this._clip.setBackgroundColor("transparent");
         this._clip.clearInsets();
         this.installBox(this._orientation);
+
+        // The clip's overflow:hidden is set directly above rather than through
+        // Panel's own `setAutoScroll`, so Panel's mode-switch registration
+        // never runs for it — register explicitly so a keyboard focus move
+        // onto a clipped-out item (e.g. `SpatialNavigation`'s direct
+        // `.focus()`) scrolls it into view via `revealDescendant`, below.
+        // `super.destructor()` unregisters `this` unconditionally, so no
+        // matching unregister call is needed here.
+        FocusReveal.register(this);
     }
 
     /**
@@ -750,6 +761,17 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
     private trailClicked = (): void => {
         this.scrollBy(this.resolveStep());
     };
+
+    /**
+     * {@link FocusRevealer.revealDescendant}: delegates to {@link revealItem}.
+     * Overrides `Panel`'s own inherited implementation, which would scroll
+     * this band element — the band itself never scrolls; the clip does.
+     *
+     * @param target - The element to scroll into view.
+     */
+    revealDescendant(target: Handle): void {
+        this.revealItem(target);
+    }
 
     /**
      * Nudges the native scroll the minimum amount needed to bring the given item

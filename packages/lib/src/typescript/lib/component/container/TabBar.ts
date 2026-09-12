@@ -12,6 +12,7 @@ import { TabCloseButton } from "~/component/button/TabCloseButton.js";
 import { Button } from "~/component/button/Button.js";
 import { ScrollStrip } from "~/component/container/ScrollStrip.js";
 import { Event } from "~/core/Event.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
 import { ButtonGroup } from "~/overlay/ButtonGroup.js";
@@ -454,6 +455,9 @@ const _defaultTabBarOptions: Partial<TabBarOptions> = {
     // self-report), so this is only the bar's pre-layout self-size, kept at
     // the floor so it matches the unmeasured strip.
     preferredSize: { width: 0, height: STRIP_THICKNESS },
+    // A tab strip is a distinct chrome region — coarse spatial navigation
+    // should be able to jump into it directly, same as ToolBar/MenuBar.
+    navigationTarget: true,
 };
 
 /**
@@ -3303,6 +3307,8 @@ class TabBar extends Container<TabBarOptions> {
      * @param e - The keyboard event fired on the strip element.
      */
     private onToolbarKeyDown(e: KeyboardEvent): Event.ListenerResult {
+        if (SpatialNavigation.claimsKey(e)) { return; }
+
         if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') {
             return;
         }
@@ -3313,7 +3319,19 @@ class TabBar extends Container<TabBarOptions> {
             return;
         }
 
-        const activeIdx = this._entries.findIndex(entry => entry.id === this._activeId);
+        // A tab can hold DOM focus without being `_activeId` — SpatialNavigation
+        // moves focus onto a TabButton with a direct .focus() call that never
+        // runs through onTabPressed, so `_activeId` can lag behind wherever
+        // focus actually is. Step from whichever tab currently holds focus,
+        // falling back to the active tab only when focus is outside this strip.
+        const focused = DOM.source.getActiveElement();
+        const focusedIdx = focused !== null
+            ? this._entries.findIndex(entry => entry.button.getElement() === focused)
+            : -1;
+
+        const activeIdx = focusedIdx >= 0
+            ? focusedIdx
+            : this._entries.findIndex(entry => entry.id === this._activeId);
         const base = activeIdx >= 0 ? activeIdx : 0;
 
         const newIdx = e.key === 'ArrowRight'

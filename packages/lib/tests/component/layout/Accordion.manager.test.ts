@@ -5,6 +5,7 @@ import { Accordion } from '~/layout/Accordion';
 import { AccordionConstraints } from '~/layout/AccordionConstraints';
 import { UNBOUNDED } from '~/primitive/Size';
 import { DOM } from '~/core/DOM';
+import { SpatialNavigation } from '~/core/SpatialNavigation';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -119,6 +120,47 @@ describe('Accordion manager — sizing reports', () => {
 
         expect(acc.getPreferredSize()!.height).toBe(HEADER);
         expect(acc.getMinSize()!.height).toBe(HEADER);
+    });
+});
+
+// directional-panel-navigation plan, Expected Behaviour #24: SpatialNavigation's
+// chord claims ArrowDown/Up first, so the accordion's own header-focus step
+// must stand down entirely while it does.
+describe('Accordion manager — onHeaderKeyDown stands down while SpatialNavigation claims the key', () => {
+    function twoOpenHeaders(): Accordion {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(400, 600, acc);
+        host.addComponent(content({ width: 100, height: 50 }), constraints('A', true));
+        host.addComponent(content({ width: 100, height: 50 }), constraints('B', true));
+        host.doLayout();
+
+        return acc;
+    }
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('ArrowDown moves focus to the next header when the key is unclaimed', () => {
+        const acc = twoOpenHeaders();
+        const nextHeaderFocus = vi.spyOn((acc as any)._headers[1].getTitleButton(), 'focus');
+
+        (acc as any).onHeaderKeyDown({ key: 'ArrowDown' } as KeyboardEvent, 0);
+
+        expect(nextHeaderFocus).toHaveBeenCalled();
+    });
+
+    it('a claimed ArrowDown does not move header focus', () => {
+        const acc = twoOpenHeaders();
+        const nextHeaderFocus = vi.spyOn((acc as any)._headers[1].getTitleButton(), 'focus');
+
+        vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+
+        (acc as any).onHeaderKeyDown({ key: 'ArrowDown' } as KeyboardEvent, 0);
+
+        expect(nextHeaderFocus).not.toHaveBeenCalled();
     });
 });
 

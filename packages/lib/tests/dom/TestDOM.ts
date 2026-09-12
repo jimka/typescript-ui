@@ -1644,7 +1644,7 @@ export function makeEvent(
     init?: {
         clientX?: number; clientY?: number; key?: string; keyCode?: number; button?: number; buttons?: number;
         deltaX?: number; deltaY?: number; detail?: unknown; code?: string; ctrlKey?: boolean; altKey?: boolean; shiftKey?: boolean;
-        metaKey?: boolean; relatedTarget?: Handle; pointerId?: number;
+        metaKey?: boolean; relatedTarget?: Handle; pointerId?: number; repeat?: boolean;
     }
 ): Event {
     const sentinel: SentinelTarget = { [SENTINEL_TARGET]: target };
@@ -1670,6 +1670,7 @@ export function makeEvent(
         altKey:          init?.altKey ?? false,
         shiftKey:        init?.shiftKey ?? false,
         metaKey:         init?.metaKey ?? false,
+        repeat:          init?.repeat ?? false,
         stopPropagation: function (): void {},
         preventDefault:  function (): void {},
     };

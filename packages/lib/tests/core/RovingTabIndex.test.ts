@@ -33,6 +33,12 @@ describe('RovingTabIndex — add', () => {
         expect(g.getActiveIndex()).toBe(0);
         expect(g.getItems()).toEqual(items);
     });
+    it('marks every member with data-ts-ui-roving-member, active or not', () => {
+        const { items } = group(3);
+        for (const item of items) {
+            expect(item.getDataAttribute('ts-ui-roving-member')).toBe('true');
+        }
+    });
 });
 
 describe('RovingTabIndex — moveTo', () => {
@@ -123,5 +129,12 @@ describe('RovingTabIndex — remove', () => {
         expect(() => g.remove(stranger)).not.toThrow();
         expect(g.getItems()).toHaveLength(2);
         expect(g.getActiveIndex()).toBe(0);
+    });
+    it('clears data-ts-ui-roving-member from a removed item', () => {
+        const { g, items } = group(3);
+        g.remove(items[1]);
+        expect(items[1].getDataAttribute('ts-ui-roving-member')).toBeUndefined();
+        expect(items[0].getDataAttribute('ts-ui-roving-member')).toBe('true');
+        expect(items[2].getDataAttribute('ts-ui-roving-member')).toBe('true');
     });
 });

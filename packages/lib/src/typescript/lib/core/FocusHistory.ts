@@ -7,6 +7,7 @@ import type { Handle } from "~/core/DOM.js";
 import { LayerManager } from "~/core/LayerManager.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { FocusReveal } from "~/core/FocusReveal.js";
+import { isLiveHandle } from "~/core/Focusable.js";
 
 /**
  * A physical-key chord. `code` is a `KeyboardEvent.code` value (layout-independent).
@@ -81,18 +82,6 @@ let _back:    FocusHistoryKeyCombo = DEFAULT_BACK_COMBO;
 let _forward: FocusHistoryKeyCombo = DEFAULT_FORWARD_COMBO;
 
 /**
- * Whether `handle` still resolves to a connected element. A GC-collected weak
- * handle throws on resolve inside the DOM seam; that is treated as stale too.
- */
-function isLive(handle: Handle): boolean {
-    try {
-        return DOM.source.isConnected(handle);
-    } catch {
-        return false;
-    }
-}
-
-/**
  * Drops every stale (no-longer-connected) entry from the trail, keeping
  * `_index` pointed at the nearest surviving entry at or before its old
  * position (or -1 if nothing survived there). Run before every navigation
@@ -105,7 +94,7 @@ function pruneStale(): void {
     for (let i = 0; i < _entries.length; i++) {
         const handle = _entries[i];
 
-        if (isLive(handle)) {
+        if (isLiveHandle(handle)) {
             kept.push(handle);
 
             if (i <= _index) {

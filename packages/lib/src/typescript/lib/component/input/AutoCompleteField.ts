@@ -11,6 +11,7 @@ import { ListenerBag } from "~/core/ListenerBag.js";
 import { saturate } from "~/primitive/Size.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
 import { callable } from "~/core/Callable.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 
 // Focus ring highlighting the composite root whenever the inner TextField is
 // focused (the helper appends the focus pseudo-element).
@@ -523,6 +524,8 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
      * @param e - The keyboard event from the text field.
      */
     private onKeyDown(e: KeyboardEvent): Event.ListenerResult {
+        if (SpatialNavigation.claimsKey(e)) { return; }
+
         if (this._dropdown.isOpen()) {
             const forward = e.key === "ArrowDown"
                          || e.key === "ArrowUp"

@@ -5,6 +5,7 @@ import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { Event } from "~/core/Event.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { HBox } from "~/layout/HBox.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { VBox } from "~/layout/VBox.js";
@@ -83,12 +84,15 @@ const OVERFLOW_TRIGGER_GLYPH: string = "ellipsis-v";
  * User-overridable defaults forwarded to `super` via the options bag.
  */
 const _defaultToolBarOptions: Partial<ToolBarOptions> = {
-    orientation:     "horizontal",
-    compact:         true,
-    overflow:        "clip",
-    overflowSide:    "end",
-    flat:            true,
-    backgroundColor: "var(--ts-ui-toolbar-bg, rgb(245, 245, 245))",
+    orientation:      "horizontal",
+    compact:          true,
+    overflow:         "clip",
+    overflowSide:     "end",
+    flat:             true,
+    backgroundColor:  "var(--ts-ui-toolbar-bg, rgb(245, 245, 245))",
+    // A tool bar is a distinct chrome region — coarse spatial navigation
+    // should be able to jump into it directly.
+    navigationTarget: true,
 };
 
 /**
@@ -185,6 +189,8 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
         this.getAria().setTabIndex(0);
 
         this._onKeyDown = (e: KeyboardEvent): Event.ListenerResult => {
+            if (SpatialNavigation.claimsKey(e)) { return; }
+
             const isHoriz = this._orientation === "horizontal";
             const fwd     = isHoriz ? "ArrowRight" : "ArrowDown";
             const back    = isHoriz ? "ArrowLeft"  : "ArrowUp";
@@ -522,9 +528,9 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     }
 
     /**
-     * Appends a child component and, when its tab-index marks it focusable,
-     * registers it with the internal roving-tabindex group so Arrow keys
-     * cycle focus through it.
+     * Appends a child component and, when it has declared itself an
+     * interactive control, registers it with the internal roving-tabindex
+     * group so Arrow keys cycle focus through it.
      *
      * @param component - The child component to add.
      *
@@ -537,7 +543,14 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
             this._rovingTabIndex = new RovingTabIndex();
         }
 
-        if (component.getAria().getTabIndex() !== -1) {
+        // `getTabIndex() === 0` is the "I am a genuinely focusable control"
+        // declaration (every interactive component sets it explicitly; a
+        // decorative one, like a `Text` caption, never touches it and stays
+        // at the default `null`). Excluding anything else keeps decorative
+        // children out of the roving group entirely, rather than sweeping
+        // them in as an accidental tab stop merely because they never opted
+        // out with `-1`.
+        if (component.getAria().getTabIndex() === 0) {
             this._rovingTabIndex.add(component);
         }
 

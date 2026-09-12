@@ -538,6 +538,37 @@ describe('LayerManager', () => {
         });
     });
 
+    describe('hasActiveInputLayer', () => {
+        it('is false when the stack is empty', () => {
+            installTestDOM(CONFIG);
+
+            expect(LayerManager.hasActiveInputLayer()).toBe(false);
+        });
+
+        it('is true while a non-"manual" layer is registered, even underneath a "manual" one stacked on top', () => {
+            installTestDOM(CONFIG);
+
+            register(fakeLayer({ dismissMode: 'click-outside' }));
+
+            expect(LayerManager.hasActiveInputLayer()).toBe(true);
+
+            register(fakeLayer({ dismissMode: 'manual' }));
+
+            expect(LayerManager.hasActiveInputLayer()).toBe(true);
+        });
+
+        it('is false once the only non-"manual" layer unregisters, leaving only a "manual" one', () => {
+            installTestDOM(CONFIG);
+
+            const dropdown = register(fakeLayer({ dismissMode: 'click-outside' }));
+            register(fakeLayer({ dismissMode: 'manual' }));
+
+            LayerManager.unregister(dropdown);
+
+            expect(LayerManager.hasActiveInputLayer()).toBe(false);
+        });
+    });
+
     // ----- Documented offline gap (Tier-3 dismiss dispatch) -----
     //
     // The rest of the dismiss-mode dispatch the plan names (`handleOutside`,

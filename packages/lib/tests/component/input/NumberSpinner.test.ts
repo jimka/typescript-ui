@@ -4,9 +4,10 @@
 // jsdom and exposes its value math without a layout pass, so no TestDOM ritual
 // is needed here — every assertion reads a getter immediately after a
 // construct or setter call.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { NumberSpinner } from '~/component/input/NumberSpinner';
 import { DOM } from '~/core/DOM';
+import { SpatialNavigation } from '~/core/SpatialNavigation';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -66,6 +67,35 @@ describe('NumberSpinner setValue normalisation', () => {
         ns.setValue(999);
 
         expect(ns.getValue()).toBe(50);
+    });
+});
+
+// directional-panel-navigation plan, Expected Behaviour #26: SpatialNavigation's
+// chord claims ArrowUp/Down first, so the spinner's own value step must stand
+// down entirely while it does.
+describe('NumberSpinner onKeyDown — stands down while SpatialNavigation claims the key', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('ArrowUp steps the value up when the key is unclaimed', () => {
+        const ns = new NumberSpinner({ step: 5 });
+
+        (ns as any).onKeyDown({ key: 'ArrowUp', preventDefault: () => {} });
+
+        expect(ns.getValue()).toBe(5);
+    });
+
+    it('a claimed ArrowUp does not call applyValue or change the value', () => {
+        const ns = new NumberSpinner({ step: 5 });
+        const applyValue = vi.spyOn(ns as any, 'applyValue');
+
+        vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+
+        (ns as any).onKeyDown({ key: 'ArrowUp', preventDefault: () => {} });
+
+        expect(applyValue).not.toHaveBeenCalled();
+        expect(ns.getValue()).toBe(0);
     });
 });
 

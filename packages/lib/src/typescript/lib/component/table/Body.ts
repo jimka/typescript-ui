@@ -15,6 +15,7 @@ import type { CellNavigateDirection } from "~/component/table/cell/Cell.js";
 import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js";
 import { ComboEditor } from "~/component/table/cell/editor/Combo.js";
 import { Event } from "~/core/Event.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { VirtualRowView } from "~/component/shared/VirtualRowView.js";
 import { reduceModifierSelection } from "~/component/shared/reduceModifierSelection.js";
 import { selectionsEqual } from "~/component/shared/selectionsEqual.js";
@@ -2705,6 +2706,8 @@ class TableBody extends VirtualRowView<Row> {
      * the rest to `super.onKeyDown`. Not for consumer use.
      */
     protected onKeyDown(e: KeyboardEvent): Event.ListenerResult {
+        if (SpatialNavigation.claimsKey(e)) { return; }
+
         const records = this.getVisibleRecords();
 
         if (records.length === 0) {

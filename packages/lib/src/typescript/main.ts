@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Body, Component, DOM, FocusHistory } from '@jimka/typescript-ui/core';
+import { Body, Component, DOM, FocusHistory, SpatialNavigation } from '@jimka/typescript-ui/core';
 import { Tab } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { Router, type RouteParams } from '@jimka/typescript-ui/router';
@@ -43,6 +43,7 @@ DOM.source.getScrollBarWidth();
 (window as any).bench = Benchmark;
 
 FocusHistory.enable();
+SpatialNavigation.enable();
 
 let layoutManager = new Tab();
 Body.init({ layoutManager });
