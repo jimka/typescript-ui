@@ -90,7 +90,7 @@ export const ClassicTheme: Theme = defineTheme(BaseTheme, {
             dotColor          : 'rgb(255, 255, 255)',
         },
     },
-    gutter: { background: '#AAAAAA' },
+    gutter: { background: '#AAAAAA', hoverBackground: 'rgba(30, 100, 200, 0.3)' },
     collapse: {
         strip:  { background: '#AAAAAA', size: '18px' },
         button: { color: 'rgb(100,100,100)' },
