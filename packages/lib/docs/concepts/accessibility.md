@@ -117,6 +117,56 @@ overlay (where focus must not escape to the page behind it) — on `<body>`, the
 end of the traversal hands focus to the browser's own chrome, matching what a
 keyboard user expects when they reach the end of the page.
 
+## Spatial focus navigation
+
+[`SpatialNavigation`](/api/core/namespaces/SpatialNavigation) moves keyboard focus by *direction* rather than by document order, ranking every candidate's rectangle against the focused element's and jumping to the nearest one in the pressed direction. Two chords run the same geometric search over different candidate sets:
+
+- **`Ctrl+Alt`+arrow** (the **component** tier) moves to the nearest individual focusable element in that direction — a button, a field, a list row.
+- **`Ctrl+Shift`+arrow** (the **target** tier) moves to the nearest container marked as a navigation target, and hands focus to that container's remembered — or first — focusable descendant.
+
+It's opt-in, matching [`FocusHistory`](#keyboard-navigation-rovingtabindex)'s stance:
+
+```typescript
+import { SpatialNavigation } from '@jimka/typescript-ui/core';
+
+SpatialNavigation.enable();
+```
+
+Both chords are matched on `KeyboardEvent.code` so they work the same regardless of keyboard layout. Each tier's modifier set is independently configurable — the arrow keys themselves are fixed, and a same-modifier collision between the two configured sets favours the component tier:
+
+```typescript
+SpatialNavigation.configure({ componentModifiers: { alt: true } });
+```
+
+`ToolBar`, `MenuBar`, and `TabBar` are marked as navigation targets by
+default, since each is a self-contained chrome region a user would expect to
+jump straight into — nothing else is, and `Split` panes and `Border` regions
+are no longer navigable on their own. An app marks any other container it
+wants the coarse tier to reach with `setNavigationTarget(true)`:
+
+```typescript
+this.setNavigationTarget(true);
+```
+
+A marked target remembers which descendant last held focus and returns focus there on the way back in; a target visited for the first time lands on its first focusable element instead. Navigating into a collapsed region or a scrolled-away control expands or scrolls it into view first, so a chord never lands focus somewhere invisible.
+
+The service stands down while a transient overlay — an open dropdown, a modal dialog — is on top, so it never fights a combo-box list's own arrow handling or a dialog's focus trap. It keeps working between controls inside a non-modal window, since a window's dismiss mode doesn't count as blocking.
+
+Any new arrow-key handler you add to a component must guard itself against both chords, so the widget and the service don't act on the same keypress at once:
+
+```typescript
+import { Event } from '@jimka/typescript-ui/core';
+import { SpatialNavigation } from '@jimka/typescript-ui/core';
+
+Event.addListener(this, 'keydown', (e: KeyboardEvent): Event.ListenerResult => {
+    if (SpatialNavigation.claimsKey(e)) {
+        return; // the service owns this key; stand down.
+    }
+
+    // ...this widget's own arrow-key handling...
+});
+```
+
 ## Building an accessible custom widget
 
 A custom selectable list is the simplest non-trivial case:
@@ -182,7 +232,7 @@ status.getAria().setRole('status');
 
 ## Testing
 
-- **Keyboard-only** — unplug your mouse and verify every interaction works with `Tab`, `Shift+Tab`, arrow keys, and `Space`/`Enter`; if [Tab traversal](#tab-traversal) is enabled, also check `Escape` then `Tab` escapes any Tab-key owner (an embedded editor, a table in edit mode).
+- **Keyboard-only** — unplug your mouse and verify every interaction works with `Tab`, `Shift+Tab`, arrow keys, and `Space`/`Enter`; if [Tab traversal](#tab-traversal) is enabled, also check `Escape` then `Tab` escapes any Tab-key owner (an embedded editor, a table in edit mode); if [spatial focus navigation](#spatial-focus-navigation) is enabled, also check `Ctrl+Alt`+arrow and `Ctrl+Shift`+arrow move focus without disturbing a focused widget's own arrow-key behaviour.
 - **Screen reader** — VoiceOver (macOS) and NVDA (Windows) are the two readers most commonly tested against. Both should announce roles and labels for built-in components correctly.
 - **Browser dev tools** — Chrome's "Accessibility" panel under DevTools shows the computed accessibility tree for each element.
 
