@@ -1,13 +1,12 @@
 //
-// SCOPE: only the DOM-free surface of DragManager is exercised here. The
-// move / drop / drag-start choreography is UNTESTABLE on the offline harness —
-// the gesture is driven by `onSourceMouseDown` (a subtree mousedown listener)
-// plus viewport `mousemove` / `mouseup`, and the recording sink records
-// `dispatchEvent` without invoking any listener (TestDOM.ts:217); drop-target
-// hit-testing depends on `elementsFromPoint`, which returns `[]` offline
-// (TestDOM.ts:563). So drag-start, ghost follow, target enter/leave, and drop
-// cannot be reached. See the plan's ## Non-Goals. What stays assertable: the
-// idle-state queries and the registry add + teardown closure.
+// SCOPE: only the DOM-free surface of DragManager is exercised here — the
+// idle-state queries and the registry add + teardown closure. This file used
+// to claim the move / drop / drag-start choreography was UNTESTABLE offline
+// (dispatchEvent recording without invoking listeners, elementsFromPoint
+// returning `[]`); neither is true of the current TestDOM.ts. The full
+// gesture is reachable via `makeEvent` + `DOM.sink.dispatchEvent` against a
+// registered drop target — see DragManager.repeatedDragDisposal.test.ts,
+// DragManager.styleRuleDisposal.test.ts, and DragManager.pointerCoalescing.test.ts.
 import { describe, it, expect, afterEach } from 'vitest';
 import { DragManager } from '~/overlay/DragManager';
 import { Component } from '~/core/Component';
