@@ -27,8 +27,39 @@ const CONFIG = {
     themeVars:       {},
 };
 
-beforeEach(() => installTestDOM(CONFIG));
-afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+// Capture (rather than let the default sink drop) any requestAnimationFrame
+// registration, so afterEach below can drain Component's shared
+// afterNextLayout/scheduleLayout flush queue — a test that mounts an
+// autoScroll Panel can arm its resize-settle relay (Component.afterNextLayout)
+// as a side effect, and an undrained registration leaves Component's
+// module-level rafHandle non-null, silently swallowing the NEXT test's own
+// registration attempt. Tests that need to drive frames themselves still
+// install their own local override, which simply shadows this one.
+let frames: FrameRequestCallback[] = [];
+
+beforeEach(() => {
+    installTestDOM(CONFIG);
+    frames = [];
+    vi.spyOn(DOM.sink, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
+        frames.push(cb);
+
+        return frames.length;
+    });
+});
+
+afterEach(() => {
+    for (let guard = 0; guard < 10 && frames.length > 0; guard++) {
+        const pending = frames;
+        frames = [];
+
+        for (const cb of pending) {
+            cb(0);
+        }
+    }
+
+    vi.restoreAllMocks();
+    DOM.reset();
+});
 
 /** Stages the element geometry the overlay/native gutter paths read, defaulting every axis to "fits". */
 function stubMetrics(metrics: Partial<{
@@ -351,18 +382,28 @@ describe('Panel — overlay scrollbar default', () => {
         const spy = vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue(metrics(400));
 
         const panel = new _Panel({ autoScroll: 'auto' });
+        panel.setWidth(400);
+        panel.setHeight(300);
         panel.getElement(true);
         const inner = internals(panel)._overlayScrollElement!;
         panel.doLayout();
         drainFrames();
         expect(lastStyle(sink, inner, 'width')).toBe('388px');   // 400 − 12
 
+        // The panel's own committed width must move together with the mocked
+        // viewport: deferScrollMetricsWhileResizing's "did this pass's size
+        // change" check reads the panel's real getWidth(), never this stub's
+        // clientWidth. Leaving getWidth() unset (NaN) would never resolve
+        // that check to "unchanged" — NaN !== NaN is always true in JS — so
+        // the settle relay would re-extend forever instead of settling.
         spy.mockReturnValue(metrics(600));
+        panel.setWidth(600);
         panel.doLayout();
         drainFrames();
         expect(lastStyle(sink, inner, 'width')).toBe('588px');   // grow → tracks 600 − 12
 
         spy.mockReturnValue(metrics(200));
+        panel.setWidth(200);
         panel.doLayout();
         drainFrames();
         expect(lastStyle(sink, inner, 'width')).toBe('188px');   // shrink → tracks 200 − 12, not stuck large

@@ -1052,7 +1052,7 @@ class Markdown extends Component<MarkdownOptions> {
         // Markdown.setWidth calls measureContentHeight synchronously from
         // inside that window, so without this flush the scrollHeight read
         // below would measure against the previous frame's width. Same fix
-        // as Panel.doLayout's pre-measureScrollbarGutter flush.
+        // as Panel.doLayout's pre-remeasureScrollMetrics flush.
         this.commitElementStyle();
 
         this.flushPendingCodeUpgrades();

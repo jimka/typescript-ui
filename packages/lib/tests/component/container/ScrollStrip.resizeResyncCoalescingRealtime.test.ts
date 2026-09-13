@@ -77,7 +77,16 @@ beforeEach(() => {
     };
 });
 
-afterEach(() => DOM.reset());
+afterEach(() => {
+    // A still-armed settle handle leaves Component's shared afterNextLayout
+    // flush queued — cancel() only sets a flag (Component.afterNextLayout's
+    // contract), it doesn't deregister the frame. Drain it here so a test
+    // that ends mid-drag doesn't leave Component's module-level rafHandle
+    // non-null, which would make the next test's own scheduleResizeSettle()
+    // find a flush already "pending" and skip registering a fresh frame.
+    drainFrames();
+    DOM.reset();
+});
 
 /**
  * Fires exactly the frames currently queued, without draining any a callback
@@ -180,6 +189,36 @@ describe('ScrollStrip resize-resync coalescing under a realistic one-pass-per-fr
         // Drag stops here: no further frames arrive.
         const syncSpy = vi.spyOn((strip as any)._clip, 'syncScrollOffsets');
         const refreshSpy = vi.spyOn(strip, 'refreshArrows');
+
+        drainFrames();
+
+        expect(syncSpy).toHaveBeenCalledTimes(SYNC_PER_LIVE_PASS);
+        expect(refreshSpy).toHaveBeenCalledTimes(REFRESH_PER_LIVE_PASS);
+        expect((strip as any)._clip.getWidth()).toBe(lastWidth - 2 * SCROLL_ARROW_SIZE);
+        expect((strip as any)._resizeSettleHandle).toBeNull();
+    });
+
+    it('stays withheld through a much longer drag (35 frames), not just the first few', () => {
+        // The single-hop settle this file's header comment describes raced
+        // and always lost to the drag's own per-frame pass, so it never
+        // withheld anything — a defect a short burst wouldn't distinguish
+        // from a correct two-hop relay that happened to catch up early. This
+        // drives a burst well past the two frames the relay itself needs,
+        // guarding against a regression to that single-hop shape specifically.
+        const strip = buildOverflowingStrip();
+        const lastWidth = 165;
+
+        realDragFrame(strip, 200);
+
+        const syncSpy = vi.spyOn((strip as any)._clip, 'syncScrollOffsets');
+        const refreshSpy = vi.spyOn(strip, 'refreshArrows');
+
+        for (let frame = 2; frame <= 35; frame++) {
+            advanceDragFrame(strip, 200 - frame); // last iteration lands at lastWidth (165)
+        }
+
+        expect(syncSpy).not.toHaveBeenCalled();
+        expect(refreshSpy).not.toHaveBeenCalled();
 
         drainFrames();
 

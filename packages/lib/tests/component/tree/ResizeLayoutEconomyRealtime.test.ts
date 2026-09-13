@@ -64,6 +64,14 @@ afterEach(() => {
     for (const tree of trees) {
         tree.dispose();
     }
+
+    // A still-armed settle handle leaves Component's shared afterNextLayout
+    // flush queued — cancel() only sets a flag (Component.afterNextLayout's
+    // contract), it doesn't deregister the frame. Drain it here so a test
+    // that ends mid-drag doesn't leave Component's module-level rafHandle
+    // non-null, which would make the next test's own scheduleResizeSettle()
+    // find a flush already "pending" and skip registering a fresh frame.
+    drainFrames();
     DOM.reset();
 });
 
@@ -191,6 +199,32 @@ describe('Tree resize-relayout coalescing under a realistic one-pass-per-frame d
 
         const windowSize = displayedRows(tree).length;
         expect(totalCalls(spies)).toBe(windowSize);
-        expect((tree as unknown as { _resizeSettleHandle: number | null })._resizeSettleHandle).toBeNull();
+        expect((tree as unknown as { _resizeSettleHandle: { cancel(): void } | null })._resizeSettleHandle).toBeNull();
+    });
+
+    it('stays withheld through a much longer drag (35 frames), not just the first few', () => {
+        // The single-hop settle this file's header comment describes raced and
+        // always lost to the drag's own per-frame pass, so it never withheld
+        // anything — a defect a short burst wouldn't distinguish from a
+        // correct two-hop relay that happened to catch up early. This drives a
+        // burst well past the two frames the relay itself needs, guarding
+        // against a regression to that single-hop shape specifically.
+        const tree = makeSettledTree(20, 300, 120);
+
+        realDragFrame(tree, 280);
+
+        const spies = spyOnLayoutChildren(tree);
+
+        for (let frame = 2; frame <= 35; frame++) {
+            advanceDragFrame(tree, 280 - frame);
+        }
+
+        expect(totalCalls(spies)).toBe(0);
+
+        drainFrames();
+
+        const windowSize = displayedRows(tree).length;
+        expect(totalCalls(spies)).toBe(windowSize);
+        expect((tree as unknown as { _resizeSettleHandle: { cancel(): void } | null })._resizeSettleHandle).toBeNull();
     });
 });

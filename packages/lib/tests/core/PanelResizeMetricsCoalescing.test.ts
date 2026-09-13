@@ -3,21 +3,19 @@
 // Pins Panel's resize-metrics coalescing: while this panel's own committed
 // width/height is changing every pass (a live external resize, e.g. a Split
 // gutter drag resizing this panel), doLayout()'s post-layout scroll-metrics
-// remeasure (resizeScrollShadowOverlay + measureScrollbarGutter +
-// updateScrollShadows) is withheld together after the first size change of a
-// burst and caught up in one pass once the burst goes quiet — the same
-// two-hop settle-relay shape ScrollStrip and VirtualRowView already use for
-// their own resize bursts (see the plan). Assertions use a call-count DELTA
-// against `DOM.source.getScrollMetrics`, not an absolute count, since the
-// absolute count varies with scrollbarStyle/scrollShadows/autoScroll (see the
-// plan's Internal Structure table) while the delta claim — zero during a
-// withheld pass, one live-pass-worth at catch-up — holds for every
-// configuration.
+// remeasure (remeasureScrollMetrics) is withheld together after the first
+// size change of a burst and caught up in one pass once the burst goes
+// quiet — the same two-hop settle-relay shape ScrollStrip and VirtualRowView
+// already use for their own resize bursts (see the plan). Assertions use a
+// call-count DELTA against `DOM.source.getScrollMetrics`, not an absolute
+// count, since the absolute count varies with scrollbarStyle/scrollShadows/
+// autoScroll (see the plan's Internal Structure table) while the delta claim
+// — zero during a withheld pass, one live-pass-worth at catch-up — holds for
+// every configuration.
 //
 // Mirrors PanelOverlayScrollbar.test.ts's stubMetrics()/internals() idiom and
 // ScrollStrip.resizeResyncCoalescing.test.ts's Map-keyed frame-capture
-// harness (needed, unlike an array, so cancelAnimationFrame genuinely drops a
-// callback — required by the teardown case).
+// harness.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { _Panel } from '~/core/Panel';
 import { DOM } from '~/core/DOM';
@@ -42,10 +40,10 @@ const S2W = 300; const S2H = 200;
 const S3W = 250; const S3H = 150;
 
 // The offline sink drops requestAnimationFrame/cancelAnimationFrame; capture
-// them so the settle relay can be driven and cancelled explicitly, keyed by
-// handle so a cancelled frame is genuinely removed rather than merely
-// ignored (needed for the teardown case). Wrapped in a spy so "never arms a
-// settle frame" (the autoScroll: "none" case) can assert zero invocations.
+// them so the settle relay (Component.afterNextLayout — see Panel.ts's
+// scheduleScrollMetricsSettle) can be driven to completion explicitly.
+// Wrapped in a spy so "never arms a settle frame" (the autoScroll: "none"
+// case) can assert zero invocations.
 let nextFrameHandle = 1;
 let frames: Map<number, FrameRequestCallback> = new Map();
 let rafSpy: ReturnType<typeof vi.fn>;
@@ -67,7 +65,18 @@ beforeEach(() => {
     };
 });
 
-afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+afterEach(() => {
+    // A still-armed settle handle leaves Component's shared afterNextLayout
+    // flush queued — cancel() only sets a flag (Component.afterNextLayout's
+    // contract), it doesn't deregister the frame. Drain it here so a test
+    // that ends mid-burst doesn't leave Component's module-level rafHandle
+    // non-null, which would make the next test's own
+    // scheduleScrollMetricsSettle() find a flush already "pending" and skip
+    // registering a fresh frame.
+    drainFrames();
+    vi.restoreAllMocks();
+    DOM.reset();
+});
 
 /** Stages the element geometry the three helpers read, defaulting every axis to "fits" (no overflow). */
 function stubMetrics(metrics: Partial<{
@@ -127,7 +136,7 @@ type ScrollMetricsInternals = {
     _lastPanelHeight: number;
     _scrollMetricsOwed: boolean;
     _panelSizeMoved: boolean;
-    _scrollMetricsSettleHandle: number | null;
+    _scrollMetricsSettleHandle: { cancel(): void } | null;
     _overlayScrollElement: Handle | null;
 };
 
@@ -136,8 +145,8 @@ function internals(panel: _Panel): ScrollMetricsInternals {
 }
 
 /** Builds and mounts a scrolling panel of the given mode, sized to S1. */
-function mountPanel(autoScroll: 'auto' | 'both'): _Panel {
-    const panel = new _Panel({ autoScroll });
+function mountPanel(autoScroll: 'auto' | 'both', scrollbarStyle?: 'overlay' | 'native'): _Panel {
+    const panel = new _Panel({ autoScroll, ...(scrollbarStyle ? { scrollbarStyle } : {}) });
 
     panel.setWidth(S1W);
     panel.setHeight(S1H);
@@ -156,6 +165,70 @@ describe('Panel resize-metrics coalescing', () => {
 
         const oneLivePass = spy.mock.calls.length - before;
         expect(oneLivePass).toBeGreaterThan(0);
+    });
+
+    it('calls getScrollMetrics exactly twice per live pass in the default configuration (overlay, shadows on)', () => {
+        // Down from 5 before this plan's restructuring — see the plan's
+        // Internal Structure read-count table.
+        const spy = stubMetrics();
+        const panel = mountPanel('auto');
+        const before = spy.mock.calls.length;
+
+        panel.doLayout();
+
+        expect(spy.mock.calls.length - before).toBe(2);
+    });
+
+    it('calls getScrollMetrics exactly twice per live pass with native scrollbars and shadows on', () => {
+        // Down from 4 before this plan's restructuring — see the plan's
+        // Internal Structure read-count table.
+        const spy = stubMetrics();
+        const panel = mountPanel('auto', 'native');
+        const before = spy.mock.calls.length;
+
+        panel.doLayout();
+
+        expect(spy.mock.calls.length - before).toBe(2);
+    });
+
+    it('clears an over-reserved native gutter on the same pass a shrink brings content back within the viewport', () => {
+        // The specific bug the write-before-read ordering in
+        // remeasureScrollMetrics's native branch exists to avoid (see the
+        // plan's Architecture Decisions): the shadow overlay is this panel's
+        // only in-flow child, so a stale overlay height floors the panel's
+        // own scrollHeight. Sequencing two distinct getScrollMetrics returns
+        // — an "avail" read that still looks overflowing, then a
+        // post-overlay-resize read that fits — pins that the gutter decision
+        // is based on the SECOND (fresh) read, not the first: a regression
+        // that reused `avail` instead of taking the fresh read (or read
+        // before writing the overlay's new size) would still see the stale
+        // overflow and leave the gutter reserved.
+        const panel = mountPanel('auto', 'native');
+
+        // A prior, now-stale pass left a gutter reserved for overflow that no
+        // longer exists once the content shrinks back within the viewport.
+        // `right` is the vertical-scrollbar gutter (Y-axis overflow, via
+        // scrollHeight — see resolveNativeGutter); `bottom` is the horizontal
+        // one (X-axis, via scrollWidth), unused by this scenario.
+        (panel as unknown as { _scrollbarGutter: { right: number; bottom: number } })
+            ._scrollbarGutter = { right: 15, bottom: 0 };
+
+        const spy = vi.spyOn(DOM.source, 'getScrollMetrics')
+            .mockReturnValueOnce({ // avail: this panel's own client box
+                scrollTop: 0, scrollLeft: 0,
+                scrollWidth: S1W, scrollHeight: S1H + 200, // still looks overflowing
+                clientWidth: S1W, clientHeight: S1H,
+            })
+            .mockReturnValueOnce({ // shadowMetrics: fresh read, post-overlay-resize — content fits
+                scrollTop: 0, scrollLeft: 0,
+                scrollWidth: S1W, scrollHeight: S1H,
+                clientWidth: S1W, clientHeight: S1H,
+            });
+
+        panel.doLayout();
+
+        expect(spy).toHaveBeenCalledTimes(2);
+        expect((panel as unknown as { _scrollbarGutter: { right: number; bottom: number } })._scrollbarGutter.right).toBe(0);
     });
 
     it('withholds the remeasure for a second size change in the same burst', () => {
@@ -406,7 +479,7 @@ describe('Panel resize-metrics coalescing', () => {
     });
 
     it('cancels an armed settle frame on teardown, running no callback', () => {
-        stubMetrics();
+        const spy = stubMetrics();
         const panel = mountPanel('auto');
 
         panel.doLayout();
@@ -414,14 +487,20 @@ describe('Panel resize-metrics coalescing', () => {
         panel.setHeight(S2H);
         panel.doLayout(); // settle armed, withheld state
 
-        const handle = internals(panel)._scrollMetricsSettleHandle;
+        expect(internals(panel)._scrollMetricsSettleHandle).not.toBeNull();
 
-        expect(handle).not.toBeNull();
-        expect(frames.has(handle as number)).toBe(true);
+        const before = spy.mock.calls.length;
 
         panel.dispose();
 
-        expect(frames.has(handle as number)).toBe(false); // cancelled, not merely left to no-op
+        expect(internals(panel)._scrollMetricsSettleHandle).toBeNull();
+
+        // A cancelled handle leaves the underlying frame queued, but inert
+        // (Component.afterNextLayout's cancel() sets a flag; it does not
+        // deregister the frame) — draining without throwing, and confirming
+        // no further getScrollMetrics call happened, is what proves the
+        // cancellation took effect.
         expect(() => drainFrames()).not.toThrow();
+        expect(spy.mock.calls.length).toBe(before);
     });
 });
