@@ -11,6 +11,10 @@
  * of truth. Neither owner's state lives here; each caller supplies its own
  * live values, bounds, and grouping.
  *
+ * Split's two-neighbor gutter drag is deliberately not a third caller here —
+ * see Split.onDrag's own remarks for why its closed-form clamp already
+ * covers that case without this file's N-way machinery.
+ *
  * @category Core
  */
 

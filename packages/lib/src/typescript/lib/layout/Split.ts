@@ -1026,6 +1026,15 @@ class Split extends LayoutManager implements FocusRevealer {
      * stays at its floor until the pointer returns past the boundary
      * coordinate. The stored sizes for both affected panels are updated so the
      * next `doLayout` call preserves the user-defined split ratio.
+     *
+     * This clamp is deliberately not core/DragChain.ts's N-way chainRoom /
+     * distributeDragChain mechanism, which Accordion's gutter drag and Table's
+     * column-resize drag share: a Split boundary always has exactly two
+     * neighbors, so there is no chain to fan out across, and recomputing the
+     * clamped size from the fixed drag origin on every move already keeps the
+     * pointer glued to the gutter on reversal — a property that mechanism's
+     * incremental per-move model has to rebuild by hand with a tracked
+     * last-pointer field.
      */
     onDrag(container: Component, gutter: SplitGutter, position: number) {
         let gutterIdx = this._gutters.indexOf(gutter);
