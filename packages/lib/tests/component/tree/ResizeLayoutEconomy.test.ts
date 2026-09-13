@@ -25,12 +25,13 @@ const CONFIG = {
     themeVars:       {},
 };
 
-// The settle mechanism runs on an animation frame, and the offline sink drops
+// The settle mechanism runs on an animation frame (via Component.afterNextLayout
+// — see VirtualRowView.ts's scheduleResizeSettle), and the offline sink drops
 // `requestAnimationFrame` outright — capture frames so a burst can be driven
 // to completion. Unlike the read-only fake other suites use (see
-// `ScrollRebindLayoutEconomy.test.ts`), the teardown case here (case 8) needs
-// a cancelled frame to actually stop running, so callbacks are held in a Map
-// keyed by an incrementing handle that `cancelAnimationFrame` can delete from.
+// `ScrollRebindLayoutEconomy.test.ts`), callbacks are held in a Map keyed by
+// an incrementing handle so a specific frame's registration can be told apart
+// from another's.
 let frames: Map<number, FrameRequestCallback> = new Map();
 let nextHandle = 0;
 let trees: _Tree[] = [];
@@ -54,6 +55,14 @@ afterEach(() => {
     for (const tree of trees) {
         tree.dispose();
     }
+
+    // A still-armed settle handle leaves Component's shared afterNextLayout
+    // flush queued — cancel() only sets a flag (Component.afterNextLayout's
+    // contract), it doesn't deregister the frame. Drain it here so a test
+    // that ends mid-burst doesn't leave Component's module-level rafHandle
+    // non-null, which would make the next test's own scheduleResizeSettle()
+    // find a flush already "pending" and skip registering a fresh frame.
+    runFrames();
     DOM.reset();
 });
 
@@ -77,9 +86,9 @@ function runFrames(): void {
  * Drains exactly the frames pending right now, without following a callback's
  * own re-arm into a further generation — lets a test observe the settle
  * relay's intermediate state between individual animation frames (the relay
- * is two hops deep: see `VirtualRowView.ts`'s `scheduleResizeSettle`/
- * `armResizeSettleCheck` remarks), which {@link runFrames}'s look-until-empty
- * loop would otherwise collapse into one settled end state.
+ * is two hops deep: see `VirtualRowView.ts`'s `scheduleResizeSettle` remarks),
+ * which {@link runFrames}'s look-until-empty loop would otherwise collapse
+ * into one settled end state.
  */
 function runOnePendingFrameBatch(): void {
     const pending = frames;
@@ -281,10 +290,10 @@ describe('Tree — resize-relayout economy', () => {
     });
 
     it('extends the burst when a width change lands between the settle relay\'s two hops', () => {
-        // The settle relay is two requestAnimationFrame hops deep (see
-        // VirtualRowView.ts's scheduleResizeSettle/armResizeSettleCheck
-        // remarks): the first hop only re-arms for one more frame, the second
-        // is where flushResizeSettle actually decides whether to catch up.
+        // The settle relay is two afterNextLayout hops deep (see
+        // VirtualRowView.ts's scheduleResizeSettle remarks): the first hop
+        // (a decoy) only re-arms for one more frame, the second is where
+        // flushResizeSettle actually decides whether to catch up.
         // This pins the mechanism that makes that decision correctly extend
         // the burst — via the private _rowWidthMoved/_resizeSettleHandle
         // fields directly, rather than inferring it from call counts alone:
@@ -307,7 +316,7 @@ describe('Tree — resize-relayout economy', () => {
         runOnePendingFrameBatch(); // relay's second hop: sees 360's change, re-arms instead of catching up
 
         expect((tree as unknown as { _rowWidthMoved: boolean })._rowWidthMoved).toBe(false); // 360's contribution consumed
-        expect((tree as unknown as { _resizeSettleHandle: number | null })._resizeSettleHandle).not.toBeNull(); // extended, not settled
+        expect((tree as unknown as { _resizeSettleHandle: { cancel(): void } | null })._resizeSettleHandle).not.toBeNull(); // extended, not settled
         expect(totalCalls(spies)).toBe(0);
 
         tree.setWidth(380);
@@ -318,7 +327,7 @@ describe('Tree — resize-relayout economy', () => {
 
         const windowSize = displayedRows(tree).length;
         expect(totalCalls(spies)).toBe(windowSize);
-        expect((tree as unknown as { _resizeSettleHandle: number | null })._resizeSettleHandle).toBeNull();
+        expect((tree as unknown as { _resizeSettleHandle: { cancel(): void } | null })._resizeSettleHandle).toBeNull();
     });
 
     it('a slot rebound during a withheld pass still lays its children out, and no already-bound slot does', () => {
@@ -392,10 +401,11 @@ describe('Tree — resize-relayout economy', () => {
         trees = trees.filter(t => t !== tree);
         tree.dispose();
 
-        // The armed frame is actually gone from the fake sink's own bookkeeping
-        // — not merely inert — confirming `destructor` reached `cancelAnimationFrame`.
-        expect(frames.size).toBe(0);
-
+        // A cancelled handle leaves the underlying frame queued, but inert
+        // (Component.afterNextLayout's cancel() sets a flag; it does not
+        // deregister the frame from Component's shared flush) — so the
+        // remaining assertions, not an empty `frames` map, are what prove the
+        // cancelled callback never runs.
         expect(() => runFrames()).not.toThrow();
         expect(renderWindowSpy).not.toHaveBeenCalled();
         expect(totalCalls(layoutSpies)).toBe(0);

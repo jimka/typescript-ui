@@ -61,9 +61,9 @@ const SYNC_PER_LIVE_PASS = 2;
 const REFRESH_PER_LIVE_PASS = 1;
 
 // The offline sink drops requestAnimationFrame/cancelAnimationFrame (see
-// DOMSink); capture them so the settle mechanism can be driven and cancelled
-// explicitly, keyed by handle so a cancelled frame is genuinely removed
-// rather than merely ignored (needed for the teardown case).
+// DOMSink); capture them so the settle mechanism (now routed through
+// Component.afterNextLayout — see ScrollStrip.ts's scheduleResizeSettle) can
+// be driven to completion explicitly.
 let nextFrameHandle = 1;
 let frames: Map<number, FrameRequestCallback> = new Map();
 
@@ -82,7 +82,16 @@ beforeEach(() => {
     };
 });
 
-afterEach(() => DOM.reset());
+afterEach(() => {
+    // A still-armed settle handle leaves Component's shared afterNextLayout
+    // flush queued — cancel() only sets a flag (Component.afterNextLayout's
+    // contract), it doesn't deregister the frame. Drain it here so a test
+    // that ends mid-burst doesn't leave Component's module-level rafHandle
+    // non-null, which would make the next test's own scheduleResizeSettle()
+    // find a flush already "pending" and skip registering a fresh frame.
+    drainFrames();
+    DOM.reset();
+});
 
 /**
  * Runs exactly the currently-queued frames once, without draining any a
@@ -167,13 +176,13 @@ describe('ScrollStrip resize-resync coalescing', () => {
         // The very first layoutItems() call always arms one settle frame (see
         // the plan's "Potential Challenges") — harmless, since this pass's own
         // resync already happened live and nothing is owed at settle. Checked
-        // via the strip's own handle field, not the shared frame queue's raw
-        // size, since Panel's own unrelated auto-scroll bookkeeping can queue
-        // frames of its own into the same offline sink.
+        // via the strip's own handle field (no longer a raw frame-queue key —
+        // see Component.afterNextLayout) plus the underlying sink genuinely
+        // having a frame queued.
         const handle = (strip as any)._resizeSettleHandle;
 
         expect(handle).not.toBeNull();
-        expect(frames.has(handle)).toBe(true);
+        expect(frames.size).toBeGreaterThan(0);
     });
 
     it('withholds the resync for a second extent change in the same burst', () => {
@@ -220,9 +229,9 @@ describe('ScrollStrip resize-resync coalescing', () => {
     });
 
     it('extends the burst when a change lands between the settle relay\'s two hops', () => {
-        // The settle relay is two requestAnimationFrame hops deep (see
-        // ScrollStrip.ts's scheduleResizeSettle/armResizeSettleCheck remarks):
-        // the first hop only re-arms for one more frame, the second is where
+        // The settle relay is two afterNextLayout hops deep (see
+        // ScrollStrip.ts's scheduleResizeSettle remarks): the first hop (a
+        // decoy) only re-arms for one more frame, the second is where
         // flushResizeSettle actually decides whether to catch up. This test
         // pins the mechanism that makes that decision correctly extend the
         // burst — via the private _clipExtentMoved/_resizeSettleHandle fields
@@ -312,16 +321,22 @@ describe('ScrollStrip resize-resync coalescing', () => {
         layoutAt(strip, W1);
         layoutAt(strip, W2); // settle armed, withheld state
 
-        // Checked by the specific handle, not the shared queue's raw size —
-        // see the mount test above for why.
-        const handle = (strip as any)._resizeSettleHandle;
+        expect((strip as any)._resizeSettleHandle).not.toBeNull();
 
-        expect(handle).not.toBeNull();
-        expect(frames.has(handle)).toBe(true);
+        const syncSpy = vi.spyOn((strip as any)._clip, 'syncScrollOffsets');
+        const refreshSpy = vi.spyOn(strip, 'refreshArrows');
 
         strip.dispose();
 
-        expect(frames.has(handle)).toBe(false); // cancelled, not merely left to no-op
+        expect((strip as any)._resizeSettleHandle).toBeNull();
+
+        // A cancelled handle leaves the underlying frame queued, but inert
+        // (Component.afterNextLayout's cancel() sets a flag; it does not
+        // deregister the frame) — draining without throwing, and confirming
+        // the withheld work never ran, is what proves the cancellation took
+        // effect.
         expect(() => drainFrames()).not.toThrow();
+        expect(syncSpy).not.toHaveBeenCalled();
+        expect(refreshSpy).not.toHaveBeenCalled();
     });
 });

@@ -428,6 +428,20 @@ page resets to empty.
   position and size, and the edge shadow all briefly lag a fast resize
   instead, catching up once it settles. No consumer action is needed.
 
+- **A scrolling `Panel`'s post-layout scroll-metrics remeasure now reads
+  live scrollbar/scroll-shadow geometry from the DOM at most twice per pass,
+  down from up to five under the default `scrollbarStyle: "overlay"` (two,
+  down from four, under `scrollbarStyle: "native"`).** `resizeScrollShadowOverlay`,
+  `measureScrollbarGutter`, and `updateScrollShadows` each read a live
+  `scrollWidth`/`scrollHeight`, and several of those reads restated data an
+  earlier one in the same pass had already measured — a redundancy that cost
+  a forced synchronous layout flush each time, on every live pass, not only
+  during a resize burst. The remeasure is now a single read-then-apply pass
+  (the new `Panel.remeasureScrollMetrics`, replacing the retired
+  `measureScrollbarGutter`) that resolves the same gutter, overlay size, and
+  shadow-edge values from one measurement instead of several. No consumer
+  action is needed.
+
 - **Dragging a `Split` gutter that resizes a pane holding a `Tree` no longer
   re-lays out every visible row's children on every animation frame of the
   drag.** A live resize changes the row width on each frame, which made

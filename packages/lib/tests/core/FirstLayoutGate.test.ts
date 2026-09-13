@@ -62,10 +62,19 @@ describe('FirstLayoutGate', () => {
 
     // Release before draining: a test that left the gate armed would otherwise
     // hold its own cleanup frame, leaving the module-level rafHandle set and
-    // blocking the next test from capturing a frame.
+    // blocking the next test from capturing a frame. Drain to quiescence
+    // (not a single flushFrame()) because a settle relay armed mid-test
+    // (Component.afterNextLayout, e.g. Tree/Table's own resize-settle relay)
+    // resolves over two hops — a callback registered from within a callback
+    // defers to the following frame — so one flush can leave the second hop
+    // still queued, which would otherwise leak into the next test.
     afterEach(() => {
         releaseFirstLayout();
-        flushFrame();
+
+        for (let guard = 0; guard < 10 && frames.length > 0; guard++) {
+            flushFrame();
+        }
+
         vi.restoreAllMocks();
         vi.useRealTimers();
         DOM.reset();

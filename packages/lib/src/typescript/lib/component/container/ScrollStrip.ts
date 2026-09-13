@@ -198,9 +198,9 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
     // was armed.
     private _clipExtentMoved: boolean = false;
 
-    // The animation frame armed to end a resize burst, or null when none is in
-    // flight.
-    private _resizeSettleHandle: number | null = null;
+    // The afterNextLayout relay armed to end a resize burst, or null when none
+    // is in flight.
+    private _resizeSettleHandle: { cancel(): void } | null = null;
 
     // Set by layoutItems on every pass; layoutArrows reads it so the native
     // scroll resync and the arrow-enablement read defer and catch up together.
@@ -578,42 +578,40 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
     }
 
     /**
-     * Arms the two-frame relay that ends a resize burst: {@link
-     * armResizeSettleCheck} on the next frame, {@link flushResizeSettle} on
-     * the one after. Armed once and left alone while further extent changes
-     * arrive, matching `Split.scheduleDrag`.
+     * Arms the two-frame relay that ends a resize burst: a decoy
+     * `Component.afterNextLayout` callback that does nothing but register a
+     * second one on the *following* frame, which is what {@link
+     * flushResizeSettle} runs from. Armed once and left alone while further
+     * extent changes arrive, matching `Split.scheduleDrag`.
      *
-     * @remarks A single `requestAnimationFrame` here is not enough. The owner
-     * driving this strip's resize (`Split.flushDrag`, itself already coalesced
-     * to one call per frame) also runs its own per-frame layout pass from a
-     * `requestAnimationFrame` callback, registered by whichever `mousemove`
-     * arrives after the previous frame finishes — chronologically *after*
-     * this method's own callback for the same upcoming frame, which is
-     * registered synchronously, still inside the *current* frame's pass. Per
-     * frame, callbacks run in registration order, so a single relay hop
-     * always fires and resolves *before* that frame's real layout pass runs,
-     * making `_resizeSettleHandle` read as `null` again just before the pass
-     * that needed to see it armed — the settle races, and always wins, the
-     * very pass it exists to detect. Two hops fixes this: the first
-     * (`armResizeSettleCheck`) only relays the handle to a second frame,
-     * costing nothing but keeping `_resizeSettleHandle` continuously non-null
-     * across the boundary; the second (`flushResizeSettle`) then checks
+     * @remarks A single `afterNextLayout` call here is not enough. The owner
+     * driving this strip's resize (`Split.flushDrag`, itself already
+     * coalesced to one call per frame) calls `doLayout()` directly from its
+     * own independently-scheduled `requestAnimationFrame`, registered by
+     * whichever `mousemove` arrives after the previous frame finishes —
+     * chronologically *after* this method's own registration for the same
+     * upcoming frame, made synchronously inside the *current* frame's pass.
+     * `afterNextLayout`'s ordering guarantee is scoped to `Component`'s own
+     * coalesced flush and says nothing about `Split`'s separate registration,
+     * so a single relay hop still always fires and resolves *before* that
+     * frame's real layout pass runs, making `_resizeSettleHandle` read as
+     * `null` again just before the pass that needed to see it armed — the
+     * settle races, and always wins, the very pass it exists to detect. Two
+     * hops fixes this: the decoy, nested here, only relays the handle to a
+     * second frame, costing nothing but keeping `_resizeSettleHandle`
+     * continuously non-null across the boundary — a callback registered from
+     * inside an `afterNextLayout` callback defers to the *following* frame
+     * rather than running re-entrantly within the same drain
+     * (`Component.afterNextLayout`'s own doc comment; confirmed by
+     * `AfterNextLayout.test.ts`). {@link flushResizeSettle} then checks
      * `_clipExtentMoved`, which — set by any pass over the *prior* frame, an
-     * entirely separate earlier `requestAnimationFrame` batch — is never
-     * racing anything by the time this one reads it.
+     * entirely separate earlier frame batch — is never racing anything by the
+     * time this one reads it.
      */
     private scheduleResizeSettle(): void {
-        this._resizeSettleHandle = DOM.sink.requestAnimationFrame(() => this.armResizeSettleCheck());
-    }
-
-    /**
-     * The settle relay's first hop: merely re-arms for one more frame,
-     * keeping {@link _resizeSettleHandle} continuously non-null across the
-     * frame boundary so this frame's still-pending real layout pass (see
-     * {@link scheduleResizeSettle}'s remarks) reads it as armed and withholds.
-     */
-    private armResizeSettleCheck(): void {
-        this._resizeSettleHandle = DOM.sink.requestAnimationFrame(() => this.flushResizeSettle());
+        this._resizeSettleHandle = Component.afterNextLayout(() => {
+            this._resizeSettleHandle = Component.afterNextLayout(() => this.flushResizeSettle());
+        });
     }
 
     /**
@@ -1020,10 +1018,8 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
      * never fires against a disposed clip.
      */
     protected destructor(): void {
-        if (this._resizeSettleHandle !== null) {
-            DOM.sink.cancelAnimationFrame(this._resizeSettleHandle);
-            this._resizeSettleHandle = null;
-        }
+        this._resizeSettleHandle?.cancel();
+        this._resizeSettleHandle = null;
 
         this._clip.dispose();
         this._leadArrow?.dispose();

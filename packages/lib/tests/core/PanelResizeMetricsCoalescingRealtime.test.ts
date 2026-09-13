@@ -55,7 +55,18 @@ beforeEach(() => {
     };
 });
 
-afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+afterEach(() => {
+    // A still-armed settle handle leaves Component's shared afterNextLayout
+    // flush queued — cancel() only sets a flag (Component.afterNextLayout's
+    // contract), it doesn't deregister the frame. Drain it here so a test
+    // that ends mid-drag doesn't leave Component's module-level rafHandle
+    // non-null, which would make the next test's own
+    // scheduleScrollMetricsSettle() find a flush already "pending" and skip
+    // registering a fresh frame.
+    drainFrames();
+    vi.restoreAllMocks();
+    DOM.reset();
+});
 
 /** Stages the element geometry the three helpers read, defaulting every axis to "fits" (no overflow). */
 function stubMetrics() {
@@ -87,7 +98,7 @@ function drainFrames(): void {
 }
 
 /** Narrow shape reaching the settle-relay handle without `any`. */
-type ScrollMetricsInternals = { _scrollMetricsSettleHandle: number | null };
+type ScrollMetricsInternals = { _scrollMetricsSettleHandle: { cancel(): void } | null };
 
 function internals(panel: _Panel): ScrollMetricsInternals {
     return panel as unknown as ScrollMetricsInternals;
@@ -166,6 +177,35 @@ describe('Panel resize-metrics coalescing under a realistic one-pass-per-frame d
         drainFrames();
 
         expect(spy.mock.calls.length - before).toBe(oneLivePass);
+        expect(panel.getWidth()).toBe(lastWidth);
+        expect(internals(panel)._scrollMetricsSettleHandle).toBeNull();
+    });
+
+    it('stays withheld through a much longer drag (35 frames), not just the first few', () => {
+        // The single-hop settle this file's header comment describes raced
+        // and always lost to the drag's own per-frame pass, so it never
+        // withheld anything — a defect a short burst wouldn't distinguish
+        // from a correct two-hop relay that happened to catch up early. This
+        // drives a burst well past the two frames the relay itself needs,
+        // guarding against a regression to that single-hop shape specifically.
+        const spy = stubMetrics();
+        const panel = new _Panel({ autoScroll: 'auto' });
+        panel.getElement(true);
+        const lastWidth = START_WIDTH - 34;
+
+        realDragFrame(panel, START_WIDTH);
+
+        const before = spy.mock.calls.length;
+
+        for (let frame = 2; frame <= 34; frame++) {
+            advanceDragFrame(panel, START_WIDTH - frame); // last iteration lands at lastWidth
+        }
+
+        expect(spy.mock.calls.length).toBe(before);
+
+        drainFrames();
+
+        expect(spy.mock.calls.length).toBeGreaterThan(before);
         expect(panel.getWidth()).toBe(lastWidth);
         expect(internals(panel)._scrollMetricsSettleHandle).toBeNull();
     });

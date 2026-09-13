@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Container, ContainerOptions } from "~/core/Container.js";
+import { Component } from "~/core/Component.js";
 import { Insets } from "~/primitive/Insets";
 import { LayoutManager } from "~/layout/LayoutManager.js";
 import { Event } from "~/core/Event.js";
 import { InlineStyle, StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
-import type { Handle } from "~/core/DOM.js";
+import type { Handle, ScrollMetrics } from "~/core/DOM.js";
 import { FocusReveal } from "~/core/FocusReveal.js";
 import type { FocusRevealer } from "~/core/FocusReveal.js";
 import { scrollShadowBoxShadow, scrollShadowEdgeValue, scrollShadowRamp, quantizeShadowEdge, ScrollShadowEdges } from "~/core/ScrollShadow.js";
@@ -151,6 +152,19 @@ function ensureOverlayScrollerClassRule(): void {
     ];
 }
 
+/** Resolved from `measureOverlayLayout`'s one necessary write-then-read (see
+ *  its own doc comment); `commitOverlayLayout` applies every write from it. */
+interface OverlayLayoutResolution {
+    innerW: number;
+    innerH: number;
+    /** The inner scroller's post-resize metrics — reused for the shadow-edge
+     *  calc too, so nothing re-reads it. */
+    m: ScrollMetrics;
+    needsReinset: boolean;
+    newRight: number;
+    newBottom: number;
+}
+
 /**
  * A [`Container`](/api/core/classes/Container) subclass that applies a default 4-pixel inset on all sides.
  *
@@ -246,17 +260,17 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     declare private _lastPanelHeight: number;
 
     // Whether a pass withheld the post-layout scroll-metrics remeasure
-    // (resizeScrollShadowOverlay + measureScrollbarGutter + updateScrollShadows)
-    // that is still owed once the current resize burst settles.
+    // (remeasureScrollMetrics) that is still owed once the current resize
+    // burst settles.
     declare private _scrollMetricsOwed: boolean;
 
     // Whether a further width/height change landed after the settle frame was
     // armed.
     declare private _panelSizeMoved: boolean;
 
-    // The animation frame armed to end a resize burst, or null when none is in
-    // flight.
-    declare private _scrollMetricsSettleHandle: number | null;
+    // The afterNextLayout relay armed to end a resize burst, or null when none
+    // is in flight.
+    declare private _scrollMetricsSettleHandle: { cancel(): void } | null;
 
     /**
      * Creates a panel with 4-pixel insets on all sides by default.
@@ -619,12 +633,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      *
      * While this panel's own committed width or height is still changing every
      * pass — a live external resize, e.g. a `Split` gutter drag resizing this
-     * panel — the post-layout scroll-metrics remeasure (the scroll-shadow
-     * overlay resize, the scrollbar gutter measurement, and the scroll-shadow
-     * edge recompute) is withheld until a couple of quiet frames confirm the
-     * resize has stopped moving. Children are unaffected: they are already laid
-     * out against this frame's real size by `super.doLayout()` above, before
-     * that decision runs.
+     * panel — the post-layout scroll-metrics remeasure (`remeasureScrollMetrics`:
+     * the scroll-shadow overlay resize, the scrollbar gutter measurement, and
+     * the scroll-shadow edge recompute) is withheld until a couple of quiet
+     * frames confirm the resize has stopped moving. Children are unaffected:
+     * they are already laid out against this frame's real size by
+     * `super.doLayout()` above, before that decision runs.
      *
      * @returns This panel, for method chaining.
      */
@@ -636,7 +650,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // with `autoCommitStyle === false`, so the new width/height
         // `setSize` queued during the parent's layout pass haven't reached
         // the DOM yet — `scrollHeight` / `clientHeight` would otherwise
-        // report the previous frame's dimensions and `measureScrollbarGutter`
+        // report the previous frame's dimensions and `remeasureScrollMetrics`
         // wouldn't see the scrollbar transition.
         this.commitElementStyle();
 
@@ -650,19 +664,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         }
 
         if (!this.deferScrollMetricsWhileResizing(sizeChanged)) {
-            // Re-size the scroll-shadow overlay against the just-committed
-            // geometry before measuring: it is the only in-flow child, so a
-            // stale height left over from the previous pass floors
-            // `scrollHeight` and fakes an overflow on every pass that shrinks
-            // the panel. See `resizeScrollShadowOverlay`.
-            this.resizeScrollShadowOverlay();
-            this.measureScrollbarGutter();
-
-            // Re-pin the overlay and recompute edge state against the freshly
-            // committed geometry (content-size or scrollbar-gutter changes can
-            // flip which edges overflow). The preceding `commitElementStyle`
-            // guarantees the reads see this frame's dimensions.
-            this.updateScrollShadows();
+            this.remeasureScrollMetrics();
         } else if (this._scrollbarStyle === "overlay" && this._overlayScrollElement) {
             // The remeasure above is withheld, but the inner scroller's own
             // size must still track this panel's current committed size every
@@ -700,11 +702,10 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
     /**
      * Decides whether this layout pass may withhold the post-layout scroll-metrics
-     * remeasure — {@link resizeScrollShadowOverlay}, {@link measureScrollbarGutter}
-     * and {@link updateScrollShadows} — because a resize burst is in flight, and
-     * arms (or extends) the settle pass that catches it up once the burst goes
-     * quiet. Mirrors `Split.scheduleDrag`/`flushDrag` and `ScrollStrip`'s own
-     * settle relay, which solve the same class of problem for a pane resize and a
+     * remeasure — {@link remeasureScrollMetrics} — because a resize burst is in
+     * flight, and arms (or extends) the settle pass that catches it up once the
+     * burst goes quiet. Mirrors `Split.scheduleDrag`/`flushDrag` and `ScrollStrip`'s
+     * own settle relay, which solve the same class of problem for a pane resize and a
      * tab strip's scroll resync respectively.
      *
      * @param sizeChanged - Whether this pass committed a different width or height
@@ -754,50 +755,47 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     }
 
     /**
-     * Arms the two-frame relay that ends a resize burst: {@link
-     * armScrollMetricsSettleCheck} on the next frame, {@link
-     * flushScrollMetricsSettle} on the one after. Armed once and left alone while
+     * Arms the two-frame relay that ends a resize burst: a decoy
+     * `Component.afterNextLayout` callback that does nothing but register a
+     * second one on the *following* frame, which is what {@link
+     * flushScrollMetricsSettle} runs from. Armed once and left alone while
      * further size changes arrive, matching `Split.scheduleDrag`.
      *
-     * @remarks A single `requestAnimationFrame` here is not enough. The owner
+     * @remarks A single `afterNextLayout` call here is not enough. The owner
      * driving this panel's resize (e.g. `Split.flushDrag`, itself already
-     * coalesced to one call per frame) also runs its own per-frame layout pass
-     * from a `requestAnimationFrame` callback, registered by whichever
-     * `mousemove` arrives after the previous frame finishes — chronologically
-     * *after* this method's own callback for the same upcoming frame, which is
-     * registered synchronously, still inside the *current* frame's pass. Per
-     * frame, callbacks run in registration order, so a single relay hop would
-     * always fire and resolve *before* that frame's real layout pass runs,
-     * making `_scrollMetricsSettleHandle` read as `null` again just before the
-     * pass that needed to see it armed. Two hops fixes this: the first
-     * (`armScrollMetricsSettleCheck`) only relays the handle to a second frame,
-     * costing nothing but keeping `_scrollMetricsSettleHandle` continuously
-     * non-null across the boundary; the second (`flushScrollMetricsSettle`) then
-     * checks `_panelSizeMoved`, set by any pass over the *prior* frame — an
-     * entirely separate, already-completed `requestAnimationFrame` batch — so it
-     * is never racing anything by the time this one reads it.
+     * coalesced to one call per frame) calls `doLayout()` directly from its
+     * own independently-scheduled `requestAnimationFrame`, registered by
+     * whichever `mousemove` arrives after the previous frame finishes —
+     * chronologically *after* this method's own registration for the same
+     * upcoming frame, made synchronously inside the *current* frame's pass.
+     * `afterNextLayout`'s ordering guarantee is scoped to `Component`'s own
+     * coalesced flush and says nothing about `Split`'s separate registration,
+     * so a single relay hop would still always fire and resolve *before* that
+     * frame's real layout pass runs, making `_scrollMetricsSettleHandle` read
+     * as `null` again just before the pass that needed to see it armed. Two
+     * hops fixes this: the decoy, nested here, only relays the handle to a
+     * second frame, costing nothing but keeping `_scrollMetricsSettleHandle`
+     * continuously non-null across the boundary — a callback registered from
+     * inside an `afterNextLayout` callback defers to the *following* frame
+     * rather than running re-entrantly within the same drain
+     * (`Component.afterNextLayout`'s own doc comment; confirmed by
+     * `AfterNextLayout.test.ts`). {@link flushScrollMetricsSettle} then checks
+     * `_panelSizeMoved`, set by any pass over the *prior* frame — an entirely
+     * separate, already-completed frame batch — so it is never racing
+     * anything by the time this one reads it.
      */
     private scheduleScrollMetricsSettle(): void {
-        this._scrollMetricsSettleHandle = DOM.sink.requestAnimationFrame(() => this.armScrollMetricsSettleCheck());
-    }
-
-    /**
-     * The settle relay's first hop: merely re-arms for one more frame, keeping
-     * {@link _scrollMetricsSettleHandle} continuously non-null across the frame
-     * boundary so this frame's still-pending real layout pass (see {@link
-     * scheduleScrollMetricsSettle}'s remarks) reads it as armed and withholds.
-     */
-    private armScrollMetricsSettleCheck(): void {
-        this._scrollMetricsSettleHandle = DOM.sink.requestAnimationFrame(() => this.flushScrollMetricsSettle());
+        this._scrollMetricsSettleHandle = Component.afterNextLayout(() => {
+            this._scrollMetricsSettleHandle = Component.afterNextLayout(() => this.flushScrollMetricsSettle());
+        });
     }
 
     /**
      * The settle relay's second hop: ends a resize burst, or extends it by
      * another two-frame relay when this panel's size moved again during the
      * frame between the two hops. On the first quiet cycle it performs the
-     * withheld remeasure — {@link resizeScrollShadowOverlay}, {@link
-     * measureScrollbarGutter}, then {@link updateScrollShadows} — in the same
-     * order `doLayout` itself uses.
+     * withheld remeasure — {@link remeasureScrollMetrics} — in the same order
+     * `doLayout` itself uses.
      */
     private flushScrollMetricsSettle(): void {
         this._scrollMetricsSettleHandle = null;
@@ -814,9 +812,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         }
 
         this._scrollMetricsOwed = false;
-        this.resizeScrollShadowOverlay();
-        this.measureScrollbarGutter();
-        this.updateScrollShadows();
+        this.remeasureScrollMetrics();
     }
 
     /**
@@ -824,7 +820,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * shrink that brings overflowing content back within the viewport re-clears
      * the reserved scrollbar gutter and scroll shadow.
      *
-     * `measureScrollbarGutter` only reschedules a pass when the gutter *value*
+     * `remeasureScrollMetrics` only reschedules a pass when the gutter *value*
      * it reads changes. When content is removed, the overflow→fit transition
      * often has not settled on the pass that runs immediately after the
      * removal — the DOM `scrollHeight` still reads its old (overflowing) value,
@@ -897,6 +893,238 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     }
 
     /**
+     * Resizes the inner scroller to `avail` (the panel's own client box) minus
+     * the currently-cached gutter, then reads the scroller's own post-resize
+     * metrics. This read must follow that write: the scroller's `scrollWidth`/
+     * `scrollHeight` are floored at its own `clientWidth`/`clientHeight`, so
+     * reading them against the *previous* pass's box would report stale
+     * overflow on a shrink. Returns null when the overlay scrollbars aren't
+     * installed yet.
+     *
+     * @param avail - This panel's own client box for the current pass.
+     * @returns The resolved overlay geometry, or `null` when the overlay
+     *   scrollbars aren't installed.
+     */
+    private measureOverlayLayout(avail: ScrollMetrics): OverlayLayoutResolution | null {
+        const innerEl = this._overlayScrollElement;
+        if (!innerEl || !this._scrollbarV || !this._scrollbarH) {
+            return null;
+        }
+
+        const trackW    = this._scrollbarV.getTrackWidth();
+        const availW    = avail.clientWidth;
+        const availH    = avail.clientHeight;
+        const curRight  = this._scrollbarGutter.right;
+        const curBottom = this._scrollbarGutter.bottom;
+
+        this._overlayScrollStyle.setMany({
+            width:  (availW - curRight)  + "px",
+            height: (availH - curBottom) + "px",
+        });
+
+        const m    = DOM.source.getScrollMetrics(innerEl);
+        const axes = this.scrollableAxes();
+
+        const vVisible = axes.y && m.scrollHeight > m.clientHeight;
+        const hVisible = axes.x && m.scrollWidth  > m.clientWidth;
+
+        const innerW = availW - (vVisible ? trackW : 0);
+        const innerH = availH - (hVisible ? trackW : 0);
+
+        return {
+            innerW, innerH, m,
+            needsReinset: innerW !== availW - curRight || innerH !== availH - curBottom,
+            newRight:  vVisible ? trackW : 0,
+            newBottom: hVisible ? trackW : 0,
+        };
+    }
+
+    /**
+     * Applies every write {@link measureOverlayLayout} resolved. Pure writes —
+     * no read.
+     *
+     * @param resolution - The resolved overlay geometry to commit.
+     */
+    private commitOverlayLayout(resolution: OverlayLayoutResolution): void {
+        const { innerW, innerH, m, needsReinset, newRight, newBottom } = resolution;
+
+        if (needsReinset) {
+            this._overlayScrollStyle.setMany({ width: innerW + "px", height: innerH + "px" });
+        }
+
+        this._scrollbarV?.setX(innerW);
+        this._scrollbarV?.setY(0);
+        this._scrollbarV?.setHeight(innerH);
+        this._scrollbarV?.setMetrics(innerH, m.scrollHeight, m.scrollTop);
+
+        this._scrollbarH?.setX(0);
+        this._scrollbarH?.setY(innerH);
+        this._scrollbarH?.setWidth(innerW);
+        this._scrollbarH?.setMetrics(innerW, m.scrollWidth, m.scrollLeft);
+
+        this.commitScrollbarGutterIfChanged(newRight, newBottom);
+    }
+
+    /**
+     * Pure calc: the native-mode gutter for the given (already-read) panel
+     * metrics.
+     *
+     * @param metrics - This panel's own already-read scroll metrics.
+     * @returns The right/bottom gutter the native scrollbar(s) reserve.
+     */
+    private resolveNativeGutter(metrics: ScrollMetrics): { right: number; bottom: number } {
+        const trackW = DOM.source.getScrollBarWidth();
+        if (trackW === 0) {
+            return { right: this._scrollbarGutter.right, bottom: this._scrollbarGutter.bottom };
+        }
+        if (this._autoScroll === "both") {
+            return { right: trackW, bottom: trackW };
+        }
+        const axes = this.scrollableAxes();
+        return {
+            right:  axes.y && metrics.scrollHeight > metrics.clientHeight ? trackW : 0,
+            bottom: axes.x && metrics.scrollWidth  > metrics.clientWidth  ? trackW : 0,
+        };
+    }
+
+    /**
+     * Shared write, used by both the overlay and native gutter paths.
+     *
+     * @param right - The new right gutter, in pixels.
+     * @param bottom - The new bottom gutter, in pixels.
+     */
+    private commitScrollbarGutterIfChanged(right: number, bottom: number): void {
+        if (right === this._scrollbarGutter.right && bottom === this._scrollbarGutter.bottom) {
+            return;
+        }
+        this.setScrollbarGutter(right, bottom);
+        this.scheduleLayout();
+    }
+
+    /**
+     * Pure calc: the shadow overlay's target size for the given panel client
+     * box.
+     *
+     * @param clientWidth - The panel's current client width.
+     * @param clientHeight - The panel's current client height.
+     * @returns The overlay's target size, or `null` when no shadow overlay
+     *   exists.
+     */
+    private resolveShadowOverlaySize(clientWidth: number, clientHeight: number): { width: number; height: number } | null {
+        if (!this._shadowOverlay) {
+            return null;
+        }
+        const rightInset  = this._scrollbarStyle === "overlay" ? this._scrollbarGutter.right  : 0;
+        const bottomInset = this._scrollbarStyle === "overlay" ? this._scrollbarGutter.bottom : 0;
+        return { width: clientWidth - rightInset, height: clientHeight - bottomInset };
+    }
+
+    /**
+     * Pure write: applies the shadow overlay's resolved size.
+     *
+     * @param size - The size {@link resolveShadowOverlaySize} resolved.
+     */
+    private applyShadowOverlaySize(size: { width: number; height: number }): void {
+        this._shadowOverlayStyle.setMany({ width: size.width + "px", height: size.height + "px" });
+    }
+
+    /**
+     * Pure calc: the four edge strengths for the given (already-read) scroll
+     * metrics.
+     *
+     * @param metrics - The already-read scroll metrics to ramp each edge from.
+     * @returns The four edge strengths, or `null` when no shadow overlay
+     *   exists.
+     */
+    private resolveShadowEdges(metrics: ScrollMetrics): { top: number; bottom: number; left: number; right: number } | null {
+        if (!this._shadowOverlay) {
+            return null;
+        }
+        const maxTop  = metrics.scrollHeight - metrics.clientHeight;
+        const maxLeft = metrics.scrollWidth  - metrics.clientWidth;
+        const axes    = this.scrollableAxes();
+        return {
+            top:    axes.y ? scrollShadowRamp(metrics.scrollTop)             : 0,
+            bottom: axes.y ? scrollShadowRamp(maxTop  - metrics.scrollTop)   : 0,
+            left:   axes.x ? scrollShadowRamp(metrics.scrollLeft)            : 0,
+            right:  axes.x ? scrollShadowRamp(maxLeft - metrics.scrollLeft)  : 0,
+        };
+    }
+
+    /**
+     * Pure write: applies the four resolved edge strengths.
+     *
+     * @param edges - The edge strengths {@link resolveShadowEdges} resolved.
+     */
+    private applyShadowEdges(edges: { top: number; bottom: number; left: number; right: number }): void {
+        this.setShadowEdge("top",    "--ts-ss-top",    edges.top);
+        this.setShadowEdge("bottom", "--ts-ss-bottom", edges.bottom);
+        this.setShadowEdge("left",   "--ts-ss-left",   edges.left);
+        this.setShadowEdge("right",  "--ts-ss-right",  edges.right);
+    }
+
+    /**
+     * The post-layout scroll-metrics remeasure, restructured into a read
+     * phase and a write phase: this panel's own box is read once, every
+     * derived value is resolved from it, and every write is applied in a
+     * trailing pass. Two exceptions keep their own interleaved
+     * read-after-write, because the read genuinely depends on the write's
+     * effect: overlay mode's inner scroller (inside {@link
+     * measureOverlayLayout}) and native mode's shadow overlay, handled inline
+     * below — see the resize-settle uplift plan's Architecture Decisions for
+     * why each one is unavoidable.
+     */
+    private remeasureScrollMetrics(): void {
+        if (this._autoScroll === "none") {
+            return;
+        }
+
+        const el = this.getElement();
+        if (!el) {
+            return;
+        }
+
+        const avail = DOM.source.getScrollMetrics(el);
+        let shadowMetrics: ScrollMetrics = avail;
+
+        if (this._scrollbarStyle === "overlay") {
+            const resolution = this.measureOverlayLayout(avail);
+            if (resolution) {
+                this.commitOverlayLayout(resolution);
+                shadowMetrics = resolution.m;
+            }
+        } else {
+            // The shadow overlay is this panel's own in-flow child, so a
+            // stale height floors this panel's own scrollHeight/scrollWidth
+            // (see the plan's Architecture Decisions). Size it against the
+            // current, stable client box first, and only re-read when that
+            // write actually happened (no overlay installed means nothing to
+            // floor).
+            const preSize = this.resolveShadowOverlaySize(avail.clientWidth, avail.clientHeight);
+            if (preSize) {
+                this.applyShadowOverlaySize(preSize);
+                shadowMetrics = DOM.source.getScrollMetrics(el);
+            }
+
+            const gutter = this.resolveNativeGutter(shadowMetrics);
+            this.commitScrollbarGutterIfChanged(gutter.right, gutter.bottom);
+        }
+
+        // The gutter may have just changed; size the overlay against the
+        // FINAL value. `avail.clientWidth/clientHeight` are still current —
+        // nothing above wrote to this panel's own box.
+        const finalSize = this.resolveShadowOverlaySize(avail.clientWidth, avail.clientHeight);
+        if (finalSize) {
+            this.applyShadowOverlaySize(finalSize);
+        }
+
+        const edges = this.resolveShadowEdges(shadowMetrics);
+        if (edges) {
+            this.applyShadowEdges(edges);
+        }
+    }
+
+    /**
      * Initialises the panel element, then installs the scroll-shadow overlay
      * if the panel is a scroll-shadow candidate. Overlay creation is deferred
      * to here (rather than `applyOptions`) because the element only exists
@@ -940,10 +1168,8 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * never fires against a disposed panel.
      */
     protected destructor(): void {
-        if (this._scrollMetricsSettleHandle !== null) {
-            DOM.sink.cancelAnimationFrame(this._scrollMetricsSettleHandle);
-            this._scrollMetricsSettleHandle = null;
-        }
+        this._scrollMetricsSettleHandle?.cancel();
+        this._scrollMetricsSettleHandle = null;
 
         FocusReveal.unregister(this);
 
@@ -973,75 +1199,15 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
     /**
      * Caches the new gutter for each axis. Internal — driven by
-     * `measureScrollbarGutter` after a layout pass; consumers can't
-     * configure this (it's derived from runtime DOM measurement, not a
-     * declarative input), so it stays off the `PanelOptions` bag.
+     * `remeasureScrollMetrics` after a layout pass; consumers can't configure
+     * this (it's derived from runtime DOM measurement, not a declarative
+     * input), so it stays off the `PanelOptions` bag.
      *
      * @param right - Reserved gutter on the right edge in pixels.
      * @param bottom - Reserved gutter on the bottom edge in pixels.
      */
     private setScrollbarGutter(right: number, bottom: number): void {
         this._scrollbarGutter = { right, bottom };
-    }
-
-    /**
-     * Reads the post-layout scrollbar visibility from the live DOM and
-     * updates the cached gutter to match. When the gutter changed,
-     * schedules a follow-up layout pass so children re-flow inside the new
-     * inner area. No-op for `mode === "none"` and on browsers whose
-     * scrollbars don't reserve space (e.g. macOS overlay scrollbars, where
-     * the native width measures as 0 — the cascade can't happen there).
-     */
-    private measureScrollbarGutter(): void {
-        if (this._autoScroll === "none") {
-            return;
-        }
-
-        if (this._scrollbarStyle === "overlay") {
-            this.layoutOverlayScrollbars();
-
-            return;
-        }
-
-        const el = this.getElement();
-        if (!el) {
-            return;
-        }
-
-        const trackW = DOM.source.getScrollBarWidth();
-        if (trackW === 0) {
-            return;
-        }
-
-        // `"both"` forces both scrollbars on (`overflow: scroll` on both
-        // axes), so the gutter is always reserved on both sides. The
-        // single-axis modes only show their one bar, and `"auto"` shows
-        // each independently; reading `scrollHeight > clientHeight` (and
-        // its X-axis twin) detects whichever bars the browser has chosen
-        // to render this frame, which matches the visible-only criterion.
-        let vReserved: boolean;
-        let hReserved: boolean;
-
-        if (this._autoScroll === "both") {
-            vReserved = true;
-            hReserved = true;
-        } else {
-            const axes    = this.scrollableAxes();
-            const metrics = DOM.source.getScrollMetrics(el);
-
-            vReserved = axes.y && metrics.scrollHeight > metrics.clientHeight;
-            hReserved = axes.x && metrics.scrollWidth  > metrics.clientWidth;
-        }
-
-        const newRight  = vReserved ? trackW : 0;
-        const newBottom = hReserved ? trackW : 0;
-
-        if (newRight === this._scrollbarGutter.right && newBottom === this._scrollbarGutter.bottom) {
-            return;
-        }
-
-        this.setScrollbarGutter(newRight, newBottom);
-        this.scheduleLayout();
     }
 
     /**
@@ -1165,9 +1331,9 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      *
      * The overlay is the panel's only in-flow child — every child *component*
      * is absolutely positioned — so its height alone floors the element's
-     * `scrollHeight`. That makes its size load-bearing for
-     * {@link Panel.measureScrollbarGutter}, not merely cosmetic: while it
-     * carries the previous pass's height, a panel that just shrank reads
+     * `scrollHeight`. That makes its size load-bearing for {@link
+     * Panel.remeasureScrollMetrics}, not merely cosmetic: while it carries
+     * the previous pass's height, a panel that just shrank reads
      * `scrollHeight` (the stale, taller overlay) above `clientHeight` (the
      * freshly committed height) and reserves a scrollbar gutter for an overflow
      * that does not exist. Hence `doLayout` re-sizes the overlay *before* it
@@ -1181,29 +1347,17 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      */
     private resizeScrollShadowOverlay(element?: Handle): void {
         const el = element ?? this.getElement();
-        if (!el || !this._shadowOverlay) {
+
+        if (!el) {
             return;
         }
 
         const { clientWidth, clientHeight } = DOM.source.getScrollMetrics(el);
+        const size = this.resolveShadowOverlaySize(clientWidth, clientHeight);
 
-        // In overlay-scrollbar mode the native bar is hidden, so clientWidth /
-        // clientHeight still span the strip the overlay Scrollbar paints on.
-        // Inset the shadow overlay by the reserved overlay gutter so each edge
-        // shadow lands just inside its bar — aligned with the content viewport
-        // getInnerSize exposes — instead of bleeding under the translucent bar
-        // track (which reads as the shadow painting on top of the scrollbar).
-        // Native mode needs no inset: clientWidth / clientHeight already exclude
-        // the OS scrollbar, so the gutter there is physical, not overlaid.
-        const rightInset  = this._scrollbarStyle === "overlay" ? this._scrollbarGutter.right  : 0;
-        const bottomInset = this._scrollbarStyle === "overlay" ? this._scrollbarGutter.bottom : 0;
-
-        // Size the overlay to the viewport box; `position: sticky` keeps it
-        // pinned there as the content scrolls, so no transform is needed.
-        this._shadowOverlayStyle.setMany({
-            width:  (clientWidth  - rightInset)  + "px",
-            height: (clientHeight - bottomInset) + "px",
-        });
+        if (size) {
+            this.applyShadowOverlaySize(size);
+        }
     }
 
     /**
@@ -1219,6 +1373,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      */
     private updateScrollShadows(element?: Handle): void {
         const el = element ?? this.getElement();
+
         if (!el || !this._shadowOverlay) {
             return;
         }
@@ -1227,30 +1382,15 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // scrolls — the inner scroller in overlay mode (the panel element's own
         // offsets are always 0 there), the panel element otherwise. The overlay
         // is still sized against, and pinned to, the panel element (`el`).
-        const { scrollTop, scrollLeft, scrollWidth, scrollHeight, clientWidth, clientHeight } =
-            DOM.source.getScrollMetrics(this.getScrollElement() ?? el);
+        const metrics = DOM.source.getScrollMetrics(this.getScrollElement() ?? el);
 
         this.resizeScrollShadowOverlay(el);
 
-        const maxTop  = scrollHeight - clientHeight;
-        const maxLeft = scrollWidth  - clientWidth;
+        const edges = this.resolveShadowEdges(metrics);
 
-        // Ramp an edge in by its distance past that extreme (see `scrollShadowRamp`).
-        const ramp = scrollShadowRamp;
-
-        // A shadow says "there is more content this way, scroll to reach it", so
-        // only an axis the user can actually scroll may light its edges. A
-        // clipped axis still reports overflow through `scrollWidth` /
-        // `scrollHeight` — an `autoScroll: "y"` panel whose content is a few px
-        // wider than its post-gutter width reads a non-zero `maxLeft` — and
-        // ramping that would paint a right-edge fade promising content no
-        // gesture can reveal.
-        const axes = this.scrollableAxes();
-
-        this.setShadowEdge("top",    "--ts-ss-top",    axes.y ? ramp(scrollTop)           : 0);
-        this.setShadowEdge("bottom", "--ts-ss-bottom", axes.y ? ramp(maxTop  - scrollTop) : 0);
-        this.setShadowEdge("left",   "--ts-ss-left",   axes.x ? ramp(scrollLeft)          : 0);
-        this.setShadowEdge("right",  "--ts-ss-right",  axes.x ? ramp(maxLeft - scrollLeft): 0);
+        if (edges) {
+            this.applyShadowEdges(edges);
+        }
     }
 
     /**
@@ -1472,9 +1612,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * Sizes the inner scroll element to the available viewport minus the track
      * on each axis whose perpendicular bar is visible, positions both bars in
      * the reserved band at the trailing edges, pushes their metrics, and
-     * reserves the matching gutter — rescheduling a layout pass when it changed.
-     * Called from `init` (first install) and from `measureScrollbarGutter`'s
-     * overlay branch (every `doLayout` pass).
+     * reserves the matching gutter — rescheduling a layout pass when it
+     * changed. Called from `init` (first install) and other standalone
+     * re-layout paths; the hot per-`doLayout`-pass path routes through
+     * {@link measureOverlayLayout}/{@link commitOverlayLayout} via {@link
+     * remeasureScrollMetrics} instead, which this method's own body now
+     * delegates to as well.
      *
      * The dual read is the crux: the **available viewport** comes from the panel
      * element (which never scrolls, so its client box is the full viewport),
@@ -1489,81 +1632,16 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      */
     private layoutOverlayScrollbars(element?: Handle): void {
         const panelEl = element ?? this.getElement();
-        const innerEl = this._overlayScrollElement;
-        if (!panelEl || !innerEl || !this._scrollbarV || !this._scrollbarH) {
+
+        if (!panelEl) {
             return;
         }
 
-        const trackW = this._scrollbarV.getTrackWidth();
+        const avail = DOM.source.getScrollMetrics(panelEl);
+        const resolution = this.measureOverlayLayout(avail);
 
-        // Available viewport: the panel element's client box. The parent layout
-        // sizes the panel element (and `doLayout` flushes it via
-        // `commitElementStyle`) before this runs, so `avail` is always current —
-        // it never lags a resize.
-        const avail  = DOM.source.getScrollMetrics(panelEl);
-        const availW = avail.clientWidth;
-        const availH = avail.clientHeight;
-
-        const curRight  = this._scrollbarGutter.right;
-        const curBottom = this._scrollbarGutter.bottom;
-
-        // Size the inner scroller to the CURRENT viewport (minus the currently
-        // reserved gutter) BEFORE reading its metrics, so its `clientWidth`/
-        // `clientHeight` — and thus `scrollWidth`/`scrollHeight`, which the
-        // browser floors at the client box — reflect THIS frame's viewport. The
-        // inner element otherwise carries the previous pass's size, which lags a
-        // resize in BOTH directions: on expand the stale-small client box kept a
-        // bar the widened viewport no longer needs; on shrink the stale-large
-        // client box floored `scrollWidth` so content that now fits still read as
-        // overflowing — each flickered a transient bar that could stick. A gutter
-        // change below re-sizes and reschedules, converging in one extra pass.
-        this._overlayScrollStyle.setMany({
-            width:  (availW - curRight)  + "px",
-            height: (availH - curBottom) + "px",
-        });
-
-        // Content extent, offsets, and the now-current inner client box.
-        const m    = DOM.source.getScrollMetrics(innerEl);
-        const axes = this.scrollableAxes();
-
-        // A bar shows when content exceeds the inner scroller's (now current)
-        // viewport. The V<->H dependency — reserving one bar shrinks the other's
-        // viewport — settles across passes via the gutter-change reschedule
-        // below, the same one-extra-pass convergence the gutter always used.
-        const vVisible = axes.y && m.scrollHeight > m.clientHeight;
-        const hVisible = axes.x && m.scrollWidth  > m.clientWidth;
-
-        const innerW = availW - (vVisible ? trackW : 0);
-        const innerH = availH - (hVisible ? trackW : 0);
-
-        // Re-inset the inner scroller when this pass's gutter differs from the
-        // one the pre-read sizing used, so overflowing content clips at the inner
-        // viewport edge and can never scroll under a bar.
-        if (innerW !== availW - curRight || innerH !== availH - curBottom) {
-            this._overlayScrollStyle.setMany({ width: innerW + "px", height: innerH + "px" });
-        }
-
-        // Bars occupy the reserved band at the trailing edges, sized to the
-        // inner extent so each stops short of the shared corner. setMetrics
-        // takes the same reduced viewport (`innerH`/`innerW`) the visibility
-        // test used, so a bar's shown/hidden state and the reserved gutter
-        // never disagree.
-        this._scrollbarV.setX(innerW);
-        this._scrollbarV.setY(0);
-        this._scrollbarV.setHeight(innerH);
-        this._scrollbarV.setMetrics(innerH, m.scrollHeight, m.scrollTop);
-
-        this._scrollbarH.setX(0);
-        this._scrollbarH.setY(innerH);
-        this._scrollbarH.setWidth(innerW);
-        this._scrollbarH.setMetrics(innerW, m.scrollWidth, m.scrollLeft);
-
-        const newRight  = vVisible ? trackW : 0;
-        const newBottom = hVisible ? trackW : 0;
-
-        if (newRight !== curRight || newBottom !== curBottom) {
-            this.setScrollbarGutter(newRight, newBottom);
-            this.scheduleLayout();
+        if (resolution) {
+            this.commitOverlayLayout(resolution);
         }
     }
 
