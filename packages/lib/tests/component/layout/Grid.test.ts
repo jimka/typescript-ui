@@ -256,4 +256,34 @@ describe('Grid occupancy clip frame', () => {
         expect(b.getWidth()).toBe(150);
         expect(DOM.source.getParentNode(b.getElement()!)).toBe(host.getElement());
     });
+
+    it('leaves an unclamped weight-1 sibling at its own proportional share when the other weight-1 track clips', () => {
+        installTestDOM(CONFIG);
+
+        const grid = new Grid({ rows: 1, columns: 2, spacing: 0 });
+        const host = hostGrid(400, 100, grid);
+
+        const a = new Component();
+        a.setMinSize({ width: 300, height: 0 });
+        const b = new Component();
+
+        host.addComponent(a);
+        host.addComponent(b);
+
+        host.doLayout();
+
+        // Both columns are implicit weight-1 tracks, so each resolves to its
+        // proportional 200px share regardless of a's 300px min — resolveTracks
+        // applies no clamp, so there is nothing for b's share to compensate
+        // for. a is clipped to its 200px-wide track (parented into a clip
+        // frame, not the host) at its natural 300px width; b is placed at its
+        // own unaffected 200px share, immediately after a's track boundary.
+        expect(a.getX()).toBe(0);
+        expect(a.getWidth()).toBe(300);
+        expect(DOM.source.getParentNode(a.getElement()!)).not.toBe(host.getElement());
+
+        expect(b.getX()).toBe(200);
+        expect(b.getWidth()).toBe(200);
+        expect(DOM.source.getParentNode(b.getElement()!)).toBe(host.getElement());
+    });
 });
