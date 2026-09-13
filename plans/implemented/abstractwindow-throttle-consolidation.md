@@ -631,3 +631,63 @@ land on either side of the gate deterministically.
     `DragManager.ts` (module-scoped `pendingMove`/`moveRafHandle`, `scheduleMove`/`flushMove`) — every
     one hand-rolls its own private pending-value-plus-rAF-handle pair with no shared base class or
     utility. None has an fps cap; `AbstractWindow`'s resize mechanism is the only one that does.
+
+## Implementation Notes
+
+Six small inconsistencies surfaced between the plan's prose and its own prescribed code; all were
+resolved in the direction the prescribed code and the codebase's own conventions point, not by
+re-deriving the design.
+
+- **Step 12's checkpoint grep lists `_lastFlushTime` among identifiers expected to have zero matches
+  in the file, but `## Internal Structure`'s own `PerFrameCoalescer` source — which the plan says to
+  copy — declares `private _lastFlushTime: number = 0;` as the coalescer's own field.** The two are
+  irreconcilable literally: implementing the class exactly as specified necessarily leaves three
+  matches (the field and its two internal uses), all inside `PerFrameCoalescer`, none on
+  `AbstractWindow` directly. Ran the checkpoint as written and confirmed the only remaining matches are
+  those three lines — i.e. the checkpoint's real intent ("no leftover `_lastFlushTime` as an
+  `AbstractWindow` instance field") is satisfied; its literal wording ("zero matches" of the bare
+  string) was never achievable alongside the class body the plan itself provides.
+- **`onResize`'s `@remarks` JSDoc names `flushResize` by name** ("so that `flushResize` can derive the
+  new size from `origin + offset`..."), and step 4 describes everything above the one-line `schedule`
+  call as unchanged — but `flushResize` no longer exists once step 5 renames it to `applyResizeFrame`.
+  `onResize` is public and `applyResizeFrame` is `private`, so per `CODE_CONVENTIONS.md`'s "Don't
+  `{@link}` internal symbols from public JSDoc" rule the fix couldn't be a like-for-like rename to
+  `{@link applyResizeFrame}` (TypeDoc would warn on a public doc linking an excluded private member).
+  Reworded the remark to describe the behaviour in prose instead ("the throttled resize frame can
+  derive..."), leaving no dangling reference and no new `docs:api` warning
+  (`npm run docs:api` reports the same 14 pre-existing warnings, none touching this file).
+- **`onSnapMouseMove`'s own JSDoc needed the same treatment, for the same reason, and step 8 didn't
+  call it out.** The plan's `## Internal Structure` snippet for `onSnapMouseMove` shows only the new
+  body, with no doc block — but the base doc comment above it named `scheduleSnapMouseMove` by
+  `{@link}`, and step 9 deletes that method in the same pair of steps. Left as-is, the link would have
+  gone dead the moment `scheduleSnapMouseMove` disappeared. `onSnapMouseMove` is itself `private`, so
+  this one could point at another private symbol without tripping the public-JSDoc rule: it now reads
+  `{@link applySnapMoveFrame}` (also private) instead, folding in the deleted method's own rationale
+  prose (the `mousemove`-vs-repaint-rate and `pickSnapBorder` cost paragraph) so that reasoning isn't
+  lost. Functionally the same fix as the `flushResize` remark above, just not called out as its own
+  bullet in the first pass.
+- **`PerFrameCoalescer` is placed above `AbstractWindow`'s own JSDoc, not "immediately before `export
+  abstract class AbstractWindow`" as step 1 and `## Internal Structure` literally say.** Base line 247,
+  which both cite as the anchor, is the `export abstract class` line itself — the class's doc comment
+  sits directly above it (base lines 230-246). Inserting the new class exactly there, between that doc
+  comment and the class declaration, orphans the comment: TypeDoc attaches a JSDoc block to whichever
+  declaration immediately follows it, so `AbstractWindow`'s own description would end up attached to
+  `PerFrameCoalescer` instead, and the generated `AbstractWindow` API page would fall back to its
+  inherited `DismissableLayer` summary. Caught by the first audit round, which reproduced exactly that
+  in the generated docs. Fixed by placing `PerFrameCoalescer` (with its own doc comment) above
+  `AbstractWindow`'s JSDoc instead of between it and the class — `PerFrameCoalescer` still declares
+  immediately before the `AbstractWindow` class body, which is the placement's actual intent; only the
+  literal line-247 anchor doesn't survive contact with where the doc comment lives.
+- **`PerFrameCoalescer`'s constructor JSDoc, copied verbatim from `## Internal Structure`, opens
+  directly with `@param` and has no description line.** `~/.claude/CODE_CONVENTIONS.md`'s
+  *Documentation* rule requires a description before the parameter/return tags on every documented
+  member, constructors included — a survey of this codebase's other 192 documented constructors found
+  none that skip it. Added a one-line description ("Constructs a coalescer around the given apply
+  callback and optional fps cap.") ahead of the existing `@param` tags; the tags themselves are
+  unchanged.
+- **`PerFrameCoalescer.drain()`, copied verbatim from `## Internal Structure`, is the only one of the
+  class's five methods left without a doc comment** — the constructor, `onFrame`, `forceFlush`, and
+  `cancel` all carry one in the plan's own snippet, and `~/.claude/CODE_CONVENTIONS.md`'s
+  *Documentation* rule doesn't carve out an exception for a short private method. Caught by the second
+  audit round. Added a one-line doc comment ("Clears the buffered value and, if one was pending,
+  applies it.") matching the sibling methods' style; no behavior change.
