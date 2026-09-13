@@ -228,6 +228,105 @@ const _defaultWindowOptions: Partial<WindowOptions> = {
 const RESIZE_BORDER_Z_INDEX: number = 10;
 
 /**
+ * Buffers the latest not-yet-applied value from a high-frequency event (e.g.
+ * `mousemove`) and applies it at most once per animation frame, optionally
+ * capped to a slower rate. Only the most recent value before a frame lands is
+ * kept — an intermediate value between two events was never going to be
+ * visible anyway. `T` must not itself use `null` as a meaningful value: `null`
+ * is the buffer's own "nothing pending" sentinel.
+ */
+class PerFrameCoalescer<T> {
+    private _pending: T | null = null;
+    private _rafHandle: number | null = null;
+    private _lastFlushTime: number = 0;
+    private readonly _apply: (value: T) => void;
+    private readonly _fps?: () => number;
+
+    /**
+     * Constructs a coalescer around the given apply callback and optional fps cap.
+     *
+     * @param apply - Called with the most recent buffered value when a frame
+     *   (or a {@link forceFlush}) applies it.
+     * @param fps - Optional live frames-per-second cap, read fresh on every
+     *   frame so a setter can change it mid-flight. Omit for no cap.
+     */
+    constructor(apply: (value: T) => void, fps?: () => number) {
+        this._apply = apply;
+        this._fps = fps;
+    }
+
+    /**
+     * Buffers `value`, overwriting any not-yet-applied value, and arms a
+     * `requestAnimationFrame` if one isn't already pending.
+     */
+    schedule(value: T): void {
+        this._pending = value;
+
+        if (this._rafHandle === null) {
+            this._rafHandle = DOM.sink.requestAnimationFrame((ts) => this.onFrame(ts));
+        }
+    }
+
+    /**
+     * The `requestAnimationFrame` callback. Re-arms itself without draining
+     * the buffer when the fps cap says it's too soon; otherwise applies the
+     * buffered value.
+     */
+    private onFrame(timestamp: number): void {
+        const fps = this._fps?.();
+        if (fps !== undefined && timestamp - this._lastFlushTime < 1000 / fps) {
+            this._rafHandle = DOM.sink.requestAnimationFrame((ts) => this.onFrame(ts));
+            return;
+        }
+
+        this._lastFlushTime = timestamp;
+        this._rafHandle = null;
+        this.drain();
+    }
+
+    /**
+     * Cancels any pending frame and applies the buffered value immediately,
+     * bypassing the fps cap — for a caller that must commit the freshest
+     * value synchronously (e.g. at `mousedown`). A no-op if nothing is
+     * buffered.
+     */
+    forceFlush(): void {
+        if (this._rafHandle !== null) {
+            DOM.sink.cancelAnimationFrame(this._rafHandle);
+            this._rafHandle = null;
+        }
+
+        this.drain();
+    }
+
+    /**
+     * Cancels any pending frame and discards the buffered value without
+     * applying it — for teardown, where a buffered value must never commit.
+     */
+    cancel(): void {
+        if (this._rafHandle !== null) {
+            DOM.sink.cancelAnimationFrame(this._rafHandle);
+            this._rafHandle = null;
+        }
+
+        this._pending = null;
+    }
+
+    /**
+     * Clears the buffered value and, if one was pending, applies it.
+     */
+    private drain(): void {
+        const value = this._pending;
+
+        this._pending = null;
+
+        if (value !== null) {
+            this._apply(value);
+        }
+    }
+}
+
+/**
  * Header-agnostic base for floating, resizable, draggable windows.
  *
  * Owns everything that does not name a title-bar header: the eight resize-handle
@@ -263,10 +362,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         southwest: WindowBorder,
     };
 
-    private _animationFrameId: number | null = null;
-    private _pendingClientX: number = 0;
-    private _pendingClientY: number = 0;
-    private _pendingBorder: WindowBorder | null = null;
+    private readonly _resizeCoalescer: PerFrameCoalescer<{ clientX: number; clientY: number; border: WindowBorder }> =
+        new PerFrameCoalescer((value) => this.applyResizeFrame(value), () => this._resizeFps);
     private _resizeSessionActive: boolean = false;
     private _resizeOriginClientX: number = 0;
     private _resizeOriginClientY: number = 0;
@@ -275,7 +372,6 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private _resizeOriginW: number = 0;
     private _resizeOriginH: number = 0;
     private _resizeFps: number = 60;
-    private _lastFlushTime: number = 0;
     private _dragStartLeft: number = 0;
     private _dragStartTop: number = 0;
     private _dragOriginClientX: number = 0;
@@ -322,11 +418,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private _snapKeysAttached:  boolean = false;
     private _snapMoveAttached:  boolean = false;
     private _snapTargetBorder:  WindowBorder | null = null;
-    // The most recent not-yet-applied onSnapMouseMove position, and the
-    // animation frame scheduled to apply it — see scheduleSnapMouseMove.
-    // null/null while no move is buffered or the modifier isn't held.
-    private _pendingSnapMove: { clientX: number; clientY: number } | null = null;
-    private _snapMoveRafHandle: number | null = null;
+    private readonly _snapMoveCoalescer: PerFrameCoalescer<{ clientX: number; clientY: number }> =
+        new PerFrameCoalescer((value) => this.applySnapMoveFrame(value));
 
     private readonly _boundOnDrag: (e: MouseEvent) => Event.ListenerResult = (e: MouseEvent) => this.onDrag(e);
     private readonly _boundOnMouseUp: () => Event.ListenerResult = () => this.onMouseUp();
@@ -958,10 +1051,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // representing this window is removed as the window closes.
         this.emit("close");
 
-        if (this._animationFrameId !== null) {
-            DOM.sink.cancelAnimationFrame(this._animationFrameId);
-            this._animationFrameId = null;
-        }
+        this._resizeCoalescer.cancel();
 
         this._stateAnimHandle?.cancel();
         this._stateAnimHandle = null;
@@ -1134,10 +1224,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         // If a drag is in flight, commit it first so `_restoreRect` captures
         // the post-drag position instead of the stale start position.
-        if (this._animationFrameId !== null) {
-            DOM.sink.cancelAnimationFrame(this._animationFrameId);
-            this._animationFrameId = null;
-        }
+        this._resizeCoalescer.cancel();
 
         this._options.windowState = state;
 
@@ -2015,9 +2102,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @param e - The mouse event carrying the absolute pointer coordinate.
      *
      * @remarks On the first move of a drag session the window's origin geometry
-     * (pointer `clientX`/`clientY`, position, and size) is captured so that
-     * `flushResize` can derive the new size from `origin + offset` rather
-     * than accumulating per-move deltas. `WindowBorder` exposes no mousedown
+     * (pointer `clientX`/`clientY`, position, and size) is captured so that the
+     * throttled resize frame can derive the new size from `origin + offset`
+     * rather than accumulating per-move deltas. `WindowBorder` exposes no mousedown
      * hook to the window, so the capture is lazy and a viewport `mouseup`
      * listener clears the session flag when the drag ends.
      */
@@ -2046,13 +2133,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             Event.addViewportListener(this, 'touchcancel', this._boundOnResizeEnd);
         }
 
-        this._pendingClientX = e.clientX;
-        this._pendingClientY = e.clientY;
-        this._pendingBorder = border;
-
-        if (this._animationFrameId === null) {
-            this._animationFrameId = DOM.sink.requestAnimationFrame((ts) => this.flushResize(ts));
-        }
+        this._resizeCoalescer.schedule({ clientX: e.clientX, clientY: e.clientY, border });
     }
 
     /**
@@ -2097,34 +2178,21 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     /**
      * Commits a throttled resize frame: derives the new geometry from the
      * captured origin and pointer offset, clamps it to the viewport edge, and
-     * lays out. Re-schedules itself when called inside the per-frame interval.
+     * lays out. Called by {@link _resizeCoalescer} at most once per animation
+     * frame, further capped by {@link _resizeFps}.
      *
-     * @param timestamp - The rAF timestamp for this frame.
+     * @param value - The most recently buffered pointer position and border.
      */
-    private flushResize(timestamp: number): void {
-        if (timestamp - this._lastFlushTime < 1000 / this._resizeFps) {
-            this._animationFrameId = DOM.sink.requestAnimationFrame((ts) => this.flushResize(ts));
-            return;
-        }
-
-        this._lastFlushTime = timestamp;
-        this._animationFrameId = null;
-
-        const border = this._pendingBorder;
-
-        this._pendingBorder = null;
-
-        if (!border) {
-            return;
-        }
+    private applyResizeFrame(value: { clientX: number; clientY: number; border: WindowBorder }): void {
+        const { clientX, clientY, border } = value;
 
         // Offset of the pointer from where the drag began. The new size is
         // `origin ± offset` clamped by setWidth/setHeight; WEST/NORTH edges
         // additionally re-derive position from the *clamped* size so the
         // opposite (fixed) edge stays put and over-travel past the minimum is
         // absorbed instead of decoupling the dragged edge from the cursor.
-        const offsetX = this._pendingClientX - this._resizeOriginClientX;
-        const offsetY = this._pendingClientY - this._resizeOriginClientY;
+        const offsetX = clientX - this._resizeOriginClientX;
+        const offsetY = clientY - this._resizeOriginClientY;
 
         const originRight  = this._resizeOriginX + this._resizeOriginW;
         const originBottom = this._resizeOriginY + this._resizeOriginH;
@@ -3119,11 +3187,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         Event.removeViewportListener(this, "mousedown", this._boundOnSnapMouseDown);
         this._snapMoveAttached = false;
 
-        if (this._snapMoveRafHandle !== null) {
-            DOM.sink.cancelAnimationFrame(this._snapMoveRafHandle);
-            this._snapMoveRafHandle = null;
-        }
-        this._pendingSnapMove = null;
+        this._snapMoveCoalescer.cancel();
     }
 
     /**
@@ -3220,7 +3284,13 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     /**
      * Buffers the cursor position while snap is armed; the actual border pick
      * and highlight update happen at most once per animation frame, via
-     * {@link scheduleSnapMouseMove}.
+     * {@link applySnapMoveFrame}. A native `mousemove` fires far more often
+     * than the screen repaints, and `pickSnapBorder` is not cheap: it reads up
+     * to eight border strips' live layout rects (`DOM.source.getElementRect`),
+     * each forcing the browser to flush layout. Only the most recent position
+     * before a frame lands is kept — an intermediate position between two
+     * `mousemove` events was never going to be visible anyway. Mirrors
+     * `Split.scheduleDrag`/`flushDrag`.
      *
      * @param e - The mousemove event.
      */
@@ -3229,47 +3299,20 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return;
         }
 
-        this.scheduleSnapMouseMove(e.clientX, e.clientY);
+        this._snapMoveCoalescer.schedule({ clientX: e.clientX, clientY: e.clientY });
     }
 
     /**
-     * Buffers a viewport `mousemove` position and applies it at most once per
-     * animation frame, via {@link flushSnapMouseMove}. A native `mousemove`
-     * fires far more often than the screen repaints, and `pickSnapBorder` is not
-     * cheap: it reads up to eight border strips' live layout rects
-     * (`DOM.source.getElementRect`), each forcing the browser to flush layout.
-     * Only the most recent position before a frame lands is kept — an
-     * intermediate position between two `mousemove` events was never going to be
-     * visible anyway. Mirrors `Split.scheduleDrag`/`flushDrag`.
-     *
-     * @param clientX - Cursor x in viewport pixels.
-     * @param clientY - Cursor y in viewport pixels.
-     */
-    private scheduleSnapMouseMove(clientX: number, clientY: number): void {
-        this._pendingSnapMove = { clientX, clientY };
-
-        if (this._snapMoveRafHandle === null) {
-            this._snapMoveRafHandle = DOM.sink.requestAnimationFrame(() => this.flushSnapMouseMove());
-        }
-    }
-
-    /**
-     * Applies the most recently buffered {@link scheduleSnapMouseMove} position,
-     * if one is pending — a no-op otherwise, which makes it safe to call
-     * unconditionally from both the scheduled animation frame and
+     * Applies the most recently buffered snap-preview position: picks the
+     * nearest border within threshold and updates the highlight if it changed.
+     * Called by {@link _snapMoveCoalescer} at most once per animation frame,
+     * or synchronously via {@link _snapMoveCoalescer}'s `forceFlush` at
      * {@link onSnapMouseDown}.
+     *
+     * @param value - The most recently buffered cursor position.
      */
-    private flushSnapMouseMove(): void {
-        this._snapMoveRafHandle = null;
-
-        const pending = this._pendingSnapMove;
-        if (pending === null) {
-            return;
-        }
-
-        this._pendingSnapMove = null;
-
-        const winner = this.pickSnapBorder(pending.clientX, pending.clientY);
+    private applySnapMoveFrame(value: { clientX: number; clientY: number }): void {
+        const winner = this.pickSnapBorder(value.clientX, value.clientY);
         if (winner === this._snapTargetBorder) {
             return;
         }
@@ -3334,11 +3377,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns `true` when the press starts a snap drag; nothing when it does not, so the event keeps propagating.
      */
     private onSnapMouseDown(e: MouseEvent): Event.ListenerResult {
-        if (this._snapMoveRafHandle !== null) {
-            DOM.sink.cancelAnimationFrame(this._snapMoveRafHandle);
-            this._snapMoveRafHandle = null;
-        }
-        this.flushSnapMouseMove();
+        this._snapMoveCoalescer.forceFlush();
 
         const target = this._snapTargetBorder;
         if (!target) {
