@@ -435,3 +435,16 @@ page resets to empty.
   because the restore rebuilds the root's `Tab` in place and the sweep's
   idempotency guard mistook the unchanged container for an already-wired
   one. No consumer action is needed.
+
+- **Dragging a tab, a `Dock` region, or a `TreeTable` row no longer forces a
+  synchronous layout flush on every raw `mousemove`.** `DragManager` re-ran
+  its drop-target hit test (`elementsFromPoint`) and the full
+  enter/leave/`onDragOver` dispatch on every pointer move, uncapped by the
+  display's frame rate; both shipped `onDragOver` consumers force a second
+  layout flush of their own on top of that (`TabBar`'s reorder-slot read,
+  `DockRegion`'s zone read), so a drag over a `Dock` layout paid two forced
+  layouts per raw move. The hit test and everything that depends on it now
+  settle to at most once per animation frame, mirroring `Split`'s own
+  gutter-drag coalescing; the drag ghost still tracks the cursor at native
+  pointer rate, since repositioning it is cheap. No consumer action is
+  needed.
