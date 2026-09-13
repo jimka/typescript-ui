@@ -428,9 +428,14 @@ class VBox extends BoxLayout {
             this.isOverflowingY()
         );
 
+        const { weights, minExtents, maxExtents } = this.measureWeightCells(components);
+        const weightedHeights = this.resolveWeightedExtents(weights, minExtents, maxExtents, remainingHeight);
+
         // Pre-pass: resolve each child's height into an array so the trailing
         // slack can be measured before placement (mirrors HBox's widths[]).
         const heights: number[] = [];
+
+        let weightCursor = 0;
 
         for (const component of components) {
             const weight  = this.getLayoutConstraints(component)?.weight ?? 0;
@@ -438,7 +443,9 @@ class VBox extends BoxLayout {
             const minSize = component.getMinSize();
             const maxSize = component.getMaxSize();
 
-            heights.push(this.resolveChildHeight(size, minSize, maxSize, weight, totalWeight, remainingHeight, shrinkRatio));
+            const weightedHeight = weight > 0 ? weightedHeights[weightCursor++] : null;
+
+            heights.push(this.resolveChildHeight(size, minSize, maxSize, weightedHeight, shrinkRatio));
         }
 
         // Sum the placed main extents to find the trailing slack, then ask the
@@ -560,6 +567,36 @@ class VBox extends BoxLayout {
     }
 
     /**
+     * Gathers each weight cell's weight and `[min, max]` height bound, in
+     * component order, for {@link BoxLayout.resolveWeightedExtents}.
+     * Non-weighted children are omitted.
+     *
+     * @param components - The children sharing the column.
+     * @returns Parallel `weights` / `minExtents` / `maxExtents` arrays, one
+     *   entry per weight cell.
+     */
+    private measureWeightCells(components: Component[]): { weights: number[]; minExtents: number[]; maxExtents: number[] } {
+        const weights: number[] = [];
+        const minExtents: number[] = [];
+        const maxExtents: number[] = [];
+
+        for (const component of components) {
+            const weight = this.getLayoutConstraints(component)?.weight ?? 0;
+
+            if (weight > 0) {
+                const minSize = component.getMinSize();
+                const maxSize = component.getMaxSize();
+
+                weights.push(weight);
+                minExtents.push(minSize ? minSize.height : 0);
+                maxExtents.push(maxSize ? maxSize.height : Number.POSITIVE_INFINITY);
+            }
+        }
+
+        return { weights, minExtents, maxExtents };
+    }
+
+    /**
      * Resolves a non-weighted child's preferred height, falling back through min
      * height to `_defaultComponentHeight`.
      *
@@ -590,24 +627,26 @@ class VBox extends BoxLayout {
 
     /**
      * Resolves a child's final height within the column, clamped to its
-     * min/max — the minimum wins when the two conflict. Weight cells take a
-     * share of `remainingHeight`; non-weighted children take their preferred
-     * height reduced by the shrink ratio toward their min height.
+     * min/max — the minimum wins when the two conflict. A weight cell takes
+     * its pre-resolved share (see {@link BoxLayout.resolveWeightedExtents},
+     * called once for every weight cell in {@link VBox.layoutPreferredMode} so
+     * a clamp on one cell redistributes to its siblings); a non-weighted child
+     * takes its preferred height reduced by the shrink ratio toward its min
+     * height.
      *
      * @param size - The child's preferred size, or `null`.
      * @param minSize - The child's minimum size, or `null`.
      * @param maxSize - The child's maximum size, or `null`.
-     * @param weight - The child's weight constraint (0 when non-weighted).
-     * @param totalWeight - The summed weight of all weight cells.
-     * @param remainingHeight - The space available to weight cells.
+     * @param weightedHeight - The child's pre-resolved weight-cell share, or
+     *   `null` for a non-weighted child.
      * @param shrinkRatio - How far (0–1) non-weighted children shrink to min.
      * @returns The child's height.
      */
-    private resolveChildHeight(size: Size | null, minSize: Size | null, maxSize: Size | null, weight: number, totalWeight: number, remainingHeight: number, shrinkRatio: number): number {
+    private resolveChildHeight(size: Size | null, minSize: Size | null, maxSize: Size | null, weightedHeight: number | null, shrinkRatio: number): number {
         let height: number;
 
-        if (weight > 0 && totalWeight > 0) {
-            height = (weight / totalWeight) * remainingHeight;
+        if (weightedHeight !== null) {
+            height = weightedHeight;
         } else {
             const pref = this.preferredChildHeight(size, minSize);
             const min  = minSize ? minSize.height : 0;

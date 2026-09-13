@@ -527,6 +527,60 @@ describe('VBox resolveChildHeight clamp ordering', () => {
     });
 });
 
+describe('VBox weight-cell clamp redistribution', () => {
+    afterEach(() => DOM.reset());
+
+    it('redistributes a min-clamped weight cell\'s shortfall to its sibling instead of overflowing the column', () => {
+        installTestDOM(CONFIG);
+
+        const vbox = new VBox({ spacing: 0 });
+        const host = hostVBox(100, 400, vbox);
+        const a = new Component();
+        a.setMinSize({ width: 0, height: 300 });
+        const b = new Component();
+
+        const w1 = Object.assign(new LayoutConstraints(), { weight: 1 });
+
+        host.addComponent(a, w1);
+        host.addComponent(b, w1);
+        host.doLayout();
+
+        // a's unclamped 50/50 share (200) is below its 300 min, so it floors
+        // to 300. Before the fix, b still took its original unclamped share
+        // (200) instead of the 100 left over, so the column's placed content
+        // summed to 500 in a 400-tall container — the trailing child's
+        // bottom edge overflowing the host by 100px, which a non-scrolling
+        // host's `overflow: hidden` (or an ancestor's) clips.
+        expect(a.getHeight()).toBe(300);
+        expect(b.getHeight()).toBe(100);
+        expect(b.getY() + b.getHeight()).toBe(400);
+    });
+
+    it('redistributes a max-clamped weight cell\'s surplus to its sibling instead of leaving a gap', () => {
+        installTestDOM(CONFIG);
+
+        const vbox = new VBox({ spacing: 0 });
+        const host = hostVBox(100, 400, vbox);
+        const a = new Component();
+        a.setMaxSize({ width: Number.POSITIVE_INFINITY, height: 50 });
+        const b = new Component();
+
+        const w1 = Object.assign(new LayoutConstraints(), { weight: 1 });
+
+        host.addComponent(a, w1);
+        host.addComponent(b, w1);
+        host.doLayout();
+
+        // a's unclamped 50/50 share (200) is above its 50 max, so it caps to
+        // 50. Before the fix, b still took its original unclamped share
+        // (200) instead of the 350 a's clamp freed up, leaving a 150px gap
+        // at the column's trailing edge.
+        expect(a.getHeight()).toBe(50);
+        expect(b.getHeight()).toBe(350);
+        expect(b.getY() + b.getHeight()).toBe(400);
+    });
+});
+
 /**
  * Builds a non-stretching HBox host (a Container so doLayout runs), sized and
  * inset-cleared so child origins start at (0,0). Mirrors the Anchor.test.ts

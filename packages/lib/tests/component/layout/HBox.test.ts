@@ -423,3 +423,57 @@ describe('HBox resolveChildWidth clamp ordering', () => {
         expect(toggle.getX()).toBe(120 + hbox.getComponentSpacing());
     });
 });
+
+describe('HBox weight-cell clamp redistribution', () => {
+    afterEach(() => DOM.reset());
+
+    it('redistributes a min-clamped weight cell\'s shortfall to its sibling instead of overflowing the row', () => {
+        installTestDOM(CONFIG);
+
+        const hbox = new HBox({ spacing: 0 });
+        const host = hostHBox(400, 100, hbox);
+        const a = new Component();
+        a.setMinSize({ width: 300, height: 0 });
+        const b = new Component();
+
+        const w1 = Object.assign(new LayoutConstraints(), { weight: 1 });
+
+        host.addComponent(a, w1);
+        host.addComponent(b, w1);
+        host.doLayout();
+
+        // a's unclamped 50/50 share (200) is below its 300 min, so it floors
+        // to 300. Before the fix, b still took its original unclamped share
+        // (200) instead of the 100 left over, so the row's placed content
+        // summed to 500 in a 400-wide container — the trailing child's right
+        // edge overflowing the host by 100px, which a non-scrolling host's
+        // `overflow: hidden` (or an ancestor's) clips.
+        expect(a.getWidth()).toBe(300);
+        expect(b.getWidth()).toBe(100);
+        expect(b.getX() + b.getWidth()).toBe(400);
+    });
+
+    it('redistributes a max-clamped weight cell\'s surplus to its sibling instead of leaving a gap', () => {
+        installTestDOM(CONFIG);
+
+        const hbox = new HBox({ spacing: 0 });
+        const host = hostHBox(400, 100, hbox);
+        const a = new Component();
+        a.setMaxSize({ width: 50, height: Number.POSITIVE_INFINITY });
+        const b = new Component();
+
+        const w1 = Object.assign(new LayoutConstraints(), { weight: 1 });
+
+        host.addComponent(a, w1);
+        host.addComponent(b, w1);
+        host.doLayout();
+
+        // a's unclamped 50/50 share (200) is above its 50 max, so it caps to
+        // 50. Before the fix, b still took its original unclamped share
+        // (200) instead of the 350 a's clamp freed up, leaving a 150px gap
+        // at the row's trailing edge.
+        expect(a.getWidth()).toBe(50);
+        expect(b.getWidth()).toBe(350);
+        expect(b.getX() + b.getWidth()).toBe(400);
+    });
+});

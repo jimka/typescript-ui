@@ -435,6 +435,71 @@ export abstract class BoxLayout extends LayoutManager {
     }
 
     /**
+     * Splits `remaining` main-axis space among weight cells in proportion to
+     * their weight, honouring each cell's own `[min, max]` bound and
+     * redistributing whatever a bound consumes or frees among the
+     * still-unclamped cells — so the cells' extents sum to `remaining`
+     * whenever the combined bounds allow it, instead of a clamped cell's
+     * shortfall or surplus being silently dropped.
+     *
+     * Iterative "freeze on clamp": a cell whose proportional share falls
+     * outside its bound is frozen at that bound, and its weight and allotted
+     * extent leave the shared pool so the still-unfrozen cells re-split what's
+     * left. Repeats until a pass freezes nothing, which takes at most one pass
+     * per cell. Each cell clamps to its maximum before its minimum, so the
+     * minimum wins in the degenerate `min > max` case — matching
+     * {@link HBox.resolveChildWidth} / {@link VBox.resolveChildHeight}.
+     *
+     * @param weights - Each weight cell's own weight (`> 0`), in call order.
+     * @param minExtents - Each weight cell's minimum extent (`0` when none).
+     * @param maxExtents - Each weight cell's maximum extent
+     *   (`Number.POSITIVE_INFINITY` when none).
+     * @param remaining - The total main-axis space to split among the cells.
+     * @returns Each weight cell's resolved extent, in the same order as
+     *   `weights`.
+     */
+    protected resolveWeightedExtents(weights: readonly number[], minExtents: readonly number[], maxExtents: readonly number[], remaining: number): number[] {
+        const extents = new Array<number>(weights.length).fill(0);
+        const frozen  = new Array<boolean>(weights.length).fill(false);
+
+        let poolWeight = weights.reduce((sum, weight) => sum + weight, 0);
+        let poolExtent = remaining;
+
+        for (let pass = 0; pass < weights.length; pass += 1) {
+            let frozeAny = false;
+
+            for (let i = 0; i < weights.length; i += 1) {
+                if (frozen[i] || poolWeight <= 0) {
+                    continue;
+                }
+
+                const share = (weights[i] / poolWeight) * poolExtent;
+                const clamped = Math.max(Math.min(share, maxExtents[i]), minExtents[i]);
+
+                if (clamped !== share) {
+                    extents[i]  = clamped;
+                    frozen[i]   = true;
+                    poolWeight -= weights[i];
+                    poolExtent -= clamped;
+                    frozeAny    = true;
+                }
+            }
+
+            if (!frozeAny) {
+                break;
+            }
+        }
+
+        for (let i = 0; i < weights.length; i += 1) {
+            if (!frozen[i]) {
+                extents[i] = poolWeight > 0 ? (weights[i] / poolWeight) * poolExtent : 0;
+            }
+        }
+
+        return extents;
+    }
+
+    /**
      * Distributes the trailing main-axis slack per {@link BoxJustify}, returning
      * a leading offset and an extra inter-child gap. The subclass adds `lead` to
      * the placement cursor's start and `gap` to the inter-child spacing. A row

@@ -443,9 +443,14 @@ class HBox extends BoxLayout {
             this.isOverflowingX()
         );
 
+        const { weights, minExtents, maxExtents } = this.measureWeightCells(components);
+        const weightedWidths = this.resolveWeightedExtents(weights, minExtents, maxExtents, remainingWidth);
+
         const widths: number[] = [];
         const heights: number[] = [];
         const baselines: Array<number | null> = [];
+
+        let weightCursor = 0;
 
         for (const component of components) {
             const weight  = this.getLayoutConstraints(component)?.weight ?? 0;
@@ -453,7 +458,9 @@ class HBox extends BoxLayout {
             const minSize = component.getMinSize();
             const maxSize = component.getMaxSize();
 
-            widths.push(this.resolveChildWidth(size, minSize, maxSize, weight, totalWeight, remainingWidth, shrinkRatio));
+            const weightedWidth = weight > 0 ? weightedWidths[weightCursor++] : null;
+
+            widths.push(this.resolveChildWidth(size, minSize, maxSize, weightedWidth, shrinkRatio));
 
             // Cross-axis (height): give the child the row's available height —
             // the full inner height when stretching or sizeless, otherwise its
@@ -589,6 +596,36 @@ class HBox extends BoxLayout {
     }
 
     /**
+     * Gathers each weight cell's weight and `[min, max]` width bound, in
+     * component order, for {@link BoxLayout.resolveWeightedExtents}.
+     * Non-weighted children are omitted.
+     *
+     * @param components - The children sharing the row.
+     * @returns Parallel `weights` / `minExtents` / `maxExtents` arrays, one
+     *   entry per weight cell.
+     */
+    private measureWeightCells(components: Component[]): { weights: number[]; minExtents: number[]; maxExtents: number[] } {
+        const weights: number[] = [];
+        const minExtents: number[] = [];
+        const maxExtents: number[] = [];
+
+        for (const component of components) {
+            const weight = this.getLayoutConstraints(component)?.weight ?? 0;
+
+            if (weight > 0) {
+                const minSize = component.getMinSize();
+                const maxSize = component.getMaxSize();
+
+                weights.push(weight);
+                minExtents.push(minSize ? minSize.width : 0);
+                maxExtents.push(maxSize ? maxSize.width : Number.POSITIVE_INFINITY);
+            }
+        }
+
+        return { weights, minExtents, maxExtents };
+    }
+
+    /**
      * Resolves a non-weighted child's preferred width, falling back through min
      * width to `_defaultComponentWidth`.
      *
@@ -621,24 +658,26 @@ class HBox extends BoxLayout {
 
     /**
      * Resolves a child's final width within the row, clamped to its min/max —
-     * the minimum wins when the two conflict. Weight cells take a share of
-     * `remainingWidth`; non-weighted children take their preferred width
-     * reduced by the shrink ratio toward their min width.
+     * the minimum wins when the two conflict. A weight cell takes its
+     * pre-resolved share (see {@link BoxLayout.resolveWeightedExtents}, called
+     * once for every weight cell in {@link HBox.layoutPreferredMode} so a
+     * clamp on one cell redistributes to its siblings); a non-weighted child
+     * takes its preferred width reduced by the shrink ratio toward its min
+     * width.
      *
      * @param size - The child's preferred size, or `null`.
      * @param minSize - The child's minimum size, or `null`.
      * @param maxSize - The child's maximum size, or `null`.
-     * @param weight - The child's weight constraint (0 when non-weighted).
-     * @param totalWeight - The summed weight of all weight cells.
-     * @param remainingWidth - The space available to weight cells.
+     * @param weightedWidth - The child's pre-resolved weight-cell share, or
+     *   `null` for a non-weighted child.
      * @param shrinkRatio - How far (0–1) non-weighted children shrink to min.
      * @returns The child's width.
      */
-    private resolveChildWidth(size: Size | null, minSize: Size | null, maxSize: Size | null, weight: number, totalWeight: number, remainingWidth: number, shrinkRatio: number): number {
+    private resolveChildWidth(size: Size | null, minSize: Size | null, maxSize: Size | null, weightedWidth: number | null, shrinkRatio: number): number {
         let width: number;
 
-        if (weight > 0 && totalWeight > 0) {
-            width = (weight / totalWeight) * remainingWidth;
+        if (weightedWidth !== null) {
+            width = weightedWidth;
         } else {
             const pref = this.preferredChildWidth(size, minSize);
             const min  = minSize ? minSize.width : 0;
