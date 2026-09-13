@@ -317,3 +317,146 @@ Mount a `_Tree` with enough short-labelled nodes to fill the viewport, settle it
 [^no-test-coverage]: Confirmed against `packages/lib/tests/component/tree/` and `packages/lib/tests/component/table/`. Every `setWidth` in `Tree.test.ts` is a single mount-time sizing call; `TreeFontReflow.test.ts` sizes once and then changes the font. No tree test drives two width changes in a burst, and none observes `TreeRow.layoutChildren`. On the table side, `ColumnResize.test.ts` and `ColumnWidths.test.ts` cover column widths rather than repeated body-width changes. The resize-driven repositioning path is therefore unpinned today, which is why this plan specifies it case by case before any code is written.
 
 [^body-untouched]: `Body.bindAndPositionRows` discards `positionRow`'s return value ([Body.ts:1414](packages/lib/src/typescript/lib/component/table/Body.ts#L1414), [:1461](packages/lib/src/typescript/lib/component/table/Body.ts#L1461)) and positions each cell through `Component.applyBounds`, which already withholds a cell's `doLayout` when the rectangle it is handed is unchanged (the `canSkipUnchangedLayout` opt-in, which `Cell` takes). A body-width change with fixed column widths therefore already costs one row-element write per row and nothing more; with flexible columns the cell rectangles genuinely move and must be written every frame, because a column boundary is visible in a way a label's truncation point is not. Leaving `Body` off the new method also keeps a table from paying an extra settle render after every width change.
+
+---
+
+## Implementation Notes
+
+- **No docs-app page composes a `Tree` inside a draggable `Split` to drag,
+  so the plan's three drag-specific Manual-verify bullets were not exercised
+  against a real pointer-drag + compositor-paint runtime in this run** —
+  corrected from an earlier, factually wrong version of this note (an audit
+  round caught the error; see below). `packages/lib/docs/components/Tree.md`
+  *does* exist and *is* live at `/components/Tree` (routed case-sensitively
+  by `packages/docs/src/content/pages.ts`) with its `tree-nodes` demo, and
+  the docs shell's own sidebar (`packages/docs/src/shell/DocsSidebar.ts`) is
+  itself a live, virtual-scrolled `Tree` — but neither sits inside a `Split`,
+  and the two docs `Split` demos (`split-panes`, etc.) hold no `Tree`. The
+  Loom app's file-tree sidebar — the other surface the plan names, and the
+  actual app the 44 ms/frame measurement in the Overview came from — lives
+  in a separate repository/worktree not wired to consume this branch's
+  unreleased `dist` output, so it wasn't a substitute here either.
+- **The plan's third Manual-verify bullet — a one-off resize lands in the
+  correct final layout immediately, with no visible stale frame — *was*
+  reachable and was checked live**, against `/components/Tree`'s demo:
+  resizing the browser viewport 1280→1000 moved the tree's rows and
+  renderers together, in step, with no stale frame — corrected from an
+  earlier version of this note that also claimed the docs shell's own
+  sidebar tree as a second confirmation, which a later audit round caught as
+  wrong: `DocsSidebar` carries a fixed `preferredSize.width` and sits in
+  `DocsShell`'s `Border` WEST region with no EAST region to contend with, so
+  `Border` hands it exactly that preferred width regardless of viewport
+  width — it never receives a width change on a plain browser resize, so it
+  exercised none of this plan's new code path. The eight automated cases in
+  `ResizeLayoutEconomy.test.ts` additionally pin the exact frame-by-frame
+  mechanics the three remaining bullets would otherwise spot-check (the
+  withhold/catch-up transition, the burst-extension case, a slot rebound
+  mid-burst, teardown mid-burst, and — after an audit round — that a
+  withheld pass's eventual catch-up actually reproduces a single-step
+  control's renderer *and* label geometry, not just its row width). Only the
+  subjective "does a live gutter drag look smoother" observation and the
+  deliberate mid-drag ellipsis-clipping trade-off remain genuinely
+  unverified here; a maintainer should still drag a `Split` gutter over a
+  populated `Tree` in a real app (Loom's sidebar, once this branch is
+  available there) to confirm those two directly.
+- **`VirtualRowView.deferRowLayoutWhileResizing`'s `!widthChanged` branch, as
+  specified verbatim in this plan's `## Internal Structure`, contained a
+  dead inner check.** `_rowLayoutOwed` is set only while
+  `_resizeSettleHandle` is non-`null`, and every path that clears the handle
+  (`flushResizeSettle`'s non-extending return, and `destructor`'s cancel)
+  either resolves `_rowLayoutOwed` in the same step or tears the view down
+  entirely, so the guarded resolution this branch attempted
+  (`_rowLayoutOwed && _resizeSettleHandle === null`) could never observe
+  both conditions true at once — confirmed by an audit round's own
+  instrumentation across a multi-change burst. The branch was simplified to
+  an unconditional `return false;`; this changes no observable behaviour
+  (the code it removed never ran) and all eight `ResizeLayoutEconomy.test.ts`
+  cases pass unchanged before and after. `scheduleResizeSettle`'s doc comment
+  now records, as a deliberate design tradeoff rather than an oversight, that
+  — unlike `Split.onDragEnd` — there is no synchronous flush for a
+  still-armed settle frame: nothing signals this view that a drag has ended
+  (per this plan's own "No cross-component signal" decision), so there is no
+  well-defined moment to flush at other than the frame itself. A real browser
+  always eventually delivers `requestAnimationFrame`; only the offline test
+  sink drops it outright, which is why `ResizeLayoutEconomy.test.ts` installs
+  its own capturing one, matching `ScrollRebindLayoutEconomy.test.ts`'s
+  existing precedent for the same class of frame-gated mechanism.
+- **Post-audit fixup: the single-`requestAnimationFrame` settle this plan
+  shipped never actually withheld anything during a real `Split` gutter
+  drag — the identical defect a later sibling branch,
+  `feature/scrollstrip-resize-resync-coalescing`, found and fixed for
+  `ScrollStrip`'s equivalent mechanism, and had flagged by name (footnote
+  `[^virtualrowview-branch]`) as likely to affect this branch too.**
+  `Split.flushDrag` already coalesces a drag to exactly one synchronous
+  `doLayout()` pass per animation frame, itself scheduled via a
+  `requestAnimationFrame` registered by whichever `mousemove` arrives after
+  the previous frame's flush — chronologically *after*
+  `scheduleResizeSettle`'s own callback for the same upcoming frame, which is
+  registered synchronously, one frame earlier, still inside the *current*
+  frame's pass. `requestAnimationFrame` callbacks run in registration order,
+  so the settle callback always fired and cleared `_resizeSettleHandle`
+  moments *before* that frame's real drag pass checked it, so
+  `deferRowLayoutWhileResizing` never returned `true` in a real drag — the
+  withhold branch was dead code in production despite all eight
+  `ResizeLayoutEconomy.test.ts` cases passing, because every one of them
+  drives several `doLayout()` passes back-to-back with no intervening frame,
+  a shape a real drag never produces. Ported `ScrollStrip`'s fix verbatim in
+  shape: `scheduleResizeSettle` now arms a two-hop relay —
+  `armResizeSettleCheck` on the next frame (which only re-arms for one more
+  frame, keeping `_resizeSettleHandle` continuously non-`null` across the
+  boundary), then `flushResizeSettle` on the frame after that. By the time
+  the second hop's `_rowWidthMoved` check runs, the frame in between is an
+  entirely separate, already-completed `requestAnimationFrame` batch, so
+  nothing races it. This roughly doubles settle latency after a drag stops
+  (3-4 frames instead of 2), confirmed both offline and live (see below);
+  still well under 100ms at 60Hz and imperceptible for a UI settle.
+  Alongside it, `deferRowLayoutWhileResizing`'s check order was corrected to
+  match: it now checks `this._resizeSettleHandle === null` *first*, arming a
+  new settle only when the width actually changed, and withholds
+  unconditionally whenever a settle is already armed regardless of whether
+  *this* pass's width moved (using the changed flag only to decide whether to
+  additionally mark `_rowWidthMoved`). The old `!widthChanged` early return
+  skipped the settle-armed check entirely; traced against `Tree._positionRows`
+  (`positionRow`'s `geomChanged` result, itself gated on the row's own cached
+  geometry, already returns `false` on a genuine same-width-same-everything
+  pass regardless of `deferChildLayout`), this was harmless for `Tree`
+  specifically today, but the ordering was still fixed to match the now
+  corrected canonical shape rather than leave a latent inconsistency.
+  Updated `packages/lib/tests/component/tree/ResizeLayoutEconomy.test.ts`'s
+  "extends the burst" case to pin the two-hop relay's own intermediate state
+  (`_rowWidthMoved`/`_resizeSettleHandle`) rather than a hardcoded frame
+  count that assumed the old single-hop timing, and added
+  `ResizeLayoutEconomyRealtime.test.ts`, simulating one real `doLayout()`
+  pass per animation frame (interleaved with draining whatever settle-relay
+  callback is currently queued) rather than several passes with no
+  intervening frame — the shape that would have caught this defect, mirroring
+  `ScrollStrip`'s own realtime test file.
+  **Live-browser confirmation:** no docs-app page combines a `Tree` with a
+  draggable `Split` (confirmed above), so a temporary, uncommitted demo
+  (`packages/docs/src/demos/scratch-split-tree-drag.ts`, plus a matching
+  marker temporarily added to `Tree.md`) built one — a 60-row `Tree` in
+  `rowOverflow: "clip"` mode (so `rowWidth` tracks the live viewport width
+  every pass, unlike the default "scroll" mode, which pins `rowWidth` to the
+  widest label's content width once that exceeds the viewport — the first
+  attempt used the default mode and produced a constant `rowWidth` for the
+  whole drag, a dead end worth recording). Both were deleted before this note
+  was written. One real methodological trap surfaced along the way: this
+  worktree has no `node_modules` of its own, so Vite's module resolution
+  walked up to the *main* tree's `node_modules` and silently served its
+  stale, pre-fix `packages/lib/dist` build to the docs dev server — a
+  `Tree.prototype`/`VirtualRowView.prototype` introspection check caught it
+  (`scheduleResizeSettle`/`armResizeSettleCheck`/`flushResizeSettle` were
+  simply absent) before any measurement was trusted; running `npm install`
+  inside the worktree fixed the workspace symlink to point at its own
+  `packages/lib`. With that corrected, `chrome-devtools` MCP tooling dispatched
+  a real `mousedown`/40 `mousemove`/`mouseup` sequence at the `.SplitGutter`
+  element, one dispatch per real awaited `requestAnimationFrame`, while a
+  patched `Tree.prototype._positionRows` recorded each pass's
+  `deferChildLayout` decision directly. Result: frame 1 (drag start) ran
+  live, frames 2 through 40 (39 consecutive real drag frames) all withheld
+  (`deferChildLayout: true`), and a single catch-up pass ran 3 quiet frames
+  after `mouseup` — 2 live passes out of 40 real drag frames, versus 40 of 40
+  the single-hop code would have produced, and settle latency landing exactly
+  in the "3-4 frames" range predicted above. `npx vitest run
+  tests/component/tree/ tests/component/table/`, `npm run typecheck`, `npm
+  run lint`, and `npm run build:lib` all stayed clean throughout.

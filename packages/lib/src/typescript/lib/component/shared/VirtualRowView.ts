@@ -71,6 +71,13 @@ abstract class VirtualRowView<
     /** The data index pool slot 0 was aligned to on the last render, for {@link alignPoolWindow} to derive the scroll delta. `null` before the first render. */
     private _lastWindowStart: number | null = null;
 
+    /** Whether a pass withheld a width-driven child relayout that is still owed. */
+    private _rowLayoutOwed: boolean = false;
+    /** Whether a further width change landed after the settle frame was armed. */
+    private _rowWidthMoved: boolean = false;
+    /** The animation frame armed to end a resize burst, or `null` when none is in flight. */
+    private _resizeSettleHandle: number | null = null;
+
     /** Whether the startup font gate skipped a render pass that still owes a run. */
     private _renderDeferred: boolean = false;
     /** Whether the render now in flight is the one a skipped pass left pending. */
@@ -141,9 +148,18 @@ abstract class VirtualRowView<
      * per-instance stylesheet rules, so the shared sheet grows by roughly the
      * view's whole cell count on every teardown. The scroller's two
      * `Scrollbar` overlays are raw-appended the same way, so they need the
-     * same explicit disposal.
+     * same explicit disposal. A still-armed resize-settle frame is cancelled
+     * here too, first, so it cannot fire and re-render against the pool this
+     * method is about to dispose.
      */
     protected destructor(): void {
+        // A still-armed settle frame would otherwise fire after the pool below
+        // is disposed, re-laying out rows that no longer exist.
+        if (this._resizeSettleHandle !== null) {
+            DOM.sink.cancelAnimationFrame(this._resizeSettleHandle);
+            this._resizeSettleHandle = null;
+        }
+
         for (const row of this._rowPool) {
             row.dispose();
         }
@@ -562,6 +578,122 @@ abstract class VirtualRowView<
         for (let i = 0; i < this._rowGeom.length; i++) {
             this._rowGeom[i] = null;
         }
+    }
+
+    /**
+     * Decides whether this render pass may withhold the width-driven relayout of
+     * every visible row's children because the view's width is still moving, and
+     * arms (or extends) the settle relay that catches them up once it stops.
+     * Mirrors `Split.scheduleDrag`/`flushDrag`, which solves the same class of
+     * problem one layer up (a live pane resize).
+     *
+     * @param widthChanged - Whether this pass sizes rows to a different width than
+     *   the previous pass did.
+     *
+     * @returns `true` when the caller must skip each row's child layout this pass.
+     *
+     * @remarks Whether a settle frame is already armed — not `widthChanged` — is
+     * what decides withholding: a pass with no settle frame armed always applies
+     * its own child relayout in full (arming a settle only when the width
+     * actually moved, so a one-off resize lands accurate on its own frame),
+     * while any pass that finds one already armed withholds regardless of
+     * whether *this specific* pass's width moved, so an incidental same-width
+     * pass mid-burst can't slip a live relayout in ahead of the settle.
+     * {@link flushResizeSettle} performs the eventual catch-up once the burst
+     * goes quiet.
+     */
+    protected deferRowLayoutWhileResizing(widthChanged: boolean): boolean {
+        if (this._resizeSettleHandle === null) {
+            if (widthChanged) {
+                this.scheduleResizeSettle();
+            }
+
+            return false;
+        }
+
+        if (widthChanged) {
+            this._rowWidthMoved = true;
+        }
+
+        this._rowLayoutOwed = true;
+
+        return true;
+    }
+
+    /**
+     * Arms the two-frame relay that ends a resize burst: {@link
+     * armResizeSettleCheck} on the next frame, {@link flushResizeSettle} on the
+     * one after. Armed once and left alone while further width changes arrive,
+     * matching `Split.scheduleDrag`.
+     *
+     * @remarks A single `requestAnimationFrame` here is not enough. The owner
+     * driving this view's resize (`Split.flushDrag`, itself already coalesced to
+     * one call per frame) also runs its own per-frame layout pass from a
+     * `requestAnimationFrame` callback, registered by whichever `mousemove`
+     * arrives after the previous frame finishes — chronologically *after* this
+     * method's own callback for the same upcoming frame, which is registered
+     * synchronously, still inside the *current* frame's pass. Per frame,
+     * callbacks run in registration order, so a single relay hop always fires
+     * and resolves *before* that frame's real layout pass runs, making
+     * `_resizeSettleHandle` read as `null` again just before the pass that
+     * needed to see it armed — the settle races, and always wins, the very pass
+     * it exists to detect. Two hops fixes this: the first
+     * (`armResizeSettleCheck`) only relays the handle to a second frame, costing
+     * nothing but keeping `_resizeSettleHandle` continuously non-null across the
+     * boundary; the second (`flushResizeSettle`) then checks `_rowWidthMoved`,
+     * which — set by any pass over the *prior* frame, an entirely separate
+     * earlier `requestAnimationFrame` batch — is never racing anything by the
+     * time this one reads it.
+     *
+     * Unlike `Split.onDragEnd`, there is no synchronous flush for this frame:
+     * nothing signals this view that a drag has ended (see the plan's "No
+     * cross-component signal" decision), so there is no well-defined moment to
+     * flush at other than the frame itself. A real browser always eventually
+     * delivers `requestAnimationFrame`, so a live resize always resolves; the
+     * offline test sink deliberately drops the callback instead of delaying it,
+     * so a test driving more than one width change in a burst must install its
+     * own capturing `requestAnimationFrame` / `cancelAnimationFrame`, as
+     * `ResizeLayoutEconomy.test.ts` does — the same requirement
+     * `ScrollRebindLayoutEconomy.test.ts` already carries for its own
+     * frame-gated behaviour.
+     */
+    private scheduleResizeSettle(): void {
+        this._resizeSettleHandle = DOM.sink.requestAnimationFrame(() => this.armResizeSettleCheck());
+    }
+
+    /**
+     * The settle relay's first hop: merely re-arms for one more frame, keeping
+     * {@link _resizeSettleHandle} continuously non-null across the frame
+     * boundary so this frame's still-pending real layout pass (see
+     * {@link scheduleResizeSettle}'s remarks) reads it as armed and withholds.
+     */
+    private armResizeSettleCheck(): void {
+        this._resizeSettleHandle = DOM.sink.requestAnimationFrame(() => this.flushResizeSettle());
+    }
+
+    /**
+     * The settle relay's second hop: ends a resize burst, or extends it by
+     * another two-frame relay when the width moved again during the frame
+     * between the two hops. On the first quiet cycle it re-lays out every
+     * visible row's children at the settled width.
+     */
+    private flushResizeSettle(): void {
+        this._resizeSettleHandle = null;
+
+        if (this._rowWidthMoved) {
+            this._rowWidthMoved = false;
+            this.scheduleResizeSettle();
+
+            return;
+        }
+
+        if (!this._rowLayoutOwed) {
+            return;
+        }
+
+        this._rowLayoutOwed = false;
+        this.invalidateGeom();
+        this.renderWindow();
     }
 
     /**
