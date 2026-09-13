@@ -163,17 +163,33 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
     private readonly _list: List;
     /** Lower bound on the dropdown width — see `COMBOBOX_DROPDOWN_MIN_WIDTH_PX`. */
     private _minWidth: number = COMBOBOX_DROPDOWN_MIN_WIDTH_PX;
+    /**
+     * True while {@link handleKey} is forwarding a pure navigation key
+     * (Arrow/Home/End/Page*) into the list. The list's `_selectFollowsFocus`
+     * default commits — and fires `action` — on those keys too (so the
+     * collapsed control's label live-updates as the user browses), so this
+     * flag is what lets the `action` listener tell that commit apart from a
+     * row click or an Enter/Space commit, which must close the panel.
+     */
+    private _keyboardNavigationOnly: boolean = false;
+
+    /** Pure navigation keys — see {@link _keyboardNavigationOnly}. */
+    private static readonly NAVIGATION_ONLY_KEYS = new Set([
+        "ArrowDown", "ArrowUp", "Home", "End", "PageDown", "PageUp",
+    ]);
 
     /**
-     * @param onSelect - Called with the index of the row the user picked.
-     *   Fired on click (`SelectableListRow.onClick`) and on Enter / Space
-     *   forwarded into the inner list — both paths route through the
-     *   list's `change` event.
+     * @param onSelect - Called with the index of the row the user picked,
+     *   and whether the dropdown should stay open. Fired on click
+     *   (`SelectableListRow.onClick`), on Enter / Space, and on arrow-key
+     *   navigation (which also commits under `_selectFollowsFocus`) — all
+     *   three route through the list's `change` event; `keepOpen` is true
+     *   only for the last case.
      * @param subclassDefaults - Per-subclass default bag layered over this
      *   class's defaults. Forwarded even though no subclass exists yet, per
      *   the framework's `subclassDefaults` convention.
      */
-    constructor(onSelect: (index: number) => void, subclassDefaults?: Partial<AnimatedDropdownOptions>) {
+    constructor(onSelect: (index: number, keepOpen: boolean) => void, subclassDefaults?: Partial<AnimatedDropdownOptions>) {
         super(undefined, {
             layoutManager: new Fit(),
             ..._defaultComboBoxDropdownOptions,
@@ -207,7 +223,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         // writes (`setItemsArray`, `setSelectedIndex(idx, false)` used
         // by `showAt`) bypass this path, so re-opening the dropdown
         // doesn't trigger a spurious commit.
-        this._list.on("action", () => onSelect(this._list.getSelectedIndex()));
+        this._list.on("action", () => onSelect(this._list.getSelectedIndex(), this._keyboardNavigationOnly));
     }
 
     /**
@@ -230,7 +246,16 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
      * @returns `true` when the list consumed the key.
      */
     handleKey(e: KeyboardEvent): boolean {
-        return this._list.handleKey(e);
+        // Set for the duration of the (synchronous) forwarded call so the
+        // `action` listener above — fired, if at all, from inside
+        // `_list.handleKey` — can read it before it is cleared again below.
+        this._keyboardNavigationOnly = ComboBoxDropdown.NAVIGATION_ONLY_KEYS.has(e.key);
+
+        const handled = this._list.handleKey(e);
+
+        this._keyboardNavigationOnly = false;
+
+        return handled;
     }
 
     /**
@@ -748,7 +773,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         // `<div>` is still lazy (built by `getElement(true)` on first show),
         // and the list's row DOM only mounts when the dropdown root mounts,
         // so the net cost is three JS instances and one `Fit` layout.
-        this._dropdown = new ComboBoxDropdown(idx => this.onRowSelected(idx));
+        this._dropdown = new ComboBoxDropdown((idx, keepOpen) => this.onRowSelected(idx, keepOpen));
 
         // Forward the dropdown-specific options that were captured pure by
         // `applyOptions`. These run unconditionally now that the dropdown
@@ -1030,13 +1055,23 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Internal callback fired when a row inside the dropdown is clicked.
+     * Internal callback fired when the dropdown's list commits a selection —
+     * a row click, an Enter/Space commit, or an arrow-key move (which also
+     * commits live under the list's `_selectFollowsFocus` default). Only the
+     * first two should close the panel; `keepOpen` (set by
+     * {@link ComboBoxDropdown.handleKey} for pure navigation keys) suppresses
+     * the close so browsing with the arrow keys previews each row without
+     * dismissing the dropdown on every keystroke.
      *
      * @param index - The selected row index.
+     * @param keepOpen - True to leave the dropdown open after committing.
      */
-    private onRowSelected(index: number): void {
+    private onRowSelected(index: number, keepOpen: boolean): void {
         this.setSelectedIndex(index, true);
-        this.closeDropdown();
+
+        if (!keepOpen) {
+            this.closeDropdown();
+        }
     }
 
     /**
