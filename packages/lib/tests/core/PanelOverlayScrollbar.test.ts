@@ -299,7 +299,7 @@ describe('Panel — overlay scrollbar default', () => {
         expect(lastStyle(sink, inner!, 'height')).toBe('300px');   // no bottom bar → full height
     });
 
-    it('re-sizes the inner scroller to the CURRENT panel viewport on every layout (never lags a resize)', () => {
+    it('re-sizes the inner scroller to the CURRENT panel viewport on every settled layout (a one-off resize never lags)', () => {
         // The inner element's own client box is what the overflow test reads, so
         // it must track the current viewport rather than the previous pass's
         // size — otherwise a resize flickers a transient bar (expand: a stale-
@@ -311,7 +311,36 @@ describe('Panel — overlay scrollbar default', () => {
         // so the inner width tracks viewportW − 12 as the viewport grows/shrinks.
         // (The transient itself is a write-then-read the offline stub can't model
         // — it is verified live; this guards the sizing that prevents it.)
+        //
+        // Each viewport change below is driven to quiescence (drainFrames())
+        // before its assertion, standing in for the real animation frames a
+        // one-off resize (not a live drag burst) settles across — Panel's
+        // resize-metrics settle relay only withholds a remeasure while a burst
+        // is still in flight (see PanelResizeMetricsCoalescing.test.ts); a
+        // settled panel always remeasures live on its next pass.
         const sink = installTestDOM(CONFIG);
+        let nextFrameHandle = 1;
+        const frames = new Map<number, FrameRequestCallback>();
+
+        (DOM.sink as any).requestAnimationFrame = (callback: FrameRequestCallback): number => {
+            const handle = nextFrameHandle++;
+            frames.set(handle, callback);
+
+            return handle;
+        };
+        (DOM.sink as any).cancelAnimationFrame = (handle: number): void => { frames.delete(handle); };
+
+        function drainFrames(): void {
+            for (let guard = 0; guard < 10 && frames.size > 0; guard++) {
+                const pending = Array.from(frames.values());
+                frames.clear();
+
+                for (const callback of pending) {
+                    callback(0);
+                }
+            }
+        }
+
         // Content fits horizontally (scrollWidth 100) but overflows vertically
         // (scrollHeight 900 > clientHeight 300) → a right gutter, never a bottom.
         const metrics = (viewportW: number) => ({
@@ -325,14 +354,17 @@ describe('Panel — overlay scrollbar default', () => {
         panel.getElement(true);
         const inner = internals(panel)._overlayScrollElement!;
         panel.doLayout();
+        drainFrames();
         expect(lastStyle(sink, inner, 'width')).toBe('388px');   // 400 − 12
 
         spy.mockReturnValue(metrics(600));
         panel.doLayout();
+        drainFrames();
         expect(lastStyle(sink, inner, 'width')).toBe('588px');   // grow → tracks 600 − 12
 
         spy.mockReturnValue(metrics(200));
         panel.doLayout();
+        drainFrames();
         expect(lastStyle(sink, inner, 'width')).toBe('188px');   // shrink → tracks 200 − 12, not stuck large
 
         expect(internals(panel)._scrollbarGutter.bottom).toBe(0); // no spurious H bar at any size
