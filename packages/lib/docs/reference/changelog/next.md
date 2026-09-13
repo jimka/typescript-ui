@@ -363,6 +363,21 @@ page resets to empty.
   reuses its existing `revealItem` scrolling logic to do so. No consumer
   action is needed.
 
+- **Dragging a `Split` gutter over a `TabBar`'s overflowing tab strip no
+  longer forces a synchronous layout flush on every animation frame of the
+  drag.** `ScrollStrip.layoutItems`'s post-layout scroll-offset resync and
+  `layoutArrows`'s arrow-enablement read each force the browser to compute
+  layout immediately rather than deferring it to the next paint — a profiled
+  gutter drag over an editor pane's tab strip spent 43% of its sampled CPU
+  there, once per frame. The first extent change of a drag still resyncs
+  live, so a one-off resize (a sidebar toggle, a window resize, opening or
+  closing a tab) is never delayed; only the second and later changes of a
+  live drag now withhold both reads, catching up in one pass on the first
+  animation frame the width or height stops moving. `ScrollStrip.mainScroll()`
+  now always resyncs its cache from the DOM before returning, so a reveal or
+  a within-strip tab-reorder drag mid-drag is never served a stale scroll
+  position. No consumer action is needed.
+
 - **Expanding or collapsing a `Tree` node no longer rebuilds every visible
   row's toggle caret, nor repositions every visible row, when most of what's
   on screen hasn't actually changed.** Internally, `TreeRow.setRowData` tore
