@@ -201,6 +201,14 @@ class Accordion extends LayoutManager implements FocusRevealer {
     private _dragLastPointer: number = 0;
     private _dragOpenIndices: number[] = [];
     private _dragGutterUpperPos: number = 0;
+    // The most recent not-yet-applied gutter `drag` event, and the animation
+    // frame scheduled to apply it via `flushGutterDrag` — see
+    // `scheduleGutterDrag`. `null`/`null` while no gutter is mid-drag or every
+    // buffered event has already been flushed. One shared buffer is enough:
+    // only one gutter can be mid-drag at a time, which is also why
+    // `_dragUpper`/`_dragLower` above are single fields rather than per-gutter.
+    private _pendingGutterDrag: { gutterIndex: number; position: number } | null = null;
+    private _dragRafHandle: number | null = null;
     // Open/close toggle animations currently in flight. Transitions are off by
     // default (so resize and drag relayouts snap); a toggle enables them and the
     // global disable waits until this returns to zero — single-open mode primes
@@ -1147,6 +1155,19 @@ class Accordion extends LayoutManager implements FocusRevealer {
             container?.setTransition(null);
         }
 
+        // A still-buffered drag frame (see scheduleGutterDrag) left alone would
+        // fire after this detach and call onGutterDrag against sections that may
+        // already be destroyed — Component.destructor empties the container's
+        // component list before calling layoutManager.detach(), so
+        // container.getComponents() can already be [] by the time this runs.
+        // Cancel it without applying it; onGutterDragEnd's own flush below becomes
+        // a safe no-op now that the buffer is cleared.
+        if (this._dragRafHandle !== null) {
+            DOM.sink.cancelAnimationFrame(this._dragRafHandle);
+            this._dragRafHandle = null;
+        }
+        this._pendingGutterDrag = null;
+
         // A detach mid-drag would otherwise leak the viewport listeners
         // registered in onGutterDragStart and strand the drag pair. `_dragUpper`
         // is non-null only while a drag is live (set alongside those listeners),
@@ -1734,7 +1755,7 @@ class Accordion extends LayoutManager implements FocusRevealer {
 
         gutter.setTransition("none");
         gutter.on("dragstart", (position: number) => this.onGutterDragStart(index, position));
-        gutter.on("drag", (position: number) => this.onGutterDrag(index, position));
+        gutter.on("drag", (position: number) => this.scheduleGutterDrag(index, position));
         gutter.on("dragend", () => this.onGutterDragEnd());
 
         DOM.sink.appendChild(container.getElement()!, gutter.getElement(true)!);
@@ -1924,18 +1945,74 @@ class Accordion extends LayoutManager implements FocusRevealer {
     }
 
     /**
-     * Ends a resizable-gutter drag: removes the viewport listeners and clears
-     * the captured drag pair. Transitions stay off (their default outside a
-     * toggle), so there is nothing to restore. Fires `sectionresize` with the
-     * post-drag sizes when a drag was actually live — including on the
-     * `detach()` mid-drag path, which calls this before `_resizeSizes` is
-     * cleared, so the emitted sizes still reflect the drag. Also callable
-     * directly (with no argument) so `detach()` and tests can simulate a
-     * drag end.
+     * Buffers a resizable gutter's `drag` event and applies at most one per
+     * animation frame, via {@link flushGutterDrag}. Mirrors
+     * {@link Split.scheduleDrag}: a native `mousemove` fires far more often than
+     * the screen repaints, and `onGutterDrag`'s chained redistribution can force
+     * `doLayout()` on more than two sections at once — any of which may host
+     * something like a mounted `Table` or `Tree` — so dispatching it unthrottled
+     * can run that whole chain once per raw pointer-move rather than once per
+     * rendered frame. Only the most recent event before a frame lands is kept —
+     * an intermediate position between two `mousemove` events was never going to
+     * be visible anyway, and {@link chainRoom}/{@link distributeDragChain}'s
+     * nearest-first distribution is a pure function of the sections' current
+     * live heights, not of how many intermediate calls got there, so skipping
+     * intermediate positions changes nothing about where the sections end up.
+     *
+     * @param gutterIndex - The dragged gutter's position in `_gutterPairs`, forwarded to `onGutterDrag`.
+     * @param position - The absolute pointer coordinate (`clientY`) for this move.
+     */
+    private scheduleGutterDrag(gutterIndex: number, position: number): void {
+        this._pendingGutterDrag = { gutterIndex, position };
+
+        if (this._dragRafHandle === null) {
+            this._dragRafHandle = DOM.sink.requestAnimationFrame(() => this.flushGutterDrag());
+        }
+    }
+
+    /**
+     * Applies the most recently buffered {@link scheduleGutterDrag} call, if one
+     * is pending — a no-op otherwise, which makes it safe to call unconditionally
+     * from both the scheduled animation frame and {@link onGutterDragEnd}.
+     */
+    private flushGutterDrag(): void {
+        this._dragRafHandle = null;
+
+        const pending = this._pendingGutterDrag;
+
+        if (pending === null) {
+            return;
+        }
+
+        this._pendingGutterDrag = null;
+
+        this.onGutterDrag(pending.gutterIndex, pending.position);
+    }
+
+    /**
+     * Ends a resizable-gutter drag: cancels and synchronously flushes any
+     * animation frame {@link scheduleGutterDrag} still has pending, so the
+     * committed sizes always reflect the pointer's actual last position rather
+     * than whichever buffered position a frame boundary happened to catch — and
+     * so this resolves at all offline, where the `requestAnimationFrame` this
+     * scheduled never fires (see DOMSink) — then clears the captured drag pair.
+     * Transitions stay off (their default outside a toggle), so there is nothing
+     * to restore. Fires `sectionresize` with the post-drag sizes when a drag was
+     * actually live — including on the `detach()` mid-drag path, which calls this
+     * after already cancelling and discarding any buffered frame itself (see
+     * `detach()`), so the flush here is a safe no-op in that case. Also callable
+     * directly (with no argument) so `detach()` and tests can simulate a drag end.
      *
      * @returns `true`, consuming the release that ends the gutter drag.
      */
     private onGutterDragEnd(): Event.ListenerResult {
+        if (this._dragRafHandle !== null) {
+            DOM.sink.cancelAnimationFrame(this._dragRafHandle);
+            this._dragRafHandle = null;
+        }
+
+        this.flushGutterDrag();
+
         const wasDragging = this._dragUpper !== null;
 
         this._dragUpper = null;

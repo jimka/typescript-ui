@@ -1077,6 +1077,80 @@ describe('Accordion resizable — lightweight drag path', () => {
     });
 });
 
+describe('Accordion resizable — gutter drag coalescing', () => {
+    type GutterDragHandle = {
+        onGutterDrag(index: number, position: number): void;
+        _resizeGutters: Array<{
+            onDragStart(evnt: MouseEvent): void;
+            onDrag(evnt: MouseEvent): void;
+            onDragStop(): void;
+        }>;
+    };
+
+    /** Build a resizable accordion with two open sections and lay it out once. */
+    function openPair(hostHeight: number, min = 20): { acc: Accordion; sections: [Component, Component] } {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, hostHeight, acc);
+        const a = content({ width: 100, height: 60 }, { width: 40, height: min });
+        const b = content({ width: 100, height: 60 }, { width: 40, height: min });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.doLayout();
+        return { acc, sections: [a, b] };
+    }
+
+    it('coalesces a burst of raw gutter drag events, applying only the latest position', () => {
+        const { acc, sections: [a] } = openPair(300, 20);
+        const drag = acc as unknown as GutterDragHandle;
+        const aBefore = a.getHeight();
+
+        const onGutterDragSpy = vi.spyOn(drag, 'onGutterDrag');
+
+        // Driven through the gutter's own DOM handlers (as a real mousedown /
+        // mousemove sequence would), not the direct onGutterDragStart/onGutterDrag
+        // calls the rest of this file uses — this is the path scheduleGutterDrag
+        // actually sits on.
+        const gutter = drag._resizeGutters[0];
+        gutter.onDragStart({ clientY: 0 } as MouseEvent);
+        gutter.onDrag({ clientY: 10 } as MouseEvent);
+        gutter.onDrag({ clientY: 20 } as MouseEvent);
+        gutter.onDrag({ clientY: 40 } as MouseEvent);
+
+        // No animation frame has run yet — the offline DOM sink drops its
+        // requestAnimationFrame callback (see TestDOM.ts) — so nothing is
+        // applied until something forces a flush.
+        expect(onGutterDragSpy).not.toHaveBeenCalled();
+        expect(a.getHeight()).toBeCloseTo(aBefore, 5);
+
+        gutter.onDragStop(); // dragend flushes the buffered position synchronously
+
+        expect(onGutterDragSpy).toHaveBeenCalledTimes(1);
+        expect(onGutterDragSpy).toHaveBeenCalledWith(0, 40); // only the last of the three moves
+        expect(a.getHeight()).toBeGreaterThan(aBefore);
+    });
+
+    it('sectionresize still fires exactly once at drag end for a coalesced burst', () => {
+        const { acc } = openPair(300, 20);
+        const drag = acc as unknown as GutterDragHandle;
+
+        const listener = vi.fn();
+        acc.on('sectionresize', listener);
+
+        const gutter = drag._resizeGutters[0];
+        gutter.onDragStart({ clientY: 0 } as MouseEvent);
+        gutter.onDrag({ clientY: 10 } as MouseEvent);
+        gutter.onDrag({ clientY: 20 } as MouseEvent);
+        gutter.onDrag({ clientY: 40 } as MouseEvent);
+        gutter.onDragStop();
+
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(listener).toHaveBeenCalledWith(acc.getSectionSizes());
+    });
+});
+
 describe('Accordion resizable — teardown', () => {
     type DragTeardown = {
         onGutterDragStart(index: number, position: number): void;
@@ -1103,6 +1177,59 @@ describe('Accordion resizable — teardown', () => {
 
         expect(drag._dragUpper).toBeNull();
         expect(drag._dragLower).toBeNull();
+    });
+
+    it('a still-buffered drag frame does not fire after detach()', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 300, acc);
+        host.addComponent(content({ width: 100, height: 60 }, { width: 40, height: 10 }), constraints('A', true));
+        host.addComponent(content({ width: 100, height: 60 }, { width: 40, height: 10 }), constraints('B', true));
+        host.doLayout();
+
+        // The default offline sink permanently drops every requestAnimationFrame
+        // callback without storing it (TestDOM.ts), so it cannot distinguish
+        // "cancelled" from "never going to run anyway" — install a real-cancel
+        // override so this test can tell the difference.
+        const originalRAF = DOM.sink.requestAnimationFrame;
+        const originalCAF = DOM.sink.cancelAnimationFrame;
+        let nextHandle = 1;
+        const pendingFrames = new Map<number, FrameRequestCallback>();
+        (DOM.sink as any).requestAnimationFrame = (cb: FrameRequestCallback): number => {
+            const handle = nextHandle++;
+            pendingFrames.set(handle, cb);
+            return handle;
+        };
+        (DOM.sink as any).cancelAnimationFrame = (handle: number): void => {
+            pendingFrames.delete(handle);
+        };
+
+        try {
+            const drag = acc as unknown as DragTeardown & {
+                onGutterDrag(index: number, position: number): void;
+                _resizeGutters: Array<{ onDragStart(evnt: MouseEvent): void; onDrag(evnt: MouseEvent): void }>;
+            };
+            const onGutterDragSpy = vi.spyOn(drag, 'onGutterDrag');
+            const gutter = drag._resizeGutters[0];
+
+            gutter.onDragStart({ clientY: 0 } as MouseEvent);
+            gutter.onDrag({ clientY: 10 } as MouseEvent); // buffers a frame, not yet applied
+            expect(pendingFrames.size).toBe(1);
+
+            drag.detach();
+
+            expect(pendingFrames.size).toBe(0);
+
+            for (const callback of pendingFrames.values()) {
+                callback(0);
+            }
+            expect(onGutterDragSpy).not.toHaveBeenCalled();
+        } finally {
+            (DOM.sink as any).requestAnimationFrame = originalRAF;
+            (DOM.sink as any).cancelAnimationFrame = originalCAF;
+        }
     });
 });
 
