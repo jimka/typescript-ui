@@ -801,6 +801,26 @@ class Grid extends LayoutManager {
      * @remarks Fixed tracks keep their `value`; content tracks keep their measured
      * size; the remaining space is split among weight tracks in proportion to their
      * weights. When no weight track exists the remaining space is left unused.
+     *
+     * Unlike {@link BoxLayout.resolveWeightedExtents} — added to redistribute a
+     * clamped weight *child*'s shortfall/surplus to its siblings in `HBox`/`VBox`
+     * — this method applies no min/max clamp to a weight track's resolved
+     * extent at all: {@link GridTrack} has no such bound on a weight track,
+     * and a track can carry many children via auto-flow, so there is no
+     * single per-track bound to clamp against. On the default (non-baseline)
+     * layout path, a weight track's computed share is therefore never
+     * adjusted afterward, so there is no clamp-induced shortfall or surplus
+     * for this method to redistribute — a child whose own min size exceeds
+     * its resolved cell is instead clipped in place by `layoutOccupancy`'s
+     * clip-frame branch, leaving that track's own resolved extent unchanged.
+     * The baseline-align path is a separate case this method doesn't
+     * control: `doLayout`'s own `y += Math.max(rowExtents[row] ?? 0,
+     * baselineHeight) + spacing` can grow a row past this method's resolved
+     * extent to fit a taller baseline, without shrinking a sibling row to
+     * compensate — a real overflow, but not a clamp this method could
+     * redistribute around, since nothing here clamped that row in the first
+     * place. See `plans/implemented/grid-weight-distribution-uplift.md` for
+     * the investigation that confirmed this.
      */
     private resolveTracks(tracks: GridTrack[], count: number, available: number, spacing: number, contentSizes: number[]): number[] {
         const inner = available - Math.max(0, count - 1) * spacing;
