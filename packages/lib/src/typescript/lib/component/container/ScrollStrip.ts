@@ -184,6 +184,28 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
     private _leadArrow: Button | null = null;
     private _trailArrow: Button | null = null;
 
+    // The clip's own main-axis extent as of the last layout pass — the baseline
+    // a live external resize (e.g. a Split gutter drag resizing the strip's
+    // owner) is detected against. -1 until the first pass, so the very first
+    // layoutItems() call always resyncs live.
+    private _lastClipExtent: number = -1;
+
+    // Whether a pass withheld the post-layout scroll resync that is still owed
+    // once the current burst settles.
+    private _scrollResyncOwed: boolean = false;
+
+    // Whether a further main-axis extent change landed after the settle frame
+    // was armed.
+    private _clipExtentMoved: boolean = false;
+
+    // The animation frame armed to end a resize burst, or null when none is in
+    // flight.
+    private _resizeSettleHandle: number | null = null;
+
+    // Set by layoutItems on every pass; layoutArrows reads it so the native
+    // scroll resync and the arrow-enablement read defer and catch up together.
+    private _deferScrollResyncThisPass: boolean = false;
+
     /**
      * Builds an empty scroll strip with the default horizontal orientation,
      * transparent background, and an inner overflow:hidden clip for the items.
@@ -476,17 +498,148 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
 
     /**
      * Lays out the inner clip's box, sizing the items, then resyncs the strip's
-     * cached scroll offset from the DOM (the browser may clamp the native offset on
-     * its own when the content lays out smaller than the current offset). Call after
-     * positioning the band (see {@link layoutContent}) and before reading the scroll.
+     * cached scroll offset from the DOM (the browser may clamp the native offset
+     * on its own when the content lays out smaller than the current offset). Call
+     * after positioning the band (see {@link layoutContent}) and before reading
+     * the scroll.
+     *
+     * While the clip's own main-axis extent is still changing every pass — a live
+     * external resize, e.g. a `Split` gutter drag resizing the strip's owner —
+     * the resync (and the strip's matching arrow-enablement read) is withheld
+     * until a couple of quiet frames confirm the resize has stopped moving.
+     * {@link mainScroll} always resyncs for itself regardless, so a reveal or a
+     * within-strip reorder drag is never affected by a withheld pass.
      *
      * @returns This strip, for method chaining.
      */
     layoutItems(): this {
         this._clip.doLayout();
-        this._clip.syncScrollOffsets();
+
+        const mainExtent = this.isVertical() ? this._clip.getHeight() : this._clip.getWidth();
+        const extentChanged = mainExtent !== this._lastClipExtent;
+
+        if (extentChanged) {
+            this._lastClipExtent = mainExtent;
+        }
+
+        this._deferScrollResyncThisPass = this.deferScrollResyncWhileResizing(extentChanged);
+
+        if (!this._deferScrollResyncThisPass) {
+            this._clip.syncScrollOffsets();
+        }
 
         return this;
+    }
+
+    /**
+     * Decides whether this layout pass may withhold the post-layout scroll
+     * resync — {@link layoutItems}'s native-offset resync and
+     * {@link layoutArrows}'s arrow-enablement read — because a resize burst is
+     * in flight, and arms (or extends) the settle pass that catches it up once
+     * the burst goes quiet. Mirrors `Split.scheduleDrag`/`flushDrag`, which
+     * solves the same class of problem one layer up (a live pane resize).
+     *
+     * @param extentChanged - Whether this pass sizes the clip to a different
+     *   main-axis extent than the previous pass did.
+     *
+     * @returns `true` when the caller must withhold this pass's resync.
+     *
+     * @remarks Whether a settle frame is already armed — not `extentChanged` —
+     * is what decides withholding: a pass with no settle frame armed always
+     * resyncs live (whether or not the extent moved, matching pre-coalescing
+     * behaviour for anything that isn't a live resize), while any pass that
+     * finds one already armed withholds regardless of whether *this specific*
+     * pass's extent moved, so an incidental same-extent pass mid-burst (two
+     * consecutive drag frames landing on the same rounded pixel, say) can't
+     * slip a live resync in ahead of the settle. The first extent change of a
+     * burst is still always applied in full, because the check that matters —
+     * "is a settle frame already armed" — is false until this call arms one;
+     * a one-off resize (a sidebar toggle, a window resize, opening or closing
+     * a tab) therefore lands accurate on its own frame. {@link
+     * flushResizeSettle} performs the eventual catch-up once the burst goes
+     * quiet.
+     */
+    private deferScrollResyncWhileResizing(extentChanged: boolean): boolean {
+        if (this._resizeSettleHandle === null) {
+            if (extentChanged) {
+                this.scheduleResizeSettle();
+            }
+
+            return false;
+        }
+
+        if (extentChanged) {
+            this._clipExtentMoved = true;
+        }
+
+        this._scrollResyncOwed = true;
+
+        return true;
+    }
+
+    /**
+     * Arms the two-frame relay that ends a resize burst: {@link
+     * armResizeSettleCheck} on the next frame, {@link flushResizeSettle} on
+     * the one after. Armed once and left alone while further extent changes
+     * arrive, matching `Split.scheduleDrag`.
+     *
+     * @remarks A single `requestAnimationFrame` here is not enough. The owner
+     * driving this strip's resize (`Split.flushDrag`, itself already coalesced
+     * to one call per frame) also runs its own per-frame layout pass from a
+     * `requestAnimationFrame` callback, registered by whichever `mousemove`
+     * arrives after the previous frame finishes — chronologically *after*
+     * this method's own callback for the same upcoming frame, which is
+     * registered synchronously, still inside the *current* frame's pass. Per
+     * frame, callbacks run in registration order, so a single relay hop
+     * always fires and resolves *before* that frame's real layout pass runs,
+     * making `_resizeSettleHandle` read as `null` again just before the pass
+     * that needed to see it armed — the settle races, and always wins, the
+     * very pass it exists to detect. Two hops fixes this: the first
+     * (`armResizeSettleCheck`) only relays the handle to a second frame,
+     * costing nothing but keeping `_resizeSettleHandle` continuously non-null
+     * across the boundary; the second (`flushResizeSettle`) then checks
+     * `_clipExtentMoved`, which — set by any pass over the *prior* frame, an
+     * entirely separate earlier `requestAnimationFrame` batch — is never
+     * racing anything by the time this one reads it.
+     */
+    private scheduleResizeSettle(): void {
+        this._resizeSettleHandle = DOM.sink.requestAnimationFrame(() => this.armResizeSettleCheck());
+    }
+
+    /**
+     * The settle relay's first hop: merely re-arms for one more frame,
+     * keeping {@link _resizeSettleHandle} continuously non-null across the
+     * frame boundary so this frame's still-pending real layout pass (see
+     * {@link scheduleResizeSettle}'s remarks) reads it as armed and withholds.
+     */
+    private armResizeSettleCheck(): void {
+        this._resizeSettleHandle = DOM.sink.requestAnimationFrame(() => this.flushResizeSettle());
+    }
+
+    /**
+     * The settle relay's second hop: ends a resize burst, or extends it by
+     * another two-frame relay when the clip's extent moved again during the
+     * frame between the two hops. On the first quiet cycle it performs the
+     * withheld resync: the native scroll-offset resync and the
+     * arrow-enablement read.
+     */
+    private flushResizeSettle(): void {
+        this._resizeSettleHandle = null;
+
+        if (this._clipExtentMoved) {
+            this._clipExtentMoved = false;
+            this.scheduleResizeSettle();
+
+            return;
+        }
+
+        if (!this._scrollResyncOwed) {
+            return;
+        }
+
+        this._scrollResyncOwed = false;
+        this._clip.syncScrollOffsets();
+        this.refreshArrows();
     }
 
     /**
@@ -630,7 +783,13 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
         lead.setVisible(true);
         trail.setVisible(true);
 
-        this.refreshArrows();
+        // Withheld together with layoutItems's resync while a live resize is in
+        // flight (see deferScrollResyncWhileResizing) — both reads force the same
+        // synchronous layout, so gating only one would not save anything.
+        // flushResizeSettle catches this up once the burst goes quiet.
+        if (!this._deferScrollResyncThisPass) {
+            this.refreshArrows();
+        }
 
         const trailPos = (vertical ? box.y : box.x) + bandMain - reserve;
 
@@ -670,11 +829,16 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
 
     /**
      * Reads the clip's native scroll offset on the main axis — the single source
-     * of truth for the scroll position.
+     * of truth for the scroll position. Resyncs the cache from the DOM first, so
+     * the value is always current even when the last layout pass withheld its own
+     * resync because a live resize was still in progress, independent of when
+     * that pass ran.
      *
      * @returns The current main-axis scroll offset in px.
      */
     mainScroll(): number {
+        this._clip.syncScrollOffsets();
+
         return this.isVertical() ? this._clip.getScrollTop() : this._clip.getScrollLeft();
     }
 
@@ -852,9 +1016,15 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
      * this strip's own element rather than registered via `addComponent`
      * (see the constructor and `ensureArrows`), so the base class's
      * recursive teardown cannot reach them — or, through `_clip`, the items
-     * it hosts.
+     * it hosts. Also cancels a still-armed resize-settle frame first, so it
+     * never fires against a disposed clip.
      */
     protected destructor(): void {
+        if (this._resizeSettleHandle !== null) {
+            DOM.sink.cancelAnimationFrame(this._resizeSettleHandle);
+            this._resizeSettleHandle = null;
+        }
+
         this._clip.dispose();
         this._leadArrow?.dispose();
         this._trailArrow?.dispose();
