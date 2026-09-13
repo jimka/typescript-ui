@@ -1633,6 +1633,16 @@ class Accordion extends LayoutManager implements FocusRevealer {
      *   (a drag, where transitions are off).
      * @param reflowAll - Whether to reflow every section's content, or only the
      *   sections whose height actually changed (the drag's cheap path).
+     *
+     * @remarks A calculate-then-commit split — resolving every section's
+     * placement into a local array, then committing it in a single trailing
+     * pass — was evaluated for this method and rejected: its per-section
+     * writes are coordination logic (gutter geometry, animation bookkeeping,
+     * visibility toggles), not plain bounds writes, so reordering them is a
+     * correctness risk against a method with a history of subtle bugs, with
+     * no measured performance benefit to justify it. See
+     * plans/implemented/accordion-layout-sections-calc-commit-split.md for
+     * the investigation.
      */
     private layoutSections(components: Component[], containerWidth: number, left: number, top: number, resizable: boolean, contentHeightFor: (index: number, isOpen: boolean) => number, animateShrink: boolean, reflowAll: boolean): void {
         let y = top;
