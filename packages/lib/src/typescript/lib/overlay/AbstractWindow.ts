@@ -322,6 +322,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private _snapKeysAttached:  boolean = false;
     private _snapMoveAttached:  boolean = false;
     private _snapTargetBorder:  WindowBorder | null = null;
+    // The most recent not-yet-applied onSnapMouseMove position, and the
+    // animation frame scheduled to apply it — see scheduleSnapMouseMove.
+    // null/null while no move is buffered or the modifier isn't held.
+    private _pendingSnapMove: { clientX: number; clientY: number } | null = null;
+    private _snapMoveRafHandle: number | null = null;
 
     private readonly _boundOnDrag: (e: MouseEvent) => Event.ListenerResult = (e: MouseEvent) => this.onDrag(e);
     private readonly _boundOnMouseUp: () => Event.ListenerResult = () => this.onMouseUp();
@@ -3113,6 +3118,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         Event.removeViewportListener(this, "mousemove", this._boundOnSnapMouseMove);
         Event.removeViewportListener(this, "mousedown", this._boundOnSnapMouseDown);
         this._snapMoveAttached = false;
+
+        if (this._snapMoveRafHandle !== null) {
+            DOM.sink.cancelAnimationFrame(this._snapMoveRafHandle);
+            this._snapMoveRafHandle = null;
+        }
+        this._pendingSnapMove = null;
     }
 
     /**
@@ -3207,8 +3218,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
-     * Tracks the nearest border under the cursor while snap is armed, updating
-     * the highlighted snap-target border.
+     * Buffers the cursor position while snap is armed; the actual border pick
+     * and highlight update happen at most once per animation frame, via
+     * {@link scheduleSnapMouseMove}.
      *
      * @param e - The mousemove event.
      */
@@ -3217,7 +3229,47 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return;
         }
 
-        const winner = this.pickSnapBorder(e.clientX, e.clientY);
+        this.scheduleSnapMouseMove(e.clientX, e.clientY);
+    }
+
+    /**
+     * Buffers a viewport `mousemove` position and applies it at most once per
+     * animation frame, via {@link flushSnapMouseMove}. A native `mousemove`
+     * fires far more often than the screen repaints, and `pickSnapBorder` is not
+     * cheap: it reads up to eight border strips' live layout rects
+     * (`DOM.source.getElementRect`), each forcing the browser to flush layout.
+     * Only the most recent position before a frame lands is kept — an
+     * intermediate position between two `mousemove` events was never going to be
+     * visible anyway. Mirrors `Split.scheduleDrag`/`flushDrag`.
+     *
+     * @param clientX - Cursor x in viewport pixels.
+     * @param clientY - Cursor y in viewport pixels.
+     */
+    private scheduleSnapMouseMove(clientX: number, clientY: number): void {
+        this._pendingSnapMove = { clientX, clientY };
+
+        if (this._snapMoveRafHandle === null) {
+            this._snapMoveRafHandle = DOM.sink.requestAnimationFrame(() => this.flushSnapMouseMove());
+        }
+    }
+
+    /**
+     * Applies the most recently buffered {@link scheduleSnapMouseMove} position,
+     * if one is pending — a no-op otherwise, which makes it safe to call
+     * unconditionally from both the scheduled animation frame and
+     * {@link onSnapMouseDown}.
+     */
+    private flushSnapMouseMove(): void {
+        this._snapMoveRafHandle = null;
+
+        const pending = this._pendingSnapMove;
+        if (pending === null) {
+            return;
+        }
+
+        this._pendingSnapMove = null;
+
+        const winner = this.pickSnapBorder(pending.clientX, pending.clientY);
         if (winner === this._snapTargetBorder) {
             return;
         }
@@ -3282,6 +3334,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns `true` when the press starts a snap drag; nothing when it does not, so the event keeps propagating.
      */
     private onSnapMouseDown(e: MouseEvent): Event.ListenerResult {
+        if (this._snapMoveRafHandle !== null) {
+            DOM.sink.cancelAnimationFrame(this._snapMoveRafHandle);
+            this._snapMoveRafHandle = null;
+        }
+        this.flushSnapMouseMove();
+
         const target = this._snapTargetBorder;
         if (!target) {
             return;
