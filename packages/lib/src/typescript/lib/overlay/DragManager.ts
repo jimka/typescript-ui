@@ -195,6 +195,15 @@ const dragSources = new Map<string, DragSourceRecord>();
 const dropTargets = new Map<string, DropTargetRecord>();
 let activeSession: DragSession | null = null;
 
+// The pointer position buffered by the most recent mousemove not yet applied
+// by flushMove, or null while none is pending. Only the latest position is
+// kept — see scheduleMove.
+let pendingMove: { clientX: number; clientY: number } | null = null;
+
+// The animation frame scheduled to apply pendingMove, or null when none is
+// in flight. Doubles as the "already scheduled" test in scheduleMove.
+let moveRafHandle: number | null = null;
+
 /**
  * Process-wide drag-and-drop coordinator. Maintains the global source /
  * target registry, owns the single active drag session, and
@@ -481,6 +490,98 @@ function enterNewTarget(session: DragSession, target: DropTargetRecord, detail: 
 }
 
 /**
+ * Buffers a `mousemove`'s pointer position and resolves the drop target at
+ * most once per animation frame, via {@link flushMove}. `pickDropTarget`
+ * forces a synchronous layout (`elementsFromPoint`), and both `onDragOver`
+ * consumers shipped today force another of their own
+ * (`TabBar.updateReorderSlot`'s `getElementRect`, `DockRegion.computeZone`'s
+ * `getViewportRect`) — paying that once per raw pointer-move rather than once
+ * per rendered frame visibly stutters a drag over a `Dock` layout. Only the
+ * most recent position before a frame lands is kept — an intermediate
+ * position between two `mousemove` events was never going to be visible
+ * anyway.
+ *
+ * @param clientX - Viewport-relative pointer X for this move.
+ * @param clientY - Viewport-relative pointer Y for this move.
+ */
+function scheduleMove(clientX: number, clientY: number): void {
+    pendingMove = { clientX, clientY };
+
+    if (moveRafHandle === null) {
+        moveRafHandle = DOM.sink.requestAnimationFrame(() => flushMove());
+    }
+}
+
+/**
+ * Applies the most recently buffered {@link scheduleMove} call, if one is
+ * pending — a no-op otherwise, which makes it safe to call unconditionally
+ * from both the scheduled animation frame and {@link onMouseUp}.
+ *
+ * Re-derives the current target from scratch — the same `pickDropTarget`
+ * plus enter/leave/same-target logic `onMouseMove` ran inline before this
+ * buffering existed — rather than replaying each raw position a burst
+ * skipped. See the worked example in the plan's Architecture Decisions for
+ * why that can never strand a skipped target's visual state.
+ */
+function flushMove(): void {
+    moveRafHandle = null;
+
+    const pending = pendingMove;
+
+    if (pending === null || activeSession === null) {
+        return;
+    }
+
+    pendingMove = null;
+
+    const session = activeSession;
+    const detail  = buildDetail(session, pending.clientX, pending.clientY);
+    const target  = pickDropTarget(pending.clientX, pending.clientY);
+
+    if (target === null) {
+        leaveCurrentTarget(session, detail);
+
+        return;
+    }
+
+    if (session.currentTarget !== target.component) {
+        leaveCurrentTarget(session, detail);
+        enterNewTarget(session, target, detail);
+
+        return;
+    }
+
+    // Same target as last flush — re-check accepts so the feedback
+    // tint stays accurate (the validity of a drop can change as the
+    // cursor moves within the same target, e.g. crossing into a
+    // descendant region the source isn't allowed to land on). Skip
+    // onDragOver / reorder indicator entirely while the drop is
+    // rejected.
+    const accepted = target.options.accepts(detail);
+
+    if (session.feedback && !target.options.suppressValidityTint) {
+        session.feedback.setValid(accepted);
+    }
+
+    if (!accepted) {
+        if (session.indicator) {
+            session.indicator.detach();
+        }
+
+        return;
+    }
+
+    const hint = target.options.onDragOver?.(detail);
+
+    if (typeof hint === "number" && session.indicator) {
+        session.indicator.attachTo(target.component);
+        session.indicator.setInsertionY(hint);
+    } else if (session.indicator) {
+        session.indicator.detach();
+    }
+}
+
+/**
  * Suppresses the browser's own text-selection gesture for the duration of a
  * drag session, which would otherwise run alongside it now that table cell
  * text is selectable — the drag is mouse-driven (mousedown/mousemove), not
@@ -502,10 +603,11 @@ function onSelectStart(): Event.ListenerResult {
 }
 
 /**
- * Drives the active session forward each frame: commits past the
- * threshold, moves the ghost, hands target changes to the
- * enter / leave helpers, and re-runs `onDragOver` while the cursor stays
- * inside the same target.
+ * Drives the active session forward on every raw `mousemove`: commits past
+ * the threshold and repositions the ghost, both inline and unthrottled since
+ * neither is expensive. Buffers the pointer position for {@link flushMove}
+ * to resolve the drop target from at most once per animation frame — see
+ * {@link scheduleMove} for why that part alone needs coalescing.
  *
  * @returns `true` while a drag session is live, consuming the move so nothing else
  *   tracks the pointer; nothing when there is no session, so the move keeps propagating.
@@ -548,50 +650,7 @@ function onMouseMove(e: MouseEvent): Event.ListenerResult {
         }
     }
 
-    const detail = buildDetail(session, e.clientX, e.clientY);
-    const target = pickDropTarget(e.clientX, e.clientY);
-
-    if (target === null) {
-        leaveCurrentTarget(session, detail);
-
-        return { stop: true, prevent: true };
-    }
-
-    if (session.currentTarget !== target.component) {
-        leaveCurrentTarget(session, detail);
-        enterNewTarget(session, target, detail);
-
-        return { stop: true, prevent: true };
-    }
-
-    // Same target as last frame — re-check accepts so the feedback
-    // tint stays accurate (the validity of a drop can change as the
-    // cursor moves within the same target, e.g. crossing into a
-    // descendant region the source isn't allowed to land on). Skip
-    // onDragOver / reorder indicator entirely while the drop is
-    // rejected.
-    const accepted = target.options.accepts(detail);
-
-    if (session.feedback && !target.options.suppressValidityTint) {
-        session.feedback.setValid(accepted);
-    }
-
-    if (!accepted) {
-        if (session.indicator) {
-            session.indicator.detach();
-        }
-
-        return { stop: true, prevent: true };
-    }
-
-    const hint = target.options.onDragOver?.(detail);
-
-    if (typeof hint === "number" && session.indicator) {
-        session.indicator.attachTo(target.component);
-        session.indicator.setInsertionY(hint);
-    } else if (session.indicator) {
-        session.indicator.detach();
-    }
+    scheduleMove(e.clientX, e.clientY);
 
     return { stop: true, prevent: true };
 }
@@ -606,6 +665,16 @@ function onMouseUp(e: MouseEvent): Event.ListenerResult {
     if (activeSession === null) {
         return;
     }
+
+    // Flush any move buffered by scheduleMove synchronously, so the drop
+    // decision below reflects the pointer's actual last position rather than
+    // whichever buffered position a frame boundary happened to catch — mirrors
+    // Split.onDragEnd's flush of its own buffered drag position.
+    if (moveRafHandle !== null) {
+        DOM.sink.cancelAnimationFrame(moveRafHandle);
+        moveRafHandle = null;
+    }
+    flushMove();
 
     const session = activeSession;
     const detail  = buildDetail(session, e.clientX, e.clientY);
@@ -646,6 +715,17 @@ function endSession(dropped: boolean, clientX: number, clientY: number): void {
     if (activeSession === null) {
         return;
     }
+
+    // A still-buffered move frame (see scheduleMove) must not fire after this
+    // teardown — left alone it would call flushMove against a session that's
+    // about to be cleared. Cancelled without a flush: unlike onMouseUp's
+    // cancel-then-flush, a session ending here commits to no further target
+    // dispatch (see the cancel()/mouseup distinction in Architecture Decisions).
+    if (moveRafHandle !== null) {
+        DOM.sink.cancelAnimationFrame(moveRafHandle);
+        moveRafHandle = null;
+    }
+    pendingMove = null;
 
     const session = activeSession;
 
