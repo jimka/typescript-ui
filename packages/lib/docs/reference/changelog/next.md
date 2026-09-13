@@ -392,6 +392,27 @@ page resets to empty.
   an unrelated toggle and pays only a reposition. No consumer action is
   needed.
 
+- **Dragging a `Split` gutter, resizing a `Dock` pane, or any other live
+  external resize of a scrolling `Panel` no longer forces up to five
+  synchronous layout flushes on every animation frame of the resize.**
+  `resizeScrollShadowOverlay`'s edge-overlay resize, `measureScrollbarGutter`'s
+  gutter measurement, and `updateScrollShadows`'s edge-strength recompute each
+  force the browser to compute layout immediately rather than deferring it to
+  the next paint, and under the default `scrollbarStyle: "overlay"` /
+  `scrollShadows: true` configuration a single live `doLayout()` pass paid for
+  five of them — worse than the single flush per pass `ScrollStrip`'s own
+  equivalent fix addresses, since `Panel` is the base class nearly every
+  scrollable component extends. The first size change of a resize still
+  remeasures live, so a one-off resize (a sidebar toggle, a window resize, a
+  `Dock` pane drop) is never delayed; only the second and later changes of a
+  live resize now withhold all three together, catching up within a couple of
+  animation frames of the width and height settling. The overlay scrollbar's
+  own inner content viewport still tracks the panel's live size on every
+  frame regardless, so content never visibly detaches from the panel's edge
+  mid drag; the scrollbar gutter reservation, the overlay bar's own
+  position and size, and the edge shadow all briefly lag a fast resize
+  instead, catching up once it settles. No consumer action is needed.
+
 ### Layouts
 
 - **`Tab.setTabGlyph(content, glyph)` / `clearTabGlyph(content)` no longer
