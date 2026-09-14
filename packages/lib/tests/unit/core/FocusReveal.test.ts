@@ -205,9 +205,9 @@ describe('Tab.revealDescendant', () => {
         tab.revealDescendant(target);
 
         expect(tab.getVisibleComponent()).toBe(b);
-        // The forced synchronous doLayout() means visibility is already
-        // flipped by the time revealDescendant returns — no async wait needed.
-        expect(b.isVisible()).toBe(true);
+        // The forced synchronous doLayout() means the display flip is already
+        // applied by the time revealDescendant returns — no async wait needed.
+        expect(b.isDisplayed()).toBe(true);
 
         tab.detach();
     });

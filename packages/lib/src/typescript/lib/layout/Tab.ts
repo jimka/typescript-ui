@@ -2044,12 +2044,15 @@ class Tab extends LayoutManager implements FocusRevealer {
     }
 
     /**
-     * Creates tab buttons for new components, hides all but the selected child,
-     * positions the strip, and places the visible component.
+     * Creates tab buttons for new components, undisplays all but the selected
+     * child, positions the strip, and places the visible component.
      *
      * @remarks Tab buttons are created lazily: only components that do not yet have
      * a corresponding entry receive one. The strip occupies a thickness-deep band
      * on the chosen edge; the visible component occupies the remaining space.
+     * Every other child is dropped out of the render tree with
+     * `setDisplayed(false)`, not merely painted out with `setVisible(false)` —
+     * see the undisplay-inactive-tab-pages plan's `## Architecture Decisions`.
      */
     doLayout(): void {
         let container = this.getContainer();
@@ -2082,15 +2085,32 @@ class Tab extends LayoutManager implements FocusRevealer {
             this.materializeAsync(this._selectedTabIndex);
         }
 
-        for (const component of components) {
-            component.setVisible(false);
-            component.getAria().setHidden(true);
-        }
-
         let component = this.getVisibleComponent();
 
         if (!component && components.length > 0) {
             component = components[0];
+        }
+
+        // The page this pass is about to select is resolved first and skipped
+        // here, so its boxes are never destroyed and recreated within one
+        // pass — see the plan's "The page a pass is about to show is never
+        // undisplayed inside that pass". Every other child is captured (while
+        // it still has boxes) then undisplayed. The guard is effective
+        // visibility, not just the child's own displayed flag: an ancestor
+        // entirely outside this Tab's own management (e.g. the Dock region
+        // it sits in) can be what actually leaves the child with no boxes,
+        // and a live read against a boxless element would clobber its cache.
+        for (const child of components) {
+            if (child === component) {
+                continue;
+            }
+
+            if (child.isEffectivelyVisible()) {
+                child.captureSubtreeScroll();
+            }
+
+            child.setDisplayed(false);
+            child.getAria().setHidden(true);
         }
 
         // Prepare the strip for measurement (box orientation, button styles, ARIA)
@@ -2202,7 +2222,9 @@ class Tab extends LayoutManager implements FocusRevealer {
             return;
         }
 
-        component.setVisible(true);
+        const wasUndisplayed = !component.isDisplayed();
+
+        component.setDisplayed(true);
         component.getAria().setHidden(false);
 
         // Universal scroll: the content area honours the host's overflow flags
@@ -2222,6 +2244,14 @@ class Tab extends LayoutManager implements FocusRevealer {
             contentHeight,
             FillType.BOTH
         );
+
+        // Safe here rather than a frame later: placeComponent -> commitBounds
+        // runs the page's own doLayout() synchronously, so the whole re-shown
+        // subtree already carries its final geometry and the browser clamps
+        // nothing away.
+        if (wasUndisplayed) {
+            component.restoreSubtreeScroll();
+        }
 
         // Fade the newly-visible child in only when the selection actually
         // changed since the last layout AND the entry is fully built — for a
@@ -2290,7 +2320,7 @@ class Tab extends LayoutManager implements FocusRevealer {
     /**
      * {@link FocusRevealer.revealDescendant}: selects whichever tab's content
      * is on the DOM path to `target`, forcing a synchronous layout so the
-     * newly-active content's `visibility: hidden` clears before the caller
+     * newly-active content's `display: none` clears before the caller
      * focuses it — `doLayout`'s own selection re-layout is otherwise deferred
      * via `scheduleLayout()`.
      *

@@ -18,7 +18,8 @@ export interface CardOptions extends LayoutManagerOptions {
 /**
  * A layout manager that shows exactly one child component at a time,
  * sizing it to fill the container's inner bounds.
- * The visible child is selected by component ID; all others are hidden.
+ * The visible child is selected by component ID; all others are undisplayed
+ * (`display: none`), dropping them out of the render tree entirely.
  *
  * @category Layouts
  */
@@ -26,6 +27,14 @@ class Card extends LayoutManager {
 
     private _visibleComponentId: string | null = null;
     private _currentVisible: Component | null = null;
+
+    // Framework bookkeeping, not consumer configuration — see the
+    // undisplay-inactive-tab-pages plan's `## Public API` for why this stays
+    // off `CardOptions`. `syncVisible` flips a child's display outside of any
+    // layout pass (reachable from `setVisibleComponentId`), so the component
+    // owed a scroll restore is parked here and consumed by the next
+    // `doLayout`, once `placeComponent` has relaid it out.
+    private _pendingScrollRestore: Component | null = null;
 
     constructor(options?: CardOptions) {
         // LayoutManager's constructor takes no options; applied via applyOptions below.
@@ -127,10 +136,10 @@ class Card extends LayoutManager {
     }
 
     /**
-     * Selects which child component is visible. Hides the previously-visible
-     * child (if different) and shows the new one. Subsequent `doLayout` calls
-     * only re-size the visible child; visibility writes happen here, not on
-     * every layout pass.
+     * Selects which child component is visible. Undisplays the
+     * previously-visible child (if different) and displays the new one.
+     * Subsequent `doLayout` calls only re-size the visible child; display
+     * writes happen here, not on every layout pass.
      *
      * @param id - The ID of the child component to make visible.
      */
@@ -168,9 +177,30 @@ class Card extends LayoutManager {
     }
 
     /**
+     * Reads a component's live native scroll offset (if it still has boxes)
+     * then undisplays it — the capture must run first, since a `display: none`
+     * element reports every scroll offset as zero. Mirrors `Tab.doLayout`'s
+     * own capture-then-undisplay pairing.
+     *
+     * @remarks The capture guard is effective visibility, not just the
+     * component's own displayed flag: an ancestor entirely outside this
+     * Card's own management can be what actually leaves it with no boxes,
+     * and a live read against a boxless element would clobber its cache.
+     *
+     * @param component - The child to drop out of the render tree.
+     */
+    private undisplayChild(component: Component): void {
+        if (component.isEffectivelyVisible()) {
+            component.captureSubtreeScroll();
+        }
+
+        component.setDisplayed(false);
+    }
+
+    /**
      * Resolves the visible component from `visibleComponentId` (or first child
-     * if unset), and transitions visibility: hides the previous one if
-     * different, shows the new one. No-op when the resolved component is the
+     * if unset), and transitions display: undisplays the previous one if
+     * different, displays the new one. No-op when the resolved component is the
      * same as the currently-shown one.
      */
     private syncVisible(): void {
@@ -204,21 +234,35 @@ class Card extends LayoutManager {
         }
 
         if (this._currentVisible === null) {
-            // First sync: components default to visible, so any sibling that
-            // isn't the resolved child needs to be hidden explicitly. Without
-            // this, e.g. a Cell's editor (sibling of its renderer) renders on
-            // top of the renderer because its setVisible was never called.
+            // First sync: components default to displayed, so any sibling
+            // that isn't the resolved child needs to be dropped out of the
+            // render tree explicitly. Without this, e.g. a Cell's editor
+            // (sibling of its renderer) renders on top of the renderer
+            // because its setDisplayed was never called.
             for (const c of components) {
                 if (c !== resolved) {
-                    c.setVisible(false);
+                    this.undisplayChild(c);
                 }
             }
         } else {
-            this._currentVisible.setVisible(false);
+            this.undisplayChild(this._currentVisible);
         }
 
         if (resolved) {
-            resolved.setVisible(true);
+            const wasUndisplayed = !resolved.isDisplayed();
+
+            resolved.setDisplayed(true);
+
+            // syncVisible runs outside of any layout pass (reachable from
+            // setVisibleComponentId), so the restore itself is deferred to
+            // the doLayout that follows — see `_pendingScrollRestore`'s own
+            // doc. Overwriting a still-pending record from an earlier switch
+            // this same tick is correct: every non-current child stays
+            // undisplayed by construction, so `resolved` is the only target
+            // whose offset still needs restoring.
+            if (wasUndisplayed) {
+                this._pendingScrollRestore = resolved;
+            }
         }
 
         this._currentVisible = resolved;
@@ -279,6 +323,20 @@ class Card extends LayoutManager {
             containerSize ? containerSize.height : 0,
             FillType.BOTH
         );
+
+        // Consumes the restore `syncVisible` deferred here — safe now rather
+        // than at the switch itself, because placeComponent -> commitBounds
+        // just ran the visible child's own doLayout() synchronously, so its
+        // subtree already carries its final geometry. The `=== _currentVisible`
+        // guard discards a stale record from a component that was switched
+        // away from again before this pass ever ran.
+        const restore = this._pendingScrollRestore;
+
+        this._pendingScrollRestore = null;
+
+        if (restore === this._currentVisible) {
+            restore.restoreSubtreeScroll();
+        }
     }
 }
 
