@@ -305,6 +305,16 @@ page resets to empty.
   the `recordOrigin`/`findTabKeyOwner` fix above. No consumer action is
   needed.
 
+- **A scrolling `Panel` and a virtual list (`Tree`, a table body) no longer
+  re-blur a viewport-sized shadow on every frame they repaint or resize.**
+  The position-aware scroll-edge cue was one overlay element carrying four
+  blurred inset `box-shadow` layers the size of the whole scroll viewport, so
+  the browser re-blurred each lit layer across that whole box on every
+  repaint. The cue now paints on four thin, edge-pinned strips inside that
+  same overlay — one per edge, each carrying a single shadow layer — so the
+  blurred area drops from four viewport-sized boxes to four 12px bands.
+  Visually identical; no consumer action is needed.
+
 ### Components
 
 - **`Button`, `ComboBox`, `Checkbox`, `Toggle`, `RadioButton`, and `Slider`

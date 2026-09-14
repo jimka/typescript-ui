@@ -11,7 +11,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle, ScrollMetrics } from "~/core/DOM.js";
 import { FocusReveal } from "~/core/FocusReveal.js";
 import type { FocusRevealer } from "~/core/FocusReveal.js";
-import { scrollShadowBoxShadow, scrollShadowEdgeValue, scrollShadowRamp, quantizeShadowEdge, ScrollShadowEdges } from "~/core/ScrollShadow.js";
+import { appendScrollShadowStrips, scrollShadowEdgeValue, scrollShadowRamp, quantizeShadowEdge, ScrollShadowEdges } from "~/core/ScrollShadow.js";
 import { Scrollbar } from "~/component/container/Scrollbar.js";
 
 /**
@@ -201,6 +201,10 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     declare private _scrollShadows:       boolean;
     declare private _shadowOverlay:       Handle | null;
     declare private _shadowScrollHandler: (() => void) | null;   // cached bound scroll handler — wired once
+    // The overlay's four edge strips. Written by the same `setScrollShadows`
+    // super-cascade dispatch as `_shadowOverlay` above, so it needs the same
+    // `declare` + `applyOptions`-seed treatment for the same reason.
+    declare private _shadowStrips: readonly Handle[];
 
     // Runtime-only: never touched during the super cascade (the overlay only
     // exists post-render), so a plain initialiser is safe here.
@@ -343,6 +347,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // `declare` leaves them `undefined` until first written.
         this._shadowOverlay        = null;
         this._shadowScrollHandler  = null;
+        this._shadowStrips         = [];
 
         // Always dispatch so the backing field is seeded through the setter,
         // mirroring the `setAutoScroll` cascade above; the fallback is the
@@ -1261,10 +1266,11 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
     /**
      * Builds the non-interactive shadow overlay: an id-less, listener-free
-     * presentational sheath (mirroring the clip/content frames) carrying four
-     * blurred inset edge shadows, one per side. Each shadow's colour is a local
-     * custom property defaulting to `transparent`, so the per-scroll path only
-     * flips a property to light an edge rather than rebuilding the shadow.
+     * presentational sheath (mirroring the clip/content frames) that hosts
+     * four edge strips, one per side. Each strip carries one blurred inset
+     * shadow layer gated by a local custom property on the host, defaulting to
+     * `transparent`, so the per-scroll path only flips a property to light an
+     * edge rather than rebuilding any shadow.
      *
      * @param element - The panel element the overlay is appended to.
      */
@@ -1287,10 +1293,6 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             // frame as the element's last child during layout, so DOM order
             // alone would let it cover an overlay appended here at `init`.
             zIndex:        "1",
-            // Four blurred inset shadows — one per edge — each gated by a local
-            // custom property defaulting to `transparent` (flipped to the theme
-            // colour by `setShadowEdge`). See `scrollShadowBoxShadow`.
-            boxShadow: scrollShadowBoxShadow(),
         });
 
         DOM.sink.appendChild(element, overlay);
@@ -1298,6 +1300,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // even if removeScrollShadows never runs; untracked there on eager removal.
         this.trackHandle(overlay);
         this._shadowOverlay = overlay;
+
+        this._shadowStrips = appendScrollShadowStrips(overlay);
+
+        for (const strip of this._shadowStrips) {
+            this.trackHandle(strip);
+        }
     }
 
     /**
@@ -1312,6 +1320,14 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         }
 
         if (this._shadowOverlay) {
+            for (const strip of this._shadowStrips) {
+                DOM.sink.removeElement(strip);
+                this.untrackHandle(strip);
+                DOM.sink.release(strip);
+            }
+
+            this._shadowStrips = [];
+
             DOM.sink.removeElement(this._shadowOverlay);
             this.untrackHandle(this._shadowOverlay);
             DOM.sink.release(this._shadowOverlay);

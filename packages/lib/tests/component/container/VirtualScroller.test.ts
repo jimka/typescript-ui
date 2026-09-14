@@ -3,7 +3,9 @@ import { Container } from '~/core/Container';
 import { Scrollbar } from '~/component/container/Scrollbar';
 import { VirtualScroller } from '~/component/container/VirtualScroller';
 import { DOM } from '~/core/DOM';
+import type { Handle } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
+import type { RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -220,6 +222,76 @@ describe('VirtualScroller scroll shadows', () => {
         expect(shadowEdge(scroller, 'bottom')).toBe(0);
         expect(shadowEdge(scroller, 'left')).toBe(0);
         expect(shadowEdge(scroller, 'right')).toBe(0);
+    });
+});
+
+/** The accumulated inline style a raw handle has been written, last write wins. */
+function styleOf(sink: RecordingDOMSink, handle: Handle): Record<string, string | null> {
+    const style: Record<string, string | null> = {};
+
+    for (const write of sink.writes) {
+        if (write.op === 'apply' && write.args[0] === handle) {
+            Object.assign(style, (write.args[1] as { style?: Record<string, string | null> }).style ?? {});
+        }
+    }
+
+    return style;
+}
+
+/** The handles a parent's recorded `appendChild` writes name as children, in write order. */
+function childrenOf(sink: RecordingDOMSink, parent: Handle): Handle[] {
+    return sink.writes
+        .filter((w) => w.op === 'appendChild' && w.args[0] === parent)
+        .map((w) => w.args[1] as Handle);
+}
+
+describe('VirtualScroller scroll shadow strips', () => {
+    afterEach(() => DOM.reset());
+
+    it('creates exactly four strips as children of the shadow host, in top/bottom/left/right order', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const { scroller } = makeScroller(200, 400);
+        const host = scroller.ownedHandles()[2];
+        const strips = childrenOf(sink, host);
+
+        expect(strips).toHaveLength(4);
+
+        const [top, bottom, left, right] = strips;
+
+        expect(styleOf(sink, top)).toEqual({
+            position: 'absolute', top: '0', left: '0', right: '0', height: '12px', maxHeight: '100%',
+            boxShadow: 'inset 0 12px 12px -12px var(--ts-ss-top, transparent)',
+        });
+        expect(styleOf(sink, bottom)).toEqual({
+            position: 'absolute', bottom: '0', left: '0', right: '0', height: '12px', maxHeight: '100%',
+            boxShadow: 'inset 0 -12px 12px -12px var(--ts-ss-bottom, transparent)',
+        });
+        expect(styleOf(sink, left)).toEqual({
+            position: 'absolute', left: '0', top: '0', bottom: '0', width: '12px', maxWidth: '100%',
+            boxShadow: 'inset 12px 0 12px -12px var(--ts-ss-left, transparent)',
+        });
+        expect(styleOf(sink, right)).toEqual({
+            position: 'absolute', right: '0', top: '0', bottom: '0', width: '12px', maxWidth: '100%',
+            boxShadow: 'inset -12px 0 12px -12px var(--ts-ss-right, transparent)',
+        });
+
+        expect(styleOf(sink, host)).not.toHaveProperty('boxShadow');
+    });
+
+    it('reports seven owned handles: clip box, rows container, host, then the four strips in order', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const { scroller } = makeScroller(200, 400);
+        const handles = scroller.ownedHandles();
+
+        expect(handles).toHaveLength(7);
+        expect(handles[1]).toBe(scroller.getRowsContainer());
+
+        const host   = handles[2];
+        const strips = childrenOf(sink, host);
+
+        expect(strips).toEqual([handles[3], handles[4], handles[5], handles[6]]);
     });
 });
 
