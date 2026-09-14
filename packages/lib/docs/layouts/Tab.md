@@ -202,6 +202,8 @@ There is no automatic clear for a flag `setTabBusy` set: the consumer owns clear
 
 When the selected tab changes, the newly-visible child fades in over 120 ms via [`Animation`](/api/core/namespaces/Animation). The fade fires only on actual selection changes — a pure relayout (window resize, scheduleLayout from elsewhere) doesn't re-trigger it. Honours `prefers-reduced-motion: reduce`.
 
+An inactive tab's content is removed from the render tree with `display: none`, so it costs nothing to lay out while another tab is showing; its scroll positions are preserved and restored when it is shown again.
+
 ## Strip placement, alignment & orientation
 
 The tab strip can sit on any edge of the content area via

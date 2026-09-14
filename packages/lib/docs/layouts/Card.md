@@ -1,6 +1,6 @@
 # Card
 
-[`Card`](/api/layout/classes/Card) shows exactly one child component at a time, sized to fill the container's inner bounds. The visible child is selected by component ID; all others are hidden.
+[`Card`](/api/layout/classes/Card) shows exactly one child component at a time, sized to fill the container's inner bounds. The visible child is selected by component ID; every other child is removed from the render tree with `display: none`, so it costs nothing to lay out while another child is showing, and its scroll positions are preserved and restored when it is shown again.
 
 ```
 +--------------------------+

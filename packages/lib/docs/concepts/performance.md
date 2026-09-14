@@ -51,6 +51,12 @@ This gives constant memory and constant frame time regardless of dataset size. A
 
 See the [Virtualized lists recipe](/recipes/virtualized-list) for an end-to-end example.
 
+## Inactive tab and card pages leave the render tree
+
+[`Tab`](/layouts/Tab) and [`Card`](/layouts/Card) undisplay (`display: none`) the pages they aren't currently showing, rather than merely hiding them (`visibility: hidden`) — an inactive page's subtree drops out of the render tree entirely, so the browser has nothing to style or lay out for it on every resize or reflow around the visible page. Native scroll positions are captured before the flip and restored once the page is shown again.
+
+One consequence for consumers: a `display: none` subtree reports every live geometry read (bounding rect, scroll metrics) as zero. Code that needs a page's actual size or scroll position must select that page first — reading it while its tab or card slot isn't the active one returns zeroes, not the last real value.
+
 ## Compositor-layer hints
 
 Elements that animate via `translate3d` (table rows during scroll, the header during horizontal scroll, windows during drag) are promoted to their own compositor layer the first time the browser sees the transform actually change. That first frame pays a layer-creation cost the next frames don't — visible as a brief "settle" tick at the start of motion.
