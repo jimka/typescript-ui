@@ -7,7 +7,7 @@ import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { FillType } from "~/layout/FillType.js";
 import { Size, UNBOUNDED } from "~/primitive/Size.js";
-import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant, CollapseTransition } from "~/layout/CollapseSupport.js";
+import { COLLAPSE_STRIP_SIZE, runCollapse, commitRect, CollapseParticipant, CollapseTransition } from "~/layout/CollapseSupport.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
@@ -107,6 +107,22 @@ interface SplitPlacement extends ResolvedPlacement {
 }
 
 /**
+ * What {@link Split} records about a collapsed pane the instant before it
+ * takes the pane's content out of the render tree: the pane's own size
+ * reports, substituted for live queries while the content is out (a childless
+ * pane reports different — for a box-managed one, deflated — numbers), and
+ * which direct children were displayed, so an expand puts back exactly those
+ * and leaves a child something else had already undisplayed (a `Card`'s
+ * inactive page) alone.
+ */
+interface PaneContentSnapshot {
+    preferred: Size | null;
+    min:       Size | null;
+    max:       Size | null;
+    displayed: Component[];
+}
+
+/**
  * A layout manager that splits the container into two or more resizable panels
  * separated by draggable gutter elements.
  * The split orientation can be `'horizontal'` (panels side by side) or `'vertical'` (panels stacked).
@@ -184,6 +200,29 @@ class Split extends LayoutManager implements FocusRevealer {
     // animation settles — ~40ms before these fallbacks disarm — and is replaced
     // outright by a re-toggle while these may still be running.
     private readonly _pendingCollapseTransitions: CollapseTransition[] = [];
+
+    // True from a `setPaneCollapsed` call until its geometry animation settles
+    // (or `detach` abandons it). Mirrors `Border._collapsing`. Guards the idle
+    // reconcile sweep at the end of `doLayout`: `_collapseAnimation` cannot
+    // serve that purpose, because `runCollapse` lays the end state out before
+    // it hands back the canceller stored there — so that field still reads
+    // idle during the very pass that starts a collapse — and, under reduced
+    // motion, is left holding a no-op canceller after its own `onIdle` already
+    // nulled it.
+    private _collapsing: boolean = false;
+
+    // Snapshot of a collapsed pane's own size reports and displayed children,
+    // taken the instant before its content is undisplayed. Substituted for a
+    // live query in every size-reading method so a now-childless pane's own
+    // getPreferredSize()/getMinSize()/getMaxSize() cannot silently change what
+    // the split reports or clamps while collapsed. Presence of an entry also
+    // doubles as "this pane's content is undisplayed".
+    private readonly _undisplayedPaneContent: Map<Component, PaneContentSnapshot> = new Map();
+
+    // Panes whose content was just redisplayed and are awaiting a scroll
+    // restore once their post-expand geometry is final. Drained by
+    // `reconcileCollapsedContent`.
+    private readonly _pendingScrollRestore: Set<Component> = new Set();
 
     constructor(options?: SplitOptions) {
         // LayoutManager's constructor takes no options; applied via applyOptions below.
@@ -433,22 +472,248 @@ class Split extends LayoutManager implements FocusRevealer {
             return this;
         }
 
+        // Content must be back in the render tree before `runCollapse` lays the
+        // end state out, or the expand reveals an empty box for its whole run.
+        if (!collapsed) {
+            this.redisplayPaneContent(pane);
+        }
+
         this._collapsed.set(pane, collapsed);
+        this._collapsing = true;
         this.emit("panecollapse", index, collapsed);
 
         // Every box that moves: the panes (content re-laid-out each frame) and
         // the gutters (geometry only). The toggled pane is among them and also
-        // clip-reveals; `runCollapse` coordinates the whole pass.
+        // clip-reveals; `runCollapse` coordinates the whole pass. A sibling
+        // whose content is out is geometry-only too — its own layout must not
+        // run while it stays collapsed (see `commitPanes`).
         const participants: CollapseParticipant[] = [
-            ...components.map(component => ({ component, relayout: true })),
-            ...this._gutters.map(gutter => ({ component: gutter, relayout: false })),
+            ...components.map(component => ({ component, relayout: !this._undisplayedPaneContent.has(component), gutter: false })),
+            ...this._gutters.map(gutter => ({ component: gutter, relayout: false, gutter: true })),
         ];
 
         this._collapseAnimation = runCollapse(container, pane, participants, this._collapseAnimation, this._pendingCollapseTransitions, () => {
             this._collapseAnimation = null;
+            this._collapsing = false;
+
+            // The live pane list rather than `components`: a pane removed
+            // mid-animation is no longer this manager's to touch.
+            this.reconcileCollapsedContent(container.getLaidOutComponents());
         });
 
         return this;
+    }
+
+    /**
+     * Snapshots a collapsed pane's own size and its content's native scroll
+     * offsets, then removes that content from the render tree. For a pane
+     * whose content is already out, only re-asserts the undisplay of the
+     * children it took out — this manager owns their displayed state while
+     * the pane stays collapsed, so a child something else put back since (a
+     * stray layout of the pane's own `Tab`, a consumer's `setDisplayed(true)`)
+     * leaves again; the snapshot and the captured scroll are kept. A recorded
+     * child that has since left the pane is no longer this manager's to touch.
+     *
+     * @remarks The capture is guarded on effective visibility, as `Tab` and
+     * `Card` guard theirs: an ancestor outside this manager's control can be
+     * what actually leaves the pane with no boxes, and a live read against a
+     * boxless subtree would clobber every cached offset with zero.
+     *
+     * @param pane - The collapsed pane whose content to undisplay.
+     */
+    private undisplayPaneContent(pane: Component): void {
+        const snapshot = this._undisplayedPaneContent.get(pane);
+
+        if (snapshot !== undefined) {
+            for (const child of snapshot.displayed) {
+                if (child.getParentComponent() === pane) {
+                    child.setDisplayed(false);
+                }
+            }
+
+            return;
+        }
+
+        // A pane re-collapsed before its expand's restore landed still carries
+        // the offsets it was collapsed with in its cache, and its live offsets
+        // are the engine's post-`display: none` zeros: a capture here would
+        // overwrite the one with the other, and the pending restore is then
+        // dropped by `reconcileCollapsedContent`'s drain. The cache stays
+        // authoritative until a restore has actually been written.
+        if (pane.isEffectivelyVisible() && !this._pendingScrollRestore.has(pane)) {
+            pane.captureSubtreeScroll();
+        }
+
+        this.snapshotAndUndisplay(pane);
+    }
+
+    /**
+     * The second half of {@link undisplayPaneContent}: records the pane's own
+     * size report and takes its direct children out of the render tree. Split
+     * out so {@link transferPaneSize} can order the scroll capture around the
+     * outgoing pane's redisplay.
+     *
+     * @param pane - The pane whose content to record and undisplay.
+     */
+    private snapshotAndUndisplay(pane: Component): void {
+        const displayed = pane.getLaidOutComponents();
+
+        this._undisplayedPaneContent.set(pane, {
+            preferred: pane.getPreferredSize(),
+            min:       pane.getMinSize(),
+            max:       pane.getMaxSize(),
+            displayed,
+        });
+
+        // The snapshot above answers this manager's own reads; the pane's own
+        // `setWidth`/`setHeight` clamp reads the live merged max, which a
+        // childless box manager reports as its bare perimeter, so a general
+        // `Component` pane would have every box write clamped away while its
+        // content is out. Resumed by `redisplayPaneContent`.
+        pane.setContentClampSuspended(true);
+
+        for (const child of displayed) {
+            child.setDisplayed(false);
+        }
+    }
+
+    /**
+     * Restores a collapsed pane's content to the render tree. Scroll is not
+     * reapplied here — it needs the pane's post-expand geometry, which only
+     * exists once the pane's layout settles — so the pane is queued instead.
+     * Idempotent — a pane whose content is already displayed is left untouched.
+     * A recorded child that has since left the pane is no longer this
+     * manager's to touch.
+     *
+     * @param pane - The pane whose content to redisplay.
+     */
+    private redisplayPaneContent(pane: Component): void {
+        const snapshot = this._undisplayedPaneContent.get(pane);
+
+        if (snapshot === undefined) {
+            return;
+        }
+
+        this._undisplayedPaneContent.delete(pane);
+
+        for (const child of snapshot.displayed) {
+            if (child.getParentComponent() === pane) {
+                child.setDisplayed(true);
+            }
+        }
+
+        pane.setContentClampSuspended(false);
+
+        this._pendingScrollRestore.add(pane);
+    }
+
+    /**
+     * Settles the collapsed-content bookkeeping against what the layout
+     * actually clips, once no collapse animation is in flight. A pane
+     * `doLayout` clips behind its strip — the collapsed flag *and* a serving
+     * gutter, the same test `doLayout` applies — has its content undisplayed
+     * if it still shows, including a sibling whose own collapse animation was
+     * superseded before it settled (see CollapseAnimationTeardown.test.ts's
+     * "still clears the first pane's transition when a different pane is
+     * toggled"). A pane that carries a snapshot but is laid out expanded this
+     * pass — its serving gutter went away when a trailing sibling left, or
+     * `collapsible` was switched off, while it stayed flagged — gets its
+     * content back, since nothing clips it and neither toggle would accept it
+     * any more. Scroll is then restored for every pane awaiting it whose
+     * content is in the render tree (a pane re-collapsed before its expand
+     * settled has just been undisplayed again, so it is skipped). Cheap and
+     * side-effect-free when there is nothing to reconcile.
+     *
+     * @param components - The container's current laid-out panes.
+     */
+    private reconcileCollapsedContent(components: Array<Component>): void {
+        for (let idx = 0; idx < components.length; idx += 1) {
+            const pane = components[idx];
+
+            if ((this._collapsed.get(pane) ?? false) && this.paneServingGutter(idx, components) >= 0) {
+                this.undisplayPaneContent(pane);
+            } else if (this._undisplayedPaneContent.has(pane)) {
+                // The pane's own box is already final; lay its children out so
+                // the restore below writes against real scroll ranges.
+                this.redisplayPaneContent(pane);
+                pane.doLayout();
+            }
+        }
+
+        // `onIdle` reaches here outside `doLayout`, before `recalculateSizes`
+        // has pruned the bookkeeping, so a pane removed — and possibly
+        // disposed — while its expand animated can still be queued; writing
+        // its offsets back would go through a released handle. Only a pane
+        // that is still the container's is restored, as Border's drain
+        // resolves through the live slot.
+        if (this._pendingScrollRestore.size === 0) {
+            return;
+        }
+
+        const owned = new Set(this.getContainer()?.getComponents() ?? []);
+        // A pane whose content is back but which something else has
+        // undisplayed cannot take its offsets yet (no boxes to write against),
+        // so its entry is kept for the layout that follows its re-show rather
+        // than dropped.
+        const retained: Component[] = [];
+
+        for (const pane of this._pendingScrollRestore) {
+            if (!owned.has(pane) || this._undisplayedPaneContent.has(pane)) {
+                continue;
+            }
+
+            if (pane.isDisplayed()) {
+                pane.restoreSubtreeScroll();
+            } else {
+                retained.push(pane);
+            }
+        }
+
+        this._pendingScrollRestore.clear();
+
+        for (const pane of retained) {
+            this._pendingScrollRestore.add(pane);
+        }
+    }
+
+    /**
+     * A pane's preferred size as the split reports it: the snapshot taken
+     * before its content was undisplayed while that holds, else live.
+     *
+     * @param pane - The pane to size.
+     * @returns The pane's preferred size, or `null` when it reports none.
+     */
+    private panePreferredSize(pane: Component): Size | null {
+        const snapshot = this._undisplayedPaneContent.get(pane);
+
+        return snapshot !== undefined ? snapshot.preferred : pane.getPreferredSize();
+    }
+
+    /**
+     * Mirrors {@link panePreferredSize} for the minimum size.
+     *
+     * @param pane - The pane to size.
+     * @returns The pane's minimum size, or `null` when it reports none.
+     */
+    private paneMinSize(pane: Component): Size | null {
+        const snapshot = this._undisplayedPaneContent.get(pane);
+
+        return snapshot !== undefined ? snapshot.min : pane.getMinSize();
+    }
+
+    /**
+     * Mirrors {@link panePreferredSize} for the maximum size. Needed as much
+     * as the other two: a box-managed pane reports its bare perimeter as its
+     * max once childless, which `clampMain` would otherwise write into the
+     * pane's stored size on the next layout.
+     *
+     * @param pane - The pane to size.
+     * @returns The pane's maximum size, or `null` when it reports none.
+     */
+    private paneMaxSize(pane: Component): Size | null {
+        const snapshot = this._undisplayedPaneContent.get(pane);
+
+        return snapshot !== undefined ? snapshot.max : pane.getMaxSize();
     }
 
     /**
@@ -576,8 +841,8 @@ class Split extends LayoutManager implements FocusRevealer {
      * @returns The clamped main-axis extent.
      */
     private clampMain(pane: Component, value: number, horizontal: boolean): number {
-        const min = pane.getMinSize();
-        const max = pane.getMaxSize();
+        const min = this.paneMinSize(pane);
+        const max = this.paneMaxSize(pane);
         const lo  = min ? (horizontal ? min.width : min.height) : 0;
         const hi  = max ? (horizontal ? max.width : max.height) : Number.POSITIVE_INFINITY;
 
@@ -595,8 +860,8 @@ class Split extends LayoutManager implements FocusRevealer {
      * @returns True when the pane is pinned to a single main-axis extent.
      */
     private isPinnedMain(pane: Component, horizontal: boolean): boolean {
-        const min = pane.getMinSize();
-        const max = pane.getMaxSize();
+        const min = this.paneMinSize(pane);
+        const max = this.paneMaxSize(pane);
         const lo  = min ? (horizontal ? min.width : min.height) : 0;
         const hi  = max ? (horizontal ? max.width : max.height) : Number.POSITIVE_INFINITY;
 
@@ -678,6 +943,27 @@ class Split extends LayoutManager implements FocusRevealer {
             this._collapsed.delete(from);
         }
 
+        // Move the undisplayed-content state with the collapsed flag, in three
+        // ordered steps. Capture `to`'s live scroll offsets while `from`'s
+        // content is still out, so the walk skips those boxless nodes instead
+        // of reading zeros through them — and a `to` being hoisted out of
+        // `from`, itself one of them, captures nothing at all. Then give
+        // `from`'s content back: it is what puts such a hoisted `to` in the
+        // render tree at all (left undisplayed, `getLaidOutComponents` would
+        // drop it out of this split entirely), and what completes the report
+        // of a `to` that wraps `from`. Only then snapshot `to` and take its
+        // children out. `from` is owed no scroll restore: it is no longer a
+        // pane of this split.
+        if (this._undisplayedPaneContent.has(from)) {
+            if (to.isEffectivelyVisible()) {
+                to.captureSubtreeScroll();
+            }
+
+            this.redisplayPaneContent(from);
+            this._pendingScrollRestore.delete(from);
+            this.snapshotAndUndisplay(to);
+        }
+
         const weight = this._weights.get(from);
 
         if (weight !== undefined) {
@@ -727,7 +1013,7 @@ class Split extends LayoutManager implements FocusRevealer {
      * @returns The preferred `{width, height}`, or `null` when detached.
      */
     getPreferredSize(): Size | null {
-        return this.computeContentSize(component => component.getPreferredSize());
+        return this.computeContentSize(component => this.panePreferredSize(component));
     }
 
     /**
@@ -738,7 +1024,7 @@ class Split extends LayoutManager implements FocusRevealer {
      * @returns The minimum `{width, height}`, or `null` when detached.
      */
     getMinSize(): Size | null {
-        return this.computeContentSize(component => component.getMinSize());
+        return this.computeContentSize(component => this.paneMinSize(component));
     }
 
     /**
@@ -974,6 +1260,15 @@ class Split extends LayoutManager implements FocusRevealer {
             return this;
         }
 
+        // No animation to settle, so the content leaves or rejoins the render
+        // tree right here; an expand's scroll restore rides on the layout
+        // scheduled below.
+        if (collapsed) {
+            this.undisplayPaneContent(pane);
+        } else {
+            this.redisplayPaneContent(pane);
+        }
+
         this._collapsed.set(pane, collapsed);
         this.emit("panecollapse", index, collapsed);
 
@@ -1044,10 +1339,13 @@ class Split extends LayoutManager implements FocusRevealer {
         const horizontal = this._orientation === "horizontal";
         const total      = this._dragOriginLhsSize + this._dragOriginRhsSize;
 
-        const lhsMin = lhs.getMinSize();
-        const rhsMin = rhs.getMinSize();
-        const lhsMax = lhs.getMaxSize();
-        const rhsMax = rhs.getMaxSize();
+        // Through the snapshots: the divider beside a collapsed pane is still
+        // draggable, and that pane's live bounds read deflated with its
+        // content out.
+        const lhsMin = this.paneMinSize(lhs);
+        const rhsMin = this.paneMinSize(rhs);
+        const lhsMax = this.paneMaxSize(lhs);
+        const rhsMax = this.paneMaxSize(rhs);
         const minLhs = lhsMin ? (horizontal ? lhsMin.width : lhsMin.height) : 0;
         const minRhs = rhsMin ? (horizontal ? rhsMin.width : rhsMin.height) : 0;
         const maxLhs = lhsMax ? (horizontal ? lhsMax.width : lhsMax.height) : Number.POSITIVE_INFINITY;
@@ -1082,8 +1380,15 @@ class Split extends LayoutManager implements FocusRevealer {
         this._sizes.set(lhs, newLhs);
         this._sizes.set(rhs, newRhs);
 
-        lhs.doLayout();
-        rhs.doLayout();
+        // A collapsed neighbour whose content is out gets its box only, as in
+        // `commitPanes`: its own layout must not run while it stays collapsed.
+        if (!this._undisplayedPaneContent.has(lhs)) {
+            lhs.doLayout();
+        }
+
+        if (!this._undisplayedPaneContent.has(rhs)) {
+            rhs.doLayout();
+        }
     }
 
     /**
@@ -1416,6 +1721,11 @@ class Split extends LayoutManager implements FocusRevealer {
         this._collapseAnimation?.();
         this._collapseAnimation = null;
 
+        // That canceller's `onIdle` is the only place `_collapsing` is cleared,
+        // and cancelling suppressed it; left set, the idle reconcile sweep
+        // would never run again (see Border.detach).
+        this._collapsing = false;
+
         // Same idea for a still-buffered drag frame (see scheduleDrag): left
         // alone, it would fire after this detach and call onDrag against
         // panes `gutter.dispose()` below is about to tear down.
@@ -1441,6 +1751,38 @@ class Split extends LayoutManager implements FocusRevealer {
             }
         }
         this._pendingCollapseTransitions.length = 0;
+
+        // A collapsed pane's undisplayed content and suspended clamp are this
+        // manager's doing, and no other manager knows to undo them: a swap
+        // would leave the content out forever, and a pane parked before the
+        // old tree is disposed (the LayoutSerialization restore shape) would
+        // be re-collapsed by its fresh manager with nothing left to record.
+        // Every recorded child that is still alive and still this manager's
+        // to put back is put back: one the pane still owns, or one parked
+        // with no owner — a leaf `LayoutSerialization.parkLeaves` lifted out
+        // of a Tab-managed pane before the tear-down, which a fresh manager
+        // re-collapsing its stack must find displayed to record. A child
+        // re-homed under another owner is that owner's now (it may be an
+        // inactive page there) and is left alone. Liveness is `isDestroyed()`,
+        // not the parent link — `Component.destructor` clears a container's
+        // child list but not the children's parent links, and
+        // `disposeAllComponents` clears the links but destroys the children —
+        // so a link alone says nothing. The clamp reset is a plain field
+        // write, safe on a destroyed pane.
+        for (const [pane, snapshot] of this._undisplayedPaneContent) {
+            pane.setContentClampSuspended(false);
+
+            for (const child of snapshot.displayed) {
+                const parent = child.getParentComponent();
+
+                if (!child.isDestroyed() && (parent === null || parent === pane)) {
+                    child.setDisplayed(true);
+                }
+            }
+        }
+
+        this._undisplayedPaneContent.clear();
+        this._pendingScrollRestore.clear();
 
         super.detach();
 
@@ -1523,7 +1865,7 @@ class Split extends LayoutManager implements FocusRevealer {
                 }
             }
 
-            const min = component.getMinSize();
+            const min = this.paneMinSize(component);
             if (min) {
                 crossMax = Math.max(crossMax, this._orientation === "horizontal" ? min.height : min.width);
             }
@@ -1719,6 +2061,15 @@ class Split extends LayoutManager implements FocusRevealer {
                 this._gutters[i].setVisible(false);
             }
         }
+
+        // Idle catch-all for the paths no animation settles — an immediate
+        // toggle's scroll restore, a construction-time collapse — and for a
+        // pane whose own animation was superseded before its settle could
+        // sweep. Never mid-animation, when children must stay displayed for
+        // the reveal.
+        if (!this._collapsing) {
+            this.reconcileCollapsedContent(components);
+        }
     }
 
     /**
@@ -1775,13 +2126,21 @@ class Split extends LayoutManager implements FocusRevealer {
 
     /**
      * Commits a collapsed-branch pane's resolved bounds, then its `clip-path` —
-     * the hand-off from {@link Split.placeGutterAsStrip}'s resolve step.
+     * the hand-off from {@link Split.placeGutterAsStrip}'s resolve step. A pane
+     * whose content is out gets its box and nothing more: running its own
+     * layout would let a manager that writes its children's displayed state
+     * (a `Tab` re-selecting its page) put content back in the render tree
+     * behind the strip, undoing exactly what the collapse took out.
      *
      * @param placements - The resolved pane placements to commit, in placement order.
      */
     private commitPanes(placements: SplitPlacement[]): void {
         for (const placement of placements) {
-            this.commitBounds(placement.component, placement.x, placement.y, placement.width, placement.height);
+            if (this._undisplayedPaneContent.has(placement.component)) {
+                commitRect(placement.component, placement, false);
+            } else {
+                this.commitBounds(placement.component, placement.x, placement.y, placement.width, placement.height);
+            }
 
             placement.component.setClipPath(placement.clipPath);
         }
@@ -1841,6 +2200,7 @@ class Split extends LayoutManager implements FocusRevealer {
             // Only a pane with a serving gutter can collapse.
             if (pane && this.paneServingGutter(index, components) >= 0) {
                 this._collapsed.set(pane, true);
+                this.undisplayPaneContent(pane);
             }
         }
 
@@ -1933,14 +2293,23 @@ class Split extends LayoutManager implements FocusRevealer {
 
         let components = container.getComponents();
 
-        // Drop stored sizes (and collapsed flags) for panes that have left the
-        // container. `moveComponent`/`removeComponent` give Split no removal
-        // hook, so without this the entries would linger forever — skewing the
+        // Drop stored sizes (and collapsed flags, content snapshots, queued
+        // scroll restores) for panes that have left the container.
+        // `moveComponent`/`removeComponent` give Split no removal hook, so
+        // without this the entries would linger forever — skewing the
         // `_sizes.size` check and the refill total below, and leaking memory.
         for (let pane of [...this._sizes.keys()]) {
             if (components.indexOf(pane) < 0) {
+                // A pane that left while its content was out is no longer
+                // this manager's to clamp on behalf of.
+                if (this._undisplayedPaneContent.has(pane)) {
+                    pane.setContentClampSuspended(false);
+                }
+
                 this._sizes.delete(pane);
                 this._collapsed.delete(pane);
+                this._undisplayedPaneContent.delete(pane);
+                this._pendingScrollRestore.delete(pane);
             }
         }
 

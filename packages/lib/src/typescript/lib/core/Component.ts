@@ -571,6 +571,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _autoCommitStyle      : boolean                 = true;
     private _autoCommitAttributes : boolean                 = true;
     private _layoutPaused         : boolean                 = false;
+    // Runtime-only: written by a layout manager that holds this component's
+    // children out of the render tree (see `setContentClampSuspended`), never
+    // during the super cascade, so a plain initialiser is safe here.
+    private _contentClampSuspended : boolean                = false;
     private _aria                : Aria | null             = null;
     private _verticalAlign        : string | null;
     // Deferred-write style buffers. `styleRule` lazily materialises the
@@ -4090,6 +4094,51 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Suspends or resumes the content-derived clamp {@link clampWidth} /
+     * {@link clampHeight} apply when {@link clampsToContentSize} is `true`.
+     * While suspended, only the component's own explicit {@link setMinSize} /
+     * {@link setMaxSize} constraints bound a committed size — the same policy
+     * {@link Container} applies permanently.
+     *
+     * A layout manager that takes a component's children out of the render
+     * tree while the component itself must keep its box (`Split` and `Border`
+     * behind a collapsed pane's or region's strip) calls this with `true` when
+     * the children leave and `false` when they return: with no laid-out
+     * children the merged {@link getMaxSize} collapses to the box manager's
+     * bare perimeter, and every box write would otherwise be clamped to it.
+     * Harmless on a `Container` / `Panel`, whose clamp is already off.
+     *
+     * @param suspended - `true` to bound committed sizes by the explicit
+     *   constraints only; `false` to clamp to the content-derived size again.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @internal
+     */
+    public setContentClampSuspended(suspended: boolean): this {
+        this._contentClampSuspended = suspended;
+
+        return this;
+    }
+
+    /**
+     * Whether {@link destructor} has run on this component. A layout manager
+     * that still holds a reference to a component after its tree was torn
+     * down (a `Split`/`Border` releasing a collapsed pane's recorded children
+     * on `detach`) checks this before writing to it: a destroyed component's
+     * element handle is released, while its parent link may or may not be —
+     * `destructor` clears the child list, not the children's parent links —
+     * so the link cannot stand in for liveness.
+     *
+     * @returns `true` once the component has been destroyed.
+     *
+     * @internal
+     */
+    public isDestroyed(): boolean {
+        return this._destroyed;
+    }
+
+    /**
      * Whether this component supports releasing its element without being
      * destroyed. Default false — a component becomes releasable only by
      * overriding this to true, and only once its own element-derived state is
@@ -4113,7 +4162,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * which fit their allocation).
      */
     private clampWidth(width: number): number {
-        const toContent = this.clampsToContentSize();
+        const toContent = this.clampsToContentSize() && !this._contentClampSuspended;
 
         const maxSize = toContent ? this.getMaxSize() : (this.getMaxSizeConstraint());
         if (maxSize && width > maxSize.width) {
@@ -4179,7 +4228,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * {@link clampsToContentSize}. See {@link clampWidth} for the rationale.
      */
     private clampHeight(height: number): number {
-        const toContent = this.clampsToContentSize();
+        const toContent = this.clampsToContentSize() && !this._contentClampSuspended;
 
         const maxSize = toContent ? this.getMaxSize() : (this.getMaxSizeConstraint());
         if (maxSize && height > maxSize.height) {
