@@ -2359,10 +2359,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Walks this component and its ancestor chain, returning whether it is
      * actually on-screen — as opposed to `isVisible()` / `isDisplayed()`, which
      * report only this component's own state and don't see an ancestor that
-     * hides it. A `Tab` / `Card` hides an inactive panel with `setVisible(false)`
-     * (CSS `visibility: hidden`) while keeping its layout slot, so a descendant's
-     * own `isVisible()` stays `null` (inherit) even though it is not effectively
-     * shown; this walks up to catch that case.
+     * hides it. A `Tab` / `Card` hides an inactive panel with `setDisplayed(false)`
+     * (CSS `display: none`), which drops it out of layout entirely, so a
+     * descendant's own `isDisplayed()` stays `true` even though it is not
+     * effectively shown; this walks up to catch that case.
      *
      * @returns `false` if this component or any ancestor is explicitly hidden
      *   (`isVisible() === false`) or undisplayed (`!isDisplayed()`); `true`
@@ -4390,18 +4390,28 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param element - The freshly rebuilt element to restore state onto.
      */
     private restoreReleasedState(element: Handle): void {
-        // Routed through getScrollElement() — not the raw root `element` — so a
-        // subclass whose scroll happens on an inner element (see getScrollElement's
-        // own doc) restores onto the same target every other scroll write uses.
-        const scrollElement = this.getScrollElement();
-        if (scrollElement && (this._scrollLeft !== 0 || this._scrollTop !== 0)) {
-            DOM.sink.apply(scrollElement, { scrollLeft: this._scrollLeft, scrollTop: this._scrollTop });
-        }
+        this.reapplyCachedScroll();
 
         if (this._refocusOnRematerialize) {
             this._refocusOnRematerialize = false;
             // preventScroll: avoid focus-scroll pollution of an overflow:hidden ancestor.
             DOM.sink.focus(element, { preventScroll: true });
+        }
+    }
+
+    /**
+     * Writes the cached scroll offsets ({@link _scrollLeft} / {@link _scrollTop})
+     * back onto the live scroll element, when either is non-zero. Routed through
+     * {@link getScrollElement} — not a raw root element — so a subclass whose
+     * scroll happens on an inner element (see that method's own doc) restores
+     * onto the same target every other scroll write uses. The per-node write
+     * `restoreReleasedState` and `restoreSubtreeScroll` both build on.
+     */
+    private reapplyCachedScroll(): void {
+        const scrollElement = this.getScrollElement();
+
+        if (scrollElement && (this._scrollLeft !== 0 || this._scrollTop !== 0)) {
+            DOM.sink.apply(scrollElement, { scrollLeft: this._scrollLeft, scrollTop: this._scrollTop });
         }
     }
 
@@ -4427,6 +4437,97 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         return this;
+    }
+
+    /**
+     * Returns whether this component's native scroll offset lives on a real,
+     * distinct DOM node — as opposed to a component that merely forwards a
+     * shared ancestor's scroll. True when {@link getScrollElement} resolves to
+     * an element other than this component's own (a subclass whose scroll
+     * happens on an inner element, e.g. `Panel`'s overlay scroller or
+     * `CodeEditor`'s `.cm-scroller`), or when this component's own overflow is
+     * `auto` / `scroll` on either axis.
+     *
+     * @returns `true` when this node owns a native scroll offset worth
+     *   capturing/restoring.
+     */
+    private ownsNativeScroll(): boolean {
+        const element = this.getElement();
+
+        if (!element) {
+            return false;
+        }
+
+        if (this.getScrollElement() !== element) {
+            return true;
+        }
+
+        return this.isOverflowScrollable(this.getOverflowX())
+            || this.isOverflowScrollable(this.getOverflowY());
+    }
+
+    /**
+     * Reads this component's live native scroll offset into the cache — via
+     * {@link syncScrollOffsets}, skipped when {@link ownsNativeScroll} is false
+     * — then recurses into every child. Call this on a subtree's root
+     * immediately **before** undisplaying it: a `display: none` element reports
+     * `scrollTop`/`scrollLeft` as 0, so the live offset must be captured while
+     * the subtree still has boxes, or it is lost. Paired with
+     * {@link restoreSubtreeScroll}, which writes the cached offsets back once
+     * the subtree has boxes again.
+     *
+     * @remarks Returns immediately for a node that is already undisplayed
+     * (e.g. an inactive page of a nested `Tab`/`Card` inside the subtree
+     * being captured) — such a node has no boxes of its own regardless of
+     * whether the subtree root does, so a live read against it would return
+     * zero and silently overwrite the cache its own, earlier capture already
+     * holds correctly. The caller is responsible for confirming the root
+     * itself still has boxes (see `Tab.doLayout` / `Card.undisplayChild`,
+     * which check `isEffectivelyVisible()` before calling this).
+     *
+     * @internal
+     */
+    public captureSubtreeScroll(): void {
+        if (!this.isDisplayed()) {
+            return;
+        }
+
+        if (this.ownsNativeScroll()) {
+            this.syncScrollOffsets();
+        }
+
+        for (const child of this.getComponents()) {
+            child.captureSubtreeScroll();
+        }
+    }
+
+    /**
+     * Writes each node's cached native scroll offset back onto its live
+     * element — via {@link reapplyCachedScroll}, skipped when
+     * {@link ownsNativeScroll} is false — then recurses into every child. Call
+     * this only after the subtree has been laid out again post-redisplay: a
+     * scroll offset written against a not-yet-relaid-out subtree is clamped to
+     * its stale, smaller scroll range. Paired with {@link captureSubtreeScroll}.
+     *
+     * @remarks Returns immediately for a node that is (still) undisplayed —
+     * mirrors {@link captureSubtreeScroll}'s own guard, for the same reason:
+     * an inactive page of a nested `Tab`/`Card` has no boxes regardless of
+     * whether the subtree root does, so there is nothing under it to restore.
+     *
+     * @internal
+     */
+    public restoreSubtreeScroll(): void {
+        if (!this.isDisplayed()) {
+            return;
+        }
+
+        if (this.ownsNativeScroll()) {
+            this.reapplyCachedScroll();
+        }
+
+        for (const child of this.getComponents()) {
+            child.restoreSubtreeScroll();
+        }
     }
 
     /**

@@ -141,7 +141,7 @@ describe('Tab switch pauses/resumes panel animations (case 12)', () => {
         Component.flushEffectiveVisibility();
 
         // b is an eager panel that was never the active tab; the first layout
-        // hides it via setVisible(false), which the walk must catch.
+        // hides it via setDisplayed(false), which the walk must catch.
         expect(a.getAnimationPlayState()).toBeNull();
         expect(b.getAnimationPlayState()).toBe('paused');
 

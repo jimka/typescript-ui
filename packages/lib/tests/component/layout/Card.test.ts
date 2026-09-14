@@ -59,8 +59,8 @@ describe('Card visibility switching', () => {
 
         card.setVisibleComponentId(b.getId());
 
-        expect(b.isVisible()).toBe(true);
-        expect(a.isVisible()).toBe(false);
+        expect(b.isDisplayed()).toBe(true);
+        expect(a.isDisplayed()).toBe(false);
     });
 
     it('flips visibility cleanly when switching to a different id', () => {
@@ -77,8 +77,8 @@ describe('Card visibility switching', () => {
         card.setVisibleComponentId(b.getId());
         card.setVisibleComponentId(a.getId());
 
-        expect(a.isVisible()).toBe(true);
-        expect(b.isVisible()).toBe(false);
+        expect(a.isDisplayed()).toBe(true);
+        expect(b.isDisplayed()).toBe(false);
     });
 
     it('sizes the visible child to fill the host inner bounds', () => {
@@ -123,7 +123,7 @@ describe('Card visibility switching', () => {
 
         card.setVisibleComponentId(b.getId());
 
-        expect(b.isVisible()).toBe(true);
+        expect(b.isDisplayed()).toBe(true);
         expect(scheduled).toHaveBeenCalled();
     });
 });

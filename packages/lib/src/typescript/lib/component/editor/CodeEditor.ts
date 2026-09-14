@@ -1925,6 +1925,33 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
+     * Forces a fresh CodeMirror measurement on the way back to effectively
+     * visible. `ViewState.measure` skips an editor that is out of view or out
+     * of the window — always true of a `display: none` editor — and its own
+     * `ResizeObserver` re-show catch-up only forwards an event more than 75ms
+     * after the last update, which a re-show close behind an edit misses.
+     * `requestMeasure()` schedules rather than measuring inline, so it is safe
+     * to call unconditionally. `syncAutoHeight` follows because a re-measured
+     * view can report a different content height; it already no-ops at its
+     * own guard when `autoHeightMaxRows` is unset. Mirrors the withhold-and-
+     * flush shape `Markdown.onEffectiveVisibilityChange` and
+     * `AbstractCanvasSurface.onEffectiveVisibilityChange` use for their own
+     * deferred work.
+     *
+     * @param effective - The component's new effective-visibility state.
+     */
+    protected onEffectiveVisibilityChange(effective: boolean): void {
+        super.onEffectiveVisibilityChange(effective);
+
+        if (!effective || !this._view) {
+            return;
+        }
+
+        this._view.requestMeasure();
+        this.syncAutoHeight();
+    }
+
+    /**
      * Carves CodeMirror's own tooltips (the completion list, hover and lint
      * tooltips) out of the framework's eased wheel scroller — but only when a
      * scrollable descendant genuinely has somewhere to move, per

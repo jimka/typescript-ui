@@ -1084,6 +1084,16 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             return;
         }
 
+        // A panel inside a `display: none` (or `visibility: hidden`) subtree
+        // measures every scroll metric as zero, which would otherwise clear
+        // the reserved scrollbar gutter and zero both shadow edges. Withhold
+        // the read until the panel is effectively visible again;
+        // `onEffectiveVisibilityChange` schedules the catch-up layout that
+        // reruns this once it is.
+        if (!this.isEffectivelyVisible()) {
+            return;
+        }
+
         const el = this.getElement();
         if (!el) {
             return;
@@ -1126,6 +1136,24 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         const edges = this.resolveShadowEdges(shadowMetrics);
         if (edges) {
             this.applyShadowEdges(edges);
+        }
+    }
+
+    /**
+     * Schedules the layout {@link remeasureScrollMetrics} withheld while this
+     * panel was not effectively visible, once it becomes visible again —
+     * mirroring the withhold-and-flush shape `Markdown`'s own
+     * `onEffectiveVisibilityChange` override uses for its own deferred
+     * measurement. No-op for `autoScroll: "none"`, which never withholds a
+     * read in the first place.
+     *
+     * @param effective - The component's new effective-visibility state.
+     */
+    protected onEffectiveVisibilityChange(effective: boolean): void {
+        super.onEffectiveVisibilityChange(effective);
+
+        if (effective && this._autoScroll !== "none") {
+            this.scheduleLayout();
         }
     }
 
