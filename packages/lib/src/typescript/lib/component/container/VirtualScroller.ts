@@ -7,7 +7,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { SmoothScroller, consumeWheel } from "~/core/SmoothScroller.js";
 import { Scrollbar } from "~/component/container/Scrollbar.js";
-import { scrollShadowBoxShadow, scrollShadowEdgeValue, scrollShadowRamp, quantizeShadowEdge, ScrollShadowEdges } from "~/core/ScrollShadow.js";
+import { appendScrollShadowStrips, scrollShadowEdgeValue, scrollShadowRamp, quantizeShadowEdge, ScrollShadowEdges } from "~/core/ScrollShadow.js";
 
 // VirtualScroller is a plain helper, not a Component: it owns and lays out raw
 // `clipBox` / `rowsContainer` `HTMLElement`s it creates directly, so the
@@ -55,6 +55,7 @@ export class VirtualScroller {
     private _contentHeight  : number = 0;
     private _smooth         : SmoothScroller;
     private _shadowOverlay  : Handle;
+    private _shadowStrips   : readonly Handle[] = [];
     private _shadowEdges     : ScrollShadowEdges = { top: 0, bottom: 0, left: 0, right: 0 };
 
     /**
@@ -96,8 +97,10 @@ export class VirtualScroller {
         // `rowsContainer` — is not shifted by the scroll transform; sizing it to
         // 100% tracks the clip box that `layoutScrollbars` resizes to the
         // effective viewport. It paints above the rows (appended last) and is
-        // inert to the pointer. Each edge is a `box-shadow` layer gated by a
-        // custom property; `updateShadows` flips the property per scroll/resize.
+        // inert to the pointer. The overlay itself is an inert host carrying the
+        // per-edge custom properties; the four strips appended inside it paint
+        // the edges, each gated by its own property. `updateShadows` flips a
+        // property per scroll/resize.
         const shadowOverlay = DOM.sink.createElement("div");
         DOM.sink.apply(shadowOverlay, { style: {
             position:      "absolute",
@@ -106,10 +109,10 @@ export class VirtualScroller {
             width:         "100%",
             height:        "100%",
             pointerEvents: "none",
-            boxShadow:     scrollShadowBoxShadow(),
         } });
         DOM.sink.appendChild(clipBox, shadowOverlay);
         this._shadowOverlay = shadowOverlay;
+        this._shadowStrips = appendScrollShadowStrips(shadowOverlay);
 
         // Drives wheel-initiated scrolling through an eased RAF loop. The seam
         // delegates to the existing setScrollX/Y (which clamp, write the
@@ -162,16 +165,16 @@ export class VirtualScroller {
     }
 
     /**
-     * Returns the two created container handles (clip box and rows container).
-     * The owning component tracks these via `trackHandle` so they are released
-     * with the owner — on its destructor or, for a discarded owner, on GC — and
-     * not left pinned in the registry. The scroller is not a `Component`, so it
-     * cannot track its own handles.
+     * Returns every created element handle (clip box, rows container, shadow
+     * host, and its four edge strips). The owning component tracks these via
+     * `trackHandle` so they are released with the owner — on its destructor
+     * or, for a discarded owner, on GC — and not left pinned in the registry.
+     * The scroller is not a `Component`, so it cannot track its own handles.
      *
      * @returns The scroller's owned element handles.
      */
     ownedHandles(): readonly Handle[] {
-        return [this._clipBox, this._rowsContainer, this._shadowOverlay];
+        return [this._clipBox, this._rowsContainer, this._shadowOverlay, ...this._shadowStrips];
     }
 
     /**
