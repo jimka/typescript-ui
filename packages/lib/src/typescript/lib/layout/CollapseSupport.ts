@@ -175,7 +175,7 @@ function primeCollapse(
 }
 
 /** An axis-aligned box used to snapshot and interpolate a participant's bounds. */
-interface Rect {
+export interface Rect {
     x:      number;
     y:      number;
     width:  number;
@@ -300,8 +300,19 @@ const lerpRect = (a: Rect, b: Rect, t: number): Rect => ({
  * (and its `will-change` hint) here, unconditionally, is what keeps that
  * resolved position from being silently offset again by a leftover translate
  * a participant carried in from entering this collapse mid-fast-path.
+ *
+ * Also the box-only commit `Split` and `Border` use, with `relayout: false`,
+ * for a collapsed pane/region whose content they have taken out of the render
+ * tree: its box still needs geometry on every layout, but running its own
+ * layout would let a manager that writes its children's displayed state (a
+ * `Tab` re-selecting its page) put that content back behind the strip.
+ *
+ * @param component - The participant to write.
+ * @param rect - The resolved box to write.
+ * @param relayout - Whether to lay the participant's own content out at the
+ *   new size.
  */
-function commitRect(component: Component, rect: Rect, relayout: boolean): void {
+export function commitRect(component: Component, rect: Rect, relayout: boolean): void {
     component.setAutoCommitStyle(false);
     component.setX(rect.x);
     component.setY(rect.y);
@@ -397,13 +408,17 @@ function animateLayout(movers: CollapseMover[], onComplete?: () => void): () => 
 }
 
 /**
- * One participant in a {@link runCollapse} pass: the moving element and whether
- * its content must be re-laid-out each frame — `true` for a content-bearing
- * pane/region, `false` for an empty gutter.
+ * One participant in a {@link runCollapse} pass: the moving element, whether
+ * its content must be re-laid-out each frame, and whether it is a gutter.
+ * `relayout` is `true` for a pane/region whose content is in the render tree
+ * and `false` for an empty gutter — and also for a pane/region whose content
+ * is out behind its strip, which moves as a box only. `gutter` is what selects
+ * the gutters for the strip cross-fade; a geometry-only pane/region is not one.
  */
 export interface CollapseParticipant {
     component: Component;
     relayout:  boolean;
+    gutter:    boolean;
 }
 
 /**
@@ -411,8 +426,9 @@ export interface CollapseParticipant {
  * plumbing behind [`Split.setPaneCollapsed`](/api/layout/classes/Split) and
  * [`Border.setRegionCollapsed`](/api/layout/classes/Border). The caller has
  * already flipped its own collapsed flag and assembled `participants`: every
- * box that moves — the panes/regions (`relayout: true`) and the gutters
- * (`relayout: false`), the `toggled` one included.
+ * box that moves — the panes/regions (`relayout: true`, or `false` for one
+ * whose content is out behind its strip) and the gutters (`gutter: true`),
+ * the `toggled` one included.
  *
  * The pass: cancel any in-flight collapse (`previous`); prime the `toggled`
  * pane/region's clip-path reveal (it keeps its final size and only clips, so it
@@ -463,7 +479,7 @@ export function runCollapse(
     // CSS transition (colour interpolation, `var()` resolution, and the
     // transparent endpoint are all easier left to the browser) sharing the
     // geometry's duration and curve.
-    const gutters = participants.filter(participant => !participant.relayout).map(participant => participant.component);
+    const gutters = participants.filter(participant => participant.gutter).map(participant => participant.component);
     if (gutters.length > 0) {
         track(pending, handle => primeCollapse(gutters[0], ["background-color"], gutters, handle, "background-color"));
     }

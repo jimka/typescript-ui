@@ -8,7 +8,7 @@ import { CollapseDirection } from "~/component/container/CollapseButton.js";
 import { FillType } from "~/layout/FillType.js";
 import { Placement } from "~/primitive/Placement.js";
 import { Size, UNBOUNDED, saturate } from "~/primitive/Size.js";
-import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant, CollapseTransition } from "~/layout/CollapseSupport.js";
+import { COLLAPSE_STRIP_SIZE, runCollapse, commitRect, CollapseParticipant, CollapseTransition } from "~/layout/CollapseSupport.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
@@ -29,6 +29,24 @@ const COLLAPSE_CHEVRON: Record<string, CollapseDirection> = {
     [Placement.WEST]:  "west",
     [Placement.EAST]:  "east",
 };
+
+/**
+ * What {@link Border} records about a collapsed edge region the instant before
+ * it takes the region's content out of the render tree — the same shape
+ * `Split` keeps per pane: the region's own size reports, substituted for live
+ * queries while the content is out (a childless region reports different —
+ * for a box-managed one, deflated — numbers), and which direct children were
+ * displayed, so an expand puts back exactly those and leaves a child something
+ * else had already undisplayed (a `Card`'s inactive page) alone.
+ */
+interface RegionContentSnapshot {
+    preferred: Size | null;
+    min:       Size | null;
+    max:       Size | null;
+    displayed: Component[];
+    /** The region component whose content clamp is suspended while its content is out. */
+    component: Component;
+}
 
 /**
  * Construction-time options for the {@link Border} layout manager.
@@ -98,6 +116,21 @@ class Border extends LayoutManager implements FocusRevealer {
     // final `doLayout` once the animation settles.
     private _collapsing: boolean = false;
 
+    // Snapshot of a collapsed region's own size reports and displayed
+    // children, taken the instant before its content is undisplayed, keyed by
+    // placement to match `_collapsed` / `_collapsible` / `_gutters`.
+    // Substituted for a live query wherever a region may be
+    // collapsed-and-undisplayed, so a now-childless region's own report cannot
+    // silently change what the border reports or lays out while collapsed.
+    // Presence of an entry also doubles as "this region's content is
+    // undisplayed".
+    private readonly _undisplayedRegionContent: Map<Placement, RegionContentSnapshot> = new Map();
+
+    // Edges whose content was just redisplayed and are awaiting a scroll
+    // restore once their post-expand geometry is final. Drained by
+    // `reconcileCollapsedRegions`.
+    private readonly _pendingScrollRestore: Set<Placement> = new Set();
+
     constructor(options?: BorderOptions) {
         // LayoutManager's constructor takes no options; applied via applyOptions below.
         // eslint-disable-next-line local/forward-super-options
@@ -144,6 +177,13 @@ class Border extends LayoutManager implements FocusRevealer {
             constraints.placement = Placement.CENTER;
         }
 
+        // A different component taking a slot must not inherit the outgoing
+        // one's content snapshot or queued scroll restore — both are keyed by
+        // placement, not by component.
+        if (this.getRegionComponent(constraints.placement) !== component) {
+            this.forgetRegionContent(constraints.placement);
+        }
+
         switch (constraints.placement) {
             case Placement.NORTH:
                 this._northComponent = component;
@@ -186,12 +226,16 @@ class Border extends LayoutManager implements FocusRevealer {
     delLayoutConstraints(component: Component): LayoutConstraints | undefined {
         if (this._northComponent === component) {
             this._northComponent = null;
+            this.forgetRegionContent(Placement.NORTH);
         } else if (this._southComponent === component) {
             this._southComponent = null;
+            this.forgetRegionContent(Placement.SOUTH);
         } else if (this._westComponent === component) {
             this._westComponent = null;
+            this.forgetRegionContent(Placement.WEST);
         } else if (this._eastComponent === component) {
             this._eastComponent = null;
+            this.forgetRegionContent(Placement.EAST);
         } else if (this._centerComponent === component) {
             this._centerComponent = null;
         }
@@ -280,6 +324,13 @@ class Border extends LayoutManager implements FocusRevealer {
             return this;
         }
 
+        // Content must be back in the render tree before the start-state and
+        // end-state layouts below run, or the expand reveals an empty box for
+        // its whole run.
+        if (!collapsed) {
+            this.redisplayRegionContent(placement);
+        }
+
         // Enter the animated phase before laying out the start state. When no
         // animation is already running the regions are clip-framed, parked at
         // `(0, 0)` inside frames that carry their real position; this `doLayout`
@@ -304,26 +355,275 @@ class Border extends LayoutManager implements FocusRevealer {
 
         // Every box that moves: the regions (content re-laid-out each frame) and
         // the gutters (geometry only). The toggled region is among them and also
-        // clip-reveals; `runCollapse` coordinates the whole pass.
-        const regions = [this._northComponent, this._southComponent, this._westComponent, this._eastComponent, this._centerComponent]
-            .filter((c): c is Component => c != null);
+        // clip-reveals; `runCollapse` coordinates the whole pass. A sibling
+        // whose content is out is geometry-only too — its own layout must not
+        // run while it stays collapsed (see `placeRegionBox`).
+        const participants: CollapseParticipant[] = [];
 
-        const participants: CollapseParticipant[] = [
-            ...regions.map(region => ({ component: region, relayout: true })),
-            ...[...this._gutters.values()].map(gutter => ({ component: gutter, relayout: false })),
-        ];
+        for (const edge of [Placement.NORTH, Placement.SOUTH, Placement.WEST, Placement.EAST, Placement.CENTER]) {
+            const region = this.getRegionComponent(edge);
+
+            if (region) {
+                participants.push({ component: region, relayout: !this._undisplayedRegionContent.has(edge), gutter: false });
+            }
+        }
+
+        for (const gutter of this._gutters.values()) {
+            participants.push({ component: gutter, relayout: false, gutter: true });
+        }
 
         this._collapseAnimation = runCollapse(container, component, participants, this._collapseAnimation, this._pendingCollapseTransitions, () => {
             this._collapseAnimation = null;
 
             // Leave the animated phase and re-lay-out so the non-collapsible
-            // regions get their steady-state clip frames back.
+            // regions get their steady-state clip frames back (and, now idle,
+            // so the collapsed regions' content is reconciled).
             this._collapsing = false;
 
             container.doLayout();
         });
 
         return this;
+    }
+
+    /**
+     * Snapshots a collapsed region's own size and its content's native scroll
+     * offsets, then removes that content from the render tree. For a region
+     * whose content is already out, only re-asserts the undisplay of the
+     * children it took out — this manager owns their displayed state while
+     * the region stays collapsed, so a child something else put back since (a
+     * stray layout of the region's own `Tab`, a consumer's
+     * `setDisplayed(true)`) leaves again; the snapshot and the captured scroll
+     * are kept. A recorded child that has since left the region is no longer
+     * this manager's to touch.
+     *
+     * @remarks The capture is guarded on effective visibility, as `Tab` and
+     * `Card` guard theirs: an ancestor outside this manager's control can be
+     * what actually leaves the region with no boxes, and a live read against a
+     * boxless subtree would clobber every cached offset with zero.
+     *
+     * @param placement - The collapsed edge.
+     * @param component - The region's component, whose content to undisplay.
+     */
+    private undisplayRegionContent(placement: Placement, component: Component): void {
+        const snapshot = this._undisplayedRegionContent.get(placement);
+
+        if (snapshot !== undefined) {
+            for (const child of snapshot.displayed) {
+                if (child.getParentComponent() === component) {
+                    child.setDisplayed(false);
+                }
+            }
+
+            return;
+        }
+
+        // A region re-collapsed before its expand's restore landed still
+        // carries the offsets it was collapsed with in its cache, and its live
+        // offsets are the engine's post-`display: none` zeros: a capture here
+        // would overwrite the one with the other, and the pending restore is
+        // then dropped by `reconcileCollapsedRegions`'s drain. The cache stays
+        // authoritative until a restore has actually been written.
+        if (component.isEffectivelyVisible() && !this._pendingScrollRestore.has(placement)) {
+            component.captureSubtreeScroll();
+        }
+
+        const displayed = component.getLaidOutComponents();
+
+        this._undisplayedRegionContent.set(placement, {
+            preferred: component.getPreferredSize(),
+            min:       component.getMinSize(),
+            max:       component.getMaxSize(),
+            displayed,
+            component,
+        });
+
+        // The snapshot above answers this manager's own reads; the region's
+        // own `setWidth`/`setHeight` clamp reads the live merged max, which a
+        // childless box manager reports as its bare perimeter, so a general
+        // `Component` region would have every box write clamped away while
+        // its content is out. Resumed by `redisplayRegionContent` and
+        // `forgetRegionContent`.
+        component.setContentClampSuspended(true);
+
+        for (const child of displayed) {
+            child.setDisplayed(false);
+        }
+    }
+
+    /**
+     * Restores a collapsed region's content to the render tree. Scroll is not
+     * reapplied here — it needs the region's post-expand geometry, which only
+     * exists once the settling `doLayout` has run — so the edge is queued
+     * instead. Idempotent — a region whose content is already displayed is
+     * left untouched. A recorded child that has since left the region is no
+     * longer this manager's to touch.
+     *
+     * @param placement - The edge whose content to redisplay.
+     */
+    private redisplayRegionContent(placement: Placement): void {
+        const snapshot = this._undisplayedRegionContent.get(placement);
+
+        if (snapshot === undefined) {
+            return;
+        }
+
+        this._undisplayedRegionContent.delete(placement);
+
+        // The recorded component, not the live slot: the two coincide today
+        // because a replacement forgets the snapshot first, but the snapshot
+        // is the thing being undone.
+        const component = snapshot.component;
+
+        for (const child of snapshot.displayed) {
+            if (child.getParentComponent() === component) {
+                child.setDisplayed(true);
+            }
+        }
+
+        component.setContentClampSuspended(false);
+
+        this._pendingScrollRestore.add(placement);
+    }
+
+    /**
+     * Places a collapsible region's full-size box for the current layout. A
+     * region whose content is out gets its box and nothing more: running its
+     * own layout would let a manager that writes its children's displayed
+     * state (a `Tab` re-selecting its page) put content back in the render
+     * tree behind the strip, undoing exactly what the collapse took out.
+     *
+     * @param placement - The region's edge.
+     * @param component - The region's component.
+     * @param x - The box's left position.
+     * @param y - The box's top position.
+     * @param width - The box's width.
+     * @param height - The box's height.
+     */
+    private placeRegionBox(placement: Placement, component: Component, x: number, y: number, width: number, height: number): void {
+        if (this._undisplayedRegionContent.has(placement)) {
+            commitRect(component, this.resolveBounds(component, x, y, width, height, FillType.BOTH), false);
+        } else {
+            this.placeComponent(component, x, y, width, height, FillType.BOTH);
+        }
+    }
+
+    /**
+     * Drops an edge's content snapshot and queued scroll restore, for when the
+     * component occupying the edge is replaced or removed.
+     *
+     * @param placement - The edge whose bookkeeping to drop.
+     */
+    private forgetRegionContent(placement: Placement): void {
+        // The outgoing component is no longer this manager's to clamp on
+        // behalf of; its recorded children stay as they are (see the docs
+        // note on removal).
+        this._undisplayedRegionContent.get(placement)?.component.setContentClampSuspended(false);
+        this._undisplayedRegionContent.delete(placement);
+        this._pendingScrollRestore.delete(placement);
+    }
+
+    /**
+     * Mirrors `Split.reconcileCollapsedContent` over the four edges, from the
+     * tail of every idle `doLayout` — which is also what a settling animation's
+     * `onIdle` runs, so one edge's settle sweeps a sibling whose own animation
+     * it superseded. A region `doLayout` actually clips away — collapsible
+     * *and* collapsed, the same test `applyRegionClip` applies — has its
+     * content undisplayed if it still shows; a region that carries a snapshot
+     * but was laid out unclipped this pass (`collapsible` switched off while
+     * the edge stayed flagged) gets its content back, since nothing clips it
+     * and `setRegionCollapsed` would refuse it. Scroll is then restored for
+     * every edge awaiting it whose content is in the render tree (an edge
+     * re-collapsed before its expand settled has just been undisplayed again,
+     * so it is skipped).
+     */
+    private reconcileCollapsedRegions(): void {
+        for (const placement of [Placement.NORTH, Placement.SOUTH, Placement.WEST, Placement.EAST]) {
+            const component = this.laidOut(this.getRegionComponent(placement));
+
+            if (!component) {
+                continue;
+            }
+
+            if (this.isRegionCollapsible(placement) && this.isRegionCollapsed(placement)) {
+                this.undisplayRegionContent(placement, component);
+            } else if (this._undisplayedRegionContent.has(placement)) {
+                // The region's own box is already final; lay its children out
+                // so the restore below writes against real scroll ranges.
+                this.redisplayRegionContent(placement);
+                component.doLayout();
+            }
+        }
+
+        // A region whose content is back but whose component something else
+        // has undisplayed cannot take its offsets yet (no boxes to write
+        // against), so its entry is kept for the layout that follows its
+        // re-show rather than dropped.
+        const retained: Placement[] = [];
+
+        for (const placement of this._pendingScrollRestore) {
+            if (this._undisplayedRegionContent.has(placement)) {
+                continue;
+            }
+
+            const component = this.laidOut(this.getRegionComponent(placement));
+
+            if (component) {
+                component.restoreSubtreeScroll();
+            } else if (this.getRegionComponent(placement)) {
+                retained.push(placement);
+            }
+        }
+
+        this._pendingScrollRestore.clear();
+
+        for (const placement of retained) {
+            this._pendingScrollRestore.add(placement);
+        }
+    }
+
+    /**
+     * A region's preferred size as the border reports and lays it out: the
+     * snapshot taken before its content was undisplayed while that holds,
+     * else live.
+     *
+     * @param placement - The region's edge.
+     * @param component - The region's component.
+     * @returns The region's preferred size, or `null` when it reports none.
+     */
+    private regionPreferredSize(placement: Placement, component: Component): Size | null {
+        const snapshot = this._undisplayedRegionContent.get(placement);
+
+        return snapshot !== undefined ? snapshot.preferred : component.getPreferredSize();
+    }
+
+    /**
+     * Mirrors {@link regionPreferredSize} for the minimum size.
+     *
+     * @param placement - The region's edge.
+     * @param component - The region's component.
+     * @returns The region's minimum size, or `null` when it reports none.
+     */
+    private regionMinSize(placement: Placement, component: Component): Size | null {
+        const snapshot = this._undisplayedRegionContent.get(placement);
+
+        return snapshot !== undefined ? snapshot.min : component.getMinSize();
+    }
+
+    /**
+     * Mirrors {@link regionPreferredSize} for the maximum size. Needed as
+     * much as the other two: a box-managed region reports its bare perimeter
+     * as its max once childless, which would cap the whole border's width or
+     * height to it.
+     *
+     * @param placement - The region's edge.
+     * @param component - The region's component.
+     * @returns The region's maximum size, or `null` when it reports none.
+     */
+    private regionMaxSize(placement: Placement, component: Component): Size | null {
+        const snapshot = this._undisplayedRegionContent.get(placement);
+
+        return snapshot !== undefined ? snapshot.max : component.getMaxSize();
     }
 
     /**
@@ -579,27 +879,27 @@ class Border extends LayoutManager implements FocusRevealer {
         const east   = this.laidOut(this._eastComponent);
 
         if (north) {
-            let size = north.getPreferredSize();
+            let size = this.regionPreferredSize(Placement.NORTH, north);
             if (size) {
-                const flooredHeight = this.flooredMainExtent(size.height, north.getMinSize(), true);
+                const flooredHeight = this.flooredMainExtent(size.height, this.regionMinSize(Placement.NORTH, north), true);
                 innerWidth = Math.max(innerWidth, size.width);
                 innerHeight += this.isRegionCollapsed(Placement.NORTH) ? COLLAPSE_STRIP_SIZE : flooredHeight;
             }
         }
 
         if (south) {
-            let size = south.getPreferredSize();
+            let size = this.regionPreferredSize(Placement.SOUTH, south);
             if (size) {
-                const flooredHeight = this.flooredMainExtent(size.height, south.getMinSize(), true);
+                const flooredHeight = this.flooredMainExtent(size.height, this.regionMinSize(Placement.SOUTH, south), true);
                 innerWidth = Math.max(innerWidth, size.width);
                 innerHeight += this.isRegionCollapsed(Placement.SOUTH) ? COLLAPSE_STRIP_SIZE : flooredHeight;
             }
         }
 
         if (west) {
-            let size = west.getPreferredSize();
+            let size = this.regionPreferredSize(Placement.WEST, west);
             if (size) {
-                const flooredWidth = this.flooredMainExtent(size.width, west.getMinSize(), false);
+                const flooredWidth = this.flooredMainExtent(size.width, this.regionMinSize(Placement.WEST, west), false);
                 middleWidth += this.isRegionCollapsed(Placement.WEST) ? COLLAPSE_STRIP_SIZE : flooredWidth;
                 middleHeight = Math.max(middleHeight, size.height);
             }
@@ -614,9 +914,9 @@ class Border extends LayoutManager implements FocusRevealer {
         }
 
         if (east) {
-            let size = east.getPreferredSize();
+            let size = this.regionPreferredSize(Placement.EAST, east);
             if (size) {
-                const flooredWidth = this.flooredMainExtent(size.width, east.getMinSize(), false);
+                const flooredWidth = this.flooredMainExtent(size.width, this.regionMinSize(Placement.EAST, east), false);
                 middleWidth += this.isRegionCollapsed(Placement.EAST) ? COLLAPSE_STRIP_SIZE : flooredWidth;
                 middleHeight = Math.max(middleHeight, size.height);
             }
@@ -661,7 +961,7 @@ class Border extends LayoutManager implements FocusRevealer {
         const east   = this.laidOut(this._eastComponent);
 
         if (north) {
-            let size = north.getMinSize();
+            let size = this.regionMinSize(Placement.NORTH, north);
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
                 innerHeight += this.isRegionCollapsed(Placement.NORTH) ? COLLAPSE_STRIP_SIZE : size.height;
@@ -669,7 +969,7 @@ class Border extends LayoutManager implements FocusRevealer {
         }
 
         if (south) {
-            let size = south.getMinSize();
+            let size = this.regionMinSize(Placement.SOUTH, south);
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
                 innerHeight += this.isRegionCollapsed(Placement.SOUTH) ? COLLAPSE_STRIP_SIZE : size.height;
@@ -677,7 +977,7 @@ class Border extends LayoutManager implements FocusRevealer {
         }
 
         if (west) {
-            let size = west.getMinSize();
+            let size = this.regionMinSize(Placement.WEST, west);
             if (size) {
                 middleWidth += this.isRegionCollapsed(Placement.WEST) ? COLLAPSE_STRIP_SIZE : size.width;
                 middleHeight = Math.max(middleHeight, size.height);
@@ -693,7 +993,7 @@ class Border extends LayoutManager implements FocusRevealer {
         }
 
         if (east) {
-            let size = east.getMinSize();
+            let size = this.regionMinSize(Placement.EAST, east);
             if (size) {
                 middleWidth += this.isRegionCollapsed(Placement.EAST) ? COLLAPSE_STRIP_SIZE : size.width;
                 middleHeight = Math.max(middleHeight, size.height);
@@ -733,15 +1033,17 @@ class Border extends LayoutManager implements FocusRevealer {
         let outerHeight = perimeterSize.top + perimeterSize.bottom;
 
         // A non-displayed region resolves to null here (no constraint), not the
-        // unbounded sentinel — it must not widen/heighten the layout at all.
-        const maxOf = (component: Component | null): Size | null =>
-            this.laidOut(component) ? (component!.getMaxSize() ?? { width: UNBOUNDED, height: UNBOUNDED }) : null;
+        // unbounded sentinel — it must not widen/heighten the layout at all. A
+        // collapsed-and-undisplayed region reads its snapshot, not its live
+        // (childless) report.
+        const maxOf = (placement: Placement, component: Component | null): Size | null =>
+            this.laidOut(component) ? (this.regionMaxSize(placement, component!) ?? { width: UNBOUNDED, height: UNBOUNDED }) : null;
 
-        const north  = maxOf(this._northComponent);
-        const south  = maxOf(this._southComponent);
-        const west   = maxOf(this._westComponent);
-        const center = maxOf(this._centerComponent);
-        const east   = maxOf(this._eastComponent);
+        const north  = maxOf(Placement.NORTH,  this._northComponent);
+        const south  = maxOf(Placement.SOUTH,  this._southComponent);
+        const west   = maxOf(Placement.WEST,   this._westComponent);
+        const center = maxOf(Placement.CENTER, this._centerComponent);
+        const east   = maxOf(Placement.EAST,   this._eastComponent);
 
         // Middle row: west / center / east sit side by side — widths sum, the
         // row height is the tallest region.
@@ -792,12 +1094,18 @@ class Border extends LayoutManager implements FocusRevealer {
         }
 
         // A non-displayed region is treated as absent (laidOut → null), so it
-        // contributes no min-size to the total.
-        const westMin   = this.laidOut(this._westComponent)  ?.getMinSize();
+        // contributes no min-size to the total. CENTER is never collapsible,
+        // so it alone reads live.
+        const west  = this.laidOut(this._westComponent);
+        const east  = this.laidOut(this._eastComponent);
+        const north = this.laidOut(this._northComponent);
+        const south = this.laidOut(this._southComponent);
+
+        const westMin   = west  ? this.regionMinSize(Placement.WEST,  west)  : undefined;
         const centerMin = this.laidOut(this._centerComponent)?.getMinSize();
-        const eastMin   = this.laidOut(this._eastComponent)  ?.getMinSize();
-        const northMin  = this.laidOut(this._northComponent) ?.getMinSize();
-        const southMin  = this.laidOut(this._southComponent) ?.getMinSize();
+        const eastMin   = east  ? this.regionMinSize(Placement.EAST,  east)  : undefined;
+        const northMin  = north ? this.regionMinSize(Placement.NORTH, north) : undefined;
+        const southMin  = south ? this.regionMinSize(Placement.SOUTH, south) : undefined;
 
         // Horizontal regions contribute to width; vertical regions contribute
         // to height. Each inter-region gap is added only when both adjacent
@@ -925,12 +1233,12 @@ class Border extends LayoutManager implements FocusRevealer {
                 throw new Error("Unable to determine layout constraints for north component.");
             }
 
-            let preferredSize = north.getPreferredSize();
+            let preferredSize = this.regionPreferredSize(Placement.NORTH, north);
             if (!preferredSize) {
                 throw new Error("Unable to determine preferred size for north component.");
             }
 
-            const northExtent = this.flooredMainExtent(preferredSize.height, north.getMinSize(), true);
+            const northExtent = this.flooredMainExtent(preferredSize.height, this.regionMinSize(Placement.NORTH, north), true);
             let northHeight = this.regionExtent(Placement.NORTH, northExtent);
             let northX = constraints.ignoreParentInsets ? 0 : containerInsets.getLeft();
             let northY = constraints.ignoreParentInsets ? 0 : containerInsets.getTop();
@@ -945,13 +1253,13 @@ class Border extends LayoutManager implements FocusRevealer {
             // collapse animates, every region takes the unframed path so its own
             // `left`/`top` can be interpolated (a frame would freeze it).
             if (this.isRegionCollapsible(Placement.NORTH) || this._collapsing) {
-                this.placeComponent(
+                this.placeRegionBox(
+                    Placement.NORTH,
                     north,
                     northX,
                     northY,
                     northWidth,
-                    northExtent + northInsetTop,
-                    FillType.BOTH
+                    northExtent + northInsetTop
                 );
                 north.clearClipFrame();
                 this.applyRegionClip(north, Placement.NORTH);
@@ -977,12 +1285,12 @@ class Border extends LayoutManager implements FocusRevealer {
 
         middleHeight = height - middleY;
         if (south) {
-            let preferredSize = south.getPreferredSize();
+            let preferredSize = this.regionPreferredSize(Placement.SOUTH, south);
             if (!preferredSize) {
                 throw new Error("Unable to determine preferred size for south component.");
             }
 
-            const southExtent = this.flooredMainExtent(preferredSize.height, south.getMinSize(), true);
+            const southExtent = this.flooredMainExtent(preferredSize.height, this.regionMinSize(Placement.SOUTH, south), true);
             let southHeight = this.regionExtent(Placement.SOUTH, southExtent);
             let southX = containerInsets.getLeft();
             let southY = containerInsets.getTop() + height - southHeight;
@@ -995,13 +1303,13 @@ class Border extends LayoutManager implements FocusRevealer {
             let southFullY = containerInsets.getTop() + height - southExtent;
 
             if (this.isRegionCollapsible(Placement.SOUTH) || this._collapsing) {
-                this.placeComponent(
+                this.placeRegionBox(
+                    Placement.SOUTH,
                     south,
                     southX,
                     southFullY,
                     width,
-                    southExtent,
-                    FillType.BOTH
+                    southExtent
                 );
                 south.clearClipFrame();
                 this.applyRegionClip(south, Placement.SOUTH);
@@ -1025,22 +1333,22 @@ class Border extends LayoutManager implements FocusRevealer {
         let eastPreferredWidth = 0;
         let eastFullWidth = 0;
         if (east) {
-            let eastPreferred = east.getPreferredSize();
+            let eastPreferred = this.regionPreferredSize(Placement.EAST, east);
             if (!eastPreferred) {
                 throw new Error("Unable to determine preferred size for east component.");
             }
-            const eastExtent = this.flooredMainExtent(eastPreferred.width, east.getMinSize(), false);
+            const eastExtent = this.flooredMainExtent(eastPreferred.width, this.regionMinSize(Placement.EAST, east), false);
             eastFullWidth = eastExtent;
             eastPreferredWidth = this.regionExtent(Placement.EAST, eastExtent);
         }
 
         if (west) {
-            let preferredSize = west.getPreferredSize();
+            let preferredSize = this.regionPreferredSize(Placement.WEST, west);
             if (!preferredSize) {
                 throw new Error("Unable to determine preferred size for west component.");
             }
 
-            const westExtent = this.flooredMainExtent(preferredSize.width, west.getMinSize(), false);
+            const westExtent = this.flooredMainExtent(preferredSize.width, this.regionMinSize(Placement.WEST, west), false);
             let westWidth = Math.max(0, Math.min(this.regionExtent(Placement.WEST, westExtent), width - eastPreferredWidth));
             let westX = containerInsets.getLeft();
             let westY = containerInsets.getTop() + middleY;
@@ -1052,13 +1360,13 @@ class Border extends LayoutManager implements FocusRevealer {
             let westFullWidth = Math.max(0, Math.min(westExtent, width - eastPreferredWidth));
 
             if (this.isRegionCollapsible(Placement.WEST) || this._collapsing) {
-                this.placeComponent(
+                this.placeRegionBox(
+                    Placement.WEST,
                     west,
                     westX,
                     westY,
                     westFullWidth,
-                    middleHeight,
-                    FillType.BOTH
+                    middleHeight
                 );
                 west.clearClipFrame();
                 this.applyRegionClip(west, Placement.WEST);
@@ -1094,13 +1402,13 @@ class Border extends LayoutManager implements FocusRevealer {
             let eastFullX = containerInsets.getLeft() + width - eastFullWidth;
 
             if (this.isRegionCollapsible(Placement.EAST) || this._collapsing) {
-                this.placeComponent(
+                this.placeRegionBox(
+                    Placement.EAST,
                     east,
                     eastFullX,
                     eastY,
                     eastFullWidth,
-                    middleHeight,
-                    FillType.BOTH
+                    middleHeight
                 );
                 east.clearClipFrame();
                 this.applyRegionClip(east, Placement.EAST);
@@ -1134,6 +1442,15 @@ class Border extends LayoutManager implements FocusRevealer {
                 center.setClipFrame(centerLeft, centerTop, centerWidth, middleHeight);
                 this.commitBounds(center, 0, 0, centerWidth, middleHeight);
             }
+        }
+
+        // Every settle path ends in this layout (a settling animation's
+        // `onIdle` calls it), so the idle tail is where a collapsed region's
+        // content leaves the render tree and an expanded one's scroll comes
+        // back. Never mid-animation, when children must stay displayed for
+        // the reveal.
+        if (!this._collapsing) {
+            this.reconcileCollapsedRegions();
         }
     }
 
@@ -1218,6 +1535,29 @@ class Border extends LayoutManager implements FocusRevealer {
             }
         }
         this._pendingCollapseTransitions.length = 0;
+
+        // A collapsed region's undisplayed content and suspended clamp are
+        // this manager's doing, and no other manager knows to undo them: every
+        // recorded child still alive and still this manager's to put back —
+        // one the region still owns, or one parked with no owner — is put
+        // back (see `Split.detach` for the parked-leaf shape this covers); a
+        // child re-homed under another owner is left to that owner. Liveness
+        // is `isDestroyed()`, not the parent link, which no tear-down order
+        // keeps meaningful on its own.
+        for (const snapshot of this._undisplayedRegionContent.values()) {
+            snapshot.component.setContentClampSuspended(false);
+
+            for (const child of snapshot.displayed) {
+                const parent = child.getParentComponent();
+
+                if (!child.isDestroyed() && (parent === null || parent === snapshot.component)) {
+                    child.setDisplayed(true);
+                }
+            }
+        }
+
+        this._undisplayedRegionContent.clear();
+        this._pendingScrollRestore.clear();
 
         super.detach();
 

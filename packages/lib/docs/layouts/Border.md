@@ -71,6 +71,14 @@ frame so nothing snaps — mirroring the [`Accordion`](/layouts/Accordion). Doub
 back and restores the region. Only a `dblclick` collapses, never a single click.
 Collapsed state is in-memory only.
 
+Once the collapse animation settles, the collapsed region's content is removed
+from the render tree with `display: none` — the region itself keeps its full
+box behind the strip — so it costs nothing to lay out while the border resizes;
+the content returns before the expand animation starts, with its scroll
+positions preserved and restored. Keyboard focus inside the content is
+therefore dropped when the collapse settles, as it is for an inactive
+[`Tab`](/layouts/Tab) page.
+
 ```typescript
 app.addComponent(sidebar, { placement: Placement.WEST, collapsible: true }); // opt in
 

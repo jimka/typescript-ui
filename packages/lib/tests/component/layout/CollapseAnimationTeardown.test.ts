@@ -9,7 +9,11 @@
 // rather than throwing, so it is pinned here.
 //
 // transitionend never fires offline, so every completion below is reached
-// through the fallback timer, driven with vi.useFakeTimers().
+// through the fallback timer, driven with vi.useFakeTimers(). The two
+// undisplay cases additionally need the geometry loop's own completion
+// (`runCollapse`'s `onIdle`), which the swallowed offline rAF never reaches:
+// they capture frames through a `DOM.sink.requestAnimationFrame` spy and run
+// them past the collapse duration, as tests/core/Animation.test.ts does.
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
@@ -38,10 +42,18 @@ const ACCORDION_DURATION_MS = 200;
 /** Past any fallback either manager arms (both are duration + 40). */
 const PAST_FALLBACK_MS = 1000;
 
+/**
+ * Upper bound on frame-flush rounds. Past the duration the geometry loop
+ * settles in one frame, and an effective-visibility reconcile schedules at most
+ * one more, so a run that needs more than a handful is a loop, not progress.
+ */
+const MAX_FLUSH_ROUNDS = 8;
+
 describe('collapse-animation teardown', () => {
     let sink: RecordingDOMSink;
 
     afterEach(() => {
+        vi.restoreAllMocks();
         vi.useRealTimers();
         DOM.reset();
     });
@@ -49,6 +61,33 @@ describe('collapse-animation teardown', () => {
     function install(): void {
         sink = installTestDOM(CONFIG);
         vi.useFakeTimers();
+    }
+
+    /**
+     * Swaps the swallowing offline rAF for a capturing one and returns a
+     * flush that runs every captured frame past the collapse duration — the
+     * point where the geometry loop settles and fires `onIdle`.
+     */
+    function captureFrames(): () => void {
+        let frames: FrameRequestCallback[] = [];
+
+        vi.spyOn(DOM.sink, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
+            frames.push(cb);
+
+            return frames.length;
+        });
+
+        return (): void => {
+            for (let round = 0; round < MAX_FLUSH_ROUNDS && frames.length > 0; round += 1) {
+                const pending = frames;
+
+                frames = [];
+
+                for (const cb of pending) {
+                    cb(performance.now() + PAST_FALLBACK_MS);
+                }
+            }
+        };
     }
 
     /** A host driven by `manager`, sized and with insets cleared. */
@@ -151,23 +190,42 @@ describe('collapse-animation teardown', () => {
         it('still clears the first pane\'s transition when a different pane is toggled', () => {
             install();
 
+            const flushFrames = captureFrames();
             const split = new Split({ orientation: 'horizontal' });
             const container = host(split, 3);
             const panes = container.getComponents();
+
+            // Content in both toggled panes, so the undisplay half of the
+            // superseded toggle is observable too.
+            const first  = new Component({ preferredSize: { width: 10, height: 10 } });
+            const second = new Component({ preferredSize: { width: 10, height: 10 } });
+
+            panes[0].addComponent(first);
+            panes[1].addComponent(second);
 
             split.setPaneCollapsed(0, true);
 
             // A re-toggle stops the geometry animation but must leave the first
             // toggle's primed CSS transitions alone: their completion callback
             // is the only thing that clears `transition` and `will-change` on
-            // the participants the new toggle does not touch.
+            // the participants the new toggle does not touch. The middle pane,
+            // not the last: a pane collapses toward the start by default, so the
+            // last pane has no serving gutter and its toggle would be refused.
             vi.advanceTimersByTime(50);
-            split.setPaneCollapsed(2, true);
+            split.setPaneCollapsed(1, true);
 
             vi.advanceTimersByTime(PAST_FALLBACK_MS);
 
             expect(panes[0].getTransition()).toBeNull();
             expect(panes[0].getWillChange()).toBeNull();
+
+            // The first pane's own geometry loop was cancelled, so its `onIdle`
+            // never runs; once the second pane's loop settles, its reconcile
+            // sweep must undisplay the first pane's content as well.
+            flushFrames();
+
+            expect(second.isDisplayed()).toBe(false);
+            expect(first.isDisplayed()).toBe(false);
 
             container.dispose();
         });
@@ -297,6 +355,53 @@ describe('collapse-animation teardown', () => {
             vi.advanceTimersByTime(PAST_FALLBACK_MS);
 
             expect(sink.writes.slice(mark).filter(entry => entry.op === 'apply')).toEqual([]);
+
+            container.dispose();
+        });
+
+        it('still undisplays the first region\'s content when a different region is toggled', () => {
+            install();
+
+            const flushFrames = captureFrames();
+            const border = new Border();
+            const container = new Container({ layoutManager: border });
+
+            container.getElement(true);
+            container.setWidth(400);
+            container.setHeight(300);
+            container.clearInsets();
+
+            const contents = new Map<Placement, Component>();
+
+            for (const placement of [Placement.WEST, Placement.EAST, Placement.CENTER]) {
+                const region  = new Component({ preferredSize: { width: 80, height: 80 } });
+                const content = new Component({ preferredSize: { width: 10, height: 10 } });
+
+                region.addComponent(content);
+                region.getElement(true);
+                container.addComponent(region, Object.assign(new LayoutConstraints(), {
+                    placement,
+                    collapsible: placement !== Placement.CENTER,
+                }));
+                contents.set(placement, content);
+            }
+
+            container.doLayout();
+
+            border.setRegionCollapsed(Placement.WEST, true);
+
+            // The two edges share one geometry animation: toggling EAST cancels
+            // WEST's loop before its `onIdle`, so the `doLayout` EAST's own
+            // settle runs is what must sweep WEST's content out too.
+            vi.advanceTimersByTime(50);
+            border.setRegionCollapsed(Placement.EAST, true);
+
+            vi.advanceTimersByTime(PAST_FALLBACK_MS);
+            flushFrames();
+
+            expect(contents.get(Placement.EAST)!.isDisplayed()).toBe(false);
+            expect(contents.get(Placement.WEST)!.isDisplayed()).toBe(false);
+            expect(contents.get(Placement.CENTER)!.isDisplayed()).toBe(true);
 
             container.dispose();
         });

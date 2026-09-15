@@ -61,6 +61,14 @@ configured trigger does, so resizing is never ambiguous. Repeating the gesture
 on the same chevron once it's a strip slides the gutter back and restores the
 pane to its previous ratio. Collapsed state is in-memory only.
 
+Once the collapse animation settles, the collapsed pane's content is removed
+from the render tree with `display: none` — the pane itself keeps its box
+behind the strip — so it costs nothing to lay out while the rest of the split
+resizes; the content returns before the expand animation starts, with its
+scroll positions preserved and restored. Keyboard focus inside the content is
+therefore dropped when the collapse settles, as it is for an inactive
+[`Tab`](/layouts/Tab) page.
+
 Pass `collapseTrigger: 'click'` to switch every gutter's chevron to a single
 click instead — useful when double-click is already claimed by something else
 in the pane:
