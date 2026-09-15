@@ -375,18 +375,34 @@ page resets to empty.
 
 - **Dragging a `Split` gutter over a `TabBar`'s overflowing tab strip no
   longer forces a synchronous layout flush on every animation frame of the
-  drag.** `ScrollStrip.layoutItems`'s post-layout scroll-offset resync and
-  `layoutArrows`'s arrow-enablement read each force the browser to compute
+  drag.** `ScrollStrip`'s post-layout arrow-enablement read (which resyncs
+  the clip's scroll-offset cache on the way) forces the browser to compute
   layout immediately rather than deferring it to the next paint — a profiled
   gutter drag over an editor pane's tab strip spent 43% of its sampled CPU
-  there, once per frame. The first extent change of a drag still resyncs
+  there, once per frame. The first extent change of a drag still reads
   live, so a one-off resize (a sidebar toggle, a window resize, opening or
   closing a tab) is never delayed; only the second and later changes of a
-  live drag now withhold both reads, catching up in one pass on the first
+  live drag now withhold the read, catching up in one pass on the first
   animation frame the width or height stops moving. `ScrollStrip.mainScroll()`
   now always resyncs its cache from the DOM before returning, so a reveal or
   a within-strip tab-reorder drag mid-drag is never served a stale scroll
   position. No consumer action is needed.
+
+- **Resizing a `Tab` pane on the axis its strip does not scroll along — e.g.
+  dragging the horizontal gutter between two rows of editor panes — no
+  longer forces a synchronous layout per visible tab strip on every frame.**
+  `ScrollStrip` now re-reads scroll geometry only when a layout pass could
+  have moved the browser's scroll clamp (its clip's main-axis extent or the
+  laid-out items' far edge changed), instead of on every pass the
+  resize-burst detector did not recognise as a burst; a pass that changes
+  nothing the clamp depends on reads nothing. `Aria`'s typed setters also
+  skip a write whose value is unchanged, so a tab strip's per-pass
+  `aria-selected` / `aria-hidden` refresh no longer rewrites attributes that
+  already hold the value. One consumer-facing consequence: a call to
+  `ScrollStrip.setMainScroll` made outside a layout pass should be followed
+  by `refreshArrows()`, since a layout pass that changes nothing the clamp
+  depends on no longer re-derives the arrows on its behalf (`revealItem` and
+  `resetScroll` already do this themselves).
 
 - **Expanding or collapsing a `Tree` node no longer rebuilds every visible
   row's toggle caret, nor repositions every visible row, when most of what's
