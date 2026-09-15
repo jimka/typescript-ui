@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-// Pins ScrollStrip's resize-resync coalescing: while the clip's own main-axis
-// extent is changing every pass (a live Split gutter drag resizing the
-// strip's owner), layoutItems's post-layout scroll-offset resync and
-// layoutArrows's arrow-enablement read each force a synchronous browser
-// layout flush — expensive enough, repeated every animation frame of a drag,
-// to dominate a profiled trace (see the plan). Both reads are withheld
-// together after the first extent change of a burst and caught up in one
-// pass on the first quiet animation frame; mainScroll() always resyncs for
-// itself regardless, so a reveal or reorder-drag mid-burst is never served a
-// stale scroll position.
+// Pins ScrollStrip's deferred resync: layoutItems compares a clamp signature
+// — the clip's main-axis extent and the laid-out items' far main-axis edge,
+// both from cached geometry — against the previous pass, and performs no DOM
+// read at all when neither moved (the horizontal-gutter-drag case, where the
+// strip's own box never changes). A pass whose signature did move reads
+// live, unless a resize burst is already in flight — a live external
+// resize, e.g. a Split gutter drag resizing the strip's owner — in which
+// case the read (refreshArrows, the only layout-time read left; it resyncs
+// the cache through mainScroll()) is withheld until a couple of quiet
+// frames confirm the resize has stopped, then caught up in one pass.
+// mainScroll() always resyncs for itself regardless, so a reveal or
+// reorder-drag mid-burst is never served a stale scroll position.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ScrollStrip, ScrollStripOrientation } from '~/component/container/ScrollStrip';
 import { Button } from '~/component/button/Button';
@@ -49,15 +51,11 @@ const W3 = 70;
 const SCROLL_ARROW_SIZE = 24;
 
 // Every "live" (non-withheld) pass, and every settle-frame catch-up, calls
-// `_clip.syncScrollOffsets()` twice: once directly (layoutItems's own resync,
-// or flushResizeSettle's catch-up resync), and once more indirectly through
-// `refreshArrows()`'s pre-existing, unmodified call to `mainScroll()` — which
-// this plan makes always resync the cache before returning. The plan's own
-// "Non-Goals" section calls this exact redundancy out as harmless and
-// deliberately not worth avoiding: the second read is served from the
-// already-clean layout for free. A withheld pass skips `refreshArrows()`
-// entirely, so it contributes neither call.
-const SYNC_PER_LIVE_PASS = 2;
+// `_clip.syncScrollOffsets()` exactly once — through `refreshArrows()`'s call
+// into `mainScroll()`, the layout pass's only remaining read now that
+// layoutItems's own direct resync is gone. A withheld pass skips
+// `refreshArrows()` entirely, so it contributes neither call.
+const SYNC_PER_LIVE_PASS = 1;
 const REFRESH_PER_LIVE_PASS = 1;
 
 // The offline sink drops requestAnimationFrame/cancelAnimationFrame (see
@@ -162,6 +160,22 @@ function layoutAt(strip: ScrollStrip, main: number, orientation: ScrollStripOrie
     strip.layoutContent(reserve, 0);
 }
 
+/**
+ * Mounts the strip at `main` and runs one further identical pass before
+ * draining. The offline harness only realises the clip's element — and so
+ * HBox's committed item geometry — partway through the very first pass (via
+ * `ensureArrows`'s `getElement(true)`, called from that pass's own
+ * `layoutArrows`, after `layoutItems` already ran); a genuine browser mount
+ * always finishes realising and painting before a resize burst can begin, so
+ * a second identical pass is what gives a test the same stable starting
+ * point: `_lastItemsExtent`'s first real (non-placeholder) baseline.
+ */
+function mountAndSettle(strip: ScrollStrip, main: number, orientation: ScrollStripOrientation = 'horizontal'): void {
+    layoutAt(strip, main, orientation);
+    layoutAt(strip, main, orientation);
+    drainFrames();
+}
+
 describe('ScrollStrip resize-resync coalescing', () => {
     it('resyncs live on the first extent change (mount)', () => {
         const strip = buildOverflowingStrip();
@@ -203,15 +217,49 @@ describe('ScrollStrip resize-resync coalescing', () => {
 
     it('still withholds a same-extent pass inside a burst', () => {
         const strip = buildOverflowingStrip();
+
+        mountAndSettle(strip, W1); // isolate a fresh burst: let the mount's own settle resolve first
+
         const syncSpy = vi.spyOn((strip as any)._clip, 'syncScrollOffsets');
         const refreshSpy = vi.spyOn(strip, 'refreshArrows');
 
-        layoutAt(strip, W1);
-        layoutAt(strip, W2);
+        layoutAt(strip, W2); // live: a genuine change, arms a fresh burst
         layoutAt(strip, W2); // same width again, still mid-burst
 
         expect(syncSpy).toHaveBeenCalledTimes(SYNC_PER_LIVE_PASS);
         expect(refreshSpy).toHaveBeenCalledTimes(REFRESH_PER_LIVE_PASS);
+
+        drainFrames();
+
+        // The live W2 pass already read the current state itself and left
+        // nothing owed; the repeated W2 pass's own signature didn't change,
+        // so it must not mark an arrow-refresh as owed either — draining
+        // performs no catch-up at all, and the counts from before the drain
+        // hold unchanged. Isolating a fresh burst first (mountAndSettle,
+        // above) is what makes this discriminating: `_arrowRefreshOwed` is a
+        // boolean, so a same-signature pass immediately after the live
+        // change that armed the burst is the only shape that can tell
+        // "nothing owed" apart from "wrongly marked as owed" — a same-extent
+        // pass later in a burst that already owes a refresh for an earlier
+        // real change can't show the difference, because the flag is
+        // already saturated to true either way.
+        expect(syncSpy).toHaveBeenCalledTimes(SYNC_PER_LIVE_PASS);
+        expect(refreshSpy).toHaveBeenCalledTimes(REFRESH_PER_LIVE_PASS);
+    });
+
+    it('is a silent pass once the relay has resolved and nothing changed', () => {
+        const strip = buildOverflowingStrip();
+
+        mountAndSettle(strip, W1); // relay resolves; nothing owed
+
+        const syncSpy = vi.spyOn((strip as any)._clip, 'syncScrollOffsets');
+        const refreshSpy = vi.spyOn(strip, 'refreshArrows');
+
+        layoutAt(strip, W1); // same width again, no relay armed
+
+        expect(syncSpy).not.toHaveBeenCalled();
+        expect(refreshSpy).not.toHaveBeenCalled();
+        expect((strip as any)._resizeSettleHandle).toBeNull();
     });
 
     it('performs exactly one catch-up when the settle frame drains', () => {
@@ -234,7 +282,7 @@ describe('ScrollStrip resize-resync coalescing', () => {
         // decoy) only re-arms for one more frame, the second is where
         // flushResizeSettle actually decides whether to catch up. This test
         // pins the mechanism that makes that decision correctly extend the
-        // burst — via the private _clipExtentMoved/_resizeSettleHandle fields
+        // burst — via the private _clampMoved/_resizeSettleHandle fields
         // directly, rather than inferring it from call counts alone: the
         // clip's own width/height are never gated by the withholding (only
         // the scroll-offset read is), so by the time any settle hop runs, the
@@ -249,18 +297,18 @@ describe('ScrollStrip resize-resync coalescing', () => {
         const syncSpy = vi.spyOn((strip as any)._clip, 'syncScrollOffsets');
         const refreshSpy = vi.spyOn(strip, 'refreshArrows');
 
-        layoutAt(strip, W2); // withheld: _clipExtentMoved set for the relay's second hop to see
+        layoutAt(strip, W2); // withheld: _clampMoved set for the relay's second hop to see
 
-        runQueuedFramesOnce(); // relay's first hop: only re-arms, doesn't touch _clipExtentMoved
+        runQueuedFramesOnce(); // relay's first hop: only re-arms, doesn't touch _clampMoved
         runQueuedFramesOnce(); // relay's second hop: sees W2's change, re-arms instead of catching up
 
-        expect((strip as any)._clipExtentMoved).toBe(false); // W2's contribution consumed
+        expect((strip as any)._clampMoved).toBe(false); // W2's contribution consumed
         expect((strip as any)._resizeSettleHandle).not.toBeNull(); // extended, not settled
         expect(syncSpy).not.toHaveBeenCalled();
         expect(refreshSpy).not.toHaveBeenCalled();
 
         layoutAt(strip, W3); // lands in the window right after the second hop's re-arm
-        expect((strip as any)._clipExtentMoved).toBe(true); // this pass's own contribution, not a leftover from W2
+        expect((strip as any)._clampMoved).toBe(true); // this pass's own contribution, not a leftover from W2
 
         drainFrames(); // let the newly-extended relay run to completion
 
@@ -288,30 +336,69 @@ describe('ScrollStrip resize-resync coalescing', () => {
         expect(syncSpy).toHaveBeenCalledTimes(SYNC_PER_LIVE_PASS + 1);
     });
 
-    it('tracks height, not width, for a vertical strip', () => {
+    it('is silent on a cross-axis-only change (horizontal strip), live on a main-axis change', () => {
+        const strip = buildOverflowingStrip();
+
+        mountAndSettle(strip, W1); // let the harmless mount settle frame resolve to idle
+
+        const syncSpy = vi.spyOn((strip as any)._clip, 'syncScrollOffsets');
+        const refreshSpy = vi.spyOn(strip, 'refreshArrows');
+
+        // Changing only the cross-axis thickness (height, for a horizontal
+        // strip) never moves the clamp signature: no read, no burst armed.
+        strip.setHeight(BAND_THICKNESS + 20);
+        strip.layoutContent(strip.arrowReserve(predictedItemsExtent(strip, false), W1), 0);
+
+        expect(syncSpy).not.toHaveBeenCalled();
+        expect(refreshSpy).not.toHaveBeenCalled();
+        expect((strip as any)._resizeSettleHandle).toBeNull();
+
+        // Changing the main axis (width) is a genuine clamp-signature change.
+        layoutAt(strip, W1 + 10);
+
+        expect(syncSpy).toHaveBeenCalledTimes(SYNC_PER_LIVE_PASS);
+        expect(refreshSpy).toHaveBeenCalledTimes(REFRESH_PER_LIVE_PASS);
+        expect((strip as any)._resizeSettleHandle).not.toBeNull();
+    });
+
+    it('is silent on a cross-axis-only change (vertical strip), live on a main-axis change', () => {
         const strip = buildOverflowingStrip('vertical');
 
-        layoutAt(strip, W1, 'vertical'); // mount
-        drainFrames(); // let the harmless mount settle frame resolve to idle
+        mountAndSettle(strip, W1, 'vertical'); // let the harmless mount settle frame resolve to idle
 
         const syncSpy = vi.spyOn((strip as any)._clip, 'syncScrollOffsets');
         const refreshSpy = vi.spyOn(strip, 'refreshArrows');
 
         // Changing only the cross-axis thickness (width, for a vertical
-        // strip) is not an extent change: no burst starts, live resync as
-        // usual since nothing "changed" on the tracked axis.
+        // strip) never moves the clamp signature: no read, no burst armed.
         strip.setWidth(BAND_THICKNESS + 20);
         strip.layoutContent(strip.arrowReserve(predictedItemsExtent(strip, true), W1), 0);
 
-        expect(syncSpy).toHaveBeenCalledTimes(SYNC_PER_LIVE_PASS);
-        expect(refreshSpy).toHaveBeenCalledTimes(REFRESH_PER_LIVE_PASS);
+        expect(syncSpy).not.toHaveBeenCalled();
+        expect(refreshSpy).not.toHaveBeenCalled();
         expect((strip as any)._resizeSettleHandle).toBeNull();
 
-        // Changing the main axis (height) is a genuine extent change.
+        // Changing the main axis (height) is a genuine clamp-signature change.
         layoutAt(strip, W1 + 10, 'vertical');
 
-        expect(syncSpy).toHaveBeenCalledTimes(2 * SYNC_PER_LIVE_PASS);
-        expect(refreshSpy).toHaveBeenCalledTimes(2 * REFRESH_PER_LIVE_PASS);
+        expect(syncSpy).toHaveBeenCalledTimes(SYNC_PER_LIVE_PASS);
+        expect(refreshSpy).toHaveBeenCalledTimes(REFRESH_PER_LIVE_PASS);
+        expect((strip as any)._resizeSettleHandle).not.toBeNull();
+    });
+
+    it('reads live when the items extent changes at a fixed clip extent', () => {
+        const strip = buildOverflowingStrip();
+
+        mountAndSettle(strip, W1); // let the harmless mount settle frame resolve to idle
+
+        const syncSpy = vi.spyOn((strip as any)._clip, 'syncScrollOffsets');
+        const refreshSpy = vi.spyOn(strip, 'refreshArrows');
+
+        strip.removeItem(strip.getItems()[6]); // 'Golf' — shrinks the laid-out items' far edge
+        layoutAt(strip, W1); // same width, different items extent
+
+        expect(syncSpy).toHaveBeenCalledTimes(SYNC_PER_LIVE_PASS);
+        expect(refreshSpy).toHaveBeenCalledTimes(REFRESH_PER_LIVE_PASS);
         expect((strip as any)._resizeSettleHandle).not.toBeNull();
     });
 

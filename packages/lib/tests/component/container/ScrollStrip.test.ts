@@ -204,6 +204,27 @@ describe('ScrollStrip.revealItem arrow refresh (regression)', () => {
     });
 });
 
+describe('ScrollStrip.resetScroll arrow refresh (regression)', () => {
+    // resetScroll moves the native scroll back to the origin outside any
+    // layout pass. The deferred-resync plan's layoutItems only re-derives the
+    // arrows when the clamp signature (the clip's main-axis extent or the
+    // laid-out items' far edge) moved, which a side switch that lands on an
+    // identical box does not guarantee — so, like scrollBy and revealItem,
+    // resetScroll must refresh the arrows itself rather than rely on the
+    // next layout pass.
+    it('refreshes the arrows after resetting the scroll', () => {
+        const strip = new ScrollStrip();
+
+        strip.getClipElement(true); // realise the clip
+
+        const refreshSpy = vi.spyOn(strip, 'refreshArrows');
+
+        strip.resetScroll();
+
+        expect(refreshSpy).toHaveBeenCalled();
+    });
+});
+
 describe('ScrollStrip as a FocusRevealer (regression)', () => {
     // A keyboard-driven focus move (e.g. SpatialNavigation's `.focus()` call)
     // never goes through `revealItem` on its own — it only calls

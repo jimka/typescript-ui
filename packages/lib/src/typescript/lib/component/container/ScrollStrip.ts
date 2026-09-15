@@ -184,27 +184,31 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
     private _leadArrow: Button | null = null;
     private _trailArrow: Button | null = null;
 
-    // The clip's own main-axis extent as of the last layout pass — the baseline
-    // a live external resize (e.g. a Split gutter drag resizing the strip's
-    // owner) is detected against. -1 until the first pass, so the very first
-    // layoutItems() call always resyncs live.
+    // The clip's own main-axis extent as of the last pass — one half of the
+    // clamp signature layoutItems compares (the cached counterpart of the
+    // clip's clientWidth / clientHeight). -1 until the first pass, so the
+    // very first pass always counts as a change.
     private _lastClipExtent: number = -1;
 
-    // Whether a pass withheld the post-layout scroll resync that is still owed
-    // once the current burst settles.
-    private _scrollResyncOwed: boolean = false;
+    // The laid-out items' far main-axis edge as of the last pass — the other
+    // half of the clamp signature (the cached counterpart of the clip's
+    // scrollWidth / scrollHeight). -1 until the first pass.
+    private _lastItemsExtent: number = -1;
 
-    // Whether a further main-axis extent change landed after the settle frame
-    // was armed.
-    private _clipExtentMoved: boolean = false;
+    // Whether a withheld pass still owes the arrow-enablement read once the
+    // current resize burst settles.
+    private _arrowRefreshOwed: boolean = false;
+
+    // Whether the clamp signature moved again after the settle relay was armed.
+    private _clampMoved: boolean = false;
 
     // The afterNextLayout relay armed to end a resize burst, or null when none
     // is in flight.
     private _resizeSettleHandle: { cancel(): void } | null = null;
 
-    // Set by layoutItems on every pass; layoutArrows reads it so the native
-    // scroll resync and the arrow-enablement read defer and catch up together.
-    private _deferScrollResyncThisPass: boolean = false;
+    // Set by layoutItems on every pass; layoutArrows reads it to decide whether
+    // this pass performs the arrow-enablement read.
+    private _refreshArrowsThisPass: boolean = false;
 
     /**
      * Builds an empty scroll strip with the default horizontal orientation,
@@ -497,82 +501,101 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
     }
 
     /**
-     * Lays out the inner clip's box, sizing the items, then resyncs the strip's
-     * cached scroll offset from the DOM (the browser may clamp the native offset
-     * on its own when the content lays out smaller than the current offset). Call
-     * after positioning the band (see {@link layoutContent}) and before reading
-     * the scroll.
+     * Lays out the inner clip's box, sizing the items, then decides whether
+     * this pass must re-derive the arrows' enabled state. Call after
+     * positioning the band (see {@link layoutContent}).
      *
-     * While the clip's own main-axis extent is still changing every pass — a live
-     * external resize, e.g. a `Split` gutter drag resizing the strip's owner —
-     * the resync (and the strip's matching arrow-enablement read) is withheld
-     * until a couple of quiet frames confirm the resize has stopped moving.
-     * {@link mainScroll} always resyncs for itself regardless, so a reveal or a
-     * within-strip reorder drag is never affected by a withheld pass.
+     * The decision compares a clamp signature against the previous pass: the
+     * clip's main-axis extent and the laid-out items' far edge, both from
+     * cached geometry. Only those two numbers can move the browser's own
+     * scroll clamp (the browser clamps the native offset when the content
+     * lays out smaller than the current offset), so a pass where neither
+     * changed reads nothing from the DOM. A pass where one changed reads live,
+     * unless a resize burst is in flight — a live external resize, e.g. a
+     * `Split` gutter drag resizing the strip's owner — in which case the read
+     * is withheld until a couple of quiet frames confirm the resize stopped.
+     * {@link mainScroll} always resyncs the cached offset for itself, so a
+     * reveal or a within-strip reorder drag never sees a stale position.
      *
      * @returns This strip, for method chaining.
      */
     layoutItems(): this {
         this._clip.doLayout();
 
-        const mainExtent = this.isVertical() ? this._clip.getHeight() : this._clip.getWidth();
-        const extentChanged = mainExtent !== this._lastClipExtent;
+        const clipExtent = this.isVertical() ? this._clip.getHeight() : this._clip.getWidth();
+        const itemsExtent = this.laidOutItemsExtent();
+        const clampChanged = clipExtent !== this._lastClipExtent || itemsExtent !== this._lastItemsExtent;
 
-        if (extentChanged) {
-            this._lastClipExtent = mainExtent;
+        if (clampChanged) {
+            this._lastClipExtent = clipExtent;
+            this._lastItemsExtent = itemsExtent;
         }
 
-        this._deferScrollResyncThisPass = this.deferScrollResyncWhileResizing(extentChanged);
-
-        if (!this._deferScrollResyncThisPass) {
-            this._clip.syncScrollOffsets();
-        }
+        this._refreshArrowsThisPass = this.arrowRefreshDueThisPass(clampChanged);
 
         return this;
     }
 
     /**
-     * Decides whether this layout pass may withhold the post-layout scroll
-     * resync — {@link layoutItems}'s native-offset resync and
-     * {@link layoutArrows}'s arrow-enablement read — because a resize burst is
-     * in flight, and arms (or extends) the settle pass that catches it up once
-     * the burst goes quiet. Mirrors `Split.scheduleDrag`/`flushDrag`, which
-     * solves the same class of problem one layer up (a live pane resize).
+     * The far main-axis edge of the laid-out items, from the geometry the
+     * clip's box just committed — the cached counterpart of the browser's
+     * `scrollWidth` / `scrollHeight`. Folds in the translate a size-stable
+     * move may have left on an item (see `LayoutManager.commitBounds`), the
+     * same way `TabBar.positionIndicator` does. Undisplayed items are skipped,
+     * matching what the box itself lays out.
      *
-     * @param extentChanged - Whether this pass sizes the clip to a different
-     *   main-axis extent than the previous pass did.
-     *
-     * @returns `true` when the caller must withhold this pass's resync.
-     *
-     * @remarks Whether a settle frame is already armed — not `extentChanged` —
-     * is what decides withholding: a pass with no settle frame armed always
-     * resyncs live (whether or not the extent moved, matching pre-coalescing
-     * behaviour for anything that isn't a live resize), while any pass that
-     * finds one already armed withholds regardless of whether *this specific*
-     * pass's extent moved, so an incidental same-extent pass mid-burst (two
-     * consecutive drag frames landing on the same rounded pixel, say) can't
-     * slip a live resync in ahead of the settle. The first extent change of a
-     * burst is still always applied in full, because the check that matters —
-     * "is a settle frame already armed" — is false until this call arms one;
-     * a one-off resize (a sidebar toggle, a window resize, opening or closing
-     * a tab) therefore lands accurate on its own frame. {@link
-     * flushResizeSettle} performs the eventual catch-up once the burst goes
-     * quiet.
+     * @returns The largest item end offset in px, or 0 with no laid-out items.
      */
-    private deferScrollResyncWhileResizing(extentChanged: boolean): boolean {
-        if (this._resizeSettleHandle === null) {
-            if (extentChanged) {
-                this.scheduleResizeSettle();
+    private laidOutItemsExtent(): number {
+        const vertical = this.isVertical();
+        let end = 0;
+
+        for (const item of this._clip.getLaidOutComponents()) {
+            const start = vertical ? item.getY() + item.getTranslateY() : item.getX() + item.getTranslateX();
+            const extent = vertical ? item.getHeight() : item.getWidth();
+
+            end = Math.max(end, start + extent);
+        }
+
+        return end;
+    }
+
+    /**
+     * Decides whether this layout pass performs the arrow-enablement read, and
+     * arms (or extends) the settle relay that catches a withheld read up once
+     * a resize burst goes quiet. Mirrors `Split.scheduleDrag`/`flushDrag`,
+     * which solves the same class of problem one layer up (a live pane resize).
+     *
+     * @param clampChanged - Whether this pass's clamp signature differs from
+     *   the previous pass's.
+     *
+     * @returns `true` when the caller must read live this pass.
+     *
+     * @remarks Whether a settle relay is already armed decides first: a pass
+     * that finds one armed never reads, and marks a read as owed only when its
+     * own signature moved, so an unchanged pass mid-burst owes nothing. With
+     * no relay armed, an unchanged signature reads nothing and arms nothing —
+     * the horizontal-gutter case, where the strip's box never moves — while
+     * a changed signature reads live and arms the relay, so a one-off resize
+     * (a sidebar toggle, a window resize, opening or closing a tab) lands
+     * accurate on its own frame and only the second and later changes of a
+     * burst are withheld. {@link flushResizeSettle} performs the catch-up.
+     */
+    private arrowRefreshDueThisPass(clampChanged: boolean): boolean {
+        if (this._resizeSettleHandle !== null) {
+            if (clampChanged) {
+                this._clampMoved = true;
+                this._arrowRefreshOwed = true;
             }
 
             return false;
         }
 
-        if (extentChanged) {
-            this._clipExtentMoved = true;
+        if (!clampChanged) {
+            return false;
         }
 
-        this._scrollResyncOwed = true;
+        this.scheduleResizeSettle();
 
         return true;
     }
@@ -604,7 +627,7 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
      * rather than running re-entrantly within the same drain
      * (`Component.afterNextLayout`'s own doc comment; confirmed by
      * `AfterNextLayout.test.ts`). {@link flushResizeSettle} then checks
-     * `_clipExtentMoved`, which — set by any pass over the *prior* frame, an
+     * `_clampMoved`, which — set by any pass over the *prior* frame, an
      * entirely separate earlier frame batch — is never racing anything by the
      * time this one reads it.
      */
@@ -618,25 +641,24 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
      * The settle relay's second hop: ends a resize burst, or extends it by
      * another two-frame relay when the clip's extent moved again during the
      * frame between the two hops. On the first quiet cycle it performs the
-     * withheld resync: the native scroll-offset resync and the
-     * arrow-enablement read.
+     * withheld arrow-enablement read (which resyncs the cached offset on its
+     * way through `mainScroll`).
      */
     private flushResizeSettle(): void {
         this._resizeSettleHandle = null;
 
-        if (this._clipExtentMoved) {
-            this._clipExtentMoved = false;
+        if (this._clampMoved) {
+            this._clampMoved = false;
             this.scheduleResizeSettle();
 
             return;
         }
 
-        if (!this._scrollResyncOwed) {
+        if (!this._arrowRefreshOwed) {
             return;
         }
 
-        this._scrollResyncOwed = false;
-        this._clip.syncScrollOffsets();
+        this._arrowRefreshOwed = false;
         this.refreshArrows();
     }
 
@@ -708,10 +730,11 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
     /**
      * Lays out the strip's content within its own (owner-positioned) band: sizes
      * the inner clip to the band minus a gutter at each end, places and enables the
-     * arrows into those gutters, runs the clip's box, and resyncs the cached scroll
-     * offset. The band is the strip's own content box; the gutters carry the fixed
-     * arrows while the clip scrolls the items between them. An `endGap` trailing-
-     * aligns the items by insetting the clip's leading edge.
+     * arrows into those gutters, runs the clip's box, and re-derives the arrows
+     * when the layout could have moved the scroll clamp. The band is the strip's
+     * own content box; the gutters carry the fixed arrows while the clip scrolls
+     * the items between them. An `endGap` trailing-aligns the items by insetting
+     * the clip's leading edge.
      *
      * @param reserve - The per-end arrow gutter in px (0 = no arrows, clip spans the band).
      * @param endGap - The leading inset (px) that trailing-aligns the items (0 otherwise).
@@ -781,11 +804,10 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
         lead.setVisible(true);
         trail.setVisible(true);
 
-        // Withheld together with layoutItems's resync while a live resize is in
-        // flight (see deferScrollResyncWhileResizing) — both reads force the same
-        // synchronous layout, so gating only one would not save anything.
-        // flushResizeSettle catches this up once the burst goes quiet.
-        if (!this._deferScrollResyncThisPass) {
+        // Only when layoutItems found the clamp signature moved and no resize
+        // burst is in flight (see arrowRefreshDueThisPass); flushResizeSettle
+        // catches a withheld read up once the burst goes quiet.
+        if (this._refreshArrowsThisPass) {
             this.refreshArrows();
         }
 
@@ -854,6 +876,13 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
      * Writes the clip's native main-axis scroll offset; the browser clamps to the
      * scrollable range, and the cross axis is left untouched.
      *
+     * @remarks The write alone does not update the paging arrows. A caller that
+     * moves the scroll outside a layout pass must follow it with
+     * {@link refreshArrows}, as {@link revealItem} and {@link resetScroll} do:
+     * the next layout pass re-derives the arrows only when the clamp signature
+     * (the clip's main-axis extent or the items' far edge) moved, and a bare
+     * scroll write moves neither.
+     *
      * @param value - The desired main-axis scroll offset in px.
      */
     setMainScroll(value: number): void {
@@ -867,13 +896,18 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
     /**
      * Resets the clip's native scroll to the origin on both axes — used when the
      * scroll axis itself changes (e.g. an owner side-switch) so the strip starts
-     * the new axis unscrolled.
+     * the new axis unscrolled — then refreshes the arrows. Like the internal
+     * per-click paging step and {@link revealItem}, a call that moves the scroll
+     * outside a layout pass must re-derive the arrows' enabled state itself: the
+     * next layout pass only refreshes them when the clamp signature moved, which
+     * a side switch that lands on an identical box does not guarantee.
      *
      * @returns This strip, for method chaining.
      */
     resetScroll(): this {
         this._clip.setScrollLeft(0);
         this._clip.setScrollTop(0);
+        this.refreshArrows();
 
         return this;
     }
