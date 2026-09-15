@@ -51,12 +51,12 @@ const BAND_THICKNESS = 24;
 // asserted as an opaque golden — same convention as the sibling test file).
 const SCROLL_ARROW_SIZE = 24;
 
-// Every live pass or settle catch-up calls `_clip.syncScrollOffsets()` twice
-// (once directly, once via `refreshArrows`'s pre-existing call into
-// `mainScroll()`) and `refreshArrows()` once — see
+// Every live pass or settle catch-up calls `_clip.syncScrollOffsets()`
+// exactly once, via `refreshArrows`'s call into `mainScroll()`, and
+// `refreshArrows()` once — see
 // `ScrollStrip.resizeResyncCoalescing.test.ts`'s own constants of the same
 // name for the full explanation.
-const SYNC_PER_LIVE_PASS = 2;
+const SYNC_PER_LIVE_PASS = 1;
 const REFRESH_PER_LIVE_PASS = 1;
 
 let nextFrameHandle = 1;
@@ -154,6 +154,21 @@ function advanceDragFrame(strip: ScrollStrip, width: number): void {
     realDragFrame(strip, width);
 }
 
+/**
+ * One height-only drag frame — mirrors realDragFrame but varies the band's
+ * height instead of its width, with the width pinned at 200: the
+ * horizontal-gutter-drag case, where the strip's own box never changes on
+ * the tracked (width) axis.
+ */
+function realHeightOnlyDragFrame(strip: ScrollStrip, height: number): void {
+    strip.setWidth(200);
+    strip.setHeight(height);
+
+    const reserve = strip.arrowReserve(predictedItemsExtent(strip), 200);
+
+    strip.layoutContent(reserve, 0);
+}
+
 describe('ScrollStrip resize-resync coalescing under a realistic one-pass-per-frame drag', () => {
     it('withholds the resync on every frame after the first while the drag continues', () => {
         const strip = buildOverflowingStrip();
@@ -225,6 +240,36 @@ describe('ScrollStrip resize-resync coalescing under a realistic one-pass-per-fr
         expect(syncSpy).toHaveBeenCalledTimes(SYNC_PER_LIVE_PASS);
         expect(refreshSpy).toHaveBeenCalledTimes(REFRESH_PER_LIVE_PASS);
         expect((strip as any)._clip.getWidth()).toBe(lastWidth - 2 * SCROLL_ARROW_SIZE);
+        expect((strip as any)._resizeSettleHandle).toBeNull();
+    });
+
+    it('a height-only per-frame drag never reads and never arms', () => {
+        const strip = buildOverflowingStrip();
+
+        realDragFrame(strip, 200); // mount frame: live; arms the (harmless) settle relay
+
+        // The offline harness only realises the clip's element — and so
+        // HBox's committed item geometry — partway through the mount frame
+        // (via ensureArrows's getElement(true), called after that frame's
+        // own layoutItems already ran); a genuine browser mount always
+        // finishes realising and painting before a drag can begin, so one
+        // further identical frame is what gives _lastItemsExtent its first
+        // real (non-placeholder) baseline.
+        realDragFrame(strip, 200);
+        drainFrames(); // let the mount settle frame resolve to idle
+
+        const syncSpy = vi.spyOn((strip as any)._clip, 'syncScrollOffsets');
+        const refreshSpy = vi.spyOn(strip, 'refreshArrows');
+
+        // 20 frames that change only the band's height — the tracked (width)
+        // axis of the clamp signature never moves, so every pass is silent.
+        for (let frame = 1; frame <= 20; frame++) {
+            runQueuedFramesOnce(); // whatever settle-relay callback is queued for this frame
+            realHeightOnlyDragFrame(strip, BAND_THICKNESS + frame);
+        }
+
+        expect(syncSpy).not.toHaveBeenCalled();
+        expect(refreshSpy).not.toHaveBeenCalled();
         expect((strip as any)._resizeSettleHandle).toBeNull();
     });
 });

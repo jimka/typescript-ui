@@ -1,9 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { Aria } from '~/core/Aria';
 import { Component } from '~/core/Component';
+import { DOM } from '~/core/DOM';
+import { installTestDOM } from '../dom/TestDOM';
+import fontMetrics from '../dom/font-metrics.test-font.json';
 
 // Every getter reads Aria's own cache, so round-trips need no materialised DOM.
 const aria = (): Aria => new Component().getAria();
+
+const CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
 
 describe('Aria — role & tabindex', () => {
     it('setRole/getRole round-trip; getRole defaults null', () => {
@@ -126,5 +137,69 @@ describe('Aria — label', () => {
         expect(a.getLabel()).toBe('Close');
         a.clearLabel();
         expect(a.getLabel()).toBeNull();
+    });
+});
+
+describe('Aria — unchanged writes are skipped', () => {
+    afterEach(() => DOM.reset());
+
+    /** Every recorded `apply` patch on `element` that sets `aria-hidden`. */
+    function hiddenWrites(sink: { writes: Array<{ op: string; args: unknown[] }> }, element: unknown): Array<string> {
+        return sink.writes
+            .filter(w => w.op === 'apply' && w.args[0] === element)
+            .map(w => (w.args[1] as { setAttr?: Record<string, string> }).setAttr?.['aria-hidden'])
+            .filter((value): value is string => value !== undefined);
+    }
+
+    it('a repeated setter with the same value writes nothing', () => {
+        const sink = installTestDOM(CONFIG);
+        const c = new Component();
+
+        c.getElement(true);
+
+        const element = c.getElement()!;
+
+        c.getAria().setHidden(true);
+        c.getAria().setHidden(true);
+
+        expect(hiddenWrites(sink, element)).toEqual(['true']);
+        expect(c.getAria().getHidden()).toBe(true);
+    });
+
+    it('a changed value writes', () => {
+        const sink = installTestDOM(CONFIG);
+        const c = new Component();
+
+        c.getElement(true);
+
+        const element = c.getElement()!;
+
+        c.getAria().setHidden(true);
+        c.getAria().setHidden(false);
+
+        expect(hiddenWrites(sink, element)).toEqual(['true', 'false']);
+    });
+
+    it('a value set again after a removal writes', () => {
+        const sink = installTestDOM(CONFIG);
+        const c = new Component();
+
+        c.getElement(true);
+
+        const element = c.getElement()!;
+
+        c.getAria().setExpanded(true);
+        c.getAria().setExpanded(null);
+        c.getAria().setExpanded(true);
+
+        const patches = sink.writes.filter(w => w.op === 'apply' && w.args[0] === element);
+        const expandedSets = patches
+            .map(w => (w.args[1] as { setAttr?: Record<string, string> }).setAttr?.['aria-expanded'])
+            .filter((value): value is string => value !== undefined);
+        const expandedRemoves = patches.filter(w =>
+            (w.args[1] as { removeAttr?: string[] }).removeAttr?.includes('aria-expanded'));
+
+        expect(expandedSets).toEqual(['true', 'true']);
+        expect(expandedRemoves.length).toBe(1);
     });
 });

@@ -781,12 +781,18 @@ export class Aria {
     }
 
     /**
-     * Stores an aria-* attribute value locally and pushes it to the DOM if the element exists.
+     * Stores an aria-* attribute value locally and pushes it to the DOM if the
+     * element exists. A value equal to the cached one writes nothing, mirroring
+     * `Component.setVisible`'s guard.
      *
      * @param name - The attribute name without the `aria-` prefix.
      * @param value - The string value to set.
      */
     private setAttribute(name: string, value: string): void {
+        if (this._attributes.get(name) === value) {
+            return;
+        }
+
         this._attributes.set(name, value);
         this._component.applyAriaAttribute("aria-" + name, value);
     }

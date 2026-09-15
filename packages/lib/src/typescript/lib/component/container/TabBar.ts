@@ -2903,12 +2903,10 @@ class TabBar extends Container<TabBarOptions> {
         this.positionClipFrame(toolExtent, leadExtent, thickness, mainInner, crossLead, mainLead);
 
         // Set the tab width mode/clamps before the strip runs its inner box, then
-        // let the strip size its clip to the band minus the gutters, lay out the
-        // tabs, place the arrows, and resync its cached scroll offset. The resync
-        // matters because `applyTabWidths` can lay the content out narrower than the
-        // current offset (e.g. compact while scrolled to the end), so the browser
-        // clamps the native scroll on its own and `revealSelectedIfRequested` would
-        // otherwise add its live-rect delta to a stale base and under-scroll.
+        // let the strip lay out its clip, place the arrows, and re-derive their
+        // enabled state only when the layout could have moved the scroll clamp.
+        // revealSelectedIfRequested is unaffected either way: revealItem reads the
+        // offset through mainScroll(), which resyncs the cache for itself.
         this.applyTabWidths(available);
         this._tabClip.layoutContent(arrowReserve, endGap);
 
