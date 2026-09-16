@@ -19,6 +19,16 @@ page resets to empty.
   signatures are unchanged; existing consumers see focus land where it
   previously could not.
 
+### Components
+
+- **`CellEditorPool.release()` now takes the cell that is releasing the
+  editor** — `release(cell: Cell<any>)`, where it previously took no
+  argument. The pool ignores a caller that is no longer the cell holding the
+  shared editor, so a release arriving after another cell has taken the
+  editor over can no longer unhook the cell that owns it now. The library's
+  own single call site, in `Cell`, passes `this`; a consumer calling
+  `release()` directly must pass the releasing cell.
+
 ### Layouts
 
 - **`Tab.setTabItalic(content, italic)` is no longer view-only.** It now
@@ -316,6 +326,29 @@ page resets to empty.
   Visually identical; no consumer action is needed.
 
 ### Components
+
+- **A table no longer writes an in-progress cell edit onto the wrong record
+  when scrolling rebinds the row under it.** The body keeps a small pool of
+  row components and rebinds them to new records as the user scrolls; an
+  editor left open over one of those slots survived the rebind, so the next
+  blur or Enter saved the typed text onto whichever record the slot had moved
+  on to and left the record the user actually edited untouched. The body now
+  commits an open edit before rebinding its row, onto the record the edit was
+  opened against — the same rule it already applied when a column scrolled
+  out of view. As with that existing column-axis commit, a scroll ends the
+  edit rather than carrying the editor along; keyboard focus is not restored
+  afterwards. No consumer action is needed.
+
+- **`CellEditorPool` now commits the cell holding the shared editor before
+  anything takes that editor away, and disposes a cached editor it drops.**
+  A second cell could acquire the editor while the first still believed it
+  was editing, leaving that cell's typed text to be written by whatever the
+  editor did next. Separately, `register` dropped a cached editor without
+  disposing it — reachable from a user gesture, since `Table.setDisplayMode`
+  re-registers every combo column's factory, leaking one `ComboEditor` with
+  its combo box, dropdown, theme subscription and per-instance style rules
+  per combo column per toggle. No consumer action is needed beyond the
+  `release` signature change noted under *Changed* above.
 
 - **A store-backed `AutoCompleteField` no longer clears the application's
   filters or fires store events while the user types.** Each debounced
