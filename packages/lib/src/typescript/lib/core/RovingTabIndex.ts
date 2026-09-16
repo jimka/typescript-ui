@@ -5,9 +5,10 @@ import { Util } from "~/core/Util.js";
 
 // Marks every member of a group — active or currently roved to `-1` —
 // independent of which one currently carries `tabindex="0"`. Read by
-// `SpatialNavigation`'s component tier, which needs to reach a roved-off,
-// non-native-tag member (a `ComboBox`, say) that `FOCUSABLE_SELECTOR`'s
-// `[tabindex]:not([tabindex="-1"])` clause alone would hide entirely.
+// `SpatialNavigation`'s component tier, which needs to reach a roved-off
+// member that `FOCUSABLE_SELECTOR` cannot see at all: that selector carries
+// its `:not([tabindex="-1"])` guard on every branch, so the `-1` this module
+// writes hides a member from it whatever tag the member renders as.
 // Deliberately not folded into that shared selector: doing so would also
 // widen plain Tab-key traversal to visit every member individually, which is
 // exactly what roving tabindex exists to prevent (see
