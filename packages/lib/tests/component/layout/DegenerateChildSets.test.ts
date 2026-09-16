@@ -8,13 +8,16 @@
 // child a manager parked a reference to.
 //
 // Cases are numbered to match `plans/implemented/layout-flush-degenerate-inputs.md`'s
-// `## Expected Behaviour` tables (G1-G4, B1-B9, C1-C7).
-import { describe, it, expect, afterEach } from 'vitest';
+// `## Expected Behaviour` tables (G1-G4, B1-B9, C1-C7), plus C8-C10, which that
+// plan's Implementation Notes add for the removals that are the midpoint of a
+// `moveComponent` or `replaceComponent` rather than a departure.
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
 import { Grid } from '~/layout/Grid';
 import { HBox } from '~/layout/HBox';
 import { VBox } from '~/layout/VBox';
+import { Card } from '~/layout/Card';
 import { Insets } from '~/primitive/Insets';
 import type { LayoutManager } from '~/layout/LayoutManager';
 import { DOM } from '~/core/DOM';
@@ -232,5 +235,233 @@ describe('HBox / VBox — no laid-out children', () => {
         container.addComponent(new Component({ preferredSize: { width: 40, height: 10 } }));
 
         expect(vbox.getPreferredSize()!.width).toBe(40);
+    });
+});
+
+describe('Card — the visible child is removed', () => {
+    it('C1: promotes the first remaining child and sizes to it', () => {
+        installTestDOM(CONFIG);
+
+        const card = new Card();
+        const container = hostWith(300, 200, card);
+        const first  = new Component({ preferredSize: { width: 40, height: 20 } });
+        const second = new Component({ preferredSize: { width: 60, height: 30 } });
+
+        container.addComponent(first);
+        container.addComponent(second);
+        container.doLayout();
+
+        expect(card.getVisibleComponent()).toBe(first);
+
+        const firstLayout = vi.spyOn(first, 'doLayout');
+
+        container.removeComponent(first);
+        container.doLayout();
+
+        expect(card.getVisibleComponent()).toBe(second);
+        expect(second.isDisplayed()).toBe(true);
+        expect(firstLayout).not.toHaveBeenCalled();
+        expect(card.getPreferredSize()).toEqual({ width: 60, height: 30 });
+    });
+
+    it('C2: writes no display state to the child that left', () => {
+        installTestDOM(CONFIG);
+
+        const card = new Card();
+        const container = hostWith(300, 200, card);
+        const first  = new Component({ preferredSize: { width: 40, height: 20 } });
+        const second = new Component({ preferredSize: { width: 60, height: 30 } });
+
+        container.addComponent(first);
+        container.addComponent(second);
+        container.doLayout();
+
+        const firstDisplayed = vi.spyOn(first, 'setDisplayed');
+
+        container.removeComponent(first);
+        container.doLayout();
+
+        // Whatever displayed state the removal found, the card leaves alone:
+        // the child has left `getComponents()`, so `syncVisible` cannot reach
+        // it, and a re-homing caller keeps the child it detached. Here that
+        // means the child the card was showing is still displayed; a removed
+        // *inactive* child stays undisplayed for the caller to re-display, the
+        // case `docs/concepts/performance.md` documents.
+        expect(firstDisplayed).not.toHaveBeenCalled();
+        expect(first.isDisplayed()).toBe(true);
+    });
+
+    it('C3: reports nothing visible once its only child is removed', () => {
+        installTestDOM(CONFIG);
+
+        const card = new Card();
+        const container = hostWith(300, 200, card);
+        const only = new Component({ preferredSize: { width: 40, height: 20 } });
+
+        container.addComponent(only);
+        container.doLayout();
+        container.removeComponent(only);
+
+        expect(card.getVisibleComponent()).toBeNull();
+        expect(card.getPreferredSize()).toBeNull();
+        expect(() => container.doLayout()).not.toThrow();
+    });
+
+    it('C4: removing a non-visible sibling writes no display state at all', () => {
+        installTestDOM(CONFIG);
+
+        const spare  = new Component({ preferredSize: { width: 40, height: 20 } });
+        const shown  = new Component({ preferredSize: { width: 60, height: 30 } });
+        const card = new Card({ visibleComponentId: shown.getId() });
+        const container = hostWith(300, 200, card);
+
+        container.addComponent(spare);
+        container.addComponent(shown);
+        container.doLayout();
+
+        const spareDisplayed = vi.spyOn(spare, 'setDisplayed');
+
+        container.removeComponent(spare);
+
+        expect(card.getVisibleComponent()).toBe(shown);
+        expect(shown.isDisplayed()).toBe(true);
+        expect(spareDisplayed).not.toHaveBeenCalled();
+    });
+
+    it('C5: survives losing every child at once', () => {
+        installTestDOM(CONFIG);
+
+        const card = new Card();
+        const container = hostWith(300, 200, card);
+
+        container.addComponent(new Component({ preferredSize: { width: 40, height: 20 } }));
+        container.addComponent(new Component({ preferredSize: { width: 60, height: 30 } }));
+        container.doLayout();
+
+        container.removeAllComponents();
+
+        expect(card.getVisibleComponent()).toBeNull();
+        expect(() => container.doLayout()).not.toThrow();
+    });
+
+    it('C6: a manager that does not implement the hook is unaffected', () => {
+        installTestDOM(CONFIG);
+
+        const container = hostWith(400, 100, new HBox());
+        const doomed    = new Component({ preferredSize: { width: 30, height: 10 } });
+        const survivor  = new Component({ preferredSize: { width: 50, height: 20 } });
+
+        container.addComponent(doomed);
+        container.addComponent(survivor);
+        container.doLayout();
+
+        expect(() => container.removeComponent(doomed)).not.toThrow();
+
+        container.doLayout();
+
+        expect(survivor.getWidth()).toBe(50);
+        // `commitBounds` moves a same-size child by translate rather than by
+        // rewriting `left`, so the visual origin is position plus translate.
+        expect(survivor.getX() + survivor.getTranslateX()).toBe(0);
+    });
+
+    it('C7: drops the scroll restore parked for a child that is then removed', () => {
+        installTestDOM(CONFIG);
+
+        const card = new Card();
+        const container = hostWith(300, 200, card);
+        const first  = new Component({ preferredSize: { width: 40, height: 20 } });
+        const second = new Component({ preferredSize: { width: 60, height: 30 } });
+
+        container.addComponent(first);
+        container.addComponent(second);
+        container.doLayout();
+        card.setVisibleComponentId(second.getId());
+
+        const secondRestore = vi.spyOn(second, 'restoreSubtreeScroll');
+
+        container.removeComponent(second);
+        container.doLayout();
+
+        expect(secondRestore).not.toHaveBeenCalled();
+        expect(first.isDisplayed()).toBe(true);
+
+        const inner = container.getInnerSize()!;
+
+        expect(first.getWidth()).toBe(inner.width);
+        expect(first.getHeight()).toBe(inner.height);
+    });
+
+    it('C8: an intra-container reorder leaves exactly one child displayed', () => {
+        installTestDOM(CONFIG);
+
+        const card = new Card();
+        const container = hostWith(300, 200, card);
+        const first  = new Component({ preferredSize: { width: 40, height: 20 } });
+        const second = new Component({ preferredSize: { width: 60, height: 30 } });
+
+        container.addComponent(first);
+        container.addComponent(second);
+        container.doLayout();
+
+        // moveComponent is built on removeComponent + insertComponent, so the
+        // removal here is the midpoint of an atomic move, not a departure.
+        container.moveComponent(first, 1);
+        container.doLayout();
+
+        const displayed = container.getComponents().filter((c) => c.isDisplayed());
+
+        expect(displayed).toEqual([card.getVisibleComponent()]);
+        // With no visibleComponentId set the resolution rule is "the first
+        // child", which the reorder has made `second`.
+        expect(card.getVisibleComponent()).toBe(container.getComponents()[0]);
+    });
+
+    it('C9: a replaced visible child hands the slot to its replacement alone', () => {
+        installTestDOM(CONFIG);
+
+        const card = new Card();
+        const container = hostWith(300, 200, card);
+        const first  = new Component({ preferredSize: { width: 40, height: 20 } });
+        const second = new Component({ preferredSize: { width: 60, height: 30 } });
+        const fresh  = new Component({ preferredSize: { width: 50, height: 25 } });
+
+        container.addComponent(first);
+        container.addComponent(second);
+        container.doLayout();
+
+        // replaceComponent composes the same two mutators, so this is the same
+        // transient removal as C8 with a different component coming back.
+        container.replaceComponent(first, fresh);
+        container.doLayout();
+
+        const displayed = container.getComponents().filter((c) => c.isDisplayed());
+
+        expect(card.getVisibleComponent()).toBe(fresh);
+        expect(displayed).toEqual([fresh]);
+    });
+
+    it('C10: moving the visible child out promotes a sibling and keeps the mover shown', () => {
+        installTestDOM(CONFIG);
+
+        const card = new Card();
+        const container = hostWith(300, 200, card);
+        const destination = hostWith(300, 200, new HBox());
+        const first  = new Component({ preferredSize: { width: 40, height: 20 } });
+        const second = new Component({ preferredSize: { width: 60, height: 30 } });
+
+        container.addComponent(first);
+        container.addComponent(second);
+        container.doLayout();
+
+        destination.moveComponent(first);
+        container.doLayout();
+        destination.doLayout();
+
+        expect(card.getVisibleComponent()).toBe(second);
+        expect(container.getComponents().filter((c) => c.isDisplayed())).toEqual([second]);
+        // A real departure: the card never wrote to the child, so it arrives at
+        // its new home still displayed.
+        expect(first.isDisplayed()).toBe(true);
     });
 });

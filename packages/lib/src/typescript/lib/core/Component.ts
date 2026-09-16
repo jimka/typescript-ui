@@ -6736,8 +6736,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Tears down a child wired by `wireChild`: releases its layout constraints,
      * nulls both size-change callback slots (so a detached child can no longer
-     * re-enter this container's layout), clears its parent, and removes its
-     * element. Shared by `removeComponent` and `removeAllComponents`.
+     * re-enter this container's layout), clears its parent, removes its
+     * element, and finally notifies this container's layout manager that the
+     * child is gone, so a manager holding a reference to it can re-resolve.
+     * Shared by `removeComponent` and `removeAllComponents`.
      *
      * @param component - The child being detached from this container.
      * @returns The layout constraints that were registered for the child, or undefined.
@@ -6761,6 +6763,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             }
         }
         component.removeElement();
+
+        // Last, so a manager reacting to the notification never observes a
+        // half-unwired child. Both callers have already taken the child out of
+        // `_components`, so the manager sees the list the removal leaves behind.
+        this.getLayoutManager()?.componentRemoved(component);
 
         return constraints ?? undefined;
     }
@@ -6983,11 +6990,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * {@link disposeAllComponents}.
      */
     removeAllComponents(): this {
-        for (const component of this._components) {
-            this.unwireChild(component);
-        }
+        // The list is emptied first so `componentRemoved` sees a child list the
+        // removed child has already left — the same order `removeComponent`
+        // gets for free by splicing before it unwires.
+        const removed = this._components;
 
         this._components = [];
+
+        for (const component of removed) {
+            this.unwireChild(component);
+        }
 
         return this;
     }
