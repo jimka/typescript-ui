@@ -27,6 +27,7 @@ a tooltip explaining that row. The table below and the overlay's
 | Constructed / disposed | The two raw counters `Components` derives from | Distinguishes "nothing is being constructed any more" from "construction and disposal are both climbing but staying balanced" |
 | Layout passes | `doLayout()` calls per second | A setter that unconditionally calls `scheduleLayout()` every pass, pinning the CPU in a relayout loop |
 | Layout flush | Average / max ms per coalesced rAF flush | A single pass whose cost balloons — a layout manager doing more work than its tree size justifies |
+| Layout errors | Throws the coalesced rAF flush isolated, cumulative since page load | A component whose `doLayout()` — or a post-layout callback — threw: the frame still rendered, but that component kept its old geometry. Each one is also on the console, with its original stack |
 | DOM listeners | Live `Event.addListener` / `addSubtreeListener` / `addViewportListener` registrations | A component whose `destructor()` doesn't reach `Event.purgeComponent` for every listener it registered |
 | Semantic listeners | Live `on()` / `off()` registrations across every `ListenerBag` | The `ListenerBag` equivalent of the DOM listener leak — a re-wired handler that was never unregistered |
 | Stylesheet rules | Materialised rule count, split into per-instance / per-class / other | A component held in a field and appended via a raw DOM call instead of `addComponent`, whose per-instance `#id` rule is never disposed |
@@ -38,7 +39,7 @@ a tooltip explaining that row. The table below and the overlay's
 
 ## The overlay counts itself
 
-Its own ~30 components, their listeners, and their per-instance rules are inside every framework number. Read the numbers as trends across an interaction (open a `Window` ten times, watch **Components** / **DOM listeners** / **Stylesheet rules** return to roughly where they started) rather than as absolutes. Its twelve rows' hover explanations add a further fixed 96 to **DOM listeners** while the overlay is open (12 rows × 2 targets × 4 listeners each), purged the same way on close.
+Its own ~30 components, their listeners, and their per-instance rules are inside every framework number. Read the numbers as trends across an interaction (open a `Window` ten times, watch **Components** / **DOM listeners** / **Stylesheet rules** return to roughly where they started) rather than as absolutes. Its thirteen rows' hover explanations add a further fixed 104 to **DOM listeners** while the overlay is open (13 rows × 2 targets × 4 listeners each), purged the same way on close.
 
 ## API surface
 

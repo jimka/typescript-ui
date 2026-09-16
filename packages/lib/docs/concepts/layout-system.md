@@ -128,12 +128,15 @@ class FlowLayout extends LayoutManager {
 
 A custom `doLayout` iterates [`getLaidOutComponents()`](/api/core/classes/Component#getlaidoutcomponents) — the children filtered to those whose `isDisplayed()` is `true` — rather than `getComponents()`, so a child hidden with `setDisplayed(false)` takes no space and its siblings reflow to fill (mirroring CSS `display: none`). Use `getComponents()` only when you need *every* child regardless of display state (serialization, teardown). A child hidden with `setVisible(false)` is the opposite: it keeps its layout slot and is merely painted out, so it stays in `getLaidOutComponents()`.
 
+A manager that *aggregates* several children's extents — the box and grid family — reports the container's own perimeter (its insets, border and padding) and nothing more on both axes when it finds no laid-out children, whether every child is undisplayed or none was ever added: never a negative extent, and never the unbounded sentinel. Both are values a parent sums or maximises, so either one starves the row or column the container sits in. The built-in managers that show *one* child at a time — [`Fit`](/layouts/Fit), [`Card`](/layouts/Card), [`Tab`](/layouts/Tab) — answer `null` instead when they have nothing to show, which a parent reads as "no hint offered". Either answer is fine for a manager you write; a negative extent or a leftover sentinel is not.
+
 `LayoutManager` itself handles:
 
 - Storing per-child constraints in a `Map<string, LayoutConstraints>` (one entry per child id).
 - Resolving the active `fill` and `anchor` against `getInnerSize()`.
 - Notifying the framework when the layout's preferred size changes.
 - Offering an unbuilt child to the manager: a factory passed to `addComponent` is presented to the layout manager first, which may claim it and decide when it runs. The base implementation declines, so the container builds the child immediately.
+- Telling the manager a child has left: `componentRemoved(child)` fires once the container has already taken the child out of its child list, so a manager holding per-child state can drop it. Treat it as an invalidation rather than a departure — removing a child is also the primitive `moveComponent` and `replaceComponent` are built on, so it can fire midway through a mutation that puts a child straight back; forget the parked state and let the next layout pass re-derive what follows from it. The base implementation does nothing.
 
 You typically only need to override `doLayout`; helper methods like `placeComponent(child, x, y, w, h)` apply fill / anchor consistently if you delegate to them.
 

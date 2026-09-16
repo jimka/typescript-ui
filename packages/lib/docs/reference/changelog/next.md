@@ -80,6 +80,17 @@ page resets to empty.
   tab's `LayoutConstraints`, so it survives a tear-off, a re-dock, or a
   saved layout, and accepts a tab added but not yet laid out.
 
+- **`LayoutManager` gains `componentRemoved(component)`**, the counterpart to
+  the existing `addDeferredComponent` seam: the container calls it once a
+  child has left its child list, so a manager holding per-child state can drop
+  it. It is an invalidation, not a departure — removing a child is also the
+  primitive `moveComponent` and `replaceComponent` are built on, so an
+  override forgets its parked state and lets the next layout pass re-derive
+  what follows, rather than writing to a child list that is not settled yet.
+  The base implementation does nothing, so an existing custom manager needs no
+  change; `Card` is the one built-in manager that implements it (see Fixed,
+  below).
+
 ### Core
 
 - **New `FocusReveal` broker**, exported from `core` alongside
@@ -129,6 +140,14 @@ page resets to empty.
   present only while the flag is on. `ToolBar`, `MenuBar`, and `TabBar` are
   marked by default, since each is a self-contained chrome region a user
   would expect to jump straight into; nothing else is marked by default.
+
+- **`Diagnostics` gains a cumulative `layoutErrors` counter** and the
+  `noteLayoutError()` that pushes it, counting the throws the batched layout
+  flush isolated (see Fixed, below). `DiagnosticsSampler` carries it through
+  to every sample, and the shipped diagnostics overlay shows it as a **Layout
+  errors** row directly under **Layout flush**. Anything above `0` is a bug
+  worth chasing: the component the console error names kept its old geometry
+  for that frame.
 
 ### Overlay
 
@@ -324,6 +343,20 @@ page resets to empty.
   same overlay — one per edge, each carrying a single shadow layer — so the
   blurred area drops from four viewport-sized boxes to four 12px bands.
   Visually identical; no consumer action is needed.
+
+- **One throwing component no longer takes down the rest of a layout frame.**
+  The batched flush dequeues both the dirty-component set and the frame's
+  post-layout callbacks before it starts, so a single `doLayout()` throw
+  dropped every component still queued behind it *and* the whole callback
+  queue — one-shot consumer work ("focus this once it is laid out", "measure
+  the revealed panel") that nothing retried and nothing reported as lost. Each
+  entry now runs in its own `try`/`catch`: the failing one keeps the geometry
+  it already had, every other one lays out normally, and the failure is
+  reported through `console.error` with the original error passed on plus the
+  new `layoutErrors` counter (see Added, above). The synchronous
+  `Component.flushLayout` escape hatch is deliberately not wrapped — it serves
+  one direct caller, and that caller is entitled to the exception. No consumer
+  action is needed.
 
 ### Components
 
@@ -543,6 +576,40 @@ page resets to empty.
   to return `false` and write nothing for a tab added moments ago but not yet
   laid out; they now record the write durably and return `true`, applying it
   once the cell is created.
+
+- **An auto-sized `Grid` with no laid-out children no longer throws
+  `RangeError: Invalid array length`.** It derived its column count as
+  `floor(sqrt(count))`, so an empty grid divided by zero and carried a `NaN`
+  row count into every size report and into `doLayout`. `getColRowCount()` now
+  returns `{width: 0, height: 0}` for a grid with no laid-out children,
+  whatever its declared `rows`/`columns` — which also stops an
+  explicitly-sized empty grid reporting one inter-cell spacing gap for cells
+  it does not have. The state is ordinary at runtime: undisplaying the last
+  visible child empties a container's laid-out child list.
+
+- **An emptied `HBox` or `VBox` no longer reports a negative or unbounded
+  preferred size.** The inter-child spacing term was `spacing * (count - 1)`,
+  so an empty row reported a negative width, and `VBox` seeded its cross-axis
+  width with the unbounded sentinel that only a first child ever replaced.
+  Either value, summed by the parent, drove the shrink ratio to starvation and
+  collapsed the container's siblings to effectively zero. Both now report the
+  container's perimeter and nothing more.
+
+- **`Fit` and `Card` no longer lay their child out against a 0×0 rectangle
+  before the container is rendered.** Both recursed into the whole subtree and
+  committed a geometry the next pass overwrites; they now return when the
+  container has no inner size, as `HBox`, `VBox`, `Grid`, `HFlow`, `VFlow` and
+  `Anchor` already did.
+
+- **Removing a `Card`'s visible child no longer leaves the container
+  permanently blank.** The card kept the removed component as its current
+  visible one; it now promotes the first of the remaining children on the next
+  layout pass, or shows nothing when the removed child was the last. Deferring
+  the promotion is what keeps `moveComponent` and `replaceComponent` — both
+  built on `removeComponent` — settling on one visible child rather than two.
+  The removed child keeps whatever displayed state it had, so a child removed
+  while it was *inactive* is still `display: none` and the caller re-displays
+  it.
 
 ### Overlay
 
