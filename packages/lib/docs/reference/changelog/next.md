@@ -606,6 +606,14 @@ page resets to empty.
   so its selection tint and hover wash never lag behind the drag. `Table` is
   unaffected. No consumer action is needed.
 
+- **An arrow key no longer throws on a `ToolBar` with no children.** The bar
+  makes its own element a tab stop, so an empty one can hold keyboard focus,
+  while the roving-tabindex group its arrow handling steps through is only
+  created once a child is added — pressing an arrow there threw `Cannot read
+  properties of undefined (reading 'moveNext')`. The key is now left alone,
+  keeping it available to an ancestor or to `SpatialNavigation`. No consumer
+  action is needed.
+
 ### Layouts
 
 - **`Tab.setTabGlyph(content, glyph)` / `clearTabGlyph(content)` no longer
