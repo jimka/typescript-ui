@@ -317,6 +317,19 @@ page resets to empty.
 
 ### Components
 
+- **A store-backed `AutoCompleteField` no longer clears the application's
+  filters or fires store events while the user types.** Each debounced
+  keystroke used to call `clearFilter()` then `filterBy()` on the configured
+  store, wiping any filter the application had installed and firing
+  `filterchange`/`datachange` on every keystroke, so any other `List` /
+  `Table` / chart bound to the same store rebuilt twice per keystroke.
+  Suggestions are now matched in-process against the store's full record
+  set, and the store itself is never written to. One visible side effect:
+  suggestions now list in the store's load order rather than its active
+  sort order, and a query with more matches than `maxSuggestions` may
+  therefore surface a different subset than before. No other consumer
+  action is needed.
+
 - **`Button`, `ComboBox`, `Checkbox`, `Toggle`, `RadioButton`, and `Slider`
   now show a themed focus ring when keyboard focus lands on them**, instead
   of `Button`/`ComboBox` falling back to the browser's raw 1px black default
