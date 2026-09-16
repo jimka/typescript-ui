@@ -490,3 +490,119 @@ describe('AutoCompleteField store-backed suggestions', () => {
         expect(store.getActiveFilters()).toEqual([]);
     });
 });
+
+// autocomplete-store-query plan: the 200ms debounce and 150ms blur timers
+// used the bare global setTimeout and were never cleared by destructor, so a
+// field disposed mid-typing or just after blur fired a callback against
+// released DOM handles. Both timers now route through DOM.sink and are
+// cleared in destructor.
+describe('AutoCompleteField timer teardown', () => {
+    let field: AutoCompleteField | undefined;
+
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => {
+        field?.dispose();
+        field = undefined;
+        DOM.reset();
+        vi.restoreAllMocks();
+        vi.useRealTimers();
+    });
+
+    it('fires nothing and throws nothing when disposed mid-debounce', () => {
+        vi.useFakeTimers();
+
+        field = new AutoCompleteField({ suggestions: ['Apple'] });
+        field.setValue('a');
+        (field as any).onInput();
+
+        const querySpy = vi.spyOn(field as any, 'querySuggestions');
+
+        field.dispose();
+
+        expect(() => vi.advanceTimersByTime(500)).not.toThrow();
+        expect(querySpy).not.toHaveBeenCalled();
+    });
+
+    it('fires no hide when disposed just after a blur', () => {
+        vi.useFakeTimers();
+
+        field = new AutoCompleteField({ suggestions: ['Apple'] });
+
+        const dropdown = (field as any)._dropdown;
+        const hideSpy  = vi.spyOn(dropdown, 'hide');
+
+        (field as any).onBlur();
+        field.dispose();
+
+        expect(() => vi.advanceTimersByTime(500)).not.toThrow();
+        expect(hideSpy).not.toHaveBeenCalled();
+    });
+
+    it('leaves undisposed debounce/blur behaviour unchanged', () => {
+        vi.useFakeTimers();
+
+        field = new AutoCompleteField({ suggestions: ['Apple'] });
+        const querySpy = vi.spyOn(field as any, 'querySuggestions');
+
+        field.setValue('a');
+        (field as any).onInput();
+        vi.advanceTimersByTime(200);
+
+        expect(querySpy).toHaveBeenCalledTimes(1);
+
+        const dropdown = (field as any)._dropdown;
+        const hideSpy  = vi.spyOn(dropdown, 'hide');
+
+        (field as any).onBlur();
+        vi.advanceTimersByTime(150);
+
+        expect(hideSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves exactly one pending timer when a second blur arrives before the first elapses', () => {
+        vi.useFakeTimers();
+
+        field = new AutoCompleteField({ suggestions: ['Apple'] });
+
+        const dropdown = (field as any)._dropdown;
+        const hideSpy  = vi.spyOn(dropdown, 'hide');
+
+        (field as any).onBlur();
+        (field as any).onBlur();
+        vi.advanceTimersByTime(150);
+
+        expect(hideSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('schedules both timers through the DOM seam', () => {
+        const sink = installTestDOM(CONFIG) as RecordingDOMSink;
+        vi.useFakeTimers();
+
+        field = new AutoCompleteField({ suggestions: ['Apple'] });
+
+        field.setValue('a');
+        (field as any).onInput();
+        (field as any).onBlur();
+
+        const setTimeoutWrites = sink.writes.filter(w => w.op === 'setTimeout');
+
+        expect(setTimeoutWrites.filter(w => w.args[0] === 200)).toHaveLength(1);
+        expect(setTimeoutWrites.filter(w => w.args[0] === 150)).toHaveLength(1);
+    });
+
+    it('still drives the existing paste-debounce test through the seam', () => {
+        // Regression pin: the recording sink's setTimeout delegates to the
+        // real global timer, so vi.advanceTimersByTime keeps driving it once
+        // onInput routes through DOM.sink instead of the bare global.
+        vi.useFakeTimers();
+
+        field = new AutoCompleteField({ suggestions: ['Apple', 'Banana'], debounceMs: 50 });
+        const querySpy = vi.spyOn(field as any, 'querySuggestions');
+
+        field.setValue('an');
+        (field as any).onInput();
+        vi.advanceTimersByTime(50);
+
+        expect(querySpy).toHaveBeenCalledTimes(1);
+    });
+});
