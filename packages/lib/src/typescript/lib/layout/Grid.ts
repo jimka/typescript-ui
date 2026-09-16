@@ -295,7 +295,10 @@ class Grid extends LayoutManager {
     /**
      * Returns the computed cell count for the current component list as `{width: rows, height: columns}`.
      *
-     * @returns An object with `width` (row count) and `height` (column count), or `undefined` if no container is attached.
+     * @returns An object with `width` (row count) and `height` (column count);
+     *   `{width: 0, height: 0}` when the container has no laid-out children,
+     *   whatever the declared `rows`/`columns`; or `undefined` if no container
+     *   is attached.
      *
      * @remarks The property names `width` and `height` are repurposed here to
      * carry column and row counts rather than pixel dimensions —
@@ -309,6 +312,17 @@ class Grid extends LayoutManager {
 
         let components = container.getLaidOutComponents();
         let componentCount = components.length;
+
+        // A grid with no laid-out children has no tracks on either axis. The
+        // auto arm below would otherwise divide by a zero column count, and an
+        // explicitly-sized empty grid would report one inter-cell spacing gap
+        // for cells it does not have.
+        if (componentCount === 0) {
+            return {
+                width: 0,
+                height: 0
+            };
+        }
 
         let rows = 0;
         let columns = 0;
