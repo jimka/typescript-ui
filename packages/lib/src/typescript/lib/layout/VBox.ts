@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { FillType } from "~/layout/FillType.js";
-import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
+import { Size } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Component } from "~/core/Component.js";
 import { BoxLayout, BoxLayoutOptions } from "~/layout/BoxLayout.js";
@@ -71,9 +71,12 @@ class VBox extends BoxLayout {
     /**
      * Returns the preferred size. In `"preferred"` mode this is the widest
      * child width and the sum of child heights plus spacing. In `"equal"`
-     * mode height is `count * (maxChildHeight + spacing) - spacing`.
+     * mode height is `count * maxChildHeight` plus spacing.
      *
-     * @returns The preferred `{width, height}`, or `null` if no container is attached.
+     * @returns The preferred `{width, height}`; the container's perimeter alone
+     *   on both axes when there are no laid-out children, never a negative
+     *   extent and never the unbounded sentinel; or `null` if no container is
+     *   attached.
      */
     getPreferredSize(): Size | null {
         let container = this.getContainer();
@@ -99,13 +102,13 @@ class VBox extends BoxLayout {
             }
 
             const width  = innerWidth + perimeterSize.left + perimeterSize.right;
-            const height = components.length * (innerHeight + this._spacing) - this._spacing
+            const height = components.length * innerHeight + this._spacing * Math.max(0, components.length - 1)
                          + perimeterSize.top + perimeterSize.bottom;
 
             return { width, height };
         }
 
-        let width = UNBOUNDED;
+        let width = 0;
         let height = perimeterSize.top + perimeterSize.bottom;
 
         for (let idx in components) {
@@ -113,13 +116,13 @@ class VBox extends BoxLayout {
             let size = component.getPreferredSize();
 
             if (size) {
-                width = isUnbounded(width) ? Math.min(width, size.width) : Math.max(width, size.width);
+                width = Math.max(width, size.width);
                 height += size.height;
             }
         }
 
         width += perimeterSize.left + perimeterSize.right;
-        height += this._spacing * (components.length - 1);
+        height += this._spacing * Math.max(0, components.length - 1);
 
         return {
             width: width,
@@ -131,9 +134,11 @@ class VBox extends BoxLayout {
      * Returns the minimum size. In `"preferred"` mode this is the widest
      * child minimum width and the sum of child minimum heights plus
      * spacing. In `"equal"` mode height is
-     * `count * (maxChildMinHeight + spacing) - spacing`.
+     * `count * maxChildMinHeight` plus spacing.
      *
-     * @returns The minimum `{width, height}`, or `null` if no container is attached.
+     * @returns The minimum `{width, height}`; the container's perimeter alone on
+     *   both axes when there are no laid-out children, never a negative extent;
+     *   or `null` if no container is attached.
      */
     getMinSize(): Size | null {
         let container = this.getContainer();
@@ -159,7 +164,7 @@ class VBox extends BoxLayout {
             }
 
             const width  = innerWidth + perimeterSize.left + perimeterSize.right;
-            const height = components.length * (innerHeight + this._spacing) - this._spacing
+            const height = components.length * innerHeight + this._spacing * Math.max(0, components.length - 1)
                          + perimeterSize.top + perimeterSize.bottom;
 
             return { width, height };
@@ -179,7 +184,7 @@ class VBox extends BoxLayout {
         }
 
         width += perimeterSize.left + perimeterSize.right;
-        height += this._spacing * (components.length - 1);
+        height += this._spacing * Math.max(0, components.length - 1);
 
         return {
             width: width,

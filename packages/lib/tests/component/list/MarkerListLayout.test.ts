@@ -7,7 +7,6 @@ import { BulletedListItemStyle } from '~/component/list/BulletedListItemStyle';
 import { NumberedListItemStyle } from '~/component/list/NumberedListItemStyle';
 import { _Text } from '~/component/input/Text';
 import { _VBox } from '~/layout/VBox';
-import { isUnbounded } from '~/primitive/Size';
 import { installTestDOM, ruleStyleWrites } from '../../dom/TestDOM';
 import { _ruleCacheHas } from '~/core/StyleTarget';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -718,9 +717,11 @@ describe('AbstractMarkerList — content-derived preferred size', () => {
 
         expect(() => list.doLayout()).not.toThrow();
         expect(list.getPreferredSize()!.height).toBe(0);
-        // A childless VBox reports the unbounded-width sentinel; assert via the
-        // helper rather than a literal.
-        expect(isUnbounded(list.getPreferredSize()!.width)).toBe(true);
+        // An empty box reports its container's perimeter and nothing more —
+        // here the marker gutter. It used to report the unbounded-width
+        // sentinel its cross-axis seed left behind when no child ever replaced
+        // it, which starved every sibling of an emptied list.
+        expect(list.getPreferredSize()!.width).toBe(GUTTER);
     });
 });
 
