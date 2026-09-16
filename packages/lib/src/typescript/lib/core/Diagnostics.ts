@@ -21,6 +21,8 @@ export interface DiagnosticsCounters {
     layoutFlushes:         number;
     layoutFlushTotalMs:    number;
     layoutFlushMaxMs:      number;
+    /** Cumulative count of throws the batched layout flush isolated. */
+    layoutErrors:          number;
 }
 
 /**
@@ -41,6 +43,7 @@ export namespace Diagnostics {
     let layoutFlushes:         number = 0;
     let layoutFlushTotalMs:    number = 0;
     let layoutFlushMaxMs:      number = 0;
+    let layoutErrors:          number = 0;
 
     let timingEnabled: boolean = false;
 
@@ -82,6 +85,14 @@ export namespace Diagnostics {
         if (durationMs > layoutFlushMaxMs) {
             layoutFlushMaxMs = durationMs;
         }
+    }
+
+    /**
+     * Increments the count of throws the batched layout flush isolated — one
+     * per failing component layout or post-layout callback, per frame.
+     */
+    export function noteLayoutError(): void {
+        layoutErrors++;
     }
 
     /**
@@ -131,6 +142,7 @@ export namespace Diagnostics {
             layoutFlushes,
             layoutFlushTotalMs,
             layoutFlushMaxMs,
+            layoutErrors,
         };
     }
 
@@ -148,6 +160,7 @@ export namespace Diagnostics {
         layoutFlushes         = 0;
         layoutFlushTotalMs    = 0;
         layoutFlushMaxMs      = 0;
+        layoutErrors          = 0;
         timingEnabled         = false;
     }
 }

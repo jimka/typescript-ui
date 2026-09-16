@@ -33,6 +33,7 @@ const ROW_DESCRIPTIONS = {
     constructedDisposed: "The two running totals the Components figure is derived from. Both only ever rise. Rising together with a steady gap is ordinary churn; a gap that widens is a leak.",
     layoutPasses: "doLayout() calls per second\n\nA raw call count, not a measure of layout cost. A deep tree of cheap layouts scores higher than a shallow tree of expensive ones, so read Layout flush for cost. A rate that stays high while nothing is happening means something calls scheduleLayout() on every pass.",
     layoutFlush: "Layout flush times\n\nAverage and longest time one coalesced layout flush took, in milliseconds. Timed once per flush, never per component. Both figures reset each time the overlay opens: the average dilutes over a long session, the maximum only ever rises.",
+    layoutErrors: "Isolated layout failures\n\nHow many times a component's doLayout() or a post-layout callback threw and the flush carried on without it, counted since the page loaded. Each one is also written to the console with its original stack. Anything above 0 is a bug: the component it names kept its old geometry for that frame.",
     domListeners: "DOM-event listeners\n\nLive DOM-event registrations across the framework's exact-target, subtree and viewport maps. Destroying a component purges its registrations, so a count that does not come back down after a repeated open/close means components are not being destroyed.",
     semanticListeners: "Live ListenerBag registrations\n\nThe framework's own on() / off() subscriptions such as theme changes and model events, not DOM events. Added minus removed.",
     styleRules: "Style rules\n\nRules currently materialised on the framework's shared stylesheet, with the per-component (#id) and shared-class counts in brackets. The two bracketed figures do not add up to the total — verbatim selector rules make up the rest. Per-component rules should fall as their components are disposed.",
@@ -75,6 +76,7 @@ export class DiagnosticsOverlay extends Window {
     private readonly _constructedDisposed: Text = new Text();
     private readonly _layoutPasses:        Text = new Text();
     private readonly _layoutFlush:         Text = new Text();
+    private readonly _layoutErrors:        Text = new Text();
     private readonly _domListeners:        Text = new Text();
     private readonly _semanticListeners:   Text = new Text();
     private readonly _styleRules:          Text = new Text();
@@ -110,6 +112,7 @@ export class DiagnosticsOverlay extends Window {
             [{ title: "Constructed / disposed", component: this._constructedDisposed, description: ROW_DESCRIPTIONS.constructedDisposed }],
             [{ title: "Layout passes",          component: this._layoutPasses,        description: ROW_DESCRIPTIONS.layoutPasses }],
             [{ title: "Layout flush",           component: this._layoutFlush,         description: ROW_DESCRIPTIONS.layoutFlush }],
+            [{ title: "Layout errors",          component: this._layoutErrors,        description: ROW_DESCRIPTIONS.layoutErrors }],
             [{ title: "DOM listeners",          component: this._domListeners,        description: ROW_DESCRIPTIONS.domListeners }],
             [{ title: "Semantic listeners",     component: this._semanticListeners,   description: ROW_DESCRIPTIONS.semanticListeners }],
             [{ title: "Stylesheet rules",       component: this._styleRules,          description: ROW_DESCRIPTIONS.styleRules }],
@@ -231,6 +234,7 @@ export class DiagnosticsOverlay extends Window {
         this._constructedDisposed.setText(`${sample.componentsConstructed} / ${sample.componentsDestroyed}`);
         this._layoutPasses.setText(`${Math.round(sample.layoutPassesPerSec)} /s`);
         this._layoutFlush.setText(`${sample.layoutFlushAvgMs.toFixed(2)} ms (max ${sample.layoutFlushMaxMs.toFixed(2)})`);
+        this._layoutErrors.setText(String(sample.layoutErrors));
         this._domListeners.setText(String(sample.domListeners));
         this._semanticListeners.setText(String(sample.semanticListeners));
         this._styleRules.setText(

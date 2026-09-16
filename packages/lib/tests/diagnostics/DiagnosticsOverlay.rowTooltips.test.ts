@@ -82,17 +82,17 @@ describe('DiagnosticsOverlay row description tooltips', () => {
         // Metric rows pair a label Text with a value Text; the two Header rows
         // (Browser/Framework) are full-width and carry no description, so this
         // walks every component and asserts only on the ones a tooltip is
-        // attached to — enumerating twelve label/value pairs precisely is
+        // attached to — enumerating thirteen label/value pairs precisely is
         // exactly what case 10 does for the Header exclusion instead.
         const withTooltip = allComponents.filter((c) => hasTooltip(c.getId()));
 
-        // Twelve metric rows × 2 targets (label + value) = 24 attachments,
+        // Thirteen metric rows × 2 targets (label + value) = 26 attachments,
         // plus one more: the "Show style audit" Button (added by
         // plans/implemented/diagnostics-overlay-style-audit-window.md) gets
         // its own hover tooltip showing its title — every Button with
         // non-empty text does, unrelated to this file's row-description
         // mechanism.
-        expect(withTooltip.length).toBe(25);
+        expect(withTooltip.length).toBe(27);
 
         for (const c of withTooltip) {
             expect(tooltipText(c.getId())).toBeTruthy();

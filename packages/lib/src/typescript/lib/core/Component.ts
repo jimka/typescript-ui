@@ -189,6 +189,30 @@ function ensureFlushScheduled(): void {
     }
 }
 
+/**
+ * Reports one entry the batched layout flush isolated. Counts it on
+ * `Diagnostics` — the shipped diagnostics overlay shows the running total as
+ * its "Layout errors" row — and writes a single console error naming the stage
+ * and the component, passing the thrown value on as a second argument so the
+ * browser console keeps its stack.
+ *
+ * A persistently throwing component reports once per frame. That is intended:
+ * the isolation buys a rendered frame, not silence, and the fix is the
+ * underlying throw rather than a rate limiter.
+ *
+ * @param stage - The flush stage that failed, `"doLayout"` or `"afterNextLayout"`.
+ * @param componentId - The failing component's id, or `null` for an entry that
+ *   belongs to no single component.
+ * @param error - The value that was thrown.
+ */
+function reportFlushFailure(stage: string, componentId: string | null, error: unknown): void {
+    Diagnostics.noteLayoutError();
+
+    const subject = componentId !== null ? `${stage} for #${componentId}` : `an ${stage} callback`;
+
+    console.error(`Layout flush: ${subject} threw; the rest of the frame continued.`, error);
+}
+
 function flushPendingLayouts() {
     rafHandle = null;
 
@@ -235,7 +259,14 @@ function flushPendingLayouts() {
         // disposed (or never-rendered) component rather than laying out a
         // corpse — mirrors flushPendingVisibility's same guard, above.
         if (!hasDirtyAncestor && c.getElement()) {
-            c.doLayout();
+            // Isolated: a throw here would otherwise drop every component still
+            // queued behind this one *and* the frame's whole post-layout
+            // callback queue, since both were dequeued into the snapshots above.
+            try {
+                c.doLayout();
+            } catch (error) {
+                reportFlushFailure("doLayout", c.getId(), error);
+            }
         }
     }
 
@@ -243,7 +274,11 @@ function flushPendingLayouts() {
     // consumer that scheduled layout work (revealing a view, opening a section)
     // can act on the final geometry — e.g. focus a now-laid-out element.
     for (const cb of callbacks) {
-        cb();
+        try {
+            cb();
+        } catch (error) {
+            reportFlushFailure("afterNextLayout", null, error);
+        }
     }
 
     if (timed) {
