@@ -2,13 +2,16 @@
 // AutoCompleteField match-mode coverage. The core unit is the private
 // `matches(candidate, query)` predicate across all four match modes; it is
 // reached via an `any` cast confined to this file. getValue/setValue delegate
-// to the inner TextField and round-trip on a bare (unmounted) field. Debounce
-// timing and the dropdown/store paths are out of scope (Non-Goals).
+// to the inner TextField and round-trip on a bare (unmounted) field. The
+// store-backed query path and timer teardown are covered by the two describe
+// blocks below.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AutoCompleteField } from '~/component/input/AutoCompleteField';
 import { DOM } from '~/core/DOM';
 import { SpatialNavigation } from '~/core/SpatialNavigation';
-import { installTestDOM } from '../../dom/TestDOM';
+import { MemoryStore } from '~/data/MemoryStore';
+import { Model } from '~/data/Model';
+import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -18,6 +21,16 @@ const CONFIG = {
     fontMetrics,
     themeVars:       {},
 };
+
+// Mirrors ComboBox.test.ts's makeStore: a MemoryStore whose records are
+// loaded synchronously via loadData, so a store-backed field's suggestions
+// are available in the same tick as construction.
+const MODEL = new Model([{ name: 'id' }, { name: 'name' }], 'id');
+function makeStore(rows: any[]): MemoryStore {
+    const store = new MemoryStore(MODEL, rows);
+    store.loadData(rows);
+    return store;
+}
 
 /**
  * Builds a field in the given match mode and returns its private `matches`.
@@ -224,5 +237,256 @@ describe('AutoCompleteField paste debounce', () => {
         expect(showSpy.mock.calls[0][1]).toEqual(['Apple']);
 
         vi.useRealTimers();
+    });
+});
+
+// autocomplete-store-query plan: the store branch of querySuggestions used to
+// rewrite the caller's store (clearFilter + filterBy) and read back
+// getRecords(). It now matches in-process over store.getAll(), so the
+// store's own filters/sort/view and event listeners are never touched.
+describe('AutoCompleteField store-backed suggestions', () => {
+    const DEFAULT_ROWS = [
+        { id: '1', name: 'Apple' },
+        { id: '2', name: 'Banana' },
+        { id: '3', name: 'Cherry' },
+    ];
+
+    let field: AutoCompleteField | undefined;
+
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => { field?.dispose(); field = undefined; DOM.reset(); vi.restoreAllMocks(); });
+
+    it("leaves the store's active filters untouched", () => {
+        const store = makeStore(DEFAULT_ROWS);
+        store.filterBy({ type: 'neq', field: 'name', value: 'Cherry' });
+
+        field = new AutoCompleteField({ store, displayField: 'name' });
+        field.setValue('an');
+        (field as any).querySuggestions('an');
+
+        expect(store.getActiveFilters()).toEqual([{ type: 'neq', field: 'name', value: 'Cherry' }]);
+    });
+
+    it('emits no datachange or filterchange', async () => {
+        const store = makeStore(DEFAULT_ROWS);
+
+        let dataChanges   = 0;
+        let filterChanges = 0;
+
+        store.on('datachange',   () => { dataChanges += 1; });
+        store.on('filterchange', () => { filterChanges += 1; });
+
+        field = new AutoCompleteField({ store, displayField: 'name' });
+        field.setValue('an');
+        (field as any).querySuggestions('an');
+
+        // A deferred emit (the store's view rebuild resolves through a
+        // microtask) would still land within a few queued turns.
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(dataChanges).toBe(0);
+        expect(filterChanges).toBe(0);
+    });
+
+    it("does not change the store's view", () => {
+        const store = makeStore(DEFAULT_ROWS);
+        const before = store.getRecords().map(r => r.get('name'));
+
+        field = new AutoCompleteField({ store, displayField: 'name' });
+        field.setValue('an');
+        (field as any).querySuggestions('an');
+
+        expect(store.getRecords().map(r => r.get('name'))).toEqual(before);
+    });
+
+    it('matches the typed query with the default contains mode', () => {
+        const store = makeStore(DEFAULT_ROWS);
+        field = new AutoCompleteField({ store, displayField: 'name' });
+
+        const dropdown = (field as any)._dropdown;
+        const showSpy  = vi.spyOn(dropdown, 'show');
+
+        field.setValue('an');
+        (field as any).querySuggestions('an');
+
+        expect(showSpy).toHaveBeenCalledTimes(1);
+        expect(showSpy.mock.calls[0][1]).toEqual(['Banana']);
+    });
+
+    it("ignores the application's own active filters", () => {
+        const store = makeStore(DEFAULT_ROWS);
+        store.filterBy({ type: 'neq', field: 'name', value: 'Banana' });
+
+        field = new AutoCompleteField({ store, displayField: 'name' });
+
+        const dropdown = (field as any)._dropdown;
+        const showSpy  = vi.spyOn(dropdown, 'show');
+
+        field.setValue('an');
+        (field as any).querySuggestions('an');
+
+        expect(showSpy.mock.calls[0][1]).toEqual(['Banana']);
+    });
+
+    // getAll() bypasses the store's active sorters exactly as it bypasses its
+    // active filters (Architecture Decisions, [^why-getall]) — a Table sorted
+    // elsewhere on screen must not silently reorder, or under maxSuggestions
+    // reshuffle the composition of, this field's suggestions. Suggestions are
+    // shown in the store's load order regardless of any active sort.
+    it("ignores the store's active sorter", () => {
+        const store = makeStore(DEFAULT_ROWS);
+        store.sort('name', 'desc');
+
+        field = new AutoCompleteField({ store, displayField: 'name' });
+
+        const dropdown = (field as any)._dropdown;
+        const showSpy  = vi.spyOn(dropdown, 'show');
+
+        field.setValue('a');
+        (field as any).querySuggestions('a');
+
+        // Sorted desc, "Cherry" doesn't match; the remaining two would read
+        // ['Banana', 'Apple'] under the store's sort, but ['Apple', 'Banana']
+        // — insertion order — is what a load-order-only match produces.
+        expect(showSpy.mock.calls[0][1]).toEqual(['Apple', 'Banana']);
+    });
+
+    it("matches 'startsWith' case-insensitively", () => {
+        const store = makeStore([
+            { id: '1', name: 'Apple' },
+            { id: '2', name: 'Banana' },
+            { id: '3', name: 'Ant' },
+        ]);
+        field = new AutoCompleteField({ store, displayField: 'name', matchMode: 'startsWith' });
+
+        const dropdown = (field as any)._dropdown;
+        const showSpy  = vi.spyOn(dropdown, 'show');
+        const hideSpy  = vi.spyOn(dropdown, 'hide');
+
+        field.setValue('An');
+        (field as any).querySuggestions('An');
+        expect(showSpy.mock.calls[0][1]).toEqual(['Ant']);
+
+        field.setValue('nt');
+        (field as any).querySuggestions('nt');
+        expect(showSpy).toHaveBeenCalledTimes(1);
+        expect(hideSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("matches 'containsCaseSensitive' honouring case", () => {
+        const store = makeStore([
+            { id: '1', name: 'Apple' },
+            { id: '2', name: 'Banana' },
+            { id: '3', name: 'Ant' },
+        ]);
+        field = new AutoCompleteField({ store, displayField: 'name', matchMode: 'containsCaseSensitive' });
+
+        const dropdown = (field as any)._dropdown;
+        const showSpy  = vi.spyOn(dropdown, 'show');
+
+        field.setValue('An');
+        (field as any).querySuggestions('An');
+        expect(showSpy.mock.calls[0][1]).toEqual(['Ant']);
+
+        field.setValue('an');
+        (field as any).querySuggestions('an');
+        expect(showSpy.mock.calls[1][1]).toEqual(['Banana']);
+    });
+
+    it('caps the suggestion list at maxSuggestions, in store order', () => {
+        const rows  = Array.from({ length: 20 }, (_, i) => ({ id: String(i), name: `Apple ${i}` }));
+        const store = makeStore(rows);
+        field = new AutoCompleteField({ store, displayField: 'name', maxSuggestions: 3 });
+
+        const dropdown = (field as any)._dropdown;
+        const showSpy  = vi.spyOn(dropdown, 'show');
+
+        field.setValue('a');
+        (field as any).querySuggestions('a');
+
+        expect(showSpy).toHaveBeenCalledTimes(1);
+        expect(showSpy.mock.calls[0][1]).toEqual(['Apple 0', 'Apple 1', 'Apple 2']);
+    });
+
+    it('hides instead of showing when nothing matches', () => {
+        const store = makeStore(DEFAULT_ROWS);
+        field = new AutoCompleteField({ store, displayField: 'name' });
+
+        const dropdown = (field as any)._dropdown;
+        const showSpy  = vi.spyOn(dropdown, 'show');
+        const hideSpy  = vi.spyOn(dropdown, 'hide');
+
+        field.setValue('zzz');
+        (field as any).querySuggestions('zzz');
+
+        expect(hideSpy).toHaveBeenCalledTimes(1);
+        expect(showSpy).not.toHaveBeenCalled();
+    });
+
+    it('never suggests a record whose display field is null', () => {
+        const store = makeStore([
+            { id: '1', name: 'Banana' },
+            { id: '2', name: null },
+        ]);
+        field = new AutoCompleteField({ store, displayField: 'name' });
+
+        const dropdown = (field as any)._dropdown;
+        const showSpy  = vi.spyOn(dropdown, 'show');
+
+        field.setValue('n');
+        (field as any).querySuggestions('n');
+
+        expect(showSpy.mock.calls[0][1]).toEqual(['Banana']);
+        expect(showSpy.mock.calls[0][1]).not.toContain('null');
+    });
+
+    it('answers synchronously and correctly for a 1,500-record store', () => {
+        const rows = Array.from({ length: 1500 }, (_, i) => ({ id: String(i), name: `Item ${i}` }));
+        rows.push({ id: '1500', name: 'Banana' });
+
+        const store = makeStore(rows);
+        field = new AutoCompleteField({ store, displayField: 'name' });
+
+        const dropdown = (field as any)._dropdown;
+        const showSpy  = vi.spyOn(dropdown, 'show');
+
+        field.setValue('anan');
+        (field as any).querySuggestions('anan');
+
+        // querySuggestions is entirely synchronous for a store-backed field —
+        // no await needed to observe the call.
+        expect(showSpy).toHaveBeenCalledTimes(1);
+        expect(showSpy.mock.calls[0][1]).toEqual(['Banana']);
+    });
+
+    it('discards a stale query whose string no longer matches the current value', () => {
+        const store = makeStore(DEFAULT_ROWS);
+        field = new AutoCompleteField({ store, displayField: 'name' });
+
+        const dropdown = (field as any)._dropdown;
+        const showSpy  = vi.spyOn(dropdown, 'show');
+        const hideSpy  = vi.spyOn(dropdown, 'hide');
+
+        field.setValue('ab');
+        (field as any).querySuggestions('an');
+
+        expect(showSpy).not.toHaveBeenCalled();
+        expect(hideSpy).not.toHaveBeenCalled();
+    });
+
+    it('prefers static suggestions over a configured store, and never touches the store', () => {
+        const store = makeStore(DEFAULT_ROWS);
+        field = new AutoCompleteField({ suggestions: ['Apricot'], store, displayField: 'name' });
+
+        const dropdown = (field as any)._dropdown;
+        const showSpy  = vi.spyOn(dropdown, 'show');
+
+        field.setValue('ap');
+        (field as any).querySuggestions('ap');
+
+        expect(showSpy.mock.calls[0][1]).toEqual(['Apricot']);
+        expect(store.getActiveFilters()).toEqual([]);
     });
 });

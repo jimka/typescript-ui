@@ -4,6 +4,7 @@ import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractI
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
+import { FilterDescriptor, matchesFilter } from "~/data/FilterDescriptor.js";
 import { TextField, TextFieldOptions } from "~/component/input/TextField.js";
 import { AutoCompleteDropdown } from "~/component/input/AutoCompleteDropdown.js";
 import { registerFocusWithinRing } from "~/component/input/focusRing.js";
@@ -70,7 +71,7 @@ export type AutoCompleteMatchMode =
 export interface AutoCompleteFieldOptions extends AbstractInputOptions {
     /** Static list of suggestion strings. */
     suggestions?    : string[];
-    /** Data store used when suggestions come from a remote/in-memory store. */
+    /** Data store used when suggestions come from an in-memory store. */
     store?          : AbstractStore;
     /** The store field name whose value is shown as the suggestion text. Required when `store` is set. */
     displayField?   : string;
@@ -356,7 +357,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     /**
      * Configures the field to query suggestions from a store.
      *
-     * @param store - The data store to filter.
+     * @param store - The data store to read suggestions from.
      * @param displayField - The field name on each record to use as the suggestion text.
      */
     setStore(store: AbstractStore, displayField: string): this {
@@ -633,17 +634,24 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
                                 ? 'startsWith'
                                 : 'contains';
 
-            store.clearFilter();
-            store.filterBy({
+            const descriptor: FilterDescriptor = {
                 type: filterType,
                 field: displayField,
                 value: query,
                 caseSensitive,
-            });
+            };
 
-            const results = store.getRecords()
-                .map(r => String(r.get(displayField)))
-                .slice(0, maxSuggestions);
+            const results: string[] = [];
+
+            for (const record of store.getAll()) {
+                if (results.length >= maxSuggestions) {
+                    break;
+                }
+
+                if (matchesFilter(record, descriptor)) {
+                    results.push(String(record.get(displayField)));
+                }
+            }
 
             if (query === this.getValue()) {
                 this.showSuggestions(results);
