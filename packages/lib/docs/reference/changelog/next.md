@@ -330,6 +330,13 @@ page resets to empty.
   therefore surface a different subset than before. No other consumer
   action is needed.
 
+- **An `AutoCompleteField` disposed while the user is typing, or just after
+  the field loses focus, no longer throws.** Its debounce and blur timers
+  used the bare global `setTimeout` and were never cleared on disposal, so a
+  closed dialog or torn-down form could fire a callback against a dropdown
+  whose DOM handles had already been released. Both timers are now cancelled
+  in `destructor`. No consumer action is needed.
+
 - **`Button`, `ComboBox`, `Checkbox`, `Toggle`, `RadioButton`, and `Slider`
   now show a themed focus ring when keyboard focus lands on them**, instead
   of `Button`/`ComboBox` falling back to the browser's raw 1px black default
