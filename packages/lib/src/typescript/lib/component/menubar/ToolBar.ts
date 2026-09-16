@@ -156,7 +156,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     declare private _overflowMode: ToolBarOverflow;
     declare private _overflowSide: AxisEnd;
     declare private _flat:         boolean;
-    declare private _rovingTabIndex: RovingTabIndex;
+    declare private _rovingTabIndex: RovingTabIndex | undefined;
     declare private _onKeyDown:    (e: KeyboardEvent) => Event.ListenerResult;
     declare private _overflowButton: Button | null;
     declare private _overflowMenu:   Menu | null;
@@ -190,6 +190,15 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
 
         this._onKeyDown = (e: KeyboardEvent): Event.ListenerResult => {
             if (SpatialNavigation.claimsKey(e)) { return; }
+
+            // The group is created by `addComponent`, so a bar with no
+            // children has none — while the bar's own `tabindex="0"`, set
+            // just above, lets it be focused and receive this key anyway.
+            // Returning no disposition leaves the arrow to an ancestor or
+            // to `SpatialNavigation`, rather than swallowing it.
+            if (this._rovingTabIndex === undefined) {
+                return;
+            }
 
             const isHoriz = this._orientation === "horizontal";
             const fwd     = isHoriz ? "ArrowRight" : "ArrowDown";

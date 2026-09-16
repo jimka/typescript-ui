@@ -173,4 +173,28 @@ describe('ToolBar keydown — stands down while SpatialNavigation claims the key
         expect(moveNext).not.toHaveBeenCalled();
         expect((bar as any)._rovingTabIndex.getActiveIndex()).toBe(0);
     });
+
+    // A ToolBar makes its own element a tab stop in its constructor, so a bar
+    // with no children can hold focus — while its roving group is created by
+    // `addComponent` and so does not exist yet. An arrow key must do nothing
+    // there, not dereference the absent group.
+    it('an arrow key on a childless horizontal bar is a no-op rather than a crash', () => {
+        const bar = new ToolBar();
+
+        expect(() => (bar as any)._onKeyDown({ key: 'ArrowRight' } as KeyboardEvent)).not.toThrow();
+        expect(() => (bar as any)._onKeyDown({ key: 'ArrowLeft' } as KeyboardEvent)).not.toThrow();
+
+        // No disposition, so the key keeps propagating — a childless bar must
+        // not swallow an arrow an ancestor or SpatialNavigation may want.
+        expect((bar as any)._onKeyDown({ key: 'ArrowRight' } as KeyboardEvent)).toBeUndefined();
+    });
+
+    it('an arrow key on a childless vertical bar is a no-op rather than a crash', () => {
+        const bar = new ToolBar({ orientation: 'vertical' });
+
+        expect(() => (bar as any)._onKeyDown({ key: 'ArrowDown' } as KeyboardEvent)).not.toThrow();
+        expect(() => (bar as any)._onKeyDown({ key: 'ArrowUp' } as KeyboardEvent)).not.toThrow();
+
+        expect((bar as any)._onKeyDown({ key: 'ArrowDown' } as KeyboardEvent)).toBeUndefined();
+    });
 });
