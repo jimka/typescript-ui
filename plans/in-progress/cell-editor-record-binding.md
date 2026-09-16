@@ -326,3 +326,55 @@ From `packages/lib`:
 [^register-dispose]: `CellEditorPool.dispose`'s JSDoc claims a cached editor is "held there for the table's whole lifetime … so nothing else ever reaches it". `register` reaches it — `this._editors.delete(key)` with no `dispose()` — and is reachable from a user control: `Table.setDisplayMode` → `Body.bindViewState` → `registerComboEditors`, one leaked `ComboEditor` with its `ComboBox`, dropdown, theme subscription and per-instance rules per combo column per toggle. Adding the `dispose()` on its own would be worse than the leak, because the dropped editor can be the one a cell is editing in right now; it is safe only once `register` commits the active cell first, which is why it belongs to this plan rather than to the disposal-hygiene plan the slice report filed it under. The commit is gated on a cached editor actually existing for the key, so a consumer registering a factory at setup time triggers nothing. Tracking which key the active cell borrowed, so the commit could be narrowed further, was rejected as a third field for a case where both in-library callers commit every open edit moments later anyway.
 
 [^no-return]: `commitEditsOutsideWindow` returns a boolean because its caller re-reads `getVisibleRecords()` when a commit fired. `commitEditsBeforeRebind` needs no equivalent: `notifyRecordChanged` emits `update` and `datachange` without re-applying the store's view, and `getVisibleRecords()` returns a copy, so the `records` array the pass is iterating cannot change under it.
+
+---
+
+## Implementation Notes
+
+Deviations this run had to make. The design is unchanged; these are notes on
+what the tree actually required.
+
+**Case 12 is an automated test, not a manual browser check.** The plan filed
+cases 10–12 as manual-verify "on a table screen with more rows than fit the
+viewport and at least one combo column". No such screen exists in the dev app:
+`MiscPanel`'s combo-column table ("table (column spec)", the `Role` column) has
+no display-mode toggle, and `RotatedRecordPanel`, which has the toggle, has no
+combo column — so case 12 cannot be driven from the demo surface at all.
+It is pinned instead by a new test in
+`packages/lib/tests/component/table/CellEditorPool.styleRuleDisposal.test.ts`,
+a file the plan's "Files to Create / Modify" table does not list. Writing it
+also corrected the case's trigger: `setDisplayMode('rotated')` binds the
+two-field *projection's* column configs, so `registerComboEditors` never sees
+the source column's `combo:<field>` key on the way in — the cached editor is
+dropped on the way back to `'normal'`. The test therefore toggles both ways,
+and it fails on the pre-change tree (`dispose` called 0 times).
+
+**Cases 10 and 11 were verified in a real browser**, against `npm run dev` and
+the `Misc.` tab's "Show window with wide table (45 columns)!" (400 records):
+an editor opened on row 1, text typed, then wheel-scrolled ~90 rows without
+pressing Enter. The editor closed, no editor was left floating over the body,
+scrolling back to the top showed the typed value on row 1 with rows 2–5
+unchanged, and double-clicking another cell opened an editor normally.
+
+**The column-axis fixture pins its column widths.** Step 1's recipe for case 4
+— "enough columns to overflow its width horizontally" — is not sufficient by
+itself: a `string` column flexes to share the body width however many columns
+there are, so twelve columns still measured 48px each inside a 600px body and
+the column window never moved. `makeWideTable` gives each column an explicit
+`width`, and the case asserts `_colWindow.firstCol > 0` so it can never go
+vacuous again.
+
+**Test-file shape.** Case 1 is two `it`s — the commit landing on the edited
+record, and every other record staying untouched. Case 5's tree fixture edits a
+plain `note` column rather than the tree column and declares
+`appendUnlisted: false` over exactly two columns, so the edited cell sits
+inside the column window whatever the measured widths come out at. In
+`CellEditorPool.test.ts`, `MarkerEditor` moved to module scope: the new
+ownership tests need the same stub the existing register-override tests
+declare locally, and two copies of it is worse than one shared one.
+
+**Changelog.** The plan's Documentation Impact does not mention
+`docs/reference/changelog/next.md`, but every branch here adds an entry. The
+two behaviour fixes went under `## Fixed`; `release(cell)`'s new required
+argument went under `## Changed`, since it is a contract change a consumer
+calling `release()` directly has to react to.
