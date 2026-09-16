@@ -727,7 +727,7 @@ export class Cell<T> extends Component {
 
         if (this._editor !== editor) {
             this.removeComponent(editor);
-            this._editorPool?.release();
+            this._editorPool?.release(this);
         }
     }
 

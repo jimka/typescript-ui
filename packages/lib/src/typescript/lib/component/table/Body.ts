@@ -1367,6 +1367,51 @@ class TableBody extends VirtualRowView<Row> {
     }
 
     /**
+     * Commits every open edit sitting on a pool row whose slot is about to be
+     * bound to a *different* record — the row-axis twin of
+     * {@link commitEditsOutsideWindow}, and the same rule: commit before
+     * discarding what the cell holds. Without it a scroll rebinds the row out
+     * from under an open editor, and the next blur or Enter writes the user's
+     * text onto whichever record the slot moved on to, leaving the record the
+     * user actually edited untouched.
+     *
+     * The trigger is record identity, not the bind loop's own `wasRebound`
+     * flag: `onStoreChange` blanks `_boundIndices` ahead of every re-render, so
+     * `wasRebound` is `true` for the whole pool after *any* store event — even
+     * one that changes nothing this body shows. Keying on it would close the
+     * user's editor whenever a second view, a background sync, or another
+     * cell's commit touched the store. Comparing record objects is both
+     * narrower and cheaper: in a settled pass no row changes record, so no cell
+     * is scanned at all.
+     *
+     * Runs after {@link alignPoolWindow}, which is what makes the comparison
+     * legal — the rotation is what settles slot `i` onto data index
+     * `firstRow + i` — and before the first `setData`, so the pass is only ever
+     * in one of two states: no row rebound yet, or every commit already done.
+     * Guarded by the same `_reconciling` flag `renderWindow` sets, for the
+     * reason spelled out on {@link commitEditsOutsideWindow}.
+     *
+     * @param firstRow - The first data index covered by the visible window.
+     * @param windowSize - The number of rows in the window.
+     * @param records - The records the pass is about to bind, in display order.
+     */
+    private commitEditsBeforeRebind(firstRow: number, windowSize: number, records: ModelRecord[]): void {
+        for (let i = 0; i < windowSize; i++) {
+            const row = this._rowPool[i];
+
+            if (records[firstRow + i] === row.getData()) {
+                continue;
+            }
+
+            for (const cell of row.getComponents() as Cell<any>[]) {
+                if (cell.isEditing()) {
+                    cell.commitEdit();
+                }
+            }
+        }
+    }
+
+    /**
      * Binds visible pool slots to their data records and positions each row +
      * its cells. Skips data rebind when the slot's bound index hasn't changed;
      * skips geometry writes when the row geometry hasn't changed; skips cell
@@ -1394,6 +1439,7 @@ class TableBody extends VirtualRowView<Row> {
         const rowHeight = this._rowHeight;
 
         this.alignPoolWindow(firstRow);
+        this.commitEditsBeforeRebind(firstRow, windowSize, records);
 
         const rangeBounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus, records);
 

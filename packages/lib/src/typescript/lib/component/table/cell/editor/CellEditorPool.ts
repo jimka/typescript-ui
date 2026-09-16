@@ -65,12 +65,22 @@ export class CellEditorPool {
      * @param factory - A factory that constructs a fresh editor instance.
      * @returns This pool, for method chaining.
      *
-     * @remarks If an editor was already cached for the key it is dropped so the new factory runs
-     * on the next call to {@link CellEditorPool.acquire}.
+     * @remarks An editor already cached for the key is disposed and dropped, so the new factory
+     * runs on the next call to {@link CellEditorPool.acquire}. The dropped editor can be the one
+     * a cell is editing in right now — `Table.setDisplayMode` re-registers every combo column's
+     * factory — so that cell's open edit is committed before the editor goes. A key with no
+     * cached editor, the setup-time case, commits and disposes nothing.
      */
     register(key: string, factory: CellEditorFactory): this {
+        const cached = this._editors.get(key);
+
+        if (cached) {
+            this.commitActiveCell(null);
+            this._editors.delete(key);
+            cached.dispose();
+        }
+
         this._factories.set(key, factory);
-        this._editors.delete(key);
 
         return this;
     }
@@ -82,12 +92,19 @@ export class CellEditorPool {
      * @param key - The editor variant key returned by {@link Cell.getEditorKey}.
      * @param cell - The cell that is starting an edit; receives subsequent blur/keydown events.
      * @returns The shared editor instance, or `null` if no factory is registered for `key`.
+     *
+     * @remarks Only one cell holds the editor at a time, so an edit still open on the previous
+     * holder is committed before `cell` takes it over — otherwise that cell keeps reporting
+     * itself as editing while the editor answers to someone else. Re-acquiring for the cell that
+     * already holds the editor commits nothing.
      */
     acquire(key: string, cell: Cell<any>): CellEditor<unknown> | null {
         const factory = this._factories.get(key);
         if (!factory) {
             return null;
         }
+
+        this.commitActiveCell(cell);
 
         let editor = this._editors.get(key);
         if (!editor) {
@@ -102,9 +119,18 @@ export class CellEditorPool {
     }
 
     /**
-     * Clears the active-cell pointer. Called by {@link Cell} when an edit commits or cancels.
+     * Releases the shared editor, clearing the active-cell pointer. Called by {@link Cell} when
+     * an edit commits or cancels.
+     *
+     * @param cell - The cell giving the editor up. A cell that no longer holds it — one whose
+     *   edit was already committed when another cell acquired the editor — is ignored, so a late
+     *   release cannot unhook the cell that owns the editor now.
      */
-    release(): void {
+    release(cell: Cell<any>): void {
+        if (this._activeCell !== cell) {
+            return;
+        }
+
         this._activeCell = null;
     }
 
@@ -113,9 +139,13 @@ export class CellEditorPool {
      * per-instance stylesheet rules. Called once, from `Body.destructor()`,
      * when the owning table is torn down — a shared editor is acquired into
      * `_editors` only on a real edit gesture (`Cell.startEdit` → `acquire`),
-     * held there for the table's whole lifetime, and detached-but-not-disposed
-     * on every edit end (`Cell.detachEditor`'s `removeComponent`, which keeps a
-     * reusable editor alive across edits) — so nothing else ever reaches it.
+     * held there until the table is torn down, and detached-but-not-disposed on
+     * every edit end (`Cell.detachEditor`'s `removeComponent`, which keeps a
+     * reusable editor alive across edits).
+     *
+     * @remarks {@link CellEditorPool.register} is the one other route to an
+     * editor's disposal — it disposes whatever cached editor it drops, so a
+     * re-registered key does not leak the instance it replaces.
      */
     dispose(): void {
         for (const editor of this._editors.values()) {
@@ -123,6 +153,29 @@ export class CellEditorPool {
         }
 
         this._editors.clear();
+    }
+
+    /**
+     * Commits whichever cell currently holds the shared editor, unless that cell
+     * is `next` — a cell re-acquiring the editor it already holds.
+     *
+     * @param next - The cell about to take the editor over, or `null` when the
+     *   editor is being dropped rather than handed on.
+     *
+     * @remarks Clears the active-cell pointer itself rather than relying on the
+     * release the commit triggers, so the pointer is empty even for a cell whose
+     * `commitEdit` short-circuits — a read-only cell, or one that already left
+     * edit mode by another route.
+     */
+    private commitActiveCell(next: Cell<any> | null): void {
+        const active = this._activeCell;
+
+        if (!active || active === next) {
+            return;
+        }
+
+        active.commitEdit();
+        this._activeCell = null;
     }
 
     /**
