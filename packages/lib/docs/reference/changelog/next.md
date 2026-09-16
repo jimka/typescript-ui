@@ -358,6 +358,43 @@ page resets to empty.
   one direct caller, and that caller is entitled to the exception. No consumer
   action is needed.
 
+- **A roved-off member of a roving-tabindex group is no longer a Tab stop.**
+  The framework-wide focusable selector carried its `:not([tabindex="-1"])`
+  guard on its trailing `[tabindex]` branch alone, so an element that renders
+  as a native `<button>`, `<input>`, `<select>` or `<textarea>` kept matching
+  its own branch whatever `tabindex` it held. Every member a `RovingTabIndex`
+  group had deliberately roved out of the tab order stayed reachable by Tab —
+  a `ToolBar`, a tab strip, or a `ButtonGroup` offered one stop per item
+  instead of one for the whole group, and a `Dialog`'s focus trap cycled
+  through those items too. The guard now binds to every branch, so each such
+  group contributes exactly its active member; Arrow-key navigation within a
+  group and `SpatialNavigation`'s reach into its roved-off members are both
+  unchanged. One further consequence is worth knowing: a `Tab` layout writes
+  `tabindex="-1"` onto every tab's content component, so a leaf component used
+  directly as tab content that renders as a bare native control — a
+  `TextArea`, say — is no longer a tab stop of its own. That is what a
+  browser's own traversal already did with `tabindex="-1"`, so the change
+  removes a divergence rather than creating one.
+
+- **An element marked `contenteditable` is now a Tab stop.** The same selector
+  had no `[contenteditable]` branch, so a third-party editing surface —
+  CodeMirror's `.cm-content` inside a `CodeEditor` or `MarkdownEditor` — was
+  invisible to it even though a browser tabs into such an element natively.
+  `Tab` stepped straight over the editor, and a `Dialog` containing one could
+  neither focus nor trap on it. A `contenteditable` element that is not
+  explicitly `contenteditable="false"` now counts as a stop. No consumer
+  action is needed.
+
+- **A decorative glyph icon is no longer a focus candidate.** The same
+  selector matched any element carrying an `href`, and every `Glyph` renders
+  as `<svg><use href="#…">` — so each glyph-bearing control contributed a
+  second, unfocusable match right after itself. `Tab` under `FocusTraversal`
+  could land on one, a `Dialog`'s focus trap cycled through them, and
+  `Dialog`'s primary-button lookup — which resolves the configured primary
+  button by its position among the button row's focusable elements — picked
+  the wrong element whenever a dialog's buttons carried glyphs. The branch is
+  now `a[href], area[href]`. No consumer action is needed.
+
 ### Components
 
 - **A table no longer writes an in-progress cell edit onto the wrong record
