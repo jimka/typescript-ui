@@ -5,6 +5,16 @@ tied to a version number yet. Once this release is tagged, its content moves
 onto its own numbered page (see [Changelog](/reference/changelog)) and this
 page resets to empty.
 
+## Breaking changes
+
+### Components
+
+- **`Slider`'s `showTicks` option and its `isShowTicks()` / `setShowTicks()`
+  accessors are removed.** Nothing ever rendered tick marks: the option was
+  stored, read back by its own getter, and used nowhere else. Drop the option
+  and the two calls — there is no replacement. See
+  [Migration](/reference/migration/next) for the full note.
+
 ## Changed
 
 ### Core
