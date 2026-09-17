@@ -4,9 +4,10 @@
 // listeners, so the offline harness is installed. Only the construction-and-
 // mapping surface is covered here; the focus/blur DOM lifecycle is a Non-Goal
 // (needs a live, connected, focusable element the offline harness lacks). The
-// `cell` arg to acquire is a structural stub — acquire only stores it as the
-// active-cell pointer and does not touch it during construction.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+// `cell` arg to acquire is a structural stub — the only thing the pool asks of
+// a cell is a `commitEdit`, which it calls on whichever cell currently holds
+// the shared editor before handing that editor to another cell or dropping it.
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../../dom/TestDOM';
 import fontMetrics from '../../../dom/font-metrics.test-font.json';
@@ -31,8 +32,31 @@ const CONFIG = {
 beforeEach(() => installTestDOM(CONFIG));
 afterEach(() => DOM.reset());
 
-// A stand-in cell — acquire only records it as the active-cell pointer.
-const CELL = {} as Cell<any>;
+// A stand-in cell. `acquire` and `register` commit whichever cell holds the
+// editor, so the shared stub has to answer a `commitEdit`; the ownership tests
+// below bring their own counting stubs.
+const CELL = { commitEdit() { return this; } } as unknown as Cell<any>;
+
+/** A stand-in cell whose `commitEdit` records every call. */
+function countingCell(): Cell<any> {
+    return { commitEdit: vi.fn() } as unknown as Cell<any>;
+}
+
+/** The cell the pool currently holds the shared editor for. */
+function activeCell(pool: CellEditorPool): Cell<any> | null {
+    return (pool as any)._activeCell as Cell<any> | null;
+}
+
+/** A distinguishable editor a test can register over a built-in key. */
+class MarkerEditor extends CellEditor<string | null> {
+    getValue(): string | null {
+        return null;
+    }
+
+    setValue(_value: string | null): void {
+        // no-op marker
+    }
+}
 
 describe('CellEditorPool built-in factory keys', () => {
     it('maps each built-in key to the correct editor class', () => {
@@ -62,16 +86,6 @@ describe('CellEditorPool built-in factory keys', () => {
 });
 
 describe('CellEditorPool.register override', () => {
-    class MarkerEditor extends CellEditor<string | null> {
-        getValue(): string | null {
-            return null;
-        }
-
-        setValue(_value: string | null): void {
-            // no-op marker
-        }
-    }
-
     it('register overrides a key and drops any cached editor so the new factory runs', () => {
         const pool = new CellEditorPool();
 
@@ -103,5 +117,93 @@ describe('CellEditorPool.register override', () => {
 
         expect(first).toBeInstanceOf(ComboEditor);
         expect(first).toBe(second);
+    });
+});
+
+// One cell owns the shared editor at a time, and the pool commits that cell's
+// open edit before anything takes the editor away from it — another cell
+// acquiring it, or a factory re-registered over it. Both doors were unguarded:
+// the editor moved on while the cell still believed it was editing, and
+// `register` additionally dropped a cached editor without disposing it.
+describe('CellEditorPool editor ownership', () => {
+    it('ignores a release from a cell that no longer owns the editor', () => {
+        const pool = new CellEditorPool();
+        const a    = countingCell();
+        const b    = countingCell();
+
+        pool.acquire('string', a);
+        pool.acquire('string', b);
+        pool.release(a);
+
+        expect(activeCell(pool)).toBe(b);
+    });
+
+    it('clears the pointer when the owning cell releases', () => {
+        const pool = new CellEditorPool();
+        const a    = countingCell();
+
+        pool.acquire('string', a);
+        pool.release(a);
+
+        expect(activeCell(pool)).toBe(null);
+    });
+
+    it('commits the previous cell when a second cell acquires the editor', () => {
+        const pool = new CellEditorPool();
+        const a    = countingCell();
+        const b    = countingCell();
+
+        pool.acquire('string', a);
+        pool.acquire('string', b);
+
+        expect(a.commitEdit).toHaveBeenCalledTimes(1);
+        expect(b.commitEdit).not.toHaveBeenCalled();
+        expect(activeCell(pool)).toBe(b);
+    });
+
+    it('commits nothing when the same cell re-acquires the editor it holds', () => {
+        const pool = new CellEditorPool();
+        const a    = countingCell();
+
+        pool.acquire('string', a);
+        pool.acquire('string', a);
+
+        expect(a.commitEdit).not.toHaveBeenCalled();
+        expect(activeCell(pool)).toBe(a);
+    });
+
+    it('disposes the dropped editor exactly once and commits the active cell on re-register', () => {
+        const pool = new CellEditorPool();
+        const a    = countingCell();
+
+        const dropped = pool.acquire('string', a)!;
+
+        // Realise the element so disposal has the per-instance rules and DOM
+        // node a live editor would leave behind.
+        dropped.getElement(true);
+
+        const disposed = vi.spyOn(dropped, 'dispose');
+
+        pool.register('string', () => new MarkerEditor());
+
+        expect(disposed).toHaveBeenCalledTimes(1);
+        expect(a.commitEdit).toHaveBeenCalledTimes(1);
+        expect(activeCell(pool)).toBe(null);
+        expect(pool.acquire('string', a)).not.toBe(dropped);
+    });
+
+    it('commits and disposes nothing when registering a key with no cached editor', () => {
+        const pool = new CellEditorPool();
+        const a    = countingCell();
+
+        const cached = pool.acquire('string', a)!;
+
+        const disposed = vi.spyOn(cached, 'dispose');
+
+        pool.register('combo:owner', () => new MarkerEditor());
+
+        expect(disposed).not.toHaveBeenCalled();
+        expect(a.commitEdit).not.toHaveBeenCalled();
+        expect(activeCell(pool)).toBe(a);
     });
 });

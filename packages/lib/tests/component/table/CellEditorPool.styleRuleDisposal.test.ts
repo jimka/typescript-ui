@@ -21,7 +21,7 @@
 // subsystem. See plans/implemented/table-cell-rerender-leak-investigation.md.
 //
 // Mirrors tests/overlay/Menu.styleRuleDisposal.test.ts's shape.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -72,6 +72,28 @@ async function dateTable(): Promise<Table> {
     await store.load();
 
     const table = new Table(store);
+
+    table.getElement(true);
+    table.setWidth(400);
+    table.setHeight(200);
+    table.doLayout();
+
+    return table;
+}
+
+/** Builds a one-row table whose only column is a combo, rendered and ready to edit. */
+async function comboTable(): Promise<Table> {
+    const model = new Model([{ name: 'a', type: 'string', order: 0 }], 'a');
+    const store = new MemoryStore(model, [{ a: 'dev' }]);
+
+    await store.load();
+
+    const table = new Table(store, {
+        columns: [{
+            field:  'a',
+            values: [{ value: 'dev', label: 'Developer' }, { value: 'qa', label: 'QA Engineer' }],
+        }],
+    });
 
     table.getElement(true);
     table.setWidth(400);
@@ -270,5 +292,44 @@ describe('CellEditorPool — style-rule disposal', () => {
         const leaked = _ruleCacheKeys().filter((key) => !before.has(key));
 
         expect(leaked).toEqual([]);
+    });
+});
+
+// A display-mode toggle is the one consumer-reachable route to
+// `CellEditorPool.register` over an already-cached editor: `setDisplayMode`
+// runs `Body.bindViewState`, which re-registers every combo column's factory
+// *before* it commits the pool's open edits. The dropped `ComboEditor` used to
+// be deleted from the pool's map and never disposed — one leaked combo box,
+// dropdown, theme subscription and per-instance rule set per combo column per
+// toggle — and, because the drop lands ahead of the commit pass, the editor it
+// dropped could be the very one a cell was typing in.
+describe('CellEditorPool — an editor dropped by a display-mode toggle', () => {
+    it('commits the open edit onto its record and disposes the dropped ComboEditor', async () => {
+        installTestDOM(CONFIG);
+
+        const table  = await comboTable();
+        const record = table.getStore().getRecords()[0];
+        const cell   = firstCell(table) as PoolCell & { isEditing(): boolean };
+
+        cell.startEdit();
+
+        const editor   = (cell as any)._activeEditor as { setValue(v: string): unknown; dispose(): void };
+        const disposed = vi.spyOn(editor, 'dispose');
+
+        editor.setValue('qa');
+
+        // Rotated mode binds the two-field projection's own configs, so the
+        // combo key is re-registered — and the cached editor dropped — on the
+        // way back to normal.
+        table.setDisplayMode('rotated');
+
+        expect(record.get('a')).toBe('qa');
+        expect(cell.isEditing()).toBe(false);
+
+        table.setDisplayMode('normal');
+
+        expect(disposed).toHaveBeenCalledTimes(1);
+
+        table.dispose();
     });
 });
