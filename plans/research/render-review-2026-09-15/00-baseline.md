@@ -358,3 +358,102 @@ opportunity in this campaign.
 corroborated two ways (`norules` and `nosamewrites` agree) and the ablated page
 reaches identical geometry — editor heights travel 963 → 1188 px in both arms —
 so it is not a broken-page artefact.
+
+## Generalizing the seam filter to attributes: measured worthless (2026-09-17, late)
+
+After the same-value style-write filter landed, the obvious next move was to
+apply the same comparison to the seam's other unguarded terminal write —
+`ProductionDOMSink.apply`'s `setAttr` loop, which calls `setAttribute`
+unconditionally. An attribute write does *not* force a document-wide restyle
+the way a stylesheet-rule mutation does; it invalidates whatever subtree
+matches. So the write count does not predict the cost, and the only honest
+order of operations is ablation first, plan second.
+
+**Result: the ceiling is zero.** Same-session A/B on S1 (2×2 dock grid, 2387
+elements), plain versus `abl=nosameattr`, two reps interleaved:
+
+| arm | r1 | r2 | mean |
+|---|---|---|---|
+| plain | 59.2 | 60.9 | 60.0 |
+| `nosameattr` | 59.1 | 58.0 | 58.5 |
+
+The 1.5 ms gap is smaller than the spread between the two *plain* runs
+(1.7 ms). More decisively, the ablation **skipped nothing**: it installs a
+`skipattr@<name>` counter per skipped write and not one appeared, and the run
+records no `attr.*` counter at all. An S1 gutter-drag frame now performs
+**zero** `setAttribute` calls.
+
+**The 12-per-frame `data-insets` figure that motivated this was stale.** It
+comes from the original baseline, i.e. pre-wave-1. G07's setter guards already
+eliminated those writes — which is exactly what the wave-1 post-mortem said
+they did. Quoting it as a current cost was reading a measurement from before
+the fix that removed it.
+
+**Do not read this as "attribute dedup is worthless library-wide" — that was
+the first conclusion drawn here and it was wrong in scope.** S1 is one Loom
+scenario: file tree, tabs, dock grid, code editors. Loom renders no chart, no
+diagram, no table, no form and no virtualized list, so this ablation says
+nothing about them. The correct reading is narrower: *an S1 dock-grid gutter
+drag performs no attribute writes at all.*
+
+### The seam gives complete static coverage where measurement gives a sample
+
+The generalization question is better answered statically than dynamically,
+because `local/no-raw-dom` forces every attribute write in the library through
+`ElementPatch.setAttr` — 61 call sites, enumerable in full. Classified:
+
+| class | sites | can a same-value guard fire? |
+|---|---|---|
+| Writes on a **freshly created** element (chart marks, diagram edges/markers, glyph sprites, Markdown nodes, export anchor) | ~35 | **Never** — `getAttribute` returns `null`. A guard adds a read and saves nothing. |
+| **One-shot init** on a persistent element (`TextInput`, `TextArea`, `FileField`, `Label`, cell editors) | ~20 | Fires, but runs once per render — nothing to win. |
+| **Already guarded at source**: all 27 `Aria` setters cache into `_attributes` and write only on change; `Component.setDataAttribute` is covered by G07's setters | — | Already deduped, upstream of the seam. |
+| **Genuine repeated same-value writes**: `AbstractChart.sizeSurface` (width/height/viewBox on the persistent `_svg`, every `doLayout`), `DiagramNodeLayer` rect updates, `AbstractCanvasSurface` sizing | ~4 | **Yes** — and all three are resize-driven writes on a persistent element, the same shape as the style case. |
+
+**So a guard at the seam is still the wrong instrument**, but for a much better
+reason than the null ablation: the dominant population is fresh elements, where
+the comparison can only cost. The handful of real candidates are few enough to
+guard at their own call sites, and are dwarfed by what sits directly above
+them — see below.
+
+### The bigger find: `AbstractChart` rebuilds its entire SVG every layout pass
+
+`AbstractChart.doLayout()` calls `repaint()` unconditionally, and `repaint()`
+calls `clearMarks()` and redraws from scratch: both axis lines, every gridline,
+every tick, every tick label, all series marks and the selection ring. Its only
+early return is `!inner || !this._svg` — there is **no unchanged-size guard**.
+A chart inside any resizing container therefore destroys and recreates its
+whole mark tree every frame, and a chart whose own box did not change repaints
+whenever any layout pass reaches it.
+
+`DiagramView.doLayout` is the control that shows this is a defect rather than a
+house style: `anchorCentreAcrossResize` returns early on
+`previousWidth === vw && previousHeight === vh`. The diagram author guarded;
+the chart author did not.
+
+This is unmeasured, because no scenario in this campaign has ever rendered a
+chart.
+
+### The measurement surface this campaign should have been using
+
+`packages/docs` — the library's own docs site — carries **67 live component
+demos** (`src/demos/`, including `barchart-grouped`, `linechart-store`,
+`canvas-shapes`, `grid-tracks`, `accordion-sections`, `form-basic`) behind a
+plain `vite` dev server. No backend, no database, no Tauri stubs: it is in this
+repo and it renders the components Loom leaves dark. Pointing the MiniBrowser
+harness at a docs page and driving a container resize is the cheapest way to
+close the coverage gap, and it needs none of the QA `vite.config.ts` scaffolding
+Loom requires.
+
+`sqladmin/frontend` (`/home/jika/typescript/sqladmin`) is the second option — a
+real application constructing `BarChart`, `LineChart`, `DiagramView`, `Tree`,
+`Grid`, `List` and `AccordionPanel` — but it needs its backend and database up,
+so prefer the docs site for component-level work and keep SQLAdmin for
+application-scale scenarios.
+
+**Two incidental confirmations.** First, S1 post-fix measures ~60 ms/frame in a
+fresh session against the 59.9 recorded at merge time — the one absolute in
+this campaign that has survived a session boundary, which is what a 44% effect
+looks like against ~10% drift. Second, `runDrag` is a triangle wave (out for
+half the frames, back for the other half), so `widthsAfter == widthsBefore` is
+by design and is not evidence of a dead drag; mid-drag travel is only visible
+under `widthprobe=1`.
