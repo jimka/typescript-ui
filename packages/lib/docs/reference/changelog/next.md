@@ -49,6 +49,18 @@ page resets to empty.
   a reference from an earlier `getDescription()` must not reuse it across a
   `clearDescription()` call.
 
+- **The DOM seam now skips an inline-style or stylesheet-rule write whose
+  value already matches the declaration it would change**, and skips the
+  whole-rule-body assignment when a batched rule flush merges to the text the
+  rule already carries. A removal is never skipped — only a non-empty read
+  can authorise a skip, because a shorthand reads back empty while its
+  longhands are only partly set. The comparison is made against the live
+  declaration being written, so no cache can drift out of step with an inline
+  `style` wipe or with two `StyleRule` instances sharing one underlying rule. There is
+  no consumer-facing consequence: the resulting declaration is identical
+  either way, and no signature moves — what changes is how much restyle work
+  the engine is handed per frame.
+
 ### Components
 
 - **`CellEditorPool.release()` now takes the cell that is releasing the
