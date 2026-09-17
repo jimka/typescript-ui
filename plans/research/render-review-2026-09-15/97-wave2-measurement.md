@@ -157,3 +157,24 @@ slipped past the harness unseen.
 Both corrections point the same way: **an ablation bounds the code it actually
 reaches in the scene it actually runs in.** That is the third time in this
 campaign a number has been right while its attribution was wrong.
+
+## Correction: "per-frame was the bug, per-pass is the fix" was incomplete
+
+Drafting `plans/size-hint-per-pass-memo.md` tested the diagnosis recorded above
+against unmodified source and found it **incomplete**. A memo keyed on the
+layout pass alone still serves stale size hints, because a hint can legitimately
+change *within* one pass — a commit's `sizechange` listener fires, a constraint
+is written mid-pass, `Tab.doLayout` calls `setInsets`. Keying on the pass fixes
+the frame-granularity error and leaves a finer one behind.
+
+The design that actually reproduces unmemoised geometry keys on the pass token
+**plus a library-wide size-hint generation counter** that advances whenever
+anything invalidates a hint. That key passed all four adversarial gates on both
+a deep 2×2-editor-grid scene and a shallow single-editor scene while still
+avoiding **~51%** of size-hint calls — less than the ablation's 65%, which is
+the price of being correct.
+
+**And the test suite does not catch this class of bug.** The full 470-file /
+7,519-test suite passes under the *incorrect*, pass-only key. Anything in this
+area has to be gated on measured geometry equality in both a deep and a shallow
+scene; a green suite is necessary and nowhere near sufficient.
