@@ -153,4 +153,56 @@ describe('Tab-hosted strip relayout economy', () => {
         expect(classWrites.length).toBe(0);
         expect(ariaWrites.length).toBe(0);
     });
+
+    it('a repeated pass writes no data-insets attribute', () => {
+        const sink = installTestDOM(CONFIG);
+        installFrameCapture();
+
+        const { host, tab } = hostTab();
+        const content = new Component({});
+
+        host.addComponent(content);
+
+        // `applyTabButtonStyles` calls `setInsets` once per tab button, once
+        // per tool button and once for a lead widget on every pass — with the
+        // computed insets almost always identical to the ones already stored.
+        // The first pass is asserted non-zero so the filter below is provably
+        // able to see the writes the later passes must not make (see
+        // plans/implemented/component-setter-guards.md, behaviour 25).
+        const firstPassStart = sink.writes.length;
+
+        host.doLayout();
+        drainFrames();
+
+        expect(insetWritesSince(sink, firstPassStart).length).toBeGreaterThan(0);
+
+        host.setHeight(310);
+        host.doLayout();
+
+        const start = sink.writes.length;
+
+        host.setHeight(320);
+        host.doLayout();
+
+        expect(insetWritesSince(sink, start)).toEqual([]);
+    });
 });
+
+/** The `data-insets` attribute values the sink recorded on `apply` patches since `from`. */
+function insetWritesSince(recorder: { writes: Array<{ op: string; args: unknown[] }> }, from: number): string[] {
+    const written: string[] = [];
+
+    for (const write of recorder.writes.slice(from)) {
+        if (write.op !== 'apply') {
+            continue;
+        }
+
+        const setAttr = (write.args[1] as { setAttr?: Record<string, string> }).setAttr;
+
+        if (setAttr && 'data-insets' in setAttr) {
+            written.push(setAttr['data-insets']);
+        }
+    }
+
+    return written;
+}

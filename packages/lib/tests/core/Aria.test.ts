@@ -180,6 +180,37 @@ describe('Aria — unchanged writes are skipped', () => {
         expect(hiddenWrites(sink, element)).toEqual(['true', 'false']);
     });
 
+    /** Every recorded `apply` patch on `element` that removes `aria-label`. */
+    function labelRemovals(sink: { writes: Array<{ op: string; args: unknown[] }> }, element: unknown): number {
+        return sink.writes
+            .filter(w => w.op === 'apply' && w.args[0] === element)
+            .filter(w => (w.args[1] as { removeAttr?: string[] }).removeAttr?.includes('aria-label'))
+            .length;
+    }
+
+    it('clearLabel writes nothing when no label was ever set, and nothing again once cleared', () => {
+        const sink = installTestDOM(CONFIG);
+        const c = new Component();
+
+        c.getElement(true);
+
+        const element = c.getElement()!;
+
+        c.getAria().clearLabel();
+
+        expect(labelRemovals(sink, element)).toBe(0);
+
+        c.getAria().setLabel('Close');
+        c.getAria().clearLabel();
+
+        expect(labelRemovals(sink, element)).toBe(1);
+        expect(c.getAria().getLabel()).toBeNull();
+
+        c.getAria().clearLabel();
+
+        expect(labelRemovals(sink, element)).toBe(1);
+    });
+
     it('a value set again after a removal writes', () => {
         const sink = installTestDOM(CONFIG);
         const c = new Component();

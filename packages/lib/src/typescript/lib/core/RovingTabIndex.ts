@@ -123,6 +123,9 @@ export class RovingTabIndex {
     /**
      * Activates the item at the given index, updating `tabindex` on both the old and new items and transferring DOM focus.
      *
+     * @remarks Re-activating the item that is already active and already
+     * tabbable does nothing at all — no `tabindex` write, and no focus move,
+     * so clicking the selected member leaves focus and scroll where they are.
      * @param index - Zero-based index of the item to activate. Clamped to valid range.
      */
     moveTo(index: number): void {
@@ -131,6 +134,16 @@ export class RovingTabIndex {
         }
 
         const clampedIndex = Util.clamp(index, 0, this._items.length - 1);
+
+        // A repeat activation of the already-active item is a no-op. The
+        // tabindex half matters for `remove`, which calls `moveTo` after
+        // splicing the list: the item now at the active index may be a
+        // different one that still carries -1, and skipping it would leave the
+        // group with no tabbable member.
+        if (clampedIndex === this._activeIndex &&
+            this._items[clampedIndex]?.getAria().getTabIndex() === 0) {
+            return;
+        }
 
         const prev = this._items[this._activeIndex];
 

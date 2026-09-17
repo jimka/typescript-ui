@@ -1,6 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { RovingTabIndex } from '~/core/RovingTabIndex';
 import { Component } from '~/core/Component';
+import { DOM } from '~/core/DOM';
+import { installTestDOM } from '../dom/TestDOM';
+import fontMetrics from '../dom/font-metrics.test-font.json';
 
 // The tabindex bookkeeping lives in each item's Aria cache; reading it needs no
 // materialised DOM. moveTo() also calls Component.focus(), which is a safe no-op
@@ -136,5 +139,74 @@ describe('RovingTabIndex — remove', () => {
         expect(items[1].getDataAttribute('ts-ui-roving-member')).toBeUndefined();
         expect(items[0].getDataAttribute('ts-ui-roving-member')).toBe('true');
         expect(items[2].getDataAttribute('ts-ui-roving-member')).toBe('true');
+    });
+});
+
+// The same-index early return — see
+// plans/implemented/component-setter-guards.md. `moveTo` is reached both from
+// a tab press (whose target is often already active) and from `remove`, which
+// calls it after splicing the list; the tabindex half of the guard is what
+// keeps those two apart.
+describe('RovingTabIndex — repeat activation', () => {
+    const CONFIG = {
+        rootMountOffset: { x: 0, y: 0 },
+        viewport:        { width: 1280, height: 800 },
+        scrollBarWidth:  15,
+        fontMetrics,
+        themeVars:       {},
+    };
+
+    afterEach(() => DOM.reset());
+
+    /** A materialised group, so `moveTo`'s aria and focus writes reach the recording sink. */
+    function renderedGroup(count: number): { g: RovingTabIndex; items: Component[] } {
+        const built = group(count);
+
+        for (const item of built.items) {
+            item.getElement(true);
+        }
+
+        return built;
+    }
+
+    it('re-activating the already-active item writes nothing and moves no focus', () => {
+        const sink = installTestDOM(CONFIG);
+        const { g } = renderedGroup(3);
+
+        sink.writes.length = 0;
+
+        g.moveTo(0);
+        g.moveTo(0);
+        g.moveTo(0);
+
+        expect(sink.writes).toHaveLength(0);
+        expect(g.getActiveIndex()).toBe(0);
+        expect(zeroCount(g)).toBe(1);
+    });
+
+    it('still focuses and re-points the tabindex for a genuinely different index', () => {
+        const sink = installTestDOM(CONFIG);
+        const { g } = renderedGroup(3);
+
+        sink.writes.length = 0;
+
+        g.moveTo(2);
+
+        expect(sink.writes.filter(w => w.op === 'focus')).toHaveLength(1);
+        expect(tabIndices(g)).toEqual([-1, -1, 0]);
+    });
+
+    it('re-points the tabindex onto the item that slides into the active slot', () => {
+        const { g, items } = group(3);
+
+        // `remove` splices then calls moveTo(max(0, idx - 1)) — here moveTo(0)
+        // while `_activeIndex` is still 0, but with a *different* component now
+        // sitting at index 0, still carrying -1. An index-only guard would
+        // leave the group with no tabbable member at all.
+        g.remove(items[0]);
+
+        expect(g.getItems()[0]).toBe(items[1]);
+        expect(items[1].getAria().getTabIndex()).toBe(0);
+        expect(zeroCount(g)).toBe(1);
     });
 });

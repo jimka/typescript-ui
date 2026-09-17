@@ -1,12 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Button } from '~/component/button/Button';
+import { Component } from '~/core/Component';
 import { Glyph } from '~/component/display/Glyph';
 import { xmark } from '~/glyphs/solid/xmark';
+import { check } from '~/glyphs/solid/check';
 import { Tooltip } from '~/overlay/Tooltip';
+import { AnchorType } from '~/layout/AnchorType';
+import { Diagnostics } from '~/core/Diagnostics';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
-import { _ruleCacheHas } from '~/core/StyleTarget';
+import { _ruleCacheHas, _ruleCacheKeys } from '~/core/StyleTarget';
 import { Util } from '~/core/Util';
 
 const CONFIG = {
@@ -508,5 +512,145 @@ describe('ButtonIconGlyph style hoisting', () => {
         // not even an explicit removal — is queued for it at all.
         expect(declarations).toEqual({});
         expect(_ruleCacheHas('.ButtonIconGlyph')).toBe(true);
+    });
+});
+
+// Same-value early returns on Button's four guarded setters — see
+// plans/implemented/component-setter-guards.md. Each case pins both halves:
+// a repeat reaches the sink not at all, and the paths that *look* like a
+// repeat but are not (the constructor's late dispatch, a writing-mode flip
+// that re-derives the content anchor) still do their work.
+describe('Button setter guards', () => {
+    beforeEach(() => Glyph.register(check));
+
+    /** The button's content row, the Fit child whose anchor `setTextAlign` re-derives. */
+    function contentRow(button: Button): Component {
+        return (button as unknown as { _content: Component })._content;
+    }
+
+    /** The button's inner title label. */
+    function faceText(button: Button): string {
+        return (button as unknown as { _text: { getText(): String } })._text.getText().valueOf();
+    }
+
+    /** Live `Component` instances, as the diagnostics counters see them. */
+    function liveComponents(): number {
+        const counters = Diagnostics.counters();
+
+        return counters.componentsConstructed - counters.componentsDestroyed;
+    }
+
+    it('re-setting the current glyph name touches no stylesheet rule and keeps the instance', () => {
+        const btn = new Button({ glyph: 'xmark', text: 'Close' });
+        btn.getElement(true);
+
+        const glyph = btn.getGlyph();
+        sink.writes.length = 0;
+
+        btn.setGlyph('xmark');
+
+        expect(sink.writes.filter(w => w.op === 'ensureStyleRule')).toHaveLength(0);
+        expect(sink.writes.filter(w => w.op === 'deleteStyleRule')).toHaveLength(0);
+        expect(btn.getGlyph()).toBe(glyph);
+    });
+
+    it('setting a different glyph name still swaps and discards the old instance', () => {
+        const btn = new Button({ glyph: 'xmark', text: 'Close' });
+        btn.getElement(true);
+
+        const glyph = btn.getGlyph();
+
+        btn.setGlyph('check');
+
+        expect(btn.getGlyph()).not.toBe(glyph);
+        expect(btn.getGlyph()?.getGlyphName()).toBe('check');
+    });
+
+    it('an option-configured button still renders both its title and its glyph', () => {
+        const btn = new Button({ text: 'Save', glyph: 'check' });
+        btn.getElement(true);
+
+        expect(faceText(btn)).toBe('Save');
+        expect(btn.getGlyph()?.getGlyphName()).toBe('check');
+    });
+
+    it('re-setting the current title reaches the sink not at all', () => {
+        const btn = new Button({ text: 'Save' });
+        btn.getElement(true);
+        sink.writes.length = 0;
+
+        btn.setText('Save');
+
+        expect(sink.writes).toHaveLength(0);
+    });
+
+    it('gives a hidden title its accessible name even though the face is already blank', () => {
+        const btn = new Button({ text: 'Save', showText: false });
+        btn.getElement(true);
+
+        expect(faceText(btn)).toBe('');
+        expect(btn.getAria().getLabel()).toBe('Save');
+    });
+
+    it('reflects the accessible name when setText follows a setShowText(false)', () => {
+        const btn = new Button({ text: 'Save' });
+        btn.getElement(true);
+
+        btn.setShowText(false);
+        btn.setText('Save');
+
+        expect(faceText(btn)).toBe('');
+        expect(btn.getAria().getLabel()).toBe('Save');
+    });
+
+    it('re-setting the current text alignment schedules no layout', () => {
+        const btn = new Button({ text: 'Save' });
+        btn.getElement(true);
+        btn.setTextAlign('left');
+
+        const scheduled = vi.spyOn(btn, 'scheduleLayout');
+
+        btn.setTextAlign('left');
+
+        expect(scheduled).not.toHaveBeenCalled();
+    });
+
+    it('re-anchors the content row when the writing mode changed under an unchanged alignment', () => {
+        const btn = new Button({ text: 'Save' });
+        btn.getElement(true);
+        btn.setTextAlign('left');
+
+        expect(btn.getLayoutConstraints(contentRow(btn))?.anchor).toBe(AnchorType.WEST);
+
+        btn.setWritingMode('sideways-rl');
+        btn.setTextAlign('left');
+
+        expect(btn.getLayoutConstraints(contentRow(btn))?.anchor).toBe(AnchorType.NORTH);
+    });
+
+    it('clearing a description that was never set reaches the sink not at all', () => {
+        const btn = new Button({ text: 'Save' });
+        btn.getElement(true);
+        sink.writes.length = 0;
+
+        btn.clearDescription();
+
+        expect(sink.writes).toHaveLength(0);
+    });
+
+    it('strands neither a component nor a stylesheet rule across a description round trip', () => {
+        const btn = new Button({ text: 'Save' });
+        btn.getElement(true);
+
+        const components = liveComponents();
+        const rules      = _ruleCacheKeys().length;
+
+        btn.setDescription('subtitle');
+        btn.getElement(true);
+        btn.clearDescription();
+
+        expect(btn.getDescription()).toBeNull();
+        expect(liveComponents()).toBe(components);
+        expect(_ruleCacheKeys().length).toBe(rules);
     });
 });

@@ -182,11 +182,17 @@ describe('Component size-change relay', () => {
 
         target.setSize({ width: 300, height: 200 });
 
-        // setSize stays unconditional: it re-writes both axes and re-arms a
-        // layout pass even for an unchanged box. The same-value early return
-        // belongs to the component-setter-guards plan, not this one.
+        // An unchanged box is skipped whole by `setSize`'s same-value early
+        // return — no re-write, no layout re-arm (see
+        // plans/implemented/component-setter-guards.md). A genuine change
+        // below still writes both axes and arms exactly one pass.
         expect(target.getWidth()).toBe(300);
         expect(target.getHeight()).toBe(200);
+        expect(schedule).not.toHaveBeenCalled();
+        expect(geometryWritesSince(sink, start)).toEqual([]);
+
+        target.setSize({ width: 320, height: 210 });
+
         expect(schedule).toHaveBeenCalledTimes(1);
         expect(geometryWritesSince(sink, start)).toEqual(['width', 'height']);
     });
@@ -225,8 +231,10 @@ describe('Component size-change relay', () => {
         });
         target.setSize({ width: 300, height: 200 });
 
+        // Neither the relay nor the setter itself does anything: the box is
+        // unchanged, so `setSize` returns before it can arm a pass.
         expect(calls).toBe(0);
-        expect(schedule).toHaveBeenCalledTimes(1);
+        expect(schedule).not.toHaveBeenCalled();
     });
 
     it('fires exactly once when setSize changes both axes', () => {
@@ -348,6 +356,27 @@ describe('ProgressSpinner overlay size relay', () => {
         target.setSize({ width: 500, height: 260 });
 
         expect(spinner.getWidth()).toBe(500);
+        expect(spinner.getHeight()).toBe(260);
+    });
+
+    it('follows a two-axis setSize on the target', () => {
+        const target  = makeTarget(300, 200);
+        const spinner = new ProgressSpinner(20);
+
+        spinner.showOverlay(target);
+        runQueuedFramesOnce();
+
+        // Insurance for the `setSize` guard specifically (see
+        // plans/implemented/component-setter-guards.md, behaviour 26): the relay
+        // is driven through `setWidth` / `setHeight` everywhere else, so a
+        // regression that stops the two-axis path notifying would otherwise
+        // freeze a shown overlay at its opening size with every test green.
+        target.setSize({ width: 420, height: 260 });
+
+        // Asserted with the frame queue deliberately undrained: the overlay
+        // must already carry the new box, not acquire it on the layout pass
+        // `setSize` arms for the target itself.
+        expect(spinner.getWidth()).toBe(420);
         expect(spinner.getHeight()).toBe(260);
     });
 

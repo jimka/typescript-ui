@@ -1165,13 +1165,28 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setText(text: string): this {
+        const face = this._isShowText() ? text : "";
+
+        // Every observable this setter maintains must already agree, not just
+        // the stored title: `applyOptions` writes `_options.text` before the
+        // content row exists and the constructor then dispatches this with the
+        // same string, so the rendered face and the reflected accessible name
+        // are what tell that first dispatch from a genuine repeat. `showText`
+        // makes both halves load-bearing — a hidden title renders a blank face
+        // either way, and only the accessible name records that it arrived.
+        if (this._options.text === text &&
+            this._text.getText().valueOf() === face &&
+            this.getAria().getLabel() === this._accessibleNameFor(text)) {
+            return this;
+        }
+
         this._options.text = text;
 
         // `_text` is the on-face renderer. The title string lives in
         // `_options.text`; `_text` shows it only when `showText` is true, and
         // renders blank when hidden so the button stays metrically a glyph-only
         // button while the tooltip and accessible name still carry the title.
-        this._text.setText(this._isShowText() ? text : "");
+        this._text.setText(face);
         this.recomputePreferredSize();
         this._rebuildTooltip();
         this._reflectAccessibleName();
@@ -1247,16 +1262,25 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // `applyOptions` during `super()` — before the constructor assigns
         // `_text`. Guard like `setWritingMode` does.
         if (this._text) {
-            this._text.setTextAlign(align);
-
             // CSS text-align only nudges glyphs inside the label's own
             // content-hugging box; to justify the whole glyph+label block
             // within a button wider than its content, re-anchor the content row
             // in the Fit layout along the (possibly rotated) reading axis.
             const constraints = this.getLayoutConstraints(this._content);
+            const anchor      = this._anchorForTextAlign(align);
+
+            // The anchor half of this guard is load-bearing: `setWritingMode`
+            // does not re-derive the content anchor, so the Tab strip flips the
+            // writing mode and then re-calls this with an *unchanged* align on
+            // purpose, to pick the anchor up for the new reading direction.
+            if (this._text.getTextAlign() === align && (!constraints || constraints.anchor === anchor)) {
+                return this;
+            }
+
+            this._text.setTextAlign(align);
 
             if (constraints) {
-                constraints.anchor = this._anchorForTextAlign(align);
+                constraints.anchor = anchor;
                 this.scheduleLayout();
             }
         }
@@ -1400,14 +1424,29 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
 
     /**
      * Removes the subtitle line, if one is present, and re-syncs the
-     * auto-sized preferred size and the hover tooltip.
+     * auto-sized preferred size and the hover tooltip. The removed label is
+     * destroyed, so a caller holding a reference from an earlier
+     * {@link getDescription} must not reuse it across a `clearDescription`
+     * call.
      *
      * @returns This component, for method chaining.
      */
     clearDescription(): this {
+        const outgoing = this._description;
+
+        if (!outgoing) {
+            return this;
+        }
+
         this._description = null;
 
         this._rebuildContentRow();
+
+        // See clearGlyph: the rebuild only detaches, so dispose explicitly or
+        // the label keeps its element, its `#id` rule, its theme subscription
+        // and its entry in the measurement registry.
+        outgoing.dispose();
+
         this._rebuildTooltip();
         this.recomputePreferredSize();
 
@@ -1480,13 +1519,27 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * so any previously reflected label is cleared (e.g. after `setShowText(true)`).
      */
     private _reflectAccessibleName(): void {
-        const title = this._options.text ?? "";
+        const label = this._accessibleNameFor(this._options.text ?? "");
 
-        if (!this._isShowText() && title !== "") {
-            this.getAria().setLabel(title);
+        if (label !== null) {
+            this.getAria().setLabel(label);
         } else {
             this.getAria().clearLabel();
         }
+    }
+
+    /**
+     * The `aria-label` a given title must be reflected into for the current
+     * `showText` state — the one rule {@link _reflectAccessibleName} applies
+     * and `setText`'s same-value guard compares against, held in one place so
+     * the two cannot drift apart.
+     *
+     * @param title - The title the button holds, or is about to hold.
+     *
+     * @returns The label to reflect, or null when the rendered face already supplies the accessible name.
+     */
+    private _accessibleNameFor(title: string): string | null {
+        return (!this._isShowText() && title !== "") ? title : null;
     }
 
     /**
@@ -1782,11 +1835,16 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * visual artifacts at the default 0px spacing. The glyph is a dedicated
      * `ButtonIconGlyph` (not a bare `Glyph`), so every unpinned icon's
      * `minSize`/`maxSize` shares one `.ButtonIconGlyph` CSS rule instead of
-     * each carrying its own. The replaced glyph is destroyed, so a caller
+     * each carrying its own. A replaced glyph is destroyed, so a caller
      * holding a reference from an earlier {@link getGlyph} must not reuse it
-     * across a `setGlyph` call.
+     * across a `setGlyph` call — except when `name` is the glyph already
+     * showing, which is a no-op and keeps the instance.
      */
     setGlyph(name: string): this {
+        if (this._glyph?.getGlyphName() === name) {
+            return this;
+        }
+
         const outgoing = this._glyph;
         const glyph    = new ButtonIconGlyph(name);
         glyph.setPointerEvents("none");

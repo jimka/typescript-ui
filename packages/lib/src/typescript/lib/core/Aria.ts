@@ -752,6 +752,12 @@ export class Aria {
      * @returns This Aria helper, for method chaining.
      */
     clearLabel(): this {
+        // The clear-side twin of `setAttribute`'s own guard: with no cached
+        // entry there is no `aria-label` on the element to remove.
+        if (!this._attributes.has("label")) {
+            return this;
+        }
+
         this._attributes.delete("label");
         this._component.applyAriaAttribute("aria-label", null);
 
