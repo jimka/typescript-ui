@@ -131,3 +131,29 @@ once: the full-document restyle was free at 992 elements and ~195 ms/frame at
 **Revised recommendation:** G13 F08.2 and G12 F06.5 as the certain pair; a
 per-pass size-hint memo as the ambitious one, gated on geometry equality in both
 S1 and S3; G09 re-opened at its staged scope; G10 and G15 dropped.
+
+---
+
+## Two corrections from drafting the accordion plan (2026-09-17)
+
+**1. The accordion arm's win is mostly F08.4, not F08.2.** Investigation while
+planning found that the S3 scene's accordion is **non-resizable**, so the
+resizable seed gate F08.2 — the thing the `accordion.seed` ablation was written
+to bound — is largely not on that scene's path. The measured −3.19 ms and
+−19.9% work come predominantly from **F08.4's duplicate `openContentHeight`**
+call, which the same stub also removed. The number stands; its attribution
+does not. The plan therefore designs for both the resizable and non-resizable
+paths rather than the one the ablation happened to exercise.
+
+**2. "Geometry identical" is weaker than stated for this arm.** `paneWidths()`
+samples `.FileTree`, `.TreeRow`, `.CodeEditor` and `.cm-content` widths plus the
+editor heights — **no accordion section rectangle is probed at all**. For the
+accordion arm the seven matching probes prove the tree and editor panes were
+undisturbed; they do not prove section heights were. The real basis for that
+claim is slice 08's probe E1, which independently showed every section's
+rectangle byte-identical under exactly this stub. A fill-map change would have
+slipped past the harness unseen.
+
+Both corrections point the same way: **an ablation bounds the code it actually
+reaches in the scene it actually runs in.** That is the third time in this
+campaign a number has been right while its attribution was wrong.
