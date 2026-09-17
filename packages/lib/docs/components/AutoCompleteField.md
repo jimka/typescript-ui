@@ -33,6 +33,18 @@ const userPicker = AutoCompleteField({
 });
 ```
 
+Matching runs inside the field itself, over every record the store holds —
+the store's active filters, sort, view, and page are never touched, and no
+network request is made. A store-backed field therefore suggests from the
+records already loaded, not from a fresh server query.
+
+Suggestions are matched over the store's full, unfiltered record set and
+listed in the store's load order — the store's active sort is not applied,
+for the same reason its active filters aren't: a `Table` or `List` sorted or
+filtered elsewhere on screen must not silently change what this field
+suggests, or, once `maxSuggestions` truncates the list, silently change
+*which* records it suggests.
+
 ## AutoCompleteFieldConfig
 
 See [`AutoCompleteFieldConfig`](/api/component/input/type-aliases/AutoCompleteFieldConfig) for the full option list. Highlights:
@@ -40,7 +52,7 @@ See [`AutoCompleteFieldConfig`](/api/component/input/type-aliases/AutoCompleteFi
 | Option | Default | Purpose |
 | --- | --- | --- |
 | `suggestions` | — | Static suggestion array. |
-| `store` | — | Data store; mutually exclusive with `suggestions`. |
+| `store` | — | Data store; mutually exclusive with `suggestions`. Read-only — the field never filters or reloads it. |
 | `displayField` | — | Required when `store` is set; field name used for display text. |
 | `minChars` | `1` | Minimum characters typed before suggestions show. |
 | `debounceMs` | `200` | Debounce on each keystroke. |

@@ -3,7 +3,9 @@
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
+import type { TimerId } from "~/core/DOM.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
+import { FilterDescriptor, matchesFilter } from "~/data/FilterDescriptor.js";
 import { TextField, TextFieldOptions } from "~/component/input/TextField.js";
 import { AutoCompleteDropdown } from "~/component/input/AutoCompleteDropdown.js";
 import { registerFocusWithinRing } from "~/component/input/focusRing.js";
@@ -32,6 +34,14 @@ const AUTOCOMPLETE_FIELD_CHROME: Partial<TextFieldOptions> = {
     borderRadius: "0",
     outline:      "none",
 };
+
+// Grace period between the inner field losing focus and the dropdown hiding.
+// A mouse-down on a suggestion blurs the input before the dropdown's own click
+// handler runs, so hiding on the blur itself would pull the row out from under
+// the cursor and swallow the pick. Carried over unchanged from the inline
+// literal it replaces: it has to outlast a browser's blur → mouseup → click
+// sequence, and it is invisible to a user who is genuinely leaving the field.
+const BLUR_HIDE_DELAY_MS = 150;
 
 /**
  * The inner text field of an {@link AutoCompleteField} — borderless and
@@ -70,7 +80,7 @@ export type AutoCompleteMatchMode =
 export interface AutoCompleteFieldOptions extends AbstractInputOptions {
     /** Static list of suggestion strings. */
     suggestions?    : string[];
-    /** Data store used when suggestions come from a remote/in-memory store. */
+    /** Data store used when suggestions come from an in-memory store. */
     store?          : AbstractStore;
     /** The store field name whose value is shown as the suggestion text. Required when `store` is set. */
     displayField?   : string;
@@ -123,7 +133,8 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
 
     private _textField     : TextField;
     private _dropdown      : AutoCompleteDropdown;
-    private _debounceTimer : ReturnType<typeof setTimeout> | null = null;
+    private _debounceTimer : TimerId | null = null;
+    private _blurTimer     : TimerId | null = null;
     private _selectBag     : ListenerBag<AutoCompleteFieldEvent> = this.registerListenerBag(new ListenerBag<AutoCompleteFieldEvent>());
 
     /**
@@ -356,7 +367,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     /**
      * Configures the field to query suggestions from a store.
      *
-     * @param store - The data store to filter.
+     * @param store - The data store to read suggestions from.
      * @param displayField - The field name on each record to use as the suggestion text.
      */
     setStore(store: AbstractStore, displayField: string): this {
@@ -491,7 +502,8 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
      */
     private onInput(): void {
         if (this._debounceTimer !== null) {
-            clearTimeout(this._debounceTimer);
+            DOM.sink.clearTimeout(this._debounceTimer);
+            this._debounceTimer = null;
         }
 
         const minChars = this._options.minChars ?? 1;
@@ -503,10 +515,10 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
             return;
         }
 
-        this._debounceTimer = setTimeout(
-            () => this.querySuggestions(current),
-            this._options.debounceMs ?? 200
-        );
+        this._debounceTimer = DOM.sink.setTimeout(() => {
+            this._debounceTimer = null;
+            this.querySuggestions(current);
+        }, this._options.debounceMs ?? 200);
     }
 
     /**
@@ -565,7 +577,14 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
      * The delay allows a click on a dropdown item to fire before the dropdown is hidden.
      */
     private onBlur(): void {
-        setTimeout(() => {
+        if (this._blurTimer !== null) {
+            DOM.sink.clearTimeout(this._blurTimer);
+            this._blurTimer = null;
+        }
+
+        this._blurTimer = DOM.sink.setTimeout(() => {
+            this._blurTimer = null;
+
             const active = DOM.source.getActiveElement();
             const dropEl = this._dropdown.getElement();
 
@@ -574,7 +593,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
             }
 
             this._dropdown.hide();
-        }, 150);
+        }, BLUR_HIDE_DELAY_MS);
     }
 
     /**
@@ -633,17 +652,24 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
                                 ? 'startsWith'
                                 : 'contains';
 
-            store.clearFilter();
-            store.filterBy({
+            const descriptor: FilterDescriptor = {
                 type: filterType,
                 field: displayField,
                 value: query,
                 caseSensitive,
-            });
+            };
 
-            const results = store.getRecords()
-                .map(r => String(r.get(displayField)))
-                .slice(0, maxSuggestions);
+            const results: string[] = [];
+
+            for (const record of store.getAll()) {
+                if (results.length >= maxSuggestions) {
+                    break;
+                }
+
+                if (matchesFilter(record, descriptor)) {
+                    results.push(String(record.get(displayField)));
+                }
+            }
 
             if (query === this.getValue()) {
                 this.showSuggestions(results);
@@ -706,12 +732,22 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     }
 
     /**
-     * Disposes the dropdown, then runs the inherited teardown. `_dropdown`
-     * is a `Position.FIXED` overlay (see ARCHITECTURE.md's carve-out for
-     * `AnimatedDropdown`), never a registered child, so `super.destructor()`'s
-     * recursion cannot reach it on its own.
+     * Cancels both pending timers, disposes the dropdown, then runs the
+     * inherited teardown. `_dropdown` is a `Position.FIXED` overlay (see
+     * ARCHITECTURE.md's carve-out for `AnimatedDropdown`), never a registered
+     * child, so `super.destructor()`'s recursion cannot reach it on its own.
      */
     protected destructor(): void {
+        if (this._debounceTimer !== null) {
+            DOM.sink.clearTimeout(this._debounceTimer);
+            this._debounceTimer = null;
+        }
+
+        if (this._blurTimer !== null) {
+            DOM.sink.clearTimeout(this._blurTimer);
+            this._blurTimer = null;
+        }
+
         this._dropdown.dispose();
 
         super.destructor();
