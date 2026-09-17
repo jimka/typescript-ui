@@ -126,6 +126,17 @@ describe('Slider getters and deprecated aliases', () => {
         expect(new Slider().getOrientation()).toBe('horizontal');
     });
 
+    it('no longer exposes the inert showTicks accessors', () => {
+        // The option and both accessors were removed: nothing ever rendered
+        // ticks, and no caller anywhere set them. The `{ showTicks: true }`
+        // half of the break is a compile error, which typecheck:test — not a
+        // runtime assertion — is what catches.
+        const s = new Slider() as any;
+
+        expect(s.isShowTicks).toBeUndefined();
+        expect(s.setShowTicks).toBeUndefined();
+    });
+
 });
 
 describe('Slider orientation sizing', () => {

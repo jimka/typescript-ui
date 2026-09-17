@@ -23,7 +23,6 @@ export interface SliderOptions extends AbstractInputOptions {
     step?:        number;
     largeStep?:   number;
     orientation?: AxisOrientation;
-    showTicks?:   boolean;
     /**
      * Construction-time listener bag — the declarative form of `on()`. Adds the
      * slider's `action` shorthand to the inherited `change` / `binding`.
@@ -221,7 +220,6 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         if (options.step        !== undefined) this._options.step        = options.step;
         if (options.largeStep   !== undefined) this._options.largeStep   = options.largeStep;
         if (options.orientation !== undefined) this._options.orientation = options.orientation;
-        if (options.showTicks   !== undefined) this._options.showTicks   = options.showTicks;
         if (options.enabled     !== undefined) this._options.enabled     = options.enabled;
         if (options.readOnly    !== undefined) this._options.readOnly    = options.readOnly;
 
@@ -379,30 +377,6 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         this._options.orientation = orientation;
         this.applyOrientation(orientation);
         this.applyValue(this.getValue());
-
-        return this;
-    }
-
-    /**
-     * Returns whether tick marks are visible. (Not yet rendered visually —
-     * the field is reserved for a follow-up.)
-     *
-     * @returns `true` when ticks should be shown.
-     */
-    isShowTicks(): boolean {
-        return this._options.showTicks ?? false;
-    }
-
-    /**
-     * Toggles tick mark visibility. Reserved option; no visual side effect
-     * yet.
-     *
-     * @param value - `true` to show ticks.
-     *
-     * @returns This component, for method chaining.
-     */
-    setShowTicks(value: boolean): this {
-        this._options.showTicks = value;
 
         return this;
     }
