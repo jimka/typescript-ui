@@ -310,3 +310,51 @@ delivered 17% instead, because it guarded **side effects** rather than writes.
 *does* — layout scheduling, invalidation, child rebuilds — not just what it
 writes. Several remaining groups carry the same rule-write reasoning and should
 be re-justified on that basis before being scheduled.
+
+## The rule-write finding (2026-09-17, late) — G04's demotion was wrong
+
+Measured on the `same-value-style-write-filter` branch, S1 (2×2 editor grid,
+2387 elements, dock-h gutter), same session, two rounds:
+
+| S1 arm | r1 | r2 |
+|---|---:|---:|
+| plain | 107.5 | 107.5 |
+| `abl=norules` — drop every stylesheet-rule write | **58.4** | **57.7** |
+| `abl=nosamewrites` — skip only same-value writes | 57.3 | 59.0 |
+
+Dropping *all* rule writes and skipping *only same-value* writes save the same
+~49 ms, so **every rule write on this drag path is a same-value write, and the
+two of them per frame cost 46% of the frame.** Attribution (`skip@` counters on
+the filtered build) puts it exactly: `width` ×2 on a rule, plus `minHeight`
+×2.2 inline, and nothing else — 4.2 writes per frame.
+
+The mechanism is the one this document's cost model opens with: a
+stylesheet-rule mutation forces a **full-document restyle** in WebKitGTK even
+when the written value is identical.
+
+**The earlier demotion of G04 (recorded above, then withdrawn on the
+instrumentation defect, and now withdrawn again on evidence) rested on running
+`norules` against S3** — 992 elements, one rule write — which measured 1.3 ms.
+A full-document restyle scales with document size, so S3 is the scenario least
+able to show the effect. **Never bound a document-wide cost on the small
+scenario.** S1 has 2.4× the nodes and twice the writes.
+
+**Why the shipped filter does not catch them.** `writeDeclaration` skips only
+on a *non-empty* read, so that a removal always reaches the declaration — the
+carve-out that prevents `Component.clearBackground()` silently failing, since a
+shorthand serialises empty whenever its longhands are not all present. These
+two writes are empty-to-empty: clearing `width` and `minHeight` on rules that
+never had them. Both are **longhands**, where an empty read does mean absent.
+
+**The available refinement:** permit the empty-read skip for longhand
+properties, keeping the carve-out for the shorthand set (`background`,
+`margin`, `padding`, `border`, `border<Side>`, `borderRadius`, `borderColor`,
+`outline`, `transition`, `font`, `flex`, `grid`, `animation`, …). Bounded,
+testable against the 912-case differential the filter already ships with, and
+worth ~49 ms/frame on S1 if the ablation holds — the largest measured
+opportunity in this campaign.
+
+**Caveat:** ~49 ms is an ablation ceiling. Unlike the earlier one, it is
+corroborated two ways (`norules` and `nosamewrites` agree) and the ablated page
+reaches identical geometry — editor heights travel 963 → 1188 px in both arms —
+so it is not a broken-page artefact.
