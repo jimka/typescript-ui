@@ -81,3 +81,53 @@ ran, and which three waves of JS-side work have not changed. The only remaining
 lever of a different order is the `resizeMode: "live" | "outline"` flag: not
 doing live layout during a drag at all. That is a feature, not a perf group, and
 it would dominate every number in this table.
+
+---
+
+## Re-scored on work avoided, not milliseconds (user's criterion)
+
+The verdict above ranks purely by ms on one machine. That is the wrong bar on
+its own: work avoided is worth something regardless, provided render time does
+not regress and the code does not get much more complex. Re-scoring the same
+sweep on counted calls per frame — the ablation's own memo/skip/stub counters
+excluded, so this is real work removed, not bookkeeping:
+
+| item | Δwork/frame | Δms | geometry | verdict under the work bar |
+|---|---|---|---|---|
+| G13 F08.2 `accordion.seed` | **−19.9%** (2036 → 1632) | −3.19 | identical, 7/7 probes | **clear win on both axes** |
+| G12 F06.5 `border.region-memo` | **−20.6%** (2969 → 2356) | −1.72 | identical | **win on both axes** |
+| size-hint memo (`size.memo`) | **−65.2%** S1, **−46.3%** S3 | +0.58 / −1.29 | **S1 differs**, S3 identical 7/7 | **largest work lever in the campaign** — but unsafe at per-*frame* granularity |
+| G09 `skip.unchanged` | **−34.3%** (2969 → 1949) | +0.46 | **differs** | big work lever, breaks layout as tested |
+| G12 F06.4 `split.recalc-gate` | −14.8% | −0.44 | **differs** | moderate, unsafe as tested |
+| G10 `clamp.once` | **0.0%** (2036 → 2036) | −1.00 | identical | **not a win on either axis** |
+
+**Three corrections to the ms-only verdict above.**
+
+1. **G09's ceiling is not zero.** Skipping 8 unchanged commits per frame avoids
+   **1,020 calls per frame** downstream — a third of all counted work. The
+   +0.46 ms said the frame does not care; the work count says the machine does
+   less. G09's staged opt-in is precisely the mechanism that could make it
+   geometry-safe, so it returns to the table rather than being dropped.
+2. **G10 `clamp.once` is the one to actually drop.** It removes exactly zero
+   calls — it re-arranges resolution without avoiding any — and its −1.00 ms
+   sits inside a 1.04 ms drift. It fails the work bar and the time bar.
+3. **The size-hint memo is the biggest lever measured anywhere in this
+   campaign** at −65% of S1's per-frame calls, and it preserved geometry
+   exactly on S3 (all seven probes) while breaking it on S1. That pattern fits
+   multi-pass layout: a frame runs several layout passes, and sizes legitimately
+   change between them, so a memo keyed on the *frame* serves stale values in
+   the deeper S1 tree while the single-editor S3 scene never notices. The fix is
+   per-**pass** granularity, not per-frame — which is a real design question,
+   not a one-line change.
+
+**Why work avoided matters here even at flat ms.** These counts scale with the
+component tree: 2,969 calls per frame at 2,387 elements. Preferred-size
+resolution is recursive — each call descends its subtree — so the total is
+roughly O(n·depth) uncached against O(n) memoised. The saving therefore grows
+with document size, which is exactly where this codebase has already been bitten
+once: the full-document restyle was free at 992 elements and ~195 ms/frame at
+21k. A flat result at Loom's scale is not a flat result at every scale.
+
+**Revised recommendation:** G13 F08.2 and G12 F06.5 as the certain pair; a
+per-pass size-hint memo as the ambitious one, gated on geometry equality in both
+S1 and S3; G09 re-opened at its staged scope; G10 and G15 dropped.
