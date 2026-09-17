@@ -49,6 +49,18 @@ interface RegionContentSnapshot {
 }
 
 /**
+ * One region's size reports as computed once for the current layout pass, so
+ * the rest of that pass re-serves them instead of walking the region's subtree
+ * again. A field left `undefined` has not been asked for yet this pass; `null`
+ * is a real answer, meaning the region reports no size.
+ */
+interface RegionSizeRecord {
+    preferred?: Size | null;
+    min?:       Size | null;
+    max?:       Size | null;
+}
+
+/**
  * Construction-time options for the {@link Border} layout manager.
  *
  * @remarks Re-exported as `BorderLayoutOptions` from the package barrel to
@@ -125,6 +137,17 @@ class Border extends LayoutManager implements FocusRevealer {
     // Presence of an entry also doubles as "this region's content is
     // undisplayed".
     private readonly _undisplayedRegionContent: Map<Placement, RegionContentSnapshot> = new Map();
+
+    // Each region's size reports as already computed for one layout pass, keyed
+    // by placement, alongside the number of the pass they belong to (0 when the
+    // record holds nothing). A region is asked for its numbers once per pass and
+    // the rest of that pass re-serves them; everything the border computes
+    // locally around them — the perimeter, the spacing, the collapsed flags, the
+    // displayed-or-absent test — is still re-read on every call, so only the
+    // recursive subtree walk is saved. Dropped as `doLayout` returns and
+    // wherever the border's own state behind a region read changes.
+    private readonly _regionSizes: Map<Placement, RegionSizeRecord> = new Map();
+    private _regionSizesPass: number = 0;
 
     // Edges whose content was just redisplayed and are awaiting a scroll
     // restore once their post-expand geometry is final. Drained by
@@ -210,6 +233,11 @@ class Border extends LayoutManager implements FocusRevealer {
             this._collapsible.set(constraints.placement, constraints.collapsible ?? false);
         }
 
+        // A slot now holds a different component (or the same one under a new
+        // collapsible flag), so anything this pass already recorded for it
+        // answers a question that no longer applies.
+        this.invalidateRegionSizes();
+
         return super.setLayoutConstraints(component, constraints);
     }
 
@@ -239,6 +267,10 @@ class Border extends LayoutManager implements FocusRevealer {
         } else if (this._centerComponent === component) {
             this._centerComponent = null;
         }
+
+        // An emptied slot contributes nothing; a recorded answer for it would
+        // still be handed out for the rest of this pass.
+        this.invalidateRegionSizes();
 
         return super.delLayoutConstraints(component);
     }
@@ -449,6 +481,10 @@ class Border extends LayoutManager implements FocusRevealer {
         for (const child of displayed) {
             child.setDisplayed(false);
         }
+
+        // From here the region answers from its snapshot, which anything this
+        // pass recorded live for it predates.
+        this.invalidateRegionSizes();
     }
 
     /**
@@ -484,6 +520,10 @@ class Border extends LayoutManager implements FocusRevealer {
         component.setContentClampSuspended(false);
 
         this._pendingScrollRestore.add(placement);
+
+        // The region answers live again from here, so the snapshot anything
+        // this pass recorded for it came from is no longer its truth.
+        this.invalidateRegionSizes();
     }
 
     /**
@@ -521,6 +561,10 @@ class Border extends LayoutManager implements FocusRevealer {
         this._undisplayedRegionContent.get(placement)?.component.setContentClampSuspended(false);
         this._undisplayedRegionContent.delete(placement);
         this._pendingScrollRestore.delete(placement);
+
+        // Whichever of the snapshot or the live report was recorded for this
+        // edge, the other one answers from here.
+        this.invalidateRegionSizes();
     }
 
     /**
@@ -583,18 +627,75 @@ class Border extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * The record a region's size reports for the layout pass currently running
+     * belong in, resetting it when the pass has moved on since it was last
+     * written.
+     *
+     * @param placement - The region's edge.
+     * @returns The region's record for this pass, or `null` when no layout
+     *   pass is running — outside a pass arbitrary code can mutate a region's
+     *   subtree between two reads, so nothing may be recorded or re-served.
+     */
+    private passRecord(placement: Placement): RegionSizeRecord | null {
+        const pass = Component.currentLayoutPass();
+
+        if (pass === 0) {
+            return null;
+        }
+
+        if (this._regionSizesPass !== pass) {
+            this._regionSizesPass = pass;
+            this._regionSizes.clear();
+        }
+
+        let record = this._regionSizes.get(placement);
+
+        if (!record) {
+            record = {};
+            this._regionSizes.set(placement, record);
+        }
+
+        return record;
+    }
+
+    /** Drops every region's recorded size reports, so the next read is live again. */
+    private invalidateRegionSizes(): void {
+        this._regionSizesPass = 0;
+        this._regionSizes.clear();
+    }
+
+    /**
      * A region's preferred size as the border reports and lays it out: the
-     * snapshot taken before its content was undisplayed while that holds,
-     * else live.
+     * value already recorded for this layout pass while that holds, else the
+     * snapshot taken before its content was undisplayed while *that* holds,
+     * else live — and recorded for the rest of the pass.
+     *
+     * @remarks CENTER reads through here too, which is equivalent only because
+     * `_undisplayedRegionContent` can never hold a CENTER entry (the centre is
+     * never collapsible, and `reconcileCollapsedRegions` sweeps the four edges
+     * only). A change that lets the centre region collapse has to revisit that.
      *
      * @param placement - The region's edge.
      * @param component - The region's component.
      * @returns The region's preferred size, or `null` when it reports none.
      */
     private regionPreferredSize(placement: Placement, component: Component): Size | null {
-        const snapshot = this._undisplayedRegionContent.get(placement);
+        const record = this.passRecord(placement);
 
-        return snapshot !== undefined ? snapshot.preferred : component.getPreferredSize();
+        // `undefined` is "not asked yet"; a recorded `null` is a real answer
+        // and must be re-served rather than recomputed.
+        if (record && record.preferred !== undefined) {
+            return record.preferred;
+        }
+
+        const snapshot = this._undisplayedRegionContent.get(placement);
+        const size     = snapshot !== undefined ? snapshot.preferred : component.getPreferredSize();
+
+        if (record) {
+            record.preferred = size;
+        }
+
+        return size;
     }
 
     /**
@@ -605,9 +706,20 @@ class Border extends LayoutManager implements FocusRevealer {
      * @returns The region's minimum size, or `null` when it reports none.
      */
     private regionMinSize(placement: Placement, component: Component): Size | null {
-        const snapshot = this._undisplayedRegionContent.get(placement);
+        const record = this.passRecord(placement);
 
-        return snapshot !== undefined ? snapshot.min : component.getMinSize();
+        if (record && record.min !== undefined) {
+            return record.min;
+        }
+
+        const snapshot = this._undisplayedRegionContent.get(placement);
+        const size     = snapshot !== undefined ? snapshot.min : component.getMinSize();
+
+        if (record) {
+            record.min = size;
+        }
+
+        return size;
     }
 
     /**
@@ -621,9 +733,20 @@ class Border extends LayoutManager implements FocusRevealer {
      * @returns The region's maximum size, or `null` when it reports none.
      */
     private regionMaxSize(placement: Placement, component: Component): Size | null {
-        const snapshot = this._undisplayedRegionContent.get(placement);
+        const record = this.passRecord(placement);
 
-        return snapshot !== undefined ? snapshot.max : component.getMaxSize();
+        if (record && record.max !== undefined) {
+            return record.max;
+        }
+
+        const snapshot = this._undisplayedRegionContent.get(placement);
+        const size     = snapshot !== undefined ? snapshot.max : component.getMaxSize();
+
+        if (record) {
+            record.max = size;
+        }
+
+        return size;
     }
 
     /**
@@ -906,7 +1029,7 @@ class Border extends LayoutManager implements FocusRevealer {
         }
 
         if (center) {
-            let size = center.getPreferredSize();
+            let size = this.regionPreferredSize(Placement.CENTER, center);
             if (size) {
                 middleWidth += size.width;
                 middleHeight = Math.max(middleHeight, size.height);
@@ -985,7 +1108,7 @@ class Border extends LayoutManager implements FocusRevealer {
         }
 
         if (center) {
-            let size = center.getMinSize();
+            let size = this.regionMinSize(Placement.CENTER, center);
             if (size) {
                 middleWidth += size.width;
                 middleHeight = Math.max(middleHeight, size.height);
@@ -1094,18 +1217,18 @@ class Border extends LayoutManager implements FocusRevealer {
         }
 
         // A non-displayed region is treated as absent (laidOut → null), so it
-        // contributes no min-size to the total. CENTER is never collapsible,
-        // so it alone reads live.
-        const west  = this.laidOut(this._westComponent);
-        const east  = this.laidOut(this._eastComponent);
-        const north = this.laidOut(this._northComponent);
-        const south = this.laidOut(this._southComponent);
+        // contributes no min-size to the total.
+        const west   = this.laidOut(this._westComponent);
+        const east   = this.laidOut(this._eastComponent);
+        const north  = this.laidOut(this._northComponent);
+        const south  = this.laidOut(this._southComponent);
+        const center = this.laidOut(this._centerComponent);
 
-        const westMin   = west  ? this.regionMinSize(Placement.WEST,  west)  : undefined;
-        const centerMin = this.laidOut(this._centerComponent)?.getMinSize();
-        const eastMin   = east  ? this.regionMinSize(Placement.EAST,  east)  : undefined;
-        const northMin  = north ? this.regionMinSize(Placement.NORTH, north) : undefined;
-        const southMin  = south ? this.regionMinSize(Placement.SOUTH, south) : undefined;
+        const westMin   = west   ? this.regionMinSize(Placement.WEST,   west)   : undefined;
+        const centerMin = center ? this.regionMinSize(Placement.CENTER, center) : undefined;
+        const eastMin   = east   ? this.regionMinSize(Placement.EAST,   east)   : undefined;
+        const northMin  = north  ? this.regionMinSize(Placement.NORTH,  north)  : undefined;
+        const southMin  = south  ? this.regionMinSize(Placement.SOUTH,  south)  : undefined;
 
         // Horizontal regions contribute to width; vertical regions contribute
         // to height. Each inter-region gap is added only when both adjacent
@@ -1195,262 +1318,271 @@ class Border extends LayoutManager implements FocusRevealer {
             return;
         }
 
-        let containerInsets = container.getContentInsets();
+        try {
+            let containerInsets = container.getContentInsets();
 
-        // Universal scroll: see HBox.doLayout for the rationale. Inflates the
-        // working size to the children's combined minSize on the axes the
-        // host has marked as overflowing.
-        containerSize = this.inflateForOverflow(containerSize);
+            // Universal scroll: see HBox.doLayout for the rationale. Inflates the
+            // working size to the children's combined minSize on the axes the
+            // host has marked as overflowing.
+            containerSize = this.inflateForOverflow(containerSize);
 
-        // Resolve every region through laidOut so a non-displayed region is
-        // treated as absent: skipped for placement and excluded from the
-        // adjacent-region gap checks below — the same outcome as an empty slot.
-        // This also keeps the preferred-size throws below unreachable for a
-        // hidden region (its `if` block is skipped entirely).
-        const north  = this.laidOut(this._northComponent);
-        const south  = this.laidOut(this._southComponent);
-        const west   = this.laidOut(this._westComponent);
-        const center = this.laidOut(this._centerComponent);
-        const east   = this.laidOut(this._eastComponent);
+            // Resolve every region through laidOut so a non-displayed region is
+            // treated as absent: skipped for placement and excluded from the
+            // adjacent-region gap checks below — the same outcome as an empty slot.
+            // This also keeps the preferred-size throws below unreachable for a
+            // hidden region (its `if` block is skipped entirely).
+            const north  = this.laidOut(this._northComponent);
+            const south  = this.laidOut(this._southComponent);
+            const west   = this.laidOut(this._westComponent);
+            const center = this.laidOut(this._centerComponent);
+            const east   = this.laidOut(this._eastComponent);
 
-        // A non-displayed region is skipped by its `if (region)` block below, so
-        // its clip frame is never re-driven or cleared there. Clear it now on the
-        // raw component so a `display: none` region doesn't orphan its
-        // `overflow: hidden` wrapper around the hidden element; clearClipFrame is
-        // a no-op when no frame is active.
-        this.clearSkippedRegionFrames(north, south, west, center, east);
+            // A non-displayed region is skipped by its `if (region)` block below, so
+            // its clip frame is never re-driven or cleared there. Clear it now on the
+            // raw component so a `display: none` region doesn't orphan its
+            // `overflow: hidden` wrapper around the hidden element; clearClipFrame is
+            // a no-op when no frame is active.
+            this.clearSkippedRegionFrames(north, south, west, center, east);
 
-        let width = containerSize.width;
-        let height = containerSize.height;
-        let centerX;
-        let middleY;
-        let centerWidth;
-        let middleHeight;
+            let width = containerSize.width;
+            let height = containerSize.height;
+            let centerX;
+            let middleY;
+            let centerWidth;
+            let middleHeight;
 
-        if (north) {
-            let constraints = this.getLayoutConstraints(north);
-            if (!constraints) {
-                throw new Error("Unable to determine layout constraints for north component.");
-            }
+            if (north) {
+                let constraints = this.getLayoutConstraints(north);
+                if (!constraints) {
+                    throw new Error("Unable to determine layout constraints for north component.");
+                }
 
-            let preferredSize = this.regionPreferredSize(Placement.NORTH, north);
-            if (!preferredSize) {
-                throw new Error("Unable to determine preferred size for north component.");
-            }
+                let preferredSize = this.regionPreferredSize(Placement.NORTH, north);
+                if (!preferredSize) {
+                    throw new Error("Unable to determine preferred size for north component.");
+                }
 
-            const northExtent = this.flooredMainExtent(preferredSize.height, this.regionMinSize(Placement.NORTH, north), true);
-            let northHeight = this.regionExtent(Placement.NORTH, northExtent);
-            let northX = constraints.ignoreParentInsets ? 0 : containerInsets.getLeft();
-            let northY = constraints.ignoreParentInsets ? 0 : containerInsets.getTop();
-            let northWidth = width + (constraints.ignoreParentInsets ? containerInsets.getLeft() + containerInsets.getRight() : 0);
-            let northInsetTop = constraints.ignoreParentInsets ? containerInsets.getTop() : 0;
+                const northExtent = this.flooredMainExtent(preferredSize.height, this.regionMinSize(Placement.NORTH, north), true);
+                let northHeight = this.regionExtent(Placement.NORTH, northExtent);
+                let northX = constraints.ignoreParentInsets ? 0 : containerInsets.getLeft();
+                let northY = constraints.ignoreParentInsets ? 0 : containerInsets.getTop();
+                let northWidth = width + (constraints.ignoreParentInsets ? containerInsets.getLeft() + containerInsets.getRight() : 0);
+                let northInsetTop = constraints.ignoreParentInsets ? containerInsets.getTop() : 0;
 
-            middleY = northHeight + northInsetTop;
+                middleY = northHeight + northInsetTop;
 
-            // The region is always laid out at full size and clipped toward its
-            // outer edge while collapsed; the centre and gutter use the strip
-            // extent (`middleY`) so they grow into the reclaimed space. While a
-            // collapse animates, every region takes the unframed path so its own
-            // `left`/`top` can be interpolated (a frame would freeze it).
-            if (this.isRegionCollapsible(Placement.NORTH) || this._collapsing) {
-                this.placeRegionBox(
-                    Placement.NORTH,
-                    north,
-                    northX,
-                    northY,
-                    northWidth,
-                    northExtent + northInsetTop
-                );
-                north.clearClipFrame();
-                this.applyRegionClip(north, Placement.NORTH);
+                // The region is always laid out at full size and clipped toward its
+                // outer edge while collapsed; the centre and gutter use the strip
+                // extent (`middleY`) so they grow into the reclaimed space. While a
+                // collapse animates, every region takes the unframed path so its own
+                // `left`/`top` can be interpolated (a frame would freeze it).
+                if (this.isRegionCollapsible(Placement.NORTH) || this._collapsing) {
+                    this.placeRegionBox(
+                        Placement.NORTH,
+                        north,
+                        northX,
+                        northY,
+                        northWidth,
+                        northExtent + northInsetTop
+                    );
+                    north.clearClipFrame();
+                    this.applyRegionClip(north, Placement.NORTH);
+                } else {
+                    // Containment via clip frame: an oversized or mis-sized region's
+                    // own box is clipped to its allocated rect rather than bleeding
+                    // over the adjacent region. Clear any stale clip-path left by a
+                    // prior collapsible state (setRegionCollapsible can flip a region
+                    // at runtime); this branch never calls applyRegionClip.
+                    north.setClipPath(null);
+                    north.setClipFrame(northX, northY, northWidth, northExtent + northInsetTop);
+                    this.commitBounds(north, 0, 0, northWidth, northExtent + northInsetTop);
+                }
+
+                this.updateRegionGutter(Placement.NORTH, northX, northY, northWidth, middleY);
+
+                if (west || center || east || south) {
+                    middleY += this._spacing;
+                }
             } else {
-                // Containment via clip frame: an oversized or mis-sized region's
-                // own box is clipped to its allocated rect rather than bleeding
-                // over the adjacent region. Clear any stale clip-path left by a
-                // prior collapsible state (setRegionCollapsible can flip a region
-                // at runtime); this branch never calls applyRegionClip.
-                north.setClipPath(null);
-                north.setClipFrame(northX, northY, northWidth, northExtent + northInsetTop);
-                this.commitBounds(north, 0, 0, northWidth, northExtent + northInsetTop);
+                middleY = 0;
             }
 
-            this.updateRegionGutter(Placement.NORTH, northX, northY, northWidth, middleY);
+            middleHeight = height - middleY;
+            if (south) {
+                let preferredSize = this.regionPreferredSize(Placement.SOUTH, south);
+                if (!preferredSize) {
+                    throw new Error("Unable to determine preferred size for south component.");
+                }
 
-            if (west || center || east || south) {
-                middleY += this._spacing;
+                const southExtent = this.flooredMainExtent(preferredSize.height, this.regionMinSize(Placement.SOUTH, south), true);
+                let southHeight = this.regionExtent(Placement.SOUTH, southExtent);
+                let southX = containerInsets.getLeft();
+                let southY = containerInsets.getTop() + height - southHeight;
+
+                middleHeight -= this._spacing;
+                middleHeight -= southHeight;
+
+                // Full-size and bottom-anchored, clipped toward the bottom while
+                // collapsed; the gutter uses the strip rect (`southY`/`southHeight`).
+                let southFullY = containerInsets.getTop() + height - southExtent;
+
+                if (this.isRegionCollapsible(Placement.SOUTH) || this._collapsing) {
+                    this.placeRegionBox(
+                        Placement.SOUTH,
+                        south,
+                        southX,
+                        southFullY,
+                        width,
+                        southExtent
+                    );
+                    south.clearClipFrame();
+                    this.applyRegionClip(south, Placement.SOUTH);
+                } else {
+                    // Containment via clip frame; see the NORTH branch. The
+                    // non-collapsible full position equals the strip position, so the
+                    // element commits at (0, 0) inside the frame.
+                    south.setClipPath(null);
+                    south.setClipFrame(southX, southFullY, width, southExtent);
+                    this.commitBounds(south, 0, 0, width, southExtent);
+                }
+
+                this.updateRegionGutter(Placement.SOUTH, southX, southY, width, southHeight);
             }
-        } else {
-            middleY = 0;
-        }
 
-        middleHeight = height - middleY;
-        if (south) {
-            let preferredSize = this.regionPreferredSize(Placement.SOUTH, south);
-            if (!preferredSize) {
-                throw new Error("Unable to determine preferred size for south component.");
+            // Reserve east's preferred width up front so west can be clamped
+            // to avoid overlapping east when west.preferred + east.preferred
+            // exceeds the container width (e.g. a Window header where the
+            // title is wider than the available space between the icon and
+            // the trailing buttons).
+            let eastPreferredWidth = 0;
+            let eastFullWidth = 0;
+            if (east) {
+                let eastPreferred = this.regionPreferredSize(Placement.EAST, east);
+                if (!eastPreferred) {
+                    throw new Error("Unable to determine preferred size for east component.");
+                }
+                const eastExtent = this.flooredMainExtent(eastPreferred.width, this.regionMinSize(Placement.EAST, east), false);
+                eastFullWidth = eastExtent;
+                eastPreferredWidth = this.regionExtent(Placement.EAST, eastExtent);
             }
 
-            const southExtent = this.flooredMainExtent(preferredSize.height, this.regionMinSize(Placement.SOUTH, south), true);
-            let southHeight = this.regionExtent(Placement.SOUTH, southExtent);
-            let southX = containerInsets.getLeft();
-            let southY = containerInsets.getTop() + height - southHeight;
+            if (west) {
+                let preferredSize = this.regionPreferredSize(Placement.WEST, west);
+                if (!preferredSize) {
+                    throw new Error("Unable to determine preferred size for west component.");
+                }
 
-            middleHeight -= this._spacing;
-            middleHeight -= southHeight;
+                const westExtent = this.flooredMainExtent(preferredSize.width, this.regionMinSize(Placement.WEST, west), false);
+                let westWidth = Math.max(0, Math.min(this.regionExtent(Placement.WEST, westExtent), width - eastPreferredWidth));
+                let westX = containerInsets.getLeft();
+                let westY = containerInsets.getTop() + middleY;
 
-            // Full-size and bottom-anchored, clipped toward the bottom while
-            // collapsed; the gutter uses the strip rect (`southY`/`southHeight`).
-            let southFullY = containerInsets.getTop() + height - southExtent;
+                centerX = westWidth;
 
-            if (this.isRegionCollapsible(Placement.SOUTH) || this._collapsing) {
-                this.placeRegionBox(
-                    Placement.SOUTH,
-                    south,
-                    southX,
-                    southFullY,
-                    width,
-                    southExtent
-                );
-                south.clearClipFrame();
-                this.applyRegionClip(south, Placement.SOUTH);
+                // Full-size and left-anchored, clipped toward the left while
+                // collapsed; the centre and gutter use the strip extent (`westWidth`).
+                let westFullWidth = Math.max(0, Math.min(westExtent, width - eastPreferredWidth));
+
+                if (this.isRegionCollapsible(Placement.WEST) || this._collapsing) {
+                    this.placeRegionBox(
+                        Placement.WEST,
+                        west,
+                        westX,
+                        westY,
+                        westFullWidth,
+                        middleHeight
+                    );
+                    west.clearClipFrame();
+                    this.applyRegionClip(west, Placement.WEST);
+                } else {
+                    // Containment via clip frame; see the NORTH branch. The
+                    // non-collapsible full width equals the strip width, so the
+                    // element commits at (0, 0) inside the frame.
+                    west.setClipPath(null);
+                    west.setClipFrame(westX, westY, westFullWidth, middleHeight);
+                    this.commitBounds(west, 0, 0, westFullWidth, middleHeight);
+                }
+
+                this.updateRegionGutter(Placement.WEST, westX, westY, westWidth, middleHeight);
+
+                if (center) {
+                    centerX += this._spacing;
+                }
             } else {
-                // Containment via clip frame; see the NORTH branch. The
-                // non-collapsible full position equals the strip position, so the
-                // element commits at (0, 0) inside the frame.
-                south.setClipPath(null);
-                south.setClipFrame(southX, southFullY, width, southExtent);
-                this.commitBounds(south, 0, 0, width, southExtent);
+                centerX = 0;
             }
 
-            this.updateRegionGutter(Placement.SOUTH, southX, southY, width, southHeight);
-        }
+            centerWidth = width - centerX;
 
-        // Reserve east's preferred width up front so west can be clamped
-        // to avoid overlapping east when west.preferred + east.preferred
-        // exceeds the container width (e.g. a Window header where the
-        // title is wider than the available space between the icon and
-        // the trailing buttons).
-        let eastPreferredWidth = 0;
-        let eastFullWidth = 0;
-        if (east) {
-            let eastPreferred = this.regionPreferredSize(Placement.EAST, east);
-            if (!eastPreferred) {
-                throw new Error("Unable to determine preferred size for east component.");
+            if (east) {
+                centerWidth -= this._spacing;
+                centerWidth -= eastPreferredWidth;
+
+                let eastX = containerInsets.getLeft() + width - eastPreferredWidth;
+                let eastY = containerInsets.getTop() + middleY;
+
+                // Full-size and right-anchored, clipped toward the right while
+                // collapsed; the gutter uses the strip rect (`eastX`/`eastPreferredWidth`).
+                let eastFullX = containerInsets.getLeft() + width - eastFullWidth;
+
+                if (this.isRegionCollapsible(Placement.EAST) || this._collapsing) {
+                    this.placeRegionBox(
+                        Placement.EAST,
+                        east,
+                        eastFullX,
+                        eastY,
+                        eastFullWidth,
+                        middleHeight
+                    );
+                    east.clearClipFrame();
+                    this.applyRegionClip(east, Placement.EAST);
+                } else {
+                    // Containment via clip frame; see the NORTH branch. The
+                    // non-collapsible full position equals the strip position, so the
+                    // element commits at (0, 0) inside the frame.
+                    east.setClipPath(null);
+                    east.setClipFrame(eastFullX, eastY, eastFullWidth, middleHeight);
+                    this.commitBounds(east, 0, 0, eastFullWidth, middleHeight);
+                }
+
+                this.updateRegionGutter(Placement.EAST, eastX, eastY, eastPreferredWidth, middleHeight);
             }
-            const eastExtent = this.flooredMainExtent(eastPreferred.width, this.regionMinSize(Placement.EAST, east), false);
-            eastFullWidth = eastExtent;
-            eastPreferredWidth = this.regionExtent(Placement.EAST, eastExtent);
-        }
-
-        if (west) {
-            let preferredSize = this.regionPreferredSize(Placement.WEST, west);
-            if (!preferredSize) {
-                throw new Error("Unable to determine preferred size for west component.");
-            }
-
-            const westExtent = this.flooredMainExtent(preferredSize.width, this.regionMinSize(Placement.WEST, west), false);
-            let westWidth = Math.max(0, Math.min(this.regionExtent(Placement.WEST, westExtent), width - eastPreferredWidth));
-            let westX = containerInsets.getLeft();
-            let westY = containerInsets.getTop() + middleY;
-
-            centerX = westWidth;
-
-            // Full-size and left-anchored, clipped toward the left while
-            // collapsed; the centre and gutter use the strip extent (`westWidth`).
-            let westFullWidth = Math.max(0, Math.min(westExtent, width - eastPreferredWidth));
-
-            if (this.isRegionCollapsible(Placement.WEST) || this._collapsing) {
-                this.placeRegionBox(
-                    Placement.WEST,
-                    west,
-                    westX,
-                    westY,
-                    westFullWidth,
-                    middleHeight
-                );
-                west.clearClipFrame();
-                this.applyRegionClip(west, Placement.WEST);
-            } else {
-                // Containment via clip frame; see the NORTH branch. The
-                // non-collapsible full width equals the strip width, so the
-                // element commits at (0, 0) inside the frame.
-                west.setClipPath(null);
-                west.setClipFrame(westX, westY, westFullWidth, middleHeight);
-                this.commitBounds(west, 0, 0, westFullWidth, middleHeight);
-            }
-
-            this.updateRegionGutter(Placement.WEST, westX, westY, westWidth, middleHeight);
 
             if (center) {
-                centerX += this._spacing;
-            }
-        } else {
-            centerX = 0;
-        }
+                let centerLeft = containerInsets.getLeft() + centerX;
+                let centerTop = containerInsets.getTop() + middleY;
 
-        centerWidth = width - centerX;
-
-        if (east) {
-            centerWidth -= this._spacing;
-            centerWidth -= eastPreferredWidth;
-
-            let eastX = containerInsets.getLeft() + width - eastPreferredWidth;
-            let eastY = containerInsets.getTop() + middleY;
-
-            // Full-size and right-anchored, clipped toward the right while
-            // collapsed; the gutter uses the strip rect (`eastX`/`eastPreferredWidth`).
-            let eastFullX = containerInsets.getLeft() + width - eastFullWidth;
-
-            if (this.isRegionCollapsible(Placement.EAST) || this._collapsing) {
-                this.placeRegionBox(
-                    Placement.EAST,
-                    east,
-                    eastFullX,
-                    eastY,
-                    eastFullWidth,
-                    middleHeight
-                );
-                east.clearClipFrame();
-                this.applyRegionClip(east, Placement.EAST);
-            } else {
-                // Containment via clip frame; see the NORTH branch. The
-                // non-collapsible full position equals the strip position, so the
-                // element commits at (0, 0) inside the frame.
-                east.setClipPath(null);
-                east.setClipFrame(eastFullX, eastY, eastFullWidth, middleHeight);
-                this.commitBounds(east, 0, 0, eastFullWidth, middleHeight);
+                // CENTER is never collapsible, so outside an animation it always
+                // takes the frame branch and never carries a clip-path. Its rect is
+                // its own allocation (it can never overflow it), so the frame is a
+                // perfect-fit sheath that clips nothing — keeping one code path for
+                // the non-collapsible case. While a collapse animates, CENTER grows
+                // into the reclaimed space, so it takes the unframed path so its own
+                // `left`/`top` can be interpolated.
+                if (this._collapsing) {
+                    this.placeComponent(center, centerLeft, centerTop, centerWidth, middleHeight, FillType.BOTH);
+                    center.clearClipFrame();
+                } else {
+                    center.setClipFrame(centerLeft, centerTop, centerWidth, middleHeight);
+                    this.commitBounds(center, 0, 0, centerWidth, middleHeight);
+                }
             }
 
-            this.updateRegionGutter(Placement.EAST, eastX, eastY, eastPreferredWidth, middleHeight);
-        }
-
-        if (center) {
-            let centerLeft = containerInsets.getLeft() + centerX;
-            let centerTop = containerInsets.getTop() + middleY;
-
-            // CENTER is never collapsible, so outside an animation it always
-            // takes the frame branch and never carries a clip-path. Its rect is
-            // its own allocation (it can never overflow it), so the frame is a
-            // perfect-fit sheath that clips nothing — keeping one code path for
-            // the non-collapsible case. While a collapse animates, CENTER grows
-            // into the reclaimed space, so it takes the unframed path so its own
-            // `left`/`top` can be interpolated.
-            if (this._collapsing) {
-                this.placeComponent(center, centerLeft, centerTop, centerWidth, middleHeight, FillType.BOTH);
-                center.clearClipFrame();
-            } else {
-                center.setClipFrame(centerLeft, centerTop, centerWidth, middleHeight);
-                this.commitBounds(center, 0, 0, centerWidth, middleHeight);
+            // Every settle path ends in this layout (a settling animation's
+            // `onIdle` calls it), so the idle tail is where a collapsed region's
+            // content leaves the render tree and an expanded one's scroll comes
+            // back. Never mid-animation, when children must stay displayed for
+            // the reveal.
+            if (!this._collapsing) {
+                this.reconcileCollapsedRegions();
             }
-        }
-
-        // Every settle path ends in this layout (a settling animation's
-        // `onIdle` calls it), so the idle tail is where a collapsed region's
-        // content leaves the render tree and an expanded one's scroll comes
-        // back. Never mid-animation, when children must stay displayed for
-        // the reveal.
-        if (!this._collapsing) {
-            this.reconcileCollapsedRegions();
+        } finally {
+            // Committing a region lays its subtree out, which can change what
+            // it reports next, so nothing recorded during this layout may
+            // outlive it. In a `finally` because the throws above are caught by
+            // the batched layout flush, which then carries on into the next
+            // component — a record left behind would answer the following pass.
+            this.invalidateRegionSizes();
         }
     }
 
@@ -1558,6 +1690,7 @@ class Border extends LayoutManager implements FocusRevealer {
 
         this._undisplayedRegionContent.clear();
         this._pendingScrollRestore.clear();
+        this.invalidateRegionSizes();
 
         super.detach();
 
