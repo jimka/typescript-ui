@@ -505,3 +505,101 @@ All paths are from the repository root. Steps 2-13 are independent edits; run `n
 [^filtercell]: The review's risk list for this group warned that `packages/lib/tests/component/table/HeaderColumnWindow.test.ts:1030-1038` spies `FilterCell.prototype.setOperators` with `toHaveBeenLastCalledWith` and would need re-pointing at the rendered face. That risk belongs to the plan that adds an identity guard to `FilterCell.setOperators`, not to this one — this plan does not touch `component/table/cell/Filter.ts`, and the spy asserts the arguments a call received, which no guard elsewhere changes. The test is left alone.
 
 [^baseline-expectation]: The baseline's own analysis says the 2×2 dock-gutter scenario's 104 ms/frame is engine-side restyle, layout and paint of an existing tree, not JS write churn — its only per-frame writes are the twelve same-valued `data-insets` attributes this plan removes. So expect the counter to reach 0 and the millisecond figure to move by less than the ~1.5 ms noise floor. That is the correct outcome, not a failed change: the guards' value is in the paths the four baseline scenarios do not exercise — a filter keystroke, a `timeupdate` on a playing video, a validated form, an overflowing tab strip — where the same setters mutate the stylesheet several times per event.
+
+---
+
+## Implementation Notes
+
+Deviations from the plan as written, and the reasons for them.
+
+### `Button.setText`'s guard needed a third comparison
+
+The plan's two-part guard (`_options.text` **and** the rendered face) satisfies
+behaviour 18's first sentence but breaks its second. With `showText: false` the
+face is blank *either way*, so on `new Button({ text: "Save", showText: false })`
+the constructor's late `setText("Save")` finds `_options.text === "Save"` and
+`_text.getText() === ""` — both halves match, the guard fires, and
+`_reflectAccessibleName()` never runs. Every option-configured glyph-only button
+would ship with no accessible name, and no existing test covers it;
+[`setShowText`](packages/lib/src/typescript/lib/component/button/Button.ts) does
+not reflect on its own, so the `setText` call is the only thing that ever did.
+
+The guard therefore compares a third observable — the reflected `aria-label`.
+To avoid stating `_reflectAccessibleName`'s rule twice, that rule is extracted
+into a private `_accessibleNameFor(title)` which both the reflector and the
+guard read. Two tests in `Button.test.ts` pin it: the construction path
+(`{ text, showText: false }` still gets its `aria-label`) and the runtime path
+(`setShowText(false)` then `setText(sameTitle)`, which behaviour 18 names
+outright).
+
+This is the same hazard class as the `setTextAlign`/`TabBar` case the plan
+already documents: a caller that depends on a call which *looks* redundant.
+
+### Behaviour 22's test went into the existing `Aria.test.ts`
+
+*Files to Create / Modify / Delete* assigns no file to the `Aria.clearLabel`
+behaviour. `packages/lib/tests/core/Aria.test.ts` already carries an
+*unchanged writes are skipped* block covering `setAttribute`'s own guard, so
+the clear-side twin was added there rather than in a new file.
+
+### Two `progress-indicator-resize-relay` tests were rewritten
+
+`ProgressSpinner.test.ts`'s *leaves the geometry setters untouched when nothing
+is listening* and *does not fire when setSize commits the box it already had*
+both asserted `scheduleLayout` was called once for an unchanged `setSize`, with
+a comment naming this plan as the owner of the change. Both now assert the
+early return instead; the first also exercises a changed size, so the
+`geometryWritesSince` probe is still shown to be able to see a real write.
+
+Behaviour 26's own probe asserts the overlay's box with the frame queue
+deliberately undrained, rather than asserting no frame was armed: unlike
+`setWidth`, a changed `setSize` does arm a layout pass for the target itself,
+so "synchronously" can only mean "before any frame runs".
+
+### `npm run docs:api` still reports its 14 pre-existing warnings
+
+*Verification* item 10 asks for zero. The run reports `Found 0 errors and 14
+warnings`, the same 14 the branch started with (`SpatialNavigation`,
+`rankInDirection`, `FieldDecorator`, `MarkdownViewer`, `MarkdownEditor`). None
+names `getClipPath`, `getDescription` or any symbol this plan touched, so the
+plan's real requirement — introduce no new warning — is met.
+
+### Manual checks 27-30 were not run in a browser
+
+This environment has no `npm run dev` surface. Each of the four has an
+automated proxy that was run and passes, and which would fail on the regression
+the manual check is looking for:
+
+| Manual check | Automated proxy |
+|---|---|
+| 27 Vertical tab justification | `Button.test.ts` — *re-anchors the content row when the writing mode changed under an unchanged alignment* |
+| 28 Tab keyboard nav | `RovingTabIndex.test.ts` — *re-activating the already-active item writes nothing and moves no focus* plus *still focuses ... for a genuinely different index* |
+| 29 Validation outline | `ComponentSetterGuards.test.ts` — *still paints and removes the outline across a FieldDecorator error round trip* |
+| 30 Flat button border width | `ComponentSetterGuards.test.ts` — *still writes the CSS when only the cached spec already matches* and *leaves the cached border widths intact across a guarded repeat* |
+
+The visual confirmations themselves remain outstanding.
+
+### Engine measurement (Verification item 12) was not run
+
+It needs a real WebKitGTK Timeline recording against the Loom scenarios, which
+this environment cannot produce. It is also no longer the decision it was
+framed as: the premise that same-valued stylesheet-rule writes dominate drag
+frames was measured false on 2026-09-17 — ablating every rule write on the one
+Loom scenario that has them saved 1.3 ms, inside the control's own noise. The
+guards are kept for correctness and write hygiene, as *Notes*
+[^baseline-expectation] already anticipated; no design was bent toward the
+millisecond win.
+
+### A pre-existing suite flake, root-caused and left alone
+
+Some full-suite runs report one unhandled rejection — `DOM handle N is not
+registered`, thrown from `TableHeader.onStoreFilterChange` →
+`positionColumnCells` → `applyBounds` against the *production* sink, attributed
+to `tests/component/table/ColumnFilterRow.test.ts`. It is not these guards: it
+reproduces on this branch's own start point (`feature/progress-indicator-resize-relay`)
+at a comparable rate — one run in five there, against roughly two in thirteen
+here. `AbstractStore.applyFilterChange` returns `applyView().then(...)`, and a
+table test that mutates filters without awaiting that promise can land its
+`.then` after its own `afterEach(DOM.reset())`, by which point every handle it
+holds has been released. Pre-existing test hygiene in the table suites, out of
+this plan's files, recorded here so it is not lost.
