@@ -1,5 +1,42 @@
 # Baseline measurement — unmodified master, before any wave-0/1/2 work
 
+> ## ⚠ INSTRUMENTATION DEFECT, found 2026-09-17 — read before trusting any write count below
+>
+> **The harness's write counters are blind to most style writes, and the
+> `norules` ablation does not suppress them.** `DOM.writeDeclaration`
+> ([core/DOM.ts:304-316](packages/lib/src/typescript/lib/core/DOM.ts#L304))
+> routes a key containing `-` through `setProperty`/`removeProperty`, but any
+> other key through **direct property assignment** (`style[key] = value`). The
+> harness hooks only `setProperty`, `removeProperty` and `cssText`
+> (`qa-harness.ts:547-585`), and `dropRuleWrites` suppresses only those same
+> three. The library writes camelCase keys throughout — `clipPath`,
+> `backgroundColor`, `transform`, `animationPlayState`, `contain`, `padding` —
+> so **essentially every single-property style write is invisible to the
+> counters and survives `norules`**.
+>
+> **Consequences for this document:**
+> - Every `dragWrites` counter below undercounts by an unknown amount. "S1
+>   writes nothing but 12 same-value attributes" is a statement about what the
+>   harness can see, not about what the library does.
+> - **The G04 ablation is invalid as a measure of rule-write cost.** It left
+>   camelCase rule writes in place, including `clipPath` — exactly what G04 and
+>   G12 target. Its 1.3 ms is a lower bound on a subset. **The demotion of G04
+>   recorded below is withdrawn pending a valid measurement.**
+> - Wave 1's mechanism attribution ("the win came from side effects, not
+>   writes") is weakened for the same reason: wave 1 guarded `setClipPath` and
+>   `setBorder`, whose writes were invisible, so part of its win may be the
+>   rule-write elimination this document says did not matter.
+>
+> **Unaffected**, because they rest on end-to-end frame timing rather than
+> counters: the cross-session drift finding, wave 0's no-regression A/B, and
+> wave 1's −17.4% on S3.
+>
+> **To fix:** hook camelCase assignment on `CSSStyleDeclaration.prototype` (a
+> `Proxy`, or `defineProperty` over the CSS property list) in both the counter
+> installer and `dropRuleWrites`, then re-run the G04 ablation and re-read the
+> counters. Until then, treat frame timing as the only trustworthy signal.
+> Analysis in `98-wave2-rejustification.md`, which leads with this.
+
 Taken 2026-09-16, 19:44–19:52 local, machine otherwise idle (the user had
 stepped away; no other work ran on the box).
 
