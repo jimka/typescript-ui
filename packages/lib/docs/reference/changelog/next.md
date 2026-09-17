@@ -49,6 +49,24 @@ page resets to empty.
   a reference from an earlier `getDescription()` must not reuse it across a
   `clearDescription()` call.
 
+- **The DOM seam now skips an inline-style or stylesheet-rule write whose
+  value already matches the declaration it would change**, and skips the
+  whole-rule-body assignment when a batched rule flush merges to the text the
+  rule already carries. A removal of a *shorthand* is never skipped — only a
+  non-empty read can authorise that, because a shorthand reads back empty
+  while its longhands are only partly set. A redundant clear of a box-geometry
+  **longhand** (`width`, `height`, the `min-`/`max-` pairs, the four insets)
+  *is* skipped, because a longhand reports its own value however it was set,
+  so an empty read proves absence. That case carries the measured win: two
+  such writes per frame — one on a rule, one inline — were forcing
+  full-document restyles worth **46% of the frame** on a 2387-element editor
+  grid, which a same-session A/B took from 107.4 to 59.9 ms/frame. The comparison is made against the live
+  declaration being written, so no cache can drift out of step with an inline
+  `style` wipe or with two `StyleRule` instances sharing one underlying rule. There is
+  no consumer-facing consequence: the resulting declaration is identical
+  either way, and no signature moves — what changes is how much restyle work
+  the engine is handed per frame.
+
 ### Components
 
 - **`CellEditorPool.release()` now takes the cell that is releasing the

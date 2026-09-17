@@ -300,19 +300,100 @@ export function _handleRegistrySize(): number {
  * A hyphenated key is either a custom property (`--foo`) or a standard
  * kebab-case name (`background-color`); both go through `setProperty` /
  * `removeProperty`. Only camelCase keys work through the indexed accessor.
+ *
+ * A write of a *value* the declaration already holds is skipped: the
+ * comparison is against the very declaration about to be mutated, read live,
+ * so nothing has to invalidate a cache when an inline `style` attribute is
+ * wiped or when two `StyleRule` instances share one `CSSStyleRule`. Reading a
+ * specified value off a declaration resolves no style and forces no layout,
+ * unlike `getComputedStyle`.
+ *
+ * An *empty read never authorises a skip*, so a removal — spelled `null` or
+ * `""`, both of which clear the property — always reaches the declaration. An
+ * empty read does not mean the property is absent: a shorthand serialises to
+ * the empty string whenever its longhands are not all present, so `background`
+ * reads `""` on a declaration holding `background-color: red`, while writing
+ * `background` clears that longhand. Skipping on an empty read would therefore
+ * leave behind what a removal was meant to clear. Only a non-empty read proves
+ * the property is declared.
+ *
+ * Only the value is compared. Both read paths drop a declaration's
+ * `!important` priority, so a future write that passes a priority to
+ * `setProperty` must extend the comparison to `getPropertyPriority` — the
+ * library writes no priorities today. An engine that re-serialises a value
+ * (`translate3d(1px,2px,0)` to `translate3d(1px, 2px, 0px)`) makes the
+ * comparison fail and the write happen, which is the safe direction: a skip
+ * needs the declaration to already hold the exact string being written.
  */
+/**
+ * Box-geometry longhands, in both spellings, for which an *empty* read proves
+ * the property is absent.
+ *
+ * `writeDeclaration` otherwise refuses to skip on an empty read, because a
+ * shorthand serialises empty whenever its longhands are not all present —
+ * `background` reads `""` on a declaration holding `background-color: red`,
+ * while writing `background` clears that longhand, so skipping there would
+ * leave behind what a removal was meant to clear. A longhand has no such
+ * ambiguity: `getPropertyValue` reflects its value however it was set, so an
+ * empty read means genuinely unset and re-clearing it is a no-op.
+ *
+ * This matters out of proportion to its size. Clearing a longhand that was
+ * never set is invisible to the DOM but not to the engine: on a stylesheet
+ * rule it forces a full-document restyle in WebKitGTK even though nothing
+ * changes. Two such writes per frame — `width` on a rule and `minHeight`
+ * inline — measured **46% of the frame** on a 2387-element editor grid
+ * (107.5 → 58 ms/frame, 2026-09-17).
+ *
+ * The list is an allowlist rather than a shorthand denylist on purpose: a
+ * property missing from here costs a redundant write, whereas a shorthand
+ * wrongly admitted costs a silently skipped removal. It is safe to extend with
+ * any property confirmed to be a longhand.
+ */
+const EMPTY_SKIP_SAFE = new Set([
+    "width", "height",
+    "minWidth", "min-width", "minHeight", "min-height",
+    "maxWidth", "max-width", "maxHeight", "max-height",
+    "top", "right", "bottom", "left",
+]);
+
 function writeDeclaration(style: CSSStyleDeclaration, key: string, value: string | null): void {
     if (key.includes("-")) {
+        const current = style.getPropertyValue(key);
+
+        // `null` and `""` both spell a removal, and `getPropertyValue` reports
+        // an absent property as `""`, so compare against the resolved write —
+        // comparing against a raw `null` would never match and would defeat the
+        // skip for exactly the removals this exists to elide. An empty read
+        // only authorises a skip for a geometry longhand; see
+        // `EMPTY_SKIP_SAFE`.
+        const next = value ?? "";
+
+        if (current === next && (current !== "" || EMPTY_SKIP_SAFE.has(key))) {
+            return;
+        }
+
         if (value === null) {
             style.removeProperty(key);
         } else {
             style.setProperty(key, value);
         }
-    } else if (value === null) {
-        (style as unknown as Record<string, string>)[key] = "";
-    } else {
-        (style as unknown as Record<string, string>)[key] = value;
+
+        return;
     }
+
+    const indexed = style as unknown as Record<string, string>;
+    const current = indexed[key];
+
+    // `null` and `""` both spell a removal here, so compare against the
+    // resolved write; see `EMPTY_SKIP_SAFE` for why an empty read only
+    // authorises a skip for a geometry longhand.
+    const next = value ?? "";
+
+    if (current === next && (current !== "" || EMPTY_SKIP_SAFE.has(key))) {
+        return;
+    }
+
+    indexed[key] = next;
 }
 
 /**
@@ -1683,13 +1764,21 @@ export class ProductionDOMSink implements DOMSink {
             return;
         }
 
-        scratch.cssText = rule.style.cssText;
+        const before = rule.style.cssText;
+
+        scratch.cssText = before;
 
         for (const key of keys) {
             writeDeclaration(scratch, key, styles[key]);
         }
 
-        rule.style.cssText = scratch.cssText;
+        // The scratch merge is free — it is a detached element. Assigning the
+        // result back is a stylesheet mutation, which in WebKitGTK forces a
+        // full-document restyle whether or not the text changed, so the rule
+        // body is only assigned when the merge actually changed it.
+        if (scratch.cssText !== before) {
+            rule.style.cssText = scratch.cssText;
+        }
     }
 
     /** @inheritDoc */

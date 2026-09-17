@@ -389,3 +389,81 @@ Net: **budget 30-37 ms on S1.** *Verification* step 6 settles the split for real
 [^ab-recipe]: The recipe is `00-baseline.md`'s *The only valid comparison: same-session A/B*. Its correction banner records why: on 2026-09-17 the exact pre-wave-0 build was rebuilt and re-run and came back 8.0% (S1) and 14.2% (S3) slower than its own numbers from the night before — same bytes, same scenarios, same harness. The machine varies between sessions by more than most effects this campaign measures, and comparing against a recorded absolute produced two false regressions before it was caught. `runqa.sh`'s `main` / `wt` switch exists for this, and is how the scroll-strip fix was validated at 220 → 107 ms/frame.
 
 [^forecast]: The arithmetic is in *Addendum: reading the 40.7 ms*. In short: the 40.7 already includes the cost of the comparison, because the ablation performs the same getter read the filter will; it excludes the rule-body `cssText` guard, which the filter adds; and it includes same-value writes made by CodeMirror rather than the library, which the filter cannot reach and which look like roughly 10-15% of S1's same-value population.
+
+---
+
+## Implementation Notes
+
+The code landed as the plan specified — `writeDeclaration` and
+`ProductionDOMSink.setRuleStyles` in `core/DOM.ts`, nothing above the seam
+touched, no signature moved. The notes below record where the run diverged from
+the plan's letter, and what it could not do.
+
+**An empty read never authorises a skip.** This is the one substantive
+departure from the plan's design, forced by a case its hazard analysis does not
+consider: CSS **shorthands**. *Internal Structure* folds `null` into the
+comparison with `const next = value ?? ""`, on the stated grounds that "an
+absent property reads back as the empty value too". That holds for a longhand
+and fails for a shorthand, which serialises to the empty string whenever its
+longhands are not all present — `style.background` reads `""` on a declaration
+holding `background-color: red`, while writing `background` clears that
+longhand. Under the plan's body, `Component.clearBackground()` would have
+stopped clearing `background-color`, and the same hole reached `outline`,
+`borderRadius`, `borderColor`, the four `border<Side>` keys, `margin`,
+`padding` and inline `transition`. `writeDeclaration` therefore skips only on a
+match against a **non-empty** read, which covers both spellings of a removal —
+`null`, and the `""` that `STYLE_WRITERS` forwards verbatim because `??` only
+catches `null` — and restores the pre-change behaviour for every one of them.
+The bulk of the measured saving survives — the same-value traffic the ablation
+named is `top`, `left`, `width`, `height` and `transform` *values* — but not
+necessarily all of it: the ablation wrapped the camelCase setters with a
+`get() === value` test, and the old path spelled `null` as `""`, so
+removals of absent properties were skipped inside the measured 40.7 ms and are
+given back here. How much that is, only step 6's counters can say.
+*Expected Behaviour* rows 3 and 4 are superseded on this one point: a removing
+write to a property the declaration does not hold performs a native set rather
+than being skipped. Row 11 was added to the suite to pin the shorthand case the
+plan left uncovered, in both spellings and on both paths.
+
+**The engine A/B, the counter runs and the manual checks were not run here.**
+*Verification* steps 5, 6 and 7 all drive the MiniBrowser harness or
+`npm run dev`, which open full-screen windows on the user's desktop; the
+implementation ran as a sub-agent and must not launch them. The pre-change
+control arm for step 5 is commit `83b6a2c1` — the plan-add commit, from which
+this branch's only other ancestor is the plan's move into `in-progress/`, so
+the recipe in step 5 builds the pre-change library unchanged. Everything offline was run: the new suite, the full `npm test`, the
+grep invariants, typecheck, lint, `test:lint`, `docs:api` and
+`docs:llms:check`. The harness's `count=1&deepwrites=1` mode that step 6 needs
+is in place as of 2026-09-17, so step 6 can be run as written. Because
+removals are no longer skipped, step 6's `inline.prop.same` residual will also
+carry whatever share of that counter is removing writes, which the plan's
+forecast table did not separate out.
+
+**`countSets` filters by receiver.** The plan's sketch wraps the accessor and
+counts every call. The suite's version additionally counts only assignments
+whose receiver is the declaration under test, because behaviour 9 counts
+`cssText` assignments on a rule's declaration and the seam's detached scratch
+declaration shares that accessor's owning prototype — an unfiltered counter
+would see the scratch's seeding assignment as a rule-body write and the test
+would pass for the wrong reason. The prototype walk itself is the plan's, and
+it is load-bearing: under jsdom the CSS longhands live on
+`CSSStyleProperties.prototype` while `cssText`, `setProperty` and
+`removeProperty` live on `CSSStyleDeclaration.prototype`.
+
+**Two grep invariants now read differently, both benignly.** *Ordered
+Implementation Steps* step 4 expected six hits; it returns eight, because the
+rule-body guard added two *reads* (`const before = rule.style.cssText` and the
+`scratch.cssText !== before` test). The set of terminal write sites is
+unchanged. Step 5 expected zero `!important` matches; it returns one, which is
+the doc-comment sentence *Potential Challenges* asked for, recording that a
+future priority-carrying write must extend the comparison to
+`getPropertyPriority`. The library still writes no priorities.
+
+**`npm run docs:api` finishes with its 14 pre-existing warnings, not zero.**
+*Verification* step 1 asks for zero; the repo has carried these 14 since before
+this branch and they are unrelated to `core/DOM.ts`. The change adds none:
+`writeDeclaration` is module-private and appears in no generated page.
+
+**No demo was added.** The change has no public surface to exercise — it is a
+filter inside the seam's terminal write, and its effect is visible only as
+engine work, which is what *Verification* steps 5 and 6 measure.
