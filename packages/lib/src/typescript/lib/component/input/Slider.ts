@@ -495,43 +495,52 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         const range      = max - min;
         const fraction   = range > 0 ? (this.getValue() - min) / range : 0;
 
-        // doLayout only setX/setY/setSize on the children; their preferredSize
-        // is a hint for parent layouts and never reaches their own DOM. Size
-        // the thumb explicitly so it renders at THUMB_SIZE rather than
-        // collapsing to its 2 × 2 border box.
+        // doLayout only setX/setY/setWidth/setHeight on the children; their
+        // preferredSize is a hint for parent layouts and never reaches their
+        // own DOM. Size the thumb explicitly so it renders at THUMB_SIZE rather
+        // than collapsing to its 2 × 2 border box. Each child reads
+        // position-then-extent, matching `LayoutManager.commitBounds`, and every
+        // write goes through a setter that returns early on an unchanged value,
+        // so a pass resolving the same geometry writes nothing.
         if (horizontal) {
             const trackTop = Math.round((innerHeight - TRACK_THICKNESS) / 2);
             this._track.setX(box.x);
             this._track.setY(box.y + trackTop);
-            this._track.setSize({ width: innerWidth, height: TRACK_THICKNESS });
+            this._track.setWidth(innerWidth);
+            this._track.setHeight(TRACK_THICKNESS);
 
             const activeWidth = Math.round(innerWidth * fraction);
             this._activeTrack.setX(0);
             this._activeTrack.setY(0);
-            this._activeTrack.setSize({ width: activeWidth, height: TRACK_THICKNESS });
+            this._activeTrack.setWidth(activeWidth);
+            this._activeTrack.setHeight(TRACK_THICKNESS);
 
             const thumbX = Math.round((innerWidth - THUMB_SIZE) * fraction);
             const thumbY = Math.round((innerHeight - THUMB_SIZE) / 2);
-            this._thumb.setSize({ width: THUMB_SIZE, height: THUMB_SIZE });
             this._thumb.setX(box.x + thumbX);
             this._thumb.setY(box.y + thumbY);
+            this._thumb.setWidth(THUMB_SIZE);
+            this._thumb.setHeight(THUMB_SIZE);
         } else {
             const trackLeft = Math.round((innerWidth - TRACK_THICKNESS) / 2);
             this._track.setX(box.x + trackLeft);
             this._track.setY(box.y);
-            this._track.setSize({ width: TRACK_THICKNESS, height: innerHeight });
+            this._track.setWidth(TRACK_THICKNESS);
+            this._track.setHeight(innerHeight);
 
             // Vertical slider: zero is at the bottom by convention.
             const activeHeight = Math.round(innerHeight * fraction);
             this._activeTrack.setX(0);
             this._activeTrack.setY(innerHeight - activeHeight);
-            this._activeTrack.setSize({ width: TRACK_THICKNESS, height: activeHeight });
+            this._activeTrack.setWidth(TRACK_THICKNESS);
+            this._activeTrack.setHeight(activeHeight);
 
             const thumbX = Math.round((innerWidth - THUMB_SIZE) / 2);
             const thumbY = Math.round((innerHeight - THUMB_SIZE) * (1 - fraction));
-            this._thumb.setSize({ width: THUMB_SIZE, height: THUMB_SIZE });
             this._thumb.setX(box.x + thumbX);
             this._thumb.setY(box.y + thumbY);
+            this._thumb.setWidth(THUMB_SIZE);
+            this._thumb.setHeight(THUMB_SIZE);
         }
 
         return this;

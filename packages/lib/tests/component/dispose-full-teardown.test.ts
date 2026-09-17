@@ -32,6 +32,7 @@ import { Image } from '~/component/display/Image';
 import { Video } from '~/component/display/Video';
 import { VideoPlayer } from '~/component/display/VideoPlayer';
 import { Canvas } from '~/component/display/Canvas';
+import { ProgressSpinner } from '~/component/display/ProgressSpinner';
 import { MenuItem } from '~/component/container/MenuItem';
 import { LineChart } from '~/component/chart/LineChart';
 import { ChartLegend } from '~/component/chart/ChartLegend';
@@ -130,6 +131,10 @@ const REGISTRY: Array<{
         // `clearGlyph` dispose the glyph they replace or remove — the
         // balance is now zero like every other row.
     },
+    // Declares a destructor to drop the overlay subscription a showing
+    // spinner holds on its target; a bare inline spinner takes the same
+    // path, where `hideOverlay` is a no-op.
+    { name: 'ProgressSpinner', covers: ['ProgressSpinner'], make: () => new ProgressSpinner(20) },
     { name: 'MenuItem',      covers: ['MenuItem'], make: () => new MenuItem({ text: 'A' }, () => {}, () => {}) },
     { name: 'AbstractChart (via LineChart)', covers: ['AbstractChart'], make: () => new LineChart({}) },
     { name: 'AbstractCanvasSurface (via Canvas)', covers: ['AbstractCanvasSurface'], make: () => new Canvas() },

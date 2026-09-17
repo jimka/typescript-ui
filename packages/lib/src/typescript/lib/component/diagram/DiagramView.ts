@@ -807,9 +807,10 @@ class DiagramView extends Panel<DiagramViewOptions> {
         }
 
         // `showOverlay` is a no-op once shown, so the explicit `doLayout` is what
-        // re-sizes a showing overlay after a viewport resize: the spinner is
-        // mounted by a raw DOM append, so it is not in this view's laid-out set
-        // and nothing else ever lays it out.
+        // sizes the overlay on the pass where a view that had no size when its
+        // pass started finally gets one — the spinner is mounted by a raw DOM
+        // append, so it is in no parent's laid-out set. Every later resize is
+        // covered by the size-change relay `showOverlay` subscribed to.
         this._busySpinner.showOverlay(this);
         this._busySpinner.doLayout();
     }

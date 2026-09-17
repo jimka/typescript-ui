@@ -564,6 +564,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _dirtyDescendantCount  : number                      = 0;
     private readonly _dirtyListeners: ListenerBag<"dirtychange">  =
         this.registerListenerBag(new ListenerBag<"dirtychange">());
+    // Size observers are rare — one per shown overlay — while components are
+    // not, so this bag stays null until a first `onSizeChange` creates it,
+    // rather than costing every instance an allocation the way
+    // `_dirtyListeners` above does. A plain initializer, not `declare`: no
+    // setter `applyOptions` dispatches ever writes it.
+    private _sizeListeners         : ListenerBag<"sizechange"> | null = null;
     // Bound once per instance so `wireChild`/`unwireChild` can add/remove the
     // exact same reference on a child's own `_dirtyListeners`.
     private readonly _handleChildDirtyChange = (dirty: boolean): void => {
@@ -2512,6 +2518,43 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Registers a listener for a change to this component's committed width or
+     * height. Fired once per axis that actually changes, so a laid-out resize —
+     * which writes the two axes separately — delivers one call per changed
+     * axis; a move fires nothing, since the event is about extent, not
+     * position.
+     *
+     * @param listener - Called with the committed width and height.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks A listener runs mid-commit, so for a two-axis resize it sees the
+     * box as it stands after the axis that fired and must be safe to run twice.
+     * A listener that resizes the very component it is observing re-enters the
+     * setter it was fired from; that is the caller's bug, not a case this
+     * guards.
+     */
+    onSizeChange(listener: (width: number, height: number) => void): this {
+        this._sizeListeners ??= this.registerListenerBag(new ListenerBag<"sizechange">());
+        this._sizeListeners.add("sizechange", listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a listener registered with {@link onSizeChange}.
+     *
+     * @param listener - The exact listener reference to remove.
+     *
+     * @returns This component, for method chaining.
+     */
+    offSizeChange(listener: (width: number, height: number) => void): this {
+        this._sizeListeners?.remove("sizechange", listener);
+
+        return this;
+    }
+
+    /**
      * Sets this component's own dirty flag. For a subclass that holds
      * uncommitted edits — a text editor, an input field, a form — to report
      * itself dirty. A component's descendants are folded into its own
@@ -2545,6 +2588,20 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (after !== before) {
             this._dirtyListeners.fire("dirtychange", after);
         }
+    }
+
+    /**
+     * Fires `"sizechange"` with the box as it stands, for the size setters to
+     * call once they have committed a genuinely new extent. Dispatches straight
+     * through the private listener bag rather than a `protected emit(...)`, for
+     * the reason `_fireDirtyChangeIfFlipped` above spells out. Listeners run
+     * mid-commit — before the DOM write and before the component's own layout
+     * pass — so one that resizes this component re-enters the setter it was
+     * fired from. The bag is null until a first `onSizeChange` creates it, so an
+     * unobserved component pays one null check per committed axis.
+     */
+    private notifySizeChange(): void {
+        this._sizeListeners?.fire("sizechange", this._width, this._height);
     }
 
     /**
@@ -3954,8 +4011,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const width  = this.clampWidth(size.width);
         const height = this.clampHeight(size.height);
 
+        const changed = this._width !== width || this._height !== height;
+
         this._width = width;
         this._height = height;
+
+        if (changed) {
+            this.notifySizeChange();
+        }
 
         let element = this.getElement();
         if (!element) {
@@ -4095,6 +4158,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this._width = width;
+
+        this.notifySizeChange();
 
         let element = this.getElement();
         if (!element) {
@@ -4244,6 +4309,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this._height = height;
+
+        this.notifySizeChange();
 
         let element = this.getElement();
         if (!element) {
