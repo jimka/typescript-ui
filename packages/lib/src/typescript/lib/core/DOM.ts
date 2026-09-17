@@ -300,19 +300,59 @@ export function _handleRegistrySize(): number {
  * A hyphenated key is either a custom property (`--foo`) or a standard
  * kebab-case name (`background-color`); both go through `setProperty` /
  * `removeProperty`. Only camelCase keys work through the indexed accessor.
+ *
+ * A write of a *value* the declaration already holds is skipped: the
+ * comparison is against the very declaration about to be mutated, read live,
+ * so nothing has to invalidate a cache when an inline `style` attribute is
+ * wiped or when two `StyleRule` instances share one `CSSStyleRule`. Reading a
+ * specified value off a declaration resolves no style and forces no layout,
+ * unlike `getComputedStyle`.
+ *
+ * An *empty read never authorises a skip*, so a removal — spelled `null` or
+ * `""`, both of which clear the property — always reaches the declaration. An
+ * empty read does not mean the property is absent: a shorthand serialises to
+ * the empty string whenever its longhands are not all present, so `background`
+ * reads `""` on a declaration holding `background-color: red`, while writing
+ * `background` clears that longhand. Skipping on an empty read would therefore
+ * leave behind what a removal was meant to clear. Only a non-empty read proves
+ * the property is declared.
+ *
+ * Only the value is compared. Both read paths drop a declaration's
+ * `!important` priority, so a future write that passes a priority to
+ * `setProperty` must extend the comparison to `getPropertyPriority` — the
+ * library writes no priorities today. An engine that re-serialises a value
+ * (`translate3d(1px,2px,0)` to `translate3d(1px, 2px, 0px)`) makes the
+ * comparison fail and the write happen, which is the safe direction: a skip
+ * needs the declaration to already hold the exact string being written.
  */
 function writeDeclaration(style: CSSStyleDeclaration, key: string, value: string | null): void {
     if (key.includes("-")) {
+        const current = style.getPropertyValue(key);
+
+        // A match on a non-empty read is the only skip; `current === value`
+        // with a non-empty `current` rules out both spellings of a removal.
+        if (current !== "" && current === value) {
+            return;
+        }
+
         if (value === null) {
             style.removeProperty(key);
         } else {
             style.setProperty(key, value);
         }
-    } else if (value === null) {
-        (style as unknown as Record<string, string>)[key] = "";
-    } else {
-        (style as unknown as Record<string, string>)[key] = value;
+
+        return;
     }
+
+    const indexed = style as unknown as Record<string, string>;
+    const current = indexed[key];
+
+    if (current !== "" && current === value) {
+        return;
+    }
+
+    // `null` means "remove", which this path expresses as the empty value.
+    indexed[key] = value ?? "";
 }
 
 /**
@@ -1683,13 +1723,21 @@ export class ProductionDOMSink implements DOMSink {
             return;
         }
 
-        scratch.cssText = rule.style.cssText;
+        const before = rule.style.cssText;
+
+        scratch.cssText = before;
 
         for (const key of keys) {
             writeDeclaration(scratch, key, styles[key]);
         }
 
-        rule.style.cssText = scratch.cssText;
+        // The scratch merge is free — it is a detached element. Assigning the
+        // result back is a stylesheet mutation, which in WebKitGTK forces a
+        // full-document restyle whether or not the text changed, so the rule
+        // body is only assigned when the merge actually changed it.
+        if (scratch.cssText !== before) {
+            rule.style.cssText = scratch.cssText;
+        }
     }
 
     /** @inheritDoc */
