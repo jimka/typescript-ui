@@ -5,8 +5,10 @@ rendered as a rotating arc. Two usage modes:
 
 - **Inline** — instantiate, size, and add to any parent.
 - **Overlay** — call `showOverlay(target)` to mount the spinner as an absolute
-  overlay on a target component, complete with a semi-transparent backdrop.
-  `hideOverlay()` removes it.
+  overlay on a target component, complete with a semi-transparent backdrop. The
+  overlay follows the target's size for as long as it is shown, so a resize
+  keeps the backdrop flush with the target. `hideOverlay()` removes it and drops
+  the subscription.
 
 <!-- demo: progressspinner-basic -->
 > **Live demo** — two `ProgressSpinner`s at different sizes, spinning via
@@ -45,7 +47,7 @@ Calling `setSpinnerSize(n)` later disables theme tracking; the spinner stays at 
 | Method | Purpose |
 | --- | --- |
 | `getSpinnerSize()` / `setSpinnerSize(n)` | Read / write the diameter in pixels. |
-| `showOverlay(target)` | Mount as an absolute overlay over `target`. |
+| `showOverlay(target)` | Mount as an absolute overlay over `target`, following its size until `hideOverlay()`. |
 | `hideOverlay()` | Remove the overlay. |
 | `isOverlay()` | Whether the spinner is currently mounted as an overlay. |
 

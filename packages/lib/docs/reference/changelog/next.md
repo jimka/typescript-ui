@@ -149,6 +149,19 @@ page resets to empty.
   worth chasing: the component the console error names kept its old geometry
   for that frame.
 
+- **`Component` gains `onSizeChange(listener)` / `offSizeChange(listener)`**,
+  fired whenever a component commits a new width or height. It is the second
+  custom event to live directly on the base class, alongside the existing
+  `onDirtyChange` pair, and takes the same dedicated-`onX`/`offX` shape for the
+  same reason: a base-class `on`/`emit` overload is unreachable on a subclass
+  that declares its own. The event fires once per axis that actually changes,
+  so a laid-out resize — which commits the two axes separately — delivers one
+  call per changed axis and a listener must be safe to run twice; a move fires
+  nothing. `ProgressSpinner.showOverlay` is the first consumer: an overlay now
+  follows its target's size through this relay rather than re-arming a layout
+  pass every animation frame for as long as it is shown. No consumer action is
+  needed.
+
 ### Overlay
 
 - **`Dock` gains four panel-id-keyed presentation setters**:
