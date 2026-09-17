@@ -329,3 +329,96 @@ Each step is a self-contained edit with a cheap check. All paths are from the re
 [^showticks]: `Slider.showTicks` is dead surface: nothing reads `_options.showTicks` outside its own getter, `doLayout` renders no ticks, the JSDoc admits the field is reserved for a follow-up, and a grep across the library, the docs app, `create-app`, the test suite and the Loom consumer finds only the definitions themselves. The synthesis assigns it to this group rather than to the general dead-surface sweep, on the rule that a deletion rides with whichever group is already editing that file. It is the one item here that is not a performance change, and **it must land as its own commit** rather than riding inside the relay commit — user policy, 2026-09-17: pre-1.0.0, public API with no callers anywhere is deleted rather than deprecated, but always in a separate commit so the break stays visible in history and revertible on its own. That makes this branch's code bucket two commits: the resize relay and guarded child writes, then the `showTicks` deletion with its changelog and migration notes.
 
 [^stale-anchors]: Two claims in the 2026-09-15 review no longer hold and were corrected while drafting. `ProgressBar.doLayout` is at `:178-209`, not `:499-530` — the file is 233 lines now. And `tests/component/display/ProgressSpinner.test.ts` does **not** pin `isOverlay()` or any overlay geometry: it is 76 lines covering construction, `setSpinnerSize`, and the effective-visibility animation pause. Every `isOverlay()` assertion lives in the `DiagramView` suite, and no test anywhere asserts the overlay's width or height — which is precisely why breaking overlay resizing would be silent.
+
+---
+
+## Implementation Notes
+
+Deviations from the plan as written, and the reasons for each.
+
+- **One file outside the plan's table had to change:
+  `packages/lib/tests/component/dispose-full-teardown.test.ts`.** Step 5's new
+  `ProgressSpinner.destructor()` trips that suite's coverage assertion, which
+  scans the library for `protected destructor()` declarations and fails any
+  class no registry row `covers` and no baseline entry names. A row was added
+  (`{ name: 'ProgressSpinner', covers: ['ProgressSpinner'], make: () => new
+  ProgressSpinner(20) }`) rather than an entry in
+  `UNCLAIMED_DESTRUCTOR_CLASSES`, per that file's own rule that the baseline is
+  shrink-only and takes deliberate deferrals only. The row passes: the spinner
+  and its arc are both destroyed, and it leaks no rule-cache key.
+
+- **The changelog removal entry went under `## Breaking changes`, not a
+  `## Removed` heading.** *Documentation Impact* asked for a "Removed" entry,
+  but this repo's changelog has no such section: every prior removal (see
+  `changelog/0.9.0.md`) lives under `## Breaking changes` with a per-area `###`
+  subheading and a "See [Migration]" pointer. The entry follows that precedent,
+  and `next.md` gained its first `## Breaking changes` section, placed above
+  `## Changed` in the same order `0.9.0.md` uses.
+
+- **Behaviour 18's compile-error half is pinned by the typecheck, not by a
+  unit test.** `new Slider({ showTicks: true })` can only be asserted at
+  compile time, and the test suite has no `@ts-expect-error` precedent to
+  follow, so introducing one was out of scope. It is covered by
+  `npm run typecheck` / `typecheck:test` plus *Verification*'s zero-hit grep;
+  a runtime test in the `Slider` suite covers the other half, that
+  `isShowTicks` / `setShowTicks` no longer exist on an instance.
+
+- **The `showTicks` changelog and migration notes landed in their own
+  documentation commit, immediately after the deletion's code commit**, rather
+  than inside it. The `[^showticks]` footnote's requirement — that the deletion
+  be its own commit, separate from the performance work, so the break stays
+  visible and revertible — is met; folding docs into a code commit would break
+  the `commit` skill's bucket rule, which the repo's `CLAUDE.md` makes binding.
+
+- **The spinner suite's frame capture is installed file-wide and drained after
+  every test.** A capture scoped to the relay's own `describe` left
+  behaviour 10's probe vacuous — it passed against the *unfixed* code, because
+  `Component`'s layout-flush rAF handle is module-level and an earlier test in
+  the file had left it armed against the harness's inert recorder, so nothing
+  in the probe ever scheduled a frame at all. With the file-wide capture and an
+  `afterEach` drain, the probe reports `[1, 1, 1, 1, 1]` before the change and
+  `[0, 0, 0, 0, 0]` after, which is the relation the plan describes.
+
+- **`npm run docs:api` finishes with the repo's 14 pre-existing warnings, not
+  zero** (`SpatialNavigation`, `MarkdownViewer`, `MarkdownEditor`,
+  `FieldDecorator`). *Verification* step 7 asks for zero; this branch
+  introduces none, and chasing the pre-existing ones is another plan's work.
+  The constraint that step exists for — a public symbol's JSDoc may only
+  `{@link}` public symbols — is met: `onSizeChange` / `offSizeChange` link only
+  to each other, and `notifySizeChange` and the `ListenerBag` are described in
+  prose.
+
+- **`Verification` step 6's grep cannot reach zero as literally written, and
+  the substantive half of it does.** That step (and step 9's checkpoint) asks
+  for zero `showTicks` hits across `packages/lib/src`, `packages/lib/tests`,
+  `packages/lib/docs` and `packages/docs/src`, while the same plan's
+  *Documentation Impact* requires a migration note naming `showTicks` and the
+  changelog entry that points at it. The two cannot both hold. `packages/lib/src`
+  and `packages/docs/src` are at zero, which is the half that matters — the
+  surface is gone. The remaining hits are the ones the plan itself asked for:
+  the migration note, the changelog entry, and the `Slider` test that pins the
+  accessors' absence.
+
+- **No new demo was added** (Work Instructions step 7). The relay changes how
+  an existing surface behaves rather than adding one, and the demo the plan's
+  manual checks use — *Overlay spinner on this panel for 2 s* in `MiscPanel` —
+  already exercises it.
+
+Manual checks 19-21 were run against `npm run dev` in a real browser.
+19: with the overlay held up across two window resizes (2545x1891 → 1100x789 →
+1640x569), the backdrop stayed exactly flush with its panel on both axes and
+the arc stayed centred. 20: the animated bar's fill tracked
+`round(300 x value / 100)` at every sampled value, the indeterminate fill sat
+at 75px with its keyframe running, and the inline spinner rendered at 19x19
+with its rotation running. 21: a pointer drag moved the thumb and filled the
+active track monotonically and settled on pointerup. No console errors or
+warnings in any of the three.
+
+One flake was seen and could not be attributed. Across nine full `npm test`
+runs, one produced an unhandled rejection in
+`packages/lib/tests/component/table/ColumnFilterRow.test.ts` — a file this
+branch does not touch — from a real-`requestAnimationFrame` flush landing after
+`DOM.reset()`, the class of flake `ProgressBar.test.ts:15-21` already documents.
+No mechanism connects it to this change: nothing on the table path registers a
+size listener, so `notifySizeChange` is a null check there. Recorded rather than
+dismissed, in case it recurs.
