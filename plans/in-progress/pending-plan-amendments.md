@@ -320,6 +320,52 @@ This change adds no code, so the project's typecheck, test and build commands ar
 
 ---
 
+## Implementation Notes
+
+- **Every step landed as written; the deviations below are all widenings of a step, never a
+  narrowing.** All 50-odd source locations the plan asserts were re-checked against `master`
+  before any edit and every one held, so no codebase drift had to be resolved. `npm run
+  typecheck` is clean; the plan's own `## Verification` correctly waives the test and build
+  commands, since nothing under `packages/` changed.
+
+- **Step 2's "keeping the existing column alignment" meant re-aligning the whole field block,
+  not just the two new lines.** `_appliedBand` and `_lastMetrics` are three characters longer
+  than the block's previous widest name (`_hiddenOn`), so inserting *Block G3* verbatim at the
+  old column would have left the `:` ragged. The eight existing declarations were re-padded so
+  the `:` column still lines up; only whitespace moved, and *Block G3* itself is verbatim.
+
+- **Step 8's re-basing had to move the link *labels*, not only the anchors.** Ten of the overlay
+  plan's links are written `[L204](…#L204)` — the visible label repeats the line number. Moving
+  only the anchor would have left the label asserting the old, wrong line, which is the staleness
+  this step exists to remove. Each label now names the line its anchor points at. The same rule
+  drove step 10 in the pinning plan, where dropping a `#Lnnn` fragment also meant trimming the
+  label (`[Body.ts:433-449]` → `[Body.ts]`), so no label survives asserting a dropped line.
+
+- **`Panel.ts:126-158` was re-based to `121-153` even though step 8 lists `Panel.ts#L126` as an
+  anchor that still lands.** It does still land — on `_scrollerClassRules`, the second of the
+  three symbols that sentence names. But the sentence's first symbol, `OVERLAY_SCROLLER_CLASS`,
+  is at 121 (step 8's own table says so) and the function it ends with closes at 153, so the
+  visible range `126-158` named neither end correctly.
+
+- **The wrong z-index appears twice in the overlay plan, and both were corrected.** Step 8 calls
+  out the rationale in that plan's step 3; the identical `z-index: 300` claim also sits in its
+  *Manual verification in the browser* list, where the read-only wash is likewise 400
+  ([CodeEditor.ts:2622](packages/lib/src/typescript/lib/component/editor/CodeEditor.ts#L2622)).
+  Fixing one and leaving the other would have left the plan contradicting itself.
+
+- **Step 12 names two `docs/.vitepress/config.mts` mentions; there are three.** The third is in
+  the pinning plan's `## Ordered Implementation Steps`. This plan's `## Verification` requires
+  `grep -n '\.\./src/typescript\|\.vitepress' plans/table-column-pinning.md` to return zero
+  matches, which settles it — all three now point at `packages/docs/src/` instead.
+
+- **`docs/api/component/table/` was deliberately left un-prefixed.** Step 10's rewrite table
+  covers `docs/components/…`, not `docs/api/…`, and that path names generated output
+  (`packages/lib/docs/api` is gitignored) which the repo's own
+  `.claude/skills/_shared/docs-conventions.md` also writes bare. Prefixing it would have
+  diverged from the convention the plan points readers at.
+
+---
+
 ## Notes
 
 [^reverified]: The review was written on 2026-09-15 and four correctness branches merged on 2026-09-17, so every claim was re-checked before being written down. Every substantive one held. One line number had drifted again in the two days between and is corrected here: the review put `Body.setSelectedRecords` at `Body.ts:2285-2302`, which is `selectRecord` today — the method it means is at `:2331`. Three claims turned out to understate the problem and are widened here: `plans/overlay-scrollbars-non-panel.md`'s own anchors are stale too, with one insertion point and one z-index rationale outright wrong; `plans/table-column-pinning.md` wires callback setters that typed events have replaced; and one method it proposes would read the DOM outside the seam and fail the build.
