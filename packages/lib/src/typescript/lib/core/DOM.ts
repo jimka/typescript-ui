@@ -325,13 +325,50 @@ export function _handleRegistrySize(): number {
  * comparison fail and the write happen, which is the safe direction: a skip
  * needs the declaration to already hold the exact string being written.
  */
+/**
+ * Box-geometry longhands, in both spellings, for which an *empty* read proves
+ * the property is absent.
+ *
+ * `writeDeclaration` otherwise refuses to skip on an empty read, because a
+ * shorthand serialises empty whenever its longhands are not all present —
+ * `background` reads `""` on a declaration holding `background-color: red`,
+ * while writing `background` clears that longhand, so skipping there would
+ * leave behind what a removal was meant to clear. A longhand has no such
+ * ambiguity: `getPropertyValue` reflects its value however it was set, so an
+ * empty read means genuinely unset and re-clearing it is a no-op.
+ *
+ * This matters out of proportion to its size. Clearing a longhand that was
+ * never set is invisible to the DOM but not to the engine: on a stylesheet
+ * rule it forces a full-document restyle in WebKitGTK even though nothing
+ * changes. Two such writes per frame — `width` on a rule and `minHeight`
+ * inline — measured **46% of the frame** on a 2387-element editor grid
+ * (107.5 → 58 ms/frame, 2026-09-17).
+ *
+ * The list is an allowlist rather than a shorthand denylist on purpose: a
+ * property missing from here costs a redundant write, whereas a shorthand
+ * wrongly admitted costs a silently skipped removal. It is safe to extend with
+ * any property confirmed to be a longhand.
+ */
+const EMPTY_SKIP_SAFE = new Set([
+    "width", "height",
+    "minWidth", "min-width", "minHeight", "min-height",
+    "maxWidth", "max-width", "maxHeight", "max-height",
+    "top", "right", "bottom", "left",
+]);
+
 function writeDeclaration(style: CSSStyleDeclaration, key: string, value: string | null): void {
     if (key.includes("-")) {
         const current = style.getPropertyValue(key);
 
-        // A match on a non-empty read is the only skip; `current === value`
-        // with a non-empty `current` rules out both spellings of a removal.
-        if (current !== "" && current === value) {
+        // `null` and `""` both spell a removal, and `getPropertyValue` reports
+        // an absent property as `""`, so compare against the resolved write —
+        // comparing against a raw `null` would never match and would defeat the
+        // skip for exactly the removals this exists to elide. An empty read
+        // only authorises a skip for a geometry longhand; see
+        // `EMPTY_SKIP_SAFE`.
+        const next = value ?? "";
+
+        if (current === next && (current !== "" || EMPTY_SKIP_SAFE.has(key))) {
             return;
         }
 
@@ -347,12 +384,16 @@ function writeDeclaration(style: CSSStyleDeclaration, key: string, value: string
     const indexed = style as unknown as Record<string, string>;
     const current = indexed[key];
 
-    if (current !== "" && current === value) {
+    // `null` and `""` both spell a removal here, so compare against the
+    // resolved write; see `EMPTY_SKIP_SAFE` for why an empty read only
+    // authorises a skip for a geometry longhand.
+    const next = value ?? "";
+
+    if (current === next && (current !== "" || EMPTY_SKIP_SAFE.has(key))) {
         return;
     }
 
-    // `null` means "remove", which this path expresses as the empty value.
-    indexed[key] = value ?? "";
+    indexed[key] = next;
 }
 
 /**

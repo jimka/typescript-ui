@@ -125,23 +125,26 @@ describe('same-value style write filter', () => {
         expect(style.top).toBe('13px');
     });
 
-    it('3. null removes a held camelCase property, and a removal is never skipped', () => {
+    it('3. null removes a held camelCase property, and clearing an absent shorthand still reaches', () => {
         const { handle, style } = interned();
         const held   = countSets(style, 'top');
-        const absent = countSets(style, 'left');
+        const absent = countSets(style, 'background');
 
         sink().apply(handle, { style: { top: '12px' } });
         sink().apply(handle, { style: { top: null } });
-        sink().apply(handle, { style: { left: null } });
+        sink().apply(handle, { style: { background: null } });
 
         expect(held.count()).toBe(2);
         expect(style.top).toBe('');
 
-        // An empty read cannot distinguish an absent longhand from a shorthand
-        // whose longhands are only partly present (behaviour 11), so the guard
-        // covers values only and a removal always reaches the declaration.
+        // An empty read on a *shorthand* cannot distinguish absent from
+        // partly-set — `background` serialises empty while `background-color`
+        // is held (behaviour 11) — so clearing one always reaches the
+        // declaration. A longhand carries no such ambiguity and its redundant
+        // clear is skipped; behaviour 12 pins that, and it is where the
+        // measured win lives.
         expect(absent.count()).toBe(1);
-        expect(style.left).toBe('');
+        expect(style.background).toBe('');
     });
 
     it('4. a custom property takes the hyphenated path with the same three outcomes', () => {
@@ -288,7 +291,7 @@ describe('same-value style write filter', () => {
         second.dispose();
     });
 
-    it('11. an empty read never authorises a skip, in either spelling of a removal', () => {
+    it('11. an empty read authorises no skip for a shorthand, in either spelling of a removal', () => {
         const { handle, style } = interned();
 
         sink().apply(handle, { style: { backgroundColor: 'red' } });
@@ -327,5 +330,52 @@ describe('same-value style write filter', () => {
         sink().setRuleStyles(rule, { background: '' });
 
         expect(rule.style.getPropertyValue('background-color')).toBe('');
+    });
+
+    it('12. an empty read does authorise a skip for a geometry longhand', () => {
+        const { handle, style } = interned();
+
+        // A longhand reports its own value however it was set, so an empty read
+        // proves absence and re-clearing it cannot change anything. Clearing one
+        // that was never set is invisible in the DOM but not to the engine: on a
+        // rule it forces a full-document restyle regardless, and two such writes
+        // per frame measured 46% of the frame on a 2387-element editor grid.
+        expect(style.width).toBe('');
+
+        const width = countSets(style, 'width');
+
+        sink().apply(handle, { style: { width: null } });
+        sink().apply(handle, { style: { width: '' } });
+
+        expect(width.count()).toBe(0);
+
+        // A real value still lands, and clearing it afterwards still reaches the
+        // declaration — the skip is for redundant clears, not for clears.
+        sink().apply(handle, { style: { width: '10px' } });
+
+        expect(width.count()).toBe(1);
+        expect(style.width).toBe('10px');
+
+        sink().apply(handle, { style: { width: null } });
+
+        expect(width.count()).toBe(2);
+        expect(style.width).toBe('');
+
+        // And now that it is absent again, the redundant clear is skipped.
+        sink().apply(handle, { style: { width: null } });
+
+        expect(width.count()).toBe(2);
+    });
+
+    it('13. the rule path skips a redundant longhand clear too', () => {
+        const rule  = sink().ensureStyleRule('#svf-longhand-rule');
+        const clear = countSets(rule.style, 'minHeight');
+
+        expect(rule.style.minHeight).toBe('');
+
+        sink().setRuleStyles(rule, { minHeight: null });
+
+        expect(clear.count()).toBe(0);
+        expect(rule.style.minHeight).toBe('');
     });
 });
