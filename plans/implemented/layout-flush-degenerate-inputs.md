@@ -771,3 +771,138 @@ is unaffected.
     failure mode as the reason the flush skips a disposed component. The four
     root-cause fixes in this plan are that prevention; the isolation is the floor
     under the next one.
+
+---
+
+## Implementation Notes
+
+Deviations this run had to make, and what was verified outside the plan's own
+checks. Nothing here redesigns the plan — the five ordered steps landed as
+written, one code commit each.
+
+**Case C2's expectation was wrong and was re-derived.** The plan's table says a
+removed *visible* child's `isDisplayed()` is "still `false`". It is not: the
+visible child is the one `syncVisible` called `setDisplayed(true)` on, so it is
+displayed when the removal finds it, and the mechanism the plan itself
+prescribes leaves it that way — step 4.5 nulls `_currentVisible` *before*
+calling `syncVisible` precisely so the removed child is out of
+`getComponents()` and unreachable by the undisplay loop, and `## Potential
+Challenges` calls reaching `undisplayChild` on a non-child "worse". The
+sentence the expectation came from ("the removed child stays undisplayed")
+holds for the case `docs/concepts/performance.md` actually documents — an
+*inactive* page removed from a `Tab` or `Card`, which was already
+`display: none` — and that case is pinned by C4. C2 now pins the invariant both
+cases share: the card writes no display state at all to the child that left
+(`setDisplayed` is never called on it), so whatever state the removal found is
+what a re-homing caller keeps. `docs/layouts/Card.md` states it that way too,
+rather than the plan's blanket phrasing.
+
+**Case C6 asserts position plus translate, not position.** `commitBounds`
+moves a child whose size is unchanged with a CSS transform rather than by
+rewriting `left`, so a survivor that shifts from x=35 to x=0 reports
+`getX() === 35` and `getTranslateX() === -35`. The case reads
+`getX() + getTranslateX()`, with a comment saying why. Pre-existing framework
+behaviour, unrelated to this plan.
+
+**Two test files outside the plan's "Files to Create / Modify" table needed
+updating**, both because they pinned behaviour this plan deliberately changes:
+
+- `tests/component/list/MarkerListLayout.test.ts` asserted that an empty
+  marker list reports the unbounded-width sentinel — the exact `VBox` defect
+  step 2 removes. It now asserts the list's perimeter (its 25 px marker
+  gutter). Folded into step 2's code commit as a fixup.
+- `tests/diagnostics/DiagnosticsOverlay.rowTooltips.test.ts` case 8 counts
+  tooltip attachments as twelve rows × 2 plus the style-audit button. With the
+  **Layout errors** row that is thirteen rows, so 25 became 27. Rode in step
+  5's code commit.
+
+**The `"equal"`-mode JSDoc formulas changed with the arithmetic.** Step 2
+rewrites `count * (max + spacing) - spacing` as `count * max + spacing *
+max(0, count - 1)`; the four size reports' JSDoc described the old form
+verbatim, so it now reads "`count * maxChildWidth` plus spacing" (and the
+three mirrors). Algebraically identical for one or more children.
+
+**`npm run docs:api` finishes with 14 warnings, not zero.** All 14 pre-date
+this branch — `SpatialNavigation` (4), `MarkdownEditor` (6), `MarkdownViewer`
+(3), `FieldDecorator` (1), every one a public JSDoc `{@link}` to an excluded
+internal symbol. This run introduced none: the count is 14 before and after,
+and `npm run docs:llms:check` reports 0 unaccounted-for symbols.
+`componentRemoved`'s JSDoc describes `unwireChild`'s call site in prose rather
+than linking it, as the plan's `## Documentation Impact` requires.
+
+**The audit found one regression, fixed by deferring `Card`'s re-resolution.**
+`removeComponent` is the primitive `moveComponent` and `replaceComponent` are
+built on, so `componentRemoved` fires midway through those — at a moment when
+the child list is one insert short of settled. Step 4.5's prescribed body
+(`_currentVisible = null` *and* `syncVisible()`) therefore promoted a sibling
+and displayed it during a move, and nothing undid that when the child came
+back: a `Card` left `moveComponent` or `replaceComponent` with **two** children
+displayed. The plan could not see this — `## Expected Behaviour` C1-C7 exercise
+only `removeComponent`/`removeAllComponents`, and `[^hook-not-poll]` treats
+every unwire as a real departure. The fix keeps the hook and drops only the
+eager `syncVisible()` call: `componentRemoved` now invalidates
+`_currentVisible` and nothing else, and the re-resolution both
+`getVisibleComponent` and `doLayout` already perform on a null resolution lands
+once the mutation has completed. This also conforms to the precedent
+`Component.ts` states for exactly this composition hazard — a removal must not
+do destructive work, "releasing would break a move, which re-inserts the same
+instance". The footnote's objection to lazy re-resolution (a card nothing
+queries retains the removed component) does not apply: the hook still fires
+immediately and still clears the field. New cases **C8**, **C9** and **C10**
+pin the reorder, the replace, and a genuine move-out;
+`LayoutManager.componentRemoved`'s JSDoc, `docs/concepts/layout-system.md`,
+`docs/layouts/Card.md` and the changelog all state the
+invalidation-not-departure contract.
+
+**The empty-child-set doc sentence is scoped, not universal.** Steps 6.2 and
+6.3 ask for "one sentence stating that a manager with no laid-out children
+reports the container's perimeter and nothing more". Written unqualified in
+`ARCHITECTURE.md` and `docs/concepts/layout-system.md`, that would be a binding
+rule three shipped managers break on purpose: `Fit`, `Card` and `Tab` report
+`null` with nothing to show, and making them report a perimeter instead is an
+explicit `## Non-Goals` entry. Both sentences therefore scope the rule to
+managers that *aggregate* several children's extents — the box and grid family
+the sum/max rules are about — and name the single-child managers' `null` as the
+other legitimate answer, matching what `## Potential Challenges` already said
+("only the box and grid managers adopt the perimeter-only empty report").
+
+**The changelog was updated although the plan never asked.**
+`## Documentation Impact` lists four docs and omits
+`packages/lib/docs/reference/changelog/next.md`, but every consumer-visible
+change in this repo lands there; entries were added under Added/Layouts,
+Added/Core, Fixed/Core and Fixed/Layouts, alongside the two earlier branches'
+entries that the file already carried.
+
+**No demo surface change.** The only consumer-visible addition with a UI is
+the overlay's **Layout errors** row, which the existing Misc panel → "Show
+diagnostics overlay" entry already reaches; the other four changes are defect
+fixes to existing managers with nothing new to demonstrate.
+
+**Manual-verify cases X7 and X8 were performed** against `npm run dev` driven
+through Chrome DevTools, not merely described:
+
+- **X7.** Misc panel → "Show diagnostics overlay". The row order reads
+  `… Layout passes, Layout flush, Layout errors, DOM listeners …`, so the new
+  row sits directly under **Layout flush**; it read `0` on a clean page; and
+  hovering it produced the tooltip "Isolated layout failures / How many times
+  a component's `doLayout()` or a post-layout callback threw and the flush
+  carried on without it…", matching its `docs/components/DiagnosticsOverlay.md`
+  row.
+- **X8.** `VBox.prototype.doLayout` was temporarily replaced with a throw and
+  a resize forced a flush. `layoutErrors` rose from 0 to exactly 1 for that
+  frame, one `console.error` was written reading `Layout flush: doLayout for
+  #a1e03e32-… threw; the rest of the frame continued.` with the error object
+  attached, and 602 components stayed rendered rather than the frame being
+  lost. Restoring the real method and forcing another flush left the counter
+  at 1 and the console clean.
+- **Broader smoke.** Twenty showcase panels were visited in turn with
+  `console.error` captured, each confirmed by the tab that ended up selected:
+  Row, Column, Fit, Split, Border, HBox, VBox, Justify, AlignSelf, HFlow,
+  VFlow, Grid, Complex, Property Grid, Accordion, Tab, Marker Lists,
+  Baseline, Content Box and Layout I/O. Zero errors across all twenty, and the
+  VBox panel's column of widgets renders as before. There is no `Card` or
+  `Anchor` demo panel (`packages/lib/src/typescript/main.ts` registers
+  neither), but `Card` is not unexercised: a probe counted 626 distinct `Card`
+  managers laying out across the Property Grid, Complex and Rotated panels —
+  every table cell pairs its renderer and editor through one — with zero
+  console errors or warnings.

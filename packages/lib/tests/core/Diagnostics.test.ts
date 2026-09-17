@@ -172,6 +172,7 @@ describe('Diagnostics — setTimingEnabled', () => {
         expect(after.bagListenersAdded).toBe(before.bagListenersAdded);
         expect(after.bagListenersRemoved).toBe(before.bagListenersRemoved);
         expect(after.layoutPasses).toBe(before.layoutPasses);
+        expect(after.layoutErrors).toBe(before.layoutErrors);
     });
 });
 
@@ -186,6 +187,24 @@ describe('Diagnostics.noteLayoutFlush', () => {
         expect(counters.layoutFlushes).toBe(3);
         expect(counters.layoutFlushTotalMs).toBe(10);
         expect(counters.layoutFlushMaxMs).toBe(5);
+    });
+});
+
+describe('Diagnostics.noteLayoutError', () => {
+    // Case 11 continues the numbering above with the counter
+    // `plans/implemented/layout-flush-degenerate-inputs.md` adds.
+    it('11. accumulates isolated layout failures and survives a timing reset', () => {
+        Diagnostics.noteLayoutError();
+        Diagnostics.noteLayoutError();
+
+        expect(Diagnostics.counters().layoutErrors).toBe(2);
+
+        // A cumulative count like componentsConstructed, not a timing
+        // aggregate: opening the overlay must not zero the failures it exists
+        // to surface.
+        Diagnostics.setTimingEnabled(true);
+
+        expect(Diagnostics.counters().layoutErrors).toBe(2);
     });
 });
 

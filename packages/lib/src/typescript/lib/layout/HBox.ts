@@ -69,10 +69,12 @@ class HBox extends BoxLayout {
     /**
      * Returns the preferred size. In `"preferred"` mode this is the sum
      * of child widths plus spacing. In `"equal"` mode it is
-     * `count * (maxChildWidth + spacing) - spacing`. Row height in both
+     * `count * maxChildWidth` plus spacing. Row height in both
      * modes is the baseline-aware row height of the children.
      *
-     * @returns The preferred `{width, height}`, or `null` if no container is attached.
+     * @returns The preferred `{width, height}`; the container's perimeter alone
+     *   on both axes when there are no laid-out children, never a negative
+     *   extent; or `null` if no container is attached.
      */
     getPreferredSize(): Size | null {
         let container = this.getContainer();
@@ -101,7 +103,7 @@ class HBox extends BoxLayout {
                 }
             }
 
-            width += components.length * (maxChildWidth + this._spacing) - this._spacing;
+            width += components.length * maxChildWidth + this._spacing * Math.max(0, components.length - 1);
         } else {
             for (let idx in components) {
                 let component = components[idx];
@@ -114,7 +116,7 @@ class HBox extends BoxLayout {
                 }
             }
 
-            width += this._spacing * (components.length - 1);
+            width += this._spacing * Math.max(0, components.length - 1);
         }
 
         let height = this.computeRowHeight(heights, baselines);
@@ -130,11 +132,13 @@ class HBox extends BoxLayout {
     /**
      * Returns the minimum size. In `"preferred"` mode this is the sum of
      * child min widths plus spacing. In `"equal"` mode it is
-     * `count * (maxChildMinWidth + spacing) - spacing`. Row height in
+     * `count * maxChildMinWidth` plus spacing. Row height in
      * both modes is the baseline-aware row height of the children's
      * minimums.
      *
-     * @returns The minimum `{width, height}`, or `null` if no container is attached.
+     * @returns The minimum `{width, height}`; the container's perimeter alone on
+     *   both axes when there are no laid-out children, never a negative extent;
+     *   or `null` if no container is attached.
      */
     getMinSize(): Size | null {
         let container = this.getContainer();
@@ -163,7 +167,7 @@ class HBox extends BoxLayout {
                 }
             }
 
-            width += components.length * (maxChildMinWidth + this._spacing) - this._spacing;
+            width += components.length * maxChildMinWidth + this._spacing * Math.max(0, components.length - 1);
         } else {
             for (let idx in components) {
                 let component = components[idx];
@@ -176,7 +180,7 @@ class HBox extends BoxLayout {
                 }
             }
 
-            width += this._spacing * (components.length - 1);
+            width += this._spacing * Math.max(0, components.length - 1);
         }
 
         let height = this.computeRowHeight(heights, baselines);

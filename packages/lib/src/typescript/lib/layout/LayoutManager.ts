@@ -95,6 +95,29 @@ export abstract class LayoutManager extends BaseObject {
     }
 
     /**
+     * Notifies this manager that a child has left its container.
+     *
+     * The container calls this once the child has already been taken out of
+     * its child list, so a manager reading that list from here sees what the
+     * removal leaves behind. The base implementation does nothing; a manager
+     * holding per-child state — a parked visible child, a remembered collapsed
+     * pane — overrides it to drop that state.
+     *
+     * Treat it as an invalidation, not a departure: removing a child is also
+     * the primitive that moving and replacing one are built on, so this can
+     * fire midway through a mutation that puts a child straight back. Forget
+     * the parked state here and let the next layout pass re-derive what
+     * follows from it; an override that writes to the tree instead — changing
+     * a child's displayed state, say — acts on a child list that is not
+     * settled yet. The removed child itself is left exactly as the removal
+     * found it.
+     *
+     * @param _component - The child that has left the container.
+     */
+    componentRemoved(_component: Component): void {
+    }
+
+    /**
      * Associates this layout manager with a container component.
      *
      * @param container - The container component to attach to.

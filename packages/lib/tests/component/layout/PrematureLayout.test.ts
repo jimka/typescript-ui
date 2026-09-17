@@ -8,10 +8,12 @@
 // dereferenced a null container element. This is the exact docs-app crash
 // reproduced offline. See plans/implemented/scrollbar-leak-and-layout-guards.md
 // (Bug 2).
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Panel } from '~/core/Panel';
+import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
 import { Fit } from '~/layout/Fit';
+import { Card } from '~/layout/Card';
 import { HBox } from '~/layout/HBox';
 import { VBox } from '~/layout/VBox';
 import { Grid } from '~/layout/Grid';
@@ -127,6 +129,8 @@ describe('Border / Accordion — premature layout guard', () => {
 
     it('B2-4: every layout manager tolerates a doLayout pass before its container has an element', () => {
         const managers: Array<{ name: string; make: () => LayoutManager }> = [
+            { name: 'Fit',       make: () => new Fit() },
+            { name: 'Card',      make: () => new Card() },
             { name: 'HBox',      make: () => new HBox() },
             { name: 'VBox',      make: () => new VBox() },
             { name: 'Grid',      make: () => new Grid() },
@@ -147,5 +151,66 @@ describe('Border / Accordion — premature layout guard', () => {
 
             DOM.reset();
         }
+    });
+});
+
+// F1/F2/F4 below: `Fit` and `Card` used to lay their child out against a 0x0
+// rectangle when the container had no element yet, recursing into the whole
+// subtree and committing a geometry every other manager defers. `doLayout`'s
+// own remarks already claimed they returned. Case F3 — that both still fill the
+// host's inner size once it is rendered — is pinned by `Fit.test.ts` and
+// `Card.test.ts`, so it is not duplicated here.
+describe('Fit / Card — premature layout guard', () => {
+    it('F1: an element-less Fit host does not lay its child out', () => {
+        installTestDOM(CONFIG);
+
+        const container = new Container({ layoutManager: new Fit() });
+        const child = new Component({ preferredSize: { width: 10, height: 10 } });
+
+        container.addComponent(child);
+
+        const childLayout = vi.spyOn(child, 'doLayout');
+
+        container.doLayout();
+
+        expect(childLayout).not.toHaveBeenCalled();
+        expect(child.getWidth()).toBeNaN();
+    });
+
+    it('F2: an element-less Card host does not lay its visible child out', () => {
+        installTestDOM(CONFIG);
+
+        const container = new Container({ layoutManager: new Card() });
+        const child = new Component({ preferredSize: { width: 10, height: 10 } });
+
+        container.addComponent(child);
+
+        const childLayout = vi.spyOn(child, 'doLayout');
+
+        container.doLayout();
+
+        expect(childLayout).not.toHaveBeenCalled();
+        expect(child.getWidth()).toBeNaN();
+    });
+
+    it('F4: the deferred Fit pass costs nothing — the next one places the child', () => {
+        installTestDOM(CONFIG);
+
+        const container = new Container({ layoutManager: new Fit() });
+        const child = new Component({ preferredSize: { width: 10, height: 10 } });
+
+        container.addComponent(child);
+        container.doLayout(); // deferred: no element yet
+
+        container.getElement(true);
+        container.setWidth(400);
+        container.setHeight(300);
+        container.clearInsets();
+        container.doLayout();
+
+        const inner = container.getInnerSize()!;
+
+        expect(child.getWidth()).toBe(inner.width);
+        expect(child.getHeight()).toBe(inner.height);
     });
 });

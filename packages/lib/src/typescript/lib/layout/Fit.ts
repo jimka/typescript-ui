@@ -230,22 +230,24 @@ class Fit extends LayoutManager {
         }
 
         let containerSize = container.getInnerSize();
+        if (!containerSize) {
+            return;
+        }
+
         let containerInsets = container.getContentInsets();
 
         // Universal scroll: see HBox.doLayout for the rationale. When the
         // host has marked the corresponding axis as overflowing, grow the
         // working size past the host's inner rect to the child's minSize so
         // the host's CSS `overflow: auto` produces a scrollbar.
-        if (containerSize) {
-            containerSize = this.inflateForOverflow(containerSize);
-        }
+        containerSize = this.inflateForOverflow(containerSize);
 
         this.placeComponent(
             component,
             containerInsets ? containerInsets.getLeft() : 0,
             containerInsets ? containerInsets.getTop() : 0,
-            containerSize ? containerSize.width : 0,
-            containerSize ? containerSize.height : 0,
+            containerSize.width,
+            containerSize.height,
             this._fill
         );
     }

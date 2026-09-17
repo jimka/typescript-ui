@@ -27,6 +27,7 @@ export interface FrameworkCounts {
     layoutFlushes:         number;
     layoutFlushTotalMs:    number;
     layoutFlushMaxMs:      number;
+    layoutErrors:          number;
     domListeners:          Event.ListenerCounts;
     /** Live semantic listener count — `bagListenersAdded - bagListenersRemoved`. */
     semanticListeners:     number;
@@ -49,6 +50,7 @@ export function readFrameworkCounts(): FrameworkCounts {
         layoutFlushes:         counters.layoutFlushes,
         layoutFlushTotalMs:    counters.layoutFlushTotalMs,
         layoutFlushMaxMs:      counters.layoutFlushMaxMs,
+        layoutErrors:          counters.layoutErrors,
         domListeners:          Event.listenerCounts(),
         semanticListeners:     counters.bagListenersAdded - counters.bagListenersRemoved,
         styleRules:            styleRuleCounts(),
@@ -79,6 +81,8 @@ export interface DiagnosticsSample {
     /** Running average flush cost since timing was last enabled. */
     layoutFlushAvgMs:       number;
     layoutFlushMaxMs:       number;
+    /** Cumulative count of throws the batched layout flush isolated. */
+    layoutErrors:           number;
     /** The `total` of {@link Event.ListenerCounts}, flattened. */
     domListeners:           number;
     semanticListeners:      number;
@@ -287,6 +291,7 @@ export class DiagnosticsSampler {
             layoutPassesPerSec:     elapsedMs > 0 ? (deltaPasses / elapsedMs) * 1000 : 0,
             layoutFlushAvgMs:       framework.layoutFlushes > 0 ? framework.layoutFlushTotalMs / framework.layoutFlushes : 0,
             layoutFlushMaxMs:       framework.layoutFlushMaxMs,
+            layoutErrors:           framework.layoutErrors,
             domListeners:           framework.domListeners.total,
             semanticListeners:      framework.semanticListeners,
             styleRules:             framework.styleRules,

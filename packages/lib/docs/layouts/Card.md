@@ -44,6 +44,7 @@ None. The active child is selected by ID via `card.setVisibleComponentId(id)`.
 ## Notes
 
 - Hidden children remain in the component tree and keep their state. Use this property to preserve form inputs across step transitions.
+- Removing the visible child promotes the first of the remaining children — or leaves the card showing nothing, if it was the last one. The promotion lands on the next layout pass, so composing a removal with an insertion (`moveComponent`, `replaceComponent`) settles on one visible child rather than two. The removed child keeps whatever displayed state it had, so a child removed while it was *inactive* is still `display: none` and the caller re-displays it with `setDisplayed(true)`.
 - For a tabbed UI with toolbar buttons, use [`Tab`](/layouts/Tab).
 
 ## See also

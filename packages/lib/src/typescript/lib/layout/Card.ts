@@ -269,6 +269,46 @@ class Card extends LayoutManager {
     }
 
     /**
+     * Drops the parked visible child once it has left the container, so a
+     * removed child can never stay resolved and leave the card permanently
+     * blank.
+     *
+     * The card re-resolves on the next read or layout pass rather than here:
+     * losing the visible child promotes the first of those remaining — or
+     * leaves the card with nothing visible when it was the only one. The
+     * configured visible-component id is deliberately left alone, so re-adding
+     * a child carrying that id resolves it again. Losing any other child
+     * changes nothing and writes no display state.
+     *
+     * @param component - The child that has left the container.
+     */
+    componentRemoved(component: Component): void {
+        // A test cannot distinguish this clear: `doLayout`'s
+        // `restore === this._currentVisible` guard already discards a record
+        // for a component that is no longer the visible one. It is about not
+        // retaining a component the card has lost.
+        if (this._pendingScrollRestore === component) {
+            this._pendingScrollRestore = null;
+        }
+
+        if (this._currentVisible !== component) {
+            return;
+        }
+
+        // Invalidate only — no display writes from here. `removeComponent` is
+        // the primitive `moveComponent` and `replaceComponent` are built on, so
+        // this fires mid-move, while the child list is one insert short of
+        // settled; syncing now would promote a sibling the re-insert then
+        // leaves displayed alongside it. `getVisibleComponent` and `doLayout`
+        // both re-sync on a null resolution, and `removeComponent` schedules a
+        // layout, so the transition lands once the mutation has completed.
+        // Nulling is also what keeps the removed child from being undisplayed:
+        // it is no longer in `getComponents()`, so `syncVisible`'s first-sync
+        // loop cannot reach it.
+        this._currentVisible = null;
+    }
+
+    /**
      * Computes the children's combined minSize along this manager's geometry:
      * the currently-visible child's minSize. Used by `doLayout` to inflate
      * the working size when the host has opted into `setOverflowing`.
@@ -305,22 +345,24 @@ class Card extends LayoutManager {
         }
 
         let containerSize = container.getInnerSize();
+        if (!containerSize) {
+            return;
+        }
+
         const containerInsets = container.getContentInsets();
 
         // Universal scroll: see HBox.doLayout for the rationale. When the
         // host has marked the corresponding axis as overflowing, grow the
         // working size past the host's inner rect to the visible child's
         // minSize so the host's CSS `overflow: auto` produces a scrollbar.
-        if (containerSize) {
-            containerSize = this.inflateForOverflow(containerSize);
-        }
+        containerSize = this.inflateForOverflow(containerSize);
 
         this.placeComponent(
             this._currentVisible,
             containerInsets.getLeft(),
             containerInsets.getTop(),
-            containerSize ? containerSize.width : 0,
-            containerSize ? containerSize.height : 0,
+            containerSize.width,
+            containerSize.height,
             FillType.BOTH
         );
 
