@@ -117,6 +117,17 @@ overlay (where focus must not escape to the page behind it) — on `<body>`, the
 end of the traversal hands focus to the browser's own chrome, matching what a
 keyboard user expects when they reach the end of the page.
 
+A *stop* is a focusable element — a `<button>`, `<a href>`, `<input>`,
+`<select>`, `<textarea>`, an element carrying `contenteditable`, or anything
+with an explicit `tabindex` — that has not been taken out of the tab order
+with `tabindex="-1"`. That last exclusion is what makes a roving-tabindex
+group ([above](#keyboard-navigation-rovingtabindex)) contribute exactly one
+stop rather than one per member: only the group's active member holds
+`tabindex="0"`, and its roved-off siblings are skipped however they render,
+including as native `<button>`s. A component that owns a third-party editing
+surface contributes one stop too, since such a surface marks itself
+`contenteditable` rather than carrying a `tabindex`.
+
 ## Spatial focus navigation
 
 [`SpatialNavigation`](/api/core/namespaces/SpatialNavigation) moves keyboard focus by *direction* rather than by document order, ranking every candidate's rectangle against the focused element's and jumping to the nearest one in the pressed direction. Two chords run the same geometric search over different candidate sets:

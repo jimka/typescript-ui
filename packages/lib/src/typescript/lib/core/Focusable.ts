@@ -4,12 +4,37 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { LayerManager } from "~/core/LayerManager.js";
 
+// Every branch carries the same `tabindex="-1"` guard, joined on below rather
+// than written into each branch by hand: the guard binding to only the last
+// branch of a hand-written comma-separated list is the defect this shape
+// exists to prevent, and a branch added later inherits it for free. `[href]`
+// is narrowed to real links so a `Glyph`'s decorative `<svg><use href="#…">`
+// stays out; `[contenteditable]` is here so a third-party editing surface
+// (CodeMirror's `.cm-content`, say), which the browser treats as focusable
+// through its implicit tabIndex of 0, is reachable at all.
+const FOCUSABLE_BRANCHES: readonly string[] = [
+    "button",
+    "a[href]",
+    "area[href]",
+    "input",
+    "select",
+    "textarea",
+    '[contenteditable]:not([contenteditable="false"])',
+    "[tabindex]",
+];
+
+// `-1` exactly, matching the only value `RovingTabIndex.add` ever writes.
+const NOT_TAB_REACHABLE = ':not([tabindex="-1"])';
+
 /**
- * CSS selector matching every element the framework treats as focusable.
- * Copied verbatim from `Dialog`'s former private constant, which now imports
- * this one instead of keeping its own copy.
+ * CSS selector matching every element the framework treats as focusable: a
+ * focusable branch that has not been taken out of the tab order with
+ * `tabindex="-1"`. A `RovingTabIndex` group therefore contributes only its
+ * single active member, whatever tag its members render as.
  */
-export const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+export const FOCUSABLE_SELECTOR = FOCUSABLE_BRANCHES
+    .map(branch => branch + NOT_TAB_REACHABLE)
+    .join(", ");
 
 /**
  * Whether `handle` still resolves to a connected element. Resolving a

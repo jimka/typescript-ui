@@ -653,25 +653,6 @@ describe('SpatialNavigation.move — component tier', () => {
         expect(DOM.source.getActiveElement()).toBe(origin);
     });
 
-    it('does not treat a decorative glyph icon as a candidate that disqualifies its own containing button', () => {
-        installTestDOM(CONFIG);
-        const body = stableBody();
-        const origin = liveHandle();
-        const header = liveHandle(); // e.g. an AccordionHeader button
-        const glyph = DOM.sink.createElement('use'); // its chevron glyph icon
-        setConnected(glyph, true);
-
-        DOM.sink.appendChild(header, glyph);
-        place(origin, 0, 200, 100, 220);
-        place(header, 0, 80, 100, 100);
-        place(glyph, 0, 0, 10, 10); // local coords, deep inside header
-        setQuerySelectorAllResult(body, FOCUSABLE_SELECTOR, [origin, header, glyph]);
-        DOM.sink.focus(origin);
-
-        expect(SpatialNavigation.move('north', 'component')).toBe(true);
-        expect(DOM.source.getActiveElement()).toBe(header);
-    });
-
     it('excludes a candidate a collapsed ancestor is currently clipping to nothing, preferring a genuinely visible one instead', () => {
         installTestDOM(CONFIG);
         const body = stableBody();

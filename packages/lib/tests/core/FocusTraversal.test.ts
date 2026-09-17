@@ -270,17 +270,17 @@ describe('FocusTraversal keydown arbitration', () => {
         expect(DOM.source.getActiveElement()).toBe(after);
     });
 
-    it('Escape release falls back to the first stop of the root when the owner contains no focusable stop of its own (the CodeEditor/MarkdownEditor case)', () => {
+    it('Escape release falls back to the first stop of the root when the owner contains no focusable stop of its own', () => {
         installTestDOM(CONFIG);
         FocusTraversal.enable();
 
         const body = stableBody();
         const before = liveHandle();
         const owner = liveHandle();
-        // Focused, but not itself a seeded stop — mirrors CodeMirror's
-        // .cm-content, which FOCUSABLE_SELECTOR never matches (see the plan's
-        // Implementation Notes), so `owner` has no focusable descendant that
-        // stopAfterOwner's DOM-order scan can find.
+        // Focused, but not itself a seeded stop — a Tab-key owner whose
+        // focused surface is no focusable element in its own right, so `owner`
+        // has no focusable descendant that stopAfterOwner's DOM-order scan can
+        // find and the root-level fallback is what has to fire.
         const insideNonStop = liveHandle();
         const after = liveHandle();
         DOM.sink.appendChild(owner, insideNonStop);

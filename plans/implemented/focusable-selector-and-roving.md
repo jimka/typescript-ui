@@ -522,3 +522,135 @@ no new entry.
     convention the test file already sets for itself: a widget exposing more than
     one stop is a bug in that widget and gets its own plan rather than being
     patched in place.
+
+---
+
+## Implementation Notes
+
+### Deviations from the plan
+
+- **`npm run docs:api` does not reach zero warnings, and could not.** The
+  build finishes with `Found 0 errors and 14 warnings`, every one of them
+  pre-existing on this branch's start point: the `core.SpatialNavigation`
+  namespace comment links to `outermostTargets`, `leafFocusables` and
+  `ancestorGeometry`; `core.rankInDirection` links to `PRIMARY_GAP_EPSILON`;
+  plus `validation.FieldDecorator`, `component/display.MarkdownViewer` (×3)
+  and `component/editor.MarkdownEditor` (×6). None is newly introduced here —
+  in particular none concerns `withoutDecorativeGlyphs`, whose only
+  `{@link}` lived in `collectCandidates`' own internal doc comment, which
+  TypeDoc never renders. Step 5's removal of that clause was made anyway, as
+  the plan directs.
+
+- **Step 8 also dropped a stale test *title*, not only the stale comment.**
+  `tests/core/FocusTraversal.test.ts`'s Escape-release test was titled
+  "… when the owner contains no focusable stop of its own (the
+  CodeEditor/MarkdownEditor case)". The `[contenteditable]` branch makes a
+  `CodeEditor` contain exactly such a stop, so the parenthetical became as
+  false as the comment beneath it and was removed. The test's seeding and
+  assertions are untouched, as the plan requires.
+
+- **The changelog gained two bullets beyond the two step 11 lists.** Step 11
+  specifies two, both under `## Fixed` → `### Core`, and says nothing about
+  commit 2 — while the plan's own `## Overview` describes three changes to the
+  selector, and commit 2 is a fourth user-reachable fix. What shipped is four
+  bullets: the two step 11 names (the `tabindex="-1"` guard and
+  `contenteditable`), a third under `## Fixed` → `### Core` for the `[href]`
+  narrowing (a `Glyph`'s decorative `<use>` is no longer a focus candidate —
+  the change with the largest measured effect of the three, see the sweep
+  below), and one under `## Fixed` → `### Components` for the childless-
+  `ToolBar` crash (tab to an empty toolbar, press an arrow). Every comparable
+  fix in `next.md` carries an entry, so leaving either unrecorded would have
+  been the deviation.
+
+- **`stopCount` in `FocusTraversalCompositeWidgets.test.ts` was split into
+  `stops()` + `stopCount()`.** Step 3 asks the new `CodeEditor` test to assert
+  *which* element the single stop is, which a count-only helper cannot
+  express. `stopCount` is now `stops(el).length`; no existing assertion
+  changed shape.
+
+### Manual verification
+
+Run against `npm run dev` (Vite on :5199) driven through the chrome-devtools
+MCP, checking the live demo's real rendered markup rather than a fixture.
+`main.ts` enables only `FocusHistory` and `SpatialNavigation`, so for the
+Tab-order walks it was temporarily patched to call `FocusTraversal.enable()`
+too, then restored — the working tree carries no trace of that patch.
+
+- **`ToolBarPanel`** — the first bar's descendant stop count drops from 12 to
+  1. A Tab walk visits, in order: the bar's own element, its single active
+  member, the next bar's element, that bar's active member, … Never
+  button-by-button, and 2 stops per bar exactly as `## Expected Behaviour`
+  predicts. Plain `ArrowRight` moves the roving group and hands
+  `tabindex="0"` to the newly active button.
+- **`SpatialNavigation` reach** — with focus on a bar's active member,
+  `Ctrl+Alt+ArrowRight` lands on a sibling carrying `tabindex="-1"` and the
+  `data-ts-ui-roving-member` marker. The roved-off members stay reachable by
+  direction, as `## Behaviour that must not change` requires.
+- **Decorative glyphs** — on `#/accordion`, the old selector string matched 51
+  `<use>` elements across the page; the new one matches 0, while the page's
+  one real `<a href>` still matches.
+- **`CodeEditorPanel`** — `.cm-content` is `contenteditable="true"` with no
+  `tabindex`: unmatched by the old string, matched by the new one. Tab from
+  the "Format" toolbar button lands inside the editor; a second Tab stays
+  there (the editor owns the key); `Escape` then `Tab` leaves it for the next
+  real stop.
+- **A demo dialog** — no demo dialog contains a `ToolBar`, so that exact case
+  could not be exercised. The confirm/cancel dialog was checked instead, and
+  turned out to demonstrate the fix directly: its trap set was
+  `[✕, <use>, Cancel, <use>, Confirm, <use>]` and is now `[✕, Cancel,
+  Confirm]` — `Dialog` never had `SpatialNavigation`'s local glyph filter, so
+  its Tab trap really did stop on three unfocusable elements. Tab still
+  cycles within the dialog and wraps.
+
+- **`MenuBarPanel`** — unchanged: the bar plus one stop per menu button,
+  which is the gap step 2 records as `it.todo`.
+
+- **A dialog's primary button** — the confirm/cancel dialog's button row
+  resolved, under the old selector string, to `[Cancel, <use>, Confirm,
+  <use>]` and now resolves to `[Cancel, Confirm]`. That is the list
+  `Dialog.primaryButtonElement` (`overlay/Dialog.ts:1086-1098`) indexes
+  *positionally* with the position of the `primary` entry in the config, so a
+  dialog whose primary button is not the first one used to resolve to a
+  preceding button's decorative `<use>` — and `openFocus` then focused an
+  element the browser cannot focus. `Dialog.confirm` marks `Cancel` primary at
+  index 0, which is why the demo's own dialog focused correctly either way.
+
+### Verification that could not be performed
+
+`## New behaviour in Dialog — needs manual verification` also asks for a
+dialog containing a `CodeEditor` or `MarkdownEditor`. **That check was not
+performed: no demo dialog carries editor content**, and the demo surface is
+the only sweep available here, so it is declared skipped rather than quietly
+counted as passed. What the change does to that case, read off the code
+rather than observed: `.cm-content` now enters `Dialog.getFocusable()`
+(`overlay/Dialog.ts:1105-1113`), so a dialog containing an editor can focus
+and trap on the editing surface, as the plan predicts. Worth knowing before
+someone builds one: `Dialog`'s own Tab trap (`overlay/Dialog.ts:1143-1166`)
+has no Tab-key-owner concept of its own — unlike `FocusTraversal`, which
+stands down inside an owner — so an editing surface that lands first or last
+in a dialog's focusable list has the trap's wrap take Tab instead of the
+editor's own indent. That is `Dialog`'s gap, not this selector's, and
+`## Non-Goals` puts `Dialog`'s trap ordering out of scope; it is recorded
+here so the next plan in this area starts from it.
+
+The primary-button resolution above is likewise browser-verified rather than
+unit-tested, and cannot be otherwise: the offline `ModelledDOMSource` has no
+selector engine (so every `Dialog` test is blind to the selector string), and
+under `jsdom` a glyph-bearing `Button` cannot be constructed at all —
+`Button.setGlyph` reaches `Util.opticalCenterOffset` →
+`DOMSource.measureFontMetrics`, which needs a canvas 2-D context `jsdom` does
+not provide. A `<use>` element seeded by hand is covered instead, in
+`tests/core/FocusTraversalCompositeWidgets.test.ts`'s eligibility block.
+
+### Observed but out of scope
+
+A **closeable** `Tab` strip still exposes more than one stop, and it is not a
+selector problem: each `TabCloseButton` is a real `<button>` with
+`tabindex="0"` that the strip never enrols in its `RovingTabIndex` group, as
+is a strip tool button. A Tab walk over the demo's strip goes active tab →
+close button → close button → tool button → next strip's active tab. The
+tab-by-tab walk this plan set out to remove is gone (only one `TabButton` per
+strip is ever visited), and the unit test's plain three-tab strip reports
+exactly 1, matching `## Expected Behaviour`. The residue is the same
+component-level defect family as the `MenuBar` and `ToolBar` entries under
+`## Non-Goals` — a bug in that widget, deserving its own plan.

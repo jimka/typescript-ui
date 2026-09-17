@@ -302,28 +302,12 @@ function outermostTargets(targets: Handle[], origin: Handle): Handle[] {
             DOM.source.contains(other, target) && !DOM.source.contains(other, origin)));
 }
 
-/**
- * Drops a decorative SVG `<use>` element from `handles` — the shape every
- * `Glyph` icon renders as (`<svg><use href="#…">`), which
- * {@link FOCUSABLE_SELECTOR}'s bare `[href]` branch matches even though it is
- * never a genuine focus target (see
- * `tests/core/FocusTraversalCompositeWidgets.test.ts`'s audit of the same
- * selector gap). Filtered narrowly here, for the component tier's own
- * candidate set, rather than in the shared selector itself — fixing that is
- * a separate, already-tracked follow-up (see that file's comment) with a
- * wider blast radius than this tier's ranking.
- *
- * @param handles - The candidate handles to filter.
- */
-function withoutDecorativeGlyphs(handles: Handle[]): Handle[] {
-    return handles.filter(handle => DOM.source.getTagName(handle).toLowerCase() !== "use");
-}
-
-// Tags FOCUSABLE_SELECTOR matches unconditionally, independent of tabindex —
-// the same list `leafFocusables` uses to tell a genuinely interactive leaf
-// (a real `<button>`, even one another button is raw-appended onto, like a
-// `TabButton`'s overlaid `TabCloseButton`) apart from a passive container
-// whose own focusability comes solely from `[tabindex]`.
+// The tags `leafFocusables` treats as a genuinely interactive leaf (a real
+// `<button>`, even one another button is raw-appended onto, like a
+// `TabButton`'s overlaid `TabCloseButton`), as opposed to a passive container
+// whose own focusability comes solely from `[tabindex]`. Membership is
+// unaffected by what FOCUSABLE_SELECTOR matches — it is this tier's own
+// interactive/passive ruling, not a restatement of that selector.
 const NATIVE_FOCUSABLE_TAGS = new Set(["button", "input", "select", "textarea", "a"]);
 
 /** Whether `handle` renders as one of {@link NATIVE_FOCUSABLE_TAGS}. */
@@ -363,13 +347,12 @@ function mergeHandles(first: Handle[], second: Handle[]): Handle[] {
  * Visible, enabled members of any `RovingTabIndex` group inside `root`,
  * regardless of their current `tabindex`. `visibleFocusable`'s
  * `FOCUSABLE_SELECTOR` query only ever sees a group's single active member —
- * every other one carries `tabindex="-1"` and, unless it also happens to
- * render as a native focusable tag (a `<button>`, say), that alone hides it
- * from the selector entirely. A `ComboBox`, `Checkbox`, or any other
- * non-native-tag composite control roved off in a `ToolBar` (or
- * `ButtonGroup`, or a `RadioButton` group, …) would otherwise be
- * permanently unreachable by this tier — reachable only by first landing on
- * whichever sibling happens to hold the group's own Tab stop.
+ * every other one carries `tabindex="-1"`, which that selector's guard hides
+ * on every branch. Any roved-off member of a `ToolBar` (or `ButtonGroup`, or
+ * a `RadioButton` group, …) would otherwise be permanently unreachable by
+ * this tier — reachable only by first landing on whichever sibling happens to
+ * hold the group's own Tab stop — which is what makes this helper
+ * load-bearing rather than a corner case.
  *
  * @param root - The element to search inside.
  */
@@ -512,9 +495,8 @@ function effectiveRect(handle: Handle, root: Handle): Rect {
  * current effective rect ({@link ancestorGeometry}): for the component tier,
  * every visible focusable element plus every visible, enabled
  * `RovingTabIndex` member ({@link rovingGroupMembers}) other than `origin`,
- * excluding a decorative glyph icon ({@link withoutDecorativeGlyphs}), one
- * currently clipped to nothing by a collapsed ancestor ({@link
- * ancestorGeometry}), and any composite container whose own content is also
+ * excluding one currently clipped to nothing by a collapsed ancestor ({@link
+ * ancestorGeometry}) and any composite container whose own content is also
  * a candidate ({@link leafFocusables}); for the target tier, every visible
  * marked navigation target, with nested targets whose outer ancestor is also
  * a candidate resolved via {@link outermostTargets} first.
@@ -530,8 +512,7 @@ function collectCandidates(root: Handle, origin: Handle, tier: SpatialTier): Spa
     }
 
     const handles = leafFocusables(
-        withoutDecorativeGlyphs(mergeHandles(visibleFocusable(root), rovingGroupMembers(root)))
-            .filter(handle => handle !== origin),
+        mergeHandles(visibleFocusable(root), rovingGroupMembers(root)).filter(handle => handle !== origin),
     );
 
     return handles
