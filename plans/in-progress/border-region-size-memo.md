@@ -334,3 +334,97 @@ None. `Component.currentLayoutPass` is `@internal` and `typedoc.json` sets `excl
 [^f063]: F06.3 would skip `Split.onDrag`'s two `doLayout()` calls when the clamp absorbed the whole move. It was never measured: the harness's drag walks a triangle wave of ±step for half the frames each way, so at the default 3 px × 150 frames it travels 225 px and returns without ever reaching the pane minimum. The clamped frames the change targets did not occur. Measuring it needs only new parameters (`step=8&frames=150` on the explorer gutter), not a new scenario — but until that run exists, including it here would put unmeasured scope inside a plan whose whole warrant is a measurement.
 
 [^size-memo]: `size.memo` memoised `getPreferredSize` / `getMinSize` / `getMaxSize` on every component, keyed per frame. It removed 1,929 size-hint calls per frame on S1 (−65%) and the frame got no faster (+0.58 ms); on S1 it also produced different geometry. It is the largest work lever measured anywhere in the campaign and the sweep's re-scoring keeps it alive as an open question at per-pass granularity. `Component.currentLayoutPass` is the granularity that question needs, so this plan leaves it available — but a general memo has to answer for every component in the tree, which is a different and much larger correctness argument than five regions behind three helpers in one file.
+
+---
+
+## Implementation Notes
+
+Implemented as written — the three `Border` helpers, the CENTER routing, the
+six invalidation sites and `Component.currentLayoutPass` all landed in the
+shape `## Internal Structure` and `## Ordered Implementation Steps` specify,
+and the new suite's scene reproduces probe `T1` exactly (5 / 8 / 3 per edge
+region and 4 / 3 / 3 for the centre before the change, 1 / 1 / 1 for all five
+after, with the five committed rectangles the plan lists). One correction to
+the plan's definition of a layout pass, and four other findings, are worth
+recording. Cases 10 to 12 in the new suite are additions beyond the plan's
+nine: two pin the halves of that correction, and one pins the `null`-versus-
+`undefined` guard `## Potential Challenges` asked for.
+
+**Case 7's test is arranged more strictly than the plan's wording.** The plan
+described it as case 5's probe with "the second read replaced by" the slot
+swap, which would leave `commitBounds` — and therefore `doLayout`'s own
+invalidation — between the swap and the read, so the test would pass whether
+or not `setLayoutConstraints` dropped the record. The test instead performs
+the swap between the two reads with no commit in between, which is the
+arrangement that actually pins the slot-swap invalidation the plan's
+`## Architecture Decisions` calls for.
+
+**`npm run docs:api` reports 14 warnings, not zero.** All 14 are pre-existing:
+the same build on the base branch (`master` at `3a9a002e`) reports exactly the
+same 14, in `SpatialNavigation`, `rankInDirection`, `FieldDecorator`,
+`MarkdownViewer` and `MarkdownEditor`. This branch adds none — nothing it
+touches renders, as `## Documentation Impact` predicted. The plan's "zero
+warnings" was stale against the base, not a statement this change violates.
+
+**The WebKitGTK re-measurement passes on work and geometry; frame time is
+flat, not −1.72 ms.** Twenty-one S1 runs (`work=1&widthprobe=1`, alternating
+plain and branch) across three rounds, the last of which measures the final
+code: counted per-frame work falls 2,969 → 2,116, **−28.7%**, comfortably past
+the −20.6% the plan required, and every branch arm's `widthprobe` width series
+and ranges are byte-identical to every plain arm's. Frame time in the final
+round came out at a 56.13 ms median against plain's 57.08 — no regression, but
+no resolvable gain either, because the plain arms alone spanned 4.5 ms across
+the session against the original sweep's 0.15 ms spread. Per `## Verification`'s
+own rule, a flat result at equal geometry and 20% less work passes.
+
+**The `null`-guard case reads the preferred size only.** `## Potential
+Challenges` asks for the `undefined !== record.preferred` guard to be tested
+against a region whose manager reports `null`. Case 12 does that on a centre
+region reporting `null` on all three axes, but asserts only on the preferred
+size: a region's minimum and maximum are additionally read by its own
+commit-time clamp, which this record deliberately does not sit in front of, so
+those two counts carry reads the guard has no say over. The preferred size is
+read only through `Border`'s helper, and rewriting the guard as a truthiness
+check takes that count from 1 to 4 — verified by mutation.
+
+**The work counters confirm the CENTER routing is what pays.** The per-class
+diff shows `getMinSize@CodeEditor` 52 → 24, `getMaxSize@CodeEditor` 44 → 16
+and `getPreferredSize@CodeEditor` 16 → 8 — the Loom editor wrapper sitting in
+a `FileEditor` border's CENTER slot, which the ablation never covered. That,
+plus `FileBreadcrumbs` and everything under it, is the extra 8 points over the
+ablation's −20.6%.
+
+**A layout pass does run consumer code at two points, and the pass number
+ends at each — this corrects the plan, and the three sibling plans keyed on
+the number.** Footnote `[^pass-not-frame]` argues the outermost-`doLayout`
+interval "contain[s] no application code", and `## Public API` says the number
+"stays the same for everything that pass recurses into". Neither holds. The
+`onFirstLayout` drain at the end of `Component.doLayout` runs consumer
+callbacks inside the pass; and `notifySizeChange` dispatches the public
+`sizechange` bag from inside `setWidth` / `setHeight`, which `commitBounds`
+reaches for every child every manager commits. A listener at either point can
+mutate a subtree a manager measured earlier in the same pass. Both were
+reproduced before being fixed: an unfixed record served a west region's
+pre-callback width and committed it at 40 px where `master` commits 80 px.
+Cases 10 and 11 in the new suite pin one each.
+
+The fix keeps the plan's design and narrows its definition to what is
+actually true: **a pass number identifies an interval during which nothing has
+run that could change a layout-derived answer.** It starts at an outermost
+`doLayout()` and ends at whichever comes first — that call returning, an
+`onFirstLayout` drain that actually ran callbacks, or a `sizechange` dispatch
+on a component that has listeners. The two consumer-code points share one
+module-level `endLayoutPassNumber()` in `core/Component.ts`. Nested layouts
+still share the enclosing number and `0` still means no pass. A sibling plan
+should key on this weaker, true guarantee, not on "no application code runs
+inside a pass". The `sizechange` half was foreseen: `plans/size-hint-per-pass-memo.md`'s
+`[^border-consistency]` names this plan and says `commitBounds` fires those
+listeners mid-pass. Ending the pass there costs nothing measurable — the same
+2,969 → 2,116 work and the same byte-identical geometry as before the fix.
+
+One consequence of maintaining the counter inside `Component.doLayout`, also
+for the sibling plans: a `Component` subclass that overrides `doLayout()` runs
+the part of its own body outside `super.doLayout()` under the *enclosing*
+frame's number — `0` only when it is itself the outermost call, and the live
+pass number whenever anything above it is still laying out. Reads taken there
+are therefore not automatically live.
