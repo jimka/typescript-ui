@@ -29,6 +29,26 @@ page resets to empty.
   signatures are unchanged; existing consumers see focus land where it
   previously could not.
 
+- **Nineteen setters across `Component`, `Button`, `Text`, `Aria` and
+  `RovingTabIndex` now return early when handed the value they already
+  hold.** The early return skips the setter's side effects, not merely its
+  assignment — the style write, the cache invalidation, the attribute write,
+  the scheduled layout pass. Every one of them leaves the same observable end
+  state as before, so nothing a consumer wrote stops compiling or stops
+  working, with two exceptions worth naming. A caller that used
+  `setSize(currentSize)` to force a relayout must now use `invalidateLayout()`
+  or `flushLayout()`, because an unchanged box no longer schedules a pass; and
+  `RovingTabIndex.moveTo(activeIndex)` no longer re-focuses the member that is
+  already active and already tabbable, so activating the selected tab leaves
+  focus and scroll exactly where they were.
+
+- **`Button.clearDescription()` now destroys the subtitle label it removes**,
+  the way `clearGlyph()` already destroys the glyph. It previously detached
+  the label and left it holding its element, its per-instance stylesheet rule
+  and its theme subscription for the lifetime of the process. A caller holding
+  a reference from an earlier `getDescription()` must not reuse it across a
+  `clearDescription()` call.
+
 ### Components
 
 - **`CellEditorPool.release()` now takes the cell that is releasing the
@@ -171,6 +191,13 @@ page resets to empty.
   follows its target's size through this relay rather than re-arming a layout
   pass every animation frame for as long as it is shown. No consumer action is
   needed.
+
+- **`Component` gains `getClipPath()`**, returning the CSS `clip-path` last
+  passed to `setClipPath()` — `null` before any call, and again after
+  `setClipPath(null)`. `setClipPath` now caches what it wrote, the way
+  `setTransform` and `setContain` already did, so it can skip a repeat of the
+  value it is already showing; the getter is what makes that cache readable
+  instead of write-only.
 
 ### Overlay
 
