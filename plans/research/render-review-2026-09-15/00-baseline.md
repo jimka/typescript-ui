@@ -230,3 +230,46 @@ drag-frame measurement" — that premise is now measured false for every Loom
 scenario. G04 is a latent hazard for large documents and a hygiene item, not a
 performance win. G07's setter guards include `setClipPath` and will close most
 of it incidentally.
+
+## Wave-1 A/B result (2026-09-17) — and the mechanism the campaign mis-ranked
+
+Wave 1 (`pending-plan-amendments` → `progress-indicator-resize-relay` →
+`component-setter-guards`) measured same-session against its own pre-merge
+parent, interleaved over two rounds:
+
+| Scenario | pre-wave-1 | post-wave-1 | delta |
+|---|---:|---:|---:|
+| **S3** file tree, 1 editor, explorer gutter | 70.8 | **58.5** | **−12.3 ms (−17.4%)** |
+| S1 2×2 grid, 4 editors, dock-h gutter | 103.9 | 102.9 | −1.0 (noise) |
+
+Both arms reproduced tightly (pre-arm spread 0.1 ms), so S3's win is real.
+S1 barely moves, which is consistent with the baseline: S1's drag path already
+did almost no JS work (seven counters, twelve same-value attribute writes).
+
+### What actually produced the win
+
+S3's per-frame write counters, before and after — all three same-value writes
+are gone, 13 distinct counters down to 10:
+
+```
+pre:   attr.data-insets.same = 3 ;  inline.cssText.same = 1 ;  rule.cssText.same = 1
+post:  (all three absent)
+```
+
+**The stylesheet-rule write was not the lever.** The `norules` ablation above
+measured that single rule write at **1.3 ms**. The remaining ~11 ms came from
+the attribute and inline writes and — the part no counter shows — the *side
+effects* those setters stopped running: the `scheduleLayout()` calls, cache
+invalidations and attribute writes that a same-value call used to re-execute.
+
+This matters beyond wave 1. The synthesis ranks G04 `style-write-dedup` first
+among the performance groups on the reasoning that *a stylesheet-rule mutation
+forces a full-document restyle, therefore same-valued rule writes dominate
+every drag frame*. The restyle cost is real (~195 ms/frame at 21k nodes) but
+Loom's trees are 992–2387 nodes, where it is free. The group ranked below it
+delivered 17% instead, because it guarded **side effects** rather than writes.
+
+**Apply this when planning the remaining groups:** count what a same-value call
+*does* — layout scheduling, invalidation, child rebuilds — not just what it
+writes. Several remaining groups carry the same rule-write reasoning and should
+be re-justified on that basis before being scheduled.
