@@ -12,6 +12,8 @@ Every DOM listener in the framework is registered through `Event.addListener` / 
 
 The change touches `core/Event.ts`, `component/button/Button.ts` and `overlay/windowControls.ts`; eight call sites that must opt back into non-primary buttons; comment-only edits in `core/Component.ts` and `component/button/ToggleButton.ts`; and five documentation pages.
 
+**Superseded.** This exploration was overtaken by [plans/implemented/primary-button-interaction-filtering.md](plans/implemented/primary-button-interaction-filtering.md), which shipped the per-registration button filter and moved `Button`'s pressed visual off the native `:active` pseudo-class. Do not implement this plan. Its `createStyleRule(".pressed")` mechanism was not what shipped — `Button` declares `.pressed` and `:hover` as class-tier states in `ownStyleStates` ([Button.ts:408](packages/lib/src/typescript/lib/component/button/Button.ts#L408)) and toggles them with `setStyleState` ([Button.ts:591](packages/lib/src/typescript/lib/component/button/Button.ts#L591)). Every path it cites predates the workspace restructure and resolves to nothing. It is kept for the alternatives it weighed and rejected, notably `setPointerCapture`.
+
 ---
 
 ## Architecture Decisions
