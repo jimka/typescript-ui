@@ -824,8 +824,20 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * implementation that only writes text needs no layout". A renderer that
      * *does* need one (it swapped a child) lays itself out, and a caller that
      * needs a fresh measurement calls {@link measure}.
+     *
+     * A string equal to the one already shown writes nothing, marks nothing
+     * stale and schedules nothing — the rendered text and the measured extent
+     * are already what the call would produce.
      */
     setText(text: String): this {
+        const next = (text || "").toString();
+
+        // Compared as strings, the same normalisation the assignment below
+        // applies, so a `String` object and its primitive twin count as equal.
+        if (this._options.text !== undefined && this._options.text.toString() === next) {
+            return this;
+        }
+
         this._options.text = (text || "") as TOptions["text"];
 
         this._measurementDirty = true;

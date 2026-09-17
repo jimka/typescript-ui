@@ -77,3 +77,55 @@ describe('Text.setText — parent layout schedule', () => {
         expect(text.getPreferredSize()?.width).toBeGreaterThan(0);
     });
 });
+
+// The same-string early return — see
+// plans/implemented/component-setter-guards.md. `Text.setText` is the
+// library's most-called API: every pooled table / list / tree row rebinds
+// through it, and a rebind that lands the value the row already shows used to
+// pay a full DOM write, a measurement invalidation and (with auto-measure on)
+// a parent layout pass for nothing.
+describe('Text.setText — same-string guard', () => {
+    it('writes nothing and schedules nothing for a byte-identical string', () => {
+        const { host, text } = hostedText();
+        const scheduled = vi.spyOn(host, 'scheduleLayout');
+        const sink      = DOM.sink as unknown as { writes: Array<{ op: string }> };
+
+        sink.writes.length = 0;
+
+        text.setText('start');
+
+        expect(sink.writes).toHaveLength(0);
+        expect(scheduled).not.toHaveBeenCalled();
+    });
+
+    it('leaves the measurement fresh for a byte-identical string', () => {
+        const { text } = hostedText();
+
+        text.measure();
+
+        const measured = text.getPreferredSize()?.width;
+
+        text.setText('start');
+
+        // Unchanged text cannot move the measured extent, so the guard must
+        // leave the cached one in place rather than re-deriving it.
+        expect((text as unknown as { _measurementDirty: boolean })._measurementDirty).toBe(false);
+        expect(text.getPreferredSize()?.width).toBe(measured);
+    });
+
+    it('still writes, marks stale and schedules for a changed string', () => {
+        const { host, text } = hostedText();
+        const scheduled = vi.spyOn(host, 'scheduleLayout');
+        const sink      = DOM.sink as unknown as { writes: Array<{ op: string }> };
+
+        text.measure();
+        sink.writes.length = 0;
+
+        text.setText('a wider replacement string');
+
+        expect(text.getText()).toBe('a wider replacement string');
+        expect(sink.writes.length).toBeGreaterThan(0);
+        expect((text as unknown as { _measurementDirty: boolean })._measurementDirty).toBe(true);
+        expect(scheduled).toHaveBeenCalled();
+    });
+});

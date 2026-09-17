@@ -5,7 +5,7 @@ import { Absolute } from "~/layout/Absolute.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { isFirstLayoutHeld, startFirstLayoutDeadline } from "~/core/FirstLayoutGate.js";
-import { BorderOptions, borderSideWidth } from "~/primitive/Border.js";
+import { BorderOptions, borderSideWidth, borderToStyle } from "~/primitive/Border.js";
 import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
 import { BaseObject } from "~/core/BaseObject.js";
@@ -358,6 +358,25 @@ function roundedExtent(origin: number, extent: number): number {
 }
 
 /**
+ * Joins a border spec's four resolved side strings into one comparison key.
+ * Each side resolves as `side ?? border ?? "none"`, so two specs with equal
+ * keys paint the same border however they were authored.
+ *
+ * @param spec - A border spec, a bare CSS shorthand, or null/undefined.
+ *
+ * @returns The joined key, or null when no spec is stored.
+ */
+function borderSidesKey(spec: BorderOptions | string | null | undefined): string | null {
+    if (spec === null || spec === undefined) {
+        return null;
+    }
+
+    const sides = borderToStyle(typeof spec === "string" ? { border: spec } : spec);
+
+    return sides.borderTop + "|" + sides.borderRight + "|" + sides.borderBottom + "|" + sides.borderLeft;
+}
+
+/**
  * Base class for all UI components in the framework.
  *
  * Manages the component's DOM element lifecycle, CSS style rule, layout manager,
@@ -603,6 +622,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _appearance           : string | null           = null;
     private _borderImage          : string | null           = null;
     private _transform            : string | null           = null;
+    // Cache for setClipPath, so a repeat of the same clip path can be skipped
+    // (rule 2 of ARCHITECTURE.md's DOM-write rules). Plain initializer: no
+    // `clipPath` key on ComponentOptions, so no cascade setter writes it.
+    private _clipPath             : string | null           = null;
     private _transformOrigin      : string | null           = null;
     private _opacity              : number | null           = null;
     private _disabledAttribute    : boolean                 = false;
@@ -2621,6 +2644,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setInsets(insets: Insets): this {
+        const current = this._options.insets;
+        if (current &&
+            current.getTop()    === insets.getTop()    &&
+            current.getRight()  === insets.getRight()  &&
+            current.getBottom() === insets.getBottom() &&
+            current.getLeft()   === insets.getLeft()) {
+            return this;
+        }
+
         this._options.insets = insets;
         this.setDataAttribute("insets", insets.render());
 
@@ -2637,6 +2669,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * a CSS-level clear.
      */
     clearInsets(): this {
+        const current = this._options.insets;
+        if (current &&
+            current.getTop()    === 0 &&
+            current.getRight()  === 0 &&
+            current.getBottom() === 0 &&
+            current.getLeft()   === 0) {
+            return this;
+        }
+
         const insets = new Insets(0, 0, 0, 0);
         this._options.insets = insets;
         this.setDataAttribute("insets", insets.render());
@@ -2848,6 +2889,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setBackgroundImage(backgroundImage: string): this {
+        if (this._instanceStyle.backgroundImage === backgroundImage) {
+            return this;
+        }
+
         this.writeStyle({ backgroundImage });
 
         return this;
@@ -2875,6 +2920,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns the CSS `clip-path` value last passed to {@link setClipPath}, or
+     * `null` if no clip is set.
+     *
+     * @returns The clip-path string, or null.
+     */
+    getClipPath(): string | null {
+        return this._clipPath;
+    }
+
+    /**
      * Sets the CSS `clip-path` on the component's own element — the box stays at
      * its full layout size while the painted (and hit-tested) area is clipped to
      * the given shape. Pass `null` to remove the clip. A layout manager can
@@ -2888,6 +2943,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setClipPath(clipPath: string | null): this {
+        if (this._clipPath === clipPath) {
+            return this;
+        }
+
+        this._clipPath = clipPath;
+
         this.setElementCSSRule("clipPath", clipPath);
 
         return this;
@@ -3016,6 +3077,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setBorder(options: BorderOptions | string): this {
+        const key = borderSidesKey(options);
+
+        // Both caches must already agree: `cacheBorderSpec` updates `_border`
+        // without writing CSS, so comparing either one alone would skip a write
+        // that is genuinely needed.
+        if (key === borderSidesKey(this._border) && key === borderSidesKey(this._instanceStyle.border)) {
+            return this;
+        }
+
         this._border       = typeof options === "string" ? { border: options } : options;
         this._borderWidths = null;
 
@@ -3246,6 +3316,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setOutline(outline: string): this {
+        if (this._instanceStyle.outline === outline) {
+            return this;
+        }
+
         this.writeStyle({ outline });
 
         return this;
@@ -3257,6 +3331,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearOutline(): this {
+        // Covers both "never set" (key absent, so the raw field access reads
+        // `undefined`) and "already cleared" (key present with `null`) —
+        // both mean there is nothing left to clear.
+        if (this._instanceStyle.outline === undefined || this._instanceStyle.outline === null) {
+            return this;
+        }
+
         this.writeStyle({ outline: null });
 
         return this;
@@ -3366,6 +3447,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setTransform(value: string): this {
+        if (this._transform === value) {
+            return this;
+        }
+
         this._transform = value;
 
         this.setElementCSSRule("transform", value);
@@ -4011,14 +4096,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const width  = this.clampWidth(size.width);
         const height = this.clampHeight(size.height);
 
-        const changed = this._width !== width || this._height !== height;
+        if (this._width === width && this._height === height) {
+            return this;
+        }
 
         this._width = width;
         this._height = height;
 
-        if (changed) {
-            this.notifySizeChange();
-        }
+        this.notifySizeChange();
 
         let element = this.getElement();
         if (!element) {
@@ -5368,6 +5453,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setWritingMode(value: string): this {
+        if (this._options.writingMode === value) {
+            return this;
+        }
+
         this._options.writingMode = value;
 
         this.setElementStyle("writingMode", value);
@@ -5410,6 +5499,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setOpacity(value: number): this {
+        if (this._opacity === value) {
+            return this;
+        }
+
         this._opacity = value;
 
         this.setElementStyle("opacity", String(value));
@@ -6393,7 +6486,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param patch - The `StyleBag` key(s) the shared rule declares.
      */
     protected setValueStyleState(prefix: string, cssValue: string, patch: StyleBag): void {
-        const token        = prefix + cssValue.replace(/[^a-zA-Z0-9]/g, "_");
+        const token = prefix + cssValue.replace(/[^a-zA-Z0-9]/g, "_");
+
+        // The recorded token is the whole of this tier's per-instance state:
+        // the shared rule it names is already materialised and the class is
+        // already on the element (or queued for the render-time replay below),
+        // so an unchanged token has nothing left to do.
+        if (this._valueStyleTokens.get(prefix)?.token === token) {
+            return;
+        }
+
         const declarations = resolvePartialDeclarations(patch);
         const guard        = this.valueClassGuardSuffix(declarations);
 
