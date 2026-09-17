@@ -130,14 +130,53 @@ when a single editor is visible (S1, with four, shows 0.01).
   amortise differently. Unexplained, unimportant, noted so it is not later
   mistaken for a regression.
 
-## The three headline numbers to re-measure after each wave
+## The three headline numbers — and why you must NOT compare against them
 
 1. **S1 — 103.9** ms/frame (mean of 103.8/104.0), 2×2 grid, dock-h gutter.
 2. **S3 — 73.0** ms/frame (mean of 73.2/72.7), file tree, single editor.
 3. **S4 resize — 55.4** ms/frame (mean of 54.2/56.5), framework floor.
 
-Re-run with exactly the harness parameters in the sweep script; interleave and
-repeat as here, or the comparison is not sound.
+> **CORRECTION, 2026-09-17 — these absolutes are not comparable across
+> sessions.** This section originally said to re-measure them after each wave.
+> That instruction is wrong and produced two false regressions before it was
+> caught. On 2026-09-17 the *pre-wave-0 build* (`3688d9f1` — the exact commit
+> measured above) was rebuilt and re-run: it came back at **S1 112.2** and
+> **S3 83.4**, i.e. **+8.0% and +14.2% against its own numbers from the night
+> before**, same bytes, same scenarios, same harness. The machine differs
+> between sessions by more than almost every effect this campaign is trying to
+> measure — G04's real effect was 1.6%.
+
+### The only valid comparison: same-session A/B
+
+Build the pre-change library into a worktree and interleave the two libraries
+**in one sweep**, so drift hits both arms equally:
+
+```
+git worktree add .worktrees/_prewave0 <pre-change-sha> --detach
+ln -sfn <repo>/node_modules .worktrees/_prewave0/node_modules
+ln -sfn <repo>/packages/lib/node_modules .worktrees/_prewave0/packages/lib/node_modules
+(cd .worktrees/_prewave0/packages/lib && npm run build:lib)
+
+export QA_WT_LIB=<repo>/.worktrees/_prewave0/packages/lib
+runqa.sh ab-s1-post-r1 main "<params>"   # post-change
+runqa.sh ab-s1-pre-r1  wt   "<params>"   # pre-change, minutes later
+...alternating, two rounds
+```
+
+`runqa.sh`'s `main`/`wt` switch exists for exactly this and is how the
+scroll-strip fix was originally validated at 220 → 107. Use it. Afterwards,
+restore Loom's symlink — the script leaves it pointing at whichever arm ran
+last:
+`ln -sfn <repo>/packages/lib <loom>/node_modules/@jimka/typescript-ui`.
+
+**Effects that survive this caveat:** the scroll-strip 220 → 107 (far larger
+than any plausible drift) and any within-session ablation, such as the G04
+`norules` measurement below, where both arms ran minutes apart.
+
+**What the numbers above are still good for:** the *shape* of the tree
+(element counts, editor/invisible/undisplayed splits, `treeRectHeight`), the
+per-frame write counters, and the ratios between scenarios within that one
+session. Not absolutes.
 
 ## Reproducing
 
@@ -152,3 +191,42 @@ python3 qa-table.py base- --writes ; python3 qa-forced.py base-s1
 ```
 
 Raw results: `qa-harness/qa-results/base-s{1..4}-r{1,2}-*.json`.
+
+
+## Post-wave-0 A/B result (2026-09-17)
+
+Wave 0's four correctness branches, measured same-session against their own
+pre-merge parent, interleaved over two rounds:
+
+| Scenario | pre-wave-0 (`3688d9f1`) | post-wave-0 (`68136db0`) | delta |
+|---|---:|---:|---:|
+| S1 2×2 grid, dock-h | 112.2 | **111.6** | −0.6 (post faster) |
+| S3 file tree, 1 editor | 83.4 | **81.4** | −2.0 (post faster) |
+
+**Wave 0 cost nothing.** This matters because wave 0 put a `try`/`catch` around
+every entry in the batched layout flush — a per-frame hot path — and changed
+size reporting in `Grid`, `HBox`, `VBox`, `Fit` and `Card`. Both were worth
+checking; neither shows up. The per-frame write counters are also byte-identical
+before and after (seven counters on S1, thirteen on S3), so no JS-side work was
+added either.
+
+## G04 ablation result (2026-09-17)
+
+What one stylesheet-rule write per frame actually costs on Loom's real trees,
+measured within-session with `abl=norules`:
+
+| Scenario | with rules | `norules` | delta |
+|---|---:|---:|---:|
+| S3 — 1 rule write/frame | 83.1 | 81.8 | **1.3 ms** |
+| S1 — **0** rule writes (control) | 111.9 | 109.8 | 2.1 ms |
+
+The control is the reading. S1 writes no rules, so its 2.1 ms "effect" is pure
+noise — and S3's real effect is *smaller than that*. The ~195 ms/frame
+full-document restyle is real at 21k nodes; at Loom's 992–2387 it is free.
+
+**Consequence for G04:** it must not lead wave 1. The synthesis ranks it "land
+first of the perf groups" because "the same-valued rule writes dominate every
+drag-frame measurement" — that premise is now measured false for every Loom
+scenario. G04 is a latent hazard for large documents and a hygiene item, not a
+performance win. G07's setter guards include `setClipPath` and will close most
+of it incidentally.
