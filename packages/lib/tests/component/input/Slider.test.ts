@@ -34,15 +34,16 @@ const CONFIG = {
  * its private track/thumb children) left queued flushes on a LATER file's real
  * rAF after this file's DOM was reset — surfacing as a stray "DOM handle not
  * registered" unhandled error. The sequence is: pause the slider AND its
- * private children first (so the synchronous flush below can't re-queue them
- * via doLayout's setX/setSize side effects), then flushLayout the host subtree
- * and the slider to delete their already-queued entries from the global set.
- * fireEvent only needs the element to exist, not a live frame.
+ * private children first, then flushLayout the host subtree and the slider to
+ * delete their already-queued entries from the global set. fireEvent only needs
+ * the element to exist, not a live frame.
  */
 function quiesce(host: { flushLayout(): unknown; pauseLayout(): unknown }, slider: any): void {
     slider.pauseLayout();
-    // The track/active-fill/thumb are private Components the slider's doLayout
-    // re-schedules; pause them so the flush below doesn't re-queue the subtree.
+    // The slider's own doLayout places the track/active-fill/thumb through
+    // guarded per-axis setters, so it no longer re-queues them; pausing them is
+    // for what the host flush below lays out on its way through, and for a
+    // child left queued from its own construction.
     slider._track?.pauseLayout?.();
     slider._activeTrack?.pauseLayout?.();
     slider._thumb?.pauseLayout?.();
@@ -50,6 +51,37 @@ function quiesce(host: { flushLayout(): unknown; pauseLayout(): unknown }, slide
     host.pauseLayout();
     host.flushLayout();
     slider.flushLayout();
+}
+
+/**
+ * The `left` / `top` / `width` / `height` declarations the sink recorded on
+ * `apply` patches since `from`. A settled pass is asserted against these keys
+ * rather than an `apply` count, because one content-free InlineStyle flush per
+ * component survives regardless — a Component/InlineStyle floor, not a
+ * slider one. Copied from tests/component/display/ProgressSpinner.test.ts.
+ */
+function geometryWritesSince(sink: RecordingDOMSink, from: number): string[] {
+    const written: string[] = [];
+
+    for (const write of sink.writes.slice(from)) {
+        if (write.op !== 'apply') {
+            continue;
+        }
+
+        const style = (write.args[1] as { style?: Record<string, string | null> }).style;
+
+        if (!style) {
+            continue;
+        }
+
+        for (const key of ['left', 'top', 'width', 'height']) {
+            if (key in style) {
+                written.push(key);
+            }
+        }
+    }
+
+    return written;
 }
 
 describe('Slider snap math', () => {
@@ -92,6 +124,17 @@ describe('Slider getters and deprecated aliases', () => {
 
     it('defaults orientation to horizontal', () => {
         expect(new Slider().getOrientation()).toBe('horizontal');
+    });
+
+    it('no longer exposes the inert showTicks accessors', () => {
+        // The option and both accessors were removed: nothing ever rendered
+        // ticks, and no caller anywhere set them. The `{ showTicks: true }`
+        // half of the break is a compile error, which typecheck:test — not a
+        // runtime assertion — is what catches.
+        const s = new Slider() as any;
+
+        expect(s.isShowTicks).toBeUndefined();
+        expect(s.setShowTicks).toBeUndefined();
     });
 
 });
@@ -410,5 +453,84 @@ describe('SliderTrack/SliderActiveTrack/SliderThumb class-rule hoisting', () => 
         expect(_ruleCacheHas('.SliderTrack')).toBe(true);
         expect(_ruleCacheHas('.SliderActiveTrack')).toBe(true);
         expect(_ruleCacheHas('.SliderThumb')).toBe(true);
+    });
+});
+
+// The slider's three private children are placed through the guarded per-axis
+// setters, so a pass that resolves the same geometry writes nothing and arms
+// nothing — see plans/implemented/progress-indicator-resize-relay.md.
+describe('Slider settled-pass write economy', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        DOM.reset();
+    });
+
+    /**
+     * Mounts a 200x16 slider at value 50 and lays it out once, returning the
+     * recording sink alongside the host and the slider. Same mount ritual as
+     * the `valueAtPointer` block above.
+     */
+    function laidOutSlider(): { sink: RecordingDOMSink; host: Container; slider: any } {
+        const sink   = installTestDOM(CONFIG);
+        const host   = new Container({});
+        const slider = new Slider({ min: 0, max: 100, value: 50 });
+
+        host.addComponent(slider);
+        host.getElement(true);
+        slider.getElement(true);
+        host.setX(0);
+        host.setY(0);
+        slider.setX(0);
+        slider.setY(0);
+        slider.setWidth(200);
+        slider.setHeight(16);
+        slider.doLayout();
+
+        return { sink, host, slider: slider as any };
+    }
+
+    it('writes no geometry on a second layout pass at the same size', () => {
+        const { sink, host, slider } = laidOutSlider();
+        const start                  = sink.writes.length;
+
+        slider.doLayout();
+
+        expect(geometryWritesSince(sink, start)).toEqual([]);
+
+        quiesce(host, slider);
+    });
+
+    it('schedules no child layout pass on a second pass at the same size', () => {
+        const { host, slider } = laidOutSlider();
+        const spies            = [slider._track, slider._activeTrack, slider._thumb]
+            .map((child: any) => vi.spyOn(child, 'scheduleLayout'));
+
+        slider.doLayout();
+
+        for (const spy of spies) {
+            expect(spy).not.toHaveBeenCalled();
+        }
+
+        quiesce(host, slider);
+    });
+
+    it('keeps the thumb and active-track geometry the value relation asks for', () => {
+        const { host, slider } = laidOutSlider();
+
+        slider.doLayout();
+
+        // 200x16 content box at value 50: a 4px track centred vertically, an
+        // active track half the width, and a 16px thumb at (200 - 16) / 2.
+        expect(slider._track.getX()).toBe(0);
+        expect(slider._track.getY()).toBe(6);
+        expect(slider._track.getWidth()).toBe(200);
+        expect(slider._track.getHeight()).toBe(4);
+        expect(slider._activeTrack.getWidth()).toBe(100);
+        expect(slider._thumb.getX()).toBe(92);
+        expect(slider._thumb.getY()).toBe(0);
+        expect(slider._thumb.getWidth()).toBe(16);
+        expect(slider._thumb.getHeight()).toBe(16);
+
+        quiesce(host, slider);
     });
 });

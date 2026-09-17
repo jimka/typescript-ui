@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ProgressBar } from '~/component/display/ProgressBar';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -19,8 +19,44 @@ const CONFIG = {
 // production sink when no harness is installed. That deferred flush fires after
 // the test ends and, once a later harness test calls `DOM.reset()`, dereferences
 // released handles. The harness's rAF is an inert recorder, so nothing leaks.
-beforeEach(() => installTestDOM(CONFIG));
+let sink: RecordingDOMSink;
+
+beforeEach(() => {
+    sink = installTestDOM(CONFIG);
+});
 afterEach(() => DOM.reset());
+
+/**
+ * The `left` / `top` / `width` / `height` declarations the sink recorded on
+ * `apply` patches since `from`. A settled pass is asserted against these keys
+ * rather than an `apply` count, because one content-free InlineStyle flush per
+ * component survives regardless — a Component/InlineStyle floor, not a
+ * progress-indicator one. Copied from
+ * tests/component/display/ProgressSpinner.test.ts.
+ */
+function geometryWritesSince(recorder: RecordingDOMSink, from: number): string[] {
+    const written: string[] = [];
+
+    for (const write of recorder.writes.slice(from)) {
+        if (write.op !== 'apply') {
+            continue;
+        }
+
+        const style = (write.args[1] as { style?: Record<string, string | null> }).style;
+
+        if (!style) {
+            continue;
+        }
+
+        for (const key of ['left', 'top', 'width', 'height']) {
+            if (key in style) {
+                written.push(key);
+            }
+        }
+    }
+
+    return written;
+}
 
 /**
  * Returns the inner fill component (the bar's track child's first child)
@@ -155,5 +191,44 @@ describe('ProgressBar fill-width relation', () => {
     });
     it('fills the full inner width at value 100', () => {
         expect(fillWidthAt(100, 200)).toBe(200);
+    });
+});
+
+describe('ProgressBar settled-pass write economy', () => {
+    /** A realized, zero-inset bar laid out once at a known box. */
+    function laidOutBar(value: number): ProgressBar {
+        const bar = new ProgressBar(value);
+
+        bar.getElement(true);
+        bar.clearInsets();
+        bar.setWidth(200);
+        bar.setHeight(12);
+
+        bar.doLayout();
+
+        return bar;
+    }
+
+    it('writes no geometry on a second layout pass at the same size', () => {
+        const bar   = laidOutBar(50);
+        const start = sink.writes.length;
+
+        bar.doLayout();
+
+        expect(geometryWritesSince(sink, start)).toEqual([]);
+    });
+
+    it('schedules no child layout pass on a second pass at the same size', () => {
+        const bar   = laidOutBar(50);
+        const track = (bar as unknown as { _track: Component })._track;
+        const fill  = fillOf(bar);
+
+        const trackSchedule = vi.spyOn(track, 'scheduleLayout');
+        const fillSchedule  = vi.spyOn(fill, 'scheduleLayout');
+
+        bar.doLayout();
+
+        expect(trackSchedule).not.toHaveBeenCalled();
+        expect(fillSchedule).not.toHaveBeenCalled();
     });
 });

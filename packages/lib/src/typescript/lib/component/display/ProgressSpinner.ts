@@ -86,6 +86,11 @@ class ProgressSpinner extends Component {
     private _trackThemeFontSize: boolean;
     private _themeFontSizeResolved: boolean = false;
     private _overlayTarget: Component | null = null;
+    // Bound once per instance so showOverlay / hideOverlay add and remove the
+    // exact same reference on the target's listener bag.
+    private readonly _handleTargetSizeChange = (): void => {
+        this.doLayout();
+    };
 
     /**
      * Constructs a ProgressSpinner.
@@ -219,6 +224,11 @@ class ProgressSpinner extends Component {
      * semi-transparent backdrop and the spinning arc centred inside it. No-op if
      * already shown as an overlay.
      *
+     * The overlay tracks the target's size for as long as it is shown: it
+     * subscribes to the target's size-change notification, so a target resize
+     * re-sizes the backdrop synchronously. {@link hideOverlay} drops the
+     * subscription.
+     *
      * @param target - The component to overlay.
      */
     showOverlay(target: Component): void {
@@ -238,7 +248,10 @@ class ProgressSpinner extends Component {
 
         this.setX(0);
         this.setY(0);
-        this.setSize({ width: target.getWidth(), height: target.getHeight() });
+
+        target.onSizeChange(this._handleTargetSizeChange);
+
+        // Sizes the overlay to the target — doLayout reads the target's box itself.
         this.doLayout();
     }
 
@@ -251,6 +264,7 @@ class ProgressSpinner extends Component {
             return;
         }
 
+        this._overlayTarget.offSizeChange(this._handleTargetSizeChange);
         this._overlayTarget = null;
 
         this.removeElement();
@@ -269,7 +283,21 @@ class ProgressSpinner extends Component {
     }
 
     /**
-     * Lays out the inner arc element at the centre of the component bounds.
+     * Releases the target subscription a showing overlay holds, then runs the
+     * inherited teardown — otherwise a spinner destroyed while still overlaid
+     * leaves a listener on the target keeping it alive.
+     */
+    protected destructor(): void {
+        this.hideOverlay();
+
+        super.destructor();
+    }
+
+    /**
+     * Lays out the inner arc element at the centre of the component bounds, and
+     * — while shown as an overlay — re-syncs the spinner's own box to its
+     * target's. That is what the target's size-change notification runs, and
+     * what {@link showOverlay} calls to size the overlay in the first place.
      *
      * @returns This component, for method chaining.
      */
@@ -285,7 +313,8 @@ class ProgressSpinner extends Component {
         }
 
         if (this._overlayTarget) {
-            this.setSize({ width: this._overlayTarget.getWidth(), height: this._overlayTarget.getHeight() });
+            this.setWidth(this._overlayTarget.getWidth());
+            this.setHeight(this._overlayTarget.getHeight());
         }
 
         // The content box, not the inner size: the inner size gives the right
@@ -305,7 +334,8 @@ class ProgressSpinner extends Component {
 
         this._arc.setX(x);
         this._arc.setY(y);
-        this._arc.setSize({ width: diameter, height: diameter });
+        this._arc.setWidth(diameter);
+        this._arc.setHeight(diameter);
 
         super.doLayout();
 

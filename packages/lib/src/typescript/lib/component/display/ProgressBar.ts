@@ -189,18 +189,21 @@ class ProgressBar extends Component {
 
         this._track.setX(box.x);
         this._track.setY(box.y);
-        this._track.setSize({ width: box.width, height: box.height });
+        this._track.setWidth(box.width);
+        this._track.setHeight(box.height);
 
         if (this._indeterminate) {
             const segment = Math.max(20, Math.round(box.width * 0.25));
             this._fill.setX(0);
             this._fill.setY(0);
-            this._fill.setSize({ width: segment, height: box.height });
+            this._fill.setWidth(segment);
+            this._fill.setHeight(box.height);
         } else {
             const fillWidth = Math.round(box.width * this._value / 100);
             this._fill.setX(0);
             this._fill.setY(0);
-            this._fill.setSize({ width: fillWidth, height: box.height });
+            this._fill.setWidth(fillWidth);
+            this._fill.setHeight(box.height);
         }
 
         super.doLayout();
