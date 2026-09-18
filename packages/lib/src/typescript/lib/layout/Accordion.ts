@@ -73,6 +73,22 @@ export type SectionToggleCallback = (index: number, open: boolean) => void;
  */
 export type SectionResizeCallback = (sizes: LayoutSize[]) => void;
 
+/** One open section's size reports, read once per layout pass. */
+interface SectionMeasure {
+    preferred: number;
+    min:       number;
+    /** `null` when the section declares no maximum height. */
+    max:       number | null;
+}
+
+/** The non-resizable content-height model for one layout pass. */
+interface ContentHeightModel {
+    /** Each open section's fill-free content height, by container index. */
+    contentHeights: Map<number, number>;
+    /** Each open section's share of the container's leftover height, by container index. */
+    fills:          Map<number, number>;
+}
+
 /**
  * Construction-time options for {@link Accordion}.
  *
@@ -1569,24 +1585,25 @@ class Accordion extends LayoutManager implements FocusRevealer {
             containerWidth = Math.max(containerWidth, totalMin.width);
         }
 
-        // Shrink-to-fit along the vertical axis: when the open sections'
-        // preferred heights overflow the container, shrink each toward its min
-        // so the accordion fits — see computeShrinkRatio for the full policy.
-        const shrinkRatio = this.computeShrinkRatio(components, containerSize);
-
-        // Fill: open sections grow to absorb the container's leftover height
-        // (underflow) — split across the sections by weight, with
-        // setFillHeight opting every open section in at an equal default weight.
-        // The counterpart to shrink: when the content
-        // overflows, shrinkRatio > 0 and the leftover is <= 0, so the fill map is
-        // empty and the two policies never both apply.
-        const fills = this.computeFill(components, containerSize, shrinkRatio);
+        // The shrink and fill stages, behind one lazily-built bundle: a pass
+        // whose readers all take another branch computes neither. See
+        // computeContentHeightModel for what it holds and who asks for it.
+        let heightModel: ContentHeightModel | null = null;
+        const contentModel = (): ContentHeightModel => (heightModel ??= this.computeContentHeightModel(components, containerSize));
 
         // Resizable mode: open sections' content heights come from the
         // drag-backed distribution instead of `openContentHeight + fill`.
         // `null` when inactive (off, no size yet, or nothing open), in which
         // case the loop below falls back to the legacy formula unchanged.
-        const resizeHeights = this.computeResizableHeights(components, containerSize, shrinkRatio, fills);
+        const resizeHeights = this.computeResizableHeights(components, containerSize, contentModel);
+
+        // With the resizable path inactive every open section's height comes from
+        // the model, so build it here rather than inside layoutSections — that
+        // keeps the model's inputs read before any section is placed, exactly as
+        // before.
+        if (resizeHeights === null && components.some((component, i) => component.isDisplayed() && this._openState[i])) {
+            contentModel();
+        }
 
         this.layoutSections(
             components,
@@ -1601,7 +1618,7 @@ class Accordion extends LayoutManager implements FocusRevealer {
                 // preferred height so the wrapper's `overflow: hidden` clips it
                 // during the close animation rather than collapsing instantly.
                 if (isOpen) {
-                    return resizeHeights?.get(i) ?? (this.openContentHeight(components[i], shrinkRatio) + (fills.get(i) ?? 0));
+                    return resizeHeights?.get(i) ?? this.legacyOpenHeight(contentModel(), i);
                 }
 
                 const preferred = components[i].getPreferredSize();
@@ -1701,7 +1718,7 @@ class Accordion extends LayoutManager implements FocusRevealer {
             // closing, and reduced motion take the immediate path. Read the old
             // height before placeSection overwrites it.
             const oldHeight = component.getHeight();
-            const shrinking = isOpen && animateShrink && !Animation.isReducedMotion() && contentHeight < oldHeight;
+            const shrinking = isOpen && animateShrink && contentHeight < oldHeight && !Animation.isReducedMotion();
 
             const cursor = this.placeSection(i, component, y, panelHeight, contentHeight, containerWidth, left);
 
@@ -2036,6 +2053,62 @@ class Accordion extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * Builds the non-resizable content-height model for one layout pass. Every
+     * displayed, open section's preferred, minimum and maximum height is read
+     * exactly once into a per-section measure, and all three sizing stages read
+     * that measure instead of asking the component again — each read is an
+     * unmemoised walk of the section's whole subtree.
+     *
+     * The two policies it folds together are complementary and never both
+     * apply. Shrink-to-fit: when the open sections' preferred heights overflow
+     * the container, each shrinks toward its own minimum so the accordion fits
+     * (see {@link computeShrinkRatio} for the full policy). Fill: when they
+     * underflow, the open sections grow to absorb the leftover, split by weight,
+     * with {@link setFillHeight} opting every open section in at an equal
+     * default weight. On overflow the shrink ratio is above zero and the
+     * leftover is at most zero, so the fill map comes back empty.
+     *
+     * Built at most once per pass, and only when a reader asks: in resizable
+     * mode the sole reader is the seed for a section with no stored size yet, so
+     * a settled pass builds nothing at all.
+     *
+     * @param components - The container's content components, section-ordered.
+     * @param containerSize - The container's inner size, or null.
+     * @returns This pass's content heights and fill shares, by container index.
+     */
+    private computeContentHeightModel(components: Component[], containerSize: Size | null): ContentHeightModel {
+        const measures = new Map<number, SectionMeasure>();
+
+        for (let i = 0; i < components.length; i++) {
+            if (!components[i].isDisplayed() || !this._openState[i]) {
+                continue;
+            }
+
+            const preferred = components[i].getPreferredSize();
+            const min       = components[i].getMinSize();
+            const max       = components[i].getMaxSize();
+
+            // The 100px preferred and 0px minimum fallbacks are the ones the
+            // shrink and content-height stages each applied on their own before
+            // they shared a measure; applying them here applies them once.
+            measures.set(i, {
+                preferred: preferred ? preferred.height : 100,
+                min:       min ? min.height : 0,
+                max:       max ? max.height : null,
+            });
+        }
+
+        const shrinkRatio    = this.computeShrinkRatio(components, containerSize, measures);
+        const contentHeights = new Map<number, number>();
+
+        for (const [i, measure] of measures) {
+            contentHeights.set(i, this.openContentHeight(measure, shrinkRatio));
+        }
+
+        return { contentHeights, fills: this.computeFill(components, containerSize, contentHeights, measures) };
+    }
+
+    /**
      * Computes the vertical shrink ratio applied to every open section's
      * content so the accordion fits its container, mirroring VBox's
      * preferred-mode shrink. Headers are fixed and never shrink; only open
@@ -2056,9 +2129,12 @@ class Accordion extends LayoutManager implements FocusRevealer {
      * @param components - The container's content components, section-ordered.
      * @param containerSize - The container's inner size; `null` short-circuits
      *   to `0` (no shrink) since the budget is unknown.
+     * @param measures - Every displayed, open section's size reports, keyed by
+     *   container index. Its keys are exactly the sections that contribute
+     *   shrinkable content, so membership replaces the open-state test.
      * @returns The shrink ratio in `[0, 1]`.
      */
-    private computeShrinkRatio(components: Component[], containerSize: Size | null): number {
+    private computeShrinkRatio(components: Component[], containerSize: Size | null, measures: Map<number, SectionMeasure>): number {
         if (!containerSize) {
             return 0;
         }
@@ -2084,15 +2160,14 @@ class Accordion extends LayoutManager implements FocusRevealer {
             displayedSoFar += 1;
             headerTotal += this.effectiveHeaderHeight();
 
-            if (!this._openState[i]) {
+            const measure = measures.get(i);
+
+            if (!measure) {
                 continue;
             }
 
-            const pref = components[i].getPreferredSize();
-            const min = components[i].getMinSize();
-
-            openPreferred += pref ? pref.height : 100;
-            openMin += min ? min.height : 0;
+            openPreferred += measure.preferred;
+            openMin       += measure.min;
         }
 
         const totalPreferred = headerTotal + openPreferred;
@@ -2110,9 +2185,8 @@ class Accordion extends LayoutManager implements FocusRevealer {
 
     /**
      * The height an open section's content renders at: its preferred height
-     * shrunk toward its minimum by `shrinkRatio`, then clamped to its merged
-     * `[min, max]`. Falls back to 100px when the section reports no preferred
-     * height.
+     * shrunk toward its minimum by `shrinkRatio`, then clamped to the merged
+     * `[min, max]` the measure recorded.
      *
      * The clamp matters because `getPreferredSize` clamps only to a component's
      * *own* min/max constraints, not the merged {@link Component.getMinSize} /
@@ -2123,21 +2197,27 @@ class Accordion extends LayoutManager implements FocusRevealer {
      * inside — and the drag-backed resizable path (which does respect the merged
      * bounds) then disagreed, making a resizable toggle resize the section.
      *
-     * @param component - The section content component.
+     * @param measure - The open section's size reports for this pass.
      * @param shrinkRatio - The container-driven shrink ratio in `[0, 1]`.
      * @returns The content height in pixels.
      */
-    private openContentHeight(component: Component, shrinkRatio: number): number {
-        const preferred = component.getPreferredSize();
-        const contentPref = preferred ? preferred.height : 100;
-        const min = component.getMinSize();
-        const contentMin = min ? min.height : 0;
+    private openContentHeight(measure: SectionMeasure, shrinkRatio: number): number {
+        const shrunk = measure.preferred - shrinkRatio * (measure.preferred - measure.min);
+        const capped = measure.max !== null ? Math.min(shrunk, measure.max) : shrunk;
 
-        const shrunk = contentPref - shrinkRatio * (contentPref - contentMin);
-        const max = component.getMaxSize();
-        const capped = max ? Math.min(shrunk, max.height) : shrunk;
+        return Math.max(capped, measure.min);
+    }
 
-        return Math.max(capped, contentMin);
+    /**
+     * An open section's non-resizable content height: its shrunk height plus
+     * its fill share, the two halves the model holds separately.
+     *
+     * @param model - This pass's content-height model.
+     * @param index - The section's container index.
+     * @returns The content height in pixels.
+     */
+    private legacyOpenHeight(model: ContentHeightModel, index: number): number {
+        return (model.contentHeights.get(index) ?? 0) + (model.fills.get(index) ?? 0);
     }
 
     /**
@@ -2160,11 +2240,14 @@ class Accordion extends LayoutManager implements FocusRevealer {
      *
      * @param components - The container's child components.
      * @param containerSize - The container's inner size, or null.
-     * @param shrinkRatio - The shrink ratio applied to open content.
+     * @param contentHeights - Each open section's fill-free content height, by
+     *   container index; the shrink ratio is already folded into them.
+     * @param measures - Every displayed, open section's size reports, keyed by
+     *   container index. Its keys are exactly the sections that can fill.
      * @returns A map from section index to the extra height it absorbs; empty
      *   when nothing fills.
      */
-    private computeFill(components: Component[], containerSize: Size | null, shrinkRatio: number): Map<number, number> {
+    private computeFill(components: Component[], containerSize: Size | null, contentHeights: Map<number, number>, measures: Map<number, SectionMeasure>): Map<number, number> {
         const fills = new Map<number, number>();
 
         if (!containerSize) {
@@ -2188,14 +2271,16 @@ class Accordion extends LayoutManager implements FocusRevealer {
             displayed += 1;
             used += this.effectiveHeaderHeight();
 
-            if (this._openState[i]) {
-                const contentHeight = this.openContentHeight(components[i], shrinkRatio);
+            const measure = measures.get(i);
+
+            if (measure) {
+                const contentHeight = contentHeights.get(i) ?? 0;
                 used += contentHeight;
 
                 const weight = this.effectiveWeight(components[i]);
 
                 if (weight > 0) {
-                    recipients.push({ index: i, weight, headroom: this.fillHeadroom(components[i], contentHeight) });
+                    recipients.push({ index: i, weight, headroom: this.fillHeadroom(measure, contentHeight) });
                     weightTotal += weight;
                 }
             }
@@ -2288,14 +2373,12 @@ class Accordion extends LayoutManager implements FocusRevealer {
      * height — the gap between its max and the content height it already takes
      * without any fill. Unbounded when the section declares no max.
      *
-     * @param component - The open section's content component.
+     * @param measure - The open section's size reports for this pass.
      * @param contentHeight - The section's fill-free content height.
      * @returns The absorbable headroom in pixels, or `Infinity` when unbounded.
      */
-    private fillHeadroom(component: Component, contentHeight: number): number {
-        const max = component.getMaxSize();
-
-        return max ? Math.max(0, max.height - contentHeight) : Number.POSITIVE_INFINITY;
+    private fillHeadroom(measure: SectionMeasure, contentHeight: number): number {
+        return measure.max !== null ? Math.max(0, measure.max - contentHeight) : Number.POSITIVE_INFINITY;
     }
 
     /**
@@ -2370,16 +2453,15 @@ class Accordion extends LayoutManager implements FocusRevealer {
      * @param components - The container's content components, section-ordered.
      * @param containerSize - The container's inner size; `null` short-circuits
      *   to `null` (caller falls back to the legacy path).
-     * @param shrinkRatio - The container-driven shrink ratio, used only to seed
-     *   a not-yet-stored section from the legacy formula.
-     * @param fills - The legacy fill map, used only to seed a not-yet-stored
-     *   section from the legacy formula.
+     * @param contentModel - Accessor for this pass's content-height model, read
+     *   only to seed a section that has no stored size yet; a pass where every
+     *   open section is already stored never calls it.
      * @returns A map from container index to content height for every open
      *   section, or `null` when resizable mode is inactive, there is no
      *   container size, or no section is open (the caller keeps the legacy
      *   `openContentHeight + fill` path in all three cases).
      */
-    private computeResizableHeights(components: Component[], containerSize: Size | null, shrinkRatio: number, fills: Map<number, number>): Map<number, number> | null {
+    private computeResizableHeights(components: Component[], containerSize: Size | null, contentModel: () => ContentHeightModel): Map<number, number> | null {
         if (!this._resizable || !containerSize) {
             return null;
         }
@@ -2423,7 +2505,7 @@ class Accordion extends LayoutManager implements FocusRevealer {
             const component = components[i];
 
             if (!this._resizeSizes.has(component)) {
-                this._resizeSizes.set(component, this.openContentHeight(component, shrinkRatio) + (fills.get(i) ?? 0));
+                this._resizeSizes.set(component, this.legacyOpenHeight(contentModel(), i));
             }
         }
 

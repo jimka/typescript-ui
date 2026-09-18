@@ -408,3 +408,201 @@ describe('Accordion getMaxSize', () => {
         expect(acc.getMaxSize()).toEqual({ width: UNBOUNDED, height: UNBOUNDED });
     });
 });
+
+// ---------------------------------------------------------------------------
+// accordion-seed-pass-economy plan, Expected Behaviour 2 / 5–8 / 10–12: the
+// sizing stages run on demand and measure each open section once, the
+// reduced-motion query is asked only when a section actually shrinks, and two
+// runtime setters reach the sections that already exist.
+// ---------------------------------------------------------------------------
+
+/** The private sizing stages the work-count cases below count entries into. */
+type SizingStages = {
+    computeShrinkRatio(...args: unknown[]): number;
+    computeFill(...args: unknown[]): Map<number, number>;
+    openContentHeight(...args: unknown[]): number;
+};
+
+// A Container-backed section. `Container.clampsToContentSize()` is false, so
+// `setWidth`/`setHeight`'s clamp consults the component's own constraints
+// rather than the merged `getMinSize`/`getMaxSize`. That keeps the call counts
+// below measuring the sizing pipeline alone, with no placement reads folded in.
+function measuredSection(pref: { width: number; height: number }, min?: { width: number; height: number }): Container {
+    const c = new Container({ preferredSize: pref });
+    if (min) c.setMinSize({ width: min.width, height: min.height });
+    c.getElement(true);
+    return c;
+}
+
+describe('Accordion manager — the content-height model is built only when a reader asks', () => {
+    it('with no section open, neither sizing stage is entered and closed content keeps its preferred height', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(400, 300, acc);
+        const a = content({ width: 100, height: 50 });
+        const b = content({ width: 100, height: 70 });
+        host.addComponent(a, constraints('A', false));
+        host.addComponent(b, constraints('B', false));
+        host.doLayout();
+
+        const shrink = vi.spyOn(acc as unknown as SizingStages, 'computeShrinkRatio');
+        const fill   = vi.spyOn(acc as unknown as SizingStages, 'computeFill');
+
+        host.doLayout();
+
+        expect(shrink).not.toHaveBeenCalled();
+        expect(fill).not.toHaveBeenCalled();
+        // Closed content stays at preferred so the wrapper's overflow clips it.
+        expect(a.getHeight()).toBe(50);
+        expect(b.getHeight()).toBe(70);
+        expect(acc.getPreferredSize()!.height).toBe(2 * HEADER);
+    });
+
+    it('a closed first section does not disturb the open one below it', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(400, 200, acc);
+        const a = content({ width: 100, height: 50 });
+        const b = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', false));
+        host.addComponent(b, constraints('B', true, 1));
+        host.doLayout();
+
+        // used = 2 headers + B's preferred content; B is the only recipient.
+        const leftover = 200 - (2 * HEADER + 50);
+        expect(b.getHeight()).toBe(50 + leftover);
+        expect(a.getHeight()).toBe(50);
+    });
+
+    it('a single open section takes the whole leftover when weighted, and its plain preferred height when not', () => {
+        function oneOpen(weight?: number): Component {
+            installTestDOM(CONFIG);
+            const acc = new Accordion();
+            acc.setHeaderHeight(HEADER);
+            const host = hostAccordion(400, 200, acc);
+            const a = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+            host.addComponent(a, constraints('A', true, weight));
+            host.doLayout();
+            return a;
+        }
+
+        expect(oneOpen(1).getHeight()).toBe(50 + (200 - (HEADER + 50)));
+        DOM.reset();
+        expect(oneOpen().getHeight()).toBe(50);
+    });
+
+    it('three consecutive passes with no input change report identical rectangles', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(400, 300, acc);
+        const sections = [
+            content({ width: 100, height: 60 }, { width: 40, height: 10 }),
+            content({ width: 100, height: 40 }),
+            content({ width: 100, height: 60 }, { width: 40, height: 10 }),
+            content({ width: 100, height: 40 }),
+        ];
+        host.addComponent(sections[0], constraints('S0', true, 1));
+        host.addComponent(sections[1], constraints('S1', false));
+        host.addComponent(sections[2], constraints('S2', true));
+        host.addComponent(sections[3], constraints('S3', false));
+
+        const rects = (): number[][] => sections.map(s => [s.getWidth(), s.getHeight()]);
+
+        host.doLayout();
+        const first = rects();
+        host.doLayout();
+        const second = rects();
+        host.doLayout();
+        const third = rects();
+
+        // The weighted open section absorbs the whole leftover; the unweighted
+        // open one stays at preferred and the closed ones keep theirs.
+        const leftover = 300 - (4 * HEADER + 60 + 60);
+        expect(first).toEqual([[400, 60 + leftover], [400, 40], [400, 60], [400, 40]]);
+        expect(second).toEqual(first);
+        expect(third).toEqual(first);
+    });
+});
+
+describe('Accordion manager — each open section is measured once per pass', () => {
+    it('one open section reports preferred/min/max once, and is content-sized once, per non-resizable pass', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(400, 300, acc);
+        const a = measuredSection({ width: 100, height: 50 }, { width: 40, height: 10 });
+        const b = measuredSection({ width: 100, height: 50 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true, 1));
+        host.addComponent(b, constraints('B', true, 1));
+        host.doLayout();
+
+        const preferred = vi.spyOn(a, 'getPreferredSize');
+        const min       = vi.spyOn(a, 'getMinSize');
+        const max       = vi.spyOn(a, 'getMaxSize');
+        const openHeight = vi.spyOn(acc as unknown as SizingStages, 'openContentHeight');
+
+        host.doLayout();
+
+        expect(preferred).toHaveBeenCalledTimes(1);
+        expect(min).toHaveBeenCalledTimes(1);
+        expect(max).toHaveBeenCalledTimes(1);
+        // Once per open section, not once per stage that wants a content height.
+        expect(openHeight).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('Accordion manager — the reduced-motion query runs only when a section shrinks', () => {
+    function twoOpenSettled(): { acc: Accordion; host: Container; a: Component } {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(400, 300, acc);
+        const a = content({ width: 100, height: 200 }, { width: 40, height: 20 });
+        const b = content({ width: 100, height: 50 }, { width: 40, height: 20 });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.doLayout();
+        return { acc, host, a };
+    }
+
+    it('a pass in which no section shrinks asks no media query', () => {
+        const { host } = twoOpenSettled();
+        const matchMedia = vi.spyOn(DOM.source, 'matchMedia');
+
+        host.doLayout();
+
+        expect(matchMedia).not.toHaveBeenCalled();
+    });
+
+    it('a pass in which a section shrinks still asks', () => {
+        const { host } = twoOpenSettled();
+        host.setHeight(120); // forces the open sections to shrink toward min
+        const matchMedia = vi.spyOn(DOM.source, 'matchMedia');
+
+        host.doLayout();
+
+        expect(matchMedia).toHaveBeenCalled();
+    });
+
+    it('reduced motion still takes the immediate reflow on a shrinking pass', () => {
+        const { host, a } = twoOpenSettled();
+        host.setHeight(120);
+        const reflow = vi.spyOn(a, 'doLayout');
+
+        // Deferred (animated) reflow: the shrinking section is re-laid-out only
+        // when its height transition ends.
+        host.doLayout();
+        expect(reflow).not.toHaveBeenCalled();
+
+        host.setHeight(100);
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
+
+        host.doLayout();
+
+        expect(reflow).toHaveBeenCalled();
+    });
+});
+
