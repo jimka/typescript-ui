@@ -387,6 +387,8 @@ class Accordion extends LayoutManager implements FocusRevealer {
         this._headerHeight = height;
         this._headerHeightExplicit = true;
 
+        this.relayoutHost();
+
         return this;
     }
 
@@ -443,12 +445,18 @@ class Accordion extends LayoutManager implements FocusRevealer {
     }
 
     /**
-     * Sets the CSS transition duration for open/close animation.
+     * Sets the CSS transition duration for open/close animation. Re-times every
+     * existing header's chevron too, so the indicator and the panel stay in
+     * step — the same timing a section created after this call is given.
      *
      * @param ms - Duration in milliseconds.
      */
     setAnimationDuration(ms: number): this {
         this._animationDuration = ms;
+
+        for (const header of this._headers) {
+            header.setAnimationTiming(ms, ACCORDION_EASING);
+        }
 
         return this;
     }

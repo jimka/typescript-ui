@@ -6,6 +6,8 @@ import { AccordionConstraints } from '~/layout/AccordionConstraints';
 import { UNBOUNDED } from '~/primitive/Size';
 import { DOM } from '~/core/DOM';
 import { SpatialNavigation } from '~/core/SpatialNavigation';
+import { AccordionHeader } from '~/component/container/AccordionHeader';
+import { COLLAPSE_EASING } from '~/layout/CollapseSupport';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -606,3 +608,48 @@ describe('Accordion manager — the reduced-motion query runs only when a sectio
     });
 });
 
+/** The private header pool, for the rider cases that assert on header geometry. */
+type HeaderPool = { _headers: AccordionHeader[] };
+
+describe('Accordion manager — runtime setters reach the sections that already exist', () => {
+    it('setHeaderHeight re-lays-out the host and re-stacks the sections at the new height', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(400, 300, acc);
+        host.addComponent(content({ width: 100, height: 50 }), constraints('A', true));
+        host.addComponent(content({ width: 100, height: 50 }), constraints('B', false));
+        host.doLayout();
+
+        const scheduled = vi.spyOn(host, 'scheduleLayout');
+
+        acc.setHeaderHeight(40);
+
+        expect(scheduled).toHaveBeenCalled();
+
+        host.doLayout();
+
+        const headers = (acc as unknown as HeaderPool)._headers;
+        expect(headers[0].getHeight()).toBe(40);
+        expect(headers[1].getY()).toBe(40 + 50); // new header height + A's open content
+    });
+
+    it('setAnimationDuration re-times every existing header chevron', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(400, 300, acc);
+        host.addComponent(content({ width: 100, height: 50 }), constraints('A', true));
+        host.addComponent(content({ width: 100, height: 50 }), constraints('B', false));
+        host.doLayout();
+
+        const headers = (acc as unknown as HeaderPool)._headers;
+        const timings = headers.map(header => vi.spyOn(header, 'setAnimationTiming'));
+
+        acc.setAnimationDuration(500);
+
+        for (const timing of timings) {
+            expect(timing).toHaveBeenCalledWith(500, COLLAPSE_EASING);
+        }
+    });
+});
