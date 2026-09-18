@@ -12,6 +12,7 @@ import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { LayoutSize, LayoutSizeUnit, toLayoutSizes, fromLayoutSizes, isRestorableSizes } from "~/layout/LayoutSizes.js";
 import { Size, UNBOUNDED } from "~/primitive/Size.js";
+import type { BorderOptions } from "~/primitive/Border.js";
 import type { AxisEnd } from "~/primitive/Axis.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
@@ -174,6 +175,16 @@ class Accordion extends LayoutManager implements FocusRevealer {
     private _tools: Component[] = [];
     private _toolsVisibility: "always" | "hover" = "hover";
     private _hoveredHeader: number = -1;
+    // The container's own border as it stood immediately before this manager
+    // first wrote one, given back on detach. `applyContainerTheming` overwrites
+    // the container's border, in both the themed and unthemed branch, so without
+    // this a manager swap leaves the host still painting the accordion's frame.
+    // `_borderCaptured` is the separate one-shot marker because `null` is itself
+    // a recorded value (the container had no border of its own), and because a
+    // manager that never laid out has taken nothing over and must give nothing
+    // back — mirroring `_headerHeight` / `_headerHeightExplicit` below.
+    private _borderBeforeTheming: BorderOptions | null = null;
+    private _borderCaptured: boolean = false;
     private _listeners: ListenerBag<AccordionEvent> = this.registerListenerBag(new ListenerBag<AccordionEvent>());
     private _resizable: boolean = false;
     // User-dragged (or fill-seeded) content heights per open section, absolute
@@ -649,6 +660,17 @@ class Accordion extends LayoutManager implements FocusRevealer {
 
         if (!container) {
             return;
+        }
+
+        // Record what the container had immediately before this manager's first
+        // write, so `detach` can give it back. Taken here rather than in `attach`
+        // for two reasons: `Component.applyOptions` dispatches `layoutManager`
+        // before the chrome options, so at attach time a consumer's own `border`
+        // option has not been applied yet; and a manager that never reaches a
+        // layout has taken no border over, so it must leave the container's alone.
+        if (!this._borderCaptured) {
+            this._borderBeforeTheming = container.getBorder();
+            this._borderCaptured = true;
         }
 
         if (this._themed) {
@@ -1201,8 +1223,9 @@ class Accordion extends LayoutManager implements FocusRevealer {
             this.onGutterDragEnd();
         }
 
+        const components = container ? container.getComponents() : [];
+
         for (let i = 0; i < this._headers.length; i++) {
-            const components = container ? container.getComponents() : [];
             const component = components[i];
 
             if (component && container) {
@@ -1242,6 +1265,26 @@ class Accordion extends LayoutManager implements FocusRevealer {
         this._resizeGutters = [];
         this._resizeSizes.clear();
         this._gutterPairs = [];
+        this._resizePinned.clear();
+        this._hoveredHeader = -1;
+        this._resizeFactor = 1;
+
+        // Give back the border applyContainerTheming took over, and only then —
+        // a manager that never laid out wrote none, so it has nothing to give
+        // back and must not clear the consumer's own. A dispose reaches here from
+        // Component.destructor, which already emptied the container, so writing
+        // through its released handle must be skipped — the same test
+        // Border.detach uses.
+        if (this._borderCaptured && container && container.getComponents().length > 0) {
+            if (this._borderBeforeTheming) {
+                container.setBorder(this._borderBeforeTheming);
+            } else {
+                container.clearBorder();
+            }
+        }
+
+        this._borderBeforeTheming = null;
+        this._borderCaptured = false;
 
         super.detach();
 

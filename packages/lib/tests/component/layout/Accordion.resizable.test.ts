@@ -1847,3 +1847,96 @@ describe('Accordion resizable — a settled pass builds no content-height model'
     });
 });
 
+/** The private per-layout resize scratch `detach` must give up. */
+type ResizeScratch = {
+    _resizePinned:  Set<Component>;
+    _resizeFactor:  number;
+    _hoveredHeader: number;
+    onHeaderHoverEnter(index: number, e: MouseEvent): void;
+    detach(): void;
+};
+
+describe('Accordion — detach gives back the container border', () => {
+    it('a container that had its own border gets it back when the manager is swapped out', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        // One options bag, the construction the project's conventions prescribe.
+        // `applyOptions` dispatches `layoutManager` before the chrome options, so
+        // the border is not on the container yet when the manager attaches.
+        const host = new Container({ border: '2px solid red', layoutManager: acc });
+        host.getElement(true);
+        host.setWidth(400);
+        host.setHeight(300);
+        host.clearInsets();
+        host.addComponent(content({ width: 100, height: 50 }), constraints('A', true));
+        host.doLayout();
+        expect(host.getBorder()!.border).toContain('accordion-border');
+
+        host.setLayoutManager(new Fit());
+
+        expect(host.getBorder()).toEqual({ border: '2px solid red' });
+    });
+
+    it('a manager that never laid out leaves the container\'s own border alone', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(400, 300, acc);
+        host.addComponent(content({ width: 100, height: 50 }), constraints('A', true));
+        // No layout, so `applyContainerTheming` never wrote: the accordion has
+        // taken no border over and must give none back.
+        host.setBorder('2px solid blue');
+
+        host.setLayoutManager(new Fit());
+
+        expect(host.getBorder()).toEqual({ border: '2px solid blue' });
+    });
+
+    it('a container with no border of its own no longer paints the themed accordion frame', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(400, 300, acc);
+        host.addComponent(content({ width: 100, height: 50 }), constraints('A', true));
+        host.doLayout();
+        expect(host.getBorder()!.border).toContain('accordion-border');
+
+        host.setLayoutManager(new Fit());
+
+        // `clearBorder` writes an explicit `none` rather than restoring an unset
+        // border — the same thing `themed: false` already writes.
+        expect(host.getBorder()).toEqual({ border: 'none' });
+    });
+});
+
+describe('Accordion resizable — detach clears the per-layout scratch', () => {
+    it('detaching leaves no pinned section, no drag scale, and no hovered header behind', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 300, acc);
+        const a = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true, 1)); // weighted: absorbs the resize
+        host.addComponent(b, constraints('B', true));    // unweighted: held at its px
+        host.doLayout();
+        host.setHeight(500);
+        host.doLayout();
+
+        const scratch = acc as unknown as ResizeScratch;
+        scratch.onHeaderHoverEnter(0, { relatedTarget: null } as unknown as MouseEvent);
+
+        // Non-vacuous: all three carry live per-layout state before the detach.
+        expect(scratch._resizePinned.size).toBe(1);
+        expect(scratch._resizeFactor).not.toBe(1);
+        expect(scratch._hoveredHeader).toBe(0);
+
+        scratch.detach();
+
+        expect(scratch._resizePinned.size).toBe(0);
+        expect(scratch._resizeFactor).toBe(1);
+        expect(scratch._hoveredHeader).toBe(-1);
+    });
+});
