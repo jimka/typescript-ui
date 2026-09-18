@@ -213,6 +213,21 @@ function endLayoutPassNumber(): void {
     }
 }
 
+// Bumped by every write that could change what any component's size hints
+// report. A hint recorded at one value of this counter is stale at any other,
+// which is the half of the size-hint record's key the pass number cannot
+// carry: the pass number turns over whenever layout runs or a pass hands
+// control to consumer code, while this turns over for the writes that
+// announce nothing at all — insets, a preferred-size constraint, a swapped
+// layout manager. Mirrors the `Util.textMetricsGeneration()` counter `Text`
+// compares its own measurement against.
+let sizeHintGeneration: number = 0;
+
+/** Discards every size hint recorded anywhere in the library. */
+function invalidateSizeHints(): void {
+    sizeHintGeneration++;
+}
+
 /** Schedules a layout-flush frame if one is not already pending. */
 function ensureFlushScheduled(): void {
     if (rafHandle === null) {
@@ -711,6 +726,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // framework layers are immutable per process, so nothing else can
     // invalidate an entry.
     private _resolvedCache        : Map<string, unknown> | null = null;
+    // This component's own three size reports as computed for one
+    // `(layout pass, size-hint generation)` pair. `undefined` in a slot means
+    // "not asked yet"; `null` is a real answer meaning the component reports
+    // no size on that axis pair, and is re-served as one. Nothing is recorded
+    // outside a layout pass, where arbitrary code can run between two reads.
+    private _sizeHintPass         : number = 0;
+    private _sizeHintGeneration   : number = 0;
+    private _sizeHintPreferred    : Size | null | undefined = undefined;
+    private _sizeHintMin          : Size | null | undefined = undefined;
+    private _sizeHintMax          : Size | null | undefined = undefined;
     // CSS keys `flushStyleBag` still needs to resolve and write. `writeStyle`
     // adds to it; `applyStyle` additionally seeds it with every key any
     // layer currently resolves, so a full render pass always replays the
@@ -2696,6 +2721,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         this._options.insets = insets;
         this.setDataAttribute("insets", insets.render());
+        // Insets feed `getContentInsets` and `getPerimeterSize`, which every
+        // aggregating manager adds to its report, and this setter reaches
+        // neither `scheduleLayout` nor `writeStyle` — `Tab.doLayout` writes
+        // them on its strip from inside a layout pass.
+        invalidateSizeHints();
 
         return this;
     }
@@ -2722,6 +2752,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const insets = new Insets(0, 0, 0, 0);
         this._options.insets = insets;
         this.setDataAttribute("insets", insets.render());
+        invalidateSizeHints();
 
         return this;
     }
@@ -3154,8 +3185,24 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param options - Border configuration, or a CSS `border` shorthand string.
      */
     protected cacheBorderSpec(options: BorderOptions | string): void {
+        // The one size-hint input not resolved through `_resolvedCache`:
+        // `getBorderSize` re-measures from `_border` into `_borderWidths`, and
+        // `getPerimeterSize` adds it to every aggregating manager's report.
+        // `setBorder` / `clearBorder` reach `writeStyle` and need no bump of
+        // their own; this escape hatch writes no CSS at all. Only a genuine
+        // change bumps: `SplitGutter.setOpaque` has no guard of its own and
+        // `Split.doLayout` re-asserts every expanded divider's border on every
+        // pass, so bumping unconditionally would discard the library's records
+        // once per gutter per pass. The cached widths are still dropped either
+        // way, leaving the existing re-measure behaviour untouched.
+        const changed = borderSidesKey(options) !== borderSidesKey(this._border);
+
         this._border       = typeof options === "string" ? { border: options } : options;
         this._borderWidths = null;
+
+        if (changed) {
+            invalidateSizeHints();
+        }
     }
 
     /**
@@ -3576,6 +3623,25 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Re-bases this component's size-hint record onto `(pass, generation)`,
+     * discarding the three recorded reports when either number has moved.
+     *
+     * @param pass - The layout pass the record is to belong to.
+     * @param generation - The size-hint generation the record is to belong to.
+     */
+    private beginSizeHintRecord(pass: number, generation: number): void {
+        if (this._sizeHintPass === pass && this._sizeHintGeneration === generation) {
+            return;
+        }
+
+        this._sizeHintPass       = pass;
+        this._sizeHintGeneration = generation;
+        this._sizeHintPreferred  = undefined;
+        this._sizeHintMin        = undefined;
+        this._sizeHintMax        = undefined;
+    }
+
+    /**
      * Returns the preferred size from the explicit override, else the layout
      * manager's own.
      *
@@ -3590,26 +3656,44 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * computation (e.g. a foreign-DOM leaf like `CodeEditor`, which grows itself
      * via `setHeight` outside the framework's own layout tree) must call
      * {@link setPreferredSize} explicitly to publish that size.
+     *
+     * The answer is computed once per layout pass and re-served for the rest of
+     * it unless something writes a value it depends on, so the same `Size`
+     * object reaches several callers and none of them may modify it.
      */
     getPreferredSize(): Size | null {
-        const preferredSize = this.getPreferredSizeConstraint() ?? this.getLayoutManager().getPreferredSize();
+        const pass       = Component.currentLayoutPass();
+        const generation = sizeHintGeneration;
 
-        if (!preferredSize) {
-            return null;
+        if (pass !== 0 && this._sizeHintPass === pass && this._sizeHintGeneration === generation
+            && this._sizeHintPreferred !== undefined) {
+            return this._sizeHintPreferred;
         }
 
-        // Clamp against the component's *own* explicit constraints only — not the
-        // merged {@link getMinSize} / {@link getMaxSize}. `getPreferredSize` is a
-        // hot path in the layout-gathering recursion, and the merged maximum runs
-        // {@link Grid.measureContent}, which itself calls children's
-        // `getPreferredSize`; clamping to it here would make the recursion
-        // re-entrant and exponential in tree depth. The merged `[min, max]`
-        // envelope is enforced instead on the committed size, in
-        // {@link clampWidth} / {@link clampHeight}.
-        const ownMin = this.getMinSizeConstraint();
-        const ownMax = this.getMaxSizeConstraint();
+        const preferredSize = this.getPreferredSizeConstraint() ?? this.getLayoutManager().getPreferredSize();
+        let   result: Size | null = null;
 
-        return this.clampPreferredToConstraints(preferredSize, ownMin, ownMax);
+        if (preferredSize) {
+            // Clamp against the component's *own* explicit constraints only — not the
+            // merged {@link getMinSize} / {@link getMaxSize}. `getPreferredSize` is a
+            // hot path in the layout-gathering recursion, and the merged maximum runs
+            // {@link Grid.measureContent}, which itself calls children's
+            // `getPreferredSize`; clamping to it here would make the recursion
+            // re-entrant and exponential in tree depth. The merged `[min, max]`
+            // envelope is enforced instead on the committed size, in
+            // {@link clampWidth} / {@link clampHeight}.
+            const ownMin = this.getMinSizeConstraint();
+            const ownMax = this.getMaxSizeConstraint();
+
+            result = this.clampPreferredToConstraints(preferredSize, ownMin, ownMax);
+        }
+
+        if (pass !== 0 && sizeHintGeneration === generation) {
+            this.beginSizeHintRecord(pass, generation);
+            this._sizeHintPreferred = result;
+        }
+
+        return result;
     }
 
     /**
@@ -3660,6 +3744,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const next: Size = { width: size.width, height: size.height };
         this._options.preferredSize = next;
         this.setDataAttribute("preferredSize", formatSizeAttr(next.width, next.height));
+        // The relay reaches `scheduleLayout` only through a wired parent, and
+        // this constraint can be written on a component that has none.
+        invalidateSizeHints();
         this._onPreferredSizeChange?.();
 
         return this;
@@ -3686,6 +3773,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         this._options.preferredSize = undefined;
         this.delDataAttribute("preferredSize");
+        invalidateSizeHints();
         this._onPreferredSizeChange?.();
 
         return this;
@@ -3757,9 +3845,29 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Returns the effective minimum size: the larger of the component and layout manager minimums.
      *
      * @returns A Size object whose width and height are the element-wise maximums of the component and layout manager minimums.
+     *
+     * @remarks The answer is computed once per layout pass and re-served for
+     * the rest of it unless something writes a value it depends on, so the same
+     * `Size` object reaches several callers and none of them may modify it.
      */
     getMinSize(): Size | null {
-        return this.mergeConstraintSize(this.getMinSizeConstraint(), this.getLayoutManager().getMinSize(), Math.max, 0);
+        const pass       = Component.currentLayoutPass();
+        const generation = sizeHintGeneration;
+
+        if (pass !== 0 && this._sizeHintPass === pass && this._sizeHintGeneration === generation
+            && this._sizeHintMin !== undefined) {
+            return this._sizeHintMin;
+        }
+
+        const result = this.mergeConstraintSize(
+            this.getMinSizeConstraint(), this.getLayoutManager().getMinSize(), Math.max, 0);
+
+        if (pass !== 0 && sizeHintGeneration === generation) {
+            this.beginSizeHintRecord(pass, generation);
+            this._sizeHintMin = result;
+        }
+
+        return result;
     }
 
     /**
@@ -3791,9 +3899,29 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * two — mirroring how {@link getMinSize} takes the larger (tighter) minimum.
      *
      * @returns A Size object whose width and height are the element-wise minimums of the component and layout manager maximums.
+     *
+     * @remarks The answer is computed once per layout pass and re-served for
+     * the rest of it unless something writes a value it depends on, so the same
+     * `Size` object reaches several callers and none of them may modify it.
      */
     getMaxSize(): Size | null {
-        return this.mergeConstraintSize(this.getMaxSizeConstraint(), this.getLayoutManager().getMaxSize(), Math.min, UNBOUNDED);
+        const pass       = Component.currentLayoutPass();
+        const generation = sizeHintGeneration;
+
+        if (pass !== 0 && this._sizeHintPass === pass && this._sizeHintGeneration === generation
+            && this._sizeHintMax !== undefined) {
+            return this._sizeHintMax;
+        }
+
+        const result = this.mergeConstraintSize(
+            this.getMaxSizeConstraint(), this.getLayoutManager().getMaxSize(), Math.min, UNBOUNDED);
+
+        if (pass !== 0 && sizeHintGeneration === generation) {
+            this.beginSizeHintRecord(pass, generation);
+            this._sizeHintMax = result;
+        }
+
+        return result;
     }
 
     /**
@@ -5873,7 +6001,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             ? { ...this._instanceStyle, ...patch, font: { ...this._instanceStyle.font, ...patch.font } }
             : { ...this._instanceStyle, ...patch };
 
-        this._resolvedCache = null;
+        this.invalidateResolvedStyle();
 
         const patchKeys = Object.keys(resolvePartialDeclarations(patch));
         const pending    = this._pendingStyleKeys ??= new Set();
@@ -5905,7 +6033,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     protected cacheStyleValue<K extends keyof StyleBag>(key: K, value: StyleBag[K]): void {
         this._instanceStyle = { ...this._instanceStyle, [key]: value };
-        this._resolvedCache = null;
+        this.invalidateResolvedStyle();
     }
 
     /**
@@ -6013,6 +6141,25 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Drops the per-key resolved-style memo and moves the size-hint generation
+     * with it, for every write that changes what a style layer resolves to.
+     *
+     * The two belong together: {@link getMinSizeConstraint},
+     * {@link getMaxSizeConstraint}, `getPadding` and the border spec all read
+     * their authored value through the layered walk `_resolvedCache` memoises,
+     * so anything that can change one answer can change the other. Tying the
+     * generation to this clear rather than to a list of setters is what makes
+     * the size-hint record's invalidation true by construction: a state
+     * toggle, a state-tier write, a trait swap and a bare cache write are all
+     * writers no enumeration of the public setters would have named, and
+     * `SplitGutter.setOpaque` performs two of them from inside `Split.doLayout`.
+     */
+    private invalidateResolvedStyle(): void {
+        this._resolvedCache = null;
+        invalidateSizeHints();
+    }
+
+    /**
      * Writes `patch` into this instance's own layer for `selector` — the
      * state-tier twin of {@link writeStyle}. Writes unconditionally; dedup
      * against the class-tier state layer happens at flush, exactly as
@@ -6029,7 +6176,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             ? { ...existing, ...patch, font: { ...existing?.font, ...patch.font } }
             : { ...existing, ...patch });
 
-        this._resolvedCache = null;
+        this.invalidateResolvedStyle();
 
         const pending = this._pendingStateKeys ??= new Map();
         const keys    = pending.get(selector) ?? new Set<string>();
@@ -6061,7 +6208,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             ? { ...existing, ...patch, font: { ...existing?.font, ...patch.font } }
             : { ...existing, ...patch });
 
-        this._resolvedCache = null;
+        this.invalidateResolvedStyle();
 
         const state = resolveStyleStates(this.constructor).find((s) => s.selector === selector);
         if (!state) {
@@ -6457,7 +6604,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._activeStates.delete(name);
         }
 
-        this._resolvedCache = null;
+        this.invalidateResolvedStyle();
 
         const element = this.getElement();
         if (element && !name.startsWith(":")) {
@@ -6689,7 +6836,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
         this._instanceTraitToken = nextToken;
 
-        this._resolvedCache = null;
+        this.invalidateResolvedStyle();
 
         // A full render pass replays every layering property, not only what
         // changed since the last flush — matching the phase methods this
@@ -7403,6 +7550,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // so DevTools shows `data-layout="HBox"` rather than `_HBox`.
         this.setDataAttribute("layout", layoutManager.getClassName().replace(/^_/, ""));
 
+        // The swap changes the source of all three size reports. No same-value
+        // guard stands in front of it, so this is where the bump goes.
+        invalidateSizeHints();
+
         return this;
     }
 
@@ -7517,6 +7668,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             }
         } finally {
             layoutPassDepth--;
+
+            // Laying a subtree out changes what it reports next — a flow
+            // re-wraps, a `Text` re-measures at its new width, a foreign-DOM
+            // leaf republishes its height — and a nested `doLayout` shares the
+            // enclosing pass number, so the pass number alone would not notice.
+            invalidateSizeHints();
         }
 
         return this;
@@ -7632,6 +7789,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * (e.g. before reading getInnerSize) should call `flushLayout()` instead.
      */
     scheduleLayout(): this {
+        // Before the pause check, so a paused component still invalidates:
+        // this is the library's own announcement that something layout must
+        // react to has changed, which is exactly what a size hint reads.
+        invalidateSizeHints();
+
         this._layoutDirty = true;
 
         if (this.isLayoutPaused()) {
