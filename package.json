@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/lib", "packages/docs", "packages/create-app"],
+  "workspaces": ["packages/lib", "packages/docs", "packages/create-app", "packages/qa"],
   "devDependencies": {
     "typedoc": "0.28.19",
     "typedoc-plugin-markdown": "~4.11.0",

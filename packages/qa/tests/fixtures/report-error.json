@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "name": "fixture",
+  "panel": "chart-line",
+  "host": "minibrowser",
+  "build": "/repo/packages/lib",
+  "params": {
+    "qa": "fixture",
+    "host": "minibrowser",
+    "panel": "chart-line",
+    "drive": "nope",
+    "seam": "1",
+    "geom": "1"
+  },
+  "ua": "fixture",
+  "notes": [
+    "panel chart-line n=50"
+  ],
+  "error": "unknown driver \"nope\"",
+  "stack": "Error: unknown driver \"nope\"\n    at planPhases (http://localhost:5190/src/harness/run.ts:172:19)"
+}

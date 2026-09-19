@@ -14,3 +14,7 @@ coverage
 packages/lib/docs/api
 # Generated hosted copy of the capability manifest (committed manifest is packages/lib/llms.txt)
 packages/docs/public/llms.txt
+
+# QA app output (packages/qa/README.md)
+packages/qa/results/
+packages/qa/logs/
