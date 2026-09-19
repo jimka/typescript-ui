@@ -16,6 +16,7 @@ import type {
     HarnessTools,
     HoverTarget,
     KeyTarget,
+    PanTarget,
     ParkTarget,
     ThemeTarget,
     TypeTarget,
@@ -999,6 +1000,126 @@ async function theme(ctx: DriveContext): Promise<number[]> {
     return samples;
 }
 
+/**
+ * Checks `pan`'s target.
+ *
+ * @param target - The panel's target.
+ * @returns The target, typed.
+ * @throws Error - When the element or the axis is missing or wrong.
+ */
+function requirePanTarget(target: unknown): PanTarget {
+    if (!isElementLike(field(target, 'element')) || !isAxis(field(target, 'axis'))) {
+        throw new Error('pan: target must be { element, axis: "x" | "y" }');
+    }
+
+    return target as PanTarget;
+}
+
+/**
+ * The point `offset` px from `origin` along `axis`.
+ *
+ * @param origin - Where the offset is measured from.
+ * @param axis - The axis to move along.
+ * @param offset - How far along.
+ * @returns The point.
+ */
+function offsetAlong(origin: Point, axis: 'x' | 'y', offset: number): Point {
+    return axis === 'x' ? { x: origin.x + offset, y: origin.y } : { x: origin.x, y: origin.y + offset };
+}
+
+/**
+ * `pan`'s unmeasured press: a pointer and a mouse press at the element's
+ * centre, the primary button held.
+ *
+ * @param tools - The harness tools.
+ * @param element - The element pressed.
+ * @returns Where it was pressed.
+ */
+function pressAtCentre(tools: HarnessTools, element: Element): Point {
+    const centre = centreOf(element);
+
+    firePair(tools, 'down', element, centre.x, centre.y, { buttons: PRIMARY_BUTTON_HELD });
+
+    return centre;
+}
+
+/**
+ * `pan`'s unmeasured release: a pointer and a mouse release on the element
+ * where the pointer is, then lets the page settle.
+ *
+ * @param tools - The harness tools.
+ * @param element - The element pressed.
+ * @param point - Where the pointer is.
+ */
+async function releaseAndSettle(tools: HarnessTools, element: Element, point: Point): Promise<void> {
+    firePair(tools, 'up', element, point.x, point.y, { buttons: NO_BUTTONS_HELD });
+    await tools.waitFrames(SETTLE_FRAMES);
+}
+
+/**
+ * `drag` for pointer events: an unmeasured press at the element's centre,
+ * then one `pointermove` and `mousemove` per unit on the element itself,
+ * `parkOffset(…)` along the axis with no lead — out for the first half of the
+ * units and back for the second — and an unmeasured release. Every event goes
+ * to the pressed element, as it would under a pointer that stays over it or an
+ * element that holds pointer capture; a `DiagramView` or a `Slider` listens
+ * for them there, where `drag`'s moves on `document` never arrive.
+ *
+ * @param ctx - The phase's context; `ctx.target` is a `PanTarget`.
+ * @returns The frame gaps.
+ */
+async function pan(ctx: DriveContext): Promise<number[]> {
+    const target = requirePanTarget(ctx.target);
+    const origin = await ctx.tools.suspendCounting(async () => pressAtCentre(ctx.tools, target.element));
+    let point = origin;
+
+    const samples = await ctx.tools.runFrames(ctx.units, (index) => {
+        point = offsetAlong(origin, target.axis, parkOffset(index, ctx.units, ctx.stepPx, 0));
+        firePair(ctx.tools, 'move', target.element, point.x, point.y, { buttons: PRIMARY_BUTTON_HELD });
+    });
+
+    await ctx.tools.suspendCounting(async () => releaseAndSettle(ctx.tools, target.element, point));
+
+    return samples;
+}
+
+/**
+ * Fires the window's `resize` event once per unit, so every viewport listener
+ * runs, at an unchanged viewport size: no page script can resize the top-level
+ * window of either host. The target is ignored.
+ *
+ * @param ctx - The phase's context.
+ * @returns The frame gaps.
+ */
+async function viewport(ctx: DriveContext): Promise<number[]> {
+    return ctx.tools.runFrames(ctx.units, () => {
+        window.dispatchEvent(new Event('resize'));
+    });
+}
+
+/**
+ * `wheel` on the horizontal axis: one notch per frame at the element's
+ * centre, right for the first half of the units and back left for the second.
+ *
+ * @param ctx - The phase's context; `ctx.target` is an element.
+ * @returns The frame gaps.
+ * @throws Error - `hwheel: target must be an Element` otherwise.
+ */
+async function hwheel(ctx: DriveContext): Promise<number[]> {
+    if (!isElementLike(ctx.target)) {
+        throw new Error('hwheel: target must be an Element');
+    }
+
+    const element = ctx.target;
+    const { x, y } = centreOf(element);
+
+    return ctx.tools.runFrames(ctx.units, (i) => {
+        const deltaX = triangleStep(i, ctx.units, WHEEL_DELTA_PX);
+
+        element.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: x, clientY: y, deltaX, deltaY: 0, deltaMode: WheelEvent.DOM_DELTA_PIXEL }));
+    });
+}
+
 /** Driver name → driver. A panel names these by the keys of its targets. */
 export const DRIVERS: Record<string, Driver> = {
     drag,
@@ -1015,4 +1136,7 @@ export const DRIVERS: Record<string, Driver> = {
     key,
     type: typeText,
     theme,
+    pan,
+    viewport,
+    hwheel,
 };

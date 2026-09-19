@@ -96,6 +96,14 @@ export interface ParkTarget {
     leadPx: number;
 }
 
+/** `pan`: presses `element`, moves out and back along `axis` (`step` px per unit), releases; every event on `element`. */
+export interface PanTarget {
+    /** The element pressed, moved over and released on. */
+    element: Element;
+    /** The pan's direction, from the element's centre. */
+    axis: 'x' | 'y';
+}
+
 /** `click`: one press and release per unit at the centre of `elements[index % elements.length]`. */
 export interface ClickTarget {
     /** The elements clicked in turn; at least one. */

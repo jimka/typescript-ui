@@ -14,12 +14,13 @@ afterEach(() => {
 });
 
 describe('P11 pageTargets', () => {
-    it('gives every panel an idle and a theme target', () => {
+    it('gives every panel an idle, a theme and a viewport target', () => {
         const root = Panel();
         const targets = pageTargets(root);
 
-        expect(Object.keys(targets)).toEqual(['idle', 'theme']);
+        expect(Object.keys(targets)).toEqual(['idle', 'theme', 'viewport']);
         expect(targets.idle).toBe(root);
+        expect(targets.viewport).toBe(root);
     });
 
     it('themeTarget cycles through its themes and restores the one it started from', () => {

@@ -5,6 +5,7 @@
 // so the node tests can import this file.
 
 import type { ChartSeries } from '@jimka/typescript-ui/component/chart';
+import type { DiagramData } from '@jimka/typescript-ui/component/diagram';
 import type { TreeNode } from '@jimka/typescript-ui/component/tree';
 
 /** One `table-rows` record. */
@@ -37,6 +38,12 @@ export interface FolderRow {
 export interface ListItem {
     id: number;
     name: string;
+}
+
+/** One `table-wide` record: `id`, then the value columns `c1`…`c<columns>`. */
+export interface WideRow {
+    id: number;
+    [column: string]: number;
 }
 
 // `lineSeriesPoints`' rule fixes `chart-line`'s mark census, so it must not
@@ -149,6 +156,26 @@ const BULLET_ITEMS = 4;
 
 /** Body rows per table, under its header: enough rows to lay out as a table. */
 const TABLE_ROWS = 6;
+
+/** Children per node in `diagramTree`: a three-way tree, wide enough that the layered layout spreads it out. */
+const DIAGRAM_FANOUT = 3;
+
+/** Each `editorDocument` paragraph's length: one long line, so about 9 KB at sixty sections, F24.1's largest document. */
+const PARAGRAPH_CHARS = 120;
+
+/** What each `editorDocument` paragraph says after `Part <i>`; longer than any paragraph needs, and cut to length. */
+const PARAGRAPH_FILLER = 'of the editor document. The editor lays this paragraph out at the pane\'s width and wraps it when the pane narrows, as prose does in any editor.';
+
+/** The states `editorDocument`'s table rows cycle through. */
+const ROW_STATES: readonly string[] = ['open', 'review', 'closed'];
+
+// `wideRows`' rule: value = (row × stride + column × stride) mod span. The
+// strides are coprime with the span, so the values scatter across rows and
+// columns; the span keeps every value to three digits, which fits a column at
+// its minimum width.
+const WIDE_ROW_STRIDE = 7;
+const WIDE_COLUMN_STRIDE = 13;
+const WIDE_VALUE_SPAN = 1000;
 
 // Clock units, for building dates without the clock.
 const MINUTES_PER_HOUR = 60;
@@ -407,4 +434,90 @@ function codeBlock(k: number): string[] {
         '    return offset;',
         '}',
     ];
+}
+
+/**
+ * A three-way tree for a `DiagramView`: nodes `n0`…`n<n−1>`, labelled
+ * `Node <i>`, and an edge `e<i>` from `n⌊(i − 1) / 3⌋` to `n<i>` for every
+ * node but the root.
+ *
+ * @param n - How many nodes.
+ * @returns The diagram's nodes and its `n − 1` edges.
+ */
+export function diagramTree(n: number): DiagramData {
+    const nodes = Array.from({ length: n }, (_, i) => ({ id: `n${i}`, label: `Node ${i}` }));
+
+    const edges = Array.from({ length: Math.max(n - 1, 0) }, (_, k) => {
+        const i = k + 1;
+
+        return { id: `e${i}`, source: `n${Math.floor((i - 1) / DIAGRAM_FANOUT)}`, target: `n${i}` };
+    });
+
+    return { nodes, edges };
+}
+
+/**
+ * A Markdown document for an editor: a title, then `sections` parts, each a
+ * heading and one 120-character paragraph, then a table of `sections` rows.
+ *
+ * @param sections - How many parts, and how many table rows.
+ * @returns The document.
+ */
+export function editorDocument(sections: number): string {
+    const blocks = ['# Editor document'];
+
+    for (let i = 0; i < sections; i++) {
+        blocks.push(`## Part ${i + 1}`, partParagraph(i + 1));
+    }
+
+    blocks.push(partTable(sections));
+
+    return blocks.join('\n\n') + '\n';
+}
+
+/**
+ * One part's paragraph: `Part <n>`, then the filler, cut to exactly
+ * `PARAGRAPH_CHARS` characters and ending in a full stop, never a space.
+ *
+ * @param n - The part's number.
+ * @returns The paragraph.
+ */
+function partParagraph(n: number): string {
+    return `Part ${n} ${PARAGRAPH_FILLER}`.slice(0, PARAGRAPH_CHARS - 1) + '.';
+}
+
+/**
+ * The parts' table: a header, a separator and one row per part.
+ *
+ * @param rows - How many body rows.
+ * @returns The table.
+ */
+function partTable(rows: number): string {
+    const body = Array.from({ length: rows }, (_, r) => {
+        const size = FILE_SIZE_FLOOR + ((r * FILE_SIZE_STRIDE) % FILE_SIZE_SPAN);
+
+        return `| Part ${r + 1} | ${DEPARTMENTS[r % DEPARTMENTS.length]} | ${ROW_STATES[r % ROW_STATES.length]} | ${size} |`;
+    });
+
+    return ['| Name | Owner | State | Size |', '| --- | --- | --- | --- |', ...body].join('\n');
+}
+
+/**
+ * `table-wide`'s records: row `i` has `id` i + 1, and `c1`…`c<columns>` with
+ * `c<k> = (i × 7 + k × 13) mod 1000`.
+ *
+ * @param n - How many rows.
+ * @param columns - How many value columns.
+ * @returns The rows.
+ */
+export function wideRows(n: number, columns: number): WideRow[] {
+    return Array.from({ length: n }, (_, i) => {
+        const row: WideRow = { id: i + 1 };
+
+        for (let k = 1; k <= columns; k++) {
+            row[`c${k}`] = (i * WIDE_ROW_STRIDE + k * WIDE_COLUMN_STRIDE) % WIDE_VALUE_SPAN;
+        }
+
+        return row;
+    });
 }

@@ -192,3 +192,20 @@ describe('E17 target validation', () => {
         expect(tools.runFrames).not.toHaveBeenCalled();
     });
 });
+
+describe('E23 pan and hwheel target validation', () => {
+    it.each([
+        [{ element: fakeElement(), axis: 'z' }],
+        [{ axis: 'x' }],
+    ])('pan rejects %j before dispatching anything', async (target) => {
+        const tools = fakeTools();
+
+        await expect(DRIVERS.pan(context(target, 3, tools))).rejects.toThrow('pan: target must be { element, axis: "x" | "y" }');
+        expect(tools.fireMouse).not.toHaveBeenCalled();
+        expect(tools.runFrames).not.toHaveBeenCalled();
+    });
+
+    it('hwheel rejects a target that is not an element', async () => {
+        await expect(DRIVERS.hwheel(context({}, 3))).rejects.toThrow('hwheel: target must be an Element');
+    });
+});
