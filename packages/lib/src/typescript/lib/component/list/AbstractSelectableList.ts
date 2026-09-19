@@ -5,7 +5,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Panel } from "~/core/Panel.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -178,7 +178,8 @@ const _defaultAbstractSelectableListOptions: Partial<AbstractSelectableListOptio
 };
 
 /**
- * Static styling registered once at module init. The container surface
+ * Static styling queued once at module init and written just before the
+ * library's first stylesheet write. The container surface
  * carries the focus ring (matched against the framework auto-added
  * `.List` / `.MultiSelectList` classes that `Component.init()` derives
  * from `constructor.name`); `.SelectableListRow` carries the row chrome
@@ -195,7 +196,7 @@ const _defaultAbstractSelectableListOptions: Partial<AbstractSelectableListOptio
  * surface's classList. Keep this list in sync if a new concrete
  * subclass extends `AbstractSelectableList`.
  */
-(() => {
+deferStyleSheetWrite(() => {
     new StyleRule({
         scope:  "selector",
         name:   ".List, .MultiSelectList",
@@ -306,7 +307,7 @@ const _defaultAbstractSelectableListOptions: Partial<AbstractSelectableListOptio
             backgroundColor: "transparent",
         },
     });
-})();
+});
 
 const _defaultSelectableListRowOptions: Partial<ComponentOptions> = {
     cursor:  "pointer",

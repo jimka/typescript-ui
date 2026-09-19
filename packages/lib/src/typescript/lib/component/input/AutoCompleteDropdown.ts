@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Fit } from "~/layout/Fit.js";
@@ -40,7 +40,7 @@ const _defaultAutoCompleteDropdownOptions: Partial<AutoCompleteDropdownOptions> 
 // throughout the dropdown's lifetime, but the suppression is
 // belt-and-braces — a future code path that does focus the list won't
 // double-stack the chrome.
-(() => {
+deferStyleSheetWrite(() => {
     new StyleRule({
         scope:  "selector",
         name:   ".AutoCompleteDropdown .List:focus::after",
@@ -48,7 +48,7 @@ const _defaultAutoCompleteDropdownOptions: Partial<AutoCompleteDropdownOptions> 
             content: "none",
         },
     });
-})();
+});
 
 /**
  * Floating dropdown panel for [`AutoCompleteField`](/api/component/input/classes/AutoCompleteField).

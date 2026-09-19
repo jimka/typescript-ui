@@ -10,7 +10,7 @@ import { Tooltip } from "~/overlay/Tooltip.js";
 import { Placement } from "~/primitive/Placement.js";
 import { DiagnosticsSampler, type DiagnosticsSample } from "~/diagnostics/DiagnosticsSampler.js";
 import { StyleAuditOverlay } from "~/diagnostics/StyleAuditOverlay.js";
-import { Container } from "../core";
+import { Container } from "~/core/Container.js";
 
 /** Overlay window size and starting position — see `## Internal Structure`. */
 const OVERLAY_X      = 24;

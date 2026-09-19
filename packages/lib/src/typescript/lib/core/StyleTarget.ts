@@ -187,6 +187,66 @@ export type StyleRuleSpec = StyleRuleScope & {
 // reference is the single source of truth.
 const _ruleCache: Map<string, CSSStyleRule> = new Map();
 
+// Load-time stylesheet writes waiting for the library's first real write, in
+// registration order (see deferStyleSheetWrite).
+const _deferredStyleSheetWrites: Array<() => void> = [];
+
+// Whether the library has made its first real stylesheet write in this module
+// instance. Never reset — `DOM.reset()` leaves it alone, as it leaves `_ruleCache`.
+let _styleSheetWritten: boolean = false;
+
+/**
+ * Queues a stylesheet write a module makes while it loads, so importing the
+ * module touches no DOM. The write runs just before the library's first real
+ * stylesheet write (a rule materialisation or a `@keyframes` insertion), in
+ * registration order — the position an eager write at import would have had —
+ * or immediately when that first write has already happened.
+ *
+ * @param write - Performs the write: constructs the module's shared `StyleRule`s
+ *   or calls `StyleRule.ensureKeyframes`.
+ */
+export function deferStyleSheetWrite(write: () => void): void {
+    if (_styleSheetWritten) {
+        write();
+
+        return;
+    }
+
+    _deferredStyleSheetWrites.push(write);
+}
+
+/**
+ * Marks the stylesheet as written and runs every queued load-time write, in
+ * registration order. Called at the start of every real write; a no-op after
+ * the first call. Exported for the node test setup only.
+ *
+ * Each write is isolated, the way the layout flush isolates each component's
+ * `doLayout`: the queue is already drained when a write runs, so one that
+ * throws would otherwise lose every write queued after it for the session. A
+ * failure is reported as a console error rather than rethrown, because the
+ * caller is whichever unrelated first write triggered the flush — eagerly, the
+ * same throw only broke its own module's import.
+ *
+ * @internal
+ */
+export function _flushDeferredStyleSheetWrites(): void {
+    if (_styleSheetWritten) {
+        return;
+    }
+
+    // Set before running: a queued write that materialises a rule re-enters
+    // `_ruleFor`, and one that queues a further write must run it in place.
+    _styleSheetWritten = true;
+
+    for (const write of _deferredStyleSheetWrites.splice(0)) {
+        try {
+            write();
+        } catch (error) {
+            console.error("Deferred stylesheet write threw; the rest of the queue continued.", error);
+        }
+    }
+}
+
 /**
  * Translates a {@link StyleRuleScope} into its CSS selector string.
  */
@@ -209,6 +269,15 @@ function _ruleFor(selector: string): CSSStyleRule {
 
     if (cached) {
         return cached;
+    }
+
+    // The first real write runs every queued load-time write ahead of itself.
+    _flushDeferredStyleSheetWrites();
+
+    const flushed = _ruleCache.get(selector);
+
+    if (flushed) {
+        return flushed;
     }
 
     const rule = DOM.sink.ensureStyleRule(selector);
@@ -416,11 +485,12 @@ class StyleRule extends StyleTarget<CSSStyleRule> {
      * @param name - The keyframe animation name (no `@keyframes` prefix).
      * @param body - The keyframe body, e.g. `"from { transform: rotate(0deg) } to { transform: rotate(360deg) }"`.
      *
-     * @remarks Idempotent: safe to call from module-level initialisers across
-     * hot reloads. `@keyframes` rules are not selector-keyed `CSSStyleRule`s
-     * and so do not flow through the `StyleRule` instance cache.
+     * @remarks Idempotent: a repeat call for an existing name is a no-op,
+     * including across hot reloads. `@keyframes` rules are not selector-keyed
+     * `CSSStyleRule`s and so do not flow through the `StyleRule` instance cache.
      */
     static ensureKeyframes(name: string, body: string): void {
+        _flushDeferredStyleSheetWrites();
         DOM.sink.ensureKeyframes(name, body);
     }
 }

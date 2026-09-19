@@ -5,7 +5,7 @@ import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
@@ -390,7 +390,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
 // comes from the shared `.SelectableListRow` / `.SelectableListRow:hover` /
 // `.SelectableListRow.selected` / `.SelectableListRow.focused` rules in
 // AbstractSelectableList — no ComboBox-side row styling is required.
-(() => {
+deferStyleSheetWrite(() => {
     new StyleRule({
         scope:  "class",
         name:   "ComboBox",
@@ -424,7 +424,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
             content: "none",
         },
     });
-})();
+});
 
 /**
  * The visible label `<span>` inside a {@link ComboBox}. Hosts one

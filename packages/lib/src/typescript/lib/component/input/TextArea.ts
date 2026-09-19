@@ -7,7 +7,7 @@ import { Insets } from "~/primitive/Insets.js";
 import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 
 // The `<textarea>` corner grip is the only user-resize affordance on any of
 // these components. Pin `resize: none` once, on the shared class rule, so the
@@ -15,9 +15,9 @@ import { StyleRule } from "~/core/StyleTarget.js";
 // non-resizability is immutable by design. This rule and the `.TextArea` rule
 // the class-tier hierarchy walk generates share one underlying CSSStyleRule
 // and declare disjoint keys.
-(() => {
+deferStyleSheetWrite(() => {
     new StyleRule({ scope: "class", name: "TextArea", styles: { resize: "none" } });
-})();
+});
 
 /**
  * Construction-time options for {@link TextArea}.

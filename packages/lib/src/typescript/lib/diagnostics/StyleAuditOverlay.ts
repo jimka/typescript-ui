@@ -4,7 +4,7 @@ import { Window } from "~/overlay/Window.js";
 import { VBox } from "~/layout/VBox.js";
 import { Placement } from "~/primitive/Placement.js";
 import { StyleAuditView } from "~/diagnostics/StyleAuditView.js";
-import { Container } from "../core";
+import { Container } from "~/core/Container.js";
 
 /** Overlay window size and starting position — see `## Internal Structure`. */
 const WINDOW_X      = 360;

@@ -5,7 +5,7 @@ import { ThemeManager } from "~/core/Theme.js";
 import { ToggleButton, ToggleButtonOptions } from "~/component/button/ToggleButton.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
 import { callable } from "~/core/Callable.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Animation } from "~/core/Animation.js";
 import { BorderOptions } from "~/primitive/Border.js";
@@ -39,10 +39,12 @@ const BUSY_PULSE_KEYFRAME = "ts-ui-tab-busy-pulse";
 // stay legible through the wash on both the light and dark themes.
 const BUSY_STATIC_OPACITY = 0.22;
 
-StyleRule.ensureKeyframes(
-    BUSY_PULSE_KEYFRAME,
-    "0% { opacity: 0.10; } 50% { opacity: 0.30; } 100% { opacity: 0.10; }"
-);
+deferStyleSheetWrite(() => {
+    StyleRule.ensureKeyframes(
+        BUSY_PULSE_KEYFRAME,
+        "0% { opacity: 0.10; } 50% { opacity: 0.30; } 100% { opacity: 0.10; }"
+    );
+});
 
 let _busyClassRule: StyleRule | null = null;
 

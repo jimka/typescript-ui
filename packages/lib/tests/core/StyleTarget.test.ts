@@ -1,7 +1,196 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { StyleRule, _ruleCacheHas, _ruleCacheKeys, styleRuleCounts, styleRuleEntries } from '~/core/StyleTarget';
 import { DOM, ProductionDOMSink } from '~/core/DOM';
 import type { RecordingDOMSink } from '../dom/TestDOM';
+import fontMetrics from '../dom/font-metrics.test-font.json';
+
+const DEFER_TEST_CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
+
+/**
+ * Starts a fresh module graph and installs the modelled DOM before anything
+ * else evaluates, so the fresh `~/core/StyleTarget` copy has made no
+ * stylesheet write yet — the state {@link deferStyleSheetWrite}'s queue
+ * starts in. `vi.resetModules()` clears the registry so the following
+ * dynamic imports evaluate new copies rather than reusing this file's own
+ * top-level import.
+ *
+ * @returns The fresh `~/core/StyleTarget` module and its installed recording sink.
+ */
+async function freshStyleTarget(): Promise<{
+    styleTarget: typeof import('~/core/StyleTarget');
+    sink: RecordingDOMSink;
+}> {
+    vi.resetModules();
+
+    const { installTestDOM } = await import('../dom/TestDOM');
+    const sink = installTestDOM(DEFER_TEST_CONFIG);
+    const styleTarget = await import('~/core/StyleTarget');
+
+    return { styleTarget, sink };
+}
+
+/** The sink's `ensureStyleRule` / `ensureKeyframes` ops, in recorded order, by their selector or keyframe name. */
+function recordedOrder(sink: RecordingDOMSink): string[] {
+    return sink.writes
+        .filter((w) => w.op === 'ensureStyleRule' || w.op === 'ensureKeyframes')
+        .map((w) => w.args[0] as string);
+}
+
+// Regression: a load-time stylesheet write (a module-level `new StyleRule(...)`
+// or `StyleRule.ensureKeyframes(...)`) used to reach the DOM the instant the
+// module was evaluated, which crashes an import with no DOM present (Loom's
+// Vitest `node` suite, importing `@jimka/typescript-ui/component/editor`).
+// `deferStyleSheetWrite` queues such a write until the library's first real
+// stylesheet write, so importing a module that only calls it touches no DOM.
+// Each case starts a fresh module graph (see `freshStyleTarget`), because the
+// deferral state is a load-time flag that this file's own top-level import
+// already flipped.
+describe('deferStyleSheetWrite', () => {
+    it('E1. nothing is written while nothing has been written', async () => {
+        const { styleTarget, sink } = await freshStyleTarget();
+        const { deferStyleSheetWrite, StyleRule: FreshStyleRule } = styleTarget;
+
+        deferStyleSheetWrite(() => { new FreshStyleRule({ scope: 'selector', name: '.A' }); });
+        deferStyleSheetWrite(() => { FreshStyleRule.ensureKeyframes('k', 'from {} to {}'); });
+
+        expect(recordedOrder(sink)).toEqual([]);
+    });
+
+    it('E2. the first rule materialisation runs the whole queue first, in order', async () => {
+        const { styleTarget, sink } = await freshStyleTarget();
+        const { deferStyleSheetWrite, StyleRule: FreshStyleRule } = styleTarget;
+
+        deferStyleSheetWrite(() => { new FreshStyleRule({ scope: 'selector', name: '.A' }); });
+        deferStyleSheetWrite(() => { FreshStyleRule.ensureKeyframes('k', 'from {} to {}'); });
+        deferStyleSheetWrite(() => { new FreshStyleRule({ scope: 'selector', name: '.B' }); });
+
+        new FreshStyleRule({ scope: 'selector', name: '.Trigger', styles: { color: 'green' } });
+
+        expect(recordedOrder(sink)).toEqual(['.A', 'k', '.B', '.Trigger']);
+    });
+
+    it('E3. StyleRule.ensureKeyframes also counts as the first real write', async () => {
+        const { styleTarget, sink } = await freshStyleTarget();
+        const { deferStyleSheetWrite, StyleRule: FreshStyleRule } = styleTarget;
+
+        deferStyleSheetWrite(() => { new FreshStyleRule({ scope: 'selector', name: '.A' }); });
+
+        FreshStyleRule.ensureKeyframes('k2', 'from {} to {}');
+
+        expect(recordedOrder(sink)).toEqual(['.A', 'k2']);
+    });
+
+    it('E4. once the sheet is written, a further deferred write runs immediately', async () => {
+        const { styleTarget, sink } = await freshStyleTarget();
+        const { deferStyleSheetWrite, StyleRule: FreshStyleRule } = styleTarget;
+
+        // A first real write with nothing queued ahead of it.
+        new FreshStyleRule({ scope: 'selector', name: '.FirstReal' });
+
+        deferStyleSheetWrite(() => { new FreshStyleRule({ scope: 'selector', name: '.C' }); });
+
+        expect(recordedOrder(sink)).toEqual(['.FirstReal', '.C']);
+    });
+
+    it('E5. each queued write runs exactly once', async () => {
+        const { styleTarget, sink } = await freshStyleTarget();
+        const { deferStyleSheetWrite, StyleRule: FreshStyleRule } = styleTarget;
+
+        deferStyleSheetWrite(() => { new FreshStyleRule({ scope: 'selector', name: '.A' }); });
+
+        new FreshStyleRule({ scope: 'selector', name: '.Trigger', styles: { color: 'green' } });
+        new FreshStyleRule({ scope: 'selector', name: '.Trigger2', styles: { color: 'blue' } });
+
+        const aWrites = sink.writes.filter((w) => w.op === 'ensureStyleRule' && w.args[0] === '.A');
+        expect(aWrites).toHaveLength(1);
+    });
+
+    it("E6. a queued write for the trigger's own selector writes its declarations first", async () => {
+        const { styleTarget, sink } = await freshStyleTarget();
+        const { deferStyleSheetWrite, StyleRule: FreshStyleRule } = styleTarget;
+
+        deferStyleSheetWrite(() => {
+            new FreshStyleRule({ scope: 'selector', name: '.Same', styles: { color: 'red' } });
+        });
+
+        new FreshStyleRule({ scope: 'selector', name: '.Same', styles: { backgroundColor: 'blue' } });
+
+        const ensureWrites = sink.writes.filter((w) => w.op === 'ensureStyleRule' && w.args[0] === '.Same');
+        expect(ensureWrites).toHaveLength(1);
+
+        const styleKeys = sink.writes
+            .filter((w) => w.op === 'setRuleStyles' && w.args[0] === '.Same')
+            .flatMap((w) => Object.keys(w.args[1] as Record<string, string | null>));
+
+        expect(styleKeys).toEqual(['color', 'backgroundColor']);
+    });
+
+    it('E7. a write queued from inside a queued write runs in place', async () => {
+        const { styleTarget, sink } = await freshStyleTarget();
+        const { deferStyleSheetWrite, StyleRule: FreshStyleRule } = styleTarget;
+
+        deferStyleSheetWrite(() => {
+            new FreshStyleRule({ scope: 'selector', name: '.Outer' });
+            deferStyleSheetWrite(() => { new FreshStyleRule({ scope: 'selector', name: '.Inner' }); });
+            new FreshStyleRule({ scope: 'selector', name: '.Outer2' });
+        });
+
+        new FreshStyleRule({ scope: 'selector', name: '.Trigger', styles: { color: 'green' } });
+
+        expect(recordedOrder(sink)).toEqual(['.Outer', '.Inner', '.Outer2', '.Trigger']);
+    });
+
+    // E7 cannot tell whether the flush marks the stylesheet written before or
+    // after running the queue: its `.Outer` materialises first and re-enters
+    // the flush, which sets the flag either way. Here the nested deferral is
+    // the queued write's only act, so if the flag were set after the loop the
+    // inner write would be queued behind a flush that has already run, and
+    // lost.
+    it('E8. a write that only queues another write still gets it run', async () => {
+        const { styleTarget, sink } = await freshStyleTarget();
+        const { deferStyleSheetWrite, StyleRule: FreshStyleRule } = styleTarget;
+
+        deferStyleSheetWrite(() => {
+            deferStyleSheetWrite(() => { new FreshStyleRule({ scope: 'selector', name: '.Inner' }); });
+        });
+
+        new FreshStyleRule({ scope: 'selector', name: '.Trigger', styles: { color: 'green' } });
+
+        expect(recordedOrder(sink)).toEqual(['.Inner', '.Trigger']);
+    });
+
+    // A queued write that throws must not take the writes queued after it down
+    // with it: the queue is drained by then, so anything skipped would be lost
+    // for the session. Eagerly, the same throw only broke its own module's
+    // import, so the failure is reported rather than rethrown into whichever
+    // unrelated render happened to trigger the flush.
+    it('E9. a throwing queued write is reported and the rest still run', async () => {
+        const { styleTarget, sink } = await freshStyleTarget();
+        const { deferStyleSheetWrite, StyleRule: FreshStyleRule } = styleTarget;
+        const failure = new Error('bad selector');
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        try {
+            deferStyleSheetWrite(() => { new FreshStyleRule({ scope: 'selector', name: '.Before' }); });
+            deferStyleSheetWrite(() => { throw failure; });
+            deferStyleSheetWrite(() => { new FreshStyleRule({ scope: 'selector', name: '.After' }); });
+
+            new FreshStyleRule({ scope: 'selector', name: '.Trigger', styles: { color: 'green' } });
+
+            expect(recordedOrder(sink)).toEqual(['.Before', '.After', '.Trigger']);
+            expect(consoleError).toHaveBeenCalledTimes(1);
+            expect(consoleError.mock.calls[0][1]).toBe(failure);
+        } finally {
+            consoleError.mockRestore();
+        }
+    });
+});
 
 // Regression: a component-scoped style rule is keyed on the element's #id, and
 // the id is consumer-supplied (e.g. a Dock panel id "public.customers"). The

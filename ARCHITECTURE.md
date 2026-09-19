@@ -251,14 +251,29 @@ Never assign to `CSSStyleRule.style` or `HTMLElement.style` directly — no `rul
 
 Both buffer writes into a dirty bag until the target materialises, then flush via camelCase property assignment. Going through the buffer keeps construction-time writes safe (queued before element/rule exists), keeps theme-toggle re-flushes intact, and gives logging/audits a single seam.
 
-For a module-level shared class rule, the canonical pattern is:
+For a **new** module-level shared class rule, the canonical pattern is a lazily-materialised singleton, called on first use from the owning class rather than from the module's top level (see *Defer DOM work to render time*'s "Module-level shared class rules" below):
 
 ```typescript
-const rule = new StyleRule({ scope: "class", name: "Foo" });
+let _fooClassRule: StyleRule | null = null;
 
-rule.setMany({ position: "absolute", top: "0", /* … */ });
-rule.ensure();
+function ensureFooClassRule(): void {
+    if (_fooClassRule) {
+        return;
+    }
+
+    _fooClassRule = new StyleRule({ scope: "class", name: "Foo", styles: { position: "absolute", top: "0", /* … */ } });
+}
 ```
+
+An **existing** load-time write that must keep running at the module's top level — because moving it into a constructor would change its position relative to other rules already on the stylesheet — queues through `deferStyleSheetWrite` instead:
+
+```typescript
+deferStyleSheetWrite(() => {
+    new StyleRule({ scope: "class", name: "Foo", styles: { position: "absolute", top: "0", /* … */ } });
+});
+```
+
+The write is held until the library's first real stylesheet write and runs just ahead of it, so importing the module touches no DOM and the rule keeps the position an eager write would have had.
 
 `StyleRuleScope` covers three shapes: `"class"` prepends `.`, with an optional `suffix` appended verbatim (e.g. `".pressed"`) for a shared class-tier state rule; `"component"` prepends `#`, with the same optional `suffix`; `"selector"` is verbatim selector text for pseudo-classes / compound selectors / pseudo-elements. The constructor owns the get-or-create handshake against a module-level cache.
 
@@ -308,9 +323,10 @@ A class's `.ClassName` rule declares only its own deviation from its nearest anc
 
 Construction must stay JS-only. Every framework primitive buffers DOM writes until first render — keep them queued:
 
+- **Module load**: a module's top-level code never calls `new StyleRule(...)`, `StyleRule.ensureKeyframes(...)` or any `DOM.sink` write directly, so importing it touches no DOM. A **new** shared class rule goes through an `ensureXClassRule()` singleton called on first use (see "Module-level shared class rules" below); an **existing** load-time stylesheet write that must keep its position runs at the module's top level through `deferStyleSheetWrite(() => …)` (`core/StyleTarget.ts`), which holds it until the library's first real stylesheet write. Two kinds of **new** write also stay at the module's top level. A control's focus ring is registered there with `registerFocusVisibleRing` / `registerFocusWithinRing` (`component/input/focusRing.ts`), which queue through `deferStyleSheetWrite` themselves: registered on first use instead, a ring can land behind trait rules another class wrote earlier and start winning their specificity ties. A new `@keyframes` is wrapped as `deferStyleSheetWrite(() => StyleRule.ensureKeyframes(…))` like the existing ones; its position doesn't change how it applies, so this is for consistency. The queue holds stylesheet writes only: any other `DOM.sink` write belongs at render time. `packages/lib/tests/unit/import-without-dom.test.ts` checks that every non-wildcard entry point except `./core` imports with no DOM present. Two module-level DOM touches are recorded exceptions: `core/Body.ts`'s static `INSTANCE`, which renders the page body on import (so `./core` still needs a DOM), and `component/display/Glyph.ts`'s `prefers-reduced-motion` listener, which the `matchMedia` seam makes inert off-browser.
 - **Component CSS rule**: `setElementCSSRule(s)` queues into `styleRule`; `applyStyle` flushes at render, and inserts the rule only when a real declaration is queued — not for a bag holding only no-op `null` removals. Never call `ensureCSSRule()` from a setter.
 - **Per-component state rules** (`:active`, `:hover`, `.selected`, …): a state with per-instance override setters and class-level defaults to dedupe against goes through `this.writeStateStyle(selector, patch)` (or `pinStateStyle` to bypass the comparison) — dedup happens at flush against `resolveStyleStates(ctor)`'s own resolved bag for that selector, not at the call site. A state that only ever publishes a shared class rule and never writes per-instance goes through `this.ensureSharedStateRule(suffix, declarations)` instead. For anything else needing a raw per-instance rule, allocate via `this.createStyleRule(suffix)`; the builder dedupes by suffix and registers for render-time materialisation — don't construct a `StyleRule` directly. When a state also competes with the resting tier for the same property (a shared `.selected` background, say), override `getRestingExclusionSuffixes()` too — see *Component CSS tiers and state-rule dedup* above.
-- **Module-level shared class rules** (`.SortPriorityBadge`, `.ResizeHandle`, …): `new StyleRule({ scope: "class", name: "Foo" })` inside a module-singleton `ensureXClassRule()` is the correct path; the `StyleRule` buffer is the public seam over `CSSStyleRule.style`.
+- **Module-level shared class rules** (`.SortPriorityBadge`, `.ResizeHandle`, …): for a **new** rule, `new StyleRule({ scope: "class", name: "Foo" })` inside a module-singleton `ensureXClassRule()`, called on first use from the owning class, never from the module's top level, is the correct path; the `StyleRule` buffer is the public seam over `CSSStyleRule.style`. An **existing** rule already written at the module's top level (`.TextArea`, `.ComboBox`, `.PickerCell`, …) keeps running there, wrapped in `deferStyleSheetWrite`, so its position relative to other load-time writes doesn't move — see *CSS writes go through `StyleRule` / `InlineStyle`*, above.
 - **Inline styles**: `setElementStyle(s)` queues into `inlineStyle`; `init()` attaches and flushes.
 - **Measurement**: never read layout (`getBoundingClientRect`, `getComputedStyle`) during construction. Defer to a layout pass or theme-change callback.
 - **Children**: build child Components in the constructor; their DOM is realised when the parent renders. Don't `getElement(true)` during construction.

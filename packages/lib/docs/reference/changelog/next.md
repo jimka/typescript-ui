@@ -490,6 +490,23 @@ page resets to empty.
   the wrong element whenever a dialog's buttons carried glyphs. The branch is
   now `a[href], area[href]`. No consumer action is needed.
 
+- **Importing the library no longer touches the DOM**, so every entry point
+  except `core` loads without one (a Vitest `node` suite, a build-time
+  script). Twelve controls' focus rings and 13 modules' shared rules and
+  `@keyframes` used to be written the moment their module was evaluated. As a
+  result, `import { registerLanguage } from '@jimka/typescript-ui/component/editor'`
+  threw `ReferenceError: document is not defined`. Those writes now wait for
+  the library's first stylesheet write (normally the first render) and run
+  just ahead of it, so every rule keeps its position within the library's
+  stylesheet. That stylesheet's own `<style>` element is now added to `<head>`
+  at that first write rather than at import, so an app that adds a `<style>`
+  of its own in between — importing a non-`core` entry point, then its own
+  CSS, then rendering — now has the library's sheet after its own, and rules
+  of equal specificity resolve the other way. Apps that import `core` up front
+  (as the create-app template does) and production builds that link their CSS
+  statically are unaffected. `core` still creates the page's `Body` when it
+  loads. No consumer action is needed.
+
 ### Components
 
 - **A table no longer writes an in-progress cell edit onto the wrong record

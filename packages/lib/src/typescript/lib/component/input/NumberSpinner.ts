@@ -11,7 +11,7 @@ import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Util } from "~/core/Util.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
 import { registerFocusWithinRing } from "~/component/input/focusRing.js";
 import { callable } from "~/core/Callable.js";
@@ -24,7 +24,7 @@ registerFocusWithinRing(".NumberSpinner");
 // Suppress the inner `TextField`'s own `.TextField:focus` box-shadow — without
 // this override, the inner shadow's right edge would paint a blue vertical
 // stripe between the text and the spin-button column (inside the NumberSpinner).
-(() => {
+deferStyleSheetWrite(() => {
     new StyleRule({
         scope:  "selector",
         name:   ".NumberSpinner .TextField:focus",
@@ -32,7 +32,7 @@ registerFocusWithinRing(".NumberSpinner");
             boxShadow: "none",
         },
     });
-})();
+});
 
 // Preferred width on the very first call, before any caller constraint has
 // been resolved.

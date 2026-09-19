@@ -4,7 +4,7 @@ import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdo
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -85,7 +85,7 @@ const YEAR_TYPE_IDLE_MS:         number = 800;
 // Static hover / cursor styling shared across every calendar dropdown.
 // Layout (grid, row stacking) is driven by framework Grid / VBox managers —
 // no display:flex/grid on the elements themselves.
-(() => {
+deferStyleSheetWrite(() => {
     // Visual properties only. `cursor` is set per-instance via `setCursor`
     // because Component's per-element `#id { cursor: … }` CSS rule (emitted
     // from `applyStyle` using the cached default `"default"`) wins on
@@ -139,7 +139,7 @@ const YEAR_TYPE_IDLE_MS:         number = 800;
             backgroundColor: "var(--ts-ui-picker-nav-hover-bg, rgba(30, 100, 200, 0.08))",
         },
     });
-})();
+});
 
 /** Single weekday-name header (`"Sun"`, `"Mon"`, …). */
 class PickerDayHeader extends Text {
