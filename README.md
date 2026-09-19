@@ -78,9 +78,10 @@ Library components that internally use glyphs (Tree row chevrons, Notification b
 
 Run from the repo root. This is an npm-workspaces monorepo — `packages/lib` holds
 the library, its developer component showcase, and the docs pipeline; `packages/docs` is the built
-docs app; `packages/create-app` is the `@jimka/create-tsui-app` scaffolder CLI. The
-root delegates the common scripts below; commands scoped with `-w packages/lib` run
-inside the library workspace.
+docs app; `packages/create-app` is the `@jimka/create-tsui-app` scaffolder CLI;
+`packages/qa` is the private QA app that measures render performance in WebKitGTK
+(see [its README](packages/qa/README.md)). The root delegates the common scripts
+below; commands scoped with `-w packages/lib` run inside the library workspace.
 
 | Command | Description |
 | --- | --- |
