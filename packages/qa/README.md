@@ -18,7 +18,9 @@ its own dev server, which writes it under `results/`.
 |---|---|
 | `index.html`, `src/main.ts` | The page: runs a measurement under `qa=`, or shows a panel under `panel=` alone. |
 | `src/panels.ts`, `src/panels/` | The panel contract and the panels, one file each. |
+| `src/builders/` | Shared panel code: data generators, chrome, the shell builder, element lookups, the store-view wait and per-instance work counters. |
 | `src/mount.ts` | Mounts a panel through `Body.init` and collects its targets. |
+| `src/pageTargets.ts` | The `idle` and `theme` targets every panel gets. |
 | `src/harness/` | The harness: frame loop, drivers, counters, ablations, probes, the run. It imports nothing from the library; the page hands it `Body` and `DOM`. |
 | `vite.config.ts`, `vite/plugins.ts` | The app's own Vite config: the report endpoint, the library-build alias and the build's own `/assets/`. |
 | `runqa.sh` | Runs one measurement end to end. |
@@ -197,7 +199,7 @@ npm -w packages/qa run test
 | `n=<scale>` | the panel's scale | the panel's `defaultScale` |
 | `drive=<driver>[:<units>][,…]` | phases, in order | the panel's `defaultDrive`, read with the same grammar |
 | `frames=<n>` | units for a phase given without `:<units>` | 150 |
-| `step=<px>` | pixels per unit for `drag` and `resize` | 3 |
+| `step=<px>` | pixels per unit for `drag`, `resize`, `hover` and `park` | 3 |
 | `count=1` | native write counters and the forced-layout detector | off |
 | `deepwrites=1` | also count camelCase style assignments (needs `count=1`) | off |
 | `work=1` | per-class work counters | off |
@@ -206,6 +208,7 @@ npm -w packages/qa run test
 | `abl=<a>[,<b>…]` | ablations to apply | none |
 | `css=<css>` | extra stylesheet injected before measuring | none |
 | `host=<host>` | recorded in the report; the runner sets it | none |
+| `grip=`, `hover=`, `wheel=`, `toggle=`, `update=` | which element or which mutation a panel gives a driver (see the panel table); a value the panel does not list fails the run | the panel's first listed value |
 
 A *phase* is one driver run over a number of *units*: one animation frame for a
 frame driver, one layout pass for `passes`. A `:<units>` count must be a
@@ -235,10 +238,13 @@ basename is its id. It exports exactly these four names:
 
 - `root` — mounted alone at full viewport through `Body.init` and `Fit`.
 - `targets` — driver name → what that driver acts on. Every driver the panel's
-  default drive names needs a target.
+  default drive names needs a target, here, from `afterMount` or from the
+  page-wide targets.
 - `afterMount(tools)` — optional; runs once the root has painted and settled,
   and returns more targets, merged over `targets`. Elements that layout creates,
-  such as `Split`'s gutters, exist only then.
+  such as `Split`'s gutters, exist only then. `mountPanel` awaits it, so a panel
+  that must wait for its own data returns a promise (see *A store-backed panel
+  waits for its view*).
 - `geometry` — optional; label → a CSS selector or a component, sampled under
   `geom=1`.
 - `describe()` — optional; host fields, stored under `before.host`.
@@ -248,11 +254,46 @@ basename is its id. It exports exactly these four names:
 To add a panel, add its file; the lazy registry finds it, and the page loads
 only the measured panel's modules.
 
+**Page-wide targets.** Every panel also gets an `idle` and a `theme` target:
+`mountPanel` merges `pageTargets(root)` from `src/pageTargets.ts` under the
+panel's own targets, so the merge is the page-wide targets, then `targets`,
+then `afterMount`'s. `idle`'s target is the root, which the driver ignores.
+`theme`'s is `themeTarget(THEME_CYCLE)`, which switches between `DarkTheme` and
+`ModernTheme` and restores the theme the page started with. A panel replaces
+either by giving its own entry, such as `theme: themeTarget([DarkTheme])` for a
+shorter cycle.
+
+**A store-backed panel waits for its view.** A store of 1,000 records or more
+builds its filtered, sorted view on a worker, and holds its `load` event until
+the worker answers, so right after `build()` the view is empty and the table,
+tree table or list over it has no rows. A panel that reads its store, selects a
+record or looks up a cell therefore does so in `afterMount`, after
+`await awaitStoreView(tools, store, '<panel>')` from `src/builders/store.ts`;
+the wait resolves on the store's `load`, waits three frames for the rows to
+render, and fails with the panel's name rather than hanging if no view arrives.
+Without it a panel is measured on an empty component and says nothing — and
+jsdom has no worker, so no test in `tests/` can catch that; `tests/store.test.ts`
+pins the contract instead.
+
+**A panel id fixes the component tree.** URL parameters such as `grip=` only
+choose which element or which mutation a driver gets, so every run of one
+panel id lays out the same tree, and the `panel` column says what was
+compared. Two trees are two panel ids, built by one shared builder, as
+`shell-deep` and `shell-shallow` are.
+
 **The import rule.** A panel imports `@jimka/typescript-ui/*` and files inside
 `packages/qa/src`, nothing else — never a docs demo or a lib demo-app panel. A
 baseline must move only when the library moves, and a demo changes for
-documentation reasons. Shared panel code, such as a data generator, lives in
-`src/`. `tests/panels.test.ts` checks every panel's imports.
+documentation reasons. Shared panel code lives in `src/builders/`: the data
+generators, the chrome (menu bar, toolbar, status bar and file-tree renderer),
+the shell builder, element lookups, the store-view wait and per-instance work
+counters.
+`tests/panels.test.ts` checks every panel's imports.
+
+**Panel data is deterministic.** Every generator in `src/builders/data.ts` is
+a pure function of its arguments, with no random numbers and no clock, so two
+arms of a comparison render the same content, and a census that depends on the
+data, such as a chart's tick count, can be reproduced.
 
 **The symptom rule.** When a behaviour spotted in another app is rebuilt as a
 panel, its `description` names the source and the symptom, and the table below
@@ -260,9 +301,58 @@ records it as reproduced only after a run shows that symptom — the same count,
 the same failure or the same geometry. A panel built to look like another
 app's screen can easily exercise a different code path.
 
-| Panel | Builds | Reproduces | Validated |
-|---|---|---|---|
-| `chart-line` | A 3-series `LineChart`, legend and point markers on, `n` points per series (default 50). | Slice 26 F26.1: a chart rebuilds every SVG mark per layout pass — at `n = 50`, 1,081 sink calls (`apply` 241, `createElementNS`, `appendChild`, `removeChild` and `release` 210 each) and 12 `measureText` calls per unchanged pass. | `minibrowser`: not yet — fill in the date, the library commit, the census and the frame time after the first authorised sweep.<br>`tauri`: not yet — the same, from a sweep that runs both hosts. |
+Every panel also has the page-wide `idle` and `theme` targets. The
+*Reproduces* column gives the figure a run must show — M5–M14 in the panels
+plan — before the *Validated* entry is filled in.
+
+| Panel | Builds | Drivers and parameters | Geometry | Reproduces | Validated |
+|---|---|---|---|---|---|
+| `chart-line` | A 3-series `LineChart`, legend and point markers on. `n`: points per series (default 50). | `resize` (default), `passes`, `update` (swaps two data sets), `hover` (the chart) | `chart` | Slice 26 F26.1: a chart rebuilds every SVG mark per layout pass — at `n = 50`, 1,081 sink calls (`apply` 241, `createElementNS`, `appendChild`, `removeChild` and `release` 210 each) and 12 `measureText` calls per unchanged pass. | `minibrowser`: 2026-09-20, lib `608544c9` (`val-pass-main`) — the census exactly, at 8.0 ms per pass over 236 elements.<br>`tauri`: 2026-09-20, lib `608544c9` (`ta-pass`, `ta-resize-a`) — the same census exactly, at 8.6 ms per pass (p90 12) and 73.7 ms per resize unit (p90 92). |
+| `chart-dashboard` | A `Split` of a 2×2 grid of store-backed `LineChart`s, 3 series each, beside two grouped `BarChart`s. `n`: points per line series (default 200). | `resize` (default), `passes` (the grid), `drag` (the split's gutter), `update` (moves one point), `hover` (the first line chart) | `grid`, `chart0`–`chart3`, `bars` | M12, slice 26 F26.1 and F26.2: at `n=50`, `passes` with `seam=1` gives `seam.sink.createElementNS` 840 (4 × 210) and `seam.source.measureText` 48 (4 × 12). | `minibrowser`: 2026-09-20, lib `608544c9` (`val-charts`) — M12 exactly: `createElementNS` 840 and `measureText` 48, in 4,329 sink calls at 25.1 ms per pass over 1,112 elements.<br>`tauri`: 2026-09-20, lib `608544c9` (`ta-charts`) — M12 exactly, the same 4,329 sink calls, at 26.5 ms per pass (p90 34). |
+| `shell-deep` | **S1 stand-in.** A menu bar; an explorer `Accordion` (open file tree, open outline, closed history) beside a `Dock` of 2×2 regions of `CodeEditor`s under a toolbar; a status bar. `n`: tabs per region (default 1, four editors). | `drag,wheel:120` (default), `resize`, `passes`, `hover`, `park` (the explorer gutter), `type` (the first painted editor), `toggle`. `grip=` `dock-h`, `dock-v`, `sidebar`, `section`, `tab`; `hover=` `toolbar`, `menubar`, `tabs`; `wheel=` `tree`, `editor`; `toggle=` `section` (the closed History section), `pane` (the explorer pane's collapse) | `sidebar`, `files`, `outline`, `history`, `main`, `dock`, `editor0`–`editor3` | M5, slice 06 F06.3: `park` with `work=1&geom=1` gives `sidebar.doLayout` and `main.doLayout` 1.00 ±0.02 per unit, `geometry.sidebar` the same in every unit. M6, slice 08 F08.3: `drag` with `grip=sidebar&work=1` gives `history.doLayout` 1.00 ±0.02 and `history.getPreferredSize` at least 1.00. M7, slice 23 F23.1 (C7): `theme:4` grows the note's rule total by about 51 × 4 × `before.host.editorViews`. | `minibrowser`: 2026-09-20, lib `608544c9` — **S1 stand-in baseline**, at `n=1` over 2,484 elements: `park` (`val-sdeep-park`) 20.5 ms per unit, `sidebar.doLayout` and `main.doLayout` 0.99, the sidebar at 8,41,160,1999 in all 150 units; `drag` with `grip=sidebar` (`val-sdeep-drag`) 84.6 ms per unit, `history.doLayout` and `history.getPreferredSize` 1.00; `theme:4` (`val-sdeep-theme`) 206.0 ms per switch, 517 → 1,333 rules, which is 51 × 4 editor views × 4 switches exactly. Re-verified on 2026-09-20 against lib `2df6a50d`, current `master`, in a same-session A/B (`tr-*`, old-new-old): census, counters and rectangles identical and the times inside the old arm's own bracket, so these numbers still describe `master` after the tree-reveal merge rewrote `Tree`.<br>`tauri`: 2026-09-20, lib `608544c9` — **S1 stand-in baseline**, the same counters, rectangles and rule growth as MiniBrowser to the digit: `park` 9.4 ms per unit (p90 14), `drag` with `grip=sidebar` 64.5 ms (p90 71), `theme:4` 179.7 ms per switch (p90 197). |
+| `shell-shallow` | **S3 stand-in.** `shell-deep`'s chrome and explorer around a `Dock` of one region. `n`: tabs (default 1, one editor). | As `shell-deep`, but `grip=` `sidebar`, `section` and `hover=` `toolbar`, `menubar` | As `shell-deep`, with `editor0` only | M5–M7, as for `shell-deep`. | `minibrowser`: 2026-09-20, lib `608544c9` — **S3 stand-in baseline**, at `n=1` over 1,618 elements: `park` (`val-sshal-park`) 9.2 ms per unit, `sidebar.doLayout` and `main.doLayout` 0.99, the sidebar at 8,41,160,1999 in all 150 units; `drag` with `grip=sidebar` (`val-sshal-drag`) 67.3 ms per unit, `history.doLayout` and `history.getPreferredSize` 1.00; `theme:4` (`val-sshal-theme`) 147.7 ms per switch, 325 → 529 rules, which is 51 × 1 editor view × 4 switches exactly. Re-verified on 2026-09-20 against lib `2df6a50d`, current `master`, in a same-session A/B (`tr-*`, old-new-old): census, counters and rectangles identical and the times inside the old arm's own bracket, so these numbers still describe `master` after the tree-reveal merge rewrote `Tree`.<br>`tauri`: 2026-09-20, lib `608544c9` — **S3 stand-in baseline**, likewise identical in counters, rectangles and rule growth: `park` 10.3 ms per unit (p90 17), `drag` with `grip=sidebar` 57.9 ms (p90 67), `theme:4` 132.0 ms per switch (p90 144). |
+| `table-rows` | A `Table` over a 12-field model with every cell type, the filter row shown. `n`: rows (default 10,000). | `wheel` (default), `resize`, `passes`, `key` (ArrowDown and ArrowUp on the body), `update`, `drag` (the first column's edge), `click` (sorts by `name`). `update=` `record` (one visible row's score), `filter` (the department filter) | `table`, `header`, `body` | M8, slice 19 F19.2: `key` with `work=1` gives `getVisibleRecords@TableBody` 6.00 per unit. | `minibrowser`: 2026-09-20, lib `608544c9` (`val-table`) — M8 exactly: `getVisibleRecords@TableBody` 6.00 per `key` unit at 10,000 rows, 21.4 ms per unit over 4,766 elements.<br>`tauri`: 2026-09-20, lib `608544c9` (`ta-table`) — M8 exactly, `getVisibleRecords@TableBody` 6.00, at 20.8 ms per `key` unit (p90 23). |
+| `treetable-rows` | A `TreeTable` of folders, each with 3 subfolders of 3 files: 13 rows per root. `n`: root folders (default 200, 2,600 rows). | `toggle` (default: collapse all, then expand all), `resize`, `passes`, `wheel`, `key` (ArrowDown and ArrowUp), `update` (one row's size), `click` (a size cell) | `table`, `header`, `body` | M9, slice 22 F22.5: `key` with `work=1` gives `getVisibleRecords@TreeBody` 6.00. F22.3 (C10): `toggle` with `seam=1` gives `ensureStyleRule`, `setRuleStyles`, `createElement` and `removeElement` equal — one caret minted and one detached per visible branch row — and no `deleteStyleRule` in that path; the deletes a long phase shows follow elapsed time, not toggles. | `minibrowser`: 2026-09-20, lib `608544c9` (`val-treetable`, `c10-probe`) — M9 exactly: `getVisibleRecords@TreeBody` 6.00 per `key` unit at 200 roots, 16.6 ms per unit over 1,699 elements; `toggle`'s four glyph-swap counters 70.5 each at 201.2 ms per unit, with `deleteStyleRule` absent over 2 units and 55.7 over 20 — the collector, not the swap. C10 is unfixed and its leak is GC-bounded; see the panels plan's M9.<br>`tauri`: 2026-09-20, lib `608544c9` (`ta-treetable`) — M9 exactly, the same 6.00 and the same four swap counters at 70.5, at 17.0 ms per `key` unit (p90 17) and 196.1 ms per `toggle` (p90 227). The C10 probe was run under MiniBrowser only. |
+| `tree-nodes` | A fully expanded `Tree` of folders of 5 files each, with the explorer's icon renderer. `n`: folders (default 300, 1,800 nodes). | `key` (default: ArrowLeft and ArrowRight collapse and expand the first folder), `passes`, `resize`, `wheel` | `tree` | M10, slice 18 F18.6: `passes` with `work=1` gives `setStyleState@TreeRow` = 2 × `before.host.treeRows`. F18.4: `key` with `seam=1` gives `ensureStyleRule`, `setRuleStyles` and `deleteStyleRule` 1.50 each. | `minibrowser`: 2026-09-20, lib `608544c9` (`val-tree`) — M10 exactly: `setStyleState@TreeRow` 186 per pass at 93 tree rows, and `ensureStyleRule`, `setRuleStyles` and `deleteStyleRule` 1.50 each per `key` unit, at 96.0 ms per unit over 632 elements. Re-verified on 2026-09-20 against lib `2df6a50d`, current `master`, in a same-session A/B (`tr-*`, old-new-old): census, counters and rectangles identical and the times inside the old arm's own bracket, so these numbers still describe `master` after the tree-reveal merge rewrote `Tree`.<br>`tauri`: 2026-09-20, lib `608544c9` (`ta-tree`) — M10 exactly, the same 186 and 1.50s, at 0.3 ms per pass and 91.9 ms per `key` unit (p90 96). |
+| `list-items` | A `List` over a store. `n`: items (default 300). | `key` (default: ArrowDown and ArrowUp), `passes`, `resize` | `list` | M11, slice 18 F18.2: `passes` with `seam=1` gives `seam.sink.apply` 908 — the 906 rows of the offline census plus the engine's overlay scroller. F18.1: `key` with `seam=1` gives `apply` 603 and `dispatchCustomEvent` 1. | `minibrowser`: 2026-09-20, lib `608544c9` (`val-list`) — M11 with `passes` at 908 instead of 906 (see the panels plan's M11): `apply` 908 per pass at 3.1 ms, and `apply` 603 with `dispatchCustomEvent` 1 per `key` unit at 16.9 ms, over 932 elements.<br>`tauri`: 2026-09-20, lib `608544c9` (`ta-list`) — M11 exactly, the same 908 and 603 with `dispatchCustomEvent` 1, at 3.1 ms per pass and 16.9 ms per `key` unit (p90 17). |
+| `markdown-doc` | A `MarkdownViewer` of a document with bullet lists, TypeScript fences and tables, beside a side header in a `Split`. `n`: sections (default 60). | `drag` (default: the split's gutter), `passes` (the viewer), `resize`, `update` (swaps two versions of the document), `wheel` (the first paragraph) | `side`, `viewer` | M13, slice 25 F25.3: `passes` with `seam=1` gives `seam.source.getElementRect` 2.00. F23.1 (C7): `theme:4` grows the note's rule total by about 51 × 4 × `before.host.editorViews`; fences become editors only near the viewport, so that count depends on the screen. | `minibrowser`: 2026-09-20, lib `608544c9` (`val-markdown`) — M13 exactly: `getElementRect` 2.00 per pass at 1.5 ms, and `theme:4` 494 → 1,514 rules, which is 51 × the 5 editor views the screen upgraded × 4 switches, at 157.0 ms per switch over 1,189 elements.<br>`tauri`: 2026-09-20, lib `608544c9` (`ta-markdown`) — M13 exactly, the same `getElementRect` 2.00 per pass and 494 → 1,514 rules, at 1.0 ms per pass and 108.3 ms per switch (p90 111). Its `theme` phase reads a little more than MiniBrowser's (`getElementRect` 2.25 against 1.50, `getScrollMetrics` 7.75 against 7.50, plus `getOffsetSize` 0.25 and `querySelector` 0.50 MiniBrowser never records); no checked figure is among them. |
+| `canvas-idle` | `WebGLCanvas`es whose 2D context is taken before they ask for a WebGL2 one, so the engine refuses it, and 2D `Canvas`es started while shown and then moved under an already-hidden panel; all animating and drawing nothing. `n`: surfaces per group (default 4). | `idle` (default) | `shown` | M14, slice 26 F26.7 (C35) and F26.8 (C36): `before.host.webglContexts` = 0 with `webglAnimating` = 4, and `hiddenStarted` = `hiddenAnimating` = 4; `idle` with `seam=1` gives `seam.sink.requestAnimationFrame` = `webglAnimating` + `hiddenAnimating` ±0.05. | `minibrowser`: 2026-09-20, lib `608544c9` (`val-canvas`) — M14 exactly: `webglContexts` 0 with `webglAnimating` 4, `hiddenStarted` and `hiddenAnimating` 4, and `requestAnimationFrame` 8 per idle unit, their sum. The sweep's first run showed neither symptom, and rebuilding the panel for both is what this run confirms; see the panels plan's M14.<br>`tauri`: 2026-09-20, lib `608544c9` (`ta-canvas`) — M14 exactly: 0, 4, 4, 4 and `requestAnimationFrame` 8, at 16.9 ms per idle frame (p90 17). Its `getContext` reads 1.8 per unit against MiniBrowser's 1.9, a read counter no check names. |
+
+A parameter's first value is its default.
+
+**Both halves of every entry measure the library build they name,**
+`608544c9`, and not whatever `master` holds now — it has moved on since, and
+its `packages/lib` differs. A figure belongs to the build beside it.
+
+**What the two halves share, and what they do not.** Every panel was run at
+the same viewport under both hosts, and their counters, rule totals and
+rectangles came back the same, which is the census agreement *Measurement
+rules* requires; the two exceptions are noted in the entries themselves, and
+neither is a figure a check names. The frame times are each host's own: the
+sweeps ran in different sessions, where absolutes drift 8–14%, so the two
+columns are not a comparison of hosts.
+
+**The shells are Loom stand-ins.** `shell-deep` and `shell-shallow` are shaped
+after the two Loom scenarios the render review measured: S1
+(`mode=filetree&tabs=4&grid=2x2&gutter=dock-h`), a 2×2 dock grid of code
+editors whose horizontal dock gutter is dragged, and S3
+(`mode=filetree&tabs=1&gutter=explorer`), one editor with the explorer gutter
+dragged. Their default drive is Loom's two phases for those scenarios, the
+drag and then 120 units of wheel on the file tree. They keep the shape that
+decides the review's figures — a `Split` beside a resizable `Accordion` with
+one closed section, a `Dock` of `Border`-wrapped `CodeEditor`s, and the gutter
+each scenario drags — but they are not replicas: the editors hold generated
+code instead of Loom's source files, the explorer is the library's `Tree` over
+generated folders instead of Loom's file tree over the repository, the shell
+is built from library components instead of Loom's shell classes with no
+Tauri API behind it, and the tabs are declared in the `Dock` layout instead of
+opened from the tree. So their numbers will not match Loom's history. They
+exist so that a later Loom plan can take their baselines and retire Loom's
+harness; their `Validated` entries record those baselines.
+
+Which panel and driver run each wave-3 candidate's hot path, and which
+correctness bugs a panel shows at run time, is mapped under *Coverage* in
+[qa-app-panels.md](../../plans/implemented/qa-app-panels.md#coverage).
 
 ## Built-in drivers
 
@@ -272,9 +362,32 @@ app's screen can easily exercise a different code path.
 | `wheel` | an element | a `wheel` event at its centre, `deltaY` +40 for the first half, −40 for the second |
 | `resize` | a component with `getWidth()`, `setWidth(w)`, `doLayout()` | width −`step` for the first half, +`step` for the second, then `doLayout()`; the original width is restored at the end |
 | `passes` | a component with `doLayout()` | one synchronous `doLayout()`; the sample is its duration |
+| `idle` | any defined value; ignored | nothing: the frame holds only what the page does on its own, such as an animation loop |
+| `call`, `update`, `toggle` | a function `(index) => void` | calls it with the unit's index. Three names for one driver, so a panel can offer a data change and an expand or collapse side by side, and each report phase says which ran |
+| `hover` | `{ element, axis: 'x' \| 'y' }` | moves the pointer `step` px along the element's centre line, bouncing between its edges one pixel inside them, with no button held: `pointermove` and `mousemove` to the element under the pointer, preceded by `pointerout`/`mouseout` and `pointerover`/`mouseover` when that element changed. The element's and its descendants' rectangles are read once, before the first unit, so every arm of a comparison gets the same events; a descendant the engine's hit test passes through, one whose computed `pointer-events` is `none` or whose `visibility` is `hidden`, is left out, as it is from a real pointer's |
+| `park` | `{ element, axis, direction: 1 \| -1, leadPx }` | a `mousemove` on `document` to `leadPx` + `step` × k past the start in `direction`, k rising to half the units and falling back to 0, so the pointer never comes back closer than `leadPx`. Before the units, a press and a 10-frame drag of `leadPx`, past the pane's clamp; after them, a release and a drag back to the start. Needs at least 2 units |
+| `click` | `{ elements: [element, …] }` | a press and release at the centre of the next element in turn: `pointerdown`, `mousedown`, `pointerup`, `mouseup`, `click` |
+| `key` | `{ element, keys: [key, …] }` | a `keydown` and a `keyup` with the next key in turn; the element is focused, and the page left to settle, first |
+| `type` | `{ element, text }` | inserts the next character of `text` with `document.execCommand('insertText')`, which makes the engine fire its own trusted `beforeinput` and `input` events, as a keystroke does; a synthetic `KeyboardEvent` would insert nothing. The element is focused with the caret at its end first, and what was typed is deleted after |
+| `theme` | `{ cycle(index), restore() }` | `cycle(index)`; the page's theme is restored after the last unit |
 
 A driver whose target is missing or the wrong shape fails the run with
-`<driver>: <what is wrong>`.
+`<driver>: <what is wrong>`. `type` also fails before its first unit when the
+engine has no `document.execCommand` or the element does not take focus, and
+`park` fails before anything with fewer than 2 units, and after restoring when
+the element moved during the measured units: its `leadPx` did not reach the
+clamp, and the run measured the wrong thing.
+
+The drivers from `idle` on keep their own setup and teardown out of the
+counters: reading rectangles, focusing, `park`'s lead-in and restore drags,
+`type`'s clean-up and `theme`'s restore run inside `tools.suspendCounting`,
+which pauses every counter family, and where that work changed the page — a
+focus, a caret move, a drag, a restyle — they wait a few frames
+(`tools.waitFrames`) inside the suspension for it to settle. Only the measured
+units land in a phase's counts. `hover`, `park`, `type` and `theme` each add a note: the
+crossings, the rectangle the element was held at, the characters typed, and
+the page's CSS rule total before the first switch and after the last, which is
+where a leak of per-switch rules shows.
 
 ## Built-in ablations
 
@@ -371,14 +484,35 @@ FORMAT <path>` or `UNREADABLE <path>: <reason>` otherwise.
   scripts — so their frame times and rectangles differ for reasons that are
   not the library's. Give each host's runs their own name prefix, so
   `qa-table.py`'s `geom` reference is always a run of the same host.
+- **`deleteStyleRule` and `release` are not deterministic; compare the other
+  counters.** Both also fire from `Component`'s `FinalizationRegistry`, which
+  frees an unreachable component's rule and handles when the collector
+  reaches it, so they follow elapsed time rather than work. `c10-probe`
+  showed it inside one report — `deleteStyleRule` absent over 2 `toggle`
+  units of `treetable-rows` and 55.7 over 20 — and an A/B of that same panel
+  against a library change it cannot have seen showed it across reports:
+  every counter matched except `deleteStyleRule` (43.65 against 47.95) and
+  `release` (130.95 against 143.85). A run-to-run difference in those two is
+  not evidence that anything changed, and a leak's signature has to be read
+  per unit of work, not off a phase total.
 - **Give every arm the same instrument flags** (`count`, `work`, `seam`,
   `geom`): the instruments cost time.
 - **Geometry equality is the soundness gate.** An arm whose `geom` column reads
   `DIFF` laid the page out differently, and its timing is void
   ([97-wave2-measurement.md](../../plans/research/render-review-2026-09-15/97-wave2-measurement.md#L62)).
-- **Check a deep panel and a shallow one.** A change can hold geometry on one
-  and break it on the other. Never bound a document-wide cost on the small
-  panel ([00-baseline.md](../../plans/research/render-review-2026-09-15/00-baseline.md#L339)).
+- **Check a deep panel and a shallow one** — `shell-deep` and
+  `shell-shallow`, or `chart-dashboard` and `chart-line`. A change can hold
+  geometry on one and break it on the other. Never bound a document-wide cost
+  on the small panel ([00-baseline.md](../../plans/research/render-review-2026-09-15/00-baseline.md#L339)).
+- **Scale a panel with `n=` before bounding a document-wide cost.** A cost that
+  grows with the page, such as one per mounted editor, hidden ones included,
+  shows only when there is more of the page: sweep `shell-deep` at `n=1` and
+  `n=12`, say, before saying what a change saves.
+- **Put `toggle`, `theme`, `type`, and `drag` with `grip=tab`, last in a
+  `drive=` list.** They leave the page changed for any phase after them: a
+  section or pane flipped, the theme's restyle, an editor's edit history, a
+  tab strip possibly reordered. Give `theme` few units, `theme:4` to
+  `theme:20`: each unit restyles the whole page.
 - **An ablation bounds only the code it reaches in the panel it runs in.**
   Confirm it engaged through its own counters
   ([97-wave2-measurement.md](../../plans/research/render-review-2026-09-15/97-wave2-measurement.md#L157)).
