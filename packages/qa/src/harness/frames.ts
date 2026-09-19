@@ -119,6 +119,19 @@ export function measureIdle(units: number): Promise<number[]> {
 }
 
 /**
+ * Waits `frames` animation frames, so a change a driver made in its setup or
+ * teardown can restyle and lay out. Unlike `runFrames` it advances no frame
+ * counter and samples no geometry.
+ *
+ * @param frames - How many frames to wait.
+ */
+export async function waitFrames(frames: number): Promise<void> {
+    for (let i = 0; i < frames; i++) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+}
+
+/**
  * Summarises timing samples: count, mean, median, 90th percentile, maximum,
  * and how many exceed one 60 Hz frame. An empty list summarises as zeros.
  *

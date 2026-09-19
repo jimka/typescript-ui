@@ -1,5 +1,6 @@
-// Page helpers: waits, paint checks and synthetic mouse events. Ported from
-// Loom's qa-harness.ts; nothing here runs at import time.
+// Page helpers: waits, paint checks, synthetic mouse events and the page's CSS
+// rule count. Ported from Loom's qa-harness.ts, except the rule count, which
+// is new; nothing here runs at import time.
 
 /**
  * How often `waitFor` re-runs its probe. Loom's value: short enough that a
@@ -141,4 +142,39 @@ export function elementOf(component: { getId(): string }): HTMLElement | null {
     const id = component.getId();
 
     return id ? document.getElementById(id) : null;
+}
+
+/**
+ * The total CSS rules on the page: every rule of every sheet in
+ * `document.styleSheets`, plus `document.adoptedStyleSheets` where the engine
+ * has them. A sheet whose rules cannot be read, such as a cross-origin one,
+ * counts 0.
+ *
+ * @returns The rule count.
+ */
+export function countCssRules(): number {
+    // Engines without constructable stylesheets (jsdom) leave it undefined.
+    const adopted = document.adoptedStyleSheets ?? [];
+    let total = 0;
+
+    for (const sheet of [...Array.from(document.styleSheets), ...adopted]) {
+        total += sheetRuleCount(sheet);
+    }
+
+    return total;
+}
+
+/**
+ * How many top-level rules one stylesheet holds.
+ *
+ * @param sheet - The stylesheet.
+ * @returns Its rule count, or 0 when reading its rules throws.
+ */
+function sheetRuleCount(sheet: CSSStyleSheet): number {
+    try {
+        return sheet.cssRules.length;
+    } catch {
+        // A cross-origin sheet's rules are not readable.
+        return 0;
+    }
 }

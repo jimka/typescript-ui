@@ -11,8 +11,8 @@ export interface PanelBuild {
     root: Component;
     /** Driver name → target, for targets that exist before mounting. */
     targets: Record<string, unknown>;
-    /** Called once after the root has painted and settled; its entries are merged over `targets`. */
-    afterMount?(tools: HarnessTools): Record<string, unknown>;
+    /** Called once after the root has painted and settled; `mountPanel` awaits it, so a panel that must wait — for a store's view, say — returns a promise. Its entries are merged over `targets`. */
+    afterMount?(tools: HarnessTools): Record<string, unknown> | Promise<Record<string, unknown>>;
     /** Label → geometry probe target, sampled under `geom=1`. */
     geometry?: Record<string, GeometryTarget>;
     /** Host fields, stored under `before.host`. */

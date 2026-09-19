@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { installSeamCounters, perUnit, startCounting, stopCounting } from '../src/harness/counters.js';
+import { installSeamCounters, perUnit, startCounting, stopCounting, suspendCounting } from '../src/harness/counters.js';
 
 describe('E2 perUnit', () => {
     it('divides by the units and orders keys largest first', () => {
@@ -172,6 +172,58 @@ describe('E4 seam counter', () => {
         expect(counts).not.toHaveProperty('writes');
         expect(counts).not.toHaveProperty('forcedStacks');
         expect(counts).not.toHaveProperty('work');
+    });
+});
+
+describe('E18 suspendCounting', () => {
+    let dom: FakeDom;
+
+    beforeEach(() => {
+        ({ dom } = fakeDom());
+        installSeamCounters(dom);
+    });
+
+    it('leaves the suspended work out of the tallies', async () => {
+        startCounting();
+        dom.sink.apply();
+
+        await suspendCounting(async () => {
+            dom.sink.apply();
+            dom.sink.apply();
+            dom.sink.apply();
+        });
+
+        dom.sink.apply();
+
+        expect(stopCounting(1).seam?.sink).toEqual({ apply: 2 });
+    });
+
+    it('resumes counting and rethrows when the work throws', async () => {
+        const boom = new Error('boom');
+
+        startCounting();
+
+        await expect(suspendCounting(async () => {
+            throw boom;
+        })).rejects.toBe(boom);
+
+        dom.sink.apply();
+
+        expect(stopCounting(1).seam?.sink).toEqual({ apply: 1 });
+    });
+
+    it('leaves counting off when it was off', async () => {
+        startCounting();
+        stopCounting(1);
+
+        await suspendCounting(async () => {
+            dom.sink.apply();
+        });
+
+        dom.sink.apply();
+
+        // A second stop reads the tallies again without resetting them.
+        expect(stopCounting(1).seam?.sink).toEqual({});
     });
 });
 

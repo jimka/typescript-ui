@@ -76,6 +76,59 @@ export interface DriveContext {
     tools: HarnessTools;
 }
 
+/** `hover`: sweeps the pointer across `element` along `axis`, `step` px per unit, bouncing between its edges. */
+export interface HoverTarget {
+    /** The element swept; the pointer stays one pixel inside it. */
+    element: Element;
+    /** The sweep's direction, along the element's centre line. */
+    axis: 'x' | 'y';
+}
+
+/** `park`: drags `element` `leadPx` in `direction` (unmeasured), then measures units that keep pushing past the clamp. */
+export interface ParkTarget {
+    /** The gutter pressed and dragged. */
+    element: Element;
+    /** The drag's axis. */
+    axis: 'x' | 'y';
+    /** Which way along `axis` the drag pushes: towards the clamp. */
+    direction: 1 | -1;
+    /** How far the unmeasured lead-in drags; must reach past the clamp. */
+    leadPx: number;
+}
+
+/** `click`: one press and release per unit at the centre of `elements[index % elements.length]`. */
+export interface ClickTarget {
+    /** The elements clicked in turn; at least one. */
+    elements: Element[];
+}
+
+/** `key`: one keydown and keyup per unit on `element`, with key `keys[index % keys.length]`. */
+export interface KeyTarget {
+    /** The element focused and sent the keys. */
+    element: Element;
+    /** `KeyboardEvent.key` values, used in turn; at least one. */
+    keys: string[];
+}
+
+/** `type`: types `text[index % text.length]` into `element` (an input, a textarea or a contenteditable), one character per unit. */
+export interface TypeTarget {
+    /** The element typed into. */
+    element: Element;
+    /** The characters typed in turn; not empty. */
+    text: string;
+}
+
+/** `call`, `update`, `toggle`: called once per unit, in order, with the unit's index. */
+export type CallTarget = (index: number) => void;
+
+/** `theme`: `cycle(i)` applies unit `i`'s theme; `restore()` puts back the theme the page had before. */
+export interface ThemeTarget {
+    /** Applies unit `index`'s theme. */
+    cycle(index: number): void;
+    /** Puts back the theme the page had before the phase. */
+    restore(): void;
+}
+
 /** Patches the page at runtime and returns a one-line note saying what it did. */
 export type Ablation = (tools: HarnessTools) => string;
 
@@ -123,6 +176,10 @@ export interface HarnessTools {
     runFrames(units: number, step: (index: number) => void): Promise<number[]>;
     /** Synchronous loop with the same bookkeeping; each sample is `step`'s own duration. */
     runPasses(units: number, step: (index: number) => void): Promise<number[]>;
+    /** Runs `work` with every counter family paused; restores the previous counting state afterwards, also on a throw. */
+    suspendCounting<T>(work: () => Promise<T>): Promise<T>;
+    /** Resolves after `frames` animation frames. Counts no frame and samples no geometry. */
+    waitFrames(frames: number): Promise<void>;
 }
 
 /** A timing summary over a list of samples, in milliseconds. */

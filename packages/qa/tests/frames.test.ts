@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { runFrames, runPasses, summarize } from '../src/harness/frames.js';
+import { currentFrame, runFrames, runPasses, summarize, waitFrames } from '../src/harness/frames.js';
 
 /** Delay of the stubbed frame callback: any timer tick will do, the loop only needs it asynchronous. */
 const STUB_FRAME_DELAY_MS = 1;
@@ -73,5 +73,17 @@ describe('E5 frame loop', () => {
                 throw boom;
             }
         })).rejects.toBe(boom);
+    });
+});
+
+describe('waitFrames', () => {
+    it('waits the given frames without counting one', async () => {
+        const raf = stubFrames();
+        const before = currentFrame();
+
+        await waitFrames(3);
+
+        expect(raf).toHaveBeenCalledTimes(3);
+        expect(currentFrame()).toBe(before);
     });
 });

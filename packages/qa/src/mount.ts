@@ -7,6 +7,7 @@ import { Body } from '@jimka/typescript-ui/core';
 import type { Component } from '@jimka/typescript-ui/core';
 import { Fit } from '@jimka/typescript-ui/layout';
 import type { HarnessTools, SetupContext, Subject } from './harness/types.js';
+import { pageTargets } from './pageTargets.js';
 import { loadPanel, parseScale } from './panels.js';
 import type { PanelBuild, PanelModule } from './panels.js';
 
@@ -57,7 +58,8 @@ export function defaultMountWaits(tools: HarnessTools): MountWaits {
 
 /**
  * Loads, builds and mounts panel `id`, runs its `afterMount`, and merges the
- * targets — `afterMount`'s entries over `build.targets`.
+ * targets — `afterMount`'s entries over `build.targets`, over the page-wide
+ * `idle` and `theme` targets.
  *
  * @param id - The panel id.
  * @param params - The page's URL parameters; `n=` sets the scale.
@@ -80,14 +82,16 @@ export async function mountPanel(id: string, params: URLSearchParams, tools: Har
     await waits.painted(build.root, id);
     await waits.settled();
 
-    const mounted = build.afterMount?.(tools) ?? {};
+    // Awaited: a panel whose data arrives after the mount — a store that built
+    // its view on a worker — waits for it in `afterMount` and returns a promise.
+    const mounted = (await build.afterMount?.(tools)) ?? {};
 
     // `afterMount` may have changed the tree.
     if (build.afterMount) {
         await waits.settled();
     }
 
-    return { module, n, build, targets: { ...build.targets, ...mounted } };
+    return { module, n, build, targets: { ...pageTargets(build.root), ...build.targets, ...mounted } };
 }
 
 /**
