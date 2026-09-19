@@ -320,3 +320,162 @@ None. Every new member is private or `@internal`, and `typedoc.json` sets `exclu
 [^suite-prevalidated]: On 2026-09-17 the design was applied to unmodified library source at runtime — the pass counter around `Component.prototype.doLayout`, the generation counter bumped at the six places in `## Architecture Decisions`, the record behind the three getters with the entry/exit comparison — and the full `packages/lib` suite ran against it: 470 files, 7,519 tests, 2 todo, zero failures. The same run under a pass-keyed memo was also green, which is the reason `## Verification` says in as many words that the suite is not the gate. The simulation did not include the `Border` change in step 9, which is argued separately.
 
 [^aliasing]: `mergeConstraintSize`'s doc comment says "Every branch returns a new object, so callers never receive an alias of the stored constraint or manager size." That remains true of `mergeConstraintSize` itself; what changes is that two callers inside one record window now receive the same object. The library already does this — `Image.getMinSize` (`component/display/Image.ts:931`) returns `this._aspectMinSize` directly — and a search for assignment into a `.width` or `.height` anywhere in the library finds fifteen hits, every one a DOM attribute bag, a CSS keyframe bag, or a comment. The rule to state in the three JSDoc comments is that the caller must not modify the returned `Size`.
+
+---
+
+## Implementation Notes
+
+The design lands as `## Architecture Decisions` and `## Internal Structure`
+specify — the generation counter, its six bump sites, the five record fields,
+`beginSizeHintRecord`, and the three getters with the entry/exit comparison.
+Two things in the plan did not survive contact with what
+`border-region-size-memo` actually shipped, and the work-avoided figure is
+materially smaller than the plan's. Both are recorded below in full.
+
+**The key was re-derived against the shipped pass token, not applied as
+written.** `border-region-size-memo`'s own notes correct its plan: a pass hands
+control to consumer code at two points, and the shipped
+`Component.currentLayoutPass()` ends its number at each — the `onFirstLayout`
+drain and a `sizechange` dispatch from inside a size setter. That is a narrower
+token than this plan's `[^matrix]` measured against. Re-running the matrix
+against the shipped token, by simulating every candidate key at runtime over
+unmodified library source:
+
+| key | gate 5 | gate 6 | gate 7 | gate 8 | deep work | shallow work |
+|---|---|---|---|---|---|---|
+| none | `50, 130` | `50, 100` | `50, 400` | `50, 70` | — | — |
+| the plan's looser pass | `50, 130` | `50, 50` ✗ | `50, 50` ✗ | `50, 50` ✗ | −39.5% | −40.6% |
+| the shipped pass | `50, 130` | `50, 100` | `50, 50` ✗ | `50, 50` ✗ | −39.5% | −40.6% |
+| the plan's looser pass + generation | `50, 130` | `50, 100` | `50, 400` | `50, 70` | −32.0% | −32.0% |
+| **the shipped pass + generation (shipped)** | `50, 130` | `50, 100` | `50, 400` | `50, 70` | **−32.0%** | **−32.0%** |
+
+(That table's work column comes from the pre-audit runtime simulation, on the
+earlier `HBox`-rooted scene; the shipped figures are the `Split`-rooted ones
+below. The comparison between keys is what the column is for, and it holds.)
+
+Gate 6 is therefore already closed by phase 1, and the plan's row recording a
+pass key failing it is stale. Gates 7 and 8 are not: a constraint or an inset
+written mid-pass reaches no `doLayout`, fires no `sizechange` and drains no
+callback, so nothing ends the pass number and a pass-only key serves the stale
+answer. The generation counter is what closes them and it ships. Reverting the counter
+to a no-op fails six cases — gates 7 and 8, and cases 13 to 16, the four the
+audit added — and leaves every other case green.
+
+**The shipped token costs nothing.** The two generation rows above are not
+approximately equal, they are identical to the call — 74,328 on the deep scene
+either way. Every point at which the shipped token ends a number mid-pass sits
+immediately before a nested `doLayout` that bumps the generation anyway, so the
+narrower token removes no cache hit the design was already keeping.
+
+**Work avoided is −31%, not the plan's −51%, and the reason is phase 1, not the
+token.** Measured over the same twenty-frame triangle-wave sweep the plan's case
+9 describes — a `Split` of a 30-row tree pane and a 2x2 grid of `Border` editor
+panes, one of whose regions is collapsible so the sweep drives real gutters —
+223 components, against a 48-component single-pane scene: 109,260 → 75,084
+calls (**−31.3%**) and 23,204 → 15,844 (**−31.7%**). Run against a baseline with `Border`'s own per-pass region record
+disabled — which is the condition the plan's −51.0% and −51.1% were measured in,
+on `master` before phase 1 existed — the same scenes give −58.4% and −48.0%. So
+the plan's figure reproduces in the plan's own condition; what changed is that
+this branch now stacks on a tree where `border-region-size-memo` has already
+harvested half of the same repeats (it alone takes the deep scene from 223,328
+to 109,368). The two together remove two thirds of the sweep's size-hint calls.
+A third is still a third, but the justification is a smaller number than the
+plan claims and is stated here rather than smoothed over.
+
+**The bump list is tied to the resolved-style cache, not to the plan's list of
+setters.** The table at `## Architecture Decisions` calls `writeStyle()` "the
+single funnel for … `minSize`, `maxSize`, `padding`, `border`, `visible` and
+`displayed`". It is not a funnel at all: `getMinSizeConstraint` and
+`getMaxSizeConstraint` resolve through the *layered* style walk, whose per-key
+memo `_resolvedCache` is cleared at six places, only one of which is
+`writeStyle`. Three writers reachable from inside a shipped `doLayout` fell
+through the gap — `setDisplayed(false)`, whose hiding leg routes through
+`setStyleState` and never touches the funnel, while every aggregating manager
+iterates `getLaidOutComponents`, which filters on `isDisplayed`
+(`Split`, `Tab`, `Card`, `Accordion` and `Border` all undisplay children from
+inside their own `doLayout`); a style state carrying a `minSize`, activated
+mid-pass; and `cacheBorderSpec`, which drops the cached per-side widths
+`getPerimeterSize` reads while writing no CSS at all
+(`SplitGutter.setOpaque` calls it from `Split.doLayout`). The first served a
+stale aggregate and, through `clampWidth` / `clampHeight`, a stale committed
+height.
+
+Rather than lengthen the enumeration, the generation is now moved by a private
+`invalidateResolvedStyle()` that replaces every `_resolvedCache = null`, plus
+one bump in `cacheBorderSpec` for the one size-hint input that memo does not
+cover. That makes the invalidation true by construction — anything that can
+change what a style layer resolves to moves both memos together — instead of
+true only for as long as the list stays complete. The two explicit bumps the
+first audit round added to `setVisible` / `setDisplayed` were removed again as
+redundant once `setStyleState` carried them. `cacheBorderSpec` bumps only on a
+genuine change, compared the way `setBorder` already compares: `SplitGutter`
+has no guard of its own and `Split.doLayout` re-asserts every expanded
+divider's border on every pass, so an unconditional bump would throw the
+library's records away once per gutter per pass — worth 228 calls a sweep even
+on the scene below, which carries one divider. Cases 14, 15 and 16 pin one
+writer each, as three further design gates of exactly the gate-7 / gate-8
+shape. All three were found by this branch's audit, not by the plan.
+
+**Step 9 is dropped: `Border`'s region record is left keyed on the pass alone.**
+`[^border-consistency]` justifies the change with one scenario — a CENTER-region
+`CodeEditor` republishing its size from a size-change reaction — and the shipped
+pass token ends the pass at exactly that `sizechange` dispatch, which phase 1's
+own case 11 already pins. Adding the generation as a second condition was
+implemented and priced before being dropped: it takes the deep sweep from 74,216
+to 92,136 calls, **+24.1%**, because the generation bumps on every nested
+`doLayout` including the ones `Border` itself triggers when it commits its
+regions. It would cost most of phase 1's win to guard a case phase 1 already
+closed. Consequently `layout/Border.ts` is untouched despite being named in
+`touches-shared`, and the `@internal static currentSizeHintGeneration()` step 1
+asks for is **not** added — `Border` was its only intended caller, and an
+accessor with no callers is what this pre-1.0 library deletes rather than keeps.
+What this leaves standing, and the plan's `## Potential Challenges` is right to
+have worried about, is that `Border.passRecord` remains exposed to exactly the
+gate-7 / gate-8 / case-14 writes the pass number does not close, so the two
+records do not answer identically in every case. That residual is inherited from
+phase 1 rather than introduced here, and closing it is what costs the 24%.
+
+**The new suite is at `tests/core/`, not `tests/component/core/`.** The plan's
+path names a directory that does not exist; `tests/core/` is where the
+`Component.*` core suites already live (`ComponentBounds`, `ComponentDefaults`,
+`ComponentSetterGuards`).
+
+**Case 1's predicted 281 → 265 no longer happens: the Border scene measures 210
+→ 210.** On a nineteen-component five-region scene every repeat is now separated
+by a nested `doLayout`, and `border-region-size-memo` has already collapsed the
+ones that were not — there is nothing left for this record to save there. Case 1
+is therefore two assertions: a direct one, that a question repeated inside one
+quiet window consults the layout manager exactly once (two consultations before
+this change), and a no-regression bound on the Border scene. The reduction
+itself is pinned by case 9, whose bound is a quarter rather than the plan's 45%,
+for the reason above.
+
+**Three smaller deviations.** Case 12 reads `Text`'s *preferred* width rather
+than its minimum: `Text.getMinSize` deliberately reports a zero width so parent
+layouts can compress labels, and both getters run the same lazy `calculateSize`.
+Cases 13 to 16 are additions beyond the plan's twelve. Case 13 pins the entry/exit
+comparison `## Potential Challenges` says no case isolates, by having a
+manager's `getMinSize` bump the generation and take a nested reading mid-
+computation; the variant that re-bases on entry and writes on exit
+unconditionally fails it, verified by mutation. Cases 14, 15 and 16 are the
+three gates described above. And the case-2 scene needs
+`spacing: 0` on its `Border` and boxes to land on the plan's stated rectangles.
+
+**`npm run docs:api` reports the same 14 pre-existing warnings phase 1
+recorded**, not the zero `## Verification` asks for; this branch adds none, and
+nothing it touches renders. `npm test` is 472 files / 7,568 tests / 2 todo,
+green. `npm run lint`, `npm run typecheck`, `npm run typecheck:test` and
+`npm run build` are clean. The aliasing grep finds exactly the 15 hits the plan
+lists, every one a DOM attribute bag, a CSS keyframe bag or a comment.
+
+**The real-WebKitGTK arm of `## Verification` was not run.** The `work=1` /
+`widthprobe=1` S1/S3 harness lives in Loom and is not present in any Loom tree
+or history reachable from this environment, so no frame-time number and no
+`widthprobe` width series exist for this change. What stands in its place is the
+deterministic twenty-frame sweep in the modelled DOM harness over both a deep
+and a shallow scene, whose acceptance gate is the same one: every component's
+rectangle on every frame, digested and compared against the value the same
+scenes produced on this branch's start point. Both are byte-identical. That
+covers geometry and work avoided; it does not cover frame time, which the plan
+neither expects nor claims to move. The WebKit arm remains owed before this is
+treated as measured.
