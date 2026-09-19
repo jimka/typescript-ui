@@ -555,6 +555,17 @@ export abstract class LayoutManager extends BaseObject {
      * already-current value is a cheap no-op, so this costs nothing beyond
      * the comparison itself.
      *
+     * A commit that moves nothing withholds the recursion for a child that
+     * opted into the unchanged-geometry skip through its protected
+     * `canSkipUnchangedLayout` gate (default `false`), owes no pass, and has
+     * an element — the gate `Component.applyBounds` applies. "Moves nothing"
+     * is read back from the child after the setters ran rather than assumed
+     * from the request, so a clamp that moves the box, or a box resized out
+     * of band since its last commit, still lays out. A size-stable move
+     * marks every opted-in ancestor of the moved child as owing a pass, so
+     * the redundant pass that folds its translate back and releases the
+     * promotion is not withheld.
+     *
      * Used by {@link LayoutManager.placeComponent} (via {@link LayoutManager.resolveBounds}) and by
      * layout managers that need to bypass the cell clamp — e.g. [`Absolute`](/api/layout/classes/Absolute)
      * places children at their own preferred size, even when that exceeds the
@@ -571,13 +582,22 @@ export abstract class LayoutManager extends BaseObject {
         component.setAutoCommitStyle(false);
 
         const sizeUnchanged = component.getWidth() === width && component.getHeight() === height;
-        const positionUnchanged = x === component.getX() + component.getTranslateX() && y === component.getY() + component.getTranslateY();
+        const beforeTranslateX = component.getTranslateX();
+        const beforeTranslateY = component.getTranslateY();
+        const positionUnchanged = x === component.getX() + beforeTranslateX && y === component.getY() + beforeTranslateY;
         const transition = component.getTransition();
         const canFastPath = sizeUnchanged && !positionUnchanged && (transition === null || transition === "none");
+        // The only shape a skip is possible for: the box did not move at all.
+        // Every other shape sets `changed` below without reading anything back.
+        const mayBeUnchanged = sizeUnchanged && positionUnchanged;
 
         if (canFastPath) {
             component.setWillChange("transform");
             component.setTranslate(x - component.getX(), y - component.getY());
+            // The redundant pass that folds this translate back and releases
+            // the promotion is owed on the container, so no skipping ancestor
+            // may withhold it.
+            component.markPassOwedAbove();
         } else {
             component.setX(x);
             component.setY(y);
@@ -588,7 +608,17 @@ export abstract class LayoutManager extends BaseObject {
         component.setWidth(width);
         component.setHeight(height);
 
-        component.doLayout();
+        // Read back, not assumed: `setWidth` / `setHeight` clamp, so an
+        // unchanged request can still move the box.
+        const changed = !mayBeUnchanged
+            || component.getWidth()      !== width
+            || component.getHeight()     !== height
+            || component.getTranslateX() !== beforeTranslateX
+            || component.getTranslateY() !== beforeTranslateY;
+
+        if (changed || !component.canSkipUnchangedCommit()) {
+            component.doLayout();
+        }
 
         component.setAutoCommitStyle(true);
     }
@@ -608,6 +638,7 @@ export abstract class LayoutManager extends BaseObject {
 
     /**
      * Stores layout constraints for a component, or removes them if `constraints` is `undefined`.
+     * Constraints are a placement input, so the write marks the container's layout pass as owed.
      *
      * @param component - The component whose constraints are being set.
      * @param constraints - Optional. The constraints to store; omit to delete existing constraints.
@@ -615,6 +646,11 @@ export abstract class LayoutManager extends BaseObject {
      * @returns The stored constraints, or `undefined` if they were deleted.
      */
     setLayoutConstraints(component: Component, constraints?: LayoutConstraints): LayoutConstraints | undefined {
+        // The write announces nothing — a `Spacer`'s `setFlex` reaches here
+        // directly — so an unchanged commit of the container must not
+        // withhold the pass that reads it.
+        this.getContainer()?.invalidateLayout();
+
         if (!constraints) {
             return this.delLayoutConstraints(component);
         } else {

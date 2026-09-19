@@ -293,6 +293,14 @@ function flushPendingLayouts() {
                 hasDirtyAncestor = true;
                 break;
             }
+
+            // A link that may withhold an unchanged commit is a link the
+            // ancestor's recursion may not get past, so `c` keeps its own
+            // top-level pass.
+            if (p.canSkipUnchangedCommit()) {
+                break;
+            }
+
             p = p.getParentComponent();
         }
 
@@ -2704,6 +2712,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Sets the component's insets. Use {@link clearInsets} to reset to zero.
+     * Insets are a layout input, so a write that changes them marks a layout
+     * pass as owed.
      *
      * @param insets - The new Insets.
      *
@@ -2726,12 +2736,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // neither `scheduleLayout` nor `writeStyle` — `Tab.doLayout` writes
         // them on its strip from inside a layout pass.
         invalidateSizeHints();
+        this.invalidateLayout();
 
         return this;
     }
 
     /**
-     * Resets the component's insets to zero on all sides.
+     * Resets the component's insets to zero on all sides. Insets are a layout
+     * input, so a reset that changes them marks a layout pass as owed.
      *
      * @returns This component, for method chaining.
      *
@@ -2753,6 +2765,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._options.insets = insets;
         this.setDataAttribute("insets", insets.render());
         invalidateSizeHints();
+        this.invalidateLayout();
 
         return this;
     }
@@ -4322,16 +4335,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * same batch as the rectangle. The pass runs when the rectangle changed,
      * when this component has not opted into the skip (the protected
      * `canSkipUnchangedLayout` gate, default `false`), when
-     * {@link isLayoutDirty} reports a pass is owed, or when this component
-     * has no element yet — a cell with no element cannot lay out, so
-     * recording that pass as done would skip it forever.
+     * {@link isLayoutDirty} reports a pass is owed — here or anywhere
+     * beneath — when an {@link onFirstLayout} callback is still waiting for a
+     * connected pass, or when this component has no element yet — a cell with
+     * no element cannot lay out, so recording that pass as done would skip it
+     * forever. That per-moment answer is the same one
+     * `LayoutManager.commitBounds` asks before its own recursion.
      */
     applyBounds(x: number, y: number, width: number, height: number): this {
         this.setAutoCommitStyle(false);
 
         const changed = this.writeBounds(x, y, width, height);
 
-        if (changed || !this.canSkipUnchangedLayout() || this.isLayoutDirty() || !this.getElement()) {
+        if (changed || !this.canSkipUnchangedCommit()) {
             this.doLayout();
         }
 
@@ -4351,6 +4367,56 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     protected canSkipUnchangedLayout(): boolean {
         return false;
+    }
+
+    /**
+     * Whether a commit that moves nothing may withhold this component's layout
+     * pass right now: this class opted in through
+     * {@link canSkipUnchangedLayout}, no pass is owed, and the component has
+     * an element. The one definition of the gate that {@link applyBounds},
+     * `LayoutManager.commitBounds` and the batched layout flush all ask;
+     * public only so the latter two can reach it on arbitrary instances.
+     *
+     * @returns `true` when an unchanged commit may skip this component's pass.
+     *
+     * @remarks A pass is owed when {@link isLayoutDirty} says so — which
+     * includes a pass owed anywhere beneath, see {@link markPassOwedAbove} —
+     * and while an {@link onFirstLayout} callback is still queued: a pass run
+     * while the element was detached clears the flag but leaves the drain for
+     * the first connected one, and when attaching moved nothing, withholding
+     * that pass would hold the callbacks forever.
+     *
+     * @internal
+     */
+    public canSkipUnchangedCommit(): boolean {
+        return this.canSkipUnchangedLayout()
+            && !this.isLayoutDirty()
+            && this._firstLayoutCallbacks === null
+            && !!this.getElement();
+    }
+
+    /**
+     * Marks every ancestor that opted into the unchanged-commit skip as owing
+     * a layout pass, so a pass owed at or below this component is not
+     * withheld by a skip higher up. A skipped component's subtree is reached
+     * by nothing else: its own pass is the only one that commits its
+     * children, and a pass owed down there without being queued — an
+     * {@link invalidateLayout}, the fold-back a size-stable move leaves on
+     * the moved component's parent, a first-layout drain still waiting —
+     * would otherwise wait for that component to move.
+     *
+     * @remarks Ancestors that did not opt in are left alone: their pass runs
+     * on every commit anyway, and their {@link isLayoutDirty} keeps meaning
+     * only that they were marked themselves.
+     *
+     * @internal
+     */
+    public markPassOwedAbove(): void {
+        for (let parent = this.getParentComponent(); parent; parent = parent.getParentComponent()) {
+            if (parent.canSkipUnchangedLayout()) {
+                parent._layoutDirty = true;
+            }
+        }
     }
 
     /**
@@ -7420,6 +7486,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Sorts the children array in place using the given comparator function.
+     * Child order is a placement input, so the sort marks a layout pass as
+     * owed.
      *
      * @param comparator - Optional. A comparator function that receives two Components and returns a number.
      *
@@ -7427,6 +7495,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     sortComponents(comparator: Comparator<Component, Component> | undefined): this {
         this._components.sort(comparator);
+        this.invalidateLayout();
 
         return this;
     }
@@ -7553,6 +7622,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // The swap changes the source of all three size reports. No same-value
         // guard stands in front of it, so this is where the bump goes.
         invalidateSizeHints();
+        this.invalidateLayout();
 
         return this;
     }
@@ -7665,6 +7735,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             // rather than re-serve across the callback.
             if (this.runFirstLayoutCallbacks()) {
                 endLayoutPassNumber();
+            } else if (this._firstLayoutCallbacks) {
+                // Laid out while detached: the drain waits for a connected
+                // pass, which an ancestor's unchanged-commit skip must not
+                // withhold.
+                this.markPassOwedAbove();
             }
         } finally {
             layoutPassDepth--;
@@ -7752,7 +7827,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Marks this component's layout as stale, so the next {@link applyBounds}
-     * cannot skip it even when the rectangle it is handed is unchanged.
+     * cannot skip it even when the rectangle it is handed is unchanged — and
+     * so no ancestor that opted into skipping an unchanged commit withholds
+     * the pass that would reach it.
      *
      * @returns This component, for method chaining.
      *
@@ -7762,6 +7839,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     invalidateLayout(): this {
         this._layoutDirty = true;
+        this.markPassOwedAbove();
 
         return this;
     }

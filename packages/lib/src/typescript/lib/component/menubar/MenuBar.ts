@@ -227,6 +227,35 @@ class MenuBar extends Component {
     }
 
     /**
+     * Opts into the unchanged-geometry layout skip: a bar re-committed at the
+     * rectangle it already holds, with no pass owed, is not re-laid-out.
+     *
+     * The writers that change the bar's layout without moving its rectangle,
+     * and why each is covered:
+     *
+     * - `setMenus` — rebuilds through `disposeAllComponents` and
+     *   `addComponent`, and every `addComponent` schedules the bar's own
+     *   layout; an empty list leaves nothing to place.
+     * - A `MenuBarButton` label or glyph change — it reaches the button's
+     *   preferred-size recompute, whose relay schedules a layout on every
+     *   ancestor, this bar included.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, `sortComponents` and
+     *   `setLayoutConstraints`, on the bar or on anything inside it — the
+     *   bar's `HBox` is set in its constructor, and each of these marks the
+     *   layout owed there and on this bar, like any `invalidateLayout`.
+     *
+     * Not covered: a consumer reaching past `setMenus` — hiding a button with
+     * `setDisplayed`, reconfiguring the `HBox` through `getLayoutManager()`,
+     * or rewriting padding or border, on the bar or inside it, once laid out
+     * — which should follow its change with `scheduleLayout()` on the bar.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
+
+    /**
      * Programmatically opens the menu at the given index, closing any currently open menu first.
      *
      * @param index - Zero-based index into the menus array.

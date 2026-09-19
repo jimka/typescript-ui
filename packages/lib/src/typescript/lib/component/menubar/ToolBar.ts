@@ -258,6 +258,10 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
      */
     setOrientation(value: AxisOrientation): this {
         this.applyOrientation(value);
+        // The swapped manager announces nothing, and the bar's rectangle does
+        // not move, so a withheld pass would leave the children placed for
+        // the old direction.
+        this.doLayout();
 
         return this;
     }
@@ -524,6 +528,8 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
             }
         }
 
+        this.doLayout();
+
         return this;
     }
 
@@ -604,6 +610,41 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
         this._reflowOverflow(this._overflowButton);
 
         return this;
+    }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a bar re-committed at the
+     * rectangle it already holds, with no pass owed, is not re-laid-out.
+     *
+     * The writers that change the bar's layout without moving its rectangle,
+     * and why each is covered:
+     *
+     * - `setCompact`, `setOverflow`, `setOverflowSide`, `setOrientation` and
+     *   `setFlat` — each lays the bar out itself.
+     * - `addComponent`, `removeComponent` and `moveComponent` — each schedules
+     *   the bar's own layout.
+     * - A `Button` / `ToggleButton` child's label or glyph change — it
+     *   reaches the button's preferred-size recompute, whose relay schedules
+     *   a layout on every ancestor, this bar included.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, `sortComponents` and
+     *   `setLayoutConstraints` — which a `Spacer` child's `setFlex` /
+     *   `setFlexWeight` reaches — on the bar or on anything inside it: each
+     *   marks the layout owed there and on this bar, like any
+     *   `invalidateLayout`.
+     *
+     * Not covered, and so not re-flowed — the overflow set included — until
+     * the bar's rectangle next moves or something schedules it: a consumer
+     * child that changes its own intrinsic size without calling
+     * `setPreferredSize` or `notifyIntrinsicSizeChanged`, a child hidden or
+     * shown with `setDisplayed`, a manager reconfigured through
+     * `getLayoutManager()`, and padding or border rewritten, on the bar or
+     * inside it, once laid out. Each should follow its change with
+     * `scheduleLayout()` on the bar.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
     }
 
     /**
