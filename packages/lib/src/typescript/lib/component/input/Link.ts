@@ -2,7 +2,7 @@
 
 import { Text, TextOptions } from "~/component/input/Text.js";
 import { Event } from "~/core/Event.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 import { registerFocusVisibleRing } from "~/component/input/focusRing.js";
 import { callable } from "~/core/Callable.js";
 import type { ClickListener } from "~/component/button/Button.js";
@@ -34,7 +34,7 @@ const LINK_COLOR_CSS = "var(--ts-ui-link-color, rgb(21, 101, 192))";
  * Both rules key off `.Link`, which comes from the class name, so a subclass
  * would not inherit them — `Link` is not designed for extension.
  */
-(() => {
+deferStyleSheetWrite(() => {
     new StyleRule({
         scope:  "selector",
         name:   ".Link",
@@ -44,7 +44,7 @@ const LINK_COLOR_CSS = "var(--ts-ui-link-color, rgb(21, 101, 192))";
     });
 
     registerFocusVisibleRing(".Link");
-})();
+});
 
 /**
  * String-literal union of the events emitted by {@link Link}. A typed shorthand

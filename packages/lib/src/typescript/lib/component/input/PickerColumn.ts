@@ -5,7 +5,7 @@ import { Util } from "~/core/Util.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Panel } from "~/core/Panel.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -22,7 +22,7 @@ const HEADER_HEIGHT: number = 18;
 // Static typography, hover effect, and disabled-state shading defined once via
 // class rules. Layout (column widths, cell stacking, scrolling) is driven by
 // the framework HBox / VBox managers and Panel.autoScroll — no display:flex/grid here.
-(() => {
+deferStyleSheetWrite(() => {
     new StyleRule({
         scope:  "class",
         name:   "PickerColumnHeader",
@@ -65,7 +65,7 @@ const HEADER_HEIGHT: number = 18;
             backgroundColor: "var(--ts-ui-picker-cell-disabled-bg, transparent)",
         },
     });
-})();
+});
 
 /** Column header label ("Hour" / "Min" / "Sec" / …). Centred within its row. */
 class PickerColumnHeader extends Text {

@@ -4,7 +4,7 @@ import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import type { Extension } from "@codemirror/state";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 
 // The syntax palette has no dedicated project theme tokens (the framework
 // defines chrome/surface/accent tokens, not a per-token-kind syntax scheme),
@@ -40,10 +40,12 @@ const REVEAL_RESTING_TINT = "color-mix(in srgb, var(--ts-ui-indicator-focus, #25
 /** Peak tint the flash starts from, decaying to {@link REVEAL_RESTING_TINT}. */
 const REVEAL_PEAK_TINT = "color-mix(in srgb, var(--ts-ui-indicator-focus, #2563eb) 50%, transparent)";
 
-StyleRule.ensureKeyframes(
-    REVEAL_FLASH_KEYFRAME,
-    `from { background-color: ${REVEAL_PEAK_TINT}; } to { background-color: ${REVEAL_RESTING_TINT}; }`
-);
+deferStyleSheetWrite(() => {
+    StyleRule.ensureKeyframes(
+        REVEAL_FLASH_KEYFRAME,
+        `from { background-color: ${REVEAL_PEAK_TINT}; } to { background-color: ${REVEAL_RESTING_TINT}; }`
+    );
+});
 
 /**
  * Builds the editor's theme extension: the chrome (background, gutters,

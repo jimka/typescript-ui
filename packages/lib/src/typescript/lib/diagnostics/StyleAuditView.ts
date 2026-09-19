@@ -10,7 +10,7 @@ import { Text } from "~/component/input/Text.js";
 import { Button } from "~/component/button/Button.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { auditStyleRules } from "~/diagnostics/StyleAudit.js";
-import { Container } from "../core";
+import { Container } from "~/core/Container.js";
 import { UNBOUNDED } from "../primitive";
 
 /**

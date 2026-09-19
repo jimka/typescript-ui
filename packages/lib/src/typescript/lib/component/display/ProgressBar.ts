@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import { Util } from "~/core/Util.js";
 
-StyleRule.ensureKeyframes(
-    'ts-ui-progress-indeterminate',
-    '0% { transform: translateX(-100%); } 100% { transform: translateX(400%); }'
-);
+deferStyleSheetWrite(() => {
+    StyleRule.ensureKeyframes(
+        'ts-ui-progress-indeterminate',
+        '0% { transform: translateX(-100%); } 100% { transform: translateX(400%); }'
+    );
+});
 
 /**
  * Construction-time options for {@link ProgressBar}.

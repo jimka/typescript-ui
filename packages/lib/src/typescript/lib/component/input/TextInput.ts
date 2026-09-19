@@ -7,7 +7,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import { INPUT_CHROME_TRAIT } from "~/core/StyleTraits.js";
 import { Menu } from "~/overlay/Menu.js";
@@ -26,7 +26,7 @@ import { buildClipboardMenuItems, ClipboardMenuConfig } from "~/component/shared
  * NumberSpinner) keep the focus indicator on the outer composite
  * instead.
  */
-(() => {
+deferStyleSheetWrite(() => {
     new StyleRule({
         scope:  "selector",
         name:   ".TextField:focus, .TextArea:focus, .PasswordField:focus",
@@ -35,7 +35,7 @@ import { buildClipboardMenuItems, ClipboardMenuConfig } from "~/component/shared
             boxShadow: "inset 0 0 0 2px var(--ts-ui-indicator-focus, rgb(30, 100, 200))",
         },
     });
-})();
+});
 
 /**
  * Construction-time options for {@link TextInput}.

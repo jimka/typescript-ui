@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { StyleRule } from "~/core/StyleTarget.js";
+import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 import { FOCUS_VISIBLE_ATTR } from "~/core/SpatialNavigation.js";
 
 /**
@@ -31,6 +31,10 @@ const INSET_FOCUS_RING_STYLES: Record<string, string> = {
  * `:focus-within::after` pseudo-element suffix is owned here (appended to each
  * comma-separated selector) so it lives in exactly one place.
  *
+ * The rule is queued through {@link deferStyleSheetWrite} and written just
+ * before the library's first stylesheet write, so calling this helper from a
+ * module's top level touches no DOM.
+ *
  * @param baseSelector - One or more comma-separated class selectors (e.g.
  *   `".NumberSpinner"` or `".DateField, .TimeField, .DateTimeField"`), without
  *   the pseudo-element suffix.
@@ -41,10 +45,12 @@ export function registerFocusWithinRing(baseSelector: string): void {
         .map(part => part.trim() + ":focus-within::after")
         .join(", ");
 
-    new StyleRule({
-        scope:  "selector",
-        name:   selector,
-        styles: INSET_FOCUS_RING_STYLES,
+    deferStyleSheetWrite(() => {
+        new StyleRule({
+            scope:  "selector",
+            name:   selector,
+            styles: INSET_FOCUS_RING_STYLES,
+        });
     });
 }
 
@@ -80,6 +86,10 @@ export function registerFocusWithinRing(baseSelector: string): void {
  * outline show through on any control that doesn't already suppress it
  * itself (`Checkbox` does; `Button`, `ComboBox`, and `Link` don't).
  *
+ * Both rules are queued together through {@link deferStyleSheetWrite} and
+ * written just before the library's first stylesheet write, so calling this
+ * helper from a module's top level touches no DOM.
+ *
  * @param baseSelector - One or more comma-separated class selectors (e.g.
  *   `".Button"` or `".DateField, .TimeField, .DateTimeField"`), without the
  *   pseudo-class / attribute suffix.
@@ -109,19 +119,21 @@ export function registerFocusVisibleRing(
         .flatMap(part => [`${part}:focus-visible`, `${part}[${FOCUS_VISIBLE_ATTR}]`])
         .join(", ");
 
-    new StyleRule({
-        scope:  "selector",
-        name:   bareSelector,
-        styles: { outline: "none", ...options?.baseStyles },
-    });
-
     const afterSelector = bases
         .flatMap(part => [`${part}:focus-visible::after`, `${part}[${FOCUS_VISIBLE_ATTR}]::after`])
         .join(", ");
 
-    new StyleRule({
-        scope:  "selector",
-        name:   afterSelector,
-        styles: { ...INSET_FOCUS_RING_STYLES, ...options?.ringStyles },
+    deferStyleSheetWrite(() => {
+        new StyleRule({
+            scope:  "selector",
+            name:   bareSelector,
+            styles: { outline: "none", ...options?.baseStyles },
+        });
+
+        new StyleRule({
+            scope:  "selector",
+            name:   afterSelector,
+            styles: { ...INSET_FOCUS_RING_STYLES, ...options?.ringStyles },
+        });
     });
 }

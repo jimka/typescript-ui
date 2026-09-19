@@ -2,7 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
 
@@ -15,10 +15,12 @@ export interface ProgressSpinnerOptions extends ComponentOptions {
     spinnerSize?: number;
 }
 
-StyleRule.ensureKeyframes(
-    'ts-ui-progress-spinner-rotate',
-    'from { transform: rotate(0deg); } to { transform: rotate(360deg); }'
-);
+deferStyleSheetWrite(() => {
+    StyleRule.ensureKeyframes(
+        'ts-ui-progress-spinner-rotate',
+        'from { transform: rotate(0deg); } to { transform: rotate(360deg); }'
+    );
+});
 
 const ARC_BORDER_WIDTH = 3;
 
