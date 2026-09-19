@@ -62,12 +62,74 @@ interface FlatRow {
 
 /**
  * Where a node sits in the tree: the array that holds it, that array's owner
- * (`null` for the root array), and the node's index in it.
+ * (`null` for the root array), the node's index in it, and the path down to
+ * it — everything the one search that finds a node can report.
  */
 interface NodeLocation {
     parent:   TreeNode | null;
     siblings: TreeNode[];
     index:    number;
+    /** The root-to-node path, both ends included. */
+    path:     TreeNode[];
+}
+
+/**
+ * One `revealByPredicate` call's state, shared by every level of its walk.
+ */
+interface RevealWalk {
+    /** The match test. */
+    predicate:  (data: unknown, node: TreeNode) => boolean;
+    /**
+     * Every node this reveal has tested so far. A visited node is not tested
+     * or loaded again, but the walk still searches the subtree beneath it.
+     */
+    visited:    Set<TreeNode>;
+    /**
+     * How many times a load this reveal waited on, whether it started the
+     * load or joined it, has bumped the tree's structure generation. Each
+     * such load only filled in the children of the node the walk was about to
+     * search beneath, so the walk leaves these bumps out rather than go back
+     * over what it has already searched.
+     */
+    ownCommits: number;
+}
+
+/**
+ * How a lazy load ended: `"loaded"` committed the node's children,
+ * `"failed"` means `loadChildren` rejected, and `"dropped"` means `setNodes`
+ * or a structural call orphaned the load before it settled.
+ */
+type LoadOutcome = "loaded" | "failed" | "dropped";
+
+/**
+ * A settled lazy load, as every reveal and expand waiting on it sees it.
+ */
+interface SettledLoad {
+    /** How the load ended. */
+    outcome: LoadOutcome;
+    /**
+     * What a renderer or an `"expand"`/`"loaderror"` listener threw while the
+     * load committed, boxed so a thrown `undefined` still counts, or `null`
+     * when nothing threw. The expands waiting on the load rethrow it, as a
+     * listener's throw reached the expand's caller before loads were shared;
+     * a reveal ignores it, since those listeners answer the expand, not the
+     * reveal.
+     */
+    thrown: { error: unknown } | null;
+}
+
+/**
+ * A lazy node's one load in flight, shared by every reveal and expand
+ * waiting on it.
+ */
+interface PendingLoad {
+    /** The load's token from `_loadSeq`. */
+    seq:     number;
+    /**
+     * Resolves, never rejecting, once the load has settled: a throw while it
+     * commits is recorded in {@link SettledLoad.thrown} instead.
+     */
+    settled: Promise<SettledLoad>;
 }
 
 /**
@@ -164,9 +226,25 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     // rebuilt, so a narrower dataset (or a collapsed wide branch) re-derives it.
     private _maxContentWidth    : number                                                  = 0;
     private _selectedNodes      : Set<TreeNode>                                           = new Set();
+    // A lazy node has at most one load in flight, its entry in
+    // `_pendingLoads`, and every reveal and expand that needs the node's
+    // children meanwhile waits on it. Each load takes a seq from `_loadSeq`,
+    // the `AbstractStore.load` token shape applied per load, and commits only
+    // if its node's entry still holds that seq when it settles. `setNodes`
+    // clears every entry, and removing a node or taking over its children
+    // deletes its entry, which orphans the load. `_loadingNodes` holds each
+    // node whose load an expand is waiting on: the node shows a spinner, and
+    // its load commits the expansion along with the children.
+    private _loadSeq            : number                                                  = 0;
     private _loadingNodes       : Set<TreeNode>                                           = new Set();
     private _loadedNodes        : Set<TreeNode>                                           = new Set();
-    private _pendingExpansions  : Map<TreeNode, Promise<boolean>>                         = new Map();
+    private _pendingLoads       : Map<TreeNode, PendingLoad>                              = new Map();
+    // Bumped by every change to which nodes the tree holds: `setNodes`, the
+    // structural calls, and a lazy load committing a node's children.
+    // `revealByPredicate` compares it after each await, the way `_loadSeq` is
+    // compared, to learn that the sibling arrays it is walking may have been
+    // spliced or replaced, or that children arrived under a node it passed.
+    private _structureGeneration: number                                                  = 0;
     private _anchorNode         : TreeNode | null                                         = null;
     private _focusNode          : TreeNode | null                                         = null;
     private _listeners          : ListenerBag<TreeEvent>                                  = this.registerListenerBag(new ListenerBag<TreeEvent>());
@@ -294,11 +372,12 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      */
     setNodes(nodes: TreeNode[]): this {
         this._nodes = nodes;
+        this._structureGeneration += 1;
         this._expandedNodes.clear();
         this._selectedNodes.clear();
         this._loadingNodes.clear();
         this._loadedNodes.clear();
-        this._pendingExpansions.clear();
+        this._pendingLoads.clear();
         this._anchorNode = null;
         this._focusNode = null;
         this._flatten();
@@ -567,126 +646,258 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * collapsed or not-yet-loaded ancestor — this walks the whole tree,
      * awaiting each lazy branch's `loadChildren` on the way down, so it can
      * reveal a node the user has never manually expanded to. Because it may
-     * load every branch it visits, it is O(nodes) and issues one `loadChildren`
-     * per unloaded branch it descends; call it for a deliberate "jump to this
-     * object" action, not on a hot path.
+     * load every branch it visits, it is O(nodes) and waits on one
+     * `loadChildren` per unloaded branch it descends; call it for a deliberate
+     * "jump to this object" action, not on a hot path. That cost is for a
+     * tree nothing else changes meanwhile: every change the walk does not own
+     * — a structural call, or another reveal's or an expand's load committing
+     * — restarts every level it has open and re-descends what it already
+     * searched, about O(depth × visited) more per change.
      *
      * Revealing is not selecting: this method does not change the selection or
      * emit `"selection"`. Select the returned node with {@link selectNode} if the
      * reveal should also highlight it. It likewise expands ancestors without
      * emitting `"expand"` — read {@link getExpandedNodes} afterwards.
      *
-     * The search is depth-first in root-then-child order and stops at the first
-     * match. A lazy branch whose `loadChildren` rejects is skipped (its subtree
-     * is treated as empty) and the walk continues; the failure is not surfaced
-     * here (no `"loaderror"` is emitted for a reveal-driven load).
+     * The search is depth-first in root-then-child order and, for a tree
+     * nothing else changes while it runs, stops at the first match. A lazy
+     * branch whose `loadChildren` rejects is skipped (its subtree is treated
+     * as empty) and the walk continues; the failure is not surfaced here (no
+     * `"loaderror"` is emitted for it, unless an expand is waiting on the
+     * same load, as below).
+     *
+     * A node has at most one lazy load in flight, which the walk shares with
+     * every expand (a caret click, {@link expandNode}, {@link expandNodeAsync})
+     * and every other reveal that needs the node's children: whichever needs
+     * them first calls `loadChildren`, and the rest wait on that one call.
+     * The children it resolves to are committed once. When an expand is
+     * waiting on the call as it settles, a resolve also commits the expansion
+     * and fires `"expand"` once, and a rejection fires `"loaderror"` once and
+     * leaves the node collapsed and unloaded. Neither depends on whether the
+     * walk or the expand started the call.
+     *
+     * The walk follows an {@link insertNode}, {@link removeNode},
+     * {@link setChildren} or {@link setNodes} made while it waits on a load:
+     * every level it still has open re-reads its live children and searches
+     * them again from the first, innermost level first. It does not search
+     * afresh, though — a node it has already tested is passed over untested,
+     * and only descended into. So it still finds a matching node added
+     * anywhere, including under a branch it has already searched, or under a
+     * node whose children a later load commits after the load it waited on
+     * for that node failed. It never returns, expands, or caches loaded
+     * children for a node the tree no longer holds. The one node it forgets
+     * having tested is one the tree dropped while its load was in flight,
+     * since nothing was loaded for it: should that node come back, it is
+     * tested and loaded afresh.
+     *
+     * Three limits follow. After `setNodes` the walk carries on over the new
+     * roots, from the first, but a root object it has already tested is still
+     * passed over — so a reveal running across the refresh idiom `setNodes`
+     * documents, the same node objects handed back with changed `data`, can
+     * resolve `null` with a match in the tree. A restarted level finishes
+     * before the restart reaches its ancestors, so the match need not be the
+     * depth-first-earliest one: with roots `[A[a1], B[b1, b2]]`, an
+     * `insertNode(A, 1, X)` made while `b1`'s load is in flight returns a
+     * matching `b2` rather than the earlier `X`. And the walk waits only on
+     * the loads it started or joined, so a node retried after its own load
+     * failed — by a `"loaderror"` listener, say — is picked up only if the
+     * retry commits while the walk is still running; one committing after it
+     * has run out of levels leaves its `null` standing.
      *
      * @param predicate - Tested against each node's `data` payload (and the node
-     *   itself); return `true` for the node to reveal.
+     *   itself); return `true` for the node to reveal. It must not change the
+     *   tree: one that removes the node it matched leaves the reveal with no
+     *   path to expand, and throws.
      *
      * @returns A promise resolving to the revealed {@link TreeNode}, or `null`.
      */
     async revealByPredicate(predicate: (data: unknown, node: TreeNode) => boolean): Promise<TreeNode | null> {
-        const path = await this._findPath(this._nodes, predicate, []);
-        if (path === null) {
-            return null;
-        }
-
-        // Expand every ancestor (all but the target itself) so the target's row
-        // enters the flattened set; the target's own children stay as they are.
-        for (let i = 0; i < path.length - 1; i++) {
-            this._expandedNodes.add(path[i]);
-        }
-        this._reflattenAndRender();
-
-        const target = path[path.length - 1];
-        const index  = this._flatRows.findIndex(r => r.node === target);
-        if (index >= 0) {
-            this._scrollIntoView(index);
-        }
-
-        return target;
+        return this._revealFirstMatch(null, { predicate, visited: new Set(), ownCommits: 0 });
     }
 
     /**
-     * Depth-first search for the first node satisfying `predicate`, returning
-     * the full root-to-match path (inclusive) or `null`. Awaits and caches each
-     * visited branch's lazy children so the walk can descend into unloaded
-     * subtrees.
+     * Searches `parent`'s children, and the subtree under each, depth-first
+     * for the first node satisfying the walk's predicate, and reveals it.
+     * Loads each lazy branch it reaches so it can search the subtree beneath.
      *
-     * @param nodes - The sibling nodes to search at this level.
-     * @param predicate - The match test (see {@link revealByPredicate}).
-     * @param prefix - The ancestor path leading to `nodes`.
+     * @param parent - The node whose children to search, or `null` for the roots.
+     * @param walk - The state every level of this reveal shares.
      *
-     * @returns The path from a root to the matching node, or `null`.
+     * @returns The revealed node, or `null` when nothing under `parent`
+     *   matches, or `parent` has left the tree.
+     *
+     * @remarks
+     * The children are read from the live array — the root array or
+     * `parent.children` — at every step, never from a copy, because a
+     * structural call during an await below may splice or replace it. After
+     * an await, a changed `_structureGeneration` tells the walk that the tree
+     * changed — the same post-await check `_settleLoad` and
+     * `AbstractStore.load` make with their load seqs. The bumps made by the
+     * loads the walk waited on, whether it started each one or joined it, are
+     * left out, because each only filled in the children of the node it was
+     * about to search beneath. The walk then stops when `parent` has left the
+     * tree, and otherwise starts this level again from its first child. A
+     * visited node is passed over untested but still descended into, so the
+     * walk finds a node inserted under a branch it already searched, or loaded
+     * under a node it passed. A node removed ahead of the walk is never
+     * reached.
+     *
+     * The match is revealed in the same synchronous step that tested it, so
+     * the path expanded is the tree's live path to it: no structural call can
+     * run between the two.
      */
-    private async _findPath(
-        nodes: TreeNode[],
-        predicate: (data: unknown, node: TreeNode) => boolean,
-        prefix: TreeNode[],
-    ): Promise<TreeNode[] | null> {
-        // A snapshot, not the live array: `insertNode` and `removeNode` splice
-        // it in place, and a splice during one of the awaits below would shift
-        // the walk past a sibling the tree still holds.
-        for (const node of [...nodes]) {
-            const here = [...prefix, node];
+    private async _revealFirstMatch(parent: TreeNode | null, walk: RevealWalk): Promise<TreeNode | null> {
+        const externalGeneration = (): number => this._structureGeneration - walk.ownCommits;
 
-            if (predicate(node.data, node)) {
-                return here;
+        let generation = externalGeneration();
+        let index      = 0;
+
+        for (;;) {
+            if (generation !== externalGeneration()) {
+                if (parent !== null && this._locate(parent) === null) {
+                    return null;
+                }
+
+                generation = externalGeneration();
+                index      = 0;
             }
 
-            const children = await this._ensureChildrenLoaded(node);
-            if (children.length > 0) {
-                const found = await this._findPath(children, predicate, here);
+            const siblings = parent === null ? this._nodes : (parent.children ?? []);
+
+            if (index >= siblings.length) {
+                return null;
+            }
+
+            const node = siblings[index];
+
+            index += 1;
+
+            if (!walk.visited.has(node)) {
+                const match = await this._testAndLoad(node, walk);
+
+                if (match !== null) {
+                    return match;
+                }
+
+                // The node may have left this level: restart it before descending.
+                if (generation !== externalGeneration()) {
+                    continue;
+                }
+            }
+
+            if (node.children && node.children.length > 0) {
+                const found = await this._revealFirstMatch(node, walk);
+
                 if (found !== null) {
                     return found;
                 }
             }
+        }
+    }
+
+    /**
+     * Tests a node the walk has not tested yet, revealing it on a match, and
+     * otherwise loads its children so the walk can search beneath it.
+     *
+     * @param node - The node the walk has reached.
+     * @param walk - The state every level of this reveal shares.
+     *
+     * @returns `node`, already revealed, when it matches; `null` otherwise.
+     *
+     * @remarks
+     * The node joins the walk's visited set up front, so no later level or
+     * restart tests or loads it again. It leaves the set again when the load
+     * was dropped with nothing committed for the node: should the node come
+     * back, it is then tested and loaded afresh.
+     *
+     * The match is revealed here, in the same synchronous step that tested
+     * it, so the path expanded is the tree's live path to it.
+     */
+    private async _testAndLoad(node: TreeNode, walk: RevealWalk): Promise<TreeNode | null> {
+        walk.visited.add(node);
+
+        if (walk.predicate(node.data, node)) {
+            this._expandPathTo(node);
+
+            return node;
+        }
+
+        if (!(await this._ensureChildrenLoaded(node, walk))) {
+            walk.visited.delete(node);
         }
 
         return null;
     }
 
     /**
-     * Returns a node's children, loading and caching them from `loadChildren`
-     * first when the node is lazy and unloaded. Mirrors {@link _loadAndExpand}'s
-     * cache writes (`children` + `_loadedNodes`) but does not expand the node —
-     * a reveal only expands the ancestors on the path to its match. A rejected
-     * load is swallowed and treated as an empty subtree, unless a structural
-     * call supplied the node's children while it was in flight.
+     * Expands every ancestor of `node` so its row enters the flattened set,
+     * then scrolls it into view. `node`'s own children stay as they are.
      *
-     * @param node - The node whose children are needed.
-     *
-     * @returns The node's children (possibly empty).
+     * @param node - A node the tree holds.
      */
-    private async _ensureChildrenLoaded(node: TreeNode): Promise<TreeNode[]> {
-        if (node.children && node.children.length > 0) {
-            return node.children;
+    private _expandPathTo(node: TreeNode): void {
+        // Never null. The walk read `node` from the live children of a level,
+        // in the same synchronous step, and last confirmed that level is in
+        // the tree after an await. Anything that has detached a node since
+        // bumped `_structureGeneration` and sent the walk back to confirm it
+        // again. The only bumps the walk skips are those of the loads it
+        // waited on, and those only fill in a node's absent or empty children.
+        // A fallback here would only hide a break in that rule.
+        const { path } = this._locate(node)!;
+
+        for (let i = 0; i < path.length - 1; i++) {
+            this._expandedNodes.add(path[i]);
         }
 
-        if (node.loadChildren !== undefined && !this._loadedNodes.has(node)) {
-            try {
-                const children = await node.loadChildren();
+        this._reflattenAndRender();
 
-                // A structural call, or an expand-driven load, supplied this
-                // node's children while this load was in flight. Keep those
-                // rather than overwrite them with this result.
-                if (this._loadedNodes.has(node)) {
-                    return node.children ?? [];
-                }
+        const index = this._flatRows.findIndex(r => r.node === node);
 
-                node.children = children;
-                this._loadedNodes.add(node);
+        if (index >= 0) {
+            this._scrollIntoView(index);
+        }
+    }
 
-                return children;
-            } catch {
-                // The same takeover as above: a superseded load that rejects
-                // still leaves the children the caller supplied.
-                return this._loadedNodes.has(node) ? (node.children ?? []) : [];
-            }
+    /**
+     * Loads and caches a lazy, unloaded node's children before a reveal
+     * searches beneath it, waiting on the node's one load through
+     * {@link _loadLazy}: the reveal joins the load already in flight, whether
+     * an expand or another reveal started it, or starts one. It does not
+     * expand the node — a reveal only expands the ancestors on the path to its
+     * match. A rejected load counts as an empty subtree.
+     *
+     * @param node - The node the reveal is about to search beneath.
+     * @param walk - The reveal waiting on the load, which counts the commit's
+     *   generation bump as its own.
+     *
+     * @returns `false` when the node is unloaded because the tree dropped it
+     *   while its load was in flight — a structural call removed it, or
+     *   `setNodes` replaced every node — so nothing was loaded for it; `true`
+     *   otherwise.
+     *
+     * @remarks
+     * A dropped load commits nothing, even when the node was put back
+     * meanwhile, since `_pruneDetachedState` dropped its state then. A
+     * structural call that took over the node's children drops the load too,
+     * but marks the node loaded, so the walk searches the children the caller
+     * supplied without testing the node again.
+     */
+    private async _ensureChildrenLoaded(node: TreeNode, walk: RevealWalk): Promise<boolean> {
+        // Not `TreeNode.hasChildren`, the caret flag: the walk only needs to
+        // know whether there is already a child array to search.
+        const holdsChildren = node.children !== undefined && node.children.length > 0;
+
+        if (holdsChildren || node.loadChildren === undefined || this._loadedNodes.has(node)) {
+            return true;
         }
 
-        return node.children ?? [];
+        const { outcome } = await this._loadLazy(node);
+
+        if (outcome === "loaded") {
+            walk.ownCommits += 1;
+        }
+
+        return outcome !== "dropped" || this._loadedNodes.has(node);
     }
 
     /**
@@ -706,8 +917,13 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     /**
      * Registers a listener for a lazy node's failed child load.
      *
-     * @param event - `"loaderror"` fires when a node's `loadChildren` rejects;
-     *   the node stays collapsed and unloaded so toggling again retries.
+     * @param event - `"loaderror"` fires when a node's `loadChildren` rejects
+     *   while an expand (a caret click, `expandNode`, `expandNodeAsync`) is
+     *   waiting on it — once, however many expands and `revealByPredicate`
+     *   calls share the node's load, and whichever of them started it. The
+     *   node stays collapsed and unloaded so toggling again retries with a
+     *   fresh `loadChildren` call. A rejection no expand was waiting on fires
+     *   nothing.
      * @param listener - Receives the {@link TreeNode} whose load failed and the
      *   rejection reason.
      *
@@ -749,10 +965,12 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * @param event - `"expand"` fires after the expansion has committed and
      *   the rows have been rebuilt — for an unloaded lazy node, after its
      *   `loadChildren` resolved and the children were attached, not when the
-     *   toggle was first requested. It never fires from `setNodes`,
-     *   `expandAll`, or `revealByPredicate`, nor from `insertNode`,
-     *   `removeNode` or `setChildren` — a lazy load one of those drops fires
-     *   nothing; a rejected lazy load fires only `"loaderror"` instead.
+     *   toggle was first requested — once, however many expands and
+     *   `revealByPredicate` calls share the node's load, and whichever of
+     *   them started it. It never fires from `setNodes`, `expandAll`, or
+     *   `revealByPredicate`, nor from `insertNode`, `removeNode` or
+     *   `setChildren` — a lazy load one of those drops fires nothing; a
+     *   rejected lazy load fires only `"loaderror"` instead.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This tree, for method chaining.
@@ -941,21 +1159,37 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      *
      * @param node - The node to find.
      * @returns The node's location, or `null` when this tree does not hold it.
+     *
+     * @remarks
+     * The one search the tree makes for a single node, so every caller reads
+     * what it needs off one walk: {@link removeNode} the holding array and
+     * index, {@link _expandPathTo} the path, and the reveal's walk the
+     * `null` alone, to learn that a level has left the tree.
      */
     private _locate(node: TreeNode): NodeLocation | null {
+        const ancestors: TreeNode[] = [];
+
         const search = (parent: TreeNode | null, siblings: TreeNode[]): NodeLocation | null => {
             const index = siblings.indexOf(node);
 
             if (index >= 0) {
-                return { parent, siblings, index };
+                return { parent, siblings, index, path: [...ancestors, node] };
             }
 
             for (const child of siblings) {
-                const found = child.children ? search(child, child.children) : null;
+                if (child.children === undefined) {
+                    continue;
+                }
+
+                ancestors.push(child);
+
+                const found = search(child, child.children);
 
                 if (found !== null) {
                     return found;
                 }
+
+                ancestors.pop();
             }
 
             return null;
@@ -990,9 +1224,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
     /**
      * Drops every piece of per-node state held for a node the tree no longer
-     * holds: expanded, selected, loading and loaded membership, a pending
-     * expansion, and the anchor or focus. Dropping a loading node orphans its
-     * in-flight load the same way `setNodes` does.
+     * holds: expanded, selected, loading and loaded membership, a load in
+     * flight, and the anchor or focus. Dropping a load orphans it the same way
+     * `setNodes` does.
      */
     private _pruneDetachedState(): void {
         const reachable = this._reachableNodes();
@@ -1005,9 +1239,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             }
         }
 
-        for (const node of this._pendingExpansions.keys()) {
+        for (const node of this._pendingLoads.keys()) {
             if (!reachable.has(node)) {
-                this._pendingExpansions.delete(node);
+                this._pendingLoads.delete(node);
             }
         }
 
@@ -1032,7 +1266,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         }
 
         this._loadingNodes.delete(parent);
-        this._pendingExpansions.delete(parent);
+        this._pendingLoads.delete(parent);
 
         if (parent.loadChildren !== undefined) {
             this._loadedNodes.add(parent);
@@ -1052,10 +1286,32 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * node's row is bound.
      */
     private _commitStructureChange(parent: TreeNode | null): void {
+        this._structureGeneration += 1;
         this._supersedeLoad(parent);
         this._pruneDetachedState();
         this._reflattenAndRender();
         this._updateActiveDescendant();
+    }
+
+    /**
+     * Attaches the children a lazy load fetched for `node` and records the
+     * node as loaded. Bumps `_structureGeneration`, since the tree now holds
+     * nodes it did not, so a running reveal that passed `node` goes back for
+     * them.
+     *
+     * @param node - The node whose load settled.
+     * @param children - The children its `loadChildren` resolved to.
+     *
+     * @remarks
+     * A load starts only for a node with absent or empty children, and
+     * commits only while it still holds the node's entry, which a structural
+     * call that supplied the children would have deleted, so the commit never
+     * detaches a node the tree held.
+     */
+    private _commitLoadedChildren(node: TreeNode, children: TreeNode[]): void {
+        node.children = children;
+        this._loadedNodes.add(node);
+        this._structureGeneration += 1;
     }
 
     /**
@@ -1087,13 +1343,24 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      *
      * @returns A promise resolving to `true` when the node ends up expanded —
      *   including when it already was — or `false` when a lazy load rejected
-     *   and the node stayed collapsed.
+     *   and the node stayed collapsed, or was dropped before it settled.
      *
      * @remarks
-     * A second call for a node whose lazy load is already in flight joins
-     * that load instead of starting another, and both callers resolve with
-     * its outcome. Emits `"expand"` on a real transition, the same as
-     * {@link expandNode}.
+     * A node has at most one lazy load in flight. A call for a node whose
+     * load is already in flight — started by an earlier call, a caret click,
+     * {@link expandNode} or {@link revealByPredicate} — joins that load
+     * instead of starting another, and resolves with its outcome. Emits
+     * `"expand"` on a real transition, the same as {@link expandNode}: once,
+     * however many callers share the load.
+     *
+     * {@link setNodes}, and an {@link insertNode}, {@link removeNode} or
+     * {@link setChildren} that takes over the node's children or drops the
+     * node, drops its load: it commits nothing, and every call waiting on it
+     * resolves `false` once the dropped `loadChildren` call settles — the
+     * tree stops acting on that call, not waiting on it. A loader that makes
+     * one of those calls itself drops its own load the same way. A node removed while its load
+     * was in flight and then inserted again, or handed back to `setNodes`, is
+     * a new node: its next expand starts a fresh load.
      */
     async expandNodeAsync(node: TreeNode): Promise<boolean> {
         if (this._expandedNodes.has(node)) {
@@ -1111,7 +1378,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * @remarks
      * Delegates to {@link _collapse} for an expanded node and {@link _expand}
      * for a collapsed one — the same commit path (and lazy-load join
-     * behaviour, via {@link _expandLazy}) used by every other caller.
+     * behaviour, via {@link _loadLazy}) used by every other caller.
      */
     private _onToggle(node: TreeNode): void {
         if (this._expandedNodes.has(node)) {
@@ -1142,7 +1409,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             && !(node.children && node.children.length);
 
         if (needsLoad) {
-            return this._expandLazy(node);
+            return this._loadAndExpand(node);
         }
 
         this._expandedNodes.add(node);
@@ -1164,34 +1431,46 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
-     * Starts a lazy node's load-and-expand, or joins the one already running for
-     * that node so a second caller never triggers a second `loadChildren`.
+     * Joins `node`'s lazy load in flight, or starts one, so every reveal and
+     * expand that needs the node's children meanwhile waits on a single
+     * `loadChildren` call.
      *
-     * @param node - The lazy node to expand.
+     * @param node - A lazy node with absent or empty children that has not
+     *   loaded.
      *
-     * @returns The (possibly shared) promise resolving once the load settles.
+     * @returns The settled load, one promise shared by every caller waiting
+     *   on the load.
      */
-    private _expandLazy(node: TreeNode): Promise<boolean> {
-        const inFlight = this._pendingExpansions.get(node);
+    private _loadLazy(node: TreeNode): Promise<SettledLoad> {
+        const inFlight = this._pendingLoads.get(node);
 
         if (inFlight !== undefined) {
-            return inFlight;
+            return inFlight.settled;
         }
 
-        const pending = this._loadAndExpand(node);
+        const seq = ++this._loadSeq;
 
-        this._pendingExpansions.set(node, pending);
+        // The entry goes in before the loader runs, so a loader that calls
+        // back into the tree synchronously — `setChildren` for a "Loading…"
+        // placeholder, `removeNode`, `setNodes` — finds this load to drop,
+        // exactly as one doing it after an `await` would, and a loader that
+        // expands its own node joins this load instead of starting a second
+        // one. `settled` is therefore handed out before `_settleLoad` exists
+        // to supply it, and takes that over once the loader has been called.
+        let supply!: (outcome: Promise<SettledLoad>) => void;
+        const settled = new Promise<SettledLoad>((resolve) => { supply = resolve; });
 
-        // Identity-checked so a `setNodes` or structural call that cleared the
-        // entry mid-flight, followed by a fresh load for the same node object, is
-        // not un-registered by the orphaned load's own cleanup.
-        void pending.then(() => {
-            if (this._pendingExpansions.get(node) === pending) {
-                this._pendingExpansions.delete(node);
-            }
+        this._pendingLoads.set(node, { seq, settled });
+
+        // The wrapper turns a loader that throws instead of rejecting into a
+        // rejection, so the load always settles.
+        const request = new Promise<TreeNode[]>((resolve) => {
+            resolve(node.loadChildren!());
         });
 
-        return pending;
+        supply(this._settleLoad(node, seq, request));
+
+        return settled;
     }
 
     /**
@@ -1199,58 +1478,183 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      *
      * @param node - The lazy node to load and expand.
      *
-     * @remarks
-     * Marks the node loading (driving its spinner affordance), awaits
-     * `loadChildren`, and on success writes `children`, records the node as
-     * loaded and expanded. A rejection emits `"loaderror"` and leaves the node
-     * collapsed and unloaded so toggling again retries. An empty resolved array
-     * is treated as success: the node renders as an expanded, empty parent.
-     *
-     * If `setNodes` swaps the dataset, or a structural call removes the node or
-     * takes over its children (`_pruneDetachedState`, `_supersedeLoad`), while
-     * the loader is in flight, the node leaves `_loadingNodes`, so a
-     * still-present membership check after the await tells us the node is
-     * still live; an orphaned resolve commits nothing.
-     *
-     * The `"expand"` emission is the last thing this method does, after the
-     * re-render, so a listener sees the loaded children already flattened.
-     *
      * @returns `true` when the node's expansion committed, `false` when the
-     *   load failed or was orphaned by a `setNodes` swap.
+     *   load failed or was orphaned by a `setNodes` swap or a structural call.
+     *
+     * @throws unknown - What a renderer or an `"expand"`/`"loaderror"`
+     *   listener threw while the load committed; the commit itself has
+     *   already happened.
+     *
+     * @remarks
+     * Marks the node loading, which drives its spinner affordance and has the
+     * load commit the expansion as it settles (see {@link _settleLoad}), then
+     * waits on the node's one load through {@link _loadLazy}. It joins the
+     * load when an expand or a reveal already started it, so a second caller
+     * never triggers a second `loadChildren`, and every expand waiting on the
+     * load resolves with its outcome, or rethrows what the commit threw.
      */
     private async _loadAndExpand(node: TreeNode): Promise<boolean> {
         this._loadingNodes.add(node);
         this._reflattenAndRender();
 
-        let expanded = false;
+        const { outcome, thrown } = await this._loadLazy(node);
+
+        if (thrown !== null) {
+            throw thrown.error;
+        }
+
+        return outcome === "loaded";
+    }
+
+    /**
+     * Settles `node`'s lazy load once `request`, its `loadChildren` call, has,
+     * committing the outcome once for every reveal and expand waiting on it.
+     *
+     * @param node - The lazy node being loaded.
+     * @param seq - This load's token from `_loadSeq`.
+     * @param request - The node's `loadChildren` call.
+     *
+     * @returns How the load ended.
+     *
+     * @remarks
+     * The load commits only while its node's entry in `_pendingLoads` still
+     * holds its seq. `setNodes`, `_pruneDetachedState` and `_supersedeLoad`
+     * delete the entry when they drop the node or take over its children, so
+     * an orphaned load commits nothing, even when the node is back in the tree
+     * and a newer load holds its entry.
+     *
+     * Otherwise it commits before any caller resumes, so the outcome does not
+     * depend on which caller started the load or resumes first.
+     * {@link _settleResolvedLoad} and {@link _settleFailedLoad} own the two
+     * commit paths. Which one runs is decided by a flag the `catch` sets, not
+     * by the resolved value, so a loader that resolves `null` or `undefined`
+     * — which only an untyped caller can do, the signature promising an array
+     * — counts as resolving with no children rather than as a failure.
+     */
+    private async _settleLoad(node: TreeNode, seq: number, request: Promise<TreeNode[]>): Promise<SettledLoad> {
+        let children: TreeNode[] = [];
+        let failure: unknown = null;
+        let failed = false;
 
         try {
-            const children = await node.loadChildren!();
-
-            if (!this._loadingNodes.has(node)) {
-                return false;
-            }
-
-            node.children = children;
-            this._loadedNodes.add(node);
-            this._expandedNodes.add(node);
-            expanded = true;
+            // `?? []`: only a rejection is a failure, so an untyped caller's
+            // resolved `null` or `undefined` is a resolve with no children.
+            children = (await request) ?? [];
         } catch (error) {
-            if (!this._loadingNodes.has(node)) {
-                return false;
-            }
+            failure = error;
+            failed  = true;
+        }
 
-            this.emit("loaderror", node, error);
-        } finally {
-            this._loadingNodes.delete(node);
+        if (this._pendingLoads.get(node)?.seq !== seq) {
+            return { outcome: "dropped", thrown: null };
+        }
+
+        this._pendingLoads.delete(node);
+
+        // Every expand waiting on the load marked the node loading.
+        const expanding = this._loadingNodes.delete(node);
+
+        return failed
+            ? this._settleFailedLoad(node, failure, expanding)
+            : this._settleResolvedLoad(node, children, expanding);
+    }
+
+    /**
+     * Settles a load whose `loadChildren` rejected, leaving the node
+     * collapsed and unloaded so the next expand or reveal starts a fresh one.
+     *
+     * @param node - The node whose load failed.
+     * @param failure - What its `loadChildren` rejected with.
+     * @param expanding - Whether an expand was waiting on the load.
+     *
+     * @returns The settled load, as every reveal and expand waiting on it
+     *   sees it.
+     *
+     * @remarks
+     * A failure answers only an expand: it renders the row back from the
+     * spinner to a caret and emits `"loaderror"`. A load only reveals waited
+     * on left nothing to repaint, so it renders nothing and fires nothing.
+     */
+    private _settleFailedLoad(node: TreeNode, failure: unknown, expanding: boolean): SettledLoad {
+        if (!expanding) {
+            return { outcome: "failed", thrown: null };
+        }
+
+        // Render before emitting, as the resolved path does: the row is back
+        // to a caret before any listener runs, so one that throws cannot
+        // leave the spinner on screen.
+        const thrown = this._captureThrow(() => {
             this._reflattenAndRender();
+            this.emit("loaderror", node, failure);
+        });
+
+        return { outcome: "failed", thrown };
+    }
+
+    /**
+     * Settles a load whose `loadChildren` resolved: the children are
+     * attached, the node counts as loaded, and the rows are rebuilt.
+     *
+     * @param node - The node whose load resolved.
+     * @param children - The children it resolved to. An empty array is a
+     *   success, leaving an expanded, empty parent.
+     * @param expanding - Whether an expand was waiting on the load, in which
+     *   case the commit also expands the node and emits `"expand"`.
+     *
+     * @returns The settled load, as every reveal and expand waiting on it
+     *   sees it.
+     *
+     * @remarks
+     * The render runs whether or not an expand is waiting, because the
+     * committed children change what the node's own row draws: a lazy node
+     * declared without `hasChildren: true` gains its caret here, and a reveal
+     * commits without expanding anything. The `"expand"` emission is the last
+     * thing, after the render, so a listener sees the loaded children already
+     * flattened.
+     *
+     * Both run consumer code — renderers and listeners — after the state is
+     * committed, so what they throw is recorded in the result rather than
+     * rejecting the promise every waiter shares (see
+     * {@link SettledLoad.thrown}). With no expand waiting there is nobody to
+     * rethrow it to, and it is dropped.
+     */
+    private _settleResolvedLoad(node: TreeNode, children: TreeNode[], expanding: boolean): SettledLoad {
+        this._commitLoadedChildren(node, children);
+
+        if (expanding) {
+            this._expandedNodes.add(node);
         }
 
-        if (expanded) {
-            this.emit("expand", node);
-        }
+        const thrown = this._captureThrow(() => {
+            this._reflattenAndRender();
 
-        return expanded;
+            if (expanding) {
+                this.emit("expand", node);
+            }
+        });
+
+        return { outcome: "loaded", thrown };
+    }
+
+    /**
+     * Runs `step` and returns what it threw, boxed, instead of letting it
+     * propagate. {@link _settleLoad} runs its render and event emission this
+     * way, so consumer code that throws cannot reject the load every reveal
+     * and expand waiting on it shares.
+     *
+     * @param step - The work to run.
+     *
+     * @returns What `step` threw, boxed so a thrown `undefined` still counts,
+     *   or `null` when it returned normally.
+     */
+    private _captureThrow(step: () => void): { error: unknown } | null {
+        try {
+            step();
+
+            return null;
+        } catch (error) {
+            return { error };
+        }
     }
 
     /**
