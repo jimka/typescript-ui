@@ -358,3 +358,71 @@ Write these as tests before changing the source. All are unit-testable against `
 [^border-restore]: `applyContainerTheming` writes the container's border on every pass, in both branches — a themed border when `themed` is on, an explicit `none` when it is off — so the accordion always takes the border over from whatever the container had. `detach` clears the headers, wrappers, gutters and stored sizes but leaves that border behind, so a manager swap leaves the host still painting the accordion's frame. Capturing in `attach` rather than at the first write keeps the recorded value from being the accordion's own: `attach` runs before any `doLayout`. A consumer that sets its own border *after* attaching loses it to the next pass today, so restoring the pre-attach value costs nothing that currently survives. The survives-the-detach test means an accordion detached from a container that holds no sections leaves the border in place; that is the same trade `Border.detach` makes, and diverging from it here would be worse than the leftover border.
 
 [^keep-config]: The slice's F08.14 lists `_tools` and `_pendingSectionSizes` among the fields `detach` fails to clear, but clearing either would be a regression. `_tools` holds the consumer's global header tools, registered through `addTool` and re-applied to each header on hover; the detach loop itself reads `_tools` to release them from the headers it disposes, and a re-attached manager is expected to put them back. `_pendingSectionSizes` holds a caller's `applySectionSizes` request that has not yet reached a layout — `getSectionSizes` reads it directly at `:1004` — so dropping it on detach would silently discard a restore the caller asked for. `_resizePinned` is different: it holds references to section components that are going away, which is a real leak, and `_hoveredHeader` and `_resizeFactor` are per-layout scratch that indexes an array `detach` empties.
+
+---
+
+## Implementation Notes
+
+Four deviations from the plan as written, and what actually established that the
+change is correct.
+
+**`ContentHeightModel.shrinkRatio` was dropped.** `## Internal Structure` declares
+the bundle with three fields, but after the rearrangement nothing reads the ratio:
+`legacyOpenHeight` adds a content height to a fill share, and `computeResizableHeights`
+no longer takes a ratio at all. It stays a local inside `computeContentHeightModel`,
+which is the only place it is used. A write-only field would be dead state, against
+`CLAUDE.md`'s *Simplicity First*.
+
+**The work-count figures in `## Expected Behaviour` count the sizing pipeline only.**
+A section built from a plain `Component` also pays two `getMinSize` and two
+`getMaxSize` reads per pass from `setWidth`/`setHeight`'s own clamp, so the totals a
+spy sees there are 3/5/5 today rather than the table's 3/3/3. The tests therefore
+build their counted sections from `Container`, whose `clampsToContentSize()` is
+`false` so the clamp consults the component's own constraints instead of the merged
+reports. With that, the measured numbers match the table exactly — 3/3/3 → 1/1/1
+non-resizable, 2/3/3 → 0/1/1 settled resizable — and the assertions pin the pipeline
+rather than the placement.
+
+**`npm run docs:api` cannot reach zero warnings.** `## Verification` asks for zero;
+the repository has 14 pre-existing link warnings (SpatialNavigation, FieldDecorator,
+MarkdownViewer, MarkdownEditor) with the plan's branch point unmodified. The count is
+14 both with and without this change, so it introduces none. One warning it did
+introduce — `setAnimationDuration`'s JSDoc linking `createSection`, an excluded
+private — was removed by describing the behaviour in prose, per `CODE_CONVENTIONS.md`.
+
+**The container border is captured at the first theming write, not at `attach`.**
+`## Architecture Decisions` puts the capture in `attach`, reasoning in
+`[^border-restore]` that a consumer setting its own border after attaching "loses it
+to the next pass today, so restoring the pre-attach value costs nothing that currently
+survives". Both halves turn out to be wrong. `Component.applyOptions` dispatches
+`layoutManager` before the chrome options, so the single-bag
+`new Container({ border, layoutManager })` the project's conventions prescribe attaches
+the accordion *before* its own border option is applied — behaviour 13's own case would
+have captured nothing. And a manager that never reaches a layout has written no border
+at all, so an attach-time capture made `detach` clear a border the accordion never took
+over, which is a regression rather than a no-op. `applyContainerTheming` now records the
+container's border once, immediately before its first write, and `detach` restores only
+when that capture happened. This still never records the accordion's own border, which
+is what the footnote wanted from the `attach` capture point in the first place.
+
+**What established correctness.** The test suite is a floor, not the proof: a
+1,152-configuration differential sweep (host height x open pattern x weights x caps x
+spacing x resizable, each sampled over three passes, a container resize and two
+toggles) reports byte-identical rectangles and intrinsic-size reports before and
+after. The harness was temporary and is not committed. The plan's manual checks then
+ran in real Chrome against this worktree's own build — the docs dev server resolves
+`@jimka/typescript-ui` through the workspace symlink to the *main* tree, so it had to
+be pointed at this worktree's `dist` first, or it would have exercised unchanged code.
+Open/close animates frame-for-frame identically to the unchanged build; layout passes
+forced mid-transition cause no jump; a gutter drag tracks the cursor exactly
+(100/100/100 to 160/40/100 across +15/+30/+45/+60) with the total preserved; a manager
+swap leaves the container with no accordion frame; and `setAnimationDuration(600)`
+re-times all three live chevrons. `setHeaderHeight`'s relayout lands on the host's
+next layout rather than immediately — the same as `setSpacing` and `setCompact`,
+confirmed as a control in the same page, so it is the sibling behaviour the plan asked
+for and not a gap.
+
+No demo change: the branch adds no public API, and the docs app has no live resizable
+accordion to extend. The performance re-measure stays out of scope, as
+`## Verification` specifies — it is a separate post-merge sweep that must not share a
+frame with the sibling `Border` memo.

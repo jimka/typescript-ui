@@ -1728,3 +1728,215 @@ describe('Accordion section sizes (getSectionSizes / applySectionSizes)', () => 
 //   - document.body pointer-events are restored after a drag (no stuck cursor).
 //   - Ground truth in the app: sqladmin TreeExplorerView — out of scope for
 //     this plan (see Non-Goals), left for a downstream adoption pass.
+
+// ---------------------------------------------------------------------------
+// accordion-seed-pass-economy plan, Expected Behaviour 2 / 3 / 9 / 13–15: the
+// resizable half of the sizing rearrangement — a settled pass builds no
+// content-height model at all, a section opened for the first time still gets
+// its legacy seed, and detach gives back what attach took over.
+// ---------------------------------------------------------------------------
+
+/** The private sizing stages the work-count case below counts entries into. */
+type SizingStages = {
+    computeShrinkRatio(...args: unknown[]): number;
+    computeFill(...args: unknown[]): Map<number, number>;
+};
+
+/** The private per-section stored sizes the seeding case reads back. */
+type StoredSizes = { _resizeSizes: Map<Component, number> };
+
+// A Container-backed section. `Container.clampsToContentSize()` is false, so
+// `setWidth`/`setHeight`'s clamp consults the component's own constraints
+// rather than the merged `getMinSize`/`getMaxSize`. That keeps the call counts
+// below measuring the sizing pipeline alone, with no placement reads folded in.
+function measuredSection(pref: { width: number; height: number }, min?: { width: number; height: number }): Container {
+    const c = new Container({ preferredSize: pref });
+    if (min) c.setMinSize({ width: min.width, height: min.height });
+    c.getElement(true);
+    return c;
+}
+
+describe('Accordion resizable — repeated passes are stable', () => {
+    it('three consecutive passes with no input change report identical rectangles', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 300, acc);
+        const sections = [
+            content({ width: 100, height: 60 }, { width: 40, height: 10 }),
+            content({ width: 100, height: 40 }),
+            content({ width: 100, height: 60 }, { width: 40, height: 10 }),
+            content({ width: 100, height: 40 }),
+        ];
+        host.addComponent(sections[0], constraints('S0', true, 1));
+        host.addComponent(sections[1], constraints('S1', false));
+        host.addComponent(sections[2], constraints('S2', true));
+        host.addComponent(sections[3], constraints('S3', false));
+
+        const rects = (): number[][] => sections.map(s => [s.getWidth(), s.getHeight()]);
+
+        host.doLayout();
+        const first = rects();
+        host.doLayout();
+        expect(rects()).toEqual(first);
+        host.doLayout();
+        expect(rects()).toEqual(first);
+
+        // Non-vacuous: the open pair fills the budget left by the four headers.
+        expect(first[0][1] + first[2][1]).toBeCloseTo(300 - 4 * HEADER, 5);
+    });
+});
+
+describe('Accordion resizable — a first-time open still seeds', () => {
+    it('a section opened after the first layout is seeded from the legacy content height', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 300, acc);
+        const a = content({ width: 100, height: 60 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 60 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', false));
+        host.doLayout();
+
+        acc.openSection(1);
+        host.doLayout();
+
+        // The seed is the non-resizable model's answer: B fits, so no shrink,
+        // and it is unweighted, so no fill share — its plain preferred height.
+        const stored = (acc as unknown as StoredSizes)._resizeSizes;
+        expect(stored.get(b)).toBeCloseTo(60, 5);
+        // Equal stored sizes rescale to equal halves of the open budget; an
+        // unseeded B would have left A holding the whole of it.
+        const budget = 300 - 2 * HEADER;
+        expect(a.getHeight()).toBeCloseTo(budget / 2, 5);
+        expect(b.getHeight()).toBeCloseTo(budget / 2, 5);
+    });
+});
+
+describe('Accordion resizable — a settled pass builds no content-height model', () => {
+    it('neither sizing stage is entered, and no open section is asked for its preferred height', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 300, acc);
+        const a = measuredSection({ width: 100, height: 50 }, { width: 40, height: 10 });
+        const b = measuredSection({ width: 100, height: 50 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true, 1));
+        host.addComponent(b, constraints('B', true, 1));
+        host.doLayout();
+        host.doLayout();
+
+        const shrink    = vi.spyOn(acc as unknown as SizingStages, 'computeShrinkRatio');
+        const fill      = vi.spyOn(acc as unknown as SizingStages, 'computeFill');
+        const preferred = vi.spyOn(a, 'getPreferredSize');
+        const min       = vi.spyOn(a, 'getMinSize');
+        const max       = vi.spyOn(a, 'getMaxSize');
+
+        host.doLayout();
+
+        expect(shrink).not.toHaveBeenCalled();
+        expect(fill).not.toHaveBeenCalled();
+        expect(preferred).not.toHaveBeenCalled();
+        // The one surviving pair is the drag distribution's own [min, max] read.
+        expect(min).toHaveBeenCalledTimes(1);
+        expect(max).toHaveBeenCalledTimes(1);
+    });
+});
+
+/** The private per-layout resize scratch `detach` must give up. */
+type ResizeScratch = {
+    _resizePinned:  Set<Component>;
+    _resizeFactor:  number;
+    _hoveredHeader: number;
+    onHeaderHoverEnter(index: number, e: MouseEvent): void;
+    detach(): void;
+};
+
+describe('Accordion — detach gives back the container border', () => {
+    it('a container that had its own border gets it back when the manager is swapped out', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        // One options bag, the construction the project's conventions prescribe.
+        // `applyOptions` dispatches `layoutManager` before the chrome options, so
+        // the border is not on the container yet when the manager attaches.
+        const host = new Container({ border: '2px solid red', layoutManager: acc });
+        host.getElement(true);
+        host.setWidth(400);
+        host.setHeight(300);
+        host.clearInsets();
+        host.addComponent(content({ width: 100, height: 50 }), constraints('A', true));
+        host.doLayout();
+        expect(host.getBorder()!.border).toContain('accordion-border');
+
+        host.setLayoutManager(new Fit());
+
+        expect(host.getBorder()).toEqual({ border: '2px solid red' });
+    });
+
+    it('a manager that never laid out leaves the container\'s own border alone', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(400, 300, acc);
+        host.addComponent(content({ width: 100, height: 50 }), constraints('A', true));
+        // No layout, so `applyContainerTheming` never wrote: the accordion has
+        // taken no border over and must give none back.
+        host.setBorder('2px solid blue');
+
+        host.setLayoutManager(new Fit());
+
+        expect(host.getBorder()).toEqual({ border: '2px solid blue' });
+    });
+
+    it('a container with no border of its own no longer paints the themed accordion frame', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(400, 300, acc);
+        host.addComponent(content({ width: 100, height: 50 }), constraints('A', true));
+        host.doLayout();
+        expect(host.getBorder()!.border).toContain('accordion-border');
+
+        host.setLayoutManager(new Fit());
+
+        // `clearBorder` writes an explicit `none` rather than restoring an unset
+        // border — the same thing `themed: false` already writes.
+        expect(host.getBorder()).toEqual({ border: 'none' });
+    });
+});
+
+describe('Accordion resizable — detach clears the per-layout scratch', () => {
+    it('detaching leaves no pinned section, no drag scale, and no hovered header behind', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 300, acc);
+        const a = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true, 1)); // weighted: absorbs the resize
+        host.addComponent(b, constraints('B', true));    // unweighted: held at its px
+        host.doLayout();
+        host.setHeight(500);
+        host.doLayout();
+
+        const scratch = acc as unknown as ResizeScratch;
+        scratch.onHeaderHoverEnter(0, { relatedTarget: null } as unknown as MouseEvent);
+
+        // Non-vacuous: all three carry live per-layout state before the detach.
+        expect(scratch._resizePinned.size).toBe(1);
+        expect(scratch._resizeFactor).not.toBe(1);
+        expect(scratch._hoveredHeader).toBe(0);
+
+        scratch.detach();
+
+        expect(scratch._resizePinned.size).toBe(0);
+        expect(scratch._resizeFactor).toBe(1);
+        expect(scratch._hoveredHeader).toBe(-1);
+    });
+});

@@ -45,8 +45,8 @@ sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 | Option | Setter / getter | Default | Purpose |
 | --- | --- | --- | --- |
 | `singleOpen` | `setSingleOpen` / `isSingleOpen` | `false` | Only one section open at a time. |
-| `headerHeight` | `setHeaderHeight` / `getHeaderHeight` | `28` | Height of each section header, in pixels. |
-| `animationDuration` | `setAnimationDuration` / `getAnimationDuration` | `200` | Open/close transition duration, in milliseconds. |
+| `headerHeight` | `setHeaderHeight` / `getHeaderHeight` | `28` | Height of each section header, in pixels. `setHeaderHeight` schedules a re-layout of the host, so the stack re-flows at the new height on the next layout frame. |
+| `animationDuration` | `setAnimationDuration` / `getAnimationDuration` | `200` | Open/close transition duration, in milliseconds. `setAnimationDuration` re-times the existing headers' chevrons as well as the panel transitions. |
 | `themed` | `setThemed` / `isThemed` | `true` | Paint the accordion theme tokens (header background/border/colour + an all-around container border). See [Themed appearance](#themed-appearance). |
 | `spacing` | `setSpacing` / `getSpacing` | `0` | Vertical gap inserted *between* sections (never leading or trailing). |
 | `compact` | `setCompact` / `isCompact` | `false` | Denser headers — a smaller default header height plus tighter padding. See [Compact mode](#compact-mode). |
