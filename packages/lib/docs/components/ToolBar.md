@@ -101,6 +101,7 @@ All five are populated by the [`Theme`](/api/core/interfaces/Theme) `toolBar` bl
 
 - A `ToolBar` is layout-passive — the parent decides where it sits. Sticky, dockable, and floating modes are explicit non-goals.
 - For a flexible-width gap between groups of children, add a [`Spacer.flex()`](/api/component/container/classes/Spacer). The underlying [`HBox`](/api/layout/classes/HBox) / [`VBox`](/api/layout/classes/VBox) weight system divides the leftover row/column between any flex spacers.
+- A bar whose parent re-commits it at the rectangle it already holds is not re-laid-out (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)), so dragging a gutter elsewhere does not re-flow it every frame. The bar's own setters, adding, removing or moving a child, and a `Button` child's label or glyph change all still lay it out. Changing insets, swapping a manager, rewriting a child's layout constraints (a `Spacer`'s `setFlex` included) or re-sorting children — on the bar or on anything inside it — marks the bar owed, so the next pass that reaches it lays it out, as before. Four changes do not announce themselves, and each should be followed by `bar.scheduleLayout()`: hiding or showing a child with `setDisplayed`, reconfiguring a manager through `getLayoutManager()`, rewriting padding or border on the bar or inside it, and a custom child that changes its intrinsic size without calling `setPreferredSize` or `notifyIntrinsicSizeChanged`.
 
 ## See also
 

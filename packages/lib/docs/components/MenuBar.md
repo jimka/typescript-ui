@@ -56,6 +56,7 @@ Each `MenuItemConfig` supports:
 
 - The `shortcut` field is purely a visual hint — wire the actual keyboard binding yourself, e.g. via `Event.addListener(window, 'keydown', …)`.
 - Nested `submenu` panels open after a 150 ms hover delay — see [`MenuItem`](/components/MenuItem).
+- A bar whose parent re-commits it at the rectangle it already holds is not re-laid-out (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)). `setMenus()` and a button's label or glyph change still lay it out, and changing insets, swapping a manager, rewriting a child's constraints or re-sorting children — on the bar or inside it — marks it owed for the next pass that reaches it; a consumer that reaches past them — hiding a button with `setDisplayed`, reconfiguring the `HBox` through `getLayoutManager()`, or rewriting padding or border on the bar or inside it — should follow the change with `bar.scheduleLayout()`.
 
 ## See also
 

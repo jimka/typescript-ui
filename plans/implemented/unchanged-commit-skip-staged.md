@@ -343,3 +343,252 @@ Then measure in real WebKitGTK, using the harness arms the wave-2 sweep used —
 [^text-relay]: `Text.setText` (`component/input/Text.ts:832`) ends with `(this.getParentComponent() ?? this).scheduleLayout()`, as do its font and wrap setters — the immediate parent only. Slice 01's F01.1 lists this hazard as covered because "`Text`-style intrinsic re-measures … relay through `_onPreferredSizeChange` and so re-dirty the ancestor"; that is not what the code does, and the correction matters because it is what decides whether a container may opt in. Firing `notifyIntrinsicSizeChanged()` — the library's own upward relay, which does mark every ancestor — after `Text`'s setters was simulated over the whole suite and produced 39 failures, across `FirstLayoutGate`, `ScrollStrip`'s resize-resync coalescing, `Chart`'s relayout-loop guard and `TextBatchMeasure`. It is a real question with a real blast radius and it is not this plan's.
 
 [^mark-rejected]: Having `scheduleLayout()` and `invalidateLayout()` mark every ancestor — so that a pass owed anywhere in a subtree is visible at every level above it — was simulated over the whole suite and failed nine tests in six files, all in the table: `CellLayoutSkip.test.ts` 11 and 12, `Body.test.ts`'s column-window diffing, `HeaderColumnWindow.test.ts` 28 and 31, `ColumnWindowSlide.test.ts` 6, `RowCellCache.test.ts` 5 and `ScrollRebindLayoutEconomy.test.ts`. The table's shipped economy depends on a renderer scheduling its own layout *without* marking its cell, which is precisely what the marking removes. The narrower fix in step 4 reaches the same failure mode by a route that leaves the table alone.
+
+---
+
+## Implementation Notes
+
+Steps 1 to 9 land as written, on `feature/size-hint-per-pass-memo` at
+`9320c19b` rather than on `master`, with the deviations below. The plan was
+drafted before phases 1 to 3 existed, so the interactions with both of them
+are re-derived here against the shipped code rather than taken from
+`[^generation]`.
+
+**Owed passes the plan's gate did not see.** There are three, one of them
+the audit's (round 2), and a skip must never withhold any of them.
+
+- **A queued `onFirstLayout` callback.** A pass run while the element is
+  detached clears the flag but keeps the drain for the first connected pass.
+  If attaching moved nothing, a skip would hold the callbacks forever. The
+  gate refuses while the component's own drain is queued (case 10), and a
+  pass that leaves a drain waiting marks its opted-in ancestors (case 10b).
+- **The fold-back a size-stable move leaves on the moved child's parent.**
+  `commitBounds`'s own doc comment promises that a redundant pass releases a
+  settled move's `will-change: transform`. A skip withholds exactly that
+  pass, so the promotion stays until the bar next moves. That promotion is the
+  idle-CPU hazard `LayoutManager.commitBounds.test.ts` already guards
+  (case 11).
+- **A pass owed by a descendant and not queued (round 2).** Any
+  `invalidateLayout()`, including the inset / constraint / sort / manager
+  marks below, inside an opted-in component was lost behind that component's
+  skip. Case 7c reproduces it four ways.
+
+All three now go through one `@internal` helper, `markPassOwedAbove()`. It
+marks every ancestor whose class opted in, and leaves the others alone: they
+are laid out on every commit anyway, and their `isLayoutDirty()` keeps its
+meaning. It is called from `invalidateLayout()`, from `commitBounds`'s
+fast-path branch, and from `doLayout` when a drain is left waiting. It is
+`public` for the same reason the gate is: `LayoutManager` calls it on
+arbitrary instances.
+
+This is not the ancestor-marking the plan's `[^mark-rejected]` rejected. That
+proposal marked every ancestor on `scheduleLayout()`. Queued passes still go
+through the flush (step 4), only mark-only owed passes propagate, and they
+propagate only to opted-in links. No ancestor of a table cell is opted in,
+and a renderer's `scheduleLayout()` still does not mark its cell, so the
+table's economy suites stay green.
+
+Two earlier shapes were dropped:
+
+- Marking the moved child's container from the fast path failed
+  `TextBatchMeasure` case b. An `Absolute` child with no position constraint
+  commits at `NaN` and takes the fast path on every pass, because
+  `NaN !== NaN`, so its non-opted host would never report clean.
+- A gate-side scan of the component's direct children for a leftover
+  translate, the first audit round's shape, missed a promotion one level
+  deeper (case 11b).
+
+`applyBounds` shares the gate. So `Cell`'s skip, too, now also refuses while
+a drain is queued or a pass is owed beneath it. That is stricter than the
+"identical" step 2 promised, and the suite is green under it.
+
+**The element check is truthiness, not `!== null`.** `getElement()` is typed
+`Handle | undefined`, but its by-id lookup returns `null` on a miss, so
+either comparison lets through one of the two "no element" values. The gate
+uses `!!this.getElement()`, which is what `applyBounds` asked before. Case 6
+as the plan wrote it could not catch this: a never-rendered component is
+permanently dirty, because `doLayout` clears the flag only when there is an
+element, so case 6 passes with the element check deleted. Case 6b pins the
+state the check actually exists for: a clean component whose element was
+released. The offline `getElementById` does not evict a released node (see
+`element-release.test.ts`), so the case models the real document's miss for
+that one id.
+
+**Case 9 is automated.** The plan says the offline sink drops
+`requestAnimationFrame`, so the flush cannot run in tests.
+`LayoutFlushIsolation`, `OnFirstLayout` and `Border.passRecord` already
+capture the callback with a spy and invoke it, which runs the real
+`flushPendingLayouts`. Case 9 does the same. It passes before any change,
+fails with steps 1 to 3 and 5 applied but not step 4, and passes with step 4,
+so it replaces the plan's manual browser check. The whole file captures
+frames, not just case 9: the module's pending-frame handle is cleared only by
+a flush that runs, so one uncaptured `scheduleLayout` earlier in the file
+would leave every later case's flush unscheduled.
+
+**Writers the plan's audit did not list.** Reading the two bars' writers
+found three more that change a bar's layout without moving its rectangle and
+without marking it:
+
+- a child's `setDisplayed`, which reconciles visibility and announces nothing
+  to the parent;
+- a manager reconfigured through `getLayoutManager()`, since `BoxLayout`'s
+  setters are bare field writes;
+- the bar's own padding or border. These are style writes, which reach
+  `invalidateResolvedStyle` and nothing layout-related.
+
+All three are listed as not covered on both overrides, on `MenuBar.md` and
+`ToolBar.md`, and in the `next` changelog, next to the plan's own
+intrinsic-size caveat. In each case the consumer must follow the change with
+`scheduleLayout()`. The component pages and the changelog go beyond the
+plan's `## Documentation Impact` because the override comments are
+`protected` and appear on no rendered page.
+
+The audit found three more, all generic writers of the same shape as
+`setInsets`, and they are closed the same way, with `invalidateLayout()`:
+
+- `Component.setLayoutManager`, next to the size-hint bump phase 3 put there;
+- `Component.sortComponents`;
+- `LayoutManager.setLayoutConstraints`, which marks its container. A
+  `Spacer`'s `setFlex` / `setFlexWeight` reaches it directly, and `ToolBar.md`
+  itself recommends `Spacer.flex()` inside a bar.
+
+Case 7b pins all three; each was red before its fix. The only callers that
+write constraints from inside a layout pass are table rows and `Split` /
+`Tab` hosts, none of them opted in. Forced on, the suite and the sweeps are
+unchanged by the closures. `MenuBar`'s override no longer claims its `HBox`
+is "never swapped", which was true only of the class's own code, not of a
+consumer.
+
+**`commitBounds` does not reach every manager.** The plan's Overview says
+every layout manager in the library commits through it, which contradicts
+its own Non-Goal about `TabBar.placeStrip`. The first docs pass repeated the
+claim. In fact `Accordion` places its sections with raw setters, `Split`'s
+drag path does the same, and `layout/Table` uses `applyBounds` /
+`setBounds`. The layout-system page and the changelog now name the managers
+that do commit through it: the box, flow, grid, border, fit, card, anchor and
+absolute managers, plus `Split` and `Tab` on a settled pass. They also say
+that a child placed with raw setters is laid out every time, as before.
+
+**Using phase 3's seam for the third writer was tried and measured.** The
+idea was to mark the layout owed wherever `invalidateResolvedStyle` runs.
+The suite stayed green apart from this file. But the bars stop skipping on
+the first repeat pass, because `Border` calls `setVisible` on each region
+after committing it. Under that rule, every visibility or state toggle on an
+opted-in component costs it one redundant pass, and case 2's numbers move.
+It was left out. A class that writes its own padding or border at runtime
+lays itself out instead, the way `ToolBar.setOrientation` now does after
+swapping its border.
+
+**Interaction with phase 3's size-hint record.** The record is keyed on
+`(layout pass, size-hint generation)`. A withheld pass removes three things.
+The generation bump in the `finally` of every `doLayout` the skipped subtree
+would have run. Every bump caused by writes those passes would have repeated:
+style re-assertions, `setDisplayed`, a changed `cacheBorderSpec`, and the
+`setInsets` that `Tab.doLayout` makes. And every pass-number end from a
+`sizechange` dispatch or first-layout drain inside that subtree. The skip is
+taken only when the subtree's pass would have been a no-op: the box did not
+move and no pass is owed. So every one of those removals was a spurious
+invalidation. Removing them means more cache hits and never a staler answer.
+
+The other direction runs through one path. The skip reads no memoised hint
+except through the clamp inside `setWidth`/`setHeight`, and it reads the
+clamp's *result*. A stale minimum would commit the same wrong box with or
+without the skip, and the next pass corrects it either way.
+
+If a skip is wrong, meaning an unaudited writer, it is a stale-hint bug as
+well as a stale-layout bug. But the stale hint lasts only until the next
+outermost pass, which starts a new pass number, while the stale layout lasts
+until the component is marked or moved. The layout bug is the one that
+matters.
+
+A skip can also expose a missing invalidation elsewhere that an incidental
+bump from the withheld pass used to cover. Forcing the gate on for every
+component, across the whole suite and across all six sweeps, turned up no
+such case in the library.
+
+**Interaction with phase 1's pass token.** The `sizechange` dispatch sits
+inside `setWidth`/`setHeight`, before the gate is read, and it ends the pass
+number whether or not the pass is later withheld. The gate is read *after*
+the setters, so a listener's announced write, which dirties the component
+through the relay or `scheduleLayout`, is seen and the pass runs.
+
+In an unchanged commit a dispatch is only possible if a clamp moved the box,
+and then `changed` is true. The one remaining shape is a listener that puts
+the box back where it was requested. That can skip, correctly: the subtree
+was laid out at that box and the box ends there. An unannounced write from
+such a listener is the per-class audit's business, the same as any other
+writer.
+
+**Measured work avoided, and the −34.3%.** The plan's WebKit sweep was not
+run: it lives outside both repositories, and the wave's orchestrator deferred
+it to the end of the wave. It is owed before this branch counts as measured. What stands in
+for it is the deterministic in-process sweep from cases 12 and 13, run on
+three scenes:
+
+- the deep 2x2 editor-grid scene from `Component.sizeHintMemo.test.ts`
+  (223 components);
+- that file's shallow single-pane scene (48 components);
+- a shell: `MenuBar` NORTH, a vertical `ToolBar` WEST and the deep scene
+  CENTER (254 components).
+
+Each scene is driven by a 20-frame triangle wave in width and in height.
+Counted work is `doLayout` calls plus size-hint calls over one whole sweep.
+"plain" was measured on `9320c19b` and again after the change.
+
+| scene | sweep | plain | Arm A (forced on) | Arm B (shipped) |
+|---|---|---|---|---|
+| deep | width | 83,517 | 26,343 (**−68.5%**, 610 skips) | 83,517 (0%, 0 skips) |
+| deep | height | 83,517 | 26,553 (**−68.2%**, 400 skips) | 83,517 (0%, 0 skips) |
+| shallow | width | 17,644 | 3,824 (**−78.3%**, 20 skips) | 17,644 (0%, 0 skips) |
+| shallow | height | 17,644 | 3,824 (**−78.3%**, 20 skips) | 17,644 (0%, 0 skips) |
+| shell | width | 93,933 | 28,719 (**−69.4%**, 706 skips) | 89,996 (**−4.2%**, 21 skips) |
+| shell | height | 93,933 | 29,014 (**−69.1%**, 297 skips) | 89,008 (**−5.2%**, 21 skips) |
+
+Geometry is byte-identical to plain on every one of the twelve arm/sweep
+pairs. That holds for the visual rectangle (translate folded in) and for the
+raw fields. What ships avoids nothing on the dock alone, as `[^stage-one-reach]`
+predicted, since no library class there opts in. On a shell carrying the two
+bars it avoids 4 to 5 per cent, one bar per frame.
+
+The wave-2 ablation's key (last *requested* rectangle) was also simulated on
+the same scenes. It produces the same skips, the same work and the same
+geometry as Arm A. No box in these scenes is ever moved out of band, and that
+is the only thing that separates the two comparisons (case 3 isolates it). So
+these scenes neither reproduce nor refute the −34.3%. That figure remains
+untrustworthy: it was measured with the buggy key, on the scene where that key
+broke geometry. The real figure for the corrected comparison on S1 is Arm A in
+the WebKit harness, still owed along with the frame-time check. These counts
+are also not comparable in absolute terms with wave 2's. The counters differ,
+and a modelled scene is not Loom's live tree.
+
+**Verification.** `npm test`: 473 files, 7,597 passed, 2 todo. That is the
+start point's 472 files and 7,566 passed, plus this file and its 31 cases.
+
+Forced on for every component, the suite fails five tests. Four pin the
+default being off: `ComponentBounds` case 5, this file's case 1, and case
+13's exact skip count on both sweeps. The fifth is `TextBatchMeasure` case b.
+Its `Absolute` child commits at `NaN` and re-takes the fast path on every
+pass, and once every class is forced to opt in, that marks its container
+owed each time. It is a pre-existing `NaN` edge in `commitBounds` that no
+shipped opt-in reaches, since box managers never place at `NaN`.
+`HeaderColumnWindow` case 35 and every table layout-economy suite stay
+green.
+
+`npm run typecheck`, `npm run typecheck:test`, `npm run lint`,
+`npm run test:lint`, `npm run build`, `npm run build:lib`,
+`npm run docs:llms:check` and `npm run build:docs` are all clean.
+`npm run docs:api` reports the same 14 pre-existing warnings phases 1 and 3
+recorded, none of them on a symbol this change touches.
+
+Mutation checks confirm that each guard is load-bearing:
+
+- dropping the read-back fails case 3b;
+- the ablation's key fails cases 3, 3b and 4;
+- dropping the element check fails case 6b;
+- dropping the inset marks fails case 7;
+- dropping the flush break fails case 9;
+- dropping the drain check fails case 10;
+- dropping the fast path's mark fails cases 11 and 11b;
+- dropping the mark in `invalidateLayout` fails case 7c;
+- dropping `ToolBar`'s two new layout tails fails case 8;
+- dropping either opt-in fails cases 2 and 13.
