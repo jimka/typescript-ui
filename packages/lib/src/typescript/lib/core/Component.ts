@@ -182,6 +182,37 @@ let pendingLayouts: Set<Component> = new Set();
 let afterLayoutCallbacks: Array<() => void> = [];
 let rafHandle: number | null = null;
 
+// Identity of the layout pass currently running. A *layout pass* is one
+// outermost `doLayout()` call — from the moment layout work starts at the top
+// of some component until it returns, including everything it recurses into —
+// so a nested layout shares the outermost one's number rather than starting
+// its own. `layoutPassDepth` counts how deep the current pass is nested;
+// `layoutPassToken` names the interval, and `currentLayoutPass()` combines
+// them. What the number guarantees is that between two reads carrying it,
+// nothing has run that could change a layout-derived answer — which is what
+// lets a layout manager compute such an answer once and re-serve it. A pass
+// does hand control to consumer code at two points, and each of them ends the
+// current number (see `endLayoutPassNumber`) rather than letting an answer be
+// re-served across it.
+let layoutPassDepth: number = 0;
+let layoutPassToken: number = 0;
+
+/**
+ * Ends the layout pass's current number, so anything keyed on it is recomputed
+ * rather than re-served across whatever just ran.
+ *
+ * Called from the two points a pass hands control to consumer code — the
+ * `onFirstLayout` drain at the end of `doLayout`, and a `sizechange` dispatch
+ * from inside a size setter, which `commitBounds` reaches for every child it
+ * commits. A listener at either point can mutate any subtree a layout manager
+ * already measured this pass. Outside a pass there is no number to end.
+ */
+function endLayoutPassNumber(): void {
+    if (layoutPassDepth > 0) {
+        layoutPassToken++;
+    }
+}
+
 /** Schedules a layout-flush frame if one is not already pending. */
 function ensureFlushScheduled(): void {
     if (rafHandle === null) {
@@ -2624,7 +2655,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * unobserved component pays one null check per committed axis.
      */
     private notifySizeChange(): void {
-        this._sizeListeners?.fire("sizechange", this._width, this._height);
+        if (!this._sizeListeners) {
+            return;
+        }
+
+        this._sizeListeners.fire("sizechange", this._width, this._height);
+
+        // `commitBounds` reaches this setter for every child it commits, so a
+        // listener here is consumer code running inside the layout pass — and
+        // it can mutate a subtree some manager measured earlier in the same
+        // pass. Ending the pass number makes such work recompute instead.
+        endLayoutPassNumber();
     }
 
     /**
@@ -7442,19 +7483,41 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        Diagnostics.noteLayoutPass();
-
-        const lm = this.getLayoutManager();
-        if (!lm) {
-            throw new Error("Unable to do layout, no layout manager specified.");
+        // A nested layout joins the pass already running; only an outermost
+        // one starts a new number. The decrement is in a `finally` because a
+        // layout manager may throw (`Border` does, for a region that reports
+        // no preferred size) and the batched flush catches and carries on — a
+        // depth left above 0 would make every later pass look nested inside a
+        // pass that ended long ago.
+        if (layoutPassDepth === 0) {
+            layoutPassToken++;
         }
 
-        if (this.getElement()) {
-            this._layoutDirty = false;
-        }
+        layoutPassDepth++;
 
-        lm.doLayout();
-        this.runFirstLayoutCallbacks();
+        try {
+            Diagnostics.noteLayoutPass();
+
+            const lm = this.getLayoutManager();
+            if (!lm) {
+                throw new Error("Unable to do layout, no layout manager specified.");
+            }
+
+            if (this.getElement()) {
+                this._layoutDirty = false;
+            }
+
+            lm.doLayout();
+
+            // A drain that actually ran something has just executed consumer
+            // code from inside the pass, so the rest of the pass must recompute
+            // rather than re-serve across the callback.
+            if (this.runFirstLayoutCallbacks()) {
+                endLayoutPassNumber();
+            }
+        } finally {
+            layoutPassDepth--;
+        }
 
         return this;
     }
@@ -7505,16 +7568,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * while connected. A layout that runs on a still-detached component (laid out
      * in a subtree before its host attaches it) leaves the queue intact to fire
      * on the connected layout that follows.
+     *
+     * @returns `true` when callbacks actually ran, so `doLayout` can end the
+     *   current layout-pass number — consumer code has just run inside it.
      */
-    private runFirstLayoutCallbacks(): void {
+    private runFirstLayoutCallbacks(): boolean {
         if (!this._firstLayoutCallbacks) {
-            return;
+            return false;
         }
 
         const element = this.getElement();
 
         if (!element || !DOM.source.isConnected(element)) {
-            return;
+            return false;
         }
 
         const callbacks = this._firstLayoutCallbacks;
@@ -7523,6 +7589,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         for (const callback of callbacks) {
             callback();
         }
+
+        return true;
     }
 
     /**
@@ -7638,6 +7706,33 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
                 cancelled = true;
             },
         };
+    }
+
+    /**
+     * Returns a number identifying the layout pass currently running, or `0`
+     * when no layout pass is running.
+     *
+     * A layout pass is one outermost `doLayout()` call, and everything it
+     * recurses into reports its number. What the number promises is that
+     * between two reads carrying it, nothing has run that could change a
+     * layout-derived answer — which is what makes it a key for work a layout
+     * manager computes once and re-serves for the rest of the pass. So it
+     * changes on every new outermost pass, and also mid-pass at either of the
+     * two points a pass hands control to consumer code: an `onFirstLayout`
+     * drain, and a `sizechange` dispatch from inside a size setter. Outside a
+     * pass nothing is promised at all, which is what the `0` is for.
+     *
+     * The promise covers the framework's own layout path. It does not bind a
+     * consumer-authored `LayoutManager` whose `doLayout` mutates a subtree
+     * some other manager has already measured this pass, nor a `Component`
+     * subclass that mutates before delegating to `super.doLayout()`.
+     *
+     * @returns The current layout pass's number, or `0` outside a pass.
+     *
+     * @internal
+     */
+    static currentLayoutPass(): number {
+        return layoutPassDepth > 0 ? layoutPassToken : 0;
     }
 
     /**
