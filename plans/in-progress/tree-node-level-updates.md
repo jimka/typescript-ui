@@ -659,6 +659,32 @@ tree.setChildren(folder, next);
 
 ---
 
+## Implementation Notes
+
+**Manual verification (case 31) passed in Chromium**, following `## Verification`'s recipe: the temporary `demoTree` global went into `MiscPanel.ts` and was reverted without being committed. The *Show large tree* window (628 flat rows) was scrolled to the middle and a row clicked. `insertNode`, `removeNode` and `setChildren` were then each called above, inside and below the viewport, followed by `notifyNodeChanged` on a visible relabelled node. Every call left the scroll offset, the selection, the anchor, the `selected`/`focused` classes on the selected row, and `aria-activedescendant` unchanged. None of them emitted an event. Each structural call ran exactly one flatten, with no shorter intermediate row count, so nothing collapsed on screen. Every on-screen node that survived kept the same DOM element. `notifyNodeChanged` rebound exactly one row (`setRowData` once) and did not reflatten. An insert inside an expanded section rebound only that section's visible siblings, whose `aria-setsize` changed. The console showed no errors or warnings.
+
+**Presentation choices where the plan's wording was not followed literally** (no behaviour change):
+
+- `Tree.md` *Expansion state*: the plan put the new clause straight after "(also silently)". It went after the whole sentence instead ("…so a persisted set covers a single dataset instance; `setChildren(null, roots)` replaces the roots without clearing it"). Inserted where the plan said, the clause would have left "so a persisted set covers…" reading as a consequence of `setChildren`.
+- `Tree.md` *Common methods*: the plan asked for rows for all four methods. They take three rows, with `insertNode` / `removeNode` sharing one the way the table already pairs `expandAll()` / `collapseAll()`.
+- The class JSDoc paragraph that gained the new sentence was reflowed to keep its line wrap. Its first paragraph, which feeds `llms.txt`, is untouched, and `npm run docs:llms` left `llms.txt` byte-identical.
+- In test case 18 (`setChildren(null, [R2, R1])`), `R0` is selected before the call. Without that, "`R0` is forgotten" asserts nothing: `R0` holds no state in the fixture as the plan wrote it.
+
+**Two tests beyond `## Expected Behaviour`.** The audit found that case 7 cannot fail. `_expand` never calls `loadChildren` for a node whose `children` is non-empty, so whether `insertNode` marks its lazy parent loaded makes no difference to that case. Nothing else in the list covered the takeover `insertNode` and `removeNode` apply to their parent. Two cases now pin it:
+
+- `insertNode` under a parent whose lazy load is in flight drops that load. The load resolves `false` and the inserted child stays.
+- `removeNode` emptying a never-loaded lazy parent, whose children the caller supplied up front, means expanding it later never calls `loadChildren`.
+
+Switching each method's takeover off makes exactly its own new case fail.
+
+**The reveal guard also covers a rejected load.** The `_ensureChildrenLoaded` snippet in `## Internal Structure` guarded only the success path. A reveal load that a structural call took over and that then rejected still returned `[]`. The reveal skipped the caller's children and could resolve `null` with the target in the tree. That breaks the plan's own rule: "the reveal keeps the children the caller supplied and discards its own loader result". The `catch` now applies the same `_loadedNodes` check, the way `_loadAndExpand` checks for an orphaned load on both its success and failure paths. A test pins the rejected case next to the resolved one.
+
+**`_findPath` now walks a snapshot of each sibling array.** The plan did not touch it, but the audit found a race this branch introduced. `revealByPredicate`'s walk loops over the live sibling array across `await`s. `insertNode` and `removeNode` now splice that array in place, so removing an earlier sibling while the walk waited on a load shifted it past a later sibling the tree still held. The reveal then resolved `null` with a match in the tree. `setNodes` replaces the array rather than splicing it, so this race is new. The loop now iterates `[...nodes]`, the snapshot form `Split` and `MultiSelectList` already use when a loop body can mutate its collection. A test pins the case. The snapshot leaves two narrower races, both left alone as the Non-Goal intends. A sibling removed *ahead* of the walk is still visited: that is a walk into a detached subtree, the case the Non-Goal already accepts. A sibling inserted during the walk is not visited.
+
+No demo was added. The plan's file table has none, and its manual check uses only a temporary, uncommitted demo edit.
+
+---
+
 ## Notes
 
 [^naming]: `TabBar` (`createBarEntry` / `removeBarEntry` / `moveBarEntry`) and `ScrollStrip` (`addItem` / `removeItem` / `moveItem`) were also checked. Both manage child components, not a data model, so the store's record-level verbs are the closer match. `AbstractSelectableList` offers only `setItems` (reset) and `addItem` (append), with no positional insert, remove, or in-place update to borrow. For the in-place update, `updateNode(node, patch)` (the tree applies a patch) and `refreshNode(node)` were considered. The patch form conflicts with the idiom `setNodes`' own JSDoc already documents — the caller mutates node objects and hands them back — and `notifyRecordChanged` is the library's name for exactly that hand-back on a record. `Component.notifyIntrinsicSizeChanged()` uses "notify" the same way: the caller tells the component that something it cannot observe has changed.
