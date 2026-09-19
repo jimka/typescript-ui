@@ -1,6 +1,6 @@
 # Tree
 
-[`Tree`](/api/component/tree/classes/Tree) is a hierarchical data view with collapsible nodes and virtual scrolling. Pass root nodes via `setNodes(nodes[])` — the tree flattens the visible subtree into a single scrollable list and recycles internal row components, rebinding a row only when what it was last bound to has actually changed.
+[`Tree`](/api/component/tree/classes/Tree) is a hierarchical data view with collapsible nodes and virtual scrolling. Pass root nodes via `setNodes(nodes[])` — the tree flattens the visible subtree into a single scrollable list and recycles internal row components, rebinding a row only when what it was last bound to has actually changed. Change it afterwards one node at a time — see [Updating nodes](#updating-nodes).
 
 <!-- demo: tree-nodes -->
 > **Live demo** — a small file/folder hierarchy as node literals, with
@@ -88,13 +88,42 @@ for (const node of loadStoredExpandedNodes()) {
 }
 ```
 
-`expandAll()` and `revealByPredicate()` change the expansion without emitting `"expand"` — call `getExpandedNodes()` after either to read what changed. `setNodes()` clears the expanded set (also silently), so a persisted set covers a single dataset instance.
+`expandAll()` and `revealByPredicate()` change the expansion without emitting `"expand"` — call `getExpandedNodes()` after either to read what changed. `setNodes()` clears the expanded set (also silently), so a persisted set covers a single dataset instance; `setChildren(null, roots)` replaces the roots without clearing it.
+
+## Updating nodes
+
+`setNodes()` resets the whole tree. To change part of it, use the node-level methods instead. A `parent` of `null` means the root level.
+
+| Method | Purpose |
+| --- | --- |
+| `insertNode(parent, index, node)` | Insert one node among `parent`'s children. `index` is clamped: a negative index prepends, one past the end appends. |
+| `removeNode(node)` | Remove a node, at any depth, and everything under it. A node the tree does not hold is ignored. |
+| `setChildren(parent, children)` | Replace `parent`'s child list, or the root list. The array is stored by reference. |
+| `notifyNodeChanged(node)` | Repaint the row showing `node` after you changed its `label`, `data` or `hasChildren` in place. |
+
+A node keeps its expansion, selection and loaded children for as long as the tree holds it — reuse the same object to keep it. Under `setChildren`, a new object starts collapsed and unselected, and an object left out is removed with everything under it. The scroll offset stays put, and only rows whose content changed are rebound, so re-listing a folder does not collapse the tree or lose the user's place:
+
+```typescript
+// Re-list one folder. Reusing the node objects that survive keeps their
+// expansion, their loaded children and their selection.
+const existing = new Map((folder.children ?? []).map(child => [child.label, child]));
+const next     = listing.map(entry => existing.get(entry.name) ?? toNode(entry));
+
+tree.setChildren(folder, next);
+```
+
+None of these methods emit events: removing a selected node fires no `"selection"`, and removing an expanded one no `"collapse"`. Read `getSelectedNodes()` after a removal when the new selection matters.
+
+An `insertNode`, `removeNode` or `setChildren` that changes a lazy node's children makes them yours: the node counts as loaded, so expanding it never calls `loadChildren`, and a load already in flight for it is dropped.
 
 ## Common methods
 
 | Method | Purpose |
 | --- | --- |
 | `setNodes(nodes[])` | Replace the entire tree. |
+| `insertNode(parent, index, node)` / `removeNode(node)` | Add or remove one node, keeping the rest of the tree's state — see [Updating nodes](#updating-nodes). |
+| `setChildren(parent, children)` | Replace one node's children, or the roots, keeping every surviving node's state — see [Updating nodes](#updating-nodes). |
+| `notifyNodeChanged(node)` | Repaint one node changed in place — see [Updating nodes](#updating-nodes). |
 | `expandAll()` / `collapseAll()` | Bulk-toggle expansion. |
 | `getExpandedNodes()` | Snapshot the currently expanded nodes (see [Expansion state](#expansion-state)). |
 | `expandNodeAsync(node)` | Expand a node and resolve once the expansion has committed, including a lazy load (see [Expansion state](#expansion-state)). |
@@ -135,7 +164,7 @@ A `Tree` with no explicit `preferredSize` reports a width of `200` and a height 
 
 ## Custom row renderers
 
-Each pool slot's content (everything to the right of the expand/collapse toggle) is owned by a [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer) instance. The tree holds a zero-argument factory; one renderer is created per pool slot when the pool grows. A slot keeps its node across an expand/collapse now, so its renderer is only re-`update`d via `update(context)` in the uncommon case — when the slot is genuinely handed different content, not merely because a reflatten shifted which node used to sit at that position.
+Each pool slot's content (everything to the right of the expand/collapse toggle) is owned by a [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer) instance. The tree holds a zero-argument factory; one renderer is created per pool slot when the pool grows. A slot keeps its node across an expand/collapse now, so its renderer is only re-`update`d via `update(context)` in the uncommon case — when the slot is genuinely handed different content, not merely because a reflatten shifted which node used to sit at that position. `notifyNodeChanged(node)` re-runs `update()` for that node's row.
 
 Built-in renderers:
 

@@ -148,6 +148,18 @@ page resets to empty.
   `"selectionchange"`). The payload type `CodeEditorSelection` is newly
   exported from `component/editor`. No consumer action is needed.
 
+- **`Tree` gains `insertNode`, `removeNode`, `setChildren` and
+  `notifyNodeChanged`**, for changing a tree one node at a time without
+  `setNodes`' reset. Every node the tree still holds keeps its expansion,
+  loaded children and selection, and the scroll offset stays put; a caller
+  keeps a node by passing the same object again. Removed nodes drop their
+  state silently — no `"selection"` or `"collapse"` fires. An `insertNode`,
+  `removeNode` or `setChildren` on a lazy node's children counts as loading
+  it and drops a load already in flight, including one `revealByPredicate`
+  started. Only rows whose content changed are rebound, and
+  `notifyNodeChanged(node)` repaints just the row showing a node changed in
+  place. No consumer action is needed.
+
 ### Layouts
 
 - **`Tab.setTabModified(content, modified)` / `isTabModified(content)`** show

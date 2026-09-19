@@ -23,7 +23,10 @@ export interface TreeNode {
     /**
      * Child nodes nested under this node.
      *
-     * @remarks Omit or pass an empty array for leaf nodes.
+     * @remarks Omit or pass an empty array for leaf nodes. Once the node is in
+     * a tree, change this list through {@link Tree.setChildren},
+     * {@link Tree.insertNode} or {@link Tree.removeNode} rather than by
+     * assignment, so the tree keeps its rows and state in step.
      */
     children?: TreeNode[];
 

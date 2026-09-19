@@ -61,6 +61,16 @@ interface FlatRow {
 }
 
 /**
+ * Where a node sits in the tree: the array that holds it, that array's owner
+ * (`null` for the root array), and the node's index in it.
+ */
+interface NodeLocation {
+    parent:   TreeNode | null;
+    siblings: TreeNode[];
+    index:    number;
+}
+
+/**
  * Construction-time options for {@link Tree}. Root nodes are set via
  * `setNodes()` and the renderer factory via `setRendererFactory()`; this
  * interface only carries the event-listener bag and the inherited
@@ -101,14 +111,18 @@ const _defaultTreeOptions: Partial<TreeOptions> = {
 /**
  * A hierarchical data view with collapsible nodes and virtual scrolling.
  *
- * Pass root nodes via {@link Tree.setNodes}. The tree flattens the currently
- * visible subtree into a single scrollable list and recycles a fixed pool of
- * internal row components. A reflatten first re-matches each pool slot to the
- * node it was already showing, by identity, so a node that stays on screen
- * keeps its slot — and therefore its DOM element and renderer state — across
- * an expand/collapse instead of following a shifted flat position; only then
- * does a slot rebind, and only when the node, depth, expanded/loading state,
- * or other content it was last bound to has actually changed.
+ * Pass root nodes via {@link Tree.setNodes}. Change the tree afterwards one
+ * node at a time with {@link Tree.insertNode}, {@link Tree.removeNode},
+ * {@link Tree.setChildren} and {@link Tree.notifyNodeChanged}, which keep
+ * every other node's expansion, selection and lazy-load state. The tree
+ * flattens the currently visible subtree into a single scrollable list and
+ * recycles a fixed pool of internal row components. A reflatten first
+ * re-matches each pool slot to the node it was already showing, by identity,
+ * so a node that stays on screen keeps its slot — and therefore its DOM
+ * element and renderer state — across an expand/collapse instead of following
+ * a shifted flat position; only then does a slot rebind, and only when the
+ * node, depth, expanded/loading state, or other content it was last bound to
+ * has actually changed.
  *
  * Scrolling is delegated to a `VirtualScroller` that owns the
  * rows-container transform, two custom scrollbar overlays, and the wheel/touch
@@ -273,6 +287,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * reference to. `setRendererFactory` forces a rebind the same way and for
      * the same class of reason: fresh content `isBoundTo`'s eight compared
      * values cannot detect.
+     *
+     * To change part of the tree without resetting the rest, use
+     * {@link insertNode}, {@link removeNode} or {@link setChildren}; to
+     * repaint one node changed in place, use {@link notifyNodeChanged}.
      */
     setNodes(nodes: TreeNode[]): this {
         this._nodes = nodes;
@@ -288,6 +306,138 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         if (this.getElement()) {
             this._boundIndices.fill(-1);
             this.invalidateGeom();
+            this.renderWindow();
+        }
+
+        return this;
+    }
+
+    /**
+     * Inserts `node` among `parent`'s children at `index`, keeping every other
+     * node's expansion, selection, lazy-load state and the scroll offset.
+     *
+     * @param parent - The node to insert under, or `null` for the root level.
+     * @param index - The position among `parent`'s children, clamped to
+     *   `[0, length]`: a negative index prepends, one past the end appends.
+     * @param node - A node this tree does not already hold. It starts
+     *   collapsed and unselected.
+     *
+     * @returns This tree, for method chaining.
+     *
+     * @remarks
+     * Writes into the array the tree already holds — `parent.children`
+     * (created when absent) or the root array — so {@link getNodes} and
+     * `parent.children` show the insert. Emits no event. A lazy `parent`
+     * counts as loaded afterwards; see {@link setChildren}.
+     */
+    insertNode(parent: TreeNode | null, index: number, node: TreeNode): this {
+        const siblings = this._childrenOf(parent);
+        const at       = Math.max(0, Math.min(index, siblings.length));
+
+        siblings.splice(at, 0, node);
+        this._commitStructureChange(parent);
+
+        return this;
+    }
+
+    /**
+     * Removes `node`, and every node under it, from the tree.
+     *
+     * @param node - The node to remove, at any depth. A node this tree does
+     *   not hold is ignored.
+     *
+     * @returns This tree, for method chaining.
+     *
+     * @remarks
+     * The removed nodes leave the expanded, selected and loaded sets; the
+     * anchor and focus are cleared when either was among them; a lazy load in
+     * flight for one of them is dropped and its `expandNodeAsync` promise
+     * resolves `false`. No event fires — not `"selection"` when a selected
+     * node goes, not `"collapse"` when an expanded one does — because, as with
+     * {@link selectNode}, the caller made the change. Read
+     * {@link getSelectedNodes} afterwards when the new selection matters.
+     */
+    removeNode(node: TreeNode): this {
+        const location = this._locate(node);
+
+        if (location === null) {
+            return this;
+        }
+
+        location.siblings.splice(location.index, 1);
+        this._commitStructureChange(location.parent);
+
+        return this;
+    }
+
+    /**
+     * Replaces `parent`'s children with `children`, keeping the state of
+     * every node the tree still holds afterwards.
+     *
+     * @param parent - The node whose children to replace, or `null` for the
+     *   root level.
+     * @param children - The new child list, stored by reference. Pass the
+     *   same node object for an entry that survives: it keeps its expansion,
+     *   its loaded children and its selection. A new object starts collapsed
+     *   and unselected. An object left out is removed as by
+     *   {@link removeNode}.
+     *
+     * @returns This tree, for method chaining.
+     *
+     * @remarks
+     * Unlike {@link setNodes}, which resets the whole tree,
+     * `setChildren(null, roots)` replaces the root list and keeps every
+     * surviving node's state.
+     *
+     * The caller owns `parent`'s children from here on: a lazy `parent`
+     * counts as loaded, so expanding it never calls `loadChildren`, and a
+     * load already in flight for it is dropped — its result is discarded and
+     * its `expandNodeAsync` promise resolves `false`. {@link insertNode} and
+     * {@link removeNode} treat the parent they change the same way. Emits no
+     * event.
+     */
+    setChildren(parent: TreeNode | null, children: TreeNode[]): this {
+        if (parent === null) {
+            this._nodes = children;
+        } else {
+            parent.children = children;
+        }
+
+        this._commitStructureChange(parent);
+
+        return this;
+    }
+
+    /**
+     * Re-renders `node`'s row after the caller changed the node in place —
+     * its `label`, its `data` (which a renderer such as
+     * [`IconLabelTreeNodeRenderer`](/api/component/tree/classes/IconLabelTreeNodeRenderer)
+     * may read to pick an icon), or `hasChildren`.
+     *
+     * @param node - The node that changed.
+     *
+     * @returns This tree, for method chaining.
+     *
+     * @remarks
+     * Only a row currently showing `node` is rebuilt. A node with no row on
+     * screen needs nothing: it renders its current fields whenever it next
+     * scrolls into view. A change to `children` is not covered — use
+     * {@link setChildren}, which also keeps the tree's state in step. Emits
+     * no event.
+     */
+    notifyNodeChanged(node: TreeNode): this {
+        let found = false;
+
+        for (let slot = 0; slot < this._rowPool.length; slot++) {
+            if (this._boundIndices[slot] >= 0 && this._rowPool[slot].getNode() === node) {
+                // Forced-rebind sentinel, read by `_bindAndMeasure`: `isBoundTo`
+                // cannot see a change to a node the row already holds.
+                this._boundIndices[slot] = -1;
+                found = true;
+            }
+        }
+
+        if (found) {
             this.renderWindow();
         }
 
@@ -475,7 +625,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         predicate: (data: unknown, node: TreeNode) => boolean,
         prefix: TreeNode[],
     ): Promise<TreeNode[] | null> {
-        for (const node of nodes) {
+        // A snapshot, not the live array: `insertNode` and `removeNode` splice
+        // it in place, and a splice during one of the awaits below would shift
+        // the walk past a sibling the tree still holds.
+        for (const node of [...nodes]) {
             const here = [...prefix, node];
 
             if (predicate(node.data, node)) {
@@ -499,7 +652,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * first when the node is lazy and unloaded. Mirrors {@link _loadAndExpand}'s
      * cache writes (`children` + `_loadedNodes`) but does not expand the node —
      * a reveal only expands the ancestors on the path to its match. A rejected
-     * load is swallowed and treated as an empty subtree.
+     * load is swallowed and treated as an empty subtree, unless a structural
+     * call supplied the node's children while it was in flight.
      *
      * @param node - The node whose children are needed.
      *
@@ -514,12 +668,21 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             try {
                 const children = await node.loadChildren();
 
+                // A structural call, or an expand-driven load, supplied this
+                // node's children while this load was in flight. Keep those
+                // rather than overwrite them with this result.
+                if (this._loadedNodes.has(node)) {
+                    return node.children ?? [];
+                }
+
                 node.children = children;
                 this._loadedNodes.add(node);
 
                 return children;
             } catch {
-                return [];
+                // The same takeover as above: a superseded load that rejects
+                // still leaves the children the caller supplied.
+                return this._loadedNodes.has(node) ? (node.children ?? []) : [];
             }
         }
 
@@ -529,8 +692,11 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     /**
      * Registers a listener for one of this tree's events.
      *
-     * @param event - `"selection"` fires whenever the selection changes,
-     *   receiving the full array of selected {@link TreeNode} instances.
+     * @param event - `"selection"` fires whenever a click or key press
+     *   changes the selection, receiving the full array of selected
+     *   {@link TreeNode} instances. Programmatic changes do not fire it:
+     *   {@link selectNode}, {@link setNodes}, or a {@link removeNode} /
+     *   {@link setChildren} that drops a selected node.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This tree, for method chaining.
@@ -584,8 +750,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      *   the rows have been rebuilt — for an unloaded lazy node, after its
      *   `loadChildren` resolved and the children were attached, not when the
      *   toggle was first requested. It never fires from `setNodes`,
-     *   `expandAll`, or `revealByPredicate`; a rejected lazy load fires only
-     *   `"loaderror"` instead.
+     *   `expandAll`, or `revealByPredicate`, nor from `insertNode`,
+     *   `removeNode` or `setChildren` — a lazy load one of those drops fires
+     *   nothing; a rejected lazy load fires only `"loaderror"` instead.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This tree, for method chaining.
@@ -597,7 +764,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      *
      * @param event - `"collapse"` fires after the node has left the expanded
      *   set and the rows have been rebuilt. It never fires from `setNodes`,
-     *   `expandAll`, or `revealByPredicate`.
+     *   `expandAll`, or `revealByPredicate`, nor when `removeNode` or
+     *   `setChildren` removes an expanded node.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This tree, for method chaining.
@@ -749,6 +917,148 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
+     * Returns the array holding `parent`'s children — the root array for
+     * `null` — first giving a node with no `children` an empty one.
+     *
+     * @param parent - The node whose child array to return, or `null`.
+     * @returns The live array the tree reads when flattening.
+     */
+    private _childrenOf(parent: TreeNode | null): TreeNode[] {
+        if (parent === null) {
+            return this._nodes;
+        }
+
+        if (parent.children === undefined) {
+            parent.children = [];
+        }
+
+        return parent.children;
+    }
+
+    /**
+     * Finds where `node` sits: the root array first, then every node's
+     * `children`, depth-first, collapsed branches included.
+     *
+     * @param node - The node to find.
+     * @returns The node's location, or `null` when this tree does not hold it.
+     */
+    private _locate(node: TreeNode): NodeLocation | null {
+        const search = (parent: TreeNode | null, siblings: TreeNode[]): NodeLocation | null => {
+            const index = siblings.indexOf(node);
+
+            if (index >= 0) {
+                return { parent, siblings, index };
+            }
+
+            for (const child of siblings) {
+                const found = child.children ? search(child, child.children) : null;
+
+                if (found !== null) {
+                    return found;
+                }
+            }
+
+            return null;
+        };
+
+        return search(null, this._nodes);
+    }
+
+    /**
+     * Collects every node reachable from the root array through `children`,
+     * whether or not its ancestors are expanded.
+     *
+     * @returns The reachable nodes.
+     */
+    private _reachableNodes(): Set<TreeNode> {
+        const reachable = new Set<TreeNode>();
+
+        const walk = (nodes: TreeNode[]): void => {
+            for (const node of nodes) {
+                reachable.add(node);
+
+                if (node.children) {
+                    walk(node.children);
+                }
+            }
+        };
+
+        walk(this._nodes);
+
+        return reachable;
+    }
+
+    /**
+     * Drops every piece of per-node state held for a node the tree no longer
+     * holds: expanded, selected, loading and loaded membership, a pending
+     * expansion, and the anchor or focus. Dropping a loading node orphans its
+     * in-flight load the same way `setNodes` does.
+     */
+    private _pruneDetachedState(): void {
+        const reachable = this._reachableNodes();
+
+        for (const set of [this._expandedNodes, this._selectedNodes, this._loadingNodes, this._loadedNodes]) {
+            for (const node of set) {
+                if (!reachable.has(node)) {
+                    set.delete(node);
+                }
+            }
+        }
+
+        for (const node of this._pendingExpansions.keys()) {
+            if (!reachable.has(node)) {
+                this._pendingExpansions.delete(node);
+            }
+        }
+
+        if (this._anchorNode !== null && !reachable.has(this._anchorNode)) {
+            this._anchorNode = null;
+        }
+
+        if (this._focusNode !== null && !reachable.has(this._focusNode)) {
+            this._focusNode = null;
+        }
+    }
+
+    /**
+     * Hands `parent`'s children to the caller: drops a lazy load in flight
+     * for it and records a lazy `parent` as loaded. No-op for the root level.
+     *
+     * @param parent - The node a structural call just changed, or `null`.
+     */
+    private _supersedeLoad(parent: TreeNode | null): void {
+        if (parent === null) {
+            return;
+        }
+
+        this._loadingNodes.delete(parent);
+        this._pendingExpansions.delete(parent);
+
+        if (parent.loadChildren !== undefined) {
+            this._loadedNodes.add(parent);
+        }
+    }
+
+    /**
+     * The shared tail of `insertNode`, `removeNode` and `setChildren`, run
+     * after the child array has been changed.
+     *
+     * @param parent - The node whose children changed, or `null` for the root level.
+     *
+     * @remarks
+     * `_supersedeLoad` runs before `_pruneDetachedState`, so a `parent` that
+     * is itself no longer in the tree is removed from `_loadedNodes` again.
+     * `_updateActiveDescendant` runs after the render, when the focused
+     * node's row is bound.
+     */
+    private _commitStructureChange(parent: TreeNode | null): void {
+        this._supersedeLoad(parent);
+        this._pruneDetachedState();
+        this._reflattenAndRender();
+        this._updateActiveDescendant();
+    }
+
+    /**
      * Expands `node` if it is not already expanded — the same commit path as
      * clicking its collapsed caret (loading its children first when it is an
      * unloaded lazy node), without requiring a prior click. No-ops if `node`
@@ -872,9 +1182,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
         this._pendingExpansions.set(node, pending);
 
-        // Identity-checked so a `setNodes` that cleared the map mid-flight, followed
-        // by a fresh load for the same node object, is not un-registered by the
-        // orphaned load's own cleanup.
+        // Identity-checked so a `setNodes` or structural call that cleared the
+        // entry mid-flight, followed by a fresh load for the same node object, is
+        // not un-registered by the orphaned load's own cleanup.
         void pending.then(() => {
             if (this._pendingExpansions.get(node) === pending) {
                 this._pendingExpansions.delete(node);
@@ -896,9 +1206,11 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * collapsed and unloaded so toggling again retries. An empty resolved array
      * is treated as success: the node renders as an expanded, empty parent.
      *
-     * If `setNodes` swaps the dataset while the loader is in flight, it clears
-     * `_loadingNodes`, so a still-present membership check after the await tells
-     * us the node is still live; an orphaned resolve commits nothing.
+     * If `setNodes` swaps the dataset, or a structural call removes the node or
+     * takes over its children (`_pruneDetachedState`, `_supersedeLoad`), while
+     * the loader is in flight, the node leaves `_loadingNodes`, so a
+     * still-present membership check after the await tells us the node is
+     * still live; an orphaned resolve commits nothing.
      *
      * The `"expand"` emission is the last thing this method does, after the
      * re-render, so a listener sees the loaded children already flattened.
@@ -1481,12 +1793,14 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             // `setRendererFactory`, whose fresh renderer has no cached icon or
             // label text; `setNodes`, whose caller may hand back the very same
             // (possibly in-place-mutated) node objects specifically to pick up
-            // a content change; and the inherited `VirtualRowView.onThemeReflow`,
-            // whose font swap can change every row's measured content without
-            // touching any of the eight values. Without this check, `isBoundTo`
-            // alone would report an untouched-looking row as unchanged — its
-            // node/depth/etc. really are identical — and silently skip the real
-            // `setRowData` call one of these cases actually needs.
+            // a content change; `notifyNodeChanged`, which forces only the
+            // slots showing a node its caller changed in place; and the
+            // inherited `VirtualRowView.onThemeReflow`, whose font swap can
+            // change every row's measured content without touching any of the
+            // eight values. Without this check, `isBoundTo` alone would report
+            // an untouched-looking row as unchanged — its node/depth/etc. really
+            // are identical — and silently skip the real `setRowData` call one
+            // of these cases actually needs.
             const wasRebound = this._boundIndices[i] === -1
                 || !row.isBoundTo(flatRow.node, flatRow.depth, hasChildren, expanded, flatRow.siblingCount, flatRow.posInSet, selected, loading);
 
