@@ -9,7 +9,7 @@
 # the host, waits for the result, stops both, and hands the result to
 # bin/qa-verdict.py. See README.md.
 #
-#   --host   minibrowser (default)
+#   --host   minibrowser (default) | tauri
 #   main     QA_MAIN_LIB, default this checkout's packages/lib
 #   wt       QA_WT_LIB, required
 #
@@ -23,7 +23,7 @@ QA=$(cd "$(dirname "$0")" && pwd)
 
 # Hosts this runner can start. Adding one adds its name here and one branch to
 # each of check_host, start_host and stop_host.
-HOSTS="minibrowser"
+HOSTS="minibrowser tauri"
 
 # Must match QA_PORT in vite.config.ts.
 PORT=5190
@@ -42,6 +42,7 @@ VITE_POLL_S=0.5
 TIMEOUT_S=${QA_TIMEOUT:-120}
 
 MINIBROWSER=${QA_MINIBROWSER:-/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/MiniBrowser}
+TAURI_HOST_BIN=${QA_TAURI_BIN:-$QA/src-tauri/target/debug/qa-host}
 HOST_PID=
 
 # Prints the usage line and exits 2.
@@ -59,6 +60,12 @@ check_host() {
                 exit 2
             fi
             ;;
+        tauri)
+            if [ ! -x "$TAURI_HOST_BIN" ]; then
+                echo "[$name] no Tauri host at $TAURI_HOST_BIN — build it with: cargo build --manifest-path $QA/src-tauri/Cargo.toml" >&2
+                exit 2
+            fi
+            ;;
     esac
 }
 
@@ -69,6 +76,10 @@ start_host() {
             "$MINIBROWSER" --full-screen "$2" > "$QA/logs/host-$name.log" 2>&1 &
             HOST_PID=$!
             ;;
+        tauri)
+            "$TAURI_HOST_BIN" "$2" > "$QA/logs/host-$name.log" 2>&1 &
+            HOST_PID=$!
+            ;;
     esac
 }
 
@@ -76,6 +87,12 @@ start_host() {
 stop_host() {
     case "$1" in
         minibrowser)
+            if [ -n "$HOST_PID" ]; then
+                kill "$HOST_PID" 2>/dev/null
+            fi
+            HOST_PID=
+            ;;
+        tauri)
             if [ -n "$HOST_PID" ]; then
                 kill "$HOST_PID" 2>/dev/null
             fi
