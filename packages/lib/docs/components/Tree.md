@@ -73,7 +73,9 @@ tree.on('loaderror', (node, error) => {
 });
 ```
 
-If `loadChildren` rejects, the node reverts to a collapsed, unloaded caret — toggling it again retries the load — and the tree fires a `loaderror` event carrying the node and the rejection reason. A loader that resolves to an empty array succeeds: the node renders as an expanded, empty parent.
+If `loadChildren` rejects, the node reverts to a collapsed, unloaded caret — toggling it again retries the load — and the tree fires a `loaderror` event carrying the node and the rejection reason. A loader that resolves to an empty array succeeds: the node renders as an expanded, empty parent. Only a rejection is a failure, so a loader that resolves `null` or `undefined` — which only an untyped caller can do, the signature promising an array — has resolved with no children, and the node is loaded with an empty array.
+
+The tree waits on at most one `loadChildren` call per node. A second expand, or a `revealByPredicate()` that needs the node's children, waits on that call instead of making its own, and an expand joins a call a reveal started the same way; the spinner shows while an expand is waiting. The children are committed once, and `"expand"` or `"loaderror"` fires once, whichever of them started the call. A rejection no expand was waiting on fires no `"loaderror"`: the reveal treats the branch as empty, and the node's next expand calls `loadChildren` again. A call the tree drops — see [Updating nodes](#updating-nodes) — is discarded: its result is never committed, and a later call for the same node can start while the dropped one is still pending, so a loader must not assume its calls for one node never overlap. Whatever waits on a dropped call is still released only when that call settles. A loader that calls back into the tree — setting a `Loading…` placeholder with `setChildren`, say — drops its own load that way, and its result is discarded in favour of the children the call supplied.
 
 ## Expansion state
 
@@ -114,7 +116,11 @@ tree.setChildren(folder, next);
 
 None of these methods emit events: removing a selected node fires no `"selection"`, and removing an expanded one no `"collapse"`. Read `getSelectedNodes()` after a removal when the new selection matters.
 
-An `insertNode`, `removeNode` or `setChildren` that changes a lazy node's children makes them yours: the node counts as loaded, so expanding it never calls `loadChildren`, and a load already in flight for it is dropped.
+An `insertNode`, `removeNode` or `setChildren` that changes a lazy node's children makes them yours: the node counts as loaded, so expanding it never calls `loadChildren`, and a load already in flight for it is dropped. A load in flight for a node you remove is dropped too, and stays dropped if you insert the node again: moving a node with `removeNode` then `insertNode` brings it back as a new node, collapsed and unselected, and one whose load was dropped calls `loadChildren` afresh on its next expand. A dropped load is dropped for every expand and reveal waiting on it: each `expandNodeAsync` resolves `false`, and nothing the loader returns is committed.
+
+A [`revealByPredicate()`](/api/component/tree/classes/Tree#revealbypredicate) that is still running follows all three calls, and `setNodes()` too, carrying on over the tree as each one left it: every level it still has open searches its live children again from the first. It does not search afresh, though — a node it has already tested is passed over untested, and only descended into. So it still finds a matching node added meanwhile, even under a branch it has already searched, or under a node whose children a later load commits after the load the reveal waited on for it failed; it does not wait for such a load, and one committing after the walk has run out of levels leaves its `null` standing. It never returns, expands or caches loaded children for a node the tree no longer holds.
+
+Two consequences are worth knowing. After `setNodes()` the walk carries on over the new roots, from the first, but a root object it has already tested is still passed over — so a reveal running across a `setNodes()` handed the same node objects back can resolve `null` with a match in the tree. And a level that restarts finishes before the restart reaches its ancestors, so while the tree is changing under it the node returned need not be the depth-first-earliest match.
 
 ## Common methods
 
