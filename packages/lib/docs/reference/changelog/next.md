@@ -67,7 +67,34 @@ page resets to empty.
   either way, and no signature moves — what changes is how much restyle work
   the engine is handed per frame.
 
+- **`setInsets()` / `clearInsets()`, `setLayoutManager()` and
+  `sortComponents()` now mark the component's layout as owed** —
+  `isLayoutDirty()` reports `true` afterwards — **and
+  `LayoutManager.setLayoutConstraints()` marks its container's**, so an
+  unchanged re-commit can never withhold the pass that applies the change. A
+  same-value inset write still returns early and marks nothing.
+  `invalidateLayout()` now also marks every ancestor that opted into skipping
+  an unchanged commit, so a pass owed beneath such an ancestor is not withheld
+  by its skip.
+
 ### Components
+
+- **`MenuBar` and `ToolBar` are no longer re-laid-out when their parent
+  re-commits them at the rectangle they already hold.**
+  `LayoutManager.commitBounds`, which the box, flow, grid, border, fit, card,
+  anchor and absolute managers commit a child through, now withholds the
+  child's layout pass when the commit moved nothing, the child's class opted
+  in, and no pass is owed — the gate the table's cells already had through
+  `applyBounds`, still off by default. These two bars are its first
+  opt-ins. `ToolBar.setOrientation()` and `setFlat()` now lay the bar out
+  themselves, as `setCompact()` already did. A consumer that changes a bar's
+  layout through a path that announces nothing — a child's `setDisplayed`,
+  the manager reached through `getLayoutManager()`, the bar's own padding or
+  border, or a custom child's intrinsic size changed without
+  `setPreferredSize` / `notifyIntrinsicSizeChanged` — must now follow it with
+  `bar.scheduleLayout()`: such changes used to take effect on the next
+  incidental relayout, which no longer reaches a bar whose rectangle holds
+  still.
 
 - **`CellEditorPool.release()` now takes the cell that is releasing the
   editor** — `release(cell: Cell<any>)`, where it previously took no
