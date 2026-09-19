@@ -178,3 +178,42 @@ the price of being correct.
 7,519-test suite passes under the *incorrect*, pass-only key. Anything in this
 area has to be gated on measured geometry equality in both a deep and a shallow
 scene; a green suite is necessary and nowhere near sufficient.
+
+---
+
+## Wave 2 as implemented: the end-of-wave A/B (2026-09-19)
+
+The four plans landed as one linear stack — `feature/border-region-size-memo`
+→ `feature/accordion-seed-pass-economy` → `feature/size-hint-per-pass-memo` →
+`feature/unchanged-commit-skip-staged` (tip `ae8a9cf2`). No phase could run the
+real-WebKitGTK sweep (the harness lives outside both repositories), so each
+recorded frame time as owed. This is that check: master's bundle against the
+tip's, same session, interleaved, two reps per scene, `work=1&widthprobe=1` on
+every arm.
+
+| scene | master avg (r1 / r2) | stack avg (r1 / r2) | Δ mean | work/frame |
+|---|---|---|---|---|
+| S1 | 60.70 / 56.91 | 59.21 / 58.34 | flat (58.81 → 58.78) | **2969 → 1287 (−56.7%)** |
+| S3 | 57.43 / 57.08 | 56.09 / 54.11 | **−2.16 ms (−3.8%)** | **2036 → 1155 (−43.3%)** |
+
+**Geometry was identical across all four runs of each scene** — every probe,
+every rep, both arms. The work counters were deterministic (identical between
+reps), so the work column carries no noise at all. S1's master pair spread
+3.79 ms, so its flat reading is flat within that; S3's two stack runs both sit
+below both master runs. Tails moved the right way on S1 (max 114/99 → 92/93).
+
+**This is the outcome wave 2 was re-scoped to deliver**: roughly half of all
+counted per-frame work removed, at geometry that does not move by a pixel, with
+frame time flat to slightly better. It is what the "work avoided at flat render
+time" rule predicts for a frame that is engine-bound. The savings overlap
+rather than add — phase 3 measured that phase 1's Border record had already
+harvested repeats it would otherwise have been credited with — so no per-phase
+split is claimed here.
+
+**Two limits.** The counters count calls that *reach* a wrapped method, so a
+memo hit inside `getPreferredSize` still counts as one call while the subtree
+descent it avoids does not — the reduction is, if anything, understated.
+And phase 4's skip ships with only `MenuBar` and `ToolBar` opted in, so its
+share here is small; forced on for every class, its in-process sweeps removed
+68–78% of work at byte-identical geometry. That headroom is realised only as
+more classes are audited and opted in.
