@@ -522,6 +522,18 @@ page resets to empty.
   statically are unaffected. `core` still creates the page's `Body` when it
   loads. No consumer action is needed.
 
+- **`Animation.play` now removes the two transition listeners it registers.**
+  Each call armed a `transitionend` and a `transitionstart` listener on the
+  element it animates and removed neither, so an element that outlives its
+  animations — a menu that fades on every show, a dialog that re-enters —
+  collected another pair every time. Both of the animation's exits now take
+  them away again. One documented promise narrows with it: cancelling the
+  returned handle now reaches the element, where it previously touched
+  nothing at all. That stays safe because the framework cancels every
+  transition running against an element's handle before releasing it, so a
+  cancel that can still reach the DOM always runs while the handle is live.
+  No consumer action is needed.
+
 ### Components
 
 - **A table no longer writes an in-progress cell edit onto the wrong record
