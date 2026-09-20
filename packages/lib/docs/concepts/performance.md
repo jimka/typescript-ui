@@ -94,7 +94,9 @@ store.sort('value', 'desc');               // worker handles it for >1k rows
 store.filterBy({ type: 'gt', field: 'value', value: 500 }); // worker handles it for >1k rows
 ```
 
-You don't configure anything — the worker is created lazily on first use. Below the threshold the round-trip overhead exceeds the work, so operations run synchronously in-process.
+You don't configure anything — the worker is created lazily on first use, and its code ships inside the library's own bundle, so nothing is fetched to start it. Below the threshold the round-trip overhead exceeds the work, so operations run synchronously in-process.
+
+The offload also fails safe. Where no worker can be started at all — an engine without `Worker`, a Content-Security-Policy that forbids one — every store sorts and filters on the main thread, exactly as it does below the threshold. A worker that does start and then proves dead — its script fails to run, a reply cannot be decoded, or its first request goes unanswered — is retired for the rest of the page with a `console.warn` naming the reason, and every store falls back the same way. Falling back costs main-thread time on a large dataset, and it gains correctness: the in-process path applies every active sorter, where the worker protocol carries only the primary one. Nothing else is emitted — by the time application code could react, the view is already built and correct.
 
 ::: warning Filter functions are serialised
 Custom filter predicates passed to `filterBy` must be **pure functions** with no captured non-serialisable state. They are sent to the worker via structured clone. For richer filter logic, use [`FilterDescriptor`](/api/data/type-aliases/FilterDescriptor) — a serialisable AST that the framework's filter evaluator runs identically on both sides of the worker boundary.

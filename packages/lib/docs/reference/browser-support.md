@@ -22,6 +22,8 @@ The framework uses these APIs with no polyfills:
 
 All of these have been available in evergreen Chrome and Firefox since 2018.
 
+The store's worker ships inside the library's bundle and is started from a `blob:` URL, with a `data:` URL as its fallback, so an app serving the framework under a strict Content-Security-Policy needs `worker-src blob:` (or `data:`) rather than `worker-src 'self'`. A policy that allows neither is not a failure: the worker cannot be constructed, and every store sorts and filters on the main thread instead.
+
 ## Mobile browsers
 
 Not a primary target. The framework's absolute-positioning model is not particularly mobile-friendly out of the box — there are no built-in responsive breakpoints, no touch-optimised gestures beyond the basic drag handlers, and the typography sizes target desktop reading distance.
