@@ -245,6 +245,30 @@ So the bare `tsc -p packages/lib/tsconfig.json` measures the wrong program.
 It wants an `include` or `"types": []`, or removal from the agenda — not a
 rot hunt.
 
+## Found while planning, not in the register
+
+Drafting the first four plans turned up two things the campaign never
+recorded. Both were measured, not inferred.
+
+**C37 — `afterTransition`'s own `cancel()` leaks the listener it armed.**
+Exactly C15's shape, in the same file, in the method the C15 fix was going
+to cite as its precedent: `Animation.ts:314`'s `afterTransition` removes its
+`transitionend` on the *fired* path but not on the cancelled one, so a
+fast-re-toggled `Accordion` accumulates listeners on its section wrapper.
+`tests/core/Animation.test.ts:344` currently pins the leak as intended
+behaviour. It is deliberately **out of scope** for
+`plans/listener-and-rule-removal-paths.md`, because C15's fix is safe only
+by way of a guarantee `afterTransition` does not share: `PendingTransitions`
+plus `Component.destructor`/`removeElement` cancel before every handle
+release, which bounds the new DOM touch. `afterTransition` has no such
+bound, so it needs its own analysis rather than a copied fix. Place it in a
+later correctness batch.
+
+**A documentation error:** `docs/components/ButtonGroup.md` documents a
+`getSelected()` method the class does not have. Pre-existing and unrelated
+to any plan, so left alone under the surgical-changes rule — recorded here
+so it is not lost.
+
 ## Proposed plan grouping
 
 Four tiers, ten plans. Tiers A and B need no decisions and are the first
