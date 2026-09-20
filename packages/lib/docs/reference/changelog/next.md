@@ -1037,3 +1037,13 @@ page resets to empty.
   no-op — it used to add a second copy of the member and a second listener,
   so one click ran the group's reconciliation twice. No consumer action is
   needed.
+
+- **A window's trailing resize strips now take each edge's own inset.** The
+  east band's x folded in the window's *left* inset and the south band's y its
+  *top* inset, and the south strip took its height from the *right* inset.
+  Each is correct whenever the opposing insets match, which the default
+  uniform 4px inset does — so a window left at the defaults is unaffected. A
+  window given asymmetric insets had its three eastern strips start past the
+  padding box's right edge, where `overflow: hidden` clipped most of the grab
+  band away, and its southern strips sat one inset's difference too low. No
+  consumer action is needed.
