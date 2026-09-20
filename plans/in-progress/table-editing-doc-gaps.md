@@ -288,3 +288,41 @@ This plan *is* the documentation change. What it implies for the generated artef
     zero. Writing a zero bar into this plan would make it fail on arrival and invite the
     implementer to go fix 14 unrelated warnings. The bar is therefore "no new warnings, and
     none naming `CellEditorPool.ts`".
+
+---
+
+## Implementation Notes
+
+**One file was touched beyond the Files table: `Table.ts`.** The audit found the sentence
+step 3 corrected in `Table.md` living a second time in the TSDoc of `Table.setRowVisible`
+(`:525`) and `Table.setQuickSearch` (`:573`) — *"Display-only: never touches `getStore`'s
+records, `getSelectedRecords`, or any pending edit."* Both render into the public API pages,
+so leaving them would have shipped a branch whose own two pages contradict each other: the
+new `Table.md` paragraph names `setRowVisible` / `setQuickSearch` as triggers that end an
+open edit, while the API page for those methods denied it. Each block got the same
+correction as the Markdown bullet, and the edit rides in this branch's code commit. The
+plan's `[^neighbourhood-sweep]` swept `docs/` Markdown only; item 2c shows source TSDoc was
+in remit, so the sweep was too narrow rather than wrong.
+
+**Step 2's paragraph ships one sentence longer than the plan prescribed.** The plan's
+trigger table (`## Architecture Decisions`, "The rule is stated by trigger, not by axis")
+enumerates the row-axis rebinds and the horizontal-scroll case, but not a change to the
+rendered column set: `Table.setColumnVisible` routes through `Body.setHiddenColumns`
+(`Body.ts:685`) → `syncPoolCells` (`:880`) → `commitEditsOutsideWindow(null)`, which commits
+*every* open edit whatever column it sits in, and `setDisplayMode` reaches the same sweep by
+another road — `bindView` → `Body.bindViewState` (`Body.ts:990`) → `syncPoolCells`, whose
+`registerComboEditors` call usually gets there first through `CellEditorPool.register`.
+Written as prescribed, the new paragraph's trigger list would have told a consumer that
+toggling a column is safe for an open edit — the same too-narrow-list defect item 2f exists
+to fix. One sentence was added to cover it; nothing else in the paragraph changed.
+
+**Two checks behaved differently than written, neither indicating a defect.** Step 1's
+`grep -n "narrowed to the dropped key"` cannot match: the replacement text the plan itself
+dictates wraps between `narrowed` (`CellEditorPool.ts:71`) and `to the dropped key` (`:72`),
+so the phrase was verified as two greps, one match each. And `MiscPanel.ts:781` — a demo
+comment saying a scoped quick search leaves "the store, selection, and pending edits …
+untouched" — carries the same stale claim, but it is demo-only prose that renders into no
+documentation and sits outside this plan's scope, so it was left for a later pass. No test
+was added, as the plan says: nothing behavioural changed, and the behaviour the new prose
+describes is already pinned by
+`packages/lib/tests/component/table/EditAcrossRowRebind.test.ts`.
