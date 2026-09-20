@@ -272,7 +272,9 @@ during which the window stays hit-testable: press a border strip mid-fade,
 release after `finalize` runs, and it reproduces every time — which is why
 it surfaces when several windows are closed in quick succession.
 **Pre-existing**, verified offline with identical probe results on `master`
-(`c83c5896`) and on the four-branch stack tip (`d982101e`). The fix is the
+(`c83c5896`) and on the four-branch stack tip (`d982101e`). **Fixed by
+`plans/pointer-drag-ends-on-dispose.md`, and the fix is confirmed in a real
+engine: the user could no longer reproduce the lock (2026-09-20).** The fix is the
 one the library already uses for this exact hazard in transitions: an
 owner-keyed framework-internal registry in the style of
 `core/PendingTransitions.ts`, ended from `Component.destructor` beside its
