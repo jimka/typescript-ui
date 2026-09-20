@@ -1020,6 +1020,17 @@ page resets to empty.
   while it was *inactive* is still `display: none` and the caller re-displays
   it.
 
+- **A saved `Split` arrangement no longer captures a transient child.** The
+  `Tab` branch of `serializeLayout` already dropped children marked
+  `transient` in their layout constraints, but the `Split` branch captured
+  every child, so a saved `Split` layout carried a placeholder node that the
+  restore warned about and skipped every time. Both branches now apply the
+  same rule, and the surviving panes' ratios are renormalised so
+  `SplitNode.ratios` still sums to ~1.0. A layout captured before this change
+  restores to exactly the same tree, so no migration is needed; the visible
+  differences are the warning that stops firing and the smaller captured
+  JSON.
+
 ### Overlay
 
 - **A `Window`'s header ✕ now goes through the same close path as
