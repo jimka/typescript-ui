@@ -1,0 +1,21 @@
+{
+  "name": "@jimka/typescript-ui-qa",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --dir tests"
+  },
+  "dependencies": {
+    "@jimka/typescript-ui": "*"
+  },
+  "devDependencies": {
+    "vite": "^8.0.16",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9",
+    "@types/node": "^26.1.2",
+    "jsdom": "^29.1.1"
+  }
+}
