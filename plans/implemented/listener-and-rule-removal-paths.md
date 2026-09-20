@@ -825,3 +825,63 @@ unaffected: it guards newly-shipped concrete classes and this plan adds none.
     stop writing a zero-warning bar into their verification rather than
     silently inheriting a failing gate. The bar here is therefore "no new
     warnings"; fixing the existing 14 is separate work.
+
+---
+
+## Implementation Notes
+
+Five small extensions where the plan was silent, plus one deliberate
+departure from step 2 that the audit required. No step was skipped or
+replaced.
+
+**`CancelHandle`'s own `@remarks` was narrowed too.** Step 2 names only
+`play`'s `@returns`, but the shared `CancelHandle` interface
+([`core/Animation.ts:382`](packages/lib/src/typescript/lib/core/Animation.ts#L382))
+carried the same promise in its own words — *"Cancelling performs no DOM
+write, so an owner may call it from teardown without caring whether the
+animated element's handle has already been released"* — and it is an exported,
+rendered symbol. Leaving it would have moved the overclaim rather than removed
+it, so it now says that `play`'s handle is the one that still reaches the
+element and why that is safe.
+
+**`afterTransition`'s `@returns` was reworded — a departure from step 2.**
+Step 2 says to leave it untouched, on the grounds that its `cancel` genuinely
+still leaves its listener attached. That grounds only its *second* clause; its
+first read *"Like `play`'s, cancelling touches no DOM"*, a comparison this
+branch falsified, on a rendered public API page. It now says the opposite
+explicitly — cancelling here touches no DOM, *unlike* `play`'s, because it
+does not even remove the listener it registered. Nothing about
+`afterTransition`'s behaviour changed, so the Non-Goal that keeps its own leak
+(C37) out of this plan still holds.
+
+**The narrowed test's title moved with its comment.** *Potential Challenges*
+calls for narrowing the comment on
+`'suppresses onComplete and every DOM write when cancelled before the
+fallback'` to "writes no styles". The title made the same claim, and the
+assertion under it has only ever filtered to style patches, so the title now
+reads *"…and every style write…"*.
+
+**`freshEventWindow`'s explanation gained one sentence.** Step 9 says to keep
+the renamed helper's comment verbatim, and its existing text is unchanged. One
+sentence was appended noting that the same base-listener pinning applies to
+the `"click"` and `"change"` types the new cases dispatch, which is why the
+helper purges the whole registry rather than one type.
+
+**The click driver became a helper.** Step 9 gives the driver as a literal
+`Event.fireEvent(button, makeEvent(…, 'click') as any)` expression. Three
+cases needed it, so it is a documented module-scope `clickButton()` beside
+`freshEventWindow`, with the expression unchanged inside it.
+
+**`dispose`'s container unwire gained a case of its own.** The
+`## Expected Behaviour` table for `ButtonGroup` has a row for the re-
+`setContainer` unwire but none for the one `dispose` performs, even though
+step 8 requires the call and the new JSDoc advertises it. It is offline-
+testable with the driver already in the file, so it is pinned by
+`'dispose unwires the container it was given'` rather than left to the
+four tabled rows.
+
+**Not done, by design.** No demo or example surface was touched: all three
+fixes are behavioural corrections behind unchanged signatures, and the plan's
+*Files to Create / Modify / Delete* table lists no demo file. The three QA
+panels in *Manual verification* were not run — each opens a full-screen window
+on the user's desktop and needs their explicit go-ahead.

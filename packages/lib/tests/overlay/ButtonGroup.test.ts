@@ -23,6 +23,42 @@ function selectVia(group: ButtonGroup, button: ToggleButton): void {
     (group as any).updateButtonStates(button);
 }
 
+/**
+ * `installBaseListener` (core/Event.ts) attaches its native "keydown"
+ * window listener only on the type's first-ever registration in this
+ * file, and every Button constructed by an earlier test (every `Button`
+ * registers its own "keydown" listener — see Button.ts's `_onSpaceDown`)
+ * already left one behind, pinned to that test's now-torn-down window
+ * (see Button.pressedState.test.ts's file header for the same landmine)
+ * — so a plain `installTestDOM` here would silently receive no "keydown"
+ * delivery at all. Purging every currently-registered component via the
+ * sanctioned test-only escape hatch (`Event._registeredComponentIds` /
+ * `Event.purgeComponent`) drops "keydown" back to uninstalled, so the
+ * container wired right after re-attaches it to THIS window.
+ *
+ * The same pinning applies to every other type the cases below dispatch —
+ * "click", and the "change" a toggle fires from it — which is why the purge
+ * sweeps the whole registry rather than one type.
+ */
+function freshEventWindow(): void {
+    installTestDOM(CONFIG);
+
+    for (const id of Event._registeredComponentIds()) {
+        Event.purgeComponent(id);
+    }
+}
+
+/**
+ * Drives a member the way a user does: a real "click" dispatch, which reaches
+ * `ToggleButton.onAction`, toggles the button, and fires its `"change"` — the
+ * DOM event the group's own `"action"` registration listens on. `selectVia`
+ * above bypasses exactly that wiring, so it cannot see whether the group is
+ * still listening.
+ */
+function clickButton(button: ToggleButton): void {
+    Event.fireEvent(button, makeEvent(button.getElement(true)!, 'click') as any);
+}
+
 describe('ButtonGroup selection model', () => {
     afterEach(() => DOM.reset());
 
@@ -249,6 +285,104 @@ describe('ButtonGroup.dispose()', () => {
     });
 });
 
+// The group registers an `"action"` listener on every member and a subtree
+// `"keydown"` on every container it is handed. Neither registration is the
+// button's or the container's to release, so the group has to take each one
+// away itself — and until it did, a button the group had let go of still
+// deselected its former siblings on the next click.
+describe('ButtonGroup releases the registrations it made', () => {
+    afterEach(() => DOM.reset());
+
+    it('a removed member stops deselecting its former siblings', () => {
+        freshEventWindow();
+
+        const a = new ToggleButton('A');
+        const b = new ToggleButton('B');
+        const group = new ButtonGroup({ buttons: [a, b] });
+
+        b.setSelected(true);
+        group.removeButton(a);
+
+        clickButton(a);
+
+        expect(a.isSelected()).toBe(true);
+        expect(b.isSelected()).toBe(true);
+    });
+
+    it('a disposed group stops reconciling its former members', () => {
+        freshEventWindow();
+
+        const a = new ToggleButton('A');
+        const b = new ToggleButton('B');
+        const group = new ButtonGroup({ buttons: [a, b] });
+
+        b.setSelected(true);
+        group.dispose();
+
+        clickButton(a);
+
+        expect(a.isSelected()).toBe(true);
+        expect(b.isSelected()).toBe(true);
+    });
+
+    // A second add of the same button would overwrite the held handler and
+    // strand the first, re-opening the leak the map exists to close — so the
+    // second call does nothing at all.
+    it('adding a button already in the group is a no-op', () => {
+        freshEventWindow();
+
+        const a = new ToggleButton('A');
+        const group = new ButtonGroup({ buttons: [a] });
+        const onSelection = vi.fn();
+
+        group.addButton(a);
+        group.on('selection', onSelection);
+
+        clickButton(a);
+
+        expect(group.getButtons()).toEqual([a]);
+        expect(onSelection).toHaveBeenCalledOnce();
+    });
+
+    // A bare `new Component()` holds no other `Event` registration, so its
+    // presence in the registry is an exact signal for the group's own subtree
+    // `"keydown"` listener and nothing else.
+    it('setContainer unwires the container it wired last', () => {
+        freshEventWindow();
+
+        const group = new ButtonGroup({ buttons: [new ToggleButton('A')] });
+        const first  = new Component();
+        const second = new Component();
+
+        first.getElement(true);
+        second.getElement(true);
+
+        group.setContainer(first);
+        group.setContainer(second);
+
+        const registered = Event._registeredComponentIds();
+
+        expect(registered).not.toContain(first.getId());
+        expect(registered).toContain(second.getId());
+    });
+
+    it('dispose unwires the container it was given', () => {
+        freshEventWindow();
+
+        const group = new ButtonGroup({ buttons: [new ToggleButton('A')] });
+        const container = new Component();
+
+        container.getElement(true);
+        group.setContainer(container);
+
+        expect(Event._registeredComponentIds()).toContain(container.getId());
+
+        group.dispose();
+
+        expect(Event._registeredComponentIds()).not.toContain(container.getId());
+    });
+});
+
 // directional-panel-navigation plan, Expected Behaviour #23: SpatialNavigation's
 // chord claims the arrow key first, so the group's own roving-focus step must
 // stand down entirely while it does.
@@ -257,27 +391,6 @@ describe('ButtonGroup keydown — stands down while SpatialNavigation claims the
         DOM.reset();
         vi.restoreAllMocks();
     });
-
-    /**
-     * `installBaseListener` (core/Event.ts) attaches its native "keydown"
-     * window listener only on the type's first-ever registration in this
-     * file, and every Button constructed by an earlier test (every `Button`
-     * registers its own "keydown" listener — see Button.ts's `_onSpaceDown`)
-     * already left one behind, pinned to that test's now-torn-down window
-     * (see Button.pressedState.test.ts's file header for the same landmine)
-     * — so a plain `installTestDOM` here would silently receive no "keydown"
-     * delivery at all. Purging every currently-registered component via the
-     * sanctioned test-only escape hatch (`Event._registeredComponentIds` /
-     * `Event.purgeComponent`) drops "keydown" back to uninstalled, so the
-     * container wired right after re-attaches it to THIS window.
-     */
-    function freshKeydownWindow(): void {
-        installTestDOM(CONFIG);
-
-        for (const id of Event._registeredComponentIds()) {
-            Event.purgeComponent(id);
-        }
-    }
 
     /** A materialised container wired to `group` via setContainer, ready to dispatch a real keydown onto. */
     function wiredContainer(group: ButtonGroup): Component {
@@ -289,7 +402,7 @@ describe('ButtonGroup keydown — stands down while SpatialNavigation claims the
     }
 
     it('ArrowRight moves the roving tab index forward when the key is unclaimed', () => {
-        freshKeydownWindow();
+        freshEventWindow();
 
         const a = new ToggleButton('A');
         const b = new ToggleButton('B');
@@ -302,7 +415,7 @@ describe('ButtonGroup keydown — stands down while SpatialNavigation claims the
     });
 
     it('a claimed ArrowRight does not move the roving tab index', () => {
-        freshKeydownWindow();
+        freshEventWindow();
 
         const a = new ToggleButton('A');
         const b = new ToggleButton('B');

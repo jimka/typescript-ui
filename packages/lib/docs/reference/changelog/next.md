@@ -522,6 +522,18 @@ page resets to empty.
   statically are unaffected. `core` still creates the page's `Body` when it
   loads. No consumer action is needed.
 
+- **`Animation.play` now removes the two transition listeners it registers.**
+  Each call armed a `transitionend` and a `transitionstart` listener on the
+  element it animates and removed neither, so an element that outlives its
+  animations — a menu that fades on every show, a dialog that re-enters —
+  collected another pair every time. Both of the animation's exits now take
+  them away again. One documented promise narrows with it: cancelling the
+  returned handle now reaches the element, where it previously touched
+  nothing at all. That stays safe because the framework cancels every
+  transition running against an element's handle before releasing it, so a
+  cancel that can still reach the DOM always runs while the handle is live.
+  No consumer action is needed.
+
 ### Components
 
 - **A table no longer writes an in-progress cell edit onto the wrong record
@@ -805,6 +817,16 @@ page resets to empty.
   bound to a store that had loaded at least once leaked the spinner and its
   arc on every disposal. No consumer action is needed.
 
+- **A `CodeEditor` no longer adds 51 CSS rules to the page for every editor
+  and every theme change.** Its theme extension was rebuilt on each call, and
+  each build produced two fresh `style-mod` modules — which a stylesheet
+  keeps in append order, with no way to unmount one again. The theme is now
+  built once per dark/light flag and shared from then on, so a long session
+  of theme toggling no longer grows the page's rule count. One visible
+  consequence: every editor on the same flag now carries the same generated
+  theme class rather than one of its own. Nothing in the library reads that
+  class. No consumer action is needed.
+
 ### Data
 
 - **A store holding 1,000 records or more now builds its view.** Above that
@@ -908,4 +930,15 @@ page resets to empty.
   session therefore stayed reachable — along with everything in its subtree —
   for the life of the page. Both now unregister before the inherited teardown
   destroys the component the registration is keyed by. No consumer action is
+  needed.
+
+- **`ButtonGroup` now releases every listener it registers.** A button handed
+  to `removeButton` kept the group's `"action"` listener, so clicking it went
+  on deselecting its former siblings; `setContainer` left its arrow-key
+  `keydown` registration on every container it had ever been given, so a
+  re-wired group kept driving navigation from the old one; and `dispose()`
+  released neither. All three now remove the exact registration the group
+  made. Separately, `addButton` of a button already in the group is now a
+  no-op — it used to add a second copy of the member and a second listener,
+  so one click ran the group's reconciliation twice. No consumer action is
   needed.

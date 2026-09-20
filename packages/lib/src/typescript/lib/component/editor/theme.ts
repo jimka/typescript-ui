@@ -47,10 +47,25 @@ deferStyleSheetWrite(() => {
     );
 });
 
+/** The built theme for `dark === false`, built on first use and shared by every editor. */
+let _lightTheme: Extension | null = null;
+
+/** The built theme for `dark === true`. */
+let _darkTheme: Extension | null = null;
+
 /**
  * Builds the editor's theme extension: the chrome (background, gutters,
  * cursor, selection) via `EditorView.theme`, plus syntax-highlighting colours
  * via a `HighlightStyle`.
+ *
+ * The result is built once per `dark` value and shared by every editor from
+ * then on. That is not an optimisation: both halves compile to a `style-mod`
+ * module, and `style-mod` bounds a root's rule count by the number of modules
+ * mounted into it while offering no way to unmount one — so a module built per
+ * call (once per editor, and once more per theme change) grows the page's
+ * stylesheet forever. Sharing is sound because the build depends on nothing
+ * but `dark`: every colour it writes is either a module constant or a
+ * `var(--ts-ui-…)` reference the browser resolves at paint time.
  *
  * The chrome reads the project's CSS custom-property tokens directly
  * (`--ts-ui-input-bg`, `--ts-ui-text-color`, `--ts-ui-font-mono`,
@@ -66,6 +81,12 @@ deferStyleSheetWrite(() => {
  * @returns The combined chrome + syntax-highlighting extension.
  */
 export function codeEditorTheme(dark: boolean): Extension {
+    const cached = dark ? _darkTheme : _lightTheme;
+
+    if (cached) {
+        return cached;
+    }
+
     const chrome = EditorView.theme({
         "&": {
             height:          "100%",
@@ -246,5 +267,13 @@ export function codeEditorTheme(dark: boolean): Extension {
         { tag: tags.processingInstruction,                                      color: SYNTAX_COMMENT },
     ]));
 
-    return [chrome, highlight];
+    const built: Extension = [chrome, highlight];
+
+    if (dark) {
+        _darkTheme = built;
+    } else {
+        _lightTheme = built;
+    }
+
+    return built;
 }
