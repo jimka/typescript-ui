@@ -768,6 +768,43 @@ page resets to empty.
   the call it waited on for that node failed, instead of resolving `null`
   with the match in the tree. No consumer action is needed.
 
+- **A `TreeTable`'s body no longer leaks its drag wiring when it goes away.**
+  Reparent drag-and-drop registers a drag source and a drop target on every
+  pooled row, plus one more on the body itself for the empty area below the
+  last row, and each registration lives in a process-wide map until its
+  teardown runs. The body discarded all of them, so a disposed tree table
+  stayed reachable through that map — with its rows, their cells, and the
+  records they were bound to — for the life of the page. The body now runs
+  every teardown it was handed, before the inherited teardown disposes the
+  rows they are registered against. No consumer action is needed.
+
+- **A tree cell's expand/collapse toggle is now destroyed when it is
+  replaced.** The renderer swaps in a fresh caret glyph whenever the row's
+  depth, child count or expansion changes — and a scrolling tree table rebinds
+  its pooled rows constantly — but the outgoing glyph was only detached, so it
+  kept its element, its per-instance stylesheet rule and its theme
+  subscription. One glyph was stranded per swap. Because the replaced glyph is
+  now destroyed, a caller holding a reference from an earlier
+  `TreeCellRenderer.getToggle()` must not reuse it across a `setTreeState`
+  call that changes the toggle.
+
+- **A date or time picker's dropdown no longer strands the half of its panel
+  that is swapped out.** Opening the year scroller takes the day grid out of
+  the panel and puts the year column in its place, and closing it does the
+  reverse; whichever half was out when the dropdown was destroyed was no
+  longer a registered child, so nothing reclaimed it. A dropdown that had
+  opened and closed the year scroller left behind the year column and all 171
+  of its year cells; one destroyed with the scroller still open left the day
+  grid behind instead. Both halves are now released. No consumer action is
+  needed.
+
+- **`TablePanel` and `TreeTablePanel` now destroy their loading-overlay
+  spinner.** The spinner is mounted by `ProgressSpinner.showOverlay`, which
+  appends it straight onto the table's element rather than registering it as a
+  child of the panel, so the panel's own teardown never reached it: a panel
+  bound to a store that had loaded at least once leaked the spinner and its
+  arc on every disposal. No consumer action is needed.
+
 ### Data
 
 - **A store holding 1,000 records or more now builds its view.** Above that
@@ -860,4 +897,15 @@ page resets to empty.
   settle to at most once per animation frame, mirroring `Split`'s own
   gutter-drag coalescing; the drag ghost still tracks the cursor at native
   pointer rate, since repositioning it is cheap. No consumer action is
+  needed.
+
+- **Disposing a `Dock` or a `Window` now unregisters the drop target and drag
+  source it wired.** A dock registers itself as the drop target that accepts a
+  tab once every panel has been torn off, and a window registers its header as
+  the source of the Shift-drag re-dock gesture; `DragManager` holds each
+  registration in a process-wide map until the teardown it handed back is run,
+  and neither class ran it. A dock or window disposed at any point in the
+  session therefore stayed reachable — along with everything in its subtree —
+  for the life of the page. Both now unregister before the inherited teardown
+  destroys the component the registration is keyed by. No consumer action is
   needed.
