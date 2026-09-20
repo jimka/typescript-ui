@@ -699,6 +699,31 @@ class TreeBody extends _Body {
     }
 
     /**
+     * Unregisters every per-row drag source / drop target and the empty-area
+     * drop target before the inherited teardown runs. The drag manager holds
+     * each registration in a process-wide map, so a body that never ran its
+     * teardowns keeps the pooled rows — and through them this whole body —
+     * reachable for the life of the page.
+     *
+     * The per-row teardowns run first because the inherited teardown is what
+     * disposes the pooled rows they are registered against, and a source
+     * teardown removes a mousedown listener from its row: running it afterwards
+     * would reach into a component whose handle has already been released.
+     */
+    protected destructor(): void {
+        for (const teardown of this._rowDnDTeardowns.values()) {
+            teardown();
+        }
+
+        this._rowDnDTeardowns.clear();
+
+        this._emptyAreaDropTeardown?.();
+        this._emptyAreaDropTeardown = null;
+
+        super.destructor();
+    }
+
+    /**
      * Wires the reparent callbacks supplied by `TreeTable`. Installed
      * once at construction so per-row DnD has everything it needs by
      * the time `afterRowBound` first runs.

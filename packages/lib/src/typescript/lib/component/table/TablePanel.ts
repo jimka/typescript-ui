@@ -126,10 +126,15 @@ class TablePanel extends Container {
     }
 
     /**
-     * Unsubscribes this panel's store listeners, then runs the inherited
-     * teardown.
+     * Disposes the loading-overlay spinner and unsubscribes this panel's store
+     * listeners, then runs the inherited teardown. The spinner is mounted by
+     * `showOverlay`, which raw-appends it onto the table's element rather than
+     * registering it as a child of this panel, so the inherited recursion over
+     * the child list never reaches it.
      */
     protected destructor(): void {
+        this._spinner?.dispose();
+
         this._store.off('loadingchange', this._handleLoadingChange);
         this._store.off('add', this._refreshSyncButtonsBound);
         this._store.off('remove', this._refreshSyncButtonsBound);

@@ -51,6 +51,13 @@ class Window extends AbstractWindow {
     // the dock already moved the content out.
     private _headerDragShift: boolean = false;
     private _headerDragComponentId: string = "";
+    // Unregisters the header's tab-dock drag source (see wireMoveTrigger). Held
+    // so the destructor can run it: the manager's registry is process-wide, so a
+    // discarded teardown would keep the header — and through it this whole
+    // window — alive for the life of the page. A plain initializer is safe;
+    // `wireMoveTrigger` runs from `initChrome`, called from the constructor body
+    // after this has run.
+    private _headerDragTeardown: (() => void) | null = null;
     private readonly _boundCaptureHeaderShift: (e: MouseEvent) => void = (e: MouseEvent) => this.captureHeaderShift(e);
     private readonly _boundOnHeaderMouseDown: (e: MouseEvent) => void = (e: MouseEvent) => this.onHeaderMouseDown(e);
     private readonly _boundOnTitleGlyphClick: () => void = () => this.onTitleGlyphClick();
@@ -162,11 +169,29 @@ class Window extends AbstractWindow {
         // drag source so it runs first); the drag source vetoes a plain (no-Shift)
         // press so the normal window move runs.
         Event.addSubtreeListener(this._header, "mousedown", this._boundCaptureHeaderShift);
-        DragManager.makeDragSource(this._header, {
+        this._headerDragTeardown = DragManager.makeDragSource(this._header, {
             dragData: (): DragData => this.buildHeaderDragData(),
             onDragStart: (): boolean | void => this.onHeaderDragStart(),
             onDragEnd: (_detail: DragEventDetail, dropped: boolean): void => this.onHeaderDragEnd(dropped),
         });
+    }
+
+    /**
+     * Unregisters the header's tab-dock drag source before the inherited
+     * teardown runs. The registration is keyed by the header's id and the drag
+     * manager holds it in a process-wide map, so a window that never ran its
+     * teardown stays reachable through that map for the life of the page.
+     *
+     * Order matters: the source teardown removes a mousedown listener from the
+     * header, and the header is a registered child that the inherited teardown
+     * destroys — running it afterwards would reach into a component whose
+     * handle has already been released.
+     */
+    protected destructor(): void {
+        this._headerDragTeardown?.();
+        this._headerDragTeardown = null;
+
+        super.destructor();
     }
 
     /**

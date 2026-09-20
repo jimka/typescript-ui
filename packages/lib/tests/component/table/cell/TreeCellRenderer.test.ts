@@ -12,6 +12,8 @@ import fontMetrics from '../../../dom/font-metrics.test-font.json';
 import { TreeCellRenderer } from '~/component/table/cell/renderer/TreeCell';
 import { StringRenderer } from '~/component/table/cell/renderer/String';
 import { Insets } from '~/primitive/Insets';
+import { Diagnostics } from '~/core/Diagnostics';
+import { _ruleCacheKeys } from '~/core/StyleTarget';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -110,5 +112,74 @@ describe('TreeCellRenderer tree state', () => {
 
         r.setTreeState(1, true, true);
         expect(r.getToggle()).toBe(toggle);
+    });
+});
+
+// Mirrors tests/component/button/Button.test.ts's "strands neither a component
+// nor a stylesheet rule" case — the landed fix for the same "dispose the
+// outgoing instance" shape — reading the same two exact, deterministic
+// quantities: the construct/destroy balance and the rule-cache key count.
+describe('TreeCellRenderer toggle swap', () => {
+
+    /** Live `Component` instances, as the diagnostics counters see them. */
+    function liveComponents(): number {
+        const counters = Diagnostics.counters();
+
+        return counters.componentsConstructed - counters.componentsDestroyed;
+    }
+
+    /**
+     * Builds a rendered branch renderer, drives one `setTreeState` per entry
+     * in `expansions` — each flip building a fresh toggle glyph — and disposes
+     * it.
+     */
+    function driveToggles(expansions: boolean[]): void {
+        const r = new TreeCellRenderer(new StringRenderer());
+
+        r.getElement(true);
+
+        for (const expanded of expansions) {
+            r.setTreeState(0, true, expanded);
+        }
+
+        r.dispose();
+    }
+
+    /**
+     * Asserts that a whole build → flip → dispose round trip leaves the live
+     * component count and the rule-cache key count exactly where it found
+     * them. The round trip is run twice: the first pass is a warm-up, since
+     * the first renderer of the process materialises shared class-tier rules
+     * that no instance's dispose() is meant to reclaim.
+     */
+    function expectRoundTripStrandsNothing(expansions: boolean[]): void {
+        driveToggles(expansions);
+
+        const components = liveComponents();
+        const rules      = _ruleCacheKeys().length;
+
+        driveToggles(expansions);
+
+        expect(liveComponents()).toBe(components);
+        expect(_ruleCacheKeys().length).toBe(rules);
+    }
+
+    // The control case. One glyph is built and is still the current toggle at
+    // dispose(), so nothing is ever swapped out and nothing can leak from the
+    // swap path. It passes before the swap-path fix as well as after, which is
+    // what makes the three-swap case below evidence: the N−1 gap between them
+    // is the proof that the *current* toggle is already reclaimed by the base
+    // destructor's recursion over `_components` (the toggle is added with
+    // `addComponent`), and therefore that this renderer needs a disposal in
+    // the swap and no `destructor()` of its own.
+    it('strands neither a component nor a stylesheet rule when the toggle is never swapped', () => {
+        expectRoundTripStrandsNothing([false]);
+    });
+
+    // Three glyphs are built; the first two are swapped out by the calls that
+    // follow them and the third is still current at dispose(). Before the fix
+    // this stranded exactly two — one per swap.
+    it('strands neither a component nor a stylesheet rule across three toggle swaps', () => {
+        expectRoundTripStrandsNothing([false, true, false]);
     });
 });

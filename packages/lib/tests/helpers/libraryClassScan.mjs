@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-// Scans the library source for classes matching the two registry tests'
-// patterns, so `dispose-full-teardown.test.ts` and
-// `dispose-listener-teardown.test.ts` derive their expected class lists at
-// run time instead of carrying a hand-written count that can drift silently.
+// Scans the library source for classes matching the three registry tests'
+// patterns, so `dispose-full-teardown.test.ts`,
+// `dispose-listener-teardown.test.ts` and `dispose-drag-teardown.test.ts`
+// derive their expected class lists at run time instead of carrying a
+// hand-written count that can drift silently.
 // This lives in a plain-ESM module rather than in the tests themselves
 // because `tsconfig.test.json` builds a deliberately Node-types-free
 // program — its `include` omits `vite.config.ts` and `scripts/`, which are
@@ -33,6 +34,11 @@ const DESTRUCTOR_DECLARATION = /^\s*protected destructor\(/;
 
 /** The listener registry's source of truth. */
 const SELF_LISTENER_REGISTRATION = /Event\.add(Listener|SubtreeListener|ViewportListener)\(\s*this\s*,/;
+
+/** The drag-teardown registry's source of truth. The lookahead skips JSDoc
+ *  continuation lines, so `DragManager.ts`'s own `@example` block and the
+ *  `{@link}` references in `TreeBody`'s method docs are not matches. */
+const DRAG_REGISTRATION = /^(?!\s*\*).*DragManager\.make(DragSource|DropTarget)\(/;
 
 /** Recursively lists every `.ts` file under `dir`. */
 function listSourceFiles(dir) {
@@ -98,4 +104,9 @@ export function classesDeclaringDestructor() {
 /** Class names calling `Event.addListener(this, ...)` / `addSubtreeListener` / `addViewportListener` — the listener registry's source of truth. */
 export function classesRegisteringEventListeners() {
     return classesMatching(SELF_LISTENER_REGISTRATION);
+}
+
+/** Class names calling `DragManager.makeDragSource(` / `makeDropTarget(` — the drag-teardown registry's source of truth. */
+export function classesRegisteringDragTargets() {
+    return classesMatching(DRAG_REGISTRATION);
 }
