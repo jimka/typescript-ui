@@ -1150,3 +1150,12 @@ page resets to empty.
   The toast now takes `LayerManager.Band.Notification` (10500), which the
   bounded allocator keeps the dropdown band below. No consumer action is
   needed.
+
+- **Live toasts now follow the viewport.** `Notification` places its stack in
+  the bottom-right corner but registered no `resize` listener, so a toast
+  already on screen stayed at the corner the viewport had when it was shown —
+  stranded mid-screen after the window grew, and off the bottom or right edge
+  after it shrank — until the next `show()` or dismissal happened to re-stack
+  it. The stack now installs one viewport `resize` listener while any toast is
+  live, and removes it again once the last one leaves. No consumer action is
+  needed.
