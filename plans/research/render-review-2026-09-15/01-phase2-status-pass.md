@@ -72,7 +72,7 @@ Paths are relative to `packages/lib/src/typescript/lib/`.
 | C33 | open | `overlay/Notification.ts:605-619` | add a viewport `resize` listener calling the static `restack()`, torn down with the last toast |
 | C34 | open | `component/input/RadioButton.ts:365-376` vs `component/input/Checkbox.ts:450-454` | an opt-out option defaulting to today's behaviour; see the correction below |
 | C35 | open, severity down | `component/display/AbstractCanvasSurface.ts:386-389` | `&& this.hasRenderingContext()`; `syncBackingStore:285-288` is the identical guard one method away |
-| C36 | open | `component/display/AbstractCanvasSurface.ts:452-455`; `core/Component.ts:2563-2566` | have `wireChild` schedule an effective-visibility reconcile on the attached subtree |
+| C36 | open | `component/display/AbstractCanvasSurface.ts:452-455`; `core/Component.ts:2575-2578` (`scheduleEffectiveVisibilityReconcile`; the register's `:2429-2438` and `:2563-2566` have both drifted) | have `wireChild` schedule an effective-visibility reconcile on the attached subtree, guarded on `getElement()` so only genuine reparents pay the edge |
 
 ### Agenda items
 
@@ -213,14 +213,17 @@ construct/destroy balance assertion decides whether they are torn down.
 
 ## Tests that pin the current, wrong behaviour
 
-Three fixes cannot land without changing a test that asserts today's
+Several fixes cannot land without changing a test that asserts today's
 behaviour. These are deliberate contract changes and each plan must say so.
+**Two rows below were wrong as first written and are corrected here** — the
+plans checked them rather than inheriting them.
 
 | Fix | Test | What it pins |
 |---|---|---|
-| C30's already-topmost early return | `tests/overlay/LayerManager.test.ts:177-194` | that a raise always re-stamps above its prior z |
-| C35's context guard | `tests/component/display/WebGLCanvas.test.ts:136-145` | `isAnimating() === true` with a null context |
+| C30's already-topmost early return | ~~`LayerManager.test.ts:177-194`~~ → `tests/overlay/LayerManager.test.ts:259-267`, `:297-334`, `:336-362`, `:364-392` | **Corrected**: the `:176-232` block keeps passing, because every test in it raises a layer that already has a peer above. What breaks is the same-band `setBand` no-op and three parentage tests that use "was `onZIndexChanged` called?" as a proxy assertion |
+| C35's context guard | ~~`WebGLCanvas.test.ts:136-145`~~ → **23 tests**: 11 in `Canvas.test.ts`, 10 in `WebGLCanvas.test.ts`, 2 in `EffectiveVisibility.test.ts`, plus `packages/qa/tests/mount.test.ts` | **Corrected**: `shouldAnimate` is the shared base predicate, so `Canvas` is gated too — the slice report's "`WebGLCanvas` only" is wrong. The modelled sink returns a null context by design, so every animation test asserts the old contract. A `withStubContext` helper already exists in both files |
 | C34's opt-out | `tests/component/input/Checkbox.test.ts:162-195` | the synthetic click on a programmatic `setSelected` — this one is the contract the default must keep |
+| C23's strict parsing | `tests/component/input/DateField.test.ts:86` | the `2025-02-30` rollover, pinned as *documented* behaviour |
 
 Everything else in the register is uncovered on its defective path, though
 most have a neighbouring test file to extend.
@@ -248,7 +251,7 @@ rot hunt.
 ## Found while planning and implementing, not in the register
 
 Drafting and implementing the first four plans, and reviewing the result,
-turned up five things the campaign never recorded. All were measured, not
+turned up seven things the campaign never recorded. All were measured, not
 inferred.
 
 **C39 — a pointer drag whose owner is disposed mid-gesture locks the whole
@@ -313,6 +316,28 @@ incorrectness. The reviewer's suggested remedy — retiring the client when
 construction throws — contradicts the shipped plan's Architecture Decisions,
 which state the opposite as the design, so it needs its own small plan that
 revisits that decision rather than an in-flight fix.
+
+**C40 — `Checkbox.on("action")` both misses real clicks and invents fake
+ones.** Found while planning C34, and verified by probe. `on("action")` is
+`Event.addListener(this, "click", …)` — a *direct-target* listener on the
+checkbox root — while a real user click lands on the inner `_box`, and
+`Event`'s base dispatcher matches direct listeners by exact target id. So a
+genuine click never delivers `"action"` at all; the synthetic click from
+`setSelected` is its only delivery path. The same binding has a second face:
+a click in the root's *dead area*, the gap between box and label, does reach
+the direct listener and fires `"action"` with no state change. `RadioButton`
+is the correct sibling here — its `"action"` is `Event.addListener(this,
+"change", …)`, fired from `activate()`, delivering 1 per user activation, 0
+on a programmatic write and 0 on a dead-area click. Fixing this changes a
+documented event contract on a public component far more than C34's opt-out
+does, so `plans/boolean-input-action-fanout.md` deliberately scopes it out
+and records it here instead.
+
+**C25 is not hypothetical.** Planning it found the QA app's own `windows`
+panel already builds an asymmetric window whose east strip is pushed outside
+the frame, and that the same wrong-side assumption appears in two further
+locals placing the east and south bands — three corrections, not the one the
+register named.
 
 **C37 — `afterTransition`'s own `cancel()` leaks the listener it armed.**
 Exactly C15's shape, in the same file, in the method the C15 fix was going
