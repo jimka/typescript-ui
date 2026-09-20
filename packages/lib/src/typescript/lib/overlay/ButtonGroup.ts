@@ -58,6 +58,15 @@ class ButtonGroup {
     private _rovingTabIndex: RovingTabIndex | null = null;
     private _listeners: ListenerBag<ButtonGroupEvent> = new ListenerBag<ButtonGroupEvent>();
 
+    /** Per-button `"action"` handlers, held so the exact reference `addButton` registered can be removed again. */
+    private readonly _actionHandlers: Map<RadioButton | ToggleButton, () => void> = new Map();
+
+    /** The component `setContainer` wired last, held so a re-wire or `dispose` can unregister from it. */
+    private _container: Component | null = null;
+
+    /** The one `keydown` reference registered on `_container`, bound once so `removeSubtreeListener` matches it. */
+    private readonly _onContainerKeyDown: (e: KeyboardEvent) => Event.ListenerResult;
+
     /**
      * Creates a ButtonGroup, optionally populated with an initial set of buttons.
      *
@@ -65,6 +74,8 @@ class ButtonGroup {
      *   the given buttons via {@link addButtons}.
      */
     constructor(options?: ButtonGroupOptions) {
+        this._onContainerKeyDown = this.handleContainerKeyDown.bind(this);
+
         if (options?.allowDeselect !== undefined) this._allowDeselect = options.allowDeselect;
 
         if (options?.buttons !== undefined) this.addButtons(options.buttons);
@@ -129,13 +140,26 @@ class ButtonGroup {
     }
 
     /**
-     * Releases this group's own event-listener bag. The buttons this group
-     * manages, and any container passed to {@link setContainer}, each own
-     * their registrations independently and release them on their own
-     * teardown, so this only needs to clear the group's own `"selection"`
-     * listeners.
+     * Releases every registration this group made, then clears its own
+     * `"selection"` bag.
+     *
+     * @remarks The `"action"` listener on each member and the `"keydown"`
+     * listener on the container passed to {@link setContainer} are the
+     * group's own registrations, made against components it does not own, so
+     * nothing else releases them — a member or a container that outlives the
+     * group would otherwise keep driving a disposed group's reconciliation.
+     * Call this before discarding the group.
      */
     dispose(): void {
+        for (const [button, handler] of this._actionHandlers) {
+            button.off("action", handler);
+        }
+
+        this._actionHandlers.clear();
+
+        this.unwireContainer();
+
+        this._rovingTabIndex = null;
         this._listeners.clear();
     }
 
@@ -224,14 +248,26 @@ class ButtonGroup {
      * back-compat with consumers that read `getRadioName()`. Group navigation is delegated
      * to {@link RovingTabIndex} once a container has been wired via {@link setContainer};
      * both [`ToggleButton`](/api/component/button/classes/ToggleButton) and [`RadioButton`](/api/component/input/classes/RadioButton) members are registered there.
+     *
+     * Adding a button that is already a member does nothing: the group holds
+     * one `"action"` handler per button so {@link removeButton} and
+     * {@link dispose} can remove the exact reference it registered, and a
+     * second add would strand the first handler with no way to reach it.
      * @param button - The button to add to the group.
      */
     addButton(button: RadioButton | ToggleButton): this {
+        if (this._actionHandlers.has(button)) {
+            return this;
+        }
+
         this.buttons.push(button);
 
-        button.on("action", () => {
+        const handler = (): void => {
             this.updateButtonStates(button);
-        });
+        };
+
+        this._actionHandlers.set(button, handler);
+        button.on("action", handler);
 
         if (button instanceof RadioButton) {
             button.setRadioName(this._groupId);
@@ -247,6 +283,10 @@ class ButtonGroup {
     /**
      * Removes a button from the group.
      *
+     * @remarks The group also drops the `"action"` listener it registered on
+     * the button, so a removed button no longer deselects its former siblings
+     * when it is clicked — it is simply a button again, and the caller may go
+     * on using it.
      * @param button - The button to remove.
      */
     removeButton(button: RadioButton | ToggleButton): this {
@@ -257,6 +297,13 @@ class ButtonGroup {
         }
 
         this.buttons.splice(idx, 1);
+
+        const handler = this._actionHandlers.get(button);
+
+        if (handler !== undefined) {
+            button.off("action", handler);
+            this._actionHandlers.delete(button);
+        }
 
         if (this._rovingTabIndex !== null) {
             this._rovingTabIndex.remove(button);
@@ -271,30 +318,73 @@ class ButtonGroup {
      * @remarks Registers Left/Right/Up/Down arrow key handlers on the container via subtree listener.
      * Also initialises the {@link RovingTabIndex} and adds every already-registered
      * [`RadioButton`](/api/component/input/classes/RadioButton) or [`ToggleButton`](/api/component/button/classes/ToggleButton) member to it.
+     *
+     * Calling this again unwires the container wired last: its key handler is
+     * removed and the previous roving index is dropped wholesale, so only the
+     * newest container drives the group's navigation. The outgoing index's
+     * members are not swept out of it one at a time, because removing the
+     * active member from a roving index moves DOM focus — a re-wire must not
+     * do that as a side effect.
      * @param container - The component that wraps the buttons and should receive key events.
      */
     setContainer(container: Component): this {
+        this.unwireContainer();
+
         this._rovingTabIndex = new RovingTabIndex();
 
         for (const button of this.buttons) {
             this._rovingTabIndex.add(button);
         }
 
-        Event.addSubtreeListener(container, "keydown", (e: KeyboardEvent): Event.ListenerResult => {
-            if (SpatialNavigation.claimsKey(e)) { return; }
+        this._container = container;
 
-            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                this._rovingTabIndex!.moveNext();
-            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                this._rovingTabIndex!.movePrev();
-            } else {
-                return;
-            }
-
-            return { prevent: true };
-        });
+        Event.addSubtreeListener(container, "keydown", this._onContainerKeyDown);
 
         return this;
+    }
+
+    /**
+     * Steps the roving tab index on an arrow key delivered from the wired
+     * container's subtree.
+     *
+     * @param e - The keydown event as delivered by the subtree listener.
+     *
+     * @returns A disposition suppressing the browser's own arrow-key scroll
+     *   when the key moved the group's focus; nothing otherwise, which leaves
+     *   the event for [`SpatialNavigation`](/api/core/classes/SpatialNavigation)
+     *   or the page to handle.
+     */
+    private handleContainerKeyDown(e: KeyboardEvent): Event.ListenerResult {
+        if (SpatialNavigation.claimsKey(e)) { return; }
+
+        const rovingTabIndex = this._rovingTabIndex;
+
+        if (rovingTabIndex === null) {
+            return;
+        }
+
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            rovingTabIndex.moveNext();
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            rovingTabIndex.movePrev();
+        } else {
+            return;
+        }
+
+        return { prevent: true };
+    }
+
+    /**
+     * Removes the `keydown` registration from the container wired last, if
+     * there is one. A no-op for a group that was never given a container.
+     */
+    private unwireContainer(): void {
+        if (this._container === null) {
+            return;
+        }
+
+        Event.removeSubtreeListener(this._container, "keydown", this._onContainerKeyDown);
+        this._container = null;
     }
 }
 
