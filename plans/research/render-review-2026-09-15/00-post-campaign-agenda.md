@@ -57,11 +57,16 @@ go-ahead.
 
 ## Phase 2 — correctness bugs
 
-1. **The synthesis's open register.** 27 of C1–C36 are open by the record:
+1. **The synthesis's open register.** 27 of C1–C36 were open by the record:
    C6–C16, C18, C19, C21–C27, C29–C31 and C33–C36. No plan since wave 0 claims
    any of them, but waves 1 and 2 edited several of the same files (`Text`,
-   `Button`, the layout base), so planning starts with a status pass against
-   `master`. `00-agenda.md` Decision 1 wanted C6, C7 and C8 not to wait
+   `Button`, the layout base), so planning started with a status pass against
+   `master`. **That pass ran 2026-09-20 at `82f012b1` —
+   `01-phase2-status-pass.md`.** 25 are open; C12 and C13 are closed (wave 1's
+   `8d8adb29` and C1's `6b8e0d5a`, both with regression tests). The pass also
+   corrected the register in six places, grouped the work into ten plans, and
+   found that C6, C22 and C27 are one bug family rather than three.
+   `00-agenda.md` Decision 1 wanted C6, C7 and C8 not to wait
    (growing leaks on paths the target app runs); C6 was meant to ride in G07
    and did not, and C7 was meant to ride in G25, which is wave 3 — both come
    here instead.
@@ -69,8 +74,10 @@ go-ahead.
    extra Tab stop per close button; `Dialog`'s Tab trap takes Tab from an
    editing surface placed first or last; and two documentation gaps around
    `CellEditorPool` and the cell-editor fix's consumer-facing consequence.
-3. **The latent `CellEditorPool` ownership guard** (synthesis §5, "Latent"),
-   which C1's fix was expected to close. Confirm it did.
+3. ~~**The latent `CellEditorPool` ownership guard**~~ — **closed.** The
+   2026-09-20 status pass confirmed C1's fix closed it: `acquire` commits the
+   outgoing cell before taking the slot, and `release(cell)` takes the
+   releasing cell and returns early unless it owns the slot.
 4. **`core` still touches the DOM on import.** `core/Body.ts` declares
    `private static readonly INSTANCE: Body = new Body()`, which renders the
    page body when the module loads, so `./core` is the one entry point that
@@ -169,10 +176,14 @@ G10 and G15 stay dropped (`98-wave2-rejustification.md`,
 
 ## Open, not yet placed
 
-- `tsc -p packages/lib/tsconfig.json` reports 30 errors in test files (28 at
-  wave 0), while `npm test`'s own `tsconfig.test.json` check reports none.
-  Whether that is rot the gate misses or a stale config is the first
-  question.
+- ~~`tsc -p packages/lib/tsconfig.json` reports 30 errors~~ — **answered
+  2026-09-20: stale config, not rot.** 21 are unused locals that
+  `tsconfig.test.json` deliberately switches off (forcing the flags back on
+  reproduces exactly those 21); 9 are timer-type mismatches from
+  `tsconfig.json` having no `include`, so it compiles `build/` and the Vite
+  configs and pulls `@types/node` into the program. The bare command measures
+  the wrong program: it wants an `include` or `"types": []`, or removal from
+  this list. Still a user call, but no longer an open question.
 - `npm run docs:api` emits 14 warnings on `master`, so plans must stop
   writing a zero-warning bar into their verification, or the 14 get fixed.
 - The library's own demo app (`packages/lib/index.html`, entry
