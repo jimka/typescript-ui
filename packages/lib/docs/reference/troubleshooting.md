@@ -17,7 +17,7 @@ The single most common issue. Run through this list:
    ```typescript
    panel.addComponent(child);
    panel.doLayout();              // ← runs the layout pass
-   console.log(child.getSize()); // now non-null
+   console.log(child.getSize()); // now real numbers, not the NaN extents it reports before layout
    ```
 
 3. **Is your custom CSS missing "px"?**

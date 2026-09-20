@@ -16,12 +16,12 @@ The first three are *hints* you set. The fourth is the *outcome* the layout pass
 ## Reading the assigned size
 
 ```typescript
-const size = component.getSize();      // Size | null
-component.getWidth();                  // number | null
-component.getHeight();                 // number | null
+const size = component.getSize();      // Size | null — extents are NaN before layout
+component.getWidth();                  // number — NaN before layout
+component.getHeight();                 // number — NaN before layout
 ```
 
-These return `null` for components that haven't been laid out yet. If your code needs to compute geometry against actual pixels, defer it until at least one layout pass has run.
+A component that hasn't been laid out yet reports `NaN` extents, the sentinel meaning "never assigned" — not `null` and not `0`, so a null check will not catch it. Test with `Number.isNaN` before doing arithmetic, or defer the computation until at least one layout pass has run. `getX()` and `getY()` report the same `NaN` until something positions the component.
 
 ## Preferred-size auto-calculation
 

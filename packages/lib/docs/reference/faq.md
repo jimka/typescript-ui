@@ -93,7 +93,7 @@ Use `mouseover` / `mouseout` instead. See [Events › Hover events](/concepts/ev
 Most layout problems trace back to a single missing call or wrong constraint. Try, in order:
 
 1. **Confirm the parent has a layout manager** — bare components don't lay out children.
-2. **Add `console.log(child.getSize())` after `parent.doLayout()`** — `null` means layout hasn't run; `0×0` means it ran but produced no size.
+2. **Add `console.log(child.getSize())` after `parent.doLayout()`** — `NaN` extents mean layout hasn't run (the object itself is always returned, so a null check won't tell you); `0×0` means it ran but produced no size.
 3. **Check `getPreferredSize`** — many auto-measuring components return `null` until they're attached and measured.
 4. **Look for missing `"px"` units** — see above.
 5. **Wrap the mutation in `pauseLayout` / `resumeLayout`** — sometimes a stray re-layout in the middle of bulk changes produces ordering issues.
