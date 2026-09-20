@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 // Framework-internal registry mapping a live element `Handle` to the cancel
-// functions of the `Animation.play` transitions still running against it.
-// `Component.destructor()` consults this immediately before it releases its
-// handles, so a deferred write queued by `play`'s two-frame entrance dance —
-// or the `transition: null` reset its completion performs — never lands on a
-// handle already returned to the pool. Not exported from `core/index.ts`:
+// functions of the `Animation.play` transitions and `Animation.afterTransition`
+// waits still running against it. `Component.destructor()` consults this
+// immediately before it releases its handles, so a deferred write queued by
+// `play`'s two-frame entrance dance — or the `transition: null` reset its
+// completion performs, or the `transitionend` removal an abandoned
+// `afterTransition` wait still owes — never lands on a handle already returned
+// to the pool. Not exported from `core/index.ts`:
 // this module exists purely to let `Animation.ts` and `Component.ts` share
 // this bookkeeping without importing each other, mirroring
 // `core/ClassStyleRules.ts` and `core/ComponentDefaults.ts`.

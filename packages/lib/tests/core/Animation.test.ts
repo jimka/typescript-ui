@@ -6,7 +6,8 @@
 // element it targets: teardown releases the handle, the timer fires anyway, and
 // the write throws "DOM handle N is not registered". These tests pin the three
 // escapes from that — transitionend disarms the fallback, cancel() disarms it
-// without touching the DOM, and DOM.reset() sweeps whatever is still armed.
+// while also removing the listeners its own call registered, and DOM.reset()
+// sweeps whatever is still armed.
 //
 // transitionend never fires offline, so the fallback path is the *normal* path
 // here; it is driven with vi.useFakeTimers(). play()'s two-frame yield needs the
@@ -42,9 +43,10 @@ const DURATION_MS = 100;
 /** Comfortably past DURATION_MS + the 40 ms default fallback buffer. */
 const PAST_FALLBACK_MS = 300;
 
-// Plays driven back-to-back against one retained element by the registration-
-// balance assertion below. Ten is arbitrary but far enough above one that an
-// unbalanced registration reads as a count rather than an off-by-one.
+// Animations driven back-to-back against one retained element by the
+// registration-balance assertions below. Ten is arbitrary but far enough above
+// one that an unbalanced registration reads as a count rather than an
+// off-by-one.
 const REPEATED_PLAY_COUNT = 10;
 
 describe('Animation cancellation', () => {
@@ -453,13 +455,11 @@ describe('Animation cancellation', () => {
             expect(sink.writes.slice(mark).some((entry) => entry.op === 'removeListener')).toBe(true);
         });
 
-        it('suppresses onComplete and the listener removal when cancelled first', () => {
+        it('removes the listener and suppresses onComplete when cancelled first', () => {
             const onComplete = vi.fn();
             const component  = new Component();
 
             component.getElement(true);
-
-            const mark = sink.writes.length;
 
             const handle = Animation.afterTransition({
                 component,
@@ -467,11 +467,39 @@ describe('Animation cancellation', () => {
                 onComplete,
             });
 
+            // Cancelled twice on purpose: the handle is documented as
+            // idempotent, so the second call must not record a second removal.
+            handle.cancel();
             handle.cancel();
             vi.advanceTimersByTime(PAST_FALLBACK_MS);
 
             expect(onComplete).not.toHaveBeenCalled();
-            expect(sink.writes.slice(mark).some((entry) => entry.op === 'removeListener')).toBe(false);
+            expect(listenerOps('addListener',    'transitionend')).toBe(1);
+            expect(listenerOps('removeListener', 'transitionend')).toBe(1);
+        });
+
+        // The growth assertion in afterTransition's terms: one component, ten
+        // waits abandoned mid-flight, and the two counts must still match. An
+        // unremoved registration would leave ten listeners on an element that
+        // only ever asked for one at a time — the Accordion re-toggle leak.
+        it('leaves no listener behind across repeated cancelled waits on one retained element', () => {
+            const onComplete = vi.fn();
+            const component  = new Component();
+
+            component.getElement(true);
+
+            for (let wait = 0; wait < REPEATED_PLAY_COUNT; wait++) {
+                const handle = Animation.afterTransition({
+                    component,
+                    durationMs: DURATION_MS,
+                    onComplete,
+                });
+
+                handle.cancel();
+            }
+
+            expect(listenerOps('addListener',    'transitionend')).toBe(REPEATED_PLAY_COUNT);
+            expect(listenerOps('removeListener', 'transitionend')).toBe(REPEATED_PLAY_COUNT);
         });
 
         it('completes synchronously and cancels harmlessly when the component has no element', () => {

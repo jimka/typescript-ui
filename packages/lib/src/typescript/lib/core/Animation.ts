@@ -292,7 +292,9 @@ export namespace Animation {
 
         /**
          * Invoked when the transition completes (via `transitionend`) or when
-         * the fallback timer fires. Always called exactly once.
+         * the fallback timer fires. Always called exactly once unless the wait
+         * is cancelled — through the returned handle, or by the component's
+         * own teardown.
          */
         onComplete: () => void;
     }
@@ -312,9 +314,16 @@ export namespace Animation {
      * consistent with the framework's one-finish-only contract.
      *
      * @returns A handle whose `cancel()` abandons the wait and suppresses
-     * `onComplete`. Cancelling touches no DOM at all — unlike
-     * {@link Animation.play}'s, it does not even remove the listener it
-     * registered, leaving the `transitionend` attached but inert.
+     * `onComplete`. Cancelling removes the `transitionend` listener this call
+     * registered, so it reaches the element rather than being pure bookkeeping.
+     * That stays safe because the wait registers itself, for the component's
+     * own element, with a framework-internal pending-transition registry, and
+     * both library paths that release a component's handle — a component's
+     * teardown and its element release — run that registry's cancels before
+     * releasing. A cancel a caller is still holding is therefore already a
+     * no-op by the time the handle is gone. The same registry abandons the wait
+     * when the component is destroyed mid-transition, so `onComplete` does not
+     * run in that case.
      */
     export function afterTransition(config: AfterTransitionConfig): CancelHandle {
         const el = config.component.getElement();
@@ -328,11 +337,38 @@ export namespace Animation {
         let cancelled = false;
         let timerId: TimerId | null = null;
 
+        // Declared before `finish` so the registration below can hand the
+        // pending-transition registry the same reference — the mechanism
+        // `Component.destructor()` uses to abandon a still-running wait before
+        // releasing `el`. It forward-references `onEnd`, declared further down;
+        // nothing can call `cancel` until this function has returned, by which
+        // point `onEnd` exists. The removal is unconditional because the
+        // listener is registered synchronously below, before any caller holds
+        // this handle.
+        const cancel = (): void => {
+            if (done || cancelled) {
+                return;
+            }
+
+            cancelled = true;
+
+            if (timerId !== null) {
+                DOM.sink.clearTimeout(timerId);
+                timerId = null;
+            }
+
+            DOM.sink.removeListener(el, "transitionend", onEnd);
+
+            unregisterTransition(el, cancel);
+        };
+
         const finish = (): void => {
             if (done || cancelled) {
                 return;
             }
             done = true;
+
+            unregisterTransition(el, cancel);
 
             // transitionend won the race: disarm the fallback before it can
             // fire against an element that may be torn down by then.
@@ -344,6 +380,7 @@ export namespace Animation {
             DOM.sink.removeListener(el, "transitionend", onEnd);
             config.onComplete();
         };
+
         const onEnd = (event: TransitionEvent): void => {
             if (config.property !== undefined && event.propertyName !== config.property) {
                 return;
@@ -354,20 +391,9 @@ export namespace Animation {
         DOM.sink.addListener(el, "transitionend", onEnd);
         timerId = DOM.sink.setTimeout(finish, config.durationMs + (config.fallbackBufferMs ?? 40));
 
-        return {
-            cancel: (): void => {
-                if (done || cancelled) {
-                    return;
-                }
+        registerTransition(el, cancel);
 
-                cancelled = true;
-
-                if (timerId !== null) {
-                    DOM.sink.clearTimeout(timerId);
-                    timerId = null;
-                }
-            },
-        };
+        return { cancel };
     }
 
     /**
@@ -408,10 +434,11 @@ export namespace Animation {
      * and any pending frame or fallback timer is disarmed.
      *
      * @remarks Cancelling writes no styles onto the animated element, so an
-     * owner may call it from teardown. {@link Animation.play}'s handle is the
-     * one that still reaches the element: it removes the two transition
-     * listeners that call registered, which is safe because the framework
-     * cancels every transition running against a handle before releasing it.
+     * owner may call it from teardown. {@link Animation.play}'s and
+     * {@link Animation.afterTransition}'s handles are the ones that still
+     * reach the element: each removes the transition listeners its call
+     * registered, which is safe because the framework cancels every transition
+     * running against a handle before releasing it.
      * Every handle here is idempotent, and a no-op once the animation has
      * completed.
      *
