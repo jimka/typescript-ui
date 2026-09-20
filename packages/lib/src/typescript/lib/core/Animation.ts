@@ -95,13 +95,16 @@ export namespace Animation {
      * applied synchronously and `onComplete` fires on the same tick.
      *
      * @returns A handle whose `cancel()` abandons the animation and suppresses
-     * `onComplete`. Cancelling touches no DOM, so it stays safe once the
-     * element's handle has been released. The transition also registers
-     * itself, for the `el` it targets, with a framework-internal pending-
-     * transition registry that a component's teardown consults to cancel any
-     * transition still running against a handle it is about to release —
-     * so a caller never needs to track this handle purely to avoid a stray
-     * deferred write into a torn-down element.
+     * `onComplete`. Cancelling writes no styles, but it does remove the
+     * `transitionend` and `transitionstart` listeners this call registered, so
+     * it reaches the element rather than being pure bookkeeping. That stays
+     * safe because the transition registers itself, for the `el` it targets,
+     * with a framework-internal pending-transition registry, and both library
+     * paths that release an element's handle — a component's teardown and its
+     * element removal — run that registry's cancels before releasing. A cancel
+     * a caller is still holding is therefore already a no-op by the time the
+     * handle is gone, and no caller needs to track this handle purely to avoid
+     * a stray deferred write into a torn-down element.
      */
     export function play(el: Handle, config: PlayConfig): CancelHandle {
         const easing   = config.easing ?? "ease-out";
@@ -123,8 +126,28 @@ export namespace Animation {
 
         let done      = false;
         let cancelled = false;
+        let listening = false;
         let frameId: number  | null = null;
         let timerId: TimerId | null = null;
+
+        // Removes the `transitionend` / `transitionstart` pair that
+        // `applyTransitionAndTo` registered below. The `listening` flag is set
+        // only once those two registrations are made, so this reaches the DOM
+        // only while there is something registered to take away — a second
+        // call, or a cancel that arrives before the transition was ever armed,
+        // is a no-op. It closes over `finish` and `rearmFallback`, declared
+        // further down, the same forward reference `cancel` already relies on
+        // and safe for the same reason: nothing calls it until both exist.
+        const stopListening = (): void => {
+            if (!listening) {
+                return;
+            }
+
+            listening = false;
+
+            DOM.sink.removeListener(el, "transitionend",   finish);
+            DOM.sink.removeListener(el, "transitionstart", rearmFallback);
+        };
 
         // Declared before `finish` so both it and the two-frame yield below
         // can register/unregister the same reference with the pending-
@@ -136,6 +159,8 @@ export namespace Animation {
             }
 
             cancelled = true;
+
+            stopListening();
 
             if (frameId !== null) {
                 DOM.sink.cancelAnimationFrame(frameId);
@@ -157,6 +182,8 @@ export namespace Animation {
             done = true;
 
             unregisterTransition(el, cancel);
+
+            stopListening();
 
             // transitionend won the race: disarm the fallback so it can never
             // run against an element that may be torn down by then.
@@ -210,6 +237,8 @@ export namespace Animation {
 
             DOM.sink.addListener(el, "transitionend",   finish,        { once: true });
             DOM.sink.addListener(el, "transitionstart", rearmFallback, { once: true });
+            listening = true;
+
             timerId = DOM.sink.setTimeout(finish, config.durationMs + fallback);
         };
 
@@ -283,8 +312,9 @@ export namespace Animation {
      * consistent with the framework's one-finish-only contract.
      *
      * @returns A handle whose `cancel()` abandons the wait and suppresses
-     * `onComplete`. Like `play`'s, cancelling touches no DOM — it leaves the
-     * `transitionend` listener attached but inert.
+     * `onComplete`. Cancelling touches no DOM at all — unlike
+     * {@link Animation.play}'s, it does not even remove the listener it
+     * registered, leaving the `transitionend` attached but inert.
      */
     export function afterTransition(config: AfterTransitionConfig): CancelHandle {
         const el = config.component.getElement();
@@ -377,9 +407,12 @@ export namespace Animation {
      * abandon the animation mid-flight: its completion callback is suppressed
      * and any pending frame or fallback timer is disarmed.
      *
-     * @remarks Cancelling performs no DOM write, so an owner may call it from
-     * teardown without caring whether the animated element's handle has already
-     * been released. It is idempotent, and a no-op once the animation has
+     * @remarks Cancelling writes no styles onto the animated element, so an
+     * owner may call it from teardown. {@link Animation.play}'s handle is the
+     * one that still reaches the element: it removes the two transition
+     * listeners that call registered, which is safe because the framework
+     * cancels every transition running against a handle before releasing it.
+     * Every handle here is idempotent, and a no-op once the animation has
      * completed.
      *
      * @category Core

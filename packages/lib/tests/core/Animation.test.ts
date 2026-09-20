@@ -42,6 +42,11 @@ const DURATION_MS = 100;
 /** Comfortably past DURATION_MS + the 40 ms default fallback buffer. */
 const PAST_FALLBACK_MS = 300;
 
+// Plays driven back-to-back against one retained element by the registration-
+// balance assertion below. Ten is arbitrary but far enough above one that an
+// unbalanced registration reads as a count rather than an off-by-one.
+const REPEATED_PLAY_COUNT = 10;
+
 describe('Animation cancellation', () => {
     let sink:   RecordingDOMSink;
     let frames: Array<FrameRequestCallback>;
@@ -102,6 +107,15 @@ describe('Animation cancellation', () => {
         expect(call).toBeDefined();
 
         (call![2] as (event: unknown) => void)({ propertyName });
+    }
+
+    /**
+     * Counts the listener operations of one kind recorded for one event type.
+     * `beforeEach` installs a fresh recording sink, so the whole run's writes
+     * belong to the case being driven and no start index is needed.
+     */
+    function listenerOps(op: 'addListener' | 'removeListener', type: string): number {
+        return sink.writes.filter((entry) => entry.op === op && entry.args[0] === type).length;
     }
 
     /** Style writes recorded since `from`, flattened to their style patches. */
@@ -186,7 +200,7 @@ describe('Animation cancellation', () => {
             expect(onComplete).toHaveBeenCalledTimes(1);
         });
 
-        it('suppresses onComplete and every DOM write when cancelled before the fallback', () => {
+        it('suppresses onComplete and every style write when cancelled before the fallback', () => {
             const onComplete = vi.fn();
 
             const handle = Animation.play(makeElement(), {
@@ -203,8 +217,9 @@ describe('Animation cancellation', () => {
 
             expect(onComplete).not.toHaveBeenCalled();
 
-            // cancel() must touch nothing on the element — the whole point is
-            // that it stays safe after the handle has been released.
+            // cancel() must write no styles onto the element — the whole point
+            // is that it leaves the element's rendered state where it found it.
+            // The listener removals it does emit are pinned separately below.
             expect(stylesSince(mark)).toEqual([]);
         });
 
@@ -292,6 +307,103 @@ describe('Animation cancellation', () => {
 
             expect(keys).not.toContain('transition');
             expect(keys).not.toContain('opacity');
+        });
+
+        // The five cases below pin the registration balance: `play` arms a
+        // `transitionend` and a `transitionstart` listener on the element it
+        // animates, and every exit from the animation must take both away
+        // again. The element outlives the animation — a Menu fades on every
+        // show — so a registration left behind accumulates on it forever.
+        it('removes both transition listeners when the fallback timer wins', () => {
+            Animation.play(makeElement(), {
+                to:         { opacity: '1' },
+                durationMs: DURATION_MS,
+                properties: ['opacity'],
+            });
+
+            vi.advanceTimersByTime(PAST_FALLBACK_MS);
+
+            expect(listenerOps('addListener',    'transitionend')).toBe(1);
+            expect(listenerOps('addListener',    'transitionstart')).toBe(1);
+            expect(listenerOps('removeListener', 'transitionend')).toBe(1);
+            expect(listenerOps('removeListener', 'transitionstart')).toBe(1);
+        });
+
+        it('removes both transition listeners when transitionend wins', () => {
+            const listen = vi.spyOn(DOM.sink, 'addListener');
+
+            Animation.play(makeElement(), {
+                to:         { opacity: '1' },
+                durationMs: DURATION_MS,
+                properties: ['opacity'],
+            });
+
+            fireTransitionEnd(listen);
+
+            expect(listenerOps('addListener',    'transitionend')).toBe(1);
+            expect(listenerOps('addListener',    'transitionstart')).toBe(1);
+            expect(listenerOps('removeListener', 'transitionend')).toBe(1);
+            expect(listenerOps('removeListener', 'transitionstart')).toBe(1);
+        });
+
+        it('removes both transition listeners when cancelled after they were armed', () => {
+            const handle = Animation.play(makeElement(), {
+                to:         { opacity: '1' },
+                durationMs: DURATION_MS,
+                properties: ['opacity'],
+            });
+
+            handle.cancel();
+
+            expect(listenerOps('addListener',    'transitionend')).toBe(1);
+            expect(listenerOps('addListener',    'transitionstart')).toBe(1);
+            expect(listenerOps('removeListener', 'transitionend')).toBe(1);
+            expect(listenerOps('removeListener', 'transitionstart')).toBe(1);
+        });
+
+        // A cancel that arrives before the transition was ever armed must emit
+        // no removal at all — the element may already be gone, and there is
+        // nothing registered on it to take away.
+        it('removes nothing when cancelled during the two-frame yield', () => {
+            const handle = Animation.play(makeElement(), {
+                from:       { opacity: '0' },
+                to:         { opacity: '1' },
+                durationMs: DURATION_MS,
+                properties: ['opacity'],
+            });
+
+            handle.cancel();
+
+            flushFrame();
+            flushFrame();
+            vi.advanceTimersByTime(PAST_FALLBACK_MS);
+
+            expect(listenerOps('addListener',    'transitionend')).toBe(0);
+            expect(listenerOps('addListener',    'transitionstart')).toBe(0);
+            expect(listenerOps('removeListener', 'transitionend')).toBe(0);
+            expect(listenerOps('removeListener', 'transitionstart')).toBe(0);
+        });
+
+        // The growth assertion: one element, ten animations, and the two counts
+        // must still match. An unremoved registration would leave twenty
+        // listeners on an element that only ever asked for two at a time.
+        it('leaves no listener behind across repeated plays on one retained element', () => {
+            const el = makeElement();
+
+            for (let play = 0; play < REPEATED_PLAY_COUNT; play++) {
+                Animation.play(el, {
+                    to:         { opacity: '1' },
+                    durationMs: DURATION_MS,
+                    properties: ['opacity'],
+                });
+
+                vi.advanceTimersByTime(PAST_FALLBACK_MS);
+            }
+
+            expect(listenerOps('addListener',    'transitionend')).toBe(REPEATED_PLAY_COUNT);
+            expect(listenerOps('addListener',    'transitionstart')).toBe(REPEATED_PLAY_COUNT);
+            expect(listenerOps('removeListener', 'transitionend')).toBe(REPEATED_PLAY_COUNT);
+            expect(listenerOps('removeListener', 'transitionstart')).toBe(REPEATED_PLAY_COUNT);
         });
     });
 
