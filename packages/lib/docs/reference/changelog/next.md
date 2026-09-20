@@ -937,6 +937,23 @@ page resets to empty.
   is gone and the direction is now assigned unconditionally. No consumer
   action is needed.
 
+- **`DateField` and `DateTimeField` no longer commit a date the typed text
+  never named.** Both parsed their absolute form through `new Date`, which
+  accepts the prefixes a user types on the way to a full date — `2026` became
+  1 January and `2026-09` the 1st of September — and rolls an impossible day
+  forward, so `2025-02-30` committed 2 March. Typing one ten-character date
+  therefore fired three `change` events and flashed the invalid border three
+  times. The absolute form is now read back exactly as it is written: a
+  complete, zero-padded `YYYY-MM-DD` naming a real calendar day, and anything
+  else leaves the field invalid until blur clears it. `DateTimeField`'s time
+  half moves to `TimeField`'s own rule with it, so it starts accepting an
+  unpadded `9:5`, stops accepting a UTC/offset-suffixed time (`14:30Z`,
+  `14:30+02:00`) or trailing text after the time, and now drops the
+  sub-second part of a fractional second instead of keeping it — none of
+  which `formatValue` produces. A consumer feeding one of those forms back
+  into a field should format it the way the field does. `TimeField` is
+  unchanged.
+
 ### Data
 
 - **A store holding 1,000 records or more now builds its view.** Above that
