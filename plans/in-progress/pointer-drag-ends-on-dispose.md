@@ -665,3 +665,63 @@ only documentation change is the changelog entry in step 9.
     would make the manual check in `## Expected Behaviour` impossible to
     perform, so a regression of the general fix would become harder to notice,
     not easier.
+
+---
+
+## Implementation Notes
+
+Five deviations, all small and none touching the plan's design:
+
+- **`Scrollbar`'s registry row constructs it as `new Scrollbar('vertical')`,
+  not `new Scrollbar({ vertical: true })`** as *Each of the four sites* has
+  it. `Scrollbar`'s first positional parameter is
+  `orientation: AxisOrientation` (`"vertical" | "horizontal"`), with the
+  options bag second, so the plan's call would not have compiled. The row
+  builds the same vertical scrollbar the plan intended.
+- **Each `REGISTRY` row also asserts the cursor pinned while the drag is
+  armed**, not only `addClass`. The plan's per-row assertion block checks the
+  class alone, while its table gives a cursor per row; asserting it is what
+  proves the write came from *that* site's drag rather than from anything else
+  that might have armed the chrome.
+- **`beginViewportDrag` / `endViewportDrag` had their JSDoc updated** to name
+  `beginPointerDrag(component, cursor)` / `endPointerDrag(component)`. Their
+  signatures are unchanged as the plan requires; only the prose naming the old
+  call shapes, which this change made wrong, moved.
+- **`libraryClassScan.mjs`'s header comment now says "four registry tests"**
+  and lists the new test file beside its three siblings, for the same reason.
+- **Two documentation sites outside `## Documentation Impact` were updated.**
+  That section concluded "the only documentation change is the changelog
+  entry", derived from a `grep` for `PointerDrag` across `docs/` — which
+  cannot find a page that enumerates what teardown does without naming the
+  module. Two such enumerations exist and both were left inaccurate by the
+  fix: `Component.dispose()`'s own JSDoc, which restates `destructor()`'s
+  list and is public where `destructor()`'s is not, and the `dispose()` bullet
+  under *Disposal* in `docs/concepts/component-lifecycle.md`. Both now carry
+  the same "ends any pointer drag it had armed" clause step 3 added to
+  `destructor()`; nothing else in either was touched.
+
+Three of the new cases assert a negative — *another component's dispose does
+not*, *a drag already ended is forgotten*, *a second dispose writes nothing
+further* — and a fourth, *the site's drag-stop callback does not run*, asserts
+a callback count of zero. All four pass on the unfixed code, so each was
+earned instead by a deliberate mutation: making `endPointerDragFor` ignore its
+id fails the first two, dropping its delete-before-invoke fails the third, and
+driving a real `onDragStop()` in place of the dispose raises the callback count
+to one, proving the listener live. The four site rows and *an ancestor's
+dispose reaches it* were seen failing on the unfixed code first, and *the
+owner's dispose ends the drag* was seen failing with the registry in place but
+the destructor hook not yet added.
+
+The manual check in *Expected Behaviour* — the QA app's `windows` panel — was
+**not run** by the implementer: every QA run opens a full-screen window on the
+user's desktop and needs their go-ahead. The offline assertions cover all four
+sites' document-element state, but none of them exercises a real browser's hit
+testing.
+
+**Confirmed in a real engine by the user, 2026-09-20.** The reproduction that
+found C39 — several `Window`s opened in the library's demo app under
+`npm run dev`, then closed in rapid succession with the cursor crossing the
+border strips — no longer locks the page on this branch. That is the evidence
+the offline suite cannot produce, and it is what closes the bug; the new
+four-row registry in `tests/component/dispose-pointer-drag-teardown.test.ts`
+is what keeps it closed.
