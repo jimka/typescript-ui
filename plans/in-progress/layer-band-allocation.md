@@ -838,3 +838,71 @@ deleted constant.
     already does. What it does not model is rAF (a recorded no-op) or a real
     timer wall-clock, which is what leaves the entrance animation and
     auto-dismiss out. The scope note is therefore narrowed, not deleted.
+
+---
+
+## Implementation Notes
+
+**The `docs:api` bar is no *new* warnings, not zero.** *Verification* asks for
+`npm run docs:api` to "finish with zero warnings". The repository's start point
+(`54d9b6c3`) already emits 14, every one of them a `{@link}` from a public
+symbol to an excluded internal in files this plan does not touch. The bar
+applied was therefore that the count and the warning list both stay exactly
+what they were: both do, 14 and identical line for line.
+
+**The `onZIndexChanged` JSDoc was rewritten on the interface and on three of
+its four implementors.** Step 6 names only `register`'s JSDoc, but the hook's
+interface comment called itself an "optional re-stamp hook" called "when
+`bringToFront` re-allocates the layer" — a description `register` reporting
+its own stamp makes false. It now says the manager calls it with every z-index
+it assigns, and names the four sources (register, a raise, `setBand`, a band
+compaction). `AbstractWindow`, `Menu` and `AnimatedDropdown` each repeated the
+old claim in their own override's JSDoc and say the same thing now;
+`AbstractWindow`'s is the one that mattered most, since after step 6 the hook
+is the *only* writer of a window's first z-index. `Drawer`'s ("when the drawer
+is re-stamped") was already generic enough to stay true.
+
+**Expected Behaviour row 16 gained one assertion.** As the plan words it, the
+case asserts only that the listener count returns to its pre-toast value —
+which was already true before the implementation existed, because nothing
+installed a listener to return from. The case now also asserts the count rose
+by one while the toast was live, so it fails for the right reason first and
+still pins the removal afterwards.
+
+**`packages/qa/README.md`'s `windows` row was updated too**, though step 18
+names only the panel file. Two of that row's columns describe what the panel
+*builds* and which geometry labels it offers, and both went stale the moment
+the panel gained a pinned window, a toast and a `geometry.pinned` label; they
+now match. Its *Reproduces* and *Validated* columns are deliberately left
+alone: *The symptom rule* records a finding there only once a run has shown
+its symptom, and no run was made — see below.
+
+**`FALLBACK_BAND_HEADROOM`'s comment does not repeat the plan's wording.**
+*Internal Structure* describes the fallback as the headroom for a base "above
+every listed one, or between two of them", but `bandCeiling` returns the first
+listed base greater than `band`, so a base *between* two listed ones is bounded
+by the next listed base like any other and never reaches the fallback at all.
+The comment and the JSDoc say what the code does instead.
+
+**Three `LayerManager` cases were added beyond the Expected Behaviour rows.**
+Rows 6-8 read `getZIndex` alone, which leaves two properties of the compaction
+unpinned: that it renumbers a band in stacking order rather than registration
+order (row 8 names this, but a 5,000-raise run ends with the raised layer on
+top either way, so it cannot tell the two apart), and that it reports each
+moved stamp through `onZIndexChanged` — the half without which a compaction
+silently desynchronises every surface from the stamp it now holds. The third
+is `bandCeiling`'s fallback: *Internal Structure* specifies it and it is
+reachable from any `getBand()` above `Band.Tooltip`, but no row covers it, so
+nothing would have run that branch. All three are now driven deterministically
+— two layers, one raised over the other, a band spent down to its last stamp,
+and a third layer's registration to trip the ceiling — and each was confirmed
+to fail when the line it pins is removed.
+
+**Nothing was run under `packages/qa`.** Every run opens a full-screen window
+on the user's desktop, so neither the `windows, drive=click:1200` arm for C30
+nor the `windows, seam=1` arm for C33 was started, and Expected Behaviour rows
+17 and 18 (the two visual checks) are unverified. What *is* verified offline is
+every other Expected Behaviour row, rows 1-16, by the tests named against them.
+The library was built in the worktree (`npm run build:lib`) only so that
+`packages/qa`'s own unit tests could resolve the package; they pass, 244 of
+them, and no panel was mounted.
