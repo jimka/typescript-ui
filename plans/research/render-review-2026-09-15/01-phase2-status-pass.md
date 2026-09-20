@@ -296,9 +296,19 @@ nothing times any later request. A worker that boots, answers once, then
 stops answering leaves its `sortFilter` promise unsettled, so
 `applyViewOnWorker`'s `catch` never fires and `applyView()` never resolves —
 the original symptom exactly: the table stays empty and `load` never fires.
-This is reachable rather than theoretical, because `filterBy` serialises
-**custom filter predicates** into the worker, so a consumer's own predicate
-that loops forever hangs it with no error to catch. The one-shot probe was a
+~~Reachable because `filterBy` serialises custom filter predicates.~~
+**That premise was wrong, and it was mine** — corrected 2026-09-20 while
+planning the fix. No consumer function ever reaches the worker:
+`filterBy(descriptor: FilterDescriptor)` takes a closed union of thirteen
+data-only shapes with no function member, `filter(property, value)` is data
+too, and a `sorterFn` is forced in-process by `hasCustomSorter()`. What
+stays reachable is the engine killing or suspending the worker, and a
+request the worker cannot deserialise — `StoreWorker.ts` sets no
+`self.onmessageerror`. **A documentation defect falls out of this:**
+`docs/concepts/performance.md`'s "Filter functions are serialised" warning
+box and `docs/reference/troubleshooting.md`'s "Custom filter functions are
+not transferable" bullet both describe passing predicates to `filterBy`,
+which the signature does not permit. Both are corrected by the fix's plan. The one-shot probe was a
 deliberate choice (the plan's Architecture Decisions: a genuinely long sort
 must not be mistaken for a dead script), so the fix is a per-request
 deadline generous enough not to punish a slow sort, not a change of design.
