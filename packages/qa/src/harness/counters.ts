@@ -103,6 +103,26 @@ export function stopCounting(units: number): PhaseCounts {
 }
 
 /**
+ * Runs `work` with every counter family paused, so a driver's own setup and
+ * teardown stay out of the counting window. Counting is restored to what it
+ * was before, also when `work` throws.
+ *
+ * @param work - The unmeasured work.
+ * @returns What `work` resolves to; rejects with whatever it throws.
+ */
+export async function suspendCounting<T>(work: () => Promise<T>): Promise<T> {
+    const wasCounting = counting;
+
+    counting = false;
+
+    try {
+        return await work();
+    } finally {
+        counting = wasCounting;
+    }
+}
+
+/**
  * Divides every tally by `units`, rounded to hundredths, largest first.
  *
  * @param counts - Tallies over the whole window.

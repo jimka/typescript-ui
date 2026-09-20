@@ -477,9 +477,9 @@ Figures are per unit, from one run of each panel at its default `n` unless state
   - the three size-hint families sum to 125.
 - **M25 `ComboBox` pass (F16.3).** `passes` with `passes=combo&seam=1`: `seam.sink.apply` = 7.
 - **M26 `menus` (F12.3).** `toggle` with `seam=1`, per unit:
-  - sink total (`sink/u`) 412;
-  - `ensureStyleRule` 6, `setRuleStyles` 7, `deleteStyleRule` 6;
-  - `measureTexts` 0.5, and no `measureText`.
+  - sink total (`sink/u`) **456.68**, measured 2026-09-20 in MiniBrowser (`val-menus`). This supersedes the 412 derived from the offline census below (half of a re-open's 812 plus a hide's 12): every other counter in the phase lands where the census put it, so the whole 44.68 is in `apply`, measured 338.2 — writes the modelled DOM does not make;
+  - `ensureStyleRule` 6, `setRuleStyles` 7.03, `deleteStyleRule` 6 — the census's rule figures, exactly;
+  - `measureTexts` 0.5, and no `measureText` — the batched measure, exactly.
 - **C25.** Any `windows` run with `geom=1`: every `geometry.southStrip` sample has height 12.
 - **M27 shakedown.** Every panel runs once with every driver it declares (the runs are under *Verification*):
   - no report carries `error`;

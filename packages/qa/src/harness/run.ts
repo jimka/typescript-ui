@@ -14,10 +14,11 @@ import {
     installWriteCounters,
     startCounting,
     stopCounting,
+    suspendCounting,
 } from './counters.js';
 import { countPainted, elementOf, findButtonByText, fireMouse, isPainted, sleep, waitFor } from './dom.js';
 import { DRIVERS } from './drivers.js';
-import { currentFrame, measureIdle, runFrames, runPasses, summarize } from './frames.js';
+import { currentFrame, measureIdle, runFrames, runPasses, summarize, waitFrames } from './frames.js';
 import { setGeometryTargets, snapshotBefore, takeGeometry } from './probes.js';
 import { className, findComponent, findLayoutManager, isA, noopOnOwningProto, ownerProto, rootOwnerProto, walkComponents } from './tree.js';
 import type { AnyObj, GeometryTarget, HarnessLibrary, HarnessTools, PanelHost, PhaseReport, QaReport, RunOptions, Subject } from './types.js';
@@ -405,5 +406,7 @@ export function createTools(lib: HarnessLibrary): HarnessTools {
         currentFrame,
         runFrames,
         runPasses,
+        suspendCounting,
+        waitFrames,
     };
 }

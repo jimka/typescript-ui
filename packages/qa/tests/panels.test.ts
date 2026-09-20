@@ -9,7 +9,7 @@
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { Body, DOM } from '@jimka/typescript-ui/core';
+import { Body, DOM, Panel } from '@jimka/typescript-ui/core';
 import type { Component } from '@jimka/typescript-ui/core';
 import type { ChartSeries } from '@jimka/typescript-ui/component/chart';
 import { installSeamCounters, startCounting, stopCounting } from '../src/harness/counters.js';
@@ -18,6 +18,8 @@ import { createTools, parseDrive } from '../src/harness/run.js';
 import { mountPanel } from '../src/mount.js';
 import type { MountWaits } from '../src/mount.js';
 import { getPanelIds, loadPanel, parseScale } from '../src/panels.js';
+import type { PanelBuild } from '../src/panels.js';
+import { pageTargets } from '../src/pageTargets.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC_DIR = path.resolve(HERE, '../src');
@@ -37,6 +39,23 @@ const RECORD_MARKS = 210;
 const LAYOUT_WIDTH = 400;
 const LAYOUT_HEIGHT = 300;
 
+/**
+ * The drivers of a default drive that a build leaves without a target: in
+ * neither its own targets nor the page-wide ones `mountPanel` merges under
+ * them.
+ *
+ * @param defaultDrive - The panel's default drive.
+ * @param build - What the panel's `build` returned.
+ * @returns The drivers with no target, in the drive's order.
+ */
+function untargetedDrivers(defaultDrive: string, build: PanelBuild): string[] {
+    const pageWide = Object.keys(pageTargets(build.root));
+
+    return parseDrive(null, defaultDrive, 1)
+        .map(({ driver }) => driver)
+        .filter((driver) => build.targets[driver] === undefined && !pageWide.includes(driver));
+}
+
 describe('P1 panel contract', () => {
     it.each(getPanelIds())('%s exports the contract and targets its default drive', async (id) => {
         const module = await loadPanel(id);
@@ -51,11 +70,17 @@ describe('P1 panel contract', () => {
         const build = module!.build(module!.defaultScale, new URLSearchParams());
 
         if (!build.afterMount) {
+            expect(untargetedDrivers(module!.defaultDrive, build), `${id} drivers without a target`).toEqual([]);
+
             for (const { driver } of phases) {
-                expect(build.targets[driver], `${id} target for ${driver}`).toBeDefined();
                 expect(Object.keys(DRIVERS)).toContain(driver);
             }
         }
+    });
+
+    it('counts a page-wide target as present', () => {
+        expect(untargetedDrivers('theme:4', { root: Panel(), targets: {} })).toEqual([]);
+        expect(untargetedDrivers('idle,passes', { root: Panel(), targets: {} })).toEqual(['passes']);
     });
 
     it('loads nothing for an unknown id', async () => {
@@ -178,7 +203,7 @@ function recordingWaits(): { waits: MountWaits; calls: unknown[][] } {
 describe('P6 mount sequence', () => {
     const tools = createTools({ Body, DOM });
 
-    it('mounts chart-line at the URL scale and waits once each', async () => {
+    it('mounts chart-line at the URL scale, settles again after afterMount, and merges the targets', async () => {
         const { waits, calls } = recordingWaits();
         const mounted = await mountPanel('chart-line', new URLSearchParams('n=20'), tools, waits);
         const root = mounted.build.root;
@@ -186,9 +211,12 @@ describe('P6 mount sequence', () => {
         expect(mounted.n).toBe(20);
         expect(mounted.targets.resize).toBe(root);
         expect(mounted.targets.passes).toBe(root);
+        expect(mounted.targets.hover).toEqual({ element: tools.elementOf(root), axis: 'x' });
+        expect(mounted.targets.idle).toBe(root);
+        expect(mounted.targets.theme).toEqual({ cycle: expect.any(Function), restore: expect.any(Function) });
         expect(document.contains(tools.elementOf(root))).toBe(true);
         // Compared by name and reference: a deep comparison would walk the component graph.
-        expect(calls.map((call) => call[0])).toEqual(['painted', 'settled']);
+        expect(calls.map((call) => call[0])).toEqual(['painted', 'settled', 'settled']);
         expect(calls[0][1]).toBe(root);
         expect(calls[0][2]).toBe('chart-line');
     });
