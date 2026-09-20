@@ -333,6 +333,7 @@ interface TreePrivate {
     _flatten(): void;
     _onToggle(node: TreeNode): void;
     _isExpandable(node: TreeNode): boolean;
+    _reflattenAndRender(): void;
     _selectAtIndex(index: number): void;
     _extendSelectionTo(index: number): void;
     _onKeyDown(e: KeyboardEvent): void;
@@ -341,7 +342,7 @@ interface TreePrivate {
     _loadedNodes: Set<TreeNode>;
     _selectedNodes: Set<TreeNode>;
     _loadingNodes: Set<TreeNode>;
-    _pendingExpansions: Map<TreeNode, Promise<boolean>>;
+    _pendingLoads: Map<TreeNode, { settled: Promise<unknown> }>;
     _anchorNode: TreeNode | null;
     _focusNode: TreeNode | null;
 }
@@ -2013,6 +2014,26 @@ describe('Tree — node-level updates', () => {
         };
     }
 
+    /**
+     * A lazy node whose every `loadChildren` call stays pending until
+     * `calls[i]` settles it, for a node that two loads fetch at once.
+     */
+    interface HeldLazyCalls {
+        node:  TreeNode;
+        load:  Mock<() => Promise<TreeNode[]>>;
+        calls: Array<{ resolve: (children: TreeNode[]) => void; reject: (error: unknown) => void }>;
+    }
+
+    function heldLazyCalls(label: string): HeldLazyCalls {
+        const calls: HeldLazyCalls['calls'] = [];
+
+        const load = vi.fn(() => new Promise<TreeNode[]>((resolve, reject) => {
+            calls.push({ resolve, reject });
+        }));
+
+        return { node: { label, hasChildren: true, loadChildren: load }, load, calls };
+    }
+
     // --- insertNode --------------------------------------------------------
 
     it('insertNode at the root level writes into the same root array, clamping the index to [0, length]', () => {
@@ -2263,7 +2284,7 @@ describe('Tree — node-level updates', () => {
         expect(L.node.children).toBeUndefined();
         expect(priv._loadingNodes.has(L.node)).toBe(false);
         expect(priv._loadedNodes.has(L.node)).toBe(false);
-        expect(priv._pendingExpansions.has(L.node)).toBe(false);
+        expect(priv._pendingLoads.has(L.node)).toBe(false);
         expect(events()).toBe(0);
     });
 
@@ -2323,7 +2344,7 @@ describe('Tree — node-level updates', () => {
             expect(state.has(aTs)).toBe(false);
         }
 
-        expect(priv._pendingExpansions.has(aTs)).toBe(false);
+        expect(priv._pendingLoads.has(aTs)).toBe(false);
         expect(events()).toBe(0);
     });
 
@@ -2445,6 +2466,28 @@ describe('Tree — node-level updates', () => {
         expect(P.node.children).toBe(children);
     });
 
+    it('revealByPredicate tests a node once when setChildren takes over its children while the reveal waits on its load', async () => {
+        const P = heldLazy('P');
+        const T: TreeNode = { label: 'T', data: 'target' };
+        const tree = new _Tree();
+        const tested: TreeNode[] = [];
+
+        tree.setNodes([P.node]);
+
+        const revealed = tree.revealByPredicate((data, node) => {
+            tested.push(node);
+
+            return data === 'target';
+        });
+
+        await vi.waitFor(() => expect(P.load).toHaveBeenCalled());
+        tree.setChildren(P.node, [T]);
+        P.resolve([{ label: 'other' }]);
+
+        expect(await revealed).toBe(T);
+        expect(tested).toEqual([P.node, T]);
+    });
+
     it('removeNode of an earlier sibling while revealByPredicate awaits a load does not make the reveal skip a later sibling', async () => {
         const Z: TreeNode = { label: 'Z' };
         const A = heldLazy('A');
@@ -2476,6 +2519,1000 @@ describe('Tree — node-level updates', () => {
         expect(tree.getExpandedNodes()).toContain(P);
         expect(flatLabels(tree)).toEqual(['P']);
         expect(load).not.toHaveBeenCalled();
+    });
+
+    // --- loads racing structural calls -------------------------------------
+
+    // Each reveal case parks the walk on a held lazy load, changes the tree
+    // while it waits, then lets the load settle. The walk must search the
+    // tree as it stands afterwards: skip nothing it holds, return nothing it
+    // dropped, and cache nothing for a node it dropped.
+
+    it('revealByPredicate does not return a later matching sibling that removeNode took out while the walk awaited a load', async () => {
+        const A = heldLazy('A');
+        const T: TreeNode = { label: 'T', data: 'target' };
+        const tree = new _Tree();
+
+        tree.setNodes([A.node, T]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(A.load).toHaveBeenCalled());
+        tree.removeNode(T);
+        A.resolve([]);
+
+        expect(await revealed).toBeNull();
+        expect(tree.getExpandedNodes()).toEqual([]);
+    });
+
+    it('revealByPredicate never loads a lazy sibling that removeNode took out ahead of the walk', async () => {
+        const A = heldLazy('A');
+        const bLoad = vi.fn(async (): Promise<TreeNode[]> => [{ label: 'b' }]);
+        const B: TreeNode = { label: 'B', hasChildren: true, loadChildren: bLoad };
+        const tree = new _Tree();
+
+        tree.setNodes([A.node, B]);
+
+        const revealed = tree.revealByPredicate(() => false);
+
+        await vi.waitFor(() => expect(A.load).toHaveBeenCalled());
+        tree.removeNode(B);
+        A.resolve([]);
+
+        expect(await revealed).toBeNull();
+        expect(bLoad).not.toHaveBeenCalled();
+        expect(B.children).toBeUndefined();
+        expect(asPrivate(tree)._loadedNodes.has(B)).toBe(false);
+    });
+
+    it('revealByPredicate finds a matching node that insertNode added ahead of the walk while it awaited a load', async () => {
+        const A = heldLazy('A');
+        const Z: TreeNode = { label: 'Z' };
+        const X: TreeNode = { label: 'X', data: 'target' };
+        const tree = new _Tree();
+
+        tree.setNodes([A.node, Z]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(A.load).toHaveBeenCalled());
+        tree.insertNode(null, 1, X);
+        A.resolve([]);
+
+        expect(await revealed).toBe(X);
+    });
+
+    it('revealByPredicate finds a matching node inserted into a subtree the walk had already searched', async () => {
+        const R0: TreeNode = { label: 'R0', children: [{ label: 'C' }] };
+        const A = heldLazy('A');
+        const X: TreeNode = { label: 'X', data: 'target' };
+        const tree = new _Tree();
+
+        tree.setNodes([R0, A.node]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(A.load).toHaveBeenCalled());
+        tree.insertNode(R0, 0, X);
+        A.resolve([]);
+
+        expect(await revealed).toBe(X);
+        expect(tree.getExpandedNodes()).toEqual([R0]);
+        expect(flatLabels(tree)).toEqual(['R0', 'X', 'C', 'A']);
+    });
+
+    it('revealByPredicate commits nothing for, and returns nothing under, a lazy node that removeNode took out while its load was in flight', async () => {
+        const A = heldLazy('A');
+        const T: TreeNode = { label: 'T', data: 'target' };
+        const tree = new _Tree();
+        const priv = asPrivate(tree);
+
+        tree.setNodes([A.node]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(A.load).toHaveBeenCalled());
+        tree.removeNode(A.node);
+        A.resolve([T]);
+
+        expect(await revealed).toBeNull();
+        expect(A.node.children).toBeUndefined();
+        expect(priv._loadedNodes.has(A.node)).toBe(false);
+        expect(tree.getExpandedNodes()).toEqual([]);
+    });
+
+    it('revealByPredicate still finds a later sibling when removeNode takes out the node whose load it awaits', async () => {
+        const A = heldLazy('A');
+        const T: TreeNode = { label: 'T', data: 'target' };
+        const tree = new _Tree();
+
+        tree.setNodes([A.node, T]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(A.load).toHaveBeenCalled());
+        tree.removeNode(A.node);
+        A.resolve([]);
+
+        expect(await revealed).toBe(T);
+    });
+
+    it('revealByPredicate abandons a branch removeNode took out while the walk was inside it, and carries on after it', async () => {
+        const C0 = heldLazy('C0');
+        const T: TreeNode = { label: 'T', data: 'target' };
+        const P: TreeNode = { label: 'P', children: [C0.node, T] };
+        const Q: TreeNode = { label: 'Q', data: 'target' };
+        const tree = new _Tree();
+
+        tree.setNodes([P, Q]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(C0.load).toHaveBeenCalled());
+        tree.removeNode(P);
+        C0.resolve([]);
+
+        expect(await revealed).toBe(Q);
+        expect(tree.getExpandedNodes()).toEqual([]);
+        expect(C0.load).toHaveBeenCalledTimes(1);
+    });
+
+    it('revealByPredicate follows a setChildren that replaces the list it is walking, and finds a match in the new list', async () => {
+        const C0 = heldLazy('C0');
+        const X: TreeNode = { label: 'X', data: 'target' };
+        const P: TreeNode = { label: 'P', children: [C0.node, { label: 'C1' }] };
+        const tree = new _Tree();
+
+        tree.setNodes([P]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(C0.load).toHaveBeenCalled());
+        tree.setChildren(P, [C0.node, X]);
+        C0.resolve([]);
+
+        expect(await revealed).toBe(X);
+        expect(tree.getExpandedNodes()).toEqual([P]);
+    });
+
+    it('revealByPredicate never returns a matching root that setChildren(null, …) dropped, and finds the one it added', async () => {
+        const A = heldLazy('A');
+        const D: TreeNode = { label: 'D', data: 'target' };
+        const X: TreeNode = { label: 'X', data: 'target' };
+        const tree = new _Tree();
+
+        tree.setNodes([A.node, D]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(A.load).toHaveBeenCalled());
+        tree.setChildren(null, [A.node, X]);
+        A.resolve([]);
+
+        expect(await revealed).toBe(X);
+    });
+
+    it('a revealByPredicate load that settles after its node was removed leaves the node as the caller last set it', async () => {
+        const P = heldLazy('P');
+        const T: TreeNode = { label: 'T', data: 'target' };
+        // Matching too, so a walk that searched under the removed P would
+        // return M rather than null.
+        const mine: TreeNode[] = [{ label: 'M', data: 'target' }];
+        const tree = new _Tree();
+        const priv = asPrivate(tree);
+
+        tree.setNodes([P.node]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(P.load).toHaveBeenCalled());
+        tree.setChildren(P.node, mine);
+        tree.removeNode(P.node);
+        P.resolve([T]);
+
+        expect(await revealed).toBeNull();
+        expect(P.node.children).toBe(mine);
+        expect(priv._loadedNodes.has(P.node)).toBe(false);
+        expect(tree.getExpandedNodes()).toEqual([]);
+
+        // Moved back in, P is a new node: collapsed and unloaded, with the
+        // children the caller gave it rather than the loader's.
+        tree.insertNode(null, 0, P.node);
+
+        expect(P.node.children).toBe(mine);
+        expect(priv._loadedNodes.has(P.node)).toBe(false);
+        expect(tree.getExpandedNodes()).toEqual([]);
+    });
+
+    it('a revealByPredicate load that settles after its node was removed and put back keeps the caller\'s children, and the reveal searches those', async () => {
+        const P = heldLazy('P');
+        const M: TreeNode = { label: 'M', data: 'target' };
+        const mine: TreeNode[] = [M];
+        const tree = new _Tree();
+        const priv = asPrivate(tree);
+
+        tree.setNodes([P.node]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(P.load).toHaveBeenCalled());
+        tree.setChildren(P.node, mine);
+        tree.removeNode(P.node);
+        tree.insertNode(null, 0, P.node);
+        P.resolve([{ label: 'T', data: 'target' }]);
+
+        expect(await revealed).toBe(M);
+        expect(P.node.children).toBe(mine);
+        expect(priv._loadedNodes.has(P.node)).toBe(false);
+        expect(tree.getExpandedNodes()).toEqual([P.node]);
+        expect(P.load).toHaveBeenCalledTimes(1);
+    });
+
+    it('revealByPredicate loads a node afresh when it was removed during its load and put back, and finds the match beneath it', async () => {
+        const settles: Array<(children: TreeNode[]) => void> = [];
+        const load = vi.fn(() => new Promise<TreeNode[]>((resolve) => {
+            settles.push(resolve);
+        }));
+        const P: TreeNode = { label: 'P', hasChildren: true, loadChildren: load };
+        const T: TreeNode = { label: 'T', data: 'target' };
+        const tree = new _Tree();
+
+        tree.setNodes([P]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+        tree.removeNode(P);
+        tree.insertNode(null, 0, P);
+        settles[0]([{ label: 'stale', data: 'target' }]);
+
+        await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+        settles[1]([T]);
+
+        expect(await revealed).toBe(T);
+        expect(P.children).toEqual([T]);
+        expect(tree.getExpandedNodes()).toEqual([P]);
+    });
+
+    it('revealByPredicate follows a setNodes made while it awaits a load, searching the new roots from the first', async () => {
+        const A = heldLazy('A');
+        // Matching too, so a walk still on the old roots would return it.
+        const D: TreeNode = { label: 'D', data: 'target' };
+        const T: TreeNode = { label: 'T', data: 'target' };
+        const tree = new _Tree();
+
+        tree.setNodes([A.node, D]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        // The walk is past the first root, so reading the new roots from its
+        // old position would skip T.
+        await vi.waitFor(() => expect(A.load).toHaveBeenCalled());
+        tree.setNodes([T, { label: 'U' }]);
+        A.resolve([]);
+
+        expect(await revealed).toBe(T);
+        expect(tree.getExpandedNodes()).toEqual([]);
+    });
+
+    it('revealByPredicate abandons a branch a setNodes detached while the walk was inside it, and searches the new roots', async () => {
+        const C0 = heldLazy('C0');
+        const M: TreeNode = { label: 'M', data: 'target' };
+        const P: TreeNode = { label: 'P', children: [C0.node, M] };
+        const Q: TreeNode = { label: 'Q', data: 'target' };
+        const tree = new _Tree();
+        const priv = asPrivate(tree);
+
+        tree.setNodes([P]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(C0.load).toHaveBeenCalled());
+        tree.setNodes([Q]);
+        C0.resolve([]);
+
+        expect(await revealed).toBe(Q);
+        expect(tree.getExpandedNodes()).toEqual([]);
+        expect(priv._loadedNodes.has(C0.node)).toBe(false);
+    });
+
+    it('a revealByPredicate load for a node setNodes replaced commits nothing, and the reveal searches the new roots', async () => {
+        const A = heldLazy('A');
+        const tree = new _Tree();
+        const priv = asPrivate(tree);
+
+        tree.setNodes([A.node]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(A.load).toHaveBeenCalled());
+        tree.setNodes([{ label: 'B' }]);
+        A.resolve([{ label: 'T', data: 'target' }]);
+
+        expect(await revealed).toBeNull();
+        expect(A.node.children).toBeUndefined();
+        expect(priv._loadedNodes.has(A.node)).toBe(false);
+        expect(tree.getExpandedNodes()).toEqual([]);
+    });
+
+    it('an expand load dropped by removeNode stays dropped when the node is re-inserted and expanded again: only the newer load commits', async () => {
+        const settles: Array<(children: TreeNode[]) => void> = [];
+        const load = vi.fn(() => new Promise<TreeNode[]>((resolve) => {
+            settles.push(resolve);
+        }));
+        const L: TreeNode = { label: 'L', hasChildren: true, loadChildren: load };
+        const first: TreeNode = { label: 'first' };
+        const second: TreeNode = { label: 'second' };
+        const tree = new _Tree();
+        const priv = asPrivate(tree);
+        const expanded: TreeNode[] = [];
+
+        tree.setNodes([L]);
+        tree.on('expand', node => expanded.push(node));
+
+        const dropped = tree.expandNodeAsync(L);
+
+        tree.removeNode(L);
+        tree.insertNode(null, 0, L);
+
+        const current = tree.expandNodeAsync(L);
+
+        settles[0]([first]);
+
+        expect(await dropped).toBe(false);
+        expect(L.children).toBeUndefined();
+        expect(priv._loadingNodes.has(L)).toBe(true);
+        expect(tree.getExpandedNodes()).toEqual([]);
+        expect(expanded).toEqual([]);
+
+        settles[1]([second]);
+
+        expect(await current).toBe(true);
+        expect(L.children).toEqual([second]);
+        expect(priv._loadingNodes.has(L)).toBe(false);
+        expect(tree.getExpandedNodes()).toEqual([L]);
+        expect(expanded).toEqual([L]);
+        expect(load).toHaveBeenCalledTimes(2);
+    });
+
+    it('an expand load dropped by removeNode that rejects after the node was re-inserted and expanded again emits no loaderror: only the newer load settles it', async () => {
+        const L = heldLazyCalls('L');
+        const second: TreeNode = { label: 'second' };
+        const tree = new _Tree();
+        const priv = asPrivate(tree);
+        const failed: TreeNode[] = [];
+
+        tree.setNodes([L.node]);
+        tree.on('loaderror', node => failed.push(node));
+
+        const dropped = tree.expandNodeAsync(L.node);
+
+        tree.removeNode(L.node);
+        tree.insertNode(null, 0, L.node);
+
+        const current = tree.expandNodeAsync(L.node);
+
+        L.calls[0].reject(new Error('listing failed'));
+
+        expect(await dropped).toBe(false);
+        expect(failed).toEqual([]);
+        expect(priv._loadingNodes.has(L.node)).toBe(true);
+
+        L.calls[1].resolve([second]);
+
+        expect(await current).toBe(true);
+        expect(L.node.children).toEqual([second]);
+        expect(tree.getExpandedNodes()).toEqual([L.node]);
+        expect(failed).toEqual([]);
+    });
+
+    it('an expand load dropped by setNodes with the same node objects stays dropped when the node is expanded again: only the newer load commits', async () => {
+        const L = heldLazyCalls('L');
+        const first: TreeNode = { label: 'first' };
+        const second: TreeNode = { label: 'second' };
+        const tree = new _Tree();
+        const expanded: TreeNode[] = [];
+
+        tree.setNodes([L.node]);
+        tree.on('expand', node => expanded.push(node));
+
+        const dropped = tree.expandNodeAsync(L.node);
+
+        tree.setNodes([L.node]);
+
+        const current = tree.expandNodeAsync(L.node);
+
+        L.calls[0].resolve([first]);
+
+        expect(await dropped).toBe(false);
+        expect(L.node.children).toBeUndefined();
+        expect(tree.getExpandedNodes()).toEqual([]);
+        expect(expanded).toEqual([]);
+
+        L.calls[1].resolve([second]);
+
+        expect(await current).toBe(true);
+        expect(L.node.children).toEqual([second]);
+        expect(tree.getExpandedNodes()).toEqual([L.node]);
+        expect(expanded).toEqual([L.node]);
+    });
+
+    it('an expand load resolves false and commits nothing when removeNode takes out an ancestor mid-load', async () => {
+        const L = heldLazy('L');
+        const R: TreeNode = { label: 'R', children: [L.node] };
+        const tree = new _Tree();
+        const priv = asPrivate(tree);
+
+        tree.setNodes([R]);
+        tree.expandNode(R);
+
+        // Attached only now: the setup's own expansion emits "expand".
+        const events = countEvents(tree);
+        const expanded = tree.expandNodeAsync(L.node);
+
+        tree.removeNode(R);
+        L.resolve([{ label: 'k' }]);
+
+        expect(await expanded).toBe(false);
+        expect(L.node.children).toBeUndefined();
+        expect(priv._loadingNodes.has(L.node)).toBe(false);
+        expect(priv._loadedNodes.has(L.node)).toBe(false);
+        expect(tree.getExpandedNodes()).toEqual([]);
+        expect(events()).toBe(0);
+    });
+
+    it('an expand load still commits and resolves true when a setChildren on its grandparent keeps its parent', async () => {
+        const L = heldLazy('L');
+        const k: TreeNode = { label: 'k' };
+        const P: TreeNode = { label: 'P', children: [L.node] };
+        const G: TreeNode = { label: 'G', children: [P] };
+        const tree = new _Tree();
+        const expanded: TreeNode[] = [];
+
+        tree.setNodes([G]);
+        tree.expandNode(G);
+        tree.expandNode(P);
+        tree.on('expand', node => expanded.push(node));
+
+        const loaded = tree.expandNodeAsync(L.node);
+
+        tree.setChildren(G, [P, { label: 'Y' }]);
+        L.resolve([k]);
+
+        expect(await loaded).toBe(true);
+        expect(L.node.children).toEqual([k]);
+        expect(tree.getExpandedNodes()).toContain(L.node);
+        expect(expanded).toEqual([L.node]);
+        expect(flatLabels(tree)).toEqual(['G', 'P', 'L', 'k', 'Y']);
+    });
+
+    // --- a reveal and an expand sharing one load ---------------------------
+
+    // A node has at most one lazy load in flight, which a reveal and an
+    // expand of it share: whichever comes second joins the load the first
+    // started. The cases run in both orders make the same assertions in each.
+
+    /**
+     * Starts a reveal of the node whose data is `'target'` and an expand of
+     * `lazy`, `first` first. `lazy` must be the first root, so the reveal
+     * needs its children at once.
+     */
+    async function revealAndExpand(
+        tree: _Tree,
+        lazy: HeldLazyCalls,
+        first: 'reveal' | 'expand',
+    ): Promise<{ revealed: Promise<TreeNode | null>; expanded: Promise<boolean> }> {
+        if (first === 'expand') {
+            const expanded = tree.expandNodeAsync(lazy.node);
+
+            return { expanded, revealed: tree.revealByPredicate(d => d === 'target') };
+        }
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(lazy.load).toHaveBeenCalled());
+
+        return { revealed, expanded: tree.expandNodeAsync(lazy.node) };
+    }
+
+    /** Records every `"expand"` and `"loaderror"` as `'<event> <label>'`, in order. */
+    function recordLoadEvents(tree: _Tree): string[] {
+        const events: string[] = [];
+
+        tree.on('expand', node => events.push('expand ' + node.label));
+        tree.on('loaderror', node => events.push('loaderror ' + node.label));
+
+        return events;
+    }
+
+    it.each(['expand', 'reveal'] as const)('a revealByPredicate and an expand share one load of a node, when the %s starts it: one loadChildren call, one commit, one "expand"', async (first) => {
+        const N = heldLazyCalls('N');
+        const C = heldLazy('C');
+        const T: TreeNode = { label: 'T', data: 'target' };
+        const listing: TreeNode[] = [C.node];
+        const tree = mount([N.node]);
+        const events = recordLoadEvents(tree);
+
+        const { revealed, expanded } = await revealAndExpand(tree, N, first);
+
+        // An expand is waiting on the load, so the row shows the spinner.
+        expect(N.load).toHaveBeenCalledTimes(1);
+        expect(rowFor(tree, N.node).getToggle()).toBeNull();
+
+        N.calls[0].resolve(listing);
+
+        expect(await expanded).toBe(true);
+
+        // The walk goes on beneath the children the load committed.
+        await vi.waitFor(() => expect(C.load).toHaveBeenCalled());
+        C.resolve([T]);
+
+        expect(await revealed).toBe(T);
+        expect(N.load).toHaveBeenCalledTimes(1);
+        expect(N.node.children).toBe(listing);
+        expect(events).toEqual(['expand N']);
+        expect(new Set(tree.getExpandedNodes())).toEqual(new Set([N.node, C.node]));
+        expect(flatLabels(tree)).toEqual(['N', 'C', 'T']);
+        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('caret-down');
+    });
+
+    it.each(['expand', 'reveal'] as const)('a shared load that rejects while an expand waits on it, when the %s starts it, fires one "loaderror" and leaves the node collapsed and unloaded until toggled again', async (first) => {
+        const N = heldLazyCalls('N');
+        const S: TreeNode = { label: 'S', data: 'target' };
+        const k: TreeNode = { label: 'k' };
+        const tree = mount([N.node, S]);
+        const priv = asPrivate(tree);
+        const events = recordLoadEvents(tree);
+
+        const { revealed, expanded } = await revealAndExpand(tree, N, first);
+
+        expect(N.load).toHaveBeenCalledTimes(1);
+
+        N.calls[0].reject(new Error('listing failed'));
+
+        // The expand fails; the reveal counts N as empty and carries on.
+        expect(await expanded).toBe(false);
+        expect(await revealed).toBe(S);
+        expect(events).toEqual(['loaderror N']);
+        expect(tree.getExpandedNodes()).toEqual([]);
+        expect(N.node.children).toBeUndefined();
+        expect(priv._loadedNodes.has(N.node)).toBe(false);
+        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('caret-right');
+
+        // Toggling again retries with a fresh load.
+        const retried = tree.expandNodeAsync(N.node);
+
+        expect(N.load).toHaveBeenCalledTimes(2);
+
+        N.calls[1].resolve([k]);
+
+        expect(await retried).toBe(true);
+        expect(N.node.children).toEqual([k]);
+        expect(events).toEqual(['loaderror N', 'expand N']);
+    });
+
+    it('a rejected load renders its row back to a caret before "loaderror" fires, so a listener that throws cannot strand the spinner', async () => {
+        const N = heldLazyCalls('N');
+        const tree = mount([N.node]);
+        let glyphSeenByListener: string | null | undefined;
+
+        tree.on('loaderror', () => {
+            glyphSeenByListener = rowFor(tree, N.node).getToggle()?.getGlyphName() ?? null;
+
+            throw new Error('listener failed');
+        });
+
+        const expanded = tree.expandNodeAsync(N.node);
+
+        expect(rowFor(tree, N.node).getToggle()).toBeNull();
+
+        N.calls[0].reject(new Error('listing failed'));
+
+        await expect(expanded).rejects.toThrow('listener failed');
+        expect(glyphSeenByListener).toBe('caret-right');
+        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('caret-right');
+    });
+
+    it.each([
+        ['expand', 'expand'],
+        ['expand', 'reveal'],
+        ['loaderror', 'expand'],
+        ['loaderror', 'reveal'],
+    ] as const)('a "%s" listener that throws rejects the expand waiting on a shared load, not a revealByPredicate sharing it, when the %s starts it', async (event, first) => {
+        const N = heldLazyCalls('N');
+        const S: TreeNode = { label: 'S', data: 'target' };
+        const tree = mount([N.node, S]);
+
+        const fail = (): void => { throw new Error('listener failed'); };
+
+        if (event === 'expand') {
+            tree.on('expand', fail);
+        } else {
+            tree.on('loaderror', fail);
+        }
+
+        const { revealed, expanded } = await revealAndExpand(tree, N, first);
+
+        if (event === 'expand') {
+            N.calls[0].resolve([{ label: 'k' }]);
+        } else {
+            N.calls[0].reject(new Error('listing failed'));
+        }
+
+        await expect(expanded).rejects.toThrow('listener failed');
+        expect(await revealed).toBe(S);
+        expect(N.load).toHaveBeenCalledTimes(1);
+    });
+
+    it('a loader that removes its own node drops its load: the expand resolves false and nothing is committed', async () => {
+        const tree = new _Tree();
+        const N: TreeNode = { label: 'N', hasChildren: true, loadChildren: () => {
+            tree.removeNode(N);
+
+            return Promise.resolve([{ label: 'k' }]);
+        } };
+        const R: TreeNode = { label: 'R' };
+        const priv = asPrivate(tree);
+
+        tree.setNodes([N, R]);
+
+        expect(await tree.expandNodeAsync(N)).toBe(false);
+        expect(N.children).toBeUndefined();
+        expect(priv._loadedNodes.has(N)).toBe(false);
+        expect(priv._expandedNodes.has(N)).toBe(false);
+        expect(tree.getNodes()).toEqual([R]);
+    });
+
+    it('a loader that calls setNodes drops its load: the expand resolves false and the replaced node is not marked loaded', async () => {
+        const tree = new _Tree();
+        const other: TreeNode = { label: 'other' };
+        const N: TreeNode = { label: 'N', hasChildren: true, loadChildren: () => {
+            tree.setNodes([other]);
+
+            return Promise.resolve([{ label: 'k' }]);
+        } };
+        const priv = asPrivate(tree);
+
+        tree.setNodes([N]);
+
+        expect(await tree.expandNodeAsync(N)).toBe(false);
+        expect(N.children).toBeUndefined();
+        expect(priv._loadedNodes.has(N)).toBe(false);
+        expect(tree.getNodes()).toEqual([other]);
+    });
+
+    it('a loader that sets its own node\'s children keeps them: the takeover wins and the loader result is discarded', async () => {
+        const tree = new _Tree();
+        const placeholder: TreeNode = { label: 'Loading…' };
+        const N: TreeNode = { label: 'N', hasChildren: true, loadChildren: () => {
+            tree.setChildren(N, [placeholder]);
+
+            return Promise.resolve([{ label: 'fetched' }]);
+        } };
+        const priv = asPrivate(tree);
+
+        tree.setNodes([N]);
+
+        expect(await tree.expandNodeAsync(N)).toBe(false);
+        expect(N.children).toEqual([placeholder]);
+        expect(priv._loadedNodes.has(N)).toBe(true);
+    });
+
+    it('a loader that expands its own node again joins its load rather than starting a second one', async () => {
+        const tree = new _Tree();
+        let joined: Promise<boolean> | null = null;
+        const load = vi.fn(() => {
+            joined = tree.expandNodeAsync(N);
+
+            return Promise.resolve([{ label: 'k' }]);
+        });
+        const N: TreeNode = { label: 'N', hasChildren: true, loadChildren: load };
+
+        tree.setNodes([N]);
+
+        expect(await tree.expandNodeAsync(N)).toBe(true);
+        expect(await joined!).toBe(true);
+        expect(load).toHaveBeenCalledTimes(1);
+    });
+
+    it('a load only a revealByPredicate waits on shows no spinner, and when it rejects fires no "loaderror" and leaves the node unloaded', async () => {
+        const N = heldLazyCalls('N');
+        const S: TreeNode = { label: 'S', data: 'target' };
+        const tree = mount([N.node, S]);
+        const priv = asPrivate(tree);
+        const events = recordLoadEvents(tree);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(N.load).toHaveBeenCalledTimes(1));
+
+        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('caret-right');
+
+        N.calls[0].reject(new Error('listing failed'));
+
+        expect(await revealed).toBe(S);
+        expect(events).toEqual([]);
+        expect(N.node.children).toBeUndefined();
+        expect(priv._loadedNodes.has(N.node)).toBe(false);
+
+        const expanded = tree.expandNodeAsync(N.node);
+
+        expect(N.load).toHaveBeenCalledTimes(2);
+
+        N.calls[1].resolve([]);
+
+        expect(await expanded).toBe(true);
+    });
+
+    it('a load only a revealByPredicate waits on still renders its commit, so a node declared without `hasChildren` gains its caret', async () => {
+        const N = heldLazy('N');
+
+        // Declared without `hasChildren`, so its row carries no caret until
+        // the load commits children for it.
+        delete N.node.hasChildren;
+
+        const tree = mount([N.node]);
+        const revealed = tree.revealByPredicate(() => false);
+
+        await vi.waitFor(() => expect(N.load).toHaveBeenCalledTimes(1));
+
+        const renders = vi.spyOn(asPrivate(tree), '_reflattenAndRender');
+
+        expect(rowFor(tree, N.node).getToggle()).toBeNull();
+
+        N.resolve([{ label: 'k' }]);
+
+        // No match, so the walk never expands a path: the commit is the only
+        // thing that can render the caret.
+        expect(await revealed).toBeNull();
+        expect(renders).toHaveBeenCalledTimes(1);
+        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('caret-right');
+    });
+
+    it('an expand-driven commit still renders exactly once, and its "expand" listener sees the rebuilt rows', async () => {
+        const N = heldLazy('N');
+        const tree = mount([N.node]);
+        let flatAtEmit: string[] = [];
+
+        tree.on('expand', () => {
+            flatAtEmit = flatLabels(tree);
+        });
+
+        const expanded = tree.expandNodeAsync(N.node);
+
+        await vi.waitFor(() => expect(N.load).toHaveBeenCalledTimes(1));
+
+        // Installed after the spinner render, so only the commit is counted.
+        const renders = vi.spyOn(asPrivate(tree), '_reflattenAndRender');
+
+        N.resolve([{ label: 'k' }]);
+
+        expect(await expanded).toBe(true);
+        expect(renders).toHaveBeenCalledTimes(1);
+        expect(flatAtEmit).toEqual(['N', 'k']);
+    });
+
+    it('a revealByPredicate and two expands sharing one load fire "expand" once, and the next real transition fires it again without a load', async () => {
+        const N = heldLazyCalls('N');
+        const tree = new _Tree();
+        const events = recordLoadEvents(tree);
+
+        tree.setNodes([N.node]);
+
+        const revealed = tree.revealByPredicate(() => false);
+
+        await vi.waitFor(() => expect(N.load).toHaveBeenCalled());
+
+        tree.expandNode(N.node);
+
+        const expanded = tree.expandNodeAsync(N.node);
+
+        expect(N.load).toHaveBeenCalledTimes(1);
+
+        N.calls[0].resolve([{ label: 'k' }]);
+
+        expect(await expanded).toBe(true);
+        expect(await revealed).toBeNull();
+        expect(events).toEqual(['expand N']);
+
+        asPrivate(tree)._onToggle(N.node);
+
+        expect(await tree.expandNodeAsync(N.node)).toBe(true);
+        expect(events).toEqual(['expand N', 'expand N']);
+        expect(N.load).toHaveBeenCalledTimes(1);
+    });
+
+    it('a shared load commits the expansion before any caller waiting on it resumes, so none can see it half done', async () => {
+        const N = heldLazyCalls('N');
+        const tree = new _Tree();
+        const events = recordLoadEvents(tree);
+        const seen: string[] = [];
+
+        tree.setNodes([N.node]);
+
+        const revealed = tree.revealByPredicate(() => false);
+
+        await vi.waitFor(() => expect(N.load).toHaveBeenCalled());
+
+        // Registered ahead of the expand that joins the load below, so it
+        // resumes first.
+        void asPrivate(tree)._pendingLoads.get(N.node)!.settled.then(() => {
+            seen.push(...tree.getExpandedNodes().map(node => node.label), ...events);
+        });
+
+        const expanded = tree.expandNodeAsync(N.node);
+
+        N.calls[0].resolve([{ label: 'k' }]);
+
+        expect(await expanded).toBe(true);
+        expect(await revealed).toBeNull();
+        expect(seen).toEqual(['N', 'expand N']);
+    });
+
+    it('a loader that throws instead of rejecting fails its load the same way', async () => {
+        let calls = 0;
+        const N: TreeNode = {
+            label:        'N',
+            hasChildren:  true,
+            loadChildren: () => {
+                calls += 1;
+
+                if (calls === 1) {
+                    throw new Error('listing failed');
+                }
+
+                return Promise.resolve([]);
+            },
+        };
+
+        const tree = new _Tree();
+        const events = recordLoadEvents(tree);
+
+        tree.setNodes([N]);
+
+        expect(await tree.expandNodeAsync(N)).toBe(false);
+        expect(events).toEqual(['loaderror N']);
+        expect(asPrivate(tree)._loadingNodes.has(N)).toBe(false);
+
+        expect(await tree.expandNodeAsync(N)).toBe(true);
+        expect(calls).toBe(2);
+    });
+
+    it.each([null, undefined])('a loader that resolves %s resolves the load with no children rather than failing it', async (nothing) => {
+        // Only an untyped caller can hand back either: `loadChildren`'s own
+        // signature promises an array.
+        const load = vi.fn(() => Promise.resolve(nothing) as unknown as Promise<TreeNode[]>);
+        const N: TreeNode = { label: 'N', hasChildren: true, loadChildren: load };
+        const tree = new _Tree();
+        const events = recordLoadEvents(tree);
+
+        tree.setNodes([N]);
+
+        expect(await tree.expandNodeAsync(N)).toBe(true);
+        expect(N.children).toEqual([]);
+        expect(asPrivate(tree)._loadedNodes.has(N)).toBe(true);
+        expect(tree.getExpandedNodes()).toEqual([N]);
+        expect(events).toEqual(['expand N']);
+
+        // Loaded, so collapsing and expanding again never calls the loader.
+        asPrivate(tree)._onToggle(N);
+        asPrivate(tree)._onToggle(N);
+
+        expect(load).toHaveBeenCalledTimes(1);
+    });
+
+    it('removeNode drops a load a revealByPredicate and an expand share, and the node, inserted and expanded again, loads afresh', async () => {
+        const N = heldLazyCalls('N');
+        const S: TreeNode = { label: 'S', data: 'target' };
+        const k: TreeNode = { label: 'k' };
+        const tree = new _Tree();
+        const events = recordLoadEvents(tree);
+
+        tree.setNodes([N.node, S]);
+
+        const { revealed, expanded: dropped } = await revealAndExpand(tree, N, 'reveal');
+
+        expect(N.load).toHaveBeenCalledTimes(1);
+
+        tree.removeNode(N.node);
+        tree.insertNode(null, 0, N.node);
+
+        const current = tree.expandNodeAsync(N.node);
+
+        expect(N.load).toHaveBeenCalledTimes(2);
+
+        // Matching too, so a commit of the dropped load would hand it to the reveal.
+        N.calls[0].resolve([{ label: 'stale', data: 'target' }]);
+
+        expect(await dropped).toBe(false);
+        expect(N.node.children).toBeUndefined();
+        expect(tree.getExpandedNodes()).toEqual([]);
+        expect(events).toEqual([]);
+
+        N.calls[1].resolve([k]);
+
+        expect(await current).toBe(true);
+        expect(await revealed).toBe(S);
+        expect(N.node.children).toEqual([k]);
+        expect(tree.getExpandedNodes()).toEqual([N.node]);
+        expect(events).toEqual(['expand N']);
+
+        // The reveal searched N again by joining the fresh load, not starting a third.
+        expect(N.load).toHaveBeenCalledTimes(2);
+    });
+
+    it('revealByPredicate goes back for a match an expand load brings in under a node the walk already passed', async () => {
+        const N = heldLazyCalls('N');
+        const S = heldLazy('S');
+        const T: TreeNode = { label: 'T', data: 'target' };
+        const tree = new _Tree();
+
+        tree.setNodes([N.node, S.node]);
+
+        const revealed = tree.revealByPredicate(d => d === 'target');
+
+        // The reveal's own load of N fails, so the walk passes N as empty and
+        // moves on to S.
+        await vi.waitFor(() => expect(N.load).toHaveBeenCalledTimes(1));
+        N.calls[0].reject(new Error('listing failed'));
+        await vi.waitFor(() => expect(S.load).toHaveBeenCalled());
+
+        // The user expands N meanwhile, and that load brings the match in.
+        const loaded = tree.expandNodeAsync(N.node);
+
+        N.calls[1].resolve([T]);
+
+        expect(await loaded).toBe(true);
+
+        S.resolve([]);
+
+        expect(await revealed).toBe(T);
+        expect(tree.getExpandedNodes()).toEqual([N.node]);
+    });
+
+    it('revealByPredicate goes back for a match another reveal\'s load brings in under a node the walk already passed', async () => {
+        const N = heldLazyCalls('N');
+        const S = heldLazy('S');
+        const T: TreeNode = { label: 'T', data: 'target' };
+        const tree = new _Tree();
+
+        tree.setNodes([N.node, S.node]);
+
+        const first = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(N.load).toHaveBeenCalledTimes(1));
+        N.calls[0].reject(new Error('listing failed'));
+        await vi.waitFor(() => expect(S.load).toHaveBeenCalled());
+
+        // A second reveal loads N again, and this time the match comes in.
+        const second = tree.revealByPredicate(d => d === 'target');
+
+        await vi.waitFor(() => expect(N.load).toHaveBeenCalledTimes(2));
+        N.calls[1].resolve([T]);
+
+        expect(await second).toBe(T);
+
+        S.resolve([]);
+
+        expect(await first).toBe(T);
+    });
+
+    it('revealByPredicate searches each level once when only its own loads change the tree', async () => {
+        const A: TreeNode = { label: 'A', hasChildren: true, loadChildren: async () => [{ label: 'a' }] };
+        const B: TreeNode = { label: 'B', hasChildren: true, loadChildren: async () => [{ label: 'b' }] };
+        const tree = new _Tree();
+
+        tree.setNodes([A, B]);
+
+        const levels = vi.spyOn(tree as unknown as { _revealFirstMatch: () => Promise<TreeNode | null> }, '_revealFirstMatch');
+
+        expect(await tree.revealByPredicate(() => false)).toBeNull();
+
+        // The roots, A's children and B's children: loading A must not send
+        // the walk back over the roots it has already searched.
+        expect(levels).toHaveBeenCalledTimes(3);
+        expect(A.children).toEqual([{ label: 'a' }]);
+        expect(B.children).toEqual([{ label: 'b' }]);
     });
 
     // --- notifyNodeChanged -------------------------------------------------

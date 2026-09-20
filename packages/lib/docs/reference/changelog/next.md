@@ -153,12 +153,15 @@ page resets to empty.
   `setNodes`' reset. Every node the tree still holds keeps its expansion,
   loaded children and selection, and the scroll offset stays put; a caller
   keeps a node by passing the same object again. Removed nodes drop their
-  state silently — no `"selection"` or `"collapse"` fires. An `insertNode`,
-  `removeNode` or `setChildren` on a lazy node's children counts as loading
-  it and drops a load already in flight, including one `revealByPredicate`
-  started. Only rows whose content changed are rebound, and
-  `notifyNodeChanged(node)` repaints just the row showing a node changed in
-  place. No consumer action is needed.
+  state silently — no `"selection"` or `"collapse"` fires — and a load in
+  flight for one stays dropped even if the node is inserted again. An
+  `insertNode`, `removeNode` or `setChildren` on a lazy node's children
+  counts as loading it and drops a load already in flight, including one
+  `revealByPredicate` started. A `revealByPredicate` still running follows
+  these calls: it finds a matching node added meanwhile, and never returns,
+  expands or caches children for a node the tree no longer holds. Only rows
+  whose content changed are rebound, and `notifyNodeChanged(node)` repaints
+  just the row showing a node changed in place. No consumer action is needed.
 
 ### Layouts
 
@@ -737,6 +740,33 @@ page resets to empty.
   properties of undefined (reading 'moveNext')`. The key is now left alone,
   keeping it available to an ancestor or to `SpatialNavigation`. No consumer
   action is needed.
+
+- **A `Tree.revealByPredicate` still running when `setNodes` replaces the
+  tree now searches the new tree.** It used to carry on over the old roots,
+  so it could resolve to a node from the old dataset, expand that node's
+  detached ancestors, and cache the children it loaded for a node the tree
+  no longer held. It now starts again on the new roots, from the first,
+  abandons a branch the reset detached, and commits nothing from a load that
+  was still in flight. Separately, when `setNodes` is handed the same node
+  objects while a lazy node's `expandNodeAsync` load is in flight, and the
+  node is expanded again, the dropped load no longer commits its children
+  and leaves the newer call resolving `false`: only the newer load expands
+  the node and resolves `true`. No consumer action is needed.
+
+- **A `Tree` expand and a `revealByPredicate` that need the same lazy
+  node's children now share one `loadChildren` call.** Each used to call
+  `loadChildren` itself, and an expand whose call settled second replaced
+  the children the reveal had loaded, detaching the subtree the reveal was
+  still searching, so the reveal could resolve to a node the tree no longer
+  held. The tree now waits on at most one call per node: whichever needs
+  the children first makes it, and the other waits on it, as a second
+  expand already did. The children are committed once. An expand waiting on the
+  call expands the node and fires `"expand"` once, or, when the call
+  rejects, fires `"loaderror"` once and leaves the node collapsed and
+  unloaded, whichever of the two started the call. A reveal also goes back
+  for children a later expand or reveal loads under a node it passed after
+  the call it waited on for that node failed, instead of resolving `null`
+  with the match in the tree. No consumer action is needed.
 
 ### Layouts
 
