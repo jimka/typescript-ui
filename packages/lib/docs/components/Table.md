@@ -71,6 +71,8 @@ const table = Table(store, {
 
 While a cell is being edited, Tab / Shift+Tab move the active edit to the neighboring column, Enter / Shift+Enter move it to the neighboring row, and PageUp / PageDown move it by a page of rows, committing the current cell first; at a grid edge the edit clamps back onto the same cell instead of wrapping. On a boolean cell, Space toggles it and Enter navigates instead of toggling.
 
+An open edit does not survive the rendered window moving out from under it. When the edited cell's row is bound to a different record — by a scroll, a sort, a column filter, `setRowVisible` / `setQuickSearch`, or a store change that shifts rows — or when its column scrolls out of the rendered column range, the edit is committed onto the record it was opened against rather than carried along, and keyboard focus is not restored afterwards. Rebuilding the rendered column set ends an open edit whatever column it sits in — showing or hiding a column, swapping the column set or its configs, or switching to or from the rotated record view.
+
 Every column gets a width floor and a starting width derived from its field
 type, whether or not a spec is supplied: a `boolean` column is sized for its
 checkbox, a `glyph` column for one icon, a `date` / `time` / `datetime`
@@ -435,7 +437,7 @@ const table = Table(store);
 table.setRowVisible(record => record.get('status') === 'open');
 ```
 
-- **Display-only.** Hiding a row never touches `getStore()`'s records, the current selection, or a pending in-grid edit.
+- **Display-only.** Hiding a row never removes a record from `getStore()` and never changes the current selection. It can still end an open in-grid edit: if re-applying the predicate binds the edited cell's row to a different record, that edit is committed onto the record it was opened against first.
 - **Re-applied automatically.** The predicate is re-consulted on every render pass, so it stays in effect across scrolling, sorting, store events (`add` / `remove` / `datachange` / …), and column show/hide — call `setRowVisible` again only when the predicate itself changes.
 - **Composes with [`setQuickSearch`](#quick-search) via AND** — a row renders only when both agree, and setting one never clears the other.
 - **Neutralized while rotated** — see the note in [Rotated record view](#rotated-record-view) below.
