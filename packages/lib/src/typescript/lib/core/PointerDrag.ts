@@ -3,6 +3,7 @@
 import type { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
+import { registerPointerDrag, unregisterPointerDrag } from "~/core/PendingPointerDrags.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 
 /**
@@ -48,16 +49,28 @@ function ensureSuppressRule(): void {
     });
 }
 
+/** Clears the dragging class and the pinned cursor from the document element. */
+function clearDragChrome(): void {
+    DOM.sink.apply(DOM.source.getDocumentElement(), {
+        removeClass: [DRAGGING_CLASS],
+        style:       { cursor: "" },
+    });
+}
+
 /**
  * Suppresses pointer events on every direct child of `<html>` and pins
  * `cursor` on `<html>` itself for the duration of a drag. Pair every call
- * with {@link endPointerDrag}.
+ * with {@link endPointerDrag}. Destroying `owner` also ends the drag, so a
+ * component disposed mid-gesture cannot strand the suppression.
  *
+ * @param owner - The component whose gesture this is; the drag is recorded
+ *   against its id so its own teardown can end it.
  * @param cursor - The CSS cursor to hold until the drag ends, normally the one
  *   the handle shows on hover so the two can't disagree.
  */
-export function beginPointerDrag(cursor: string): void {
+export function beginPointerDrag(owner: Component, cursor: string): void {
     ensureSuppressRule();
+    registerPointerDrag(owner.getId(), clearDragChrome);
 
     DOM.sink.apply(DOM.source.getDocumentElement(), {
         addClass: [DRAGGING_CLASS],
@@ -69,20 +82,20 @@ export function beginPointerDrag(cursor: string): void {
  * Restores pointer events and hands the cursor back to whatever the pointer
  * is actually over. Safe to call without a matching {@link beginPointerDrag}
  * — it only clears the class and the inline cursor.
+ *
+ * @param owner - The component that began the drag, whose record this drops.
  */
-export function endPointerDrag(): void {
-    DOM.sink.apply(DOM.source.getDocumentElement(), {
-        removeClass: [DRAGGING_CLASS],
-        style:       { cursor: "" },
-    });
+export function endPointerDrag(owner: Component): void {
+    unregisterPointerDrag(owner.getId());
+    clearDragChrome();
 }
 
 /**
  * Wires the standard viewport drag lifecycle: registers `moveListener` for
  * both `mousemove` and `touchmove`, `stopListener` for `mouseup`, `touchend`,
  * and `touchcancel` (all via `Event.addViewportListener`), then calls
- * `beginPointerDrag(cursor)`. Pair with `endViewportDrag` using the exact
- * same `component`/`moveListener`/`stopListener` references.
+ * `beginPointerDrag(component, cursor)`. Pair with `endViewportDrag` using the
+ * exact same `component`/`moveListener`/`stopListener` references.
  */
 export function beginViewportDrag(
     component:    Component,
@@ -96,13 +109,13 @@ export function beginViewportDrag(
     Event.addViewportListener(component, 'mousemove', moveListener);
     Event.addViewportListener(component, 'touchmove', moveListener);
 
-    beginPointerDrag(cursor);
+    beginPointerDrag(component, cursor);
 }
 
 /**
  * Removes the five viewport listeners `beginViewportDrag` registered and
- * calls `endPointerDrag()`. `moveListener`/`stopListener` must be the same
- * function references passed to the matching `beginViewportDrag` call.
+ * calls `endPointerDrag(component)`. `moveListener`/`stopListener` must be the
+ * same function references passed to the matching `beginViewportDrag` call.
  */
 export function endViewportDrag(
     component:    Component,
@@ -115,5 +128,5 @@ export function endViewportDrag(
     Event.removeViewportListener(component, 'mousemove', moveListener);
     Event.removeViewportListener(component, 'touchmove', moveListener);
 
-    endPointerDrag();
+    endPointerDrag(component);
 }

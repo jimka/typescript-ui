@@ -24,6 +24,7 @@ import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
 import { COMPONENT_CLASS, ensureClassStateRule, ensureClassStyleRule, ensureTraitStyleRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, resolvePartialDeclarations, resolveStyleStates, resolveStyleTraits, resolveTraitStyleDefaults, restingGuardSuffix, traitClassName, traitTopStateConflictKeys, type StyleBag, type StyleLayer, type StyleStateSpec, type StyleTrait, type TextStyleBag } from "~/core/ClassStyleRules.js";
+import { endPointerDragFor } from "~/core/PendingPointerDrags.js";
 import { cancelTransitions } from "~/core/PendingTransitions.js";
 import { measureBorderWidths } from "~/core/BorderWidths.js";
 
@@ -1117,9 +1118,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * The entire body defers to `destructor()`, which recursively destroys
      * this component's children, releases every tracked theme subscription,
      * runs every callback registered via `onDestroy`, unregisters every DOM
-     * listener it registered through the `Event` API, detaches its layout
-     * manager, removes the DOM element, deletes the component's per-instance
-     * stylesheet rules, and releases tracked handles.
+     * listener it registered through the `Event` API, ends any pointer drag
+     * it had armed, detaches its layout manager, removes the DOM element,
+     * deletes the component's per-instance stylesheet rules, and releases
+     * tracked handles.
      *
      * @remarks Idempotent — calling this more than once is a harmless no-op.
      * Never override this method — override `destructor()` instead, so an
@@ -1134,9 +1136,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Destroys this component: recursively destroys its children, releases
      * every tracked theme subscription, runs every callback registered via
      * `onDestroy`, unregisters every DOM listener it registered through the
-     * `Event` API, detaches its layout manager, removes the DOM element,
-     * deletes the component's per-instance stylesheet rules, and releases
-     * tracked handles.
+     * `Event` API, ends any pointer drag it had armed, detaches its layout
+     * manager, removes the DOM element, deletes the component's per-instance
+     * stylesheet rules, and releases tracked handles.
      *
      * @remarks Idempotent — calling this more than once is a harmless no-op.
      * This is the override hook — a subclass releasing its own resources
@@ -1168,6 +1170,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // a stale viewport entry keeps firing its handler against handles released at
         // the bottom of this method.
         Event.purgeComponent(this.getId());
+
+        // The purge above has just removed the viewport listener that would
+        // have ended a pointer drag this component armed. Without this line the
+        // release is heard by nobody and the document element keeps
+        // `ts-ui-dragging` — which suppresses pointer events on every direct
+        // child of `<html>` — plus its pinned cursor for the life of the page,
+        // leaving nothing on the page clickable that could undo it. Another
+        // module-level registry keyed by this component's id, so it reads best
+        // beside the purge that strands the drag.
+        endPointerDragFor(this.getId());
 
         // Tear any active clip frame down, then remove this component's own
         // element — before recursing into children below, rather than after.
