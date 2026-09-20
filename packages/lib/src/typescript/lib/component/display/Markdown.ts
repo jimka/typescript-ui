@@ -1055,10 +1055,24 @@ class Markdown extends Component<MarkdownOptions> {
      * point — and no-ops before the element exists (the first connected layout
      * retries via {@link onFirstLayout}). Idempotent: an unchanged height suppresses
      * the re-layout so repeated measures cannot loop.
+     *
+     * @remarks Skipped entirely while not effectively visible: a hidden
+     * subtree's `scrollHeight` reads `0`, and caching that would leave the
+     * component reporting no height at all, with nothing to correct it on
+     * re-show (no width actually changes on re-show, so {@link setWidth}'s
+     * "only re-measure when changed" guard would never re-run this method).
+     * Skipping leaves the last-good height intact instead. Unlike
+     * {@link resyncCodeEditorWidths}, which accepts its own skip as the end
+     * of the story, the skip here is recovered: {@link
+     * onEffectiveVisibilityChange} schedules a fresh measure on the rising
+     * edge, so a theme change, a {@link setMarkdown}, or a first layout that
+     * landed while this subtree was hidden is picked up once it is shown
+     * again. The guard sits ahead of the first style commit below, so a
+     * hidden component is charged no sink writes either.
      */
     private measureContentHeight(): void {
         const element = this.getElement();
-        if (!element) {
+        if (!element || !this.isEffectivelyVisible()) {
             return;
         }
 
@@ -1480,7 +1494,11 @@ class Markdown extends Component<MarkdownOptions> {
      * schedules a viewport pass, so an entry already queued in {@link
      * _awaitingViewportKickoffs} before this subtree was hidden — its own
      * scroll/resize watch now stale — is re-checked at rest instead of
-     * waiting for a scroll or resize that may never come.
+     * waiting for a scroll or resize that may never come. Between the two, it
+     * schedules a content re-measure: {@link measureContentHeight} skips
+     * while hidden, and nothing else re-runs it on a re-show, so a theme
+     * change or a {@link setMarkdown} that landed meanwhile would otherwise
+     * leave the reported height stale for good.
      *
      * @param effective - The component's new effective-visibility state.
      */
@@ -1500,6 +1518,13 @@ class Markdown extends Component<MarkdownOptions> {
                 this.startCodeEditorImport(entry);
             }
         }
+
+        // Recovers a content height that went stale while this subtree was
+        // hidden — a theme change, a setMarkdown, or a first layout that ran
+        // while measureContentHeight was skipping. Nothing else re-measures
+        // on a re-show: no width actually changes, so setWidth's "only when
+        // changed" guard never fires.
+        this.scheduleContentMeasure();
 
         // Ordering is load-bearing: draining the visibility queue above can
         // push newly-checked entries into _awaitingViewportKickoffs, and this

@@ -1567,6 +1567,122 @@ describe('Markdown content-height measurement', () => {
 
         expect(heights.at(-1)).toBe('300px');
     });
+
+    // Cases H1-H3 of plans/implemented/markdown-instance-scoping.md. A
+    // `display:none` subtree reads every live geometry as zero, which the
+    // modelled source cannot reproduce (it reports scrollHeight ===
+    // clientHeight regardless of display), so these stub the seam read and
+    // assert on the *reported height* and on the *sink writes charged to the
+    // component* rather than on real geometry. The real browser behaviour —
+    // a hidden element genuinely reporting zero — is the manual-verify step
+    // (M1) in the plan.
+
+    /** Measures `md` at width 300, then undisplays it and flushes the visibility edge. */
+    function measureThenHide(md: Markdown): void {
+        md.getElement(true);
+        md.setWidth(300);
+
+        md.setDisplayed(false);
+        Component.flushEffectiveVisibility();
+    }
+
+    /** Re-shows `md` and runs the re-measure its rising edge defers to the next layout flush. */
+    function showAndRunDeferredMeasure(md: Markdown): void {
+        const afterNextLayoutSpy = vi.spyOn(Component, 'afterNextLayout');
+
+        md.setDisplayed(true);
+        Component.flushEffectiveVisibility();
+
+        expect(afterNextLayoutSpy).toHaveBeenCalled();
+        afterNextLayoutSpy.mock.calls[0]![0]();   // run the queued callback, as a real flush would
+    }
+
+    it('H1: a theme change while undisplayed neither re-measures nor writes to the element', () => {
+        const spy = stubScrollHeight(300);
+        const md = new Markdown('# A');
+        const handle = md.getElement(true)!;
+
+        measureThenHide(md);
+        expect(md.getMinSize()!.height).toBe(300);
+
+        // A real laid-out height, so an unguarded measure's `height: auto`
+        // probe *and* its restore would both show up in the writes below.
+        md.setHeight(300);
+
+        spy.mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 0, scrollHeight: 700,
+            clientWidth: 0, clientHeight: 700,
+        });
+
+        try {
+            ThemeManager.setTheme(DarkTheme);
+        } finally {
+            ThemeManager.setTheme(ModernTheme);   // restore the default for later tests
+        }
+
+        expect(md.getMinSize()!.height).toBe(300);   // the last good height stands
+
+        // The "charged no writes" half is driven through this component's own
+        // theme handler rather than the global broadcast above. Every live
+        // Markdown subscribes to ThemeManager and the earlier tests in this
+        // file never dispose theirs, so a broadcast re-measures all of them —
+        // and since installTestDOM restarts handle numbering per test, their
+        // writes carry handle values that collide with this one's, which no
+        // per-handle filter can separate. Calling the handler directly keeps
+        // the assertion about this component. It is the same door C18 comes
+        // through: ThemeManager.onThemeChange invokes exactly this method.
+        const start = sink.writes.length;
+
+        (md as any).onThemeChanged();
+
+        expect(heightWrites(sink.writes.slice(start), handle)).toEqual([]);
+    });
+
+    it('H2: the rising edge recovers a height that went stale while hidden', () => {
+        const spy = stubScrollHeight(300);
+        const md = new Markdown('# A');
+
+        measureThenHide(md);
+
+        spy.mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 0, scrollHeight: 700,
+            clientWidth: 0, clientHeight: 700,
+        });
+
+        try {
+            ThemeManager.setTheme(DarkTheme);
+        } finally {
+            ThemeManager.setTheme(ModernTheme);
+        }
+
+        expect(md.getMinSize()!.height).toBe(300);
+
+        showAndRunDeferredMeasure(md);
+
+        expect(md.getMinSize()!.height).toBe(700);
+    });
+
+    it('H3: a setMarkdown that lands while hidden is recovered on the rising edge too', () => {
+        const spy = stubScrollHeight(300);
+        const md = new Markdown('# A');
+
+        measureThenHide(md);
+
+        spy.mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 0, scrollHeight: 700,
+            clientWidth: 0, clientHeight: 700,
+        });
+        md.setMarkdown('# A\n\nmore prose');
+
+        expect(md.getMinSize()!.height).toBe(300);
+
+        showAndRunDeferredMeasure(md);
+
+        expect(md.getMinSize()!.height).toBe(700);
+    });
 });
 
 describe('mapFenceLangToEditorId', () => {
