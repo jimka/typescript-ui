@@ -50,7 +50,7 @@ Both clamp at their array bounds rather than erroring or wrapping around. **Rese
 
 ## Scroll tracking
 
-`MarkdownViewer` computes its own active heading from its native scroll position — the last heading, in document order, whose top edge is at or above the viewer's own top — and emits `"activeheadingchange"` only when the result actually changes between scroll ticks. `MarkdownMinimap` consumes this to highlight the corresponding row; a consumer can also listen directly for its own purposes (a "reading progress" indicator, syncing an outside table of contents). The tracking itself is delegated to [`HeadingScrollTracker`](/api/component/display/classes/HeadingScrollTracker), the same shared implementation the docs site's own `DocsContent` pane uses for its scroll-driven outline.
+`MarkdownViewer` computes its own active heading from its native scroll position — the last heading, in document order, whose top edge is at or above the viewer's own top — and emits `"activeheadingchange"` only when the result actually changes between scroll ticks. `MarkdownMinimap` consumes this to highlight the corresponding row; a consumer can also listen directly for its own purposes (a "reading progress" indicator, syncing an outside table of contents). The tracking itself is delegated to [`HeadingScrollTracker`](/api/component/display/classes/HeadingScrollTracker), the same shared implementation the docs site's own `DocsContent` pane uses for its scroll-driven outline; the lookup is scoped to the viewer's own scrolling pane, so several viewers on one page track independently even when their documents share heading names.
 
 ## Common methods
 

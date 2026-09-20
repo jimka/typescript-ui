@@ -595,6 +595,16 @@ page resets to empty.
 
 ### Components
 
+- **Two `Markdown` previews of documents that share a heading name no longer
+  break each other's outline.** Heading ids are unique within one render but
+  land in the one document-wide id space, and heading tracking resolved them
+  with a document-wide lookup; in the second preview every heading resolved to
+  the first preview's element and was discarded, so that preview's minimap
+  never highlighted and its rows did not respond to clicks. Both readers now
+  resolve a heading inside the scrolling pane they were given. Rendered ids,
+  `extractMarkdownHeadings` and `#fragment` links are unchanged; no consumer
+  action is needed.
+
 - **A table no longer writes an in-progress cell edit onto the wrong record
   when scrolling rebinds the row under it.** The body keeps a small pool of
   row components and rebinds them to new records as the user scrolls; an
