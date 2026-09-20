@@ -17,18 +17,6 @@ interface PackageJson {
     exports?: Record<string, unknown>;
 }
 
-/** Where a library build keeps the files its own code requests by URL. */
-const LIBRARY_ASSETS = 'dist/lib/assets';
-
-/** The URL prefix those requests use — absolute, from the site root. */
-const ASSETS_URL = '/assets';
-
-/** Content types for what a library build emits under `assets/`. */
-const ASSET_TYPES: Record<string, string> = {
-    '.js': 'text/javascript; charset=utf-8',
-    '.map': 'application/json; charset=utf-8',
-};
-
 /**
  * Escapes `text` for use as a literal inside a regular expression.
  *
@@ -175,39 +163,6 @@ export function libraryAliases(libDir: string): RegexAlias[] {
 }
 
 /**
- * Maps a request path under `/assets/` to the file it names inside the library
- * build's own `dist/lib/assets`. The build's code asks for those files by a
- * build-specific hashed name, so the mapping is by directory; no name is
- * written down here.
- *
- * @param libDir - The library build's package directory.
- * @returns A function from a request pathname to the absolute file it names, or `null` for a pathname that is not under `/assets/` or that climbs out of the directory.
- */
-export function libraryAssetFile(libDir: string): (pathname: string) => string | null {
-    const assetsDir = path.join(path.resolve(libDir), LIBRARY_ASSETS);
-
-    return (pathname: string): string | null => {
-        if (!pathname.startsWith(`${ASSETS_URL}/`)) {
-            return null;
-        }
-
-        let name: string;
-
-        try {
-            // Decoded first, so an escaped `..` is caught by the same check.
-            name = decodeURIComponent(pathname.slice(ASSETS_URL.length + 1));
-        } catch {
-            // A malformed escape names no file; Vite's own fallback does the same.
-            return null;
-        }
-
-        const file = path.join(assetsDir, name);
-
-        return file !== assetsDir && isUnder(file, assetsDir) ? file : null;
-    };
-}
-
-/**
  * Aliases every exported subpath of the package at `libDir` to that build's
  * file, and fails any other import of the package. Without the guard an
  * unaliased import would fall through to normal resolution — the
@@ -218,49 +173,18 @@ export function libraryAssetFile(libDir: string): (pathname: string) => string |
  * runs before normal-order plugins; aliasing runs before both, so an id that
  * reaches the guard still in bare form had no alias.
  *
- * It also serves that build's `dist/lib/assets` at `/assets/`. Imports are not
- * the only way the build reaches its own files: the store starts its worker
- * with `new Worker('/assets/StoreWorker-<hash>.js')`, an absolute path the app
- * serving the page has to answer. Unanswered, the store of a panel holding
- * 1,000 records or more never loads and the panel stays empty.
- *
  * @param options - `libDir`, the library build's package directory.
  * @returns The plugin.
- * @throws Error - When the build has no `dist/lib/assets`; the message names it.
  */
 export function qaLibraryPlugin(options: { libDir: string }): Plugin {
     const name = readPackage(options.libDir).name;
     const aliases = libraryAliases(options.libDir);
     const ownImport = new RegExp(`^${escapeRegExp(name)}(/|$)`);
 
-    if (!fs.existsSync(path.join(options.libDir, LIBRARY_ASSETS))) {
-        throw new Error(
-            `the library build at ${options.libDir} has no ${LIBRARY_ASSETS}: nothing would answer the `
-                + `${ASSETS_URL}/ requests the build makes for its own files, such as the store's worker. `
-                + 'Build the arm again.',
-        );
-    }
-
-    const assetFile = libraryAssetFile(options.libDir);
-
     return {
         name: 'qa-library-arm',
         enforce: 'pre',
         config: () => ({ resolve: { alias: aliases } }),
-        configureServer(server): void {
-            server.middlewares.use((req, res, next) => {
-                const file = assetFile(new URL(req.url ?? '/', 'http://localhost').pathname);
-
-                if (file === null || fs.statSync(file, { throwIfNoEntry: false })?.isFile() !== true) {
-                    next();
-
-                    return;
-                }
-
-                res.setHeader('Content-Type', ASSET_TYPES[path.extname(file)] ?? 'application/octet-stream');
-                res.end(fs.readFileSync(file));
-            });
-        },
         resolveId(id: string): null {
             if (ownImport.test(id)) {
                 this.error(`${id} is not exported by the library build at ${options.libDir}`);

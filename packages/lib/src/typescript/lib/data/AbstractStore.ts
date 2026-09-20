@@ -207,6 +207,9 @@ export abstract class AbstractStore {
     // when the dataset is over the threshold).
     private _storeId: string = 'store-' + (nextStoreId++);
     private _snapshotDirty: boolean = true;
+    // One warning per store the first time its offload fails; a later failure is
+    // the same fact.
+    private _workerFallbackWarned: boolean = false;
     private _loading: boolean = false;
 
     // Store-level edit-batch flag. While set, owned records suppress their own
@@ -442,6 +445,14 @@ export abstract class AbstractStore {
      * Loads raw data directly without going through the proxy, then fires 'load'.
      *
      * @param data - An array of plain objects to convert into ModelRecords.
+     *
+     * @remarks
+     * `'load'` fires exactly once, and never before the view is built.
+     * Below the Web Worker threshold of 1,000 records the view is built in
+     * process and the event fires synchronously, inside this call; at or above
+     * it the sort and filter are offloaded and the event is deferred until the
+     * view settles. An offload that fails does not change that: the view is
+     * rebuilt in process and the event still fires, once, with the full view.
      */
     loadData(data: any[]): void {
         const pending = this.ingestRaw(data);
@@ -450,7 +461,9 @@ export abstract class AbstractStore {
         // threshold, or no worker available) `_records` is already populated, so
         // emit 'load' synchronously — consumers and tests rely on that timing.
         // When it offloaded to the worker, `_records` is not ready yet; defer the
-        // emit until the worker resolves so listeners never render an empty view.
+        // emit until the view settles — by the worker, or by the in-process
+        // fallback when the offload fails — so listeners never render an empty
+        // view and never wait forever for one.
         if (this._viewAsync) {
             void pending.then(() => this.emit('load', { records: this._records }));
         } else {
@@ -1888,16 +1901,14 @@ export abstract class AbstractStore {
     // ── Internal ─────────────────────────────────────────────────────────────
 
     /**
-     * Rebuilds the visible records slice by applying all active filters and the active sorter.
+     * Recomputes the filtered/sorted view from `allRecords`, offloading the work
+     * to the Web Worker at or above {@link WORKER_THRESHOLD} and building it in
+     * process otherwise.
      *
-     * @remarks
-     * Null values sort to the end regardless of sort direction. All active filter
-     * predicates must pass for a record to be included in the view.
-     */
-    /**
-     * Recomputes the filtered/sorted view from `allRecords`. Returns a Promise so a
-     * future worker-offload path can resolve after the worker round-trip completes;
-     * the current implementation runs synchronously and resolves immediately.
+     * @returns A promise that always resolves, and never before `_records` holds
+     *   the finished view. An offload that fails is rebuilt in process rather
+     *   than rejecting, so every caller waiting on this promise — and every
+     *   event emitted behind it — still runs.
      */
     protected applyView(): Promise<void> {
         this.rebuildIdIndex();
@@ -1909,7 +1920,23 @@ export abstract class AbstractStore {
         }
 
         this._viewAsync = false;
+        this.applyViewInProcess();
 
+        return Promise.resolve();
+    }
+
+    /**
+     * Rebuilds the visible records slice from `allRecords` in process, applying
+     * every active filter and then every active sorter. This is both the
+     * below-threshold path and what the worker path falls back to when its
+     * offload fails, so it is the only place the full multi-key ordering is
+     * applied.
+     *
+     * @remarks
+     * Null values sort to the end regardless of sort direction. All active filter
+     * predicates must pass for a record to be included in the view.
+     */
+    private applyViewInProcess(): void {
         let view = this._allRecords.slice();
 
         for (const descriptor of this._activeFilters.values()) {
@@ -1931,8 +1958,6 @@ export abstract class AbstractStore {
         }
 
         this._records = view;
-
-        return Promise.resolve();
     }
 
     /**
@@ -2004,20 +2029,18 @@ export abstract class AbstractStore {
      * back to the local ModelRecord array. The worker returns indices (not records)
      * because ModelRecord instances can't survive structured clone.
      *
+     * @returns A promise that always resolves: any failure on the worker path
+     *   is caught and the view rebuilt in process instead.
+     *
      * @remarks
      * The worker protocol currently accepts only a single sorter, so on the
      * worker path multi-sort degrades to the primary (first) sorter. Datasets
      * below {@link WORKER_THRESHOLD} run in-process and apply the full
-     * multi-key comparator.
+     * multi-key comparator — and so does the fallback, which therefore gains
+     * sort correctness rather than losing it.
      */
     private applyViewOnWorker(): Promise<void> {
-        const snapshot = this._snapshotDirty
-            ? StoreWorkerClient.snapshot(this._storeId, this._allRecords.map(r => r.getData()))
-            : Promise.resolve();
-
-        if (this._snapshotDirty) {
-            this._snapshotDirty = false;
-        }
+        const snapshot = this._snapshotDirty ? this.sendSnapshot() : Promise.resolve();
 
         const allRecordsRef = this._allRecords;
         const primary       = this._activeSorters[0];
@@ -2044,6 +2067,56 @@ export abstract class AbstractStore {
 
                 this._records = indices.map(i => this._allRecords[i]);
                 return undefined;
+            })
+            .catch((error: unknown) => this.fallBackToInProcessView(error));
+    }
+
+    /**
+     * Ships the current records to the worker as this store's snapshot, and
+     * records the worker as holding them from the moment of dispatch — so a
+     * second offload overlapping this one does not send the same dataset again.
+     *
+     * @returns A promise that settles as the dispatch does.
+     *
+     * @remarks
+     * A dispatch that fails marks the snapshot stale again, since the worker
+     * never received it; without that, a failure the worker survives — a record
+     * that will not structured-clone — would leave the store asking it to sort
+     * data it does not have. Nothing is cleared on success, so a record added or
+     * removed while a snapshot is in flight keeps the stale mark it set and the
+     * next offload re-ships.
+     */
+    private sendSnapshot(): Promise<void> {
+        this._snapshotDirty = false;
+
+        return StoreWorkerClient
+            .snapshot(this._storeId, this._allRecords.map(r => r.getData()))
+            .catch((error: unknown) => {
+                this._snapshotDirty = true;
+
+                throw error;
             });
+    }
+
+    /**
+     * Rebuilds the view in process after an offload that failed, so the caller's
+     * promise still resolves with the view built. Returns nothing, which is what
+     * turns the rejection into a resolution.
+     *
+     * @param error - What the offload failed with; it is named in the warning.
+     *
+     * @remarks
+     * Warns once per store. A later failure on the same store is the same fact,
+     * and a worker that died is announced separately by the client, once for the
+     * whole page.
+     */
+    private fallBackToInProcessView(error: unknown): void {
+        if (!this._workerFallbackWarned) {
+            this._workerFallbackWarned = true;
+
+            console.warn(`Store ${this._storeId} could not offload its sort/filter, so its view is built on the main thread:`, error);
+        }
+
+        this.applyViewInProcess();
     }
 }

@@ -38,25 +38,54 @@ describe('StoreWorkerClient fallback (no Worker global)', () => {
 });
 
 /**
- * A fake Worker capturing the onmessage handler the client assigns and recording
- * every postMessage payload, letting a test push a synthetic response back.
+ * A fake Worker capturing the handlers the client assigns and recording every
+ * postMessage payload, letting a test push a synthetic response back, fire
+ * either of the two failure events, and count its own terminations.
  */
 class FakeWorker {
     public static instances: FakeWorker[] = [];
     public posted: any[] = [];
+    public terminated: number = 0;
+    /** When set, `postMessage` throws it instead of accepting the message — a record that will not structured-clone. */
+    public postMessageError: Error | null = null;
     public onmessage: ((e: MessageEvent<any>) => void) | null = null;
+    public onerror: ((e: any) => void) | null = null;
+    public onmessageerror: ((e: any) => void) | null = null;
 
     constructor() {
         FakeWorker.instances.push(this);
     }
 
     postMessage(message: any): void {
+        if (this.postMessageError) {
+            throw this.postMessageError;
+        }
+
         this.posted.push(message);
+    }
+
+    terminate(): void {
+        this.terminated++;
     }
 
     /** Pushes a synthetic worker response to the assigned handler. */
     reply(data: any): void {
         this.onmessage?.({ data } as MessageEvent<any>);
+    }
+
+    /** Fires the `error` event a worker whose script never ran would fire. */
+    fail(): void {
+        this.onerror?.({});
+    }
+
+    /** Fires the `messageerror` event an undecodable reply would fire. */
+    failMessage(): void {
+        this.onmessageerror?.({});
+    }
+
+    /** The requestId of the most recent postMessage. */
+    lastRequestId(): number {
+        return this.posted.at(-1).requestId as number;
     }
 }
 
@@ -163,5 +192,157 @@ describe('StoreWorkerClient happy path (faked Worker)', () => {
         // Settle it properly so the promise does not leak.
         worker.reply({ requestId: message.requestId, indices: [0] });
         await expect(promise).resolves.toEqual([0]);
+    });
+});
+
+/** Mirrors `WORKER_PROBE_TIMEOUT_MS` in the client — its cap on an unanswered first request. */
+const PROBE_TIMEOUT_MS = 5000;
+
+/** The tail of the message every retirement rejects with, whatever retired the worker. */
+const RETIRED_MESSAGE = 'sort and filter run on the main thread';
+
+describe('StoreWorkerClient worker retirement (faked Worker)', () => {
+    let client: ClientModule['StoreWorkerClient'];
+    let warn: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(async () => {
+        FakeWorker.instances = [];
+        vi.stubGlobal('Worker', FakeWorker);
+        warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        client = await freshClient();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    it('rejects every request in flight when the worker fires "error"', async () => {
+        const first = client.sortFilter('store-1', { field: 'name', direction: 'asc' });
+        const second = client.snapshot('store-1', [{ id: 1 }]);
+
+        FakeWorker.instances[0].fail();
+
+        await expect(first).rejects.toThrow(RETIRED_MESSAGE);
+        await expect(second).rejects.toThrow(RETIRED_MESSAGE);
+    });
+
+    it('is unavailable and has terminated the worker once after an "error"', () => {
+        expect(client.isAvailable()).toBe(true);
+
+        const worker = FakeWorker.instances[0];
+
+        worker.fail();
+
+        expect(client.isAvailable()).toBe(false);
+        expect(worker.terminated).toBe(1);
+        expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('retires the worker when its first request goes unanswered', async () => {
+        vi.useFakeTimers();
+
+        // The assertion is attached before the clock moves, so the rejection
+        // the timer produces is never momentarily unhandled.
+        const rejected = expect(client.sortFilter('store-1', { field: 'name', direction: 'asc' }))
+            .rejects.toThrow(RETIRED_MESSAGE);
+
+        await vi.advanceTimersByTimeAsync(PROBE_TIMEOUT_MS);
+        await rejected;
+
+        expect(client.isAvailable()).toBe(false);
+    });
+
+    it('stops timing requests once the worker has answered one', async () => {
+        vi.useFakeTimers();
+
+        const first = client.sortFilter('store-1', { field: 'name', direction: 'asc' });
+        const worker = FakeWorker.instances[0];
+
+        worker.reply({ requestId: worker.lastRequestId(), indices: [0] });
+
+        await expect(first).resolves.toEqual([0]);
+
+        const second = client.sortFilter('store-2', { field: 'name', direction: 'asc' });
+
+        let settled = false;
+        void second.then(() => { settled = true; }, () => { settled = true; });
+
+        // Four times the probe's own cap: a genuinely long sort of a very large
+        // store must not be mistaken for a dead script.
+        await vi.advanceTimersByTimeAsync(PROBE_TIMEOUT_MS * 4);
+
+        expect(settled).toBe(false);
+        expect(client.isAvailable()).toBe(true);
+
+        // Settle it properly so the promise does not leak.
+        worker.reply({ requestId: worker.lastRequestId(), indices: [1] });
+
+        await expect(second).resolves.toEqual([1]);
+    });
+
+    it('keeps the worker when a reply carries an error string', async () => {
+        const promise = client.sortFilter('store-1', { field: 'name', direction: 'asc' });
+        const worker = FakeWorker.instances[0];
+
+        worker.reply({ requestId: worker.lastRequestId(), error: 'boom' });
+
+        await expect(promise).rejects.toThrow('boom');
+        expect(client.isAvailable()).toBe(true);
+        expect(worker.terminated).toBe(0);
+    });
+
+    it('retires the worker when a reply cannot be decoded', async () => {
+        const promise = client.sortFilter('store-1', { field: 'name', direction: 'asc' });
+        const worker = FakeWorker.instances[0];
+
+        worker.failMessage();
+
+        await expect(promise).rejects.toThrow(RETIRED_MESSAGE);
+        expect(client.isAvailable()).toBe(false);
+        expect(worker.terminated).toBe(1);
+    });
+
+    it('keeps the worker when a message will not leave the main thread', async () => {
+        vi.useFakeTimers();
+
+        // Construct the worker first, so the failing message can be set up on it.
+        expect(client.isAvailable()).toBe(true);
+
+        const worker = FakeWorker.instances[0];
+
+        worker.postMessageError = new Error('could not be cloned');
+
+        await expect(client.snapshot('store-1', [{ id: 1 }])).rejects.toThrow('could not be cloned');
+
+        // A message that never left proves nothing about the worker, so nothing
+        // may retire it once the probe's own cap has passed.
+        await vi.advanceTimersByTimeAsync(PROBE_TIMEOUT_MS * 2);
+
+        expect(client.isAvailable()).toBe(true);
+        expect(worker.terminated).toBe(0);
+        expect(warn).not.toHaveBeenCalled();
+
+        // And the next call still goes through.
+        worker.postMessageError = null;
+
+        const second = client.sortFilter('store-1', { field: 'name', direction: 'asc' });
+
+        worker.reply({ requestId: worker.lastRequestId(), indices: [3] });
+
+        await expect(second).resolves.toEqual([3]);
+    });
+
+    it('never constructs a second worker after retiring the first', async () => {
+        const first = client.sortFilter('store-1', { field: 'name', direction: 'asc' });
+
+        FakeWorker.instances[0].fail();
+
+        await expect(first).rejects.toThrow(RETIRED_MESSAGE);
+        await expect(client.sortFilter('store-1')).rejects.toThrow('Worker unavailable');
+
+        expect(FakeWorker.instances).toHaveLength(1);
     });
 });
