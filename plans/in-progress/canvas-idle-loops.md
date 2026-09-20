@@ -319,3 +319,112 @@ Read before starting:
 [^test-contract]: Twenty-three tests across three library test files assert that a canvas animates under the modelled sink, where `getContext()` is `null` by design — eleven in `Canvas.test.ts`, ten in `WebGLCanvas.test.ts`, two in `EffectiveVisibility.test.ts` — and one more in the QA suite under jsdom. The register named only `WebGLCanvas.test.ts:136-145`, but the same assumption runs through both canvas suites, two `EffectiveVisibility` cases, and the QA mount smoke test. Making the modelled sink hand out a context instead was rejected: `Canvas.test.ts:60-66`, `:332-344` and `WebGLCanvas.test.ts:60-66` pin "the offline sink returns null" as the live-only contract, and both component docs state it. Stubbing per instance, which both files already do for their frame-timing tests, leaves that contract intact and keeps each adapted test testing what its name says — `does not start when explicitly hidden (P3)` in particular would otherwise pass for the wrong reason.
 
 [^severity-latent]: The 2026-09-20 `val-canvas` sweep under WSLg MiniBrowser measured `webglContexts` 4 of 4, refuting F26.7's claim that WebKitGTK has no WebGL2. The panel reaches the precondition by taking each surface's 2D context first, which makes the engine refuse it a WebGL2 one — a deliberate construction, not something an application does. `01-phase2-status-pass.md:110-115` and `99-synthesis.md:922` both carry the correction; the register's C35 row is marked "open, severity down" for this reason. Two of the register's own line references for C36 have since drifted — `99-synthesis.md:923` cites `core/Component.ts:2429-2438`, which is now `getAria`, and `01-phase2-status-pass.md:75` cites `:2563-2566`, which is `propagateEffectiveVisibility`'s child loop. `scheduleEffectiveVisibilityReconcile` is at `:2575-2578`. Every line number in this plan was re-read against `b3d67f7f`.
+
+---
+
+## Implementation Notes
+
+**`wireChild`'s guard needed a second term the plan did not specify.** The
+plan's `## Internal Structure` gives the block as `if (component.getElement())`
+alone, and `## Scope` reasons that this confines the new edge to genuine
+reparents because "a child built bottom-up has no element when `wireChild`
+runs". The first half holds; the conclusion does not. `unwireChild` calls
+`component.removeElement()`, which detaches the node but leaves `_element`
+cached — only `release()` clears it — so **every** child that has ever rendered
+still reports an element on re-attach, and a plain `removeComponent` +
+`addComponent` pair queues a reconcile just as a `moveComponent` does. The
+hot path that exposes it is the table's cell pool: `Row.retireCell` retires a
+cell with `removeComponent` and `Row.resolveEnteringCell` restores it with
+`addComponent`, once per entering column per pooled row on every column-window
+slide — i.e. per frame while scrolling horizontally. `Header` has the same
+shape, and so does every `if (x.getParentComponent() !== this) addComponent(x)`
+toggle. The plan's blast-radius enumeration, which lists only `moveComponent`
+call sites, is therefore the wrong predicate as well as incomplete.
+
+The guard now also requires the attach to change something:
+`component.isEffectivelyVisible() !== component._lastEffectiveVisible`. That
+preserves all four rows of the plan's own attach table — a never-reconciled
+child carries a `null` cache, which differs from either computed value, so
+C36's two directions still queue — while a pooled cell whose visibility is
+unchanged queues nothing, costs no flush entry, arms no frame and triggers no
+subtree descent. `EffectiveVisibility.test.ts`'s
+`queues nothing when a rendered child is re-attached with its effective
+visibility unchanged` pins it, and fails against the plan's own one-term guard.
+
+**A residual per-attach cost remains and is a decision for the user.** The
+tightened guard still evaluates `isEffectivelyVisible()` — an ancestor walk
+whose `isVisible()` / `isDisplayed()` each resolve a style layer — once per
+re-attach of an already-rendered child, so the table's column slide pays that
+walk per entering cell per frame. Two ways out were identified and neither was
+taken, since both are design changes the plan did not sanction. One moves the
+seam — scheduling from `moveComponent`, which knows the old parent — at the
+cost of missing `replaceComponent` and hand-rolled remove/add pairs. The other
+keeps the seam and replaces the walk with `propagateEffectiveVisibility`'s own
+O(1) formula, `parentEffective && child.isVisible() !== false &&
+child.isDisplayed()`, whenever the container's own `_lastEffectiveVisible` is
+already recorded, falling back to the walk when it is not. The cost itself is
+unmeasured: proving or dismissing it needs a real engine recording, which the
+no-window constraint rules out here.
+
+**Step 5's test table undercounted `Canvas.test.ts` by three.** Beyond the
+thirteen rows listed, `frame timing and frame cap`'s `draws every frame when
+the cap is explicitly removed`, `skips frames that arrive faster than the cap
+allows` and `keeps the loop alive across a skipped frame` also call
+`startAnimation()` without a stub, so the gate stops their loops before the
+first `runFrame`. They took the stub the same way, which is what step 6's grep
+checkpoint and step 10's "fix it the same way" already prescribe. The real
+figures are sixteen adapted tests in `Canvas.test.ts` and twenty-eight across
+the two canvas files, not thirteen and twenty-five; the count of tests that
+actually asserted the old contract is twenty-four (fourteen + ten + two), not
+twenty-three.
+
+**Step 6's grep checkpoint needs a third accepted category.** Step 2(b)'s new
+`does not animate without a context even when animateWhenHidden is set` pins —
+one per canvas file — are deliberately unstubbed and sit outside an
+`offline no-op (U3)` describe, so the checkpoint's two categories cannot cover
+them. Every other `startAnimation()` hit in the three library test files is
+either inside a U3 describe or in a body that calls `withStubContext`.
+
+**Three wording fixes outside the text the plan scoped.** Step 12 scoped the
+panel's `description` export to its closing clause and step 13 scoped the QA
+README to the *Reproduces* and *Validated* cells, but both texts also claimed
+the surfaces are "all animating and drawing nothing" — a statement the fix
+makes false. Each was corrected to "none of them drawing anything"; nothing
+else in the *Builds* cell changed. Step 12's "leave `build` and `describe`
+untouched" likewise left a comment inside `build` asserting that "nothing
+reconciles the loop and it keeps running", which now contradicts the same
+file's updated `description`; it was put in the past tense. No behaviour in
+`build` or `describe` changed.
+
+**One code commit, not two.** C35 and C36 are distinct defects with distinct
+changelog bullets, but they are coupled: the library test files share one
+contract change, and the QA regression surface — the panel, its mount test and
+the README's M14 row — states both fixes' figures in the same cells. A split
+was possible (C35 first, C36 second, with the whole QA surface in the second
+commit) but would have put the shared test-contract churn in both commits for
+no gain in reviewability.
+
+**`plans/in-progress/` did not exist** at the start point and was created by
+the in-progress move.
+
+**Two pre-existing flakes were observed under load,** neither caused by this
+change: `tests/unit/import-without-dom.test.ts` timed out once on the cold
+baseline run at `54d9b6c3`, and `tests/component/code-editor.test.ts`'s
+`caps output at 100 diagnostics` returned 95 once during a full-suite run.
+Both pass in isolation, and the latter passes in isolation against the
+unmodified sources too. The verified baseline is 480 files / 7,868 passed +
+2 todo; the branch is 480 files / 7,878 passed + 2 todo, the ten new pins.
+
+**`npm run docs:api` reports 14 warnings, not the zero the plan's
+`## Verification` asks for.** All 14 predate this branch and name symbols it
+does not touch (`SpatialNavigation`, `rankInDirection`, `FieldDecorator`,
+`MarkdownViewer`, `MarkdownEditor`); the bar this run held itself to was
+therefore no *new* warnings, and the count is unchanged from the start point.
+
+**Manual verification 13-15 is unproven.** The docking drag, the tab tear-off
+and the `canvas-idle` panel run each open a window on the user's desktop and
+were not run. The offline harness covers the mechanism — the five
+`onEffectiveVisibilityChange` overrides are exercised by the library suite, and
+the QA mount test pins the reparent pause under jsdom — but the docking
+subsystem's own behaviour under the extra edge, and the panel's in-engine
+counters, still need the user's own run.
