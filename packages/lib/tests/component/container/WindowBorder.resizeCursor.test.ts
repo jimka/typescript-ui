@@ -64,4 +64,33 @@ describe('WindowBorder resize cursor', () => {
 
         expect(border.getCursor()).toBe('ew-resize');
     });
+
+    // The constructor used to guard its assignment with `if (direction)`, which
+    // reads an explicit `Direction.NORTH` — enum value `0` — as "not supplied".
+    // The guard was compensating for a field initializer that already held
+    // `Direction.NORTH`, so the falsy case resolved to the same value and the
+    // bug was latent: like the cursor case above, it cannot be pinned red
+    // before its fix. Removing both the guard and the initializer leaves the
+    // constructor argument as the field's only writer, and this case is the
+    // guard that the round-trip and the cursor it drives survive that removal
+    // for every member — including the `0`-valued one whose correctness was
+    // previously an accident.
+    it.each([
+        [Direction.NORTH,     'ns-resize'],
+        [Direction.SOUTH,     'ns-resize'],
+        [Direction.WEST,      'ew-resize'],
+        [Direction.EAST,      'ew-resize'],
+        [Direction.NORTHWEST, 'nwse-resize'],
+        [Direction.SOUTHEAST, 'nwse-resize'],
+        [Direction.SOUTHWEST, 'nesw-resize'],
+        [Direction.NORTHEAST, 'nesw-resize'],
+    ])('round-trips Direction %i and resolves its cursor to %s', (direction, cursor) => {
+        installTestDOM(CONFIG);
+
+        const border = new WindowBorder(direction);
+        border.getElement(true);
+
+        expect(border.getDirection()).toBe(direction);
+        expect(border.getCursor()).toBe(cursor);
+    });
 });
