@@ -605,6 +605,16 @@ page resets to empty.
   `extractMarkdownHeadings` and `#fragment` links are unchanged; no consumer
   action is needed.
 
+- **A theme change while a `Markdown` is on a hidden page no longer leaves it
+  reporting a height of zero.** The content-height measurement ran against a
+  `display:none` element, where every geometry read reports zero, and nothing
+  re-measured on the way back: a re-show changes no width, which is the only
+  thing that previously triggered a re-measure. The measurement is now skipped
+  while the component is not effectively visible and re-run once it becomes
+  visible again, so the last good height stands in the meantime. The same
+  recovery covers a `setMarkdown` that lands while hidden. No consumer action
+  is needed.
+
 - **A table no longer writes an in-progress cell edit onto the wrong record
   when scrolling rebinds the row under it.** The body keeps a small pool of
   row components and rebinds them to new records as the user scrolls; an
