@@ -374,6 +374,10 @@ so that late call becomes a no-op. Measured: twenty interrupted `Accordion`
 toggles add twenty `transitionend` listeners to one handle and remove none —
 one dead listener per toggle interrupted within 240 ms.
 
+**Fixed by `plans/after-transition-cancel-teardown.md` (2026-09-20): the
+registry guarantee does transfer — the wait's element is the component's own
+handle, so `Component.destructor` cancels before releasing it.**
+
 **A documentation error:** `docs/components/ButtonGroup.md` documents a
 `getSelected()` method the class does not have. Pre-existing and unrelated
 to any plan, so left alone under the surgical-changes rule — recorded here
