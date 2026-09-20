@@ -921,3 +921,14 @@ page resets to empty.
   for the life of the page. Both now unregister before the inherited teardown
   destroys the component the registration is keyed by. No consumer action is
   needed.
+
+- **`ButtonGroup` now releases every listener it registers.** A button handed
+  to `removeButton` kept the group's `"action"` listener, so clicking it went
+  on deselecting its former siblings; `setContainer` left its arrow-key
+  `keydown` registration on every container it had ever been given, so a
+  re-wired group kept driving navigation from the old one; and `dispose()`
+  released neither. All three now remove the exact registration the group
+  made. Separately, `addButton` of a button already in the group is now a
+  no-op — it used to add a second copy of the member and a second listener,
+  so one click ran the group's reconciliation twice. No consumer action is
+  needed.

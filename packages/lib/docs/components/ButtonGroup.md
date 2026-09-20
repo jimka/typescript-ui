@@ -56,10 +56,12 @@ group.on("selection", button => {
 
 | Method | Purpose |
 | --- | --- |
-| `addButton(button)` | Add a `RadioButton` or `ToggleButton` to the group. |
+| `addButton(button)` | Add a `RadioButton` or `ToggleButton` to the group; adding a button already in the group is a no-op. |
+| `removeButton(button)` | Remove a button from the group; it stops affecting the group's selection. |
 | `setContainer(component)` | Wire roving tabindex (toggle groups only). |
 | `on("selection", fn)` | Subscribe to selection changes. |
 | `getSelected()` | Return the currently selected button or `null`. |
+| `dispose()` | Release the group's listeners on its buttons and its container. |
 
 ## See also
 
