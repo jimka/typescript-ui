@@ -245,10 +245,39 @@ So the bare `tsc -p packages/lib/tsconfig.json` measures the wrong program.
 It wants an `include` or `"types": []`, or removal from the agenda — not a
 rot hunt.
 
-## Found while planning, not in the register
+## Found while planning and implementing, not in the register
 
-Drafting the first four plans turned up two things the campaign never
-recorded. Both were measured, not inferred.
+Drafting and implementing the first four plans turned up four things the
+campaign never recorded. All were measured, not inferred.
+
+**C38 — a store worker that dies *after* answering at least once still hangs
+forever.** `store-worker-fail-safe` closes the dead-on-arrival case, not the
+dies-later one. `StoreWorkerClient` arms its probe timer only while
+`!workerProven`, and the first reply of any kind sets `workerProven`, so
+nothing times any later request. A worker that boots, answers once, then
+stops answering leaves its `sortFilter` promise unsettled, so
+`applyViewOnWorker`'s `catch` never fires and `applyView()` never resolves —
+the original symptom exactly: the table stays empty and `load` never fires.
+This is reachable rather than theoretical, because `filterBy` serialises
+**custom filter predicates** into the worker, so a consumer's own predicate
+that loops forever hangs it with no error to catch. The one-shot probe was a
+deliberate choice (the plan's Architecture Decisions: a genuinely long sort
+must not be mistaken for a dead script), so the fix is a per-request
+deadline generous enough not to punish a slow sort, not a change of design.
+Found by the consolidating review, 2026-09-20.
+
+**A blob object URL leaks on every blocked construction under a strict
+CSP.** Vite's inline-worker shim does `createObjectURL(blob)` → `new
+Worker(objURL)` → on failure `new Worker("data:…")`, and revokes the object
+URL only from the worker's own `error` listener. Under a policy allowing
+neither `blob:` nor `data:`, the URL is never revoked and both attempts emit
+a violation — once per `applyView()` on every store over the threshold,
+because `isAvailable()` calls `ensureWorker()`. The view is still built and
+every event still fires, so this is noise and a bounded leak, not
+incorrectness. The reviewer's suggested remedy — retiring the client when
+construction throws — contradicts the shipped plan's Architecture Decisions,
+which state the opposite as the design, so it needs its own small plan that
+revisits that decision rather than an in-flight fix.
 
 **C37 — `afterTransition`'s own `cancel()` leaks the listener it armed.**
 Exactly C15's shape, in the same file, in the method the C15 fix was going
