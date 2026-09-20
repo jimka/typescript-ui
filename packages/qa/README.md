@@ -22,6 +22,7 @@ its own dev server, which writes it under `results/`.
 | `src/harness/` | The harness: frame loop, drivers, counters, ablations, probes, the run. It imports nothing from the library; the page hands it `Body` and `DOM`. |
 | `vite.config.ts`, `vite/plugins.ts` | The app's own Vite config: the report endpoint, the library-build alias and the build's own `/assets/`. |
 | `runqa.sh` | Runs one measurement end to end. |
+| `src-tauri/` | The Tauri host, a minimal Tauri shell that opens the page (see *Tauri host*). |
 | `bin/` | `qa-verdict.py`, `qa-table.py`, `qa-forced.py`. |
 | `results/`, `logs/` | Run output; created on first run, not committed. |
 
@@ -42,7 +43,8 @@ packages/qa/runqa.sh [--host <host>] <name> <main|wt> '<query params>'
 
 `--host` picks what opens the page; `minibrowser` (the default) is WebKitGTK's
 MiniBrowser, found at `QA_MINIBROWSER` (default
-`/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/MiniBrowser`). The runner checks the
+`/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/MiniBrowser`), and `tauri` is the
+app's own Tauri shell (see *Tauri host*). The runner checks the
 arguments, the arm's build and the host before it starts anything, so a typo or
 a missing program fails at once and leaves nothing running.
 
@@ -107,6 +109,67 @@ and the report's `build` names a path, not a commit.
 If a run ends in `NO RESULT`, look in `logs/vite-<name>.log` for
 `optimized dependencies changed. reloading` — Vite found a dependency after the
 page loaded and reloaded it mid-run — and run it again.
+
+## Tauri host
+
+`src-tauri/` is a minimal Tauri 2 shell, `qa-host`, that lets every panel be
+measured in a Tauri window as well as in MiniBrowser. It opens one full-screen
+window on the URL given as its only argument and adds nothing of its own: no
+plugins, no commands, no capabilities, no frontend. The window loads the same
+dev-server URL MiniBrowser loads, so the page, the harness, the panels and the
+report are the same under both hosts. It exits 2 without opening a window
+unless given exactly one http or https URL.
+
+Tauri still injects its own init scripts into the page. They define
+`window.isTauri`, `window.__TAURI_INTERNALS__` (with an `invoke` function) and
+wry's `window.ipc`, and add two listeners on `document`: a `mousedown`
+listener that acts only on `data-tauri-drag-region` elements, which the
+library never marks, and, in the debug build the runner uses, a `keydown`
+listener for the devtools shortcut, Ctrl+Shift+I. There is no
+`window.__TAURI__`, since `withGlobalTauri` is off. The page comes from the
+dev server rather than from Tauri, so Tauri treats it as remote content, and
+with no capability granted it refuses every command the page could invoke.
+None of this writes to the DOM, so it leaves a panel's census alone, but it is
+one more way the two hosts differ.
+
+Build it once, from the repository root:
+
+```sh
+cargo build --manifest-path packages/qa/src-tauri/Cargo.toml
+```
+
+This needs Rust and the WebKitGTK development package (`webkit2gtk-4.1`). The
+first build compiles Tauri and its GTK bindings, several minutes; building
+opens no window. Rebuild only after editing `src-tauri/`, never for a page or
+panel change: the page loads from the dev server at run time. The Tauri CLI is
+not needed; a plain `cargo build` embeds no frontend and needs none.
+
+Then run with `--host tauri`:
+
+```sh
+packages/qa/runqa.sh --host tauri <name> <main|wt> '<query params>'
+```
+
+The runner starts `QA_TAURI_BIN` (default
+`packages/qa/src-tauri/target/debug/qa-host`) on the run's URL and stops it as
+it stops MiniBrowser; everything else about the run is the same. A missing
+binary exits 2 before anything starts, with the build command. Starting
+`qa-host` yourself opens a full-screen window too.
+
+The build lives in the checkout's own `src-tauri/target/`, about 2.9 GB, so
+each worktree that runs `--host tauri` needs its own build, unless
+`QA_TAURI_BIN` points at an existing binary, such as the main tree's. The
+binary holds nothing specific to a checkout; the page it loads is the arm's.
+
+The host is Linux only, like the runner. There Tauri renders through
+WebKitGTK, the same `webkit2gtk-4.1` library MiniBrowser uses; on Windows the
+same shell would run WebView2 (Chromium), and on macOS WKWebView, so it would
+measure a different engine.
+
+The runner sets no `WEBKIT_*` environment variable for either host. A variable
+that changes WebKit's rendering path changes what is measured, so if one is
+ever needed to get a window, every arm of a comparison must carry it, and the
+sweep's notes must say so.
 
 ## Looking at a panel
 
@@ -199,7 +262,7 @@ app's screen can easily exercise a different code path.
 
 | Panel | Builds | Reproduces | Validated |
 |---|---|---|---|
-| `chart-line` | A 3-series `LineChart`, legend and point markers on, `n` points per series (default 50). | Slice 26 F26.1: a chart rebuilds every SVG mark per layout pass — at `n = 50`, 1,081 sink calls (`apply` 241, `createElementNS`, `appendChild`, `removeChild` and `release` 210 each) and 12 `measureText` calls per unchanged pass. | Not yet: fill in the date, the library commit and the numbers after the first authorised sweep. |
+| `chart-line` | A 3-series `LineChart`, legend and point markers on, `n` points per series (default 50). | Slice 26 F26.1: a chart rebuilds every SVG mark per layout pass — at `n = 50`, 1,081 sink calls (`apply` 241, `createElementNS`, `appendChild`, `removeChild` and `release` 210 each) and 12 `measureText` calls per unchanged pass. | `minibrowser`: not yet — fill in the date, the library commit, the census and the frame time after the first authorised sweep.<br>`tauri`: not yet — the same, from a sweep that runs both hosts. |
 
 ## Built-in drivers
 
@@ -295,8 +358,19 @@ FORMAT <path>` or `UNREADABLE <path>: <reason>` otherwise.
   so drift shows
   ([00-baseline.md](../../plans/research/render-review-2026-09-15/00-baseline.md#L186),
   [97-wave2-measurement.md](../../plans/research/render-review-2026-09-15/97-wave2-measurement.md#L3)).
-- **Compare only runs from the same host** (the `host` column): a MiniBrowser
-  window and a Tauri webview embed the engine differently.
+- **Work counts must match across hosts at the same viewport; frame times
+  and geometry are compared only within one host** (the `host` column). Seam,
+  work and native mutation counts come from the library and the engine's DOM,
+  so at the same `before.viewport` a panel's per-pass census is the same under
+  MiniBrowser and Tauri; a difference there means the hosts ran different
+  code. At different viewports it can differ legitimately — a panel whose work
+  depends on its size, such as a virtualised list, does more or less of it —
+  and a window manager that refuses full screen gives one host a smaller
+  viewport. A MiniBrowser window and a Tauri webview embed the engine
+  differently — window chrome, scrollbars, WebKit settings, Tauri's init
+  scripts — so their frame times and rectangles differ for reasons that are
+  not the library's. Give each host's runs their own name prefix, so
+  `qa-table.py`'s `geom` reference is always a run of the same host.
 - **Give every arm the same instrument flags** (`count`, `work`, `seam`,
   `geom`): the instruments cost time.
 - **Geometry equality is the soundness gate.** An arm whose `geom` column reads
