@@ -817,6 +817,16 @@ page resets to empty.
   bound to a store that had loaded at least once leaked the spinner and its
   arc on every disposal. No consumer action is needed.
 
+- **A `CodeEditor` no longer adds 51 CSS rules to the page for every editor
+  and every theme change.** Its theme extension was rebuilt on each call, and
+  each build produced two fresh `style-mod` modules — which a stylesheet
+  keeps in append order, with no way to unmount one again. The theme is now
+  built once per dark/light flag and shared from then on, so a long session
+  of theme toggling no longer grows the page's rule count. One visible
+  consequence: every editor on the same flag now carries the same generated
+  theme class rather than one of its own. Nothing in the library reads that
+  class. No consumer action is needed.
+
 ### Data
 
 - **A store holding 1,000 records or more now builds its view.** Above that
