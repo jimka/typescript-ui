@@ -255,3 +255,58 @@ describe('Text numeric-pixel lineHeight value-class sharing', () => {
         expect(_ruleCacheHas('.Label.lh22px')).toBe(true);
     });
 });
+
+// plans/implemented/nan-sentinel-dom-writes.md: a numeric line height is fed
+// from a layout box, so a caller can hand `setLineHeight` a NaN computed from
+// an unset one. `setValueStyleState` keys a *shared* class rule on the value,
+// so that minted a permanent `.Text.lhNaNpx { line-height: NaNpx }` rule
+// nothing ever evicts — and the browser discards the declaration, so the page
+// looked right while the junk rule accumulated. These cases assert on the
+// writes each call itself produced, not on the whole recording, because the
+// `.ClassName` registry survives `DOM.reset()` within one file (see the header).
+describe('Text setLineHeight refuses a non-finite number', () => {
+    /** Selectors containing `needle` that `writes` created or wrote declarations to. */
+    function ruleSelectorsContaining(writes: RecordingDOMSink['writes'], needle: string): string[] {
+        return writes
+            .filter((w) => w.op === 'ensureStyleRule' || w.op === 'setRuleStyles')
+            .map((w) => w.args[0] as string)
+            .filter((selector) => selector.includes(needle));
+    }
+
+    /** Class tokens containing `needle` added by any `apply` patch in `writes`. */
+    function addedClassesContaining(writes: RecordingDOMSink['writes'], needle: string): string[] {
+        return classToggleWrites(writes)
+            .flatMap((patch) => patch.addClass ?? [])
+            .filter((token) => token.includes(needle));
+    }
+
+    /** The writes `t.setLineHeight(value)` produces on a rendered Text already holding 18px. */
+    function writesForLineHeight(value: number): { writes: RecordingDOMSink['writes']; text: Text } {
+        const sink = DOM.sink as RecordingDOMSink;
+        const text = new Text('x');
+
+        text.getElement(true);
+        text.setLineHeight(18);
+
+        const start = sink.writes.length;
+        text.setLineHeight(value);
+
+        return { writes: sink.writes.slice(start), text };
+    }
+
+    it('mints no NaN-keyed rule, adds no NaN class token, and keeps reporting the last real value', () => {
+        const { writes, text } = writesForLineHeight(NaN);
+
+        expect(ruleSelectorsContaining(writes, 'NaN')).toEqual([]);
+        expect(addedClassesContaining(writes, 'NaN')).toEqual([]);
+        expect(text.getLineHeight()).toBe(18);
+    });
+
+    it('does the same for Infinity', () => {
+        const { writes, text } = writesForLineHeight(Infinity);
+
+        expect(ruleSelectorsContaining(writes, 'Infinity')).toEqual([]);
+        expect(addedClassesContaining(writes, 'Infinity')).toEqual([]);
+        expect(text.getLineHeight()).toBe(18);
+    });
+});

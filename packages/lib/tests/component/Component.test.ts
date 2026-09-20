@@ -709,6 +709,78 @@ describe('Component — will-change survives applyStyle', () => {
     });
 });
 
+// plans/implemented/nan-sentinel-dom-writes.md: `setTranslate` used to write
+// `transform: translate3d(NaNpx,…)` whenever a caller handed it a non-finite
+// number — the browser discards that declaration, so the page looked right
+// while the write happened on every layout pass. An end-state assertion
+// therefore proves nothing here; these cases assert on what reached the sink.
+describe('Component — setTranslate refuses a non-finite argument', () => {
+    beforeEach(() => installTestDOM(DOM_CONFIG));
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    /**
+     * The `transform` values written to `component`'s inline style while
+     * `fn()` ran, in order. `setTranslate` is the only writer of that
+     * declaration on a plain `Component`, so an empty array means the call
+     * produced no transform write at all.
+     */
+    function transformWritesDuring(component: Component, fn: () => void): Array<string | null> {
+        const sink   = DOM.sink as RecordingDOMSink;
+        const handle = component.getElement();
+        const start  = sink.writes.length;
+
+        fn();
+
+        return sink.writes
+            .slice(start)
+            .filter(w => w.op === 'apply' && w.args[0] === handle)
+            .map(w => (w.args[1] as { style?: Record<string, string | null> }).style)
+            .filter((style): style is Record<string, string | null> => style !== undefined && 'transform' in style)
+            .map(style => style.transform);
+    }
+
+    /** A rendered component already carrying a real translate, so a refusal has something to preserve. */
+    function translatedComponent(): Component {
+        const component = new Component({});
+
+        component.getElement(true);
+        component.setTranslate(5, 6);
+
+        return component;
+    }
+
+    it('writes no transform and keeps the cached translate when handed NaN', () => {
+        const component = translatedComponent();
+
+        const writes = transformWritesDuring(component, () => component.setTranslate(NaN, 0));
+
+        expect(writes).toEqual([]);
+        expect(component.getTranslateX()).toBe(5);
+        expect(component.getTranslateY()).toBe(6);
+    });
+
+    it('writes no transform and keeps the cached translate when handed Infinity', () => {
+        const component = translatedComponent();
+
+        const writes = transformWritesDuring(component, () => component.setTranslate(Infinity, 0));
+
+        expect(writes).toEqual([]);
+        expect(component.getTranslateX()).toBe(5);
+        expect(component.getTranslateY()).toBe(6);
+    });
+
+    it('still writes a finite translate through unchanged', () => {
+        const component = new Component({});
+        component.getElement(true);
+
+        const writes = transformWritesDuring(component, () => component.setTranslate(5, 6));
+
+        expect(writes).toEqual(['translate3d(5px,6px,0)']);
+        expect(component.getTranslateX()).toBe(5);
+        expect(component.getTranslateY()).toBe(6);
+    });
+});
+
 // Mirrors the will-change replay above: touchAction had no _defaultOptions
 // fold or applyStyle replay before this plan, so a construction-time value
 // was silently dropped by the same inline-style wipe.

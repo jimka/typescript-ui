@@ -517,8 +517,20 @@ class ComboBoxLabel extends Component {
      * @param value - A pixel count (number) or a CSS line-height string.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks A non-finite number is refused outright rather than clamped.
+     * Because the numeric form publishes a shared rule keyed on the value, a
+     * `NaN` line height fed from an unset layout box used to mint a permanent
+     * `line-height: NaNpx` rule nothing evicts, *and* move this label onto it
+     * — silently dropping the real line height it was showing, because the
+     * browser discards the `NaN` declaration that replaced it. The last real
+     * value now keeps being applied and reported.
      */
     setLineHeight(value: number | string): this {
+        if (typeof value === "number" && !Number.isFinite(value)) {
+            return this;
+        }
+
         const numeric  = typeof value === "number";
         const resolved = numeric ? value + "px" : value;
 

@@ -77,6 +77,28 @@ page resets to empty.
   an unchanged commit, so a pass owed beneath such an ancestor is not withheld
   by its skip.
 
+- **`Component.setTranslate()` and `Text.setLineHeight()` now ignore a
+  non-finite number instead of writing an invalid declaration**, joining
+  `DiagramView.setZoom()` in refusing rather than clamping — a `NaN` cannot be
+  resolved by a clamp, and coercing it to 0 would cancel a translate the
+  element really carries. Both leave the cache and the element exactly as the
+  last good call left them. For `setTranslate()` that removes a write the
+  browser already discarded and nothing else. For `setLineHeight()` — and for
+  `ComboBoxLabel.setLineHeight()`, which gained the same guard — it is an
+  observable improvement: the numeric form paints through a shared class rule
+  keyed on the value, so a non-finite number used to swap the control off its
+  real `line-height` class onto a `NaN`-keyed one whose declaration the browser
+  then dropped, silently reverting the control to the theme line box while
+  `getLineHeight()` reported `NaN`. It now keeps, and reports, the last real
+  value. Anything that was passing a computed `NaN` and relying on that revert
+  must ask for the value it wants instead — `centerInHeight(null)` on a `Text`
+  returns it to the theme's additive line box. Separately, `getSize()`,
+  `getWidth()` and `getHeight()` are now documented as reporting `NaN` before
+  the first commit rather than `0` or `null`, and
+  `getX()` / `getY()` as reporting it before anything positions the
+  component — a documentation correction to what these accessors always did,
+  not a behaviour change, but one worth checking your own null guards against.
+
 ### Components
 
 - **`MenuBar` and `ToolBar` are no longer re-laid-out when their parent
@@ -533,6 +555,28 @@ page resets to empty.
   transition running against an element's handle before releasing it, so a
   cancel that can still reach the DOM always runs while the handle is live.
   No consumer action is needed.
+
+- **A child no layout manager ever positioned no longer re-writes
+  `transform: translate3d(NaNpx,NaNpx,0)` on every layout pass, nor sits
+  permanently promoted to its own compositor layer.** Such a child — every
+  `ComboBox` caret glyph, among others — still reported the "never assigned"
+  sentinel from `getX()` / `getY()`, which made `commitBounds`' size-stable
+  fast path believe it had moved on every settled pass; the resulting
+  `will-change: transform` was taken and never released, and each pass also
+  re-dirtied the nearest ancestor that had opted into skipping an unchanged
+  commit. The fast path now requires a real current position, so these
+  children take the slow path and stay at the static position they already
+  rendered at. In the same family, a `Markdown` whose width is assigned before
+  any height was ever committed no longer writes `height: NaNpx` when
+  restoring its content-height probe; the box stays at `height: auto` until
+  the pass's own `setHeight` lands. No write the browser was honouring is
+  removed — every suppressed declaration was one it already discarded. One
+  case does move, in the direction of correctness: a child that had been sized
+  but never positioned, then handed a real target by its manager, used to take
+  the fast path and so received only the discarded `NaN` transform, leaving it
+  at its static position indefinitely with `getX()` / `getY()` never assigned.
+  It now takes the slow path and is placed where its manager asked. Anything
+  that looked right because such a child stayed put was relying on that bug.
 
 ### Components
 

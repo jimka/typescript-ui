@@ -597,3 +597,140 @@ panel.
     a review campaign. Each case therefore asserts on what reached the sink,
     and each must be seen red before the guard lands. A case that is green
     against today's code is asserting something other than the bug.
+
+---
+
+## Implementation Notes
+
+Implemented as planned — the five source edits are exactly the four guards and
+the one gate the plan specifies, and no existing test needed editing. Four
+things are worth recording about how the work actually went.
+
+**Not every case could be seen red, and the plan's blanket claim that each one
+must be is wrong for its own control cases.** `## Expected Behaviour` says
+"every case must be written and seen to fail before the corresponding source
+change lands", but behaviours 3, 6, 7's added boundary case, 11 and 13 all
+assert that something *must not change*, so they are green against today's code
+by construction — that is what makes them useful. The cases that actually pin a
+bug were each seen red first: behaviours 1–2 wrote
+`translate3d(NaNpx,0px,0)` / `translate3d(Infinitypx,0px,0)`; behaviours 4–5
+wrote `translate3d(NaNpx,NaNpx,0)` and left `getWillChange()` pinned at
+`"transform"`; behaviours 8–9 minted `.Text.lhNaNpx` / `.Text.lhInfinitypx`;
+behaviours 10 and the Infinity case minted `.ComboBoxLabel.lhNaNpx` /
+`.ComboBoxLabel.lhInfinitypx`; and behaviour 12 wrote `height: NaNpx`.
+
+**Behaviour 4 had to be re-checked against pristine code.** Once step 1's
+`setTranslate` guard was in, behaviour 4 ("no `transform` declaration across
+three settled passes") passed without step 2's gate — exactly what the
+`## Architecture Decisions` table predicts, since row 2 alone stops the write
+while leaving the promotion standing. It was re-run with the `Component.ts`
+change stashed to confirm it is genuinely red against the branch's start point;
+behaviour 5's `will-change` half is what step 2 fixes.
+
+**Behaviour 11 is a regression guard, not a repro.** Constructing, rendering
+and laying out a `ComboBox` twice mints no `NaN`-keyed rule against today's code
+either: the offline harness models font metrics, so the label's line height
+resolves to a real number in every pass the unit harness can drive. The NaN it
+guards against comes from a box that is genuinely unset at the moment the
+renderer reads it, which is a live-engine ordering the harness does not
+reproduce. It is kept because it is the cheapest standing check that the
+`ComboBox` construct-and-layout window stays clean.
+
+**Two further `setValueStyleState` value-keyed entry points take a number and
+are not guarded**: `AbstractInput`'s `"h"` height token
+([AbstractInput.ts:339](packages/lib/src/typescript/lib/component/input/AbstractInput.ts#L339))
+and `ListItem`'s marker min-size token
+([ListItem.ts:111](packages/lib/src/typescript/lib/component/list/ListItem.ts#L111)).
+Both mint a permanent shared class rule keyed on the value the same way the two
+`setLineHeight` entry points do, so a non-finite number reaching either would
+leak the same junk rule. They are outside this plan's scope — C6 names the two
+line-height sites — and no caller was traced to confirm they are reachable with
+a `NaN`, so this is recorded rather than fixed.
+
+**The C6 half is not geometry-neutral, and the plan's soundness argument for it
+is wrong.** `## Architecture Decisions`' *Every removed write is one the browser
+already discards* rests the `setLineHeight(NaN)` row on "the real
+`setLineHeight(16)` later in the same pass is what paints" — a caller-sequencing
+assumption, not the browser-discards-it invariant that genuinely carries C22 and
+C27. It does not hold on its own terms: `setValueStyleState` swaps the element's
+value-class token, so `setLineHeight(NaN)` used to *remove* the real
+`.Text.lh18px` rule and add a `.Text.lhNaNpx` one whose sole declaration the
+browser then dropped — the control silently reverted to the theme's additive line
+box, and `getLineHeight()` reported `NaN`. The guard therefore does change what
+paints in that case: it keeps the last real line height instead of losing it.
+That is strictly more correct, and it is the direction the campaign's gate wants
+(the old behaviour was the one that moved the box), but it is an observable
+end-state change and `## Documentation Impact`'s "no observable end state
+changes" is wrong about it. The changelog entry states the real behaviour and
+names `centerInHeight(null)` as the way to ask for the theme line box
+deliberately. C27 is unaffected — `Markdown`'s suppressed restore really is
+confined to a write the browser discards.
+
+**C22's gate also changes where one shape of child is painted, and the plan
+declares that shape impossible.** `## Architecture Decisions`' risk table says of
+the `canFastPath` gate: "none: the gate cannot change a case where all four
+numbers are real". True as far as it goes, but it enumerates only the all-NaN
+shape. The reachable quadrant it misses is a child that has been *sized* out of
+band but never positioned, whose manager then hands `commitBounds` a **finite**
+target: `sizeUnchanged` is true, `getX()`/`getY()` are still the seed, so master
+took the fast path. On master that child receives a `will-change` promotion and
+an invalid `translate3d(NaNpx,NaNpx,0)` the browser drops — no `left` or `top`
+is ever written and `getX()`/`getY()` stay `NaN` for good, so it paints at its
+static position permanently. On this branch it takes the slow path and is
+committed at the target, reporting a real `getX()`. That is now pinned by
+*places a child that was sized out of band before its first placement* in
+[LayoutManager.commitBounds.test.ts](packages/lib/tests/component/layout/LayoutManager.commitBounds.test.ts),
+which fails against the start point with `expected NaN to be +0`. So the gate
+does move that child — onto the position
+its manager actually asked for, which is the correct place and the one master
+could never reach, but it is a paint change and not the pure write-suppression
+the plan's table claims. `Absolute` cannot produce the shape (it passes
+`getX()` straight through as the target), so the `ComboBox` caret the plan is
+actually aimed at is unaffected; the box managers can, for a child sized before
+its first placement. The changelog scopes its claim to "no write the browser was
+honouring is removed" and states the moving case outright, rather than repeating
+"nothing moves".
+
+**The documentation correction had to be widened beyond the plan's scope.**
+`## Documentation Impact` named only
+[layout-system.md:148](packages/lib/docs/concepts/layout-system.md#L148), but
+three further consumer docs asserted the same wrong `null`-before-layout promise
+the changelog announces as corrected, which would have left the correction
+half-landed: [sizing.md:17-24](packages/lib/docs/concepts/sizing.md#L17)
+annotated `getWidth()` / `getHeight()` as `number | null` (they are declared
+`number`) and said they return `null` before layout,
+[faq.md:96](packages/lib/docs/reference/faq.md#L96) told readers `null` means
+layout has not run, and
+[troubleshooting.md:20](packages/lib/docs/reference/troubleshooting.md#L20) said
+`getSize()` is "now non-null" after a pass. All three are corrected to the `NaN`
+sentinel and the `Number.isNaN` test. No code moved for this.
+
+**The QA table's "empty patch" prediction is wrong, and the `form-flat` run
+should expect a different patch rather than a missing one.** `## Verification`
+says the caret's `apply` "survives as an empty patch"; it does not. For the
+all-NaN shape the slow path calls `setX(NaN)`/`setY(NaN)`, whose same-value
+guard cannot fire (`NaN === NaN` is false), so `writeHorizontalGeometry` /
+`writeVerticalGeometry` run each pass — they skip `left`/`top` as the plan says,
+but `## Internal Structure`'s "absorbed by the existing `Number.isNaN` guards"
+covers only that half: `width` and `height` are re-queued every pass. So where
+master emitted `{ transform: "translate3d(NaNpx,NaNpx,0)" }` per settled pass,
+this branch emits `{ width: …, height: … }`. The `apply` count is unchanged, so
+M25's pin of 7 per settled `ComboBox` pass still holds; and the branch's values
+are box-geometry longhands matching the live declaration, which the DOM seam's
+own redundant-clear dedup drops at the terminus, whereas master's `transform`
+read back empty, was not on that allowlist, and so mutated the DOM every frame.
+The patch content is the thing to compare in the two-arm run, not its emptiness.
+
+**Verification.** `npm run typecheck`, `npm run lint` and `npm run test` (474
+files, 7726 passing) are clean. `npm run docs:api` finishes with 0 errors and 14
+warnings — the same 14 the branch's start point produces, confirmed by re-running
+it with the source and docs changes stashed; none of them names a symbol this
+branch touched. Both grep invariants hold: `Component.ts` has exactly two
+`translate3d` *write* sites (`setTranslate` and `replayGeometryStyles` — the
+plain `grep -rn` matches 4 lines, since two doc comments mention the string in
+prose, one of them added by this branch), and
+`LayoutManager.ts` has exactly four `Number.isFinite` occurrences, all in the
+new gate. The QA witnesses (`form-flat`, `form-nested`, `markdown-doc`) and
+behaviours 14–15 were **not** run: every `packages/qa` run opens a full-screen
+window and needs the user's explicit go-ahead. Nothing here was verified against
+a real rendering engine.

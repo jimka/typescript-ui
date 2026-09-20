@@ -374,6 +374,21 @@ describe('ComboBoxLabel line-height value-class sharing', () => {
             .filter((patch) => patch.addClass !== undefined || patch.removeClass !== undefined);
     }
 
+    /** Selectors containing `needle` that `writes` created or wrote declarations to. */
+    function ruleSelectorsContaining(writes: RecordingDOMSink['writes'], needle: string): string[] {
+        return writes
+            .filter((w) => w.op === 'ensureStyleRule' || w.op === 'setRuleStyles')
+            .map((w) => w.args[0] as string)
+            .filter((selector) => selector.includes(needle));
+    }
+
+    /** Class tokens containing `needle` added by any `apply` patch in `writes`. */
+    function addedClassesContaining(writes: RecordingDOMSink['writes'], needle: string): string[] {
+        return classToggleWrites(writes)
+            .flatMap((patch) => patch.addClass ?? [])
+            .filter((token) => token.includes(needle));
+    }
+
     afterEach(() => Util.invalidateTextMetricsCache());
 
     it('row 1: two rendered ComboBoxes\' labels both call setLineHeight(31): neither #id rule carries lineHeight, both elements gain lh31px, and the shared rule exists', () => {
@@ -513,5 +528,57 @@ describe('ComboBoxLabel line-height value-class sharing', () => {
 
         const token = 'lh' + lineHeightAt18.replace(/[^a-zA-Z0-9]/g, '_');
         expect(_ruleCacheHas('.ComboBoxLabel.' + token)).toBe(true);
+    });
+
+    // plans/implemented/nan-sentinel-dom-writes.md. `ComboBoxLabel` is not a
+    // `Text` subclass — it carries its own parallel `setLineHeight` over the
+    // same shared-value-rule mechanism — so guarding `Text` alone would leave
+    // it free to mint the permanent `.ComboBoxLabel.lhNaNpx` rule nothing
+    // evicts. The browser discards a `line-height: NaNpx` declaration, so these
+    // rows assert on the writes each call produced, not on rendered output.
+    it('row 9: setLineHeight(NaN) mints no NaN-keyed rule, adds no NaN class token, and keeps the reported value', () => {
+        const sink  = installTestDOM(CONFIG);
+        const combo = new ComboBox() as any;
+        combo.getElement(true);
+        const label = combo._label;
+
+        label.setLineHeight(18);
+
+        const writes = writesDuring(sink, () => label.setLineHeight(NaN));
+
+        expect(ruleSelectorsContaining(writes, 'NaN')).toEqual([]);
+        expect(addedClassesContaining(writes, 'NaN')).toEqual([]);
+        expect(label.getLineHeight()).toBe('18px');
+    });
+
+    it('row 10: setLineHeight(Infinity) behaves the same way', () => {
+        const sink  = installTestDOM(CONFIG);
+        const combo = new ComboBox() as any;
+        combo.getElement(true);
+        const label = combo._label;
+
+        label.setLineHeight(18);
+
+        const writes = writesDuring(sink, () => label.setLineHeight(Infinity));
+
+        expect(ruleSelectorsContaining(writes, 'Infinity')).toEqual([]);
+        expect(addedClassesContaining(writes, 'Infinity')).toEqual([]);
+        expect(label.getLineHeight()).toBe('18px');
+    });
+
+    it('row 11: constructing, rendering and laying out a ComboBox twice mints no NaN-keyed rule', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const writes = writesDuring(sink, () => {
+            const combo = new ComboBox() as any;
+
+            combo.getElement(true);
+            combo.setWidth(combo.getPreferredSize()!.width);
+            combo.setHeight(combo.getPreferredSize()!.height);
+            combo.doLayout();
+            combo.doLayout();
+        });
+
+        expect(ruleSelectorsContaining(writes, 'NaN')).toEqual([]);
     });
 });

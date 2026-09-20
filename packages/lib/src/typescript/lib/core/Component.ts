@@ -3612,7 +3612,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Returns the component's current width and height.
      *
-     * @returns A Size object with the current width and height in pixels.
+     * @returns A Size object with the current width and height in pixels. An
+     *   extent never assigned by a setter reads back as `NaN` — the sentinel
+     *   the geometry fields are seeded with — rather than the object being
+     *   withheld, so test each extent with `Number.isNaN` before doing
+     *   arithmetic on it.
      */
     getSize(): Size | null {
         return {
@@ -4449,7 +4453,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Returns the component's current width in pixels.
      *
-     * @returns The width in pixels, or 0 if the size is unavailable.
+     * @returns The width in pixels, or `NaN` when no setter has ever assigned
+     *   one — the sentinel meaning "never assigned", not a fallback of 0. Test
+     *   the result with `Number.isNaN` before doing arithmetic on it.
      */
     getWidth(): number {
         let size = this.getSize();
@@ -4600,7 +4606,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Returns the component's current height in pixels.
      *
-     * @returns The height in pixels, or 0 if the size is unavailable.
+     * @returns The height in pixels, or `NaN` when no setter has ever assigned
+     *   one — the sentinel meaning "never assigned", not a fallback of 0. Test
+     *   the result with `Number.isNaN` before doing arithmetic on it.
      */
     getHeight(): number {
         let size = this.getSize();
@@ -4668,7 +4676,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Returns the component's horizontal position (CSS left) in pixels.
      *
-     * @returns The left offset in pixels.
+     * @returns The left offset in pixels, or `NaN` when no layout manager or
+     *   caller has ever positioned this component — the sentinel meaning
+     *   "never assigned". Test the result with `Number.isNaN` before doing
+     *   arithmetic on it.
      */
     getX(): number {
         return this._left;
@@ -4710,7 +4721,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Returns the component's vertical position (CSS top) in pixels.
      *
-     * @returns The top offset in pixels.
+     * @returns The top offset in pixels, or `NaN` when no layout manager or
+     *   caller has ever positioned this component — the sentinel meaning
+     *   "never assigned". Test the result with `Number.isNaN` before doing
+     *   arithmetic on it.
      */
     getY(): number {
         return this._top;
@@ -5064,9 +5078,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      *
      * @remarks The DOM write is rounded to the nearest CSS pixel — see
-     * {@link setX}.
+     * {@link setX}. A non-finite request is refused outright rather than
+     * coerced, since the `translate3d(NaNpx,…)` it would write is a
+     * declaration the browser silently discards while coercing to 0 would
+     * cancel a translate the element really carries — refusing leaves both the
+     * cache and the element as the last good call left them.
      */
     setTranslate(x: number, y: number): this {
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+            return this;
+        }
+
         if (this._translateX === x && this._translateY === y && this.getElement()) {
             return this;
         }

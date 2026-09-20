@@ -145,7 +145,7 @@ You typically only need to override `doLayout`; helper methods like `placeCompon
 ## Common pitfalls
 
 - **Forgot the layout manager.** A bare `Component` with children but no manager defaults to [`Absolute`](/layouts/Absolute), which means none of them get positioned. Set a manager explicitly.
-- **Querying size before render.** `getSize()` returns `null` for components that haven't been laid out yet. Wait until the parent has had a chance to lay out the subtree.
+- **Querying size before render.** `getSize()` does not return `null` for a component that hasn't been laid out yet — it returns a `Size` whose extents are `NaN`, the sentinel meaning "never assigned", and `getWidth()` / `getHeight()` / `getX()` / `getY()` report that same `NaN`. A null check will not catch it: test with `Number.isNaN` before doing arithmetic on the value, or wait until the parent has had a chance to lay out the subtree.
 - **Mutating during `doLayout`.** Adding or removing components from inside a layout callback re-enters the layout pass. The rAF queue handles this safely (changes coalesce into the next frame), but the immediate layout call you triggered won't see them.
 
 ## See also

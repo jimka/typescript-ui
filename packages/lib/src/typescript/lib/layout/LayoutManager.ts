@@ -543,7 +543,14 @@ export abstract class LayoutManager extends BaseObject {
      * getTranslateY()`. Any component with a configured transition, or any
      * commit that also changes size, takes the slow path instead — writing
      * real `left`/`top`/`width`/`height` and folding any leftover translate
-     * back to `(0, 0)` in the same batch.
+     * back to `(0, 0)` in the same batch. So does a child no layout manager
+     * ever positioned — one whose `getX()`/`getY()` still report the "never
+     * assigned" sentinel, which the fast path cannot subtract a translate
+     * from. Where such a child's target is itself unset it keeps the static
+     * position it already renders at, the sentinel absorbing both writes;
+     * where the target is real — a child sized out of band before its first
+     * placement — it is committed there, which the fast path could never do
+     * because the translate it wrote was invalid and dropped.
      *
      * A commit whose target `(x, y)` already equals the child's true visual
      * position (size unchanged too) also takes the slow path, even though
@@ -586,7 +593,15 @@ export abstract class LayoutManager extends BaseObject {
         const beforeTranslateY = component.getTranslateY();
         const positionUnchanged = x === component.getX() + beforeTranslateX && y === component.getY() + beforeTranslateY;
         const transition = component.getTransition();
-        const canFastPath = sizeUnchanged && !positionUnchanged && (transition === null || transition === "none");
+        // The fast path writes `x - getX()` as a translate, so all four
+        // operands must be real numbers. A child no layout manager ever
+        // positioned still holds `getX()`/`getY()`'s "never assigned" NaN
+        // seed, which makes `positionUnchanged` false forever and the
+        // translate NaN — so without this the fast path engages on every
+        // settled pass and never releases the promotion it takes.
+        const positionKnown = Number.isFinite(x) && Number.isFinite(y)
+            && Number.isFinite(component.getX()) && Number.isFinite(component.getY());
+        const canFastPath = positionKnown && sizeUnchanged && !positionUnchanged && (transition === null || transition === "none");
         // The only shape a skip is possible for: the box did not move at all.
         // Every other shape sets `changed` below without reading anything back.
         const mayBeUnchanged = sizeUnchanged && positionUnchanged;
