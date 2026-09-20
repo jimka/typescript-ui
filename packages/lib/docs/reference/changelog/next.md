@@ -914,6 +914,21 @@ page resets to empty.
   theme class rather than one of its own. Nothing in the library reads that
   class. No consumer action is needed.
 
+- **`MenuBar` and `MenuSeparator` now paint their rule as a real border, so
+  the bar reserves the pixel the rule occupies instead of spending its
+  buttons' bottom row on it.** Both wrote the rule straight to their own CSS
+  rule, which paints but does not register as a border, so the bar measured
+  its border as zero and handed each `MenuBarButton` its full outer height —
+  one pixel more than the content box has, with the overflow clipped. The
+  consumer-visible consequence: **a `MenuBar` now reports a preferred and a
+  minimum height of 29 rather than 28**, so a layout that hosts one gains a
+  pixel of chrome. A bar placed in a `Border` NORTH region takes that pixel
+  automatically; a layout that pins a menu bar to a literal 28 must be
+  changed to 29, or it will clip the buttons exactly as the bar used to.
+  `MenuSeparator` is unchanged in size — its 9px height and its 1px rule are
+  where they always were, and a caller-supplied `border` still wins over the
+  class default for either class.
+
 - **A `WindowBorder` constructed with an explicit `Direction.NORTH` no longer
   reads as one constructed with no direction at all.** The constructor
   guarded its assignment on the argument's truthiness, and `Direction.NORTH`
