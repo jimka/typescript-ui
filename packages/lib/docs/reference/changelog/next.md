@@ -978,6 +978,21 @@ page resets to empty.
   'self'`; a policy allowing neither simply keeps every store on the main
   thread.
 
+- **A store whose worker answers once and then stops answering now builds
+  its view too.** Only the worker's *first* request was timed, and the
+  first reply of any kind ended that timing — so a worker the engine
+  killed under memory pressure, suspended in a backgrounded tab, or that
+  was sent a request it could not deserialise left everything after that
+  first reply unanswered for good, and the store stayed empty for the life
+  of the page with nothing reported anywhere. Every request is now timed.
+  The client measures how long the worker has said nothing while it owes a
+  reply, against an allowance that grows with the dataset the request runs
+  over, so a genuinely long sort of a very large store is given room a
+  small store's request is not; a worker that stays silent for a whole
+  allowance is retired exactly as one whose script failed to run is, and
+  every store builds its view on the main thread from then on. No consumer
+  action is needed.
+
 ### Layouts
 
 - **`Tab.setTabGlyph(content, glyph)` / `clearTabGlyph(content)` no longer
