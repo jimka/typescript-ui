@@ -289,6 +289,12 @@ page resets to empty.
   value it is already showing; the getter is what makes that cache readable
   instead of write-only.
 
+- **`LayerManager.Band` gains `Notification`**, at 10500, between `Dropdown`
+  and `Dialog`. Like `Band.Tooltip` it is not a band the manager allocates
+  from: it is the fixed stamp a surface that portals without registering as a
+  layer gives itself, and the toast stack is the one that uses it. No consumer
+  action is needed.
+
 ### Overlay
 
 - **`Dock` gains four panel-id-keyed presentation setters**:
@@ -600,6 +606,24 @@ page resets to empty.
   not run: clearing the document element is the whole repair, and running the
   callback would report a gesture as committed because the component was
   destroyed. No consumer action is needed.
+
+- **A layer's z-index no longer climbs out of its band over a long session.**
+  `LayerManager` stamped every layer from one module-wide counter that only
+  ever rose, and a raise spent a stamp exactly as a registration did — and a
+  window raises on any `mousedown` anywhere inside it — so after a few hundred
+  clicks an ordinary window crossed into the pinned-window band and painted
+  over always-on-top windows, popovers and dropdowns for the rest of the
+  session. Each band now keeps its own counter, and a band whose next stamp
+  would reach the band above first compacts its live layers back onto its own
+  base, so a band's headroom bounds how many of its layers may be open at once
+  rather than how many a session may open in total. Two behaviours follow.
+  `bringToFront` re-stamps only when the raised subtree is not already on top
+  of its band — a raise that would move nothing now allocates nothing and
+  notifies nobody, where it previously always reported a fresh z-index — and
+  `register` reports the stamp it allocates through `onZIndexChanged`, which
+  it did not before, so that hook now fires for every stamp the manager
+  assigns rather than only for later ones. A surface implementing it as a
+  `setZIndex` call, which every one in the library does, needs no change.
 
 ### Components
 
@@ -1116,3 +1140,13 @@ page resets to empty.
   component is the anchor on screen, and cancels only the pending show it
   armed itself, which is what its documentation always described. No consumer
   action is needed.
+
+- **A toast no longer ends up behind an open menu or picker.** A
+  `Notification` stamped itself with a fixed `10002`, just above the dropdown
+  band's 10000 base — but the manager's stamps rose from one counter shared by
+  every band, so three layer registrations anywhere in the session were enough
+  for the next dropdown to be stamped above the toast, and from then on every
+  open menu, combo box or picker painted over any toast shown while it was up.
+  The toast now takes `LayerManager.Band.Notification` (10500), which the
+  bounded allocator keeps the dropdown band below. No consumer action is
+  needed.
