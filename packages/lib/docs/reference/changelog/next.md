@@ -914,6 +914,14 @@ page resets to empty.
   theme class rather than one of its own. Nothing in the library reads that
   class. No consumer action is needed.
 
+- **A `WindowBorder` constructed with an explicit `Direction.NORTH` no longer
+  reads as one constructed with no direction at all.** The constructor
+  guarded its assignment on the argument's truthiness, and `Direction.NORTH`
+  is enum value `0`. The two agreed by accident — the field it guarded was
+  already initialised to `NORTH` — so nothing observable was wrong; the guard
+  is gone and the direction is now assigned unconditionally. No consumer
+  action is needed.
+
 ### Data
 
 - **A store holding 1,000 records or more now builds its view.** Above that
