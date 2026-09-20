@@ -247,8 +247,41 @@ rot hunt.
 
 ## Found while planning and implementing, not in the register
 
-Drafting and implementing the first four plans turned up four things the
-campaign never recorded. All were measured, not inferred.
+Drafting and implementing the first four plans, and reviewing the result,
+turned up five things the campaign never recorded. All were measured, not
+inferred.
+
+**C39 — a pointer drag whose owner is disposed mid-gesture locks the whole
+page, permanently.** `beginPointerDrag` (`core/PointerDrag.ts:59`) stamps
+`ts-ui-dragging` and an inline drag cursor onto `<html>`, arming the
+module-singleton rule `html.ts-ui-dragging > * { pointer-events: none }`
+(`:47`) — which takes `<body>` and every `documentElement`-hosted overlay
+out of hit testing for the gesture's duration. Only `endPointerDrag`
+(`:73`) clears it, and it is reached solely from the drag-stop viewport
+listener each site registers **against its own component**:
+`WindowBorder.onDragStop`, `SplitGutter.onDragStop`, `Scrollbar:1125`,
+`HeaderCell:657`. None of the four ends the drag from teardown, so when the
+owning component is disposed mid-gesture, `Component.destructor`'s
+`Event.purgeComponent` (`core/Component.ts:1170`) removes that listener and
+the release never reaches `endPointerDrag`. `<html>` keeps the class and the
+cursor for the life of the page: the application is unclickable behind a
+frozen resize glyph, with no recovery short of a reload — and no way to
+click anything that might clear it. The trigger found by the user is
+`AbstractWindow`'s 150 ms close fade (`overlay/AbstractWindow.ts:1091`),
+during which the window stays hit-testable: press a border strip mid-fade,
+release after `finalize` runs, and it reproduces every time — which is why
+it surfaces when several windows are closed in quick succession.
+**Pre-existing**, verified offline with identical probe results on `master`
+(`c83c5896`) and on the four-branch stack tip (`d982101e`). The fix is the
+one the library already uses for this exact hazard in transitions: an
+owner-keyed framework-internal registry in the style of
+`core/PendingTransitions.ts`, ended from `Component.destructor` beside its
+existing `cancelTransitions` call (`core/Component.ts:1296`), covering all
+four drag sites at once. Neither dispose registry would ever have caught
+this — `dispose-listener-teardown` asserts that dispose *purges* Event
+registrations, which is the very step that strands the drag — so the fix
+needs its own assertion: dispose with a drag armed must leave `<html>` free
+of `ts-ui-dragging` and of an inline cursor.
 
 **C38 — a store worker that dies *after* answering at least once still hangs
 forever.** `store-worker-fail-safe` closes the dead-on-arrival case, not the
