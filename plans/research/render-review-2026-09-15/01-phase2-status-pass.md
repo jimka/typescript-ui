@@ -42,8 +42,8 @@ Paths are relative to `packages/lib/src/typescript/lib/`.
 | C7 | open | `component/editor/theme.ts:68`, `:69`, `:224` | memoise the two built extensions at module scope keyed on `dark` — the theme reads CSS vars and is invariant per flag |
 | C8 | open | `overlay/Dock.ts:448` (destructor `:2371`); `overlay/Window.ts:165` (no destructor) | run the teardown `makeDropTarget`/`makeDragSource` already return |
 | C9 | open | `component/table/TreeBody.ts:113`, `:132`, `:135` | **create** a destructor; run `_rowDnDTeardowns` and `_emptyAreaDropTeardown` |
-| C10 | open | `component/table/cell/renderer/TreeCell.ts:222-224` | dispose the outgoing toggle, **and** create a destructor — the final toggle leaks too |
-| C11 | open | `component/input/AbstractCalendarDropdown.ts:1007-1012`, field `:546` | **create** a destructor that disposes the detached `_yearColumn` |
+| C10 | open | `component/table/cell/renderer/TreeCell.ts:222-224` | dispose the outgoing toggle — one line; the current toggle is a registered child, so no destructor is needed (measured) |
+| C11 | open | `component/input/AbstractCalendarDropdown.ts:1007-1012`, field `:546` | **create** a destructor that disposes whichever half is detached — `openYearScroller` detaches the *day grid* as it attaches the year column, so the leak has two faces (measured: 185 components / 172 rules opened-then-closed, 43 / 30 left open) |
 | C14 | open | `component/table/TablePanel.ts:132-140`; `component/table/TreeTablePanel.ts:138-146` | one line in each existing destructor; the two files are near-verbatim copies |
 | C15 | open | `core/Animation.ts:211-212`, `:133`, `:153` | remove both listeners in `finish()` and `cancel()`; precedent at `:314` |
 | C16 | open | `overlay/ButtonGroup.ts:232-234`, `:252-265`, `:276-298` | store the per-button handler and `off()` it; tear down a prior `RovingTabIndex` before installing a new one |
@@ -123,9 +123,13 @@ plans must say.
    `datePart` unchecked, so `"2026 10:00"` commits 1 Jan 2026 10:00 despite
    a comment claiming to mirror `DateField`/`TimeField` strictness.
 
-5. **C9, C10, C11 and C16 need a `destructor` created, not a line
-   changed.** Those classes declare none at all, so C10's final toggle and
-   C9's teardown bag leak even without a swap.
+5. **C9, C11 and C16 need a `destructor` created, not a line changed.**
+   Those classes declare none at all. ~~And C10.~~ **Corrected 2026-09-20 by
+   `plans/destructor-teardown-coverage.md`, measured in jsdom: C10 needs only
+   the one-line `dispose()`.** `TreeCellRenderer` adds the toggle with
+   `addComponent`, so the *current* toggle is a registered child the base
+   recursion already reaches — three swaps strand exactly two glyphs (N−1),
+   and one toggle with no swap strands none.
 
 6. **Item 2a was never within C32's reach.** C32's fix removes elements
    someone wrote `tabindex="-1"` onto; nothing writes `-1` onto a close
@@ -138,9 +142,8 @@ plans must say.
 
 ### C6, C22 and C27 are one bug family
 
-Each is an uninitialised `NaN` sentinel escaping a getter whose JSDoc
-promises a 0 fallback, through a `===` guard that cannot reject `NaN`, into
-a DOM write:
+Each is an uninitialised or unguarded `NaN` sentinel escaping through a
+`===` guard that cannot reject `NaN`, into a DOM write:
 
 | | sentinel | getter | guard that fails | write |
 |---|---|---|---|---|
@@ -154,10 +157,22 @@ and keeps `will-change: transform` pinned permanently. Wave 1's setter
 guards did not cover it — the four `Number.isNaN` checks in `Component.ts`
 suppress `left`/`top`/`width`/`height`, not `transform`.
 
-They share one decision: whether the fix belongs in the accessors (make
-`getX()`/`getHeight()` honour their documented 0 fallback), in the setters
-(refuse non-finite values), or at the layout seam (`canFastPath` rejects a
-non-finite position). C6 is fixable narrowly at its call site regardless.
+They share one decision: whether the fix belongs in the accessors, in the
+setters (refuse non-finite values), or at the layout seam (`canFastPath`
+rejects a non-finite position). C6 is fixable narrowly at its call site
+regardless.
+
+**Settled by `plans/nan-sentinel-dom-writes.md` (2026-09-20): the seam and
+the setters; not the accessors.** Two corrections it made to this section
+while deciding. Only `getWidth()`/`getHeight()` carry a documented `0`
+fallback — `getX()`/`getY()` say nothing about the unset case, so the
+"documented fallback" reading applies to C27 alone. And the accessor route
+is not merely wide but wrong: `getWidth()`/`getHeight()` feed
+`sizeUnchanged`, so a `0` fallback would make a first `0×0` commit read as
+unchanged and withhold the first `doLayout()` from every class that opts
+into `canSkipUnchangedLayout`. The plan also found C6 has two doors
+(`ComboBoxLabel` carries its own parallel `setLineHeight`) and a second
+`NaN`-`transform` write site at `Component.replayGeometryStyles`.
 
 ### The dispose gates are blind to the bugs that hid from them
 
@@ -183,6 +198,18 @@ So the leak work has a shape beyond its instances: add a third scan pattern
 for classes that hold a teardown closure or a non-child `Component` and
 declare no destructor, and the next one fails the build instead of waiting
 for a review campaign.
+
+**Settled by `plans/destructor-teardown-coverage.md` (2026-09-20): the
+pattern is `DragManager.make{DragSource,DropTarget}(`**, which matches five
+classes and leaves a one-entry baseline. The candidates it rejected are
+instructive — `.showOverlay(` matches three classes that **all already
+declare a destructor**, so a gate built on it would have stayed green while
+`TablePanel` leaked its spinner; `.removeComponent(this._…)` matches
+sixteen, misses C8 and C14 entirely, and would seed a nine-entry baseline of
+unrelated classes. The plan also draws the line the scan cannot cross: a
+line can establish only whether a destructor *exists*, never whether it
+*reaches* a member, so the scan picks the classes and the existing
+construct/destroy balance assertion decides whether they are torn down.
 
 ## Tests that pin the current, wrong behaviour
 
@@ -226,7 +253,7 @@ batch.
 | Tier | Plan | Covers | Shown by |
 |---|---|---|---|
 | A | store worker fails safe | item 5 | `table-rows` |
-| A | NaN escapes into the DOM | C6, C22, C27 | `form-flat` |
+| A | NaN escapes into the DOM | C6, C22, C27 | `form-flat`, `form-nested`, `markdown-doc` |
 | B | destructors that never run or never reach | C8, C9, C10, C11, C14, plus the scan-pattern gate | `treetable-rows`, `windows` |
 | B | listeners and rules with no removal path | C7, C15, C16 | `code-document` |
 | C | Markdown instance scoping and hidden measurement | C18, C19 | `markdown-doc` |
