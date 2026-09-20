@@ -745,3 +745,58 @@ Read before implementing:
     `packages/docs/tests/DocsContent.test.ts`, which already runs both changed
     lookups against real elements, so nothing is left resting only on the
     seeded model.
+
+---
+
+## Implementation Notes
+
+Implemented as planned — no step was skipped or redesigned. Four things the
+plan did not anticipate are recorded here.
+
+**The `[id="…"]` selector form is load-bearing for the fix itself, not only
+for the leading-digit case.** The plan justified it against `#id` solely on
+the grounds that a slug may start with a digit
+(*[^why-attribute-selector]*). Verified during implementation: jsdom's
+selector engine resolves an `#id` selector through the document's id map and
+then filters by containment, so `paneB.querySelector('#shared')` returns
+`null` outright when an *earlier* element in the document carries the same
+id — the exact collision this plan is about. A deliberate revert of
+`headingSelector` to the `#` form failed J1 and J2 as well as J4, where the
+plan predicted only J4. `[id="…"]` performs a real subtree walk and is
+correct under both engines, so the plan's choice stands; only its stated
+reason was incomplete.
+
+**H1's "charged no writes" assertion is driven through the component's own
+`onThemeChanged`, not the global `ThemeManager` broadcast.** Every live
+`Markdown` subscribes to `ThemeManager` and none of the earlier tests in
+`Markdown.test.ts` dispose theirs, so one broadcast re-measures every
+instance the file has ever built (218 `height: auto` writes were observed).
+Because `installTestDOM` restarts handle numbering per test, those writes
+carry handle values that collide with the test's own, and no per-handle
+filter can separate them. H1 therefore keeps the real broadcast for its
+height assertion — the half that reads this object — and calls this
+component's own theme handler for the write assertion. That handler is the
+same door C18 comes through: `ThemeManager.onThemeChange` invokes exactly
+it. The assertion was confirmed non-vacuous by removing the guard, which
+produced `['auto', '300px']` — the probe and its restore.
+
+**No test pins the guard's position relative to `commitElementStyle()`.**
+The plan places the guard ahead of that call so a hidden component is
+charged no sink writes at all (*[^why-guard-in-measure]*), and the
+implementation does so. Moving the guard to just after the call was tried
+and left H1 green: at that point in this scenario nothing is queued, so the
+commit writes nothing observable. The placement rests on the plan's
+reasoning rather than on a regression test.
+
+**`npm run docs:api` does not finish with zero warnings, and did not before
+this change.** `## Verification` asks for zero. The start point (`121ce9db`)
+reports `0 errors and 14 warnings`, and so does this branch — the same 14,
+none naming a symbol this plan touches. `headingSelector` stays `@internal`
+and out of the barrel as designed, so it adds no TypeDoc surface. The
+achievable invariant is "no new warnings", which holds.
+
+**Offline gate.** Measured at the start point: 478 test files, 7783 passed +
+2 todo. On this branch: 479 files, 7790 passed + 2 todo — exactly J1-J4 plus
+H1-H3, in one new file. `typecheck`, `typecheck:test`, `lint`,
+`packages/docs` tests (2601) and `docs:llms:check` are all clean. M1 and M2
+remain unproven: both need a real browser, and neither was run.
