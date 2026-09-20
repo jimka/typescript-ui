@@ -1520,6 +1520,52 @@ describe('Markdown content-height measurement', () => {
         expect(md.getHeight()).toBeGreaterThanOrEqual(500);
         expect(md.getHeight()).toBeGreaterThan(host.getInnerSize()!.height);
     });
+
+    // plans/implemented/nan-sentinel-dom-writes.md. The measure collapses the
+    // box to `height: auto`, reads `scrollHeight`, then restores the laid-out
+    // height — but `commitBounds` calls `setWidth` before `setHeight` and
+    // `Markdown.setWidth` measures synchronously, so on a first commit there is
+    // no laid-out height to restore and the restore wrote `height: NaNpx`. The
+    // browser discards that, leaving the box at `height: auto` either way, so
+    // only the write itself shows the bug.
+
+    /** Every inline `height` value written to `handle` in `writes`, in order. */
+    function heightWrites(writes: RecordingDOMSink['writes'], handle: Handle): Array<string | null> {
+        return writes
+            .filter((w) => w.op === 'apply' && w.args[0] === handle)
+            .map((w) => (w.args[1] as { style?: Record<string, string | null> }).style)
+            .filter((style): style is Record<string, string | null> => style !== undefined && 'height' in style)
+            .map((style) => style.height);
+    }
+
+    /** A CSS pixel length — the only numeric form the restore write may take. */
+    const PIXEL_LENGTH = /^-?\d+(\.\d+)?px$/;
+
+    it('skips the restore write it cannot express when no height was ever committed', () => {
+        stubScrollHeight(500);
+        const md = new Markdown('# A');
+        const handle = md.getElement(true)!;
+
+        const start = sink.writes.length;
+        md.setWidth(300);
+        const heights = heightWrites(sink.writes.slice(start), handle);
+
+        expect(heights.filter((value) => value !== 'auto' && !PIXEL_LENGTH.test(value ?? ''))).toEqual([]);
+        expect(heights.at(-1)).toBe('auto');
+    });
+
+    it('still restores a real laid-out height, so the guard cannot suppress a genuine restore', () => {
+        stubScrollHeight(500);
+        const md = new Markdown('# A');
+        const handle = md.getElement(true)!;
+        md.setHeight(300);
+
+        const start = sink.writes.length;
+        md.setWidth(200);
+        const heights = heightWrites(sink.writes.slice(start), handle);
+
+        expect(heights.at(-1)).toBe('300px');
+    });
 });
 
 describe('mapFenceLangToEditorId', () => {

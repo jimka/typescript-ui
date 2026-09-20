@@ -1077,8 +1077,16 @@ class Markdown extends Component<MarkdownOptions> {
 
         // Restore the laid-out height so the box isn't left content-collapsed
         // between now and the next layout pass (which re-commits it anyway).
-        this.setElementStyle("height", restoreHeight + "px");
-        this.commitElementStyle();
+        // On a first commit there is nothing to restore: LayoutManager.commitBounds
+        // calls setWidth before setHeight, and setWidth measures synchronously,
+        // so getHeight() above still reported the "never assigned" sentinel.
+        // The box is then left at `height: auto` for that one pass — exactly
+        // where a `height: NaNpx` write leaves it, since the browser discards
+        // an invalid declaration.
+        if (!Number.isNaN(restoreHeight)) {
+            this.setElementStyle("height", restoreHeight + "px");
+            this.commitElementStyle();
+        }
 
         if (measured === this._measuredHeight) {
             return;

@@ -199,6 +199,80 @@ describe('LayoutManager.commitBounds size-stable position fast path', () => {
         expect(b.getX()).toBe(80 + hbox.getComponentSpacing()); // real left, not translate
     });
 
+    // The boundary of the finite-position gate added by
+    // plans/implemented/nan-sentinel-dom-writes.md: every case in this file
+    // places a child whose position the manager itself wrote, so the gate's
+    // precondition holds and the fast path must behave exactly as before. The
+    // never-positioned case the gate exists for lives in `Absolute.test.ts`,
+    // the manager that actually produces it.
+    it('a child whose position is a real number still takes the fast path when a sibling resize displaces it', () => {
+        installTestDOM(CONFIG);
+
+        const hbox = new HBox();
+        const host = hostHBox(400, 24, hbox);
+        const a = new Component({ preferredSize: { width: 50, height: 16 } });
+        const b = new Component({ preferredSize: { width: 100, height: 16 } });
+
+        host.addComponent(a);
+        host.addComponent(b);
+        host.doLayout(); // slow path writes b's real left/top
+
+        expect(Number.isFinite(b.getX())).toBe(true);
+        expect(Number.isFinite(b.getY())).toBe(true);
+
+        a.setPreferredSize({ width: 80, height: 16 });
+        host.doLayout();
+
+        const delta = 30; // 80 - 50
+        expect(b.getTranslateX()).toBe(delta);
+        expect(b.getWillChange()).toBe('transform');
+    });
+
+    // The one case where the finite-position gate changes where a box is
+    // painted rather than only suppressing a write the browser discarded: a
+    // child sized out of band before its first placement. Its size already
+    // matches the manager's target, so `sizeUnchanged` is true on the very
+    // first commit while `getX()`/`getY()` still hold the "never assigned"
+    // sentinel — the shape that used to take the fast path and receive nothing
+    // but an invalid `translate3d(NaNpx,NaNpx,0)`, leaving it at its static
+    // position with `left`/`top` never written and `getX()` never assigned.
+    // See the plan's Implementation Notes and the changelog's Fixed entry,
+    // which both state this move outright.
+    it('places a child that was sized out of band before its first placement, instead of leaving it unpositioned forever', () => {
+        installTestDOM(CONFIG);
+
+        // Learn exactly what this HBox assigns, so the real case below can be
+        // pre-sized to match and so reach `sizeUnchanged` on its first commit.
+        const probeHost  = hostHBox(400, 24, new HBox());
+        const probeChild = new Component({ preferredSize: { width: 50, height: 16 } });
+
+        probeHost.addComponent(probeChild);
+        probeHost.doLayout();
+
+        const assigned = {
+            x:      probeChild.getX(),
+            y:      probeChild.getY(),
+            width:  probeChild.getWidth(),
+            height: probeChild.getHeight(),
+        };
+
+        const host  = hostHBox(400, 24, new HBox());
+        const child = new Component({ preferredSize: { width: 50, height: 16 } });
+
+        host.addComponent(child);
+        child.setWidth(assigned.width);
+        child.setHeight(assigned.height);
+
+        expect(Number.isNaN(child.getX())).toBe(true);   // sized, never positioned
+
+        host.doLayout();
+
+        expect(child.getX()).toBe(assigned.x);
+        expect(child.getY()).toBe(assigned.y);
+        expect(child.getTranslateX()).toBe(0);
+        expect(child.getWillChange()).toBeNull();
+    });
+
     it('will-change is "transform" only while the fast path is engaged, reverting to null on the next slow-path run', () => {
         installTestDOM(CONFIG);
 
