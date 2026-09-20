@@ -101,6 +101,23 @@ const SWEEP_STEP = { width: 20, height: 10 } as const;
  * `commitBounds` recursed unconditionally. Every one is a pre-change number,
  * which is what makes an equality against it an assertion that the skip
  * changed nothing rather than a restatement of its own output.
+ *
+ * The two shell digests were re-captured once, when `MenuBar` started
+ * reserving its bottom rule as a real border and the bar grew from 28px to
+ * 29px, taking a pixel of height out of everything the shell's `Border` puts
+ * below and beside it. They were re-captured under the same condition the
+ * originals were — the skip forced *off*, so `commitBounds` recurses
+ * unconditionally — and that same harness reproduces the superseded digests
+ * exactly on pre-change `MenuBar` code, so the equality still compares the
+ * skip against an unskipped scene rather than against itself.
+ *
+ * Forcing it off means stubbing `canSkipUnchangedLayout` false on
+ * `MenuBar.prototype` and `ToolBar.prototype` as well as on
+ * `Component.prototype`: those two override it, so the mirror image of
+ * `forceSkipEverywhere` below — which spies the base alone — leaves the
+ * shell's own two bars skipping. Both routes produce these digests, which is
+ * the property cases 12 and 13 exist to assert, but only the three-stub one
+ * is a scene that skipped nothing.
  */
 const BASELINE = {
     /** Case 2: components in the shell, and commits a repeat pass makes. */
@@ -112,8 +129,8 @@ const BASELINE = {
         deepHeight:    '3593254e:112303',
         shallowWidth:  '5dd52043:25040',
         shallowHeight: '613bf4ee:25040',
-        shellWidth:    'ac05c140:114540',
-        shellHeight:   '9ea18e5a:123960',
+        shellWidth:    'd616d000:114540',
+        shellHeight:   '88754fc4:123515',
     },
     /** Cases 12 and 13: `doLayout` plus size-hint calls over each whole sweep. */
     work: {

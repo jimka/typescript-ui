@@ -64,10 +64,11 @@ const _defaultMenuBarButtonOptions: Partial<MenuBarButtonOptions> = {
 const GLYPH_TEXT_GAP = 4;
 
 /**
- * Fixed row height shared by every `MenuBarButton` and by the parent
- * [`MenuBar`](/api/component/menubar/classes/MenuBar) container's `setMinSize`. Exported so the two stay in
- * lockstep — changing one without the other would let the bar grow taller
- * than its buttons.
+ * Fixed row height shared by every `MenuBarButton` and, plus the bar's own
+ * bottom border, by the parent [`MenuBar`](/api/component/menubar/classes/MenuBar)
+ * container's minimum height. Exported so the two stay in lockstep — the bar's
+ * floor is this value and the rule's width, so a bar squeezed to its minimum
+ * still leaves a content box a full-height button fits in.
  */
 export const MENU_BAR_BUTTON_HEIGHT: number = 28;
 
