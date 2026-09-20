@@ -662,3 +662,34 @@ is unchanged: nothing about engine support moves.
 [^reachable]: C38's register entry gives a non-terminating consumer predicate as the reachable trigger, citing `filterBy`. Checked against source, that trigger does not exist: `filterBy`'s parameter is a `FilterDescriptor` ([`FilterDescriptor.ts:34-47`](packages/lib/src/typescript/lib/data/FilterDescriptor.ts#L34)), a closed union whose every member is plain data, and `hasCustomSorter()` keeps a `sorterFn` off the worker entirely. The nearest thing a consumer can build is a *cyclic* descriptor — structured clone preserves cycles, so `f.filter = f` reaches the worker — but that makes `matchesFilter` recurse until the stack overflows, and `StoreWorker.ts`'s own `try`/`catch` turns the `RangeError` into an error reply. It settles. What stays reachable is the engine terminating or suspending the worker under memory pressure or a backgrounded tab, which fires no event on the main thread, and a request the worker cannot deserialise, which `StoreWorker.ts` does not handle at all. The defect and its fix are unchanged by the correction — a request that is never answered is a request that is never answered — but the two doc pages that assert the predicate capability are wrong and are corrected here rather than left standing next to a rewritten paragraph about the same boundary.
 
 [^no-qa-run]: `packages/qa/src/panels/table-rows.ts` remains the witness: at 10,000 rows its store takes the worker path, and its `afterMount` cannot reach its element lookups until the view exists, so an empty store fails the panel. It needs no run for this plan. The packaging is untouched, and `packages/qa/README.md`'s `table-rows` row already records that the inlined worker boots and the 10,000-record store builds its view under WebKitGTK. Everything this plan adds is a timer, which fake timers reach offline and a real run could only reach by waiting out a real deadline against a worker deliberately broken — which is what case 16 does in milliseconds.
+
+---
+
+## Implementation Notes
+
+Three departures from the plan as written, none of them design changes:
+
+- **The client's new cases were written before the source change, not after
+  it.** `## Ordered Implementation Steps` puts steps 13-15 (the
+  `StoreWorkerClient.test.ts` rename, deletion and new cases) after the source
+  edit, which would have meant cases 3b-3f passing the moment they were first
+  run. They were written with steps 1-3 instead, so every new case was seen
+  failing first: case 16 left the store's view empty at 1,200 records, 3b and
+  3c never settled at all (nothing times a request once the worker has
+  answered one), and 3d retired the worker at 5,000 ms with a million-record
+  snapshot outstanding. 3e and 3f pass both before and after, as expected —
+  they guard behaviour the old probe happened to share.
+- **Two test names in `AbstractStore.workerFailSafe.test.ts` were widened.**
+  The file's `describe` said "when the worker never answers" and its first
+  case "after the probe expires"; with case 16 added, neither was true of the
+  file any more. They now read "when the worker stops answering" and "after
+  the silence deadline expires". No assertion changed.
+- **`sortFilter`'s JSDoc gained a `@remarks` block** saying the request is
+  sized by the snapshot it runs over, and that a store with no snapshot is
+  sized at zero. *Internal Structure* states both in prose; this puts them
+  where a reader of the method will find them.
+
+One verification note: `packages/qa`'s tests resolve `@jimka/typescript-ui`
+through the built `dist/lib`, so `## Verification` step 7 needs step 6's
+`npm run build:lib` to have run first in a fresh worktree. Run in that order
+both pass — 12 files, 244 cases.
