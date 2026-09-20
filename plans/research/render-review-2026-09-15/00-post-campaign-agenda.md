@@ -105,6 +105,21 @@ go-ahead.
    SQLAdmin is exactly the case. Reproduce with any panel over the threshold
    (`table-rows` at 10,000) and a QA app that does not serve the asset.
 
+6. **C10, the tree-table glyph leak, is measured and ready to plan.** It sits
+   inside item 1's range, but the QA app now pins its runtime signature, so it
+   is called out here. `TreeCell.refreshToggle`
+   (`component/table/cell/renderer/TreeCell.ts:221-224`) detaches the outgoing
+   caret with `removeComponent` and never disposes it, so each toggle mints a
+   fresh `Glyph` with its own `#id` rule. Measured on the `treetable-rows`
+   panel at 200 roots (2026-09-20, lib `608544c9`, run `c10-probe`): per
+   `toggle` unit the swap is flat — `ensureStyleRule`, `setRuleStyles`,
+   `createElement` and `removeElement` all 70.5 — and deletes no rule in that
+   path. `deleteStyleRule` is absent over 2 units and 55.7 over 20, tracking
+   elapsed time rather than work: `Component`'s `FinalizationRegistry`
+   reclaiming the orphaned carets' rules at GC. So the leak is real, and
+   GC-bounded rather than unbounded — the cost is the per-toggle churn and
+   whatever the collector has not yet reached. The panel will show the fix.
+
 ## Phase 3 — wave 3
 
 **Before planning, a W3.0 bounding sweep**, as W2.0 did for wave 2: a fresh
