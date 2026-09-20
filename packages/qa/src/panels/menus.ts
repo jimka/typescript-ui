@@ -17,7 +17,7 @@ const PANEL = 'menus';
 const CONTEXT_X = 240;
 const CONTEXT_Y = 160;
 
-export const description = 'A menu bar and a toolbar around a header, and a rebuild-mode context Menu of n rows (default 12) opened and closed by toggle. Reproduces slice 12 F12.3 (one menu open rebuilds its rows and crosses the read and rule-write boundary several times): per toggle unit, sink/u 412, ensureStyleRule 6, setRuleStyles 7, deleteStyleRule 6, measureTexts 0.5 and no measureText; and C24 (MenuBar ignores its 1 px border): geometry.menubarButton reaches the bar\'s bottom border.';
+export const description = 'A menu bar and a toolbar around a header, and a rebuild-mode context Menu of n rows (default 12) opened and closed by toggle. Reproduces slice 12 F12.3 (one menu open rebuilds its rows and crosses the read and rule-write boundary several times): per toggle unit, sink/u 412, ensureStyleRule 6, setRuleStyles 7, deleteStyleRule 6, measureTexts 0.5 and no measureText; and C24 (fixed: the MenuBar reserves its 1 px border): geometry.menubarButton stops 1 px above the bar\'s bottom edge.';
 
 /** Twelve rows: slice 12's context menu. */
 export const defaultScale = 12;
