@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Body, DOM } from '@jimka/typescript-ui/core';
 import type { Component } from '@jimka/typescript-ui/core';
+import { AbstractWindow } from '@jimka/typescript-ui/overlay';
 import { createTools, parseDrive } from '../src/harness/run.js';
 import type { HarnessTools } from '../src/harness/types.js';
 import { mountPanel } from '../src/mount.js';
@@ -46,6 +47,14 @@ afterEach(() => {
     // afterMount threw leaves its root there too.
     for (const root of [...Body.getInstance().getComponents()]) {
         unmount(root);
+    }
+
+    // A floating window mounts outside Body, and lays out its content in an
+    // animation frame after `show()`: dispose each one the test opened before
+    // that frame, since its form's text fields hit the canvas gap `table-rows`
+    // is excluded for (see JSDOM_GAPS).
+    for (const openWindow of AbstractWindow.getOpenWindows()) {
+        openWindow.dispose();
     }
 });
 
@@ -112,7 +121,7 @@ function expectTargetsReady(panel: MountedPanel): void {
 
 /**
  * Panels P7 cannot mount under jsdom, each with the error it throws there.
- * Neither is a panel bug; the shakedown run mounts both in the engine.
+ * None is a panel bug; the shakedown run mounts each in the engine.
  */
 const JSDOM_GAPS: Record<string, string> = {
     // Its default `grip=dock-h` picks the Dock's gutter by shape, and jsdom
@@ -122,6 +131,10 @@ const JSDOM_GAPS: Record<string, string> = {
     // Its filter row's text fields measure font metrics through a canvas 2D
     // context, which jsdom does not implement, so `getContext("2d")` is null.
     'table-rows': 'Cannot set properties of null (setting \'font\')',
+    // Their labelled grids align title and field on a baseline, and a text
+    // field measures its baseline through the same canvas 2D context.
+    'form-flat': 'Cannot set properties of null (setting \'font\')',
+    'form-nested': 'Cannot set properties of null (setting \'font\')',
 };
 
 describe('P7 mount smoke', () => {
@@ -184,5 +197,54 @@ describe('canvas-idle hidden group', () => {
 
         expect(host.hiddenStarted, 'animating while still in the shown group').toBe(SMOKE_SCALE);
         expect(host.hiddenAnimating, 'still animating after the move under the hidden panel').toBe(SMOKE_SCALE);
+    });
+});
+
+/**
+ * `SMOKE_WAITS`, recording the name of each wait as it runs, so a test can
+ * tell whether a failure came before any wait or after them.
+ *
+ * @returns The waits and the names recorded.
+ */
+function recordingSmokeWaits(): { waits: MountWaits; waited: string[] } {
+    const waited: string[] = [];
+
+    const waits: MountWaits = {
+        painted: async (root: Component, id: string): Promise<void> => {
+            waited.push('painted');
+            await SMOKE_WAITS.painted(root, id);
+        },
+        settled: async (): Promise<void> => {
+            waited.push('settled');
+            await SMOKE_WAITS.settled();
+        },
+    };
+
+    return { waits, waited };
+}
+
+describe('P14 panel parameters', () => {
+    it('form-flat rejects an unknown passes in build, before any wait', async () => {
+        const { waits, waited } = recordingSmokeWaits();
+
+        await expect(mountPanel('form-flat', new URLSearchParams('n=3&passes=nope'), tools, waits))
+            .rejects.toThrow('form-flat: unknown passes "nope" (expected form, header, date, combo)');
+        expect(waited).toEqual([]);
+    });
+
+    it('windows rejects an unknown grip in afterMount, once painted and settled', async () => {
+        const { waits, waited } = recordingSmokeWaits();
+
+        await expect(mountPanel('windows', new URLSearchParams('n=3&grip=nope'), tools, waits))
+            .rejects.toThrow('windows: unknown grip "nope" (expected header, edge)');
+        expect(waited).toEqual(['painted', 'settled']);
+    });
+
+    it('diagram-graph resolves once laid out, clicking its node layer', async () => {
+        const mounted = await mountPanel('diagram-graph', new URLSearchParams('n=3'), tools, SMOKE_WAITS);
+        const click = mounted.targets.click as { elements: Element[] };
+
+        expect(click.elements[0].classList.contains('DiagramNodeLayer')).toBe(true);
+        expectTargetsReady(mounted);
     });
 });

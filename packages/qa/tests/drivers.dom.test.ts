@@ -425,3 +425,72 @@ describe('park', () => {
         expect(log).toEqual([]);
     });
 });
+
+describe('E22 pan', () => {
+    /** Pixels per unit for the pan: the plan's E22 table. */
+    const PAN_STEP_PX = 10;
+
+    it('presses P, moves out and back on P, and releases there, every event on P', async () => {
+        const { p, seen } = stage();
+
+        await DRIVERS.pan(context({ element: p, axis: 'x' }, 4, PAN_STEP_PX));
+
+        expect(seen.map((e) => [e.type, e.target, e.x, e.buttons])).toEqual([
+            ['pointerdown', 'P', 50, 1], ['mousedown', 'P', 50, 1],
+            ['pointermove', 'P', 60, 1], ['mousemove', 'P', 60, 1],
+            ['pointermove', 'P', 70, 1], ['mousemove', 'P', 70, 1],
+            ['pointermove', 'P', 60, 1], ['mousemove', 'P', 60, 1],
+            ['pointermove', 'P', 50, 1], ['mousemove', 'P', 50, 1],
+            ['pointerup', 'P', 50, 0], ['mouseup', 'P', 50, 0],
+        ]);
+        expect(seen.every((e) => e.y === 10 && e.related === null)).toBe(true);
+    });
+
+    it('presses before its frames, then releases and settles with counting suspended', async () => {
+        const { p } = stage();
+        const { tools, log } = loggingTools();
+
+        await DRIVERS.pan({ target: { element: p, axis: 'y' }, units: 2, stepPx: PAN_STEP_PX, params: new URLSearchParams(), notes: [], tools });
+
+        // Along y from the centre (50, 10): one unit out to 20, one back to 10.
+        expect(log).toEqual([
+            'mousedown element 50,10',
+            'runFrames 2',
+            'mousemove element 50,20',
+            'mousemove element 50,10',
+            'mouseup element 50,10',
+            'waitFrames 3 suspended',
+        ]);
+    });
+});
+
+describe('E24 hwheel', () => {
+    it('sends one horizontal wheel notch per unit at P\'s centre, out and back', async () => {
+        const { p } = stage();
+        const wheels: WheelEvent[] = [];
+
+        p.addEventListener('wheel', (event) => wheels.push(event as WheelEvent));
+        await DRIVERS.hwheel(context(p, 4));
+
+        expect(wheels.map((e) => [e.clientX, e.clientY, e.deltaX, e.deltaY])).toEqual([
+            [50, 10, 40, 0], [50, 10, 40, 0], [50, 10, -40, 0], [50, 10, -40, 0],
+        ]);
+        expect(wheels.every((e) => e.target === p && e.bubbles && e.cancelable && e.deltaMode === WheelEvent.DOM_DELTA_PIXEL)).toBe(true);
+    });
+});
+
+describe('E25 viewport', () => {
+    it('fires the window\'s resize event once per unit', async () => {
+        const listener = vi.fn();
+
+        window.addEventListener('resize', listener);
+
+        try {
+            await DRIVERS.viewport(context(document.body, 3));
+        } finally {
+            window.removeEventListener('resize', listener);
+        }
+
+        expect(listener).toHaveBeenCalledTimes(3);
+    });
+});

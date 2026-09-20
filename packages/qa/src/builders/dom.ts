@@ -107,3 +107,76 @@ export function firstPainted(tools: HarnessTools, root: ParentNode, selector: st
 
     return element;
 }
+
+/** A geometry target whose element is known only after mounting, and the setter that names it. */
+export interface LateId {
+    /** The probe's target: its `getId()` reads `''` until `set` is called, and the probe records `null` meanwhile. */
+    target: { getId(): string };
+    /** Names the element the target resolves to, by its id. */
+    set(id: string): void;
+}
+
+/**
+ * A geometry target for an element that exists only after mounting: the probe
+ * resolves `getId()` at sample time, so `afterMount` can name the element once
+ * it has found it.
+ *
+ * @returns The target and its setter.
+ */
+export function lateId(): LateId {
+    let id = '';
+
+    return {
+        target: { getId: (): string => id },
+        set: (value: string): void => {
+            id = value;
+        },
+    };
+}
+
+/** A rectangle's edges, as `getBoundingClientRect` reports them. */
+export interface StripRect {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+}
+
+/** The window edge `pickStrip` looks for. */
+export type StripSide = 'east' | 'south';
+
+/**
+ * Picks one window's edge strip from the rectangles of its `.WindowBorder`
+ * elements: `east` is the one furthest right, ties going to the tallest (the
+ * edge beats its two corners); `south` is the one furthest down, ties going to
+ * the widest.
+ *
+ * @param rects - The rectangles of the `.WindowBorder` elements inside one window.
+ * @param side - Which strip.
+ * @returns The picked rectangle's index, or −1 for no rectangles.
+ */
+export function pickStrip(rects: ReadonlyArray<StripRect>, side: StripSide): number {
+    let best = -1;
+
+    for (let index = 0; index < rects.length; index++) {
+        if (best < 0 || beatsStrip(rects[index], rects[best], side)) {
+            best = index;
+        }
+    }
+
+    return best;
+}
+
+/**
+ * Whether rectangle `a` is a better pick than `b` for `side`.
+ *
+ * @param a - The candidate.
+ * @param b - The best so far.
+ * @param side - Which strip.
+ * @returns `true` when `a` lies further out along the side, or as far out and longer along it.
+ */
+function beatsStrip(a: StripRect, b: StripRect, side: StripSide): boolean {
+    const [edgeA, edgeB, lengthA, lengthB] = side === 'east' ? [a.left, b.left, a.height, b.height] : [a.top, b.top, a.width, b.width];
+
+    return edgeA > edgeB || (edgeA === edgeB && lengthA > lengthB);
+}

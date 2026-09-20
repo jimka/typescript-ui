@@ -3,6 +3,8 @@ import {
     barSeries,
     codeDocument,
     DEPARTMENTS,
+    diagramTree,
+    editorDocument,
     folderNodes,
     folderRows,
     lineSeriesPoints,
@@ -10,7 +12,9 @@ import {
     markdownDocument,
     outlineLabels,
     tableRows,
+    wideRows,
 } from '../src/builders/data.js';
+import { lateId, pickStrip } from '../src/builders/dom.js';
 import { choice } from '../src/builders/params.js';
 
 /** The deep shell's grips, in `choice`'s order: the first is the default. */
@@ -143,5 +147,81 @@ describe('P10 data', () => {
         expect(lines[0]).toBe('function block0(value) {');
         expect(lines[10]).toBe('function block1(value) {');
         expect(codeDocument(7).split('\n')).toHaveLength(7);
+    });
+});
+
+describe('P12 data', () => {
+    it.each([
+        ['diagramTree', (): unknown => diagramTree(20)],
+        ['editorDocument', (): unknown => editorDocument(5)],
+        ['wideRows', (): unknown => wideRows(20, 40)],
+    ])('%s returns the same output on every call', (_name, generate) => {
+        expect(generate()).toEqual(generate());
+    });
+
+    it('diagramTree(5) is a three-way tree of labelled nodes', () => {
+        const tree = diagramTree(5);
+
+        expect(tree.nodes).toEqual([0, 1, 2, 3, 4].map((i) => ({ id: `n${i}`, label: `Node ${i}` })));
+        expect(tree.edges).toEqual([
+            { id: 'e1', source: 'n0', target: 'n1' },
+            { id: 'e2', source: 'n0', target: 'n2' },
+            { id: 'e3', source: 'n0', target: 'n3' },
+            { id: 'e4', source: 'n1', target: 'n4' },
+        ]);
+    });
+
+    it('editorDocument(3) has 3 parts, then a table of 3 body rows', () => {
+        const doc = editorDocument(3);
+        const lines = doc.split('\n');
+        const header = lines.indexOf('| Name | Owner | State | Size |');
+
+        expect(lines[0]).toBe('# Editor document');
+        expect(linesStarting(doc, '## ')).toEqual(['## Part 1', '## Part 2', '## Part 3']);
+        expect(linesStarting(doc, 'Part ').map((line) => line.length)).toEqual([120, 120, 120]);
+        expect(header).toBeGreaterThan(0);
+        expect(lines[header + 1].startsWith('| --- |')).toBe(true);
+        expect(lines.slice(header + 2).filter((line) => line.startsWith('| '))).toHaveLength(3);
+    });
+
+    it('wideRows follows its rule', () => {
+        const rows = wideRows(2, 40);
+
+        expect(rows[1].id).toBe(2);
+        expect(rows[1].c40).toBe(527);
+        expect(Object.keys(rows[0])).toEqual(['id', ...Array.from({ length: 40 }, (_, k) => `c${k + 1}`)]);
+    });
+});
+
+describe('P13 pickStrip and lateId', () => {
+    /**
+     * A rectangle as `pickStrip` reads it.
+     *
+     * @param left - Its left edge.
+     * @param top - Its top edge.
+     * @param width - Its width.
+     * @param height - Its height.
+     * @returns The rectangle.
+     */
+    function rect(left: number, top: number, width: number, height: number): { left: number; top: number; width: number; height: number } {
+        return { left, top, width, height };
+    }
+
+    it('picks the east strip: the greatest left, ties to the greatest height', () => {
+        expect(pickStrip([rect(396, 0, 4, 4), rect(396, 4, 4, 292), rect(396, 296, 4, 4)], 'east')).toBe(1);
+    });
+
+    it('picks the south strip: the greatest top, ties to the greatest width', () => {
+        expect(pickStrip([rect(0, 288, 4, 12), rect(4, 288, 392, 12), rect(396, 288, 12, 12)], 'south')).toBe(1);
+    });
+
+    it('lateId reads empty until its id is set', () => {
+        const late = lateId();
+
+        expect(late.target.getId()).toBe('');
+
+        late.set('w7');
+
+        expect(late.target.getId()).toBe('w7');
     });
 });

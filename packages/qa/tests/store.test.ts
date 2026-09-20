@@ -12,11 +12,15 @@
 // What they prove: `awaitStoreView` resolves only once the store reports
 // records, waits frames afterwards for the rows to render, stops listening
 // either way, and fails with the panel's name when no `load` ever arrives;
-// and every store-backed panel awaits it before it touches its store or the
-// tree, so an empty view holds `afterMount` open instead of being measured.
+// that every store-backed panel awaits it before it touches its store or the
+// tree, so an empty view holds `afterMount` open instead of being measured;
+// and that the panels which build a store but never read it in `afterMount`
+// take no wait, so the two lists below stay apart.
 //
-// What they do not prove: that the worker path itself works. Only a run in
-// the engine, where `StoreWorkerClient` has a worker, exercises it.
+// What they do not prove: that the worker path itself works, nor that either
+// list is complete — a panel that reads its store without the wait is a panel
+// neither list names. Only a run in the engine, where `StoreWorkerClient` has
+// a worker, exercises the path itself.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { awaitStoreView } from '../src/builders/store.js';
 import type { ViewedStore } from '../src/builders/store.js';
@@ -33,7 +37,15 @@ const PAST_THE_CAP_MS = 60_000;
 const SMOKE_SCALE = 3;
 
 /** Every panel whose root is backed by a store, and so reads a view the worker may not have built yet. */
-const STORE_PANELS = ['table-rows', 'treetable-rows', 'list-items', 'chart-dashboard'];
+const STORE_PANELS = ['table-rows', 'treetable-rows', 'list-items', 'chart-dashboard', 'table-wide'];
+
+/**
+ * The panels that build a store but never read one in `afterMount`: the form
+ * builder's combo options and inspector rows number 20 and 12, far below the
+ * 1,000 records that move a view onto the worker, and their targets are the
+ * components `build` made, not rows.
+ */
+const UNREAD_STORE_PANELS = ['form-flat', 'form-nested'];
 
 afterEach(() => {
     vi.useRealTimers();
@@ -222,5 +234,17 @@ describe('P13 store-backed panels await the view', () => {
         // Past the wait, the lookups run and fail on the unmounted tree —
         // which is what shows the wait, not a hang, is what held it.
         await expect(mounting).rejects.toThrow(`${id}: no element matches`);
+    });
+
+    it.each(UNREAD_STORE_PANELS)('%s reads no store, so its afterMount waits for nothing', async (id) => {
+        const module = await loadPanel(id);
+        const build = module!.build(SMOKE_SCALE, new URLSearchParams());
+        const { tools, frames } = heldTools();
+
+        // Nothing to release: the lookups run at once and fail on the
+        // unmounted tree, so no wait held them. Were either panel to read its
+        // store here, it would have to join STORE_PANELS, and this case says so.
+        expect(() => build.afterMount!(tools)).toThrow(`${id}: no element matches`);
+        expect(frames).toEqual([]);
     });
 });

@@ -57,9 +57,9 @@ export function defaultMountWaits(tools: HarnessTools): MountWaits {
 }
 
 /**
- * Loads, builds and mounts panel `id`, runs its `afterMount`, and merges the
- * targets — `afterMount`'s entries over `build.targets`, over the page-wide
- * `idle` and `theme` targets.
+ * Loads, builds and mounts panel `id`, runs its `afterMount` (awaiting it when
+ * it returns a promise), and merges the targets — `afterMount`'s entries over
+ * `build.targets`, over the page-wide targets.
  *
  * @param id - The panel id.
  * @param params - The page's URL parameters; `n=` sets the scale.
