@@ -125,6 +125,7 @@ describe('LabeledFieldSet.addField description tooltip', () => {
         (Tooltip as any).instance = null;
         (Tooltip as any).watching = false;
         (Tooltip as any).activeElement = null;
+        (Tooltip as any).pendingId = null;
 
         DOM.reset();
     });

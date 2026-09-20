@@ -37,6 +37,7 @@ describe('SplitGutter collapse tooltip gating', () => {
         (Tooltip as any).instance = null;
         (Tooltip as any).watching = false;
         (Tooltip as any).activeElement = null;
+        (Tooltip as any).pendingId = null;
 
         DOM.reset();
     });
@@ -99,6 +100,7 @@ describe('SplitGutter collapse tooltip text', () => {
         (Tooltip as any).instance = null;
         (Tooltip as any).watching = false;
         (Tooltip as any).activeElement = null;
+        (Tooltip as any).pendingId = null;
 
         DOM.reset();
     });
