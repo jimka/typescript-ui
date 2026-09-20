@@ -52,9 +52,18 @@ function patchFor(tag: string): { addClass?: string[]; removeClass?: string[]; s
     return match?.args[1] as { addClass?: string[]; removeClass?: string[]; style?: Record<string, string> } | undefined;
 }
 
+/** A rendered plain component to own a drag, as the viewport-drag cases build. */
+function owningComponent(): Component {
+    const component = new Component({});
+
+    component.getElement(true);
+
+    return component;
+}
+
 describe('beginPointerDrag', () => {
     it('adds the dragging class and pins the cursor on the document element', () => {
-        beginPointerDrag('ew-resize');
+        beginPointerDrag(owningComponent(), 'ew-resize');
 
         const patch = patchFor('HTML');
         expect(patch?.addClass).toEqual(['ts-ui-dragging']);
@@ -62,13 +71,13 @@ describe('beginPointerDrag', () => {
     });
 
     it('registers the shared html.ts-ui-dragging > * suppression rule', () => {
-        beginPointerDrag('ew-resize');
+        beginPointerDrag(owningComponent(), 'ew-resize');
 
         expect(_ruleCacheHas(SUPPRESS_SELECTOR)).toBe(true);
     });
 
     it('holds whatever cursor the caller names', () => {
-        beginPointerDrag('nwse-resize');
+        beginPointerDrag(owningComponent(), 'nwse-resize');
 
         expect(patchFor('HTML')?.style).toEqual({ cursor: 'nwse-resize' });
     });
@@ -76,10 +85,12 @@ describe('beginPointerDrag', () => {
 
 describe('endPointerDrag', () => {
     it('removes the dragging class and releases the cursor', () => {
-        beginPointerDrag('ns-resize');
+        const owner = owningComponent();
+
+        beginPointerDrag(owner, 'ns-resize');
         sink.writes.length = 0;
 
-        endPointerDrag();
+        endPointerDrag(owner);
 
         const patch = patchFor('HTML');
         expect(patch?.removeClass).toEqual(['ts-ui-dragging']);
@@ -87,11 +98,56 @@ describe('endPointerDrag', () => {
     });
 
     it('is safe without a matching begin — it only clears the class and cursor', () => {
-        endPointerDrag();
+        endPointerDrag(owningComponent());
 
         const patch = patchFor('HTML');
         expect(patch?.removeClass).toEqual(['ts-ui-dragging']);
         expect(patch?.style).toEqual({ cursor: '' });
+    });
+});
+
+// The drag chrome is global and only the drag's own stop listener ever took it
+// off — a listener `Component.destructor()` purges. These three pin the repair:
+// the owner's teardown ends the drag it armed, and nothing else does.
+describe('a disposed owner ends its drag', () => {
+    it('the owner\'s dispose ends the drag', () => {
+        const owner = owningComponent();
+
+        beginPointerDrag(owner, 'ew-resize');
+        sink.writes.length = 0;
+
+        owner.dispose();
+
+        const patch = patchFor('HTML');
+        expect(patch?.removeClass).toEqual(['ts-ui-dragging']);
+        expect(patch?.style).toEqual({ cursor: '' });
+    });
+
+    it('another component\'s dispose does not', () => {
+        const owner = owningComponent();
+        const other = owningComponent();
+
+        beginPointerDrag(owner, 'ew-resize');
+        sink.writes.length = 0;
+
+        other.dispose();
+
+        // Without this the fix would degenerate into "clear the drag chrome on
+        // every dispose", ending a live drag whenever anything unrelated is
+        // destroyed.
+        expect(patchFor('HTML')).toBeUndefined();
+    });
+
+    it('a drag already ended is forgotten', () => {
+        const owner = owningComponent();
+
+        beginPointerDrag(owner, 'ew-resize');
+        endPointerDrag(owner);
+        sink.writes.length = 0;
+
+        owner.dispose();
+
+        expect(patchFor('HTML')).toBeUndefined();
     });
 });
 

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-// Scans the library source for classes matching the three registry tests'
+// Scans the library source for classes matching the four registry tests'
 // patterns, so `dispose-full-teardown.test.ts`,
-// `dispose-listener-teardown.test.ts` and `dispose-drag-teardown.test.ts`
-// derive their expected class lists at run time instead of carrying a
-// hand-written count that can drift silently.
+// `dispose-listener-teardown.test.ts`, `dispose-drag-teardown.test.ts` and
+// `dispose-pointer-drag-teardown.test.ts` derive their expected class lists at
+// run time instead of carrying a hand-written count that can drift silently.
 // This lives in a plain-ESM module rather than in the tests themselves
 // because `tsconfig.test.json` builds a deliberately Node-types-free
 // program — its `include` omits `vite.config.ts` and `scripts/`, which are
@@ -39,6 +39,10 @@ const SELF_LISTENER_REGISTRATION = /Event\.add(Listener|SubtreeListener|Viewport
  *  continuation lines, so `DragManager.ts`'s own `@example` block and the
  *  `{@link}` references in `TreeBody`'s method docs are not matches. */
 const DRAG_REGISTRATION = /^(?!\s*\*).*DragManager\.make(DragSource|DropTarget)\(/;
+
+/** The pointer-drag registry's source of truth. The lookahead skips JSDoc
+ *  continuation lines, mirroring `DRAG_REGISTRATION` above. */
+const POINTER_DRAG_REGISTRATION = /^(?!\s*\*).*\bbegin(Pointer|Viewport)Drag\(/;
 
 /** Recursively lists every `.ts` file under `dir`. */
 function listSourceFiles(dir) {
@@ -109,4 +113,9 @@ export function classesRegisteringEventListeners() {
 /** Class names calling `DragManager.makeDragSource(` / `makeDropTarget(` — the drag-teardown registry's source of truth. */
 export function classesRegisteringDragTargets() {
     return classesMatching(DRAG_REGISTRATION);
+}
+
+/** Class names calling `beginPointerDrag(` / `beginViewportDrag(` — the pointer-drag registry's source of truth. */
+export function classesBeginningPointerDrags() {
+    return classesMatching(POINTER_DRAG_REGISTRATION);
 }

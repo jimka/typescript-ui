@@ -1076,7 +1076,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         // cursor on the document element — required because suppressing body
         // pointer events also takes the thumb out of hit-testing, so its own
         // "grab" cursor can no longer win a hit test (see PointerDrag.ts).
-        beginPointerDrag("grabbing");
+        beginPointerDrag(this, "grabbing");
     };
 
     /**
@@ -1122,7 +1122,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         this._thumbDragging = false;
         this.updateThumbFill();
 
-        endPointerDrag();
+        endPointerDrag(this);
 
         return true;
     };

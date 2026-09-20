@@ -641,7 +641,7 @@ class HeaderCell extends DefaultCell {
         Event.addViewportListener(this, 'mousemove', this.onResizeDrag);
         Event.addViewportListener(this, 'mouseup', this.onResizeDragStop);
 
-        beginPointerDrag(RESIZE_HANDLE_CURSOR);
+        beginPointerDrag(this, RESIZE_HANDLE_CURSOR);
     }
 
     private onResizeDrag(e: MouseEvent): Event.ListenerResult {
@@ -654,7 +654,7 @@ class HeaderCell extends DefaultCell {
         Event.removeViewportListener(this, 'mousemove', this.onResizeDrag);
         Event.removeViewportListener(this, 'mouseup', this.onResizeDragStop);
 
-        endPointerDrag();
+        endPointerDrag(this);
 
         this._resizeHandle.dragEnd();
 

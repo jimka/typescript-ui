@@ -12,3 +12,6 @@ export function classesRegisteringEventListeners(): string[];
 
 /** Class names calling `DragManager.makeDragSource(` / `makeDropTarget(` — the drag-teardown registry's source of truth. */
 export function classesRegisteringDragTargets(): string[];
+
+/** Class names calling `beginPointerDrag(` / `beginViewportDrag(` — the pointer-drag registry's source of truth. */
+export function classesBeginningPointerDrags(): string[];

@@ -578,6 +578,21 @@ page resets to empty.
   It now takes the slow path and is placed where its manager asked. Anything
   that looked right because such a child stayed put was relying on that bug.
 
+- **A component destroyed part-way through a pointer drag no longer leaves the
+  page unclickable.** A drag against the viewport — a `SplitGutter`, a
+  `WindowBorder`, a `Scrollbar` thumb, a `HeaderCell`'s column-resize edge —
+  suppresses pointer events on every direct child of `<html>` and pins the
+  drag cursor there for the duration, and only the drag's own release listener
+  took that back off. Destroying the dragging component removed that listener,
+  so the release was heard by nobody and the suppression plus the frozen
+  cursor survived for the life of the page, with nothing left on the page that
+  a click could reach to undo it — closing a window while pressing its resize
+  border was enough to trigger it. Teardown now ends whatever drag the
+  component had armed. The component's own drag-stop callback is deliberately
+  not run: clearing the document element is the whole repair, and running the
+  callback would report a gesture as committed because the component was
+  destroyed. No consumer action is needed.
+
 ### Components
 
 - **A table no longer writes an in-progress cell edit onto the wrong record
