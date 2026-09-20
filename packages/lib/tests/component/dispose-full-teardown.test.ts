@@ -54,6 +54,11 @@ import { SplitButton } from '~/component/button/SplitButton';
 import { ToolBar } from '~/component/menubar/ToolBar';
 import { Button } from '~/component/button/Button';
 import { Table } from '~/component/table/Table';
+import { TablePanel } from '~/component/table/TablePanel';
+import { TreeTablePanel } from '~/component/table/TreeTablePanel';
+import { TreeBody } from '~/component/table/TreeBody';
+import { Dock } from '~/overlay/Dock';
+import { Window } from '~/overlay/Window';
 import { DateEditor } from '~/component/table/cell/editor/Date';
 import { TimeEditor } from '~/component/table/cell/editor/Time';
 import { DateTimeEditor } from '~/component/table/cell/editor/DateTime';
@@ -301,14 +306,46 @@ const REGISTRY: Array<{
     // This row also covers `TextInputCellEditor`'s own destructor (disposes
     // its `_contextMenu`, a Position.FIXED overlay never a registered
     // child), reached through DateEditor's `super.destructor()` chain.
+    //
+    // The year-scroller round trip covers `AbstractCalendarDropdown`'s own
+    // destructor in its scroller-closed branch: `openYearScroller` swaps the
+    // day grid out for the year column and `closeYearScroller` swaps it back,
+    // leaving the year column and its 171 year cells detached — out of
+    // `_components`, so the base recursion cannot reach them.
     {
         name: 'DateEditor',
-        covers: ['DateEditor', 'TextInputCellEditor'],
+        covers: ['DateEditor', 'TextInputCellEditor', 'AbstractCalendarDropdown'],
         make: () => {
             const editor = new DateEditor();
 
             editor.getElement(true);
             (editor as unknown as { openDropdown(): void }).openDropdown();
+
+            const dropdown = (editor as unknown as {
+                _dropdown: { openYearScroller(): void; closeYearScroller(): void };
+            })._dropdown;
+
+            dropdown.openYearScroller();
+            dropdown.closeYearScroller();
+
+            return editor;
+        },
+    },
+    // The other branch of `AbstractCalendarDropdown`'s destructor: destroyed
+    // while the scroller is still open, it is the *day grid* that sits
+    // detached. No `covers` — the row above already claims the class, and a
+    // second claim would be redundant (the `Link` and `ChartLegend` rows are
+    // the precedent for a `covers`-less row).
+    {
+        name: 'DateEditor (year scroller open)',
+        make: () => {
+            const editor = new DateEditor();
+
+            editor.getElement(true);
+            (editor as unknown as { openDropdown(): void }).openDropdown();
+
+            (editor as unknown as { _dropdown: { openYearScroller(): void } })
+                ._dropdown.openYearScroller();
 
             return editor;
         },
@@ -509,6 +546,122 @@ const REGISTRY: Array<{
             return tree;
         },
     },
+    // `_spinner` is lazily built on the store's first `loadingchange` and
+    // mounted by `showOverlay`, which raw-appends it onto the table's element
+    // rather than registering it as a child of the panel — so the base
+    // recursion cannot reach it however the panel's own destructor chains.
+    // Drive a load round trip to materialise and then hide it.
+    {
+        name: 'TablePanel',
+        covers: ['TablePanel'],
+        make: () => {
+            const panel = new TablePanel(
+                new MemoryStore(new Model([{ name: 'a', type: 'string', order: 0 }], 'a'), [])
+            );
+
+            panel.getElement(true);
+
+            const loading = panel as unknown as {
+                handleStoreLoadingChange(payload: { loading: boolean }): void;
+            };
+
+            loading.handleStoreLoadingChange({ loading: true });
+            loading.handleStoreLoadingChange({ loading: false });
+
+            return panel;
+        },
+    },
+    // TreeTablePanel is a near-verbatim copy of TablePanel and carries the
+    // same spinner in the same position; same driver.
+    {
+        name: 'TreeTablePanel',
+        covers: ['TreeTablePanel'],
+        make: () => {
+            const panel = new TreeTablePanel(
+                new MemoryStore(new Model([
+                    { name: 'id',     type: 'string', order: 0 },
+                    { name: 'parent', type: 'string', order: 1 },
+                    { name: 'name',   type: 'string', order: 2 },
+                ], 'id'), []),
+                {
+                    idField: 'id', parentField: 'parent', treeColumn: 'name',
+                    columns: [{ field: 'name' }],
+                }
+            );
+
+            panel.getElement(true);
+
+            const loading = panel as unknown as {
+                handleStoreLoadingChange(payload: { loading: boolean }): void;
+            };
+
+            loading.handleStoreLoadingChange({ loading: true });
+            loading.handleStoreLoadingChange({ loading: false });
+
+            return panel;
+        },
+    },
+    // Balances today; the row exists because `Dock` leaves
+    // `UNCLAIMED_DESTRUCTOR_CLASSES` with this plan, and the coverage
+    // assertion then demands a row for it. The sweep that wires the regions
+    // is forced rather than awaited: it is scheduled through
+    // `requestAnimationFrame`, which the offline sink records without ever
+    // firing, so a dock left to schedule it reaches dispose with `_wiring`
+    // empty and the destructor's `DockRegion.destroy()` loop never runs.
+    // Driving it directly is the idiom tests/overlay/Dock.lifecycle.test.ts
+    // already uses.
+    {
+        name: 'Dock',
+        covers: ['Dock'],
+        make: () => {
+            const dock = new Dock();
+
+            dock.getElement(true);
+            dock.setWidth(800);
+            dock.setHeight(600);
+            dock.doLayout();
+            (dock as unknown as { runSweep(): void }).runSweep();
+
+            return dock;
+        },
+    },
+    // Balances today; the row exists because `Window` starts declaring a
+    // destructor with this plan. Never `show()`: that enters
+    // `AbstractWindow.openWindows` and arms entrance-animation fallback timers
+    // that would outlive the test.
+    { name: 'Window', covers: ['Window'], make: () => new Window('W') },
+    // Balances today; the row exists because `TreeBody` starts declaring a
+    // destructor with this plan. `setReparentHandlers` precedes the render so
+    // the per-row and empty-area drag wiring its destructor tears down is
+    // actually installed.
+    {
+        name: 'TreeBody',
+        covers: ['TreeBody'],
+        make: () => {
+            const store = new MemoryStore(new Model([
+                { name: 'id',     type: 'number', order: 0 },
+                { name: 'parent', type: 'number', order: 1 },
+                { name: 'name',   type: 'string', order: 2 },
+            ], 'id'), []);
+
+            store.loadData([
+                { id: 1, parent: null, name: 'a' },
+                { id: 2, parent: null, name: 'b' },
+            ]);
+
+            const body = new TreeBody(store, {
+                idField: 'id', parentField: 'parent', treeColumn: 'name', indentPx: 16,
+            });
+
+            body.setReparentHandlers(() => true, () => true);
+            body.getElement(true);
+            body.setWidth(400);
+            body.setHeight(200);
+            body.renderWindow(400, [100, 100, 100]);
+
+            return body;
+        },
+    },
     // `_contextMenu` is a non-nullable field, built eagerly, but writes no
     // rule until the right-click handler actually shows it — same shape as
     // `Table`'s `_columnContextMenu` row above.
@@ -543,10 +696,10 @@ const REGISTRY: Array<{
  */
 const UNCLAIMED_DESTRUCTOR_CLASSES: readonly string[] = [
     'AbstractPickerField', 'AbstractWindow', 'AnimatedDropdown', 'AutoCompleteField', 'Button',
-    'DiagnosticsOverlay', 'DiagramView', 'Dialog', 'Dock', 'Drawer', 'DropZoneOverlay',
+    'DiagnosticsOverlay', 'DiagramView', 'Dialog', 'Drawer', 'DropZoneOverlay',
     'FilterCell', 'HeaderCell', 'LabeledGrid', 'MarkdownMinimap', 'Notification', 'Panel',
     'PopupButton', 'Rail', 'Row', 'SplitGutter', 'StatusBar', 'StyleAuditOverlay',
-    'StyleAuditView', 'TableHeader', 'TablePanel', 'Text', 'Tooltip', 'TreeTablePanel',
+    'StyleAuditView', 'TableHeader', 'Text', 'Tooltip',
 ];
 
 describe('dispose-full-teardown registry: every dispose() leaves zero new rule-cache keys', () => {

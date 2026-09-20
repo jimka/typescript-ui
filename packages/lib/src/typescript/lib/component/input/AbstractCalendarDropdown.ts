@@ -1020,6 +1020,31 @@ abstract class AbstractCalendarDropdown<
     }
 
     /**
+     * Disposes whichever of the day grid / year column is currently detached
+     * before the inherited teardown runs.
+     *
+     * The two swap places: opening the year scroller takes the day grid out of
+     * the panel and puts the year column in its slot, and closing it does the
+     * reverse. Whichever half is out at teardown is no longer a registered
+     * child, so the base destructor's recursion over the child list cannot
+     * reach it — with the scroller open that strands the day grid, and with it
+     * closed the year column and every year cell it holds.
+     *
+     * The day grid's own cells need no separate handling: every rebuild
+     * disposes them, and disposing the grid reaches whatever the last build
+     * left behind.
+     */
+    protected destructor(): void {
+        if (this._yearScrollOpen) {
+            this._dayGrid.dispose();
+        } else {
+            this._yearColumn?.dispose();
+        }
+
+        super.destructor();
+    }
+
+    /**
      * Populates `_yearColumn` with one cell per year in the legal range,
      * marking the active year as selected. Bound by `minDate` / `maxDate`
      * when set, otherwise the default ±span around today.

@@ -288,6 +288,13 @@ export namespace DragManager {
 
         endSession(false, 0, 0);
     }
+
+    /** Ids currently registered as a drag source or a drop target; for tests only. @internal */
+    export function _registeredComponentIds(): readonly string[] {
+        const ids = new Set<string>([...dragSources.keys(), ...dropTargets.keys()]);
+
+        return Array.from(ids);
+    }
 }
 
 /**

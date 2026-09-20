@@ -293,6 +293,13 @@ class Dock extends Container<DockOptions> {
     // panel torn off) and a tab is dragged over it.
     private _emptyDropOverlay: DropZoneOverlay = new DropZoneOverlay();
 
+    // Unregisters the empty-state drop target (see wireEmptyDropTarget). Held so
+    // the destructor can run it: the manager's registry is process-wide, so a
+    // discarded teardown would keep this dock — and its whole subtree — alive
+    // for the life of the page. A plain initializer is safe; the constructor
+    // wires the target from its own body, after this runs.
+    private _emptyDropTeardown: (() => void) | null = null;
+
     // Empty-state latch: whether the dock currently holds no live panel. Gates
     // the "emptychange" emit so it fires only on a real transition. Seeded true
     // because a dock is born empty: the first reconcile on a still-empty dock then
@@ -445,7 +452,7 @@ class Dock extends Container<DockOptions> {
      * the hit-test) keep handling drops.
      */
     private wireEmptyDropTarget(): void {
-        DragManager.makeDropTarget(this, {
+        this._emptyDropTeardown = DragManager.makeDropTarget(this, {
             accepts: (detail: DragEventDetail): boolean =>
                 detail.dragData["tabDrag"] === true && this.getComponents().length === 0,
             // The full-region blue overlay is the only feedback here; suppress the
@@ -2362,13 +2369,19 @@ class Dock extends Container<DockOptions> {
     }
 
     /**
-     * Disposes the empty-state drop overlay before the base destructor runs.
+     * Unregisters the empty-state drop target and disposes its overlay before
+     * the base destructor runs. The drag manager keeps every registered target
+     * in a process-wide map, so a dock that never ran its teardown stays
+     * reachable — with its whole subtree — for the life of the page.
      * `attachTo` raw-appends the overlay onto this dock's element rather than
      * registering it as a child, so the inherited child recursion never
-     * reaches it; the `detach()` calls in the drop-target callbacks are
+     * reaches it either; the `detach()` calls in the drop-target callbacks are
      * mid-drag hides of a still-live overlay, not teardown.
      */
     protected destructor(): void {
+        this._emptyDropTeardown?.();
+        this._emptyDropTeardown = null;
+
         this._emptyDropOverlay.dispose();
 
         // Each wired region owns a DockRegion holding its own drop-zone

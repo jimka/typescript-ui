@@ -97,6 +97,11 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
      * row. The host `TreeBody` reads this to dispatch toggle clicks
      * from its subtree-click listener.
      *
+     * Read-only access, and the reference is short-lived: a
+     * {@link TreeCellRenderer.setTreeState} call that changes the toggle
+     * destroys the one it replaces, so a caller holding a reference from an
+     * earlier call must not reuse it across a `setTreeState` call.
+     *
      * @returns The toggle {@link Glyph}, or `null` when the row has no children.
      */
     getToggle(): Glyph | null {
@@ -217,11 +222,22 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
      * `caret-down` (expanded) or `caret-right` (collapsed) glyph —
      * matches [`TreeRow.setRowData`](/api/component/tree/classes/TreeRow#setrowdata)'s
      * swap pattern (no in-place name mutation API on `Glyph`).
+     *
+     * The outgoing glyph is destroyed, not merely detached: `removeComponent`
+     * takes it out of the child list but leaves it holding its element, its
+     * per-instance stylesheet rule and its theme subscription, so a row rebound
+     * on every scroll would strand one glyph per swap.
      */
     private refreshToggle(): void {
         if (this._toggle) {
-            this.removeComponent(this._toggle);
+            const outgoing = this._toggle;
+
+            this.removeComponent(outgoing);
             this._toggle = null;
+
+            // `dispose()` does not remove a child from its parent's list, so
+            // the `removeComponent` call above stays.
+            outgoing.dispose();
         }
 
         if (!this._hasChildren) {
