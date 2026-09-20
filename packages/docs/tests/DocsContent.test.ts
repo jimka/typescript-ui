@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
 //
-// DocsContent constructs library components (Panel, Markdown), whose bundled
-// module evaluates a top-level `Body` singleton that reads `document` at
-// import time — same reason demos.test.ts needs a real DOM (see its own top
-// comment). This package has no access to packages/lib's modelled DOM test
-// harness (installTestDOM), which is test-only and not published, so this
-// exercises the real thing through jsdom instead. `getPage` is mocked so
-// each test controls its own page source rather than depending on real
-// authored content.
+// DocsContent constructs library components (Panel, Markdown), which write
+// through the library's production DOM seam as they are built — same reason
+// demos.test.ts needs a real DOM (see its own top comment). This package has
+// no access to packages/lib's modelled DOM test harness (installTestDOM),
+// which is test-only and not published, so this exercises the real thing
+// through jsdom instead. `getPage` is mocked so each test controls its own
+// page source rather than depending on real authored content.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Body } from '@jimka/typescript-ui/core';
 import { Fit } from '@jimka/typescript-ui/layout';

@@ -1330,6 +1330,9 @@ function ensureFontLoaded(): boolean {
  */
 export class ThemeManager {
     private static current: Theme = ModernTheme;
+    // `current` starts at ModernTheme, so its value cannot say whether an app
+    // ever chose a theme. This flag can: `setTheme` is its only writer.
+    private static themeApplied: boolean = false;
     private static resolvedScale: ResolvedScale = resolveScale(ModernTheme);
     private static themeListeners: Array<() => void> = [];
 
@@ -1364,6 +1367,8 @@ export class ThemeManager {
      * from `<html>`.
      */
     static setTheme(theme: Theme): void {
+        ThemeManager.themeApplied = true;
+
         const fontLoadStarted = ensureFontLoaded();
 
         ThemeManager.scheduleFontReflow();
@@ -1399,6 +1404,21 @@ export class ThemeManager {
         });
 
         ThemeManager.reflowText();
+    }
+
+    /**
+     * Applies {@link ModernTheme} unless a theme has already been set, so a
+     * `setTheme` call made before the page body is first reached keeps its
+     * choice.
+     *
+     * @internal Framework-internal; called once, from `Body`'s constructor.
+     */
+    static _applyDefaultTheme(): void {
+        if (ThemeManager.themeApplied) {
+            return;
+        }
+
+        ThemeManager.setTheme(ModernTheme);
     }
 
     // Guards the `onFontsReady` subscription across repeated setTheme calls —
