@@ -357,3 +357,78 @@ No `migration/next.md` entry: nothing a consumer wrote stops compiling or stops 
 [^timers]: `data/` imports nothing from `core/` except `ListenerBag`, so it is the one entry point with no DOM dependency at all. `DOM.sink.setTimeout` exists and newer component code uses it, but reaching for it here would pull `core/DOM.ts` into the `./data` chunk for the sake of one timer. The bare global is already the library's other habit — `DockRegion`, `StatusBar`, `MenuItem`, `TabBar` and both `Header` classes all call it directly — and `no-raw-dom` does not flag it: the rule's receiver-less global list covers `getComputedStyle`, `matchMedia` and the animation-frame pair, not timers.
 
 [^await-store-view]: `awaitStoreView` was written because of this bug but is not a workaround for it. A worker that works still makes `loadData` defer its `load` event, so a panel that selects a record or looks up a cell in `afterMount` genuinely has to wait for the view — that is the correct shape and it survives unchanged, along with `packages/qa/tests/store.test.ts`, which pins it. What its 10-second cap guarded against does change: it used to be the only thing anywhere that noticed a worker which never replied, and it is the instrument that found this bug. Keeping it costs nothing and leaves the QA app able to catch a future panel wired against a broken build, so only the comment explaining it is rewritten. The half of the QA app that *is* a workaround is `qaLibraryPlugin`'s `/assets/` middleware and its startup throw, which exist solely to answer a request that stops being made.
+
+---
+
+## Implementation Notes
+
+Five departures from the plan as written; the design is unchanged.
+
+**Step 6 arms the probe after `postMessage`, not before it.** The step places
+the probe arm inside the `new Promise` executor after `pending.set(...)` and
+before `w.postMessage(message)`. Written that way, a `postMessage` that throws
+— a record that will not structured-clone, the case the Architecture Decisions
+table's fourth row and `docs/reference/troubleshooting.md:95` both name — leaves
+a `pending` entry nothing can ever settle and a probe armed on a message that
+never left, so five seconds later a perfectly healthy worker is retired for the
+page with the untrue reason "its first request went unanswered". That is the
+opposite of the row's own verdict, "kept; the next call tries again". So
+`postMessage` is wrapped in a `try`/`catch` that drops the pending entry and
+rethrows, and the probe is armed only once the message really is outstanding.
+`StoreWorkerClient.test.ts`'s "keeps the worker when a message will not leave
+the main thread" pins it.
+
+**Step 11's `_snapshotDirty` move reaches its goal a different way.** The step
+asked for the clear to move out of the eager `if` block and into the snapshot
+promise's own success. Implemented literally, that breaks two things the eager
+clear was quietly doing, both caught by the audit. The clear is no longer tied
+to the dispatch, so two offloads overlapping one in-flight snapshot each ship
+the whole dataset — a second full structured clone of ≥ 1,000 records on the
+one path built for large datasets. Worse, a record added or removed *while* a
+snapshot is in flight sets the flag, and the landing snapshot — taken before
+that change — then clears it, so the next offload sorts against a snapshot the
+worker took before the mutation and the view silently loses the record. Pinning
+the dispatched array, the obvious guard, does not help: `add` and `remove`
+splice `_allRecords` in place, so its identity never changes.
+
+So `sendSnapshot()` keeps the clear at dispatch, as before, and marks the
+snapshot stale again if the dispatch *fails* — which is what footnote
+[^snapshot-dirty] actually asks for: a worker path that is re-enterable after a
+failure the worker survives. A mutation's own stale mark is then never undone,
+because nothing writes the flag on success. Three tests in
+`AbstractStore.workerView.test.ts` pin all three cases.
+
+**`dist/lib/assets` survives the build, holding one file.** Step 25 expected
+`test ! -d dist/lib/assets` to print `gone`. Vite's `?worker&inline` embeds the
+worker's *source* in the importing chunk but still emits that source's
+**source map** as a separate asset, so the built tree keeps
+`dist/lib/assets/StoreWorker-<hash>.js.map` and nothing else. The substance of
+the check holds: the worker's `.js` is gone, `grep -rn "/assets/StoreWorker"
+dist/lib/` finds nothing, and the map is referenced only by a relative
+`sourceMappingURL` inside the inlined source — devtools material, never
+fetched to run the worker. Nothing in the QA app depends on the directory any
+more, since step 19 removed the startup check that did.
+
+**`createObjectURL` matches two chunks, not one.** Step 25 expected exactly the
+chunk holding `StoreWorkerClient` (`dist/lib/MemoryStore-<hash>.js`, which does
+hold the inlined worker and its blob/data-URL construction). The second match
+is `dist/lib/Table-<hash>.js`, where `TableExporter.download` builds a blob URL
+for a CSV download — pre-existing, unrelated, and untouched by this plan.
+
+**`FakeWorker.terminated` counts rather than flags.** Step 15 called for a
+boolean; the Expected Behaviour table's case 2 asks for `terminate()` "called
+exactly once", which a boolean cannot distinguish from twice, so the field is a
+counter.
+
+One detail step 9 left open: `applyView` carried two stacked JSDoc blocks, the
+first of which ("Rebuilds the visible records slice by applying all active
+filters and the active sorter", with the null-sorting remark) documented the
+body being extracted. It moved onto `applyViewInProcess` with that body rather
+than being left behind or duplicated.
+
+The plan's one manual step — `packages/qa/runqa.sh store-worker-fail-safe main
+'panel=table-rows'`, the only check that proves the `blob:` worker boots in a
+real engine — is **outstanding**, since every QA run opens a full-screen window
+and needs the user's go-ahead. Everything else in `## Verification` ran and
+passed, including the QA dev server reaching "ready in 132 ms" against a
+rebuilt library with no `/assets/` plumbing left.
