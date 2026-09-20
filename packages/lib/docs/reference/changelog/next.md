@@ -15,6 +15,14 @@ page resets to empty.
   and the two calls — there is no replacement. See
   [Migration](/reference/migration/next) for the full note.
 
+- **`WindowBorder.setDirection()` is removed.** It had no callers, and it
+  could not be made correct where it stood: it rewrote the direction without
+  re-applying the hover cursor, which the strip writes once at construction
+  and shares with the drag cursor so the two can never disagree. A strip's
+  direction is now what it always effectively was — fixed at construction,
+  read back through `getDirection()`. See
+  [Migration](/reference/migration/next) for the full note.
+
 ## Changed
 
 ### Core
