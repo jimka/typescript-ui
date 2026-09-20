@@ -355,13 +355,22 @@ to cite as its precedent: `Animation.ts:314`'s `afterTransition` removes its
 `transitionend` on the *fired* path but not on the cancelled one, so a
 fast-re-toggled `Accordion` accumulates listeners on its section wrapper.
 `tests/core/Animation.test.ts:344` currently pins the leak as intended
-behaviour. It is deliberately **out of scope** for
-`plans/listener-and-rule-removal-paths.md`, because C15's fix is safe only
-by way of a guarantee `afterTransition` does not share: `PendingTransitions`
-plus `Component.destructor`/`removeElement` cancel before every handle
-release, which bounds the new DOM touch. `afterTransition` has no such
-bound, so it needs its own analysis rather than a copied fix. Place it in a
-later correctness batch.
+behaviour. It was left out of
+`plans/listener-and-rule-removal-paths.md` on the grounds that C15's fix is
+safe only through a guarantee `afterTransition` does not share.
+~~It has no such bound.~~ **That was wrong, and it was mine** — corrected
+2026-09-20 while planning the fix. `afterTransition`'s wait element is
+`config.component.getElement()`, which `render()` tracks in `_ownedHandles`,
+the very array `Component.destructor` iterates to cancel before releasing.
+So the guarantee *does* transfer and the same mechanism works, provided the
+`PendingTransitions` registration lands with the listener removal — a bare
+removal without it would indeed be unsound. Registering also fixes a latent
+hazard already present: `Border.detach`/`Split.detach` call
+`transition.cancel()` on the dispose path *after* the pane's handle is
+released, and the registration makes the pane's own destructor cancel first,
+so that late call becomes a no-op. Measured: twenty interrupted `Accordion`
+toggles add twenty `transitionend` listeners to one handle and remove none —
+one dead listener per toggle interrupted within 240 ms.
 
 **A documentation error:** `docs/components/ButtonGroup.md` documents a
 `getSelected()` method the class does not have. Pre-existing and unrelated
