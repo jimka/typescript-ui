@@ -9,7 +9,10 @@
 // refcount API is pure counter logic, the queue (`activeNotifications`) is
 // static state the file reaches the way `Notification.styleRuleDisposal.test.ts`
 // does, and a toast's stamp and its committed x/y are ordinary `Component`
-// getters over modelled state.
+// getters over modelled state. The stack's response to a viewport resize lives
+// in `Notification.resize.test.ts` — `Event`'s viewport listener map is
+// module-level and survives `DOM.reset()`, so a resize dispatch needs a file
+// that registers the type once (see `tests/dom/viewport-consume.test.ts`).
 import { describe, it, expect, afterEach } from 'vitest';
 import { Notification } from '~/overlay/Notification';
 import { DOM } from '~/core/DOM';
