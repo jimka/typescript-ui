@@ -742,3 +742,116 @@ From the repository root unless stated:
     `MarkdownViewer`, `MarkdownEditor`, `FieldDecorator`). `_applyDefaultTheme` is `@internal`, so TypeDoc excludes
     it and links to it are not possible from rendered docs; the count must not
     grow and no new warning may name `Body` or `ThemeManager`.
+
+---
+
+## Implementation Notes
+
+Eight notes — seven departures from the plan as written, plus one finding
+about how `packages/docs` resolves the library — all recorded rather than
+designed around. The fix itself needed no departure: *Internal Structure*'s
+two bodies were applied verbatim, and steps 1–3's snippets went in as given.
+
+Manual verification items 9 and 10 (`npm run dev` and `npm run docs:dev`, each
+opened in a browser by a person) are **not** performed here and remain
+outstanding for the user: this run was not permitted to launch a window.
+
+**Seven files beyond the plan's Files table were edited, and the plan's own
+grep found only one of them.** *Verification*'s closing grep says "no surviving
+hit may still attribute an import-time DOM touch to `Body`", but it searches
+for "at import time" / "at module import" in `packages/lib/tests`,
+`packages/qa/tests` and `Body.ts` alone, so it caught
+`packages/qa/tests/pageTargets.test.ts:3-5` ("whose top-level `Body` singleton
+reads `document` at import time", rewritten to name what still needs the real
+DOM there) and missed six more. `packages/lib/tests/core/FirstLayoutGate.test.ts:320-321`
+said the gate is armed "since Body's static `INSTANCE` arms the gate at module
+load" — a deleted field, and a phrasing ("module load") the grep's two patterns
+cannot match. `packages/lib/tests/component/table/Body.test.ts:86-91` explained
+its own ordering by the singleton constructing "unconditionally at module
+evaluation", which also made the `CoreBody.getInstance()` assertion at `:104-107`
+read as observing a precondition it now creates; both comments say so instead.
+`packages/docs/tests/demos.test.ts:3-9`, `DocsContent.test.ts:3-6` and
+`DocsSidebar.test.ts:3-6` each justified their `jsdom` pragma the same stale
+way; all three now name the production DOM seam their component construction
+writes through. `plans/research/render-review-2026-09-15/00-post-campaign-agenda.md:82-89`
+is the seventh, and has its own note below.
+
+Inside the Files table but outside the plan's own account of it:
+`packages/lib/docs/components/Body.md`'s **intro sentence** (line 3) promised
+that `Body` "bootstraps the framework when the module is first imported" — the
+same guarantee step 12 removes from line 81, which *Documentation Impact*
+tracked at line 81 only.
+
+**A second research record carried the item and the plan did not name it.**
+*Documentation Impact* and step 15 name `01-phase2-status-pass.md` only, but
+`plans/research/render-review-2026-09-15/00-post-campaign-agenda.md:82-89` also
+held item 4 open and quoted the deleted `INSTANCE` declaration. It is struck
+through and marked closed there, in the style its own item 3 already uses.
+
+**`packages/docs` cannot reach this branch's library on its own, which is
+worth knowing for any later change here.** Unlike `packages/qa`, whose
+`vite.config.ts` aliases the library to "this checkout's own packages/lib —
+never the node_modules symlink, which in a worktree points at the main tree's
+build", `packages/docs` has no such alias, so from a worktree its suite
+resolves `@jimka/typescript-ui` through the root `node_modules` symlink into
+the **main checkout's** `dist` — its green run in *Verification* exercises the
+pre-change library. Bridging that by hand (symlinking
+`packages/docs/node_modules/@jimka/typescript-ui` at this worktree's
+`packages/lib`, vite cache cleared) is what settled what its three stale
+headers should now say: against the changed library the suite still passes,
+11 files / 2,601 tests, and `DocsContent.test.ts` / `DocsSidebar.test.ts` still
+fail under a plain `node` environment — constructing a library component
+writes through the production seam, so their `jsdom` pragma keeps a real
+reason. `demos.test.ts` no longer has one of its own (it passes under `node`,
+553 tests) but keeps its pragma, because whether the library build a run
+resolves still constructs at import is exactly what varies between checkouts.
+
+**The `docs:api` baseline is 14 warnings, not the 15 the notes claim.** The
+run ends "Found 0 errors and 14 warnings"; counting the summary line itself as
+a warning is what produced 15. The bar the footnote sets is unaffected — the
+count did not grow and no new warning names `Body` or `ThemeManager`.
+
+**The two QA header comments were re-wrapped.** Steps 9 and 10 say to replace
+one sentence and leave the rest of the line as it stands, which leaves the
+paragraph ragged mid-line ("So this file needs a real / DOM;"). Both
+paragraphs were re-flowed with every surviving word kept verbatim.
+
+**Step 10's insertion point sits above `SMOKE_SCALE`'s doc comment, not
+between it and the constant.** The step names line 20, `const SMOKE_SCALE`;
+the JSDoc immediately above it belongs to that constant, so the prime went
+above the whole block rather than splitting a doc comment from its
+declaration.
+
+**The changelog gained a correction the plan did not anticipate, and
+*Documentation Impact*'s "no migration entry" ruling was reversed.** That
+section enumerated the pages to add to but never checked the changelog for an
+entry this change *invalidates*, and `changelog/next.md:565-581` — the
+`no-dom-access-at-import` entry, unreleased in the same file — said "every
+entry point except `core` loads without one", exempted apps that "import
+`core` up front" from the `<style>`-ordering inversion it documents, and closed
+"`core` still creates the page's `Body` when it loads". All three clauses are
+now false, and the middle one names a real consequence the plan missed: the
+library's own `<style>` element is created at its first stylesheet write, which
+importing `core` used to perform (via the body's construction) and no longer
+does, so a `core` importer's own CSS can now precede the library's. The entry
+is corrected and this plan's own entry names the consequence. The ruling that
+`migration/next.md` needed nothing rested on "nothing is removed or renamed and
+no call becomes a compile error, so there is nothing for a consumer to act on"
+— but *Expected Behaviour* 8 is exactly something to act on, and this branch
+proves it by acting on it twice: steps 9 and 10's prime is the remedy a
+downstream jsdom suite needs verbatim. A migration note now carries it.
+
+**A sixth case, B5, was added for *Expected Behaviour* 8, which the plan left
+uncovered.** The preamble at `## Expected Behaviour` says "8 is what the QA run
+in step 11 exercises", but steps 9 and 10 add `Body.getInstance()` to both QA
+jsdom files precisely so that ordering never arises there — so after this plan
+lands, nothing exercises it. It is the one new behaviour an app can observe, it
+is unit-testable in the modelled harness, and the two suites with the right
+shape do not reach it either: every case in
+`tests/component/table/HeaderThemeReflow.test.ts` runs after an earlier
+`setTheme` in the same file, and `src/typescript/main.ts` calls `Body.init`
+before it builds any panel, so manual item 9 misses it too. B5 in
+`tests/core/Body.test.ts` builds a `Button`, registers a listener behind the
+one the button took while building, and asserts the first `Body.init` fires it
+exactly once. It was seen red against the start point's `core/Body.ts` and
+`core/Theme.ts` first, failing `expected +0 to be 1`.

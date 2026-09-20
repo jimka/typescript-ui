@@ -78,13 +78,11 @@ go-ahead.
    2026-09-20 status pass confirmed C1's fix closed it: `acquire` commits the
    outgoing cell before taking the slot, and `release(cell)` takes the
    releasing cell and returns early unless it owns the slot.
-4. **`core` still touches the DOM on import.** `core/Body.ts` declares
-   `private static readonly INSTANCE: Body = new Body()`, which renders the
-   page body when the module loads, so `./core` is the one entry point that
-   cannot be imported without a DOM. `no-dom-access-at-import` left it out of
-   scope and records it as the known exception in
-   `packages/lib/tests/unit/import-without-dom.test.ts`; fixing it removes
-   that exception.
+4. ~~**`core` still touches the DOM on import.**~~ — **closed.**
+   `plans/body-lazy-singleton.md` made the singleton construct on the first
+   `Body.init()` / `Body.getInstance()` call, so `./core` imports with no DOM
+   and `KNOWN_IMPORT_TIME_DOM` in
+   `packages/lib/tests/unit/import-without-dom.test.ts` is now empty.
 
 5. **A store of 1,000+ records silently never builds its view** (found
    2026-09-20, by the QA app's first authorised sweep). Two defects, one
