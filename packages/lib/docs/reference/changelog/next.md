@@ -1062,3 +1062,14 @@ page resets to empty.
   padding box's right edge, where `overflow: hidden` clipped most of the grab
   band away, and its southern strips sat one inset's difference too low. No
   consumer action is needed.
+
+- **Detaching one component's tooltip no longer dismisses another
+  component's.** `Tooltip.detach()` ended with an unconditional `hide()`, so
+  any component's `attach` or `detach` faded out the tooltip showing for a
+  different component and cancelled a hover delay a different component had
+  armed — a list rebind or a re-derived button title was enough, and because
+  no fresh `mouseover` fires under a stationary pointer the cancelled tooltip
+  never appeared at all. `detach()` now dismisses only when the detaching
+  component is the anchor on screen, and cancels only the pending show it
+  armed itself, which is what its documentation always described. No consumer
+  action is needed.
