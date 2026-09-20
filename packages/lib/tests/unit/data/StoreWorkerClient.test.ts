@@ -195,8 +195,31 @@ describe('StoreWorkerClient happy path (faked Worker)', () => {
     });
 });
 
-/** Mirrors `WORKER_PROBE_TIMEOUT_MS` in the client — its cap on an unanswered first request. */
-const PROBE_TIMEOUT_MS = 5000;
+/** Mirrors `SILENCE_BASE_MS` in the client — the fixed part of its silence deadline. */
+const SILENCE_BASE_MS = 5000;
+
+/** Mirrors `SILENCE_MS_PER_1000_RECORDS` in the client — the part that grows with the snapshot. */
+const SILENCE_MS_PER_1000_RECORDS = 20;
+
+/** A snapshot whose size buys a deadline plainly longer than the base alone. */
+const LARGE_SNAPSHOT_RECORDS = 100_000;
+
+/** What a request over `LARGE_SNAPSHOT_RECORDS` records is owed: 7,000 ms. */
+const LARGE_SNAPSHOT_DEADLINE_MS =
+    SILENCE_BASE_MS + (LARGE_SNAPSHOT_RECORDS / 1000) * SILENCE_MS_PER_1000_RECORDS;
+
+/** The largest store the deadline is sized for, and so the longest deadline it produces. */
+const HUGE_SNAPSHOT_RECORDS = 1_000_000;
+
+/** What a request over `HUGE_SNAPSHOT_RECORDS` records is owed: 25,000 ms. */
+const HUGE_SNAPSHOT_DEADLINE_MS =
+    SILENCE_BASE_MS + (HUGE_SNAPSHOT_RECORDS / 1000) * SILENCE_MS_PER_1000_RECORDS;
+
+/** When a mid-wait reply or dispatch lands — inside the base deadline, and not at its edge. */
+const MID_WAIT_MS = 4000;
+
+/** Longer than any deadline the client can arm, so an idle worker has every chance to be retired. */
+const IDLE_MS = 60000;
 
 /** The tail of the message every retirement rejects with, whatever retired the worker. */
 const RETIRED_MESSAGE = 'sort and filter run on the main thread';
@@ -249,38 +272,135 @@ describe('StoreWorkerClient worker retirement (faked Worker)', () => {
         const rejected = expect(client.sortFilter('store-1', { field: 'name', direction: 'asc' }))
             .rejects.toThrow(RETIRED_MESSAGE);
 
-        await vi.advanceTimersByTimeAsync(PROBE_TIMEOUT_MS);
+        await vi.advanceTimersByTimeAsync(SILENCE_BASE_MS);
         await rejected;
 
         expect(client.isAvailable()).toBe(false);
     });
 
-    it('stops timing requests once the worker has answered one', async () => {
+    it('gives a request over a large snapshot the deadline its size warrants', async () => {
         vi.useFakeTimers();
 
-        const first = client.sortFilter('store-1', { field: 'name', direction: 'asc' });
+        const snapshot = client.snapshot('store-1', new Array(LARGE_SNAPSHOT_RECORDS));
         const worker = FakeWorker.instances[0];
 
-        worker.reply({ requestId: worker.lastRequestId(), indices: [0] });
+        worker.reply({ requestId: worker.lastRequestId() });
 
-        await expect(first).resolves.toEqual([0]);
+        await expect(snapshot).resolves.toBeUndefined();
 
-        const second = client.sortFilter('store-2', { field: 'name', direction: 'asc' });
+        const promise  = client.sortFilter('store-1', { field: 'name', direction: 'asc' });
+        const rejected = expect(promise).rejects.toThrow(RETIRED_MESSAGE);
 
         let settled = false;
-        void second.then(() => { settled = true; }, () => { settled = true; });
+        void promise.then(() => { settled = true; }, () => { settled = true; });
 
-        // Four times the probe's own cap: a genuinely long sort of a very large
-        // store must not be mistaken for a dead script.
-        await vi.advanceTimersByTimeAsync(PROBE_TIMEOUT_MS * 4);
+        // The base alone is not the whole deadline: this request sorts the
+        // 100,000 records the snapshot carried, so it is owed the rest of it.
+        await vi.advanceTimersByTimeAsync(SILENCE_BASE_MS);
 
         expect(settled).toBe(false);
         expect(client.isAvailable()).toBe(true);
 
-        // Settle it properly so the promise does not leak.
-        worker.reply({ requestId: worker.lastRequestId(), indices: [1] });
+        await vi.advanceTimersByTimeAsync(LARGE_SNAPSHOT_DEADLINE_MS - SILENCE_BASE_MS);
+        await rejected;
 
-        await expect(second).resolves.toEqual([1]);
+        expect(client.isAvailable()).toBe(false);
+    });
+
+    it('restarts the silence clock on every reply, not only the first', async () => {
+        vi.useFakeTimers();
+
+        const first  = client.sortFilter('store-1', { field: 'name', direction: 'asc' });
+        const second = client.sortFilter('store-2', { field: 'name', direction: 'asc' });
+        const worker = FakeWorker.instances[0];
+
+        const rejected = expect(second).rejects.toThrow(RETIRED_MESSAGE);
+
+        let settled = false;
+        void second.then(() => { settled = true; }, () => { settled = true; });
+
+        await vi.advanceTimersByTimeAsync(MID_WAIT_MS);
+
+        worker.reply({ requestId: worker.posted[0].requestId, indices: [0] });
+
+        await expect(first).resolves.toEqual([0]);
+
+        // The moment the first request's own clock would have expired: the
+        // reply moved it, so the second request is still being waited for.
+        await vi.advanceTimersByTimeAsync(SILENCE_BASE_MS - MID_WAIT_MS);
+
+        expect(settled).toBe(false);
+        expect(client.isAvailable()).toBe(true);
+
+        // A whole deadline after the reply, and nothing has answered since.
+        await vi.advanceTimersByTimeAsync(MID_WAIT_MS);
+        await rejected;
+
+        expect(client.isAvailable()).toBe(false);
+    });
+
+    it('extends the deadline for a bigger request that joined the wait', async () => {
+        vi.useFakeTimers();
+
+        const small = client.sortFilter('store-1', { field: 'name', direction: 'asc' });
+        const worker = FakeWorker.instances[0];
+
+        const smallRejected = expect(small).rejects.toThrow(RETIRED_MESSAGE);
+
+        let settled = false;
+        void small.then(() => { settled = true; }, () => { settled = true; });
+
+        await vi.advanceTimersByTimeAsync(MID_WAIT_MS);
+
+        const huge = client.snapshot('store-2', new Array(HUGE_SNAPSHOT_RECORDS));
+        const hugeRejected = expect(huge).rejects.toThrow(RETIRED_MESSAGE);
+
+        // The small request's own deadline passes without a retirement: the
+        // million-record snapshot outstanding beside it is owed a longer one.
+        await vi.advanceTimersByTimeAsync(SILENCE_BASE_MS - MID_WAIT_MS);
+
+        expect(settled).toBe(false);
+        expect(client.isAvailable()).toBe(true);
+
+        // Measured from the first dispatch, not from the bigger one's.
+        await vi.advanceTimersByTimeAsync(HUGE_SNAPSHOT_DEADLINE_MS - SILENCE_BASE_MS);
+        await smallRejected;
+        await hugeRejected;
+
+        expect(client.isAvailable()).toBe(false);
+        expect(worker.terminated).toBe(1);
+    });
+
+    it('does not restart the clock when a request of the same size is dispatched', async () => {
+        vi.useFakeTimers();
+
+        const first     = client.sortFilter('store-1', { field: 'name', direction: 'asc' });
+        const firstDone = expect(first).rejects.toThrow(RETIRED_MESSAGE);
+
+        await vi.advanceTimersByTimeAsync(MID_WAIT_MS);
+
+        const second     = client.sortFilter('store-2', { field: 'name', direction: 'asc' });
+        const secondDone = expect(second).rejects.toThrow(RETIRED_MESSAGE);
+
+        // A dispatch is the main thread talking; only the worker talking is
+        // evidence about the worker, so the clock still expires at its start.
+        await vi.advanceTimersByTimeAsync(SILENCE_BASE_MS - MID_WAIT_MS);
+        await firstDone;
+        await secondDone;
+
+        expect(client.isAvailable()).toBe(false);
+    });
+
+    it('never retires a worker that has been asked for nothing', async () => {
+        vi.useFakeTimers();
+
+        expect(client.isAvailable()).toBe(true);
+
+        await vi.advanceTimersByTimeAsync(IDLE_MS);
+
+        expect(client.isAvailable()).toBe(true);
+        expect(FakeWorker.instances[0].terminated).toBe(0);
+        expect(warn).not.toHaveBeenCalled();
     });
 
     it('keeps the worker when a reply carries an error string', async () => {
@@ -318,8 +438,8 @@ describe('StoreWorkerClient worker retirement (faked Worker)', () => {
         await expect(client.snapshot('store-1', [{ id: 1 }])).rejects.toThrow('could not be cloned');
 
         // A message that never left proves nothing about the worker, so nothing
-        // may retire it once the probe's own cap has passed.
-        await vi.advanceTimersByTimeAsync(PROBE_TIMEOUT_MS * 2);
+        // may retire it once a whole base deadline has passed twice over.
+        await vi.advanceTimersByTimeAsync(SILENCE_BASE_MS * 2);
 
         expect(client.isAvailable()).toBe(true);
         expect(worker.terminated).toBe(0);

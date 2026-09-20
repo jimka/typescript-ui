@@ -12,8 +12,10 @@
 // Content-Security-Policy that refuses a `blob:` worker — simply leaves the
 // client without one; the next call tries to construct it again. A worker that
 // was constructed and then proved dead — its script failed to run, a reply
-// could not be decoded, or its first request went unanswered — is *retired*:
-// terminated, every outstanding request rejected, and never rebuilt.
+// could not be decoded, or it answered nothing for the whole deadline while a
+// reply was owed — is *retired*: terminated, every outstanding request
+// rejected, and never rebuilt. That deadline grows with the dataset, so a long
+// sort of a very large store is given room a small store's request is not.
 
 import { FilterDescriptor } from "~/data/FilterDescriptor.js";
 import type { FieldType } from "~/data/Field.js";
@@ -33,17 +35,27 @@ type Response = { requestId: number; indices?: number[]; error?: string };
 interface Pending {
     resolve: (indices: number[] | undefined) => void;
     reject: (err: Error) => void;
+    /** Records in the snapshot this request works over; sizes the silence deadline. */
+    records: number;
 }
 
 /**
- * How long the worker's *first* request may go unanswered before the worker is
- * declared dead. It bounds worker startup and its first answer, not a sort:
- * only the first request is timed, because once the worker has answered, a long
- * wait is real work rather than a dead script. Five seconds is far more than a
- * `blob:` worker needs to boot and take its first snapshot, and expiring it
- * early costs only the offload, since the in-process path builds the same view.
+ * The deadline's fixed part: how long the worker may say nothing before the
+ * dataset-sized allowance is added. It covers worker startup and the queue
+ * ahead of a request, not the work itself, and is far more than a `blob:`
+ * worker needs to boot and take its first snapshot.
  */
-const WORKER_PROBE_TIMEOUT_MS = 5000;
+const SILENCE_BASE_MS = 5000;
+
+/**
+ * The deadline's per-record part, per 1,000 records of the largest snapshot
+ * outstanding. Twenty milliseconds per thousand is ten times the slowest thing
+ * the worker's own code can do to a record — a locale-aware string sort
+ * measured at 1.7 µs per record over a million of them — which leaves at least
+ * a tenfold margin at every store size, to absorb an engine slower than the one
+ * it was measured on.
+ */
+const SILENCE_MS_PER_1000_RECORDS = 20;
 
 let worker: Worker | null = null;
 let nextRequestId = 1;
@@ -52,20 +64,66 @@ const pending: Map<number, Pending> = new Map();
 // Set once the worker is proven dead; never cleared, so a retired worker is
 // never rebuilt.
 let workerRetired = false;
-// Set by the first reply of any kind. Until then the worker is unproven and
-// its first request is timed.
-let workerProven = false;
-let probeTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Armed whenever a reply is owed, restarted by every reply. Null when nothing
+// is outstanding.
+let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+// How long the armed timer will run, and how much silence was already counted
+// before it was armed. Their sum is how long the worker has said nothing.
+let armedFor = 0;
+let quietSoFar = 0;
+// Records last snapshotted per store, so a sortFilter can be sized by the
+// snapshot it runs over. Never pruned; one number per store.
+const snapshotSizes: Map<string, number> = new Map();
 
 /**
- * Cancels the startup probe, if one is armed. Called by the first reply of any
- * kind and by retirement, so a dead worker leaves no timer behind.
+ * Cancels the silence clock, if one is armed, and forgets what it had counted.
+ * Called by every reply — which restarts it — and by retirement, so a dead
+ * worker leaves no timer behind.
  */
-function clearProbeTimer(): void {
-    if (probeTimer !== null) {
-        clearTimeout(probeTimer);
-        probeTimer = null;
+function clearSilenceTimer(): void {
+    if (silenceTimer !== null) {
+        clearTimeout(silenceTimer);
+        silenceTimer = null;
     }
+
+    armedFor   = 0;
+    quietSoFar = 0;
+}
+
+/**
+ * The deadline the outstanding set currently warrants, sized by its largest
+ * snapshot.
+ *
+ * @returns How long the worker may stay silent while it owes these replies.
+ */
+function silenceDeadlineMs(): number {
+    let worst = 0;
+
+    for (const p of pending.values()) {
+        if (p.records > worst) {
+            worst = p.records;
+        }
+    }
+
+    return SILENCE_BASE_MS + Math.ceil(worst / 1000) * SILENCE_MS_PER_1000_RECORDS;
+}
+
+/**
+ * Starts the silence clock when a reply is owed and none is running. A dispatch
+ * that joins a stretch of silence already being timed changes nothing here: if
+ * it warrants a longer deadline than the one armed, it is given the difference
+ * when that one expires — a page that keeps dispatching would otherwise hold a
+ * wedged worker's clock open forever.
+ */
+function armSilenceTimer(): void {
+    if (silenceTimer !== null || pending.size === 0) {
+        return;
+    }
+
+    quietSoFar   = 0;
+    armedFor     = silenceDeadlineMs();
+    silenceTimer = setTimeout(handleSilenceTimeout, armedFor);
 }
 
 /**
@@ -82,7 +140,7 @@ function retireWorker(reason: string): void {
     }
 
     workerRetired = true;
-    clearProbeTimer();
+    clearSilenceTimer();
 
     const dead = worker;
 
@@ -112,9 +170,28 @@ function handleWorkerMessageError(): void {
     retireWorker("a reply could not be decoded");
 }
 
-/** Retires a worker that booted but never answered — the failure neither error event covers. */
-function handleProbeTimeout(): void {
-    retireWorker(`its first request went unanswered for ${WORKER_PROBE_TIMEOUT_MS}ms`);
+/**
+ * Retires a worker that has said nothing for the whole deadline while owing a
+ * reply — the failure neither error event covers — unless a bigger request
+ * joined after the clock started, which is given the rest of its own allowance
+ * first. The extension is applied here rather than at that dispatch, so the
+ * silence a retirement reports is always measured from the last reply.
+ */
+function handleSilenceTimeout(): void {
+    silenceTimer = null;
+
+    const quiet  = quietSoFar + armedFor;
+    const wanted = silenceDeadlineMs();
+
+    if (wanted > quiet) {
+        quietSoFar   = quiet;
+        armedFor     = wanted - quiet;
+        silenceTimer = setTimeout(handleSilenceTimeout, armedFor);
+
+        return;
+    }
+
+    retireWorker(`it answered nothing for ${quiet}ms with ${pending.size} outstanding`);
 }
 
 function ensureWorker(): Worker | null {
@@ -133,16 +210,22 @@ function ensureWorker(): Worker | null {
     worker.onmessageerror = handleWorkerMessageError;
 
     worker.onmessage = (e: MessageEvent<Response>) => {
-        // Any reply proves the script ran, including one whose requestId is
-        // unknown, so the startup probe is done either way.
-        workerProven = true;
-        clearProbeTimer();
-
         const { requestId, indices, error } = e.data;
         const p = pending.get(requestId);
-        if (!p) return;
 
-        pending.delete(requestId);
+        if (p) {
+            pending.delete(requestId);
+        }
+
+        // Any reply proves the worker's event loop is still turning, including
+        // one whose requestId is unknown, so the clock restarts for whatever is
+        // left. The delete comes first so the new deadline is sized on it.
+        clearSilenceTimer();
+        armSilenceTimer();
+
+        if (!p) {
+            return;
+        }
 
         if (error) {
             p.reject(new Error(error));
@@ -154,7 +237,7 @@ function ensureWorker(): Worker | null {
     return worker;
 }
 
-function send(message: any): Promise<number[] | undefined> {
+function send(message: any, records: number): Promise<number[] | undefined> {
     const w = ensureWorker();
     if (!w) {
         return Promise.reject(new Error("Worker unavailable"));
@@ -164,7 +247,7 @@ function send(message: any): Promise<number[] | undefined> {
     message.requestId = requestId;
 
     return new Promise((resolve, reject) => {
-        pending.set(requestId, { resolve, reject });
+        pending.set(requestId, { resolve, reject, records });
 
         try {
             w.postMessage(message);
@@ -179,10 +262,8 @@ function send(message: any): Promise<number[] | undefined> {
         }
 
         // Armed only once a request is really outstanding, so a message that
-        // never left cannot expire the probe and retire a healthy worker.
-        if (!workerProven && probeTimer === null) {
-            probeTimer = setTimeout(handleProbeTimeout, WORKER_PROBE_TIMEOUT_MS);
-        }
+        // never left cannot expire the deadline and retire a healthy worker.
+        armSilenceTimer();
     });
 }
 
@@ -203,7 +284,9 @@ export const StoreWorkerClient = {
      * Subsequent sort/filter requests run against this snapshot until replaced.
      */
     snapshot(storeId: string, records: Array<Record<string, any>>): Promise<void> {
-        return send({ type: "snapshot", storeId, records }).then(() => undefined);
+        snapshotSizes.set(storeId, records.length);
+
+        return send({ type: "snapshot", storeId, records }, records.length).then(() => undefined);
     },
 
     /**
@@ -211,12 +294,19 @@ export const StoreWorkerClient = {
      * The sort spec carries the field's `fieldType` so the worker's comparator
      * stays in parity with the main thread's (locale-aware strings, timestamp
      * dates).
+     *
+     * @remarks
+     * The request is sized by the snapshot it runs over, so the silence
+     * deadline grows with the dataset being sorted. A store whose snapshot
+     * never went out is sized at zero — the base deadline alone — which is a
+     * guard rather than a path, since the caller always snapshots first.
      */
     sortFilter(
         storeId: string,
         sort?: { field: string; direction: Direction; fieldType?: FieldType },
         filter?: FilterDescriptor,
     ): Promise<number[]> {
-        return send({ type: "sortFilter", storeId, sort, filter }).then(idx => idx ?? []);
+        return send({ type: "sortFilter", storeId, sort, filter }, snapshotSizes.get(storeId) ?? 0)
+            .then(idx => idx ?? []);
     },
 };

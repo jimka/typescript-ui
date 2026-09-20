@@ -2,9 +2,11 @@
 // never answers left its view empty and its 'load' event unfired for the life
 // of the page. Nothing is spied here — a real MemoryStore runs over the real
 // StoreWorkerClient, and the only fake is the global `Worker`, which records
-// what it is posted and answers nothing. That is the shape of the measured
-// failure: the request for the worker script was answered with the page's own
-// HTML, so the worker booted into nothing and no reply ever came.
+// what it is posted and answers only what a test answers for it. That is the
+// shape of the measured failure: the request for the worker script was answered
+// with the page's own HTML, so the worker booted into nothing and no reply ever
+// came. A worker that answers the snapshot and then goes quiet hangs the store
+// in exactly the same way, and is this file's second case.
 //
 // AbstractStore imports StoreWorkerClient as a module singleton, so the global
 // must be stubbed BEFORE vi.resetModules() and the store imported dynamically
@@ -15,16 +17,24 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 /** Over WORKER_THRESHOLD (1,000), so `applyView` takes the worker path. */
 const RECORD_COUNT = 1200;
 
-/** Mirrors `WORKER_PROBE_TIMEOUT_MS` in StoreWorkerClient — the client's own cap on an unanswered first request. */
-const PROBE_TIMEOUT_MS = 5000;
+/** Mirrors `SILENCE_BASE_MS` in StoreWorkerClient — the fixed part of its silence deadline. */
+const SILENCE_BASE_MS = 5000;
 
-/** A Worker that accepts every request and answers none of them. */
+/** Mirrors `SILENCE_MS_PER_1000_RECORDS` in StoreWorkerClient — the part that grows with the snapshot. */
+const SILENCE_MS_PER_1000_RECORDS = 20;
+
+/** A Worker that accepts every request and answers only what a test answers for it. */
 class SilentWorker {
+    public static instances: SilentWorker[] = [];
     public static posted: any[] = [];
     public static terminated: number = 0;
     public onmessage: ((e: MessageEvent<any>) => void) | null = null;
     public onerror: ((e: any) => void) | null = null;
     public onmessageerror: ((e: any) => void) | null = null;
+
+    constructor() {
+        SilentWorker.instances.push(this);
+    }
 
     postMessage(message: any): void {
         SilentWorker.posted.push(message);
@@ -33,13 +43,18 @@ class SilentWorker {
     terminate(): void {
         SilentWorker.terminated++;
     }
+
+    /** Pushes a synthetic worker response to the assigned handler. */
+    reply(data: any): void {
+        this.onmessage?.({ data } as MessageEvent<any>);
+    }
 }
 
 function rows(n: number): Array<{ id: number; name: string }> {
     return Array.from({ length: n }, (_, i) => ({ id: i, name: `n${i}` }));
 }
 
-describe('AbstractStore — the store builds its view when the worker never answers', () => {
+describe('AbstractStore — the store builds its view when the worker stops answering', () => {
     afterEach(() => {
         vi.useRealTimers();
         vi.unstubAllGlobals();
@@ -47,10 +62,11 @@ describe('AbstractStore — the store builds its view when the worker never answ
         vi.resetModules();
     });
 
-    it('fills the view and fires "load" once after the probe expires', async () => {
+    it('fills the view and fires "load" once after the silence deadline expires', async () => {
         vi.spyOn(console, 'warn').mockImplementation(() => undefined);
         vi.useFakeTimers();
 
+        SilentWorker.instances = [];
         SilentWorker.posted = [];
         SilentWorker.terminated = 0;
         vi.stubGlobal('Worker', SilentWorker);
@@ -74,7 +90,48 @@ describe('AbstractStore — the store builds its view when the worker never answ
         expect(store.getRecords()).toHaveLength(0);
         expect(loaded).toEqual([]);
 
-        await vi.advanceTimersByTimeAsync(PROBE_TIMEOUT_MS);
+        await vi.advanceTimersByTimeAsync(SILENCE_BASE_MS + 2 * SILENCE_MS_PER_1000_RECORDS);
+
+        expect(store.getRecords()).toHaveLength(RECORD_COUNT);
+        expect(loaded).toEqual([RECORD_COUNT]);
+        expect(SilentWorker.terminated).toBe(1);
+    });
+
+    it('fills the view and fires "load" once when the worker answers the snapshot and then goes quiet', async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        vi.useFakeTimers();
+
+        SilentWorker.instances = [];
+        SilentWorker.posted = [];
+        SilentWorker.terminated = 0;
+        vi.stubGlobal('Worker', SilentWorker);
+
+        // Reset AFTER stubbing so the store and the client share one fresh
+        // module graph that sees the silent worker.
+        vi.resetModules();
+
+        const { MemoryStore } = await import('~/data/MemoryStore');
+        const { Model } = await import('~/data/Model');
+
+        const store = new MemoryStore(new Model([{ name: 'id' }, { name: 'name' }], 'id'), []);
+        const loaded: number[] = [];
+
+        store.on('load', () => loaded.push(store.getRecords().length));
+
+        store.loadData(rows(RECORD_COUNT));
+
+        // Answering the snapshot lets the store dispatch the sortFilter chained
+        // behind it, which is the request this worker leaves outstanding for
+        // good. The drained turn is what carries that chain to its dispatch.
+        SilentWorker.instances[0].reply({ requestId: SilentWorker.posted[0].requestId });
+
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(SilentWorker.posted).toHaveLength(2);
+        expect(store.getRecords()).toHaveLength(0);
+        expect(loaded).toEqual([]);
+
+        await vi.advanceTimersByTimeAsync(SILENCE_BASE_MS + 2 * SILENCE_MS_PER_1000_RECORDS);
 
         expect(store.getRecords()).toHaveLength(RECORD_COUNT);
         expect(loaded).toEqual([RECORD_COUNT]);
