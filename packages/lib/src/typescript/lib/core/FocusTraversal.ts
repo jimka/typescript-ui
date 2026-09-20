@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, TAB_KEY_OWNER_ATTR } from "~/core/Component.js";
+import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { LayerManager } from "~/core/LayerManager.js";
-import { focusScopeRoot, visibleFocusable, ancestorsToDocument } from "~/core/Focusable.js";
+import { focusScopeRoot, visibleFocusable, findTabKeyOwner } from "~/core/Focusable.js";
 
 /**
  * Options for {@link FocusTraversal.enable} / {@link FocusTraversal.configure}.
@@ -51,24 +51,6 @@ function isModalRoot(root: Handle): boolean {
 /** Resolves the effective wrap behaviour for `root` — the explicit option, else "modal only". */
 function shouldWrap(root: Handle): boolean {
     return _wrapOption ?? isModalRoot(root);
-}
-
-/**
- * Walks from `handle` up to (and including) `<html>` — see {@link
- * ancestorsToDocument} for why the walk is bounded there — looking for the
- * first ancestor carrying the Tab-key-owner marker.
- *
- * @param handle - The element to start the walk from (typically the focused element).
- * @returns The nearest owning ancestor's handle, or `null` when none claims it.
- */
-function findTabKeyOwner(handle: Handle): Handle | null {
-    for (const h of ancestorsToDocument(handle)) {
-        if (DOM.source.hasAttribute(h, TAB_KEY_OWNER_ATTR)) {
-            return h;
-        }
-    }
-
-    return null;
 }
 
 /**
