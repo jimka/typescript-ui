@@ -743,3 +743,87 @@ label.
     to stop writing a zero-warning bar into their verification rather than
     silently inheriting a failing gate. The bar here is therefore "no new
     warnings"; fixing the existing 14 is separate work.
+
+---
+
+## Implementation Notes
+
+**The C10 regression test snapshots before constructing the renderer, not
+after.** `## Expected Behaviour` describes step 9's case as "build a
+`TreeCellRenderer`, `getElement(true)`, snapshot the live component count and
+`_ruleCacheKeys().length`, run three `setTreeState` calls that flip the
+toggle, then dispose and assert both are back to the snapshot" — but a
+snapshot taken after construction can never be returned to by a `dispose()`
+that also destroys the renderer and its delegate, which were constructed
+before it. The snapshot is therefore taken before the whole round trip
+(construct → three `setTreeState` calls → dispose), which is the only reading
+consistent with the plan's own measured "stranded today: 2": the two outgoing
+glyphs survive, while the third is reclaimed by the base recursion along with
+the renderer itself. `Button.test.ts:641`, the cited precedent, has no such
+problem because its round trip leaves the button alive on both sides of the
+assertion. The same case departs from that precedent a second way, for the
+same unavoidable reason: it runs the round trip twice and snapshots between
+the two, because the first renderer of the process materialises shared
+class-tier rules that no instance's dispose is meant to reclaim.
+`Button.test.ts` needs no warm-up only because its file has already built many
+`Button`s by then; the warm-up pass itself is
+`dispose-full-teardown.test.ts`'s own established idiom.
+
+**The red-state measurements matched the plan's tables exactly**, which is
+what shows the new rows are not asserting something trivially true. Before
+the fixes: `dispose-drag-teardown.test.ts` failed on `Dock`, `Window` and
+`TreeBody` (the last leaking three ids — the body plus both pool rows, so the
+row's `ids` hook is load-bearing) while the `TabBar` control row passed;
+`dispose-full-teardown.test.ts`'s extended `DateEditor` row leaked 172 rules,
+the figure `[^calendar-two-faces]` predicts; and the `TreeCellRenderer` case
+stranded exactly 2 components. The `TreeTablePanel` row's driver needed a
+`columns` entry neither step 12 nor `## Expected Behaviour` mentions
+(`TreeTableSpec` inherits a required `columns` from `ColumnSpec`), and with the
+fix reverted by hand that row fails, so its green is earned rather than
+inherited from the sibling panel's.
+
+**Both `Dock` rows force the region sweep, which the plan's driver tables do
+not list.** They stop at `setHeight(600)` / `doLayout()`, but the sweep that
+populates `_wiring` is scheduled through `requestAnimationFrame`, and the
+offline sink records that call without ever firing the callback. A dock left
+to schedule its own sweep therefore reaches `dispose()` with no wired region
+at all, so the `DockRegion.destroy()` loop in `Dock.destructor` never runs —
+which would have made `UNCLAIMED_DRAG_TEARDOWN_CLASSES`'s justification for
+exempting `DockRegion` ("a teardown path the `Dock` row already exercises") an
+unbacked claim, against the bar `## Internal Structure` sets for a baseline
+entry. Both rows now drive `runSweep()` through a private cast, the idiom
+`tests/overlay/Dock.lifecycle.test.ts:149` already uses; with
+`DockRegion.destroy()`'s teardown call removed by hand, the drag row fails, so
+the claim is now backed.
+
+**The one-toggle control case from the C10 table landed as its own test.**
+`## Expected Behaviour`'s table enumerates two cases — one toggle (0 stranded
+before and after) and three (2 → 0) — and only the second is a red-to-green
+proof, so the first was initially left out as a test that could never fail.
+That was the wrong call: the control is what pins `[^treecell-correction]`'s
+N−1 argument inside the test file rather than only in a footnote. With
+`refreshToggle`'s new `dispose()` reverted, the one-toggle case still passes
+while the three-toggle case fails — which is the evidence that the *current*
+toggle is already reclaimed by the base recursion, and hence that this
+renderer correctly gains no `destructor()`.
+
+**Each drag row also pins the registry's positive direction, which
+`## Expected Behaviour` does not ask for.** It specifies only the negative
+half ("snapshot the ids, dispose, assert none survive"), which a row that
+registers nothing — or an accessor that lost one of its two maps — satisfies
+trivially. `tests/unit/core/Event.test.ts:247` guards `Event`'s copy of this
+accessor with a `toContain` before the matching `not.toContain`, so each row
+now asserts that at least one snapshotted id *is* registered before the
+dispose. Verified by hand in both directions: an accessor returning only
+`dropTargets` fails the `Window` row (its registration is a drag source),
+and one returning only `dragSources` fails `Dock` and `TabBar`.
+
+**The sixth-registrant probe under `## Expected Behaviour` was run and
+reverted.** A `DragManager.makeDropTarget(` line added to `Canvas` failed
+`every class registering a drag target is claimed by a row or listed as
+unclaimed` with `"Canvas"`, as intended.
+
+**No QA panel was run.** `treetable-rows`, `windows` and `table-rows` remain
+the manual, real-engine sanity check named in `## Expected Behaviour`; every
+run opens a full-screen window and needs the user's explicit go-ahead. The
+jsdom assertions above stand as the evidence, as that section already argues.
