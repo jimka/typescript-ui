@@ -433,6 +433,22 @@ function nextHeadingId(text: string, headingIds: Map<string, number>): string {
 }
 
 /**
+ * The selector that resolves a heading element by id *within one pane's
+ * subtree* — the read-side counterpart to {@link nextHeadingId}, which writes
+ * the id. An attribute selector rather than `#id`, because a heading slug is
+ * author content and may start with a digit, which `#` cannot carry without a
+ * `CSS.escape` the seam's documented fallback does not provide.
+ *
+ * @param id - The heading id, as rendered onto the element.
+ * @returns A selector matching exactly that id.
+ *
+ * @internal
+ */
+function headingSelector(id: string): string {
+    return `[id="${DOM.source.escapeSelector(id)}"]`;
+}
+
+/**
  * How a link href should be rendered: the final href, and whether it leaves
  * the site the {@link Markdown} instance is embedded in.
  *
@@ -2205,7 +2221,15 @@ const ACTIVE_HEADING_TOP_TOLERANCE_PX = 1;
  * the pane's top, and the top-crossing rule alone would otherwise resolve to
  * a much earlier heading than whichever one the scroll actually landed on.
  *
- * @param scrollElement - The scroll-owning element to read the pane's own top from.
+ * A heading whose id resolves to no element inside `scrollElement` is skipped,
+ * so two panes rendering documents that share a heading name no longer resolve
+ * each other's elements: heading ids are unique within one render but land in
+ * the one document-wide id space, and a document-wide lookup would hand the
+ * second pane the first pane's element.
+ *
+ * @param scrollElement - The scroll-owning element: both the pane top each
+ *   heading is compared against, and the subtree each heading is resolved
+ *   within.
  * @param headings - The document's headings, in document order.
  * @returns The active heading's id, or `null` when the pane's top is above every heading.
  *
@@ -2220,9 +2244,9 @@ export function findActiveHeading(scrollElement: Handle, headings: MarkdownHeadi
     let active: string | null = null;
 
     for (const heading of headings) {
-        const el = DOM.source.getElementById(heading.id);
+        const el = DOM.source.querySelector(scrollElement, headingSelector(heading.id));
 
-        if (!el || !DOM.source.contains(scrollElement, el)) {
+        if (!el) {
             continue;
         }
 
@@ -2253,4 +2277,8 @@ export {
     // Not re-exported from the package barrel (`component/display/index.ts`):
     // a test-only hook, not part of the public API surface.
     mapFenceLangToEditorId,
+    // Not re-exported from the package barrel either: an `@internal` helper
+    // shared with `HeadingScrollTracker` and the suites that seed the offline
+    // selector, not part of the public API surface.
+    headingSelector,
 };

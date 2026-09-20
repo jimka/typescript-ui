@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Markdown, mapFenceLangToEditorId, extractMarkdownHeadings, findActiveHeading } from '~/component/display/Markdown';
+import { Markdown, mapFenceLangToEditorId, extractMarkdownHeadings, findActiveHeading, headingSelector } from '~/component/display/Markdown';
 import { splitColumnSections, joinColumnSections } from '~/component/display/markdownAttributes';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
@@ -9,7 +9,7 @@ import { Event } from '~/core/Event';
 import { Fit } from '~/layout/Fit';
 import { ThemeManager, DarkTheme, ModernTheme } from '~/core/Theme';
 import { Menu } from '~/overlay/Menu';
-import { installTestDOM, setScrollExtent, makeEvent, type RecordingDOMSink } from '../../dom/TestDOM';
+import { installTestDOM, setScrollExtent, setQuerySelectorResult, makeEvent, type RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -902,6 +902,7 @@ describe('findActiveHeading', () => {
             const headingHandle = DOM.source.getElementById(heading.id)!;
 
             DOM.sink.apply(headingHandle, { style: { left: '0px', top: `${tops[i]}px`, width: '10px', height: '10px' } });
+            setQuerySelectorResult(headingSelector(heading.id), headingHandle);
         });
 
         return { handle, headings };
