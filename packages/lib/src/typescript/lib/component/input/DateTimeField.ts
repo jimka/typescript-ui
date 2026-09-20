@@ -6,7 +6,7 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { calendar } from "~/glyphs/solid/calendar.js";
 import { DateTimePickerDropdown } from "~/component/input/DateTimePickerDropdown.js";
 import { callable } from "~/core/Callable.js";
-import { resolveDateMath, tokenizeDateMath, DateMathUnit } from "~/component/input/dateMath.js";
+import { resolveDateMath, tokenizeDateMath, parseIsoDate, parseClockTime, DateMathUnit } from "~/component/input/dateMath.js";
 
 Glyph.register(calendar);
 
@@ -143,15 +143,25 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
 
         // Require both a date and a time portion, ISO-anchored, so parsing is
         // the strict inverse of formatValue and not the locale-dependent,
-        // time-optional `new Date(raw)`. Mirrors DateField/TimeField strictness.
-        const [datePart, timePart] = raw.trim().split(/\s+/);
-        if (!datePart || !timePart) {
+        // time-optional `new Date(raw)`. Each half goes through the same shared
+        // helper its own sibling field uses, so DateField/TimeField strictness
+        // is literally the rule applied here rather than a restatement of it.
+        const parts = raw.trim().split(/\s+/);
+
+        if (parts.length !== 2) {
             return null;
         }
 
-        const d = new Date(`${datePart}T${timePart}`);
+        const date = parseIsoDate(parts[0]);
+        const time = parseClockTime(parts[1]);
 
-        return isNaN(d.getTime()) ? null : d;
+        if (date === null || time === null) {
+            return null;
+        }
+
+        date.setHours(time.hours, time.minutes, time.seconds, 0);
+
+        return date;
     }
 
     /**
