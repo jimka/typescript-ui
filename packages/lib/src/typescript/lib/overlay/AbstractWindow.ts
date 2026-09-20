@@ -1033,9 +1033,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
-     * Mirrors a manager-allocated z-index onto the element when the window
-     * (or a layer opened inside it) is raised via
-     * {@link LayerManager.bringToFront}.
+     * Mirrors every z-index the manager assigns this window onto the element:
+     * the one {@link LayerManager.register} allocates as `show()` joins the
+     * layer tree, each later one from a raise — of the window or of a layer
+     * opened inside it — or a band move, and the one a compaction of its band
+     * hands it. This is the window's only z-index writer, so nothing else
+     * puts its first stamp on the element.
      *
      * @param zIndex - The fresh z-index assigned by the manager.
      */

@@ -1184,9 +1184,11 @@ class Menu extends Component implements DismissableLayer {
     }
 
     /**
-     * Mirrors a manager-allocated z-index onto the element when the layer this
-     * menu was opened inside is raised via the manager's bring-to-front path,
-     * so an open menu never falls behind the surface it belongs to.
+     * Mirrors every z-index the manager assigns this menu onto the element —
+     * the one allocated at registration, each later one from a raise of the
+     * menu or of the layer it was opened inside, and the one a compaction of
+     * its band hands it — so an open menu never falls behind the surface it
+     * belongs to.
      *
      * @param zIndex - The fresh z-index assigned by the manager.
      */

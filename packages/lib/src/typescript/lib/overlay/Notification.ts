@@ -108,13 +108,6 @@ export class Notification extends Component {
     private static readonly V_PADDING: number      = 10;
     private static readonly CLOSE_SIZE: number     = 20;
     private static readonly BADGE_TEXT_GAP: number = 8;
-    // Stacking z-index for toasts. Sits just above the managed dropdown band
-    // (`LayerManager.Band.Dropdown` = 10000) so a toast floats over open pickers
-    // and menus, yet below the Dialog band (11000) so the modal detail dialog a
-    // toast can open covers it. A fixed literal rather than a `Band` allocation
-    // because a `Notification` is not a registered layer — it never joins the
-    // dismiss / stacking tree, so it has no node for the manager to stamp.
-    private static readonly Z_INDEX: number        = 10002;
 
     private static activeNotifications: Notification[] = [];
 
@@ -171,7 +164,10 @@ export class Notification extends Component {
         this._fullMessage = message;
 
         this.setPosition(Position.FIXED);
-        this.setZIndex(Notification.Z_INDEX);
+        // Above the managed dropdown band so a toast floats over open pickers
+        // and menus, and below the Dialog band so the modal detail dialog a
+        // toast can open covers it.
+        this.setZIndex(LayerManager.Band.Notification);
         this.setWidth(Notification.WIDTH);
         this.setHeight(Notification.HEIGHT);
         this.setOverflow("hidden");

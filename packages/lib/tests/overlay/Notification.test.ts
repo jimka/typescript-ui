@@ -1,18 +1,19 @@
 //
-// SCOPE: Notification is almost entirely DOM- / timer- / animation-driven. Its
-// only entry point, `Notification.show`, builds Glyph/Button children, appends
-// to the document, plays an entrance Animation, and arms a setTimeout — none of
-// which the offline harness models meaningfully (rAF is a recorded no-op
-// returning 0). The queue (`activeNotifications`), the per-toast dismiss timer,
-// and the bottom-right stacking offsets are private static state with no public
-// getter, so the queue model and stacking order are not assertable offline.
-// What stays safe is the static pause/resume refcount API, which is pure
-// counter logic when no toast is live. Stacking / auto-dismiss / restack need a
-// real-DOM (jsdom-event or browser) harness.
+// SCOPE: Notification is largely DOM- / timer- / animation-driven. Its only
+// entry point, `Notification.show`, builds Glyph/Button children, appends to
+// the document, plays an entrance Animation, and arms a setTimeout. What the
+// offline harness genuinely cannot exercise is the last two: rAF is a recorded
+// no-op returning 0, so the entrance animation never advances, and there is no
+// wall clock, so auto-dismiss never fires. Those need a real-DOM (jsdom-event
+// or browser) harness. Everything else is reachable: the static pause/resume
+// refcount API is pure counter logic, the queue (`activeNotifications`) is
+// static state the file reaches the way `Notification.styleRuleDisposal.test.ts`
+// does, and a toast's stamp and its committed x/y are ordinary `Component`
+// getters over modelled state.
 import { describe, it, expect, afterEach } from 'vitest';
 import { Notification } from '~/overlay/Notification';
 import { DOM } from '~/core/DOM';
-import { LayerManager } from '~/core/LayerManager';
+import { LayerManager, type DismissableLayer } from '~/core/LayerManager';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -23,6 +24,38 @@ const CONFIG = {
     fontMetrics,
     themeVars:       {},
 };
+
+// Dropdown-band layers to stamp before the toast is shown. Well past the three
+// the old fixed 10002 literal survived, and past the 20-odd a busy screen ever
+// holds open at once, so the band's own counter is exercised rather than just
+// its base.
+const DROPDOWN_LAYERS: number = 20;
+
+/**
+ * The toast most recently shown. The constructor is private, so the instance is
+ * reached through the static active stack the way
+ * `Notification.styleRuleDisposal.test.ts` already does.
+ */
+function liveToast(): Notification {
+    const active = (Notification as unknown as { activeNotifications: Notification[] }).activeNotifications;
+
+    return active[active.length - 1];
+}
+
+/**
+ * A minimal registered layer in the Dropdown band, for stamping the band up
+ * before a toast is shown. It carries no element and is never dismissed — only
+ * its allocated z-index matters here.
+ */
+function dropdownLayer(): DismissableLayer {
+    return {
+        getLayerElement: () => null,
+        getDismissMode:  () => 'click-outside',
+        requestClose:    () => {},
+        getBand:         () => LayerManager.Band.Dropdown,
+        isLayerRoot:     () => true,
+    };
+}
 
 describe('Notification (pause/resume refcount, idle)', () => {
     afterEach(() => DOM.reset());
@@ -98,5 +131,55 @@ describe('Notification (pause/resume refcount, idle)', () => {
         const message = dialog.getContentComponent().getComponents()[0] as { hasCopyMenu(): boolean };
 
         expect(message.hasCopyMenu()).toBe(true);
+    });
+});
+
+describe('Notification (stacking band)', () => {
+    const layers: DismissableLayer[] = [];
+
+    afterEach(() => {
+        for (const layer of layers) {
+            LayerManager.unregister(layer);
+        }
+
+        layers.length = 0;
+
+        DOM.reset();
+    });
+
+    it('places the notification band above the dropdown band and below the dialog band', () => {
+        installTestDOM(CONFIG);
+
+        // A toast floats over open pickers and menus, yet stays under the modal
+        // detail dialog a toast can itself open.
+        expect(LayerManager.Band.Notification).toBeGreaterThan(LayerManager.Band.Dropdown);
+        expect(LayerManager.Band.Notification).toBeLessThan(LayerManager.Band.Dialog);
+    });
+
+    it('stamps a toast with the notification band', () => {
+        installTestDOM(CONFIG);
+
+        Notification.show('msg');
+
+        expect(liveToast().getZIndex()).toBe(LayerManager.Band.Notification);
+    });
+
+    it('keeps a toast above every dropdown-band layer stamped before it', () => {
+        installTestDOM(CONFIG);
+
+        for (let i = 0; i < DROPDOWN_LAYERS; i++) {
+            const layer = dropdownLayer();
+
+            LayerManager.register(layer);
+            layers.push(layer);
+        }
+
+        Notification.show('msg');
+
+        const toastZ = liveToast().getZIndex();
+
+        for (const layer of layers) {
+            expect(toastZ).toBeGreaterThan(LayerManager.getZIndex(layer));
+        }
     });
 });
