@@ -322,21 +322,33 @@ override an extra edge — `Glyph`, `Markdown`, `CodeEditor`, `Panel` and
 `AbstractCanvasSurface` — each of which must be re-checked for idempotence.
 Split it out if the wave wants a narrow diff.
 
-## Still blocked on a decision
+## Decisions taken 2026-09-20
 
-Not in the table above, and not plannable until answered:
+The three items that needed the user's judgement rather than an
+investigation. All three are now settled, so all three are plannable; a plan
+for any of them cites this section rather than re-opening the question.
 
-- **2a** — roving the close buttons removes the stray Tab stops, but
-  `TabBar.onToolbarKeyDown` handles only ArrowLeft/ArrowRight, so there is
-  no Delete-closes-the-focused-tab. WAI-ARIA's tabs-with-delete pattern
-  expects one. Which keyboard route replaces the Tab stop is a design call.
-- **2b** — the Tab trap can carve out editing surfaces the way `onEnter`
-  already does, or stand down when the active element sits inside a
-  descendant carrying `TAB_KEY_OWNER_ATTR`. Either way the trap must still
-  wrap at a genuine boundary when the editor does not want Tab.
-- **4** — a lazy `Body` singleton is mechanically small (zero
-  library-internal readers, five product call sites, `Tooltip.getInstance`
-  as precedent), but it moves the font download from import to first `Body`
-  touch and would have the constructor stop applying `ModernTheme`
-  unconditionally. `packages/lib/docs/components/Body.md:81` documents the
-  eagerness as a guarantee.
+- **2a — Delete closes the focused tab.** The close buttons join the roving
+  group, which removes one stray Tab stop per button, and
+  `TabBar.onToolbarKeyDown` gains Delete alongside ArrowLeft/ArrowRight.
+  That is what WAI-ARIA's tabs-with-delete pattern expects, and it keeps the
+  keyboard route direct rather than leaving it to the overflow menu (which
+  already emits `tabclose` and stays as it is).
+- **2b — the Tab trap becomes owner-aware.** `Dialog`'s trap stands down
+  whenever focus sits inside a descendant carrying `TAB_KEY_OWNER_ATTR`,
+  rather than carving out a hard-coded list of element kinds the way
+  `onEnter` does. This honours the flag `CodeEditor`, `MarkdownEditor` and
+  `Table` already set for themselves, and covers any component that sets it
+  later. The trap must still wrap at a genuine boundary when the focused
+  surface does not claim Tab.
+- **4 — `Body` may go lazy, and both consequences are accepted.** The font
+  download starts at the first `Body.init()`/`getInstance()` instead of at
+  module import, and the constructor applies `ModernTheme` only when no
+  theme has been set, so an app that chooses a theme before touching `Body`
+  keeps it. `Tooltip.getInstance` is the precedent to follow. Two records
+  change with it: `'./core'` comes out of `KNOWN_IMPORT_TIME_DOM` in
+  `packages/lib/tests/unit/import-without-dom.test.ts`, and
+  `packages/lib/docs/components/Body.md:81` stops documenting the eagerness
+  as a guarantee. The `fonts-ready` test that pins "starts the download when
+  the rules are installed, not at first paint" is pinning the behaviour this
+  decision changes, so it is rewritten rather than kept.
