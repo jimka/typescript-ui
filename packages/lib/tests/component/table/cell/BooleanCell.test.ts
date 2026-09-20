@@ -9,7 +9,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { Container } from '~/core/Container';
-import { installTestDOM } from '../../../dom/TestDOM';
+import { Event } from '~/core/Event';
+import { Checkbox } from '~/component/input/Checkbox';
+import { installTestDOM, RecordingDOMSink } from '../../../dom/TestDOM';
 import fontMetrics from '../../../dom/font-metrics.test-font.json';
 import { BooleanCell } from '~/component/table/cell/Boolean';
 import { BooleanEditor } from '~/component/table/cell/editor/Boolean';
@@ -22,8 +24,50 @@ const CONFIG = {
     themeVars:       {},
 };
 
-beforeEach(() => installTestDOM(CONFIG));
+let sink: RecordingDOMSink;
+
+beforeEach(() => {
+    sink = installTestDOM(CONFIG);
+
+    // `Event` installs one window-level base listener per event type and
+    // remembers it across DOM installs, so a "click" listener installed
+    // against a previous case's window would leave the synthetic click below
+    // undelivered — and every commit assertion passing for the wrong reason.
+    // Ritual copied from tests/component/input/Slider.test.ts.
+    for (const id of Event._registeredComponentIds()) {
+        Event.purgeComponent(id);
+    }
+});
 afterEach(() => DOM.reset());
+
+/** The Checkbox the cell's editor renders. */
+function editorCheckbox(cell: BooleanCell): Checkbox {
+    return cell.getRenderer().getComponents()[0] as Checkbox;
+}
+
+/**
+ * A mounted BooleanCell whose editor's checkbox element is realized as well.
+ * That realization is load-bearing: unrealized, `Checkbox.setSelected` takes
+ * its pre-mount branch and dispatches no synthetic `click` at all, so the
+ * editor's `"action"` listener never runs and every commit count below reads
+ * as if the fan-out did not exist.
+ */
+function mountedCell(): BooleanCell {
+    const host = new Container({});
+    const cell = new BooleanCell();
+
+    host.addComponent(cell);
+    host.getElement(true);
+    cell.getElement(true);
+    editorCheckbox(cell).getElement(true);
+
+    return cell;
+}
+
+/** Synthetic-click dispatches recorded on the sink since write index `start`. */
+function clickDispatches(start: number): number {
+    return sink.writes.slice(start).filter((w: any) => w.op === 'dispatchEvent' && w.args[0] === 'click').length;
+}
 
 describe('BooleanCell fills the row height', () => {
     function mountedCell(): BooleanCell {
@@ -63,17 +107,6 @@ describe('BooleanCell fills the row height', () => {
 });
 
 describe('BooleanCell read-only', () => {
-    function mountedCell(): BooleanCell {
-        const host = new Container({});
-        const cell = new BooleanCell();
-
-        host.addComponent(cell);
-        host.getElement(true);
-        cell.getElement(true);
-
-        return cell;
-    }
-
     it('forwards read-only to the checkbox editor so user toggles are rejected', () => {
         const cell = mountedCell();
         const editor = cell.getRenderer() as BooleanEditor;
@@ -99,6 +132,45 @@ describe('BooleanCell read-only', () => {
 
         cell.setReadOnly(false);
         cell.startEdit();
-        expect(commits).toHaveLength(1);
+        expect(commits).toEqual([true]);
+    });
+});
+
+describe('BooleanCell commit fan-out', () => {
+    it('commits nothing and dispatches nothing for a pooled rebind', () => {
+        // CONTRACT: `setValue` is the virtualized body's per-scroll-tick
+        // rebind. It is a programmatic write, so it must reach neither the
+        // editor's own "action" listener nor any DOM consumer.
+        const cell    = mountedCell();
+        const commits: Array<Boolean | null> = [];
+
+        cell.on('commit', (v: Boolean | null) => commits.push(v));
+
+        const start = sink.writes.length;
+        cell.setValue(true);
+        cell.setValue(false);
+
+        expect(cell.getRenderer().getValue()).toBe(false);
+        expect(commits).toEqual([]);
+        expect(clickDispatches(start)).toBe(0);
+    });
+
+    it('leaves the indeterminate rebind branch silent too', () => {
+        const cell    = mountedCell();
+        const commits: Array<Boolean | null> = [];
+
+        cell.on('commit', (v: Boolean | null) => commits.push(v));
+
+        const start = sink.writes.length;
+        cell.setValue(null);
+
+        expect(editorCheckbox(cell).isIndeterminate()).toBe(true);
+        expect(commits).toEqual([]);
+        expect(clickDispatches(start)).toBe(0);
+
+        cell.setReadOnly(true);
+        cell.startEdit();
+
+        expect(commits).toEqual([]);
     });
 });

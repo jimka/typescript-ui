@@ -121,10 +121,12 @@ const DYNAMIC_SPEC: ColumnSpec = {
 
 /**
  * Builds a realized, laid-out Table with one DynamicCell ('value') per row.
- * The two records swap between 'number' and 'string' — not 'boolean', whose
- * checkbox editor dispatches a synthetic click this Node-based harness has no
- * `MouseEvent` global for; that gap is pre-existing and orthogonal to the
- * renderer-swap behaviour under test here.
+ * The two records swap between 'number' and 'string' rather than 'boolean',
+ * keeping the swap under test clear of the checkbox editor. The gap this note
+ * used to cite — that editor dispatching a synthetic click the Node-based
+ * harness has no `MouseEvent` global for — is gone, since `BooleanEditor`'s
+ * programmatic writes now pass `fireAction: false`; the data choice is
+ * conservative rather than required, and orthogonal either way.
  */
 async function makeDynamicTable(): Promise<{ table: Table, recs: ModelRecord[] }> {
     const store = new MemoryStore(DYNAMIC_MODEL, [

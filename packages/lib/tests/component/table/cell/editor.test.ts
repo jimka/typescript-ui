@@ -720,22 +720,25 @@ describe('NumberEditor parse contract', () => {
     });
 });
 
-describe('BooleanEditor tri-state + suppress-commit', () => {
+describe('BooleanEditor tri-state + programmatic writes', () => {
     it('a fresh editor is indeterminate (null)', () => {
         expect(new BooleanEditor().getValue()).toBe(null);
     });
 
     it('setValue(null) stays indeterminate and fires NO "change" event', () => {
-        // CONTRACT: the `_suppressCommit` guard swallows the synthetic click
-        // dispatched by setIndeterminate/setSelected. This is the core bug class
-        // the guard exists for; a fired spy IS that bug.
+        // CONTRACT: a programmatic setValue commits nothing, on either branch.
+        // A `null` takes setIndeterminate, which dispatches no click at all; a
+        // concrete value takes setSelected with `fireAction: false`, which
+        // suppresses the synthetic click `on("action", fn)` rides on. Either
+        // way this editor's own action listener never runs, so a fired spy IS
+        // that bug.
         //
-        // HARNESS LIMIT: offline the checkbox is never mounted, and
-        // Checkbox.setSelected only dispatches the synthetic "click" the guard
-        // suppresses when getElement() is truthy. So this asserts the correct
-        // contract outcome (no "change") but does NOT exercise the guard itself
-        // — it would pass even if `_suppressCommit` were removed. A live-DOM
-        // test is the only way to truly cover the guard mechanism.
+        // COVERAGE NOTE: this editor is unmounted, where Checkbox.setSelected
+        // skips the dispatch anyway, so this case pins the outcome but not the
+        // mechanism. The mechanism is covered offline by the `BooleanCell
+        // commit fan-out` block in tests/component/table/cell/BooleanCell.test.ts,
+        // which realises the checkbox's element and re-registers Event's
+        // window-level listener first.
         const e   = new BooleanEditor();
         const spy = vi.fn();
 
@@ -771,13 +774,13 @@ describe('BooleanEditor tri-state + suppress-commit', () => {
         // Derived from `!isSelected()`: an unselected (indeterminate) checkbox
         // toggles to true.
         //
-        // HARNESS NOTE: the call count is asserted offline, where
-        // Checkbox.setSelected's synthetic "click" is skipped (unmounted), so
-        // only toggle()'s own direct emit fires — count 1. In a live browser the
-        // synthetic click would also reach the "action" listener and emit again.
-        // toggle() bypasses `_suppressCommit`, so the intended contract is a
-        // single concrete-boolean "change"; offline that happens to be exactly
-        // what we observe.
+        // The contract is one "change" per activation, mounted or not:
+        // toggle() passes `fireAction: false`, so its own direct emit below is
+        // the only one. That was not always so — the synthetic click used to
+        // reach the "action" listener and emit a second time on a mounted
+        // checkbox, a double commit this unmounted case could not see. The
+        // mounted pin is the read-only case in
+        // tests/component/table/cell/BooleanCell.test.ts.
         expect(e.getValue()).toBe(true);
         expect(spy).toHaveBeenCalledTimes(1);
         expect(spy).toHaveBeenCalledWith(true);

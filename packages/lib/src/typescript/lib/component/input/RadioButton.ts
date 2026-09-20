@@ -435,10 +435,12 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
     /**
      * Registers a listener for one of this radio button's events.
      * `"action"` is a typed semantic shorthand over {@link Event.addListener}
-     * for the DOM change event — fired on user-driven selection and used by
+     * for the DOM change event — fired on user-driven selection, never on a
+     * programmatic {@link setSelected}, and used by
      * [`ButtonGroup`](/api/overlay/classes/ButtonGroup) to enforce mutual
-     * exclusivity. `"change"` and `"binding"` are the inherited
-     * {@link AbstractInput} listener-bag events.
+     * exclusivity (whose sibling-deselect sweep is exactly the programmatic
+     * write that must stay silent). `"change"` and `"binding"` are the
+     * inherited {@link AbstractInput} listener-bag events.
      *
      * @param event - The event name.
      * @param listener - The callback to invoke when the event fires.

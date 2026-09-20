@@ -6,7 +6,7 @@
 // synthetic-click fan-out and uses the TestDOM ritual copied from
 // tests/component/layout/Tab.test.ts.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { Checkbox } from '~/component/input/Checkbox';
+import { Checkbox, CheckboxOptions } from '~/component/input/Checkbox';
 import { Container } from '~/core/Container';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
@@ -193,6 +193,100 @@ describe('Checkbox action fan-out (mounted)', () => {
 
         expect(cb.isSelected()).toBe(true);
         expect(sink.writes.some((w: any) => w.op === 'dispatchEvent' && w.args[0] === 'click')).toBe(true);
+    });
+
+    /**
+     * A mounted, layout-paused checkbox under a host container, built with the
+     * same ritual (and for the same reasons) as the test above.
+     */
+    function mountedCheckbox(options?: CheckboxOptions): { sink: RecordingDOMSink; cb: Checkbox } {
+        const sink = installTestDOM(CONFIG);
+
+        const host = new Container({});
+        const cb   = new Checkbox(options);
+        host.addComponent(cb);
+        host.getElement(true);
+        cb.getElement(true);
+        host.flushLayout();
+        host.pauseLayout();
+        cb.flushLayout();
+        cb.pauseLayout();
+
+        return { sink, cb };
+    }
+
+    /** Synthetic-click dispatches recorded on `sink` since write index `start`. */
+    function clickDispatches(sink: RecordingDOMSink, start: number): number {
+        return sink.writes.slice(start).filter((w: any) => w.op === 'dispatchEvent' && w.args[0] === 'click').length;
+    }
+
+    it('suppresses the synthetic click but still fires change and binding when fireAction is false', () => {
+        // CONTRACT: `fireAction: false` gates the `"action"` dispatch and
+        // nothing else — the listener-bag events a `Binding` rides on still
+        // fire, because `notifyChange` runs either way.
+        const { sink, cb } = mountedCheckbox();
+
+        let changeValue: boolean | null = null;
+        let bindings = 0;
+        cb.on('change', (v: boolean) => {
+            changeValue = v;
+        });
+        cb.on('binding', () => {
+            bindings += 1;
+        });
+
+        const start = sink.writes.length;
+        cb.setSelected(true, false);
+
+        expect(cb.isSelected()).toBe(true);
+        expect(changeValue).toBe(true);
+        expect(bindings).toBe(1);
+        expect(clickDispatches(sink, start)).toBe(0);
+    });
+
+    it('lets the no-op guard win ahead of fireAction, in either position', () => {
+        // CONTRACT: an unchanged write returns before the flag is ever read,
+        // so neither call notifies and neither dispatches.
+        const { sink, cb } = mountedCheckbox({ selected: true });
+
+        let changes  = 0;
+        let bindings = 0;
+        cb.on('change', () => {
+            changes += 1;
+        });
+        cb.on('binding', () => {
+            bindings += 1;
+        });
+
+        const start = sink.writes.length;
+        cb.setSelected(true, false);
+        cb.setSelected(true);
+
+        expect(cb.isSelected()).toBe(true);
+        expect(changes).toBe(0);
+        expect(bindings).toBe(0);
+        expect(clickDispatches(sink, start)).toBe(0);
+    });
+});
+
+describe('Checkbox action fan-out (unmounted)', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('skips the pre-mount warning when fireAction is false, and keeps it for the default', () => {
+        // CONTRACT: the pre-mount console.warn belongs to the dispatch the
+        // default performs. A caller who opted out of the dispatch has nothing
+        // to be warned about; a caller who did not still gets today's warning.
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const quiet = new Checkbox();
+        quiet.setSelected(true, false);
+
+        expect(quiet.isSelected()).toBe(true);
+        expect(warn).toHaveBeenCalledTimes(0);
+
+        new Checkbox().setSelected(true);
+
+        expect(warn).toHaveBeenCalledTimes(1);
     });
 });
 
