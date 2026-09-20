@@ -16,7 +16,10 @@ export interface ViewedStore {
 
 /**
  * How long to wait for the view. The wait ends as soon as the store fires
- * `load`, so this only bounds a store that never answers; ten seconds is
+ * `load`. The library now bounds its own worker — an offload that dies or
+ * never answers is rebuilt on the main thread and `load` fires anyway — so
+ * this is no longer the only thing watching for a store that never answers;
+ * it is the panel's own net against a mis-wired build. Ten seconds is
  * `mount.ts`'s paint cap, for the same reason — a cold worker module on the
  * first run of a page.
  */

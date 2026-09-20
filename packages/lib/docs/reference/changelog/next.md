@@ -768,6 +768,30 @@ page resets to empty.
   the call it waited on for that node failed, instead of resolving `null`
   with the match in the tree. No consumer action is needed.
 
+### Data
+
+- **A store holding 1,000 records or more now builds its view.** Above that
+  threshold the store offloads its sort and filter to a Web Worker, and in a
+  built consumer app that offload never completed: the library asked the app
+  serving the page for its worker script by an absolute, build-hashed URL only
+  the library ships, nothing answered it, and neither the client nor the store
+  noticed — so a `Table` bound to such a store stayed empty for the life of
+  the page, its `'load'` event never fired, and no error appeared anywhere.
+  Three changes fix it together. The worker now travels inside the library's
+  own bundle, so nothing is fetched to start it. A worker whose script fails
+  to run, whose reply cannot be decoded, or that never answers its first
+  request is detected and retired for the rest of the page. And any offload
+  that fails — for one of those reasons, or a one-off such as a record that
+  will not structured-clone — rebuilds that view on the main thread, applying
+  every active sorter rather than the worker protocol's primary one, so
+  `'load'`, `'sortchange'`, `'filterchange'` and `'datachange'` all still fire
+  and a `load()` still settles. The degradation warns once through
+  `console.warn`. No consumer action is needed, with one exception: an app
+  serving the framework under a strict Content-Security-Policy must now allow
+  `worker-src blob:` (or `data:`, its fallback) rather than `worker-src
+  'self'`; a policy allowing neither simply keeps every store on the main
+  thread.
+
 ### Layouts
 
 - **`Tab.setTabGlyph(content, glyph)` / `clearTabGlyph(content)` no longer

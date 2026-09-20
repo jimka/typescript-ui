@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { libraryAliases, libraryAssetFile, outsideAppSource, qaLibraryPlugin } from '../vite/plugins.js';
+import { libraryAliases, outsideAppSource } from '../vite/plugins.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_LIB = path.join(HERE, 'fixtures/lib');
@@ -70,54 +70,5 @@ describe('E12 outsideAppSource', () => {
         '/r/packages/lib/dist/lib/core.es.js',
     ])('ignores %s', (file) => {
         expect(ignored(file)).toBe(true);
-    });
-});
-
-// jsdom has no Worker that loads a URL, so it cannot reproduce the request the
-// library's built code makes for its own worker. These pin the file mapping the
-// dev server answers it with, not the store behaviour that depends on it.
-describe('libraryAssetFile', () => {
-    const assetFile = libraryAssetFile(FIXTURE_LIB);
-    const assetsDir = path.join(FIXTURE_LIB, 'dist/lib/assets');
-
-    it.each([
-        'StoreWorker-B5NwRM2I.js',
-        'StoreWorker-B5NwRM2I.js.map',
-    ])('resolves /assets/%s inside the build', (file) => {
-        expect(assetFile(`/assets/${file}`)).toBe(path.join(assetsDir, file));
-    });
-
-    it.each([
-        '/src/main.ts',
-        '/assets',
-        '/assetsx/a.js',
-        '/assets/../package.json',
-        '/assets/%2e%2e/package.json',
-        '/assets/%zz.js',
-    ])('refuses %s', (pathname) => {
-        expect(assetFile(pathname)).toBeNull();
-    });
-
-    it('follows the arm, not the app', () => {
-        expect(libraryAssetFile('/arm/packages/lib')('/assets/w.js')).toBe('/arm/packages/lib/dist/lib/assets/w.js');
-    });
-
-    it('resolves every file the real build emits, none of them named here', () => {
-        const names = fs.readdirSync(path.join(REAL_LIB, 'dist/lib/assets'));
-        const real = libraryAssetFile(REAL_LIB);
-
-        expect(names.length).toBeGreaterThan(0);
-
-        for (const name of names) {
-            expect(fs.existsSync(real(`/assets/${name}`) ?? '')).toBe(true);
-        }
-    });
-});
-
-describe('qaLibraryPlugin', () => {
-    // The fixture package has a `package.json` and no build at all, so it is a
-    // build whose `/assets/` requests nothing could answer.
-    it('refuses a build with no assets directory, naming it', () => {
-        expect(() => qaLibraryPlugin({ libDir: FIXTURE_LIB })).toThrow(`${FIXTURE_LIB} has no dist/lib/assets`);
     });
 });

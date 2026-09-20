@@ -94,6 +94,8 @@ The store offloads sort and filter to a Web Worker for datasets ≥ 1,000 rows. 
 - **Custom filter functions are not transferable.** Functions captured in `filterBy` callbacks fail to clone. Use [`FilterDescriptor`](/api/data/type-aliases/FilterDescriptor) — a serialisable filter algebra — for filters that need to cross the worker boundary.
 - **Records with non-cloneable fields** (functions, DOM nodes, class instances with private state) trigger a clone error in the worker. Keep store data as plain objects.
 
+Either way the sort or filter still completes. A store whose offload fails builds that view on the main thread instead and warns once, naming itself and the error, so the symptom is a console warning and slower sorting — never a view that stays empty. A worker that dies outright, rather than refusing one request, is retired for the rest of the page and every store works in process from then on.
+
 ## "Drag interactions feel laggy"
 
 [`Window`](/components/Window) and [`Split`](/layouts/Split) drag operations throttle layout to 30 fps by default. For heavier UIs, lower the frame rate further:

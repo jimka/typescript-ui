@@ -22,7 +22,7 @@ its own dev server, which writes it under `results/`.
 | `src/mount.ts` | Mounts a panel through `Body.init` and collects its targets. |
 | `src/pageTargets.ts` | The `idle`, `theme` and `viewport` targets every panel gets. |
 | `src/harness/` | The harness: frame loop, drivers, counters, ablations, probes, the run. It imports nothing from the library; the page hands it `Body` and `DOM`. |
-| `vite.config.ts`, `vite/plugins.ts` | The app's own Vite config: the report endpoint, the library-build alias and the build's own `/assets/`. |
+| `vite.config.ts`, `vite/plugins.ts` | The app's own Vite config: the report endpoint and the library-build alias. |
 | `runqa.sh` | Runs one measurement end to end. |
 | `src-tauri/` | The Tauri host, a minimal Tauri shell that opens the page (see *Tauri host*). |
 | `bin/` | `qa-verdict.py`, `qa-table.py`, `qa-forced.py`. |
@@ -76,20 +76,12 @@ to the arm's own `dist/lib` file, derived from that build's `package.json`
 `exports`, and fails any import of the package no alias covers. The page, and
 every panel on it, hold one instance of the arm's library.
 
-**The same plugin serves the arm's `dist/lib/assets/` at `/assets/`.** Imports
-are not the library's only way to reach its own files. Its store runs filtering
-and sorting in a Web Worker, and the built library starts that worker with
-`new Worker('/assets/StoreWorker-<hash>.js')` — an absolute path from the site
-root, which the app serving the page has to answer; the file ships inside the
-build, under `dist/lib/assets`. The plugin answers it from the arm's own build,
-matched by directory, never by the build-specific hashed name, so a `wt` run
-gets that arm's worker and not the main tree's. Unserved, the request does not
-even fail visibly: Vite answers a path it does not know with the page's own
-HTML, so the worker is handed that instead of a script, and nothing watches for
-a worker that never replies — a panel whose store holds 1,000 records or more
-silently stays empty, which reads as a broken panel. A build with no
-`dist/lib/assets` stops the server at startup, naming the arm, rather than
-letting that happen.
+**There is no file-serving step either.** The library's store runs filtering
+and sorting in a Web Worker, and each build now carries that worker's source
+inside its own chunks and starts it from a `blob:` URL — nothing is requested
+from the app serving the page. A two-arm comparison therefore gets each arm's
+own worker through the same aliases as the rest of that arm's code, with no
+files to serve and no startup check on the build.
 
 To measure a change against its base in one session, build the base as a
 comparison arm in a worktree — the recipe in
