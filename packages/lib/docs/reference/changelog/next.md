@@ -581,6 +581,21 @@ page resets to empty.
   cancel that can still reach the DOM always runs while the handle is live.
   No consumer action is needed.
 
+- **`Animation.afterTransition` now removes the `transitionend` listener it
+  registers when a wait is cancelled.** Only the completing paths took it
+  away, so every abandoned wait left a dead listener on the element for as
+  long as that element lived — an `Accordion` section re-toggled inside its
+  own animation window collected one per interrupted toggle. The same
+  documented promise narrows as for `Animation.play`: cancelling the returned
+  handle now reaches the element rather than touching nothing at all, and
+  stays safe because the wait registers with the framework's
+  pending-transition bookkeeping, which every path that releases a
+  component's handle cancels against first. That registration also means a
+  component destroyed mid-wait abandons the wait, so its `onComplete` no
+  longer fires — it could not usefully fire before either, since the
+  completion's own listener removal threw against the released handle first.
+  No consumer action is needed.
+
 - **A child no layout manager ever positioned no longer re-writes
   `transform: translate3d(NaNpx,NaNpx,0)` on every layout pass, nor sits
   permanently promoted to its own compositor layer.** Such a child — every
