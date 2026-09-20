@@ -144,6 +144,13 @@ page resets to empty.
 
 ### Components
 
+- **`Delete` closes the focused tab.** Pressing it while a
+  [`Tab`](/layouts/Tab) strip's tab button or its ✕ holds keyboard focus fires
+  `tabclose` for that tab, the same close the ✕ and the right-click menu's
+  **Close** already drove. The key is inert on a tab that is not `closeable`,
+  and on a strip with nothing focused, so a `Delete` the strip has no action
+  for keeps propagating.
+
 - **`Checkbox.setSelected` gains a second parameter, `fireAction`.** A
   checkbox announces `on("action", fn)` for a programmatic write as well as a
   user toggle, which leaves a caller performing its own write no way to tell
@@ -666,6 +673,14 @@ page resets to empty.
 
 ### Components
 
+- **A closeable tab strip no longer contributes one extra Tab stop per ✕.**
+  Each close button kept the explicit `tabindex="0"` every
+  [`Button`](/components/Button) writes, so a three-tab closeable strip was
+  four Tab stops where the roving-tabindex pattern promises one. The close
+  buttons now join the strip's own roving group, which both retires the stray
+  stops and keeps each ✕ reachable by spatial navigation (`Ctrl+Alt`+arrow).
+  No consumer action is needed.
+
 - **A boolean table cell no longer commits twice per activation.** Toggling
   one by double-click or by keyboard runs `BooleanCell.startEdit`, which emits
   the cell's `"commit"` once itself and once more through the synthetic click
@@ -1133,6 +1148,17 @@ page resets to empty.
   JSON.
 
 ### Overlay
+
+- **A modal [`Dialog`](/components/Dialog)'s Tab trap no longer takes `Tab`
+  from an editing surface or a [`Table`](/components/Table) at either end.**
+  The trap wrapped focus at the dialog's first and last stop with no check on
+  who was focused, so a [`CodeEditor`](/components/CodeEditor),
+  [`MarkdownEditor`](/components/MarkdownEditor) or `Table` sitting at an end
+  lost its own `Tab` handling. The trap now stands down while focus is inside
+  a descendant that claims the Tab key, and wraps as before otherwise. One
+  consequence to plan around: such a surface placed first or last in a dialog
+  leaves no `Tab` route past it, so give the dialog a plain control at each
+  end when a keyboard user needs one.
 
 - **A `Window`'s header ✕ now goes through the same close path as
   `TabWindow`'s close tool**, so it can be vetoed via `AbstractWindow`'s new

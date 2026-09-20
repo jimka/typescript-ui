@@ -142,6 +142,25 @@ await Dialog.show({
 });
 ```
 
+### Keyboard
+
+While a dialog is open, `Tab` and `Shift+Tab` are trapped inside it: tabbing
+past the last control wraps to the first, and shift-tabbing off the first wraps
+to the last, so focus cannot reach the page behind the dialog.
+
+One case is deliberately exempt. An editing surface or a
+[`Table`](/components/Table) hosted in the dialog claims `Tab` for its own
+subtree — the editor indents, the table steps from cell to cell — and the
+dialog's trap stands down for as long as focus is inside it, rather than
+wrapping focus out from under it. The consequence worth planning around: such
+a surface placed first or last in the dialog leaves no `Tab` route past it, so
+give the dialog a plain control at each end when a keyboard user needs one. On
+an ordinary dialog `Escape` remains the way out — it dismisses the dialog and
+restores focus to wherever it was before it opened — but a mandatory modal
+(`dismissable: false`) makes `Escape` inert too, so one built around an editing
+surface at both ends leaves a keyboard user no exit at all. Put a plain control
+at one end of a mandatory modal.
+
 ### Per-button glyph
 
 Each [`DialogButtonConfig`](/api/overlay/interfaces/DialogButtonConfig) carries an optional `glyph` field — a registry [`Glyph`](/components/Glyph) name rendered to the left of the button label. The bundled defaults pair `check-circle` with `OK` / `Confirm` and `times` with `Cancel`:

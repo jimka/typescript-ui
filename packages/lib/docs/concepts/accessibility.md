@@ -70,6 +70,16 @@ tabs.moveTo(0); // button1 is now the active item
 
 [`ButtonGroup`](/components/ButtonGroup) uses `RovingTabIndex` automatically for [`ToggleButton`](/components/ToggleButton) groups when you call `setContainer(container)`. For [`RadioButton`](/components/RadioButton) groups, the browser's built-in radio-group navigation handles arrow keys, so `RovingTabIndex` isn't needed.
 
+A [`Tab`](/layouts/Tab) layout's strip is one such group, so the whole strip is
+a single Tab stop however many tabs it holds. `ArrowLeft` / `ArrowRight` move
+focus along it and activate the tab they land on, and `Delete` closes the
+focused tab when that tab is `closeable` — on a tab that is not, the key does
+nothing and keeps propagating. A closeable tab's ✕ is a member of the same
+group rather than a Tab stop of its own, so it is reached with
+[spatial navigation](#spatial-focus-navigation) (`Ctrl+Alt`+arrow) rather than
+by tabbing, and `Delete` closes the tab from the ✕ just as it does from the tab
+button.
+
 ## Tab traversal
 
 [`FocusTraversal`](/api/core/namespaces/FocusTraversal) intercepts `Tab` /
@@ -127,6 +137,17 @@ stop rather than one per member: only the group's active member holds
 including as native `<button>`s. A component that owns a third-party editing
 surface contributes one stop too, since such a surface marks itself
 `contenteditable` rather than carrying a `tabindex`.
+
+A modal [`Dialog`](/components/Dialog) traps Tab inside itself — wrapping from
+its last stop back to its first, and from its first back to its last — and
+follows the same Tab-key-owner rule while doing so. Whenever focus sits inside
+a descendant that claims Tab, the dialog's trap stands down and the descendant
+keeps the key, so a [`CodeEditor`](/components/CodeEditor),
+[`MarkdownEditor`](/components/MarkdownEditor) or [`Table`](/components/Table)
+placed first or last in a dialog still indents or moves between cells instead
+of having focus wrapped out from under it. The dialog's own claim over its
+whole subtree does not trigger this: the search stops at the dialog's element
+without testing it, so only a descendant's claim counts.
 
 ## Spatial focus navigation
 
