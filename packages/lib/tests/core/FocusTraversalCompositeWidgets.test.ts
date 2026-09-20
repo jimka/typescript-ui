@@ -26,6 +26,7 @@ import { Container } from '~/core/Container';
 import { Tab } from '~/layout/Tab';
 import { ToggleButton } from '~/component/button/ToggleButton';
 import { ButtonGroup } from '~/overlay/ButtonGroup';
+import { LayoutConstraints } from '~/layout/LayoutConstraints';
 
 /** The eligible tab stops inside `el`'s real, rendered subtree, in DOM order. */
 function stops(el: Handle): Handle[] {
@@ -105,6 +106,48 @@ describe('One tab stop per composite widget (Expected Behaviour: RovingTabIndex 
         // The strip's `TabButton`s are built by the Tab layout pass, which
         // needs a connected, sized host to run — without it the strip has no
         // buttons and the count below would be 1 for the wrong reason.
+        host.setPreferredSize({ width: 400, height: 300 });
+        host.flushLayout();
+
+        const barEl = DOM.source.querySelectorAll(hostEl, '[role="tablist"]')[0]!;
+
+        expect(stopCount(barEl)).toBe(1);
+    });
+
+    // A closeable cell's ✕ is a real `<button>` that `Button`'s constructor
+    // gives an explicit `tabindex="0"`, so before the close buttons joined the
+    // strip's roving group the two counts below were 4 and 2 — one stray stop
+    // per ✕ on top of the strip's own single stop
+    // (tab-and-dialog-key-routing, Expected Behaviour: "Tab stops a strip
+    // exposes").
+    it('A Tab layout\'s TabBar exposes exactly one stop when every tab is closeable', () => {
+        const host = new Container({ layoutManager: new Tab() });
+
+        for (let i = 0; i < 3; i++) {
+            host.addComponent(new Component({}), Object.assign(new LayoutConstraints(), { closeable: true }));
+        }
+
+        const hostEl = host.getElement(true)!;
+        mount(hostEl);
+
+        host.setPreferredSize({ width: 400, height: 300 });
+        host.flushLayout();
+
+        const barEl = DOM.source.querySelectorAll(hostEl, '[role="tablist"]')[0]!;
+
+        expect(stopCount(barEl)).toBe(1);
+    });
+
+    it('A Tab layout\'s TabBar exposes exactly one stop with a single closeable tab among plain ones', () => {
+        const host = new Container({ layoutManager: new Tab() });
+
+        host.addComponent(new Component({}));
+        host.addComponent(new Component({}), Object.assign(new LayoutConstraints(), { closeable: true }));
+        host.addComponent(new Component({}));
+
+        const hostEl = host.getElement(true)!;
+        mount(hostEl);
+
         host.setPreferredSize({ width: 400, height: 300 });
         host.flushLayout();
 

@@ -1,7 +1,11 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { TabBar } from '~/component/container/TabBar';
 import { TabButton } from '~/component/button/TabButton';
+import { TabCloseButton } from '~/component/button/TabCloseButton';
+import { Button } from '~/component/button/Button';
+import { Component } from '~/core/Component';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
+import { ROVING_MEMBER_ATTR } from '~/core/RovingTabIndex';
 import { Glyph } from '~/component/display/Glyph';
 import { file } from '~/glyphs/solid/file';
 import { file_lines } from '~/glyphs/solid/file_lines';
@@ -37,8 +41,8 @@ function glyphed(name: string): LayoutConstraints {
 }
 
 /** Reaches TabBar's private `_entries`, the same private surface other suites cast through. */
-function barEntries(bar: TabBar): Array<{ id: string; button: TabButton }> {
-    return (bar as unknown as { _entries: Array<{ id: string; button: TabButton }> })._entries;
+function barEntries(bar: TabBar): Array<{ id: string; button: TabButton; closeButton?: TabCloseButton }> {
+    return (bar as unknown as { _entries: Array<{ id: string; button: TabButton; closeButton?: TabCloseButton }> })._entries;
 }
 
 /** Builds a TabBar with three entries: a, b, c (no constraints). */
@@ -158,6 +162,304 @@ describe('TabBar onToolbarKeyDown — steps from the focused tab, not a stale ac
         const bar = threeEntryBar();
         bar.getElement(true);
         bar.setActiveEntry('b');
+
+        (bar as any).onToolbarKeyDown({ key: 'ArrowRight' } as KeyboardEvent);
+
+        expect(bar.getActiveEntryId()).toBe('c');
+    });
+});
+
+// tab-and-dialog-key-routing plan, Expected Behaviour "The roving group's
+// contents and tabindex": a closeable cell's ✕ is a member of the strip's
+// roving group, not a Tab stop of its own. Membership — not a bare
+// `setTabIndex(-1)` — is what keeps the ✕ reachable, because
+// SpatialNavigation recovers a roved-off member through the
+// `data-ts-ui-roving-member` marker only `RovingTabIndex.add` writes.
+describe('TabBar — close buttons are roving members', () => {
+    afterEach(() => DOM.reset());
+
+    /** Builds a rendered three-cell bar whose every cell is closeable. */
+    function threeCloseableBar(): TabBar {
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha', closeable());
+        bar.createBarEntry('b', 'Beta', closeable());
+        bar.createBarEntry('c', 'Gamma', closeable());
+        bar.getElement(true);
+
+        return bar;
+    }
+
+    it('roves every ✕ to -1, leaving the active cell\'s tab button the only stop', () => {
+        installTestDOM(CONFIG);
+
+        const bar     = threeCloseableBar();
+        const entries = barEntries(bar);
+
+        expect(entries.map(e => e.button.getCloseButton()!.getAria().getTabIndex())).toEqual([-1, -1, -1]);
+        expect(entries.map(e => e.button.getAria().getTabIndex())).toEqual([0, -1, -1]);
+    });
+
+    it('marks every ✕ with the roving-member attribute', () => {
+        installTestDOM(CONFIG);
+
+        const bar = threeCloseableBar();
+
+        for (const entry of barEntries(bar)) {
+            const closeEl = entry.button.getCloseButton()!.getElement(true)!;
+
+            expect(DOM.source.hasAttribute(closeEl, ROVING_MEMBER_ATTR)).toBe(true);
+        }
+    });
+
+    it('setActiveEntry puts tabindex="0" on that cell\'s tab button, never on a ✕', () => {
+        installTestDOM(CONFIG);
+
+        const bar = threeCloseableBar();
+
+        bar.setActiveEntry('c');
+
+        const entries = barEntries(bar);
+
+        expect(entries.map(e => e.button.getAria().getTabIndex())).toEqual([-1, -1, 0]);
+        expect(entries.map(e => e.button.getCloseButton()!.getAria().getTabIndex())).toEqual([-1, -1, -1]);
+    });
+
+    it('removeBarEntry drops both of that cell\'s members', () => {
+        installTestDOM(CONFIG);
+
+        const bar     = threeCloseableBar();
+        const removed = barEntries(bar)[1];
+        const button  = removed.button;
+        const close   = removed.button.getCloseButton()!;
+
+        bar.removeBarEntry('b');
+
+        const items = (bar as any)._rovingTabIndex.getItems();
+
+        expect(items).toHaveLength(4);
+        expect(items).not.toContain(button);
+        expect(items).not.toContain(close);
+    });
+
+    // `RovingTabIndex.remove` activates the member before the one it removed
+    // when that member was active. With each ✕ interleaved after its own tab
+    // button, "the member before" is a ✕ — and nothing downstream corrects it,
+    // because the owner's post-close re-selection goes through `setActiveVisual`,
+    // which deliberately performs no roving move. Without a correction here the
+    // strip's single `tabindex="0"` lands on a close button.
+    it('leaves the group\'s only tabindex="0" on a tab button after the active cell is removed', () => {
+        installTestDOM(CONFIG);
+
+        const bar = threeCloseableBar();
+
+        bar.setActiveEntry('b');
+        bar.removeBarEntry('b');
+
+        const items: Component[] = (bar as any)._rovingTabIndex.getItems();
+        const tabbable = items.filter(item => item.getAria().getTabIndex() === 0);
+
+        expect(tabbable).toHaveLength(1);
+        expect(barEntries(bar).map(entry => entry.button)).toContain(tabbable[0]);
+    });
+
+    it('leaves DOM focus on a tab button after the active cell is removed', () => {
+        installTestDOM(CONFIG);
+
+        const bar = threeCloseableBar();
+
+        bar.setActiveEntry('b');
+        bar.removeBarEntry('b');
+
+        const active = DOM.source.getActiveElement();
+
+        expect(barEntries(bar).map(entry => entry.button.getElement())).toContain(active);
+    });
+
+    // Interleaving each ✕ into the roving group made this state reachable by
+    // keyboard: arrow onto a non-active cell's ✕ and press Delete. The removed
+    // cell is not the roving-active member, so `RovingTabIndex.remove` moves
+    // nothing and the focus repair above never fires — the caller then disposes
+    // the focused element.
+    it('leaves DOM focus on a tab button after a focused non-active cell is removed', () => {
+        installTestDOM(CONFIG);
+
+        const bar = threeCloseableBar();
+
+        bar.setActiveEntry('a');
+        barEntries(bar)[2].closeButton!.focus();
+        bar.removeBarEntry('c');
+
+        const active = DOM.source.getActiveElement();
+
+        expect(barEntries(bar).map(entry => entry.button.getElement())).toContain(active);
+    });
+
+    it('lands on the cell that took the removed one\'s place, not the end of the strip', () => {
+        installTestDOM(CONFIG);
+
+        const bar = threeCloseableBar();
+
+        bar.setActiveEntry('a');
+        barEntries(bar)[1].button.focus();
+        bar.removeBarEntry('b');
+
+        const active = DOM.source.getActiveElement();
+
+        expect(active).toBe(barEntries(bar)[1].button.getElement());
+    });
+});
+
+// tab-and-dialog-key-routing plan, the Delete table in `## Architecture
+// Decisions`: Delete closes the focused tab when that cell is closeable, from
+// the tab button and from the ✕ alike, and reports no disposition otherwise so
+// a Delete the strip has no action for keeps propagating.
+describe('TabBar onToolbarKeyDown — Delete closes the focused tab', () => {
+    afterEach(() => {
+        DOM.reset();
+        vi.restoreAllMocks();
+    });
+
+    /** A rendered bar whose cell 'a' is plain and cells 'b' / 'c' are closeable. */
+    function mixedBar(): TabBar {
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha');
+        bar.createBarEntry('b', 'Beta', closeable());
+        bar.createBarEntry('c', 'Gamma', closeable());
+        bar.getElement(true);
+
+        return bar;
+    }
+
+    it('closes the cell whose tab button holds focus', () => {
+        installTestDOM(CONFIG);
+
+        const bar = mixedBar();
+        const spy = vi.fn();
+        bar.on('tabclose', spy);
+
+        barEntries(bar)[1].button.focus();
+
+        const result = (bar as any).onToolbarKeyDown({ key: 'Delete' } as KeyboardEvent);
+
+        expect(spy).toHaveBeenCalledWith('b');
+        expect(result).toEqual({ prevent: true });
+    });
+
+    it('closes the cell whose ✕ holds focus', () => {
+        installTestDOM(CONFIG);
+
+        const bar = mixedBar();
+        const spy = vi.fn();
+        bar.on('tabclose', spy);
+
+        barEntries(bar)[1].closeButton!.focus();
+
+        const result = (bar as any).onToolbarKeyDown({ key: 'Delete' } as KeyboardEvent);
+
+        expect(spy).toHaveBeenCalledWith('b');
+        expect(result).toEqual({ prevent: true });
+    });
+
+    it('is inert on a non-closeable cell', () => {
+        installTestDOM(CONFIG);
+
+        const bar = mixedBar();
+        const spy = vi.fn();
+        bar.on('tabclose', spy);
+
+        barEntries(bar)[0].button.focus();
+
+        const result = (bar as any).onToolbarKeyDown({ key: 'Delete' } as KeyboardEvent);
+
+        expect(spy).not.toHaveBeenCalled();
+        expect(result).toBeUndefined();
+    });
+
+    it('is inert while a strip tool holds focus', () => {
+        installTestDOM(CONFIG);
+
+        const bar  = mixedBar();
+        const tool = new Button('Tool');
+        bar.addTool(tool);
+
+        const spy = vi.fn();
+        bar.on('tabclose', spy);
+
+        tool.focus();
+
+        const result = (bar as any).onToolbarKeyDown({ key: 'Delete' } as KeyboardEvent);
+
+        expect(spy).not.toHaveBeenCalled();
+        expect(result).toBeUndefined();
+    });
+
+    it('is inert while nothing in the strip holds focus', () => {
+        installTestDOM(CONFIG);
+
+        const bar = mixedBar();
+        const spy = vi.fn();
+        bar.on('tabclose', spy);
+
+        const result = (bar as any).onToolbarKeyDown({ key: 'Delete' } as KeyboardEvent);
+
+        expect(spy).not.toHaveBeenCalled();
+        expect(result).toBeUndefined();
+    });
+
+    it('is inert on an empty strip', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new TabBar();
+        bar.getElement(true);
+
+        const spy = vi.fn();
+        bar.on('tabclose', spy);
+
+        const result = (bar as any).onToolbarKeyDown({ key: 'Delete' } as KeyboardEvent);
+
+        expect(spy).not.toHaveBeenCalled();
+        expect(result).toBeUndefined();
+    });
+
+    it('stands down while SpatialNavigation claims the key', () => {
+        installTestDOM(CONFIG);
+
+        const bar = mixedBar();
+        const spy = vi.fn();
+        bar.on('tabclose', spy);
+
+        barEntries(bar)[1].button.focus();
+        vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+
+        const result = (bar as any).onToolbarKeyDown({ key: 'Delete' } as KeyboardEvent);
+
+        expect(spy).not.toHaveBeenCalled();
+        expect(result).toBeUndefined();
+    });
+});
+
+// tab-and-dialog-key-routing plan, Expected Behaviour "Arrow keys": the ✕ is
+// now a place focus can land, so an arrow pressed there must step from the ✕'s
+// own cell rather than from a possibly stale active cell.
+describe('TabBar onToolbarKeyDown — steps from the cell whose ✕ holds focus', () => {
+    afterEach(() => DOM.reset());
+
+    it('ArrowRight from cell b\'s ✕ activates cell c', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha', closeable());
+        bar.createBarEntry('b', 'Beta', closeable());
+        bar.createBarEntry('c', 'Gamma', closeable());
+        bar.getElement(true);
+
+        // Focus lands on 'b''s ✕ directly (a SpatialNavigation move), so the
+        // active id still reports 'a'.
+        barEntries(bar)[1].closeButton!.focus();
+        expect(bar.getActiveEntryId()).toBe('a');
 
         (bar as any).onToolbarKeyDown({ key: 'ArrowRight' } as KeyboardEvent);
 
