@@ -9,7 +9,7 @@ const SURFACE_SIZE = { width: 160, height: 120 };
 /** The gap between the two groups: structure only, so the shown group is not flush with the hidden one's slot. */
 const GROUP_SPACING_PX = 8;
 
-export const description = 'Two groups of n surfaces (default 4): WebGLCanvases whose 2D context is taken first, so the engine refuses them a WebGL2 one, and 2D Canvases started while shown and then moved under an already-hidden panel; all animating and drawing nothing. Reproduces slice 26 F26.7 (a WebGLCanvas with no GL context still runs its animation loop forever) and F26.8 (a canvas moved under an already-hidden ancestor keeps animating): one requestAnimationFrame per such canvas per idle frame.';
+export const description = 'Two groups of n surfaces (default 4): WebGLCanvases whose 2D context is taken first, so the engine refuses them a WebGL2 one, and 2D Canvases started while shown and then moved under an already-hidden panel; none of them drawing anything. Regression check for slice 26 F26.7 (a WebGLCanvas with no GL context ran its animation loop forever) and F26.8 (a canvas moved under an already-hidden ancestor kept animating), both now fixed: every animating counter, and requestAnimationFrame per idle frame, should read zero.';
 
 /** Four surfaces per group. */
 export const defaultScale = 4;
@@ -33,10 +33,11 @@ function drawNoCanvasFrame(): void {}
  * WSLg) recorded `webglContexts` 4 of 4 surfaces: this engine does have
  * WebGL2, so F26.7's impact claim — that a context-less `WebGLCanvas` is the
  * normal case in software-rendered WebKitGTK — does not hold here, and the
- * loops it measured were legitimate. The mechanism it names is what this
- * panel shows: the loop is gated on visibility alone, never on a context.
- * The re-run against this code measured `webglContexts` 0 with
- * `webglAnimating` 4, so the engine does refuse the second context type.
+ * loops it measured were legitimate. The re-run against the pre-fix code
+ * measured `webglContexts` 0 with `webglAnimating` 4, so the engine does
+ * refuse the second context type. The loop is now gated on a rendering
+ * context as well as on effective visibility, so with the precondition still
+ * forced this panel's animating counters should read zero.
  *
  * @param surfaces - The WebGL surfaces to refuse a context.
  */
@@ -80,10 +81,11 @@ export function build(n: number): PanelBuild {
 
             // C36's shape: each canvas is animating on screen, and is then
             // reparented under a panel that is already hidden. A reparent is
-            // no `setVisible`/`setDisplayed` edge, so nothing reconciles the
-            // loop and it keeps running. Starting them after the move instead
-            // would prove nothing: `startAnimation` reads effective
-            // visibility itself and would refuse to schedule a frame.
+            // no `setVisible`/`setDisplayed` edge, so nothing used to
+            // reconcile the loop and it kept running; the attach itself now
+            // queues the moved child, so it pauses. Starting them after the
+            // move instead would prove nothing: `startAnimation` reads
+            // effective visibility itself and would refuse to schedule a frame.
             for (const surface of canvases) {
                 hidden.moveComponent(surface);
             }

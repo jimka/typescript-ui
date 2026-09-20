@@ -4,7 +4,7 @@ import type { CanvasDrawCallback, CanvasOptions } from '~/component/display/Canv
 import { WebGLCanvas } from '~/component/display/WebGLCanvas';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, setConnected } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -23,8 +23,19 @@ const CONFIG = {
 // resize behaviour is the manual M-series in the plan.
 beforeEach(() => installTestDOM(CONFIG));
 afterEach(() => DOM.reset());
+afterEach(() => vi.restoreAllMocks());
 
 type Recorder = { writes: { op: string; args: unknown[] }[] };
+
+/**
+ * Gives the canvas a rendering context, so the animation loop's context gate
+ * opens and `redraw()` reaches `onDraw` offline — the modelled sink returns
+ * `null` from `getContext` by design.
+ */
+function withStubContext(canvas: Canvas): void {
+    vi.spyOn(canvas, 'getContext')
+        .mockReturnValue({ clearRect() {}, save() {}, restore() {}, setTransform() {} } as unknown as CanvasRenderingContext2D);
+}
 
 describe('Canvas construction & tag', () => {
     it('builds a <canvas>-tagged element (U1)', () => {
@@ -73,6 +84,7 @@ describe('Canvas offline no-op (U3)', () => {
         expect(() => canvas.redraw()).not.toThrow();
         expect(() => (canvas as unknown as { syncBackingStore(): void }).syncBackingStore()).not.toThrow();
         expect(() => canvas.startAnimation()).not.toThrow();
+        expect(canvas.isAnimating()).toBe(false);
     });
 });
 
@@ -115,6 +127,7 @@ describe('Canvas animation loop (U5, U6)', () => {
         const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
 
         expect(canvas.isAnimating()).toBe(true);
@@ -126,6 +139,7 @@ describe('Canvas animation loop (U5, U6)', () => {
         const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
         canvas.startAnimation();
 
@@ -137,6 +151,7 @@ describe('Canvas animation loop (U5, U6)', () => {
         const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
         canvas.stopAnimation();
 
@@ -149,11 +164,52 @@ describe('Canvas animation loop (U5, U6)', () => {
         const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
 
         (canvas as unknown as { destructor(): void }).destructor();
 
         expect(cancelCount(recorder)).toBe(1);
+    });
+});
+
+// C35 — the loop is gated on a rendering context as well as on intent and
+// effective visibility, so a surface that can never draw schedules no frames.
+// `animateWhenHidden` opts out of the visibility term only, never this one.
+describe('Canvas context gate (C35)', () => {
+    it('animates once a rendering context is available', () => {
+        const canvas = new Canvas();
+
+        canvas.getElement(true);
+        withStubContext(canvas);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(true);
+    });
+
+    it('does not animate without a context even when animateWhenHidden is set', () => {
+        const canvas = new Canvas({ animateWhenHidden: true });
+
+        canvas.getElement(true);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(false);
+    });
+
+    it('starts on the first connected layout when the intent predates the element', () => {
+        const canvas = new Canvas();
+
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(false);
+
+        const element = canvas.getElement(true)!;
+
+        setConnected(element, true);
+        withStubContext(canvas);
+        canvas.doLayout();
+
+        expect(canvas.isAnimating()).toBe(true);
     });
 });
 
@@ -192,6 +248,7 @@ describe('Canvas pause-when-hidden (P1, P3-P8)', () => {
         const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.setVisible(false);
 
         // Baseline after setVisible, whose own effective-visibility reconcile
@@ -213,6 +270,7 @@ describe('Canvas pause-when-hidden (P1, P3-P8)', () => {
         container.setVisible(false);
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
 
         expect(canvas.isAnimating()).toBe(false);
@@ -222,6 +280,7 @@ describe('Canvas pause-when-hidden (P1, P3-P8)', () => {
         const canvas = new Canvas();
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.setVisible(false);
         canvas.startAnimation();
 
@@ -242,6 +301,7 @@ describe('Canvas pause-when-hidden (P1, P3-P8)', () => {
         const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
 
         expect(canvas.isAnimating()).toBe(true);
@@ -270,6 +330,7 @@ describe('Canvas pause-when-hidden (P1, P3-P8)', () => {
         container.addComponent(canvas);
         container.getElement(true);
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
 
         expect(canvas.isAnimating()).toBe(true);
@@ -284,6 +345,7 @@ describe('Canvas pause-when-hidden (P1, P3-P8)', () => {
         const canvas = new Canvas();
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
 
         expect(canvas.isAnimating()).toBe(true);
@@ -298,6 +360,7 @@ describe('Canvas pause-when-hidden (P1, P3-P8)', () => {
         const canvas = new Canvas({ animateWhenHidden: true });
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.setVisible(false);
         canvas.startAnimation();
 
@@ -309,6 +372,7 @@ describe('Canvas pause-when-hidden (P1, P3-P8)', () => {
         const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
         canvas.stopAnimation();
         canvas.doLayout();
@@ -325,6 +389,52 @@ describe('Canvas pause-when-hidden (P1, P3-P8)', () => {
         canvas.doLayout();
 
         expect(canvas.isAnimating()).toBe(false);
+    });
+});
+
+// C36 — a reparent fires no setVisible/setDisplayed edge, so the container's
+// own attach is what queues the moved child for the next effective-visibility
+// flush. Without it a canvas moved under a hidden parent kept its loop, and one
+// moved back out never got it back.
+describe('Canvas reparent reconcile (C36)', () => {
+    it('pauses a running loop when the canvas is moved under an already-hidden parent', () => {
+        const shownParent  = new Component({});
+        const hiddenParent = new Component({ displayed: false });
+        const canvas = new Canvas();
+
+        shownParent.addComponent(canvas);
+        shownParent.getElement(true);
+        hiddenParent.getElement(true);
+        canvas.getElement(true);
+        withStubContext(canvas);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(true);
+
+        hiddenParent.moveComponent(canvas);
+        Component.flushEffectiveVisibility();
+
+        expect(canvas.isAnimating()).toBe(false);
+    });
+
+    it('resumes a paused loop when the canvas is moved back under a shown parent', () => {
+        const hiddenParent = new Component({ displayed: false });
+        const shownParent  = new Component({});
+        const canvas = new Canvas();
+
+        hiddenParent.addComponent(canvas);
+        hiddenParent.getElement(true);
+        shownParent.getElement(true);
+        canvas.getElement(true);
+        withStubContext(canvas);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(false);
+
+        shownParent.moveComponent(canvas);
+        Component.flushEffectiveVisibility();
+
+        expect(canvas.isAnimating()).toBe(true);
     });
 });
 
@@ -406,12 +516,6 @@ describe('Canvas frame timing and frame cap', () => {
         }
     }
 
-    /** Gives the canvas a context so redraw() reaches onDraw offline. */
-    function withStubContext(canvas: Canvas): void {
-        vi.spyOn(canvas, 'getContext')
-            .mockReturnValue({ clearRect() {}, save() {}, restore() {}, setTransform() {} } as unknown as CanvasRenderingContext2D);
-    }
-
     afterEach(() => vi.restoreAllMocks());
 
     it('passes elapsed milliseconds since the animation started to onDraw', () => {
@@ -436,6 +540,7 @@ describe('Canvas frame timing and frame cap', () => {
         const canvas = new Canvas({ maxFps: 0 });
 
         canvas.getElement(true);
+        withStubContext(canvas);
         const redraw = vi.spyOn(canvas, 'redraw');
 
         captureFrames();
@@ -452,6 +557,7 @@ describe('Canvas frame timing and frame cap', () => {
         const canvas = new Canvas({ maxFps: 30 });   // one draw per 33.3ms
 
         canvas.getElement(true);
+        withStubContext(canvas);
         const redraw = vi.spyOn(canvas, 'redraw');
 
         captureFrames();
@@ -470,6 +576,7 @@ describe('Canvas frame timing and frame cap', () => {
         const canvas = new Canvas({ maxFps: 30 });
 
         canvas.getElement(true);
+        withStubContext(canvas);
         captureFrames();
         canvas.startAnimation();
 
@@ -601,6 +708,7 @@ describe('Canvas class-level defaults', () => {
         const canvas = new DefaultedCanvas();
 
         canvas.getElement(true);
+        withStubContext(canvas);
 
         const redraw = vi.spyOn(canvas, 'redraw');
 

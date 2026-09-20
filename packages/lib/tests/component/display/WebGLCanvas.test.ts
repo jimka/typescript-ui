@@ -23,8 +23,19 @@ const CONFIG = {
 // manual M-series documented in the plan.
 beforeEach(() => installTestDOM(CONFIG));
 afterEach(() => DOM.reset());
+afterEach(() => vi.restoreAllMocks());
 
 type Recorder = { writes: { op: string; args: unknown[] }[] };
+
+/**
+ * Gives the surface a rendering context, so the animation loop's context gate
+ * opens and `renderFrame()` reaches `onFrame` offline — the modelled sink
+ * returns `null` from `getContext` by design.
+ */
+function withStubContext(canvas: WebGLCanvas): void {
+    vi.spyOn(canvas, 'getContext')
+        .mockReturnValue({ viewport() {}, clear() {}, clearColor() {} } as unknown as WebGL2RenderingContext);
+}
 
 describe('WebGLCanvas construction & tag', () => {
     it('builds a <canvas>-tagged element (U1)', () => {
@@ -76,6 +87,7 @@ describe('WebGLCanvas offline no-op (U3)', () => {
         expect(() => (canvas as unknown as { syncBackingStore(): void }).syncBackingStore()).not.toThrow();
         expect(() => canvas.startAnimation()).not.toThrow();
         expect(() => (canvas as unknown as { renderFrame(): void }).renderFrame()).not.toThrow();
+        expect(canvas.isAnimating()).toBe(false);
     });
 });
 
@@ -138,6 +150,7 @@ describe('WebGLCanvas animation loop (U5, U6)', () => {
         const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
 
         expect(canvas.isAnimating()).toBe(true);
@@ -149,6 +162,7 @@ describe('WebGLCanvas animation loop (U5, U6)', () => {
         const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
         canvas.startAnimation();
 
@@ -160,6 +174,7 @@ describe('WebGLCanvas animation loop (U5, U6)', () => {
         const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
         canvas.stopAnimation();
 
@@ -172,11 +187,37 @@ describe('WebGLCanvas animation loop (U5, U6)', () => {
         const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
 
         (canvas as unknown as { destructor(): void }).destructor();
 
         expect(cancelCount(recorder)).toBe(1);
+    });
+});
+
+// C35 — the loop is gated on a rendering context as well as on intent and
+// effective visibility, so a surface the engine refuses a context schedules no
+// frames. `animateWhenHidden` opts out of the visibility term only, never this
+// one.
+describe('WebGLCanvas context gate (C35)', () => {
+    it('animates once a rendering context is available', () => {
+        const canvas = new WebGLCanvas();
+
+        canvas.getElement(true);
+        withStubContext(canvas);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(true);
+    });
+
+    it('does not animate without a context even when animateWhenHidden is set', () => {
+        const canvas = new WebGLCanvas({ animateWhenHidden: true });
+
+        canvas.getElement(true);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(false);
     });
 });
 
@@ -215,6 +256,7 @@ describe('WebGLCanvas pause-when-hidden (P1, P3-P8)', () => {
         const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.setVisible(false);
 
         // Baseline after setVisible, whose own effective-visibility reconcile
@@ -236,6 +278,7 @@ describe('WebGLCanvas pause-when-hidden (P1, P3-P8)', () => {
         container.setVisible(false);
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
 
         expect(canvas.isAnimating()).toBe(false);
@@ -245,6 +288,7 @@ describe('WebGLCanvas pause-when-hidden (P1, P3-P8)', () => {
         const canvas = new WebGLCanvas();
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.setVisible(false);
         canvas.startAnimation();
 
@@ -265,6 +309,7 @@ describe('WebGLCanvas pause-when-hidden (P1, P3-P8)', () => {
         const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
 
         expect(canvas.isAnimating()).toBe(true);
@@ -293,6 +338,7 @@ describe('WebGLCanvas pause-when-hidden (P1, P3-P8)', () => {
         container.addComponent(canvas);
         container.getElement(true);
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
 
         expect(canvas.isAnimating()).toBe(true);
@@ -307,6 +353,7 @@ describe('WebGLCanvas pause-when-hidden (P1, P3-P8)', () => {
         const canvas = new WebGLCanvas();
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
 
         expect(canvas.isAnimating()).toBe(true);
@@ -321,6 +368,7 @@ describe('WebGLCanvas pause-when-hidden (P1, P3-P8)', () => {
         const canvas = new WebGLCanvas({ animateWhenHidden: true });
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.setVisible(false);
         canvas.startAnimation();
 
@@ -332,6 +380,7 @@ describe('WebGLCanvas pause-when-hidden (P1, P3-P8)', () => {
         const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
         canvas.stopAnimation();
         canvas.doLayout();
@@ -395,11 +444,6 @@ describe('WebGLCanvas frame timing and frame cap', () => {
         for (const cb of pending) {
             cb(timestamp);
         }
-    }
-
-    function withStubContext(canvas: WebGLCanvas): void {
-        vi.spyOn(canvas, 'getContext')
-            .mockReturnValue({ viewport() {}, clear() {}, clearColor() {} } as unknown as WebGL2RenderingContext);
     }
 
     afterEach(() => vi.restoreAllMocks());
