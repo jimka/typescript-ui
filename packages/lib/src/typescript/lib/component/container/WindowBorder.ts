@@ -147,21 +147,6 @@ class WindowBorder extends Component<WindowBorderOptions> {
     }
 
     /**
-     * Sets the resize direction, defaulting to NORTH if not provided.
-     *
-     * @param direction - The Direction enum value. Defaults to NORTH if falsy.
-     */
-    setDirection(direction: Direction) : this {
-        if (!direction) {
-            direction = Direction.NORTH;
-        }
-
-        this._direction = direction;
-
-        return this;
-    }
-
-    /**
      * Registers a listener for one of this border's events.
      *
      * @param event - `"drag"` fires on each mousemove/touchmove during a
