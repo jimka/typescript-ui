@@ -58,3 +58,31 @@ const border = new WindowBorder(Direction.EAST);
 ```
 
 `getDirection()` is unchanged.
+
+## A jsdom suite that builds components before `Body.init()` must reach the body first
+
+**What changed and why.** The `Body` singleton is now constructed on the first
+`Body.init()` / `Body.getInstance()` call rather than when
+`@jimka/typescript-ui/core` is imported, so that every entry point imports
+where there is no DOM. `Body`'s constructor is what applies the default theme,
+so the first theme application now happens *after* an app has built whatever
+it passes to `Body.init({ components: [shell] })`, and every component built
+beforehand takes one theme-change callback and re-measures its text.
+
+**Who needs to act.** Nothing changes in a browser: the re-measure runs on a
+tree that has not been laid out yet. Under jsdom it reaches
+`HTMLCanvasElement.getContext("2d")`, which jsdom does not implement, so a
+suite that builds a text-measuring control before its first `Body` touch now
+fails with `TypeError: Cannot set properties of null (setting 'font')`. Reach
+the singleton once, before anything is built, to restore the old ordering:
+
+```typescript
+import { Body } from '@jimka/typescript-ui/core';
+
+// Applies the default theme before the first component exists, the way
+// importing `core` used to.
+Body.getInstance();
+```
+
+An app or suite that calls `ThemeManager.setTheme` itself before building
+anything is unaffected, because the constructor then applies no theme at all.

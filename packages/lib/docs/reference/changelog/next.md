@@ -27,6 +27,21 @@ page resets to empty.
 
 ### Core
 
+- **The `Body` singleton is constructed on the first `Body.init()` /
+  `Body.getInstance()` call**, not when `@jimka/typescript-ui/core` is
+  imported, so every entry point now imports where there is no DOM — a
+  Node script, a Vitest `node` suite, an SSR build. Public signatures are
+  unchanged, and three things move with the construction. The bundled
+  Manrope download starts at that first call rather than at import. A theme
+  chosen with `ThemeManager.setTheme` before the body is first reached is
+  kept, because `Body` applies `ModernTheme` only when no theme has been
+  set. And the first theme application now reaches every component built
+  before that first call, so each takes one theme-change callback and
+  re-measures its text — free in a browser, where nothing has been laid out
+  yet, but a jsdom suite that builds a text-measuring control before its
+  first `Body` touch now measures through a canvas 2D context jsdom does not
+  implement; see the migration note.
+
 - **`FocusHistory.back()` / `forward()` now reveal a hidden trail entry before
   focusing it**, rather than silently failing to move focus onto an element
   the browser cannot currently see. Reveal selects the `Tab` a target lives
@@ -560,7 +575,7 @@ page resets to empty.
   now `a[href], area[href]`. No consumer action is needed.
 
 - **Importing the library no longer touches the DOM**, so every entry point
-  except `core` loads without one (a Vitest `node` suite, a build-time
+  loads without one (a Vitest `node` suite, a build-time
   script). Twelve controls' focus rings and 13 modules' shared rules and
   `@keyframes` used to be written the moment their module was evaluated. As a
   result, `import { registerLanguage } from '@jimka/typescript-ui/component/editor'`
@@ -569,12 +584,13 @@ page resets to empty.
   just ahead of it, so every rule keeps its position within the library's
   stylesheet. That stylesheet's own `<style>` element is now added to `<head>`
   at that first write rather than at import, so an app that adds a `<style>`
-  of its own in between — importing a non-`core` entry point, then its own
-  CSS, then rendering — now has the library's sheet after its own, and rules
-  of equal specificity resolve the other way. Apps that import `core` up front
-  (as the create-app template does) and production builds that link their CSS
-  statically are unaffected. `core` still creates the page's `Body` when it
-  loads. No consumer action is needed.
+  of its own in between — importing the library, then its own CSS, then
+  rendering — now has the library's sheet after its own, and rules
+  of equal specificity resolve the other way. Importing `core` no longer
+  exempts an app from that, because the page body it used to build on import
+  (and the rules that build wrote) now waits for the first `Body` touch.
+  Production builds that link their CSS statically are unaffected. No consumer
+  action is needed.
 
 - **`Animation.play` now removes the two transition listeners it registers.**
   Each call armed a `transitionend` and a `transitionstart` listener on the
