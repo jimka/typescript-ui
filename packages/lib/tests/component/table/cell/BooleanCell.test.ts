@@ -11,7 +11,7 @@ import { DOM } from '~/core/DOM';
 import { Container } from '~/core/Container';
 import { Event } from '~/core/Event';
 import { Checkbox } from '~/component/input/Checkbox';
-import { installTestDOM, RecordingDOMSink } from '../../../dom/TestDOM';
+import { installTestDOM, makeEvent, RecordingDOMSink } from '../../../dom/TestDOM';
 import fontMetrics from '../../../dom/font-metrics.test-font.json';
 import { BooleanCell } from '~/component/table/cell/Boolean';
 import { BooleanEditor } from '~/component/table/cell/editor/Boolean';
@@ -137,6 +137,21 @@ describe('BooleanCell read-only', () => {
 });
 
 describe('BooleanCell commit fan-out', () => {
+    it('commits once, with the new value, for a click on the checkbox\'s box', () => {
+        // CONTRACT: the editor's only user-toggle signal is its checkbox's
+        // "action". A click on the box must reach it exactly once.
+        const cell     = mountedCell();
+        const checkbox = editorCheckbox(cell) as any;
+        const commits: Array<Boolean | null> = [];
+
+        cell.setValue(false);
+        cell.on('commit', (v: Boolean | null) => commits.push(v));
+
+        Event.fireEvent(checkbox, makeEvent(checkbox._box.getElement(true), 'click', { button: 0 }) as any);
+
+        expect(commits).toEqual([true]);
+    });
+
     it('commits nothing and dispatches nothing for a pooled rebind', () => {
         // CONTRACT: `setValue` is the virtualized body's per-scroll-tick
         // rebind. It is a programmatic write, so it must reach neither the

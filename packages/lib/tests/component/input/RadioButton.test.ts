@@ -157,10 +157,10 @@ describe('RadioButton action fan-out (mounted)', () => {
     }
 
     it('stays silent on a programmatic setSelected', () => {
-        // CONTRACT: the asymmetry with Checkbox is deliberate. A radio's
-        // `"action"` means "the user selected this one" — ButtonGroup's
-        // sibling-deselect sweep writes `setSelected(false)` across every
-        // untouched button, and listens on `"action"` itself.
+        // CONTRACT: a radio's `"action"` means "the user selected this one",
+        // the same contract Checkbox has. ButtonGroup's sibling-deselect sweep
+        // writes `setSelected(false)` across every untouched button, and
+        // listens on `"action"` itself.
         const { rb } = mountedRadio();
 
         let actions = 0;

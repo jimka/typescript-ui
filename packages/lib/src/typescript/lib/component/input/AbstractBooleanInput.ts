@@ -29,8 +29,9 @@ export interface AbstractBooleanInputOptions extends AbstractInputOptions {
  * surface), the value mutation performed on activation, and — for {@link Toggle}
  * — the activation keys and a pill-centred baseline override. The value
  * semantics (`isSelected` /
- * `setSelected` / `getValue` / `setValue`, indeterminate handling, `ButtonGroup`
- * change firing, synthetic-click behaviour) stay in the subclasses.
+ * `setSelected` / `getValue` / `setValue`, indeterminate handling, the DOM
+ * event a subclass fires from `activate` for its `"action"`) stay in the
+ * subclasses.
  *
  * Not wrapped with `callable()` — abstract classes are never instantiated.
  *

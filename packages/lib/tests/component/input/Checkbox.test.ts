@@ -8,8 +8,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Checkbox, CheckboxOptions } from '~/component/input/Checkbox';
 import { Container } from '~/core/Container';
-import { DOM } from '~/core/DOM';
-import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
+import { DOM, type Handle } from '~/core/DOM';
+import { Event } from '~/core/Event';
+import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
 import { _ruleCacheHas } from '~/core/StyleTarget';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -266,6 +267,203 @@ describe('Checkbox action fan-out (mounted)', () => {
         expect(changes).toBe(0);
         expect(bindings).toBe(0);
         expect(clickDispatches(sink, start)).toBe(0);
+    });
+});
+
+describe('Checkbox action delivery (mounted)', () => {
+    afterEach(() => DOM.reset());
+
+    /**
+     * Installs a fresh TestDOM and clears `Event`'s component registry, so the
+     * window-level base listener that this file's earlier, DOM-less Checkboxes
+     * installed is re-installed against the window handle the dispatches below
+     * actually route through. Without it every "zero actions" assertion here
+     * would pass vacuously. Ritual copied from RadioButton.test.ts.
+     */
+    function freshEventWindow(): void {
+        installTestDOM(CONFIG);
+
+        for (const id of Event._registeredComponentIds()) {
+            Event.purgeComponent(id);
+        }
+    }
+
+    /**
+     * A mounted, quiesced Checkbox and its realized box graphic. Pausing the
+     * checkbox and its private children before flushing the host keeps the
+     * module-level pending-layout set from flushing against a reset DOM in a
+     * later file (see Slider.test.ts's `quiesce` for the full reasoning).
+     * Modelled on RadioButton.test.ts's `mountedRadio`.
+     */
+    function mountedCheckbox(options?: CheckboxOptions): { cb: any; box: Handle } {
+        freshEventWindow();
+
+        const host = new Container({});
+        const cb   = new Checkbox(options) as any;
+        host.addComponent(cb);
+        host.getElement(true);
+        cb.getElement(true);
+
+        const box = cb._box.getElement(true)!;
+
+        cb._box.pauseLayout();
+        cb._check.pauseLayout();
+        cb._dash.pauseLayout();
+        cb.pauseLayout();
+        host.pauseLayout();
+        host.flushLayout();
+        cb.flushLayout();
+
+        return { cb, box };
+    }
+
+    /** Dispatches a primary-button click on `target`, routed through `cb`'s element. */
+    function click(cb: any, target: Handle): void {
+        Event.fireEvent(cb, makeEvent(target, 'click', { button: 0 }) as any);
+    }
+
+    it('fires action once, as a DOM change, for a click on the box', () => {
+        const { cb, box } = mountedCheckbox();
+
+        const types: string[] = [];
+        cb.on('action', (e: { type: string }) => {
+            types.push(e.type);
+        });
+
+        click(cb, box);
+
+        expect(cb.isSelected()).toBe(true);
+        expect(types).toEqual(['change']);
+    });
+
+    it('fires action once for Space on the focused checkbox', () => {
+        const { cb } = mountedCheckbox();
+
+        let actions = 0;
+        cb.on('action', () => {
+            actions += 1;
+        });
+
+        Event.fireEvent(cb, makeEvent(cb.getElement(true)!, 'keydown', { key: ' ' }) as any);
+
+        expect(cb.isSelected()).toBe(true);
+        expect(actions).toBe(1);
+    });
+
+    it('fires action once for a click on the box of an indeterminate checkbox, landing it checked', () => {
+        const { cb, box } = mountedCheckbox({ indeterminate: true });
+
+        let actions = 0;
+        cb.on('action', () => {
+            actions += 1;
+        });
+
+        click(cb, box);
+
+        expect(cb.isSelected()).toBe(true);
+        expect(cb.isIndeterminate()).toBe(false);
+        expect(actions).toBe(1);
+    });
+
+    it('stays silent for a click on the root outside the box, where a label click lands', () => {
+        const { cb } = mountedCheckbox();
+
+        let actions = 0;
+        cb.on('action', () => {
+            actions += 1;
+        });
+
+        click(cb, cb.getElement(true)!);
+
+        expect(cb.isSelected()).toBe(false);
+        expect(actions).toBe(0);
+    });
+
+    it('stays silent for a click on a disabled checkbox\'s box or root', () => {
+        const { cb, box } = mountedCheckbox({ enabled: false });
+
+        let actions = 0;
+        cb.on('action', () => {
+            actions += 1;
+        });
+
+        click(cb, box);
+        click(cb, cb.getElement(true)!);
+
+        expect(cb.isSelected()).toBe(false);
+        expect(actions).toBe(0);
+    });
+
+    it('stays silent for a click on a read-only checkbox\'s box', () => {
+        const { cb, box } = mountedCheckbox({ readOnly: true });
+
+        let actions = 0;
+        cb.on('action', () => {
+            actions += 1;
+        });
+
+        click(cb, box);
+
+        expect(cb.isSelected()).toBe(false);
+        expect(actions).toBe(0);
+    });
+
+    it('stays silent for setSelected, setValue and setIndeterminate, which still fire change', () => {
+        const { cb } = mountedCheckbox();
+
+        let actions = 0;
+        let changes = 0;
+        cb.on('action', () => {
+            actions += 1;
+        });
+        cb.on('change', () => {
+            changes += 1;
+        });
+
+        cb.setSelected(true);
+        cb.setValue(false);
+        cb.setIndeterminate(true);
+
+        expect(actions).toBe(0);
+        expect(changes).toBe(2);
+    });
+
+    it('runs change, binding, then action on a click, with the new state already readable', () => {
+        const { cb, box } = mountedCheckbox();
+
+        const order: string[] = [];
+        let selectedInAction: boolean | null = null;
+        cb.on('change', () => {
+            order.push('change');
+        });
+        cb.on('binding', () => {
+            order.push('binding');
+        });
+        cb.on('action', () => {
+            order.push('action');
+            selectedInAction = cb.isSelected();
+        });
+
+        click(cb, box);
+
+        expect(order).toEqual(['change', 'binding', 'action']);
+        expect(selectedInAction).toBe(true);
+    });
+
+    it('delivers nothing to a listener removed with off, while the click still toggles', () => {
+        const { cb, box } = mountedCheckbox();
+
+        let actions = 0;
+        const onAction = (): void => {
+            actions += 1;
+        };
+        cb.on('action', onAction);
+        cb.off('action', onAction);
+
+        click(cb, box);
+
+        expect(cb.isSelected()).toBe(true);
+        expect(actions).toBe(0);
     });
 });
 
