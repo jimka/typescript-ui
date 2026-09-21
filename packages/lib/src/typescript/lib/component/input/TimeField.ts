@@ -6,7 +6,7 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { clock } from "~/glyphs/solid/clock.js";
 import { TimePickerDropdown } from "~/component/input/TimePickerDropdown.js";
 import { callable } from "~/core/Callable.js";
-import { resolveDateMath, tokenizeDateMath, DateMathUnit } from "~/component/input/dateMath.js";
+import { resolveDateMath, tokenizeDateMath, parseClockTime, DateMathUnit } from "~/component/input/dateMath.js";
 
 Glyph.register(clock);
 
@@ -130,22 +130,14 @@ class TimeField extends AbstractPickerField<Date, TimePickerDropdown, TimeFieldO
             return relative;
         }
 
-        const [hStr, mStr, sStr] = raw.split(":");
-        const h = Number(hStr);
-        const m = Number(mStr);
-        const s = sStr === undefined ? 0 : Number(sStr);
+        const time = parseClockTime(raw);
 
-        const hasMinutes = mStr !== undefined && mStr !== "";
-        const validHour  = !isNaN(h) && h >= 0 && h < 24;
-        const validMin   = !isNaN(m) && m >= 0 && m < 60;
-        const validSec   = !isNaN(s) && s >= 0 && s < 60;
-
-        if (!hasMinutes || !validHour || !validMin || !validSec) {
+        if (time === null) {
             return null;
         }
 
         const d = new Date();
-        d.setHours(h, m, s, 0);
+        d.setHours(time.hours, time.minutes, time.seconds, 0);
 
         return d;
     }

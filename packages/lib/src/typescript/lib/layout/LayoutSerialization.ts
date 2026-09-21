@@ -6,6 +6,7 @@ import { AbstractWindow } from "~/overlay/AbstractWindow.js";
 import { Split } from "~/layout/Split.js";
 import { Tab } from "~/layout/Tab.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
+import { normalizeRatios } from "~/layout/LayoutSizes.js";
 import type { AxisOrientation } from "~/primitive/Axis.js";
 
 /**
@@ -187,6 +188,27 @@ function panelIdOf(component: Component): string {
 }
 
 /**
+ * The positions, in `getComponents()` order, of the children that participate
+ * in serialization. Positions rather than children, so a caller capturing
+ * per-child geometry can read each kept child's ratio or collapsed flag at the
+ * *live* index the layout manager indexes by, and write it at the kept index.
+ *
+ * @param component - The container whose children to filter.
+ * @returns The indices of the non-transient children, in order.
+ */
+function serializableChildIndices(component: Component): number[] {
+    const indices: number[] = [];
+
+    component.getComponents().forEach((child, index) => {
+        if (component.getLayoutConstraints(child)?.transient !== true) {
+            indices.push(index);
+        }
+    });
+
+    return indices;
+}
+
+/**
  * Builds the arrangement node for a component, descending into recognised
  * `Split`/`Tab` containers and recording everything else as an opaque panel
  * leaf.
@@ -198,29 +220,37 @@ function panelIdOf(component: Component): string {
  * The children of a container that participate in serialization: every child
  * except those marked `transient` in their layout constraints. A transient child
  * is chrome laid out like any other (e.g. a `Dock` empty-state placeholder shown
- * as a non-closeable tab) but is never captured in a saved arrangement.
+ * as a non-closeable tab) but is never captured in a saved arrangement. Drops
+ * exactly the positions `serializableChildIndices` leaves out.
  *
  * @param component - The container whose children to filter.
  * @returns The serializable children, in order.
  */
 function serializableChildren(component: Component): Component[] {
-    return component.getComponents()
-        .filter(child => component.getLayoutConstraints(child)?.transient !== true);
+    const children = component.getComponents();
+
+    return serializableChildIndices(component).map(index => children[index]);
 }
 
 function nodeFor(component: Component): LayoutNode {
     const kind = managerKind(component);
 
     if (kind === "Split") {
-        const manager  = component.getLayoutManager() as Split;
-        const children = component.getComponents().map(nodeFor);
+        const manager = component.getLayoutManager() as Split;
+        const live    = component.getComponents();
+        const kept    = serializableChildIndices(component);
+        const ratios  = manager.getPaneRatios();
 
+        // Every per-pane array is read at the child's live index and written at
+        // its kept index, so dropping a transient pane shifts none of the
+        // survivors. The kept ratios are renormalised to keep `SplitNode.ratios`
+        // summing to 1.0, which is what its own declaration promises.
         return {
-            kind:      "split",
+            kind:        "split",
             orientation: manager.getOrientation() === "vertical" ? "vertical" : "horizontal",
-            children,
-            ratios:    manager.getPaneRatios(),
-            collapsed: children.map((_, index) => manager.isPaneCollapsed(index)),
+            children:    kept.map(index => nodeFor(live[index])),
+            ratios:      normalizeRatios(kept.map(index => ratios[index] ?? 0), kept.length),
+            collapsed:   kept.map(index => manager.isPaneCollapsed(index)),
         };
     }
 

@@ -937,6 +937,23 @@ page resets to empty.
   is gone and the direction is now assigned unconditionally. No consumer
   action is needed.
 
+- **`DateField` and `DateTimeField` no longer commit a date the typed text
+  never named.** Both parsed their absolute form through `new Date`, which
+  accepts the prefixes a user types on the way to a full date — `2026` became
+  1 January and `2026-09` the 1st of September — and rolls an impossible day
+  forward, so `2025-02-30` committed 2 March. Typing one ten-character date
+  therefore fired three `change` events and flashed the invalid border three
+  times. The absolute form is now read back exactly as it is written: a
+  complete, zero-padded `YYYY-MM-DD` naming a real calendar day, and anything
+  else leaves the field invalid until blur clears it. `DateTimeField`'s time
+  half moves to `TimeField`'s own rule with it, so it starts accepting an
+  unpadded `9:5`, stops accepting a UTC/offset-suffixed time (`14:30Z`,
+  `14:30+02:00`) or trailing text after the time, and now drops the
+  sub-second part of a fractional second instead of keeping it — none of
+  which `formatValue` produces. A consumer feeding one of those forms back
+  into a field should format it the way the field does. `TimeField` is
+  unchanged.
+
 ### Data
 
 - **A store holding 1,000 records or more now builds its view.** Above that
@@ -1003,6 +1020,17 @@ page resets to empty.
   while it was *inactive* is still `display: none` and the caller re-displays
   it.
 
+- **A saved `Split` arrangement no longer captures a transient child.** The
+  `Tab` branch of `serializeLayout` already dropped children marked
+  `transient` in their layout constraints, but the `Split` branch captured
+  every child, so a saved `Split` layout carried a placeholder node that the
+  restore warned about and skipped every time. Both branches now apply the
+  same rule, and the surviving panes' ratios are renormalised so
+  `SplitNode.ratios` still sums to ~1.0. A layout captured before this change
+  restores to exactly the same tree, so no migration is needed; the visible
+  differences are the warning that stops firing and the smaller captured
+  JSON.
+
 ### Overlay
 
 - **A `Window`'s header ✕ now goes through the same close path as
@@ -1062,3 +1090,14 @@ page resets to empty.
   padding box's right edge, where `overflow: hidden` clipped most of the grab
   band away, and its southern strips sat one inset's difference too low. No
   consumer action is needed.
+
+- **Detaching one component's tooltip no longer dismisses another
+  component's.** `Tooltip.detach()` ended with an unconditional `hide()`, so
+  any component's `attach` or `detach` faded out the tooltip showing for a
+  different component and cancelled a hover delay a different component had
+  armed — a list rebind or a re-derived button title was enough, and because
+  no fresh `mouseover` fires under a stationary pointer the cancelled tooltip
+  never appeared at all. `detach()` now dismisses only when the detaching
+  component is the anchor on screen, and cancels only the pending show it
+  armed itself, which is what its documentation always described. No consumer
+  action is needed.

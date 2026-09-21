@@ -81,6 +81,14 @@ export class Tooltip extends Component {
     private static elementAttachments: Map<Handle, ElementTooltipAttachment> = new Map();
     private static activeElement: Handle | null = null;
 
+    // The id of the component whose hover delay is currently running, i.e. the
+    // owner of `showTimer`. `activeElement` names the anchor of a tooltip that
+    // is already on screen; this names the one that is merely about to be, so a
+    // detach can tell its own pending show from somebody else's. An id (not an
+    // element handle) because `attachments` is keyed by id and a never-rendered
+    // component has no handle to compare.
+    private static pendingId: string | null = null;
+
     // Components with a destroy hook already registered to auto-detach on
     // teardown. `attach` may be called many times over a component's life
     // (e.g. Button re-deriving its tooltip text on every setTitle), and each
@@ -207,10 +215,7 @@ export class Tooltip extends Component {
      * @param y - Vertical viewport coordinate for the tooltip origin.
      */
     static show(text: string, x: number, y: number): void {
-        if (Tooltip.showTimer !== null) {
-            clearTimeout(Tooltip.showTimer);
-            Tooltip.showTimer = null;
-        }
+        Tooltip._cancelPendingShow();
 
         const inst = Tooltip.getInstance();
 
@@ -335,10 +340,7 @@ export class Tooltip extends Component {
      * Any pending show timer is also cancelled.
      */
     static hide(): void {
-        if (Tooltip.showTimer !== null) {
-            clearTimeout(Tooltip.showTimer);
-            Tooltip.showTimer = null;
-        }
+        Tooltip._cancelPendingShow();
 
         const inst = Tooltip.getInstance();
         const el   = inst.getElement();
@@ -412,6 +414,10 @@ export class Tooltip extends Component {
                 Tooltip.show(text, cursorX, cursorY);
                 Tooltip.showTimer = null;
             }, 500);
+
+            // Record who armed it, so only this component's own `detach` can
+            // cancel the wait. `show` clears the pointer again as it runs.
+            Tooltip.pendingId = component.getId();
         };
 
         const mousemoveFn = (e: MouseEvent) => {
@@ -454,8 +460,10 @@ export class Tooltip extends Component {
     }
 
     /**
-     * Removes the tooltip attachment from a component, cancelling any pending show
-     * and hiding the tooltip if it is currently visible for this component.
+     * Removes the tooltip attachment from a component, cancelling its own pending
+     * show and hiding the tooltip only when this component is the anchor it is
+     * currently visible for. A tooltip another component owns — showing, or still
+     * waiting out its hover delay — is left alone.
      *
      * @param component - The component whose attachment should be removed.
      */
@@ -473,7 +481,39 @@ export class Tooltip extends Component {
         Event.removeListener(component, "mousedown", att.mousedownFn);
 
         Tooltip.attachments.delete(id);
-        Tooltip.hide();
+
+        // Only this component's own pending show is cancelled: an unrelated
+        // detach must not swallow the hover another component is waiting out.
+        if (Tooltip.pendingId === id) {
+            Tooltip._cancelPendingShow();
+        }
+
+        // `getElement()` is still resolvable here on the teardown path — destroy
+        // hooks run before `Component.destructor` releases its handles — so a
+        // disposed anchor still dismisses its own tooltip. The nullish check
+        // matters, and has to catch both spellings: `getElement` declares
+        // `Handle | undefined` but hands back the element lookup's own `null`
+        // miss, so a never-rendered component would otherwise match the equally
+        // null `activeElement` of a tooltip nobody is showing — and dismiss it.
+        const element = component.getElement() ?? null;
+
+        if (element !== null && Tooltip.activeElement === element) {
+            Tooltip.hide();
+        }
+    }
+
+    /**
+     * Cancels the hover delay armed by `attach`, clearing the timer and the
+     * component that owns it together so the two can never disagree. Safe to
+     * call when nothing is pending.
+     */
+    private static _cancelPendingShow(): void {
+        if (Tooltip.showTimer !== null) {
+            clearTimeout(Tooltip.showTimer);
+            Tooltip.showTimer = null;
+        }
+
+        Tooltip.pendingId = null;
     }
 
     /**

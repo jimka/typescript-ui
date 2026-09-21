@@ -1,9 +1,9 @@
 //
 // DateTimeField format/parse coverage. parseRaw is the protected unit under
-// test; cast to reach it. The parser is a bare `new Date(raw)`, which is far
-// more lenient than its siblings — the no-time-rejection divergence is pinned
-// with `it.fails` below. All assertions use local accessors so the suite is
-// timezone-stable.
+// test; cast to reach it. The absolute branch composes the same two helpers its
+// DateField / TimeField siblings use, so it is exactly as strict as they are —
+// the rows below pin both halves. All assertions use local accessors so the
+// suite is timezone-stable.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DateTimeField } from '~/component/input/DateTimeField';
 
@@ -49,8 +49,59 @@ describe('DateTimeField parseRaw', () => {
         expect(d!.getMinutes()).toBe(30);
     });
 
-    it('returns null for total garbage (the one case the lenient parser rejects)', () => {
+    it('returns null for total garbage', () => {
         expect(parse('total garbage')).toBe(null);
+    });
+
+    it('round-trips a YYYY-MM-DD HH:MM:SS string, keeping the seconds', () => {
+        const d = parse('2025-06-15 14:30:05');
+
+        expect(d).not.toBe(null);
+        expect(d!.getHours()).toBe(14);
+        expect(d!.getMinutes()).toBe(30);
+        expect(d!.getSeconds()).toBe(5);
+    });
+
+    it('rejects a partial date half — a prefix typed on the way to a full date', () => {
+        expect(parse('2026 10:00')).toBe(null);
+        expect(parse('2026-09 10:00')).toBe(null);
+    });
+
+    it('rejects an impossible day in the date half rather than rolling it forward', () => {
+        expect(parse('2025-02-30 10:00')).toBe(null);
+    });
+
+    it('rejects an out-of-range hour in the time half', () => {
+        expect(parse('2025-06-15 25:00')).toBe(null);
+    });
+
+    it('accepts unpadded hours and minutes, exactly as TimeField does', () => {
+        const d = parse('2025-06-15 9:5');
+
+        expect(d).not.toBe(null);
+        expect(d!.getDate()).toBe(15);
+        expect(d!.getHours()).toBe(9);
+        expect(d!.getMinutes()).toBe(5);
+        expect(d!.getSeconds()).toBe(0);
+    });
+
+    it('rejects a UTC/offset-suffixed time, which formatValue never produces', () => {
+        expect(parse('2025-06-15 14:30Z')).toBe(null);
+    });
+
+    it('drops the sub-second part of a fractional second instead of keeping it', () => {
+        // Still accepted, as TimeField accepts it — but the milliseconds the
+        // old `new Date` branch carried through are gone, which is the
+        // behaviour change the changelog names.
+        const d = parse('2025-06-15 14:30:05.5');
+
+        expect(d).not.toBe(null);
+        expect(d!.getSeconds()).toBe(5);
+        expect(d!.getMilliseconds()).toBe(0);
+    });
+
+    it('rejects trailing text after the time half', () => {
+        expect(parse('2025-06-15 14:30 extra')).toBe(null);
     });
 
     // Resolved divergence: parseRaw now requires both a date and a time portion

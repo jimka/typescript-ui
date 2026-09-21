@@ -54,6 +54,7 @@ Calling `attachToElement` against an element that already has a binding replaces
 - Tooltip pixels are not part of the component tree; the tooltip element appends to `document.documentElement` and floats above everything.
 - Themed via the `tooltip.*` token group — see [Theming](/concepts/theming#theme-keys).
 - Shows and hides with a 100 ms opacity fade via [`Animation`](/api/core/namespaces/Animation). A fresh `show()` during a fade-out cancels the deferred detach, so rapid hover-then-rehover is seamless. Honours `prefers-reduced-motion: reduce`.
+- `detach()` acts only on the detaching component's own tooltip: a tooltip showing for another component, or a hover delay another component is still waiting out, is left alone. Since `attach()` begins by detaching, re-attaching one component's tooltip never disturbs another's either.
 
 ## See also
 

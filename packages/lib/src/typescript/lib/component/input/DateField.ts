@@ -6,7 +6,7 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { calendar } from "~/glyphs/solid/calendar.js";
 import { DatePickerDropdown } from "~/component/input/DatePickerDropdown.js";
 import { callable } from "~/core/Callable.js";
-import { resolveDateMath, tokenizeDateMath, DateMathUnit } from "~/component/input/dateMath.js";
+import { resolveDateMath, tokenizeDateMath, parseIsoDate, DateMathUnit } from "~/component/input/dateMath.js";
 
 Glyph.register(calendar);
 
@@ -107,8 +107,10 @@ class DateField extends AbstractPickerField<Date, DatePickerDropdown, DateFieldO
 
     /**
      * Parses a relative shorthand (e.g. "+9y", "-2w3d") resolved against
-     * today's date, or a "YYYY-MM-DD" string into a Date. Appends local
-     * midnight to the latter to avoid UTC offset shifting the day.
+     * today's date, or an absolute date at local midnight. The absolute form
+     * must be a complete, zero-padded "YYYY-MM-DD" naming a real calendar day:
+     * a partial prefix typed on the way to one, or an impossible day the engine
+     * would roll forward, is a parse failure rather than a different date.
      *
      * @param raw - The raw text typed into the input.
      * @returns The parsed Date, or null on parse failure.
@@ -125,9 +127,7 @@ class DateField extends AbstractPickerField<Date, DatePickerDropdown, DateFieldO
             return relative;
         }
 
-        const d = new Date(raw + "T00:00:00");
-
-        return isNaN(d.getTime()) ? null : d;
+        return parseIsoDate(raw);
     }
 
     /**

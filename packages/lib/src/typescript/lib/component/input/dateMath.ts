@@ -146,3 +146,83 @@ export function resolveDateMath(raw: string, allowed: readonly DateMathUnit[], b
 
     return isNaN(result.getTime()) ? null : result;
 }
+
+// A complete, zero-padded ISO calendar date — the only absolute form the date
+// fields format, and therefore the only one they read back.
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * A wall-clock time parsed from "H:MM" or "H:MM:SS" text. Each part is only
+ * range-checked, not rounded, so a fractional second typed as "05.5" arrives
+ * here intact; the native `setHours` the callers hand it to truncates it, so
+ * the sub-second part is dropped rather than kept.
+ *
+ * @internal — not re-exported from the package barrel.
+ */
+export interface ClockTime {
+    hours:   number;
+    minutes: number;
+    seconds: number;
+}
+
+/**
+ * Parses a complete, zero-padded `YYYY-MM-DD` calendar date at local midnight.
+ * Anything the date fields' own `formatValue` could not have produced — a
+ * partial prefix, an unpadded part, or a day that does not exist in the named
+ * month — is rejected rather than normalised.
+ *
+ * @param raw - The raw text typed into the field.
+ * @returns The date at local midnight, or `null` when `raw` is not a complete
+ *   ISO date naming a real calendar day.
+ *
+ * @internal — not re-exported from the package barrel.
+ */
+export function parseIsoDate(raw: string): Date | null {
+    const match = ISO_DATE.exec(raw);
+
+    if (match === null) {
+        return null;
+    }
+
+    // Local midnight, appended so the day is not shifted by the UTC parse
+    // `new Date("YYYY-MM-DD")` would otherwise perform.
+    const date = new Date(`${raw}T00:00:00`);
+
+    if (isNaN(date.getTime())) {
+        return null;
+    }
+
+    // The engine range-checks the month and the bare day but rolls an
+    // impossible calendar day forward — 30 February becomes 2 March — which
+    // would commit a date the text never named. A rolled date is the one case
+    // the shape check above cannot see.
+    return date.getDate() === Number(match[3]) ? date : null;
+}
+
+/**
+ * Parses an `H:MM` or `H:MM:SS` wall-clock time. Hours, minutes and seconds
+ * need not be zero-padded, but each must be a number inside its own range and
+ * the minutes are mandatory.
+ *
+ * @param raw - The raw text typed into the field.
+ * @returns The parsed wall-clock time, or `null` when `raw` is not one.
+ *
+ * @internal — not re-exported from the package barrel.
+ */
+export function parseClockTime(raw: string): ClockTime | null {
+    const [hStr, mStr, sStr] = raw.split(":");
+    const hours   = Number(hStr);
+    const minutes = Number(mStr);
+    const seconds = sStr === undefined ? 0 : Number(sStr);
+
+    const hasMinutes = mStr !== undefined && mStr !== "";
+    const validHour  = !isNaN(hours)   && hours   >= 0 && hours   < 24;
+    const validMin   = !isNaN(minutes) && minutes >= 0 && minutes < 60;
+    const validSec   = !isNaN(seconds) && seconds >= 0 && seconds < 60;
+
+    if (!hasMinutes || !validHour || !validMin || !validSec) {
+        return null;
+    }
+
+    return { hours, minutes, seconds };
+}

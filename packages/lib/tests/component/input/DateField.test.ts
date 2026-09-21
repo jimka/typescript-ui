@@ -77,21 +77,94 @@ describe('DateField parseRaw', () => {
         expect(parse('2025-13-45')).toBe(null);
     });
 
-    // DOCUMENTED ROLLOVER (not a pinned bug): native Date rolls an impossible
-    // calendar day forward — `new Date("2025-02-30T00:00:00")` becomes March 1
-    // rather than rejecting. This is JS-engine behaviour, not an obvious
-    // contract violation, so it is asserted as documented (plain `it`), not
-    // `it.fails`. The gross-garbage case above still pins the "unparseable →
-    // null" contract.
-    it('rolls an impossible day (2025-02-30) forward to a non-null Date', () => {
-        const d = parse('2025-02-30');
+    // Contract change: a rolled date is rejected because it names a day the
+    // text did not. `new Date("2025-02-30T00:00:00")` is 2 March, so accepting
+    // it would commit a value the user never typed — the same defect as
+    // accepting the bare-year prefix below.
+    it('rejects an impossible day (2025-02-30) rather than rolling it forward', () => {
+        expect(parse('2025-02-30')).toBe(null);
+    });
 
-        // Non-null is the contract point: the lenient parser does NOT reject the
-        // impossible day. The exact rolled day (March 1 vs 2) depends on the host
-        // timezone offset applied to the appended T00:00:00, so only the month
-        // (rolled past February into March) is asserted for TZ-stability.
-        expect(d).not.toBe(null);
-        expect(d!.getMonth()).toBe(2); // March (0-based).
+    it('rejects a leap day in a non-leap year', () => {
+        expect(parse('2026-02-29')).toBe(null);
+    });
+
+    it('rejects a bare year — a prefix typed on the way to a full date', () => {
+        expect(parse('2026')).toBe(null);
+    });
+
+    it('rejects a year-month prefix', () => {
+        expect(parse('2026-09')).toBe(null);
+    });
+
+    it('rejects an unpadded month and day', () => {
+        expect(parse('2026-9-1')).toBe(null);
+    });
+});
+
+describe('DateField typing a date one character at a time', () => {
+    let field: any;
+
+    // The field has to stay alive across the keystrokes, so it cannot be
+    // disposed the way `parser()` disposes its scratch field — it is disposed
+    // here instead, for the same reason: an undisposed field pins TextInput's
+    // unconditional "input" registration to the DOM active at collection time
+    // and breaks the later real-dispatch tests in this file.
+    afterEach(() => field?.dispose());
+
+    /**
+     * Feeds every prefix of `text` through the field the way a keystroke does,
+     * recording the invalid-border state after each one.
+     *
+     * @param text - The text being typed out.
+     * @returns The `_invalid` state after each successive prefix.
+     */
+    function typeOut(text: string): boolean[] {
+        const states: boolean[] = [];
+
+        for (let length = 1; length <= text.length; length += 1) {
+            field._input.setText(text.slice(0, length));
+            field.onInput();
+            states.push(field._invalid);
+        }
+
+        return states;
+    }
+
+    it('fires change once — on the last keystroke, not on the prefixes', () => {
+        field = new DateField();
+
+        const changes: (Date | null)[] = [];
+
+        field.on('change', (value: Date | null) => changes.push(value));
+
+        typeOut('2026-09-16');
+
+        expect(changes.length).toBe(1);
+        expect(changes[0]!.getFullYear()).toBe(2026);
+        expect(changes[0]!.getMonth()).toBe(8); // 0-based: September.
+        expect(changes[0]!.getDate()).toBe(16);
+    });
+
+    it('crosses the invalid border exactly twice: on at the first keystroke, off at the last', () => {
+        field = new DateField();
+
+        // A fresh field starts valid, so the first entry is compared against
+        // `false` to count the leading transition.
+        const states      = typeOut('2026-09-16');
+        const transitions = states.filter((state, index) => state !== (index === 0 ? false : states[index - 1]));
+
+        expect(transitions.length).toBe(2);
+        expect(states[0]).toBe(true);
+        expect(states[states.length - 1]).toBe(false);
+    });
+
+    it('leaves the value untouched while the text is still a prefix', () => {
+        field = new DateField();
+
+        typeOut('2026');
+
+        expect(field.getValue()).toBe(null);
     });
 });
 

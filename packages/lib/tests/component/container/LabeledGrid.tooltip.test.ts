@@ -37,6 +37,7 @@ function resetTooltipSingleton(): void {
     (Tooltip as any).instance = null;
     (Tooltip as any).watching = false;
     (Tooltip as any).activeElement = null;
+    (Tooltip as any).pendingId = null;
 }
 
 describe('LabeledGrid.addField description tooltip', () => {

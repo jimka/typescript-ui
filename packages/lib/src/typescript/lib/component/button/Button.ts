@@ -1489,10 +1489,10 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
 
     /**
      * Suppresses or restores this button's hover tooltip. While suppressed the
-     * tooltip is detached (and any visible/pending one dismissed) and stays off
-     * across `setText`/`setDescription` rebuilds; restoring re-composes it from
-     * the current title and description. Intended for a subclass that opens its
-     * own popup — see {@link _tooltipSuppressed}.
+     * tooltip is detached (and this button's own visible or pending one
+     * dismissed) and stays off across `setText`/`setDescription` rebuilds;
+     * restoring re-composes it from the current title and description. Intended
+     * for a subclass that opens its own popup — see {@link _tooltipSuppressed}.
      *
      * @param value - `true` to detach the tooltip, `false` to restore it.
      *

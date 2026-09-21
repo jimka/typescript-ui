@@ -61,6 +61,7 @@ The typed shorthand stays on screen while typing; it resolves to the absolute da
 
 ## Notes
 
+- The absolute form is read back exactly as it is written: a complete, zero-padded `YYYY-MM-DD` naming a real calendar day, then a `HH:MM` or `HH:MM:SS` wall-clock time. A partial date, an impossible day, a UTC/offset-suffixed time, and anything trailing the time all leave the field invalid rather than committing a value the text never named, and blurring on one clears it.
 - The dropdown stacks a month-view calendar over an hour/minute selector. Updates fire incrementally — every day/hour/minute click fires `input` with the latest aggregate value.
 - Right-clicking the inner text input opens a Cut/Copy/Paste menu; Cut/Paste re-parse the field the same way typing does.
 

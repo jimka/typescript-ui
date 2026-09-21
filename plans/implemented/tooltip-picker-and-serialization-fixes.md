@@ -954,3 +954,81 @@ already uses.
     jsdom assertions already pin the same transition exactly — the slice-11
     probe's own Q3 reading is `Tooltip.dismissing` before and after — so the
     panel would add no evidence.
+
+---
+
+## Implementation Notes
+
+Five departures from the plan as written, one confirmation worth recording,
+and one claim the plan asked to be verified rather than assumed.
+
+**C21's ownership guard had to be written against `null`, not `undefined`.**
+`## Internal Structure` codes `detach`'s anchor check as
+`element !== undefined`, resting on footnote `[^two-keys]`'s claim that
+"`getElement()` returns `undefined` for a never-rendered component". It does
+not: `Component.getElement` assigns `DOM.source.getElementById`'s own `null`
+miss into `_element` through an `as Handle` cast and returns it, despite
+declaring `Handle | undefined`. Coded literally, the guard therefore let a
+`null` element through to match the equally `null` `activeElement` of a
+tooltip nobody is showing — which cancelled an unrelated component's pending
+show and built the singleton, i.e. left exactly the `[^both-phases]` symptom
+the fix exists to remove, reachable by any `attach`/`detach` on an unrendered
+component (a `Button` re-deriving its tooltip on `setText` is the common
+case). The guard normalises with `?? null` — the same spelling `attach`'s
+timer body already uses one screen above — and tests 9 to 11 in
+`tests/overlay/Tooltip.test.ts` pin the unrendered path that the plan's own
+`## Expected Behaviour` rows, all of which render their components, left
+uncovered.
+
+**C29's row-4 fixture needs an explicit collapse direction.** The plan's
+`Split` fixture is A, B (collapsed) and transient P, captured once with P
+mounted last and once with P mounted first. Built exactly as described, the
+second ordering cannot be set up: with children `[P, A, B]`, B is the last
+pane, and a pane collapsing the default leading way needs a gutter *after*
+it, so `setPaneCollapsedImmediate` returns without collapsing and the
+captured flags come back `[false, false]`. Both orderings therefore give B a
+`collapseDirection: "east"` constraint, whose serving gutter is the one on
+its leading side; that exists in either ordering, so the two fixtures stay
+identical in every other respect. This is a property of `Split`'s collapse
+eligibility, not of the code under test.
+
+**A fractional second is narrowed, not rejected.** `## Potential Challenges`
+says `DateTimeField` loses "the offset-suffixed and fractional-second times
+it accepted". Only the first half holds: `parseClockTime` reads `"05.5"` as
+5.5 seconds, which is in range, and `setHours` truncates it — so
+`"2025-06-15 14:30:05.5"` is still accepted, but the sub-second part it used
+to keep is now dropped. `"14:30Z"` and `"14:30+02:00"` are rejected as the
+plan says. The changelog entry names the real behaviour.
+
+**Documentation landed as three commits, not one.** The plan's step section
+groups the doc edits as a single "Commit 4 — documentation". The `commit`
+skill's rule is one documentation commit per functionality, so the four doc
+files ship as three commits — Tooltip, the two picker pages, and the `Split`
+changelog entry — landing after the three code commits, in the order
+`worker.md`'s target branch shape prescribes.
+
+**The new `DateField` keystroke tests dispose their field.** They need a live
+field across the ten keystrokes, so they cannot use the file's
+dispose-immediately `parser()` helper; they dispose in an `afterEach`
+instead. Without that, the file's later real-dispatch clipboard tests fail —
+the hazard the file's own header comment already documents.
+
+**Confirmation, not a departure: `normalizeRatios` is imported from
+`~/layout/LayoutSizes.js`** as step 22 directs; no other import moved.
+
+**Verified, not assumed: a layout captured before this fix restores
+identically after it.** A throwaway probe restored a hand-written legacy
+state — three children including the placeholder, ratios `[0.5, 0.3, 0.2]`,
+collapsed `[false, true, false]` — into the same host as the state this fix
+captures, through the same factory. Both produce children `[a, b]` and pane
+ratios `[0.625, 0.375]`, confirming `## Architecture Decisions`' claim and
+the Non-Goal that drops the migration. The probe was deleted; the committed
+`Split` transient tests cover the capture side, and row 7 (the untouched
+restore path) was green before the fix as well as after.
+
+**Manual verification still owed.** Both rows of `## Expected Behaviour`'s
+*Manual verification* table are unrun: each needs a QA panel, which opens a
+full-screen window on the user's desktop and needs their go-ahead. The
+`form-flat` C23 readout (`setRuleStyles` over ten keystrokes falling from 6
+to 2) and the two-decorated-field C21 check are therefore unproven offline;
+the jsdom cases pin the same transitions.

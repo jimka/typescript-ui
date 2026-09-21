@@ -362,3 +362,176 @@ describe('restoreLayout round-trip', () => {
         expect(leaf.getParentComponent()).toBe(root);
     });
 });
+
+describe('serializeLayout of a Split holding a transient child', () => {
+    afterEach(() => DOM.reset());
+
+    // The pane weights A / B / P are given to `applyPaneRatios` as-is, so
+    // `getPaneRatios` reads them straight back; dropping P leaves A and B to be
+    // renormalised from 0.5 / 0.3 to these.
+    const A_RATIO = 0.5;
+    const B_RATIO = 0.3;
+    const P_RATIO = 0.2;
+    const A_KEPT  = 0.625;
+    const B_KEPT  = 0.375;
+
+    /**
+     * A sized Split host holding panes A and B plus a transient placeholder P,
+     * with B collapsed. The host is sized and given an element because
+     * `applyPaneRatios` and `setPaneCollapsedImmediate` both need a live
+     * container to write against.
+     *
+     * @param placeholderFirst - Mounts P ahead of A and B instead of after them,
+     *   so the kept indices are `[1, 2]` rather than `[0, 1]`.
+     * @returns The host, its panes, and the placeholder.
+     */
+    function splitWithPlaceholder(placeholderFirst: boolean): {
+        host: Container; a: Component; b: Component; placeholder: Component;
+    } {
+        installTestDOM(CONFIG);
+
+        const split = new Split({ orientation: 'horizontal' });
+        const host  = new Container({ layoutManager: split });
+
+        host.getElement(true);
+        host.setWidth(400);
+        host.setHeight(300);
+
+        const a = new Component({}); a.setId('a');
+        const b = new Component({}); b.setId('b');
+        const placeholder = new Component({});
+
+        const transient = Object.assign(new LayoutConstraints(), { transient: true });
+
+        // B collapses toward the trailing edge, so its serving gutter is the one
+        // on its leading side. A pane collapsing the default (leading) way needs
+        // a gutter after it, which the last pane has none of — and B *is* last
+        // once the placeholder is mounted first. One direction for both
+        // orderings keeps the two setups otherwise identical.
+        const trailingCollapse = new LayoutConstraints();
+        trailingCollapse.collapseDirection = 'east';
+
+        if (placeholderFirst) {
+            host.addComponent(placeholder, transient);
+            host.addComponent(a);
+            host.addComponent(b, trailingCollapse);
+            split.applyPaneRatios([P_RATIO, A_RATIO, B_RATIO]);
+            split.setPaneCollapsedImmediate(2, true);
+        } else {
+            host.addComponent(a);
+            host.addComponent(b, trailingCollapse);
+            host.addComponent(placeholder, transient);
+            split.applyPaneRatios([A_RATIO, B_RATIO, P_RATIO]);
+            split.setPaneCollapsedImmediate(1, true);
+        }
+
+        return { host, a, b, placeholder };
+    }
+
+    /** The captured root of `host`, narrowed to a split node. */
+    function splitRoot(host: Container) {
+        const state = serializeLayout(host);
+
+        expect(state.root.kind).toBe('split');
+
+        return state.root as Extract<typeof state.root, { kind: 'split' }>;
+    }
+
+    it('1. captures only the non-transient children, in order', () => {
+        const { host, a, b } = splitWithPlaceholder(false);
+
+        const root = splitRoot(host);
+
+        expect(root.children.length).toBe(2);
+        expect(root.children.map(child => (child as { panelId: string }).panelId))
+            .toEqual([a.getId(), b.getId()]);
+    });
+
+    it('2. renormalises the kept ratios so they still sum to 1.0', () => {
+        const { host } = splitWithPlaceholder(false);
+
+        const root = splitRoot(host);
+
+        expect(root.ratios.length).toBe(2);
+        expect(root.ratios[0]).toBeCloseTo(A_KEPT, 5);
+        expect(root.ratios[1]).toBeCloseTo(B_KEPT, 5);
+        expect(root.ratios.reduce((total, ratio) => total + ratio, 0)).toBeCloseTo(1.0, 5);
+    });
+
+    it('3. reads each kept pane\'s collapsed flag at its live index', () => {
+        const { host } = splitWithPlaceholder(false);
+
+        const root = splitRoot(host);
+
+        expect(root.collapsed).toEqual([false, true]);
+    });
+
+    it('4. captures the same arrangement with the placeholder mounted first', () => {
+        const { host: last }  = splitWithPlaceholder(false);
+        const lastRoot        = splitRoot(last);
+
+        const { host: first } = splitWithPlaceholder(true);
+        const firstRoot       = splitRoot(first);
+
+        expect(firstRoot.children.map(child => (child as { panelId: string }).panelId))
+            .toEqual(lastRoot.children.map(child => (child as { panelId: string }).panelId));
+        expect(firstRoot.ratios[0]).toBeCloseTo(lastRoot.ratios[0], 5);
+        expect(firstRoot.ratios[1]).toBeCloseTo(lastRoot.ratios[1], 5);
+        expect(firstRoot.collapsed).toEqual(lastRoot.collapsed);
+    });
+
+    it('5. captures an all-transient Split as an empty arrangement', () => {
+        installTestDOM(CONFIG);
+
+        const split = new Split({ orientation: 'horizontal' });
+        const host  = new Container({ layoutManager: split });
+
+        host.getElement(true);
+        host.setWidth(400);
+        host.setHeight(300);
+
+        const transient = Object.assign(new LayoutConstraints(), { transient: true });
+
+        host.addComponent(new Component({}), transient);
+        host.addComponent(new Component({}), transient);
+
+        const root = splitRoot(host);
+
+        expect(root.children).toEqual([]);
+        expect(root.ratios).toEqual([]);
+        expect(root.collapsed).toEqual([]);
+    });
+
+    it('6. restores the captured state without warning about a skipped placeholder', () => {
+        const { host, a, b } = splitWithPlaceholder(false);
+
+        const state = serializeLayout(host);
+        const warn  = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        restoreLayout(host, state, instanceFactory({ a, b }));
+
+        expect(warn).not.toHaveBeenCalled();
+        expect(host.getComponents()).toEqual([a, b]);
+
+        warn.mockRestore();
+    });
+
+    it('7. detaches (but does not dispose) the transient placeholder on restore', () => {
+        const { host, a, b, placeholder } = splitWithPlaceholder(false);
+
+        // `backgroundColor` is a conditional declaration, never hoisted onto the
+        // class rule, so it is what gives the placeholder a per-instance `#id`
+        // rule — this asserts the rule SURVIVES, i.e. the placeholder was
+        // detached rather than disposed, exactly as in the Tab case above.
+        placeholder.setBackgroundColor('#fff');
+        placeholder.getElement(true);
+
+        const placeholderId = placeholder.getId();
+        const state         = serializeLayout(host);
+
+        restoreLayout(host, state, instanceFactory({ a, b }));
+
+        expect(placeholder.getParentComponent()).toBeNull();
+        expect(_ruleCacheKeys().some(key => key.startsWith('#' + placeholderId))).toBe(true);
+    });
+});

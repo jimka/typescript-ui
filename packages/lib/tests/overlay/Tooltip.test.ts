@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { Tooltip } from '~/overlay/Tooltip';
 import { LayerManager } from '~/core/LayerManager';
 import { Component } from '~/core/Component';
@@ -74,6 +74,7 @@ describe('Tooltip.show', () => {
         (Tooltip as any).instance = null;
         (Tooltip as any).watching = false;
         (Tooltip as any).activeElement = null;
+        (Tooltip as any).pendingId = null;
 
         DOM.reset();
     });
@@ -267,6 +268,7 @@ describe('Tooltip.attach — teardown', () => {
         (Tooltip as any).instance = null;
         (Tooltip as any).watching = false;
         (Tooltip as any).activeElement = null;
+        (Tooltip as any).pendingId = null;
         DOM.reset();
     });
 
@@ -310,5 +312,218 @@ describe('Tooltip.attach — teardown', () => {
         c.dispose();
 
         expect((Tooltip as any).attachments.has(c.getId())).toBe(false);
+    });
+});
+
+// The hover delay `Tooltip.attach` arms before showing, mirrored from its
+// `setTimeout(..., 500)`. Advancing exactly this far runs the show body and
+// stops short of the entrance fade's own fallback timer.
+const HOVER_DELAY_MS = 500;
+
+/**
+ * Invokes the `mouseover` handler `Tooltip.attach` stored for `component`,
+ * arming the shared hover-delay timer on that component's behalf. Reaching the
+ * stored closure rather than dispatching a DOM event is how this file already
+ * drives `Tooltip`'s privates.
+ *
+ * @param component - The attached component whose hover is being simulated.
+ */
+function hoverOver(component: Component): void {
+    (Tooltip as any).attachments.get(component.getId()).mouseoverFn({ clientX: 10, clientY: 10 });
+}
+
+/**
+ * Hovers `component` and runs the hover delay out, leaving the tooltip on
+ * screen with `component`'s element recorded as its anchor.
+ *
+ * @param component - The attached component to show the tooltip for.
+ */
+function showFor(component: Component): void {
+    hoverOver(component);
+    vi.advanceTimersByTime(HOVER_DELAY_MS);
+}
+
+describe('Tooltip.detach — ownership', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+
+        (Tooltip as any).showTimer = null;
+        (Tooltip as any).instance = null;
+        (Tooltip as any).watching = false;
+        (Tooltip as any).activeElement = null;
+        (Tooltip as any).pendingId = null;
+        (Tooltip as any).dismissing = false;
+        (Tooltip as any).attachments.clear();
+
+        DOM.reset();
+    });
+
+    /** Two attached, rendered components — the `A` and `B` of every row below. */
+    function twoAttached(): { a: Component; b: Component } {
+        installTestDOM(CONFIG);
+
+        const a = new Component({});
+        const b = new Component({});
+
+        a.getElement(true);
+        b.getElement(true);
+
+        Tooltip.attach(a, 'A');
+        Tooltip.attach(b, 'B');
+
+        return { a, b };
+    }
+
+    it('1. detaching B leaves the tooltip that is visible for A on screen', () => {
+        const { a, b } = twoAttached();
+
+        showFor(a);
+
+        Tooltip.detach(b);
+
+        expect((Tooltip as any).dismissing).toBe(false);
+        expect((Tooltip as any).activeElement).toBe(a.getElement());
+    });
+
+    it('2. detaching A dismisses the tooltip that is visible for A', () => {
+        const { a } = twoAttached();
+
+        showFor(a);
+
+        Tooltip.detach(a);
+
+        expect((Tooltip as any).dismissing).toBe(true);
+        expect((Tooltip as any).activeElement).toBe(null);
+    });
+
+    it('3. detaching B leaves the hover delay A armed running', () => {
+        const { a, b } = twoAttached();
+
+        hoverOver(a);
+
+        Tooltip.detach(b);
+
+        expect((Tooltip as any).showTimer).not.toBe(null);
+        expect((Tooltip as any).pendingId).toBe(a.getId());
+    });
+
+    it('4. detaching A cancels the hover delay A armed', () => {
+        const { a } = twoAttached();
+
+        hoverOver(a);
+
+        Tooltip.detach(a);
+
+        expect((Tooltip as any).showTimer).toBe(null);
+        expect((Tooltip as any).pendingId).toBe(null);
+    });
+
+    it('5. detaching with nothing shown and nothing pending never builds the singleton', () => {
+        installTestDOM(CONFIG);
+
+        const a = new Component({});
+        a.getElement(true);
+
+        Tooltip.attach(a, 'A');
+        Tooltip.detach(a);
+
+        // `hide()` resolves the singleton instance, so a detach that reaches it
+        // materialises a tooltip element for a tooltip nobody asked to see.
+        expect((Tooltip as any).instance).toBe(null);
+    });
+
+    it('6. disposing A dismisses the tooltip visible for A through its destroy hook', () => {
+        const { a } = twoAttached();
+
+        showFor(a);
+
+        a.dispose();
+
+        // The destroy hook's `detach` runs before `Component.destructor` releases
+        // the element handle, so the anchor comparison still resolves.
+        expect((Tooltip as any).activeElement).toBe(null);
+    });
+
+    it('7. detaching a component that was never attached is a no-op', () => {
+        const { b } = twoAttached();
+
+        installTestDOM(CONFIG);
+
+        const never = new Component({});
+        never.getElement(true);
+
+        showFor(b);
+
+        Tooltip.detach(never);
+
+        expect((Tooltip as any).dismissing).toBe(false);
+        expect((Tooltip as any).activeElement).toBe(b.getElement());
+    });
+
+    it('8. re-attaching A with new text still dismisses A\'s own visible tooltip', () => {
+        const { a } = twoAttached();
+
+        showFor(a);
+
+        Tooltip.attach(a, 'new text');
+
+        expect((Tooltip as any).dismissing).toBe(true);
+        expect((Tooltip as any).activeElement).toBe(null);
+    });
+
+    /**
+     * An attached component that was never rendered. `getElement()` hands back
+     * the element lookup's own miss — a nullish handle — so a component with no
+     * element must not be mistaken for the anchor of a tooltip nobody is
+     * showing, whose `activeElement` is equally nullish. This is the common
+     * case, not an exotic one: a `Button` re-deriving its tooltip on `setText`
+     * reaches `detach` long before anything renders it.
+     *
+     * @returns The unrendered, attached component.
+     */
+    function unrenderedAttached(): Component {
+        const component = new Component({});
+
+        Tooltip.attach(component, 'unrendered');
+
+        return component;
+    }
+
+    it('9. detaching an unrendered component leaves the tooltip visible for A on screen', () => {
+        const { a } = twoAttached();
+        const never = unrenderedAttached();
+
+        showFor(a);
+
+        Tooltip.detach(never);
+
+        expect((Tooltip as any).dismissing).toBe(false);
+        expect((Tooltip as any).activeElement).toBe(a.getElement());
+    });
+
+    it('10. detaching an unrendered component leaves the hover delay A armed running', () => {
+        const { a } = twoAttached();
+        const never = unrenderedAttached();
+
+        hoverOver(a);
+
+        Tooltip.detach(never);
+
+        expect((Tooltip as any).showTimer).not.toBe(null);
+        expect((Tooltip as any).pendingId).toBe(a.getId());
+    });
+
+    it('11. detaching an unrendered component never builds the singleton', () => {
+        installTestDOM(CONFIG);
+
+        const never = unrenderedAttached();
+
+        Tooltip.detach(never);
+
+        expect((Tooltip as any).instance).toBe(null);
     });
 });
