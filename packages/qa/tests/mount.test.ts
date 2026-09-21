@@ -10,10 +10,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Body, Component, DOM } from '@jimka/typescript-ui/core';
 import { AbstractWindow } from '@jimka/typescript-ui/overlay';
 import { createTools, parseDrive } from '../src/harness/run.js';
-import type { HarnessTools } from '../src/harness/types.js';
+import type { CallTarget, HarnessTools } from '../src/harness/types.js';
 import { mountPanel } from '../src/mount.js';
 import type { MountedPanel, MountWaits } from '../src/mount.js';
-import { getPanelIds } from '../src/panels.js';
+import { getPanelIds, loadPanel } from '../src/panels.js';
 
 // The library applies its default theme at the first `Body` touch.
 // Constructing the singleton here applies that theme before any tree this
@@ -254,6 +254,27 @@ describe('P14 panel parameters', () => {
         await expect(mountPanel('form-flat', new URLSearchParams('n=3&passes=nope'), tools, waits))
             .rejects.toThrow('form-flat: unknown passes "nope" (expected form, header, date, combo)');
         expect(waited).toEqual([]);
+    });
+
+    it('form-flat rejects an unknown click in build, before any wait', async () => {
+        const { waits, waited } = recordingSmokeWaits();
+
+        await expect(mountPanel('form-flat', new URLSearchParams('n=3&click=nope'), tools, waits))
+            .rejects.toThrow('form-flat: unknown click "nope" (expected toggle, root, combo)');
+        expect(waited).toEqual([]);
+    });
+
+    it('form-flat offers update once it holds a slider, and its write needs no mount', async () => {
+        // The first slider is field 8, so `n=7` holds none. The write is
+        // called unmounted, as in P1: a programmatic write that dispatched a
+        // DOM event would throw here for want of an element.
+        const module = await loadPanel('form-flat');
+        const withSlider = module!.build(8, new URLSearchParams());
+        const withoutSlider = module!.build(7, new URLSearchParams());
+
+        expect(typeof withSlider.targets.update).toBe('function');
+        expect(withoutSlider.targets.update).toBeUndefined();
+        expect(() => (withSlider.targets.update as CallTarget)(0)).not.toThrow();
     });
 
     it('windows rejects an unknown grip in afterMount, once painted and settled', async () => {
