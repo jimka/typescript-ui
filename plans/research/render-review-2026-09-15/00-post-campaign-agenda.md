@@ -184,6 +184,21 @@ G10 and G15 stay dropped (`98-wave2-rejustification.md`,
   this list. Still a user call, but no longer an open question.
 - `npm run docs:api` emits 14 warnings on `master`, so plans must stop
   writing a zero-warning bar into their verification, or the 14 get fixed.
+- **A blob object URL leaks on every blocked store-worker construction
+  under a strict CSP** (found 2026-09-20 by the review that consolidated
+  phase 2's first batch; moved here from `01-phase2-status-pass.md`
+  2026-09-21). Vite's inline-worker shim does `createObjectURL(blob)` →
+  `new Worker(objURL)` → on failure `new Worker("data:…")`, and revokes the
+  object URL only from the worker's own `error` listener. Under a policy
+  allowing neither `blob:` nor `data:`, the URL is never revoked and both
+  attempts emit a violation — once per `applyView()` on every store over the
+  threshold, because `isAvailable()` calls `ensureWorker()`. The view is
+  still built and every event still fires, so this is noise and a bounded
+  leak, not incorrectness. The reviewer's suggested remedy — retiring the
+  client when construction throws — contradicts
+  `plans/implemented/store-worker-fail-safe.md`'s Architecture Decisions,
+  which state the opposite as the design, so it needs its own small plan
+  that revisits that decision rather than an in-flight fix.
 - The library's own demo app (`packages/lib/index.html`, entry
   `src/typescript/main.ts`) puts 32 demo panels in one `Tab` layout, so the
   tab bar is squashed. The user wants it restructured; it is its own piece of

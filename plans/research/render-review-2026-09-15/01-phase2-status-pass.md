@@ -315,17 +315,9 @@ deadline generous enough not to punish a slow sort, not a change of design.
 Found by the consolidating review, 2026-09-20.
 
 **A blob object URL leaks on every blocked construction under a strict
-CSP.** Vite's inline-worker shim does `createObjectURL(blob)` → `new
-Worker(objURL)` → on failure `new Worker("data:…")`, and revokes the object
-URL only from the worker's own `error` listener. Under a policy allowing
-neither `blob:` nor `data:`, the URL is never revoked and both attempts emit
-a violation — once per `applyView()` on every store over the threshold,
-because `isAvailable()` calls `ensureWorker()`. The view is still built and
-every event still fires, so this is noise and a bounded leak, not
-incorrectness. The reviewer's suggested remedy — retiring the client when
-construction throws — contradicts the shipped plan's Architecture Decisions,
-which state the opposite as the design, so it needs its own small plan that
-revisits that decision rather than an in-flight fix.
+CSP.** Moved 2026-09-21 to `00-post-campaign-agenda.md`, "Open, not yet
+placed", where it waits for a plan that revisits `store-worker-fail-safe`'s
+design decision.
 
 **C40 — `Checkbox.on("action")` both misses real clicks and invents fake
 ones.** Found while planning C34, and verified by probe. `on("action")` is
