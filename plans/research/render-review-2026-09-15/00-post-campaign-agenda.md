@@ -271,3 +271,41 @@ say so; the rest are open.
   `LabeledGrid`'s field descriptions hit this. The fix needs a
   nearest-tooltip-wins subtree mode, not the covering mode the decorator
   fix adds for its error.
+
+## Found by the post-merge audit of phase 2's follow-ups (2026-09-21)
+
+Six fresh reviewers audited the merged batch (`4952f384..09a99c2a`) and
+Loom's harness retirement. Only `field-decorator-pointer-tooltip` drew
+blocking findings, all of them untested contracts rather than code defects;
+`feature/tooltip-ownership-test-gaps` adds the tests (the audit loop hit its
+three-round cap, and its last fix was verified by hand). The advisories
+worth a plan of their own are all open:
+
+- **A user activation can throw after its own listener disposes the
+  control.** `Checkbox.activate` and `Slider`'s user path (`Checkbox.ts:407`,
+  `Slider.ts:636`) fire `"action"` without re-checking the element, so a
+  `"change"` or `"binding"` listener that disposes the control (a form rebuilt
+  on a record change) makes `Event.fireEvent` throw and abort the rest of the
+  dispatch. The old `setSelected` path guarded this. `RadioButton.ts:334` and
+  `ToggleButton.ts:284` have the same exposure; `AbstractSelectableList.
+  fireChange` is the guarded precedent. Fix all four together.
+- **`parseClockTime` is looser than the docs now claim.** It accepts
+  `9:30:00:99`, `1e1:30`, `0x9:30`, `9.5:30` and `09:30:` (`dateMath.ts:241`),
+  which `TimeField`, `DateTimeField` and the table's time editors all share,
+  while the new editor docs and the changelog say a typed value the text never
+  named is no longer committed. One tightening fixes all five.
+- **The decorator's error arms only when the pointer enters from outside.**
+  `showError` called while the pointer already rests on the field — validation
+  on change after a click into it, the common case — shows nothing until the
+  pointer leaves and comes back, because moves between the field's own parts
+  are ignored (`Tooltip.ts:620-626`). `FieldDecorator.showError`'s JSDoc
+  promises the error "when the pointer rests anywhere on the decorated field".
+- **A tooltip shown through `Tooltip.show` is no longer hidden when the
+  pointer leaves an `attach` host.** The leave rule now hides only a tooltip
+  the host owns, and `show` records no owner. No caller in the library, Loom
+  or SQLAdmin relies on the old behaviour (`AbstractChart` hides its own), but
+  the changelog says "No consumer action is needed" and `Tooltip.md`'s manual
+  control section does not mention it.
+- **ARCHITECTURE.md does not name `Tooltip`'s attach family as an exception**
+  to its rule against listening on another component's events, though
+  `attach` always did so and `attachCovering` now does it on a subtree.
