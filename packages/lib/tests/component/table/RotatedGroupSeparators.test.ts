@@ -350,6 +350,47 @@ describe('Table rotated mode — group separators', () => {
         expect(fieldCellOf(rowFor(table, 'street')).getInsets().getLeft()).toBe(DEFAULT_INDENT_PX);
     });
 
+    it('carries no group indent into normal mode once rotated back', async () => {
+        // `field` shares the plain "string" cell-reuse key with every string
+        // source column, so an indented `field` cell is recycled into one of
+        // them on the way back — the indent must not travel with it.
+        const { store, records } = await makeStore();
+        const table = makeTable(store);
+        const renderedIndents = (): number[] => (table as any)._body.getRowPool()
+            .filter((row: any) => row.isDisplayed())
+            .flatMap((row: any) => row.getComponents())
+            .map((cell: any) => cell.getInsets().getLeft());
+
+        table.selectRecord(records[0]);
+        table.setWidth(600);
+        table.setHeight(400);
+        table.doLayout();
+
+        table.setDisplayMode('rotated');
+        table.doLayout();
+
+        expect(fieldCellOf(rowFor(table, 'street')).getInsets().getLeft()).toBe(DEFAULT_INDENT_PX);
+
+        table.setDisplayMode('normal');
+        table.doLayout();
+
+        expect(renderedIndents().length).toBeGreaterThan(0);
+        expect(renderedIndents().filter(left => left !== 0)).toEqual([]);
+
+        // The two records leave the rotated pool's other rows parked with
+        // their indented cells; growing the store brings every one of them
+        // back into normal-mode use.
+        store.add([
+            { street: '3 Main St', city: 'Ogdenville',       zip: '00003', cost: 300 },
+            { street: '4 Main St', city: 'North Haverbrook', zip: '00004', cost: 400 },
+            { street: '5 Main St', city: 'Capital City',     zip: '00005', cost: 500 },
+        ]);
+        table.doLayout();
+
+        expect(renderedIndents().length).toBe(5 * 4);
+        expect(renderedIndents().filter(left => left !== 0)).toEqual([]);
+    });
+
     it("reserves indent space in the field column's derived width when a group exists", async () => {
         // Both models declare the same single field, so the raw measured
         // text width is identical between the two tables — any width

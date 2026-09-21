@@ -349,4 +349,26 @@ describe('Row cell cache', () => {
         row.setColumnFields(MODEL, new Set(), new Map());
         expect(cacheSize(row)).toBe(0);
     });
+
+    it("a rotated group member's field cell leaves its indent behind when a separator flip retires it", () => {
+        // The rotated projection's `field` column shares the plain "string"
+        // key, so the retired cell can be restored into any string column —
+        // or disposed by the next setColumnFields — and must hold no indent.
+        const rotated = new Model([
+            { name: 'field', type: 'string', order: 0 },
+            { name: 'value', type: 'string', order: 1 },
+        ]);
+        const row = new Row(rotated, undefined, new Set(), new Map());
+
+        row.setColumnWindow(0, 1);
+        row.setFieldIndent(true);
+
+        const fieldCell = row.getComponents()[0];
+
+        expect(fieldCell.getInsets().getLeft()).toBeGreaterThan(0);
+
+        row.renderSeparator('g', null);
+
+        expect(fieldCell.getInsets().getLeft()).toBe(0);
+    });
 });

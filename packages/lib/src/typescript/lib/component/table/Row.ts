@@ -143,6 +143,11 @@ class Row extends Component {
     // usual per-column cells (rotated-mode group runs only). Not for
     // consumer use.
     private _separatorMode: boolean = false;
+    // The cell `setFieldIndent` last indented. Cells are recycled by reuse
+    // key and `field` shares the plain "string" key with ordinary string
+    // columns, so the indent is cleared off this cell once it leaves the
+    // `field` slot rather than travelling with it into another column.
+    private _indentedCell: Cell<any> | null = null;
 
     constructor(
         model?: AbstractModel,
@@ -245,25 +250,28 @@ class Row extends Component {
      * Indents this row's `field`-name cell by `DEFAULT_INDENT_PX` (from
      * `TreeCellRenderer` — the same per-level indent Tree uses) so a
      * rotated-mode group's member rows read as visually nested under their
-     * {@link GroupSeparatorCell}, or restores it flush-left. A no-op when
-     * this row has no `field` cell in its current window (outside rotated
-     * mode, or a separator row).
+     * {@link GroupSeparatorCell}, or restores it flush-left. Also clears the
+     * indent off a previously-indented cell that has since left the `field`
+     * slot, so a recycled cell never carries it into another column; beyond
+     * that, a no-op when this row has no `field` cell in its current window
+     * (outside rotated mode, or a separator row).
      *
      * @param indented - `true` to indent, `false` to restore flush-left.
      *
      * @remarks Not for consumer use — called by `Body.bindAndPositionRows`
-     * via the `Table`-supplied indent predicate.
+     * via the `Table`-supplied indent predicate, after every window change.
      */
     setFieldIndent(indented: boolean): void {
         const slot = this._fieldNames.indexOf('field');
+        const cell = slot === -1 ? null : this.getComponents()[slot] as Cell<any>;
 
-        if (slot === -1) {
-            return;
+        if (this._indentedCell && this._indentedCell !== cell) {
+            this._indentedCell.clearInsets();
         }
 
-        const cell = this.getComponents()[slot] as Cell<any>;
+        this._indentedCell = indented ? cell : null;
 
-        cell.setInsets(new Insets(0, 0, 0, indented ? DEFAULT_INDENT_PX : 0));
+        cell?.setInsets(new Insets(0, 0, 0, indented ? DEFAULT_INDENT_PX : 0));
     }
 
     /**
@@ -941,6 +949,12 @@ class Row extends Component {
      * never `_cellCache`). Without this, a cell retired while it still
      * carried the keyboard-focus ring would carry the stale `.focused`
      * token into whichever column later restores it from the cache.
+     *
+     * Clears a rotated-group indent the same way, and for the same reason:
+     * `renderSeparator` retires the `field` cell with no
+     * {@link setFieldIndent} call following, so the indent would otherwise
+     * ride into the cache — where the next `setColumnFields` may dispose the
+     * very cell `_indentedCell` still points at.
      */
     private retireCell(cell: Cell<any>, key: string | undefined): void {
         if (cell.isEditing()) {
@@ -948,6 +962,11 @@ class Row extends Component {
         }
 
         cell.setStyleState(".focused", false);
+
+        if (cell === this._indentedCell) {
+            cell.clearInsets();
+            this._indentedCell = null;
+        }
 
         this.removeComponent(cell);
 
