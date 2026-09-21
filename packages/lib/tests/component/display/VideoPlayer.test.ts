@@ -5,7 +5,8 @@ import { ProgressiveEngine } from '~/component/display/PlaybackEngine';
 import type { PlaybackEngine } from '~/component/display/PlaybackEngine';
 import type { MediaState } from '~/core/DOM';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { Event } from '~/core/Event';
+import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -164,6 +165,67 @@ describe('VideoPlayer.syncFromState', () => {
         internals(player).syncFromState(state({ currentTime: 90, duration: 120 }));
 
         expect(internals(player)._scrubber.getValue()).toBe(30);
+    });
+});
+
+describe('VideoPlayer scrubber action', () => {
+    let sink: RecordingDOMSink;
+
+    beforeEach(() => {
+        // The file-level beforeEach installs the DOM but does not purge, so
+        // the window-level listeners earlier cases' players registered stay
+        // pinned to a torn-down window. Purging re-installs them against this
+        // one — without it the ArrowRight below would reach nothing.
+        // Ritual copied from tests/component/input/Slider.test.ts.
+        sink = installTestDOM(CONFIG);
+
+        for (const id of Event._registeredComponentIds()) {
+            Event.purgeComponent(id);
+        }
+    });
+
+    /** Realises `component`'s element and every descendant's. */
+    function realise(component: any): void {
+        component.getElement(true);
+
+        for (const child of component.getComponents?.() ?? []) {
+            realise(child);
+        }
+    }
+
+    /** A player with every element realised, and a spy on its video's seek. */
+    function mountedPlayer(): { player: VideoPlayer; seek: ReturnType<typeof vi.spyOn> } {
+        const player = new VideoPlayer();
+
+        realise(player);
+
+        const seek = vi.spyOn((internals(player) as any)._video, 'setCurrentTime');
+
+        return { player, seek };
+    }
+
+    it('does not seek, scrub or dispatch input when a sync moves the scrubber', () => {
+        const { player, seek } = mountedPlayer();
+        const start            = sink.writes.length;
+
+        internals(player).syncFromState(state({ currentTime: 30, duration: 120 }));
+
+        expect(internals(player)._scrubber.getValue()).toBe(30);
+        expect(seek).not.toHaveBeenCalled();
+        expect(internals(player)._scrubbing).toBe(false);
+        expect(sink.writes.slice(start).filter((w) => w.op === 'dispatchEvent' && w.args[0] === 'input')).toHaveLength(0);
+    });
+
+    it('seeks and starts scrubbing on a user step of the scrubber', () => {
+        const { player, seek } = mountedPlayer();
+        const scrubber         = (internals(player) as any)._scrubber;
+
+        internals(player).syncFromState(state({ currentTime: 30, duration: 120 }));
+        Event.fireEvent(scrubber, makeEvent(scrubber.getElement(true)!, 'keydown', { key: 'ArrowRight' }) as any);
+
+        expect(seek).toHaveBeenCalledTimes(1);
+        expect(seek).toHaveBeenCalledWith(31);
+        expect(internals(player)._scrubbing).toBe(true);
     });
 });
 

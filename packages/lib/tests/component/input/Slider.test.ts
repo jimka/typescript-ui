@@ -4,12 +4,12 @@
 //  - The snap math, deprecated aliases, and getters are exercised on a bare
 //    (unmounted) Slider — `snap()` is the private unit under test and is
 //    reached via an `any` cast confined to this file.
-//  - `setValue` calls `Event.fireEvent(this, "input")`, which throws on an
-//    unmounted Slider, so the `setValue` round-trip + `change`-listener block
-//    mounts the slider via the TestDOM ritual copied from
-//    tests/component/layout/Tab.test.ts and resets the DOM after each case.
+//  - `setValue` dispatches nothing and works unmounted. The mounted blocks
+//    mount for layout, or to drive real events, via the TestDOM ritual copied
+//    from tests/component/layout/Tab.test.ts, and reset the DOM after each
+//    case.
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { Slider } from '~/component/input/Slider';
+import { Slider, type SliderOptions } from '~/component/input/Slider';
 import { Container } from '~/core/Container';
 import { Insets } from '~/primitive/Insets';
 import { UNBOUNDED } from '~/primitive/Size';
@@ -202,6 +202,22 @@ describe('Slider initial value contract', () => {
     });
 });
 
+describe('Slider setValue (unmounted)', () => {
+    it('sets the value and fires change once without throwing', () => {
+        // CONTRACT: setValue dispatches no DOM event, so it needs no element.
+        const slider = new Slider();
+
+        let changes = 0;
+        slider.on('change', () => {
+            changes += 1;
+        });
+
+        expect(() => slider.setValue(30)).not.toThrow();
+        expect(slider.getValue()).toBe(30);
+        expect(changes).toBe(1);
+    });
+});
+
 describe('Slider setValue round-trip (mounted)', () => {
     afterEach(() => DOM.reset());
 
@@ -211,16 +227,13 @@ describe('Slider setValue round-trip (mounted)', () => {
         const host   = new Container({});
         const slider: Slider = new Slider({ min: 0, max: 100, step: 10 });
         host.addComponent(slider);
-        // Realise the element so Event.fireEvent("input") inside setValue finds
-        // a mounted node rather than throwing "is not in the DOM".
         host.getElement(true);
         slider.getElement(true);
         // Construction + realization queued the host subtree into the
         // module-level pending-layout set; drain it synchronously now (while the
         // elements are valid) and pause both so setValue's further
         // scheduleLayout calls never re-queue a frame that another file's real
-        // rAF would flush against a reset DOM after teardown. fireEvent only
-        // needs the element to exist, not a live frame.
+        // rAF would flush against a reset DOM after teardown.
         quiesce(host, slider);
 
         let changes = 0;
@@ -324,6 +337,136 @@ describe('Slider keydown — stands down while SpatialNavigation claims the key'
         Event.fireEvent(slider, makeEvent(slider.getElement(true)!, 'keydown', { key: 'ArrowRight' }) as any);
 
         expect(slider.getValue()).toBe(0);
+    });
+});
+
+// `"action"` reports the user's own value steps — a drag sample or a value key
+// that moves the thumb — and never a programmatic setValue.
+describe('Slider action delivery (mounted)', () => {
+    afterEach(() => DOM.reset());
+
+    /**
+     * Installs a fresh TestDOM and purges every component registered with
+     * `Event`, so the window-level listeners this file's earlier Sliders left
+     * pinned to a torn-down window are re-installed against this one. Without
+     * it every "zero actions" assertion here would pass vacuously. Ritual
+     * copied from `freshKeydownWindow` above.
+     *
+     * @returns The recording sink the fresh TestDOM writes to.
+     */
+    function freshEventWindow(): RecordingDOMSink {
+        const sink = installTestDOM(CONFIG);
+
+        for (const id of Event._registeredComponentIds()) {
+            Event.purgeComponent(id);
+        }
+
+        return sink;
+    }
+
+    /**
+     * A mounted, quiesced Slider at (0, 0), 200 × 16 — the geometry the
+     * `valueAtPointer` block's `mapper` gives it, so a pointer at `clientX`
+     * maps to `clientX / 2`.
+     */
+    function mountedSlider(options: SliderOptions): { sink: RecordingDOMSink; slider: any; actions: () => number } {
+        const sink   = freshEventWindow();
+        const host   = new Container({});
+        const slider = new Slider(options) as any;
+
+        host.addComponent(slider);
+        host.getElement(true);
+        slider.getElement(true);
+        host.setX(0);
+        host.setY(0);
+        slider.setX(0);
+        slider.setY(0);
+        slider.setWidth(200);
+        slider.setHeight(16);
+        slider.doLayout();
+        quiesce(host, slider);
+
+        let count = 0;
+        slider.on('action', () => {
+            count += 1;
+        });
+
+        return { sink, slider, actions: (): number => count };
+    }
+
+    /** Dispatches a keydown for `key` on `slider`'s element. */
+    function press(slider: any, key: string): void {
+        Event.fireEvent(slider, makeEvent(slider.getElement(true)!, 'keydown', { key }) as any);
+    }
+
+    /** Dispatches a primary-button pointer event of `type` at `clientX` on `slider`'s element. */
+    function pointer(slider: any, type: string, clientX: number): void {
+        Event.fireEvent(slider, makeEvent(slider.getElement(true)!, type, { button: 0, buttons: 1, pointerId: 1, clientX, clientY: 8 }) as any);
+    }
+
+    it('stays silent for a programmatic setValue, which still fires change', () => {
+        const { sink, slider, actions } = mountedSlider({ min: 0, max: 100 });
+
+        let changes = 0;
+        slider.on('change', () => {
+            changes += 1;
+        });
+
+        const start = sink.writes.length;
+        slider.setValue(20);
+
+        expect(slider.getValue()).toBe(20);
+        expect(actions()).toBe(0);
+        expect(sink.writes.slice(start).filter((w: any) => w.op === 'dispatchEvent' && w.args[0] === 'input')).toHaveLength(0);
+        expect(changes).toBe(1);
+    });
+
+    it('fires action once per value key that moves the thumb', () => {
+        const { slider, actions } = mountedSlider({ min: 0, max: 100, step: 1, value: 10 });
+
+        press(slider, 'ArrowRight');
+
+        expect(slider.getValue()).toBe(11);
+        expect(actions()).toBe(1);
+
+        press(slider, 'End');
+
+        expect(slider.getValue()).toBe(100);
+        expect(actions()).toBe(2);
+
+        press(slider, 'End');
+
+        expect(slider.getValue()).toBe(100);
+        expect(actions()).toBe(2);
+    });
+
+    it('fires action once per drag sample that moves the thumb', () => {
+        const { slider, actions } = mountedSlider({ min: 0, max: 100 });
+
+        pointer(slider, 'pointerdown', 100);
+
+        expect(slider.getValue()).toBe(50);
+        expect(actions()).toBe(1);
+
+        pointer(slider, 'pointermove', 150);
+
+        expect(slider.getValue()).toBe(75);
+        expect(actions()).toBe(2);
+
+        pointer(slider, 'pointermove', 150);
+
+        expect(slider.getValue()).toBe(75);
+        expect(actions()).toBe(2);
+    });
+
+    it('stays silent for a value key on a disabled slider', () => {
+        const { slider, actions } = mountedSlider({ min: 0, max: 100, step: 1, value: 10 });
+
+        slider.setEnabled(false);
+        press(slider, 'Home');
+
+        expect(slider.getValue()).toBe(10);
+        expect(actions()).toBe(0);
     });
 });
 

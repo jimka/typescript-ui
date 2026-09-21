@@ -237,7 +237,8 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
 
     /**
      * Sets the slider value, clamped to `[min, max]` and snapped to `step`.
-     * Notifies change and binding listeners only on a real transition.
+     * Notifies change and binding listeners only on a real transition. Never
+     * fires `"action"`, which reports the user's own drag and key steps only.
      *
      * @param value - The desired value.
      *
@@ -252,11 +253,6 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         this._options.value = next;
         this.applyValue(next);
         this.notifyChange(next);
-
-        // Existing consumers wire to "input" via `on("action", fn)`. Fire so
-        // demos that read `slider.getValue()` from an `input` callback keep
-        // working.
-        Event.fireEvent(this, "input");
 
         return this;
     }
@@ -383,10 +379,11 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
 
     /**
      * Registers a listener for one of this slider's events. `"action"` is a
-     * typed semantic shorthand over {@link Event.addListener} for the
-     * value-change event (the native `input`, fired on each drag step);
-     * `"change"` and `"binding"` are the inherited {@link AbstractInput}
-     * listener-bag events.
+     * typed semantic shorthand over {@link Event.addListener} for the DOM
+     * `input` the slider fires for each user step that moves the value — a
+     * drag sample, or an arrow, Page, Home or End key — never for a
+     * programmatic {@link setValue}. `"change"` and `"binding"` are the
+     * inherited {@link AbstractInput} listener-bag events, and fire for both.
      *
      * @param event - The event name.
      * @param listener - The callback to invoke when the event fires.
@@ -541,7 +538,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
                 this._draggingPointer = e.pointerId;
             }
 
-            this.setValue(this.valueAtPointer(e));
+            this.setValueFromUser(this.valueAtPointer(e));
 
             return { prevent: true };
         });
@@ -554,7 +551,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
                 return;
             }
 
-            this.setValue(this.valueAtPointer(e));
+            this.setValueFromUser(this.valueAtPointer(e));
         });
 
         const release = (e: PointerEvent): void => {
@@ -594,32 +591,50 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             switch (e.key) {
                 case "ArrowRight":
                 case "ArrowUp":
-                    this.setValue(this.getValue() + step);
+                    this.setValueFromUser(this.getValue() + step);
 
                     return { prevent: true };
                 case "ArrowLeft":
                 case "ArrowDown":
-                    this.setValue(this.getValue() - step);
+                    this.setValueFromUser(this.getValue() - step);
 
                     return { prevent: true };
                 case "PageUp":
-                    this.setValue(this.getValue() + largeStep);
+                    this.setValueFromUser(this.getValue() + largeStep);
 
                     return { prevent: true };
                 case "PageDown":
-                    this.setValue(this.getValue() - largeStep);
+                    this.setValueFromUser(this.getValue() - largeStep);
 
                     return { prevent: true };
                 case "Home":
-                    this.setValue(min);
+                    this.setValueFromUser(min);
 
                     return { prevent: true };
                 case "End":
-                    this.setValue(max);
+                    this.setValueFromUser(max);
 
                     return { prevent: true };
             }
         });
+    }
+
+    /**
+     * The user's value path, for the pointer and keyboard handlers: sets the value
+     * like {@link setValue} and, when that moved it, fires the DOM `input` that
+     * `on("action", fn)` listens for. Dispatching here rather than in `setValue`
+     * is what keeps a programmatic write out of `"action"`.
+     *
+     * @param value - The value the gesture asks for, before clamping and snapping.
+     */
+    private setValueFromUser(value: number): void {
+        const before = this.getValue();
+
+        this.setValue(value);
+
+        if (this.getValue() !== before) {
+            Event.fireEvent(this, "input");
+        }
     }
 
     /**

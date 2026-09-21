@@ -163,9 +163,10 @@ class VideoPlayer extends Component<VideoPlayerOptions> {
     private _scrubbing: boolean = false;
 
     /**
-     * Guards against a programmatic `setValue` on a slider re-entering its own
-     * `action` / `change` handler — every {@link Slider.setValue} fires those
-     * events, so a `syncFromState` write would otherwise loop back as a seek.
+     * Guards `onVolumeSlider` against the `"change"` that a `syncFromState`
+     * volume write fires, which would otherwise loop back as a volume write.
+     * The scrubber's `"action"` never fires for a programmatic write, so it
+     * needs no guard.
      */
     private _syncing: boolean = false;
 
@@ -675,10 +676,6 @@ class VideoPlayer extends Component<VideoPlayerOptions> {
 
     /** Marks the scrubber as being dragged and seeks the video to its value. */
     private beginScrub(): void {
-        if (this._syncing) {
-            return;
-        }
-
         this._scrubbing = true;
         this._video.setCurrentTime(this._scrubber.getValue());
     }
