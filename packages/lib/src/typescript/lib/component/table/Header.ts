@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { TimerId } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Row } from "~/component/table/Row.js";
 import { AbstractModel } from "~/data/AbstractModel.js";
@@ -293,7 +294,7 @@ class TableHeader extends Component {
     // on the cell because a horizontal scroll can recycle the cell onto a
     // different column while the write is still in flight.
     private _pendingFilterField: string | null = null;
-    private _filterTimer       : ReturnType<typeof setTimeout> | null = null;
+    private _filterTimer       : TimerId | null = null;
     private _boundOnStoreFilterChange: () => void = () => this.onStoreFilterChange();
 
     // Per-field column config, supplying `values` / `showSeconds` to
@@ -668,7 +669,7 @@ class TableHeader extends Component {
      */
     private clearFilterRowState(): void {
         if (this._filterTimer !== null) {
-            clearTimeout(this._filterTimer);
+            DOM.sink.clearTimeout(this._filterTimer);
             this._filterTimer = null;
         }
 
@@ -1384,7 +1385,7 @@ class TableHeader extends Component {
         }
 
         if (this._filterTimer !== null) {
-            clearTimeout(this._filterTimer);
+            DOM.sink.clearTimeout(this._filterTimer);
             this._filterTimer = null;
         }
 
@@ -1393,7 +1394,7 @@ class TableHeader extends Component {
         if (immediate) {
             this.applyPendingFilter();
         } else {
-            this._filterTimer = setTimeout(() => this.applyPendingFilter(), COLUMN_FILTER_DEBOUNCE_MS);
+            this._filterTimer = DOM.sink.setTimeout(() => this.applyPendingFilter(), COLUMN_FILTER_DEBOUNCE_MS);
         }
     }
 
@@ -1426,7 +1427,7 @@ class TableHeader extends Component {
      */
     private applyPendingFilter(): void {
         if (this._filterTimer !== null) {
-            clearTimeout(this._filterTimer);
+            DOM.sink.clearTimeout(this._filterTimer);
             this._filterTimer = null;
         }
 
@@ -1745,7 +1746,7 @@ class TableHeader extends Component {
      */
     protected destructor(): void {
         if (this._filterTimer !== null) {
-            clearTimeout(this._filterTimer);
+            DOM.sink.clearTimeout(this._filterTimer);
             this._filterTimer = null;
         }
 

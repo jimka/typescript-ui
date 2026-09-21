@@ -398,15 +398,37 @@ branch; each was left deliberately rather than missed.
 **Test-suite health, all pre-existing and confirmed on `master`:**
 
 - `textRange(...).getClientRects is not a function` prints on **every** master
-  run as stderr noise without failing the suite.
+  run as stderr noise without failing the suite. **Fixed by
+  `plans/test-suite-health.md` (2026-09-21):** the two `CodeEditor` cases in
+  the jsdom `FocusTraversalCompositeWidgets.test.ts` never disposed their
+  editors, so CodeMirror's measure frame ran after each case and called
+  `Range.getClientRects`, which jsdom does not implement.
 - `DOM handle N is not registered (released or never minted)` surfaces
   intermittently as an unhandled rejection. Together these made one full-suite
   run of the phase 3 tip report a single failure that does not reproduce.
+  **Fixed by `plans/test-suite-health.md` (2026-09-21):** `TableHeader`'s
+  200 ms filter-row keystroke debounce used the bare global `setTimeout`,
+  which `DOM.reset()` cannot cancel, so a timer a test left armed fired later
+  and redrew the header through handles from a discarded DOM.
 - **`packages/docs` has no Vite alias to the local `packages/lib`**, so from a
   worktree its suite resolves the *main* checkout's `dist` — docs tests in a
   worktree do not exercise the worktree's library at all. Found while
   verifying `body-lazy-singleton`, which bridged it by hand and removed the
-  bridge afterwards.
+  bridge afterwards. **Fixed by `plans/test-suite-health.md` (2026-09-21):**
+  `packages/docs/vite.config.ts` had no alias, so `@jimka/typescript-ui`
+  resolved through the `node_modules` symlink, which in a worktree points at
+  the main tree's build.
+- **The `ColumnFilterRow` keystroke debounce**, found since: four tests typed
+  into a filter cell under real timers and ended with the header's debounce
+  still armed. The same defect as the `DOM handle` bullet above, fixed by the
+  same plan.
+- **The `collectSyntaxErrors` cap test** in `code-editor.test.ts` reported 90
+  diagnostics instead of 100 in one run of 27: `EditorState.create` parses
+  for at most 20 ms, so a busy machine left the tree incomplete. A flake found
+  while reproducing the two above, fixed by the same plan.
+- **Open: `Notification.startTimer`** is a bare `setTimeout` whose callback
+  writes to elements, left armed by about 60 tests per run and dormant only
+  because 3 s outlasts every test file.
 
 **Unmeasured cost:** `canvas-idle-loops` leaves one `isEffectivelyVisible()`
 ancestor walk per child re-attach, on a path that runs per frame during a

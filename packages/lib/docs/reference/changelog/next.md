@@ -1091,6 +1091,15 @@ page resets to empty.
   element existed starts on its first connected layout instead. No consumer
   action is needed.
 
+- **`DOM.reset()` now cancels a `Table` filter-row keystroke that is still
+  waiting on its debounce.** The filter row's 200 ms keystroke timer used the
+  bare global `setTimeout`, which `DOM.reset()` cannot reach, so a test that
+  typed into a filter cell and then reset the DOM had the store write fire
+  afterwards. The table then redrew through handles the reset had discarded,
+  and the seam threw a "DOM handle N is not registered" rejection. The timer
+  now goes through `DOM.sink`, like `AutoCompleteField`'s. No consumer action
+  is needed.
+
 ### Data
 
 - **A store holding 1,000 records or more now builds its view.** Above that

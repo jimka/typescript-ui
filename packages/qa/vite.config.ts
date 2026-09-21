@@ -1,7 +1,8 @@
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, searchForWorkspaceRoot } from 'vite'
-import { outsideAppSource, qaLibraryPlugin, qaReportPlugin } from './vite/plugins.js'
+import { outsideAppSource, qaReportPlugin } from './vite/plugins.js'
+import { libraryBuildPlugin } from '../../build/libraryBuildAlias.js'
 
 // The QA app's own config; Vitest reads it too, so tests resolve the library
 // exactly as the page does. See README.md.
@@ -20,7 +21,7 @@ const LIB_DIR = path.resolve(process.env.QA_LIB ?? path.join(ROOT, '../lib'))
 const QA_PORT = 5190
 
 export default defineConfig({
-  plugins: [qaLibraryPlugin({ libDir: LIB_DIR }), qaReportPlugin({ resultsDir: path.join(ROOT, 'results') })],
+  plugins: [libraryBuildPlugin({ libDir: LIB_DIR }), qaReportPlugin({ resultsDir: path.join(ROOT, 'results') })],
   define: { __QA_LIB__: JSON.stringify(LIB_DIR) },
   // Scan dependencies from the page only, never a stray .html under the root.
   optimizeDeps: { entries: ['index.html'] },

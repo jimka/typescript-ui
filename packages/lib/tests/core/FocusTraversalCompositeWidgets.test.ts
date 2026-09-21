@@ -12,7 +12,7 @@
 // returns what a test explicitly seeds — it cannot answer "does this real
 // widget's rendered markup produce one match," which is exactly the question
 // this audit asks.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { findFocusable } from '~/core/Focusable';
@@ -186,8 +186,24 @@ describe('A Tab-key owner\'s own tab stop (CodeEditor)', () => {
     // the editor entirely, and `stopAfterOwner`/`stopBeforeOwner` have a real
     // in-owner stop to step past rather than always falling back to the
     // first/last stop of the root.
+
+    // Every editor a case below builds, disposed after it. Mounting starts
+    // CodeMirror's measure cycle on an animation frame; left undisposed, that
+    // frame runs after the case has ended, and its selection layer calls
+    // `Range.getClientRects`, which jsdom does not implement, so CodeMirror
+    // logs a TypeError. Disposing destroys the view, which cancels the frame.
+    // Mirrors MarkdownHeadingScoping.test.ts's `panes`.
+    const editors: CodeEditor[] = [];
+
+    afterEach(() => {
+        for (const editor of editors.splice(0)) {
+            editor.dispose();
+        }
+    });
+
     it('a resting, actually-mounted CodeEditor exposes exactly one tab stop', () => {
         const editor = new CodeEditor('hello');
+        editors.push(editor);
         const el = editor.getElement(true)!;
         mount(el);
 
@@ -206,6 +222,7 @@ describe('A Tab-key owner\'s own tab stop (CodeEditor)', () => {
 
     it("that one stop is CodeMirror's contenteditable surface", () => {
         const editor = new CodeEditor('hello');
+        editors.push(editor);
         const el = editor.getElement(true)!;
         mount(el);
 
