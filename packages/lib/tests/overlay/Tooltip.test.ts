@@ -569,4 +569,19 @@ describe('Tooltip.detach — ownership', () => {
         expect((Tooltip as any).dismissing).toBe(true);
         expect((Tooltip as any).activeElement).toBe(null);
     });
+
+    it('15. leaving A while its own hover delay runs cancels the delay, so nothing shows', () => {
+        const { a } = twoAttached();
+
+        hoverOver(a);
+
+        leave(a);
+
+        expect((Tooltip as any).showTimer).toBe(null);
+        expect((Tooltip as any).pendingId).toBe(null);
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect((Tooltip as any).activeElement).toBe(null);
+    });
 });

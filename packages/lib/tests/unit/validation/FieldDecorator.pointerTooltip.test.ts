@@ -25,6 +25,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { Component } from '~/core/Component';
 import { DOM, type Handle } from '~/core/DOM';
+import { Event } from '~/core/Event';
 import { Tooltip } from '~/overlay/Tooltip';
 import { TextField } from '~/component/input/TextField';
 import { DateField } from '~/component/input/DateField';
@@ -43,6 +44,8 @@ const CONFIG = {
 // Mirrors `Tooltip.attach`'s `setTimeout(..., 500)` hover delay: advancing
 // exactly this far runs the show body.
 const HOVER_DELAY_MS   = 500;
+// Any point inside the hover delay, so a move lands while it is still running.
+const PART_WAY_MS      = 200;
 // Past the tooltip's 100 ms fade and its fallback timer, so a fade started by
 // a test has finished before the next test's fixture is built.
 const FADE_SETTLE_MS   = 500;
@@ -54,8 +57,12 @@ const DECORATOR_HEIGHT = 24;
 // A point just inside an element's edge: inside the element, but outside its
 // inner parts (a picker field's 3 px padding, a picker button's centred glyph).
 const EDGE_INSET_PX    = 1;
-// Any in-viewport pointer position: no test reads where the tooltip is placed.
+// Any in-viewport pointer position. Only case 14 reads where the tooltip is
+// placed, and it moves the pointer somewhere else first.
 const CURSOR_PX        = 10;
+// The listeners one error attachment registers on the decorator's subtree:
+// `mouseover`, `mousemove`, `mouseout` and `mousedown`.
+const HOVER_LISTENERS  = 4;
 
 const ERROR = 'Too long';
 const HINT  = 'What goes here';
@@ -145,6 +152,20 @@ function pointer(type: string, target: Handle, from: Handle): void {
     DOM.sink.dispatchEvent(
         DOM.source.getWindow(),
         makeEvent(target, type, { clientX: CURSOR_PX, clientY: CURSOR_PX, relatedTarget: from }),
+    );
+}
+
+/**
+ * The pointer moves to `(x, y)` over `target`: a real `mousemove` there.
+ *
+ * @param target - The element under the pointer.
+ * @param x - The pointer's viewport x coordinate.
+ * @param y - The pointer's viewport y coordinate.
+ */
+function move(target: Handle, x: number, y: number): void {
+    DOM.sink.dispatchEvent(
+        DOM.source.getWindow(),
+        makeEvent(target, 'mousemove', { clientX: x, clientY: y }),
     );
 }
 
@@ -469,6 +490,92 @@ describe('FieldDecorator — the error tooltip under a pointer', () => {
         expect((Tooltip as any).dismissing).toBe(true);
 
         cross(inputTarget, buttonTarget);
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([ERROR]);
+    });
+
+    it('13. leaving the field while the error\'s hover delay runs means it never shows', () => {
+        const field     = new TextField();
+        const decorator = mountDecorated(field);
+
+        decorator.showError(ERROR);
+
+        const target = hitCentre(decorator);
+
+        expect(target).toBe(field.getElement());
+
+        enter(target);
+
+        expect((Tooltip as any).pendingId).toBe(decorator.getId());
+
+        pointer('mouseout', target, outside());
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([]);
+        expect((Tooltip as any).pendingId).toBe(null);
+    });
+
+    it('14. the error shows where the pointer comes to rest on the field, not where it entered', () => {
+        const field     = new TextField();
+        const decorator = mountDecorated(field);
+
+        decorator.showError(ERROR);
+
+        const target = hitCentre(decorator);
+        const rect   = DOM.source.getElementRect(decorator.getElement()!);
+        const restX  = rect.x + rect.width / 2;
+        const restY  = rect.y + rect.height / 2;
+
+        expect(target).toBe(field.getElement());
+        expect([restX, restY]).not.toEqual([CURSOR_PX, CURSOR_PX]);
+
+        enter(target);
+        move(target, restX, restY);
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(showSpy).toHaveBeenCalledTimes(1);
+        expect(showSpy).toHaveBeenCalledWith(ERROR, restX, restY);
+    });
+
+    it('15. replacing or clearing the error leaves no hover listener of the old one behind', () => {
+        const field     = new TextField();
+        const decorator = mountDecorated(field);
+        const before    = Event.listenerCounts().subtree;
+
+        decorator.showError(ERROR);
+
+        expect(Event.listenerCounts().subtree).toBe(before + HOVER_LISTENERS);
+
+        decorator.showError('Other');
+
+        expect(Event.listenerCounts().subtree).toBe(before + HOVER_LISTENERS);
+
+        decorator.clearError();
+
+        expect(Event.listenerCounts().subtree).toBe(before);
+    });
+
+    it('16. moving from a date field\'s input onto its picker button during the hover delay still shows the error', () => {
+        const field                 = new DateField();
+        const decorator             = mountDecorated(field);
+        const [input, pickerButton] = field.getComponents();
+
+        decorator.showError(ERROR);
+
+        const inputTarget  = hitCentre(input);
+        const buttonTarget = hitInsideLeftEdge(pickerButton);
+
+        expect(inputTarget).toBe(input.getElement());
+        expect(buttonTarget).toBe(pickerButton.getElement());
+
+        enter(inputTarget);
+        vi.advanceTimersByTime(PART_WAY_MS);
+
+        cross(inputTarget, buttonTarget);
+
+        expect((Tooltip as any).pendingId).toBe(decorator.getId());
+
         vi.advanceTimersByTime(HOVER_DELAY_MS);
 
         expect(shownTexts()).toEqual([ERROR]);
