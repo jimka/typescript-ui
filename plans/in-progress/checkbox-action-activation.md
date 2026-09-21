@@ -644,3 +644,19 @@ Only `Checkbox` has the binding defect: a listener on the root while the user's 
 [^event-window]: `Event` installs one window-level listener per event type on first registration and remembers it across `installTestDOM` calls. A test file's later cases can then dispatch to a window nobody listens on, and every "zero actions" assertion would pass vacuously. The C34 implementation hit exactly this in `BooleanCell.test.ts`. Purging `Event._registeredComponentIds()` through `Event.purgeComponent` before building the component re-installs the listener against the current window. `RadioButton.test.ts:124-130` and `Slider.test.ts:289-295` already do this.
 
 [^architecture-combobox]: ARCHITECTURE.md's list currently calls `ComboBox`'s shorthand "(DOM `change`)", but [`ComboBox.on`](packages/lib/src/typescript/lib/component/input/ComboBox.ts#L1131) forwards `"action"` to its `ListenerBag` `"change"` and never touches the DOM. The new paragraph names `ComboBox` as the rule's one deviation, so the parenthetical in the same list is corrected in the same edit. Otherwise the file would describe the class two ways.
+
+---
+
+## Implementation Notes
+
+**The QA witness is pending a user run.** Cases 24–27 were not run in-engine: they need the QA app, which opens a full-screen window, so only the user runs them (see `## Verification`). Everything offline passed: `npm run typecheck` 0 errors; `npm test` all green (482 files, 8021 tests); `npm run lint` 0 errors; `npm run docs:api` 14 warnings, the same 14 as the start point, none naming `Checkbox`, `Slider`, `AbstractBooleanInput` or `VideoPlayer`; `npm run docs:llms:check` OK; `npm run build:lib`, then `npm -w packages/qa run typecheck` 0 errors and `npm -w packages/qa test` all green (246 tests, cases 22 and 23 included). Every grep check in steps 18, 26 and 32 came out as the plan states. The `packages/qa` typecheck in a worktree still reads the main tree's `.d.ts` through `node_modules` (the limitation `test-suite-health` recorded); its tests resolve this checkout's build.
+
+**Deviations, all minor:**
+
+- **Case 5 is two `it`s**, one for the disabled checkbox and one for the read-only one. Mounting a second checkbox inside one case reinstalls the TestDOM mid-case, which would leave the first one's listeners on a dead window.
+- **One documentation commit, not one per code commit.** The three code commits change one consumer-visible rule, and the changelog's new *Fixed* entry covers both setters. The `fireAction` changelog entry is removed in that same commit.
+- **Commit buckets for the non-library files.** The QA witness — `form.ts`, `form-flat.ts`, `mount.test.ts` and the QA README row — is one tooling commit, since `packages/qa` does not ship to consumers. `ARCHITECTURE.md` is its own tooling commit. The two research records ride in this bookkeeping commit with these notes.
+- **The changelog's new *Fixed* entry** sits directly after the boolean-table-cell entry it is related to.
+- **`Slider.test.ts:248-250`** needed no rewrite: that comment only gives the drain-and-pause reasoning and never mentioned `fireEvent`.
+- **`RowVisibility.test.ts`'s comment is unchanged.** The plan does not list it. It defers to `RotatedView.test.ts`'s comment, which now explains that the gap is gone.
+- **`plans/in-progress/` did not exist** on the start point, so it was created for the plan move.

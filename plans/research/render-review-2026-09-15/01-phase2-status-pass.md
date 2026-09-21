@@ -70,7 +70,7 @@ Paths are relative to `packages/lib/src/typescript/lib/`.
 | C30 | open | `core/LayerManager.ts:175`, `:227`, `:398-406`, `:452-467` | bound the counter per band, plus an already-topmost early return in `bringToFront` |
 | C31 | open | `overlay/Notification.ts:117`, consumed `:174` | a real band constant between Dropdown and Dialog, registered so it draws a counter stamp |
 | C33 | open | `overlay/Notification.ts:605-619` | add a viewport `resize` listener calling the static `restack()`, torn down with the last toast |
-| C34 | settled | `component/input/RadioButton.ts:365-376` vs `component/input/Checkbox.ts:450-454` | done by `plans/implemented/boolean-input-action-fanout.md`: `Checkbox.setSelected(value, fireAction = true)`, the cell editor passing `false` at both programmatic sites, `RadioButton` untouched. Residue recorded as C40 below |
+| C34 | settled | `component/input/RadioButton.ts:365-376` vs `component/input/Checkbox.ts:450-454` | done by `plans/implemented/boolean-input-action-fanout.md`: `Checkbox.setSelected(value, fireAction = true)`, the cell editor passing `false` at both programmatic sites, `RadioButton` untouched. Residue recorded as C40 below. `fireAction` itself removed by `plans/implemented/checkbox-action-activation.md`, which made `"action"` user-only (C40) |
 | C35 | open, severity down | `component/display/AbstractCanvasSurface.ts:386-389` | `&& this.hasRenderingContext()`; `syncBackingStore:285-288` is the identical guard one method away |
 | C36 | open | `component/display/AbstractCanvasSurface.ts:452-455`; `core/Component.ts:2575-2578` (`scheduleEffectiveVisibilityReconcile`; the register's `:2429-2438` and `:2563-2566` have both drifted) | have `wireChild` schedule an effective-visibility reconcile on the attached subtree, guarded on `getElement()` so only genuine reparents pay the edge |
 
@@ -222,7 +222,7 @@ plans checked them rather than inheriting them.
 |---|---|---|
 | C30's already-topmost early return | ~~`LayerManager.test.ts:177-194`~~ → `tests/overlay/LayerManager.test.ts:259-267`, `:297-334`, `:336-362`, `:364-392` | **Corrected**: the `:176-232` block keeps passing, because every test in it raises a layer that already has a peer above. What breaks is the same-band `setBand` no-op and three parentage tests that use "was `onZIndexChanged` called?" as a proxy assertion |
 | C35's context guard | ~~`WebGLCanvas.test.ts:136-145`~~ → **23 tests**: 11 in `Canvas.test.ts`, 10 in `WebGLCanvas.test.ts`, 2 in `EffectiveVisibility.test.ts`, plus `packages/qa/tests/mount.test.ts` | **Corrected**: `shouldAnimate` is the shared base predicate, so `Canvas` is gated too — the slice report's "`WebGLCanvas` only" is wrong. The modelled sink returns a null context by design, so every animation test asserts the old contract. A `withStubContext` helper already exists in both files |
-| C34's opt-out | `tests/component/input/Checkbox.test.ts:162-195` | the synthetic click on a programmatic `setSelected` — this one is the contract the default must keep |
+| C34's opt-out | `tests/component/input/Checkbox.test.ts:162-195` | the synthetic click on a programmatic `setSelected` — this one is the contract the default must keep; inverted by the C40 fix: a programmatic `setSelected` now dispatches nothing |
 | C23's strict parsing | `tests/component/input/DateField.test.ts:86` | the `2025-02-30` rollover, pinned as *documented* behaviour |
 
 Everything else in the register is uncovered on its defective path, though
@@ -337,6 +337,14 @@ scopes it out and records it here instead. Still open after that plan
 shipped: its `fireAction` opt-out changes nothing about how `"action"` is
 delivered.
 
+**Fixed by `plans/implemented/checkbox-action-activation.md` (2026-09-21):
+`Checkbox.activate` now fires the DOM `change` that `on("action")` listens
+for, as `RadioButton` does, so `"action"` fires once per user toggle and
+never for a programmatic write or a dead-area click; the synthetic click and
+`fireAction` are gone. `form-flat`'s old `click=toggle` witness never toggled
+anything, because it clicked each control's root: it now clicks the track and
+the box, and `click=root` and `update` show the two faces of C40.**
+
 **C25 is not hypothetical.** Planning it found the QA app's own `windows`
 panel already builds an asymmetric window whose east strip is pushed outside
 the frame, and that the same wrong-side assumption appears in two further
@@ -391,7 +399,15 @@ branch; each was left deliberately rather than missed.
 - **`DateField.formatValue` does not zero-pad the year**, so a year below 1000
   formats to a spelling the new strict parser rejects.
 - **`Slider.setValue` fans out unconditionally with no opt-out**, the same
-  shape C34 gave `Checkbox` an opt-out for. Belongs beside C40.
+  shape C34 gave `Checkbox` an opt-out for. Belongs beside C40. Fixed by the
+  same plan: `setValue` no longer fires `"action"`; no opt-out was needed.
+- **`List.setSelectedIndex` and `ComboBox.setSelectedIndex` still announce
+  `"action"` on their default path** — the last deviation from
+  ARCHITECTURE.md's `"action"` rule. It needs its own plan: the same
+  `fireEvent` flag also gates `"change"`, which live callers rely on, and
+  `ComboBox`'s `"action"` is an alias of its `"change"` that passes listeners
+  the value, so making it user-only means giving it a dispatch of its own and
+  changing its listener's argument.
 - **`MiscPanel.ts:781`'s demo comment** still carries the stale "never touches
   a pending edit" claim the doc-gaps branch corrected everywhere else.
 
