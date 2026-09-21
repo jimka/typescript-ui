@@ -18,6 +18,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { Event } from '~/core/Event';
 import { installTestDOM } from '../../dom/TestDOM';
+import type { RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Table } from '~/component/table/Table';
 import { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
@@ -470,6 +471,35 @@ describe('Column filter row — typing filters the store (debounced)', () => {
         pressKey(cell, 'Escape');
         expect(store.getFilter('name')).toBeNull();
         expect(renderer(cell).getValue()).toBeNull();
+    });
+
+    it('the keystroke debounce is scheduled through the DOM seam', async () => {
+        vi.useFakeTimers();
+
+        const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const sink   = DOM.sink as RecordingDOMSink;
+        const before = sink.writes.length;
+
+        typeInto(nameCell(table), 'ali');
+
+        const timers = sink.writes.slice(before).filter(w => w.op === 'setTimeout');
+
+        expect(timers.map(w => w.args[0])).toEqual([200]);
+    });
+
+    it('DOM.reset() cancels a pending keystroke write, so nothing reaches the store afterwards', async () => {
+        vi.useFakeTimers();
+
+        const { table, store } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        typeInto(nameCell(table), 'ali');
+        DOM.reset();
+        vi.advanceTimersByTime(500);
+
+        expect(store.getFilter('name')).toBeNull();
     });
 });
 
@@ -1245,6 +1275,8 @@ describe('Column filter row — multiple conditions (table-column-filter-multi-c
     });
 
     it('clicking the operator button with 2+ clauses opens the clauses popover directly instead of the menu', async () => {
+        vi.useFakeTimers();
+
         const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
         table.setFilterRowVisible(true);
 
@@ -1322,6 +1354,8 @@ describe('Column filter row — multiple conditions (table-column-filter-multi-c
     // what's actually sent to the store — so the two can't drift apart again.
     describe('the badge counts only effective clauses (buildClauseFilter\'s own null-exclusion rule)', () => {
         it('a real condition plus one still-blank added row does not show "2" — the badge stays hidden below 2 effective clauses', async () => {
+            vi.useFakeTimers();
+
             const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
             table.setFilterRowVisible(true);
 
@@ -1560,6 +1594,8 @@ describe('Column filter row — multiple conditions (table-column-filter-multi-c
     // two — otherwise a badge showing a leftover count of 2+ lingers with no
     // controls left to explain it.
     it('setOperators([]) drops a stale multi-clause list and hides the badge on a cell going non-filterable', async () => {
+        vi.useFakeTimers();
+
         const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
         table.setFilterRowVisible(true);
 
@@ -1674,6 +1710,8 @@ describe('Column filter row — numeric input restriction (filter-numeric-input-
     });
 
     it('14. the gate is stateless — a second "-" is still allowed after text already holds one', async () => {
+        vi.useFakeTimers();
+
         const { table } = await makeTable({ columns: [{ field: 'age', filterable: true }] });
         table.setFilterRowVisible(true);
 
