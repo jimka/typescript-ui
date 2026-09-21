@@ -367,3 +367,73 @@ describe('Border overflow inflation', () => {
         expect(center.getWidth()).toBe(100); // container width, not the 300 totalMin
     });
 });
+
+describe('Border collapse gutter geometry', () => {
+    // CollapseButton's GRIP_ACROSS: the chevron handle's thickness across its
+    // host gutter. A gutter clips to its own box, so it must be at least this
+    // thick or the handle shows only as a sliver.
+    const GRIP_ACROSS_PX = 10;
+    // Half of the 4px track the chevron has always been centred on, flush
+    // against the region's centre-facing edge.
+    const TRACK_MID_PX = 2;
+
+    /** `_gutters` is non-public; every gutter-geometry probe goes through here. */
+    function gutterOf(border: Border, p: Placement): Component {
+        return (border as unknown as { _gutters: Map<Placement, Component> })._gutters.get(p)!;
+    }
+
+    function hostCollapsibleRegions(): { border: Border; host: Container; regions: Record<string, Component> } {
+        installTestDOM(CONFIG);
+
+        const border  = new Border();
+        const host    = hostBorder(400, 300, border);
+        const regions = {
+            north: new Component({ preferredSize: { width: 50, height: 40 } }),
+            south: new Component({ preferredSize: { width: 50, height: 30 } }),
+            west:  new Component({ preferredSize: { width: 60, height: 50 } }),
+            east:  new Component({ preferredSize: { width: 50, height: 50 } }),
+        };
+
+        host.addComponent(regions.north, collapsiblePlacement(Placement.NORTH));
+        host.addComponent(regions.south, collapsiblePlacement(Placement.SOUTH));
+        host.addComponent(regions.west,  collapsiblePlacement(Placement.WEST));
+        host.addComponent(regions.east,  collapsiblePlacement(Placement.EAST));
+        host.addComponent(new Component({ preferredSize: { width: 50, height: 50 } }), placement(Placement.CENTER));
+        host.doLayout();
+
+        return { border, host, regions };
+    }
+
+    it("sizes an expanded region's gutter to contain its chevron, still centred on the region's inner-edge track", () => {
+        const { border, regions } = hostCollapsibleRegions();
+        const north = gutterOf(border, Placement.NORTH);
+        const south = gutterOf(border, Placement.SOUTH);
+        const west  = gutterOf(border, Placement.WEST);
+        const east  = gutterOf(border, Placement.EAST);
+
+        expect(north.getHeight()).toBeGreaterThanOrEqual(GRIP_ACROSS_PX);
+        expect(north.getY() + north.getHeight() / 2).toBe(regions.north.getY() + regions.north.getHeight() + TRACK_MID_PX);
+
+        expect(south.getHeight()).toBeGreaterThanOrEqual(GRIP_ACROSS_PX);
+        expect(south.getY() + south.getHeight() / 2).toBe(regions.south.getY() - TRACK_MID_PX);
+
+        expect(west.getWidth()).toBeGreaterThanOrEqual(GRIP_ACROSS_PX);
+        expect(west.getX() + west.getWidth() / 2).toBe(regions.west.getX() + regions.west.getWidth() + TRACK_MID_PX);
+
+        expect(east.getWidth()).toBeGreaterThanOrEqual(GRIP_ACROSS_PX);
+        expect(east.getX() + east.getWidth() / 2).toBe(regions.east.getX() - TRACK_MID_PX);
+    });
+
+    it("keeps a collapsed region's gutter at exactly the collapse strip, with no overhang", () => {
+        const { border, host } = hostCollapsibleRegions();
+
+        border.setRegionCollapsed(Placement.NORTH, true);
+        border.setRegionCollapsed(Placement.WEST, true);
+        host.doLayout();
+
+        expect(gutterOf(border, Placement.NORTH).getY()).toBe(0);
+        expect(gutterOf(border, Placement.NORTH).getHeight()).toBe(COLLAPSE_STRIP_SIZE);
+        expect(gutterOf(border, Placement.WEST).getX()).toBe(0);
+        expect(gutterOf(border, Placement.WEST).getWidth()).toBe(COLLAPSE_STRIP_SIZE);
+    });
+});

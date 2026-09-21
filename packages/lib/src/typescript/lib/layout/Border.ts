@@ -20,6 +20,13 @@ import type { FocusRevealer } from "~/core/FocusReveal.js";
 // edge. Mirrors `Split`'s GUTTER_SIZE so the two managers' divider tracks match.
 const TRACK_SIZE = 4;
 
+// Extra px the expanded gutter's element extends past its TRACK_SIZE track on
+// each side across it (so its total thickness is TRACK_SIZE +
+// 2 × TRACK_OVERHANG = 10px), matching CollapseButton's own GRIP_ACROSS. The
+// gutter clips to its own box, so a bare 4px element would show only a sliver
+// of the chevron. Mirrors `Split`'s GUTTER_HIT_OVERHANG.
+const TRACK_OVERHANG = 3;
+
 // The way each region's chevron points (and the gutter travels) when collapsing
 // — toward the region's outer edge. The restore heading is its opposite,
 // handled by the gutter's `setOpaque`.
@@ -936,24 +943,30 @@ class Border extends LayoutManager implements FocusRevealer {
     }
 
     /**
-     * Computes the thin transparent track rect in the gap just past a region's
-     * center-facing edge, where the expanded gutter parks its chevron. The
-     * track sits flush against the region's outer edge of the gap rather than
-     * overlapping the region's own content.
+     * Computes the expanded gutter's rect around the thin transparent track in
+     * the gap just past a region's center-facing edge, where the gutter parks
+     * its chevron. The track sits flush against the region's outer edge of the
+     * gap; the rect widens it by `TRACK_OVERHANG` on each side across it, so
+     * the gutter contains the whole chevron instead of clipping it. The
+     * overhang lies over the region and the gap without taking their clicks:
+     * a fixed gutter's body passes pointer events through, and only the
+     * chevron catches them.
      *
      * @param placement - The edge region.
      * @param x - The region's left position.
      * @param y - The region's top position.
      * @param width - The region's width.
      * @param height - The region's height.
-     * @returns The track rect.
+     * @returns The gutter rect.
      */
     private innerEdgeTrack(placement: Placement, x: number, y: number, width: number, height: number): { x: number; y: number; width: number; height: number } {
+        const across = TRACK_SIZE + 2 * TRACK_OVERHANG;
+
         switch (placement) {
-            case Placement.NORTH: return { x, y: y + height,     width, height: TRACK_SIZE };
-            case Placement.SOUTH: return { x, y: y - TRACK_SIZE, width, height: TRACK_SIZE };
-            case Placement.WEST:  return { x: x + width,     y, width: TRACK_SIZE, height };
-            case Placement.EAST:  return { x: x - TRACK_SIZE, y, width: TRACK_SIZE, height };
+            case Placement.NORTH: return { x, y: y + height - TRACK_OVERHANG,     width, height: across };
+            case Placement.SOUTH: return { x, y: y - TRACK_SIZE - TRACK_OVERHANG, width, height: across };
+            case Placement.WEST:  return { x: x + width - TRACK_OVERHANG,     y, width: across, height };
+            case Placement.EAST:  return { x: x - TRACK_SIZE - TRACK_OVERHANG, y, width: across, height };
             default:              return { x, y, width, height };
         }
     }
