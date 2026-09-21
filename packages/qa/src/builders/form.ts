@@ -13,7 +13,7 @@ import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import type { AbstractStore, ModelRecord } from '@jimka/typescript-ui/data';
 import { Split, VBox } from '@jimka/typescript-ui/layout';
 import { FieldDecorator } from '@jimka/typescript-ui/validation';
-import type { CallTarget, HarnessTools } from '../harness/types.js';
+import type { CallTarget, GeometryTarget, HarnessTools } from '../harness/types.js';
 import type { PanelBuild } from '../panels.js';
 import { listItems } from './data.js';
 import { elementFor, requireElement } from './dom.js';
@@ -59,6 +59,18 @@ const TEXT_ERROR = `Required, ${MAX_TEXT_CHARS} characters at most`;
 /** What `type=date` types: one full date, the ten characters C23 is read over. */
 const DATE_TEXT = '2026-09-19';
 
+/** Text one character past the decorated fields' limit: the shortest text that shows their error. */
+const OVER_LIMIT_TEXT = 'x'.repeat(MAX_TEXT_CHARS + 1);
+
+/** The one character C21's sequence types into the second decorated field; the field stays over its limit. */
+const KEYSTROKE = 'x';
+
+/** The tooltip's element, by the class the library gives each component's element; a page has one tooltip. */
+const TOOLTIP_SELECTOR = '.Tooltip';
+
+/** The `buttons` bitmask with no button held, fixed by the UI Events spec: a hover, not a drag. */
+const NO_BUTTONS_HELD = 0;
+
 // The sliders' range and start: a percentage at its midpoint, so a pan moves
 // the thumb both ways without reaching either end.
 const SLIDER_MIN = 0;
@@ -102,6 +114,13 @@ const VALUE_MIN_WIDTH_PX = 160;
 const OWNER_OPTIONS: ComboOption[] = [{ value: 'alice', label: 'Alice' }, { value: 'bob', label: 'Bob' }];
 const DATATYPE_OPTIONS: ComboOption[] = [{ value: 'string', label: 'String' }, { value: 'number', label: 'Number' }];
 
+/** A decorated text field: the field, its decorator, and the check its `change` listener runs. */
+interface DecoratedField {
+    field: TextField;
+    decorator: FieldDecorator;
+    check: (value: string) => void;
+}
+
 /** A built form's parts, where its targets are found. */
 interface FormParts {
     root: Component;
@@ -110,6 +129,8 @@ interface FormParts {
     inspector: Table | null;
     /** The first field of each kind the form holds; a kind past `n` is absent. */
     first: Partial<Record<FieldKind, Component>>;
+    /** Every decorated text field, in form order; C21's `call` target uses the first two. */
+    decorated: DecoratedField[];
 }
 
 /** The form's parameters, read in `build` so a bad value fails before mounting. */
@@ -169,11 +190,15 @@ export function formField(kind: FieldKind, store: AbstractStore): Component {
  * its value on every change.
  *
  * @param field - The text field, already added to its grid.
+ * @returns The decorated field.
  */
-function decorate(field: TextField): void {
+function decorate(field: TextField): DecoratedField {
     const decorator = FieldDecorator(field, field.getParentComponent()!);
+    const check = requireShortText(decorator);
 
-    field.on('change', requireShortText(decorator));
+    field.on('change', check);
+
+    return { field, decorator, check };
 }
 
 /**
@@ -185,8 +210,9 @@ function decorate(field: TextField): void {
  * @param to - One past the last field's index.
  * @param store - The combo boxes' store.
  * @param first - The first field of each kind; filled in.
+ * @param decorated - The decorated text fields; filled in.
  */
-function addFields(grid: LabeledGrid | LabeledFieldSet, from: number, to: number, store: AbstractStore, first: FormParts['first']): void {
+function addFields(grid: LabeledGrid | LabeledFieldSet, from: number, to: number, store: AbstractStore, first: FormParts['first'], decorated: DecoratedField[]): void {
     for (let i = from; i < to; i++) {
         const kind = FIELD_KINDS[i % FIELD_KINDS.length];
         const field = formField(kind, store);
@@ -195,7 +221,7 @@ function addFields(grid: LabeledGrid | LabeledFieldSet, from: number, to: number
         first[kind] ??= field;
 
         if (kind === 'text') {
-            decorate(field as TextField);
+            decorated.push(decorate(field as TextField));
         }
     }
 }
@@ -224,13 +250,14 @@ function headerGrid(): LabeledGrid {
  * @param depth - The form's depth.
  * @param store - The combo boxes' store.
  * @param first - The first field of each kind; filled in.
+ * @param decorated - The decorated text fields; filled in.
  * @returns The containers, in order.
  */
-function fieldContainers(n: number, depth: FormDepth, store: AbstractStore, first: FormParts['first']): Component[] {
+function fieldContainers(n: number, depth: FormDepth, store: AbstractStore, first: FormParts['first'], decorated: DecoratedField[]): Component[] {
     if (depth === 'flat') {
         const grid = LabeledGrid({ columns: FIELD_COLUMNS });
 
-        addFields(grid, 0, n, store, first);
+        addFields(grid, 0, n, store, first, decorated);
 
         return [grid];
     }
@@ -238,7 +265,7 @@ function fieldContainers(n: number, depth: FormDepth, store: AbstractStore, firs
     return Array.from({ length: Math.ceil(n / FIELDS_PER_GROUP) }, (_, g) => {
         const group = LabeledFieldSet(`Group ${g + 1}`, { columns: FIELD_COLUMNS });
 
-        addFields(group, g * FIELDS_PER_GROUP, Math.min((g + 1) * FIELDS_PER_GROUP, n), store, first);
+        addFields(group, g * FIELDS_PER_GROUP, Math.min((g + 1) * FIELDS_PER_GROUP, n), store, first, decorated);
 
         return group;
     });
@@ -437,6 +464,82 @@ function clickTarget(tools: HarnessTools, parts: FormParts, mode: FormChoices['c
 }
 
 /**
+ * Sets a decorated field's text and runs the check its `change` listener
+ * runs — what one keystroke does, done through the field and its decorator
+ * rather than through DOM events.
+ *
+ * @param entry - The decorated field.
+ * @param text - The field's new text.
+ */
+function enterText(entry: DecoratedField, text: string): void {
+    entry.field.setText(text);
+    entry.check(text);
+}
+
+/**
+ * Sends `element` a `mouseover` at its centre with no button held: the
+ * event that arms a tooltip's hover delay.
+ *
+ * @param tools - The harness tools.
+ * @param element - The element hovered.
+ */
+function hoverCentre(tools: HarnessTools, element: HTMLElement): void {
+    const rect = element.getBoundingClientRect();
+
+    tools.fireMouse('mouseover', element, rect.left + rect.width / 2, rect.top + rect.height / 2, { buttons: NO_BUTTONS_HELD });
+}
+
+/**
+ * Whether a tooltip is on screen.
+ *
+ * @param tools - The harness tools, for `isPainted`.
+ * @returns `true` when the tooltip's element exists and is painted.
+ */
+function tooltipOnScreen(tools: HarnessTools): boolean {
+    const element = document.querySelector(TOOLTIP_SELECTOR);
+
+    return element !== null && tools.isPainted(element);
+}
+
+/**
+ * The `call` target: C21's sequence on the first two decorated text fields.
+ * Unit 0 types both past their limit, so both show their error, then hovers
+ * the first field. On the first later unit that finds the tooltip on screen,
+ * one character is typed into the second field, whose error re-attaches its
+ * own tooltip; nothing is typed after that.
+ *
+ * @param tools - The harness tools.
+ * @param parts - The form's parts.
+ * @param panel - The panel's id, for errors.
+ * @returns The target, or `undefined` when the form holds fewer than two decorated fields.
+ */
+function tooltipOwnershipTarget(tools: HarnessTools, parts: FormParts, panel: string): CallTarget | undefined {
+    const [owner, other] = parts.decorated;
+
+    if (!owner || !other) {
+        return undefined;
+    }
+
+    const fieldElement = elementFor(tools, owner.field, panel);
+    let typed = false;
+
+    return function stepTooltipOwnership(index: number): void {
+        if (index === 0) {
+            enterText(owner, OVER_LIMIT_TEXT);
+            enterText(other, OVER_LIMIT_TEXT);
+            hoverCentre(tools, fieldElement);
+
+            return;
+        }
+
+        if (!typed && tooltipOnScreen(tools)) {
+            enterText(other, other.field.getText() + KEYSTROKE);
+            typed = true;
+        }
+    };
+}
+
+/**
  * The `update` target: one programmatic write per unit to the first checkbox
  * and the first slider — the checkbox flipped, the slider moved one step off
  * its start and back. Each write reads the control's current state rather
@@ -504,7 +607,7 @@ function countActions(tools: HarnessTools, first: FormParts['first']): string[] 
  * @param parts - The form's parts.
  * @param choices - The parameters read in `build`.
  * @param panel - The panel's id, for errors.
- * @returns `hover`, `wheel`, and `type`, `click` and `pan` where their fields exist.
+ * @returns `hover`, `wheel`, and `type`, `click`, `pan` and `call` where their fields exist.
  */
 function mountedTargets(tools: HarnessTools, parts: FormParts, choices: FormChoices, panel: string): Record<string, unknown> {
     const slider = parts.first.slider;
@@ -515,6 +618,7 @@ function mountedTargets(tools: HarnessTools, parts: FormParts, choices: FormChoi
         type: typeTarget(tools, parts, choices.type, panel),
         click: clickTarget(tools, parts, choices.click, panel),
         pan: slider ? { element: elementFor(tools, slider, panel), axis: 'x' } : undefined,
+        call: tooltipOwnershipTarget(tools, parts, panel),
     };
 
     return Object.fromEntries(Object.entries(targets).filter(([, target]) => target !== undefined));
@@ -543,17 +647,18 @@ export function buildForm(n: number, depth: FormDepth, params: URLSearchParams, 
     store.loadData(listItems(COMBO_OPTIONS));
 
     const first: FormParts['first'] = {};
+    const decorated: DecoratedField[] = [];
     const header = headerGrid();
 
     const scroller = Panel({
         autoScroll: 'y',
         layoutManager: VBox({ stretching: true }),
-        components: [header, ...fieldContainers(n, depth, store, first)],
+        components: [header, ...fieldContainers(n, depth, store, first, decorated)],
     });
 
     const inspector = depth === 'nested' ? inspectorTable() : null;
-    const parts: FormParts = { root: formRoot(scroller, inspector), scroller, header, inspector, first };
-    const geometry: Record<string, Component> = { header, form: scroller };
+    const parts: FormParts = { root: formRoot(scroller, inspector), scroller, header, inspector, first, decorated };
+    const geometry: Record<string, GeometryTarget> = { header, form: scroller, tooltip: TOOLTIP_SELECTOR };
     const targets: Record<string, unknown> = { resize: parts.root };
     const passes = passesTarget(passesMode, parts);
     const update = programmaticWrites(first);
