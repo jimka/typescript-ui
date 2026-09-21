@@ -250,8 +250,15 @@ describe('ThemeManager — startup font wait', () => {
 
             expect(isFontActivated()).toBe(false);
 
+            // The deadline is anchored at the first animation frame, not armed
+            // inline, so one whole deadline's worth of time cannot settle the
+            // wait — the frame consumes part of it before the budget starts.
+            // Armed inline this first advance would settle it, which is the
+            // slow-startup bug this anchoring exists to prevent.
             vi.advanceTimersByTime(FONT_ACTIVATION_DEADLINE_MS);
+            expect(isFontActivated()).toBe(false);
 
+            vi.advanceTimersByTime(FONT_ACTIVATION_DEADLINE_MS);
             expect(isFontActivated()).toBe(true);
         } finally {
             vi.useRealTimers();

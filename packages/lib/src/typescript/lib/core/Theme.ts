@@ -20,7 +20,7 @@ import { InlineStyle } from '~/core/StyleTarget.js';
 import { Util } from '~/core/Util.js';
 import { DOM } from '~/core/DOM.js';
 import type { TimerId } from '~/core/DOM.js';
-import { FONT_ACTIVATION_DEADLINE_MS, noteFontActivated } from '~/core/FontActivation.js';
+import { FONT_ACTIVATION_DEADLINE_MS, isFontActivated, noteFontActivated } from '~/core/FontActivation.js';
 // The three built-in theme literals live in their own files under
 // `core/themes/`; they are imported here so `ThemeManager` can default to
 // `ModernTheme`, and re-exported below so existing
@@ -1295,9 +1295,9 @@ function finishFontActivation(): void {
  * during the load. Each subset's `.woff2` is a Vite-bundled asset, so the font
  * self-hosts from the consumer's origin with no external request.
  *
- * @remarks Starts the load and arms the bounded startup deadline beside it, or
- * settles the startup font wait at once where no asynchronous load is possible
- * in this host at all.
+ * @remarks Starts the load and schedules the bounded startup deadline to be
+ * armed from the first animation frame after it, or settles the startup font
+ * wait at once where no asynchronous load is possible in this host at all.
  */
 function ensureFontLoaded(): void {
     if (_fontInjected) {
@@ -1333,7 +1333,21 @@ function ensureFontLoaded(): void {
         return;
     }
 
-    _fontDeadline = DOM.sink.setTimeout(finishFontActivation, FONT_ACTIVATION_DEADLINE_MS);
+    // Anchored at the first animation frame rather than armed here. A frame
+    // cannot run until the synchronous startup work has finished, so it is by
+    // construction the first moment the main thread is free, which makes the
+    // deadline a budget of *available* time. Armed inline it would instead
+    // elapse unnoticed during a slow startup — a cold module load, a large
+    // bundle — and fire the instant the thread yielded, losing the race to the
+    // activation it exists to outlast and handing the app a tree measured
+    // against the fallback face.
+    DOM.sink.requestAnimationFrame(() => {
+        if (isFontActivated()) {
+            return;
+        }
+
+        _fontDeadline = DOM.sink.setTimeout(finishFontActivation, FONT_ACTIVATION_DEADLINE_MS);
+    });
 }
 
 /**
