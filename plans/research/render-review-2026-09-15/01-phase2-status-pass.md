@@ -377,6 +377,54 @@ one dead listener per toggle interrupted within 240 ms.
 to any plan, so left alone under the surgical-changes rule — recorded here
 so it is not lost.
 
+## Follow-ups the phase 2 implementation surfaced
+
+Recorded 2026-09-21, from implementing the eleven plans. None blocked its
+branch; each was left deliberately rather than missed.
+
+**Adjacent to fixes that landed:**
+
+- **The table's `Date`/`DateTime` cell editors keep the old lenient parse.** A
+  `DateField` now rejects `2025-02-30` while the equivalent table cell still
+  commits 2 March. `tooltip-picker-and-serialization-fixes` called them "not
+  affected", true about code sharing but not about the defect.
+- **`Tab`'s `activeIndex` is not remapped across the transient filter** — the
+  same index-shift class C29 cured one branch over.
+- **`DateField.formatValue` does not zero-pad the year**, so a year below 1000
+  formats to a spelling the new strict parser rejects.
+- **`Slider.setValue` fans out unconditionally with no opt-out**, the same
+  shape C34 gave `Checkbox` an opt-out for. Belongs beside C40.
+- **`MiscPanel.ts:781`'s demo comment** still carries the stale "never touches
+  a pending edit" claim the doc-gaps branch corrected everywhere else.
+
+**Test-suite health, all pre-existing and confirmed on `master`:**
+
+- `textRange(...).getClientRects is not a function` prints on **every** master
+  run as stderr noise without failing the suite.
+- `DOM handle N is not registered (released or never minted)` surfaces
+  intermittently as an unhandled rejection. Together these made one full-suite
+  run of the phase 3 tip report a single failure that does not reproduce.
+- **`packages/docs` has no Vite alias to the local `packages/lib`**, so from a
+  worktree its suite resolves the *main* checkout's `dist` — docs tests in a
+  worktree do not exercise the worktree's library at all. Found while
+  verifying `body-lazy-singleton`, which bridged it by hand and removed the
+  bridge afterwards.
+
+**Unmeasured cost:** `canvas-idle-loops` leaves one `isEffectivelyVisible()`
+ancestor walk per child re-attach, on a path that runs per frame during a
+column-window slide. The plan's original one-term guard would have queued a
+full reconcile there; the two-term guard reduces it to the walk. The
+campaign's own measurement that 1,929 size-hint calls per frame cost nothing
+suggests this is immaterial, but it is not measured. `table-wide` with
+`hwheel` is the witness.
+
+**A consumer-visible consequence of `body-lazy-singleton`:** the library's own
+`<style>` element is created at its first stylesheet write, which importing
+`core` used to perform. A `core` importer's own CSS can now precede the
+library's, flipping which side wins ties at equal specificity. Recorded in the
+changelog, and the neighbouring `no-dom-access-at-import` entry's exemption
+for `core` importers was corrected because this makes it false.
+
 ## Proposed plan grouping
 
 Four tiers, ten plans. Tiers A and B need no decisions and are the first
