@@ -1070,3 +1070,50 @@ Pages:
     shifts the same way it does for a new state. An index that a transient tab
     already shifted cannot be recognised as shifted, so that state restores
     the same tab it always did.
+
+---
+
+## Implementation Notes
+
+One departure from the plan's scope, one owed check, one confirmation, and
+two cosmetic differences worth recording.
+
+**`DynamicCell`'s temporal rows gained the revert guard (a departure).** The
+plan's Architecture Decision *a rejected value is an unparseable one, and the
+cell already reverts it* and its *Temporal cells on commit* table name only
+`DateCell`, `TimeCell` and `DateTimeCell`. The audit's third round found a
+fourth borrower of the same pooled editors: a `cellType` column's
+`DynamicCell`, whose `'date'`, `'time'` and `'datetime'` rows had no
+`commitEdit` guard. With the editors parsing strictly, `2025-02-30`, `2026`,
+`25:00` or a date-time with no time in such a row would have committed `null`
+and blanked the record, where the plan's changelog entry promised a revert.
+`DynamicCell.commitEdit` now applies `DateCell.commitEdit`'s guard for its
+three temporal variants only, rides in the strict-parsing code commit, and is
+pinned by *DynamicCell temporal rows revert a rejected typed value* in
+`tests/component/table/cell/DynamicCell.test.ts`, whose three revert rows
+failed before the guard and whose number row pins that other variants keep
+the base commit. It also changes one pre-existing behaviour: text such as
+`abc` in a temporal `cellType` row used to commit `null` and now reverts. The
+changelog entry and a new note under `Table.md`'s *Per-cell cell types* say
+so.
+
+**Manual verification still owed.** Both rows of `## Expected Behaviour`'s
+*Manual verification* table are unrun: the QA `table-rows` check for item 1
+and the demo app's layout-serialization check for item 3 each open a browser
+window on the user's desktop and need their go-ahead. The jsdom cases pin the
+same transitions — the three editor parse contracts and *Temporal cells revert
+a rejected typed value* for item 1, and rows 1–5 of *`serializeLayout` of a
+`Tab`* for item 3, row 5 driving the same drag reorder through `_bar` and
+`_onBarReordered` that the demo check performs by hand.
+
+**Confirmed, not assumed: every "Today" reading.** Each new test was run
+before its fix. The rows whose Today and After differ failed with exactly the
+plan's Today values — 33 in commit 1, 11 in commit 2, capture rows 1, 2, 4
+and 5 (recording `2`, restoring C, recording `1`, naming `b`), and restore
+rows 1 and 2 (activating C and E) — and every row whose Today and After agree
+passed before the fix as well as after.
+
+**Two cosmetic differences.** `TabNode.activeIndex`'s new JSDoc is written as
+a multi-line block, the form the file's other long field comments take,
+rather than the single line step 24 quotes; and the restore branch's new
+comment is rewrapped to the file's width. The wording is the plan's in both.
