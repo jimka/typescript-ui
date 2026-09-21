@@ -122,8 +122,8 @@ export function build(n: number, params: URLSearchParams): PanelBuild {
                 click: { elements: [headerCell] },
             };
         },
-        geometry: { table, header: table.getHeader(), body: table.getBody() },
+        geometry: { table, header: table.getHeader(), body: table.getBody(), focused: '.Cell.focused', cell: '.TableBody .StringCell' },
         describe: () => ({ rows: n, columns: FIELDS.length }),
-        installWork: (tools: HarnessTools): string[] => [tools.countMethod(table.getBody(), 'getVisibleRecords')],
+        installWork: (tools: HarnessTools): string[] => [tools.countMethod(table.getBody(), 'getVisibleRecords'), tools.countMethod(store, 'getRecords')],
     };
 }

@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "name": "ab-fix-x.z-2",
+  "panel": "chart-line",
+  "host": "minibrowser",
+  "build": "/repo/packages/lib",
+  "params": {
+    "qa": "ab-fix-x.z-2",
+    "host": "minibrowser",
+    "panel": "chart-line",
+    "drive": "passes:2",
+    "seam": "1",
+    "geom": "1",
+    "work": "1",
+    "abl": "x.z"
+  },
+  "ua": "fixture",
+  "notes": [
+    "panel chart-line n=50",
+    "seam counters on DOM.sink and DOM.source"
+  ],
+  "before": {
+    "elements": 1200,
+    "host": {}
+  },
+  "idle": {
+    "n": 59,
+    "avgMs": 16.67,
+    "p50Ms": 16.66,
+    "p90Ms": 16.8,
+    "maxMs": 17.2,
+    "over16": 3
+  },
+  "phases": [
+    {
+      "driver": "passes",
+      "units": 2,
+      "timing": {
+        "n": 2,
+        "avgMs": 10.3,
+        "p50Ms": 10.3,
+        "p90Ms": 10.3,
+        "maxMs": 10.3,
+        "over16": 0
+      },
+      "seam": {
+        "sink": {
+          "apply": 241,
+          "createElementNS": 210,
+          "appendChild": 210,
+          "removeChild": 210,
+          "release": 210
+        },
+        "source": {
+          "measureText": 12
+        }
+      },
+      "geometry": {
+        "chart": [
+          [
+            0,
+            0,
+            100,
+            51
+          ],
+          [
+            0,
+            0,
+            100,
+            51
+          ]
+        ]
+      },
+      "work": {
+        "a": 100,
+        "skipped.x.z.w": 3
+      }
+    }
+  ],
+  "idleAfter": {
+    "n": 29,
+    "avgMs": 16.67,
+    "p50Ms": 16.66,
+    "p90Ms": 16.8,
+    "maxMs": 17.1,
+    "over16": 2
+  }
+}

@@ -251,7 +251,7 @@ async function instrument(subject: Subject, run: RunContext): Promise<void> {
 
     await injectStylesheet(params.get('css'));
 
-    const ablations = applyAblations(params.get('abl'), tools, notes);
+    const ablations = applyAblations(params.get('abl'), tools, notes, run.lib);
 
     if (params.get('work') === '1') {
         for (const note of [...installWorkCounters(tools), ...(subject.installWork?.(tools) ?? [])]) {
@@ -292,15 +292,16 @@ async function injectStylesheet(css: string | null): Promise<void> {
  * @param abl - The `abl=` value, or `null`.
  * @param tools - The harness tools.
  * @param notes - The run's notes.
+ * @param lib - The library objects the page passed in, which every ablation receives.
  * @returns How many names were given.
  */
-function applyAblations(abl: string | null, tools: HarnessTools, notes: string[]): number {
+function applyAblations(abl: string | null, tools: HarnessTools, notes: string[], lib: HarnessLibrary): number {
     const names = (abl ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
     for (const name of names) {
         const ablation = Object.hasOwn(ABLATIONS, name) ? ABLATIONS[name] : undefined;
 
-        notes.push(ablation ? `${name}: ${ablation(tools)}` : `${name}: unknown ablation`);
+        notes.push(ablation ? `${name}: ${ablation(tools, lib)}` : `${name}: unknown ablation`);
     }
 
     return names.length;

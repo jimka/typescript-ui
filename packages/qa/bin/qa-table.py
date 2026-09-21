@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tabulate QA results: qa-table.py <results-dir> <name-prefix> [--writes] [--seam] [--before <path>[,<path>...]].
+Tabulate QA results: qa-table.py <results-dir> <name-prefix> [--writes] [--seam] [--work] [--before <path>[,<path>...]].
 
 Reads <results-dir>/<name-prefix>*.json, oldest first, and prints one row per
 phase of each report. The geom column compares each phase's geometry with the
@@ -15,13 +15,14 @@ import sys
 # The report format this script reads; `QaReport.schema` in the harness.
 SCHEMA: int = 1
 
-# Loom's floor for --writes: a write that happens less than once in twenty
-# units is noise in a per-unit listing.
+# Loom's floor for --writes and --work: a count that happens less than once
+# in twenty units is noise in a per-unit listing.
 WRITES_FLOOR: float = 0.05
 
 # Work counters that are an ablation's own bookkeeping, not work the page did;
-# work/u leaves them out, as wave 2's scoring did.
-BOOKKEEPING_PREFIXES: tuple[str, ...] = ('memo.', 'skipped.', 'stubbed.')
+# work/u leaves them out, as wave 2's scoring did. `dose.` counts the calls a
+# dose arm adds, which are the arm's, not the page's.
+BOOKKEEPING_PREFIXES: tuple[str, ...] = ('memo.', 'skipped.', 'stubbed.', 'dose.')
 
 # Column name → width. Wide enough for the campaign's run names and a
 # full-screen element count; the notes column is last and unbounded.
@@ -235,7 +236,7 @@ def phase_cells(report: dict, phase: dict | None, index: int, reference: dict | 
 
 def print_details(phase: dict, args: argparse.Namespace, indent: int) -> None:
     """
-    Print the --writes and --seam detail lines under a phase's row.
+    Print the --writes, --seam and --work detail lines under a phase's row.
 
     Args:
         phase: one phase of a report.
@@ -250,6 +251,11 @@ def print_details(phase: dict, args: argparse.Namespace, indent: int) -> None:
         for family in ('sink', 'source'):
             items = [f'{k}={v}' for k, v in phase['seam'].get(family, {}).items()]
             print(f"{'':{indent}} seam.{family}/unit: " + ', '.join(items))
+
+    if args.work and phase.get('work'):
+        ranked = sorted(phase['work'].items(), key=lambda item: item[1], reverse=True)
+        items = [f'{k}={v}' for k, v in ranked if v >= WRITES_FLOOR]
+        print(f"{'':{indent}} work/unit: " + ', '.join(items))
 
 
 def print_report(path: str, report: dict | None, reference: dict | None, args: argparse.Namespace, widths: list[int]) -> None:
@@ -301,6 +307,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('prefix', help='the run-name prefix to select')
     parser.add_argument('--writes', action='store_true', help='list each phase\'s write counters under its row')
     parser.add_argument('--seam', action='store_true', help='list each phase\'s seam counters under its row')
+    parser.add_argument('--work', action='store_true', help='list each phase\'s work counters under its row, bookkeeping included')
     parser.add_argument('--before', default='', help='comma-separated dotted paths into `before`, one column each')
     args = parser.parse_args()
     args.before = [p for p in args.before.split(',') if p]

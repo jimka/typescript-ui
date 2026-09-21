@@ -1,15 +1,19 @@
 // The harness's own types. Nothing here names a library type: the harness is
-// library-free, and the page hands it the two library objects it needs.
+// library-free, and the page hands it the library objects it needs.
 
 /** A loosely typed object, for reaching into library instances by name. */
 export type AnyObj = Record<string, unknown>;
 
-/** The two library objects the page passes in, from its own import of the library's `core` entry point. */
+/** The library objects the page passes in, from its own import of the library's `core` and `overlay` entry points. */
 export interface HarnessLibrary {
     /** The page's `Body` singleton class; the root of every component-tree walk. */
     Body: { getInstance(): object };
     /** The library's DOM seam swap point; the seam counter wraps its sink and source. */
     DOM: { sink: object; source: object; install(impls: { sink?: object; source?: object }): void };
+    /** The library's `Tooltip` class, for `g19.tooltip-idle`; absent in tests that do not pass it. */
+    Tooltip?: object;
+    /** The library's `AbstractWindow` class, for `g08.env-reads`; absent in tests that do not pass it. */
+    AbstractWindow?: object;
 }
 
 /** What a mounted panel gives the harness. */
@@ -138,7 +142,7 @@ export interface ThemeTarget {
 }
 
 /** Patches the page at runtime and returns a one-line note saying what it did. */
-export type Ablation = (tools: HarnessTools) => string;
+export type Ablation = (tools: HarnessTools, lib: HarnessLibrary) => string;
 
 /** The helpers the harness shares with drivers, ablations and panels. */
 export interface HarnessTools {
