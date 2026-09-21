@@ -4,7 +4,7 @@
 // no field construction, no DOM harness. Case numbers below match this
 // plan's `## Expected Behaviour` numbering: plans/in-progress/date-time-picker-relative-shorthand.md.
 import { describe, it, expect } from 'vitest';
-import { tokenizeDateMath, applyDateMath, resolveDateMath, parseIsoDate, parseClockTime, DateMathUnit } from '~/component/input/dateMath';
+import { tokenizeDateMath, applyDateMath, resolveDateMath, parseIsoDate, parseClockTime, parseIsoDateTime, DateMathUnit } from '~/component/input/dateMath';
 
 const ALL: readonly DateMathUnit[] = ["y", "mo", "w", "d", "h", "mi", "s"];
 
@@ -197,5 +197,54 @@ describe('parseClockTime', () => {
 
     it('rejects seconds outside 0-59', () => {
         expect(parseClockTime("09:30:61")).toBe(null);
+    });
+});
+
+// parseIsoDateTime is the absolute form DateTimeField and the table's date-time
+// cell editor share. Every row is DateTimeField.parseRaw's own absolute-form
+// behaviour, asserted on the helper it now delegates to.
+describe('parseIsoDateTime', () => {
+    it('accepts a date and an H:MM time, at zero seconds', () => {
+        expect(parseIsoDateTime("2025-06-15 14:30")).toEqual(new Date(2025, 5, 15, 14, 30, 0));
+    });
+
+    it('accepts a date and an H:MM:SS time, keeping the seconds', () => {
+        expect(parseIsoDateTime("2025-06-15 14:30:05")).toEqual(new Date(2025, 5, 15, 14, 30, 5));
+    });
+
+    it('ignores surrounding whitespace and a run of separating whitespace', () => {
+        expect(parseIsoDateTime("  2025-06-15   14:30  ")).toEqual(new Date(2025, 5, 15, 14, 30, 0));
+    });
+
+    it('accepts an unpadded hour and minute, exactly as parseClockTime does', () => {
+        expect(parseIsoDateTime("2025-06-15 9:5")).toEqual(new Date(2025, 5, 15, 9, 5, 0));
+    });
+
+    it('rejects a date with no time', () => {
+        expect(parseIsoDateTime("2025-06-15")).toBe(null);
+    });
+
+    it('rejects a T separator', () => {
+        expect(parseIsoDateTime("2025-06-15T14:30")).toBe(null);
+    });
+
+    it('rejects a UTC-suffixed time', () => {
+        expect(parseIsoDateTime("2025-06-15 14:30Z")).toBe(null);
+    });
+
+    it('rejects trailing text after the time', () => {
+        expect(parseIsoDateTime("2025-06-15 14:30 extra")).toBe(null);
+    });
+
+    it('rejects an impossible day in the date part', () => {
+        expect(parseIsoDateTime("2025-02-30 10:00")).toBe(null);
+    });
+
+    it('rejects an out-of-range hour in the time part', () => {
+        expect(parseIsoDateTime("2025-06-15 25:00")).toBe(null);
+    });
+
+    it('rejects the empty string', () => {
+        expect(parseIsoDateTime("")).toBe(null);
     });
 });

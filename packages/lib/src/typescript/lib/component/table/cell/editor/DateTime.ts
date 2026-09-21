@@ -7,6 +7,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { LayerManager } from "~/core/LayerManager.js";
 import { DateTimePickerDropdown } from "~/component/input/DateTimePickerDropdown.js";
+import { parseIsoDateTime } from "~/component/input/dateMath.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -19,6 +20,13 @@ import { callable } from "~/core/Callable.js";
  * preventDefault so the
  * [`CellEditorPool`](/api/component/table/classes/CellEditorPool)'s blur-to-commit
  * path is not invoked prematurely.
+ *
+ * Typed text is read back exactly as the editor writes it: a `YYYY-MM-DD` date
+ * and an `H:MM[:SS]` time separated by whitespace, the rule
+ * [`DateTimeField`](/api/component/input/classes/DateTimeField) applies.
+ * Anything else is unparseable, and the owning
+ * [`DateTimeCell`](/api/component/table/classes/DateTimeCell) keeps its
+ * previous value on commit.
  *
  * @category Components
  */
@@ -244,10 +252,9 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
     }
 
     /**
-     * Updates the cached value from a typed text edit. The display format is
-     * "YYYY-MM-DD HH:MM[:SS]" with a space separator; `Date.parse` only
-     * accepts ISO-8601 reliably with a `T`, so we re-introduce it before
-     * parsing.
+     * Updates the cached value from a typed text edit, read with the same
+     * `YYYY-MM-DD H:MM[:SS]` rule as DateTimeField. A rejected entry caches null,
+     * which DateTimeCell treats as unparseable and reverts.
      */
     private onInput(): void {
         this.syncTextFromDom();
@@ -258,8 +265,7 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
             return;
         }
 
-        const d = new Date(raw.replace(' ', 'T'));
-        this._value = isNaN(d.getTime()) ? null : d;
+        this._value = parseIsoDateTime(raw);
     }
 
     /**

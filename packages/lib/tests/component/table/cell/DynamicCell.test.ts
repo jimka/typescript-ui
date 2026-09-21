@@ -6,7 +6,7 @@
 // the offline harness lacks (mirrors the gaps noted in CellEditorPool.test.ts
 // and Combo.test.ts); those are documented manual-verify steps in the plan.
 //
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../../dom/TestDOM';
 import fontMetrics from '../../../dom/font-metrics.test-font.json';
@@ -15,6 +15,7 @@ import { BooleanEditor } from '~/component/table/cell/editor/Boolean';
 import { NumberRenderer } from '~/component/table/cell/renderer/Number';
 import { ComboRenderer } from '~/component/table/cell/renderer/Combo';
 import { ComboEditor } from '~/component/table/cell/editor/Combo';
+import { CellEditorPool } from '~/component/table/cell/editor/CellEditorPool';
 import { Row } from '~/component/table/Row';
 import { StringCell } from '~/component/table/cell/String';
 import { ComboCell } from '~/component/table/cell/Combo';
@@ -285,6 +286,114 @@ describe('DynamicCell commit write-back', () => {
 
         expect(record.get('value')).toBe(42);
         expect(typeof record.get('value')).toBe('number');
+    });
+});
+
+// A date, time or date-time row borrows the same pooled editor DateCell,
+// TimeCell and DateTimeCell do, and gets the same commit guard: an entry the
+// editor could not parse reverts the row instead of blanking the record. Every
+// other variant keeps the base commit, so a number row still commits null for
+// unparseable text, as NumberEditor documents.
+describe('DynamicCell temporal rows revert a rejected typed value', () => {
+    const MODEL = new Model([
+        { name: 'kind',  type: 'string', order: 0 },
+        { name: 'value', type: 'auto',   order: 1 },
+    ]);
+
+    const config: ColumnConfig = {
+        field:    'value',
+        cellType: (r) => r.get('kind') as CellType,
+    };
+
+    /** Every temporal row's value before the edit: 17 May 2021 08:15, local. */
+    const PREVIOUS = new Date(2021, 4, 17, 8, 15);
+
+    /**
+     * Binds a `kind` row holding `value`, opens an edit on it, types `text`
+     * into the editor it borrows, commits, and reports what the commit did.
+     * The commit is written back to the record the way Row does.
+     *
+     * @param kind - The row's cell type.
+     * @param value - The record's value before the edit.
+     * @param text - The text typed into the borrowed editor.
+     * @returns The record's value afterwards and the "commit" spy.
+     */
+    function typeAndCommit(
+        kind: CellType,
+        value: unknown,
+        text: string,
+    ): { value: unknown; commit: ReturnType<typeof vi.fn> } {
+        const data  = { kind, value };
+        const store = new MemoryStore(MODEL, [data]);
+        store.loadData([data]);
+
+        const record = store.getRecords()[0];
+        const cell   = new DynamicCell('value', 'auto', config);
+        const commit = vi.fn((v: unknown) => record.set('value', v));
+
+        cell.setEditorPool(new CellEditorPool());
+        cell.getElement(true);
+        cell.bindRecord(record);
+        cell.startEdit();
+
+        const editor = (cell as any)._activeEditor;
+
+        if (kind === 'number') {
+            editor._textField.setText(text);
+        } else {
+            DOM.sink.setValue(editor.getElement(true), text);
+        }
+
+        editor.onInput();
+
+        cell.on('commit', commit);
+        cell.commitEdit();
+
+        expect(cell.isEditing()).toBe(false);
+
+        return { value: record.get('value'), commit };
+    }
+
+    it('a date row: "2025-02-30" reverts and fires no commit', () => {
+        const { value, commit } = typeAndCommit('date', new Date(PREVIOUS), '2025-02-30');
+
+        expect(value).toEqual(PREVIOUS);
+        expect(commit).not.toHaveBeenCalled();
+    });
+
+    it('a time row: "25:00" reverts and fires no commit', () => {
+        const { value, commit } = typeAndCommit('time', new Date(PREVIOUS), '25:00');
+
+        expect(value).toEqual(PREVIOUS);
+        expect(commit).not.toHaveBeenCalled();
+    });
+
+    it('a date-time row: a date with no time reverts and fires no commit', () => {
+        const { value, commit } = typeAndCommit('datetime', new Date(PREVIOUS), '2025-06-15');
+
+        expect(value).toEqual(PREVIOUS);
+        expect(commit).not.toHaveBeenCalled();
+    });
+
+    it('a date row: a valid "2025-06-15" commits 15 Jun 2025', () => {
+        const { value, commit } = typeAndCommit('date', new Date(PREVIOUS), '2025-06-15');
+
+        expect(value).toEqual(new Date(2025, 5, 15));
+        expect(commit).toHaveBeenCalledTimes(1);
+    });
+
+    it('a date row: a cleared entry commits null', () => {
+        const { value, commit } = typeAndCommit('date', new Date(PREVIOUS), '');
+
+        expect(value).toBe(null);
+        expect(commit).toHaveBeenCalledTimes(1);
+    });
+
+    it('a number row: unparseable text still commits null', () => {
+        const { value, commit } = typeAndCommit('number', 7, 'abc');
+
+        expect(value).toBe(null);
+        expect(commit).toHaveBeenCalledTimes(1);
     });
 });
 

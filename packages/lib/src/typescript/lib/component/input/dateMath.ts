@@ -226,3 +226,34 @@ export function parseClockTime(raw: string): ClockTime | null {
 
     return { hours, minutes, seconds };
 }
+
+/**
+ * Parses a `YYYY-MM-DD H:MM[:SS]` date-time: exactly two whitespace-separated
+ * parts, the first read by {@link parseIsoDate} and the second by
+ * {@link parseClockTime}. Surrounding whitespace is ignored. A date alone, a
+ * `T` separator, or anything after the time is rejected.
+ *
+ * @param raw - The raw typed text.
+ * @returns The local date-time, or `null` when `raw` is not one.
+ *
+ * @internal — not re-exported from the package barrel.
+ */
+export function parseIsoDateTime(raw: string): Date | null {
+    const parts = raw.trim().split(/\s+/);
+
+    // A date part and a time part, nothing more.
+    if (parts.length !== 2) {
+        return null;
+    }
+
+    const date = parseIsoDate(parts[0]);
+    const time = parseClockTime(parts[1]);
+
+    if (date === null || time === null) {
+        return null;
+    }
+
+    date.setHours(time.hours, time.minutes, time.seconds, 0);
+
+    return date;
+}

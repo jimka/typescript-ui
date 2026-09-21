@@ -20,11 +20,16 @@ import { StringEditor } from '~/component/table/cell/editor/String';
 import { NumberEditor } from '~/component/table/cell/editor/Number';
 import { ComboEditor } from '~/component/table/cell/editor/Combo';
 import { DateEditor } from '~/component/table/cell/editor/Date';
+import { DateTimeEditor } from '~/component/table/cell/editor/DateTime';
+import { TimeEditor } from '~/component/table/cell/editor/Time';
 import { BooleanEditor } from '~/component/table/cell/editor/Boolean';
 import { CellEditorPool } from '~/component/table/cell/editor/CellEditorPool';
 import { Cell } from '~/component/table/cell/Cell';
 import { StringRenderer } from '~/component/table/cell/renderer/String';
 import { DefaultCell } from '~/component/table/cell/Default';
+import { DateCell } from '~/component/table/cell/Date';
+import { TimeCell } from '~/component/table/cell/Time';
+import { DateTimeCell } from '~/component/table/cell/DateTime';
 import type { ForwardedKeyDetail } from '~/component/table/cell/editor/CellEditor';
 import { blurRelatedTargetHandle, forwardedKeyDetail } from '~/component/table/cell/editor/CellEditor';
 
@@ -42,6 +47,12 @@ afterEach(() => DOM.reset());
 /** Sets the wrapped TextField's text and fires the editor's parse path. */
 function typeInto(editor: unknown, text: string): void {
     (editor as any)._textField.setText(text);
+    (editor as any).onInput();
+}
+
+/** Sets a bare-input editor's text and runs its parse path. */
+function typeIntoInput(editor: unknown, text: string): void {
+    DOM.sink.setValue((editor as any).getElement(true), text);
     (editor as any).onInput();
 }
 
@@ -717,6 +728,260 @@ describe('NumberEditor parse contract', () => {
         const items = showSpy.mock.calls[0][2] as { text?: string }[];
         expect(items.map(i => i.text)).toEqual(['Cut', 'Copy', 'Paste']);
         showSpy.mockRestore();
+    });
+});
+
+// The three temporal editors are bare <input>s (TextInputCellEditor), so their
+// text is set on the element itself and the private onInput parse path is run
+// directly — the same offline substitute typeInto uses for the wrapped-field
+// editors above. Each reads its text with the rule its form-field sibling uses.
+describe('DateEditor parse contract', () => {
+    /** Types `text` into a fresh DateEditor and returns the value it caches. */
+    function parsed(text: string): Date | null {
+        const e = new DateEditor();
+
+        typeIntoInput(e, text);
+
+        return e.getValue();
+    }
+
+    it('"2026-09-16" parses to 16 Sep 2026 at local midnight', () => {
+        expect(parsed('2026-09-16')).toEqual(new Date(2026, 8, 16));
+    });
+
+    it('"2024-02-29" parses to a real leap day', () => {
+        expect(parsed('2024-02-29')).toEqual(new Date(2024, 1, 29));
+    });
+
+    it('"2025-02-30" is rejected rather than rolled forward to 2 March', () => {
+        expect(parsed('2025-02-30')).toBe(null);
+    });
+
+    it('"2026-02-29" is rejected rather than rolled forward to 1 March', () => {
+        expect(parsed('2026-02-29')).toBe(null);
+    });
+
+    it('a bare year "2026" is rejected rather than read as 1 January', () => {
+        expect(parsed('2026')).toBe(null);
+    });
+
+    it('a year-month prefix "2026-09" is rejected rather than read as the 1st', () => {
+        expect(parsed('2026-09')).toBe(null);
+    });
+
+    it('an unpadded "2026-9-1" is rejected', () => {
+        expect(parsed('2026-9-1')).toBe(null);
+    });
+
+    it('"garbage" is rejected', () => {
+        expect(parsed('garbage')).toBe(null);
+    });
+
+    it('clearing the text caches null and reads as empty', () => {
+        const e = new DateEditor();
+
+        typeIntoInput(e, '2026-09-16');
+        typeIntoInput(e, '');
+
+        expect(e.getValue()).toBe(null);
+        expect(e.isEmpty()).toBe(true);
+    });
+});
+
+describe('DateTimeEditor parse contract', () => {
+    /** Types `text` into a fresh minute-precision DateTimeEditor and returns the value it caches. */
+    function parsed(text: string): Date | null {
+        const e = new DateTimeEditor(false);
+
+        typeIntoInput(e, text);
+
+        return e.getValue();
+    }
+
+    it('"2025-06-15 14:30" parses to local 14:30', () => {
+        expect(parsed('2025-06-15 14:30')).toEqual(new Date(2025, 5, 15, 14, 30, 0));
+    });
+
+    it('"2025-06-15 14:30:05" keeps the seconds', () => {
+        expect(parsed('2025-06-15 14:30:05')).toEqual(new Date(2025, 5, 15, 14, 30, 5));
+    });
+
+    it('an impossible day "2025-02-30 10:00" is rejected rather than rolled forward', () => {
+        expect(parsed('2025-02-30 10:00')).toBe(null);
+    });
+
+    it('a bare-year date part "2026 10:00" is rejected', () => {
+        expect(parsed('2026 10:00')).toBe(null);
+    });
+
+    it('a year-month date part "2026-09 10:00" is rejected', () => {
+        expect(parsed('2026-09 10:00')).toBe(null);
+    });
+
+    it('a date with no time "2025-06-15" is rejected rather than read as UTC midnight', () => {
+        expect(parsed('2025-06-15')).toBe(null);
+    });
+
+    it('a T separator "2025-06-15T14:30" is rejected', () => {
+        expect(parsed('2025-06-15T14:30')).toBe(null);
+    });
+
+    it('a UTC-suffixed time "2025-06-15 14:30Z" is rejected', () => {
+        expect(parsed('2025-06-15 14:30Z')).toBe(null);
+    });
+
+    it('an unpadded time "2025-06-15 9:5" is accepted, as DateTimeField accepts it', () => {
+        expect(parsed('2025-06-15 9:5')).toEqual(new Date(2025, 5, 15, 9, 5, 0));
+    });
+
+    it('an out-of-range hour "2025-06-15 25:00" is rejected', () => {
+        expect(parsed('2025-06-15 25:00')).toBe(null);
+    });
+
+    it('"total garbage" is rejected', () => {
+        expect(parsed('total garbage')).toBe(null);
+    });
+});
+
+describe('TimeEditor parse contract', () => {
+    /** Types `text` into a fresh minute-precision TimeEditor and returns the value it caches. */
+    function parsed(text: string): Date | null {
+        const e = new TimeEditor(false);
+
+        typeIntoInput(e, text);
+
+        return e.getValue();
+    }
+
+    it('"09:30" parses to 09:30 on 1 Jan 1970', () => {
+        expect(parsed('09:30')).toEqual(new Date(1970, 0, 1, 9, 30, 0));
+    });
+
+    it('an unpadded "9:5" parses to 09:05', () => {
+        expect(parsed('9:5')).toEqual(new Date(1970, 0, 1, 9, 5, 0));
+    });
+
+    it('"09:30:45" keeps the seconds', () => {
+        expect(parsed('09:30:45')).toEqual(new Date(1970, 0, 1, 9, 30, 45));
+    });
+
+    it('":30" parses to 00:30, the quirk TimeField shares', () => {
+        expect(parsed(':30')).toEqual(new Date(1970, 0, 1, 0, 30, 0));
+    });
+
+    it('a bare hour "9" is rejected rather than read as 09:00', () => {
+        expect(parsed('9')).toBe(null);
+    });
+
+    it('an hour with an empty minute "9:" is rejected', () => {
+        expect(parsed('9:')).toBe(null);
+    });
+
+    it('"24:00" is rejected rather than rolled into the next day', () => {
+        expect(parsed('24:00')).toBe(null);
+    });
+
+    it('"25:00" is rejected rather than rolled into 01:00 the next day', () => {
+        expect(parsed('25:00')).toBe(null);
+    });
+
+    it('"09:60" is rejected rather than rolled into 10:00', () => {
+        expect(parsed('09:60')).toBe(null);
+    });
+
+    it('"09:30:61" is rejected rather than rolled into 09:31:01', () => {
+        expect(parsed('09:30:61')).toBe(null);
+    });
+
+    it('"-1:00" is rejected rather than rolled into the previous day', () => {
+        expect(parsed('-1:00')).toBe(null);
+    });
+
+    it('"abc" is rejected', () => {
+        expect(parsed('abc')).toBe(null);
+    });
+});
+
+// A rejected entry caches null with non-empty text, which each temporal cell's
+// commitEdit already treats as unparseable: it cancels the edit, so the cell
+// keeps its previous value and fires no "commit". A cleared entry is the one
+// null that still commits.
+describe('Temporal cells revert a rejected typed value', () => {
+    /** Every row's value before the edit: 17 May 2021 08:15, local. */
+    const PREVIOUS = new Date(2021, 4, 17, 8, 15);
+
+    /**
+     * Opens an edit on `cell` holding {@link PREVIOUS}, types `text` into the
+     * editor it borrows, commits, and reports what the commit did.
+     *
+     * @param cell - A fresh DateCell, TimeCell or DateTimeCell.
+     * @param text - The text typed into the borrowed editor.
+     * @returns The cell's value afterwards and the "commit" spy.
+     */
+    function typeAndCommit(
+        cell: DateCell | TimeCell | DateTimeCell,
+        text: string,
+    ): { value: unknown; commit: ReturnType<typeof vi.fn> } {
+        const pool   = new CellEditorPool();
+        const commit = vi.fn();
+
+        cell.setEditorPool(pool);
+        cell.getElement(true);
+        cell.setValue(new Date(PREVIOUS));
+        cell.startEdit();
+
+        typeIntoInput((cell as any)._activeEditor, text);
+
+        cell.on('commit', commit);
+        cell.commitEdit();
+
+        expect(cell.isEditing()).toBe(false);
+
+        return { value: cell.getRenderer().getValue(), commit };
+    }
+
+    it('DateCell: "2025-02-30" reverts to the previous value and fires no commit', () => {
+        const { value, commit } = typeAndCommit(new DateCell(), '2025-02-30');
+
+        expect(value).toEqual(PREVIOUS);
+        expect(commit).not.toHaveBeenCalled();
+    });
+
+    it('DateCell: a bare year "2026" reverts', () => {
+        const { value, commit } = typeAndCommit(new DateCell(), '2026');
+
+        expect(value).toEqual(PREVIOUS);
+        expect(commit).not.toHaveBeenCalled();
+    });
+
+    it('TimeCell: "25:00" reverts rather than committing 01:00 the next day', () => {
+        const { value, commit } = typeAndCommit(new TimeCell(), '25:00');
+
+        expect(value).toEqual(PREVIOUS);
+        expect(commit).not.toHaveBeenCalled();
+    });
+
+    it('DateTimeCell: a date with no time reverts rather than committing UTC midnight', () => {
+        const { value, commit } = typeAndCommit(new DateTimeCell(), '2025-06-15');
+
+        expect(value).toEqual(PREVIOUS);
+        expect(commit).not.toHaveBeenCalled();
+    });
+
+    it('DateCell: a valid "2025-06-15" commits 15 Jun 2025', () => {
+        const { value, commit } = typeAndCommit(new DateCell(), '2025-06-15');
+
+        expect(value).toEqual(new Date(2025, 5, 15));
+        expect(commit).toHaveBeenCalledTimes(1);
+        expect(commit).toHaveBeenCalledWith(new Date(2025, 5, 15));
+    });
+
+    it('DateCell: a cleared entry commits null', () => {
+        const { value, commit } = typeAndCommit(new DateCell(), '');
+
+        expect(value).toBe(null);
+        expect(commit).toHaveBeenCalledTimes(1);
+        expect(commit).toHaveBeenCalledWith(null);
     });
 });
 

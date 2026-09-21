@@ -3,6 +3,9 @@
 import { Cell } from "~/component/table/cell/Cell.js";
 import type { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
 import type { ComboEditor } from "~/component/table/cell/editor/Combo.js";
+import type { DateEditor } from "~/component/table/cell/editor/Date.js";
+import type { TimeEditor } from "~/component/table/cell/editor/Time.js";
+import type { DateTimeEditor } from "~/component/table/cell/editor/DateTime.js";
 import { BooleanEditor } from "~/component/table/cell/editor/Boolean.js";
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
 import { StringRenderer } from "~/component/table/cell/renderer/String.js";
@@ -153,6 +156,29 @@ class DynamicCell extends Cell<any> {
         }
 
         super.startEdit();
+    }
+
+    /**
+     * Commits the active edit, but reverts a `date`, `time` or `datetime` row
+     * whose editor holds text it could not parse, so the record is not blanked
+     * — the guard {@link DateCell}, {@link TimeCell} and {@link DateTimeCell}
+     * apply to the same pooled editors. Every other variant commits as usual.
+     *
+     * @returns This cell, for method chaining.
+     */
+    commitEdit(): this {
+        const temporal = this._activeType === 'date' || this._activeType === 'time' || this._activeType === 'datetime';
+        const editor   = temporal ? this._activeEditor as DateEditor | TimeEditor | DateTimeEditor | null : null;
+
+        if (editor && !editor.isEmpty() && editor.getValue() === null) {
+            this.cancelEdit();
+
+            return this;
+        }
+
+        super.commitEdit();
+
+        return this;
     }
 
     /**
