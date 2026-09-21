@@ -8,7 +8,7 @@ import { Component } from '~/core/Component';
 import { Split } from '~/layout/Split';
 import { Tab } from '~/layout/Tab';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
-import { serializeLayout, restoreLayout, type LayoutFactory } from '~/layout/LayoutSerialization';
+import { serializeLayout, restoreLayout, type LayoutFactory, type TabNode } from '~/layout/LayoutSerialization';
 import { Glyph } from '~/component/display/Glyph';
 import { circle_check } from '~/glyphs/solid/circle_check';
 import { DOM } from '~/core/DOM';
@@ -533,5 +533,164 @@ describe('serializeLayout of a Split holding a transient child', () => {
 
         expect(placeholder.getParentComponent()).toBeNull();
         expect(_ruleCacheKeys().some(key => key.startsWith('#' + placeholderId))).toBe(true);
+    });
+});
+
+describe('serializeLayout of a Tab: the active index names the active child', () => {
+    afterEach(() => DOM.reset());
+
+    /**
+     * A sized Tab host. The host is rendered and sized so a layout pass gives
+     * every child its tab, which `setActiveContent` needs to activate one.
+     *
+     * @returns The host and its Tab manager.
+     */
+    function tabHost(): { host: Container; tab: Tab } {
+        installTestDOM(CONFIG);
+
+        const tab  = new Tab();
+        const host = new Container({ layoutManager: tab });
+
+        host.getElement(true);
+        host.setWidth(400);
+        host.setHeight(300);
+
+        return { host, tab };
+    }
+
+    /** Components A, B and C with ids `a`, `b` and `c`. */
+    function panels(): { a: Component; b: Component; c: Component } {
+        const a = new Component({}); a.setId('a');
+        const b = new Component({}); b.setId('b');
+        const c = new Component({}); c.setId('c');
+
+        return { a, b, c };
+    }
+
+    /** Layout constraints marking a child transient: shown as a tab, never captured. */
+    function transient(): LayoutConstraints {
+        return Object.assign(new LayoutConstraints(), { transient: true });
+    }
+
+    /** The captured root of `host`, narrowed to a tab node. */
+    function tabRoot(host: Container): TabNode {
+        const state = serializeLayout(host);
+
+        expect(state.root.kind).toBe('tab');
+
+        return state.root as TabNode;
+    }
+
+    /** The panel id of the captured child the node's active index names. */
+    function activePanelId(root: TabNode): string {
+        return (root.children[root.activeIndex] as { panelId: string }).panelId;
+    }
+
+    /**
+     * A host holding a transient placeholder P ahead of A, B and C, laid out,
+     * with B active: the strip is P A B C, so B is the third tab but the
+     * second captured child.
+     */
+    function placeholderFirstWithBActive(): { host: Container; a: Component; b: Component; c: Component } {
+        const { host, tab } = tabHost();
+        const { a, b, c }   = panels();
+
+        host.addComponent(new Component({}), transient());
+        host.addComponent(a);
+        host.addComponent(b);
+        host.addComponent(c);
+        host.doLayout();
+        tab.setActiveContent(b);
+
+        return { host, a, b, c };
+    }
+
+    it('1. a transient tab ahead of the active one does not shift the recorded index', () => {
+        const { host } = placeholderFirstWithBActive();
+
+        const root = tabRoot(host);
+
+        expect(root.activeIndex).toBe(1);
+        expect(activePanelId(root)).toBe('b');
+    });
+
+    it('2. restoring that capture activates the tab that was active', () => {
+        const { host, a, b, c } = placeholderFirstWithBActive();
+
+        const state = serializeLayout(host);
+
+        restoreLayout(host, state, instanceFactory({ a, b, c }));
+
+        expect((host.getLayoutManager() as Tab).getActiveContent()).toBe(b);
+    });
+
+    it('3. a transient tab after the active one leaves the index as it was', () => {
+        const { host, tab } = tabHost();
+        const { a, b, c }   = panels();
+
+        host.addComponent(a);
+        host.addComponent(b);
+        host.addComponent(c);
+        host.addComponent(new Component({}), transient());
+        host.doLayout();
+        tab.setActiveContent(b);
+
+        const root = tabRoot(host);
+
+        expect(root.activeIndex).toBe(1);
+        expect(activePanelId(root)).toBe('b');
+    });
+
+    it('4. an active transient tab records the first captured tab, not an out-of-range index', () => {
+        const { host, tab } = tabHost();
+        const { a }         = panels();
+        const placeholder   = new Component({});
+
+        host.addComponent(a);
+        host.addComponent(placeholder, transient());
+        host.doLayout();
+        tab.setActiveContent(placeholder);
+
+        const root = tabRoot(host);
+
+        expect(root.children.length).toBe(1);
+        expect(root.activeIndex).toBe(0);
+    });
+
+    it('5. a drag-reordered strip records the active child by identity, not by strip position', () => {
+        const { host, tab } = tabHost();
+        const { a, b, c }   = panels();
+
+        host.addComponent(a);
+        host.addComponent(b);
+        host.addComponent(c);
+        host.doLayout();
+
+        // Drag C to the front, the way Tab.doubleClick's reorder case drives
+        // it: the strip becomes C A B while the container keeps A B C.
+        const cId = (tab as any)._bar.getEntryIds()[2];
+
+        (tab as any)._bar.moveBarEntry(cId, 0);
+        (tab as any)._onBarReordered(cId, 0);
+        tab.setActiveContent(a);
+
+        const root = tabRoot(host);
+
+        // Only the pairing is pinned: the order `children` is captured in is a
+        // separate, open defect.
+        expect(activePanelId(root)).toBe('a');
+    });
+
+    it('6. a host whose children were never laid out records the first tab', () => {
+        const { host } = tabHost();
+        const { a, b } = panels();
+
+        host.addComponent(a);
+        host.addComponent(b);
+
+        const root = tabRoot(host);
+
+        expect(root.children.length).toBe(2);
+        expect(root.activeIndex).toBe(0);
     });
 });

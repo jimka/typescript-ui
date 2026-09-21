@@ -98,7 +98,10 @@ export interface TabNode {
     kind:        "tab";
     /** Child arrangement nodes, in tab order. */
     children:    LayoutNode[];
-    /** Zero-based index of the active tab. */
+    /**
+     * Zero-based index, into `children`, of the active tab — `0` when no
+     * captured child is the active one.
+     */
     activeIndex: number;
 }
 
@@ -256,11 +259,20 @@ function nodeFor(component: Component): LayoutNode {
 
     if (kind === "Tab") {
         const manager = component.getLayoutManager() as Tab;
+        const kept    = serializableChildren(component);
+        const active  = manager.getActiveContent();
+
+        // The manager's own active index counts tab-strip positions, which
+        // include a transient tab and follow a drag reorder, so it does not index
+        // `kept`. The active tab is found in `kept` by identity instead, the way
+        // Tab keeps its own selection across a reorder. With no captured child
+        // active, the first tab is recorded.
+        const index = active === null ? -1 : kept.indexOf(active);
 
         return {
             kind:        "tab",
-            children:    serializableChildren(component).map(nodeFor),
-            activeIndex: manager.getActiveTabIndex(),
+            children:    kept.map(nodeFor),
+            activeIndex: Math.max(0, index),
         };
     }
 

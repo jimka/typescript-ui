@@ -2277,8 +2277,10 @@ class Tab extends LayoutManager implements FocusRevealer {
     }
 
     /**
-     * Returns the zero-based index of the currently active tab. Captures the
-     * active selection for serialization.
+     * Returns the zero-based index of the currently active tab, in tab-strip
+     * order — the order {@link setActiveTabIndex} and {@link indexOfContent}
+     * use, which a drag reorder can make differ from the container's child
+     * order.
      *
      * @returns The active tab index.
      */
