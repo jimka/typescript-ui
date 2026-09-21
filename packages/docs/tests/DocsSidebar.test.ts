@@ -51,10 +51,9 @@ beforeEach(() => {
 
 afterEach(() => {
     // Body is a page-level singleton that outlives each test; a sidebar
-    // mounted into it via Body.init's `components` option (pure append, no
-    // replace — see Component.applyOptions) must be detached before dispose,
-    // or the next test's Body.init call finds two children under a Fit()
-    // that only ever accepts one.
+    // mounted into it via body.addComponent (pure append, no replace) must be
+    // detached before dispose, or the next test's body.addComponent call
+    // finds two children under a Fit() that only ever accepts one.
     Body.getInstance().removeComponent(sidebar);
     sidebar.dispose();
 });
@@ -69,9 +68,10 @@ describe('DocsSidebar', () => {
         expect(components[1]).toBe((sidebar as unknown as { _tree: Tree })._tree);
     });
 
-    it('filters to a page matching the query in its title, dropping a non-matching sibling', () => {
+    it('filters to a page matching the query in its title, dropping a non-matching sibling', async () => {
         sidebar = new DocsSidebar(router);
-        const body = Body.init({ layoutManager: Fit(), components: [sidebar] });
+        const body = await Body.init({ layoutManager: Fit() });
+        body.addComponent(sidebar);
         body.flushLayout();
 
         type('install');
@@ -85,9 +85,10 @@ describe('DocsSidebar', () => {
         expect(guide!.children![0].data).toBe('/guide/installation');
     });
 
-    it('excludes a top-level group with no matching descendant and no title/heading match of its own', () => {
+    it('excludes a top-level group with no matching descendant and no title/heading match of its own', async () => {
         sidebar = new DocsSidebar(router);
-        const body = Body.init({ layoutManager: Fit(), components: [sidebar] });
+        const body = await Body.init({ layoutManager: Fit() });
+        body.addComponent(sidebar);
         body.flushLayout();
 
         type('install');
@@ -98,9 +99,10 @@ describe('DocsSidebar', () => {
         expect(tree.getNodes().some((n) => n.data === '/data')).toBe(false);
     });
 
-    it('surfaces a page matching only its heading text, not its title', () => {
+    it('surfaces a page matching only its heading text, not its title', async () => {
         sidebar = new DocsSidebar(router);
-        const body = Body.init({ layoutManager: Fit(), components: [sidebar] });
+        const body = await Body.init({ layoutManager: Fit() });
+        body.addComponent(sidebar);
         body.flushLayout();
 
         // /concepts/sizing's title is "Sizing"; "## Baseline (for horizontal
@@ -113,9 +115,10 @@ describe('DocsSidebar', () => {
         expect(findNode(tree.getNodes(), '/concepts/sizing')).toBeDefined();
     });
 
-    it('keeps a matching group node with an empty children array when none of its children match', () => {
+    it('keeps a matching group node with an empty children array when none of its children match', async () => {
         sidebar = new DocsSidebar(router);
-        const body = Body.init({ layoutManager: Fit(), components: [sidebar] });
+        const body = await Body.init({ layoutManager: Fit() });
+        body.addComponent(sidebar);
         body.flushLayout();
 
         // The "Concepts" group's own index page is titled "Concepts"; none of
@@ -130,9 +133,10 @@ describe('DocsSidebar', () => {
         expect(concepts!.children ?? []).toHaveLength(0);
     });
 
-    it('sets the tree to zero nodes when nothing matches', () => {
+    it('sets the tree to zero nodes when nothing matches', async () => {
         sidebar = new DocsSidebar(router);
-        const body = Body.init({ layoutManager: Fit(), components: [sidebar] });
+        const body = await Body.init({ layoutManager: Fit() });
+        body.addComponent(sidebar);
         body.flushLayout();
 
         type('xyzzy');
@@ -143,9 +147,10 @@ describe('DocsSidebar', () => {
         expect(tree.getNodes()).toEqual([]);
     });
 
-    it('restores the exact _fullNodes array when the field is cleared back to empty', () => {
+    it('restores the exact _fullNodes array when the field is cleared back to empty', async () => {
         sidebar = new DocsSidebar(router);
-        const body = Body.init({ layoutManager: Fit(), components: [sidebar] });
+        const body = await Body.init({ layoutManager: Fit() });
+        body.addComponent(sidebar);
         body.flushLayout();
 
         const [, tree] = sidebar.getComponents() as [TextField, Tree];
@@ -160,9 +165,10 @@ describe('DocsSidebar', () => {
         expect(tree.getNodes()).toBe(fullNodes);
     });
 
-    it('calls Tree.expandAll after a non-empty query', () => {
+    it('calls Tree.expandAll after a non-empty query', async () => {
         sidebar = new DocsSidebar(router);
-        const body = Body.init({ layoutManager: Fit(), components: [sidebar] });
+        const body = await Body.init({ layoutManager: Fit() });
+        body.addComponent(sidebar);
         body.flushLayout();
 
         const [, tree] = sidebar.getComponents() as [TextField, Tree];
@@ -174,9 +180,10 @@ describe('DocsSidebar', () => {
         expect(expandAllSpy).toHaveBeenCalledTimes(1);
     });
 
-    it('filters in an API-reference node matching by its label', () => {
+    it('filters in an API-reference node matching by its label', async () => {
         sidebar = new DocsSidebar(router);
-        const body = Body.init({ layoutManager: Fit(), components: [sidebar] });
+        const body = await Body.init({ layoutManager: Fit() });
+        body.addComponent(sidebar);
         body.flushLayout();
 
         type('button');
@@ -187,9 +194,10 @@ describe('DocsSidebar', () => {
         expect(findNode(tree.getNodes(), '/api/component/button/classes/Button')).toBeDefined();
     });
 
-    it('does not match a substring found only in an API page body, not its label', () => {
+    it('does not match a substring found only in an API page body, not its label', async () => {
         sidebar = new DocsSidebar(router);
-        const body = Body.init({ layoutManager: Fit(), components: [sidebar] });
+        const body = await Body.init({ layoutManager: Fit() });
+        body.addComponent(sidebar);
         body.flushLayout();
 
         type('defined in:');
@@ -208,7 +216,8 @@ describe('DocsSidebar', () => {
 
     it('clears an active filter, resets the tree, and reveals/selects the target when select() is called mid-filter', async () => {
         sidebar = new DocsSidebar(router);
-        const body = Body.init({ layoutManager: Fit(), components: [sidebar] });
+        const body = await Body.init({ layoutManager: Fit() });
+        body.addComponent(sidebar);
         body.flushLayout();
 
         const [searchField, tree] = sidebar.getComponents() as [TextField, Tree];
@@ -229,7 +238,8 @@ describe('DocsSidebar', () => {
 
     it('leaves an empty search field untouched and does not call Tree.setNodes when select() is called with no active filter', async () => {
         sidebar = new DocsSidebar(router);
-        const body = Body.init({ layoutManager: Fit(), components: [sidebar] });
+        const body = await Body.init({ layoutManager: Fit() });
+        body.addComponent(sidebar);
         body.flushLayout();
 
         const [searchField, tree] = sidebar.getComponents() as [TextField, Tree];

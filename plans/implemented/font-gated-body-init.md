@@ -1141,3 +1141,77 @@ From the repository root unless stated:
     symlink into the **main checkout's** `dist`. A green docs run in a worktree
     therefore proves nothing about this branch's library until that symlink is
     bridged by hand.
+
+## Implementation Notes
+
+Four departures from the plan as written, all recorded rather than designed
+around. The design itself needed no departure: `## Internal Structure`'s three
+bodies (`FontActivation.ts`, `Theme.ts`'s deadline pair, `Body.init`'s new
+body) went in verbatim, and the deletions in steps 6–10 matched the cited line
+ranges exactly.
+
+Manual verification items 17–19 (the in-engine `menus` panel check, `npm run
+dev`, and `npm run docs:dev`, each requiring a person at a browser or the
+physical desktop) are **not** performed here and remain outstanding for the
+user, per this run's own hard constraint against starting MiniBrowser, a Tauri
+command, or a dev server.
+
+- **`StartupTextMetrics.test.ts`'s ported spy callbacks needed real parameter
+  types, not `never`.** Step 1 says to port the scratch probe "verbatim apart
+  from three things" (the header comment and two import paths). Copied
+  verbatim, the three `vi.spyOn(...).mockImplementation` callbacks typed their
+  parameters as `never` (`(theme: never) =>`, `(text: never, options: never)
+  =>`, `(requests: never) =>`), which fails `npm run typecheck:test` under
+  `strictFunctionTypes` — a mock whose parameter is narrower than the spied
+  method's own is not assignable to it — and no `never`-typed mock exists
+  anywhere else in the suite. Retyped the three callbacks against the real
+  signatures (`Theme` from `~/core/Theme`; `TextMeasureOptions` /
+  `TextMeasureRequest` from `~/core/Util`, both type-only imports so the
+  fresh-module-graph pattern is unaffected), matching the pattern every other
+  `vi.spyOn(...).mockImplementation` in the suite already uses (e.g.
+  `FocusHistory.test.ts`'s `(handle: Handle, options?: …)`). Behaviour is
+  unchanged; only the annotations move.
+
+- **`Body.test.ts`'s three new `Body.init` cases needed `Favicon._reset()` in
+  `afterEach`.** Step 2 adds three cases to the same `describe('Body.init',
+  …)` block that previously ran only one, none in a fresh module graph.
+  `Body.init`'s default-favicon install writes through `Favicon`'s own
+  module-level cached link handle, which survives across cases in the same
+  block; once a second and third case each call `installTestDOM` (swapping the
+  fake DOM out from under that stale handle) and then `Body.init`, the write
+  throws `TestHandleTable: handle N is not registered`. Added
+  `Favicon._reset()` to the describe's `afterEach`, mirroring the identical
+  hazard `BodyContextMenu.test.ts` already documents and guards the same way.
+
+- **The llms manifest's convention-4 rewording needed trimming to fit the
+  token budget.** Step 21's literal replacement text pushed
+  `packages/docs/public/llms.txt` to ~8016 tokens, over the generator's
+  8010-token budget (`assertBudget` in `scripts/llms/generate.mjs`).
+  Shortened to "Mount with `const body = await Body.init({ layoutManager
+  })`, then `body.addComponent(root)`; use `Body.getInstance()` only to reach
+  the body afterwards." — drops the "build components only after `init`
+  resolves" clause the code shape already implies — which lands at ~8004
+  tokens, with headroom to spare.
+
+- **Four files carried stale prose naming the deleted gate, beyond what
+  their own numbered steps called for — a wording fix, not a design
+  change.** `Component.ts`'s `flushLayout()` and `resumeLayout()` JSDoc
+  (step 6's file, but step 6's own instruction covers only the
+  `FirstLayoutGate` import and the `isFirstLayoutHeld()` block inside
+  `flushPendingLayouts`) both described "the startup hold that keeps the
+  first coalesced flush waiting for the web font to activate" — the exact
+  mechanism steps 6–9 remove — so both `@remarks` blocks are rewritten to
+  describe the awaited-bootstrap ordering instead. `fonts-ready.test.ts`
+  (step 11's file, but step 11's instruction replaces only the
+  `ThemeManager — startup layout gate` describe) had a test title in a
+  different, untouched describe (`ModelledDOMSource.startFontLoad`) still
+  naming "the gate"; reworded to match. `tests/dom/TestDOM.ts` is the one
+  genuinely out-of-table file: its own `ModelledDOMSource.startFontLoad` doc
+  comment named the gate too, and is reworded the same way.
+  `HeaderThemeReflow.test.ts` (step 13's file, but step 13's instruction
+  covers only its `Body.init` call) justified the `flushLayout()` beneath it
+  as a bypass of a first layout "held pending font activation"; reworded to
+  name the mocked-out frame that file actually installs, which is what makes
+  the bypass necessary once the gate is gone. (The `DocsSidebar.test.ts` /
+  `DocsContent.test.ts` comment rewordings are not part of this deviation —
+  they are exactly what step 16 itself specifies.)

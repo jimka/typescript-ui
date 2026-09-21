@@ -19,7 +19,8 @@ import manropeLatinUrl    from '@fontsource-variable/manrope/files/manrope-latin
 import { InlineStyle } from '~/core/StyleTarget.js';
 import { Util } from '~/core/Util.js';
 import { DOM } from '~/core/DOM.js';
-import { holdFirstLayout, releaseFirstLayout } from '~/core/FirstLayoutGate.js';
+import type { TimerId } from '~/core/DOM.js';
+import { FONT_ACTIVATION_DEADLINE_MS, noteFontActivated } from '~/core/FontActivation.js';
 // The three built-in theme literals live in their own files under
 // `core/themes/`; they are imported here so `ThemeManager` can default to
 // `ModernTheme`, and re-exported below so existing
@@ -1269,6 +1270,20 @@ const MANROPE_FAMILY = 'Manrope Variable';
 // how many times setTheme runs. Mirrors Glyph.ts's _keyframesInjected pattern.
 let _fontInjected = false;
 
+// The bounded deadline armed beside the font load, so a face that never
+// reports back cannot stall an app's startup. Cleared when activation wins.
+let _fontDeadline: TimerId | null = null;
+
+/** Ends the startup font wait, cancelling the deadline if it is still armed. */
+function finishFontActivation(): void {
+    if (_fontDeadline !== null) {
+        DOM.sink.clearTimeout(_fontDeadline);
+        _fontDeadline = null;
+    }
+
+    noteFontActivated();
+}
+
 /**
  * Injects the bundled Manrope `@font-face` rules into `<head>` on first call.
  *
@@ -1280,14 +1295,13 @@ let _fontInjected = false;
  * during the load. Each subset's `.woff2` is a Vite-bundled asset, so the font
  * self-hosts from the consumer's origin with no external request.
  *
- * @returns `true` when this call started an asynchronous font load, so the
- *   caller can expect the font set to report back once it settles. `false` on
- *   every later call (the rules are already installed) and wherever the active
- *   `DOMSource` cannot load fonts asynchronously.
+ * @remarks Starts the load and arms the bounded startup deadline beside it, or
+ * settles the startup font wait at once where no asynchronous load is possible
+ * in this host at all.
  */
-function ensureFontLoaded(): boolean {
+function ensureFontLoaded(): void {
     if (_fontInjected) {
-        return false;
+        return;
     }
 
     _fontInjected = true;
@@ -1311,7 +1325,15 @@ function ensureFontLoaded(): boolean {
     // a face is only downloaded and activated once rendered content uses it,
     // which would put that work after the entire first layout. Start it here
     // instead, so it runs while the component tree is still being built.
-    return DOM.source.startFontLoad(MANROPE_FAMILY);
+    if (!DOM.source.startFontLoad(MANROPE_FAMILY)) {
+        // This source cannot load a face asynchronously, so nothing will ever
+        // report back and the face already in use is the final one.
+        finishFontActivation();
+
+        return;
+    }
+
+    _fontDeadline = DOM.sink.setTimeout(finishFontActivation, FONT_ACTIVATION_DEADLINE_MS);
 }
 
 /**
@@ -1369,16 +1391,9 @@ export class ThemeManager {
     static setTheme(theme: Theme): void {
         ThemeManager.themeApplied = true;
 
-        const fontLoadStarted = ensureFontLoaded();
+        ensureFontLoaded();
 
         ThemeManager.scheduleFontReflow();
-
-        // Only a load that actually started will report back, so only that case
-        // may hold the first layout — arming otherwise would leave the gate
-        // shut until its deadline with nothing on the way to open it.
-        if (fontLoadStarted) {
-            holdFirstLayout();
-        }
 
         ThemeManager.current = theme;
         ThemeManager.resolvedScale = resolveScale(theme);
@@ -1444,18 +1459,18 @@ export class ThemeManager {
     }
 
     /**
-     * Runs when a batch of web-font loading settles: refreshes the text metrics,
-     * then opens the startup layout gate so the first flush measures against the
-     * face that just activated.
+     * Runs when a batch of web-font loading settles: refreshes the text
+     * metrics, then settles the startup font wait so the awaited bootstrap
+     * resolves against refreshed metrics.
      *
      * @remarks The order is load-bearing. `reflowText` marks every cached text
-     * size stale and re-queues the subscribed components; releasing first would
-     * let the freed flush run against the sizes measured before activation, and
-     * with nothing queued to lay out.
+     * size stale and re-queues the subscribed components; settling first would
+     * let `Body.init` resolve — and the caller build its tree — against the
+     * sizes measured before activation, with the refresh still pending.
      */
     private static onFontsSettled(): void {
         ThemeManager.reflowText();
-        releaseFirstLayout();
+        finishFontActivation();
     }
 
     /**

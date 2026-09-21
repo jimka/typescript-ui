@@ -7,6 +7,18 @@ page resets to empty.
 
 ## Breaking changes
 
+### Core
+
+- **`Body.init` returns `Promise<Body>`, and `BodyOptions.components` is
+  removed.** An app now awaits the bootstrap and adds its tree afterward —
+  `const body = await Body.init({ layoutManager }); body.addComponent(root);`
+  — because the singleton's construction is what applies the active theme,
+  injects the bundled Manrope `@font-face` rules and starts the face loading,
+  so a tree built before `init` resolves is measured against the browser's
+  fallback face rather than the theme's font. `Body.getInstance()` is
+  unchanged and still does not wait for the font. See
+  [Migration](/reference/migration/next) for the full note.
+
 ### Components
 
 - **`Slider`'s `showTicks` option and its `isShowTicks()` / `setShowTicks()`
@@ -37,10 +49,18 @@ page resets to empty.
   kept, because `Body` applies `ModernTheme` only when no theme has been
   set. And the first theme application now reaches every component built
   before that first call, so each takes one theme-change callback and
-  re-measures its text — free in a browser, where nothing has been laid out
-  yet, but a jsdom suite that builds a text-measuring control before its
-  first `Body` touch now measures through a canvas 2D context jsdom does not
-  implement; see the migration note.
+  re-measures its text. See the breaking `Body.init` entry above for how a
+  tree's initial measurement is now sequenced against that theme.
+
+- **The first layout pass no longer waits for the web font — the awaited
+  `Body.init` bootstrap does instead.** The startup layout gate that used to
+  hold the first coalesced flush is removed, along with what it drove:
+  `Tree` and the table body no longer defer their render passes or hold a
+  programmatic scroll during startup, and a post-layout callback registered
+  during startup runs on the first frame again rather than a later, gate-held
+  one. What stays: a later batch of faces — the lazy Latin-Ext subset, or one
+  an app loads itself — still invalidates the shared text-metrics cache and
+  re-flows every subscribed `Text`.
 
 - **`FocusHistory.back()` / `forward()` now reveal a hidden trail entry before
   focusing it**, rather than silently failing to move focus onto an element

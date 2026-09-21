@@ -1404,8 +1404,9 @@ export class ModelledDOMSource implements DOMSource {
     /**
      * Offline measurement uses baked fonts that are always present, so there is
      * nothing to fetch and no activation to wait for. Reporting `false` is what
-     * keeps the startup layout gate from ever being armed offline: nothing here
-     * would release it, and every test that drives frames by hand would stall.
+     * settles the startup font wait immediately offline instead of arming its
+     * bounded deadline: nothing here would ever report back, so every test that
+     * awaits `Body.init` would otherwise stall until that deadline.
      */
     startFontLoad(_family: string): boolean {
         return false;

@@ -6,7 +6,9 @@ import { DocsShell } from './shell/DocsShell.js'
 const DEFAULT_PATH = '/guide'
 
 const router = new Router({ mode: 'history', base: import.meta.env.BASE_URL })
-const shell  = new DocsShell(router)
+
+const body  = await Body.init({ layoutManager: Fit() })
+const shell = new DocsShell(router)
 
 function showDefaultPage(_params: RouteParams, _path: string, fragment: string): void {
     shell.showPath(DEFAULT_PATH, fragment)
@@ -19,7 +21,7 @@ function showRoutedPage(_params: RouteParams, path: string, fragment: string): v
 router.register('/',  showDefaultPage)
 router.register('/*', showRoutedPage)
 
-Body.init({ layoutManager: Fit(), components: [shell] })
+body.addComponent(shell)
 
 // start() applies the current route synchronously — call after the tree is
 // built and before the first layout frame, so the routed page is already
