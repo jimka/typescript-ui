@@ -343,8 +343,9 @@ function flushPendingLayouts() {
 
 // Module-level state for the rAF-coalesced effective-visibility reconcile.
 // `setVisible` / `setDisplayed` add their component to this queue instead of
-// walking the subtree synchronously; the queue flushes once per animation
-// frame, recomputing each queued root's *net* effective visibility once —
+// walking the subtree synchronously, and `wireChild` adds a reparented one;
+// the queue flushes once per animation frame, recomputing each queued root's
+// *net* effective visibility once —
 // mirroring `pendingLayouts` above. `flushEffectiveVisibility()` provides a
 // synchronous escape hatch (the offline `RecordingDOMSink.requestAnimationFrame`
 // drops its callback, so tests must call it to observe a coalesced flush).
@@ -2570,7 +2571,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Queues this component for the next coalesced effective-visibility flush,
      * mirroring `scheduleLayout`. Called by `setVisible` / `setDisplayed` after
-     * a real state change.
+     * a real state change, and by `wireChild` for an attached child whose
+     * effective visibility the attach itself changed.
      */
     protected scheduleEffectiveVisibilityReconcile(): void {
         pendingVisibility.add(this);
@@ -7205,6 +7207,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * re-lays-out and relays onward to its own parent). The teardown counterpart
      * is `unwireChild`.
      *
+     * Also queues the attached child for the next coalesced effective-visibility
+     * flush — the one edge no `setVisible` / `setDisplayed` covers — when two
+     * things hold: the child already owns an element, which during ordinary
+     * tree building it does not, since `insertComponent` builds it afterwards;
+     * and the attach actually changes the child's effective visibility, which a
+     * pooled child restored to the same parent does not. Both are needed: a
+     * detached child keeps its element handle, so the first test alone would
+     * queue every re-attach of anything that has ever rendered.
+     *
      * @param component - The child being attached to this container.
      */
     private wireChild(component: Component): void {
@@ -7222,6 +7233,21 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         component.onDirtyChange(this._handleChildDirtyChange);
         if (component.isDirty()) {
             this._handleChildDirtyChange(true);
+        }
+
+        // A reparent fires no setVisible/setDisplayed edge, so nothing else
+        // recomputes the attached subtree's effective visibility. Two guards
+        // keep that off every other attach. The element guard is the one
+        // setVisible/setDisplayed use: a child whose element is built later in
+        // insertComponent has never been reconciled and needs no catch-up. The
+        // edge guard narrows what is left to an attach that actually changes
+        // something — `removeElement` keeps the element handle, so a pooled
+        // child restored to the same parent (a table cell coming back out of
+        // its row's cache on every column-window slide) arrives here owning an
+        // element too, and that is a per-frame path. A never-reconciled child
+        // has no recorded value, so it is queued either way.
+        if (component.getElement() && component.isEffectivelyVisible() !== component._lastEffectiveVisible) {
+            component.scheduleEffectiveVisibilityReconcile();
         }
     }
 

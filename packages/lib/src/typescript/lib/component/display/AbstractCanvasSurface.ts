@@ -16,6 +16,10 @@ export interface AbstractCanvasSurfaceOptions extends ComponentOptions {
      * Keeps the animation loop running while the canvas is not effectively
      * on-screen (e.g. on an inactive `Tab` panel). Default `false`: the loop
      * pauses automatically when hidden and resumes when shown again.
+     *
+     * This waives the visibility condition only. A surface that holds no
+     * rendering context never schedules frames either way, since it has
+     * nothing to draw into.
      */
     animateWhenHidden?: boolean;
 
@@ -174,8 +178,11 @@ export abstract class AbstractCanvasSurface<
     /**
      * Starts a per-frame redraw loop. Idempotent: a second call while already
      * animating does not schedule a second frame. Records the intent to
-     * animate; the loop only actually runs while the canvas is also
-     * effectively on-screen (or {@link setAnimateWhenHidden} opts out).
+     * animate; the loop only actually runs while the canvas also holds a
+     * rendering context and is effectively on-screen (or
+     * {@link setAnimateWhenHidden} opts out of the latter). Calling this
+     * before the element exists is fine — there is no context yet, so the
+     * loop starts on the first connected layout instead.
      *
      * @returns This component, for method chaining.
      */
@@ -204,7 +211,9 @@ export abstract class AbstractCanvasSurface<
 
     /**
      * Whether the per-frame redraw loop is currently running. `false` while
-     * paused for being effectively hidden, even if animation was requested.
+     * paused for being effectively hidden, and `false` whenever the surface
+     * holds no rendering context — in either case even though animation was
+     * requested.
      *
      * @returns `true` while animating.
      */
@@ -215,7 +224,8 @@ export abstract class AbstractCanvasSurface<
     /**
      * Keeps the animation loop running while the canvas is not effectively
      * on-screen. Reconciles immediately, so toggling it can start or pause
-     * the loop right away.
+     * the loop right away. Waives the visibility condition only: a surface
+     * with no rendering context still schedules nothing.
      *
      * @param value - `true` to animate regardless of visibility.
      * @returns This component, for method chaining.
@@ -328,7 +338,12 @@ export abstract class AbstractCanvasSurface<
 
     /**
      * Renders the element, registers this surface in the module-level
-     * device-pixel-ratio registry, and arms the watch.
+     * device-pixel-ratio registry, arms the watch, and reconciles the
+     * animation loop once the first connected layout has run.
+     *
+     * The reconcile is what resumes a `startAnimation()` that ran before the
+     * element existed: with no element there is no rendering context either,
+     * so the loop's context gate kept it from scheduling anything.
      *
      * @returns The created element handle.
      */
@@ -343,6 +358,7 @@ export abstract class AbstractCanvasSurface<
         }
 
         _armDevicePixelRatioWatch();
+        this.onFirstLayout(() => this.reconcileAnimation());
 
         return element;
     }
@@ -380,11 +396,15 @@ export abstract class AbstractCanvasSurface<
 
     /**
      * Whether the loop should be scheduled right now: animation was
-     * requested, and either the canvas is effectively on-screen or the
-     * consumer opted out of pausing via `animateWhenHidden`.
+     * requested, a rendering context exists to draw into, and either the
+     * canvas is effectively on-screen or the consumer opted out of pausing
+     * via `animateWhenHidden`. The context term is unconditional — a surface
+     * that cannot obtain a context paints nothing however visible it is, so
+     * `animateWhenHidden` opts out of the visibility term only.
      */
     private shouldAnimate(): boolean {
         return this._animationRequested
+            && this.hasRenderingContext()
             && (this.getAnimateWhenHidden() || this.isEffectivelyVisible());
     }
 

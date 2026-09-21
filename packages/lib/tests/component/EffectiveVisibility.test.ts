@@ -22,10 +22,26 @@ const CONFIG = {
 
 beforeEach(() => installTestDOM(CONFIG));
 afterEach(() => DOM.reset());
+afterEach(() => vi.restoreAllMocks());
 
 /** Reads the protected hook off an arbitrary component for spying. */
 function hookTarget(c: Component): { onEffectiveVisibilityChange(effective: boolean): void } {
     return c as unknown as { onEffectiveVisibilityChange(effective: boolean): void };
+}
+
+/** Reads the protected flush-enqueue off an arbitrary component for spying. */
+function scheduleTarget(c: Component): { scheduleEffectiveVisibilityReconcile(): void } {
+    return c as unknown as { scheduleEffectiveVisibilityReconcile(): void };
+}
+
+/**
+ * Gives the canvas a rendering context, so its animation loop's context gate
+ * opens offline — the modelled sink returns `null` from `getContext` by design,
+ * and a canvas with no context schedules no frames at all.
+ */
+function withStubContext(canvas: Canvas): void {
+    vi.spyOn(canvas, 'getContext')
+        .mockReturnValue({ clearRect() {}, save() {}, restore() {}, setTransform() {} } as unknown as CanvasRenderingContext2D);
 }
 
 describe('Component.isEffectivelyVisible (case 1)', () => {
@@ -123,6 +139,7 @@ describe('Edge-triggered walk / no churn (case 4)', () => {
         container.addComponent(canvas);
         container.getElement(true);
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
 
         // Establish the baseline cache (container/canvas effectively visible).
@@ -160,6 +177,7 @@ describe('Nested-hidden is not resumed (case 5)', () => {
         // `if (!element) return this` guard (see the plan's Potential Challenges).
         inner.getElement(true);
         canvas.getElement(true);
+        withStubContext(canvas);
         canvas.startAnimation();
 
         outer.setVisible(true);
@@ -179,6 +197,83 @@ describe('Nested-hidden is not resumed (case 5)', () => {
 
         expect(canvas.isAnimating()).toBe(false);
         expect(spy).not.toHaveBeenCalledWith(true);
+    });
+});
+
+// The other half of C36's reparent edge: the attach-time schedule is guarded on
+// the child already owning an element, so ordinary bottom-up tree building —
+// where the child's element is created later, inside `insertComponent` — queues
+// nothing at all. Without the guard the first mount of an application would fire
+// the hook on essentially every component, since each node's edge cache starts
+// `null` and the first computed value therefore counts as a change.
+describe('A fresh child pays nothing on attach (C36 guard)', () => {
+    it('queues no reconcile for a never-rendered child attached to a rendered parent', () => {
+        const container = new Component({});
+        const canvas = new Canvas();
+
+        container.getElement(true);
+
+        const spy = vi.spyOn(hookTarget(canvas), 'onEffectiveVisibilityChange');
+
+        container.addComponent(canvas);
+        Component.flushEffectiveVisibility();
+
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('queues no reconcile for a child removed and not re-inserted', () => {
+        const container = new Component({});
+        const canvas = new Canvas();
+
+        container.addComponent(canvas);
+        container.getElement(true);
+        canvas.getElement(true);
+        withStubContext(canvas);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(true);
+
+        // The edge cache is still null here, so a reconcile queued by the
+        // removal would compute a change and fire the hook — which is what
+        // makes the silence below evidence rather than coincidence.
+        const spy = vi.spyOn(hookTarget(canvas), 'onEffectiveVisibilityChange');
+
+        container.removeComponent(canvas);
+        Component.flushEffectiveVisibility();
+
+        expect(spy).not.toHaveBeenCalled();
+
+        // `removeComponent` is detach-only: stopping a detached component's
+        // loop is a separate behavioural decision the plan lists as a non-goal.
+        expect(canvas.isAnimating()).toBe(true);
+    });
+
+    it('queues nothing when a rendered child is re-attached with its effective visibility unchanged', () => {
+        const container = new Component({});
+        const canvas = new Canvas();
+
+        container.addComponent(canvas);
+        container.getElement(true);
+        canvas.getElement(true);
+
+        // Seed the edge cache, so the re-attach below has a recorded value to
+        // compare against. A child that has never been reconciled carries no
+        // such value and is queued regardless, which is what C36 relies on.
+        container.setVisible(true);
+        Component.flushEffectiveVisibility();
+
+        const spy = vi.spyOn(scheduleTarget(canvas), 'scheduleEffectiveVisibilityReconcile');
+
+        // `removeElement` keeps the element handle, so a pooled child restored
+        // to the same parent — a table cell coming back out of its row's cache
+        // on every column-window slide — reaches `wireChild` owning an element
+        // exactly as a genuinely reparented child does. Only its unchanged
+        // effective visibility tells the two apart, and this is the per-frame
+        // path, so it must cost nothing.
+        container.removeComponent(canvas);
+        container.addComponent(canvas);
+
+        expect(spy).not.toHaveBeenCalled();
     });
 });
 

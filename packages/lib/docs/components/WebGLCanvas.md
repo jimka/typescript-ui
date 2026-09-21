@@ -47,9 +47,9 @@ surface.startAnimation();  // resume it
 - **WebGL2 only.** The context is acquired as `"webgl2"`; there is no WebGL1 fallback.
 - **Build GPU resources in `onContextInit`.** It runs once on first context acquisition and again after every context restore, so anything the GPU dropped (shaders, programs, buffers, textures) is rebuilt on recovery.
 - **Draw in `onFrame`.** The drawing-buffer viewport is already set in device pixels; the hook receives the logical (CSS-px) size for projection math. Resizing the surface resizes the drawing buffer and refreshes the viewport, but does **not** rebuild GL resources.
-- **Live-only.** A GL context cannot be modelled offline or forwarded across a worker, so `getContext()` returns `null` and every render path no-ops in a non-browser (SSR / test) environment.
+- **Live-only.** A GL context cannot be modelled offline or forwarded across a worker, so `getContext()` returns `null` and every render path no-ops in a non-browser (SSR / test) environment. A surface that cannot obtain a context does not schedule an animation loop either, so `isAnimating()` stays `false` offline even after `startAnimation()` — and the same holds live, on an engine that refuses the surface a WebGL2 context.
 - **No intrinsic size.** Like [`Canvas`](/components/Canvas), a WebGL surface reports no natural size — give it a `preferredSize` or a stretching parent, or it collapses to `0 × 0` and draws nothing.
-- **The loop pauses while hidden.** By default, the render loop keeps running only while the surface is effectively on-screen — a surface hidden by an ancestor's `setVisible(false)` (e.g. on an inactive `Tab` panel) auto-pauses, and resumes once shown again. Pass `animateWhenHidden: true` to keep animating regardless.
+- **The loop pauses while hidden.** By default, the render loop keeps running only while the surface is effectively on-screen — a surface hidden by an ancestor's `setVisible(false)` (e.g. on an inactive `Tab` panel) auto-pauses, and resumes once shown again. Moving the surface under a parent that is already hidden pauses it too, and moving it back out resumes it. Pass `animateWhenHidden: true` to keep animating regardless.
 
 ## See also
 

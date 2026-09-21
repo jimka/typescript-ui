@@ -625,6 +625,19 @@ page resets to empty.
   assigns rather than only for later ones. A surface implementing it as a
   `setZIndex` call, which every one in the library does, needs no change.
 
+- **Attaching a component that already has an element now recomputes the
+  attached subtree's effective visibility.** Only `setVisible` and
+  `setDisplayed` queued that recomputation, and a reparent fires neither — so
+  a `Canvas` or `WebGLCanvas` animating on screen kept its animation loop
+  after being moved under an already-hidden parent (a collapsed dock region,
+  an inactive tab), and one moved the other way never got its loop back.
+  `addComponent` / `moveComponent` / `replaceComponent` now queue the child
+  they attach for the next effective-visibility flush whenever it already owns
+  an element, so both directions reconcile. A freshly constructed child, whose
+  element is built after the attach, is deliberately not queued: it has never
+  been reconciled, so ordinary tree building costs nothing. No consumer action
+  is needed.
+
 ### Components
 
 - **Two `Markdown` previews of documents that share a heading name no longer
@@ -977,6 +990,18 @@ page resets to empty.
   which `formatValue` produces. A consumer feeding one of those forms back
   into a field should format it the way the field does. `TimeField` is
   unchanged.
+
+- **A `Canvas` or `WebGLCanvas` with no rendering context no longer schedules
+  animation frames.** The loop was gated on the consumer's intent and the
+  surface's effective visibility, never on whether there was anything to draw
+  into, so a surface the engine refuses a context — a `WebGLCanvas` on a
+  machine without WebGL2, or one whose element already handed out a context of
+  another type — woke on every browser frame to return at the first line of its
+  frame callback, forever. `isAnimating()` now stays `false` until a context is
+  available, and `animateWhenHidden` does not override this: it opts out of the
+  visibility term only. A surface whose `startAnimation()` ran before its
+  element existed starts on its first connected layout instead. No consumer
+  action is needed.
 
 ### Data
 

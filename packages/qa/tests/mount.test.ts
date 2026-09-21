@@ -6,9 +6,8 @@
 // `document` at import time, so this file needs a real DOM. jsdom lays
 // nothing out, so a driver cannot run on a mounted panel here; drivers.dom.test.ts
 // checks the drivers' event sequences on stubbed rectangles instead.
-import { afterEach, describe, expect, it } from 'vitest';
-import { Body, DOM } from '@jimka/typescript-ui/core';
-import type { Component } from '@jimka/typescript-ui/core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Body, Component, DOM } from '@jimka/typescript-ui/core';
 import { AbstractWindow } from '@jimka/typescript-ui/overlay';
 import { createTools, parseDrive } from '../src/harness/run.js';
 import type { HarnessTools } from '../src/harness/types.js';
@@ -183,20 +182,38 @@ describe('P8 panel parameters', () => {
     });
 });
 
-// The first authorised sweep measured `hiddenAnimating` 0: the panel added
-// its 2D canvases to the hidden group and only then started them, and
-// `startAnimation` reads effective visibility directly, so the loop never
-// started. C36 is the reparent, and only a canvas already animating can show
-// it. The order is what this pins; the visibility walk is component state, so
-// jsdom exercises it. C35's half needs a real engine (see the panel).
+// C36's fix: the reparent under the already-hidden panel now queues the moved
+// canvas for the next effective-visibility flush, so its loop pauses. The panel
+// starts its 2D canvases while they are still shown, because `startAnimation`
+// reads effective visibility directly and would otherwise refuse to schedule
+// anything — that order is what makes `hiddenAnimating` mean something, and both
+// counters are read after a synchronous flush.
+//
+// The 2D context is stubbed because jsdom implements none (the same gap
+// `JSDOM_GAPS` records for `table-rows` and the two forms): without it C35's own
+// gate would keep every loop from starting at all, `hiddenStarted` would be 0,
+// and neither counter would tell us anything about the reparent. C35's half
+// needs a real engine (see the panel). The stub stays inside this describe, so
+// the `JSDOM_GAPS` tests keep throwing for the gap they are excluded for.
 describe('canvas-idle hidden group', () => {
-    it('starts its 2D canvases while shown and leaves them animating under the hidden panel', async () => {
+    beforeEach(() => {
+        vi.spyOn(window.HTMLCanvasElement.prototype, 'getContext')
+            .mockImplementation(((id: string) => (id === '2d'
+                ? { font: '', clearRect() {}, save() {}, restore() {}, setTransform() {}, measureText: () => ({ width: 0 }) }
+                : null) as unknown as RenderingContext) as typeof window.HTMLCanvasElement.prototype.getContext);
+    });
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('starts its 2D canvases while shown and pauses them when moved under the hidden panel', async () => {
         const mounted = await mountPanel('canvas-idle', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+
+        Component.flushEffectiveVisibility();
 
         const host = mounted.build.describe!() as { hiddenStarted: number; hiddenAnimating: number };
 
         expect(host.hiddenStarted, 'animating while still in the shown group').toBe(SMOKE_SCALE);
-        expect(host.hiddenAnimating, 'still animating after the move under the hidden panel').toBe(SMOKE_SCALE);
+        expect(host.hiddenAnimating, 'paused by the reparent under the hidden panel').toBe(0);
     });
 });
 
