@@ -778,8 +778,9 @@ class MiscPanel extends Panel {
                 // Demos Table.setQuickSearch's scoped form: an explicit field
                 // whitelist restricts the search to
                 // Name/Role/Notes/Manager/Joined/Meeting/LastSeen, entirely
-                // display-only (the store, selection, and pending edits are
-                // untouched — clearing the field restores every row). Role
+                // display-only (the store and selection are untouched, and
+                // clearing the field restores every row; an open cell edit is
+                // committed first if the search rebinds its row). Role
                 // matches its label ('Developer'/'QA Engineer'/'Project
                 // Manager') rather than its stored code, since quick search
                 // resolves each field the same way the cell itself renders it.
