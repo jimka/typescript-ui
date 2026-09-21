@@ -203,3 +203,55 @@ G10 and G15 stay dropped (`98-wave2-rejustification.md`,
   `src/typescript/main.ts`) puts 32 demo panels in one `Tab` layout, so the
   tab bar is squashed. The user wants it restructured; it is its own piece of
   work, separate from the measurement surface.
+
+## Found while planning phase 2's follow-ups (2026-09-21)
+
+Six plans were drafted on 2026-09-21 for what phase 2 left behind:
+`test-suite-health`, `date-roundtrip-and-tab-active-index`,
+`checkbox-action-activation`, `field-decorator-pointer-tooltip` and
+`doc-and-qa-record-drift` in the library, and `retire-qa-harness` in Loom.
+Drafting them turned up the following. Items that one of those plans fixes
+say so; the rest are open.
+
+- **The QA click driver never toggled a boolean control** — fixed by
+  `checkbox-action-activation`. The driver dispatches each click onto the
+  control's root element, but `Checkbox` toggles only from its inner box and
+  `Toggle` only from its track, so `form-flat`'s C34 witness read 0 on both
+  arms for that reason, not mainly because of C40. The plan's reworked
+  witness clicks the surfaces each control toggles from.
+- **`List` and `ComboBox` still announce `"action"` on a programmatic
+  `setSelectedIndex`** — open. `checkbox-action-activation` makes `"action"`
+  mean user activation for `Checkbox` and `Slider` and names these two as
+  the one known exception. They do not share C40's delivery bug, and
+  aligning them changes `ComboBox`'s listener argument.
+- **A drag-reordered `Tab` strip does not survive save and restore** — open,
+  a non-goal of `date-roundtrip-and-tab-active-index`. Layout serialization
+  saves the container's order, which is the order the tabs were added, while
+  the docs promise the user's tab order.
+- **One `Header` debounce caused two of the suite's intermittent failures**
+  — fixed by `test-suite-health`. "DOM handle N is not registered" and the
+  `ColumnFilterRow` unhandled rejection are the same defect: `Header.ts`
+  arms its 200 ms filter debounce on the global `setTimeout` rather than the
+  DOM seam's timer, so `DOM.reset()` cannot cancel it and it fires after its
+  test ends. The same plan also fixes a fifth flaky test, the
+  `collectSyntaxErrors` cap, which fails when CodeMirror's 20 ms initial
+  parse budget runs out.
+- **A pointer can never show `FieldDecorator`'s error tooltip** — fixed by
+  `field-decorator-pointer-tooltip`. The field covers the decorator's whole
+  box, and the tooltip listens only for events aimed at the decorator's own
+  element, so resting the pointer on an invalid field never says why it is
+  invalid.
+- **Retiring Loom's harness keeps its browser shell and gives up measuring
+  Loom's real shell** — `retire-qa-harness`. The Tauri stubs and the
+  `/__fsops` endpoint, which run Loom in a plain browser tab for
+  chrome-devtools checks, move to `browser-shell/` behind `npm run
+  dev:browser`. Loom's own shell can no longer be measured by any harness,
+  and the campaign's Loom-shell numbers can no longer be re-run. The run
+  records move to `~/.claude/projects/-home-jika-typescript-loom/qa-harness/`,
+  where the research docs' citations of them resolve again.
+- **The stand-ins do not cover every Loom scenario** — open, and a W3.0
+  requirement. `shell-deep` has a driver for S1's own gesture, the
+  horizontal dock gutter (`grip=dock-h`), but no recorded baseline: the
+  README records `park`, the sidebar drag and `theme:4` only. S2, S4 and
+  the search scenarios have no stand-in at all. W3.0's fresh baseline must
+  include `grip=dock-h`.
