@@ -1218,6 +1218,16 @@ page resets to empty.
   differences are the warning that stops firing and the smaller captured
   JSON.
 
+- **A saved `Tab` arrangement now records the tab that was actually active.**
+  `serializeLayout` copied the `Tab` manager's active index, which counts
+  positions in the tab strip, into `TabNode.activeIndex`, which indexes the
+  captured `children` — a list that leaves transient children out and keeps
+  the container's order. A transient tab ahead of the active one (such as a
+  `Dock`'s empty-state start page), or a drag reorder of the strip, therefore
+  made the restore activate a different tab. The active tab is now found among
+  the captured children by identity, and the first tab is recorded when none
+  of them is active. A state saved before this change restores as it did.
+
 ### Overlay
 
 - **A modal [`Dialog`](/components/Dialog)'s Tab trap no longer takes `Tab`
