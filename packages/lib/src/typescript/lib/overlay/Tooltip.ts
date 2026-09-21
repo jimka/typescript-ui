@@ -32,9 +32,13 @@ export interface TooltipColors {
 interface TooltipAttachment {
     text        : string;
     colors      : TooltipColors | undefined;
+    // `attachCovering`'s: listens on the component's whole subtree and takes
+    // precedence over any attachment inside it. `attach`'s listen on the
+    // component's own element only.
+    covering    : boolean;
     mouseoverFn : (e: MouseEvent) => void;
     mousemoveFn : (e: MouseEvent) => void;
-    mouseoutFn  : () => void;
+    mouseoutFn  : (e: MouseEvent) => void;
     mousedownFn : () => void;
 }
 
@@ -386,6 +390,10 @@ export class Tooltip extends Component {
      * If `colors` is provided the tooltip uses those colors instead of the default
      * theme variables while it is showing for this component.
      *
+     * Leaving the component hides the tooltip only when it is this component's
+     * own — on screen for it, or still waiting out the hover delay it armed. A
+     * tooltip another component owns is left alone.
+     *
      * Calling `attach` on a component that already has an attachment replaces it.
      *
      * @param component - The component to attach hover behaviour to.
@@ -393,12 +401,50 @@ export class Tooltip extends Component {
      * @param colors - Optional color overrides applied while this tooltip is visible.
      */
     static attach(component: Component, text: string, colors?: TooltipColors): void {
+        Tooltip._attachWith(component, text, colors, false);
+    }
+
+    /**
+     * Wires a tooltip that covers `component`'s whole rendered area: hovering any
+     * element inside `component` arms it, not only `component`'s own element, and
+     * over that area it takes precedence over a tooltip attached to a component
+     * inside it. Meant for a wrapper whose child fills it and takes the pointer —
+     * `FieldDecorator`'s validation error, whose field covers the decorator's
+     * whole box. Replaced, detached and torn down like an `attach` attachment.
+     *
+     * @param component - The wrapper to attach hover behaviour to.
+     * @param text - The tooltip text to display.
+     * @param colors - Optional color overrides applied while this tooltip is visible.
+     *
+     * @internal
+     */
+    static attachCovering(component: Component, text: string, colors?: TooltipColors): void {
+        Tooltip._attachWith(component, text, colors, true);
+    }
+
+    /**
+     * The body `attach` and `attachCovering` share: replaces any attachment
+     * `component` already has, builds its four hover listeners, registers them
+     * and records the attachment.
+     *
+     * @param component - The component to attach hover behaviour to.
+     * @param text - The tooltip text to display.
+     * @param colors - Optional color overrides applied while this tooltip is visible.
+     * @param covering - `true` for `attachCovering`'s subtree-wide attachment.
+     */
+    private static _attachWith(component: Component, text: string, colors: TooltipColors | undefined, covering: boolean): void {
         Tooltip.detach(component);
 
         let cursorX = 0;
         let cursorY = 0;
 
-        const mouseoverFn = (e: MouseEvent) => {
+        const mouseoverFn = (e: MouseEvent): void => {
+            // A covering attachment first claims the hover, and ignores a move
+            // between two elements inside its component.
+            if (covering && !Tooltip._claimCoveringHover(component, e)) {
+                return;
+            }
+
             if (Tooltip.showTimer !== null) {
                 return;
             }
@@ -425,8 +471,17 @@ export class Tooltip extends Component {
             cursorY = e.clientY;
         };
 
-        const mouseoutFn = () => {
-            Tooltip.hide();
+        // Leaving hides the tooltip only when it is this component's own — the
+        // rule `detach` follows. A covering attachment also ignores a move
+        // between two elements inside it, which is not a leave.
+        const mouseoutFn = (e: MouseEvent): void => {
+            if (covering && Tooltip._containsTarget(component, e.relatedTarget)) {
+                return;
+            }
+
+            if (Tooltip._owns(component)) {
+                Tooltip.hide();
+            }
         };
 
         // Acting on the component (a click, or the start of a drag) dismisses
@@ -440,14 +495,12 @@ export class Tooltip extends Component {
             Tooltip.hide();
         };
 
-        Event.addListener(component, "mouseover", mouseoverFn);
-        Event.addListener(component, "mousemove", mousemoveFn);
-        Event.addListener(component, "mouseout", mouseoutFn);
-        Event.addListener(component, "mousedown", { button: "any", handler: mousedownFn });
+        const attachment: TooltipAttachment = {
+            text, colors, covering, mouseoverFn, mousemoveFn, mouseoutFn, mousedownFn,
+        };
 
-        Tooltip.attachments.set(component.getId(), {
-            text, colors, mouseoverFn, mousemoveFn, mouseoutFn, mousedownFn,
-        });
+        Tooltip._addHoverListeners(component, attachment);
+        Tooltip.attachments.set(component.getId(), attachment);
 
         // Auto-detach on teardown: without this, a destroyed component stays
         // reachable forever through its listener closures, retained by this
@@ -475,10 +528,7 @@ export class Tooltip extends Component {
             return;
         }
 
-        Event.removeListener(component, "mouseover", att.mouseoverFn);
-        Event.removeListener(component, "mousemove", att.mousemoveFn);
-        Event.removeListener(component, "mouseout",  att.mouseoutFn);
-        Event.removeListener(component, "mousedown", att.mousedownFn);
+        Tooltip._removeHoverListeners(component, att);
 
         Tooltip.attachments.delete(id);
 
@@ -514,6 +564,111 @@ export class Tooltip extends Component {
         }
 
         Tooltip.pendingId = null;
+    }
+
+    /**
+     * Whether the tooltip is `component`'s own: the hover delay `component`
+     * armed is running, or the tooltip is on screen anchored to `component`'s
+     * element. The two tests `detach` applies, joined.
+     *
+     * @param component - The component to test.
+     * @returns `true` when `component` owns the pending or visible tooltip.
+     */
+    private static _owns(component: Component): boolean {
+        if (Tooltip.pendingId === component.getId()) {
+            return true;
+        }
+
+        // `?? null` for the reason `detach` gives: a never-rendered component's
+        // element lookup misses with `null`, which must not match the equally
+        // null anchor of a tooltip nobody is showing.
+        const element = component.getElement() ?? null;
+
+        return element !== null && Tooltip.activeElement === element;
+    }
+
+    /**
+     * Whether `target` — a mouse event's `relatedTarget` — is `component`'s
+     * element or inside it, so the pointer moved within `component` rather than
+     * across its edge. Mirrors `SplitGutter`'s `containsEventTarget`.
+     *
+     * @param component - The component whose element is tested.
+     * @param target - The related target to test.
+     * @returns `true` when `target` lies inside `component`'s element.
+     */
+    private static _containsTarget(component: Component, target: EventTarget | null): boolean {
+        const element = component.getElement();
+
+        if (!element || !DOM.source.isNode(target)) {
+            return false;
+        }
+
+        return DOM.source.contains(element, DOM.source.intern(target));
+    }
+
+    /**
+     * The covering half of an attachment's `mouseover`. Cancels a hover delay
+     * that a component inside `component` armed earlier in this same dispatch —
+     * exact-target listeners run before the subtree walk reaches `component`,
+     * and the covering tooltip takes precedence over theirs — and tells a real
+     * enter from a move between two elements inside `component`.
+     *
+     * @param component - The covering attachment's component.
+     * @param e - The `mouseover` event.
+     * @returns `true` when the pointer has just entered `component`, so its hover delay should be armed.
+     */
+    private static _claimCoveringHover(component: Component, e: MouseEvent): boolean {
+        if (Tooltip.pendingId !== null && Tooltip.pendingId !== component.getId()) {
+            Tooltip._cancelPendingShow();
+        }
+
+        return !Tooltip._containsTarget(component, e.relatedTarget);
+    }
+
+    /**
+     * Registers an attachment's four hover listeners on `component`: on its own
+     * element for `attach`, on its whole subtree for `attachCovering`.
+     *
+     * @param component - The attached component.
+     * @param att - The attachment whose listeners to register.
+     */
+    private static _addHoverListeners(component: Component, att: TooltipAttachment): void {
+        if (att.covering) {
+            Event.addSubtreeListener(component, "mouseover", att.mouseoverFn);
+            Event.addSubtreeListener(component, "mousemove", att.mousemoveFn);
+            Event.addSubtreeListener(component, "mouseout",  att.mouseoutFn);
+            Event.addSubtreeListener(component, "mousedown", { button: "any", handler: att.mousedownFn });
+
+            return;
+        }
+
+        Event.addListener(component, "mouseover", att.mouseoverFn);
+        Event.addListener(component, "mousemove", att.mousemoveFn);
+        Event.addListener(component, "mouseout",  att.mouseoutFn);
+        Event.addListener(component, "mousedown", { button: "any", handler: att.mousedownFn });
+    }
+
+    /**
+     * Removes an attachment's four hover listeners from `component`: from its
+     * own element for `attach`, from its whole subtree for `attachCovering`.
+     *
+     * @param component - The attached component.
+     * @param att - The attachment whose listeners to remove.
+     */
+    private static _removeHoverListeners(component: Component, att: TooltipAttachment): void {
+        if (att.covering) {
+            Event.removeSubtreeListener(component, "mouseover", att.mouseoverFn);
+            Event.removeSubtreeListener(component, "mousemove", att.mousemoveFn);
+            Event.removeSubtreeListener(component, "mouseout",  att.mouseoutFn);
+            Event.removeSubtreeListener(component, "mousedown", att.mousedownFn);
+
+            return;
+        }
+
+        Event.removeListener(component, "mouseover", att.mouseoverFn);
+        Event.removeListener(component, "mousemove", att.mousemoveFn);
+        Event.removeListener(component, "mouseout",  att.mouseoutFn);
+        Event.removeListener(component, "mousedown", att.mousedownFn);
     }
 
     /**

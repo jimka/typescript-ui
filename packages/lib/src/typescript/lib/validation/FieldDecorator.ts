@@ -58,7 +58,10 @@ class FieldDecorator extends Component {
 
     /**
      * Applies a red validation-error outline to this decorator and attaches an error
-     * tooltip that appears on hover.
+     * tooltip that appears when the pointer rests anywhere on the decorated field.
+     * The field fills the decorator, so the tooltip listens on the decorator's whole
+     * subtree rather than on its own element; over the field it takes precedence
+     * over a tooltip attached to the field itself.
      *
      * CSS `outline` is used instead of `border` so that the decorator's content area
      * and the wrapped field's size are completely unaffected — outline renders outside
@@ -69,7 +72,7 @@ class FieldDecorator extends Component {
     showError(message: string): this {
         this.setOutline('2px solid var(--ts-ui-validation-error-border)');
 
-        Tooltip.attach(this, message, {
+        Tooltip.attachCovering(this, message, {
             background: 'var(--ts-ui-validation-error-tooltip-bg)',
             color     : 'var(--ts-ui-validation-error-tooltip-color)',
             border    : 'var(--ts-ui-validation-error-tooltip-border)',
