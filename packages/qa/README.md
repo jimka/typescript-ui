@@ -22,7 +22,7 @@ its own dev server, which writes it under `results/`.
 | `src/mount.ts` | Mounts a panel through `Body.init` and collects its targets. |
 | `src/pageTargets.ts` | The `idle`, `theme` and `viewport` targets every panel gets. |
 | `src/harness/` | The harness: frame loop, drivers, counters, ablations, probes, the run. It imports nothing from the library; the page hands it `Body` and `DOM`. |
-| `vite.config.ts`, `vite/plugins.ts` | The app's own Vite config: the report endpoint and the library-build alias. |
+| `vite.config.ts`, `vite/plugins.ts` | The app's own Vite config: the report endpoint, and the library-build alias from the shared [`build/libraryBuildAlias.ts`](../../build/libraryBuildAlias.ts). |
 | `runqa.sh` | Runs one measurement end to end. |
 | `src-tauri/` | The Tauri host, a minimal Tauri shell that opens the page (see *Tauri host*). |
 | `bin/` | `qa-verdict.py`, `qa-table.py`, `qa-forced.py`. |

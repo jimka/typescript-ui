@@ -3,8 +3,15 @@ import { readFileSync, readdirSync, cpSync, copyFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 import path from 'node:path'
 import { keepNamesMinify } from '../../build/keepNames.js'
+import { libraryBuildPlugin } from '../../build/libraryBuildAlias.js'
 
 const API_DIR = fileURLToPath(new URL('../lib/docs/api', import.meta.url))
+
+// The library build the app, its dev server and its tests import: this
+// checkout's own packages/lib, never the node_modules symlink, which in a
+// worktree points at the main tree's build. Run `npm run build:lib` first.
+const LIB_DIR = fileURLToPath(new URL('../lib', import.meta.url))
+
 const VIRTUAL = 'virtual:typedoc-api'
 
 // A dev request may or may not carry the app's base — Vite strips it for some
@@ -126,7 +133,7 @@ function spaFallback(): Plugin {
 
 export default defineConfig({
   base: '/typescript-ui/',
-  plugins: [typedocApi(), spaFallback()],
+  plugins: [libraryBuildPlugin({ libDir: LIB_DIR }), typedocApi(), spaFallback()],
   // packages/lib/docs/ sits outside this package root; without this the dev
   // server 404s the raw `?raw` glob reads in pages.ts even though the
   // production build (which bundles them at build time) is unaffected.

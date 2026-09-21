@@ -2,7 +2,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { libraryAliases, outsideAppSource } from '../vite/plugins.js';
+import { libraryAliases } from '../../../build/libraryBuildAlias.js';
+import { outsideAppSource } from '../vite/plugins.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_LIB = path.join(HERE, 'fixtures/lib');
