@@ -35,6 +35,7 @@ panel.addComponent(volume);
 | `isReadOnly()` / `setReadOnly(boolean)` | Stays focusable but ignores user-driven changes. |
 | `on("change", fn)` / `off("change", fn)` | Subscribe to value changes. |
 | `on("binding", fn)` | Used by [`Binding`](/data/binding). |
+| `on("action", fn)` | Subscribe to the user's value steps (each drag sample or value key that moves the thumb); never fires for a programmatic `setValue`. |
 
 ## Keyboard model
 
@@ -51,7 +52,7 @@ panel.addComponent(volume);
 
 - Drag is handled via `pointerdown` + `setPointerCapture`, so the cursor can leave the track mid-drag without losing the input stream.
 - Themed through the shared `--ts-ui-form-*` family plus per-control slider tokens (`--ts-ui-slider-track-bg`, `--ts-ui-slider-track-active-bg`, `--ts-ui-slider-thumb-bg`, `--ts-ui-slider-thumb-size`, `--ts-ui-slider-track-thickness`).
-- Subscribe to committed value changes with `on("change", fn)`, or to the raw per-step drag stream with `on("action", fn)`.
+- `on("change", fn)` covers the user's steps and your own `setValue` calls alike, while `on("action", fn)` carries the user's per-step drag and key stream alone.
 
 ## See also
 

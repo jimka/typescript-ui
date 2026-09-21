@@ -25,7 +25,7 @@ panel.addComponent(subscribe);
 
 | Method | Purpose |
 | --- | --- |
-| `isSelected()` / `setSelected(boolean, fireAction?)` | Read / write checked state. Pass `fireAction: false` to keep a programmatic write out of `on("action", fn)`. |
+| `isSelected()` / `setSelected(boolean)` | Read / write checked state; a programmatic write fires `"change"` and `"binding"`, never `"action"`. |
 | `getValue()` / `setValue(boolean)` | Bindable interface — same as `isSelected` / `setSelected`. |
 | `isIndeterminate()` / `setIndeterminate(boolean)` | Mixed-state for tri-state forms. |
 | `getLabel()` / `setLabel(text \| null)` | Optional inline label. |
@@ -33,7 +33,7 @@ panel.addComponent(subscribe);
 | `isReadOnly()` / `setReadOnly(boolean)` | Stays focusable but ignores user-driven changes. |
 | `on("change", fn)` / `off("change", fn)` | Subscribe to value changes. |
 | `on("binding", fn)` | Used by [`Binding`](/data/binding). |
-| `on("action", fn)` | Subscribe to the click action — fires on a user toggle *and* on a programmatic `setSelected`, unless the caller passes `fireAction: false`. |
+| `on("action", fn)` | Subscribe to the user's own toggles — a click on the box, or Space; never fires for `setSelected` / `setValue`, a click on the label, or a disabled checkbox. |
 
 ## Indeterminate / mixed state
 
@@ -41,14 +41,16 @@ Setting `setIndeterminate(true)` shows a horizontal bar in place of the check an
 
 ## Programmatic writes and `action`
 
-A checkbox announces `"action"` for a programmatic write as well as a user toggle. Pass `false` as `setSelected`'s second argument when the write is your own and only the value listeners should hear it:
+A checkbox announces `"action"` for the user's own toggle only — a click on its box, or Space. A click on the label or on the space beside the box changes nothing and announces nothing, and neither does a disabled or read-only checkbox. A programmatic write fires `"change"` and `"binding"` but never `"action"`, so subscribe to `"change"` to hear every change, your own writes included:
 
 ```typescript
-cb.setSelected(true);        // "change", "binding" and "action"
-cb.setSelected(true, false); // "change" and "binding" only
+cb.on("action", () => console.log("user toggled:", cb.isSelected()));
+cb.on("change", on => console.log("now:", on));
+
+cb.setSelected(true); // "change" and "binding" only
 ```
 
-`"change"` and `"binding"` fire either way — the flag gates the `"action"` dispatch and nothing else, and an unchanged write still returns early without firing anything. This is where `Checkbox` differs from [`RadioButton`](/components/RadioButton), whose `"action"` means "the user selected this one" and never fires for a programmatic `setSelected`.
+[`RadioButton`](/components/RadioButton), [`ToggleButton`](/components/ToggleButton) and [`Slider`](/components/Slider) follow the same contract.
 
 ## Notes
 
