@@ -4,7 +4,7 @@ import { LabeledGrid } from '@jimka/typescript-ui/component/container';
 import { Header } from '@jimka/typescript-ui/component/display';
 import { TextField } from '@jimka/typescript-ui/component/input';
 import { Border } from '@jimka/typescript-ui/layout';
-import { Dialog, Window } from '@jimka/typescript-ui/overlay';
+import { Dialog, Notification, Window } from '@jimka/typescript-ui/overlay';
 import { Insets, Placement } from '@jimka/typescript-ui/primitive';
 import { appToolBar } from '../builders/chrome.js';
 import { elementFor, lateId, pickStrip } from '../builders/dom.js';
@@ -30,6 +30,14 @@ const WINDOW_STEP_Y_PX = 24;
 const WINDOW_WIDTH_PX = 420;
 const WINDOW_HEIGHT_PX = 300;
 
+// Where the pinned window opens, relative to window 0: half of window 0's own
+// box down and across, so it covers the cascade's bodies while every header
+// above it stays clear to click. That covered region is what C30 reads — an
+// always-on-top window must paint over the clicked ones there, however many
+// clicks the run makes.
+const PINNED_OFFSET_X_PX = WINDOW_WIDTH_PX / 2;
+const PINNED_OFFSET_Y_PX = WINDOW_HEIGHT_PX / 2;
+
 /** Fields in each window's form. */
 const WINDOW_FIELDS = 4;
 
@@ -52,7 +60,7 @@ const C25_LEFT_PX = 4;
  */
 const DIALOG_PERIOD_UNITS = 30;
 
-export const description = 'n floating Windows (default 8), each holding a four-field form, half of them minimized, plus a bare Window and one with insets (4, 12, 4, 4), over a toolbar; toggle opens and closes a six-field Dialog. Reproduces slice 09 F09.11 (a header move is not frame-coalesced: it re-applies the window and reads the viewport per mousemove): apply 1 and getViewportSize 1 per move; F09.4 (a settled window re-laid out and rewritten every pass): apply 38 per bare-window pass, no setRuleStyles; F09.6 (the minimized stack\'s resize handling is quadratic in minimized windows): getViewportSize at least minimized² per viewport unit; and C25 (fixed: the south resize strip takes the bottom inset as its height): geometry.southStrip is 4 px tall, not 12.';
+export const description = 'n floating Windows (default 8), each holding a four-field form, half of them minimized, plus a bare Window, one with insets (4, 12, 4, 4) and an always-on-top one overlapping window 0, over a toolbar, with one persistent toast; toggle opens and closes a six-field Dialog. Reproduces slice 09 F09.11 (a header move is not frame-coalesced: it re-applies the window and reads the viewport per mousemove): apply 1 and getViewportSize 1 per move; F09.4 (a settled window re-laid out and rewritten every pass): apply 38 per bare-window pass, no setRuleStyles; F09.6 (the minimized stack\'s resize handling is quadratic in minimized windows): getViewportSize at least minimized² per viewport unit; C25 (fixed: the south resize strip takes the bottom inset as its height): geometry.southStrip is 4 px tall, not 12; C30 (an ordinary window\'s stamp climbs past the pinned band, so after about 400 clicks the clicked windows paint over the pinned one); and C33 (a live toast adds one getViewportSize per viewport unit once it re-stacks on resize, and none before).';
 
 /** Eight windows: four open and four minimized, a busy desktop. */
 export const defaultScale = 8;
@@ -138,13 +146,14 @@ function windowStrip(tools: HarnessTools, win: Window, side: StripSide): HTMLEle
 }
 
 /**
- * Builds a desktop: a toolbar over a header, and `n` windows, a bare window
- * and C25's window, all shown after mounting, with the last `⌊n / 2⌋` of the
- * `n` minimized.
+ * Builds a desktop: a toolbar over a header, and `n` windows, a bare window,
+ * C25's window and an always-on-top window overlapping window 0, all shown
+ * after mounting, with the last `⌊n / 2⌋` of the `n` minimized and one
+ * persistent toast in the corner.
  *
  * @param n - Windows.
  * @param params - `grip=` chooses what `drag` presses; read once mounted.
- * @returns The desktop as root; `toggle`, which opens and closes a dialog; and `afterMount` showing the windows and giving `drag`, `click` (the open windows' headers), `passes` (the bare window) and `hover` (window 0) their targets.
+ * @returns The desktop as root; `toggle`, which opens and closes a dialog; and `afterMount` showing the windows and the toast, and giving `drag`, `click` (the open windows' headers), `passes` (the bare window) and `hover` (window 0) their targets.
  */
 export function build(n: number, params: URLSearchParams): PanelBuild {
     const windows = Array.from({ length: n }, (_, i) => Window(`Window ${i + 1}`, {
@@ -157,6 +166,16 @@ export function build(n: number, params: URLSearchParams): PanelBuild {
 
     const bare = Window('Bare');
     const c25 = Window('Insets', { insets: new Insets(C25_TOP_PX, C25_RIGHT_PX, C25_BOTTOM_PX, C25_LEFT_PX) });
+    // `alwaysOnTop` in the options bag, not a `setAlwaysOnTop` after `show()`:
+    // `getBand()` then already answers the pinned band when `show()` registers
+    // the window. It is not among `click`'s targets, so it never raises.
+    const pinned = Window('Pinned', {
+        x: WINDOW_X_PX + PINNED_OFFSET_X_PX,
+        y: WINDOW_Y_PX + PINNED_OFFSET_Y_PX,
+        width: WINDOW_WIDTH_PX,
+        height: WINDOW_HEIGHT_PX,
+        alwaysOnTop: true,
+    });
     const minimized = Math.floor(n / 2);
     const southStrip = lateId();
 
@@ -174,12 +193,18 @@ export function build(n: number, params: URLSearchParams): PanelBuild {
         afterMount: (tools: HarnessTools): Record<string, unknown> => {
             const grip = choice(params, 'grip', GRIPS, PANEL);
 
-            for (const win of [...windows, bare, c25]) {
+            for (const win of [...windows, bare, c25, pinned]) {
                 win.show();
             }
 
             windows.slice(n - minimized).forEach((win) => win.minimize());
             southStrip.set(windowStrip(tools, c25, 'south').id);
+
+            // Duration 0 keeps one toast alive for the whole run, so C33's
+            // re-stack answers every viewport unit. Not a C31 witness: that
+            // needs a dropdown open over the bottom-right corner, which this
+            // panel has no element for.
+            Notification.show('Stacking witness', 'info', 0);
 
             return {
                 drag: { element: grip === 'header' ? elementFor(tools, windows[0].getHeader(), PANEL) : windowStrip(tools, windows[0], 'east'), axis: 'x' },
@@ -188,7 +213,7 @@ export function build(n: number, params: URLSearchParams): PanelBuild {
                 hover: { element: elementFor(tools, windows[0], PANEL), axis: 'x' },
             };
         },
-        geometry: { win0: windows[0], bare, southStrip: southStrip.target },
+        geometry: { win0: windows[0], bare, pinned, southStrip: southStrip.target },
         describe: () => ({ windows: n, minimized }),
     };
 }

@@ -108,15 +108,16 @@ export class Notification extends Component {
     private static readonly V_PADDING: number      = 10;
     private static readonly CLOSE_SIZE: number     = 20;
     private static readonly BADGE_TEXT_GAP: number = 8;
-    // Stacking z-index for toasts. Sits just above the managed dropdown band
-    // (`LayerManager.Band.Dropdown` = 10000) so a toast floats over open pickers
-    // and menus, yet below the Dialog band (11000) so the modal detail dialog a
-    // toast can open covers it. A fixed literal rather than a `Band` allocation
-    // because a `Notification` is not a registered layer — it never joins the
-    // dismiss / stacking tree, so it has no node for the manager to stamp.
-    private static readonly Z_INDEX: number        = 10002;
 
     private static activeNotifications: Notification[] = [];
+
+    // Owner for the viewport `resize` listener that keeps live toasts in the
+    // corner. `Event.addViewportListener` binds a listener to a `Component`,
+    // but the handler is static — one for the whole stack, not one per toast —
+    // so a single stable sentinel owns it, mirroring `LayerManager`'s listener
+    // owner. Installed with the first live toast, removed with the last.
+    private static readonly resizeListenerOwner: Component = new Component();
+    private static resizeListenerInstalled: boolean = false;
 
     // The most-recent notifications retained by the in-session history. A fixed
     // ring cap keeps memory trivial and the history menu scrollable-but-finite;
@@ -171,7 +172,10 @@ export class Notification extends Component {
         this._fullMessage = message;
 
         this.setPosition(Position.FIXED);
-        this.setZIndex(Notification.Z_INDEX);
+        // Above the managed dropdown band so a toast floats over open pickers
+        // and menus, and below the Dialog band so the modal detail dialog a
+        // toast can open covers it.
+        this.setZIndex(LayerManager.Band.Notification);
         this.setWidth(Notification.WIDTH);
         this.setHeight(Notification.HEIGHT);
         this.setOverflow("hidden");
@@ -264,6 +268,7 @@ export class Notification extends Component {
         const n = new Notification(message, type);
 
         Notification.activeNotifications.push(n);
+        Notification.installResizeListener();
 
         const el = n.getElement(true)!;
 
@@ -596,6 +601,10 @@ export class Notification extends Component {
         this.dispose();
 
         Notification.restack();
+
+        if (Notification.activeNotifications.length === 0) {
+            Notification.uninstallResizeListener();
+        }
     }
 
     /**
@@ -616,6 +625,45 @@ export class Notification extends Component {
             n.setY(y);
             y -= Notification.MARGIN;
         }
+    }
+
+    /**
+     * Viewport `resize` handler: re-stacks the live toasts into the new
+     * bottom-right corner. Runs on the raw event, with no per-frame
+     * coalescing — `restack` reads the viewport once and writes two guarded
+     * setters per live toast, less than any other viewport `resize` handler in
+     * the library does, and none of those coalesces either.
+     */
+    private static onViewportResize(): void {
+        Notification.restack();
+    }
+
+    /**
+     * Installs the stack's single viewport `resize` listener, if it is not
+     * already installed. Called as a toast joins the active stack.
+     */
+    private static installResizeListener(): void {
+        if (Notification.resizeListenerInstalled) {
+            return;
+        }
+
+        Event.addViewportListener(Notification.resizeListenerOwner, "resize", Notification.onViewportResize);
+
+        Notification.resizeListenerInstalled = true;
+    }
+
+    /**
+     * Removes the stack's viewport `resize` listener. Called once the active
+     * stack has emptied, so nothing answers a resize while no toast is live.
+     */
+    private static uninstallResizeListener(): void {
+        if (!Notification.resizeListenerInstalled) {
+            return;
+        }
+
+        Event.removeViewportListener(Notification.resizeListenerOwner, "resize", Notification.onViewportResize);
+
+        Notification.resizeListenerInstalled = false;
     }
 
     /**
@@ -676,6 +724,10 @@ export class Notification extends Component {
         if (Notification.activeNotifications.includes(this)) {
             Notification.activeNotifications = Notification.activeNotifications.filter(n => n !== this);
             Notification.restack();
+
+            if (Notification.activeNotifications.length === 0) {
+                Notification.uninstallResizeListener();
+            }
         }
 
         super.destructor();

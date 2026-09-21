@@ -285,10 +285,11 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     }
 
     /**
-     * Mirrors a manager-allocated z-index onto the element when the dropdown —
-     * or the window / surface it was opened inside — is raised via
-     * {@link LayerManager.bringToFront}. Without this, the dropdown reads its
-     * z once in {@link showAnimated} and never updates; raising its host window
+     * Mirrors every z-index the manager assigns this dropdown onto the element
+     * — the one allocated at registration, each later one from a raise of the
+     * dropdown or of the window / surface it was opened inside, and the one a
+     * compaction of its band hands it. Without this, the dropdown reads its z
+     * once in {@link showAnimated} and never updates; raising its host window
      * (a `mousedown` brings the window to front) would then re-stamp the host
      * above the dropdown's stale z, hiding the open panel — and its fade-out —
      * behind the window.

@@ -65,16 +65,26 @@ bands:
 | PinnedWindow | 9400 |
 | Popover | 9800 |
 | Dropdown | 10000 |
+| Notification | 10500 |
 | Dialog | 11000 |
+| Tooltip | 12000 |
+
+`Notification` and `Tooltip` are not allocated from: they are the fixed stamps
+two surfaces that portal without registering as layers give themselves.
 
 A surface reports its band from `getBand()`; an unrelated top-level layer uses
 its own band, while a nested layer **inherits its opener's band** (see above)
 and rises above it via the per-register counter. `LayerManager.setBand(layer, band)`
 moves an already-registered layer (and its descendants) into a different band —
 an always-on-top window uses it to move into `PinnedWindow` without
-re-registering. The manager assigns `z = band + counter` at register time;
-surfaces mirror it with their own `setZIndex` and re-mirror on `bringToFront`
-via the optional `onZIndexChanged` hook.
+re-registering. The manager assigns `z = band + counter` at register time from
+a counter kept **per band**, and compacts a band's live stamps back onto its
+base whenever the next one would reach the band above — so a band's headroom
+bounds how many of its layers may be open at once, not how many a session may
+open in total. `bringToFront` re-stamps only when the raised subtree is not
+already on top of its band; a raise that would move nothing allocates nothing.
+Surfaces mirror each stamp the manager assigns — the register-time one
+included — with their own `setZIndex`, via the optional `onZIndexChanged` hook.
 
 ## Dismiss modes
 
@@ -127,6 +137,8 @@ class MyOverlay extends Component implements DismissableLayer {
 }
 ```
 
-[`Menu`](/api/overlay/classes/Menu), [`Tooltip`](/api/overlay/classes/Tooltip), and
-`Notification` also portal but are not yet on the manager; they keep their own
-listeners and can fold in later.
+[`Menu`](/api/overlay/classes/Menu) is on the manager too.
+[`Tooltip`](/api/overlay/classes/Tooltip) and `Notification` portal without
+registering — neither is dismissable and neither opens anything — and take
+their z from `LayerManager.Band.Tooltip` and `LayerManager.Band.Notification`
+rather than from the allocator.

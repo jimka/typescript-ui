@@ -64,12 +64,14 @@ export interface DismissableLayer {
     onActivate?(active: boolean): void;
 
     /**
-     * Optional re-stamp hook. The manager calls it with a fresh z-index when
-     * {@link LayerManager.bringToFront} re-allocates the layer (or one of its
-     * ancestors) while it is already shown, so the surface can mirror the new
-     * value onto its element through its own typed `setZIndex`. Surfaces that
-     * only read z once in their show path (and never get raised afterwards)
-     * may omit it.
+     * Optional stamp hook. The manager calls it with each z-index it assigns
+     * the layer — the one {@link LayerManager.register} allocates, and every
+     * later one, whether from {@link LayerManager.bringToFront} raising the
+     * layer or an ancestor, from {@link LayerManager.setBand}, or from the
+     * band being compacted — so the surface can mirror the value onto its
+     * element through its own typed `setZIndex`. Surfaces that read z back
+     * themselves in their show path and never get raised afterwards may omit
+     * it.
      */
     onZIndexChanged?(zIndex: number): void;
 
@@ -114,12 +116,17 @@ interface LayerNode {
 // per class). The bands reconcile the four historical bases into one
 // ascending allocator and preserve relative order between unrelated peers:
 //   Window 9000  <  PinnedWindow 9400  <  Popover 9800  <  dropdowns 10000  <
-//   Dialog 11000.
+//   Notification 10500  <  Dialog 11000  <  Tooltip 12000.
 // A nested child inherits its opener's band but always lands above it because
-// it registers later and so draws a higher counter. The 200-1000 gap between
-// bands leaves headroom for the monotonic `_zCounter`; it is not reset, on the
-// assumption a single session opens far fewer than 200 unrelated layers in the
-// same band before a reload — the historical inline values made the same bet.
+// it registers later and so draws a higher counter. Each band keeps its own
+// counter, and a counter that would reach the next base up renormalises its
+// band first — the band's live layers are re-stamped from its base in their
+// current order and the counter restarts from there. So the gap above a band
+// bounds how many of its layers may be open *at once*, not how many may be
+// opened over a session: no run of registrations or raises, however long,
+// climbs into the band above. A band holding more layers at once than its gap
+// allows would still overflow into its neighbour, and no code guards against
+// that — the narrowest gap is the Popover band's 199.
 const Z_BAND_WINDOW:        number = 9000;
 // Always-on-top windows, above ordinary windows and below Popover. Sits
 // midway in the 800-pixel Window→Popover gap, halving the counter headroom
@@ -128,12 +135,35 @@ const Z_BAND_WINDOW:        number = 9000;
 const Z_BAND_PINNED_WINDOW: number = 9400;
 const Z_BAND_POPOVER:       number = 9800;
 const Z_BAND_DROPDOWN:      number = 10000;
+// Toasts, above open pickers and menus so a notification is never buried by
+// one, and below Dialog so the modal detail dialog a toast can open covers it.
+// Sits midway in the 1000-pixel Dropdown→Dialog gap, halving the counter
+// headroom that gap gave the Dropdown band. Not a registered layer band —
+// exposed so the Notification stack stamps itself here rather than carrying a
+// magic number the Dropdown band's counter could overtake.
+const Z_BAND_NOTIFICATION:  number = 10500;
 const Z_BAND_DIALOG:        number = 11000;
 // Above every managed layer: a tooltip is a transient, non-interactive
 // affordance that must float over even a modal Dialog and its backdrop. Not a
 // registered layer band — exposed so the Tooltip singleton stamps itself here
 // rather than carrying a magic number that could fall below the Dialog band.
 const Z_BAND_TOOLTIP:  number = 12000;
+
+// Ascending list of every band base, so a band's ceiling is the next base up.
+// Adding a band narrows its predecessor's headroom automatically, which is why
+// stamps renormalise rather than relying on the size of the gap.
+const _bandBases: readonly number[] = [
+    Z_BAND_WINDOW, Z_BAND_PINNED_WINDOW, Z_BAND_POPOVER,
+    Z_BAND_DROPDOWN, Z_BAND_NOTIFICATION, Z_BAND_DIALOG, Z_BAND_TOOLTIP,
+];
+
+// Headroom assumed for a band base above every listed one — a surface is free
+// to return any number from `getBand()`, and a base past the top of the list
+// has no next base to bound it. A base falling *between* two listed ones needs
+// no fallback: the next listed base up bounds it like any other. 200 matches
+// the narrowest gap the listed bases leave, so an unlisted band is bounded no
+// more loosely than a listed one.
+const FALLBACK_BAND_HEADROOM: number = 200;
 
 /**
  * Sentinel `Component` used as the registration key for the manager's three
@@ -171,8 +201,8 @@ export namespace LayerManager {
     // per-host `_entryByLayer` WeakMap.
     const _nodeByLayer: WeakMap<DismissableLayer, LayerNode> = new WeakMap();
 
-    // Ascending per-register counter; combined with a band base to stamp z.
-    let _zCounter: number = 0;
+    // Ascending counter per band base; combined with the base to stamp z.
+    const _counterByBand: Map<number, number> = new Map();
 
     // The layer currently marked active (received the last `onActivate(true)`).
     let _activeLayer: DismissableLayer | null = null;
@@ -180,17 +210,19 @@ export namespace LayerManager {
     let _listenersInstalled: boolean = false;
 
     /**
-     * The five z-index bands a surface returns from
-     * {@link DismissableLayer.getBand}. Exposed so each surface can tag itself
-     * without re-declaring the constants. Reconciles the historical inline
-     * bases (Window 9000, Popover 9998, dropdowns 10050, Dialog 10101) into
-     * one ascending allocator.
+     * Every z-index band base, exposed so each surface can tag itself without
+     * re-declaring the constants. A registered layer returns one of them from
+     * {@link DismissableLayer.getBand}; `Notification` and `Tooltip` are here
+     * for the surfaces that stamp themselves without joining the layer tree at
+     * all. Reconciles the historical inline bases (Window 9000, Popover 9998,
+     * dropdowns 10050, Dialog 10101) into one ascending allocator.
      */
     export const Band = {
         Window:       Z_BAND_WINDOW,
         PinnedWindow: Z_BAND_PINNED_WINDOW,
         Popover:      Z_BAND_POPOVER,
         Dropdown:     Z_BAND_DROPDOWN,
+        Notification: Z_BAND_NOTIFICATION,
         Dialog:       Z_BAND_DIALOG,
         Tooltip:      Z_BAND_TOOLTIP,
     } as const;
@@ -206,14 +238,82 @@ export namespace LayerManager {
     }
 
     /**
+     * The exclusive upper bound on a band's stamps — the next band base above
+     * `band`, or a fixed headroom past it when `band` sits above every
+     * declared base and so has no next one, since a surface may return any
+     * number at all from {@link DismissableLayer.getBand}.
+     *
+     * @param band - The band base whose ceiling is wanted.
+     * @returns The first stamp value the band must not reach.
+     */
+    function bandCeiling(band: number): number {
+        for (const base of _bandBases) {
+            if (base > band) {
+                return base;
+            }
+        }
+
+        return band + FALLBACK_BAND_HEADROOM;
+    }
+
+    /**
+     * Allocates the next stamp in `band`, renormalising the band first when
+     * that stamp would otherwise reach the band above. Every stamp the manager
+     * assigns — at register time and on a re-stamp — comes from here, so no
+     * band climbs into its neighbour however long a session runs.
+     *
+     * @param band - The band base to allocate within.
+     * @returns The allocated z-index.
+     */
+    function nextStamp(band: number): number {
+        let counter = (_counterByBand.get(band) ?? 0) + 1;
+
+        if (band + counter >= bandCeiling(band)) {
+            counter = renormaliseBand(band) + 1;
+        }
+
+        _counterByBand.set(band, counter);
+
+        return band + counter;
+    }
+
+    /**
+     * Compacts `band`'s live layers onto `base + 1 … base + n` in their
+     * current stacking order, notifying each one whose stamp actually moved
+     * via {@link DismissableLayer.onZIndexChanged}. Only layers still open are
+     * re-stamped, which is what makes a band's headroom a bound on how many of
+     * its layers may be open at once rather than on how many have ever been.
+     *
+     * @param band - The band base to compact.
+     * @returns How many layers the band holds — the counter's new value.
+     */
+    function renormaliseBand(band: number): number {
+        const nodes = _stack.filter(n => n.band === band).sort((a, b) => a.zIndex - b.zIndex);
+
+        for (let i = 0; i < nodes.length; i++) {
+            const zIndex = band + i + 1;
+
+            if (nodes[i].zIndex !== zIndex) {
+                nodes[i].zIndex = zIndex;
+                nodes[i].layer.onZIndexChanged?.(zIndex);
+            }
+        }
+
+        return nodes.length;
+    }
+
+    /**
      * Pushes `layer` as a child of the layer it was opened from — resolved
      * via its anchor element, or the last-registered layer when it has none
      * (see `resolveParent`) — unless it declares itself a top-level peer via
      * {@link DismissableLayer.isLayerRoot}, in which case it registers as a
      * tree root — assigns its band-based z-index, and installs the
-     * document-level listeners on the first call. A duplicate register (e.g. a
-     * `showAnimated` that cancels an in-flight fade-out) is a no-op so the tree
-     * never double-pushes.
+     * document-level listeners on the first call. The allocated stamp is
+     * reported through {@link DismissableLayer.onZIndexChanged}, the same way a
+     * re-stamp is, so a surface that writes its element z only from that hook
+     * gets its first value here. A duplicate register (e.g. a `showAnimated`
+     * that cancels an in-flight fade-out) is a no-op so the tree never
+     * double-pushes — and, allocating nothing, reports nothing.
      *
      * @param layer - The surface entering the layer tree.
      */
@@ -224,7 +324,7 @@ export namespace LayerManager {
 
         const parent = layer.isLayerRoot?.() ? null : resolveParent(layer);
         const band   = bandFor(parent, layer.getBand?.() ?? Z_BAND_DROPDOWN);
-        const zIndex = band + (++_zCounter);
+        const zIndex = nextStamp(band);
 
         const node: LayerNode = { layer, parent, children: [], band, zIndex };
 
@@ -238,6 +338,8 @@ export namespace LayerManager {
         if (!_listenersInstalled) {
             installListeners();
         }
+
+        layer.onZIndexChanged?.(zIndex);
     }
 
     /**
@@ -393,6 +495,11 @@ export namespace LayerManager {
      * (e.g. a window brought to front), so the raised layer — and anything it
      * opened — jumps above its band peers without disturbing other bands.
      *
+     * The re-stamp happens only when the raised subtree is not already on top
+     * of its band; a raise that would move nothing spends no stamp and
+     * notifies nobody. The layer is marked active either way, so a click in
+     * the already-front window still activates it.
+     *
      * @param layer - The layer to raise and activate.
      */
     export function bringToFront(layer: DismissableLayer): void {
@@ -402,7 +509,10 @@ export namespace LayerManager {
             return;
         }
 
-        restampSubtree(node);
+        if (!isTopOfBand(node)) {
+            restampSubtree(node);
+        }
+
         markActive(layer);
     }
 
@@ -455,7 +565,7 @@ export namespace LayerManager {
                 n.band = band;
             }
 
-            n.zIndex = n.band + (++_zCounter);
+            n.zIndex = nextStamp(n.band);
             n.layer.onZIndexChanged?.(n.zIndex);
 
             for (const child of n.children) {
@@ -464,6 +574,35 @@ export namespace LayerManager {
         };
 
         walk(node);
+    }
+
+    /** True when `node` sits somewhere under `ancestor` in the layer tree. */
+    function isDescendantOf(node: LayerNode, ancestor: LayerNode): boolean {
+        for (let p = node.parent; p !== null; p = p.parent) {
+            if (p === ancestor) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * True when nothing outside `node`'s own subtree outranks it within its
+     * band — the state in which a raise would move nothing. Descendants are
+     * excluded because they are meant to sit above their opener and rise with
+     * it, so a window carrying an open dropdown is still on top of its band.
+     */
+    function isTopOfBand(node: LayerNode): boolean {
+        for (const other of _stack) {
+            if (other.band === node.band
+                && other.zIndex > node.zIndex
+                && !isDescendantOf(other, node)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
