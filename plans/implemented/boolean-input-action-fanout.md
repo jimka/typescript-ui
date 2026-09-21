@@ -287,3 +287,77 @@ Cases 1–8 are unit-testable offline. Cases 9 and 10 need the QA app and are ma
 [^menu-rows]: Verified against the register's own correction. `AbstractBooleanMenuRow.installControl` sets `setPointerEvents("none")` on the hosted control and registers a **direct** click listener on the row itself ([`component/container/AbstractBooleanMenuRow.ts:256-270`](packages/lib/src/typescript/lib/component/container/AbstractBooleanMenuRow.ts#L256)). The synthetic click targets the checkbox's own element, so the dispatcher's exact-target match never reaches the row's bucket. The rows emit their own `"action"` from `activate()` through a `ListenerBag` ([`:132-139`](packages/lib/src/typescript/lib/component/container/AbstractBooleanMenuRow.ts#L132)), which this change does not touch.
 
 [^probe]: The offline `RecordingDOMSink` routes `dispatchEvent` to the handlers registered on the window handle, which is where `Event` installs its single capture dispatcher, so `Event.fireEvent(component, makeEvent(handle, "click", { button: 0 }))` exercises the real routing path offline. That is what makes cases 1–8 offline-assertable, and it is why `tests/component/input/SelectableText.test.ts` and `Slider.test.ts` already drive real events this way. The comment at [`Checkbox.test.ts:166-172`](packages/lib/tests/component/input/Checkbox.test.ts#L166) claiming a listener cannot be invoked offline is narrower than the harness; do not extend that claim to the new cases, and do not rewrite the comment either — it explains why *that* test asserts the sink write.
+
+---
+
+## Implementation Notes
+
+Implemented as planned. Every ordered step landed, both greps in `## Verification`
+read exactly what the plan predicted (zero `_suppressCommit`, exactly two
+`setSelected(…, false)`, both in `cell/editor/Boolean.ts`), and `docs:api`
+finished with the same 14 pre-existing warnings and no new one. Four things are
+worth recording.
+
+**The vacuous `BooleanCell` test had a second cause the plan did not name.**
+Step 13 attributes `expect(commits).toHaveLength(1)` passing to the helper never
+realising the editor's checkbox element, which leaves `setSelected` on its
+pre-mount branch. That is real, but it is not sufficient: `Event` installs one
+window-level base listener per event type and remembers it across DOM installs,
+so the `"click"` listener installed during the file's *first* case stays bound to
+that case's window handle, and every later case's synthetic click is dispatched
+to a window nobody is listening on. Measured: with the element realised but no
+listener re-registration, the pre-fix editor still reports one commit, not two —
+the regression stays invisible. The hoisted helper therefore also needed the
+`Event._registeredComponentIds()` / `purgeComponent` sweep that
+`tests/component/input/Slider.test.ts`'s `freshKeydownWindow` already uses, run
+from `beforeEach`. With both in place the case reads `[true, true]` before the
+fix and one commit after, as step 13 intended. `RadioButton.test.ts`'s new block
+needs the same sweep for the same reason.
+
+**`RadioButton.ts` is missing from the plan's file table.** `## Documentation
+Impact` requires its `on` overload's TSDoc to say `"action"` never fires on a
+programmatic `setSelected`, but `## Files to Create / Modify / Delete` lists only
+thirteen files and omits this one. The TSDoc change was made as specified; the
+table was the omission, not the requirement. Its whole diff is a doc comment, so
+it rides in the code commit with the other source files rather than the
+documentation commit.
+
+**C40 was already recorded before implementation started.** Step 15 asks for C40
+to be added to `01-phase2-status-pass.md`'s *Found while planning and
+implementing, not in the register*; it was already there, written during planning
+(commit `2097d27d`), and the section's "seven things" count already includes it.
+The only edit made there was to repoint its now-stale `plans/…` path at
+`plans/implemented/` and state that C40 stays open after this plan, since
+`fireAction` changes nothing about how `"action"` is delivered.
+
+**Three of the eight cases were green before any code changed, by design.** Cases
+4 (the no-op guard), 5 (`RadioButton`'s asymmetry) and 8 (the indeterminate
+branch) pin behaviour this plan deliberately does *not* change, so they are
+regression pins rather than red-green pairs; cases 2, 3, 6 and 7 were each seen
+failing for the predicted reason first. Case 5's three assertions are not
+vacuous: its ring-click case delivers exactly one `"action"` and flips
+`isSelected()`, which is the positive control that makes its two zero-delivery
+assertions meaningful.
+
+**Two plan-dictated defects the audit caught.** First, `## Documentation Impact`
+specifies the `events.md` sentence as "`Checkbox` is the one control whose
+`"action"` also fires for a programmatic write"; that is false, and it was
+written verbatim before being checked. `Slider.setValue` re-fires `"input"`
+unconditionally (`component/input/Slider.ts:259`, with `on("action")` bound to
+`"input"` at `:401`) and has no opt-out at all, and the default paths of
+`AbstractSelectableList.setSelectedIndex` and `ComboBox.setSelectedIndex` both
+fan out too — the very pair the plan cites as its precedent. The sentence now
+describes the real shape: several controls fan out, the opt-out where one exists
+is a trailing boolean on the setter, and `RadioButton` is the counter-example.
+Second, the plan's `_suppressCommit` sweep is scoped to `packages/lib/src/`
+(`## Verification`), so the test tree was never checked; four stale references
+survived in `tests/component/table/cell/editor.test.ts`, including a comment
+asserting that a mounted `toggle()` still emits twice — the exact behaviour this
+branch removes. Those comments are corrected, and a fifth stale reason in
+`tests/component/table/CellLayoutSkip.test.ts:125` with it. `packages/` now holds
+no mention of the flag; the frozen research and implemented-plan records under
+`plans/` still name it, correctly, as the history they are.
+
+Cases 9 and 10 remain unrun — both need a QA panel, which opens a full-screen
+window and was not authorised. `packages/qa/README.md`'s *Reproduces* cells for
+`table-rows` and `form-flat` carry them; the *Validated* cells are untouched.

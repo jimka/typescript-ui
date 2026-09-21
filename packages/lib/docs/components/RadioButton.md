@@ -47,6 +47,7 @@ panel.addComponent(large);
 | `isReadOnly()` / `setReadOnly(boolean)` | Stays focusable but ignores user input. |
 | `on("change", fn)` / `off("change", fn)` | Subscribe to selection changes. |
 | `on("binding", fn)` | Used by [`Binding`](/data/binding). |
+| `on("action", fn)` | Fires once per user activation that changes the selection — re-clicking the selected radio fires nothing — and never on a programmatic `setSelected`; so a `ButtonGroup`'s sibling-deselect sweep announces nothing. [`Checkbox`](/components/Checkbox) differs here: its `"action"` also fires for a programmatic write. |
 
 ## Group navigation
 

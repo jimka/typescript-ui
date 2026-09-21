@@ -25,7 +25,7 @@ panel.addComponent(subscribe);
 
 | Method | Purpose |
 | --- | --- |
-| `isSelected()` / `setSelected(boolean)` | Read / write checked state. |
+| `isSelected()` / `setSelected(boolean, fireAction?)` | Read / write checked state. Pass `fireAction: false` to keep a programmatic write out of `on("action", fn)`. |
 | `getValue()` / `setValue(boolean)` | Bindable interface — same as `isSelected` / `setSelected`. |
 | `isIndeterminate()` / `setIndeterminate(boolean)` | Mixed-state for tri-state forms. |
 | `getLabel()` / `setLabel(text \| null)` | Optional inline label. |
@@ -33,11 +33,22 @@ panel.addComponent(subscribe);
 | `isReadOnly()` / `setReadOnly(boolean)` | Stays focusable but ignores user-driven changes. |
 | `on("change", fn)` / `off("change", fn)` | Subscribe to value changes. |
 | `on("binding", fn)` | Used by [`Binding`](/data/binding). |
-| `on("action", fn)` | Subscribe to the click action. |
+| `on("action", fn)` | Subscribe to the click action — fires on a user toggle *and* on a programmatic `setSelected`, unless the caller passes `fireAction: false`. |
 
 ## Indeterminate / mixed state
 
 Setting `setIndeterminate(true)` shows a horizontal bar in place of the check and emits `aria-checked="mixed"`. A user click from the mixed state first clears the indeterminate flag and selects the checkbox (matching the WAI-ARIA Authoring Practices recommendation).
+
+## Programmatic writes and `action`
+
+A checkbox announces `"action"` for a programmatic write as well as a user toggle. Pass `false` as `setSelected`'s second argument when the write is your own and only the value listeners should hear it:
+
+```typescript
+cb.setSelected(true);        // "change", "binding" and "action"
+cb.setSelected(true, false); // "change" and "binding" only
+```
+
+`"change"` and `"binding"` fire either way — the flag gates the `"action"` dispatch and nothing else, and an unchanged write still returns early without firing anything. This is where `Checkbox` differs from [`RadioButton`](/components/RadioButton), whose `"action"` means "the user selected this one" and never fires for a programmatic `setSelected`.
 
 ## Notes
 

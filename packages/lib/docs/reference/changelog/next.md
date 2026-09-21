@@ -144,6 +144,17 @@ page resets to empty.
 
 ### Components
 
+- **`Checkbox.setSelected` gains a second parameter, `fireAction`.** A
+  checkbox announces `on("action", fn)` for a programmatic write as well as a
+  user toggle, which leaves a caller performing its own write no way to tell
+  the two apart. Passing `false` suppresses that dispatch for the one call;
+  `"change"` and `"binding"` still fire, so a `Binding` is unaffected. The
+  parameter defaults to `true`, so every existing call behaves exactly as
+  before and no consumer action is needed.
+  [`RadioButton`](/components/RadioButton) deliberately has no such parameter:
+  its `"action"` never fires for a programmatic `setSelected` in the first
+  place.
+
 - **`TabBar` gains `setEntryModified(id, modified)` / `isEntryModified(id)`**,
   and **`TabButton` gains `setModified(modified)` / `isModified()`** as the
   button-level mechanism they run through — a small filled dot trailing a
@@ -639,6 +650,17 @@ page resets to empty.
   is needed.
 
 ### Components
+
+- **A boolean table cell no longer commits twice per activation.** Toggling
+  one by double-click or by keyboard runs `BooleanCell.startEdit`, which emits
+  the cell's `"commit"` once itself and once more through the synthetic click
+  the checkbox dispatched on its way — so a consumer's own `"commit"` handler
+  ran twice for the single gesture. The record write was idempotent and hid
+  the damage, but any handler with a side effect of its own saw both. The
+  editor's programmatic writes now opt out of the checkbox's `"action"`
+  fan-out, leaving one commit per activation. A pooled rebind during a scroll
+  likewise stops dispatching a synthetic click per visible row. No consumer
+  action is needed.
 
 - **Two `Markdown` previews of documents that share a heading name no longer
   break each other's outline.** Heading ids are unique within one render but

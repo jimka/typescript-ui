@@ -5,8 +5,10 @@
 // radioName back-compat field are pure option reads.
 import { describe, it, expect, afterEach } from 'vitest';
 import { RadioButton } from '~/component/input/RadioButton';
-import { DOM } from '~/core/DOM';
-import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
+import { Container } from '~/core/Container';
+import { DOM, type Handle } from '~/core/DOM';
+import { Event } from '~/core/Event';
+import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
 import { _ruleCacheHas } from '~/core/StyleTarget';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -106,6 +108,98 @@ describe('RadioButton selected transitions', () => {
         rb.setSelected(true); // no-op: already selected.
 
         expect(changes).toBe(1);
+    });
+});
+
+describe('RadioButton action fan-out (mounted)', () => {
+    afterEach(() => DOM.reset());
+
+    /**
+     * Installs a fresh TestDOM and clears `Event`'s component registry, so the
+     * window-level base listener that this file's earlier, DOM-less
+     * RadioButtons installed is re-installed against the window handle the
+     * dispatches below actually route through. Ritual copied from
+     * tests/component/input/Slider.test.ts's `freshKeydownWindow`.
+     */
+    function freshEventWindow(): void {
+        installTestDOM(CONFIG);
+
+        for (const id of Event._registeredComponentIds()) {
+            Event.purgeComponent(id);
+        }
+    }
+
+    /**
+     * A mounted, quiesced RadioButton and its realized ring graphic. Pausing
+     * the radio and its private children before flushing the host keeps the
+     * module-level pending-layout set from flushing against a reset DOM in a
+     * later file (see Slider.test.ts's `quiesce` for the full reasoning).
+     */
+    function mountedRadio(): { rb: any; ring: Handle } {
+        freshEventWindow();
+
+        const host = new Container({});
+        const rb   = new RadioButton() as any;
+        host.addComponent(rb);
+        host.getElement(true);
+        rb.getElement(true);
+
+        const ring = rb._ring.getElement(true)!;
+
+        rb._ring.pauseLayout();
+        rb._dot.pauseLayout();
+        rb.pauseLayout();
+        host.pauseLayout();
+        host.flushLayout();
+        rb.flushLayout();
+
+        return { rb, ring };
+    }
+
+    it('stays silent on a programmatic setSelected', () => {
+        // CONTRACT: the asymmetry with Checkbox is deliberate. A radio's
+        // `"action"` means "the user selected this one" — ButtonGroup's
+        // sibling-deselect sweep writes `setSelected(false)` across every
+        // untouched button, and listens on `"action"` itself.
+        const { rb } = mountedRadio();
+
+        let actions = 0;
+        rb.on('action', () => {
+            actions += 1;
+        });
+
+        rb.setSelected(true);
+
+        expect(rb.isSelected()).toBe(true);
+        expect(actions).toBe(0);
+    });
+
+    it('fires action exactly once for a click on the ring graphic', () => {
+        const { rb, ring } = mountedRadio();
+
+        let actions = 0;
+        rb.on('action', () => {
+            actions += 1;
+        });
+
+        Event.fireEvent(rb, makeEvent(ring, 'click', { button: 0 }) as any);
+
+        expect(rb.isSelected()).toBe(true);
+        expect(actions).toBe(1);
+    });
+
+    it('stays silent for a click on the root outside the ring', () => {
+        const { rb } = mountedRadio();
+
+        let actions = 0;
+        rb.on('action', () => {
+            actions += 1;
+        });
+
+        Event.fireEvent(rb, makeEvent(rb.getElement(true)!, 'click', { button: 0 }) as any);
+
+        expect(rb.isSelected()).toBe(false);
+        expect(actions).toBe(0);
     });
 });
 

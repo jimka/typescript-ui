@@ -29,7 +29,6 @@ class BooleanEditor extends CellEditor<Boolean | null> {
     private _checkBox:        Checkbox                                       = new Checkbox();
     private _value:           Boolean | null                                 = null;
     private _listeners:       ListenerBag<BooleanEditorEvent>                = this.registerListenerBag(new ListenerBag<BooleanEditorEvent>());
-    private _suppressCommit:  boolean                                        = false;
 
     constructor() {
         super();
@@ -43,17 +42,6 @@ class BooleanEditor extends CellEditor<Boolean | null> {
         this.addComponent(this._checkBox);
 
         this._checkBox.on("action", () => {
-            // `Checkbox.setSelected` dispatches a synthetic
-            // `CustomEvent("click")` on the root for backward-compat with
-            // `on("action", fn)` consumers, which fires for BOTH real user
-            // toggles AND programmatic `setValue` calls. Without the
-            // `_suppressCommit` guard, every scroll-driven `setValue` would
-            // commit the bound record back to the store, fire
-            // `'datachange'`, and re-render both bodies in a loop.
-            if (this._suppressCommit) {
-                return;
-            }
-
             this._value = this._checkBox.isSelected();
             this.emit("change", this._value);
         });
@@ -125,20 +113,16 @@ class BooleanEditor extends CellEditor<Boolean | null> {
     setValue(value: Boolean | null): this {
         this._value = value ?? null;
 
-        // Wrap the programmatic state updates in the suppress-commit guard
-        // so the synthetic `click` events dispatched by `setIndeterminate`
-        // and `setSelected` don't fire the cell's commit callback. The
-        // guard is checked by the constructor's action listener.
-        this._suppressCommit = true;
-        try {
-            if (this._value === null) {
-                this._checkBox.setIndeterminate(true);
-            } else {
-                this._checkBox.setIndeterminate(false);
-                this._checkBox.setSelected(this._value as boolean);
-            }
-        } finally {
-            this._suppressCommit = false;
+        if (this._value === null) {
+            this._checkBox.setIndeterminate(true);
+        } else {
+            this._checkBox.setIndeterminate(false);
+            // A programmatic write: `fireAction: false` keeps it out of this
+            // editor's own `"action"` listener, which exists to catch the
+            // user's toggles only. A virtualized table rebinds dozens of pool
+            // slots per scroll frame, and each one committing back to the
+            // store would fire `'datachange'` and re-render both bodies.
+            this._checkBox.setSelected(this._value as boolean, false);
         }
 
         return this;
@@ -177,7 +161,10 @@ class BooleanEditor extends CellEditor<Boolean | null> {
         const next = !this._checkBox.isSelected();
 
         this._checkBox.setIndeterminate(false);
-        this._checkBox.setSelected(next);
+        // Programmatic, like `setValue`'s write: the `emit` below is this
+        // activation's single commit, so the checkbox must not fan a second
+        // one back through the constructor's `"action"` listener.
+        this._checkBox.setSelected(next, false);
         this._value = next;
         this.emit("change", this._value);
 

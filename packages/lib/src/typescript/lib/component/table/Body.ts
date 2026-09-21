@@ -1533,12 +1533,12 @@ class TableBody extends VirtualRowView<Row> {
     protected onSubtreeClick(e: MouseEvent): void {
         // Filter synthetic "click" events. `Checkbox.setSelected` dispatches
         // a `CustomEvent("click")` on its root for backward-compat with
-        // `on("action", fn)` consumers; during a scroll rebind, the Active
-        // column's cell receives a programmatic `setValue` for every pool
-        // slot, so a flurry of synthetic clicks bubbles up here and would
-        // each fire `onRowClick` — selecting whichever record happens to be
-        // bound to that slot at the moment, effectively dragging the
-        // selection downward with the scroll.
+        // `on("action", fn)` consumers, so a user toggling a boolean cell
+        // produces that synthetic echo on top of the real `MouseEvent` they
+        // clicked with. Only the real one may select the row; letting the
+        // echo through would fire `onRowClick` a second time for the one
+        // gesture. Scroll rebinds no longer reach here at all — the cell
+        // editor's programmatic writes pass `fireAction: false`.
         if (!(e instanceof MouseEvent)) {
             return;
         }

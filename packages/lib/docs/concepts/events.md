@@ -29,6 +29,20 @@ multi-listener bucket stay inside the `Event` class; the shorthand is a
 per-class typed convenience whose public name (`"action"`) is decoupled
 from the underlying DOM event.
 
+`"action"` does not always mean the user acted. Several controls fire it
+for a programmatic write as well: `Checkbox.setSelected` and
+`Slider.setValue` each re-fire the DOM event their shorthand wraps, and
+`List.setSelectedIndex` and `ComboBox.setSelectedIndex` fire their own
+`"action"` on the default path.
+Some of those setters take a trailing boolean that opts out, but they
+differ in what it covers: `setSelected(value, false)` suppresses only the
+`"action"` dispatch, leaving `"change"` and `"binding"` to fire, while
+`setSelectedIndex(idx, false)` suppresses the whole change notification.
+`Slider.setValue` has no opt-out at all.
+[`RadioButton`](/components/RadioButton) is the counter-example: its
+`"action"` fires only for a real user activation, so a `ButtonGroup`'s
+sibling-deselect sweep announces nothing.
+
 This page covers the three DOM listener flavours, the `on`/`off`/`emit`
 surface, when to use each, and the hover-event quirk that bites everyone
 at least once.

@@ -70,7 +70,7 @@ Paths are relative to `packages/lib/src/typescript/lib/`.
 | C30 | open | `core/LayerManager.ts:175`, `:227`, `:398-406`, `:452-467` | bound the counter per band, plus an already-topmost early return in `bringToFront` |
 | C31 | open | `overlay/Notification.ts:117`, consumed `:174` | a real band constant between Dropdown and Dialog, registered so it draws a counter stamp |
 | C33 | open | `overlay/Notification.ts:605-619` | add a viewport `resize` listener calling the static `restack()`, torn down with the last toast |
-| C34 | open | `component/input/RadioButton.ts:365-376` vs `component/input/Checkbox.ts:450-454` | an opt-out option defaulting to today's behaviour; see the correction below |
+| C34 | settled | `component/input/RadioButton.ts:365-376` vs `component/input/Checkbox.ts:450-454` | done by `plans/implemented/boolean-input-action-fanout.md`: `Checkbox.setSelected(value, fireAction = true)`, the cell editor passing `false` at both programmatic sites, `RadioButton` untouched. Residue recorded as C40 below |
 | C35 | open, severity down | `component/display/AbstractCanvasSurface.ts:386-389` | `&& this.hasRenderingContext()`; `syncBackingStore:285-288` is the identical guard one method away |
 | C36 | open | `component/display/AbstractCanvasSurface.ts:452-455`; `core/Component.ts:2575-2578` (`scheduleEffectiveVisibilityReconcile`; the register's `:2429-2438` and `:2563-2566` have both drifted) | have `wireChild` schedule an effective-visibility reconcile on the attached subtree, guarded on `getElement()` so only genuine reparents pay the edge |
 
@@ -340,8 +340,10 @@ is the correct sibling here — its `"action"` is `Event.addListener(this,
 "change", …)`, fired from `activate()`, delivering 1 per user activation, 0
 on a programmatic write and 0 on a dead-area click. Fixing this changes a
 documented event contract on a public component far more than C34's opt-out
-does, so `plans/boolean-input-action-fanout.md` deliberately scopes it out
-and records it here instead.
+does, so `plans/implemented/boolean-input-action-fanout.md` deliberately
+scopes it out and records it here instead. Still open after that plan
+shipped: its `fireAction` opt-out changes nothing about how `"action"` is
+delivered.
 
 **C25 is not hypothetical.** Planning it found the QA app's own `windows`
 panel already builds an asymmetric window whose east strip is pushed outside
