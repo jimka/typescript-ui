@@ -652,3 +652,79 @@ changes.
     asserts a themed 1 px border this way already. The consequence for the
     `MenuBar` cases is that each side is estimated independently: `borderBottom`
     resolves to 1 and the other three sides, which have no spec, to 0.
+
+---
+
+## Implementation Notes
+
+### The `MenuBar` pixel moved a test the plan did not name
+
+`packages/lib/tests/core/UnchangedCommitSkip.test.ts` digests every
+component's rectangle on every frame of a twenty-frame sweep over a
+Loom-shaped shell scene, and that scene's `Border` holds a `MenuBar` NORTH.
+Its four shell cases went red on the `MenuBar` change. The plan predicted the
+movement — the bar grows 28 → 29 and what sits below it loses the pixel — but
+named neither the file nor the baselines, so `## Files to Create / Modify /
+Delete` and `## Verification` both missed it.
+
+The movement was confirmed to be only that before the baselines were touched.
+Reverting `MenuBar.ts` alone turned all four green, and a token-by-token diff
+of the raw sweep geometry, before against after, showed the *only* differences
+across 254 components × 20 frames × 2 axes were the bar's own `+1` of height
+and exactly one pixel of height removed from the four regions below and beside
+it — in the height sweep, spread fractionally across thirty weighted rows
+summing to that same pixel. Those thirty rows stack, so each one's y moves up
+by the fractions above it, to at most 0.967 px on the last; that shift is the
+redistribution's own arithmetic and not a separate movement. Nothing else
+moves in y, and no x, no width and no component count changes anywhere: in the
+width sweep, where no row is fractionally sized, the only differences at all
+are five components' heights.
+
+The two shell digests were then re-captured the way the originals were: with
+`canSkipUnchangedLayout` stubbed *false* everywhere, so `commitBounds`
+recurses unconditionally, which is the `9320c19b` condition the block's own
+comment names. That same harness reproduces the superseded digests exactly on
+pre-change `MenuBar` code, which is what makes the new numbers a genuine
+pre-skip baseline rather than a restatement of the skip's own output. The
+comment above `BASELINE` records this.
+
+### The QA app's C24 and C25 witnesses were stale claims
+
+`## Files to Create / Modify / Delete` and `## Documentation Impact` scope
+`packages/lib` only, but `## Expected Behaviour`'s manual step and footnote
+`[^three-not-one]` both lean on two `packages/qa` panels as these fixes'
+on-screen witnesses — and each panel's `description`, plus its row in
+`packages/qa/README.md`, asserted the defect in the present tense
+(`geometry.menubarButton` reaches the bar's bottom border;
+`geometry.southStrip` is 12 px tall, not 4). Landing the fixes made both
+false. Each was rewritten to state the post-fix expectation the same text
+already anticipated, so the panels keep working as witnesses — now of the
+fixed behaviour rather than the broken one. The dated measurement columns are
+left alone: the README says they measure the library build they name, not
+whatever `master` holds.
+
+### `docs:api` has fourteen pre-existing warnings, not zero
+
+`## Verification` step 4 asks for zero warnings. The build finishes with
+`0 errors and 14 warnings` — every one an internal-symbol `{@link}` in
+`SpatialNavigation`, `rankInDirection`, `FieldDecorator`, `MarkdownViewer` or
+`MarkdownEditor`. A run of `docs:api` on this branch's start point
+(`121ce9db`) in a throwaway worktree produces the same fourteen, so this
+branch adds none. The real invariant — that the `setDirection` deletion takes
+its JSDoc with it and breaks no link — holds.
+
+### Test placement
+
+Step 12 asks for the `MenuSeparator` cases "beside the existing
+bordered-separator case", which sits inside `describe('MenuItem labels track
+the border')`. They went into their own adjacent
+`describe('MenuSeparator paints a measurable border')` block instead, since
+none of them is about a `MenuItem` label.
+
+### Cases that cannot be red first
+
+As `## Expected Behaviour` predicts, the eight `WindowBorder` direction cases
+pass before their fix: the guard they guard was compensating for a field
+initializer holding the same value, so the defect is latent with no observable
+difference. The file's existing house comment for exactly this situation was
+followed. Everything else was seen red first, for the reason the plan gives.

@@ -471,7 +471,14 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
         borderLeft:   'var(--ts-ui-tab-button-border-left,   var(--ts-ui-tab-button-border, none))',
     } },
     { label: 'TabButton borderRadius (suppressed)', resolve: () => new TabButton('x').getBorderRadius(),                expected: null },
-    { label: 'MenuBar minSize',              resolve: () => new MenuBar().getMinSizeConstraint(),                       expected: { width: 0, height: 28 } },
+    { label: 'MenuBar border',               resolve: () => new MenuBar().getBorder(),                                  expected: { borderBottom: '1px solid var(--ts-ui-menu-bar-border, rgb(220, 220, 220))' } },
+    // The bar's button height plus the bottom rule it now reserves, so a bar
+    // squeezed to its floor still leaves a full-height button its row.
+    { label: 'MenuBar minSize',              resolve: () => new MenuBar().getMinSizeConstraint(),                       expected: { width: 0, height: 29 } },
+    // Two rows, not one: the border spec a separator defaults to is selected
+    // by its `cssVarPrefix` constructor argument, so each family needs its own.
+    { label: 'MenuSeparator border',         resolve: () => new MenuSeparator().getBorder(),                            expected: { borderTop: '1px solid var(--ts-ui-menu-bar-separator-color, rgb(220, 220, 220))' } },
+    { label: 'MenuSeparator border (context-menu)', resolve: () => new MenuSeparator('context-menu').getBorder(),       expected: { borderTop: '1px solid var(--ts-ui-context-menu-separator-color, rgb(220, 220, 220))' } },
     { label: 'Tree overflow',                resolve: () => new Tree().getOverflow(),                                   expected: 'hidden' },
     { label: 'Tree preferredSize (no constraint; height is content-derived)', resolve: () => new Tree().getPreferredSizeConstraint(), expected: null },
     { label: 'Tree maxSize',                 resolve: () => new Tree().getMaxSizeConstraint(),                          expected: { width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER } },

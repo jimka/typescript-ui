@@ -89,7 +89,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
         },
     ];
 
-    private _direction: Direction = Direction.NORTH;
+    private readonly _direction: Direction;
     private _listeners: ListenerBag<WindowBorderEvent> = this.registerListenerBag(new ListenerBag<WindowBorderEvent>());
     private _dragStartListener: Event.Listener;
     private _dragStopListener: Event.Listener;
@@ -110,9 +110,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
     ) {
         super(options, { ..._defaultWindowBorderOptions, ...(subclassDefaults ?? {}) });
 
-        if (direction) {
-            this._direction = direction;
-        }
+        this._direction = direction;
 
         // Set here, not in `render()`: a construction-time `writeStyle` (which
         // `setCursor` funnels through) only caches into the instance style
@@ -144,21 +142,6 @@ class WindowBorder extends Component<WindowBorderOptions> {
      */
     getDirection() {
         return this._direction;
-    }
-
-    /**
-     * Sets the resize direction, defaulting to NORTH if not provided.
-     *
-     * @param direction - The Direction enum value. Defaults to NORTH if falsy.
-     */
-    setDirection(direction: Direction) : this {
-        if (!direction) {
-            direction = Direction.NORTH;
-        }
-
-        this._direction = direction;
-
-        return this;
     }
 
     /**

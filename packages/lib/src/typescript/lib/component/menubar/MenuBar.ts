@@ -20,12 +20,26 @@ export interface MenuBarOptions extends ComponentOptions {
     menus?: MenuConfig[];
 }
 
+/**
+ * Pixel width of the bar's bottom separator border. Hardcoded rather than
+ * read from the theme because the value is part of the bar's box-model
+ * arithmetic: it is what the bar's minimum height has to carry on top of
+ * `MENU_BAR_BUTTON_HEIGHT` so the content box left over still fits a
+ * full-height button. A theme that wanted a thicker rule would have to
+ * change this constant, not just the colour token.
+ */
+const MENU_BAR_BORDER_BOTTOM_WIDTH: number = 1;
+
 // Default to the tool bar's background so menu bars and tool bars read as
 // one surface; the shipped themes set --ts-ui-menu-bar-bg to their
 // toolBar.background, and this untokened fallback matches ToolBar's own.
+// The bottom rule is a real border rather than a raw CSS rule write, so
+// `getBorderSize()` can measure the pixel it occupies and the bar reserves
+// it instead of spending its buttons' bottom row on it.
 const _defaultMenuBarOptions: Partial<MenuBarOptions> = {
     backgroundColor: "var(--ts-ui-menu-bar-bg, rgb(245, 245, 245))",
-    minSize: { width: 0, height: MENU_BAR_BUTTON_HEIGHT },
+    border:  { borderBottom: `${MENU_BAR_BORDER_BOTTOM_WIDTH}px solid var(--ts-ui-menu-bar-border, rgb(220, 220, 220))` },
+    minSize: { width: 0, height: MENU_BAR_BUTTON_HEIGHT + MENU_BAR_BORDER_BOTTOM_WIDTH },
     // A menu bar is a distinct chrome region — coarse spatial navigation
     // should be able to jump into it directly, same as ToolBar/TabBar.
     navigationTarget: true,
@@ -85,10 +99,6 @@ class MenuBar extends Component {
         hbox.setStretching(true);
         this.setLayoutManager(hbox);
 
-        this.setElementCSSRule(
-            "borderBottom",
-            "1px solid var(--ts-ui-menu-bar-border, rgb(220, 220, 220))"
-        );
         this.getAria().setRole("menubar");
         this.getAria().setLabel("Main menu");
         this.getAria().setTabIndex(0);

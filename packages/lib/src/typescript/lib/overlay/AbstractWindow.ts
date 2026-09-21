@@ -2409,8 +2409,6 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         let borderSize = this.getBorderSize();
         let insets = this.getInsets();
-        let horisontallBorderWidth = (Number(borderSize.left) || 0) + (Number(borderSize.right) || 0) + insets.getLeft();
-        let verticalBorderWidth = (Number(borderSize.top) || 0) + (Number(borderSize.bottom) || 0) + insets.getTop();
         let size = this.getSize();
         if (!size) {
             throw new Error("Component doesn't seem to be rendered.");
@@ -2420,6 +2418,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         if (!innerSize) {
             throw new Error("Component doesn't seem to be rendered.");
         }
+
+        // A child is positioned against this window's padding box, so the box's far
+        // edge sits `border.left + border.right` (or top + bottom) in from the outer
+        // edge; the trailing band starts its own inset before that.
+        const eastStripX  = size.width  - (Number(borderSize.left) || 0) - (Number(borderSize.right)  || 0) - insets.getRight();
+        const southStripY = size.height - (Number(borderSize.top)  || 0) - (Number(borderSize.bottom) || 0) - insets.getBottom();
 
         this._borderComponents.west.setAutoCommitStyle(false);
         this._borderComponents.northwest.setAutoCommitStyle(false);
@@ -2445,28 +2449,28 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this._borderComponents.north.setWidth(innerSize.width);
         this._borderComponents.north.setHeight(insets.getTop());
 
-        this._borderComponents.northeast.setX(size.width - horisontallBorderWidth);
+        this._borderComponents.northeast.setX(eastStripX);
         this._borderComponents.northeast.setY(0);
         this._borderComponents.northeast.setWidth(insets.getRight());
         this._borderComponents.northeast.setHeight(insets.getTop());
 
-        this._borderComponents.east.setX(size.width - horisontallBorderWidth);
+        this._borderComponents.east.setX(eastStripX);
         this._borderComponents.east.setY(insets.getTop());
         this._borderComponents.east.setWidth(insets.getRight());
         this._borderComponents.east.setHeight(innerSize.height);
 
-        this._borderComponents.southeast.setX(size.width - horisontallBorderWidth);
-        this._borderComponents.southeast.setY(size.height - verticalBorderWidth);
+        this._borderComponents.southeast.setX(eastStripX);
+        this._borderComponents.southeast.setY(southStripY);
         this._borderComponents.southeast.setWidth(insets.getRight());
         this._borderComponents.southeast.setHeight(insets.getBottom());
 
         this._borderComponents.south.setX(insets.getLeft());
-        this._borderComponents.south.setY(size.height - verticalBorderWidth);
+        this._borderComponents.south.setY(southStripY);
         this._borderComponents.south.setWidth(innerSize.width);
-        this._borderComponents.south.setHeight(insets.getRight());
+        this._borderComponents.south.setHeight(insets.getBottom());
 
         this._borderComponents.southwest.setX(0);
-        this._borderComponents.southwest.setY(size.height - verticalBorderWidth);
+        this._borderComponents.southwest.setY(southStripY);
         this._borderComponents.southwest.setWidth(insets.getLeft());
         this._borderComponents.southwest.setHeight(insets.getBottom());
 

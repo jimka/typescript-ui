@@ -38,6 +38,8 @@ const DIALOG_FIELDS = 6;
 
 // C25's window insets (top, right, bottom, left): a right inset unlike the
 // bottom one, so the south strip's height shows which of the two it took.
+// Now that the strip takes its own inset, the asymmetry is what keeps the
+// witness honest — a uniform inset would agree either way.
 const C25_TOP_PX = 4;
 const C25_RIGHT_PX = 12;
 const C25_BOTTOM_PX = 4;
@@ -50,7 +52,7 @@ const C25_LEFT_PX = 4;
  */
 const DIALOG_PERIOD_UNITS = 30;
 
-export const description = 'n floating Windows (default 8), each holding a four-field form, half of them minimized, plus a bare Window and one with insets (4, 12, 4, 4), over a toolbar; toggle opens and closes a six-field Dialog. Reproduces slice 09 F09.11 (a header move is not frame-coalesced: it re-applies the window and reads the viewport per mousemove): apply 1 and getViewportSize 1 per move; F09.4 (a settled window re-laid out and rewritten every pass): apply 38 per bare-window pass, no setRuleStyles; F09.6 (the minimized stack\'s resize handling is quadratic in minimized windows): getViewportSize at least minimized² per viewport unit; and C25 (the south resize strip takes the right inset as its height): geometry.southStrip is 12 px tall, not 4.';
+export const description = 'n floating Windows (default 8), each holding a four-field form, half of them minimized, plus a bare Window and one with insets (4, 12, 4, 4), over a toolbar; toggle opens and closes a six-field Dialog. Reproduces slice 09 F09.11 (a header move is not frame-coalesced: it re-applies the window and reads the viewport per mousemove): apply 1 and getViewportSize 1 per move; F09.4 (a settled window re-laid out and rewritten every pass): apply 38 per bare-window pass, no setRuleStyles; F09.6 (the minimized stack\'s resize handling is quadratic in minimized windows): getViewportSize at least minimized² per viewport unit; and C25 (fixed: the south resize strip takes the bottom inset as its height): geometry.southStrip is 4 px tall, not 12.';
 
 /** Eight windows: four open and four minimized, a busy desktop. */
 export const defaultScale = 8;

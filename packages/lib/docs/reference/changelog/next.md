@@ -15,6 +15,14 @@ page resets to empty.
   and the two calls — there is no replacement. See
   [Migration](/reference/migration/next) for the full note.
 
+- **`WindowBorder.setDirection()` is removed.** It had no callers, and it
+  could not be made correct where it stood: it rewrote the direction without
+  re-applying the hover cursor, which the strip writes once at construction
+  and shares with the drag cursor so the two can never disagree. A strip's
+  direction is now what it always effectively was — fixed at construction,
+  read back through `getDirection()`. See
+  [Migration](/reference/migration/next) for the full note.
+
 ## Changed
 
 ### Core
@@ -906,6 +914,29 @@ page resets to empty.
   theme class rather than one of its own. Nothing in the library reads that
   class. No consumer action is needed.
 
+- **`MenuBar` and `MenuSeparator` now paint their rule as a real border, so
+  the bar reserves the pixel the rule occupies instead of spending its
+  buttons' bottom row on it.** Both wrote the rule straight to their own CSS
+  rule, which paints but does not register as a border, so the bar measured
+  its border as zero and handed each `MenuBarButton` its full outer height —
+  one pixel more than the content box has, with the overflow clipped. The
+  consumer-visible consequence: **a `MenuBar` now reports a preferred and a
+  minimum height of 29 rather than 28**, so a layout that hosts one gains a
+  pixel of chrome. A bar placed in a `Border` NORTH region takes that pixel
+  automatically; a layout that pins a menu bar to a literal 28 must be
+  changed to 29, or it will clip the buttons exactly as the bar used to.
+  `MenuSeparator` is unchanged in size — its 9px height and its 1px rule are
+  where they always were, and a caller-supplied `border` still wins over the
+  class default for either class.
+
+- **A `WindowBorder` constructed with an explicit `Direction.NORTH` no longer
+  reads as one constructed with no direction at all.** The constructor
+  guarded its assignment on the argument's truthiness, and `Direction.NORTH`
+  is enum value `0`. The two agreed by accident — the field it guarded was
+  already initialised to `NORTH` — so nothing observable was wrong; the guard
+  is gone and the direction is now assigned unconditionally. No consumer
+  action is needed.
+
 ### Data
 
 - **A store holding 1,000 records or more now builds its view.** Above that
@@ -1021,3 +1052,13 @@ page resets to empty.
   no-op — it used to add a second copy of the member and a second listener,
   so one click ran the group's reconciliation twice. No consumer action is
   needed.
+
+- **A window's trailing resize strips now take each edge's own inset.** The
+  east band's x folded in the window's *left* inset and the south band's y its
+  *top* inset, and the south strip took its height from the *right* inset.
+  Each is correct whenever the opposing insets match, which the default
+  uniform 4px inset does — so a window left at the defaults is unaffected. A
+  window given asymmetric insets had its three eastern strips start past the
+  padding box's right edge, where `overflow: hidden` clipped most of the grab
+  band away, and its southern strips sat one inset's difference too low. No
+  consumer action is needed.

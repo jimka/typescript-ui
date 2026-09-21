@@ -34,6 +34,7 @@ import { Tooltip } from '~/overlay/Tooltip';
 import { DragGhost } from '~/overlay/DragGhost';
 import { MenuItem } from '~/component/container/MenuItem';
 import { MenuSeparator } from '~/component/container/MenuSeparator';
+import { MenuBar } from '~/component/menubar/MenuBar';
 import { Cell } from '~/component/table/cell/Cell';
 import type { CellRenderer } from '~/component/table/cell/renderer/CellRenderer';
 import { TreeCellRenderer } from '~/component/table/cell/renderer/TreeCell';
@@ -548,6 +549,30 @@ describe('MenuItem labels track the border', () => {
     });
 });
 
+// The rule moved from a raw `setElementCSSRule("borderTop", …)` write onto the
+// class defaults bag, so `getBorderSize()` can see the pixel it occupies —
+// the same move `SelectableListRow` made for its own separator.
+describe('MenuSeparator paints a measurable border', () => {
+    it('measures its 1px top rule', () => {
+        expect(new MenuSeparator().getBorderSize()).toEqual({ top: 1, right: 0, bottom: 0, left: 0 });
+    });
+
+    it('carries the colour family its cssVarPrefix selects', () => {
+        expect(new MenuSeparator('context-menu').getBorder())
+            .toEqual({ borderTop: '1px solid var(--ts-ui-context-menu-separator-color, rgb(220, 220, 220))' });
+    });
+
+    // The two regression guards for the case above: nothing about a separator
+    // moves, and the class default stays a default rather than becoming a pin.
+    it('keeps its fixed height', () => {
+        expect(new MenuSeparator().getPreferredSize()!.height).toBe(9);
+    });
+
+    it('still lets a caller-supplied border win', () => {
+        expect(new MenuSeparator('menu-bar', { border: '2px solid black' }).getBorderSize().top).toBe(2);
+    });
+});
+
 describe('TreeCellRenderer', () => {
     it('only shrinks its delegate when given a border', () => {
         expectBorderOnlyShrinks(
@@ -704,6 +729,56 @@ describe('SelectableListRow reserves its separator', () => {
         // Literal: a 22px row less the 1px separator, inside 8px of padding.
         // Containment alone would also pass for a renderer that under-fills.
         expect(rect(renderer)).toEqual({ x: 8, y: 0, width: 182, height: 21 });
+    });
+});
+
+// The same fix as the block above, one release later: the bar's bottom rule
+// was a raw `setElementCSSRule("borderBottom", …)` write, so `getBorderSize()`
+// reported zeros and the bar handed its buttons the full outer height. Each
+// button then ran one pixel past the content box and lost its bottom row to
+// `overflow: hidden`. Declaring the rule as a real border costs the bar a
+// pixel of height — 28 becomes 29 — which is the point: the pixel was always
+// being spent, just not accounted for.
+describe('MenuBar reserves its bottom rule', () => {
+    const populated = (): MenuBar => {
+        const bar = new MenuBar();
+
+        bar.setMenus([
+            { label: 'File', items: [{ text: 'New' }] },
+            { label: 'Edit', items: [{ text: 'Undo' }] },
+        ]);
+
+        return bar;
+    };
+
+    it('measures a 1px bottom border', () => {
+        expect(new MenuBar().getBorderSize()).toEqual({ top: 0, right: 0, bottom: 1, left: 0 });
+    });
+
+    it('reports the rule as a real border', () => {
+        expect(new MenuBar().getBorder())
+            .toEqual({ borderBottom: '1px solid var(--ts-ui-menu-bar-border, rgb(220, 220, 220))' });
+    });
+
+    it('counts the rule in its minimum height', () => {
+        expect(new MenuBar().getMinSizeConstraint()).toEqual({ width: 0, height: 29 });
+    });
+
+    it('counts the rule in the preferred height it reports to its parent', () => {
+        // A button's own 28 plus the perimeter HBox.getPreferredSize folds in.
+        expect(layOut(populated(), 400, 29).getPreferredSize()!.height).toBe(29);
+    });
+
+    it('keeps every button inside the content box at its full height', () => {
+        const bar     = layOut(populated(), 400, 29);
+        const buttons = bar.getComponents();
+
+        expect(buttons).toHaveLength(2);
+        expectChildrenInsideContentBox(bar, buttons);
+
+        for (const button of buttons) {
+            expect(button.getHeight()).toBe(28);
+        }
     });
 });
 
