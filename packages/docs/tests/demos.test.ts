@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 //
-// demos.ts eagerly imports every module in src/demos/, and a demo module
-// constructs library components — button-basic.ts imports `Panel` from
-// `@jimka/typescript-ui/core`, whose bundled module evaluates a top-level
-// `Body` singleton that reads `document` at import time. The rest of this
-// package's tests run fine under vitest's default `node` environment (see
-// content-constructs.test.ts, pages.test.ts), but this file needs a real DOM
-// the moment it imports demos.ts.
+// demos.ts eagerly imports every module in src/demos/, and every demo module
+// is a library-component factory — button-basic.ts imports `Panel` from
+// `@jimka/typescript-ui/core`. This package has no access to packages/lib's
+// modelled DOM test harness (installTestDOM), which is test-only and not
+// published, so anything here that reaches the library's production seam
+// needs a real DOM, the way DocsContent.test.ts and DocsSidebar.test.ts do.
+// The rest of this package's tests run fine under vitest's default `node`
+// environment (see content-constructs.test.ts, pages.test.ts).
 import { describe, it, expect } from 'vitest';
 import { getDemo, getDemoIds, missingDemoSource } from '../src/content/demos.js';
 import { DEMO_OPEN, DEMO_CLOSE } from '../src/content/blocks.js';

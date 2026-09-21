@@ -83,7 +83,7 @@ Paths are relative to `packages/lib/src/typescript/lib/`.
 | 2c — `CellEditorPool.register`'s `@remarks` reads narrower than the code | open, trivial | `component/table/cell/editor/CellEditorPool.ts:68-72` |
 | 2d — the cell-editor fix's consumer-facing consequence is undocumented | open, trivial | missing from `packages/lib/docs/components/Table.md:72`; present only in `changelog/next.md:535-537` |
 | 3 — latent `CellEditorPool` ownership guard | **closed** | `component/table/cell/editor/CellEditorPool.ts:101`, `:129`, `:170-179` |
-| 4 — `core` touches the DOM on import | open, needs a decision | `core/Body.ts:47`, `:183-191`; exception pinned at `tests/unit/import-without-dom.test.ts:15-20` |
+| 4 — `core` touches the DOM on import | **settled** by `plans/body-lazy-singleton.md` | `core/Body.ts:47`, `:183-191`; exception pinned at `tests/unit/import-without-dom.test.ts:15-20` |
 | 5 — a 1,000+ record store silently never builds its view | open | `data/StoreWorkerClient.ts`; `data/AbstractStore.ts:1905`, `:2012-2047` |
 
 ## Corrections the pass made to the record
@@ -484,4 +484,14 @@ for any of them cites this section rather than re-opening the question.
   `packages/lib/docs/components/Body.md:81` stops documenting the eagerness
   as a guarantee. The `fonts-ready` test that pins "starts the download when
   the rules are installed, not at first paint" is pinning the behaviour this
-  decision changes, so it is rewritten rather than kept.
+  decision changes, so it is rewritten rather than kept. **Settled by
+  `plans/body-lazy-singleton.md` (2026-09-20): the "no theme has been set"
+  state is a `ThemeManager` flag written only by `setTheme`**, since
+  `ThemeManager.current` already holds `ModernTheme` before anything runs and
+  so cannot tell "nobody chose" from "somebody chose Modern"; the variant
+  needing no new state (`setTheme(getTheme())`) re-applies the app's theme and
+  fans out a second `reflowText()`. The default theme now reaches every
+  component built before the first `Body` touch, costing one re-measure of a
+  tree that has not been laid out — free in a browser, but fatal under jsdom,
+  where the re-measure hits a canvas 2D context, so the two QA files that
+  mount panels construct the singleton before they build anything.

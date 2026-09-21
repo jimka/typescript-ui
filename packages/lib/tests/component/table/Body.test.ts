@@ -84,11 +84,11 @@ function ensureStyleRuleOpsFor(sink: RecordingDOMSink, selector: string): Array<
 }
 
 // Regression coverage for the table Body / core Body class-name collision fix
-// — see plans/implemented/table-body-class-collision-fix.md. Importing
-// `~/core/Body` above claims the "Body" name in ClassStyleRules.ts's `_owners`
-// registry the instant this file loads (the singleton constructs and calls
-// `init()` unconditionally at module evaluation — see core/Body.ts), which
-// reproduces the collision precondition before any test body below runs.
+// — see plans/implemented/table-body-class-collision-fix.md. The core `Body`
+// singleton claims the "Body" name in ClassStyleRules.ts's `_owners` registry
+// when it is constructed, and `getInstance()` constructs it on first call, so
+// the first case below reaches it deliberately to reproduce the collision
+// precondition before any table `Body` renders.
 //
 // `_owners`/`_bags` are module state that survives `DOM.reset()` and persists
 // for this whole file (Vitest isolates modules per file, not per test — see
@@ -102,8 +102,9 @@ function ensureStyleRuleOpsFor(sink: RecordingDOMSink, selector: string): Array<
 // hit instead of the rule's actual creation.
 describe('Body — class-name collision fix', () => {
     it('gets its own .TableBody class rule (backgroundColor hoisted), shared by a second table', () => {
-        // Sanity-checks the collision precondition this block's ordering
-        // comment depends on: the core Body singleton already exists.
+        // Establishes the collision precondition this block's ordering comment
+        // depends on: constructing the core Body singleton claims the "Body"
+        // name, and this is the first call that reaches it.
         expect(CoreBody.getInstance()).toBeInstanceOf(CoreBody);
 
         const sink = DOM.sink as RecordingDOMSink;

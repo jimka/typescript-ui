@@ -2,10 +2,10 @@
 //
 // Mounts every panel through the real `mountPanel` — build, `Body.init`, the
 // two waits, `afterMount` and the target merge — without opening a window.
-// The panels import the built library, whose `core` entry point reads
-// `document` at import time, so this file needs a real DOM. jsdom lays
-// nothing out, so a driver cannot run on a mounted panel here; drivers.dom.test.ts
-// checks the drivers' event sequences on stubbed rectangles instead.
+// The panels mount into the real page body, so this file needs a real DOM.
+// jsdom lays nothing out, so a driver cannot run on a mounted panel here;
+// drivers.dom.test.ts checks the drivers' event sequences on stubbed
+// rectangles instead.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Body, Component, DOM } from '@jimka/typescript-ui/core';
 import { AbstractWindow } from '@jimka/typescript-ui/overlay';
@@ -14,6 +14,13 @@ import type { HarnessTools } from '../src/harness/types.js';
 import { mountPanel } from '../src/mount.js';
 import type { MountedPanel, MountWaits } from '../src/mount.js';
 import { getPanelIds } from '../src/panels.js';
+
+// The library applies its default theme at the first `Body` touch, and
+// `mountPanel` builds a panel before it calls `Body.init`. Constructing the
+// singleton here keeps that theme pass ahead of every tree this file builds,
+// so it never re-measures a built control through the canvas 2D context
+// jsdom does not implement (the gap JSDOM_GAPS names below).
+Body.getInstance();
 
 /** The scale every panel is mounted at: small enough to be quick, and below `markdown-doc`'s first fence. */
 const SMOKE_SCALE = 3;

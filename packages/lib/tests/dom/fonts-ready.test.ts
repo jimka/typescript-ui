@@ -127,21 +127,36 @@ describe('ProductionDOMSource.startFontLoad', () => {
     });
 });
 
-describe('ThemeManager — web font download', () => {
-    afterEach(() => {
+describe('Body — web font download', () => {
+    afterEach(async () => {
         Reflect.deleteProperty(document, 'fonts');
+
+        // Constructing the body arms the startup gate in its own fresh
+        // module graph; release that copy, the way the gate cases below do.
+        const { releaseFirstLayout } = await import('~/core/FirstLayoutGate');
+        releaseFirstLayout();
+        vi.resetModules();
     });
 
-    it('starts the download when the rules are installed, not at first paint', async () => {
+    it('starts no download when the module is imported', async () => {
         const fontSet = installIdleFontSet();
 
         // `ensureFontLoaded` is guarded by a module-level once-flag, so this
         // needs a module graph where it has not already run — independent of
         // whatever else in this file has called setTheme.
         vi.resetModules();
-        const { ThemeManager: FreshThemeManager, ModernTheme: FreshModernTheme } = await import('~/core/Theme');
+        await import('~/core/Body');
 
-        FreshThemeManager.setTheme(FreshModernTheme);
+        expect(fontSet.loadCalls).toEqual([]);
+    });
+
+    it('starts the download when the body is first reached, not at first paint', async () => {
+        const fontSet = installIdleFontSet();
+
+        vi.resetModules();
+        const { Body: FreshBody } = await import('~/core/Body');
+
+        FreshBody.getInstance();
 
         // Nothing has been laid out yet — the fetch is under way regardless,
         // which is the whole point: it overlaps the first layout instead of

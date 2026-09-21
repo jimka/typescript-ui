@@ -1,6 +1,6 @@
 # Body
 
-[`Body`](/api/core/classes/Body) is a singleton [`Component`](/api/core/classes/Component) that wraps the page's `<body>` element. It bootstraps the framework when the module is first imported and listens for viewport resize events to re-run layout from the root.
+[`Body`](/api/core/classes/Body) is a singleton [`Component`](/api/core/classes/Component) that wraps the page's `<body>` element. It bootstraps the framework the first time the singleton is reached and listens for viewport resize events to re-run layout from the root.
 
 You don't usually instantiate components directly into `Body`; instead you attach top-level layout containers to it.
 
@@ -78,9 +78,9 @@ A menu the library or your app opens on `contextmenu` — `Tree`, `DiagramView`,
 
 ## Notes
 
-- **Singleton** — constructed when the `Body` module is first imported, not on first call. `Body.init()` and `Body.getInstance()` both hand back that same existing instance. Do not `Body()` yourself.
+- **Singleton** — constructed on the first `Body.init()` or `Body.getInstance()` call, not when the `Body` module is imported. Both hand back that same instance for the rest of the page's life. Do not `Body()` yourself.
 - **Resize listener** — `Body` listens for `window.resize` and re-runs layout from itself. Adding a top-level component to `Body` is what wires it into the responsive layout pass.
-- **Theme bootstrap** — call `ThemeManager.setTheme(ClassicTheme)` (or any theme) before adding components, so style rules pick up the right CSS variables.
+- **Theme bootstrap** — call `ThemeManager.setTheme(ClassicTheme)` (or any theme) before adding components, so style rules pick up the right CSS variables. A theme chosen before the body is first reached is kept — `Body` applies `ModernTheme` only when no theme has been set.
 - **Context menu** — the browser's native right-click menu is suppressed page-wide by default; pass `nativeContextMenu: true` to restore it, including on text inputs.
 
 ## See also

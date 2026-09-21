@@ -318,7 +318,8 @@ describe('FirstLayoutGate', () => {
         await store.load();
 
         // Armed before the table's first layout ever runs — the real startup
-        // order, since Body's static INSTANCE arms the gate at module load.
+        // order, since the first `Body` touch arms the gate before an app has
+        // laid anything out.
         holdFirstLayout();
 
         const table = new Table(store);

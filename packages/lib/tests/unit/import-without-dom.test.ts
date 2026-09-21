@@ -12,12 +12,11 @@ import packageJson from '../../package.json';
 // consumer.
 const ENTRY_KEYS = Object.keys(packageJson.exports).filter((key) => !key.includes('*'));
 
-// `core/Body.ts` declares `private static readonly INSTANCE: Body = new Body();`,
-// so importing `core` constructs and renders the page body at load time — out
-// of scope for plans/implemented/no-dom-access-at-import.md (see its
-// Non-Goals). This entry comes out of the set once `Body` stops rendering at
-// import.
-const KNOWN_IMPORT_TIME_DOM: ReadonlySet<string> = new Set(['./core']);
+// Every entry imports cleanly: `core/Body.ts` constructs its singleton on
+// first use, so nothing in the library renders at import. A new entry that
+// reintroduces an import-time DOM touch fails here rather than reaching a
+// consumer.
+const KNOWN_IMPORT_TIME_DOM: ReadonlySet<string> = new Set<string>();
 
 /**
  * Translates a `package.json` `exports` key into the source barrel it maps

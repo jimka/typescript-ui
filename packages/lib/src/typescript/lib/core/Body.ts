@@ -4,7 +4,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Favicon, DEFAULT_FAVICON } from "~/core/Favicon.js";
-import { ThemeManager, ModernTheme } from "~/core/Theme.js";
+import { ThemeManager } from "~/core/Theme.js";
 
 /**
  * Options for the singleton {@link Body}.
@@ -44,18 +44,22 @@ export interface BodyOptions extends ComponentOptions {
  */
 export class Body extends Component<BodyOptions> {
 
-    private static readonly INSTANCE: Body = new Body();
+    private static instance: Body | null = null;
 
     /**
-     * Returns the singleton Body instance — the accessor for reaching the body
-     * *after* it is mounted: adding a further child, reading its layout
-     * manager, or attaching a listener. To mount a top-level layout in one
-     * call, use `Body.init` instead.
+     * Returns the singleton Body instance, creating it on first call — the
+     * accessor for reaching the body *after* it is mounted: adding a further
+     * child, reading its layout manager, or attaching a listener. To mount a
+     * top-level layout in one call, use `Body.init` instead.
      *
      * @returns The single shared Body component for this page.
      */
-    static getInstance() {
-        return this.INSTANCE;
+    static getInstance(): Body {
+        if (!Body.instance) {
+            Body.instance = new Body();
+        }
+
+        return Body.instance;
     }
 
     /**
@@ -77,32 +81,34 @@ export class Body extends Component<BodyOptions> {
      *
      * @remarks Re-binds the style and attribute buffers to the current body
      * element before dispatching `options` — see
-     * `Component.reattachElementBuffers`. The singleton is constructed once
-     * per page load, so this only matters when the underlying DOM has been
-     * swapped since construction (a test harness); it is a no-op rebind
-     * otherwise.
+     * `Component.reattachElementBuffers`. The singleton is constructed on the
+     * first `init` / `getInstance` call and then lives for the page, so this
+     * only matters when the underlying DOM has been swapped since construction
+     * (a test harness); it is a no-op rebind otherwise.
      */
     static init(options: BodyOptions = {}): Body {
-        this.INSTANCE.reattachElementBuffers();
-        this.INSTANCE.applyOptions(options);
+        const instance = Body.getInstance();
+
+        instance.reattachElementBuffers();
+        instance.applyOptions(options);
 
         // The built-in default is dispatched here rather than from
-        // applyOptions, which also runs during the singleton's construction at
-        // module import — too early for a caller to have opted out, and before
+        // applyOptions, which also runs during the singleton's construction on
+        // first use — too early for a caller to have opted out, and before
         // a test harness has swapped the DOM seams.
         if (options.favicon === undefined) {
-            this.INSTANCE.setFavicon(DEFAULT_FAVICON);
+            instance.setFavicon(DEFAULT_FAVICON);
         }
 
         // Same reasoning as the favicon default above: dispatched here rather
         // than from applyOptions, which also runs during the singleton's
-        // construction at module import — too early for a caller to have
+        // construction on first use — too early for a caller to have
         // opted out, and before a test harness has swapped the DOM seams.
         if (options.nativeContextMenu === undefined) {
-            this.INSTANCE.setNativeContextMenu(false);
+            instance.setNativeContextMenu(false);
         }
 
-        return this.INSTANCE;
+        return instance;
     }
 
     /** @inheritDoc */
@@ -187,7 +193,7 @@ export class Body extends Component<BodyOptions> {
 
         this.setBackgroundColor("var(--ts-ui-body-bg, rgb(241, 241, 241))");
 
-        ThemeManager.setTheme(ModernTheme);
+        ThemeManager._applyDefaultTheme();
     }
 
     /**

@@ -28,10 +28,10 @@ const BASELINE_CONFIG = {
 // test, so the hooks no-op whenever a real `document` is present.
 const isNodeEnv = typeof document === 'undefined';
 
-// Install at setup-file top level too, not only per-test: `core/Body.ts`
-// renders its singleton `Body` at import, which reaches the seam before any
-// `beforeEach` fires. Setup files evaluate before the test file's module graph
-// imports, so this makes the modelled DOM live for that import-time render.
+// Install at setup-file top level too, not only per-test: the flush below
+// writes through the DOM seam, so a sink must be installed before it runs,
+// and it must run before the test file's module graph imports its modules.
+// Setup files evaluate before that graph, which is what makes both possible.
 //
 // The flush that follows runs anything this file's own imports queued and
 // marks the stylesheet as written, so `deferStyleSheetWrite` writes at once

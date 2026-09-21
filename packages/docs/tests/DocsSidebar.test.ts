@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 //
-// DocsSidebar constructs library components (Panel, TextField, Tree), whose
-// bundled module evaluates a top-level `Body` singleton that reads
-// `document` at import time — same reason DocsMinimap.test.ts needs a real
-// DOM. This package has no access to packages/lib's modelled DOM test
-// harness (installTestDOM), which is test-only and not published, so this
-// exercises the real thing through jsdom instead, mirroring
-// DocsMinimap.test.ts's own harness.
+// DocsSidebar constructs library components (Panel, TextField, Tree), which
+// write through the library's production DOM seam as they are built — same
+// reason DocsMinimap.test.ts needs a real DOM. This package has no access to
+// packages/lib's modelled DOM test harness (installTestDOM), which is
+// test-only and not published, so this exercises the real thing through jsdom
+// instead, mirroring DocsMinimap.test.ts's own harness.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Body, Event } from '@jimka/typescript-ui/core';
 import { Fit } from '@jimka/typescript-ui/layout';

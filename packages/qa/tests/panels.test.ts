@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 //
-// The panels import the built library, whose `core` entry point evaluates a
-// top-level `Body` singleton that reads `document` at import time, and P3
-// lays a chart out through the production DOM seam. So this file needs a real
-// DOM; the harness tests beside it run in plain node. The library is the one
-// the page would load — vite.config.ts aliases it to this checkout's build —
-// so build the library first.
+// The panels mount into the real page body, and P3 lays a chart out through
+// the production DOM seam. So this file needs a real DOM; the harness tests
+// beside it run in plain node. The library is the one the page would load —
+// vite.config.ts aliases it to this checkout's build — so build the library
+// first.
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -20,6 +19,13 @@ import type { MountWaits } from '../src/mount.js';
 import { getPanelIds, loadPanel, parseScale } from '../src/panels.js';
 import type { PanelBuild } from '../src/panels.js';
 import { pageTargets } from '../src/pageTargets.js';
+
+// The library applies its default theme at the first `Body` touch, and
+// `mountPanel` builds a panel before it calls `Body.init`. Constructing the
+// singleton here keeps that theme pass ahead of every tree this file builds,
+// so it never re-measures a built control through the canvas 2D context
+// jsdom does not implement (the gap `mount.test.ts`'s JSDOM_GAPS names).
+Body.getInstance();
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC_DIR = path.resolve(HERE, '../src');
