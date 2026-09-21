@@ -55,6 +55,7 @@ Calling `attachToElement` against an element that already has a binding replaces
 - Themed via the `tooltip.*` token group — see [Theming](/concepts/theming#theme-keys).
 - Shows and hides with a 100 ms opacity fade via [`Animation`](/api/core/namespaces/Animation). A fresh `show()` during a fade-out cancels the deferred detach, so rapid hover-then-rehover is seamless. Honours `prefers-reduced-motion: reduce`.
 - `detach()` acts only on the detaching component's own tooltip: a tooltip showing for another component, or a hover delay another component is still waiting out, is left alone. Since `attach()` begins by detaching, re-attaching one component's tooltip never disturbs another's either.
+- Leaving a component hides the tooltip only when it is that component's — on screen for it, or still waiting out the hover delay it armed. A tooltip another component owns is left alone, by the same rule as `detach()`.
 
 ## See also
 

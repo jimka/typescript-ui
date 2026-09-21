@@ -1329,6 +1329,18 @@ page resets to empty.
   armed itself, which is what its documentation always described. No consumer
   action is needed.
 
+- **A validation error's tooltip now appears when the pointer rests on the
+  invalid field.** `FieldDecorator.showError` attached its tooltip to the
+  decorator, whose field fills its whole box, and a tooltip only listened
+  for the pointer over its host's own element — so the pointer always
+  landed on the field and the error never showed. The error now appears
+  from anywhere over the field, including a `DateField`'s input and picker
+  button, and there it takes precedence over a tooltip attached to the
+  field itself, such as a `LabeledGrid` description. Leaving a component
+  now also hides the tooltip only when it is that component's, the rule
+  `Tooltip.detach()` already follows, so moving between a field's parts no
+  longer dismisses the error on screen. No consumer action is needed.
+
 - **A toast no longer ends up behind an open menu or picker.** A
   `Notification` stamped itself with a fixed `10002`, just above the dropdown
   band's 10000 base — but the manager's stamps rose from one counter shared by
