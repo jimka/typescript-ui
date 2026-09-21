@@ -13,7 +13,8 @@
 ```typescript
 import { Body } from '@jimka/typescript-ui/core';
 import { MenuBar } from '@jimka/typescript-ui/component/menubar';
-const bar = MenuBar([
+const body = await Body.init();
+const bar  = MenuBar([
     { label: 'File', items: [
         { text: 'New',       shortcut: 'Ctrl+N', action: () => newFile() },
         { text: 'Open…',     shortcut: 'Ctrl+O', action: () => openFile() },
@@ -26,7 +27,7 @@ const bar = MenuBar([
     ]},
 ]);
 
-Body.init({ components: [bar] });
+body.addComponent(bar);
 ```
 
 ## Config shape

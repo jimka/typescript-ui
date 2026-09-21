@@ -43,8 +43,9 @@ await store.load();
 ```typescript
 import { Body } from '@jimka/typescript-ui/core';
 import { TablePanel } from '@jimka/typescript-ui/component/table';
+const body  = await Body.init();
 const panel = TablePanel(store);
-Body.init({ components: [panel] });
+body.addComponent(panel);
 ```
 
 That's it for the full CRUD path. Let's break down what happens:

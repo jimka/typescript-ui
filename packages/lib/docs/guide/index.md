@@ -18,9 +18,10 @@ import { Window } from '@jimka/typescript-ui/overlay';
 
 ThemeManager.setTheme(ClassicTheme);
 
-const win = Window('Hello');
+const body = await Body.init();
+const win  = Window('Hello');
 
-Body.init({ components: [win] });
+body.addComponent(win);
 win.show();
 ```
 

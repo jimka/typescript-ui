@@ -59,30 +59,54 @@ const border = new WindowBorder(Direction.EAST);
 
 `getDirection()` is unchanged.
 
-## A jsdom suite that builds components before `Body.init()` must reach the body first
+## Mounting is awaited, and `BodyOptions.components` is gone
 
-**What changed and why.** The `Body` singleton is now constructed on the first
-`Body.init()` / `Body.getInstance()` call rather than when
-`@jimka/typescript-ui/core` is imported, so that every entry point imports
-where there is no DOM. `Body`'s constructor is what applies the default theme,
-so the first theme application now happens *after* an app has built whatever
-it passes to `Body.init({ components: [shell] })`, and every component built
-beforehand takes one theme-change callback and re-measures its text.
+**What changed and why.** The singleton's construction is what applies the
+active theme, injects the bundled Manrope `@font-face` rules and starts the
+face loading, so `Body.init` now returns `Promise<Body>` and resolves once
+that font is active (or a bounded deadline expires) instead of returning
+synchronously. A tree built before it resolves is measured against the
+browser's fallback face rather than the theme's, which is why
+`BodyOptions.components` is removed — the option let an app build its tree
+before the bootstrap had anywhere to send it.
 
-**Who needs to act.** Nothing changes in a browser: the re-measure runs on a
-tree that has not been laid out yet. Under jsdom it reaches
-`HTMLCanvasElement.getContext("2d")`, which jsdom does not implement, so a
-suite that builds a text-measuring control before its first `Body` touch now
-fails with `TypeError: Cannot set properties of null (setting 'font')`. Reach
-the singleton once, before anything is built, to restore the old ordering:
+**Who needs to act.** Any `Body.init({ components: [...] })` call is now a
+compile error. Await the bootstrap, then add the tree:
+
+```typescript
+// Before
+const shell = buildAppShell();
+
+Body.init({ layoutManager: Fit(), components: [shell] });
+
+// After
+async function main(): Promise<void> {
+    const body = await Body.init({ layoutManager: Fit() });
+
+    body.addComponent(buildAppShell());
+}
+
+void main();
+```
+
+`Body.getInstance()` is unchanged: same signature, does not wait for the font.
+A suite that must build its tree before mounting — because it needs the
+singleton's theme applied first, not the font — calls it the same way as
+before:
 
 ```typescript
 import { Body } from '@jimka/typescript-ui/core';
 
-// Applies the default theme before the first component exists, the way
-// importing `core` used to.
+// Applies the default theme before the first component exists.
 Body.getInstance();
 ```
 
-An app or suite that calls `ThemeManager.setTheme` itself before building
-anything is unaffected, because the constructor then applies no theme at all.
+## The startup layout gate is removed
+
+The gate that used to hold the first coalesced layout flush until the web
+font activated no longer exists — the awaited `Body.init` bootstrap makes it
+unnecessary, since nothing is built until the font is already active. The
+`0.4.0` migration notes about `flushLayout()` / `resumeLayout()` reading
+fallback-font geometry during a held startup window, and about a
+programmatic scroll or row reveal issued during that window being replayed
+once it opened, no longer apply: there is no window to hold.

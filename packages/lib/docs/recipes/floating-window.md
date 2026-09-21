@@ -16,6 +16,8 @@ import { Placement } from '@jimka/typescript-ui/primitive';
 import { VBox, HBox } from '@jimka/typescript-ui/layout';
 import { Label, TextField } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
+const body = await Body.init();
+
 const urlField = TextField();
 urlField.setValue('https://api.example.com');
 
@@ -54,7 +56,7 @@ settingsWin.addComponents(
 ## Show / hide instead of destroy
 
 ```typescript
-Body.init({ components: [settingsWin] });
+body.addComponent(settingsWin);
 settingsWin.setVisible(false);  // hidden until requested
 
 const openBtn = Button('Settings…');

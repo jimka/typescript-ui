@@ -43,8 +43,9 @@ Call `setTheme` **before** mounting any component so the first render reads the 
 import { ThemeManager, ClassicTheme, Body } from '@jimka/typescript-ui/core';
 ThemeManager.setTheme(BrandTheme);
 
+const body = await Body.init();
 const root = buildAppLayout();
-Body.init({ components: [root] });
+body.addComponent(root);
 ```
 
 ## Switching themes at runtime

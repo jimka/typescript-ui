@@ -12,6 +12,8 @@ import { Window } from '@jimka/typescript-ui/overlay';
 
 import { TablePanel } from '@jimka/typescript-ui/component/table';
 
+const body = await Body.init();
+
 // Constructor + options bag: title text, geometry, optional title-icon
 // glyph, and any common ComponentOptions field. For expensive content,
 // `contentFactory` + `onReady` defer construction behind a spinner.
@@ -22,7 +24,7 @@ const win = Window('Settings', {
     onReady:        () => void store.load()
 });
 
-Body.init({ components: [win] });
+body.addComponent(win);
 win.show();
 ```
 

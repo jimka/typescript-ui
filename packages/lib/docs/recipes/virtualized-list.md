@@ -24,8 +24,9 @@ const data = Array.from({ length: 100_000 }, (_, i) => ({
 const store = new MemoryStore(ItemModel, data);
 await store.load();
 
+const body  = await Body.init();
 const table = Table(store);
-Body.init({ components: [table] });
+body.addComponent(table);
 ```
 
 The body keeps roughly 50 rows in the DOM at any time (viewport + buffer) regardless of dataset size. Memory usage is constant.
