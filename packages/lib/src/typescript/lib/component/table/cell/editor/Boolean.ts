@@ -117,12 +117,12 @@ class BooleanEditor extends CellEditor<Boolean | null> {
             this._checkBox.setIndeterminate(true);
         } else {
             this._checkBox.setIndeterminate(false);
-            // A programmatic write: `fireAction: false` keeps it out of this
-            // editor's own `"action"` listener, which exists to catch the
-            // user's toggles only. A virtualized table rebinds dozens of pool
-            // slots per scroll frame, and each one committing back to the
-            // store would fire `'datachange'` and re-render both bodies.
-            this._checkBox.setSelected(this._value as boolean, false);
+            // A checkbox announces `"action"` for a user toggle only, so this
+            // rebind never reaches the editor's own listener. A virtualized
+            // table rebinds dozens of pool slots per scroll frame, and each one
+            // committing back to the store would fire `'datachange'` and
+            // re-render both bodies.
+            this._checkBox.setSelected(this._value as boolean);
         }
 
         return this;
@@ -161,10 +161,9 @@ class BooleanEditor extends CellEditor<Boolean | null> {
         const next = !this._checkBox.isSelected();
 
         this._checkBox.setIndeterminate(false);
-        // Programmatic, like `setValue`'s write: the `emit` below is this
-        // activation's single commit, so the checkbox must not fan a second
-        // one back through the constructor's `"action"` listener.
-        this._checkBox.setSelected(next, false);
+        // The same holds for this write, so the `emit` below is the
+        // activation's single commit.
+        this._checkBox.setSelected(next);
         this._value = next;
         this.emit("change", this._value);
 

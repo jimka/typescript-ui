@@ -30,16 +30,16 @@ const MODEL = new Model([
 ]);
 
 async function makeStore(): Promise<{ store: MemoryStore; records: ModelRecord[] }> {
-    // `active` is kept `false` on every record: a `true` value would flip
-    // the row pool's checkbox editor away from its constructed-indeterminate
-    // default, and `Checkbox.setSelected` dispatches a synthetic DOM `click`
-    // on every real transition — routing into `Body.onSubtreeClick`'s
-    // `instanceof MouseEvent` check, which throws under this suite's `node`
-    // vitest environment (no global `MouseEvent`, unlike a `jsdom` one). That
-    // gap is pre-existing and orthogonal to rotated mode (it reproduces for
-    // any boolean column bound in "normal" mode too); staying on the
-    // checkbox's default value sidesteps it without weakening any assertion
-    // below, none of which depend on `active` actually differing per record.
+    // `active` is kept `false` on every record. That once sidestepped a gap:
+    // a `true` value flips the row pool's checkbox editor away from its
+    // constructed-indeterminate default, and `Checkbox.setSelected` used to
+    // dispatch a synthetic DOM `click` on every real transition — routing
+    // into `Body.onSubtreeClick`'s `instanceof MouseEvent` check, which throws
+    // under this suite's `node` vitest environment (no global `MouseEvent`,
+    // unlike a `jsdom` one). A programmatic write now dispatches nothing, so
+    // the fixture is conservative rather than required, and orthogonal to
+    // rotated mode either way: no assertion below depends on `active`
+    // actually differing per record.
     const store = new MemoryStore(MODEL, [
         { id: 1, name: 'Alice', active: false, created: new Date(2024, 0, 1) },
         { id: 2, name: 'Bob',   active: false, created: new Date(2024, 0, 2) },

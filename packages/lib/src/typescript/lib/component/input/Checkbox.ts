@@ -427,16 +427,14 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
 
     /**
      * Sets the checked state. Notifies change and binding listeners on a real
-     * transition; no-op when unchanged.
+     * transition; no-op when unchanged. A programmatic write never fires
+     * `"action"`, which reports the user's own toggles only.
      *
      * @param value - `true` to check, `false` to uncheck.
-     * @param fireAction - When `true` (default), a real transition also
-     *   dispatches a synthetic DOM `click` on the root, which
-     *   `on("action", fn)` no longer listens for; pass `false` to skip it.
      *
      * @returns This component, for method chaining.
      */
-    setSelected(value: boolean, fireAction: boolean = true): this {
+    setSelected(value: boolean): this {
         const next = !!value;
         if (next === this.isSelected() && !this.isIndeterminate()) {
             return this;
@@ -446,19 +444,6 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         this._options.indeterminate = false;
         this.applySelected(next, false);
         this.notifyChange(next);
-
-        if (!fireAction) {
-            return this;
-        }
-
-        // This synthetic `click` is no longer what `on("action", fn)` hears:
-        // that is the DOM `change` `activate` fires. It is skipped before
-        // mount, where `fireEvent` would throw on the missing element.
-        if (this.getElement()) {
-            Event.fireEvent(this, "click");
-        } else {
-            console.warn("Checkbox '" + this.getId() + "' setSelected before mount; synthetic 'click' skipped.");
-        }
 
         return this;
     }
