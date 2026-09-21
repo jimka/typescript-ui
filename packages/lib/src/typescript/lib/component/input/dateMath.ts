@@ -165,6 +165,35 @@ export interface ClockTime {
     seconds: number;
 }
 
+// ISO 8601 writes a calendar year as four digits, and ISO_DATE above reads
+// back exactly four, so a shorter year is zero-padded to that width.
+const ISO_YEAR_DIGITS = 4;
+
+// ISO 8601 writes the month and the day as two digits each.
+const ISO_MONTH_DAY_DIGITS = 2;
+
+/**
+ * Formats the local calendar date of `date` as `YYYY-MM-DD` — the inverse of
+ * {@link parseIsoDate}. The year is zero-padded to four digits, so the year
+ * 999 reads `0999`; a negative year keeps its sign ahead of the padded digits
+ * (`-0001`).
+ *
+ * @param date - The date to format; only its local calendar date is read.
+ * @returns The `YYYY-MM-DD` text.
+ *
+ * @internal — not re-exported from the package barrel.
+ */
+export function formatIsoDate(date: Date): string {
+    const year = date.getFullYear();
+    const sign = year < 0 ? "-" : "";
+    const yyyy = sign + String(Math.abs(year)).padStart(ISO_YEAR_DIGITS, "0");
+    // getMonth() is zero-based; an ISO month starts at 1.
+    const mm   = String(date.getMonth() + 1).padStart(ISO_MONTH_DAY_DIGITS, "0");
+    const dd   = String(date.getDate()).padStart(ISO_MONTH_DAY_DIGITS, "0");
+
+    return `${yyyy}-${mm}-${dd}`;
+}
+
 /**
  * Parses a complete, zero-padded `YYYY-MM-DD` calendar date at local midnight.
  * Anything the date fields' own `formatValue` could not have produced — a
@@ -225,4 +254,35 @@ export function parseClockTime(raw: string): ClockTime | null {
     }
 
     return { hours, minutes, seconds };
+}
+
+/**
+ * Parses a `YYYY-MM-DD H:MM[:SS]` date-time: exactly two whitespace-separated
+ * parts, the first read by {@link parseIsoDate} and the second by
+ * {@link parseClockTime}. Surrounding whitespace is ignored. A date alone, a
+ * `T` separator, or anything after the time is rejected.
+ *
+ * @param raw - The raw typed text.
+ * @returns The local date-time, or `null` when `raw` is not one.
+ *
+ * @internal — not re-exported from the package barrel.
+ */
+export function parseIsoDateTime(raw: string): Date | null {
+    const parts = raw.trim().split(/\s+/);
+
+    // A date part and a time part, nothing more.
+    if (parts.length !== 2) {
+        return null;
+    }
+
+    const date = parseIsoDate(parts[0]);
+    const time = parseClockTime(parts[1]);
+
+    if (date === null || time === null) {
+        return null;
+    }
+
+    date.setHours(time.hours, time.minutes, time.seconds, 0);
+
+    return date;
 }

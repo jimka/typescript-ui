@@ -4,6 +4,7 @@ import { TextInputCellEditor } from "~/component/table/cell/editor/TextInputCell
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import { DatePickerDropdown } from "~/component/input/DatePickerDropdown.js";
+import { parseIsoDate, formatIsoDate } from "~/component/input/dateMath.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -17,6 +18,13 @@ import { callable } from "~/core/Callable.js";
  * keeps focus while the user clicks a day — preserving the
  * [`CellEditorPool`](/api/component/table/classes/CellEditorPool)'s
  * blur-to-commit contract without modifying the pool.
+ *
+ * Typed text is read back exactly as the editor writes it: a complete,
+ * zero-padded `YYYY-MM-DD` naming a real calendar day, the rule
+ * [`DateField`](/api/component/input/classes/DateField) applies. Anything
+ * else is unparseable, and the owning
+ * [`DateCell`](/api/component/table/classes/DateCell) keeps its previous
+ * value on commit.
  *
  * @category Components
  */
@@ -81,7 +89,7 @@ class DateEditor extends TextInputCellEditor<Date | null> {
      */
     setValue(value: Date | null): this {
         this._value = value;
-        this.setText(value ? this.toInputString(value) : "");
+        this.setText(value ? formatIsoDate(value) : "");
 
         return this;
     }
@@ -196,8 +204,9 @@ class DateEditor extends TextInputCellEditor<Date | null> {
             return;
         }
 
-        const d = new Date(raw + 'T00:00:00');
-        this._value = isNaN(d.getTime()) ? null : d;
+        // The same strict rule DateField reads its absolute form with. A rejected
+        // entry caches null, which DateCell treats as unparseable and reverts.
+        this._value = parseIsoDate(raw);
     }
 
     /**
@@ -214,13 +223,6 @@ class DateEditor extends TextInputCellEditor<Date | null> {
         if (el) {
             DOM.sink.blur(el);
         }
-    }
-
-    private toInputString(date: Date): string {
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, '0');
-        const d = String(date.getDate()).padStart(2, '0');
-        return `${y}-${m}-${d}`;
     }
 }
 

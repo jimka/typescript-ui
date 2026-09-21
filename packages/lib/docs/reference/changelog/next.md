@@ -1079,6 +1079,32 @@ page resets to empty.
   into a field should format it the way the field does. `TimeField` is
   unchanged.
 
+- **The table's date, time and date-time cell editors no longer commit a
+  value the typed text never named.** They parsed typed text through `new
+  Date`, so a date cell committed `2025-02-30` as 2 March and `2026` as
+  1 January, a date-time cell read a date with no time as UTC midnight, and a
+  time cell rolled `25:00` into 01:00 the next day. Each editor now reads its
+  text with the rule its form-field sibling uses — `DateField`'s complete,
+  zero-padded `YYYY-MM-DD`, `TimeField`'s `H:MM[:SS]`, and `DateTimeField`'s
+  two joined by whitespace. A rejected entry reverts the cell to its previous
+  value on commit, without a `commit` event, exactly as unparseable text
+  already did in `DateCell`, `TimeCell` and `DateTimeCell`. A `date`, `time`
+  or `datetime` row of a `cellType` column, which used to write `null` for any
+  text its editor could not parse, now reverts the same way. The date-time
+  editor starts accepting an unpadded time such as `9:5` and stops accepting a
+  `T` separator or a `Z`/offset suffix; the time editor stops accepting a bare
+  hour such as `9`. None of those is a form the editors display.
+
+- **A date before the year 1000 now displays with a four-digit year.**
+  `DateField`, `DateTimeField` and the table's date and date-time cell editors
+  wrote the year 999 as `999-01-01`, but they read typed dates back with
+  exactly four year digits, so the text a field displayed for such a date
+  could not be read back and editing it cleared the field. The year is now
+  zero-padded to four digits (`0999-01-01`), so the displayed text parses back
+  to the same date. A year outside 0–9999, which only a programmatic value, a
+  binding or a large relative shorthand can produce, still displays but still
+  cannot be typed back.
+
 - **A `Canvas` or `WebGLCanvas` with no rendering context no longer schedules
   animation frames.** The loop was gated on the consumer's intent and the
   surface's effective visibility, never on whether there was anything to draw
@@ -1191,6 +1217,25 @@ page resets to empty.
   restores to exactly the same tree, so no migration is needed; the visible
   differences are the warning that stops firing and the smaller captured
   JSON.
+
+- **A saved `Tab` arrangement now records the tab that was actually active.**
+  `serializeLayout` copied the `Tab` manager's active index, which counts
+  positions in the tab strip, into `TabNode.activeIndex`, which indexes the
+  captured `children` — a list that leaves transient children out and keeps
+  the container's order. A transient tab ahead of the active one (such as a
+  `Dock`'s empty-state start page), or a drag reorder of the strip, therefore
+  made the restore activate a different tab. The active tab is now found among
+  the captured children by identity, and the first tab is recorded when none
+  of them is active. A state saved before this change restores as it did.
+
+- **Restoring a `Tab` arrangement whose factory no longer supplies a panel
+  ahead of the active tab now keeps the saved tab active.** `restoreLayout`
+  skips a saved child its `LayoutFactory` yields nothing for, but applied the
+  saved active index unchanged, so each skipped child ahead of the active one
+  moved the selection one tab to the right. The index is now re-aligned to the
+  tabs actually placed, as the `Split` branch already re-aligns its ratios and
+  collapsed flags. When the active panel is itself skipped, the tab that slid
+  into its slot becomes active.
 
 ### Overlay
 

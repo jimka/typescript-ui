@@ -54,7 +54,7 @@ The framework ships with seven typed cells, selected by [`Row`](/api/component/t
 - [`DateTimeCell`](/api/component/table/classes/DateTimeCell) — combined date + time via [`DateTimeRenderer`](/api/component/table/classes/DateTimeRenderer) + [`DateTimeEditor`](/api/component/table/classes/DateTimeEditor); honors the column's `showSeconds` flag.
 - [`DefaultCell`](/api/component/table/classes/DefaultCell) — fallback for fields whose type is not explicitly mapped.
 
-For `DateCell`, `TimeCell`, and `DateTimeCell`, committing an empty editor writes `null`; committing an unparseable value reverts to the previous value rather than writing `null`.
+For `DateCell`, `TimeCell`, and `DateTimeCell`, committing an empty editor writes `null`; committing an unparseable value reverts to the previous value rather than writing `null`. Each editor reads typed text back exactly as it displays it, with the rule its form-field sibling uses — `YYYY-MM-DD` as in `DateField`, `H:MM[:SS]` as in `TimeField`, the two joined by a space as in `DateTimeField` — so a partial date (`2026`), an impossible day (`2025-02-30`) or an out-of-range time (`25:00`) is unparseable.
 
 [`HeaderCell`](/api/component/table/classes/HeaderCell) extends `DefaultCell` with sort indicators, click-to-sort, and a resize drag handle.
 

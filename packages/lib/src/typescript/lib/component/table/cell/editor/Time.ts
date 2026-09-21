@@ -4,6 +4,7 @@ import { TextInputCellEditor } from "~/component/table/cell/editor/TextInputCell
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import { TimePickerDropdown } from "~/component/input/TimePickerDropdown.js";
+import { parseClockTime } from "~/component/input/dateMath.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -18,6 +19,13 @@ import { callable } from "~/core/Callable.js";
  *
  * The value is represented as a `Date` whose time portion is meaningful; the
  * date portion is normalised to 1970-01-01 local.
+ *
+ * Typed text is read back exactly as the editor writes it: an `H:MM` or
+ * `H:MM:SS` time inside its range, the rule
+ * [`TimeField`](/api/component/input/classes/TimeField) applies. Anything
+ * else is unparseable, and the owning
+ * [`TimeCell`](/api/component/table/classes/TimeCell) keeps its previous
+ * value on commit.
  *
  * @category Components
  */
@@ -201,12 +209,14 @@ class TimeEditor extends TextInputCellEditor<Date | null> {
             return;
         }
 
-        const parts = raw.split(':').map(Number);
-        if (parts.some(isNaN)) {
-            this._value = null;
-            return;
-        }
-        this._value = new Date(1970, 0, 1, parts[0], parts[1] ?? 0, parts[2] ?? 0);
+        const time = parseClockTime(raw);
+
+        // The same rule TimeField reads with. A rejected entry caches null, which
+        // TimeCell treats as unparseable and reverts. The date portion stays the
+        // 1970-01-01 this editor normalises every value to (see onTimeSelected).
+        this._value = time === null
+            ? null
+            : new Date(1970, 0, 1, time.hours, time.minutes, time.seconds, 0);
     }
 
     /**

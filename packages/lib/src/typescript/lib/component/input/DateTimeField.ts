@@ -6,7 +6,7 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { calendar } from "~/glyphs/solid/calendar.js";
 import { DateTimePickerDropdown } from "~/component/input/DateTimePickerDropdown.js";
 import { callable } from "~/core/Callable.js";
-import { resolveDateMath, tokenizeDateMath, parseIsoDate, parseClockTime, DateMathUnit } from "~/component/input/dateMath.js";
+import { resolveDateMath, tokenizeDateMath, parseIsoDateTime, formatIsoDate, DateMathUnit } from "~/component/input/dateMath.js";
 
 Glyph.register(calendar);
 
@@ -108,19 +108,17 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
      * @returns The formatted date-time string.
      */
     protected formatValue(date: Date): string {
-        const y  = date.getFullYear();
-        const mo = String(date.getMonth() + 1).padStart(2, "0");
-        const d  = String(date.getDate()).padStart(2, "0");
-        const h  = String(date.getHours()).padStart(2, "0");
-        const mi = String(date.getMinutes()).padStart(2, "0");
+        const day = formatIsoDate(date);
+        const h   = String(date.getHours()).padStart(2, "0");
+        const mi  = String(date.getMinutes()).padStart(2, "0");
 
         if (this._showSeconds) {
             const s = String(date.getSeconds()).padStart(2, "0");
 
-            return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
+            return `${day} ${h}:${mi}:${s}`;
         }
 
-        return `${y}-${mo}-${d} ${h}:${mi}`;
+        return `${day} ${h}:${mi}`;
     }
 
     /**
@@ -141,27 +139,9 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
             return relative;
         }
 
-        // Require both a date and a time portion, ISO-anchored, so parsing is
-        // the strict inverse of formatValue and not the locale-dependent,
-        // time-optional `new Date(raw)`. Each half goes through the same shared
-        // helper its own sibling field uses, so DateField/TimeField strictness
-        // is literally the rule applied here rather than a restatement of it.
-        const parts = raw.trim().split(/\s+/);
-
-        if (parts.length !== 2) {
-            return null;
-        }
-
-        const date = parseIsoDate(parts[0]);
-        const time = parseClockTime(parts[1]);
-
-        if (date === null || time === null) {
-            return null;
-        }
-
-        date.setHours(time.hours, time.minutes, time.seconds, 0);
-
-        return date;
+        // The absolute form is the strict inverse of formatValue, read by the helper
+        // the table's date-time cell editor shares.
+        return parseIsoDateTime(raw);
     }
 
     /**

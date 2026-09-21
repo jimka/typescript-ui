@@ -163,6 +163,7 @@ const table = Table(store, {
 - `cellValues` is consulted only for rows where `cellType` resolves to `'combo'`; every combo row in the column still shares one pooled editor, reconfigured with that row's options on each edit — so declaring different `cellValues` per row (like `OWNER_OPTIONS` vs `DATATYPE_OPTIONS` above) does not fragment the pool.
 - A column whose rows commit different native types (boolean in one row, number in another) **must** declare the field `'auto'` (the default `Field` type) — a `boolean`/`number`/`string` field type coerces every commit to that one type, corrupting the other rows' values.
 - `readOnly` / `cellReadOnly` / `rowReadOnly` compose with a `cellType` column exactly as with any other cell.
+- A `'date'`, `'time'` or `'datetime'` row keeps its previous value when its editor holds text it cannot parse, exactly as a plain date, time or date-time column does; clearing the editor still commits `null`.
 - The boolean variant has no separate edit cycle — clicking the checkbox commits immediately, mirroring plain boolean columns.
 
 <!-- demo: table-cell-types -->

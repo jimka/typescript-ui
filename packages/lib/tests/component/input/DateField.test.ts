@@ -54,6 +54,18 @@ describe('DateField formatValue', () => {
         // Month is 0-based: month index 5 → June → "06"; day 7 → "07".
         expect(format(new Date(2025, 5, 7))).toBe('2025-06-07');
     });
+
+    it('zero-pads a year below 1000, so the displayed text parses back to the same date', () => {
+        const format = formatter();
+        const parse  = parser();
+        const date   = new Date(999, 0, 1);
+        const text   = format(date);
+
+        // The strict parser reads exactly four year digits, so an unpadded
+        // "999-01-01" could not be read back.
+        expect(text).toBe('0999-01-01');
+        expect(parse(text)).toEqual(date);
+    });
 });
 
 describe('DateField parseRaw', () => {
