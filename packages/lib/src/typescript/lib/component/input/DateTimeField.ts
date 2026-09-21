@@ -6,7 +6,7 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { calendar } from "~/glyphs/solid/calendar.js";
 import { DateTimePickerDropdown } from "~/component/input/DateTimePickerDropdown.js";
 import { callable } from "~/core/Callable.js";
-import { resolveDateMath, tokenizeDateMath, parseIsoDateTime, DateMathUnit } from "~/component/input/dateMath.js";
+import { resolveDateMath, tokenizeDateMath, parseIsoDateTime, formatIsoDate, DateMathUnit } from "~/component/input/dateMath.js";
 
 Glyph.register(calendar);
 
@@ -108,19 +108,17 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
      * @returns The formatted date-time string.
      */
     protected formatValue(date: Date): string {
-        const y  = date.getFullYear();
-        const mo = String(date.getMonth() + 1).padStart(2, "0");
-        const d  = String(date.getDate()).padStart(2, "0");
-        const h  = String(date.getHours()).padStart(2, "0");
-        const mi = String(date.getMinutes()).padStart(2, "0");
+        const day = formatIsoDate(date);
+        const h   = String(date.getHours()).padStart(2, "0");
+        const mi  = String(date.getMinutes()).padStart(2, "0");
 
         if (this._showSeconds) {
             const s = String(date.getSeconds()).padStart(2, "0");
 
-            return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
+            return `${day} ${h}:${mi}:${s}`;
         }
 
-        return `${y}-${mo}-${d} ${h}:${mi}`;
+        return `${day} ${h}:${mi}`;
     }
 
     /**

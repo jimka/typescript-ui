@@ -6,7 +6,7 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { calendar } from "~/glyphs/solid/calendar.js";
 import { DatePickerDropdown } from "~/component/input/DatePickerDropdown.js";
 import { callable } from "~/core/Callable.js";
-import { resolveDateMath, tokenizeDateMath, parseIsoDate, DateMathUnit } from "~/component/input/dateMath.js";
+import { resolveDateMath, tokenizeDateMath, parseIsoDate, formatIsoDate, DateMathUnit } from "~/component/input/dateMath.js";
 
 Glyph.register(calendar);
 
@@ -95,14 +95,10 @@ class DateField extends AbstractPickerField<Date, DatePickerDropdown, DateFieldO
      * Formats a Date as a YYYY-MM-DD string for display in the text input.
      *
      * @param date - The Date to format.
-     * @returns A "YYYY-MM-DD" string.
+     * @returns A "YYYY-MM-DD" string, the year zero-padded to four digits.
      */
     protected formatValue(date: Date): string {
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, "0");
-        const d = String(date.getDate()).padStart(2, "0");
-
-        return `${y}-${m}-${d}`;
+        return formatIsoDate(date);
     }
 
     /**

@@ -33,6 +33,18 @@ describe('DateTimeField formatValue', () => {
 
         expect(format(new Date(2025, 5, 15, 14, 30, 9))).toBe('2025-06-15 14:30:09');
     });
+
+    it('zero-pads a year below 1000, so the displayed text parses back to the same date-time', () => {
+        const format = formatter();
+        const parse  = parser();
+        const date   = new Date(999, 0, 1, 10, 0);
+        const text   = format(date);
+
+        // The strict parser reads exactly four year digits, so an unpadded
+        // "999-01-01 10:00" could not be read back.
+        expect(text).toBe('0999-01-01 10:00');
+        expect(parse(text)).toEqual(date);
+    });
 });
 
 describe('DateTimeField parseRaw', () => {

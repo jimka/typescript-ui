@@ -4,7 +4,7 @@ import { TextInputCellEditor } from "~/component/table/cell/editor/TextInputCell
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import { DatePickerDropdown } from "~/component/input/DatePickerDropdown.js";
-import { parseIsoDate } from "~/component/input/dateMath.js";
+import { parseIsoDate, formatIsoDate } from "~/component/input/dateMath.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -89,7 +89,7 @@ class DateEditor extends TextInputCellEditor<Date | null> {
      */
     setValue(value: Date | null): this {
         this._value = value;
-        this.setText(value ? this.toInputString(value) : "");
+        this.setText(value ? formatIsoDate(value) : "");
 
         return this;
     }
@@ -223,13 +223,6 @@ class DateEditor extends TextInputCellEditor<Date | null> {
         if (el) {
             DOM.sink.blur(el);
         }
-    }
-
-    private toInputString(date: Date): string {
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, '0');
-        const d = String(date.getDate()).padStart(2, '0');
-        return `${y}-${m}-${d}`;
     }
 }
 

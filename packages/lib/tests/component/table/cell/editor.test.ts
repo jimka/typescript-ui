@@ -786,6 +786,21 @@ describe('DateEditor parse contract', () => {
         expect(e.getValue()).toBe(null);
         expect(e.isEmpty()).toBe(true);
     });
+
+    it('a year below 1000 is written zero-padded, so the text it shows parses back', () => {
+        const e    = new DateEditor();
+        const el   = e.getElement(true)!;
+        const date = new Date(999, 0, 1);
+
+        e.setValue(date);
+
+        const text = DOM.source.getValue(el);
+
+        expect(text).toBe('0999-01-01');
+
+        typeIntoInput(e, text);
+        expect(e.getValue()).toEqual(date);
+    });
 });
 
 describe('DateTimeEditor parse contract', () => {
@@ -840,6 +855,21 @@ describe('DateTimeEditor parse contract', () => {
 
     it('"total garbage" is rejected', () => {
         expect(parsed('total garbage')).toBe(null);
+    });
+
+    it('a year below 1000 is written zero-padded, so the text it shows parses back', () => {
+        const e    = new DateTimeEditor(false);
+        const el   = e.getElement(true)!;
+        const date = new Date(999, 0, 1, 10, 0);
+
+        e.setValue(date);
+
+        const text = DOM.source.getValue(el);
+
+        expect(text).toBe('0999-01-01 10:00');
+
+        typeIntoInput(e, text);
+        expect(e.getValue()).toEqual(date);
     });
 });
 

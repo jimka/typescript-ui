@@ -4,7 +4,7 @@
 // no field construction, no DOM harness. Case numbers below match this
 // plan's `## Expected Behaviour` numbering: plans/in-progress/date-time-picker-relative-shorthand.md.
 import { describe, it, expect } from 'vitest';
-import { tokenizeDateMath, applyDateMath, resolveDateMath, parseIsoDate, parseClockTime, parseIsoDateTime, DateMathUnit } from '~/component/input/dateMath';
+import { tokenizeDateMath, applyDateMath, resolveDateMath, parseIsoDate, parseClockTime, parseIsoDateTime, formatIsoDate, DateMathUnit } from '~/component/input/dateMath';
 
 const ALL: readonly DateMathUnit[] = ["y", "mo", "w", "d", "h", "mi", "s"];
 
@@ -246,5 +246,70 @@ describe('parseIsoDateTime', () => {
 
     it('rejects the empty string', () => {
         expect(parseIsoDateTime("")).toBe(null);
+    });
+});
+
+// formatIsoDate is the inverse of parseIsoDate, so every row also parses its own
+// output back. A year of 0–99 is built with setFullYear, because the Date
+// constructor maps such a year to 1900–1999.
+describe('formatIsoDate', () => {
+    /** The local midnight of `day` `month` (0-based) `year`, for any year. */
+    function localDate(year: number, month: number, day: number): Date {
+        const d = new Date(2000, 0, 1);
+
+        d.setFullYear(year, month, day);
+
+        return d;
+    }
+
+    it('formats 16 Sep 2026 as "2026-09-16", which parses back to it', () => {
+        const d = localDate(2026, 8, 16);
+
+        expect(formatIsoDate(d)).toBe("2026-09-16");
+        expect(parseIsoDate(formatIsoDate(d))).toEqual(d);
+    });
+
+    it('zero-pads the month and the day: 7 Jun 2025 is "2025-06-07"', () => {
+        const d = localDate(2025, 5, 7);
+
+        expect(formatIsoDate(d)).toBe("2025-06-07");
+        expect(parseIsoDate(formatIsoDate(d))).toEqual(d);
+    });
+
+    it('zero-pads a three-digit year: 1 Jan 999 is "0999-01-01", which parses back to it', () => {
+        const d = localDate(999, 0, 1);
+
+        expect(formatIsoDate(d)).toBe("0999-01-01");
+        expect(parseIsoDate(formatIsoDate(d))).toEqual(d);
+    });
+
+    it('zero-pads a two-digit year: 1 Jan, year 50 is "0050-01-01", which parses back to it', () => {
+        const d = localDate(50, 0, 1);
+
+        expect(formatIsoDate(d)).toBe("0050-01-01");
+        expect(parseIsoDate(formatIsoDate(d))).toEqual(d);
+    });
+
+    it('zero-pads the year 0 to "0000-01-01", which parses back to it', () => {
+        const d = localDate(0, 0, 1);
+
+        expect(formatIsoDate(d)).toBe("0000-01-01");
+        expect(parseIsoDate(formatIsoDate(d))).toEqual(d);
+    });
+
+    it('keeps a negative year\'s sign ahead of the padded digits: year -1 is "-0001-01-01"', () => {
+        const d = localDate(-1, 0, 1);
+
+        expect(formatIsoDate(d)).toBe("-0001-01-01");
+        // Outside the four-digit year range parseIsoDate reads.
+        expect(parseIsoDate(formatIsoDate(d))).toBe(null);
+    });
+
+    it('writes a five-digit year unpadded: 1 Jan 10026 is "10026-01-01"', () => {
+        const d = localDate(10026, 0, 1);
+
+        expect(formatIsoDate(d)).toBe("10026-01-01");
+        // Outside the four-digit year range parseIsoDate reads.
+        expect(parseIsoDate(formatIsoDate(d))).toBe(null);
     });
 });
