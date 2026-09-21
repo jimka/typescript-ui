@@ -352,9 +352,10 @@ code instead of Loom's source files, the explorer is the library's `Tree` over
 generated folders instead of Loom's file tree over the repository, the shell
 is built from library components instead of Loom's shell classes with no
 Tauri API behind it, and the tabs are declared in the `Dock` layout instead of
-opened from the tree. So their numbers will not match Loom's history. They
-exist so that a later Loom plan can take their baselines and retire Loom's
-harness; their `Validated` entries record those baselines.
+opened from the tree. So their numbers will not match Loom's history.
+Loom's own harness is retired (decided 2026-09-21; a separate Loom plan
+removes Loom's `qa/`), so S1 and S3 are measured on these two panels now,
+and their `Validated` entries are the baselines.
 
 **C21's witness hovers the field.** `form-flat`'s `call` target takes the
 first two decorated text fields past their 20-character limit, through
