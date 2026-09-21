@@ -13,7 +13,7 @@ import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import type { AbstractStore, ModelRecord } from '@jimka/typescript-ui/data';
 import { Split, VBox } from '@jimka/typescript-ui/layout';
 import { FieldDecorator } from '@jimka/typescript-ui/validation';
-import type { HarnessTools } from '../harness/types.js';
+import type { CallTarget, HarnessTools } from '../harness/types.js';
 import type { PanelBuild } from '../panels.js';
 import { listItems } from './data.js';
 import { elementFor, requireElement } from './dom.js';
@@ -35,8 +35,8 @@ const PASSES = ['form', 'header', 'date', 'combo'] as const;
 /** What `type` types into: the first decorated text field, or the first date field. */
 const TYPES = ['text', 'date'] as const;
 
-/** What `click` clicks: the first toggle and checkbox, or the first combo box (opening and closing it). */
-const CLICKS = ['toggle', 'combo'] as const;
+/** What `click` clicks: the controls' own click surfaces, the first checkbox's element outside its box, or the first combo box. */
+const CLICKS = ['toggle', 'root', 'combo'] as const;
 
 /** Fields per fieldset in `form-nested`: one of each kind. */
 const FIELDS_PER_GROUP = FIELD_KINDS.length;
@@ -64,6 +64,22 @@ const DATE_TEXT = '2026-09-19';
 const SLIDER_MIN = 0;
 const SLIDER_MAX = 100;
 const SLIDER_VALUE = 50;
+
+/** How far `update` moves the slider off its start and back: one step at a `Slider`'s default step of 1, so the write stays on the step grid and always changes the value. */
+const SLIDER_NUDGE = 1;
+
+/**
+ * What each `click=` mode clicks: a field kind, and the element inside that
+ * field which takes the click — `null` for the field's own element. A toggle
+ * toggles from its track and a checkbox from its box, never from their own
+ * elements, so `toggle` clicks those surfaces; `root` clicks the checkbox's
+ * own element on purpose, since that is where a click on a label lands.
+ */
+const CLICK_SURFACES: Record<typeof CLICKS[number], ReadonlyArray<readonly [FieldKind, string | null]>> = {
+    toggle: [['toggle', '.ToggleTrack'], ['checkbox', '.CheckboxBox']],
+    root: [['checkbox', null]],
+    combo: [['combo', null]],
+};
 
 /** The inspector's preferred width: room for the property and value columns side by side. */
 const INSPECTOR_WIDTH_PX = 320;
@@ -396,23 +412,87 @@ function typeTarget(tools: HarnessTools, parts: FormParts, mode: FormChoices['ty
 }
 
 /**
- * The `click` target for the `click=` parameter.
+ * The `click` target for the `click=` parameter: for `toggle`, the first
+ * toggle's track and the first checkbox's box, the surfaces each one toggles
+ * from; for `root`, the first checkbox's own element, outside its box; for
+ * `combo`, the first combo box.
  *
  * @param tools - The harness tools.
  * @param parts - The form's parts.
  * @param mode - What to click.
  * @param panel - The panel's id, for errors.
  * @returns `{ elements }`, or `undefined` when the form holds none of those fields.
+ * @throws Error - When a field's click surface is missing from its element.
  */
 function clickTarget(tools: HarnessTools, parts: FormParts, mode: FormChoices['click'], panel: string): { elements: HTMLElement[] } | undefined {
-    const kinds: FieldKind[] = mode === 'toggle' ? ['toggle', 'checkbox'] : ['combo'];
+    const elements = CLICK_SURFACES[mode]
+        .filter(([kind]) => parts.first[kind] !== undefined)
+        .map(([kind, selector]) => {
+            const element = elementFor(tools, parts.first[kind]!, panel);
 
-    const elements = kinds
-        .map((kind) => parts.first[kind])
-        .filter((field): field is Component => field !== undefined)
-        .map((field) => elementFor(tools, field, panel));
+            return selector === null ? element : requireElement(element, selector, panel);
+        });
 
     return elements.length > 0 ? { elements } : undefined;
+}
+
+/**
+ * The `update` target: one programmatic write per unit to the first checkbox
+ * and the first slider — the checkbox flipped, the slider moved one step off
+ * its start and back. Each write reads the control's current state rather
+ * than the unit's index, so every unit is a real transition for both, even
+ * after an earlier phase moved them.
+ *
+ * @param first - The first field of each kind.
+ * @returns The target, or `undefined` when the form lacks a checkbox or a slider.
+ */
+function programmaticWrites(first: FormParts['first']): CallTarget | undefined {
+    const checkbox = first.checkbox as Checkbox | undefined;
+    const slider = first.slider as Slider | undefined;
+
+    if (!checkbox || !slider) {
+        return undefined;
+    }
+
+    return function writeCheckboxAndSlider(): void {
+        checkbox.setSelected(!checkbox.isSelected());
+        slider.setValue(slider.getValue() === SLIDER_VALUE ? SLIDER_VALUE + SLIDER_NUDGE : SLIDER_VALUE);
+    };
+}
+
+/**
+ * The form's work counters: one `checkbox.action` per `"action"` the first
+ * checkbox delivers, and one `slider.action` per `"action"` the first slider
+ * delivers.
+ *
+ * @param tools - The harness tools.
+ * @param first - The first field of each kind.
+ * @returns One note per control, saying what it counts or that the form lacks it.
+ */
+function countActions(tools: HarnessTools, first: FormParts['first']): string[] {
+    const checkbox = first.checkbox as Checkbox | undefined;
+    const slider = first.slider as Slider | undefined;
+    const notes: string[] = [];
+
+    if (checkbox) {
+        checkbox.on('action', function countCheckboxAction(): void {
+            tools.bumpWork('checkbox.action');
+        });
+        notes.push('counting checkbox.action on the first Checkbox');
+    } else {
+        notes.push('no Checkbox');
+    }
+
+    if (slider) {
+        slider.on('action', function countSliderAction(): void {
+            tools.bumpWork('slider.action');
+        });
+        notes.push('counting slider.action on the first Slider');
+    } else {
+        notes.push('no Slider');
+    }
+
+    return notes;
 }
 
 /**
@@ -443,7 +523,10 @@ function mountedTargets(tools: HarnessTools, parts: FormParts, choices: FormChoi
 /**
  * Builds a form of `n` fields cycling eight kinds, under a header grid of
  * eight text fields, in a scrolling panel: in one two-column grid (flat), or
- * in fieldsets of eight beside an inspector table (nested).
+ * in fieldsets of eight beside an inspector table (nested). `click=` chooses
+ * `toggle`, `root` or `combo`; a form holding a slider (`n` ≥ 8) also gets an
+ * `update` target, one programmatic write per unit to the first checkbox and
+ * slider, and under `work=1` counts each one's `"action"` deliveries.
  *
  * @param n - Fields.
  * @param depth - The form's depth.
@@ -473,6 +556,7 @@ export function buildForm(n: number, depth: FormDepth, params: URLSearchParams, 
     const geometry: Record<string, Component> = { header, form: scroller };
     const targets: Record<string, unknown> = { resize: parts.root };
     const passes = passesTarget(passesMode, parts);
+    const update = programmaticWrites(first);
 
     if (inspector) {
         geometry.inspector = inspector;
@@ -482,11 +566,16 @@ export function buildForm(n: number, depth: FormDepth, params: URLSearchParams, 
         targets.passes = passes;
     }
 
+    if (update) {
+        targets.update = update;
+    }
+
     return {
         root: parts.root,
         targets,
         afterMount: (tools: HarnessTools): Record<string, unknown> => mountedTargets(tools, parts, choices, panel),
         geometry,
         describe: () => ({ fields: n }),
+        installWork: (tools: HarnessTools): string[] => countActions(tools, first),
     };
 }

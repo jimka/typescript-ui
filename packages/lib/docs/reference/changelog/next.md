@@ -35,6 +35,19 @@ page resets to empty.
   read back through `getDirection()`. See
   [Migration](/reference/migration/next) for the full note.
 
+- **`Checkbox` and `Slider` fire `"action"` for the user's own activations
+  only.** Both used to announce `on("action", fn)` for every programmatic
+  write too — `setSelected`, `setValue`, or a `Binding` update — and a
+  checkbox also announced it, with no change of state, for a click on its
+  label, on the space beside its box, or on a disabled checkbox. Now a
+  checkbox fires it once per user toggle (a click on its box, or Space) and a
+  slider once per drag sample or value key that moves the thumb, as
+  [`RadioButton`](/components/RadioButton) and
+  [`ToggleButton`](/components/ToggleButton) already did. A programmatic write
+  still fires `"change"` and `"binding"`. A checkbox's `"action"` listener now
+  receives a DOM `change` event rather than a `click`. See
+  [Migration](/reference/migration/next) for the full note.
+
 ## Changed
 
 ### Core
@@ -185,17 +198,6 @@ page resets to empty.
   **Close** already drove. The key is inert on a tab that is not `closeable`,
   and on a strip with nothing focused, so a `Delete` the strip has no action
   for keeps propagating.
-
-- **`Checkbox.setSelected` gains a second parameter, `fireAction`.** A
-  checkbox announces `on("action", fn)` for a programmatic write as well as a
-  user toggle, which leaves a caller performing its own write no way to tell
-  the two apart. Passing `false` suppresses that dispatch for the one call;
-  `"change"` and `"binding"` still fire, so a `Binding` is unaffected. The
-  parameter defaults to `true`, so every existing call behaves exactly as
-  before and no consumer action is needed.
-  [`RadioButton`](/components/RadioButton) deliberately has no such parameter:
-  its `"action"` never fires for a programmatic `setSelected` in the first
-  place.
 
 - **`TabBar` gains `setEntryModified(id, modified)` / `isEntryModified(id)`**,
   and **`TabButton` gains `setModified(modified)` / `isModified()`** as the
@@ -722,10 +724,18 @@ page resets to empty.
   the cell's `"commit"` once itself and once more through the synthetic click
   the checkbox dispatched on its way — so a consumer's own `"commit"` handler
   ran twice for the single gesture. The record write was idempotent and hid
-  the damage, but any handler with a side effect of its own saw both. The
-  editor's programmatic writes now opt out of the checkbox's `"action"`
-  fan-out, leaving one commit per activation. A pooled rebind during a scroll
-  likewise stops dispatching a synthetic click per visible row. No consumer
+  the damage, but any handler with a side effect of its own saw both. A
+  checkbox now announces `"action"` for a user toggle only, so the editor's
+  own programmatic writes never reach it, leaving one commit per activation.
+  A pooled rebind during a scroll likewise stops dispatching a synthetic click
+  per visible row. No consumer action is needed.
+
+- **`Slider.setValue` no longer throws before the slider is mounted, and
+  `Checkbox.setSelected` no longer logs a warning there.** Each dispatched a
+  DOM event on every change, which needs the control's element: the slider
+  threw `Cannot fire event 'input'` after already applying the value, and the
+  checkbox skipped its dispatch with a `console.warn`. Neither setter
+  dispatches anything now, so both work the same mounted or not. No consumer
   action is needed.
 
 - **Two `Markdown` previews of documents that share a heading name no longer

@@ -11,7 +11,7 @@ import { DOM } from '~/core/DOM';
 import { Container } from '~/core/Container';
 import { Event } from '~/core/Event';
 import { Checkbox } from '~/component/input/Checkbox';
-import { installTestDOM, RecordingDOMSink } from '../../../dom/TestDOM';
+import { installTestDOM, makeEvent, RecordingDOMSink } from '../../../dom/TestDOM';
 import fontMetrics from '../../../dom/font-metrics.test-font.json';
 import { BooleanCell } from '~/component/table/cell/Boolean';
 import { BooleanEditor } from '~/component/table/cell/editor/Boolean';
@@ -30,8 +30,8 @@ beforeEach(() => {
     sink = installTestDOM(CONFIG);
 
     // `Event` installs one window-level base listener per event type and
-    // remembers it across DOM installs, so a "click" listener installed
-    // against a previous case's window would leave the synthetic click below
+    // remembers it across DOM installs, so a listener installed against a
+    // previous case's window would leave the checkbox's DOM `change`
     // undelivered — and every commit assertion passing for the wrong reason.
     // Ritual copied from tests/component/input/Slider.test.ts.
     for (const id of Event._registeredComponentIds()) {
@@ -47,10 +47,7 @@ function editorCheckbox(cell: BooleanCell): Checkbox {
 
 /**
  * A mounted BooleanCell whose editor's checkbox element is realized as well.
- * That realization is load-bearing: unrealized, `Checkbox.setSelected` takes
- * its pre-mount branch and dispatches no synthetic `click` at all, so the
- * editor's `"action"` listener never runs and every commit count below reads
- * as if the fan-out did not exist.
+ * That realization is what lets a dispatched click reach the checkbox's box.
  */
 function mountedCell(): BooleanCell {
     const host = new Container({});
@@ -64,9 +61,9 @@ function mountedCell(): BooleanCell {
     return cell;
 }
 
-/** Synthetic-click dispatches recorded on the sink since write index `start`. */
-function clickDispatches(start: number): number {
-    return sink.writes.slice(start).filter((w: any) => w.op === 'dispatchEvent' && w.args[0] === 'click').length;
+/** DOM event dispatches of any type recorded on the sink since write index `start`. */
+function dispatches(start: number): number {
+    return sink.writes.slice(start).filter((w: any) => w.op === 'dispatchEvent').length;
 }
 
 describe('BooleanCell fills the row height', () => {
@@ -137,6 +134,21 @@ describe('BooleanCell read-only', () => {
 });
 
 describe('BooleanCell commit fan-out', () => {
+    it('commits once, with the new value, for a click on the checkbox\'s box', () => {
+        // CONTRACT: the editor's only user-toggle signal is its checkbox's
+        // "action". A click on the box must reach it exactly once.
+        const cell     = mountedCell();
+        const checkbox = editorCheckbox(cell) as any;
+        const commits: Array<Boolean | null> = [];
+
+        cell.setValue(false);
+        cell.on('commit', (v: Boolean | null) => commits.push(v));
+
+        Event.fireEvent(checkbox, makeEvent(checkbox._box.getElement(true), 'click', { button: 0 }) as any);
+
+        expect(commits).toEqual([true]);
+    });
+
     it('commits nothing and dispatches nothing for a pooled rebind', () => {
         // CONTRACT: `setValue` is the virtualized body's per-scroll-tick
         // rebind. It is a programmatic write, so it must reach neither the
@@ -152,7 +164,7 @@ describe('BooleanCell commit fan-out', () => {
 
         expect(cell.getRenderer().getValue()).toBe(false);
         expect(commits).toEqual([]);
-        expect(clickDispatches(start)).toBe(0);
+        expect(dispatches(start)).toBe(0);
     });
 
     it('leaves the indeterminate rebind branch silent too', () => {
@@ -166,7 +178,7 @@ describe('BooleanCell commit fan-out', () => {
 
         expect(editorCheckbox(cell).isIndeterminate()).toBe(true);
         expect(commits).toEqual([]);
-        expect(clickDispatches(start)).toBe(0);
+        expect(dispatches(start)).toBe(0);
 
         cell.setReadOnly(true);
         cell.startEdit();

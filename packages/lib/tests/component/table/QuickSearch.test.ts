@@ -47,13 +47,13 @@ const SPEC: ColumnSpec = {
 
 async function makeStore(): Promise<{ store: MemoryStore; records: ModelRecord[] }> {
     // `active` stays `false` on every record — see RowVisibility.test.ts's
-    // makeStore for why a real transition on the checkbox editor is avoided
-    // here: a `true` value flips the row pool's checkbox editor away from
-    // its constructed-indeterminate default, and `Checkbox.setSelected`
-    // dispatches a synthetic DOM `click` that throws under this suite's
-    // `node` vitest environment (no global `MouseEvent`). No case below
-    // depends on which record holds which boolean value — only that the
-    // `boolean` column as a whole is outside quick search's default scope.
+    // makeStore for why a real transition on the checkbox editor was once
+    // avoided here: `Checkbox.setSelected` used to dispatch a synthetic DOM
+    // `click` that threw under this suite's `node` vitest environment (no
+    // global `MouseEvent`). It dispatches nothing now, so the fixture is
+    // conservative rather than required. No case below depends on which
+    // record holds which boolean value — only that the `boolean` column as a
+    // whole is outside quick search's default scope.
     const store = new MemoryStore(MODEL, [
         {
             name: 'Alice', role: 'dev', score: 95, active: false,

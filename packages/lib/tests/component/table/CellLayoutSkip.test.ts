@@ -124,8 +124,8 @@ const DYNAMIC_SPEC: ColumnSpec = {
  * The two records swap between 'number' and 'string' rather than 'boolean',
  * keeping the swap under test clear of the checkbox editor. The gap this note
  * used to cite — that editor dispatching a synthetic click the Node-based
- * harness has no `MouseEvent` global for — is gone, since `BooleanEditor`'s
- * programmatic writes now pass `fireAction: false`; the data choice is
+ * harness has no `MouseEvent` global for — is gone, since a programmatic
+ * `Checkbox.setSelected` now dispatches nothing; the data choice is
  * conservative rather than required, and orthogonal either way.
  */
 async function makeDynamicTable(): Promise<{ table: Table, recs: ModelRecord[] }> {

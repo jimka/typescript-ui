@@ -110,3 +110,34 @@ unnecessary, since nothing is built until the font is already active. The
 fallback-font geometry during a held startup window, and about a
 programmatic scroll or row reveal issued during that window being replayed
 once it opened, no longer apply: there is no window to hold.
+
+## `Checkbox` and `Slider` fire `"action"` for user activations only
+
+**What changed and why.** `on("action", fn)` on a `Checkbox` or a `Slider`
+used to fire for every programmatic write as well as for the user's own
+activations: `setSelected`, `setValue` and a `Binding` update each announced
+it. A checkbox also announced it, with no change of state, for a click on its
+label, on the space beside its box, or on a disabled checkbox. Every existing
+subscriber wanted the user's activations only — the library's own two each
+suppressed the rest by hand — and [`RadioButton`](/components/RadioButton)
+and [`ToggleButton`](/components/ToggleButton) already meant exactly that by
+the same event name. Now a checkbox fires `"action"` once per user toggle (a
+click on its box, or Space), and a slider once per drag sample or value key
+that moves the thumb. A programmatic write still fires `"change"` and
+`"binding"`.
+
+**Who needs to act.** A consumer that relied on `"action"` after its own
+`setSelected` / `setValue`, or after a `Binding` write, subscribes to
+`"change"` instead, which fires for the user's toggles and your own writes
+alike:
+
+```typescript
+// Before
+cb.on("action", syncPreview);
+
+// After
+cb.on("change", syncPreview);
+```
+
+A listener that read the event object sees a DOM `change` event on a checkbox,
+where it used to see a `click`. A slider's listener still sees an `input`.

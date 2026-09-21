@@ -389,19 +389,22 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     /**
      * Activates the checkbox from a click or key: a user activation from the
      * "mixed" state first clears the indeterminate flag and selects (WAI-ARIA);
-     * otherwise it flips the selected state. `setSelected` handles the visual +
-     * listener sync — calling it from a mixed state always lands at
-     * `selected=true` because its guard treats indeterminate as a force-out.
+     * otherwise it flips the selected state. The state changes through
+     * `setSelected` — calling it from a mixed state always lands at
+     * `selected=true` because its guard treats indeterminate as a force-out —
+     * and then the DOM `change` that `on("action", fn)` listens for is fired.
      * The enabled/read-only guard is applied by the base before this runs.
      */
     protected activate(): void {
         if (this.isIndeterminate()) {
             this.setSelected(true);
-
-            return;
+        } else {
+            this.setSelected(!this.isSelected());
         }
 
-        this.setSelected(!this.isSelected());
+        // Both branches change the state, so every activation announces itself.
+        // `on("action", fn)` listens for this DOM `change`, as on RadioButton.
+        Event.fireEvent(this, "change");
     }
 
     /**
@@ -424,18 +427,14 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
 
     /**
      * Sets the checked state. Notifies change and binding listeners on a real
-     * transition; no-op when unchanged.
+     * transition; no-op when unchanged. A programmatic write never fires
+     * `"action"`, which reports the user's own toggles only.
      *
      * @param value - `true` to check, `false` to uncheck.
-     * @param fireAction - When `true` (default), a real transition also
-     *   dispatches the synthetic DOM `click` that `on("action", fn)` rides on;
-     *   pass `false` for a programmatic write that should reach only `"change"`
-     *   and `"binding"`. Those two fire either way — the flag gates the
-     *   `"action"` dispatch and nothing else.
      *
      * @returns This component, for method chaining.
      */
-    setSelected(value: boolean, fireAction: boolean = true): this {
+    setSelected(value: boolean): this {
         const next = !!value;
         if (next === this.isSelected() && !this.isIndeterminate()) {
             return this;
@@ -445,22 +444,6 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         this._options.indeterminate = false;
         this.applySelected(next, false);
         this.notifyChange(next);
-
-        if (!fireAction) {
-            return this;
-        }
-
-        // Existing consumers wire "click"-based behaviour through `on("action", fn)`,
-        // so synthesize a "click" on the root so a programmatic state flip
-        // continues to fire it. The user-toggle handler lives on `_box`, not
-        // the root, so this synthetic event no longer races back into the
-        // toggle path. Skip the synthetic click pre-mount — listeners haven't
-        // attached yet and `fireEvent` would throw on the missing element.
-        if (this.getElement()) {
-            Event.fireEvent(this, "click");
-        } else {
-            console.warn("Checkbox '" + this.getId() + "' setSelected before mount; synthetic 'click' skipped.");
-        }
 
         return this;
     }
@@ -535,15 +518,16 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
 
     /**
      * Registers a listener for one of this checkbox's events. `"action"` is a
-     * typed semantic shorthand over {@link Event.addListener} for the native
-     * click (used e.g. by the [`BooleanEditor`](/api/component/table/cell/editor/classes/BooleanEditor)
-     * cell editor); `"change"` and `"binding"` are the inherited
-     * {@link AbstractInput} listener-bag events.
-     *
-     * `"action"` fires for a user toggle and, unlike
-     * [`RadioButton`](/api/component/input/classes/RadioButton)'s, also for a
-     * programmatic {@link setSelected} — unless that caller passes
-     * `fireAction: false`.
+     * typed semantic shorthand over {@link Event.addListener} for the DOM
+     * `change` the checkbox fires once per user activation — a click on its
+     * box, or Space — used e.g. by the
+     * [`BooleanEditor`](/api/component/table/cell/editor/classes/BooleanEditor)
+     * cell editor. It never fires for a programmatic {@link setSelected} or
+     * {@link setValue}, a click on its label or empty area, or a disabled or
+     * read-only checkbox: the same contract as
+     * [`RadioButton`](/api/component/input/classes/RadioButton)'s. `"change"`
+     * and `"binding"` are the inherited {@link AbstractInput} listener-bag
+     * events and fire for programmatic writes too.
      *
      * @param event - The event name.
      * @param listener - Callback invoked when the event fires.
@@ -555,7 +539,7 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     on(event: "binding", listener: () => void): this;
     on(event: "action" | "change" | "binding", listener: Function): this {
         if (event === "action") {
-            Event.addListener(this, "click", listener as Event.Listener);
+            Event.addListener(this, "change", listener as Event.Listener);
 
             return this;
         }
@@ -574,7 +558,7 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
      */
     off(event: "action" | "change" | "binding", listener: Function): this {
         if (event === "action") {
-            Event.removeListener(this, "click", listener as Event.Listener);
+            Event.removeListener(this, "change", listener as Event.Listener);
 
             return this;
         }

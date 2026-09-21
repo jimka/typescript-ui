@@ -1022,18 +1022,17 @@ describe('BooleanEditor tri-state + programmatic writes', () => {
 
     it('setValue(null) stays indeterminate and fires NO "change" event', () => {
         // CONTRACT: a programmatic setValue commits nothing, on either branch.
-        // A `null` takes setIndeterminate, which dispatches no click at all; a
-        // concrete value takes setSelected with `fireAction: false`, which
-        // suppresses the synthetic click `on("action", fn)` rides on. Either
-        // way this editor's own action listener never runs, so a fired spy IS
-        // that bug.
+        // A `null` takes setIndeterminate and a concrete value takes
+        // setSelected; neither fires the checkbox's `"action"`, which reports
+        // the user's own toggles only. Either way this editor's own action
+        // listener never runs, so a fired spy IS that bug.
         //
-        // COVERAGE NOTE: this editor is unmounted, where Checkbox.setSelected
-        // skips the dispatch anyway, so this case pins the outcome but not the
-        // mechanism. The mechanism is covered offline by the `BooleanCell
-        // commit fan-out` block in tests/component/table/cell/BooleanCell.test.ts,
-        // which realises the checkbox's element and re-registers Event's
-        // window-level listener first.
+        // COVERAGE NOTE: this editor is unmounted, so this case pins the
+        // outcome but not the mechanism. The mechanism is covered offline by
+        // the `BooleanCell commit fan-out` block in
+        // tests/component/table/cell/BooleanCell.test.ts, which realises the
+        // checkbox's element and re-registers Event's window-level listener
+        // first.
         const e   = new BooleanEditor();
         const spy = vi.fn();
 
@@ -1070,12 +1069,12 @@ describe('BooleanEditor tri-state + programmatic writes', () => {
         // toggles to true.
         //
         // The contract is one "change" per activation, mounted or not:
-        // toggle() passes `fireAction: false`, so its own direct emit below is
-        // the only one. That was not always so — the synthetic click used to
-        // reach the "action" listener and emit a second time on a mounted
-        // checkbox, a double commit this unmounted case could not see. The
-        // mounted pin is the read-only case in
-        // tests/component/table/cell/BooleanCell.test.ts.
+        // toggle()'s setSelected never fires the checkbox's "action", so its
+        // own direct emit below is the only one. That was not always so — a
+        // programmatic setSelected used to reach the "action" listener and
+        // emit a second time on a mounted checkbox, a double commit this
+        // unmounted case could not see. The mounted pin is the read-only case
+        // in tests/component/table/cell/BooleanCell.test.ts.
         expect(e.getValue()).toBe(true);
         expect(spy).toHaveBeenCalledTimes(1);
         expect(spy).toHaveBeenCalledWith(true);
