@@ -433,6 +433,22 @@ function nextHeadingId(text: string, headingIds: Map<string, number>): string {
 }
 
 /**
+ * The selector that resolves a heading element by id *within one pane's
+ * subtree* — the read-side counterpart to {@link nextHeadingId}, which writes
+ * the id. An attribute selector rather than `#id`, because a heading slug is
+ * author content and may start with a digit, which `#` cannot carry without a
+ * `CSS.escape` the seam's documented fallback does not provide.
+ *
+ * @param id - The heading id, as rendered onto the element.
+ * @returns A selector matching exactly that id.
+ *
+ * @internal
+ */
+function headingSelector(id: string): string {
+    return `[id="${DOM.source.escapeSelector(id)}"]`;
+}
+
+/**
  * How a link href should be rendered: the final href, and whether it leaves
  * the site the {@link Markdown} instance is embedded in.
  *
@@ -1039,10 +1055,24 @@ class Markdown extends Component<MarkdownOptions> {
      * point — and no-ops before the element exists (the first connected layout
      * retries via {@link onFirstLayout}). Idempotent: an unchanged height suppresses
      * the re-layout so repeated measures cannot loop.
+     *
+     * @remarks Skipped entirely while not effectively visible: a hidden
+     * subtree's `scrollHeight` reads `0`, and caching that would leave the
+     * component reporting no height at all, with nothing to correct it on
+     * re-show (no width actually changes on re-show, so {@link setWidth}'s
+     * "only re-measure when changed" guard would never re-run this method).
+     * Skipping leaves the last-good height intact instead. Unlike
+     * {@link resyncCodeEditorWidths}, which accepts its own skip as the end
+     * of the story, the skip here is recovered: {@link
+     * onEffectiveVisibilityChange} schedules a fresh measure on the rising
+     * edge, so a theme change, a {@link setMarkdown}, or a first layout that
+     * landed while this subtree was hidden is picked up once it is shown
+     * again. The guard sits ahead of the first style commit below, so a
+     * hidden component is charged no sink writes either.
      */
     private measureContentHeight(): void {
         const element = this.getElement();
-        if (!element) {
+        if (!element || !this.isEffectivelyVisible()) {
             return;
         }
 
@@ -1464,7 +1494,11 @@ class Markdown extends Component<MarkdownOptions> {
      * schedules a viewport pass, so an entry already queued in {@link
      * _awaitingViewportKickoffs} before this subtree was hidden — its own
      * scroll/resize watch now stale — is re-checked at rest instead of
-     * waiting for a scroll or resize that may never come.
+     * waiting for a scroll or resize that may never come. Between the two, it
+     * schedules a content re-measure: {@link measureContentHeight} skips
+     * while hidden, and nothing else re-runs it on a re-show, so a theme
+     * change or a {@link setMarkdown} that landed meanwhile would otherwise
+     * leave the reported height stale for good.
      *
      * @param effective - The component's new effective-visibility state.
      */
@@ -1484,6 +1518,13 @@ class Markdown extends Component<MarkdownOptions> {
                 this.startCodeEditorImport(entry);
             }
         }
+
+        // Recovers a content height that went stale while this subtree was
+        // hidden — a theme change, a setMarkdown, or a first layout that ran
+        // while measureContentHeight was skipping. Nothing else re-measures
+        // on a re-show: no width actually changes, so setWidth's "only when
+        // changed" guard never fires.
+        this.scheduleContentMeasure();
 
         // Ordering is load-bearing: draining the visibility queue above can
         // push newly-checked entries into _awaitingViewportKickoffs, and this
@@ -2205,7 +2246,15 @@ const ACTIVE_HEADING_TOP_TOLERANCE_PX = 1;
  * the pane's top, and the top-crossing rule alone would otherwise resolve to
  * a much earlier heading than whichever one the scroll actually landed on.
  *
- * @param scrollElement - The scroll-owning element to read the pane's own top from.
+ * A heading whose id resolves to no element inside `scrollElement` is skipped,
+ * so two panes rendering documents that share a heading name no longer resolve
+ * each other's elements: heading ids are unique within one render but land in
+ * the one document-wide id space, and a document-wide lookup would hand the
+ * second pane the first pane's element.
+ *
+ * @param scrollElement - The scroll-owning element: both the pane top each
+ *   heading is compared against, and the subtree each heading is resolved
+ *   within.
  * @param headings - The document's headings, in document order.
  * @returns The active heading's id, or `null` when the pane's top is above every heading.
  *
@@ -2220,9 +2269,9 @@ export function findActiveHeading(scrollElement: Handle, headings: MarkdownHeadi
     let active: string | null = null;
 
     for (const heading of headings) {
-        const el = DOM.source.getElementById(heading.id);
+        const el = DOM.source.querySelector(scrollElement, headingSelector(heading.id));
 
-        if (!el || !DOM.source.contains(scrollElement, el)) {
+        if (!el) {
             continue;
         }
 
@@ -2253,4 +2302,8 @@ export {
     // Not re-exported from the package barrel (`component/display/index.ts`):
     // a test-only hook, not part of the public API surface.
     mapFenceLangToEditorId,
+    // Not re-exported from the package barrel either: an `@internal` helper
+    // shared with `HeadingScrollTracker` and the suites that seed the offline
+    // selector, not part of the public API surface.
+    headingSelector,
 };

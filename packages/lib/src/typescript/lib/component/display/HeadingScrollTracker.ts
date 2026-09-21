@@ -2,7 +2,7 @@
 
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
-import { findActiveHeading } from "~/component/display/Markdown.js";
+import { findActiveHeading, headingSelector } from "~/component/display/Markdown.js";
 import type { MarkdownHeading } from "~/component/display/Markdown.js";
 
 /**
@@ -102,13 +102,21 @@ export class HeadingScrollTracker {
      * tell which of them this click actually targeted (`findActiveHeading`'s
      * own doc comment).
      *
-     * @param scrollElement - The pane's scroll-owning element.
+     * A heading whose id resolves to no element inside `scrollElement` is
+     * skipped, so two panes rendering documents that share a heading name no
+     * longer resolve each other's elements: heading ids are unique within one
+     * render but land in the one document-wide id space, and a document-wide
+     * lookup would hand the second pane the first pane's element.
+     *
+     * @param scrollElement - The pane's scroll-owning element: both the pane
+     *   top the heading is scrolled to, and the subtree the heading is
+     *   resolved within.
      * @param id - The heading id to scroll to.
      */
     scrollToHeading(scrollElement: Handle, id: string): void {
-        const heading = DOM.source.getElementById(id);
+        const heading = DOM.source.querySelector(scrollElement, headingSelector(id));
 
-        if (!heading || !DOM.source.contains(scrollElement, heading)) {
+        if (!heading) {
             return;
         }
 

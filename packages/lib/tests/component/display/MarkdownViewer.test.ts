@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { MarkdownViewer } from '~/component/display/MarkdownViewer';
+import { headingSelector } from '~/component/display/Markdown';
 import { DOM } from '~/core/DOM';
 import type { TreeNode } from '~/component/tree/TreeNode';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, setQuerySelectorResult } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -14,6 +15,14 @@ const CONFIG = {
 };
 
 const SOURCE = '# Introduction\n\n## Getting Started\n\n### Install\n';
+
+/** Stages a rendered heading's top and seeds the pane-scoped selector the offline source needs to resolve it. */
+function stageHeading(id: string, top: number): void {
+    const handle = DOM.source.getElementById(id)!;
+
+    DOM.sink.apply(handle, { style: { left: '0px', top: `${top}px`, width: '10px', height: '10px' } });
+    setQuerySelectorResult(headingSelector(id), handle);
+}
 
 afterEach(() => DOM.reset());
 
@@ -301,7 +310,7 @@ describe('MarkdownViewer minimap-select scrolls to the heading', () => {
         const gettingStartedNode = roots[0].children![0];
         const gettingStartedId = gettingStartedNode.data as string;
 
-        DOM.sink.apply(DOM.source.getElementById(gettingStartedId)!, { style: { left: '0px', top: '500px', width: '10px', height: '10px' } });
+        stageHeading(gettingStartedId, 500);
 
         viewer._minimap.emit('select', gettingStartedId);
 
@@ -328,13 +337,13 @@ describe('MarkdownViewer scroll tracking', () => {
         // element getScrollElement() actually resolves to) is subtracted from
         // it when findActiveHeading climbs to the scroll-owning ancestor —
         // the same technique Markdown.test.ts's own findActiveHeading suite uses.
-        DOM.sink.apply(DOM.source.getElementById(headings[0].id)!, { style: { left: '0px', top: '100px', width: '10px', height: '10px' } });
-        DOM.sink.apply(DOM.source.getElementById(headings[1].id)!, { style: { left: '0px', top: '600px', width: '10px', height: '10px' } });
+        stageHeading(headings[0].id, 100);
+        stageHeading(headings[1].id, 600);
         // The third heading needs its own stub too — an unstubbed handle hits
         // ModelledDOMSource's zero-rect fallback (top 0), which would
         // trivially satisfy "top <= paneTop" and win as the last (in document
         // order) candidate regardless of scroll position.
-        DOM.sink.apply(DOM.source.getElementById(headings[2].id)!, { style: { left: '0px', top: '900px', width: '10px', height: '10px' } });
+        stageHeading(headings[2].id, 900);
 
         const listener = vi.fn();
         viewer.on('activeheadingchange', listener);
@@ -368,15 +377,15 @@ describe('MarkdownViewer scroll tracking', () => {
 
         const headings = viewer._tracker.getHeadings() as Array<{ id: string }>;
 
-        DOM.sink.apply(DOM.source.getElementById(headings[0].id)!, { style: { left: '0px', top: '0px',   width: '10px', height: '10px' } });
+        stageHeading(headings[0].id, 0);
         // The second and third headings sit at the exact same top — two
         // adjacent headings with no content between them, a layout a
         // real clamped scroll-to-end can also produce (see
         // findActiveHeading's own doc comment). Pure top-crossing alone
         // would resolve to whichever of the two comes last in document
         // order, regardless of which one was actually clicked.
-        DOM.sink.apply(DOM.source.getElementById(headings[1].id)!, { style: { left: '0px', top: '200px', width: '10px', height: '10px' } });
-        DOM.sink.apply(DOM.source.getElementById(headings[2].id)!, { style: { left: '0px', top: '200px', width: '10px', height: '10px' } });
+        stageHeading(headings[1].id, 200);
+        stageHeading(headings[2].id, 200);
 
         const listener = vi.fn();
         viewer.on('activeheadingchange', listener);
@@ -414,9 +423,9 @@ describe('MarkdownViewer scroll tracking', () => {
 
         const headings = viewer._tracker.getHeadings() as Array<{ id: string }>;
 
-        DOM.sink.apply(DOM.source.getElementById(headings[0].id)!, { style: { left: '0px', top: '100px', width: '10px', height: '10px' } });
-        DOM.sink.apply(DOM.source.getElementById(headings[1].id)!, { style: { left: '0px', top: '600px', width: '10px', height: '10px' } });
-        DOM.sink.apply(DOM.source.getElementById(headings[2].id)!, { style: { left: '0px', top: '900px', width: '10px', height: '10px' } });
+        stageHeading(headings[0].id, 100);
+        stageHeading(headings[1].id, 600);
+        stageHeading(headings[2].id, 900);
 
         viewer.setScrollTop(500);
         viewer.handleNativeScroll();
