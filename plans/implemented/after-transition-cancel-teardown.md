@@ -625,3 +625,50 @@ classes, and `Animation` is a namespace.
     long as the node lives and a late `removeListener` against it is valid.
     The registration is harmless there: `unregisterTransition` from `finish`
     or `cancel` clears the map entry either way.
+
+---
+
+## Implementation Notes
+
+Four departures from the plan as written, all recorded rather than designed
+around.
+
+**Step 9's first grep expects 2 and the file now holds 3.** The pattern
+`removeListener(el, "transitionend"` is unanchored, so it also matches
+`play`'s own removal at `Animation.ts:148` — `DOM.sink.removeListener(el,
+"transitionend",   finish);` — which the plan's count overlooked; the base
+commit already returned 2 for it, not 1. The substance the step checks is
+unchanged and was verified directly: `afterTransition`'s body holds exactly
+two, one in `cancel` and one in `finish`. *Verification* step 8 carries the
+same off-by-one.
+
+**Step 8's C37 entry no longer ends where the plan says.** The plan describes
+it as ending at `:364` with "Place it in a later correctness batch.", but
+`d2e8c937` (*Correct C37's soundness premise, which I also had wrong*) had
+already replaced that tail while this plan was being written; the entry now
+ends at `:373`. The "Fixed by" marker was appended after that current last
+line, in the marker style the plan cites.
+
+**A changelog entry was added, which the plan's Documentation Impact did not
+call for.** That section checked the narrative docs and correctly found
+nothing to change, but it did not consider
+`packages/lib/docs/reference/changelog/next.md`, where the directly analogous
+`play` fix recorded itself one branch earlier (`13edc684`, *Record
+Animation.play's listener removal in the changelog*). A consumer-visible
+narrowing of a documented promise is exactly what that file carries, so the
+sibling entry was written immediately below `play`'s.
+
+**Three comments the change falsified were corrected.** `PendingTransitions.ts`'s
+header described the registry as holding "the cancel functions of the
+`Animation.play` transitions", which this change makes untrue — that file is
+therefore edited although it is not in the plan's Files table. The two test
+files' headers were narrowed the same way: `Animation.test.ts`'s said
+"cancel() disarms it without touching the DOM" (already falsified for `play`
+by the merged C15 fix, and now falsified twice over, one line above a case
+asserting the opposite), and `DisposedPendingTransition.test.ts`'s described
+its subject as `Animation.play` transitions alone. `REPEATED_PLAY_COUNT`'s
+own comment now reads "assertions" rather than "assertion", since the growth
+case in step 2 is a second user of it.
+
+No deviation was needed in the fix itself: *Internal Structure*'s body was
+applied verbatim.
