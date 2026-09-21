@@ -1079,6 +1079,22 @@ page resets to empty.
   into a field should format it the way the field does. `TimeField` is
   unchanged.
 
+- **The table's date, time and date-time cell editors no longer commit a
+  value the typed text never named.** They parsed typed text through `new
+  Date`, so a date cell committed `2025-02-30` as 2 March and `2026` as
+  1 January, a date-time cell read a date with no time as UTC midnight, and a
+  time cell rolled `25:00` into 01:00 the next day. Each editor now reads its
+  text with the rule its form-field sibling uses — `DateField`'s complete,
+  zero-padded `YYYY-MM-DD`, `TimeField`'s `H:MM[:SS]`, and `DateTimeField`'s
+  two joined by whitespace. A rejected entry reverts the cell to its previous
+  value on commit, without a `commit` event, exactly as unparseable text
+  already did in `DateCell`, `TimeCell` and `DateTimeCell`. A `date`, `time`
+  or `datetime` row of a `cellType` column, which used to write `null` for any
+  text its editor could not parse, now reverts the same way. The date-time
+  editor starts accepting an unpadded time such as `9:5` and stops accepting a
+  `T` separator or a `Z`/offset suffix; the time editor stops accepting a bare
+  hour such as `9`. None of those is a form the editors display.
+
 - **A `Canvas` or `WebGLCanvas` with no rendering context no longer schedules
   animation frames.** The loop was gated on the consumer's intent and the
   surface's effective visibility, never on whether there was anything to draw
