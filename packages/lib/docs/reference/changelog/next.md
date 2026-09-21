@@ -1095,6 +1095,16 @@ page resets to empty.
   `T` separator or a `Z`/offset suffix; the time editor stops accepting a bare
   hour such as `9`. None of those is a form the editors display.
 
+- **A date before the year 1000 now displays with a four-digit year.**
+  `DateField`, `DateTimeField` and the table's date and date-time cell editors
+  wrote the year 999 as `999-01-01`, but they read typed dates back with
+  exactly four year digits, so the text a field displayed for such a date
+  could not be read back and editing it cleared the field. The year is now
+  zero-padded to four digits (`0999-01-01`), so the displayed text parses back
+  to the same date. A year outside 0–9999, which only a programmatic value, a
+  binding or a large relative shorthand can produce, still displays but still
+  cannot be typed back.
+
 - **A `Canvas` or `WebGLCanvas` with no rendering context no longer schedules
   animation frames.** The loop was gated on the consumer's intent and the
   surface's effective visibility, never on whether there was anything to draw
