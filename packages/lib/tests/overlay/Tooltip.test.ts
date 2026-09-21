@@ -343,6 +343,16 @@ function showFor(component: Component): void {
     vi.advanceTimersByTime(HOVER_DELAY_MS);
 }
 
+/**
+ * Invokes the `mouseout` handler `Tooltip.attach` stored for `component`, as
+ * the pointer leaving the component's own element for somewhere outside it.
+ *
+ * @param component - The attached component the pointer leaves.
+ */
+function leave(component: Component): void {
+    (Tooltip as any).attachments.get(component.getId()).mouseoutFn({ relatedTarget: null });
+}
+
 describe('Tooltip.detach — ownership', () => {
     beforeEach(() => {
         vi.useFakeTimers();
@@ -525,5 +535,38 @@ describe('Tooltip.detach — ownership', () => {
         Tooltip.detach(never);
 
         expect((Tooltip as any).instance).toBe(null);
+    });
+
+    it('12. leaving B leaves the tooltip that is visible for A on screen', () => {
+        const { a, b } = twoAttached();
+
+        showFor(a);
+
+        leave(b);
+
+        expect((Tooltip as any).dismissing).toBe(false);
+        expect((Tooltip as any).activeElement).toBe(a.getElement());
+    });
+
+    it('13. leaving B leaves the hover delay A armed running', () => {
+        const { a, b } = twoAttached();
+
+        hoverOver(a);
+
+        leave(b);
+
+        expect((Tooltip as any).showTimer).not.toBe(null);
+        expect((Tooltip as any).pendingId).toBe(a.getId());
+    });
+
+    it('14. leaving A dismisses the tooltip that is visible for A', () => {
+        const { a } = twoAttached();
+
+        showFor(a);
+
+        leave(a);
+
+        expect((Tooltip as any).dismissing).toBe(true);
+        expect((Tooltip as any).activeElement).toBe(null);
     });
 });
