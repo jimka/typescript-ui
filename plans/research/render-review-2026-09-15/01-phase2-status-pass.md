@@ -383,6 +383,10 @@ handle, so `Component.destructor` cancels before releasing it.**
 to any plan, so left alone under the surgical-changes rule — recorded here
 so it is not lost.
 
+**Fixed by `plans/doc-and-qa-record-drift.md` (2026-09-21): the row is
+gone, and `ButtonGroup` gains no getter — no consumer needs one, and the
+`"selection"` event already hands its listeners the button.**
+
 ## Follow-ups the phase 2 implementation surfaced
 
 Recorded 2026-09-21, from implementing the eleven plans. None blocked its
@@ -409,7 +413,8 @@ branch; each was left deliberately rather than missed.
   the value, so making it user-only means giving it a dispatch of its own and
   changing its listener's argument.
 - **`MiscPanel.ts:781`'s demo comment** still carries the stale "never touches
-  a pending edit" claim the doc-gaps branch corrected everywhere else.
+  a pending edit" claim the doc-gaps branch corrected everywhere else. **Fixed
+  by `doc-and-qa-record-drift` (2026-09-21).**
 
 **Test-suite health, all pre-existing and confirmed on `master`:**
 

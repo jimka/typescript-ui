@@ -43,11 +43,13 @@ self-contained QA app:
   Linux is the same WebKitGTK engine inside the host Loom ships in; on
   Windows and macOS it is a different engine. Frame times are compared within
   a host, never across.
-- **Loom's `qa/` stays as it is** until the QA app's Loom-like panels (the
+- ~~**Loom's `qa/` stays as it is** until the QA app's Loom-like panels (the
   deep and shallow app layouts standing in for S1 and S3) have their own
-  baselines; a small Loom plan then removes it. The campaign's recorded
-  numbers were measured in Loom's real shell and do not carry over to a
-  panel.
+  baselines; a small Loom plan then removes it.~~ — **settled 2026-09-21:
+  Loom's harness is retired.** `shell-deep` and `shell-shallow` recorded
+  their S1 and S3 stand-in baselines on 2026-09-20 under both hosts, and a
+  separate Loom plan removes Loom's `qa/`. The campaign's recorded numbers
+  were measured in Loom's real shell and do not carry over to a panel.
 
 Plans, in order: `qa-app` (the app, the runner's host switch, one chart
 validation panel reproducing 26 F26.1), then `qa-app-tauri` and
@@ -130,7 +132,7 @@ go-ahead.
 **Before planning, a W3.0 bounding sweep**, as W2.0 did for wave 2: a fresh
 baseline, then a same-session interleaved A/B per candidate, scored on work
 avoided as well as milliseconds, gated on geometry equality in a deep and a
-shallow scene — in the QA app's panels, and in Loom while its harness remains.
+shallow scene — in the QA app's panels.
 Every ceiling in the synthesis was measured
 before three waves landed, and G15 showed a group can be absorbed by an
 earlier one without anyone noticing.
