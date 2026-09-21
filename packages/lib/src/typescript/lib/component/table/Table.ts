@@ -522,12 +522,15 @@ class Table extends Component<TableOptions> {
      * the store — a client-side quick search over an already-loaded grid.
      * Cleared by passing `null`.
      *
-     * Display-only: never touches {@link getStore}'s records,
-     * {@link getSelectedRecords}, or any pending edit. The predicate is
-     * re-applied automatically on every trigger that already re-renders the
-     * body — scrolling, a store `'datachange'` / `'add'` / `'remove'` /
-     * `'load'`, or a column show/hide — so calling this again is only
-     * needed when the predicate itself changes.
+     * Display-only: never removes a record from {@link getStore} and never
+     * changes {@link getSelectedRecords}. It can still end an open in-grid
+     * edit: if re-applying the predicate binds the edited cell's row to a
+     * different record, that edit is committed onto the record it was
+     * opened against first. The predicate is re-applied automatically on
+     * every trigger that already re-renders the body — scrolling, a store
+     * `'datachange'` / `'add'` / `'remove'` / `'load'`, or a column
+     * show/hide — so calling this again is only needed when the predicate
+     * itself changes.
      *
      * Neutralized while {@link getDisplayMode} is `"rotated"`: the
      * projection's rows are one per source field of a single displayed
@@ -570,8 +573,11 @@ class Table extends Component<TableOptions> {
      * even one whose column is `filterable: false` or offers no Contains
      * operator; an empty array searches nothing, so no row matches.
      *
-     * Display-only: never touches {@link getStore}'s records,
-     * {@link getSelectedRecords}, or any pending edit. Composes with
+     * Display-only: never removes a record from {@link getStore} and never
+     * changes {@link getSelectedRecords}. It can still end an open in-grid
+     * edit: re-applying the search can bind the edited cell's row to a
+     * different record, which commits that edit onto the record it was
+     * opened against first. Composes with
      * {@link setRowVisible} via AND — a row renders only when both agree — and
      * setting one never clears the other. Neutralized while
      * {@link getDisplayMode} is `"rotated"` and resumes on return to

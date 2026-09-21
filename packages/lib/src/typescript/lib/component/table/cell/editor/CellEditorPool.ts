@@ -68,8 +68,10 @@ export class CellEditorPool {
      * @remarks An editor already cached for the key is disposed and dropped, so the new factory
      * runs on the next call to {@link CellEditorPool.acquire}. The dropped editor can be the one
      * a cell is editing in right now — `Table.setDisplayMode` re-registers every combo column's
-     * factory — so that cell's open edit is committed before the editor goes. A key with no
-     * cached editor, the setup-time case, commits and disposes nothing.
+     * factory — so an open edit is committed before the editor goes. That commit is not narrowed
+     * to the dropped key: the pool tracks one active cell at a time, so a cell editing in another
+     * key's editor is committed too. A key with no cached editor, the setup-time case, commits
+     * and disposes nothing.
      */
     register(key: string, factory: CellEditorFactory): this {
         const cached = this._editors.get(key);
