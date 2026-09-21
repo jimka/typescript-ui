@@ -255,3 +255,17 @@ say so; the rest are open.
   README records `park`, the sidebar drag and `theme:4` only. S2, S4 and
   the search scenarios have no stand-in at all. W3.0's fresh baseline must
   include `grip=dock-h`.
+- **`FieldDecorator`'s error is invisible to assistive technology** — open,
+  a non-goal of `field-decorator-pointer-tooltip`. There is no
+  `aria-invalid`, no `aria-describedby`/`aria-errormessage`, and no tooltip
+  `role`, and keyboard focus does not reveal the error. The fix needs a
+  persistent message element per decorator and `Aria` setters the library
+  does not have.
+- **`Tooltip.attach` never arms over a composite field's parts** — open, a
+  non-goal of `field-decorator-pointer-tooltip`. A tooltip on `DateField`,
+  `TimeField`, `NumberSpinner` or `Toggle` does not show over their inputs,
+  buttons or track, nor one on `Checkbox` over its box, because the parts
+  cover the host and `attach` listens on the host's own element only.
+  `LabeledGrid`'s field descriptions hit this. The fix needs a
+  nearest-tooltip-wins subtree mode, not the covering mode the decorator
+  fix adds for its error.
