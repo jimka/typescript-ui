@@ -5,13 +5,16 @@ import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Favicon, DEFAULT_FAVICON } from "~/core/Favicon.js";
 import { ThemeManager } from "~/core/Theme.js";
+import { whenFontActivated } from "~/core/FontActivation.js";
 
 /**
  * Options for the singleton {@link Body}.
  *
  * @category Core
  */
-export interface BodyOptions extends ComponentOptions {
+export interface BodyOptions extends Omit<ComponentOptions, "components"> {
+    // `components` is omitted: the tree must be built after `init` resolves,
+    // not passed to the call that starts the startup font wait.
     /**
      * Browser-tab icon. A URL or `data:` URI installs that icon; `false`
      * suppresses injection entirely. Omitted, the library's built-in mark is
@@ -32,13 +35,19 @@ export interface BodyOptions extends ComponentOptions {
 /**
  * A {@link Component} that wraps the page's `<body>` element.
  *
- * Mount a top-level layout in one call:
+ * Mount a top-level layout in one call, then build and add the tree once the
+ * bootstrap resolves:
  * ```
- * Body.init({ layoutManager: Fit(), components: [shell] });
+ * const body = await Body.init({ layoutManager: Fit() });
+ *
+ * body.addComponent(shell);
  * ```
  *
  * Once mounted, reach the singleton again with `Body.getInstance()` — to add a
  * further child, read the layout manager, or attach a listener.
+ * `getInstance()` does not wait for the font: call it only after `init` has
+ * resolved, or where reaching an already-mounted body is genuinely all that is
+ * needed.
  *
  * @category Core
  */
@@ -53,6 +62,11 @@ export class Body extends Component<BodyOptions> {
      * top-level layout in one call, use `Body.init` instead.
      *
      * @returns The single shared Body component for this page.
+     *
+     * @remarks Does not wait for the startup web font — it hands back a usable
+     * body immediately, even before `Body.init`'s promise has resolved. A tree
+     * built from this accessor before then is measured against the browser's
+     * fallback face; the `loadingdone` re-measure still corrects it afterwards.
      */
     static getInstance(): Body {
         if (!Body.instance) {
@@ -63,30 +77,35 @@ export class Body extends Component<BodyOptions> {
     }
 
     /**
-     * Applies an options bag to the singleton Body and returns it — the
-     * ergonomic entry point for mounting a top-level layout in one call:
-     * `Body.init({ layoutManager: Fit(), components: [shell] })`. Only the
-     * supplied fields are dispatched (it delegates to
+     * Applies an options bag to the singleton Body and resolves with it — the
+     * awaited startup bootstrap: `const body = await Body.init({ layoutManager:
+     * Fit() })`. Only the supplied fields are dispatched (it delegates to
      * `Component.applyOptions`), so the body's viewport-size tracking and
-     * theme set up at construction are preserved.
+     * theme set up at construction are preserved. Build and add the component
+     * tree only after the returned promise resolves — see the class doc.
      *
      * Also installs the browser-tab icon, unless the page already declares a
      * `<link rel="icon">` of its own or `options.favicon` is `false`, and
      * suppresses the browser's native right-click menu page-wide, unless
      * `options.nativeContextMenu` is `true`.
      *
-     * @param options - Component options to apply (layout manager, children, …).
+     * @param options - Component options to apply (layout manager, background,
+     *   …); `components` is not a field — see {@link BodyOptions}.
      *
-     * @returns The singleton Body instance, for chaining.
+     * @returns A promise for the singleton Body instance, resolving once the
+     *   active theme's web font is active or a bounded deadline expires. A
+     *   later call, once one has already resolved, resolves immediately.
      *
      * @remarks Re-binds the style and attribute buffers to the current body
      * element before dispatching `options` — see
      * `Component.reattachElementBuffers`. The singleton is constructed on the
      * first `init` / `getInstance` call and then lives for the page, so this
      * only matters when the underlying DOM has been swapped since construction
-     * (a test harness); it is a no-op rebind otherwise.
+     * (a test harness); it is a no-op rebind otherwise. Everything up to the
+     * `await` runs synchronously on the calling tick, so a caller that does not
+     * await the returned promise still gets its options applied immediately.
      */
-    static init(options: BodyOptions = {}): Body {
+    static async init(options: BodyOptions = {}): Promise<Body> {
         const instance = Body.getInstance();
 
         instance.reattachElementBuffers();
@@ -107,6 +126,8 @@ export class Body extends Component<BodyOptions> {
         if (options.nativeContextMenu === undefined) {
             instance.setNativeContextMenu(false);
         }
+
+        await whenFontActivated();
 
         return instance;
     }

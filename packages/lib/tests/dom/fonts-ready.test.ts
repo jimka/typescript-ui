@@ -128,13 +128,8 @@ describe('ProductionDOMSource.startFontLoad', () => {
 });
 
 describe('Body — web font download', () => {
-    afterEach(async () => {
+    afterEach(() => {
         Reflect.deleteProperty(document, 'fonts');
-
-        // Constructing the body arms the startup gate in its own fresh
-        // module graph; release that copy, the way the gate cases below do.
-        const { releaseFirstLayout } = await import('~/core/FirstLayoutGate');
-        releaseFirstLayout();
         vi.resetModules();
     });
 
@@ -165,53 +160,52 @@ describe('Body — web font download', () => {
     });
 });
 
-describe('ThemeManager — startup layout gate', () => {
-    afterEach(async () => {
+describe('ThemeManager — startup font wait', () => {
+    afterEach(() => {
         Reflect.deleteProperty(document, 'fonts');
-
-        // Each case below arms a *fresh* module graph's gate, so releasing the
-        // statically-imported one would leave that copy held. Reach the current
-        // graph's copy the same way the cases do.
-        const { releaseFirstLayout } = await import('~/core/FirstLayoutGate');
-        releaseFirstLayout();
         vi.resetModules();
     });
 
-    it('arms the gate when a font load really started', async () => {
+    it('settles on loadingdone', async () => {
         const fontSet = installIdleFontSet();
 
         vi.resetModules();
         const { ThemeManager: FreshThemeManager, ModernTheme: FreshModernTheme } = await import('~/core/Theme');
-        // The gate must come from the same fresh graph the theme module just
+        // The wait must come from the same fresh graph the theme module just
         // touched — a statically-imported copy is a different module instance
         // with its own state.
-        const { isFirstLayoutHeld } = await import('~/core/FirstLayoutGate');
+        const { isFontActivated } = await import('~/core/FontActivation');
 
         FreshThemeManager.setTheme(FreshModernTheme);
 
         expect(fontSet.loadCalls).toEqual(['14px "Manrope Variable"']);
-        expect(isFirstLayoutHeld()).toBe(true);
+        expect(isFontActivated()).toBe(false);
+
+        fontSet.completeLoadBatch();
+
+        expect(isFontActivated()).toBe(true);
     });
 
-    it('leaves the gate open when the engine cannot load fonts asynchronously', async () => {
+    it('settles at once when the engine cannot load fonts asynchronously', async () => {
         Reflect.deleteProperty(document, 'fonts');
 
         vi.resetModules();
         const { ThemeManager: FreshThemeManager, ModernTheme: FreshModernTheme } = await import('~/core/Theme');
-        const { isFirstLayoutHeld } = await import('~/core/FirstLayoutGate');
+        const { isFontActivated } = await import('~/core/FontActivation');
 
         FreshThemeManager.setTheme(FreshModernTheme);
 
-        // Nothing would ever release a gate armed here, so it must never close.
-        expect(isFirstLayoutHeld()).toBe(false);
+        // Nothing would ever report back for a wait armed here, so it must
+        // settle immediately rather than stall until the deadline.
+        expect(isFontActivated()).toBe(true);
     });
 
-    it('refreshes the text metrics before it opens the gate', async () => {
+    it('refreshes the text metrics before it settles', async () => {
         const fontSet = installIdleFontSet();
 
         vi.resetModules();
         const { ThemeManager: FreshThemeManager, ModernTheme: FreshModernTheme } = await import('~/core/Theme');
-        const { isFirstLayoutHeld } = await import('~/core/FirstLayoutGate');
+        const { isFontActivated } = await import('~/core/FontActivation');
         const { Util: FreshUtil } = await import('~/core/Util');
 
         FreshThemeManager.setTheme(FreshModernTheme);
@@ -219,32 +213,136 @@ describe('ThemeManager — startup layout gate', () => {
 
         const generationBeforeSwap = FreshUtil.textMetricsGeneration();
 
-        // Guards against this case passing vacuously on a build where the gate
-        // is never armed in the first place.
-        expect(isFirstLayoutHeld()).toBe(true);
+        // Guards against this case passing vacuously on a build where the wait
+        // is already settled by this point.
+        expect(isFontActivated()).toBe(false);
 
-        // Sample the gate from inside the re-measure. `reflowText` fans out to
+        // Sample the wait from inside the re-measure. `reflowText` fans out to
         // the theme listeners, so this runs mid-refresh — the one vantage point
         // from which the two steps are distinguishable. Registered after
         // `setTheme`, whose own tail reflow would otherwise fire it early.
-        let heldDuringRefresh: boolean | null = null;
-        FreshThemeManager.onThemeChange(() => { heldDuringRefresh = isFirstLayoutHeld(); });
+        let activatedDuringRefresh: boolean | null = null;
+        FreshThemeManager.onThemeChange(() => { activatedDuringRefresh = isFontActivated(); });
 
         fontSet.completeLoadBatch();
 
         // The order is the assertion, not just the end state: the refresh has
-        // to see a still-held gate, so the flush the release frees can never
-        // run against text sizes cached before the font activated.
-        expect(heldDuringRefresh).toBe(true);
+        // to see a still-unsettled wait, so the awaited bootstrap it resolves
+        // can never run against text sizes cached before the font activated.
+        expect(activatedDuringRefresh).toBe(false);
         expect(FreshUtil.textMetricsGeneration()).toBeGreaterThan(generationBeforeSwap);
-        expect(isFirstLayoutHeld()).toBe(false);
+        expect(isFontActivated()).toBe(true);
+    });
+
+    it('settles on the deadline', async () => {
+        vi.useFakeTimers();
+
+        try {
+            // A batch that never completes: `completeLoadBatch` is deliberately
+            // never called, so only the deadline can settle the wait.
+            installIdleFontSet();
+
+            vi.resetModules();
+            const { ThemeManager: FreshThemeManager, ModernTheme: FreshModernTheme } = await import('~/core/Theme');
+            const { isFontActivated, FONT_ACTIVATION_DEADLINE_MS } = await import('~/core/FontActivation');
+
+            FreshThemeManager.setTheme(FreshModernTheme);
+
+            expect(isFontActivated()).toBe(false);
+
+            vi.advanceTimersByTime(FONT_ACTIVATION_DEADLINE_MS);
+
+            expect(isFontActivated()).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
+describe('ProductionDOMSource — early-measurement warning', () => {
+    afterEach(() => {
+        Reflect.deleteProperty(document, 'fonts');
+        vi.resetModules();
+    });
+
+    it('warns once when text is measured before the startup font wait settles, and no further after', async () => {
+        const fontSet = installIdleFontSet();
+        const warn    = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        vi.resetModules();
+        const { ThemeManager: FreshThemeManager, ModernTheme: FreshModernTheme } = await import('~/core/Theme');
+        const { ProductionDOMSource: FreshProductionDOMSource } = await import('~/core/DOM');
+
+        FreshThemeManager.setTheme(FreshModernTheme);
+
+        const source = new FreshProductionDOMSource();
+
+        source.measureText('probe');
+        source.measureText('probe');
+
+        expect(warn).toHaveBeenCalledTimes(1);
+
+        fontSet.completeLoadBatch();
+        source.measureText('probe');
+
+        expect(warn).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('Body.init — awaited bootstrap', () => {
+    afterEach(() => {
+        Reflect.deleteProperty(document, 'fonts');
+        vi.resetModules();
+    });
+
+    it('resolves only after the load batch settles', async () => {
+        const fontSet = installIdleFontSet();
+
+        vi.resetModules();
+        const { Body: FreshBody } = await import('~/core/Body');
+
+        let resolved = false;
+        void FreshBody.init({}).then(() => { resolved = true; });
+
+        await settleMicrotasks();
+        expect(resolved).toBe(false);
+
+        fontSet.completeLoadBatch();
+        await settleMicrotasks();
+
+        expect(resolved).toBe(true);
+    });
+
+    it('resolves without waiting when document.fonts is absent', async () => {
+        Reflect.deleteProperty(document, 'fonts');
+
+        vi.resetModules();
+        const { Body: FreshBody } = await import('~/core/Body');
+
+        let resolved = false;
+        void FreshBody.init({}).then(() => { resolved = true; });
+
+        await settleMicrotasks();
+        expect(resolved).toBe(true);
+    });
+
+    it('a second call resolves with the same instance', async () => {
+        installIdleFontSet();
+
+        vi.resetModules();
+        const { Body: FreshBody } = await import('~/core/Body');
+
+        const first  = await FreshBody.init({});
+        const second = await FreshBody.init({});
+
+        expect(second).toBe(first);
     });
 });
 
 describe('ModelledDOMSource.startFontLoad', () => {
     afterEach(() => DOM.reset());
 
-    it('reports no load started, so offline runs never arm the gate', () => {
+    it('reports no load started, so offline runs never wait for activation', () => {
         installTestDOM({
             rootMountOffset: { x: 0, y: 0 },
             viewport:        { width: 1280, height: 800 },

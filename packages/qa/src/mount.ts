@@ -75,10 +75,11 @@ export async function mountPanel(id: string, params: URLSearchParams, tools: Har
         throw new Error(`panel module ${id} not found`);
     }
 
-    const n = parseScale(params.get('n'), module.defaultScale);
+    const body  = await Body.init({ layoutManager: Fit() });
+    const n     = parseScale(params.get('n'), module.defaultScale);
     const build = module.build(n, params);
 
-    Body.init({ layoutManager: Fit(), components: [build.root] });
+    body.addComponent(build.root);
     await waits.painted(build.root, id);
     await waits.settled();
 

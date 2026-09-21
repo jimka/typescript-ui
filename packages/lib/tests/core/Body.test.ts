@@ -3,6 +3,7 @@ import { Body } from '~/core/Body';
 import { Component } from '~/core/Component';
 import { Fit } from '~/layout/Fit';
 import { DOM } from '~/core/DOM';
+import { Favicon } from '~/core/Favicon';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -15,21 +16,58 @@ const CONFIG = {
 };
 
 describe('Body.init', () => {
-    afterEach(() => DOM.reset());
+    afterEach(() => {
+        // Every Body.init(…) call below (favicon left unconfigured) installs
+        // the default favicon as a side effect, and Favicon's own module state
+        // caches the handle it wrote through — a handle that does not resolve
+        // against the fresh table DOM.reset() installs for the next case (see
+        // Favicon._reset()'s doc comment, and tests/core/BodyContextMenu.test.ts,
+        // which guards the same way).
+        Favicon._reset();
+        DOM.reset();
+    });
 
-    it('applies the options bag to the singleton and returns it', () => {
+    it('applies the options bag to the singleton and returns it', async () => {
         installTestDOM(CONFIG);
 
         const fit   = new Fit();
         const child = new Component({});
 
-        const body = Body.init({ layoutManager: fit, components: [child] });
+        const body = await Body.init({ layoutManager: fit });
+        body.addComponent(child);
 
         // init is the one-call entry point: it returns the same singleton
-        // getInstance() hands out, with the supplied layout + children applied.
+        // getInstance() hands out, with the supplied layout applied.
         expect(body).toBe(Body.getInstance());
         expect(body.getLayoutManager()).toBe(fit);
         expect(body.getComponents()).toContain(child);
+    });
+
+    it('B6. resolves with the singleton', async () => {
+        installTestDOM(CONFIG);
+
+        const body = await Body.init({});
+
+        expect(body).toBe(Body.getInstance());
+    });
+
+    it('B7. applies its options synchronously', async () => {
+        installTestDOM(CONFIG);
+
+        const fit = new Fit();
+
+        const pending = Body.init({ layoutManager: fit });
+
+        expect(Body.getInstance().getLayoutManager()).toBe(fit);
+
+        await pending;
+    });
+
+    it('B8. components is not a BodyOptions field', () => {
+        installTestDOM(CONFIG);
+
+        // @ts-expect-error — `components` was removed from `BodyOptions`.
+        Body.init({ components: [new Component({})] });
     });
 });
 
@@ -104,7 +142,7 @@ describe('Body — lazy construction', () => {
         let fired = 0;
         FreshThemeManager.onThemeChange(() => fired++);
 
-        FreshBody.init({ components: [button] });
+        await FreshBody.init({});
 
         expect(subscribedWhileBuilding).toBeGreaterThan(0);
         expect(fired).toBe(1);

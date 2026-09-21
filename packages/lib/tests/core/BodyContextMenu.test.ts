@@ -61,12 +61,12 @@ describe('Body — native context-menu suppression', () => {
 
     // Placed first: only the file's first test observes the singleton before
     // any configuration has touched it.
-    it('reports the effective value through every transition', () => {
+    it('reports the effective value through every transition', async () => {
         installTestDOM(CONFIG);
 
         expect(Body.getInstance().getNativeContextMenu()).toBe(false);
 
-        const body = Body.init({ nativeContextMenu: true });
+        const body = await Body.init({ nativeContextMenu: true });
         expect(body.getNativeContextMenu()).toBe(true);
 
         body.setNativeContextMenu(false);
@@ -125,9 +125,9 @@ describe('Body — native context-menu suppression', () => {
         expect(contextMenuWrites(sink, 'removeListener')).toBe(0);
     });
 
-    it('round-trips through multiple toggles with the expected sink writes', () => {
+    it('round-trips through multiple toggles with the expected sink writes', async () => {
         const sink = installTestDOM(CONFIG);
-        const body = Body.init({});
+        const body = await Body.init({});
 
         body.setNativeContextMenu(true);
         body.setNativeContextMenu(false);

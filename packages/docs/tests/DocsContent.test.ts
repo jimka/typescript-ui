@@ -60,8 +60,8 @@ let content: DocsContent;
 // Set by mountAndFindScrollPane when a test mounts `content` into the Body
 // singleton — Body outlives every test, so afterEach must explicitly detach
 // `content` from it (removeComponent never disposes) before disposing, or a
-// later test's Body.init call finds this test's now-destroyed content still
-// sitting in Body's children alongside the new one.
+// later test's body.addComponent call finds this test's now-destroyed content
+// still sitting in Body's children alongside the new one.
 let mountedBody: Body | null = null;
 
 beforeEach(() => {
@@ -145,16 +145,17 @@ describe('DocsContent outlinechange', () => {
 
 /**
  * Mounts `content` into a real, connected DOM (mirroring `DocsSidebar.test.ts`'s
- * own `Body.init` + `flushLayout` idiom) and resolves the raw element that
+ * own `Body.init` + `addComponent` + `flushLayout` idiom) and resolves the raw element that
  * `getScrollElement()` reads native `"scroll"` events from: the id-less
  * overlay-scroller div Panel's default `scrollbarStyle: "overlay"` wraps
  * content in, found via its shared `PanelOverlayScroller` class (see
  * `core/Panel.ts`), falling back to the panel's own element if overlay mode
  * never installed (e.g. no measured overflow in jsdom's layout-free DOM).
  */
-function mountAndFindScrollPane(): Element {
-    const body = Body.init({ layoutManager: Fit(), components: [content] });
+async function mountAndFindScrollPane(): Promise<Element> {
+    const body = await Body.init({ layoutManager: Fit() });
 
+    body.addComponent(content);
     mountedBody = body;
     body.flushLayout();
 
@@ -224,12 +225,12 @@ describe('DocsContent activeheadingchange', () => {
     // the pane's fixed top. Scrolling down further is modelled by moving more
     // headings' stubbed tops at-or-below that fixed pane top, not by moving
     // the pane.
-    it('fires with the topmost visible heading id as the pane scrolls', () => {
+    it('fires with the topmost visible heading id as the pane scrolls', async () => {
         mockPage('/scroll-headings', '# Introduction\n\n## Getting Started\n\n### Install\n');
         content = new DocsContent(router);
         content.showPath('/scroll-headings', '');
 
-        const pane = mountAndFindScrollPane();
+        const pane = await mountAndFindScrollPane();
         const listener = vi.fn();
 
         content.on('activeheadingchange', listener);
@@ -255,12 +256,12 @@ describe('DocsContent activeheadingchange', () => {
         expect(listener).toHaveBeenLastCalledWith('getting-started');
     });
 
-    it('does not re-fire when the computed id is unchanged', () => {
+    it('does not re-fire when the computed id is unchanged', async () => {
         mockPage('/scroll-stable', '# Introduction\n\n## Getting Started\n');
         content = new DocsContent(router);
         content.showPath('/scroll-stable', '');
 
-        const pane = mountAndFindScrollPane();
+        const pane = await mountAndFindScrollPane();
         const listener = vi.fn();
 
         content.on('activeheadingchange', listener);
@@ -276,12 +277,12 @@ describe('DocsContent activeheadingchange', () => {
         expect(listener).toHaveBeenCalledTimes(1);
     });
 
-    it('keeps the clicked heading active through the native scroll event it triggers, even when a later heading ties it for the top-crossing position', () => {
+    it('keeps the clicked heading active through the native scroll event it triggers, even when a later heading ties it for the top-crossing position', async () => {
         mockPage('/scroll-pin', '# Introduction\n\n## Getting Started\n\n### Install\n');
         content = new DocsContent(router);
         content.showPath('/scroll-pin', '');
 
-        const pane = mountAndFindScrollPane();
+        const pane = await mountAndFindScrollPane();
         const listener = vi.fn();
 
         content.on('activeheadingchange', listener);

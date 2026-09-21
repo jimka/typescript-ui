@@ -1056,13 +1056,6 @@ class TableBody extends VirtualRowView<Row> {
     protected onScrollerTick(): void {
         this.renderWindow();
 
-        // A pass the startup font gate deferred rendered no rows, so the
-        // mirrors these events drive — the header translate and the pinned-side
-        // body — would be moved to an offset nothing was laid out at.
-        if (this.wasRenderDeferred()) {
-            return;
-        }
-
         if (this._scroller) {
             this.emit("verticalscroll",   this._scroller.getScrollY());
             this.emit("horizontalscroll", this._scroller.getScrollX());
@@ -1104,26 +1097,6 @@ class TableBody extends VirtualRowView<Row> {
     }
 
     /**
-     * Runs a render pass the startup font gate deferred, once a layout reaches
-     * this body again.
-     *
-     * @returns This body, for method chaining.
-     *
-     * @remarks Unlike `Tree`, this body does not render its window on every
-     * layout — its passes come from the parent table layout and from store
-     * events. The parent layout usually gets there first, calling
-     * `renderWindow` directly with the column widths, which resumes the pass on
-     * its own; this override covers the case where it does not, so a body whose
-     * table is already clean still picks its deferred pass back up.
-     */
-    doLayout(): this {
-        super.doLayout();
-        this.renderWindowIfDeferred();
-
-        return this;
-    }
-
-    /**
      * Recomputes the visible row window, rebinds changed rows from the pool, and hides excess rows.
      *
      * @param bodyWidth - Optional. The total body width in pixels; cached and reused on scroll updates.
@@ -1131,19 +1104,18 @@ class TableBody extends VirtualRowView<Row> {
      */
     renderWindow(bodyWidth?: number, columnWidths?: number[]) {
         // Cache the caller's widths before anything can return early. They come
-        // from the parent layout and from nowhere else, so a pass the startup
-        // font gate defers below would otherwise replay against the zero-width
-        // cache this view starts with. This also means an unmounted body now
-        // records widths (and may invalidate its row geometry) where it used to
-        // return untouched — harmless, since its pool is empty.
+        // from the parent layout and from nowhere else. This also means an
+        // unmounted body now records widths (and may invalidate its row
+        // geometry) where it used to return untouched — harmless, since its
+        // pool is empty.
         this.updateColumnWidthCache(bodyWidth, columnWidths);
 
         // A commit fired mid-render (see `commitEditsOutsideWindow`) cascades
         // back into this method through `store.notifyRecordChanged`; the
         // nested call is dropped rather than queued, both guarded methods
         // commit before they read the state they render from, so the next
-        // (outer) pass sees the up-to-date result. Above the two early
-        // returns below so a nested call still caches any widths it carries
+        // (outer) pass sees the up-to-date result. Above the early return
+        // below so a nested call still caches any widths it carries
         // (`updateColumnWidthCache` already ran) — only the render itself is
         // dropped.
         if (this._reconciling) {
@@ -1155,10 +1127,6 @@ class TableBody extends VirtualRowView<Row> {
             return;
         }
 
-        if (this.deferRenderWhileFirstLayoutHeld()) {
-            return;
-        }
-
         this._reconciling = true;
 
         try {
@@ -1166,15 +1134,6 @@ class TableBody extends VirtualRowView<Row> {
         } finally {
             this._reconciling = false;
         }
-
-        // Applies any scroll offset the startup font gate held back. Unlike
-        // `Tree` there is no post-render work to redo alongside it: every caller
-        // that refreshes this body's active descendant is a user gesture —
-        // focus, click, key — and none of those can land inside the startup
-        // hold, before a single row exists. Outside the guard above: applying a
-        // held offset re-enters `renderWindow` through the scroller's onScroll
-        // hook, and that nested pass has to run.
-        this.finishResumedRender();
     }
 
     /**

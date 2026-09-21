@@ -4,7 +4,6 @@ import { LayoutManager } from "~/layout/LayoutManager.js";
 import { Absolute } from "~/layout/Absolute.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
-import { isFirstLayoutHeld, startFirstLayoutDeadline } from "~/core/FirstLayoutGate.js";
 import { BorderOptions, borderSideWidth, borderToStyle } from "~/primitive/Border.js";
 import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -262,17 +261,6 @@ function reportFlushFailure(stage: string, componentId: string | null, error: un
 
 function flushPendingLayouts() {
     rafHandle = null;
-
-    // Startup font gate: hold the very first flush until the web font has
-    // activated, so no text is committed at a fallback-derived size. The queues
-    // are left intact and retried next frame; the gate opens on activation or
-    // on its own bounded deadline.
-    if (isFirstLayoutHeld()) {
-        startFirstLayoutDeadline();
-        ensureFlushScheduled();
-
-        return;
-    }
 
     const timed   = Diagnostics.isTimingEnabled();
     const started = timed ? performance.now() : 0;
@@ -7710,12 +7698,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      *
-     * @remarks The pass runs synchronously, so like `flushLayout()` it bypasses
-     * the startup hold that keeps the first coalesced flush waiting for the web
-     * font to activate — with the same exception for the virtualised row views,
-     * whose rows stay unrendered until the hold ends. Resuming during startup
-     * can therefore lay this component out against the fallback font; the
-     * font-load re-measure corrects it once the real face arrives.
+     * @remarks The pass runs synchronously, so like `flushLayout()` it can read
+     * geometry measured against the browser's fallback font if the component
+     * is resumed before `Body.init`'s promise has resolved; the font-load
+     * re-measure corrects it once the real face arrives.
      */
     resumeLayout(): this {
         this._layoutPaused = false;
@@ -8042,16 +8028,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      *
-     * @remarks Lays out immediately, so it bypasses the startup hold that keeps
-     * the first coalesced flush waiting for the web font to activate. A caller
-     * that flushes during startup can therefore read geometry measured against
-     * the fallback font. That is the deliberate trade for a synchronous read —
-     * and it is corrected anyway, because the font-load re-measure re-flows
-     * every subscribed component once the real face arrives. The virtualised
-     * row views are the exception: `Tree` and the table body check the hold
-     * inside their own render pass, so flushing one during startup lays out its
-     * frame but leaves its rows unrendered until the hold ends, rather than
-     * rendering them at fallback sizes.
+     * @remarks A tree built before `Body.init`'s promise resolves is measured
+     * against the browser's fallback font; flushing one reads geometry taken
+     * against that fallback, same as any other layout pass run before then.
+     * That is corrected anyway, because the font-load re-measure re-flows
+     * every subscribed component once the real face arrives.
      */
     flushLayout(): this {
         pendingLayouts.delete(this);

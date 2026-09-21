@@ -46,7 +46,7 @@ FocusHistory.enable();
 SpatialNavigation.enable();
 
 let layoutManager = new Tab();
-Body.init({ layoutManager });
+await Body.init({ layoutManager });
 
 // Tab labels carry punctuation and spaces ("Misc.", "Layout I/O"); slugify
 // them into stable URL segments and index them so a route can select by

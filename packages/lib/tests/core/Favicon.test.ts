@@ -101,19 +101,19 @@ describe('Favicon', () => {
         expect(Favicon.install()).toBe(false);
     });
 
-    it('honours a URL override', () => {
+    it('honours a URL override', async () => {
         const sink = installTestDOM(CONFIG);
 
-        const body = Body.init({ favicon: '/brand.svg' });
+        const body = await Body.init({ favicon: '/brand.svg' });
 
         expect(iconWrites(sink)).toEqual(['/brand.svg']);
         expect(body.getFavicon()).toBe('/brand.svg');
     });
 
-    it('honours the suppress value', () => {
+    it('honours the suppress value', async () => {
         const sink = installTestDOM(CONFIG);
 
-        const body = Body.init({ favicon: false });
+        const body = await Body.init({ favicon: false });
 
         expect(iconWrites(sink)).toEqual([]);
         expect(linkCreations(sink)).toBe(0);

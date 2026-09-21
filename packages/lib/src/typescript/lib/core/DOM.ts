@@ -3,6 +3,7 @@
 import type { TextMeasureOptions, TextMeasureRequest, TextMetrics } from "~/core/Util.js";
 import type { Size } from "~/primitive/Size.js";
 import type { Component } from "~/core/Component.js";
+import { isFontActivated } from "~/core/FontActivation.js";
 
 // Production measurement caches. These live here because the irreducible
 // browser-measurement leaf (the off-screen probe, the canvas metrics context,
@@ -20,6 +21,27 @@ function _applyProbeStyles(element: HTMLElement, styles: Record<string, string>)
     for (const key of Object.keys(styles)) {
         (element.style as any)[key] = styles[key];
     }
+}
+
+// One-shot guard for the early-measurement warning below.
+let _earlyMeasureWarned: boolean = false;
+
+/**
+ * Warns once when a string is measured before the startup font wait settled,
+ * which means it is sized against the browser's fallback face and will move
+ * when the real one arrives.
+ */
+function _warnEarlyMeasure(): void {
+    if (_earlyMeasureWarned || isFontActivated()) {
+        return;
+    }
+
+    _earlyMeasureWarned = true;
+
+    console.warn(
+        "typescript-ui: text was measured before the startup font settled, so it is sized against "
+        + "the browser's fallback face. Await Body.init(...) before building components.",
+    );
 }
 
 /**
@@ -2217,6 +2239,8 @@ export class ProductionDOMSource implements DOMSource {
 
     /** @inheritDoc */
     measureText(text: string, options: TextMeasureOptions = {}): TextMetrics {
+        _warnEarlyMeasure();
+
         const {
             fontFamily  = "var(--ts-ui-font-family, system-ui, sans-serif)",
             fontSize    = "var(--ts-ui-font-size, 14px)",
@@ -2269,6 +2293,8 @@ export class ProductionDOMSource implements DOMSource {
 
     /** @inheritDoc */
     measureTextWidths(texts: string[], options: TextMeasureOptions = {}): number[] {
+        _warnEarlyMeasure();
+
         if (texts.length === 0) {
             return [];
         }
@@ -2313,6 +2339,8 @@ export class ProductionDOMSource implements DOMSource {
 
     /** @inheritDoc */
     measureTexts(requests: TextMeasureRequest[]): TextMetrics[] {
+        _warnEarlyMeasure();
+
         if (requests.length === 0) {
             return [];
         }

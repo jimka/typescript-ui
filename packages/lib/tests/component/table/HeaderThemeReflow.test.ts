@@ -151,10 +151,10 @@ describe('Header column window — theme reflow', () => {
     it('is re-fitted by the next full layout pass, mounted in the real Body', async () => {
         const table = await singleColumnTable();
 
-        Body.init({ layoutManager: new Fit(), components: [table] });
+        (await Body.init({ layoutManager: new Fit() })).addComponent(table);
 
-        // The first layout is held pending font activation; `flushLayout` is
-        // the documented synchronous bypass.
+        // The frame that would carry the first layout is mocked out in this
+        // file; `flushLayout` is the documented synchronous bypass.
         Body.getInstance().flushLayout();
 
         const cell   = table.getHeader().getColumns()[0] as HeaderCell;
