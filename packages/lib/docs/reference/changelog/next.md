@@ -1228,6 +1228,15 @@ page resets to empty.
   the captured children by identity, and the first tab is recorded when none
   of them is active. A state saved before this change restores as it did.
 
+- **Restoring a `Tab` arrangement whose factory no longer supplies a panel
+  ahead of the active tab now keeps the saved tab active.** `restoreLayout`
+  skips a saved child its `LayoutFactory` yields nothing for, but applied the
+  saved active index unchanged, so each skipped child ahead of the active one
+  moved the selection one tab to the right. The index is now re-aligned to the
+  tabs actually placed, as the `Split` branch already re-aligns its ratios and
+  collapsed flags. When the active panel is itself skipped, the tab that slid
+  into its slot becomes active.
+
 ### Overlay
 
 - **A modal [`Dialog`](/components/Dialog)'s Tab trap no longer takes `Tab`
