@@ -535,9 +535,9 @@ function materializeNode(node: LayoutNode, parked: Map<string, Component>, facto
  * Gives a container a fresh `Split`/`Tab` manager matching `node`, re-homes the
  * node's resolvable children into it in order, then applies the recorded
  * geometry (pane ratios + collapsed flags, or the active tab). Children whose
- * factory yields nothing are dropped, and the ratio/collapsed arrays are
- * re-aligned to the panes that actually landed so a missing leaf doesn't skew
- * the rest.
+ * factory yields nothing are dropped, and the ratio/collapsed arrays — or a tab
+ * node's active index — are re-aligned to the children that actually landed so
+ * a missing leaf doesn't skew the rest.
  *
  * @param container - The container to populate.
  * @param node - The split or tab node describing it.
@@ -571,7 +571,13 @@ function populateContainer(container: Component, node: SplitNode | TabNode, park
         const tab = new Tab({ reorderable: true, compact: true });
         container.setLayoutManager(tab);
 
-        node.children.forEach(child => {
+        // The saved index counts every saved child, but the strip holds only
+        // the children that were placed: each one skipped ahead of the active
+        // child moves it one slot left. This is the re-alignment the split
+        // branch gives its ratios through `placed`.
+        let activeIndex = node.activeIndex;
+
+        node.children.forEach((child, index) => {
             const built = materializeNode(child, parked, factory);
 
             if (built) {
@@ -583,10 +589,12 @@ function populateContainer(container: Component, node: SplitNode | TabNode, park
                 // public synchronous registration (doLayout's catch-up then skips
                 // the now-owned child).
                 tab.createTab(built);
+            } else if (index < node.activeIndex) {
+                activeIndex--;
             }
         });
 
-        tab.setActiveTabIndex(node.activeIndex);
+        tab.setActiveTabIndex(activeIndex);
     }
 }
 

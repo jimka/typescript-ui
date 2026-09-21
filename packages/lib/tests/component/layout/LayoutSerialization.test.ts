@@ -8,7 +8,7 @@ import { Component } from '~/core/Component';
 import { Split } from '~/layout/Split';
 import { Tab } from '~/layout/Tab';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
-import { serializeLayout, restoreLayout, type LayoutFactory, type TabNode } from '~/layout/LayoutSerialization';
+import { serializeLayout, restoreLayout, type LayoutFactory, type LayoutState, type TabNode } from '~/layout/LayoutSerialization';
 import { Glyph } from '~/component/display/Glyph';
 import { circle_check } from '~/glyphs/solid/circle_check';
 import { DOM } from '~/core/DOM';
@@ -692,5 +692,98 @@ describe('serializeLayout of a Tab: the active index names the active child', ()
 
         expect(root.children.length).toBe(2);
         expect(root.activeIndex).toBe(0);
+    });
+});
+
+// A factory that no longer supplies a saved panel makes the restore skip it.
+// The saved active index counts every saved child, so each child skipped ahead
+// of the active one moves it one slot left in the strip that is built.
+describe('restoreLayout of a Tab node with a skipped leaf', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        DOM.reset();
+    });
+
+    /**
+     * Restores a hand-built Tab state onto a fresh, sized Tab host, with a
+     * factory that supplies only the `kept` ids. The warning each skipped id
+     * raises is silenced.
+     *
+     * @param saved - The saved children's panel ids, in order.
+     * @param activeIndex - The saved active index.
+     * @param kept - The ids the factory still supplies.
+     * @returns The restored Tab's active content, and the components by id.
+     */
+    function restoreSkipping(
+        saved: string[],
+        activeIndex: number,
+        kept: string[],
+    ): { active: Component | null; byId: Record<string, Component> } {
+        installTestDOM(CONFIG);
+
+        const host = new Container({ layoutManager: new Tab() });
+
+        host.getElement(true);
+        host.setWidth(400);
+        host.setHeight(300);
+
+        const byId: Record<string, Component> = {};
+
+        kept.forEach(id => {
+            byId[id] = new Component({});
+            byId[id].setId(id);
+        });
+
+        const state: LayoutState = {
+            version: 1,
+            root:    {
+                kind:     'tab',
+                children: saved.map(panelId => ({ kind: 'panel' as const, panelId, glyph: null })),
+                activeIndex,
+            },
+            windows: [],
+        };
+
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        restoreLayout(host, state, instanceFactory(byId));
+
+        return { active: (host.getLayoutManager() as Tab).getActiveContent(), byId };
+    }
+
+    it('1. a skipped tab ahead of the active one keeps the saved tab active', () => {
+        const { active, byId } = restoreSkipping(['a', 'b', 'c'], 1, ['b', 'c']);
+
+        expect(active).toBe(byId.b);
+    });
+
+    it('2. several skipped tabs ahead of the active one each move it one slot left', () => {
+        const { active, byId } = restoreSkipping(['a', 'b', 'c', 'd', 'e'], 2, ['d', 'e']);
+
+        expect(active).toBe(byId.d);
+    });
+
+    it('3. a skipped tab after the active one leaves the index as saved', () => {
+        const { active, byId } = restoreSkipping(['a', 'b', 'c'], 1, ['a', 'b']);
+
+        expect(active).toBe(byId.b);
+    });
+
+    it('4. a skipped active tab hands the selection to the tab that slid into its slot', () => {
+        const { active, byId } = restoreSkipping(['a', 'b', 'c'], 1, ['a', 'c']);
+
+        expect(active).toBe(byId.c);
+    });
+
+    it('5. a skipped last tab that was active clamps to the new last tab', () => {
+        const { active, byId } = restoreSkipping(['a', 'b', 'c'], 2, ['a', 'b']);
+
+        expect(active).toBe(byId.b);
+    });
+
+    it('6. every tab skipped leaves no active tab and does not throw', () => {
+        const { active } = restoreSkipping(['a', 'b', 'c'], 1, []);
+
+        expect(active).toBe(null);
     });
 });
