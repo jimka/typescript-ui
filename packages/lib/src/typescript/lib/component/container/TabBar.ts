@@ -1709,6 +1709,123 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
+     * The `_entries` index of the cell whose tab button or close ✕ renders as
+     * `element`, or -1 when `element` is neither — focus outside the strip, or
+     * on a strip tool. The ✕ half matters because the ✕ is a member of this
+     * strip's roving group, so keyboard focus can land on it.
+     *
+     * @param element - The element to resolve, typically the active element.
+     *
+     * @returns The matching cell index, or -1.
+     */
+    private entryIndexForElement(element: Handle | null): number {
+        if (element === null) {
+            return -1;
+        }
+
+        return this._entries.findIndex(entry =>
+            entry.button.getElement() === element ||
+            entry.closeButton?.getElement() === element);
+    }
+
+    /**
+     * Hands the roving group's active slot back to a tab button when a removal
+     * left it on a close ✕, moving DOM focus with it. No-op when the active
+     * member is already a tab button, or when the group is empty.
+     *
+     * `RovingTabIndex.remove` activates the member *before* the one it removed
+     * whenever that member was the active one; with each cell's ✕ interleaved
+     * after its own tab button, the member before a cell's tab button is the
+     * previous cell's ✕. Nothing downstream corrects it — the owner's post-close
+     * re-selection goes through {@link setActiveVisual}, which performs no
+     * roving move by design — so without this the strip's single `tabindex="0"`,
+     * and the focus that came with it, would come to rest on a close button.
+     * The ✕'s own cell is the one `remove` meant to land on, so its tab button
+     * is the correct destination.
+     */
+    private moveRovingOffCloseButton(): void {
+        const items  = this._rovingTabIndex.getItems();
+        const active = items[this._rovingTabIndex.getActiveIndex()] ?? null;
+
+        if (active === null) {
+            return;
+        }
+
+        const entry = this._entries.find(entry => entry.closeButton === active);
+
+        if (!entry) {
+            return;
+        }
+
+        const buttonIdx = items.indexOf(entry.button);
+
+        if (buttonIdx >= 0) {
+            this._rovingTabIndex.moveTo(buttonIdx);
+        }
+    }
+
+    /**
+     * Moves the strip's roving stop — and the focus that travels with it — onto
+     * a surviving cell when the cell just removed held the focus without being
+     * the roving-active one.
+     *
+     * `RovingTabIndex.remove` re-activates only when it removes the active
+     * member, and {@link moveRovingOffCloseButton} only corrects the
+     * destination that move picks; neither fires for a merely focused cell.
+     * Interleaving each cell's ✕ into the group made that state reachable by
+     * keyboard — arrow onto a non-active cell's ✕, press Delete — and without
+     * this the caller disposes the focused element and focus falls to the
+     * document body.
+     *
+     * The destination is the cell that slid into the removed one's index, or
+     * the new last cell when the removed one was at the end, matching where
+     * `remove` lands for the active case.
+     *
+     * @param repair - Whether the removed cell held the focus without owning
+     *   the roving stop. False leaves the strip alone.
+     * @param removedIdx - The index the removed cell occupied.
+     */
+    private restoreFocusAfterClose(repair: boolean, removedIdx: number): void {
+        if (!repair || this._entries.length === 0) {
+            return;
+        }
+
+        const survivor = this._entries[removedIdx] ?? this._entries[this._entries.length - 1];
+        const items    = this._rovingTabIndex.getItems();
+        const idx      = items.indexOf(survivor.button);
+
+        if (idx >= 0) {
+            this._rovingTabIndex.moveTo(idx);
+        }
+    }
+
+    /**
+     * Emits `"tabclose"` for the cell at `index` when that cell is focused and
+     * closeable — the Delete half of {@link onToolbarKeyDown}. Reports no
+     * disposition for an unfocused strip or a non-closeable cell, so a Delete
+     * the strip has no action for keeps propagating.
+     *
+     * @param index - The cell index the focused element resolved to, or -1.
+     *
+     * @returns A prevent disposition when a close was emitted; nothing otherwise.
+     */
+    private closeFocusedEntry(index: number): Event.ListenerResult {
+        if (index < 0) {
+            return;
+        }
+
+        const entry = this._entries[index];
+
+        if (!this.isEntryCloseable(entry.id)) {
+            return;
+        }
+
+        this.emit("tabclose", entry.id);
+
+        return { prevent: true };
+    }
+
+    /**
      * Returns the active cell record, or `null` when the strip is empty.
      *
      * @returns The active {@link BarEntry}, or `null`.
@@ -1800,6 +1917,16 @@ class TabBar extends Container<TabBarOptions> {
 
         this._buttonGroup.addButton(tabButton);
         this._rovingTabIndex.add(tabButton);
+
+        // Added right after its own tab button, so the group's member order
+        // matches the strip's DOM order. Membership — not a bare
+        // `setTabIndex(-1)` — is what both removes the ✕'s stray Tab stop and
+        // keeps it reachable, since `SpatialNavigation` recovers a roved-off
+        // member through the marker only `RovingTabIndex.add` writes.
+        if (closeButton) {
+            this._rovingTabIndex.add(closeButton);
+        }
+
         this._tabClip.addItem(tabButton);
 
         tabButton.getAria().setRole("tab");
@@ -1832,9 +1959,29 @@ class TabBar extends Container<TabBarOptions> {
 
         const entry = this._entries[idx];
 
+        // Captured before the removals, which is the last moment either is
+        // knowable: `remove` re-activates only when it takes the active member,
+        // so a cell the user merely focused — arrowing onto a non-active cell's
+        // ✕ and pressing Delete — leaves the roving stop where it was and the
+        // focus on an element this method's caller is about to dispose.
+        const rovingItems     = this._rovingTabIndex.getItems();
+        const rovingActive    = rovingItems[this._rovingTabIndex.getActiveIndex()] ?? null;
+        const wasRovingActive = rovingActive === entry.button || rovingActive === entry.closeButton;
+        const heldFocus       = this.entryIndexForElement(DOM.source.getActiveElement()) === idx;
+
         this._buttonGroup.removeButton(entry.button);
+
+        // Both members go: this method disposes the tab button, and with it the
+        // ✕ it owns, so a ✕ left behind would be a disposed component the group
+        // holds forever.
+        if (entry.closeButton) {
+            this._rovingTabIndex.remove(entry.closeButton);
+        }
+
         this._rovingTabIndex.remove(entry.button);
         this._entries.splice(idx, 1);
+        this.moveRovingOffCloseButton();
+        this.restoreFocusAfterClose(heldFocus && !wasRovingActive, idx);
         this._tabClip.removeItem(entry.button);
 
         // The tooltip attachment is keyed by the button's id in a static map and
@@ -2051,7 +2198,14 @@ class TabBar extends Container<TabBarOptions> {
 
         if (idx >= 0) {
             this._activeId = this._entries[idx].id;
-            this._rovingTabIndex.moveTo(idx);
+
+            // The roving group interleaves each closeable cell's ✕ after its
+            // own tab button, so a cell's entry index is not its member index.
+            const rovingIdx = this._rovingTabIndex.getItems().indexOf(button);
+
+            if (rovingIdx >= 0) {
+                this._rovingTabIndex.moveTo(rovingIdx);
+            }
 
             // Bring the newly-selected tab into view on the next pass. A
             // left-click targets an already-visible tab (a no-op reveal), but a
@@ -3300,14 +3454,15 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Handles ArrowLeft / ArrowRight to move tab focus and activate the adjacent tab.
+     * Handles ArrowLeft / ArrowRight to move tab focus and activate the
+     * adjacent tab, and Delete to close the focused tab.
      *
      * @param e - The keyboard event fired on the strip element.
      */
     private onToolbarKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (SpatialNavigation.claimsKey(e)) { return; }
 
-        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Delete') {
             return;
         }
 
@@ -3317,15 +3472,17 @@ class TabBar extends Container<TabBarOptions> {
             return;
         }
 
-        // A tab can hold DOM focus without being `_activeId` — SpatialNavigation
-        // moves focus onto a TabButton with a direct .focus() call that never
-        // runs through onTabPressed, so `_activeId` can lag behind wherever
-        // focus actually is. Step from whichever tab currently holds focus,
-        // falling back to the active tab only when focus is outside this strip.
-        const focused = DOM.source.getActiveElement();
-        const focusedIdx = focused !== null
-            ? this._entries.findIndex(entry => entry.button.getElement() === focused)
-            : -1;
+        // A cell can hold DOM focus without being `_activeId` — SpatialNavigation
+        // moves focus onto a TabButton (or, now that it is a roving member, onto
+        // a TabCloseButton) with a direct .focus() call that never runs through
+        // onTabPressed, so `_activeId` can lag behind wherever focus actually
+        // is. Step from whichever cell currently holds focus, falling back to
+        // the active tab only when focus is outside this strip.
+        const focusedIdx = this.entryIndexForElement(DOM.source.getActiveElement());
+
+        if (e.key === 'Delete') {
+            return this.closeFocusedEntry(focusedIdx);
+        }
 
         const activeIdx = focusedIdx >= 0
             ? focusedIdx

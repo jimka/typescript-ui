@@ -279,6 +279,11 @@ When one or more tools were registered with a descriptor (see [Tab tools](#tab-t
 a trailing **Tools** submenu lists them, so every strip tool's action is also
 reachable from the keyboard-friendly menu.
 
+The same single-tab close is on the keyboard directly: `Delete`, pressed while
+the tab button or its ✕ holds focus, fires `tabclose` for that tab exactly as
+**Close** does. On a tab that is not `closeable` the key is inert — nothing is
+closed, and the key keeps propagating to whatever else might want it.
+
 ## Tab tools
 
 [`addTool`](/api/layout/classes/Tab#addtool) pins a tool at the far end of

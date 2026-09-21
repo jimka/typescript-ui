@@ -268,7 +268,7 @@ function pruneStaleMemory(): void {
  * ancestorsToDocument} for why the walk is bounded there — recording `origin`
  * against **every** ancestor carrying {@link NAVIGATION_TARGET_ATTR}, not
  * only the nearest, so an outer target's memory is correct too. Mirrors
- * {@link FocusTraversal}'s `findTabKeyOwner` walk.
+ * the `findTabKeyOwner` walk in `core/Focusable.ts`.
  *
  * @param origin - The element being moved away from.
  */

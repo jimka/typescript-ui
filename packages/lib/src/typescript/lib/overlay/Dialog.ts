@@ -25,7 +25,7 @@ import { circle_exclamation } from "~/glyphs/solid/circle_exclamation.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { ThemeManager } from "~/core/Theme.js";
-import { FOCUSABLE_SELECTOR } from "~/core/Focusable.js";
+import { FOCUSABLE_SELECTOR, findTabKeyOwner } from "~/core/Focusable.js";
 
 /**
  * Square edge length used for the dialog's title-bar glyph — the theme's
@@ -1098,6 +1098,26 @@ class Dialog extends Component implements DismissableLayer {
     }
 
     /**
+     * Whether keyboard focus currently sits inside a descendant of this dialog
+     * that has claimed the Tab key for itself — a `CodeEditor`, a
+     * `MarkdownEditor`, a `Table`. The walk is bounded at this dialog's own
+     * element, which carries the same marker for the whole subtree, so the
+     * dialog's own claim never answers for one of its children.
+     *
+     * @returns `true` when a descendant owns Tab, so the focus trap must stand down.
+     */
+    private tabOwnedByDescendant(): boolean {
+        const el     = this.getElement();
+        const active = DOM.source.getActiveElement();
+
+        if (!el || active === null || !DOM.source.contains(el, active)) {
+            return false;
+        }
+
+        return findTabKeyOwner(active, el) !== null;
+    }
+
+    /**
      * Collects all currently focusable elements inside the dialog.
      *
      * @returns An array of focusable elements in DOM order.
@@ -1141,6 +1161,12 @@ class Dialog extends Component implements DismissableLayer {
         }
 
         if (e.key === 'Tab') {
+            // A descendant that owns the Tab key handles it itself — the same
+            // stand-down FocusTraversal performs, reading the same marker.
+            if (this.tabOwnedByDescendant()) {
+                return;
+            }
+
             const focusable = this.getFocusable();
 
             if (focusable.length === 0) {

@@ -38,7 +38,7 @@ The bar emits framework-custom semantic events (`on` / `off`); it never reaches 
 | --- | --- | --- |
 | `"tabpressed"` | `(id)` | A cell was activated — swap content / run lazy-load. |
 | `"reorder"` | `(fromId, toIndex)` | An in-strip reorder committed — re-derive content order from `getEntryIds()`. |
-| `"tabclose"` | `(id)` | A cell's ✕ was clicked — remove the content. |
+| `"tabclose"` | `(id)` | A close was requested for a cell — its ✕ was clicked, `Delete` was pressed while it held focus, or a close item was picked from the right-click menu. Remove the content. |
 | `"dockrequested"` | `(componentId, slot)` | A foreign tab was dropped here — dock the live content keyed by `componentId`. |
 | `"tabdragstart"` | `(id)` | A cell's drag committed — register the live content so a foreign strip's drop can resolve it. |
 | `"tearoffrequested"` | `(id, clientX, clientY, forceBare)` | A cell was released over empty space — tear it off (e.g. into a window). |

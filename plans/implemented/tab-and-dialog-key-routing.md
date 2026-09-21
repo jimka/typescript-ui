@@ -814,3 +814,95 @@ bullets.
     The group's active index always tracks `_activeId`, because `onTabPressed`
     is the only caller that moves it, so this correction fires exactly whenever
     `remove`'s own focus move does.
+
+---
+
+## Implementation Notes
+
+Deviations made while implementing, all small and none of them a redesign.
+
+**Step 4's focus assertion was scoped to the surviving cells.** As written —
+"`DOM.source.getActiveElement()` is a surviving cell's tab button element,
+never a ✕" — the assertion passed before the fix existed: with nothing handling
+`Delete`, focus simply stayed on the tab button it started on, which is a tab
+button and is not a ✕. The test now filters `_entries` to the cells whose id is
+not the closed one before checking membership, so the pre-fix run fails on the
+right thing (focus never left the cell `Delete` was meant to close).
+
+**`[^transient-focus]` is factually wrong, and the code compensates.** The
+footnote holds that a ✕ left holding the roving group's active slot after a
+removal is "corrected in the same call stack … by `Tab.closeEntry`'s own
+re-selection", routing through `setActiveEntry` → `onTabPressed` → `moveTo`. It
+does not: `Tab.selectNextContent` calls `TabBar.setActiveVisual`, which sets the
+pressed state and `_activeId` and performs **no** roving move, by design and by
+its own doc comment. With each ✕ interleaved after its tab button, closing any
+cell but the first therefore left the strip's single `tabindex="0"` — and DOM
+focus — on a close button, on the ✕-click and `removeBarEntry` paths as well as
+on the new `Delete` one. `removeBarEntry` now ends with a
+`moveRovingOffCloseButton` step that hands the active slot back to that ✕'s own
+cell's tab button, which is the cell `RovingTabIndex.remove` meant to land on.
+Two tests in `TabBar.test.ts` pin the contract directly (the group's only
+`tabindex="0"` is a tab button; DOM focus is on one), and step 4's second test
+now closes the *middle* cell — closing the first clamps `Math.max(0, idx - 1)`
+back onto a tab button whatever the group holds, so the assertion could not have
+failed there.
+
+**Step 13's "dialog with no focusable elements" row focuses a plain element,
+not the owner's inner element.** The stand-down is the first statement of the
+`Tab` block, ahead of `getFocusable()`, so a Tab pressed inside an owner never
+reaches the empty-dialog branch at all. Focusing the owner would have made that
+row assert the stand-down a second time rather than the branch it is about.
+
+**Two test helpers were widened.** `Dialog.test.ts`'s `keyDownEvent` gained a
+`prevented()` spy (only `enterEvent` had one, and the dialog table's
+disposition column is `{ stop, prevent }`), and `TabBar.test.ts`'s `barEntries`
+gained the `closeButton` field step 2 reaches for.
+
+**`SpatialNavigation.ts` carries a fourth mention of `findTabKeyOwner`.** Its
+`recordNavigationOrigin` doc comment said "Mirrors `FocusTraversal`'s
+`findTabKeyOwner` walk"; step 15 moved that function, so the reference is now
+to `core/Focusable.ts`. The `## Verification` grep therefore reports four files,
+not three — three code references plus this prose one.
+
+**Step 23's changelog line anchors had drifted.** `## Added` → `### Components`
+is at `:145`, `## Fixed` → `### Components` at `:667` and `## Fixed` →
+`### Overlay` at `:1135`, rather than the `:137` / `:596` / `:955` the plan
+cites; the eight correctness branches already on this chain moved them. The
+bullets went under the named headings.
+
+**The plan's Escape mitigation is only half true, and the docs say so.**
+`## Potential Challenges` answers the keyboard dead-end an owner at a dialog's
+end creates with "The dialog stays dismissable with Escape, which restores focus
+to wherever it was before the dialog opened." That holds only for an ordinary
+dialog: `Dialog.requestClose` returns early when `dismissable` is `false`, so a
+mandatory modal swallows Escape — as `docs/components/Dialog.md`'s own options
+table already stated. Since this is the single mitigation on offer, the new
+*Keyboard* section states the qualified version rather than the plan's, and
+tells the caller to keep a plain control at one end of a mandatory modal.
+
+**No demo was added (Work Instructions step 7).** Neither fix has a demo
+surface to extend: `[^manual-gap]` already records that no demo in
+`packages/docs/src/demos` sets `closeable`, and the dialog change is the
+*absence* of an override rather than anything a demo could show. Both fixes are
+carried by the offline tests, with the manual sweeps left as documented steps.
+
+**Delete on a focused, non-active cell (resolved after the audit cap).** The
+audit's last round found that `Delete` on a cell holding DOM focus without
+owning the roving stop disposed the focused element and dropped focus to
+`<body>`: `RovingTabIndex.remove` re-activates only when it takes the active
+member, and `moveRovingOffCloseButton` only corrects where that move lands, so
+neither fires for a merely focused cell. Interleaving each ✕ into the roving
+group is what made the state reachable by keyboard — arrow onto a non-active
+cell's ✕, press Delete. The plan authorised the key for any focused cell in
+its Delete table while pinning focus only for the focused-*active* case, so
+the gap was the plan's.
+
+**The user chose to extend the focus repair** rather than activate-then-close
+or restrict `Delete` to the active cell, keeping the key working wherever
+focus sits. `restoreFocusAfterClose` moves the roving stop — and the focus
+travelling with it — onto the cell that took the removed one's index, or the
+new last cell when the removed one was at the end, which is where `remove`
+lands for the active case. It is gated on `heldFocus && !wasRovingActive`,
+both captured before the removals, so the existing active-cell path is
+untouched. Two tests pin it, each confirmed red against the un-repaired source
+(`expected [ 2, 14 ] to include 30`, the disposed handle among the survivors).

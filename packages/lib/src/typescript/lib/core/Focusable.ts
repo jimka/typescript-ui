@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { TAB_KEY_OWNER_ATTR } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { LayerManager } from "~/core/LayerManager.js";
@@ -91,6 +92,32 @@ export function* ancestorsBefore(handle: Handle, bound: Handle): Generator<Handl
         h = DOM.source.getParentNode(h)) {
         yield h;
     }
+}
+
+/**
+ * Walks from `handle` up to (and including) `<html>` — see {@link
+ * ancestorsToDocument} for why the walk is bounded there — looking for the
+ * first ancestor marked as owning the Tab key for its own subtree.
+ *
+ * @param handle - The element to start the walk from (typically the focused element).
+ * @param bound - Optional ancestor to stop at. The walk ends there and reports
+ *   nothing, without testing `bound` itself, so a component that claims the Tab
+ *   key for its whole subtree can still ask whether a descendant claims it too.
+ *
+ * @returns The nearest owning ancestor's handle, or `null` when none claims it.
+ */
+export function findTabKeyOwner(handle: Handle, bound?: Handle): Handle | null {
+    for (const h of ancestorsToDocument(handle)) {
+        if (h === bound) {
+            return null;
+        }
+
+        if (DOM.source.hasAttribute(h, TAB_KEY_OWNER_ATTR)) {
+            return h;
+        }
+    }
+
+    return null;
 }
 
 /**
