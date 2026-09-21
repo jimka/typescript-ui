@@ -17,7 +17,7 @@ import { installTestDOM, setQuerySelectorResult, makeEvent } from '../dom/TestDO
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { EditorState, EditorSelection } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
-import { codeFolding, foldEffect } from '@codemirror/language';
+import { codeFolding, foldEffect, ensureSyntaxTree } from '@codemirror/language';
 import { json } from '@codemirror/lang-json';
 import { collectSyntaxErrors } from '~/component/editor/syntaxDiagnostics';
 import type { MenuItemConfig } from '~/component/container/MenuItem';
@@ -2156,8 +2156,31 @@ describe('CodeEditor reveal highlight field', () => {
 });
 
 describe('collectSyntaxErrors', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    // How far each Date.now() read lands past the previous one in the
+    // slow-clock case. Anything above the 20 ms budget CodeMirror gives a new
+    // EditorState's first parse works; 25 clears it by a margin, so that
+    // budget expires at its very first check.
+    const CLOCK_STEP_MS = 25;
+
+    /**
+     * Builds a JSON editor state whose syntax tree is complete.
+     * `EditorState.create` parses for at most 20 ms and keeps whatever tree it
+     * has by then, so on a busy machine a longer document comes back
+     * half-parsed and yields fewer diagnostics. Parsing on with no time limit
+     * and applying one empty transaction publishes the finished tree: the two
+     * moves CodeMirror's own `forceParsing` makes for a view.
+     *
+     * @param doc - The document text.
+     * @returns A state whose `syntaxTree` covers the whole document.
+     */
     function buildJsonState(doc: string): EditorState {
-        return EditorState.create({ doc, extensions: [json()] });
+        const state = EditorState.create({ doc, extensions: [json()] });
+
+        ensureSyntaxTree(state, state.doc.length, Infinity);
+
+        return state.update({}).state;
     }
 
     it('returns [] for valid JSON', () => {
@@ -2209,6 +2232,16 @@ describe('collectSyntaxErrors', () => {
         const diagnostics = collectSyntaxErrors(state);
 
         expect(diagnostics).toHaveLength(100);
+    });
+
+    it('caps at 100 even when every parse budget expires at its first check', () => {
+        let now = 0;
+
+        vi.spyOn(Date, 'now').mockImplementation(() => (now += CLOCK_STEP_MS));
+
+        const doc = Array.from({ length: 250 }, () => ']').join(' ');
+
+        expect(collectSyntaxErrors(buildJsonState(doc))).toHaveLength(100);
     });
 });
 
