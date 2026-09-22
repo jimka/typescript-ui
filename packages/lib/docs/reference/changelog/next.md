@@ -71,6 +71,24 @@ page resets to empty.
 
 ### Core
 
+- **`Component.setTransform()` writes the element's inline style, not the
+  component's stylesheet rule, and composes with `setTranslate()`.** A
+  stylesheet-rule write makes WebKitGTK restyle the whole document even when
+  nothing else changes. Every transform the library changes per event paid
+  that cost: a `DiagramView` pan or zoom frame, a `Toggle` flip, a `ComboBox`
+  or `SplitButton` caret turning. The element's transform is now one inline
+  value: `setTranslate()`'s `translate3d(x, y, 0)`, then the `setTransform()`
+  value. So the two no longer mask each other; before, a translate hid the
+  transform for as long as it was set. The exceptions are `none` and the
+  CSS-wide keywords (`inherit`, `initial`, `unset`, `revert`), which CSS takes
+  only on their own: while a translate is set they add nothing, exactly as the
+  screen showed before, when the inline translate won over the rule.
+  `getTransform()` still returns the value last passed to `setTransform()`.
+  One consequence: a `transform` declared in a per-instance state rule (the
+  `styleRules` option, for example `:hover`) no longer overrides a
+  `setTransform()` value, because inline style outranks every rule. Set such a
+  transform with `setTransform()` from the state's own event instead.
+
 - **The `Body` singleton is constructed on the first `Body.init()` /
   `Body.getInstance()` call**, not when `@jimka/typescript-ui/core` is
   imported, so every entry point now imports where there is no DOM — a
