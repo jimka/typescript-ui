@@ -107,20 +107,21 @@ function showCursor(position: CodeEditorCursorPosition): void {
  *
  * @param r - The dock region's index.
  * @param t - The tab's index in its region.
- * @returns The page and its editor.
+ * @returns The page, its editor and its header.
  */
-function page(r: number, t: number): { page: Component; editor: Component } {
+function page(r: number, t: number): { page: Component; editor: Component; header: Component } {
     const editor = CodeEditor(codeDocument(EDITOR_LINES), { language: 'javascript', listeners: { cursorchange: showCursor } });
+    const header = Header(`src/file${r}.${t}.ts`);
 
     const content = Panel({
         layoutManager: Border(),
         components: [
-            { component: Header(`src/file${r}.${t}.ts`), constraints: { placement: Placement.NORTH } },
+            { component: header, constraints: { placement: Placement.NORTH } },
             { component: editor, constraints: { placement: Placement.CENTER } },
         ],
     });
 
-    return { page: content, editor };
+    return { page: content, editor, header };
 }
 
 /**
@@ -129,14 +130,16 @@ function page(r: number, t: number): { page: Component; editor: Component } {
  * @param r - The region's index.
  * @param n - Tabs in the region.
  * @param editors - Collects each region's first editor, for geometry.
+ * @param headers - Collects each region's first page header, for geometry.
  * @returns The region's layout spec.
  */
-function region(r: number, n: number, editors: Component[]): { tabs: DockPanelSpec[] } {
+function region(r: number, n: number, editors: Component[], headers: Component[]): { tabs: DockPanelSpec[] } {
     const tabs = Array.from({ length: n }, (_, t) => {
         const built = page(r, t);
 
         if (t === 0) {
             editors.push(built.editor);
+            headers.push(built.header);
         }
 
         return { id: `file-${r}-${t}`, title: `file${r}.${t}.ts`, closeable: false, disposeOnClose: false, content: built.page };
@@ -151,16 +154,17 @@ function region(r: number, n: number, editors: Component[]): { tabs: DockPanelSp
  * @param depth - The shell's depth.
  * @param n - Tabs per region.
  * @param editors - Collects each region's first editor.
+ * @param headers - Collects each region's first page header.
  * @returns The layout spec.
  */
-function dockLayout(depth: ShellDepth, n: number, editors: Component[]): DockLayoutSpec {
+function dockLayout(depth: ShellDepth, n: number, editors: Component[], headers: Component[]): DockLayoutSpec {
     if (depth === 'shallow') {
-        return region(0, n, editors);
+        return region(0, n, editors, headers);
     }
 
     const rows = Array.from({ length: DEEP_ROWS }, (_, row) => ({
         split: 'horizontal' as const,
-        children: Array.from({ length: DEEP_COLUMNS }, (_, column) => region(row * DEEP_COLUMNS + column, n, editors)),
+        children: Array.from({ length: DEEP_COLUMNS }, (_, column) => region(row * DEEP_COLUMNS + column, n, editors, headers)),
     }));
 
     return { split: 'vertical', children: rows };
@@ -330,11 +334,12 @@ export function buildShell(n: number, depth: ShellDepth, params: URLSearchParams
     const toggleMode = choice(params, 'toggle', TOGGLES, panel);
     const parts = explorer();
     const editors: Component[] = [];
+    const headers: Component[] = [];
     const split = Split({ orientation: 'horizontal' });
     const menuBar = appMenuBar();
     const toolBar = appToolBar();
     const status = appStatusBar();
-    const dock = Dock({ layout: dockLayout(depth, n, editors) });
+    const dock = Dock({ layout: dockLayout(depth, n, editors, headers) });
 
     const main = Panel({
         layoutManager: Border(),
@@ -362,7 +367,7 @@ export function buildShell(n: number, depth: ShellDepth, params: URLSearchParams
     });
 
     const shell: ShellParts = { depth, params, panel, center, explorer: parts, menuBar, toolBar, dock };
-    const geometry: Record<string, Component> = { sidebar: parts.sidebar, files: parts.files, outline: parts.outline, history: parts.history, main, dock };
+    const geometry: Record<string, Component> = { sidebar: parts.sidebar, files: parts.files, outline: parts.outline, history: parts.history, main, dock, header0: headers[0], status };
 
     editors.forEach((editor, k) => {
         geometry[`editor${k}`] = editor;
@@ -387,6 +392,7 @@ export function buildShell(n: number, depth: ShellDepth, params: URLSearchParams
             countInstance(tools, main, 'doLayout', 'main.doLayout'),
             countInstance(tools, parts.history, 'doLayout', 'history.doLayout'),
             countInstance(tools, parts.history, 'getPreferredSize', 'history.getPreferredSize'),
+            tools.countMethod(editors[0], 'onThemeChange'),
         ],
     };
 }

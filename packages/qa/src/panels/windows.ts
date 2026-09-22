@@ -213,7 +213,7 @@ export function build(n: number, params: URLSearchParams): PanelBuild {
                 hover: { element: elementFor(tools, windows[0], PANEL), axis: 'x' },
             };
         },
-        geometry: { win0: windows[0], bare, pinned, southStrip: southStrip.target },
+        geometry: { win0: windows[0], bare, pinned, southStrip: southStrip.target, header0: windows[0].getHeader() },
         describe: () => ({ windows: n, minimized }),
     };
 }

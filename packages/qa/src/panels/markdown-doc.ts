@@ -22,6 +22,33 @@ export const defaultScale = 60;
 export const defaultDrive = 'drag';
 
 /**
+ * Tallies every heading the viewer resolves as `heading@<id>`
+ * (`heading@none` above the first), one per scroll tick: the viewer's
+ * heading tracker is given an own `setActiveHeading` that counts, then
+ * delegates. A wrong choice of heading moves no box, so these counts are what
+ * a change to the tracking can be checked against.
+ *
+ * @param tools - The harness tools.
+ * @param viewer - The viewer.
+ * @returns `counting heading@<id>`, or `NOT FOUND …` when the viewer has no tracker.
+ */
+function countActiveHeadings(tools: HarnessTools, viewer: MarkdownViewer): string {
+    const tracker = (viewer as unknown as { _tracker?: Record<string, unknown> })._tracker;
+    const original = tracker?.setActiveHeading;
+
+    if (!tracker || typeof original !== 'function') {
+        return 'NOT FOUND setActiveHeading on MarkdownViewer._tracker';
+    }
+
+    tracker.setActiveHeading = function countedActiveHeading(this: unknown, id: string | null): void {
+        tools.bumpWork(`heading@${id ?? 'none'}`);
+        original.call(this, id);
+    };
+
+    return 'counting heading@<id>';
+}
+
+/**
  * Builds a `MarkdownViewer` of `markdownDocument(n, 0)` beside a side header.
  *
  * @param n - Sections.
@@ -54,12 +81,13 @@ export function build(n: number): PanelBuild {
             drag: { element: childGutter(tools, root, PANEL), axis: 'x' },
             wheel: requireElement(elementFor(tools, viewer, PANEL), 'p', PANEL),
         }),
-        geometry: { side, viewer },
+        geometry: { side, viewer, minimap: '.MarkdownMinimap' },
         describe: () => ({
             headings: n,
             fences: draft.split('\n').filter((line) => line.startsWith('```ts')).length,
             // Fences become editors lazily, near the viewport, so this depends on the screen.
             editorViews: document.getElementById(viewer.getId())?.querySelectorAll('.cm-editor').length ?? 0,
         }),
+        installWork: (tools: HarnessTools): string[] => [countActiveHeadings(tools, viewer)],
     };
 }

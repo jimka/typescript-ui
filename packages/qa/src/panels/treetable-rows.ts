@@ -94,8 +94,8 @@ export function build(n: number): PanelBuild {
                 click: { elements: [requireElement(body, '.NumberCell', PANEL)] },
             };
         },
-        geometry: { table: treeTable, header: treeTable.getHeader(), body: treeTable.getBody() },
+        geometry: { table: treeTable, header: treeTable.getHeader(), body: treeTable.getBody(), focused: '.Cell.focused' },
         describe: () => ({ roots: n, rows }),
-        installWork: (tools: HarnessTools): string[] => [tools.countMethod(treeTable.getBody(), 'getVisibleRecords')],
+        installWork: (tools: HarnessTools): string[] => [tools.countMethod(treeTable.getBody(), 'getVisibleRecords'), tools.countMethod(store, 'getRecords')],
     };
 }

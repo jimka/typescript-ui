@@ -622,12 +622,34 @@ export function installWorkCounters(tools: HarnessTools): string[] {
 
     const notes = BASE_WORK_METHODS.map((method) => countMethod(any, method, method, true));
 
-    return [...notes, ...countLayoutWork(tools)];
+    return [...notes, ...countGatherWork(tools, any), ...countLayoutWork(tools)];
+}
+
+/**
+ * Wraps the calls that price a layout pass's gathering: one
+ * `sizeHintMiss@<class>` per live size-hint computation — a per-pass memo
+ * miss, since a hit returns before re-basing the record — one
+ * `getLaidOutComponents@<class>` per child list built, and one
+ * `reserveContentFrame@<manager>` per content-frame walk.
+ *
+ * @param tools - The harness tools, for the layout-manager lookup.
+ * @param any - Any live component, for `Component`'s prototype.
+ * @returns One note per counter.
+ */
+function countGatherWork(tools: HarnessTools, any: object): string[] {
+    const lm = tools.findLayoutManager('LayoutManager');
+
+    return [
+        countMethod(any, 'beginSizeHintRecord', 'sizeHintMiss', true),
+        countMethod(any, 'getLaidOutComponents', 'getLaidOutComponents', true),
+        lm ? countMethod(lm, 'reserveContentFrame', 'reserveContentFrame', true) : 'no layout manager',
+    ];
 }
 
 /**
  * Wraps the layout-manager and component methods Loom's campaign counted
- * separately: `Split`, `Accordion`, `TabBar`, `CollapseButton` and `Border`.
+ * separately — `Split`, `Accordion`, `TabBar`, `CollapseButton` and
+ * `Border` — and `Grid`'s content measure.
  *
  * @param tools - The harness tools, for the component-tree walk.
  * @returns One note per counter.
@@ -660,6 +682,10 @@ function countLayoutWork(tools: HarnessTools): string[] {
     const border = tools.findLayoutManager('Border');
 
     notes.push(border ? countMethod(border, 'getPreferredSize', 'border.getPreferredSize') : 'no Border layout manager');
+
+    const grid = tools.findLayoutManager('Grid');
+
+    notes.push(grid ? countMethod(grid, 'measureContent', 'measureContent') : 'no Grid layout manager');
 
     return notes;
 }
