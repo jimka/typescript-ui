@@ -309,3 +309,26 @@ worth a plan of their own are all open:
 - **ARCHITECTURE.md does not name `Tooltip`'s attach family as an exception**
   to its rule against listening on another component's events, though
   `attach` always did so and `attachCovering` now does it on a subtree.
+
+## Wave 3: measured and planned (2026-09-22)
+
+W3.0 ran in full: 394 of 394 runs on `83cfb0d7`, recorded in
+`96-w3-0-bounding-sweep.md` on `feature/w3-0-results` (stacked on
+`feature/w3-0-bounding-sweep`, which builds the sweep). Fifteen candidates
+read **plan it**; they are drafted as thirteen plans in `plans/`:
+`text-measurement-without-reflow` (G18), `motion-transform-inline` (G28),
+`chart-repaint-gate` (F26.1; F26.2 folded into G18's memo),
+`markdown-lexer-linear-time` (G26), `unchanged-commit-opt-ins` (G09),
+`layout-size-read-economy` (G05 + G11), `glyph-name-setter` (G17, with the
+F14.11 leak and three more like it), `list-and-tree-row-economy` (G24),
+`split-collapse-static-participants` (G12 F06.9), `drag-resize-outline-mode`
+(`resizeMode`), `environment-read-caching` (G08), `event-dispatch-walk` (G20)
+and `tooltip-idle-reattach` (G19). Eight candidates **need a different
+surface** (G21, G22, G23, G16, G25, G27, G12 F06.3 and F06.4 — the record
+names the surface each needs); G14 is dropped.
+
+Found while planning, not in any plan:
+
+- **A rail-minimized window still takes a slot in the bottom dock and is moved
+  into it** (found by `environment-read-caching`). The minimized-window stack
+  counts windows the rail already holds.
