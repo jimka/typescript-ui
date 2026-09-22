@@ -959,12 +959,68 @@ describe('A24 g27.heading-cache', () => {
     });
 });
 
+/**
+ * Puts the transform setters back on `Component.prototype` as the library had
+ * them before motion-transform-inline: `setTransform` and `clearTransform`
+ * write the component's stylesheet rule, `setTranslate` writes its translate
+ * inline on its own, and nothing composes the two (no `writeTransform` or
+ * `composeTransform`). The `afterEach` restore puts the library's own back.
+ *
+ * @param component - Any mounted component.
+ */
+function installRuleSideTransform(component: object): void {
+    const proto = tools.rootOwnerProto(component, 'setTransform')!;
+
+    Reflect.deleteProperty(proto, 'writeTransform');
+    Reflect.deleteProperty(proto, 'composeTransform');
+
+    proto.setTransform = function (this: AnyObj, value: string): unknown {
+        if (this._transform === value) {
+            return this;
+        }
+
+        this._transform = value;
+        invoke(this, 'setElementCSSRule', 'transform', value);
+
+        return this;
+    };
+
+    proto.clearTransform = function (this: AnyObj): unknown {
+        this._transform = null;
+        invoke(this, 'setElementCSSRule', 'transform', null);
+
+        return this;
+    };
+
+    proto.setTranslate = function (this: AnyObj, x: number, y: number): unknown {
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+            return this;
+        }
+
+        if (this._translateX === x && this._translateY === y && invoke(this, 'getElement')) {
+            return this;
+        }
+
+        this._translateX = x;
+        this._translateY = y;
+        invoke(this, 'setElementStyle', 'transform', x === 0 && y === 0 ? null : `translate3d(${Math.round(x)}px,${Math.round(y)}px,0)`);
+
+        return this;
+    };
+}
+
+// From motion-transform-inline on, the library's own `setTransform` writes
+// inline, composed after a `setTranslate` offset, so the ablation turns
+// inert: its raw inline write would drop that offset. The first two cases
+// run it against the rule-writing setters the library had before.
 describe('A25 g28.transform-inline', () => {
     it('writes a transform inline instead of into the rule', async () => {
         const mounted = await mount('chart-line');
         const chart = mounted.build.root;
 
-        apply('g28.transform-inline');
+        installRuleSideTransform(chart);
+
+        expect(apply('g28.transform-inline')).not.toMatch(/^no /);
 
         expect(counted(() => chart.setTransform('translateX(3px)'))['skipped.g28.transform-inline.ruleWrite']).toBe(1);
         expect(chart.getTransform()).toBe('translateX(3px)');
@@ -982,6 +1038,7 @@ describe('A25 g28.transform-inline', () => {
         const mounted = await mount('chart-line');
         const chart = mounted.build.root;
 
+        installRuleSideTransform(chart);
         chart.setTransform('translateY(2px)');
 
         expect(counted(() => apply('g28.transform-inline'))['skipped.g28.transform-inline.ruleWrite']).toBeUndefined();
@@ -990,6 +1047,26 @@ describe('A25 g28.transform-inline', () => {
 
         expect(tools.elementOf(chart)!.style.transform).toBe('translateY(2px)');
         expect(chart.getTransform()).toBe('translateY(2px)');
+    });
+
+    it('notes a library that already writes transforms inline and patches nothing; the library writes inline itself', async () => {
+        const mounted = await mount('chart-line');
+        const chart = mounted.build.root;
+        const proto = tools.rootOwnerProto(chart, 'setTransform')!;
+        const setTransform = proto.setTransform as unknown;
+        const clearTransform = proto.clearTransform as unknown;
+
+        expect(apply('g28.transform-inline')).toMatch(/^no rule-side transform/);
+        expect(proto.setTransform).toBe(setTransform);
+        expect(proto.clearTransform).toBe(clearTransform);
+
+        const counts = counted(() => chart.setTransform('translateX(3px)'));
+
+        expect(counts['skipped.g28.transform-inline.ruleWrite']).toBeUndefined();
+
+        Body.getInstance().flushLayout();
+
+        expect(tools.elementOf(chart)!.style.transform).toBe('translateX(3px)');
     });
 });
 
