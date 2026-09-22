@@ -54,9 +54,11 @@ slides to that pane's outer edge and widens into a themed, button-styled strip
 (cross-fading its fill in), while the collapsing pane keeps its full size and
 reveals away under a clip-path, and the freed space is redistributed to the
 remaining panes. The whole pass is one coordinated animation — the toggled
-pane clip-reveals while every other pane and the gutters interpolate their
-geometry together, re-laying out their contents each frame so nothing snaps —
-mirroring [`Accordion`](/layouts/Accordion). A drag never collapses — only the
+pane clip-reveals while every pane and gutter whose box changes interpolates
+its geometry, re-laying out its content each frame so nothing snaps —
+mirroring [`Accordion`](/layouts/Accordion). A pane whose box does not change
+— the collapsing pane itself, which only clips — is laid out once for the end
+state rather than on every frame. A drag never collapses — only the
 configured trigger does, so resizing is never ambiguous. Repeating the gesture
 on the same chevron once it's a strip slides the gutter back and restores the
 pane to its previous ratio. Collapsed state is in-memory only.
