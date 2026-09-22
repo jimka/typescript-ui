@@ -281,6 +281,14 @@ The write is held until the library's first real stylesheet write and runs just 
 
 If you find yourself reaching for `.style.X` on a `CSSStyleRule` or `HTMLElement`, stop — there is a `StyleRule` / `InlineStyle` (or a Component setter that wraps one) that should own that write.
 
+### Motion properties write inline
+
+A typed setter writes the component's `#id` rule unless the library changes its property during an interaction. Those setters write inline through `setElementStyle`, cache the value in a field, and are replayed by `applyStyle`: geometry (`setX` / `setY` / `setWidth` / `setHeight`), `transform` (`setTranslate` and `setTransform`, composed into one declaration with the translate first), `opacity`, `transition`, `willChange`, `zIndex`, `pointerEvents`, `touchAction` and `writingMode`. The reason is cost. A stylesheet-rule write makes WebKitGTK restyle the whole document even when nothing else changed — one per `DiagramView` pan frame measured 53.5 ms against 17.2 ms inline — while an inline write restyles one element.
+
+A property that takes part in the class and state tiers (`StyleBag`) stays on the rule, because the tiers dedupe against it. When one of those must change per event, toggle a declared style state rather than rewriting the rule: a class token restyles only the element's subtree. `ToggleButton`'s `.selected` and `AccordionIndicator`'s `.expanded` do this. A new setter whose property changes per frame or per event writes inline from the start.
+
+**Known deviations:** a `Split` or `Border` collapse toggle still writes three or four rule declarations in one event — the pane's or region's `clip-path`, the `CollapseButton`'s rotation and width, and, for a `Split`, the gutter's cursor. They change together, so they are to move together, in their own change. Per-event `StyleBag` writes also remain away from the motion paths this rule was written from: `DiagramView` rewrites its rule's `cursor` on each pan press and release (`grab` / `grabbing`), and `ScrollArrowButton` rewrites its rule's background on each hover. This list is not a complete census; each is to be brought in line by its own change, and no new one is to be added.
+
 ## Component CSS tiers and state-rule dedup
 
 Every rendered element can be styled from up to four CSS rules, ranked by specificity — written `(id, class, type)`, the standard three-number comparison:
