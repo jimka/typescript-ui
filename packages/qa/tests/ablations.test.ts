@@ -419,27 +419,50 @@ describe('A7 g08.env-reads', () => {
 });
 
 describe('A8 g09.chrome and g09.all', () => {
-    it('g09.chrome opts a Header in and leaves a plain Panel out', async () => {
-        const mounted = await mount('shell-shallow');
+    it('g09.chrome installs its gate, which both the classes it names now shadow', async () => {
+        await mount('shell-shallow');
+
+        const header = tools.findComponent('Header')!;
+        const status = tools.findComponent('StatusBar')!;
+        const button = tools.findComponent('Button')!;
+        const base = tools.rootOwnerProto(button, 'canSkipUnchangedLayout')!;
+        const shipped = base.canSkipUnchangedLayout;
+
+        expect(invoke(header, 'canSkipUnchangedLayout')).toBe(true);
+        expect(invoke(status, 'canSkipUnchangedLayout')).toBe(true);
+        expect(invoke(button, 'canSkipUnchangedLayout')).toBe(false);
 
         apply('g09.chrome');
 
-        expect(invoke(tools.findComponent('Header'), 'canSkipUnchangedLayout')).toBe(true);
-        expect(invoke(mounted.build.root, 'canSkipUnchangedLayout')).toBe(false);
+        // The ablation really did replace the base gate ...
+        expect(base.canSkipUnchangedLayout).not.toBe(shipped);
+
+        // ... and it still opts in only `Header` and `StatusBar`, both of which
+        // now ship their own override and so shadow it. Every answer is the
+        // shipped one: this arm grants nothing on any scene any more.
+        expect(invoke(header, 'canSkipUnchangedLayout')).toBe(true);
+        expect(invoke(status, 'canSkipUnchangedLayout')).toBe(true);
+        expect(invoke(button, 'canSkipUnchangedLayout')).toBe(false);
     });
 
     it('g09.all opts every component in, and an unchanged pass skips', async () => {
-        const mounted = await mount('shell-shallow');
-        const root = mounted.build.root;
+        await mount('shell-shallow');
+
+        const toolBar = tools.findComponent('ToolBar')!;
 
         apply('g09.all');
 
         expect(invoke(tools.findComponent('Header'), 'canSkipUnchangedLayout')).toBe(true);
-        expect(invoke(root, 'canSkipUnchangedLayout')).toBe(true);
+        expect(invoke(tools.findComponent('Button'), 'canSkipUnchangedLayout')).toBe(true);
 
-        root.doLayout();
+        // Driven on the bar rather than the page root: a direct `doLayout` runs
+        // whatever the gate says, so the bar's own buttons are the committed
+        // components, and they are the ones this ablation opts in over the
+        // shipped gate. A pass from the root would stop at the shipped opt-ins
+        // above them and commit nothing the ablation answers for.
+        invoke(toolBar, 'doLayout');
 
-        expect(counted(() => root.doLayout())['skipped.g09.all.commit']).toBeGreaterThanOrEqual(1);
+        expect(counted(() => invoke(toolBar, 'doLayout'))['skipped.g09.all.commit']).toBeGreaterThanOrEqual(1);
     });
 
     it('counts only the skips its own gate grants, not a shipped opt-in\'s', async () => {
@@ -448,20 +471,28 @@ describe('A8 g09.chrome and g09.all', () => {
         const menuBar = tools.findComponent('MenuBar')!;
         const status = mounted.build.geometry!.status;
         const answers: boolean[] = [];
+        const commitProto = tools.rootOwnerProto(menuBar, 'canSkipUnchangedCommit')!;
+        const shippedCommit = commitProto.canSkipUnchangedCommit;
 
         apply('g09.chrome');
+
+        // The counting wrapper really is installed around the commit gate ...
+        expect(commitProto.canSkipUnchangedCommit).not.toBe(shippedCommit);
+
         root.doLayout();
 
-        // Asked inside a pass, as a commit asks, with nothing else laid out:
-        // the menu bar opted in on its own, the status bar through the ablation.
+        // Asked inside a pass, as a commit asks, with nothing else laid out.
         vi.spyOn(root.getLayoutManager() as unknown as { doLayout(): void }, 'doLayout').mockImplementation(() => {
             answers.push(invoke(menuBar, 'canSkipUnchangedCommit'), invoke(status, 'canSkipUnchangedCommit'));
         });
 
         const skips = counted(() => root.doLayout());
 
+        // ... and it counts nothing: both bars opt in, but each does it on its
+        // own — `MenuBar` and `StatusBar` ship the override — so neither skip
+        // is the ablation's to claim.
         expect(answers).toEqual([true, true]);
-        expect(skips['skipped.g09.chrome.commit']).toBe(1);
+        expect(skips['skipped.g09.chrome.commit']).toBeUndefined();
     });
 });
 

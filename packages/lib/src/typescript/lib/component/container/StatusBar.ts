@@ -317,6 +317,38 @@ class StatusBar extends Container<StatusBarOptions> {
     }
 
     /**
+     * Opts into the unchanged-geometry layout skip: a bar re-committed at the
+     * rectangle it already holds, with no pass owed, is not re-laid-out.
+     *
+     * The writers that change the bar's layout without moving its rectangle,
+     * and why each is covered:
+     *
+     * - `setMessage`, `clearMessage`, `setDefaultMessage` and the timed revert
+     *   — each writes the message
+     *   [`Text`](/api/component/input/classes/Text), which schedules that
+     *   child's own pass and relays the new preferred size on a width change.
+     * - `addLeft` / `addRight` / `removeLeft` / `removeRight` — each adds or
+     *   removes a child, which schedules this bar's own layout and relays.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, `sortComponents`,
+     *   `setLayoutConstraints` — which the flex `Spacer`'s `setFlex` reaches —
+     *   a child's `setDisplayed`, padding, border and `removeAllComponents`:
+     *   each marks the layout owed there and on this bar.
+     * - A theme switch or web-font swap — the message's re-measure relays the
+     *   new preferred size, marking every ancestor.
+     *
+     * Not covered, and so not re-flowed until the bar's rectangle next moves
+     * or something schedules it: a consumer widget that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
+
+    /**
      * Clears any pending message-revert timer before the inherited
      * destructor detaches the element, preventing a stray `setTimeout`
      * callback from writing into a detached

@@ -919,12 +919,20 @@ function onceMinimizedStackPerTask(tools: HarnessTools, name: string, lib: Harne
 }
 
 /**
- * G09: more components opted into the unchanged-commit skip. `all` opts
- * every component in — the ceiling, and W2.0's owed real-engine test, since
- * an unaudited writer then shows as a geometry `DIFF` — and `chrome` opts in
- * `Header` and `StatusBar` alone. The shipped opt-ins own their gate and are
- * unaffected. A skip is counted where the root gate says yes inside a layout
- * pass and the answer is the ablation's.
+ * G09: more components opted into the unchanged-commit skip. Both scopes
+ * replace the *base* gate, so each reaches only the classes that inherit it —
+ * a class shipping its own override shadows the patch and is unaffected,
+ * which is what keeps a skip the shipped build already gets out of the count.
+ * `all` therefore measures the headroom left over the shipped opt-ins rather
+ * than an absolute ceiling, and that headroom shrinks every time a class opts
+ * in for real: since `unchanged-commit-opt-ins` it excludes `Panel` and every
+ * subclass of it (`ScrollStrip`, `Form`, `AbstractChart`, `DiagramView`,
+ * `MarkdownViewer`, `FloatingPanel`, …), `LabeledGrid`, `Header`,
+ * `WindowHeader` and `StatusBar` as well as stage 1's `MenuBar`, `ToolBar`
+ * and the table's cells. `chrome` names `Header` and `StatusBar`, and both
+ * now ship the override, so it grants no skip on any scene and is kept only
+ * as the narrow arm's historical reading. A skip is counted where the base
+ * gate says yes inside a layout pass and the answer is the ablation's.
  *
  * @param tools - The harness tools.
  * @param name - `g09.all` or `g09.chrome`.
@@ -965,7 +973,9 @@ function g09SkipUnchanged(tools: HarnessTools, name: string, scope: 'all' | 'chr
         return skip;
     };
 
-    return scope === 'all' ? 'every component skips an unchanged commit' : 'Header and StatusBar skip an unchanged commit';
+    return scope === 'all'
+        ? 'every component without a shipped opt-in skips an unchanged commit'
+        : 'Header and StatusBar skip an unchanged commit (both ship it: no effect)';
 }
 
 /**

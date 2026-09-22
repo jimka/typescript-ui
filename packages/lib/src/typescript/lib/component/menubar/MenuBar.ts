@@ -249,15 +249,18 @@ class MenuBar extends Component {
      * - A `MenuBarButton` label or glyph change — it reaches the button's
      *   preferred-size recompute, whose relay schedules a layout on every
      *   ancestor, this bar included.
-     * - `setInsets` / `clearInsets`, `setLayoutManager`, `sortComponents` and
-     *   `setLayoutConstraints`, on the bar or on anything inside it — the
-     *   bar's `HBox` is set in its constructor, and each of these marks the
-     *   layout owed there and on this bar, like any `invalidateLayout`.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, `sortComponents`,
+     *   `setLayoutConstraints`, a button hidden or shown with `setDisplayed`,
+     *   padding and border, `removeAllComponents`, and the `HBox`
+     *   reconfigured through `getLayoutManager()`: on the bar or on anything
+     *   inside it, each marks the layout owed there and on this bar, like any
+     *   `invalidateLayout`.
      *
-     * Not covered: a consumer reaching past `setMenus` — hiding a button with
-     * `setDisplayed`, reconfiguring the `HBox` through `getLayoutManager()`,
-     * or rewriting padding or border, on the bar or inside it, once laid out
-     * — which should follow its change with `scheduleLayout()` on the bar.
+     * Not covered, and so not re-flowed until the bar's rectangle next moves
+     * or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()` on the bar.
      *
      * @returns `true`.
      */

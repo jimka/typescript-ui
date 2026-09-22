@@ -181,6 +181,12 @@ interface OverlayLayoutResolution {
  * 4px default, for rail-style fixed-width strips that must sit flush against
  * their host.
  *
+ * A `Panel` itself — not a subclass of one — is not re-laid-out when its
+ * parent re-commits it at the rectangle it already holds with no layout pass
+ * owed, so a settled subtree under it costs nothing. A subclass keeps being
+ * laid out on every commit unless it overrides the protected gate after an
+ * audit of its own writers.
+ *
  * @category Core
  */
 class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOptions> implements FocusRevealer {
@@ -378,6 +384,9 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * per-axis `overflow` writes via [`Component.setOverflowX`](/api/core/classes/Component#setoverflowx) /
      * [`Component.setOverflowY`](/api/core/classes/Component#setoverflowy).
      *
+     * The gutter and shadows are re-measured by a layout pass, so the write
+     * marks one as owed.
+     *
      * @param mode - The {@link AutoScrollMode} to apply.
      *
      * @returns This panel, for method chaining.
@@ -398,6 +407,10 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      */
     setAutoScroll(mode: AutoScrollMode): this {
         this._autoScroll = mode;
+        // Before `setOverflowing` below: when the overflow flags change, that
+        // call lays the panel out itself and clears the mark, so a mark placed
+        // after it would survive the pass that already answered it.
+        this.invalidateLayout();
 
         switch (mode) {
             case "none":
@@ -497,7 +510,8 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * panel. When enabled (the default), each side that can still be scrolled
      * toward fades its content into the viewport border; the shadows are
      * suppressed entirely while `autoScroll === "none"` or when content does
-     * not overflow.
+     * not overflow. The gutter and shadows are re-measured by a layout pass, so
+     * the write marks one as owed.
      *
      * @param enabled - `true` to paint the edge shadows, `false` to suppress them.
      *
@@ -507,6 +521,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         this._scrollShadows = enabled;
 
         this.refreshScrollShadows();
+        this.invalidateLayout();
 
         return this;
     }
@@ -525,7 +540,9 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * (native scroll, hidden native bar, two synced `Scrollbar` widgets) or
      * `"native"` to keep the OS scrollbar. Installs or tears down the overlay
      * immediately when the element already exists; a no-op before render
-     * beyond caching the value (the first install happens in `init`).
+     * beyond caching the value (the first install happens in `init`). The
+     * gutter and shadows are re-measured by a layout pass, so the write marks
+     * one as owed.
      *
      * @param style - The {@link ScrollbarStyle} to apply.
      *
@@ -540,8 +557,58 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // which element `getScrollElement()` resolves to (inner element vs panel
         // element), so the shadows must re-read from the new scroller.
         this.refreshScrollShadows();
+        this.invalidateLayout();
 
         return this;
+    }
+
+    /**
+     * Opts a *plain* `Panel` into the unchanged-geometry layout skip: a panel
+     * re-committed at the rectangle it already holds, with no pass owed, is
+     * not re-laid-out. The check is instance-identity rather than
+     * `instanceof`, so it confines the claim to the class this audit covers:
+     * eleven library classes and any number of consumer classes extend
+     * `Panel`, three of them overriding `doLayout` and others keeping layout
+     * state of their own, and an inherited opt-in would make each of them skip
+     * on the strength of this audit. A subclass opts in by overriding this
+     * gate after its own. Construction routes through the `callable()`
+     * wrapper, which leaves `new.target` pointing at the wrapper rather than
+     * the class, so the prototype comparison is the reliable form — the same
+     * check `Button`'s constructor uses to wire its listener bag.
+     *
+     * The writers that change a panel's layout without moving its rectangle,
+     * and why each is covered:
+     *
+     * - `addComponent`, `insertComponent`, `removeComponent` and
+     *   `moveComponent` — each schedules the panel's own layout, and relays
+     *   the new preferred size upward.
+     * - `setAutoScroll`, `setScrollShadows` and `setScrollbarStyle` — each
+     *   marks the layout owed here.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, `sortComponents`,
+     *   `setLayoutConstraints`, a child's `setDisplayed`, `setPadding` /
+     *   `clearPadding`, `setBorder` / `clearBorder`, `removeAllComponents`
+     *   and the box, flow, grid, fit, border and split managers'
+     *   configuration setters — on the panel or on anything inside it: each
+     *   marks the layout owed there and on this panel, like any
+     *   `invalidateLayout`.
+     * - The scroll gutter and shadows — re-measured by the panel's own pass,
+     *   which a gutter change, a content shrink and a return to visibility
+     *   each schedule. The inner overlay scroller is sized from the panel's
+     *   own box, which a skip by definition did not change.
+     * - A `Text` descendant's text or font change, and a theme switch or
+     *   web-font swap — the re-measure relays the new preferred size upward,
+     *   marking every ancestor.
+     *
+     * Not covered, and so not re-flowed until the panel's rectangle next moves
+     * or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true` for a plain `Panel`, `false` for any subclass.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return Object.getPrototypeOf(this) === Panel.prototype;
     }
 
     /**

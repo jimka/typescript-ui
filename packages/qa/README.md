@@ -463,8 +463,8 @@ The W3.0 bounding sweep's arms, one per wave-3 candidate group (see
 | `g12.collapse-static` | G12 F06.9 | During a pane collapse, a pane's layout is skipped at the rectangle its last layout ran at; the first, the end layout, always runs. |
 | `g05.lazy-reads` | G05 | `LayoutManager.resolveBounds` serves a both-axes fill without reading the child's four sizes. |
 | `g08.env-reads` | G08 | The viewport size is read once per task, each theme variable once until the document element's style is written, and the minimized-window stack laid out at most once per task. |
-| `g09.all` | G09 | Every component opts into the unchanged-commit skip: the ceiling, and the real-engine test W2.0 owed. |
-| `g09.chrome` | G09 | `Header` and `StatusBar` opt into the unchanged-commit skip. |
+| `g09.all` | G09 | Every component *without a shipped opt-in of its own* opts into the unchanged-commit skip: the headroom left over the shipped gate, and the real-engine test W2.0 owed. A class that ships the override shadows the patched base, which is what keeps a skip the shipped build already gets out of the count — so this arm narrows each time a class opts in for real (`Panel` and its subclasses, `LabeledGrid`, `Header`, `WindowHeader`, `StatusBar`, `MenuBar`, `ToolBar` and the table's cells are outside it today). |
+| `g09.chrome` | G09 | `Header` and `StatusBar` opt into the unchanged-commit skip. Both now ship the override, so this arm grants no skip on any scene and reads as no effect; kept as the narrow arm's historical reading. |
 | `g11.gather-residue` | G11 | A layout manager reserves no content frame when nothing overflows, a fully displayed child list is shared rather than copied, and a grid with no tracks skips measuring content it never reads. |
 | `g14.closed-section` | G14 | A full accordion pass serves a settled closed section's height from a cache and skips its reflow. |
 | `g16.panel-settled` | G16 | A scrolling `Panel` skips its scroll-metrics re-measure while its size, child count and preferred size are unchanged. For `passes` only. |

@@ -727,11 +727,13 @@ class Split extends LayoutManager implements FocusRevealer {
 
     /**
      * Sets the split orientation.
+     * Marks the container's layout pass as owed.
      *
      * @param orientation - `'horizontal'` for side-by-side panels, `'vertical'` for stacked panels.
      */
     setOrientation(orientation: AxisOrientation) : this {
         this._orientation = orientation;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -744,6 +746,7 @@ class Split extends LayoutManager implements FocusRevealer {
      * applies to a pane with no stored size. The value is a px main-axis extent
      * — the same unit the gutters store and {@link recalculateSizes} rescales —
      * not a ratio; pass it relative to the other panes' current stored sizes.
+     * Marks the container's layout pass as owed.
      *
      * @param pane - The pane whose stored size to seed or override.
      * @param size - The main-axis extent in px to store for the pane.
@@ -751,6 +754,7 @@ class Split extends LayoutManager implements FocusRevealer {
      */
     setPaneSize(pane: Component, size: number): this {
         this._sizes.set(pane, size);
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }

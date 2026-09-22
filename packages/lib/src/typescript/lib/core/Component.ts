@@ -2466,6 +2466,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Shows or hides the component using CSS display; hidden components take no space.
+     * A real change marks the *parent's* layout pass as owed, because the
+     * parent's laid-out children changed.
      *
      * @param value - True to show the component, false to set display to "none".
      *
@@ -2482,6 +2484,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (this.isDisplayed() === v && this.getElement()) {
             return this;
         }
+
+        // Entering or leaving the parent's laid-out children changes where the
+        // parent places its other children, and nothing here schedules that
+        // pass — `Tab.doLayout` hides every inactive page from inside a layout
+        // pass, so the mark has to sit after the same-value early return above
+        // or every one of those calls would cost the parent a skip.
+        this.getParentComponent()?.invalidateLayout();
 
         // Route the CSS side through the shared
         // `.ts-ui-component.undisplayed` class-tier rule instead of a
@@ -2824,6 +2833,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Sets the CSS padding. Use {@link clearPadding} to reset to `"0px 0px 0px 0px"`.
+     * Padding is a layout input, so a real change marks the layout pass as owed.
      *
      * @param padding - The new padding Insets.
      *
@@ -2840,12 +2850,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this.writeStyle({ padding });
+        // Padding feeds `getPerimeterSize`, which every manager places children
+        // inside, and the style write above schedules nothing.
+        this.invalidateLayout();
 
         return this;
     }
 
     /**
-     * Resets the CSS padding to zero on all sides.
+     * Resets the CSS padding to zero on all sides. Padding is a layout input,
+     * so a real change marks the layout pass as owed.
      *
      * @returns This component, for method chaining.
      *
@@ -2854,6 +2868,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * legacy `setPadding(null)` behaviour as a reset, not a CSS-level clear.
      */
     clearPadding(): this {
+        const alreadyCleared = this._instanceStyle.padding === null;
+
         // A bare removal would hand the property to a class default when the
         // class defines one, repainting padding instead of clearing it —
         // write the getter-facing null through the layer (so `getPadding()`
@@ -2861,6 +2877,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // bypassing the layer dedup, exactly as before this migration.
         this.writeStyle({ padding: null });
         this.setElementCSSRule("padding", "0px 0px 0px 0px");
+
+        // Guarded, unlike the write above: a clear that changes nothing must
+        // not cost a skip, because a host can re-assert the cleared state on
+        // every pass (see `clearBorder`, which `Accordion.doLayout` does).
+        if (!alreadyCleared) {
+            this.invalidateLayout();
+        }
 
         return this;
     }
@@ -3181,14 +3204,24 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Clears the component's border. Applies an explicit `none` on every side so
      * the cleared state overrides any inherited, class-level, or UA `<button>`
-     * border styling, and invalidates the cached per-side widths.
+     * border styling, and invalidates the cached per-side widths. A border is a
+     * layout input, so a real change marks the layout pass as owed.
      *
      * @returns This component, for method chaining.
      */
     clearBorder(): this {
+        const changed = borderSidesKey(this._border) !== borderSidesKey({ border: "none" });
+
         this._border       = { border: "none" };
         this._borderWidths = null;
         this.writeStyle({ border: this._border });
+
+        // Guarded: `Accordion.doLayout` clears the border of a non-themed host
+        // on every pass, and an unconditional mark there would stop that host
+        // — and every opted-in ancestor of it — from ever skipping.
+        if (changed) {
+            this.invalidateLayout();
+        }
 
         return this;
     }
@@ -3198,7 +3231,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * string. A bare string is sugar for `{ border: <string> }`. The four CSS
      * longhands are written so a per-side value survives the {@link applyStyle}
      * replay; the cached per-side widths are invalidated and re-measured lazily at
-     * layout time (see {@link getBorderSize}).
+     * layout time (see {@link getBorderSize}). A border is a layout input, so a
+     * real change marks the layout pass as owed.
      *
      * @param options - Border configuration, or a CSS `border` shorthand string. Use {@link clearBorder} to clear the border explicitly.
      *
@@ -3223,6 +3257,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this.writeStyle({ border: this._border });
+        // A border shrinks the content box every manager places children
+        // inside, and the style write above schedules nothing.
+        this.invalidateLayout();
 
         return this;
     }
@@ -7578,7 +7615,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Removes all child components and their DOM elements without triggering layout.
+     * Removes all child components and their DOM elements, marking the layout
+     * owed without scheduling it. The child list is a layout input, so the
+     * write marks the layout pass as owed.
      *
      * @returns This component, for method chaining.
      *
@@ -7597,6 +7636,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         for (const component of removed) {
             this.unwireChild(component);
         }
+
+        // Unlike `removeComponent`, this setter deliberately schedules no pass
+        // — but an emptied scrolling `Panel` would otherwise keep the gutter
+        // and shadows its old content earned until something unrelated moved it.
+        this.invalidateLayout();
 
         return this;
     }

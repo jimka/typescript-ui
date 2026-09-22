@@ -152,6 +152,7 @@ export abstract class FlowLayout extends LayoutManager {
 
     /**
      * Sets the pixel spacing between items along a line.
+     * Marks the container's layout pass as owed.
      *
      * @param spacing - Spacing in pixels.
      *
@@ -159,6 +160,7 @@ export abstract class FlowLayout extends LayoutManager {
      */
     setComponentSpacing(spacing: number): this {
         this._spacing = spacing || 0;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -174,6 +176,7 @@ export abstract class FlowLayout extends LayoutManager {
 
     /**
      * Sets the pixel spacing between wrapped lines.
+     * Marks the container's layout pass as owed.
      *
      * @param lineSpacing - Spacing in pixels.
      *
@@ -181,6 +184,7 @@ export abstract class FlowLayout extends LayoutManager {
      */
     setLineSpacing(lineSpacing: number): this {
         this._lineSpacing = lineSpacing || 0;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -259,6 +263,7 @@ export abstract class FlowLayout extends LayoutManager {
 
     /**
      * Sets which axes are made uniform so wrapped items align into a grid.
+     * Marks the container's layout pass as owed.
      *
      * @param uniform - `"width"` aligns columns, `"height"` aligns rows,
      *   `"both"` produces a full grid, `"none"` packs each item at its own
@@ -268,6 +273,7 @@ export abstract class FlowLayout extends LayoutManager {
      */
     setUniform(uniform: FlowUniformity): this {
         this._uniform = uniform;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -284,6 +290,7 @@ export abstract class FlowLayout extends LayoutManager {
 
     /**
      * Sets how each wrapped line's content block is packed along the main axis.
+     * Marks the container's layout pass as owed.
      *
      * @param align - `"start"` packs at the leading edge (the default),
      *   `"center"` centres the block, `"end"` packs at the trailing edge. The
@@ -294,6 +301,7 @@ export abstract class FlowLayout extends LayoutManager {
      */
     setAlign(align: AxisPosition): this {
         this._align = align;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -310,6 +318,7 @@ export abstract class FlowLayout extends LayoutManager {
     /**
      * Sets how each item is aligned within its wrapped line's cross extent — the
      * row height for {@link HFlow}, the column width for {@link VFlow}.
+     * Marks the container's layout pass as owed.
      *
      * @param itemAlign - `"start"` aligns to the leading cross-edge (the
      *   default), `"center"` centres, `"end"` aligns to the trailing cross-edge,
@@ -321,6 +330,7 @@ export abstract class FlowLayout extends LayoutManager {
      */
     setItemAlign(itemAlign: FlowItemAlign): this {
         this._itemAlign = itemAlign;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -337,6 +347,7 @@ export abstract class FlowLayout extends LayoutManager {
     /**
      * Sets how each wrapped line's items are distributed along the main axis by
      * growing the inter-item gaps.
+     * Marks the container's layout pass as owed.
      *
      * @param justify - `"start"` packs items with the fixed `spacing` (the
      *   default), `"between"` makes the first/last items flush to the edges with
@@ -352,6 +363,7 @@ export abstract class FlowLayout extends LayoutManager {
      */
     setJustify(justify: AxisSpread): this {
         this._justify = justify;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
