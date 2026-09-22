@@ -489,3 +489,71 @@ The first two calls on each region are `setRegionCollapsed`'s own start-state la
 [^scope]: The 96 record: `sdp`/`ssp` park work −93.8% / −93.4% for `split.noop-drag`, yet +3.28 / +4.27 ms against the plain bracket, and `split.recalc-gate` −0.6% to +0.9% with its one `regress` in the same park cell. Both need a `wt` prototype arm, which is a separate plan's job.
 
 [^pure-move]: A participant that moves without resizing would need only its box written each frame, since a child's coordinates are relative to its parent. The unchanged-commit contract treats any move as a change and lays out, and no W3.0 cell has such a participant: the shells' only mover also resizes. Taking it would be a second decision with its own gate, not part of F06.9.
+
+---
+
+## Implementation Notes
+
+**A/B base** (step 1): `54d4cf4b52567e72b5762fb5314dc498946818df` — "Mark the
+layout size-read economy plan implemented", the tip of the wave-3 stack this
+branch starts from. `git show 54d4cf4b:plans/implemented/unchanged-commit-opt-ins.md`
+resolves, so the `unchanged-commit-opt-ins` dependency is in the base; the
+`w3-0-bounding-sweep` dependency is in `plans/implemented/` there too.
+
+**The plan was followed as written.** `sameRect` and the mover filter went in
+exactly as *Internal Structure* specifies, the comment-only edits to `Split.ts`
+and `Border.ts` are comment-only (`git diff -U0` shows nothing else), and
+`grep -n 'movers.length'` on `CollapseSupport.ts` prints nothing. The plan's
+line anchors had drifted by a few lines against this base, but every symbol it
+names was where it described it.
+
+**One addition beyond step 5.** Step 5 rewrites `runCollapse`'s "The pass:"
+paragraph. Two nearby sentences in the same JSDoc described `participants` as
+"every box that moves" — the opening paragraph and the `@param participants`
+line — which the filter makes inaccurate in exactly the way steps 6 and 7 fix
+at the two call sites. Both now read "every box that may move", matching the
+call-site wording those steps prescribe. No behaviour is involved.
+
+**Implementer verification** (all from `packages/lib` unless noted), all clean:
+`npm run typecheck`, `npm run typecheck:test`, `npm run lint`,
+`npm run test:lint`, `npm test` (494 files, 8,236 tests, E1-E9 new),
+`npm run build:lib`, `(cd ../qa && npm test)` (17 files, 336 tests),
+`npm run docs:api` (0 errors, the 14 warnings `master` already has, no new
+one), `npm run docs:llms:check`.
+
+**Test-first record.** With `CollapseStaticParticipants.test.ts` in place and
+`CollapseSupport.ts` untouched, the file ran 8 failed / 1 passed: every failure
+was on a `doLayout` call-count or the E9 `will-change` assertion, and the one
+pass was E3, the case the plan says passes before and after. The filter turned
+all nine green with no edit to the expectations.
+
+### Pending: the in-engine A/B (E10, *Verification*'s orchestrator half)
+
+**Not run here.** Every `runqa.sh` run opens a full-screen WebKitGTK window and
+holds the desktop, so this is left for the user/orchestrator, with the user's
+go-ahead. The base SHA below is the real one recorded above.
+
+```sh
+# 1. Base arm, at this branch's start point.
+cd /home/jika/typescript/typescript-ui
+git worktree add .worktrees/_g12-base 54d4cf4b52567e72b5762fb5314dc498946818df --detach
+ln -sfn "$PWD/node_modules" .worktrees/_g12-base/node_modules
+(cd .worktrees/_g12-base/packages/lib && npm run build:lib)
+export QA_WT_LIB="$PWD/.worktrees/_g12-base/packages/lib"
+
+# 2. Fix arm: already built in this worktree, rebuild if the branch moved.
+(cd /home/jika/typescript/typescript-ui/.worktrees/split-collapse-static-participants/packages/lib && npm run build:lib)
+
+# 3. The sweep, from the implementation worktree's root, with the script of
+#    *Verification* step 3 saved outside the repository as g12-collapse-ab.sh.
+cd /home/jika/typescript/typescript-ui/.worktrees/split-collapse-static-participants
+bash g12-collapse-ab.sh --dry-run   # expect 10 runqa lines
+bash g12-collapse-ab.sh             # opens a full-screen window per run
+bash g12-collapse-ab.sh --read
+```
+
+Then apply *Verification*'s pass criteria and record the readings in the
+`shell-deep` and `shell-shallow` rows' *Validated* cells in
+`packages/qa/README.md` — the one file in *Files to Create / Modify / Delete*
+this branch deliberately leaves untouched, since its content is the A/B's
+result — and `git worktree remove .worktrees/_g12-base`.
