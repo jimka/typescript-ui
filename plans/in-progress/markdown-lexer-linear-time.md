@@ -673,3 +673,49 @@ With no `CORPUS_MODE` the test skips itself, so a stray copy cannot slow `npm te
 [^expected]: Estimated as the W3.0 averages minus two lexes' saving, per the JavaScriptCore figures in the profile note: at 60 sections 182 − 2 × (37–39 − 3) ≈ 110 ms; at 480, 4,219 − 2 × (1,894–2,047 − 15) ≈ 155–460 ms. The spread at 480 is the spread between the two lexer runs, so the ratio's range is wide. What the pass condition needs is only that it lands at 8 or below.
 
 [^timeout]: `mdu480` at the base commit averaged 4,219 ms per unit over 20 units, plus a mount whose first render also lexes twice. W3.0's single `mdu480` run completed under the default, but with little margin.
+
+---
+
+## Implementation Notes
+
+The plan was implemented as written: both extension line walks, `lineEndAt`,
+the six bounded tokenizers with `blockWindow` and its guards, the unbounded
+twin, `Component.untrackHandles` and `Markdown.clearContent`'s single-pass
+untracking. Cases 1–24 are in
+`packages/lib/tests/component/display/markdownLexer.test.ts` and
+`packages/lib/tests/core/ComponentTrackedHandles.test.ts`. Three things are
+worth recording.
+
+**The scan meter read exactly what the plan predicted.** Before step 6,
+`splitChars` was 2,615,722 at 60 sections and 168,713,134 at 480; before step
+7, `ruleChars` was 1,959,142 and 126,293,244, a total ratio of 64.5. After
+step 7 the figures are `ruleChars` 8,706 → 72,312 and `splitChars` 0 → 0, a
+ratio of 8.31, against the plan's 8,706 → 72,312 and 8.3. Cases 19 and 20
+were red at the sizes the plan said they would be, and in that order.
+
+**The corpus comparison ran over 21,752 document forms, not the plan's
+estimated ~3,500 plus 20,000.** The tree held 876 `.md` files under
+`packages/` and `plans/` when step 1 recorded and step 10 compared, so 1,752
+file forms with both line endings, plus the 20,000 seeded random documents.
+The plan's 1,731 counted the generated `packages/lib/docs/api` tree as well —
+868 gitignored `.md` files, which `npm run docs:api` had produced before its
+prevalidation run and had not yet produced before step 1's. Both corpus runs
+here saw the same 876 files, so the comparison is sound, but it covered about
+half the *file* forms the prevalidation did; the 20,000 random documents are
+unaffected. Zero mismatches against the hashes recorded on the unmodified
+branch; the throwaway test file and its hash file were deleted, as step 10
+requires.
+
+**The in-engine readings in *Verification* are still pending, and are the
+user's to run.** Every `packages/qa/runqa.sh` run opens a full-screen
+MiniBrowser window, so this implementation ran none of them. The commands are
+exactly as listed in *Verification → In WebKitGTK*, with one caveat: that
+section names `11ad15eb` as the base arm `wt`, but this branch starts from
+`57eb5738`, the tip of the stack of three implemented-but-unmerged wave-3
+plans (`text-measurement-without-reflow` → `chart-repaint-gate` →
+`motion-transform-inline`) that sits above it. A `wt` arm at `11ad15eb` would
+therefore score this plan plus those three; `57eb5738` is the arm that
+isolates this one. The pass condition is unchanged either way: geometry `=`
+in every run of both cells, every seam and work count equal between the arms,
+and `main`'s average at 480 sections divided by its average at 60 no more
+than 8.
