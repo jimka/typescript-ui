@@ -141,3 +141,60 @@ cb.on("change", syncPreview);
 
 A listener that read the event object sees a DOM `change` event on a checkbox,
 where it used to see a `click`. A slider's listener still sees an `input`.
+
+## `DOMSource` gains two members
+
+**What changed and why.** Every text measurement used to go through a hidden
+probe appended to `<body>` — `DOMSource.measureText`, `measureTexts` and
+`measureTextWidths` — and each read of its rectangle forced a layout of the
+whole document. The library now measures a single line of text on a canvas
+instead, under the font the probe would resolve, and keeps the probe for what
+the canvas cannot reproduce. Its two new reads go through the read seam, like
+every other DOM read, so `DOMSource` gains two members:
+`getComputedFont(options?)`, which resolves font options on a probe element
+exactly as the measurement probes do and returns the computed values of the
+properties that decide a text width, as a `ComputedFont`; and
+`measureTextAdvance(text, font, spacing)`, which returns a single line's raw
+advance width on a canvas under a CSS `font` shorthand, or `null` when it
+cannot measure. Both new types, `ComputedFont` and `TextAdvanceSpacing`, are
+exported from `@jimka/typescript-ui/core`.
+
+**Who needs to act.** Only code that implements `DOMSource` itself — a custom
+source installed through `DOM.install`. `ProductionDOMSource` implements both,
+and code that only calls the seam is unaffected. A source that wraps another
+forwards both calls. A source that answers from its own model has two choices.
+The least it can do is keep every measurement on its probe methods: an empty
+computed font is one the canvas cannot reproduce, so the library never asks it
+for an advance:
+
+```typescript
+import type { ComputedFont, DOMSource, TextAdvanceSpacing, TextMeasureOptions } from '@jimka/typescript-ui/core';
+
+const NO_FONT: ComputedFont = {
+    fontFamily: '', fontSize: '', fontWeight: '', fontStyle: '', fontVariantCaps: '',
+    fontStretch: '', lineHeight: '', letterSpacing: '', wordSpacing: '', textTransform: '',
+    fontFeatureSettings: '', fontVariationSettings: '', fontKerning: '',
+    fontVariantLigatures: '', fontVariantNumeric: '', fontVariantEastAsian: '',
+    fontSizeAdjust: '', textRendering: '',
+};
+
+class MySource implements DOMSource {
+    // ...the existing members...
+
+    getComputedFont(_options?: TextMeasureOptions): ComputedFont {
+        return NO_FONT;
+    }
+
+    measureTextAdvance(_text: string, _font: string, _spacing: TextAdvanceSpacing): number | null {
+        return null;
+    }
+}
+```
+
+To measure without a layout as well, read the computed style of an element
+styled like your `measureText` probe (`getPropertyValue("font-family")`,
+`"font-variant-caps"`, `"letter-spacing"` and so on, one per `ComputedFont`
+field, `""` where the engine has none), and measure on a canvas:
+`"run"` is one `measureText(text).width` under `font`; `"words"` sums the
+width of each space-separated word and of one space per space. Return `null`
+whenever the canvas has no 2D context or does not accept `font`.

@@ -19,6 +19,14 @@ page resets to empty.
   unchanged and still does not wait for the font. See
   [Migration](/reference/migration/next) for the full note.
 
+- **`DOMSource` gains `getComputedFont` and `measureTextAdvance`.** The
+  library's layout-free text measurement reads a probe's computed font and a
+  canvas advance through the read seam, so every `DOMSource` implementation must
+  now provide both; the new `ComputedFont` and `TextAdvanceSpacing` types are
+  exported from `@jimka/typescript-ui/core`. Only a custom `DOMSource` needs to
+  act — `ProductionDOMSource` implements both. See
+  [Migration](/reference/migration/next) for the full note.
+
 ### Components
 
 - **`Slider`'s `showTicks` option and its `isShowTicks()` / `setShowTicks()`
@@ -154,6 +162,22 @@ page resets to empty.
   `getX()` / `getY()` as reporting it before anything positions the
   component — a documentation correction to what these accessors always did,
   not a behaviour change, but one worth checking your own null guards against.
+
+- **Text measurement no longer forces a document layout for a single line of
+  text.** `Text`, `Util.measureTextSize`, `Util.measureTextWidth`,
+  `Util.measureTextWidths`, chart axes and tooltips used to measure every
+  string through a hidden probe appended to `<body>`, and each read forced a
+  layout of the whole document — on a keystroke, a re-layout of the editor the
+  keystroke had just invalidated. A single line in a font a canvas reproduces
+  is now measured on a canvas under the font the page resolves, checked
+  against the probe once per font, so typing next to a status line and a chart's
+  repeated layout passes no longer re-lay out the page. A wrap width, text with
+  leading, trailing or repeated whitespace, and a font or `<body>` typography the
+  canvas cannot reproduce (`letter-spacing`, `text-rendering:
+  optimizeLegibility`, font features) still use the probe. Results are cached
+  until the next theme change or settled font load; after changing typography
+  outside `ThemeManager` — a `:root` variable, `<body>` letter-spacing, an app's
+  own font load — call `Util.invalidateTextMetricsCache()`.
 
 ### Components
 
