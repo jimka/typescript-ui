@@ -437,9 +437,11 @@ class Split extends LayoutManager implements FocusRevealer {
      * into the opaque collapse strip (cross-fading its fill) while the pane keeps
      * its full size and reveals via a clip-path; the freed main-axis space is
      * redistributed to the remaining expanded panes. The whole pass is one
-     * coordinated animation: the toggled pane clip-reveals while every other pane
-     * and the gutters interpolate their geometry — re-laying out their contents
-     * each frame — in lockstep (see `CollapseSupport.runCollapse`).
+     * coordinated animation: the toggled pane clip-reveals while every pane and
+     * gutter whose box changes interpolates its geometry — re-laying out its
+     * content each frame — in lockstep (see `CollapseSupport.runCollapse`). A
+     * pane whose box does not change, usually the toggled pane itself, is laid
+     * out once for the end state and left alone by the animation's frames.
      *
      * The serving gutter depends on the pane's `collapseDirection` constraint: a
      * leading-collapsing pane (the default) uses the gutter on its trailing side,
@@ -482,8 +484,9 @@ class Split extends LayoutManager implements FocusRevealer {
         this._collapsing = true;
         this.emit("panecollapse", index, collapsed);
 
-        // Every box that moves: the panes (content re-laid-out each frame) and
-        // the gutters (geometry only). The toggled pane is among them and also
+        // Every box that may move: the panes (content re-laid-out each frame)
+        // and the gutters (geometry only); `runCollapse` animates only the ones
+        // whose box changes. The toggled pane is among them and also
         // clip-reveals; `runCollapse` coordinates the whole pass. A sibling
         // whose content is out is geometry-only too — its own layout must not
         // run while it stays collapsed (see `commitPanes`).

@@ -338,8 +338,11 @@ class Border extends LayoutManager implements FocusRevealer {
      * space. The whole pass is one coordinated animation: the toggled region
      * clip-reveals while the center and the gutter interpolate their geometry —
      * re-laying out their contents each frame — in lockstep (see
-     * `CollapseSupport.runCollapse`). The center cannot be collapsed and a
-     * non-collapsible region ignores a collapse request.
+     * `CollapseSupport.runCollapse`). A region whose box does not change — the
+     * toggled one, and every edge the reclaimed space does not reach — is laid
+     * out once for the end state and left alone by the animation's frames. The
+     * center cannot be collapsed and a non-collapsible region ignores a collapse
+     * request.
      *
      * @param placement - The region to collapse or restore.
      * @param collapsed - True to collapse, false to restore.
@@ -394,8 +397,9 @@ class Border extends LayoutManager implements FocusRevealer {
         // Materialise the region's gutter so it joins the participant list.
         this.ensureGutter(placement);
 
-        // Every box that moves: the regions (content re-laid-out each frame) and
-        // the gutters (geometry only). The toggled region is among them and also
+        // Every box that may move: the regions (content re-laid-out each frame)
+        // and the gutters (geometry only); `runCollapse` animates only the ones
+        // whose box changes. The toggled region is among them and also
         // clip-reveals; `runCollapse` coordinates the whole pass. A sibling
         // whose content is out is geometry-only too — its own layout must not
         // run while it stays collapsed (see `placeRegionBox`).
