@@ -12,6 +12,30 @@ import { isFontActivated } from "~/core/FontActivation.js";
 let _metricsCtx:    CanvasRenderingContext2D | null = null;
 let _scrollBarWidth: number = -1;
 
+// The canvas context `measureTextAdvance` measures on — its own, so neither it
+// nor `measureFontMetrics` ever resets the other's font. `undefined` until the
+// first measurement; `null` once the engine has refused a 2D context, so it is
+// asked only once.
+let _advanceCtx: CanvasRenderingContext2D | null | undefined = undefined;
+
+// The font `_advanceCtx` holds, so a run of measurements under one font
+// assigns it once; `null` while no accepted font is selected.
+let _advanceFont: string | null = null;
+
+// Font shorthand → whether the canvas accepted it (see `_selectCanvasFont`).
+const _canvasFontAccepted: Map<string, boolean> = new Map();
+
+// A font no caller measures, assigned just before a font is tried. A canvas
+// silently ignores a `font` it cannot parse and keeps its previous one, and its
+// getter returns a normalised serialisation that cannot be compared with the
+// input string, so reading back a known sentinel is the only portable check. A
+// real font that ever read back as the sentinel would only fall back to the probe.
+const CANVAS_FONT_SENTINEL = "1px serif";
+
+// Distinct fonts per page number in the tens; the cap only guards a page that
+// animates a font size, the same bound `core/TextMeasure.ts` puts on its font caches.
+const CANVAS_FONT_CACHE_MAX = 256;
+
 /**
  * Applies a set of camelCase inline-style properties to an element, used by the
  * off-screen measurement probes below. Raw `style` access is intentional — this
@@ -21,6 +45,41 @@ function _applyProbeStyles(element: HTMLElement, styles: Record<string, string>)
     for (const key of Object.keys(styles)) {
         (element.style as any)[key] = styles[key];
     }
+}
+
+// The font every measurement probe applies for an option left unset: the
+// active theme's family and size, with their shipped fallbacks, and the
+// theme's additive line box (`1em` plus `--ts-ui-line-padding`, `2px` when the
+// variable is absent). One constant serves the three probes and
+// `getComputedFont`, so the computed font and the probe can never resolve
+// different defaults.
+const PROBE_FONT_DEFAULTS = {
+    fontFamily:  "var(--ts-ui-font-family, system-ui, sans-serif)",
+    fontSize:    "var(--ts-ui-font-size, 14px)",
+    fontWeight:  "normal",
+    fontStyle:   "normal",
+    fontVariant: "normal",
+    fontStretch: "normal",
+    lineHeight:  "calc(1em + var(--ts-ui-line-padding, 2px))",
+} as const;
+
+/**
+ * The seven font properties a measurement probe applies, each from `options`
+ * or, when unset, from {@link PROBE_FONT_DEFAULTS}.
+ *
+ * @param options - The measurement's font options.
+ * @returns The camelCase inline styles to apply to a probe.
+ */
+function _probeFontStyles(options: TextMeasureOptions): Record<string, string> {
+    return {
+        fontFamily:  options.fontFamily  ?? PROBE_FONT_DEFAULTS.fontFamily,
+        fontSize:    options.fontSize    ?? PROBE_FONT_DEFAULTS.fontSize,
+        fontWeight:  options.fontWeight  ?? PROBE_FONT_DEFAULTS.fontWeight,
+        fontStyle:   options.fontStyle   ?? PROBE_FONT_DEFAULTS.fontStyle,
+        fontVariant: options.fontVariant ?? PROBE_FONT_DEFAULTS.fontVariant,
+        fontStretch: options.fontStretch ?? PROBE_FONT_DEFAULTS.fontStretch,
+        lineHeight:  options.lineHeight  ?? PROBE_FONT_DEFAULTS.lineHeight,
+    };
 }
 
 // One-shot guard for the early-measurement warning below.
@@ -42,6 +101,110 @@ function _warnEarlyMeasure(): void {
         "typescript-ui: text was measured before the startup font settled, so it is sized against "
         + "the browser's fallback face. Await Body.init(...) before building components.",
     );
+}
+
+/**
+ * Returns the canvas context text advances are measured on, creating it on
+ * the first call.
+ *
+ * @returns The 2D context, or `null` when the engine has none.
+ */
+function _textAdvanceContext(): CanvasRenderingContext2D | null {
+    if (_advanceCtx === undefined) {
+        _advanceCtx = document.createElement("canvas").getContext("2d");
+    }
+
+    return _advanceCtx;
+}
+
+/**
+ * Makes `font` the advance context's font, unless the canvas cannot parse it.
+ * A font is tested once, against {@link CANVAS_FONT_SENTINEL}, and the answer
+ * cached.
+ *
+ * @param ctx - The advance context.
+ * @param font - A CSS `font` shorthand.
+ * @returns `true` when the context now measures under `font`.
+ */
+function _selectCanvasFont(ctx: CanvasRenderingContext2D, font: string): boolean {
+    if (_advanceFont === font) {
+        return true;
+    }
+
+    let accepted = _canvasFontAccepted.get(font);
+
+    if (accepted === undefined) {
+        if (_canvasFontAccepted.size >= CANVAS_FONT_CACHE_MAX) {
+            _canvasFontAccepted.clear();
+        }
+
+        ctx.font = CANVAS_FONT_SENTINEL;
+
+        const sentinel = ctx.font;
+
+        ctx.font = font;
+        accepted = ctx.font !== sentinel;
+        _canvasFontAccepted.set(font, accepted);
+    } else if (accepted) {
+        ctx.font = font;
+    }
+
+    if (!accepted) {
+        _advanceFont = null;
+
+        return false;
+    }
+
+    // The canvas default, `auto`, drops kerning across spaces in Chromium,
+    // where the DOM keeps it; `normal` matches the DOM there. Set after every
+    // font assignment, which may reset it. Where the context lacks the
+    // property, the per-font calibration decides with the engine's default.
+    if ("fontKerning" in ctx) {
+        ctx.fontKerning = "normal";
+    }
+
+    _advanceFont = font;
+
+    return true;
+}
+
+// Each `ComputedFont` field's CSS property name, for `getPropertyValue`.
+const COMPUTED_FONT_PROPERTIES: Readonly<Record<keyof ComputedFont, string>> = {
+    fontFamily:            "font-family",
+    fontSize:              "font-size",
+    fontWeight:            "font-weight",
+    fontStyle:             "font-style",
+    fontVariantCaps:       "font-variant-caps",
+    fontStretch:           "font-stretch",
+    lineHeight:            "line-height",
+    letterSpacing:         "letter-spacing",
+    wordSpacing:           "word-spacing",
+    textTransform:         "text-transform",
+    fontFeatureSettings:   "font-feature-settings",
+    fontVariationSettings: "font-variation-settings",
+    fontKerning:           "font-kerning",
+    fontVariantLigatures:  "font-variant-ligatures",
+    fontVariantNumeric:    "font-variant-numeric",
+    fontVariantEastAsian:  "font-variant-east-asian",
+    fontSizeAdjust:        "font-size-adjust",
+    textRendering:         "text-rendering",
+};
+
+/**
+ * Reads every {@link ComputedFont} field off a computed style, by its CSS
+ * property name, trimmed. A property the engine does not implement reads `""`.
+ *
+ * @param computed - A live computed style.
+ * @returns The computed font.
+ */
+function _readComputedFont(computed: CSSStyleDeclaration): ComputedFont {
+    const font = {} as ComputedFont;
+
+    for (const field of Object.keys(COMPUTED_FONT_PROPERTIES) as Array<keyof ComputedFont>) {
+        font[field] = computed.getPropertyValue(COMPUTED_FONT_PROPERTIES[field]).trim();
+    }
+
+    return font;
 }
 
 /**
@@ -121,6 +284,44 @@ export interface MediaState {
     /** Current playback speed multiplier (`1` is normal speed). */
     playbackRate: number;
 }
+
+/**
+ * The computed values, as the browser reports them, of every typography
+ * property that decides how wide a line of text is. Read through
+ * {@link DOMSource.getComputedFont}; each field is the property's computed
+ * serialisation (e.g. `"14px"`, `"400"`, `"100%"`), or `""` where the engine
+ * does not implement the property.
+ *
+ * @category Core
+ */
+export interface ComputedFont {
+    fontFamily:            string;
+    fontSize:              string;
+    fontWeight:            string;
+    fontStyle:             string;
+    fontVariantCaps:       string;
+    fontStretch:           string;
+    lineHeight:            string;
+    letterSpacing:         string;
+    wordSpacing:           string;
+    textTransform:         string;
+    fontFeatureSettings:   string;
+    fontVariationSettings: string;
+    fontKerning:           string;
+    fontVariantLigatures:  string;
+    fontVariantNumeric:    string;
+    fontVariantEastAsian:  string;
+    fontSizeAdjust:        string;
+    textRendering:         string;
+}
+
+/**
+ * How a canvas advance treats spaces: `"run"` measures the whole string at
+ * once, `"words"` sums each space-separated word and one space advance per space.
+ *
+ * @category Core
+ */
+export type TextAdvanceSpacing = "run" | "words";
 
 /**
  * Opaque, serialisable element reference. A branded `number`, so a raw number
@@ -1132,6 +1333,10 @@ export interface DOMSource {
     /**
      * Measures the rendered size and baseline of a text string.
      *
+     * Each call forces a document layout. The library measures text through a
+     * layout-free path of its own and falls back to this probe only for what
+     * that path cannot reproduce.
+     *
      * @param text - The string to measure.
      * @param options - Font properties; default to the active theme variables.
      * @returns The measured `{width, height, baseline}` in pixels.
@@ -1140,6 +1345,10 @@ export interface DOMSource {
 
     /**
      * Measures many strings under one font in a single document reflow.
+     *
+     * Each call forces a document layout. The library measures text through a
+     * layout-free path of its own and falls back to this probe only for what
+     * that path cannot reproduce.
      *
      * @param texts - The strings to measure.
      * @param options - Font properties; default to the active theme variables.
@@ -1151,11 +1360,44 @@ export interface DOMSource {
     /**
      * Measures many strings, each under its own font, in a single document reflow.
      *
+     * Each call forces a document layout. The library measures text through a
+     * layout-free path of its own and falls back to this probe only for what
+     * that path cannot reproduce.
+     *
      * @param requests - The strings to measure, each with its own font properties.
      * @returns One `TextMetrics` per request, in request order; an empty request
      *   list touches the DOM not at all and returns an empty array.
      */
     measureTexts(requests: TextMeasureRequest[]): TextMetrics[];
+
+    /**
+     * Resolves font options exactly as the measurement probes do — on a
+     * hidden element appended to `<body>`, so it inherits `<body>`'s
+     * typography — and returns the computed values of every property that
+     * decides a text width.
+     *
+     * @param options - Font properties; default to the active theme variables.
+     *   `maxWidth` is ignored.
+     * @returns The computed font, every field a string (`""` for a property
+     *   the engine does not implement).
+     *
+     * @remarks Forces a style recalculation, not a layout.
+     */
+    getComputedFont(options?: TextMeasureOptions): ComputedFont;
+
+    /**
+     * Measures the raw advance width of a single line of text on a canvas, with
+     * no document layout.
+     *
+     * @param text - The string to measure.
+     * @param font - A CSS `font` shorthand the canvas can parse.
+     * @param spacing - How spaces are measured: `"run"` measures the whole
+     *   string at once, with kerning across spaces; `"words"` sums each
+     *   space-separated word and one space advance per space.
+     * @returns The unrounded advance in pixels, or `null` when the engine has
+     *   no 2D canvas context or does not accept `font`.
+     */
+    measureTextAdvance(text: string, font: string, spacing: TextAdvanceSpacing): number | null;
 
     /**
      * Resolves a CSS `font-size` value (possibly a `calc()`/`var()`) to a pixel
@@ -2242,13 +2484,13 @@ export class ProductionDOMSource implements DOMSource {
         _warnEarlyMeasure();
 
         const {
-            fontFamily  = "var(--ts-ui-font-family, system-ui, sans-serif)",
-            fontSize    = "var(--ts-ui-font-size, 14px)",
-            fontWeight  = "normal",
-            fontStyle   = "normal",
-            fontVariant = "normal",
-            fontStretch = "normal",
-            lineHeight  = "calc(1em + var(--ts-ui-line-padding, 2px))",
+            fontFamily  = PROBE_FONT_DEFAULTS.fontFamily,
+            fontSize    = PROBE_FONT_DEFAULTS.fontSize,
+            fontWeight  = PROBE_FONT_DEFAULTS.fontWeight,
+            fontStyle   = PROBE_FONT_DEFAULTS.fontStyle,
+            fontVariant = PROBE_FONT_DEFAULTS.fontVariant,
+            fontStretch = PROBE_FONT_DEFAULTS.fontStretch,
+            lineHeight  = PROBE_FONT_DEFAULTS.lineHeight,
             maxWidth,
         } = options;
 
@@ -2300,12 +2542,12 @@ export class ProductionDOMSource implements DOMSource {
         }
 
         const {
-            fontFamily  = "var(--ts-ui-font-family, system-ui, sans-serif)",
-            fontSize    = "var(--ts-ui-font-size, 14px)",
-            fontWeight  = "normal",
-            fontStyle   = "normal",
-            fontVariant = "normal",
-            fontStretch = "normal",
+            fontFamily  = PROBE_FONT_DEFAULTS.fontFamily,
+            fontSize    = PROBE_FONT_DEFAULTS.fontSize,
+            fontWeight  = PROBE_FONT_DEFAULTS.fontWeight,
+            fontStyle   = PROBE_FONT_DEFAULTS.fontStyle,
+            fontVariant = PROBE_FONT_DEFAULTS.fontVariant,
+            fontStretch = PROBE_FONT_DEFAULTS.fontStretch,
         } = options;
 
         const wrapper = document.createElement("div");
@@ -2351,13 +2593,13 @@ export class ProductionDOMSource implements DOMSource {
 
         const probes = requests.map(({ text, options = {} }) => {
             const {
-                fontFamily  = "var(--ts-ui-font-family, system-ui, sans-serif)",
-                fontSize    = "var(--ts-ui-font-size, 14px)",
-                fontWeight  = "normal",
-                fontStyle   = "normal",
-                fontVariant = "normal",
-                fontStretch = "normal",
-                lineHeight  = "calc(1em + var(--ts-ui-line-padding, 2px))",
+                fontFamily  = PROBE_FONT_DEFAULTS.fontFamily,
+                fontSize    = PROBE_FONT_DEFAULTS.fontSize,
+                fontWeight  = PROBE_FONT_DEFAULTS.fontWeight,
+                fontStyle   = PROBE_FONT_DEFAULTS.fontStyle,
+                fontVariant = PROBE_FONT_DEFAULTS.fontVariant,
+                fontStretch = PROBE_FONT_DEFAULTS.fontStretch,
+                lineHeight  = PROBE_FONT_DEFAULTS.lineHeight,
                 maxWidth,
             } = options;
 
@@ -2405,6 +2647,46 @@ export class ProductionDOMSource implements DOMSource {
         document.body.removeChild(wrapper);
 
         return metrics;
+    }
+
+    /** @inheritDoc */
+    getComputedFont(options: TextMeasureOptions = {}): ComputedFont {
+        const probe = document.createElement("span");
+
+        _applyProbeStyles(probe, { position: "fixed", visibility: "hidden", ..._probeFontStyles(options) });
+        document.body.appendChild(probe);
+
+        // Every field is read before the probe leaves the tree: a detached
+        // element's computed style is empty.
+        const font = _readComputedFont(getComputedStyle(probe));
+
+        document.body.removeChild(probe);
+
+        return font;
+    }
+
+    /** @inheritDoc */
+    measureTextAdvance(text: string, font: string, spacing: TextAdvanceSpacing): number | null {
+        _warnEarlyMeasure();
+
+        const ctx = _textAdvanceContext();
+
+        if (ctx === null || !_selectCanvasFont(ctx, font)) {
+            return null;
+        }
+
+        if (spacing === "run") {
+            return ctx.measureText(text).width;
+        }
+
+        const words = text.split(" ");
+        let width   = (words.length - 1) * ctx.measureText(" ").width;
+
+        for (const word of words) {
+            width += ctx.measureText(word).width;
+        }
+
+        return width;
     }
 
     /** @inheritDoc */

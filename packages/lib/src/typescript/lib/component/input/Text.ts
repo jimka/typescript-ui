@@ -5,6 +5,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Util } from "~/core/Util.js";
 import type { TextMetrics } from "~/core/Util.js";
+import { measureManyTextMetrics, measureTextMetrics } from "~/core/TextMeasure.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
@@ -106,8 +107,10 @@ const DEFAULT_FONT_SIZE_RULE = "var(--ts-ui-font-size, 14px)";
 /**
  * A text-displaying component with comprehensive font and layout controls.
  *
- * Uses an off-screen probe element to measure text dimensions and automatically
- * updates the preferred size whenever the text or a font property changes.
+ * Measures its single-line size without a document layout — on a canvas,
+ * under the font the page resolves — and its wrapped height through an
+ * off-screen probe element, and automatically updates the preferred size
+ * whenever the text or a font property changes.
  *
  * @category Components
  */
@@ -488,7 +491,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             // that resolves a bound font-size var can itself probe the DOM, and
             // those probes must all land before the batched read, not between
             // its rectangle reads.
-            const metrics = DOM.source.measureTexts(
+            const metrics = measureManyTextMetrics(
                 pending.map(participant => ({
                     text:    participant._options.text!.toString(),
                     options: participant.measureOptions(),
@@ -502,11 +505,17 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
-     * Measures the text using an off-screen probe element and sets the preferred size.
+     * Measures the text and sets the preferred size.
      *
-     * @remarks Creates a temporary fixed-positioned invisible `<span>`, appends it to the body
-     * to obtain its bounding rect, then removes it. Sets preferred size to (0, 0) when no text is set.
-     * No-op when {@link setAutoMeasure} is `false` — the parent layout is expected to size this Text.
+     * @remarks A single line in a font a canvas reproduces is measured on the
+     * canvas, with no document layout, and a repeat is served from a cache.
+     * Anything else — a wrapped height, whitespace the page collapses, a font
+     * the canvas cannot reproduce, a font's first measurement — goes to an
+     * off-screen probe: a temporary fixed-positioned invisible `<span>`,
+     * appended to the body to read its bounding rect, then removed. Sets
+     * preferred size to (0, 0) when no text is set. No-op when
+     * {@link setAutoMeasure} is `false` — the parent layout is expected to
+     * size this Text.
      */
     private calculateSize(): void {
         if (this.wantsBatchedMeasure()) {
@@ -528,7 +537,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
         const text = this._options.text;
         if (text) {
-            this.applyNaturalMetrics(DOM.source.measureText(text.toString(), this.measureOptions()));
+            this.applyNaturalMetrics(measureTextMetrics(text.toString(), this.measureOptions()));
         } else {
             // No glyphs means no baseline — report null so HBox doesn't try
             // to baseline-align surrounding components against an empty box.
@@ -663,7 +672,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             return naturalHeight;
         }
 
-        const wrapped       = DOM.source.measureText(text, { ...this.measureOptions(), maxWidth: innerWidth });
+        const wrapped       = measureTextMetrics(text, { ...this.measureOptions(), maxWidth: innerWidth });
         const minLineHeight = Math.ceil(this.getLineHeight() ?? this.readThemeLineHeightPx());
 
         return Math.max(wrapped.height, minLineHeight);

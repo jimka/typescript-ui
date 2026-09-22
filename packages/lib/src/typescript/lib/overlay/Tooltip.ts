@@ -6,6 +6,7 @@ import { Event } from "~/core/Event.js";
 import { LayerManager } from "~/core/LayerManager.js";
 import { positionAdjacent } from "~/core/OverlayPosition.js";
 import { Util } from "~/core/Util.js";
+import { measureTextMetrics } from "~/core/TextMeasure.js";
 import { Animation } from "~/core/Animation.js";
 import { Text } from "~/component/input/Text.js";
 
@@ -259,7 +260,7 @@ export class Tooltip extends Component {
         // count; an uncapped tooltip never wraps, so the split count stands.
         if (widestLine + Tooltip.H_PADDING + chromeW > Tooltip.MAX_WIDTH) {
             const availTextWidth = tooltipWidth - Tooltip.H_PADDING - chromeW;
-            const wrappedHeight  = DOM.source.measureText(text, { maxWidth: availTextWidth }).height;
+            const wrappedHeight  = measureTextMetrics(text, { maxWidth: availTextWidth }).height;
             inst._lineCount      = Math.max(lines.length, Math.round(wrappedHeight / inst._perLine));
         } else {
             inst._lineCount = lines.length;
@@ -829,7 +830,7 @@ export class Tooltip extends Component {
      * that default rather than passed explicitly.
      */
     private _perLineHeight(): number {
-        const { height } = DOM.source.measureText("X");
+        const { height } = measureTextMetrics("X");
 
         return Math.ceil(height);
     }

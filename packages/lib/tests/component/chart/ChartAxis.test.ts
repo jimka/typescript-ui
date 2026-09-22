@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { drawAxis, measureAxisMargin, DEFAULT_TICK_COUNT } from '~/component/chart/ChartAxis';
 import { linearScale, bandScale, tickFormatter, scaleTicks } from '~/component/chart/Scale';
 import type { MarkFactory, PlotRect } from '~/component/chart/types';
+import { DOM } from '~/core/DOM';
 import type { Handle, ElementPatch } from '~/core/DOM';
 
 /** A recording MarkFactory: captures every created mark for assertions. */
@@ -21,6 +22,38 @@ function recorder(): { create: MarkFactory; marks: Array<{ tag: string; patch: E
 }
 
 const PLOT: PlotRect = { x: 40, y: 10, width: 300, height: 200 };
+
+/**
+ * Wraps the installed source so every call of any of its methods is counted,
+ * still delegating to the modelled implementation. The per-test baseline in
+ * `tests/setup/node-setup.ts` restores the unwrapped source afterwards.
+ *
+ * @returns A function reading the number of seam calls since the wrap.
+ */
+function countSeamCalls(): () => number {
+    const original = DOM.source;
+    let calls = 0;
+
+    const counting = new Proxy(original, {
+        get(target, property, receiver): unknown {
+            const value = Reflect.get(target, property, receiver);
+
+            if (typeof value !== 'function') {
+                return value;
+            }
+
+            return (...args: unknown[]): unknown => {
+                calls += 1;
+
+                return value.apply(target, args);
+            };
+        },
+    });
+
+    DOM.install({ source: counting });
+
+    return () => calls;
+}
 
 describe('drawAxis', () => {
     it('draws a bottom band axis: one axis line, and a tick + label per category', () => {
@@ -79,6 +112,18 @@ describe('measureAxisMargin', () => {
         const longMargin = measureAxisMargin('left', scale, longFmt, DEFAULT_TICK_COUNT);
 
         expect(longMargin).toBeGreaterThan(shortMargin);
+    });
+
+    it('I3: a repeated measurement of an unchanged left axis makes no seam call', () => {
+        const scale  = linearScale([0, 100], [0, 200]);
+        const format = tickFormatter(scale, DEFAULT_TICK_COUNT);
+
+        const first     = measureAxisMargin('left', scale, format, DEFAULT_TICK_COUNT);
+        const seamCalls = countSeamCalls();
+        const second    = measureAxisMargin('left', scale, format, DEFAULT_TICK_COUNT);
+
+        expect(seamCalls()).toBe(0);
+        expect(second).toBe(first);
     });
 
     it('reserves a constant one-line height for a bottom axis', () => {

@@ -5,7 +5,9 @@
 // measured against the browser's own UI face rather than the theme's.
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { Theme } from '~/core/Theme';
+import type { TextAdvanceSpacing } from '~/core/DOM';
 import type { TextMeasureOptions, TextMeasureRequest } from '~/core/Util';
+import { CALIBRATION_TEXT } from '~/core/TextMeasure';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -18,7 +20,7 @@ const CONFIG = {
 
 /**
  * Builds the app in a fresh module graph, recording every string measured
- * before the theme was applied.
+ * before the theme was applied — through the probe or on the canvas.
  *
  * @param awaitInit - Whether the app awaits `Body.init` before building its
  *   tree (the documented pattern) or builds first (the superseded one).
@@ -45,8 +47,9 @@ async function runApp(awaitInit: boolean): Promise<string[]> {
         return realSetTheme(theme);
     });
 
-    const realMeasureText  = DOM.source.measureText.bind(DOM.source);
-    const realMeasureTexts = DOM.source.measureTexts.bind(DOM.source);
+    const realMeasureText    = DOM.source.measureText.bind(DOM.source);
+    const realMeasureTexts   = DOM.source.measureTexts.bind(DOM.source);
+    const realMeasureAdvance = DOM.source.measureTextAdvance.bind(DOM.source);
 
     vi.spyOn(DOM.source, 'measureText').mockImplementation((text: string, options?: TextMeasureOptions) => {
         if (!themed) { untimed.push(String(text)); }
@@ -57,6 +60,11 @@ async function runApp(awaitInit: boolean): Promise<string[]> {
         if (!themed) { untimed.push(...requests.map(r => r.text)); }
 
         return realMeasureTexts(requests);
+    });
+    vi.spyOn(DOM.source, 'measureTextAdvance').mockImplementation((text: string, font: string, spacing: TextAdvanceSpacing) => {
+        if (!themed) { untimed.push(text); }
+
+        return realMeasureAdvance(text, font, spacing);
     });
 
     if (awaitInit) {
@@ -72,7 +80,9 @@ async function runApp(awaitInit: boolean): Promise<string[]> {
         (await Body.init({ layoutManager: Fit() })).addComponent(bar);
     }
 
-    return untimed;
+    // A font's calibration is not a string the app measured, and a string can
+    // reach both the probe and the canvas, so compare the distinct app strings.
+    return [...new Set(untimed.filter(text => text !== CALIBRATION_TEXT))].sort();
 }
 
 describe('startup text metrics', () => {

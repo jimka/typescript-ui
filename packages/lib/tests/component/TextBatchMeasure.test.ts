@@ -17,6 +17,7 @@ import { Container } from '~/core/Container';
 import { DOM } from '~/core/DOM';
 import { Util } from '~/core/Util';
 import type { TextMeasureOptions, TextMeasureRequest, TextMetrics } from '~/core/Util';
+import { CALIBRATION_TEXT } from '~/core/TextMeasure';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -70,6 +71,18 @@ function installCountingMeasureSource(): {
     return counter;
 }
 
+/**
+ * The requests of a `measureTexts` call that measure a `Text`, without the
+ * calibration requests the layout-free measurement appends for each font it
+ * has not yet checked against the probe.
+ *
+ * @param batch - One `measureTexts` call's request list.
+ * @returns The batch without its `CALIBRATION_TEXT` requests.
+ */
+function participants(batch: TextMeasureRequest[]): TextMeasureRequest[] {
+    return batch.filter(r => r.text !== CALIBRATION_TEXT);
+}
+
 describe('Text — batched measurement', () => {
     it('case 1: two stale auto-measuring Texts batch into one measureTexts call, both sized correctly', () => {
         const a = new Text('alpha');
@@ -79,11 +92,13 @@ describe('Text — batched measurement', () => {
         const sizeA = a.getPreferredSize();
 
         expect(counter.batchCalls).toHaveLength(1);
-        expect(counter.batchCalls[0]).toHaveLength(2);
+        expect(participants(counter.batchCalls[0])).toHaveLength(2);
+        expect(counter.batchCalls[0].at(-1)?.text).toBe(CALIBRATION_TEXT);
+        expect(counter.batchCalls[0].filter(r => r.text === CALIBRATION_TEXT)).toHaveLength(1);
         expect(counter.textCalls).toBe(0);
 
         const sizeB = b.getPreferredSize();
-        const [reqA, reqB] = counter.batchCalls[0];
+        const [reqA, reqB] = participants(counter.batchCalls[0]);
         const expectedA = DOM.source.measureText(reqA.text, reqA.options);
         const expectedB = DOM.source.measureText(reqB.text, reqB.options);
 
@@ -91,14 +106,22 @@ describe('Text — batched measurement', () => {
         expect(sizeB).toEqual({ width: expectedB.width, height: expectedB.height });
     });
 
-    it('case 2: a lone stale Text takes the solo measureText path', () => {
+    it('case 2: a lone stale Text is measured alone', () => {
         const a = new Text('solo');
         const counter = installCountingMeasureSource();
 
         a.getPreferredSize();
 
-        expect(counter.batchCalls).toHaveLength(0);
-        expect(counter.textCalls).toBe(1);
+        // Its font's first measurement carries the font's calibration, so the
+        // lone request and that calibration share one probe call.
+        expect(counter.batchCalls.map(batch => batch.map(r => r.text))).toEqual([['solo', CALIBRATION_TEXT]]);
+        expect(counter.textCalls).toBe(0);
+
+        // A second lone Text in the now-calibrated font measures without a probe.
+        new Text('second').getPreferredSize();
+
+        expect(counter.batchCalls).toHaveLength(1);
+        expect(counter.textCalls).toBe(0);
     });
 
     it('case 3: a Text with setAutoMeasure(false) never joins a batch', () => {
@@ -110,7 +133,7 @@ describe('Text — batched measurement', () => {
         a.getPreferredSize();
 
         expect(counter.batchCalls).toHaveLength(1);
-        expect(counter.batchCalls[0]).toHaveLength(2);
+        expect(participants(counter.batchCalls[0])).toHaveLength(2);
         expect(counter.batchCalls[0].map(r => r.text)).not.toContain('opts out');
 
         expect(off.getPreferredSize()).toBeNull();
@@ -164,7 +187,7 @@ describe('Text — batched measurement', () => {
         a.getPreferredSize();
 
         expect(counter.batchCalls).toHaveLength(1);
-        expect(counter.batchCalls[0]).toHaveLength(3);
+        expect(participants(counter.batchCalls[0])).toHaveLength(3);
     });
 
     it('case 7: each request carries its own participant\'s font options', () => {
@@ -176,7 +199,7 @@ describe('Text — batched measurement', () => {
         a.getPreferredSize();
 
         expect(counter.batchCalls).toHaveLength(1);
-        expect(counter.batchCalls[0].map(r => r.options?.fontWeight)).toEqual(['400', '600', '700']);
+        expect(participants(counter.batchCalls[0]).map(r => r.options?.fontWeight)).toEqual(['400', '600', '700']);
     });
 
     it('case 8: getBaseline() and getMinSize() trigger a batch on the same terms as getPreferredSize()', () => {
@@ -187,15 +210,17 @@ describe('Text — batched measurement', () => {
         a1.getBaseline();
 
         expect(counter.batchCalls).toHaveLength(1);
-        expect(counter.batchCalls[0].map(r => r.text)).toEqual(['alpha', 'beta wide label']);
+        expect(participants(counter.batchCalls[0]).map(r => r.text)).toEqual(['alpha', 'beta wide label']);
 
-        const a2 = new Text('alpha2');
-        const b2 = new Text('beta wide label 2');
+        // A font the first batch has not calibrated, so these two still need
+        // the probe, and still share one call.
+        const a2 = new Text('alpha2', { fontWeight: '600' });
+        const b2 = new Text('beta wide label 2', { fontWeight: '600' });
 
         a2.getMinSize();
 
         expect(counter.batchCalls).toHaveLength(2);
-        expect(counter.batchCalls[1].map(r => r.text)).toEqual(['alpha2', 'beta wide label 2']);
+        expect(participants(counter.batchCalls[1]).map(r => r.text)).toEqual(['alpha2', 'beta wide label 2']);
     });
 
     it('case 9: a disposed Text is pruned from the registry and never joins a later batch', () => {
@@ -209,7 +234,7 @@ describe('Text — batched measurement', () => {
         a.getPreferredSize();
 
         expect(counter.batchCalls).toHaveLength(1);
-        expect(counter.batchCalls[0]).toHaveLength(2);
+        expect(participants(counter.batchCalls[0])).toHaveLength(2);
         expect(counter.batchCalls[0].map(r => r.text)).not.toContain('disposed label');
     });
 
@@ -230,17 +255,16 @@ describe('Text — batched measurement', () => {
 
         const naturalSize = wrapping.getPreferredSize()!;
         expect(counter.batchCalls).toHaveLength(1);
-        expect(counter.batchCalls[0]).toHaveLength(2);
+        expect(participants(counter.batchCalls[0])).toHaveLength(2);
 
         // Narrow enough that the wrapping run can no longer fit on one line.
         wrapping.setWidth(40);
 
         // `other` is already clean by this point, so this re-measure is solo —
-        // not batched — and, per the plan's Potential Challenges, still pays two
-        // probes (the natural re-measure, then the wrap-specific one inside
-        // `measuredHeight`), same as before this plan.
+        // not batched. Its natural re-measure is a memo hit, so only the
+        // wrap-specific probe inside `measuredHeight` runs.
         expect(counter.batchCalls).toHaveLength(1);
-        expect(counter.textCalls).toBe(2);
+        expect(counter.textCalls).toBe(1);
 
         const wrappedSize = wrapping.getPreferredSize()!;
         expect(wrappedSize.height).toBeGreaterThan(naturalSize.height);
@@ -268,7 +292,7 @@ describe('Text — font-style re-measure', () => {
         a.getPreferredSize();
 
         expect(counter.batchCalls).toHaveLength(1);
-        expect(counter.batchCalls[0].map(r => r.options?.fontStyle)).toEqual(['italic', 'oblique']);
+        expect(participants(counter.batchCalls[0]).map(r => r.options?.fontStyle)).toEqual(['italic', 'oblique']);
     });
 
     it('b: setFontStyle schedules a layout on the parent, matching setFontWeight', () => {

@@ -57,6 +57,46 @@ function inst(): { getWidth(): number; getHeight(): number } {
     return (Tooltip as any).getInstance();
 }
 
+/**
+ * Wraps the installed source so every probe call — `measureText`,
+ * `measureTexts` and `measureTextWidths`, each a forced document layout in a
+ * browser — is counted, still delegating to the modelled implementation.
+ *
+ * @returns A function reading the number of probe calls since the wrap.
+ */
+function countProbeCalls(): () => number {
+    const original = DOM.source;
+    let calls = 0;
+
+    const wrapped = Object.create(original, {
+        measureText: {
+            value: (...args: Parameters<typeof original.measureText>) => {
+                calls += 1;
+
+                return original.measureText(...args);
+            },
+        },
+        measureTexts: {
+            value: (...args: Parameters<typeof original.measureTexts>) => {
+                calls += 1;
+
+                return original.measureTexts(...args);
+            },
+        },
+        measureTextWidths: {
+            value: (...args: Parameters<typeof original.measureTextWidths>) => {
+                calls += 1;
+
+                return original.measureTextWidths(...args);
+            },
+        },
+    });
+
+    DOM.install({ source: wrapped });
+
+    return () => calls;
+}
+
 describe('Tooltip.show', () => {
     afterEach(() => {
         // The singleton instance + showTimer survive DOM.reset(); clear the timer
@@ -253,6 +293,18 @@ describe('Tooltip.show', () => {
                 expect(cursorInside).toBe(false);
             }
         }
+    });
+
+    it('I2: a second show of the same one-line text makes no probe call', () => {
+        installTestDOM(CONFIG);
+
+        Tooltip.show('Hello', 100, 100);
+
+        const probeCalls = countProbeCalls();
+
+        Tooltip.show('Hello', 100, 100);
+
+        expect(probeCalls()).toBe(0);
     });
 
     // NOTE (offline harness limit): the contract clause "when the widest line
