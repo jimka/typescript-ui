@@ -18,6 +18,7 @@ plain reports, or reports whose phases differ; 2 for bad arguments.
 import argparse
 import glob
 import json
+import math
 import os
 import sys
 from dataclasses import dataclass, field
@@ -357,7 +358,8 @@ def evaluate(terms: list[tuple[int, str]], phase: dict) -> float:
 
 def mean(values: list[float]) -> float:
     """
-    The arithmetic mean.
+    The arithmetic mean. It sums with math.fsum, which rounds the same on
+    every Python; sum() compensates from 3.12 on, so its last bits vary.
 
     Args:
         values: at least one value.
@@ -365,7 +367,23 @@ def mean(values: list[float]) -> float:
     Returns:
         Their mean.
     """
-    return sum(values) / len(values)
+    return math.fsum(values) / len(values)
+
+
+def signed(value: float, places: int) -> str:
+    """
+    A change, with its sign, to `places` decimals. One that rounds to zero
+    prints as +0: the difference of two equal means can land a few ulps below
+    zero, and would print as -0.
+
+    Args:
+        value: the change.
+        places: the decimals to print.
+
+    Returns:
+        The printed change.
+    """
+    return f'{round(value, places) + 0.0:+.{places}f}'
 
 
 def avg_ms(phase: dict) -> float:
@@ -605,7 +623,7 @@ def dose_reading(plain_phases: list[dict], plain_counter: float, delta: float, b
     work = 'win' if share >= WORK_WIN_FRACTION and plain_counter >= WORK_WIN_MIN_PER_UNIT else 'flat'
     ms = 'win' if delta > bracket else 'flat'
 
-    return f'  dose: counter {share * 100:.1f}% of seam.source → work {work}; Δms {delta:+.2f} vs bracket {bracket:.2f} → ms {ms}'
+    return f'  dose: counter {share * 100:.1f}% of seam.source → work {work}; Δms {signed(delta, 2)} vs bracket {bracket:.2f} → ms {ms}'
 
 
 def read_arm(arm: str, phases: list[dict], plain_phases: list[dict], index: int, terms: list[tuple[int, str]], options: Options, unstable: bool) -> ArmReading:
@@ -631,7 +649,7 @@ def read_arm(arm: str, phases: list[dict], plain_phases: list[dict], index: int,
     plain_counter = mean([evaluate(terms, phase) for phase in plain_phases])
     counter = mean([evaluate(terms, phase) for phase in phases])
     delta = counter - plain_counter
-    delta_pct = f'{delta / plain_counter * 100:+.1f}%' if plain_counter else '-'
+    delta_pct = f'{signed(delta / plain_counter * 100, 1)}%' if plain_counter else '-'
     diffs = sorted({d for phase in phases for d in differing_labels(phase, plain_phases[0], index, options) + differing_same(phase, plain_phases[0], options)})
     geom = 'unstable' if unstable else ('=' if not diffs else f'DIFF({",".join(diffs)})')
     engaged = 'yes' if all(engagement(phase, arm) > 0 for phase in phases) else 'no'
@@ -670,7 +688,7 @@ def print_phase(index: int, runs: list[Run], terms: list[tuple[int, str]], optio
         phases = [run.report['phases'][index] for run in runs if run.arm == arm]
         r = read_arm(arm, phases, plain_phases, index, terms, options, unstable)
 
-        print(f'  {r.arm:{width}}  {r.reps} reps  mean {r.mean:.2f}  Δms {r.delta_ms:+.2f} {r.ms:7}  counter {r.counter:.2f}'
+        print(f'  {r.arm:{width}}  {r.reps} reps  mean {r.mean:.2f}  Δms {signed(r.delta_ms, 2)} {r.ms:7}  counter {r.counter:.2f}'
               f'  Δ {r.delta_pct:>7} {r.work:4}  geom {r.geom}  engaged {r.engaged}  → {r.verdict}')
 
         if r.dose_note:

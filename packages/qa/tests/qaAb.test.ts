@@ -172,3 +172,15 @@ describe('gates and failures', () => {
         expect(qaAb([CELL, 'ab-fix-', '--counter', 'work +']).status).toBe(2);
     });
 });
+
+describe('printing', () => {
+    it('prints a change that rounds to zero as +0, not -0', () => {
+        const dir = cellCopy((report) => {
+            // The counter follows the timings: the x.z and plain means are
+            // both 10.2, yet their float difference lands just below zero.
+            report.phases[0].work = { a: report.phases[0].timing.avgMs };
+        });
+
+        expect(armLine(qaAb([dir, 'ab-fix-']).lines, 'x.z')).toMatch(/Δms \+0\.00 flat .*Δ +\+0\.0% flat /);
+    });
+});
