@@ -160,7 +160,7 @@ This only renders differently when the button has been stretched past its auto-s
 
 ## Auto-sizing
 
-Every `Button` derives its preferred size from the content row (`glyph` + `text`) plus the perimeter insets. Construction, `setGlyph` / `clearGlyph` / `setInsets`, and theme changes all re-fire the auto-compute, so a button declared without an explicit `preferredSize` reports a natural content-fit size to its parent layout. Consumer-supplied `preferredSize` (positional or via the options bag) wins permanently for the lifetime of the instance — once set, future auto-fires no-op.
+Every `Button` derives its preferred size from the content row (`glyph` + `text`) plus the perimeter insets. Construction, adding or clearing a glyph, `setInsets`, and theme changes all re-fire the auto-compute, so a button declared without an explicit `preferredSize` reports a natural content-fit size to its parent layout; `setGlyph` on a button that already shows a glyph renames it and leaves the size alone. Consumer-supplied `preferredSize` (positional or via the options bag) wins permanently for the lifetime of the instance — once set, future auto-fires no-op.
 
 Subclasses customise the size by overriding the protected `computePreferredSize(): { width, height }` method. The canonical pattern is to take Button's derived width and replace the height (or vice versa) — for example, `MenuBarButton` pins the height to its 28-px row token while inheriting the content-derived width.
 

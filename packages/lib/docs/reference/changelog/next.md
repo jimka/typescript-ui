@@ -245,6 +245,22 @@ page resets to empty.
 
 ### Components
 
+- **Every built-in icon swap renames the glyph in place instead of building a
+  new one.** `Button.setGlyph` (and so `Tab.setTabGlyph` / `TabBar.setEntryGlyph`,
+  `TabWindow.setGlyph`, `VideoPlayer`'s transport buttons, `ScrollStrip`'s
+  arrows and the column filter's operator button), `WindowHeader.setGlyph` (and
+  so `Window.setGlyph`), `DialogTitleBar.setGlyph`, `HeaderCell.setHeaderGlyph`,
+  the table's `GlyphRenderer`, `IconText.setGlyph` / `IconLabel.setGlyph`, the
+  `Tree` and `TreeTable` expand/collapse carets, and the icons of
+  `IconLabelTreeNodeRenderer` and `GlyphListItemRenderer` all take the new
+  path. `getGlyph()`, `getToggle()` and `getGlyphComponent()` now return the
+  same instance across a swap, and a style set on that instance survives it. A
+  tree expand or collapse no longer writes to the stylesheet at all: a tree
+  caret takes its pointer cursor from the shared `ts-ui-trait-tree-toggle`
+  class rule rather than an `#id` rule of its own. Code that relied on a swap
+  producing a fresh, unstyled glyph must reset that style itself; nothing else
+  needs to change.
+
 - **`LabeledGrid`, `Header` (and so `WindowHeader`) and `StatusBar` are no
   longer re-laid-out when their parent re-commits them at the rectangle they
   already hold.** Each joins `MenuBar` and `ToolBar` in the unchanged-commit
@@ -313,6 +329,14 @@ page resets to empty.
 ## Added
 
 ### Components
+
+- **`Glyph.setGlyphName(name)` changes an existing glyph's icon in place.**
+  The instance is kept, and so is everything set on it — its size, colour,
+  cursor, transform, style trait, class tokens, any `aria-*` on its root and a
+  running animation with its duration and play state. Only which registry
+  entry is painted changes. An unregistered name throws
+  `Error("Unknown glyph: <name>")`, exactly as the constructor does, and
+  leaves the glyph as it was.
 
 - **`Delete` closes the focused tab.** Pressing it while a
   [`Tab`](/layouts/Tab) strip's tab button or its ✕ holds keyboard focus fires
@@ -846,6 +870,17 @@ page resets to empty.
 
 ### Components
 
+- **`IconText.setGlyph`, `IconLabel.setGlyph`, `WindowHeader.setGlyph` /
+  `clearGlyph`, `DialogTitleBar.setGlyph` / `clearGlyph` and the table's
+  `GlyphRenderer` no longer leak the glyph they replace or clear.** Each took
+  the outgoing glyph out of its parent's child list without destroying it, so
+  its element, its per-instance stylesheet rule and its theme subscription
+  stayed alive until garbage collection — a `Dialog` with a `severity` leaked
+  one on every open, and a glyph column leaked one per row rebind. Swapping now
+  renames rather than replaces, and the paths that genuinely drop a glyph
+  dispose it. `IconText` built with a `glyph` option also no longer builds and
+  discards a `Glyph` at construction. No consumer action is needed.
+
 - **A closeable tab strip no longer contributes one extra Tab stop per ✕.**
   Each close button kept the explicit `tabindex="0"` every
   [`Button`](/components/Button) writes, so a three-tab closeable strip was
@@ -1158,15 +1193,15 @@ page resets to empty.
   every teardown it was handed, before the inherited teardown disposes the
   rows they are registered against. No consumer action is needed.
 
-- **A tree cell's expand/collapse toggle is now destroyed when it is
-  replaced.** The renderer swaps in a fresh caret glyph whenever the row's
-  depth, child count or expansion changes — and a scrolling tree table rebinds
-  its pooled rows constantly — but the outgoing glyph was only detached, so it
-  kept its element, its per-instance stylesheet rule and its theme
-  subscription. One glyph was stranded per swap. Because the replaced glyph is
-  now destroyed, a caller holding a reference from an earlier
-  `TreeCellRenderer.getToggle()` must not reuse it across a `setTreeState`
-  call that changes the toggle.
+- **A tree cell's expand/collapse toggle is no longer stranded when the
+  renderer drops it.** The renderer used to swap in a fresh caret glyph
+  whenever the row's depth, child count or expansion changed — and a scrolling
+  tree table rebinds its pooled rows constantly — but the outgoing glyph was
+  only detached, so it kept its element, its per-instance stylesheet rule and
+  its theme subscription. One glyph was stranded per swap. This same release
+  also makes a state change rename the caret in place rather than replace it
+  (see *Changed › Components*), so the only toggle still dropped is that of a
+  row which has become a leaf — and that one is now destroyed, not detached.
 
 - **A date or time picker's dropdown no longer strands the half of its panel
   that is swapped out.** Opening the year scroller takes the day grid out of
