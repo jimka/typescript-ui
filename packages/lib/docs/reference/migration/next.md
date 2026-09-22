@@ -198,3 +198,47 @@ field, `""` where the engine has none), and measure on a canvas:
 `"run"` is one `measureText(text).width` under `font`; `"words"` sums the
 width of each space-separated word and of one space per space. Return `null`
 whenever the canvas has no 2D context or does not accept `font`.
+
+## A chart redraws only when its plot moves or `scheduleLayout()` runs
+
+**What changed and why.** A settled layout pass — a parent re-laying out a
+chart whose size and data are unchanged — used to remove and re-create every
+axis, gridline, label and series mark, and to rewrite the SVG surface's size
+attributes; it now keeps them and writes nothing to the SVG. The rebuild was
+pure cost: a settled 3-series × 50-point line chart rebuilt 210 elements on
+every pass.
+
+**Who needs to act.** Only a subclass of `AbstractChart`, `LineChart` or
+`BarChart` that changes something the drawing reads without going through a
+built-in setter: state of its own that its `buildScales`, `drawSeries`,
+`pointPixel` or `seriesColor` reads, or the protected `_series` or
+`_selectedPoint` written directly — clearing a selection with
+`this._selectedPoint = null`, say. Such a change used to appear on
+whatever pass came next; it now appears only when the chart is next resized
+or `scheduleLayout()` runs. Call `this.scheduleLayout()` after the change, as
+`LineChart.setCurved` does. Calling `doLayout()` directly does not replace it:
+
+```typescript
+// Before — the colour change appeared on whatever pass came next
+class AlertChart extends LineChart {
+    private _alert = false;
+
+    setAlert(alert: boolean): this {
+        this._alert = alert;
+
+        return this;
+    }
+
+    protected seriesColor(index: number, model: ChartSeriesModel): string {
+        return this._alert ? "red" : super.seriesColor(index, model);
+    }
+}
+
+// After — announce the change, as the built-in setters do
+setAlert(alert: boolean): this {
+    this._alert = alert;
+    this.scheduleLayout();
+
+    return this;
+}
+```
