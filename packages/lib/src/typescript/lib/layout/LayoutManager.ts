@@ -298,8 +298,9 @@ export abstract class LayoutManager extends BaseObject {
      * clearing the frame re-parents the whole child subtree, and moving DOM
      * nodes cancels any in-flight CSS transition on a descendant (e.g. an
      * Accordion section animating open/closed would snap the instant a
-     * scrollbar appeared or disappeared). Non-scroll hosts clear any frame —
-     * the trailing-inset reserve is only meaningful when scrolling.
+     * scrollbar appeared or disappeared). The trailing-inset reserve is only
+     * meaningful when scrolling, so a host that scrolls on neither axis clears
+     * any frame and returns without reading its children.
      *
      * Call AFTER the placement loop: it reads each child's committed
      * `getX`/`getY`/`getWidth`/`getHeight`, plus `getTranslateX`/`getTranslateY`
@@ -316,6 +317,14 @@ export abstract class LayoutManager extends BaseObject {
     protected reserveContentFrame(): this {
         const container = this.getContainer();
         if (!container) {
+            return this;
+        }
+
+        // Only a host that scrolls on some axis keeps a frame. Every other host
+        // clears one, so walking its children would be wasted.
+        if (!this.isOverflowingX() && !this.isOverflowingY()) {
+            container.clearContentFrame();
+
             return this;
         }
 
@@ -348,13 +357,7 @@ export abstract class LayoutManager extends BaseObject {
         // child subtree, and moving DOM nodes cancels any in-flight CSS
         // transition on a descendant — e.g. an Accordion section animating
         // open/closed snaps the instant a scrollbar appears or disappears.
-        // Non-scroll hosts clear the frame as before (the trailing-inset reserve
-        // is only meaningful when scrolling).
-        if (this.isOverflowingX() || this.isOverflowingY()) {
-            container.setContentFrame(farRight + insets.getRight(), farBottom + insets.getBottom());
-        } else {
-            container.clearContentFrame();
-        }
+        container.setContentFrame(farRight + insets.getRight(), farBottom + insets.getBottom());
 
         return this;
     }
@@ -394,6 +397,9 @@ export abstract class LayoutManager extends BaseObject {
      * place a child outside the cell (e.g. to let it overflow a scroll panel)
      * can skip this method and call {@link LayoutManager.commitBounds} directly.
      *
+     * A child that fills both axes is sized to the cell without any of its size
+     * hints being read.
+     *
      * @param component - The child whose bounds are being resolved.
      * @param x - Left edge of the cell in the container's coordinate space.
      * @param y - Top edge of the cell in the container's coordinate space.
@@ -405,10 +411,6 @@ export abstract class LayoutManager extends BaseObject {
      */
     protected resolveBounds(component: Component, x: number, y: number, maxWidth: number, maxHeight: number, fill?: FillType | null, anchor?: AnchorType | null): { x: number; y: number; width: number; height: number } {
         const layoutConstraints = this.getLayoutConstraints(component);
-        const preferredSize = component.getPreferredSize();
-        const size = component.getSize();
-        const maxSize = component.getMaxSize();
-        const minSize = component.getMinSize();
         let width: number;
         let height: number;
 
@@ -422,6 +424,12 @@ export abstract class LayoutManager extends BaseObject {
             width = maxWidth;
             height = maxHeight;
         } else {
+            // Read only here: a child that fills both axes takes the cell as given.
+            const preferredSize = component.getPreferredSize();
+            const size = preferredSize ? null : component.getSize();
+            const maxSize = component.getMaxSize();
+            const minSize = component.getMinSize();
+
             if (fill == FillType.HORIZONTAL) {
                 width = maxWidth;
             } else {
