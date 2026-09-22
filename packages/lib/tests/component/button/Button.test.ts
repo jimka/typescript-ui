@@ -12,6 +12,8 @@ import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { _ruleCacheHas, _ruleCacheKeys } from '~/core/StyleTarget';
 import { Util } from '~/core/Util';
+import { SpinButton } from '~/component/input/SpinButton';
+import { GLYPH_XS_INK_TRAIT } from '~/core/StyleTraits';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -554,15 +556,56 @@ describe('Button setter guards', () => {
         expect(btn.getGlyph()).toBe(glyph);
     });
 
-    it('setting a different glyph name still swaps and discards the old instance', () => {
+    it('setting a different glyph name renames the same instance and touches no stylesheet rule', () => {
         const btn = new Button({ glyph: 'xmark', text: 'Close' });
         btn.getElement(true);
 
-        const glyph = btn.getGlyph();
+        const glyph = btn.getGlyph()!;
+
+        // Warm-up swap first: the check sprite `<symbol>` is module state
+        // mounted once per process, not once per rename.
+        btn.setGlyph('check');
+        btn.setGlyph('xmark');
+
+        sink.writes.length = 0;
+        btn.setGlyph('check');
+
+        expect(btn.getGlyph()).toBe(glyph);
+        expect(btn.getGlyph()?.getGlyphName()).toBe('check');
+        expect(sink.writes.filter(w =>
+            w.op === 'ensureStyleRule' || w.op === 'setRuleStyles' || w.op === 'deleteStyleRule')).toEqual([]);
+    });
+
+    it('a colour set on the glyph through getGlyph survives a later setGlyph', () => {
+        const btn = new Button({ glyph: 'xmark', text: 'Close' });
+        btn.getElement(true);
+
+        btn.getGlyph()!.setForegroundColor('rgb(46, 125, 50)');
+        btn.setGlyph('check');
+
+        expect(btn.getGlyph()?.getForegroundColor()).toBe('rgb(46, 125, 50)');
+    });
+
+    it("a SpinButton's chevron keeps its glyph-xs-ink trait across a setGlyph", () => {
+        const spin = new SpinButton('\u25b2');
+
+        spin.getElement(true);
+        spin.setGlyph('check');
+
+        expect(spin.getGlyph()?.getGlyphName()).toBe('check');
+        expect(spin.getGlyph()?.getStyleTrait()).toBe(GLYPH_XS_INK_TRAIT);
+    });
+
+    it('setGlyph after a clearGlyph builds a fresh glyph', () => {
+        const btn = new Button({ glyph: 'xmark', text: 'Close' });
+        btn.getElement(true);
+
+        btn.clearGlyph();
+        expect(btn.getGlyph()).toBeNull();
 
         btn.setGlyph('check');
 
-        expect(btn.getGlyph()).not.toBe(glyph);
+        expect(btn.getGlyph()).not.toBeNull();
         expect(btn.getGlyph()?.getGlyphName()).toBe('check');
     });
 

@@ -137,23 +137,42 @@ describe('HeaderCell — side-loaded child disposal', () => {
         expect(survivingRulesFor([glyph!])).toEqual([]);
     });
 
-    it('disposes the previous glyph when the header glyph is swapped', async () => {
+    it('renames the mounted glyph in place when the header glyph is swapped', async () => {
         const table = await renderedTable();
         const cell  = headerCells(table)[0] as unknown as
             { setHeaderGlyph(n: string | null): unknown } & Record<string, Owner | null>;
 
         cell.setHeaderGlyph('unicode-arrow-up');
 
-        const first = cell._headerGlyphInstance;
+        const first = cell._headerGlyphInstance as unknown as { getGlyphName(): string } | null;
 
         expect(first).not.toBeNull();
 
-        // Swapping must not silently strand the old instance's rules: a header
-        // whose glyph changes with sort state would leak one per change.
+        // A swap keeps the instance, so there is no outgoing glyph whose rules
+        // could be stranded: the header that changes its glyph with sort state
+        // now renames the one it already mounted.
         cell.setHeaderGlyph('unicode-arrow-down');
 
-        expect(cell._headerGlyphInstance).not.toBe(first);
-        expect(survivingRulesFor([first!])).toEqual([]);
+        expect(cell._headerGlyphInstance).toBe(first);
+        expect(first!.getGlyphName()).toBe('unicode-arrow-down');
+    });
+
+    it('disposes the mounted glyph when the header glyph is cleared', async () => {
+        const table = await renderedTable();
+        const cell  = headerCells(table)[0] as unknown as
+            { setHeaderGlyph(n: string | null): unknown } & Record<string, Owner | null>;
+
+        cell.setHeaderGlyph('unicode-arrow-up');
+
+        const glyph = cell._headerGlyphInstance;
+
+        expect(glyph).not.toBeNull();
+        expect(survivingRulesFor([glyph!]).length).toBeGreaterThan(0);
+
+        cell.setHeaderGlyph(null);
+
+        expect(cell._headerGlyphInstance).toBeNull();
+        expect(survivingRulesFor([glyph!])).toEqual([]);
     });
 
     it('releases the column-description tooltip attachment on teardown', async () => {

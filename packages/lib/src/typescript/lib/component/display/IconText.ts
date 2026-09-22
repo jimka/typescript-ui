@@ -78,31 +78,31 @@ class IconText extends Component<IconTextOptions> {
             ...(subclassDefaults ?? {}),
         });
 
-        this._glyph = new Glyph(glyph);
-        this._text  = new Text(text);
+        // Build children with the effective values up front so nothing has to
+        // be overwritten afterwards. The bag-written values from the cascade
+        // take precedence over the positional arguments; resolving them here
+        // is what keeps a bag `glyph` from building a second Glyph, and
+        // mirrors `IconLabel`'s own constructor.
+        this._glyph = new Glyph(this._options.glyph ?? glyph);
+        this._text  = new Text(this._options.text ?? text);
 
         this.addComponent(this._glyph);
         this.addComponent(this._text);
 
-        // Late-built state: `gap` and `glyph`/`text` setters reach into
-        // children that didn't exist during `super`'s cascade. Dispatch from
-        // `_options` now that the row is built. `gap` always applies its
-        // effective value (caller override, else the class default) since the
-        // HBox is seeded without spacing.
+        // Late-built state: the `gap` setter reaches into a layout manager that
+        // didn't exist during `super`'s cascade. Dispatch from `_options` now
+        // that the row is built, always applying the effective value (caller
+        // override, else the class default) since the HBox is seeded without
+        // spacing.
         (this.getLayoutManager() as HBox).setComponentSpacing(this.getGap());
-        if (this._options.glyph !== undefined) {
-            this.setGlyph(this._options.glyph);
-        }
-        if (this._options.text !== undefined) {
-            this.setText(this._options.text);
-        }
     }
 
     /**
      * Applies an {@link IconTextOptions} bag. Inherited Component fields cascade
      * through `super.applyOptions`; the gap/glyph/text fields are written pure
-     * to `_options` here and dispatched from the constructor body once children
-     * exist.
+     * to `_options` here, and the constructor body reads them back once the row
+     * is built — `glyph` and `text` as the children's effective values, `gap`
+     * as a dispatch into the HBox.
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -117,17 +117,14 @@ class IconText extends Component<IconTextOptions> {
     }
 
     /**
-     * Replaces the leading glyph with a fresh instance for the given registry name.
+     * Changes the leading glyph to the given registry name, in place.
      *
      * @param name - Registry glyph name. Must be present in the internal registry.
      *
      * @returns This component, for method chaining.
      */
     setGlyph(name: string): this {
-        this.removeComponent(this._glyph);
-
-        this._glyph = new Glyph(name);
-        this.insertComponent(this._glyph, 0);
+        this._glyph.setGlyphName(name);
 
         return this;
     }

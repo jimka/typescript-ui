@@ -1835,38 +1835,36 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * visual artifacts at the default 0px spacing. The glyph is a dedicated
      * `ButtonIconGlyph` (not a bare `Glyph`), so every unpinned icon's
      * `minSize`/`maxSize` shares one `.ButtonIconGlyph` CSS rule instead of
-     * each carrying its own. A replaced glyph is destroyed, so a caller
-     * holding a reference from an earlier {@link getGlyph} must not reuse it
-     * across a `setGlyph` call — except when `name` is the glyph already
-     * showing, which is a no-op and keeps the instance.
+     * each carrying its own. A later `setGlyph` renames that same glyph in
+     * place, so a reference from an earlier {@link getGlyph} stays valid and
+     * keeps any per-instance style it carries — a colour, a pinned size, a
+     * style trait. Only {@link clearGlyph} destroys it.
      */
     setGlyph(name: string): this {
-        if (this._glyph?.getGlyphName() === name) {
+        if (this._glyph) {
+            // A rename keeps the content row's shape (which depends on whether
+            // a glyph exists, not on which) and the glyph's own size (which
+            // never depends on its name), so neither is rebuilt here.
+            this._glyph.setGlyphName(name);
+
             return this;
         }
 
-        const outgoing = this._glyph;
-        const glyph    = new ButtonIconGlyph(name);
+        const glyph = new ButtonIconGlyph(name);
         glyph.setPointerEvents("none");
 
-        // Reassign before the rebuild; the rebuild empties the content
-        // containers, detaching any previous glyph so it is dropped cleanly.
         this._glyph           = glyph;
         // A fresh glyph hasn't been line-height-synced yet — clear the guard
         // so `_syncGlyphSize` (via recomputePreferredSize) sizes it.
         this._glyphSyncedSize = null;
 
-        // Re-apply an instance glyph tint so it survives a glyph swap.
+        // Apply an instance glyph tint so a colour set before the glyph existed
+        // still reaches it.
         if (this._options.glyphColor !== undefined) {
             glyph.setForegroundColor(this._options.glyphColor);
         }
 
         this._rebuildContentRow();
-
-        // The rebuild only detaches the replaced glyph (removeAllComponents is
-        // detach-only), so discard it here or every swap strands its element
-        // and its per-instance stylesheet rule.
-        outgoing?.dispose();
 
         // The content row's preferred size shifted — re-sync the button's
         // auto-derived preferred size (also sizes the glyph) unless the
@@ -2447,10 +2445,14 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * live). Pushes the freshly computed size through Component's setter both
      * to fire the parent-relayout notification and to dedupe (the setter
      * no-ops when the size is unchanged). Auto-fires from the end of the
-     * constructor, `setGlyph`, `clearGlyph`, `setInsets`, and the registered
+     * constructor, a `setGlyph` that builds the button's first glyph,
+     * `clearGlyph`, `setInsets`, and the registered
      * `ThemeManager.onThemeChange` handler — the content mutations that do
      * not bubble a preferred-size change on their own (a label `setText`
-     * already bubbles via its own measurement).
+     * already bubbles via its own measurement). A `setGlyph` that renames the
+     * glyph already shown does not fire it: the content row's shape depends on
+     * whether a glyph exists, not on which, and a glyph's size never depends
+     * on its name.
      *
      * No-ops when the consumer has supplied an explicit `preferredSize`
      * (Button's `setPreferredSize` override records that intent).

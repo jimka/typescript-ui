@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Glyph } from '~/component/display/Glyph';
 import { Component } from '~/core/Component';
-import { lookupGlyph } from '~/component/display/Glyphs';
+import { lookupGlyph, type NamedGlyphDef } from '~/component/display/Glyphs';
 import { xmark } from '~/glyphs/solid/xmark';
 import { DOM, type Handle } from '~/core/DOM';
+import { GLYPH_XS_INK_TRAIT } from '~/core/StyleTraits';
 import { installTestDOM, ruleStyleWrites, type RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { ThemeManager, ModernTheme, defineTheme } from '~/core/Theme';
@@ -342,5 +343,269 @@ describe('Glyph renders an HTML root so its animation can composite', () => {
         glyph.getElement(true);
 
         expect(glyph.getWillChange()).toBeNull();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// setGlyphName — the in-place rename. The sprite and its mounted-symbol record
+// are module state that `DOM.reset()` does not touch, so every case below that
+// asserts a `<symbol>` mount registers a name no other case in this file uses,
+// and drops it again afterwards.
+// ---------------------------------------------------------------------------
+describe('Glyph.setGlyphName', () => {
+
+    /** Every registry name these cases mint, dropped again after each one. */
+    const MINTED = [
+        'gns-from', 'gns-to',
+        'gns-pre-a', 'gns-pre-b',
+        'gns-svg-to-char', 'gns-char-to-svg',
+        'gns-state-a', 'gns-state-b',
+        'gns-shared-a', 'gns-shared-mount',
+        'gns-three', 'gns-unregister',
+    ];
+
+    afterEach(() => {
+        for (const name of MINTED) {
+            Glyph.unregister(name);
+        }
+    });
+
+    /** An SVG registry entry under `name`, shaped like the shipped icon modules. */
+    const svgDef = (name: string): NamedGlyphDef => ({
+        name,
+        kind:    'svg',
+        viewBox: '0 0 512 512',
+        path:    'M0 0h512v512z',
+    });
+
+    /** Every recorded write of one sink op. */
+    const opsOf = (op: string): RecordingDOMSink['writes'] => sink.writes.filter(w => w.op === op);
+
+    /** Every recorded stylesheet-rule write, of any of the three kinds. */
+    const ruleOps = (): RecordingDOMSink['writes'] => sink.writes.filter(w =>
+        w.op === 'ensureStyleRule' || w.op === 'setRuleStyles' || w.op === 'deleteStyleRule');
+
+    /** Every recorded `createElementNS` for one tag name. */
+    const nsCreations = (tag: string): RecordingDOMSink['writes'] => sink.writes.filter(w =>
+        w.op === 'createElementNS' && w.args[1] === tag);
+
+    /**
+     * Every sprite `<symbol>` mounted so far for one registry name, identified
+     * by the `ts-glyph-<name>` id the mount writes. Counted by id rather than
+     * by tag because a registration that arrives while the sprite is already up
+     * mounts the symbol there and then, before a rename can ask for it.
+     */
+    const symbolMountsFor = (name: string): RecordingDOMSink['writes'] => sink.writes.filter(w =>
+        w.op === 'apply'
+        && (w.args[1] as { setAttr?: Record<string, string> }).setAttr?.id === 'ts-glyph-' + name);
+
+    /** The handles released so far, in release order. */
+    const releasedHandles = (): Handle[] => opsOf('release').map(w => w.args[0] as Handle);
+
+    /** Every recorded `apply` patch targeting one element. */
+    const appliesTo = (handle: Handle): Array<Record<string, unknown>> => sink.writes
+        .filter(w => w.op === 'apply' && w.args[0] === handle)
+        .map(w => w.args[1] as Record<string, unknown>);
+
+    /** The first child of `parent` with the given tag appended so far, or null. */
+    const childOf = (parent: Handle, tag: string): Handle | null => {
+        const write = sink.writes.find(w =>
+            w.op === 'appendChild'
+            && w.args[0] === parent
+            && DOM.source.getTagName(w.args[1] as Handle) === tag);
+
+        return write ? write.args[1] as Handle : null;
+    };
+
+    /** The `<use>` inside the `<svg>` this root holds, or null when there is none. */
+    const useChildOf = (root: Handle): Handle | null => {
+        const svg = childOf(root, 'SVG');
+
+        return svg ? childOf(svg, 'USE') : null;
+    };
+
+    it('renaming to the name already showing returns the glyph and reaches the sink not at all', () => {
+        const glyph = new Glyph('unicode-arrow-up');
+        glyph.getElement(true);
+        sink.writes.length = 0;
+
+        expect(glyph.setGlyphName('unicode-arrow-up')).toBe(glyph);
+        expect(sink.writes).toHaveLength(0);
+    });
+
+    it('an unregistered name throws and leaves the glyph exactly as it was', () => {
+        const glyph = new Glyph('unicode-arrow-up');
+        glyph.getElement(true);
+        sink.writes.length = 0;
+
+        expect(() => glyph.setGlyphName('nope')).toThrow('Unknown glyph: nope');
+        expect(glyph.getGlyphName()).toBe('unicode-arrow-up');
+        expect(sink.writes).toHaveLength(0);
+    });
+
+    it('a rendered svg glyph renamed to another svg name repoints its <use> and builds nothing', () => {
+        Glyph.register(svgDef('gns-from'), svgDef('gns-to'));
+
+        const glyph = new Glyph('gns-from');
+        const root  = glyph.getElement(true)!;
+        const use   = useChildOf(root)!;
+
+        sink.writes.length = 0;
+        glyph.setGlyphName('gns-to');
+
+        expect(glyph.getGlyphName()).toBe('gns-to');
+        expect(DOM.source.getAttribute(use, 'href')).toBe('#ts-glyph-gns-to');
+        expect(glyph.getElement()).toBe(root);
+        expect(ruleOps()).toHaveLength(0);
+        expect(opsOf('createElement')).toHaveLength(0);
+        expect(nsCreations('svg')).toHaveLength(0);
+        expect(nsCreations('use')).toHaveLength(0);
+        expect(opsOf('removeElement')).toHaveLength(0);
+        expect(opsOf('release')).toHaveLength(0);
+    });
+
+    it('an unrendered svg glyph renamed before its first render paints the new name', () => {
+        Glyph.register(svgDef('gns-pre-a'), svgDef('gns-pre-b'));
+
+        const glyph = new Glyph('gns-pre-a');
+
+        glyph.setGlyphName('gns-pre-b');
+
+        const root = glyph.getElement(true)!;
+
+        expect(nsCreations('use')).toHaveLength(1);
+        expect(DOM.source.getAttribute(useChildOf(root)!, 'href')).toBe('#ts-glyph-gns-pre-b');
+    });
+
+    it('a rendered char glyph renamed to another char name writes the new character once', () => {
+        const glyph = new Glyph('unicode-arrow-up');
+        const root  = glyph.getElement(true)!;
+
+        sink.writes.length = 0;
+        glyph.setGlyphName('unicode-arrow-down');
+
+        const applies = appliesTo(root);
+
+        expect(applies).toHaveLength(1);
+        expect(applies[0].text).toBe('▼');
+    });
+
+    it('a rendered svg glyph renamed to a char name tears the <svg> down and applies the char defaults', () => {
+        Glyph.register(svgDef('gns-svg-to-char'));
+
+        const glyph = new Glyph('gns-svg-to-char');
+        const root  = glyph.getElement(true)!;
+        const svg   = childOf(root, 'SVG')!;
+        const use   = useChildOf(root)!;
+
+        sink.writes.length = 0;
+        glyph.setGlyphName('unicode-arrow-down');
+
+        const applies = appliesTo(root);
+
+        expect(opsOf('removeElement')).toHaveLength(1);
+        expect(releasedHandles()).toContain(svg);
+        expect(releasedHandles()).toContain(use);
+        expect(applies).toHaveLength(1);
+        expect(applies[0].text).toBe('▼');
+        expect(glyph.getLineHeight()).toBe('1');
+        expect(glyph.getTextAlign()).toBe('center');
+    });
+
+    it('a rendered char glyph renamed to an svg name clears the text and builds the <svg>', () => {
+        Glyph.register(svgDef('gns-char-to-svg'));
+
+        const glyph = new Glyph('unicode-arrow-up');
+        const root  = glyph.getElement(true)!;
+
+        sink.writes.length = 0;
+        glyph.setGlyphName('gns-char-to-svg');
+
+        const applies = appliesTo(root);
+
+        expect(applies).toHaveLength(1);
+        expect(applies[0].text).toBe('');
+        expect(childOf(root, 'SVG')).not.toBeNull();
+        expect(DOM.source.getAttribute(useChildOf(root)!, 'href')).toBe('#ts-glyph-gns-char-to-svg');
+        expect(glyph.getLineHeight()).toBe('1');
+    });
+
+    it('a rename keeps the instance, its id, colour, size, trait and running animation', () => {
+        Glyph.register(svgDef('gns-state-a'), svgDef('gns-state-b'));
+
+        const glyph = new Glyph('gns-state-a', { styleTrait: GLYPH_XS_INK_TRAIT, animation: 'spin' });
+
+        glyph.setForegroundColor('red');
+        glyph.setPreferredSize({ width: 24, height: 24 });
+
+        const root = glyph.getElement(true)!;
+        const id   = glyph.getId();
+
+        sink.writes.length = 0;
+        glyph.setGlyphName('gns-state-b');
+
+        expect(glyph.getId()).toBe(id);
+        expect(glyph.getForegroundColor()).toBe('red');
+        expect(glyph.getPreferredSize()).toEqual({ width: 24, height: 24 });
+        expect(glyph.getStyleTrait()).toBe(GLYPH_XS_INK_TRAIT);
+        expect(glyph.getAnimated()).toBe('spin');
+        expect(appliesTo(root).some(patch =>
+            ((patch.removeClass as string[] | undefined) ?? []).includes('ts-ui-glyph-spin'))).toBe(false);
+        expect(sink.writes.filter(w =>
+            w.op === 'deleteStyleRule'
+            && w.args[0] === '#' + DOM.source.escapeSelector(id))).toHaveLength(0);
+    });
+
+    it('two glyphs renamed to the same svg name leave one <symbol> mounted for it', () => {
+        const spy = vi.spyOn(DOM.source, 'querySelector');
+
+        Glyph.register(svgDef('gns-shared-a'), svgDef('gns-shared-mount'));
+
+        const first  = new Glyph('gns-shared-a');
+        const second = new Glyph('gns-shared-a');
+
+        first.getElement(true);
+        second.getElement(true);
+        first.setGlyphName('gns-shared-mount');
+        second.setGlyphName('gns-shared-mount');
+
+        expect(symbolMountsFor('gns-shared-mount')).toHaveLength(1);
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('three glyphs of one svg name mount one <symbol>, with no selector query', () => {
+        const spy = vi.spyOn(DOM.source, 'querySelector');
+
+        Glyph.register(svgDef('gns-three'));
+
+        new Glyph('gns-three').getElement(true);
+        new Glyph('gns-three').getElement(true);
+        new Glyph('gns-three').getElement(true);
+
+        expect(symbolMountsFor('gns-three')).toHaveLength(1);
+        expect(nsCreations('symbol')).toHaveLength(1);
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('unregistering a mounted name drops its <symbol>, and registering it again mounts a new one', () => {
+        Glyph.register(svgDef('gns-unregister'));
+        new Glyph('gns-unregister').getElement(true);
+
+        const symbol = sink.writes.find(w =>
+            w.op === 'appendChild'
+            && DOM.source.getTagName(w.args[1] as Handle) === 'SYMBOL')!.args[1] as Handle;
+        const path = childOf(symbol, 'PATH')!;
+
+        sink.writes.length = 0;
+        Glyph.unregister('gns-unregister');
+
+        expect(opsOf('removeChild')).toHaveLength(1);
+        expect(releasedHandles()).toContain(symbol);
+        expect(releasedHandles()).toContain(path);
+
+        Glyph.register(svgDef('gns-unregister'));
+        new Glyph('gns-unregister').getElement(true);
+
+        expect(nsCreations('symbol')).toHaveLength(1);
     });
 });

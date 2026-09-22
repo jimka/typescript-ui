@@ -4,7 +4,8 @@ import { DOM } from '~/core/DOM';
 import { Event } from '~/core/Event';
 import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
-import { _ruleCacheHas } from '~/core/StyleTarget';
+import { _ruleCacheHas, _ruleCacheKeys } from '~/core/StyleTarget';
+import { Diagnostics } from '~/core/Diagnostics';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -154,5 +155,58 @@ describe('WindowHeader title-glyph click', () => {
 
         expect(first).not.toHaveBeenCalled();
         expect(second).toHaveBeenCalledTimes(1);
+    });
+});
+
+// Mirrors TreeCellRenderer.test.ts's C10 round-trip measure — the same two
+// exact, deterministic quantities (the construct/destroy balance and the
+// rule-cache key count), run twice so the first pass absorbs the shared
+// class-tier rules no instance's dispose() is meant to reclaim.
+describe('WindowHeader title-glyph swap', () => {
+
+    /** Live `Component` instances, as the diagnostics counters see them. */
+    function liveComponents(): number {
+        const counters = Diagnostics.counters();
+
+        return counters.componentsConstructed - counters.componentsDestroyed;
+    }
+
+    /** Renders a header, swaps its title glyph twice, clears it, and disposes. */
+    function driveGlyphs(): void {
+        const header = new WindowHeader('Title');
+
+        header.getElement(true);
+        header.setGlyph('unicode-arrow-up');
+        header.setGlyph('unicode-arrow-down');
+        header.clearGlyph();
+        header.dispose();
+    }
+
+    it('a second setGlyph renames the same title-glyph instance', () => {
+        const header = new WindowHeader('Title');
+
+        header.getElement(true);
+        header.setGlyph('unicode-arrow-up');
+
+        const glyph = header.getGlyph();
+
+        header.setGlyph('unicode-arrow-down');
+
+        expect(header.getGlyph()).toBe(glyph);
+        expect(header.getGlyph()?.getGlyphName()).toBe('unicode-arrow-down');
+
+        header.dispose();
+    });
+
+    it('strands neither a component nor a stylesheet rule across a glyph round trip', () => {
+        driveGlyphs();
+
+        const components = liveComponents();
+        const rules      = _ruleCacheKeys().length;
+
+        driveGlyphs();
+
+        expect(liveComponents()).toBe(components);
+        expect(_ruleCacheKeys().length).toBe(rules);
     });
 });

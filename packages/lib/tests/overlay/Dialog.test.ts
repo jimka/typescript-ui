@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { _Dialog as Dialog, DialogButtons } from '~/overlay/Dialog';
+import { _Dialog as Dialog, DialogButtons, DialogTitleBar } from '~/overlay/Dialog';
 import type { DialogButtonConfig } from '~/overlay/Dialog';
 import { LayerManager } from '~/core/LayerManager';
 import { DOM, type Handle } from '~/core/DOM';
@@ -8,6 +8,8 @@ import { _Button as Button } from '~/component/button/Button';
 import { _DialogBackdrop as DialogBackdrop } from '~/component/container/DialogBackdrop';
 import { FOCUSABLE_SELECTOR } from '~/core/Focusable';
 import { installTestDOM, setQuerySelectorAllResult } from '../dom/TestDOM';
+import { Diagnostics } from '~/core/Diagnostics';
+import { _ruleCacheKeys } from '~/core/StyleTarget';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 // Mirrors core/Event.ts's applyDisposition: onEnter/onKeyDown no longer call
@@ -972,5 +974,65 @@ describe('Dialog — button onClick veto', () => {
 
         expect(dialog.button(0).isEnabled()).toBe(true);
         expect(dialog.button(1).isEnabled()).toBe(true);
+    });
+});
+
+// Mirrors TreeCellRenderer.test.ts's C10 round-trip measure — the same two
+// exact, deterministic quantities (the construct/destroy balance and the
+// rule-cache key count), run twice so the first pass absorbs the shared
+// class-tier rules no instance's dispose() is meant to reclaim. A Dialog with
+// a `severity` sets the title bar's glyph on every open, so a leak here was
+// one stranded Glyph per severity dialog.
+describe('DialogTitleBar leading-glyph swap', () => {
+    afterEach(() => DOM.reset());
+
+    /** Live `Component` instances, as the diagnostics counters see them. */
+    function liveComponents(): number {
+        const counters = Diagnostics.counters();
+
+        return counters.componentsConstructed - counters.componentsDestroyed;
+    }
+
+    /** Renders a title bar, swaps its glyph twice, clears it, and disposes. */
+    function driveGlyphs(): void {
+        const bar = new DialogTitleBar('T', () => {}, false);
+
+        bar.getElement(true);
+        bar.setGlyph('unicode-arrow-up');
+        bar.setGlyph('unicode-arrow-down');
+        bar.clearGlyph();
+        bar.dispose();
+    }
+
+    it('a second setGlyph renames the same leading-glyph instance', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new DialogTitleBar('T', () => {}, false);
+
+        bar.getElement(true);
+        bar.setGlyph('unicode-arrow-up');
+
+        const glyph = bar.getGlyph();
+
+        bar.setGlyph('unicode-arrow-down');
+
+        expect(bar.getGlyph()).toBe(glyph);
+        expect(bar.getGlyph()?.getGlyphName()).toBe('unicode-arrow-down');
+
+        bar.dispose();
+    });
+
+    it('strands neither a component nor a stylesheet rule across a glyph round trip', () => {
+        installTestDOM(CONFIG);
+
+        driveGlyphs();
+
+        const components = liveComponents();
+        const rules      = _ruleCacheKeys().length;
+
+        driveGlyphs();
+
+        expect(liveComponents()).toBe(components);
+        expect(_ruleCacheKeys().length).toBe(rules);
     });
 });

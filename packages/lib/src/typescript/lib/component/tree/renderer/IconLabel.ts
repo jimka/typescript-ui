@@ -41,10 +41,9 @@ export type IconLabelGlyphResolver = (node: TreeNode, context: TreeNodeRenderCon
  *
  * @remarks
  * The icon class is resolved per-row by a caller-supplied
- * {@link IconLabelGlyphResolver}. Because [`Glyph`](/api/component/display/classes/Glyph)
- * names are immutable, this renderer constructs a fresh `Glyph` whenever the
- * resolver returns a different name — matching the pattern used by `TreeRow`
- * for its expand/collapse toggle.
+ * {@link IconLabelGlyphResolver}. The icon is built on the first update and
+ * renamed in place whenever the resolver returns a different name — matching
+ * the pattern used by `TreeRow` for its expand/collapse toggle.
  *
  * @example
  * ```typescript
@@ -83,8 +82,8 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
     }
 
     /**
-     * Updates the icon (constructing a new Glyph if the resolved name changed)
-     * and the label text.
+     * Updates the icon (renaming it in place when the resolved name changed,
+     * building it on the first update) and the label text.
      *
      * @param context - The bound-node state for this render pass.
      */
@@ -92,17 +91,20 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
         const next = this._glyphResolver(context.node, context);
 
         if (next !== this._currentGlyph) {
-            const el = this.getElement();
+            if (this._icon) {
+                this._icon.setGlyphName(next);
+            } else {
+                const el = this.getElement();
 
-            this._icon?.dispose();
+                this._icon = new Glyph(next);
+                this._icon.clearInsets();
 
-            this._icon = new Glyph(next);
-            this._icon.clearInsets();
-            this._currentGlyph = next;
-
-            if (el) {
-                DOM.sink.insertBefore(el, this._icon.getElement(true)!, this._label.getElement() ?? null);
+                if (el) {
+                    DOM.sink.insertBefore(el, this._icon.getElement(true)!, this._label.getElement() ?? null);
+                }
             }
+
+            this._currentGlyph = next;
         }
 
         this._label.setText(context.node.label);

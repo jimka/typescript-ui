@@ -201,8 +201,8 @@ const _defaultGlyphOptions: Partial<GlyphOptions> = {
  * once regardless of how many Glyph instances reference it. A Unicode entry
  * writes its character into the root directly. Both forms render with
  * `currentColor`, so a `Glyph` inherits the surrounding text colour for free.
- * The registry name is fixed at construction and cannot be changed afterwards —
- * to swap glyph, discard the instance and create a new one.
+ * Change the icon with `setGlyphName`, which keeps the instance and everything
+ * set on it.
  *
  * Pass any registry name to the constructor; unknown names throw at
  * construction. The default preferred size is the theme's `glyphLg` icon
@@ -225,6 +225,10 @@ class Glyph extends Component<GlyphOptions> {
 
     private _name:                   string;
     private _def:                    GlyphDef;
+    /** The inner `<svg>` of a rendered SVG glyph; null for a char glyph or before render. */
+    private _svgHandle:              Handle | null = null;
+    /** The `<use>` inside `_svgHandle`, whose `href` names the sprite symbol. */
+    private _useHandle:              Handle | null = null;
     declare private _glyphAnimation:         GlyphAnimation | null;
     declare private _glyphAnimationDuration: number;
     declare private _animatedRef:            WeakRef<Glyph> | null;
@@ -286,13 +290,7 @@ class Glyph extends Component<GlyphOptions> {
         // should not get. Keep these guards in the constructor body since they
         // depend on per-instance `def.kind` rather than a static default.
         if (def.kind === "char") {
-            if (this._options.lineHeight === undefined) {
-                this.setLineHeight("1");
-            }
-
-            if (this._options.textAlign === undefined) {
-                this.setTextAlign("center");
-            }
+            this.applyCharDefaults();
         }
     }
 
@@ -332,15 +330,75 @@ class Glyph extends Component<GlyphOptions> {
     }
 
     /**
-     * Returns the registry name this Glyph was constructed with. Named
+     * Returns the registry name this Glyph currently shows. Named
      * `getGlyphName` rather than `getName` so it does not shadow
      * [`Component.getName`](/api/core/classes/Component#getname), whose
      * intrinsic `name` is a display label with a different meaning.
      *
-     * @returns The registry key supplied to the constructor.
+     * @returns The registry key this Glyph paints from.
      */
     getGlyphName(): string {
         return this._name;
+    }
+
+    /**
+     * Changes which registry glyph this Glyph shows, keeping the instance and
+     * everything set on it.
+     *
+     * @param name - Registry key to show. Must have been registered via {@link Glyph.register}.
+     * @returns This Glyph, for method chaining.
+     * @throws Error - When `name` is not registered. The glyph is left exactly
+     *   as it was, and the message matches the constructor's.
+     *
+     * @remarks
+     * Only which registry entry is painted changes. The instance, its id, its
+     * root `<span>` and that element's own stylesheet rule are kept — no rule
+     * is inserted or deleted — and so are the size (no glyph size depends on
+     * its name), the colour, cursor, pointer events, transform, style trait,
+     * any class token a caller added, any `aria-*` the caller wrote on the
+     * root, and a running animation with its duration and play state. A
+     * not-yet-rendered glyph only caches the new name; its first render then
+     * builds the new icon.
+     *
+     * Renaming between two SVG entries is one attribute write on the existing
+     * `<use>`, after mounting the new name's sprite symbol if it is not yet
+     * mounted. Renaming across kinds rebuilds only what the kind owns inside
+     * the root: an SVG entry's inner `<svg>` is torn down when the new entry
+     * is a character, and built when a character glyph takes an SVG name. A
+     * rename to a character applies the same `line-height` / `text-align`
+     * defaults the constructor would have, unless the caller set its own.
+     *
+     * @example
+     * ```typescript
+     * const g = new Glyph("xmark");
+     * g.setGlyphName("check");
+     * ```
+     */
+    setGlyphName(name: string): this {
+        if (name === this._name) {
+            return this;
+        }
+
+        const def = lookupGlyph(name);
+        if (!def) {
+            throw new Error("Unknown glyph: " + name);
+        }
+
+        const previous = this._def;
+
+        this._name = name;
+        this._def  = def;
+
+        if (def.kind === "char" && previous.kind === "svg") {
+            this.applyCharDefaults();
+        }
+
+        const root = this.getElement();
+        if (root) {
+            this.repaintName(root, previous);
+        }
+
+        return this;
     }
 
     /**
@@ -703,6 +761,35 @@ class Glyph extends Component<GlyphOptions> {
             return root;
         }
 
+        this.mountSvgChild(root);
+
+        return root;
+    }
+
+    /**
+     * Writes the character defaults a char-mode glyph needs and an SVG one must
+     * not get — a unitless `line-height: 1` that keeps `▲` / `▼` snug against
+     * the top of their box, and a centring `text-align`. Each is skipped when
+     * the caller supplied its own.
+     */
+    private applyCharDefaults(): void {
+        if (this._options.lineHeight === undefined) {
+            this.setLineHeight("1");
+        }
+
+        if (this._options.textAlign === undefined) {
+            this.setTextAlign("center");
+        }
+    }
+
+    /**
+     * Builds the `<svg><use/></svg>` an SVG-mode entry paints through and hangs
+     * it inside the rendered root, mounting the sprite and the name's `<symbol>`
+     * first.
+     *
+     * @param root - The rendered root `<span>` to append the `<svg>` to.
+     */
+    private mountSvgChild(root: Handle): void {
         ensureGlyphSprite();
         ensureGlyphSymbolMounted(this._name);
 
@@ -728,7 +815,67 @@ class Glyph extends Component<GlyphOptions> {
         this.trackHandle(svg);
         this.trackHandle(use);
 
-        return root;
+        this._svgHandle = svg;
+        this._useHandle = use;
+    }
+
+    /**
+     * Tears the rendered `<svg><use/></svg>` down, in `Component`'s own frame
+     * order: remove the element, then untrack and release each handle so
+     * neither is left pinned in the registry.
+     */
+    private unmountSvgChild(): void {
+        const svg = this._svgHandle;
+        const use = this._useHandle;
+
+        if (!svg || !use) {
+            return;
+        }
+
+        DOM.sink.removeElement(svg);
+
+        this.untrackHandle(use);
+        DOM.sink.release(use);
+
+        this.untrackHandle(svg);
+        DOM.sink.release(svg);
+
+        this._svgHandle = null;
+        this._useHandle = null;
+    }
+
+    /**
+     * Rewrites the rendered root's content for the newly-cached definition.
+     * Two SVG entries share the existing `<use>` and differ only in its `href`;
+     * two character entries differ only in the root's text; a kind change
+     * rebuilds whichever of the two the new kind owns.
+     *
+     * @param root - The rendered root element.
+     * @param previous - The definition this glyph painted until now.
+     */
+    private repaintName(root: Handle, previous: GlyphDef): void {
+        if (previous.kind === "svg" && this._def.kind === "svg") {
+            ensureGlyphSprite();
+            ensureGlyphSymbolMounted(this._name);
+            DOM.sink.apply(this._useHandle!, { setAttr: { href: "#" + GLYPH_SYMBOL_ID_PREFIX + this._name } });
+
+            return;
+        }
+
+        if (previous.kind === "svg") {
+            this.unmountSvgChild();
+        }
+
+        if (this._def.kind === "char") {
+            DOM.sink.apply(root, { text: this._def.char });
+
+            return;
+        }
+
+        // Safe unconditionally: this branch only runs when the root held a
+        // character, so there is no `<svg>` child for the clear to discard.
+        DOM.sink.apply(root, { text: "" });
+        this.mountSvgChild(root);
     }
 
     /**

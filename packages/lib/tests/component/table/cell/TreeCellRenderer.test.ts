@@ -7,7 +7,7 @@
 // delegation + idempotence.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../../dom/TestDOM';
+import { installTestDOM, type RecordingDOMSink } from '../../../dom/TestDOM';
 import fontMetrics from '../../../dom/font-metrics.test-font.json';
 import { TreeCellRenderer } from '~/component/table/cell/renderer/TreeCell';
 import { StringRenderer } from '~/component/table/cell/renderer/String';
@@ -23,7 +23,9 @@ const CONFIG = {
     themeVars:       {},
 };
 
-beforeEach(() => installTestDOM(CONFIG));
+let sink: RecordingDOMSink;
+
+beforeEach(() => { sink = installTestDOM(CONFIG); });
 afterEach(() => DOM.reset());
 
 describe('TreeCellRenderer.getContentX (= depth * indentPx + TOGGLE_WIDTH)', () => {
@@ -103,6 +105,69 @@ describe('TreeCellRenderer tree state', () => {
         expect(branch.getToggle()).not.toBe(null);
     });
 
+    it('flipping expanded keeps the toggle instance and renames it to caret-down', () => {
+        const r = new TreeCellRenderer(new StringRenderer());
+
+        r.setTreeState(0, true, false);
+
+        const toggle = r.getToggle();
+
+        r.setTreeState(0, true, true);
+
+        expect(r.getToggle()).toBe(toggle);
+        expect(r.getToggle()!.getGlyphName()).toBe('caret-down');
+    });
+
+    it('a depth-only change on a branch touches neither the toggle instance nor the DOM', () => {
+        const r = new TreeCellRenderer(new StringRenderer());
+
+        r.getElement(true);
+        r.setTreeState(0, true, false);
+
+        const toggle = r.getToggle();
+
+        sink.writes.length = 0;
+        r.setTreeState(2, true, false);
+
+        expect(r.getToggle()).toBe(toggle);
+        expect(sink.writes.filter(w =>
+            w.op === 'ensureStyleRule' || w.op === 'setRuleStyles' || w.op === 'deleteStyleRule')).toEqual([]);
+        expect(sink.writes.filter(w => w.op === 'createElement')).toEqual([]);
+        expect(sink.writes.filter(w => w.op === 'createElementNS')).toEqual([]);
+        expect(sink.writes.filter(w =>
+            w.op === 'apply'
+            && (w.args[1] as { setAttr?: Record<string, string> }).setAttr?.href !== undefined)).toEqual([]);
+    });
+
+    it('a branch turning into a leaf drops the toggle, and a leaf turning into a branch builds one', () => {
+        const r = new TreeCellRenderer(new StringRenderer());
+
+        r.setTreeState(0, true, false);
+        expect(r.getToggle()).not.toBe(null);
+
+        r.setTreeState(0, false, false);
+        expect(r.getToggle()).toBe(null);
+
+        r.setTreeState(0, true, true);
+        expect(r.getToggle()).not.toBe(null);
+        expect(r.getToggle()!.getGlyphName()).toBe('caret-down');
+    });
+
+    it('a tree-cell toggle takes its pointer cursor from the shared tree-toggle trait', () => {
+        const r = new TreeCellRenderer(new StringRenderer());
+
+        r.setTreeState(0, true, false);
+
+        const toggle = r.getToggle()!;
+        const el     = toggle.getElement(true)!;
+        const tokens = sink.writes
+            .filter(w => w.op === 'apply' && w.args[0] === el)
+            .flatMap(w => (w.args[1] as { addClass?: string[] }).addClass ?? []);
+
+        expect(tokens).toContain('ts-ui-trait-tree-toggle');
+        expect(toggle.getCursor()).toBe('pointer');
+    });
+
     it('setTreeState with the same triple is a no-op (toggle instance unchanged)', () => {
         // CONTRACT (JSDoc): "Idempotent — a call with the same triple is a no-op".
         const r = new TreeCellRenderer(new StringRenderer());
@@ -129,57 +194,67 @@ describe('TreeCellRenderer toggle swap', () => {
     }
 
     /**
-     * Builds a rendered branch renderer, drives one `setTreeState` per entry
-     * in `expansions` — each flip building a fresh toggle glyph — and disposes
-     * it.
+     * Builds a rendered tree-cell renderer, drives one `setTreeState` per
+     * `[hasChildren, expanded]` entry in `states`, and disposes it. A branch
+     * that stays a branch renames its caret and builds nothing; a branch that
+     * turns into a leaf destroys its caret, which since the rename landed is
+     * the only path with an outgoing glyph to dispose.
      */
-    function driveToggles(expansions: boolean[]): void {
+    function driveToggles(states: Array<[boolean, boolean]>): void {
         const r = new TreeCellRenderer(new StringRenderer());
 
         r.getElement(true);
 
-        for (const expanded of expansions) {
-            r.setTreeState(0, true, expanded);
+        for (const [hasChildren, expanded] of states) {
+            r.setTreeState(0, hasChildren, expanded);
         }
 
         r.dispose();
     }
 
     /**
-     * Asserts that a whole build → flip → dispose round trip leaves the live
+     * Asserts that a whole build → rebind → dispose round trip leaves the live
      * component count and the rule-cache key count exactly where it found
      * them. The round trip is run twice: the first pass is a warm-up, since
      * the first renderer of the process materialises shared class-tier rules
      * that no instance's dispose() is meant to reclaim.
      */
-    function expectRoundTripStrandsNothing(expansions: boolean[]): void {
-        driveToggles(expansions);
+    function expectRoundTripStrandsNothing(states: Array<[boolean, boolean]>): void {
+        driveToggles(states);
 
         const components = liveComponents();
         const rules      = _ruleCacheKeys().length;
 
-        driveToggles(expansions);
+        driveToggles(states);
 
         expect(liveComponents()).toBe(components);
         expect(_ruleCacheKeys().length).toBe(rules);
     }
 
     // The control case. One glyph is built and is still the current toggle at
-    // dispose(), so nothing is ever swapped out and nothing can leak from the
-    // swap path. It passes before the swap-path fix as well as after, which is
-    // what makes the three-swap case below evidence: the N−1 gap between them
-    // is the proof that the *current* toggle is already reclaimed by the base
-    // destructor's recursion over `_components` (the toggle is added with
-    // `addComponent`), and therefore that this renderer needs a disposal in
-    // the swap and no `destructor()` of its own.
-    it('strands neither a component nor a stylesheet rule when the toggle is never swapped', () => {
-        expectRoundTripStrandsNothing([false]);
+    // dispose(), so nothing is ever destroyed on the rebind path and nothing
+    // can leak from it. It passes before the swap-path fix as well as after,
+    // which is what makes the leaf-transition case below evidence: the gap
+    // between them is the proof that the *current* toggle is already reclaimed
+    // by the base destructor's recursion over `_components` (the toggle is
+    // added with `addComponent`), and therefore that this renderer needs a
+    // disposal where it drops a toggle and no `destructor()` of its own.
+    it('strands neither a component nor a stylesheet rule when the toggle is never dropped', () => {
+        expectRoundTripStrandsNothing([[true, false]]);
     });
 
-    // Three glyphs are built; the first two are swapped out by the calls that
-    // follow them and the third is still current at dispose(). Before the fix
-    // this stranded exactly two — one per swap.
-    it('strands neither a component nor a stylesheet rule across three toggle swaps', () => {
-        expectRoundTripStrandsNothing([false, true, false]);
+    // One glyph is built and then renamed twice, so no toggle is ever dropped
+    // and the caret the renderer holds at dispose() is the one it built. Pins
+    // that the rename path leaks nothing of its own.
+    it('strands neither a component nor a stylesheet rule across two toggle renames', () => {
+        expectRoundTripStrandsNothing([[true, false], [true, true], [true, false]]);
+    });
+
+    // Two glyphs are built, and each is dropped by the leaf rebind that
+    // follows it — the one transition that still destroys a toggle, and so the
+    // only remaining cover for `refreshToggle`'s dispose. Without it this
+    // strands exactly two, one per leaf transition.
+    it('strands neither a component nor a stylesheet rule across two branch-to-leaf transitions', () => {
+        expectRoundTripStrandsNothing([[true, false], [false, false], [true, true], [false, false]]);
     });
 });

@@ -342,17 +342,26 @@ class HeaderCell extends DefaultCell {
      *   the glyph using its element parameter.
      */
     private _mountHeaderGlyph(el: Handle | undefined): void {
+        const name = this._headerGlyph;
+
+        // A glyph already mounted against this element is renamed in place, so
+        // its size, transform, colour, class token and the renderer insets all
+        // stay exactly as mounted.
+        if (this._headerGlyphInstance && name && el) {
+            this._headerGlyphInstance.setGlyphName(name);
+
+            return;
+        }
+
         if (this._headerGlyphInstance) {
             // `dispose()` removes the element *and* deletes the glyph's
             // per-instance rules. Unmounting alone stranded them on the shared
-            // sheet, so a header whose glyph tracks sort state leaked one set
-            // per change.
+            // sheet, so a header whose glyph is cleared leaked one set.
             this._headerGlyphInstance.dispose();
             this._headerGlyphInstance = null;
         }
 
         const themePad = ThemeManager.getTheme().table.cell.padding;
-        const name     = this._headerGlyph;
 
         if (!name || !el) {
             this.getRenderer().setInsets(new Insets(0, themePad, 0, themePad));

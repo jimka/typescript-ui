@@ -23,6 +23,8 @@ import { FilterCellRenderer } from '~/component/table/cell/renderer/Filter';
 import { BooleanEditor } from '~/component/table/cell/editor/Boolean';
 import { expectNoSelfReschedule } from '../../../helpers/layoutStability';
 import { temporalDisplayText } from '~/data/temporalText';
+import { Diagnostics } from '~/core/Diagnostics';
+import { _ruleCacheKeys } from '~/core/StyleTarget';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -293,7 +295,7 @@ describe('GlyphRenderer add/remove/idempotent', () => {
         expect(glyphChildCount(r)).toBe(1);
     });
 
-    it('switching name removes the old glyph and adds the new one', () => {
+    it('switching name renames the same glyph in place', () => {
         const r = new GlyphRenderer();
 
         r.setValue(NAME);
@@ -301,8 +303,42 @@ describe('GlyphRenderer add/remove/idempotent', () => {
 
         r.setValue(OTHER);
         expect(r.getValue()).toBe(OTHER);
-        expect((r as any)._glyph).not.toBe(first);
+        expect((r as any)._glyph).toBe(first);
+        expect((r as any)._glyph.getGlyphName()).toBe(OTHER);
         expect(glyphChildCount(r)).toBe(1);
+    });
+
+    // Mirrors TreeCellRenderer.test.ts's C10 round-trip measure: the same two
+    // exact, deterministic quantities (the construct/destroy balance and the
+    // rule-cache key count), run twice so the first pass absorbs the shared
+    // class-tier rules no instance's dispose() is meant to reclaim.
+    it('strands neither a component nor a stylesheet rule across a value round trip', () => {
+        const liveComponents = (): number => {
+            const counters = Diagnostics.counters();
+
+            return counters.componentsConstructed - counters.componentsDestroyed;
+        };
+
+        const driveValues = (): void => {
+            const r = new GlyphRenderer();
+
+            r.getElement(true);
+            r.setValue(NAME);
+            r.setValue(OTHER);
+            r.setValue(null);
+            r.setValue(NAME);
+            r.dispose();
+        };
+
+        driveValues();
+
+        const components = liveComponents();
+        const rules      = _ruleCacheKeys().length;
+
+        driveValues();
+
+        expect(liveComponents()).toBe(components);
+        expect(_ruleCacheKeys().length).toBe(rules);
     });
 
     it('clearing a set glyph removes the child', () => {

@@ -31,9 +31,9 @@ class GlyphRenderer extends CellRenderer<String | null> {
     }
 
     /**
-     * Replaces the displayed glyph with one for the given registry name.
-     * `null`, `undefined`, and any other falsy value remove the glyph
-     * child entirely so the cell renders blank.
+     * Shows the glyph for the given registry name, renaming the one already
+     * displayed rather than replacing it. `null`, `undefined`, and any other
+     * falsy value destroy the glyph child entirely so the cell renders blank.
      *
      * @param value - Registry glyph name, or `null`/`undefined`/falsy to
      *   clear the cell.
@@ -46,9 +46,23 @@ class GlyphRenderer extends CellRenderer<String | null> {
             return this;
         }
 
+        // A rename keeps the glyph's bounds, so the relayout below is not owed.
+        if (next !== null && this._glyph) {
+            this._glyph.setGlyphName(next as string);
+            this._value = next;
+
+            return this;
+        }
+
         if (this._glyph) {
-            this.removeComponent(this._glyph);
+            const outgoing = this._glyph;
+
+            // `removeComponent` only detaches — without the dispose the glyph
+            // keeps its element, its per-instance stylesheet rule and its theme
+            // subscription, so a cleared cell would strand one per rebind.
+            this.removeComponent(outgoing);
             this._glyph = null;
+            outgoing.dispose();
         }
 
         this._value = next;

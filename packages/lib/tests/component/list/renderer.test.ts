@@ -96,14 +96,15 @@ describe('GlyphListItemRenderer add/remove/idempotent', () => {
         expect((r as any)._icon).toBe(first);
     });
 
-    it('a different glyph name swaps the instance', () => {
+    it('a different glyph name renames the same instance in place', () => {
         const r = new GlyphListItemRenderer();
 
         r.update({ item: { key: 'a', label: 'Alpha', glyph: UP }, index: 0 });
         const first = (r as any)._icon;
 
         r.update({ item: { key: 'a', label: 'Alpha', glyph: DOWN }, index: 0 });
-        expect((r as any)._icon).not.toBe(first);
+        expect((r as any)._icon).toBe(first);
+        expect((r as any)._icon.getGlyphName()).toBe(DOWN);
         expect((r as any)._currentGlyph).toBe(DOWN);
     });
 
@@ -114,6 +115,17 @@ describe('GlyphListItemRenderer add/remove/idempotent', () => {
         r.update({ item: { key: 'a', label: 'Alpha' }, index: 0 });
         expect((r as any)._icon).toBe(null);
         expect((r as any)._currentGlyph).toBe(null);
+    });
+
+    it('binding a glyph onto an icon-less renderer builds one', () => {
+        const r = new GlyphListItemRenderer();
+
+        r.update({ item: { key: 'a', label: 'Alpha' }, index: 0 });
+        r.update({ item: { key: 'a', label: 'Alpha', glyph: UP }, index: 0 });
+
+        expect((r as any)._icon).not.toBe(null);
+        expect((r as any)._icon.getGlyphName()).toBe(UP);
+        expect((r as any)._currentGlyph).toBe(UP);
     });
 });
 

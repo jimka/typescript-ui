@@ -73,3 +73,26 @@ export const GLYPH_MD_INK_TRAIT: StyleTrait = {
         maxSize: { width: 14, height: 14 },
     },
 };
+
+/**
+ * The pointer cursor every tree expand/collapse caret shares — a `Tree` row's
+ * toggle (`TreeRow`) and a `TreeTable` tree cell's toggle (`TreeCellRenderer`).
+ * Both are plain `Glyph` instances built by unrelated owners, with no common
+ * class below `Glyph` itself — which every other, non-clickable glyph in the
+ * framework also extends — so a trait, not a class-level default or a `Glyph`
+ * subclass, is what lets the two share one rule.
+ *
+ * The payoff is that a caret inserts no stylesheet rule of its own: the
+ * per-instance `setCursor("pointer")` these toggles used to carry was their
+ * only per-instance declaration, so every leaf-to-branch transition inserted
+ * an `#id` rule and every branch-to-leaf one deleted it — and in WebKitGTK any
+ * stylesheet mutation restyles the whole document for that frame. With the
+ * trait the declaration lives in one `.ts-ui-component.ts-ui-trait-tree-toggle`
+ * rule shared by every caret in the app. See plans/glyph-name-setter.md.
+ */
+export const TREE_TOGGLE_TRAIT: StyleTrait = {
+    name: "tree-toggle",
+    declarations: {
+        cursor: "pointer",
+    },
+};
