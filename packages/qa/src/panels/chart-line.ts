@@ -13,7 +13,7 @@ const SERIES_COUNT = 3;
 /** How far `update`'s second data set shifts every y: one step, wrapped into [0, Y_SPAN), so every mark moves and the range stays the same. */
 const UPDATE_SHIFT = 1;
 
-export const description = 'Three-series LineChart with legend and point markers, n points per series. Reproduces slice 26 F26.1 (a chart rebuilds every SVG mark per layout pass): at n = 50, 1,081 sink calls and 210 elements rebuilt per unchanged pass.';
+export const description = 'Three-series LineChart with legend and point markers, n points per series. Reproduces slice 26 F26.1 (fixed: a chart rebuilt every SVG mark per layout pass, and now keeps them while its plot and state are unchanged): at n = 50, 1,081 sink calls and 210 elements rebuilt per unchanged pass before the fix, and no element rebuilt after.';
 
 /** F26.1's scale: 50 points per series. */
 export const defaultScale = 50;
@@ -25,7 +25,7 @@ export const defaultDrive = 'resize';
  * Builds a 3-series `LineChart` of `n` points per series, x = 0…n-1.
  *
  * @param n - Points per series.
- * @returns The chart as root, target of `resize` and `passes`; `update`, which swaps between two data sets; the `chart` geometry probe; and an `afterMount` giving `hover` the chart's element.
+ * @returns The chart as root, target of `resize` and `passes`; `update`, which swaps between two data sets; the `chart` and `point` geometry probes; and an `afterMount` giving `hover` the chart's element.
  */
 export function build(n: number): PanelBuild {
     const series: ChartSeries[] = Array.from({ length: SERIES_COUNT }, (_, s) => ({ name: `Series ${s + 1}`, data: lineSeriesPoints(s, n) }));
@@ -48,6 +48,8 @@ export function build(n: number): PanelBuild {
             },
         },
         afterMount: (tools: HarnessTools): Record<string, unknown> => ({ hover: { element: tools.elementOf(chart), axis: 'x' } }),
-        geometry: { chart },
+        // `point` is the first series' first marker, a mark the container
+        // label cannot see; `update` moves it every unit.
+        geometry: { chart, point: '.LineChart circle' },
     };
 }
