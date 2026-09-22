@@ -153,6 +153,23 @@ export function joinColumnSections(sections: string[]): string {
         .join(`\n${COLUMN_SEPARATOR}\n`);
 }
 
+/**
+ * Finds where the line starting at `start` ends, so a block tokenizer can read
+ * one line at a time instead of splitting the whole remaining document into an
+ * array to look at its first line or two — the difference between linear and
+ * quadratic lexing of a long document.
+ *
+ * @param src - The source being read.
+ * @param start - The index the line starts at.
+ * @returns The index of the `"\n"` that ends the line, or `src.length` when
+ *   the line is the last one and unterminated.
+ */
+export function lineEndAt(src: string, start: number): number {
+    const end = src.indexOf("\n", start);
+
+    return end === -1 ? src.length : end;
+}
+
 /** A sized image's resolved, validated source/alt/dimensions. */
 export interface MarkdownImageSpec {
     src:    string;
