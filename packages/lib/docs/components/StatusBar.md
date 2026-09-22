@@ -60,6 +60,10 @@ The whole strip is a single screen-reader live region: the root element carries 
 | `--ts-ui-statusbar-height` | Documentation token for the fixed strip height. Code reads `STATUS_BAR_HEIGHT`. |
 | `--ts-ui-statusbar-padding` | Documentation token for the left/right padding. |
 
+## Notes
+
+- A bar whose parent re-commits it at the rectangle it already holds is not re-laid-out (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)), so a gutter drag elsewhere does not re-flow it every frame. `setMessage`, `clearMessage`, `setDefaultMessage`, the timed revert and `addLeft` / `addRight` / `removeLeft` / `removeRight` all still lay it out, and changing insets, padding or a border, swapping a manager, hiding a widget with `setDisplayed`, rewriting a widget's constraints or re-sorting children — on the bar or inside it — marks it owed for the next pass that reaches it. One change does not announce itself: a custom widget that changes its intrinsic size without calling `setPreferredSize` or `notifyIntrinsicSizeChanged`, which should be followed by `bar.scheduleLayout()`.
+
 ## See also
 
 - [API: StatusBar](/api/component/container/classes/StatusBar)

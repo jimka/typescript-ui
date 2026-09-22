@@ -46,6 +46,10 @@ grid.addFullWidthRow(noteField);       // spans both columns
 | `addFullWidthRow(component)` | Appends a component spanning every column on its own row. |
 | `getColumns()` | Returns the configured logical column count. |
 
+## Notes
+
+- A grid whose parent re-commits it at the rectangle it already holds is not re-laid-out (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)). `addField`, `addRow` and `addFullWidthRow` all still lay it out, a field's own re-measure re-flows the rows through it, and changing insets, padding or a border, swapping a manager, hiding a field with `setDisplayed`, rewriting a field's constraints or re-sorting children — on the grid or inside it — marks it owed for the next pass that reaches it. One change does not announce itself: a custom field that changes its intrinsic size without calling `setPreferredSize` or `notifyIntrinsicSizeChanged`, which should be followed by `grid.scheduleLayout()`.
+
 ## See also
 
 - [API: LabeledGrid](/api/component/container/classes/LabeledGrid)

@@ -31,6 +31,10 @@ const panel = Component({
 
 Header font size is controlled by the `header.font.size` token — see [Theming](/concepts/theming#theme-keys).
 
+## Notes
+
+- A header whose parent re-commits it at the rectangle it already holds is not re-laid-out (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)), and neither is [`WindowHeader`](/api/component/container/classes/WindowHeader), which inherits the opt-in. `getText().setText(...)`, the font setters, a theme change and `WindowHeader`'s `setGlyph` / `clearGlyph` all still lay it out, and changing insets, padding or a border, swapping a manager, hiding a child with `setDisplayed`, rewriting a child's constraints or re-sorting children — on the header or inside it — marks it owed for the next pass that reaches it. One change does not announce itself: a custom child that changes its intrinsic size without calling `setPreferredSize` or `notifyIntrinsicSizeChanged`, which should be followed by `header.scheduleLayout()`.
+
 ## See also
 
 - [API: Header](/api/component/display/classes/Header)

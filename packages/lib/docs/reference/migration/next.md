@@ -242,3 +242,59 @@ setAlert(alert: boolean): this {
     return this;
 }
 ```
+
+## A `Panel` re-committed at its own rectangle is not re-laid-out
+
+**What changed and why.** Committing a child's rectangle and recursing into
+its own layout pass are two separate steps, and the second is withheld when
+the first moved nothing and the child's class opted in — see
+[the write is diffed](/concepts/layout-system#the-write-is-diffed).
+[`Panel`](/api/core/classes/Panel) now opts in, alongside
+[`LabeledGrid`](/api/component/container/classes/LabeledGrid),
+[`Header`](/api/component/display/classes/Header),
+[`StatusBar`](/api/component/container/classes/StatusBar) and the two bars
+that opted in before them. Measured across the render-review cells, a settled
+pass over a shell stopped re-laying out between 72% and 100% of the subtree it
+used to walk.
+
+The opt-in is on `Panel` exactly, by prototype identity rather than
+`instanceof`, so `ScrollStrip`, `Form`, `AbstractChart`, `DiagramView`,
+`MarkdownViewer`, `FloatingPanel` and every consumer subclass of `Panel` keep
+being laid out on every commit until each is audited on its own. A subclass
+that wants the skip overrides the protected gate after that audit.
+
+Every placement input the library owns announces itself, so a change made
+through the public API is never lost: adding, removing or moving a child, the
+panel's insets, padding, border, scroll settings, layout manager and its
+configuration setters, a child's `setDisplayed` or layout constraints, a
+`Text` descendant's text or font, and a theme or web-font swap all either lay
+the panel out or mark its pass as owed.
+
+**Who needs to act.** Code that changes a component's intrinsic size inside a
+plain `Panel` without telling the framework — a component that re-renders its
+own DOM or draws to its own canvas, and neither calls `setPreferredSize` nor
+`notifyIntrinsicSizeChanged` — and relied on some later, unrelated layout pass
+to pick the new size up. That pass no longer reaches a panel whose rectangle
+holds still. Announce the change instead:
+
+```typescript
+// Before — the new size appeared on whatever pass came next
+class Sparkline extends Component {
+    setSamples(samples: number[]): this {
+        this.renderOwnCanvas(samples);   // the canvas is now 40px taller
+
+        return this;
+    }
+}
+
+// After — announce the change, so every opted-in ancestor re-flows it
+setSamples(samples: number[]): this {
+    this.renderOwnCanvas(samples);
+    this.notifyIntrinsicSizeChanged();
+
+    return this;
+}
+```
+
+`scheduleLayout()` on the component works too, and is the right call when the
+component's own children need re-placing rather than its size re-measuring.
