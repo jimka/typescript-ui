@@ -491,3 +491,29 @@ Record the readings in `plans/research/render-review-2026-09-15/` and add them t
 [^breaking]: Pre-1.0, a behaviour change ships with a changelog entry and a migration note. The affected code is narrow: a subclass that changes something its drawing reads and relies on an unrelated pass to draw it. No library subclass does — every `LineChart` and `BarChart` setter calls `scheduleLayout()` — and the repository has no consumer subclass.
 
 [^readings]: On the base arm, an unchanged chart pass issues 1,081 sink calls: 210 each of `removeChild`, `release`, `createElementNS` and `appendChild`, and 241 `apply` — 210 for the marks, 1 for the surface, 30 for the rest of the pass (W3.0 `clq` plain). A kept pass on the fix makes only those 30, so each unchanged chart pass reads 1,051 fewer sink calls, 211 of them `apply`; the dashboard grid holds four charts. A data update keeps the redraw and drops only the surface write, about one `apply` per unit. Every drag frame resizes every chart, so nothing is kept there. The rest of each pass is unchanged, so these differences hold whatever else has merged into both arms. The millisecond targets are W3.0's gate arm, which still paid 12 probe measurements per chart pass on a clean document; the fix pays none, so it should land at or below them.
+
+---
+
+## Implementation Notes
+
+**BASE_SHA:** `f573d5809693ebf53f1c4e5c6fc2d1794582c11c` — the tip of `feature/text-measurement-without-reflow` ("Mark the text measurement without reflow plan implemented"), which this branch starts from. That plan is implemented but not yet merged to `master`, so the base arm of the in-engine A/B carries it, as criterion 6 requires.
+
+**Step 1 baseline, at BASE_SHA.** The dependency is in place: `core/TextMeasure.ts` exists and `ChartAxis.ts` imports and calls `measureTextMetrics`. `npm run build:lib` clean; `npm test` 486 files, 8,080 passed, 2 todo; `npm -w packages/qa run test` 17 files, 335 passed — no inherited QA failure, `A27` included, so the *Potential Challenges* entry about an inherited `A27` failure did not arise; `npm run docs:api` 0 errors and 14 warnings, all pre-existing and unchanged after this branch: three on `MarkdownViewer` (`MarkdownContentPane`, one unresolved and two excluded), six on `MarkdownEditor` (`$selectEnclosingWordIfCollapsed` ×5, `$classifyContextMenuTarget` ×1), three on `SpatialNavigation` (`ancestorGeometry`, `leafFocusables`, `outermostTargets`), one on `rankInDirection` (`PRIMARY_GAP_EPSILON`) and one on `FieldDecorator` (`Component.replaceComponent`).
+
+**Test helpers beyond the plan's three.** Besides `ops`, `svgOf` and `surfaceApplies` (which returns the `apply` writes, as the plan says), `Chart.test.ts` gains `markCount(chart)` and `pass(chart, sink)` — the plan's `sink.writes.length = 0; chart.doLayout();` — at file level, and `createsOverTwoPasses` inside the `repaint gate` block for the RG3/RG4 shape. `ablations.test.ts` gains `bumpedAny(counts, prefix, name)` for "no `skipped.<name>.*` / `memo.<name>.*` counter" and `scheduleLayoutOwner(chart)` for A27's prototype walk. None is a new pattern; each only names a repeated assertion step.
+
+**Test-first record.** Before the `AbstractChart` change, RG1–RG4, RG6 and RG7 failed (15 cases); RG5 and RG8 already held on the base, which rewrote the surface every pass and released the marks on dispose. Before the ablation change, the new A26 and A27 failed on their `/^no ungated repaint/` note against the gated build.
+
+**Pending — in-engine A/B (the user runs this; not run here).** Every run opens a full-screen window, so it was left undone. From the root of this worktree, with BASE_SHA above:
+
+```sh
+git worktree add .worktrees/_crg-base f573d5809693ebf53f1c4e5c6fc2d1794582c11c --detach
+ln -sfn "$PWD/node_modules" .worktrees/_crg-base/node_modules
+(cd .worktrees/_crg-base/packages/lib && npm run build:lib)
+export QA_WT_LIB="$PWD/.worktrees/_crg-base/packages/lib"
+npm run build:lib
+```
+
+then the `wtab` script of *Verification → In-engine A/B*, saved outside the repository and run from the repository root, then `python3 packages/qa/bin/qa-table.py packages/qa/results crgs1-<cell>- --seam` for each of `clq`, `cdq`, `clu`, `cdu`, `cdd`, read against the six pass criteria, and finally `git worktree remove --force .worktrees/_crg-base`. The readings go into `plans/research/render-review-2026-09-15/` and the two chart rows' *Validated* cells in `packages/qa/README.md`. Until then, that the kept marks sit where redrawn ones would (geometry `=` on `point`, `point0`, `bar0`) and the timing criteria are unverified; the offline tests pin only the sink-call census.
+
+**Audit round 1 — two documentation edits beyond *Documentation Impact*.** (1) The `chart-line` and `chart-dashboard` panel `description`s and their *Reproduces* cells in `packages/qa/README.md` stated F26.1 in the present tense ("rebuilds every SVG mark per layout pass"), which this branch makes false; the plan named only the *Geometry* and ablation cells. Each now marks F26.1 fixed and states the before and after figure, as `e06d9ef2` did for C24 and C25; the dated *Validated* cells are left as they are, since they record the build they name. In audit round 2 the same rewritten sentences also mark F26.2 fixed, by `text-measurement-without-reflow` (the base of this branch, where an unchanged pass already makes no `measureText` call, as criterion 6 expects), since leaving its 12 / 48 figures in the present tense beside a fixed F26.1 misstated the base. (2) The class JSDoc paragraph of step 6 and the migration note's *Who needs to act* named only the four drawing hooks, but `repaint` also reads the protected `_series` and `_selectedPoint` (the plan's own `[^signature-complete]` lists both), so a subclass writing either directly must also call `scheduleLayout()`. Both now say so; the changelog bullet and the override's JSDoc already said "anything its drawing reads".
