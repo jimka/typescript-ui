@@ -479,6 +479,55 @@ describe('E24 hwheel', () => {
     });
 });
 
+describe('E26 dragout', () => {
+    // `drag`'s own sequence is covered by the panels' runs; `dragout` is
+    // asserted here rather than in drivers.test.ts because it reaches
+    // `requireElement` and dispatches on `document`, neither of which exists
+    // in the node environment that file runs in.
+
+    /**
+     * A driver context whose `fireMouse` is a spy, over a stubbed element.
+     *
+     * @param axis - The target's axis.
+     * @param units - How many units to drive.
+     * @returns The context and the spy.
+     */
+    function spied(axis: string, units: number): { ctx: DriveContext; fireMouse: ReturnType<typeof vi.fn> } {
+        const element = document.createElement('div');
+
+        stubRect(element, 0, 0, 100, 20);
+
+        const fireMouse = vi.fn();
+        const tools = { ...fakeTools(), fireMouse } as unknown as HarnessTools;
+
+        return { ctx: { target: { element, axis }, units, stepPx: 3, params: new URLSearchParams(), notes: [], tools }, fireMouse };
+    }
+
+    it.each([
+        ['x' as const, [[53, 10], [56, 10], [59, 10]]],
+        ['y' as const, [[50, 13], [50, 16], [50, 19]]],
+    ])('drags along %s without ever coming back', async (axis, moves) => {
+        const { ctx, fireMouse } = spied(axis, 3);
+
+        await DRIVERS.dragout(ctx);
+
+        const last = moves[moves.length - 1];
+
+        expect(fireMouse.mock.calls.map((call) => [call[0], call[1] === document ? 'document' : 'element', call[2], call[3]])).toEqual([
+            ['mousedown', 'element', 50, 10],
+            ...moves.map(([x, y]) => ['mousemove', 'document', x, y]),
+            ['mouseup', 'document', last[0], last[1]],
+        ]);
+    });
+
+    it('rejects an axis it cannot drag along, before dispatching anything', async () => {
+        const { ctx, fireMouse } = spied('z', 3);
+
+        await expect(DRIVERS.dragout(ctx)).rejects.toThrow('dragout: target axis must be "x" or "y"');
+        expect(fireMouse).not.toHaveBeenCalled();
+    });
+});
+
 describe('E25 viewport', () => {
     it('fires the window\'s resize event once per unit', async () => {
         const listener = vi.fn();

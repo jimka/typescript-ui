@@ -21,6 +21,33 @@ import { FocusReveal } from "~/core/FocusReveal.js";
 import type { FocusRevealer } from "~/core/FocusReveal.js";
 import { Util } from "~/core/Util.js";
 import { chainRoom, distributeDragChain } from "~/core/DragChain.js";
+import { ResizeDrag, gutterOutline, rectOf, getAppResizeMode, IN_PAGE_OUTLINE_Z_INDEX } from "~/core/ResizeDrag.js";
+import type { OutlineRect, ResizeMode } from "~/core/ResizeDrag.js";
+
+/** One buffered gutter move. */
+interface GutterDragFrame {
+    /** The dragged gutter's position in `_gutterPairs`. */
+    gutterIndex: number;
+    /** The absolute pointer coordinate (`clientY`) for this move. */
+    position: number;
+}
+
+/**
+ * An outline drag's state: the open sections' heights at the press and as the
+ * outline has them, their bounds, and the gutter's line.
+ */
+interface AccordionOutlineDrag {
+    /** Each open section's height when the drag began. */
+    start: number[];
+    /** Each open section's height as the replayed frames have left it. */
+    heights: number[];
+    /** Each open section's minimum height. */
+    mins: number[];
+    /** Each open section's maximum height. */
+    maxs: number[];
+    /** The outline's box at the press. */
+    line: OutlineRect;
+}
 
 /**
  * String-literal union of the events emitted by {@link Accordion}.
@@ -116,6 +143,11 @@ export interface AccordionOptions extends LayoutManagerOptions {
      * when stale. Only meaningful with `resizable`.
      */
     sectionSizes?:      LayoutSize[];
+    /**
+     * How a resizable gutter drag shows its progress. Omit it to follow the
+     * app-wide default set through `Body.setResizeMode`.
+     */
+    resizeMode?:        ResizeMode;
     /**
      * Multi-event listener bag dispatched to {@link Accordion.on} at
      * construction time.
@@ -228,14 +260,20 @@ class Accordion extends LayoutManager implements FocusRevealer {
     private _dragLastPointer: number = 0;
     private _dragOpenIndices: number[] = [];
     private _dragGutterUpperPos: number = 0;
-    // The most recent not-yet-applied gutter `drag` event, and the animation
-    // frame scheduled to apply it via `flushGutterDrag` — see
-    // `scheduleGutterDrag`. `null`/`null` while no gutter is mid-drag or every
-    // buffered event has already been flushed. One shared buffer is enough:
-    // only one gutter can be mid-drag at a time, which is also why
+    // This accordion's own resize mode; `null` follows the app-wide default.
+    private _resizeMode: ResizeMode | null = null;
+    // The outline drag in progress, or `null` in live mode and between drags.
+    private _outlineDrag: AccordionOutlineDrag | null = null;
+    // The per-frame drag session every gutter move goes through: it applies at
+    // most one buffered move per animation frame, laying it out in live mode
+    // and moving the outline in outline mode. One session is enough: only one
+    // gutter can be mid-drag at a time, which is also why
     // `_dragUpper`/`_dragLower` above are single fields rather than per-gutter.
-    private _pendingGutterDrag: { gutterIndex: number; position: number } | null = null;
-    private _dragRafHandle: number | null = null;
+    private readonly _resizeDrag: ResizeDrag<GutterDragFrame> = new ResizeDrag<GutterDragFrame>({
+        apply:   (frame): void => this.onGutterDrag(frame.gutterIndex, frame.position),
+        preview: (frame): OutlineRect | null => this.previewGutterDrag(frame.gutterIndex, frame.position),
+        commit:  (frame): void => this.commitGutterOutline(frame.gutterIndex),
+    });
     // Open/close toggle animations currently in flight. Transitions are off by
     // default (so resize and drag relayouts snap); a toggle enables them and the
     // global disable waits until this returns to zero — single-open mode primes
@@ -311,6 +349,10 @@ class Accordion extends LayoutManager implements FocusRevealer {
 
         if (options.sectionSizes !== undefined) {
             this._pendingSectionSizes = options.sectionSizes.map(size => ({ ...size }));
+        }
+
+        if (options.resizeMode !== undefined) {
+            this.setResizeMode(options.resizeMode);
         }
 
         if (options.listeners !== undefined) {
@@ -613,6 +655,33 @@ class Accordion extends LayoutManager implements FocusRevealer {
         this._resizable = value;
 
         this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the mode this accordion's gutter drags use: its own when it has
+     * one, otherwise the app-wide default set through `Body.setResizeMode`.
+     *
+     * @returns `'live'` or `'outline'`.
+     */
+    getResizeMode(): ResizeMode {
+        return this._resizeMode ?? getAppResizeMode();
+    }
+
+    /**
+     * Sets how this accordion's gutter drags show their progress.
+     * `'outline'` moves a thin line to where the gutter will land and lays the
+     * sections out once, on release; `'live'` lays them out on every frame.
+     * Takes effect from the next drag.
+     *
+     * @param mode - The mode to use, or `null` to follow the app-wide default
+     *   set through `Body.setResizeMode` again.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setResizeMode(mode: ResizeMode | null): this {
+        this._resizeMode = mode;
 
         return this;
     }
@@ -1206,13 +1275,9 @@ class Accordion extends LayoutManager implements FocusRevealer {
         // already be destroyed — Component.destructor empties the container's
         // component list before calling layoutManager.detach(), so
         // container.getComponents() can already be [] by the time this runs.
-        // Cancel it without applying it; onGutterDragEnd's own flush below becomes
-        // a safe no-op now that the buffer is cleared.
-        if (this._dragRafHandle !== null) {
-            DOM.sink.cancelAnimationFrame(this._dragRafHandle);
-            this._dragRafHandle = null;
-        }
-        this._pendingGutterDrag = null;
+        // Cancel it without applying it; onGutterDragEnd's own `end()` below
+        // then flushes nothing.
+        this._resizeDrag.cancel();
 
         // A detach mid-drag would otherwise leak the viewport listeners
         // registered in onGutterDragStart and strand the drag pair. `_dragUpper`
@@ -1901,6 +1966,18 @@ class Accordion extends LayoutManager implements FocusRevealer {
         this._dragUpper = pair.upper;
         this._dragLower = pair.lower;
         this._dragLastPointer = position;
+
+        if (this.getResizeMode() === "outline") {
+            const sections = this.readOpenSections(components);
+            const gutter   = this._resizeGutters[gutterIndex];
+            const line     = gutterOutline(rectOf(gutter), "y");
+
+            this._outlineDrag = { start: sections.current, heights: sections.current.slice(), mins: sections.mins, maxs: sections.maxs, line };
+            this._resizeDrag.beginOutline({ parent: DOM.source.getParentNode(gutter.getElement()!)!, start: line, zIndex: IN_PAGE_OUTLINE_Z_INDEX });
+        } else {
+            this._outlineDrag = null;
+            this._resizeDrag.beginLive();
+        }
     }
 
     /**
@@ -1926,26 +2003,43 @@ class Accordion extends LayoutManager implements FocusRevealer {
      * @param position - The absolute pointer coordinate (`clientY`) for this move.
      */
     private onGutterDrag(gutterIndex: number, position: number): void {
-        const pair = this._gutterPairs[gutterIndex];
-        const container = this.getContainer();
-
-        if (!pair || pair.upper !== this._dragUpper || pair.lower !== this._dragLower || !container) {
+        if (!this.isDragPairCurrent(gutterIndex)) {
             return;
         }
 
-        const components = container.getComponents();
+        const components = this.getContainer()!.getComponents();
+        const { current, mins, maxs } = this.readOpenSections(components);
+
+        this.applySectionHeights(components, this.resolveGutterDrag(position, current, mins, maxs));
+    }
+
+    /**
+     * Whether `gutterIndex` still names the pair this drag captured, and the
+     * container is still there — the reentrancy guard a buffered frame that
+     * outlived its layout would otherwise trip over.
+     *
+     * @param gutterIndex - The dragged gutter's position in `_gutterPairs`.
+     *
+     * @returns `true` when the drag may go ahead.
+     */
+    private isDragPairCurrent(gutterIndex: number): boolean {
+        const pair = this._gutterPairs[gutterIndex];
+
+        return !!pair && pair.upper === this._dragUpper && pair.lower === this._dragLower && !!this.getContainer();
+    }
+
+    /**
+     * Snapshots each open section's live height and bounds once — `getMinSize`
+     * / `getMaxSize` recurse through the content's own layout, so reading them
+     * per pointer move (not per lookup) keeps the drag cheap.
+     *
+     * @param components - The container's content components, section-ordered.
+     *
+     * @returns The open sections' heights, minima and maxima, open-set-ordered.
+     */
+    private readOpenSections(components: Component[]): { current: number[]; mins: number[]; maxs: number[] } {
         const openIndices = this._dragOpenIndices;
-        const upperPos = this._dragGutterUpperPos;
 
-        // Applied incrementally: this frame's pointer travel is distributed on
-        // top of the live heights, so a reversed drag responds nearest-first.
-        // `_dragLastPointer` is advanced below by only the travel actually applied,
-        // not the raw pointer position — see the note next to `delta`.
-        const frameDelta = position - this._dragLastPointer;
-
-        // Snapshot each open section's live height and bounds once — `getMinSize`
-        // / `getMaxSize` recurse through the content's own layout, so reading them
-        // per pointer move (not per lookup) keeps the drag cheap.
         const current = openIndices.map((ci): number => components[ci].getHeight());
         const mins = openIndices.map((ci): number => {
             const min = components[ci].getMinSize();
@@ -1957,6 +2051,33 @@ class Accordion extends LayoutManager implements FocusRevealer {
 
             return max ? max.height : Number.POSITIVE_INFINITY;
         });
+
+        return { current, mins, maxs };
+    }
+
+    /**
+     * Distributes one frame's pointer travel over `current`, returning the open
+     * sections' new heights. The pure half of a drag frame, so an outline
+     * preview replaying it on a shadow array lands exactly where the live
+     * frames would have.
+     *
+     * @param position - The absolute pointer coordinate (`clientY`) for this move.
+     * @param current - The open sections' heights this frame starts from.
+     * @param mins - Their minimum heights.
+     * @param maxs - Their maximum heights.
+     *
+     * @returns The open sections' heights after this frame's travel.
+     */
+    private resolveGutterDrag(position: number, current: number[], mins: number[], maxs: number[]): number[] {
+        const openIndices = this._dragOpenIndices;
+        const upperPos = this._dragGutterUpperPos;
+
+        // Applied incrementally: this frame's pointer travel is distributed on
+        // top of the heights it starts from, so a reversed drag responds
+        // nearest-first. `_dragLastPointer` is advanced below by only the travel
+        // actually applied, not the raw pointer position — see the note next to
+        // `delta`.
+        const frameDelta = position - this._dragLastPointer;
 
         // The two chains fanning out from the gutter, each ordered nearest-first.
         const upperGroup: number[] = [];
@@ -1994,6 +2115,20 @@ class Accordion extends LayoutManager implements FocusRevealer {
         distributeDragChain(growGroup, current, delta, +1, mins, maxs, newHeights);
         distributeDragChain(shrinkGroup, current, delta, -1, mins, maxs, newHeights);
 
+        return newHeights;
+    }
+
+    /**
+     * Commits the open sections' new heights: their drag-backed sizes (in
+     * pre-factor stored units, see `_resizeFactor`) and one shared
+     * {@link layoutSections} pass.
+     *
+     * @param components - The container's content components, section-ordered.
+     * @param newHeights - The open sections' new heights, open-set-ordered.
+     */
+    private applySectionHeights(components: Component[], newHeights: number[]): void {
+        const container = this.getContainer()!;
+        const openIndices = this._dragOpenIndices;
         const openHeightByIndex = new Map<number, number>();
 
         for (let pos = 0; pos < openIndices.length; pos++) {
@@ -2023,8 +2158,54 @@ class Accordion extends LayoutManager implements FocusRevealer {
     }
 
     /**
-     * Buffers a resizable gutter's `drag` event and applies at most one per
-     * animation frame, via {@link flushGutterDrag}. Mirrors
+     * Where the outline goes for one buffered move: the gutter's own line,
+     * shifted by the heights the sections at and above the dragged pair's upper
+     * section have gained since the press. The drag is incremental, so every
+     * frame is replayed on the outline's own shadow heights rather than jumping
+     * to the last position.
+     *
+     * @param gutterIndex - The dragged gutter's position in `_gutterPairs`.
+     * @param position - The absolute pointer coordinate (`clientY`) for this move.
+     *
+     * @returns The outline's box, or `null` when no outline drag is live.
+     */
+    private previewGutterDrag(gutterIndex: number, position: number): OutlineRect | null {
+        const outline = this._outlineDrag;
+
+        if (outline === null || !this.isDragPairCurrent(gutterIndex)) {
+            return null;
+        }
+
+        outline.heights = this.resolveGutterDrag(position, outline.heights, outline.mins, outline.maxs);
+
+        let travel = 0;
+
+        for (let pos = 0; pos <= this._dragGutterUpperPos; pos++) {
+            travel += outline.heights[pos] - outline.start[pos];
+        }
+
+        return { ...outline.line, y: outline.line.y + travel };
+    }
+
+    /**
+     * Lays the sections out once at the heights the outline came to rest on.
+     *
+     * @param gutterIndex - The dragged gutter's position in `_gutterPairs`.
+     */
+    private commitGutterOutline(gutterIndex: number): void {
+        const outline = this._outlineDrag;
+
+        if (outline === null || !this.isDragPairCurrent(gutterIndex)) {
+            return;
+        }
+
+        this.applySectionHeights(this.getContainer()!.getComponents(), outline.heights);
+    }
+
+    /**
+     * Buffers a resizable gutter's `drag` event in the shared per-frame drag
+     * session, which applies at most one per animation frame — laying it out in
+     * live mode, moving the outline in outline mode. Mirrors
      * {@link Split.scheduleDrag}: a native `mousemove` fires far more often than
      * the screen repaints, and `onGutterDrag`'s chained redistribution can force
      * `doLayout()` on more than two sections at once — any of which may host
@@ -2041,62 +2222,36 @@ class Accordion extends LayoutManager implements FocusRevealer {
      * @param position - The absolute pointer coordinate (`clientY`) for this move.
      */
     private scheduleGutterDrag(gutterIndex: number, position: number): void {
-        this._pendingGutterDrag = { gutterIndex, position };
-
-        if (this._dragRafHandle === null) {
-            this._dragRafHandle = DOM.sink.requestAnimationFrame(() => this.flushGutterDrag());
-        }
+        this._resizeDrag.schedule({ gutterIndex, position });
     }
 
     /**
-     * Applies the most recently buffered {@link scheduleGutterDrag} call, if one
-     * is pending — a no-op otherwise, which makes it safe to call unconditionally
-     * from both the scheduled animation frame and {@link onGutterDragEnd}.
-     */
-    private flushGutterDrag(): void {
-        this._dragRafHandle = null;
-
-        const pending = this._pendingGutterDrag;
-
-        if (pending === null) {
-            return;
-        }
-
-        this._pendingGutterDrag = null;
-
-        this.onGutterDrag(pending.gutterIndex, pending.position);
-    }
-
-    /**
-     * Ends a resizable-gutter drag: cancels and synchronously flushes any
-     * animation frame {@link scheduleGutterDrag} still has pending, so the
-     * committed sizes always reflect the pointer's actual last position rather
-     * than whichever buffered position a frame boundary happened to catch — and
-     * so this resolves at all offline, where the `requestAnimationFrame` this
-     * scheduled never fires (see DOMSink) — then clears the captured drag pair.
-     * Transitions stay off (their default outside a toggle), so there is nothing
-     * to restore. Fires `sectionresize` with the post-drag sizes when a drag was
-     * actually live — including on the `detach()` mid-drag path, which calls this
-     * after already cancelling and discarding any buffered frame itself (see
-     * `detach()`), so the flush here is a safe no-op in that case. Also callable
-     * directly (with no argument) so `detach()` and tests can simulate a drag end.
+     * Ends a resizable-gutter drag: the session flushes the freshest buffered
+     * move — so the committed sizes always reflect the pointer's actual last
+     * position rather than whichever buffered position a frame boundary happened
+     * to catch, and so this resolves at all offline, where the
+     * `requestAnimationFrame` it scheduled never fires (see DOMSink) — or, in
+     * outline mode, lays the outline's own heights out once. Then clears the
+     * captured drag pair. Transitions stay off (their default outside a toggle),
+     * so there is nothing to restore. Fires `sectionresize` with the post-drag
+     * sizes when a drag was actually live and was not cancelled — including on
+     * the `detach()` mid-drag path, which calls this after the session has
+     * already been cancelled (see `detach()`), so the flush here is a safe no-op
+     * in that case. Also callable directly (with no argument) so `detach()` and
+     * tests can simulate a drag end.
      *
      * @returns `true`, consuming the release that ends the gutter drag.
      */
     private onGutterDragEnd(): Event.ListenerResult {
-        if (this._dragRafHandle !== null) {
-            DOM.sink.cancelAnimationFrame(this._dragRafHandle);
-            this._dragRafHandle = null;
-        }
-
-        this.flushGutterDrag();
-
+        // First, because the outline commit's own guard reads `_dragUpper`.
+        const committed   = this._resizeDrag.end();
         const wasDragging = this._dragUpper !== null;
 
         this._dragUpper = null;
         this._dragLower = null;
+        this._outlineDrag = null;
 
-        if (wasDragging) {
+        if (wasDragging && committed) {
             this.emit("sectionresize", this.getSectionSizes());
         }
 

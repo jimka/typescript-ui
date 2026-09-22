@@ -7,7 +7,7 @@
 // force a second layout flush of their own on top of that. scheduleMove /
 // flushMove now buffer the latest pointer position and resolve the drop
 // target at most once per animation frame — mirroring Split's own
-// scheduleDrag/flushDrag — while the ghost's own reposition stays inline and
+// scheduleDrag and its per-frame drag session — while the ghost's own reposition stays inline and
 // unthrottled since it is two cheap setX/setY writes. See
 // plans/implemented/dragmanager-pointer-coalescing.md.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

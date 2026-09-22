@@ -563,7 +563,8 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
     /**
      * Decides whether this layout pass performs the arrow-enablement read, and
      * arms (or extends) the settle relay that catches a withheld read up once
-     * a resize burst goes quiet. Mirrors `Split.scheduleDrag`/`flushDrag`,
+     * a resize burst goes quiet. Mirrors `Split.scheduleDrag` and its
+     * per-frame drag session (`core/ResizeDrag.ts`),
      * which solves the same class of problem one layer up (a live pane resize).
      *
      * @param clampChanged - Whether this pass's clamp signature differs from
@@ -608,7 +609,7 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
      * extent changes arrive, matching `Split.scheduleDrag`.
      *
      * @remarks A single `afterNextLayout` call here is not enough. The owner
-     * driving this strip's resize (`Split.flushDrag`, itself already
+     * driving this strip's resize (`Split`'s per-frame drag flush, itself already
      * coalesced to one call per frame) calls `doLayout()` directly from its
      * own independently-scheduled `requestAnimationFrame`, registered by
      * whichever `mousemove` arrives after the previous frame finishes —

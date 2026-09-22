@@ -95,6 +95,11 @@ describe('AbstractWindow resizable option', () => {
         installTestDOM(CONFIG);
 
         const win = new Window('W');
+
+        // Rendered: the release now applies the buffered move at once, and a
+        // window lays out only once it has an element.
+        win.getElement(true);
+
         let prevented = false;
         const fakeEvent = { preventDefault: () => { prevented = true; }, clientX: 0, clientY: 0 } as unknown as MouseEvent;
 

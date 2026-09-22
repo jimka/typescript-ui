@@ -8,6 +8,9 @@ import { WindowBorder, Direction } from "~/component/container/WindowBorder.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
+import { PerFrameCoalescer } from "~/core/PerFrameCoalescer.js";
+import { ResizeDrag, rectOf, getAppResizeMode } from "~/core/ResizeDrag.js";
+import type { OutlineRect, ResizeMode } from "~/core/ResizeDrag.js";
 import { trapWheel, untrapWheel } from "~/core/WheelTrap.js";
 import { createSpinnerWrap } from "~/component/display/SpinnerWrap.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
@@ -183,6 +186,11 @@ export interface WindowOptions extends ContainerOptions {
     snapThreshold?:     number;
     snapModifier?:      WindowSnapModifier;
     constrainToViewport?: boolean;
+    /**
+     * How an edge or corner drag shows its progress. Omit it to follow the
+     * app-wide default set through `Body.setResizeMode`.
+     */
+    resizeMode?: ResizeMode;
 }
 
 /**
@@ -227,103 +235,14 @@ const _defaultWindowOptions: Partial<WindowOptions> = {
 // (tool group, indicator, scroll-arrow buttons top out at z-index 3).
 const RESIZE_BORDER_Z_INDEX: number = 10;
 
-/**
- * Buffers the latest not-yet-applied value from a high-frequency event (e.g.
- * `mousemove`) and applies it at most once per animation frame, optionally
- * capped to a slower rate. Only the most recent value before a frame lands is
- * kept — an intermediate value between two events was never going to be
- * visible anyway. `T` must not itself use `null` as a meaningful value: `null`
- * is the buffer's own "nothing pending" sentinel.
- */
-class PerFrameCoalescer<T> {
-    private _pending: T | null = null;
-    private _rafHandle: number | null = null;
-    private _lastFlushTime: number = 0;
-    private readonly _apply: (value: T) => void;
-    private readonly _fps?: () => number;
-
-    /**
-     * Constructs a coalescer around the given apply callback and optional fps cap.
-     *
-     * @param apply - Called with the most recent buffered value when a frame
-     *   (or a {@link forceFlush}) applies it.
-     * @param fps - Optional live frames-per-second cap, read fresh on every
-     *   frame so a setter can change it mid-flight. Omit for no cap.
-     */
-    constructor(apply: (value: T) => void, fps?: () => number) {
-        this._apply = apply;
-        this._fps = fps;
-    }
-
-    /**
-     * Buffers `value`, overwriting any not-yet-applied value, and arms a
-     * `requestAnimationFrame` if one isn't already pending.
-     */
-    schedule(value: T): void {
-        this._pending = value;
-
-        if (this._rafHandle === null) {
-            this._rafHandle = DOM.sink.requestAnimationFrame((ts) => this.onFrame(ts));
-        }
-    }
-
-    /**
-     * The `requestAnimationFrame` callback. Re-arms itself without draining
-     * the buffer when the fps cap says it's too soon; otherwise applies the
-     * buffered value.
-     */
-    private onFrame(timestamp: number): void {
-        const fps = this._fps?.();
-        if (fps !== undefined && timestamp - this._lastFlushTime < 1000 / fps) {
-            this._rafHandle = DOM.sink.requestAnimationFrame((ts) => this.onFrame(ts));
-            return;
-        }
-
-        this._lastFlushTime = timestamp;
-        this._rafHandle = null;
-        this.drain();
-    }
-
-    /**
-     * Cancels any pending frame and applies the buffered value immediately,
-     * bypassing the fps cap — for a caller that must commit the freshest
-     * value synchronously (e.g. at `mousedown`). A no-op if nothing is
-     * buffered.
-     */
-    forceFlush(): void {
-        if (this._rafHandle !== null) {
-            DOM.sink.cancelAnimationFrame(this._rafHandle);
-            this._rafHandle = null;
-        }
-
-        this.drain();
-    }
-
-    /**
-     * Cancels any pending frame and discards the buffered value without
-     * applying it — for teardown, where a buffered value must never commit.
-     */
-    cancel(): void {
-        if (this._rafHandle !== null) {
-            DOM.sink.cancelAnimationFrame(this._rafHandle);
-            this._rafHandle = null;
-        }
-
-        this._pending = null;
-    }
-
-    /**
-     * Clears the buffered value and, if one was pending, applies it.
-     */
-    private drain(): void {
-        const value = this._pending;
-
-        this._pending = null;
-
-        if (value !== null) {
-            this._apply(value);
-        }
-    }
+/** One buffered edge move: the pointer and the strip being dragged. */
+interface WindowResizeFrame {
+    /** The pointer's viewport x for this move. */
+    clientX: number;
+    /** The pointer's viewport y for this move. */
+    clientY: number;
+    /** The border strip the drag started on. */
+    border: WindowBorder;
 }
 
 /**
@@ -362,8 +281,15 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         southwest: WindowBorder,
     };
 
-    private readonly _resizeCoalescer: PerFrameCoalescer<{ clientX: number; clientY: number; border: WindowBorder }> =
-        new PerFrameCoalescer((value) => this.applyResizeFrame(value), () => this._resizeFps);
+    private readonly _resizeDrag: ResizeDrag<WindowResizeFrame> = new ResizeDrag<WindowResizeFrame>({
+        apply:   (frame): void => this.applyResizeFrame(frame),
+        preview: (frame): OutlineRect => this.previewResizeFrame(frame),
+        commit:  (frame): void => this.applyResizeFrame(frame),
+    }, () => this._resizeFps);
+
+    // The chrome floor setWidth/setHeight apply, read once when an outline
+    // drag starts so a preview frame reads no size hints of its own.
+    private _resizeChromeMin: Size | null = null;
     private _resizeSessionActive: boolean = false;
     private _resizeOriginClientX: number = 0;
     private _resizeOriginClientY: number = 0;
@@ -593,6 +519,13 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         this.setConstrainToViewport(options.constrainToViewport ?? this.isConstrainToViewport());
 
+        // Writes no DOM, so it is safe inside the `super()` cascade; with no
+        // class default there is nothing to fold, and an unset option leaves
+        // the window on the app-wide mode.
+        if (options.resizeMode !== undefined) {
+            this.setResizeMode(options.resizeMode);
+        }
+
         return this;
     }
 
@@ -760,7 +693,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * folds in the layout manager's (body content's) min, which would let a
      * tall/wide child hold the window open and contradicts
      * `Container.clampsToContentSize` being `false`. An explicit consumer
-     * `minSize` is still enforced separately by `Component.setWidth`'s private
+     * `minSize` is still enforced separately by `Component.setWidth`'s own
      * `clampWidth`, so a caller-set floor remains honoured. The clamp is
      * skipped until the window is rendered: `chromeMinSize` consults subclass
      * chrome (the header / strip) that does not exist yet while `applyOptions`
@@ -1054,7 +987,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // representing this window is removed as the window closes.
         this.emit("close");
 
-        this._resizeCoalescer.cancel();
+        this._resizeDrag.cancel();
 
         this._stateAnimHandle?.cancel();
         this._stateAnimHandle = null;
@@ -1122,6 +1055,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this._railCollapseAnimation = null;
         this._railExpandAnimation?.cancel();
         this._railExpandAnimation = null;
+
+        // Same window: an outline drawn beside the window is not in its
+        // subtree, so the child recursion below never reaches it, and a
+        // buffered frame must not lay out a destroyed window.
+        this._resizeDrag.cancel();
 
         for (const border of Object.values(this._borderComponents)) {
             border.dispose();
@@ -1227,7 +1165,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         // If a drag is in flight, commit it first so `_restoreRect` captures
         // the post-drag position instead of the stale start position.
-        this._resizeCoalescer.cancel();
+        this._resizeDrag.cancel();
 
         this._options.windowState = state;
 
@@ -2134,20 +2072,31 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             Event.addViewportListener(this, 'mouseup',     this._boundOnResizeEnd);
             Event.addViewportListener(this, 'touchend',    this._boundOnResizeEnd);
             Event.addViewportListener(this, 'touchcancel', this._boundOnResizeEnd);
+
+            if (this.getResizeMode() === "outline") {
+                this._resizeChromeMin = this.chromeMinSize();
+                this._resizeDrag.beginOutline({ parent: DOM.source.getDocumentElement(), start: rectOf(this), zIndex: this.getZIndex() });
+            } else {
+                this._resizeDrag.beginLive();
+            }
         }
 
-        this._resizeCoalescer.schedule({ clientX: e.clientX, clientY: e.clientY, border });
+        this._resizeDrag.schedule({ clientX: e.clientX, clientY: e.clientY, border });
     }
 
     /**
      * Clears the resize-session origin capture when a border drag ends, so the
-     * next drag re-captures a fresh origin. Detaches the viewport listeners it
-     * was registered with.
+     * next drag re-captures a fresh origin. Ending the drag session applies the
+     * last buffered move — or, in outline mode, removes the outline and commits
+     * the move it came to rest on. Detaches the viewport listeners it was
+     * registered with.
      *
      * @returns `true`, consuming the release that ends the border resize.
      */
     private onResizeEnd(): Event.ListenerResult {
         this._resizeSessionActive = false;
+        this._resizeDrag.end();
+        this._resizeChromeMin = null;
 
         Event.removeViewportListener(this, 'mouseup',     this._boundOnResizeEnd);
         Event.removeViewportListener(this, 'touchend',    this._boundOnResizeEnd);
@@ -2171,6 +2120,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @param fps - Frames per second cap (e.g. 30 or 20). Defaults to 60.
      *
      * @returns This window, for method chaining.
+     *
+     * @remarks The cap applies to live frames only. An outline drag runs no
+     * layout per frame, so capping it would only make the outline lag the
+     * pointer.
      */
     setResizeFps(fps: number): this {
         this._resizeFps = fps;
@@ -2179,15 +2132,48 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
-     * Commits a throttled resize frame: derives the new geometry from the
-     * captured origin and pointer offset, clamps it to the viewport edge, and
-     * lays out. Called by {@link _resizeCoalescer} at most once per animation
-     * frame, further capped by {@link _resizeFps}.
+     * Returns the mode this window's edge and corner drags use: its own when it
+     * has one, otherwise the app-wide default set through `Body.setResizeMode`.
      *
-     * @param value - The most recently buffered pointer position and border.
+     * @returns `'live'` or `'outline'`.
      */
-    private applyResizeFrame(value: { clientX: number; clientY: number; border: WindowBorder }): void {
-        const { clientX, clientY, border } = value;
+    getResizeMode(): ResizeMode {
+        return this._options.resizeMode ?? getAppResizeMode();
+    }
+
+    /**
+     * Sets how this window's edge and corner drags show their progress.
+     * `'outline'` moves a frame to where the window will land and lays the
+     * window out once, on release; `'live'` lays it out on every frame. Takes
+     * effect from the next drag.
+     *
+     * @param mode - The mode to use, or `null` to follow the app-wide default
+     *   set through `Body.setResizeMode` again.
+     *
+     * @returns This window, for method chaining.
+     */
+    setResizeMode(mode: ResizeMode | null): this {
+        this._options.resizeMode = mode ?? undefined;
+
+        return this;
+    }
+
+    /**
+     * Resolves one buffered move into the window's new box, without writing
+     * anything: the geometry derived from the captured origin and the pointer
+     * offset, clamped to the viewport edge and then through whatever `width` /
+     * `height` do with each axis. The one copy of the eight-way switch, so a
+     * live frame and an outline preview can never disagree about where an edge
+     * lands.
+     *
+     * @param frame - The buffered pointer position and border.
+     * @param width - Sizes the window's width axis and reports what it took.
+     * @param height - The same for the height axis.
+     *
+     * @returns The window's box for this move.
+     */
+    private resolveResizeFrame(frame: WindowResizeFrame, width: (value: number) => number, height: (value: number) => number): OutlineRect {
+        const { clientX, clientY, border } = frame;
 
         // Offset of the pointer from where the drag began. The new size is
         // `origin ± offset` clamped by setWidth/setHeight; WEST/NORTH edges
@@ -2212,54 +2198,110 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         const southHeightCap = vp.height - this._resizeOriginY;
         const northHeightCap = originBottom;
 
-        this.setAutoCommitStyle(false);
+        const rect: OutlineRect = { x: this._resizeOriginX, y: this._resizeOriginY, width: this._resizeOriginW, height: this._resizeOriginH };
+
         switch (border.getDirection()) {
             case Direction.NORTHWEST:
-                this.setWidth(Math.min(this._resizeOriginW - offsetX, westWidthCap));
-                this.setHeight(Math.min(this._resizeOriginH - offsetY, northHeightCap));
-                this.setX(originRight - this.getWidth());
-                this.setY(originBottom - this.getHeight());
+                rect.width  = width(Math.min(this._resizeOriginW - offsetX, westWidthCap));
+                rect.height = height(Math.min(this._resizeOriginH - offsetY, northHeightCap));
+                rect.x      = originRight - rect.width;
+                rect.y      = originBottom - rect.height;
 
                 break;
             case Direction.NORTH:
-                this.setHeight(Math.min(this._resizeOriginH - offsetY, northHeightCap));
-                this.setY(originBottom - this.getHeight());
+                rect.height = height(Math.min(this._resizeOriginH - offsetY, northHeightCap));
+                rect.y      = originBottom - rect.height;
 
                 break;
             case Direction.NORTHEAST:
-                this.setWidth(Math.min(this._resizeOriginW + offsetX, eastWidthCap));
-                this.setHeight(Math.min(this._resizeOriginH - offsetY, northHeightCap));
-                this.setY(originBottom - this.getHeight());
+                rect.width  = width(Math.min(this._resizeOriginW + offsetX, eastWidthCap));
+                rect.height = height(Math.min(this._resizeOriginH - offsetY, northHeightCap));
+                rect.y      = originBottom - rect.height;
 
                 break;
             case Direction.EAST:
-                this.setWidth(Math.min(this._resizeOriginW + offsetX, eastWidthCap));
+                rect.width = width(Math.min(this._resizeOriginW + offsetX, eastWidthCap));
 
                 break;
             case Direction.SOUTHEAST:
-                this.setWidth(Math.min(this._resizeOriginW + offsetX, eastWidthCap));
-                this.setHeight(Math.min(this._resizeOriginH + offsetY, southHeightCap));
+                rect.width  = width(Math.min(this._resizeOriginW + offsetX, eastWidthCap));
+                rect.height = height(Math.min(this._resizeOriginH + offsetY, southHeightCap));
 
                 break;
             case Direction.SOUTH:
-                this.setHeight(Math.min(this._resizeOriginH + offsetY, southHeightCap));
+                rect.height = height(Math.min(this._resizeOriginH + offsetY, southHeightCap));
 
                 break;
             case Direction.SOUTHWEST:
-                this.setWidth(Math.min(this._resizeOriginW - offsetX, westWidthCap));
-                this.setHeight(Math.min(this._resizeOriginH + offsetY, southHeightCap));
-                this.setX(originRight - this.getWidth());
+                rect.width  = width(Math.min(this._resizeOriginW - offsetX, westWidthCap));
+                rect.height = height(Math.min(this._resizeOriginH + offsetY, southHeightCap));
+                rect.x      = originRight - rect.width;
 
                 break;
             case Direction.WEST:
-                this.setWidth(Math.min(this._resizeOriginW - offsetX, westWidthCap));
-                this.setX(originRight - this.getWidth());
+                rect.width = width(Math.min(this._resizeOriginW - offsetX, westWidthCap));
+                rect.x     = originRight - rect.width;
 
                 break;
         }
 
+        return rect;
+    }
+
+    /**
+     * Commits one resize frame: sizes and places the window and lays it out.
+     * Runs at most once per animation frame during a live drag, further capped
+     * by {@link _resizeFps}, and once more at an outline drag's release.
+     *
+     * @param frame - The most recently buffered pointer position and border.
+     */
+    private applyResizeFrame(frame: WindowResizeFrame): void {
+        this.setAutoCommitStyle(false);
+
+        const rect = this.resolveResizeFrame(frame, (w) => this.setWidth(w).getWidth(), (h) => this.setHeight(h).getHeight());
+
+        // A no-op for an edge that keeps x or y: each setter returns at its
+        // same-value guard.
+        this.setX(rect.x);
+        this.setY(rect.y);
         this.doLayout();
         this.setAutoCommitStyle(true);
+    }
+
+    /**
+     * Where the outline goes for one buffered move: the same resolve, with
+     * each axis clamped exactly as the setters would clamp it, but nothing
+     * written.
+     *
+     * @param frame - The most recently buffered pointer position and border.
+     *
+     * @returns The window's box for this move.
+     */
+    private previewResizeFrame(frame: WindowResizeFrame): OutlineRect {
+        return this.resolveResizeFrame(frame, (w) => this.resizedWidth(w), (h) => this.resizedHeight(h));
+    }
+
+    /**
+     * The width {@link setWidth} would commit mid-drag: the chrome floor read
+     * at the press, then `Component`'s own clamp.
+     *
+     * @param width - The requested width.
+     *
+     * @returns The width the setter would have committed.
+     */
+    private resizedWidth(width: number): number {
+        return this.clampWidth(Math.max(width, this._resizeChromeMin!.width));
+    }
+
+    /**
+     * The height {@link setHeight} would commit mid-drag, for {@link resizedWidth}'s reason.
+     *
+     * @param height - The requested height.
+     *
+     * @returns The height the setter would have committed.
+     */
+    private resizedHeight(height: number): number {
+        return this.clampHeight(Math.max(height, this._resizeChromeMin!.height));
     }
 
     /**
@@ -3297,7 +3339,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * each forcing the browser to flush layout. Only the most recent position
      * before a frame lands is kept — an intermediate position between two
      * `mousemove` events was never going to be visible anyway. Mirrors
-     * `Split.scheduleDrag`/`flushDrag`.
+     * `Split.scheduleDrag` and its per-frame drag session (`core/ResizeDrag.ts`).
      *
      * @param e - The mousemove event.
      */

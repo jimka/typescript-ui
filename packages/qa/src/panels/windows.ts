@@ -10,6 +10,7 @@ import { appToolBar } from '../builders/chrome.js';
 import { elementFor, lateId, pickStrip } from '../builders/dom.js';
 import type { StripSide } from '../builders/dom.js';
 import { choice } from '../builders/params.js';
+import { RESIZE_OUTLINE_SELECTOR } from '../builders/shared.js';
 import type { CallTarget, HarnessTools } from '../harness/types.js';
 import type { PanelBuild } from '../panels.js';
 
@@ -213,7 +214,7 @@ export function build(n: number, params: URLSearchParams): PanelBuild {
                 hover: { element: elementFor(tools, windows[0], PANEL), axis: 'x' },
             };
         },
-        geometry: { win0: windows[0], bare, pinned, southStrip: southStrip.target, header0: windows[0].getHeader() },
+        geometry: { win0: windows[0], bare, pinned, southStrip: southStrip.target, header0: windows[0].getHeader(), resizeOutline: RESIZE_OUTLINE_SELECTOR },
         describe: () => ({ windows: n, minimized }),
     };
 }

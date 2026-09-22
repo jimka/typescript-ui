@@ -776,7 +776,8 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * Decides whether this layout pass may withhold the post-layout scroll-metrics
      * remeasure — {@link remeasureScrollMetrics} — because a resize burst is in
      * flight, and arms (or extends) the settle pass that catches it up once the
-     * burst goes quiet. Mirrors `Split.scheduleDrag`/`flushDrag` and `ScrollStrip`'s
+     * burst goes quiet. Mirrors `Split.scheduleDrag` and its per-frame drag
+     * session (`core/ResizeDrag.ts`), and `ScrollStrip`'s
      * own settle relay, which solve the same class of problem for a pane resize and a
      * tab strip's scroll resync respectively.
      *
@@ -834,7 +835,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * further size changes arrive, matching `Split.scheduleDrag`.
      *
      * @remarks A single `afterNextLayout` call here is not enough. The owner
-     * driving this panel's resize (e.g. `Split.flushDrag`, itself already
+     * driving this panel's resize (e.g. `Split`'s per-frame drag flush, itself already
      * coalesced to one call per frame) calls `doLayout()` directly from its
      * own independently-scheduled `requestAnimationFrame`, registered by
      * whichever `mousemove` arrives after the previous frame finishes —

@@ -4,6 +4,8 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Favicon, DEFAULT_FAVICON } from "~/core/Favicon.js";
+import { getAppResizeMode, setAppResizeMode } from "~/core/ResizeDrag.js";
+import type { ResizeMode } from "~/core/ResizeDrag.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { whenFontActivated } from "~/core/FontActivation.js";
 
@@ -30,6 +32,13 @@ export interface BodyOptions extends Omit<ComponentOptions, "components"> {
      * `true` restores the browser's menu everywhere.
      */
     nativeContextMenu?: boolean;
+
+    /**
+     * The resize mode of every `Split`, resizable `Accordion` and window that
+     * sets none of its own — including the ones a `Dock` builds. Defaults to
+     * `"live"`. See {@link Body.setResizeMode}.
+     */
+    resizeMode?: ResizeMode;
 }
 
 /**
@@ -87,7 +96,8 @@ export class Body extends Component<BodyOptions> {
      * Also installs the browser-tab icon, unless the page already declares a
      * `<link rel="icon">` of its own or `options.favicon` is `false`, and
      * suppresses the browser's native right-click menu page-wide, unless
-     * `options.nativeContextMenu` is `true`.
+     * `options.nativeContextMenu` is `true`. `options.resizeMode` sets the
+     * app-wide gutter- and window-edge-drag mode at the same time.
      *
      * @param options - Component options to apply (layout manager, background,
      *   …); `components` is not a field — see {@link BodyOptions}.
@@ -138,6 +148,7 @@ export class Body extends Component<BodyOptions> {
 
         if (options.favicon !== undefined) this.setFavicon(options.favicon);
         if (options.nativeContextMenu !== undefined) this.setNativeContextMenu(options.nativeContextMenu);
+        if (options.resizeMode !== undefined) this.setResizeMode(options.resizeMode);
 
         return this;
     }
@@ -205,6 +216,38 @@ export class Body extends Component<BodyOptions> {
      */
     getNativeContextMenu(): boolean {
         return this._options.nativeContextMenu ?? false;
+    }
+
+    /**
+     * Sets the app-wide resize mode: how every `Split` gutter, resizable
+     * `Accordion` gutter and window edge that sets no mode of its own shows a
+     * drag. `"outline"` moves a thin outline to where the edge will land and
+     * lays the content out once, on release; `"live"` (the default) lays it
+     * out on every frame.
+     *
+     * @param mode - The app-wide mode; takes effect from the next drag.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks The value is page-wide rather than per-body state, so it is
+     * held in the drag session module the layout managers already read at
+     * drag start — reaching it through the `Body` singleton would construct
+     * the whole page bootstrap from inside a layout manager.
+     */
+    setResizeMode(mode: ResizeMode): this {
+        setAppResizeMode(mode);
+
+        return this;
+    }
+
+    /**
+     * Returns the app-wide resize mode.
+     *
+     * @returns `"live"` until {@link Body.setResizeMode} or `Body.init`'s
+     *   `resizeMode` option changes it.
+     */
+    getResizeMode(): ResizeMode {
+        return getAppResizeMode();
     }
 
     private constructor() {

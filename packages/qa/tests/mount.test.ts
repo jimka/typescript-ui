@@ -62,6 +62,10 @@ afterEach(() => {
     for (const openWindow of AbstractWindow.getOpenWindows()) {
         openWindow.dispose();
     }
+
+    // The app-wide resize mode is library module state, not per-body state, so
+    // a `resize=` run below would otherwise leak into every later mount.
+    Body.getInstance().setResizeMode('live');
 });
 
 /**
@@ -246,6 +250,30 @@ function recordingSmokeWaits(): { waits: MountWaits; waited: string[] } {
 
     return { waits, waited };
 }
+
+describe('P15 resize mode', () => {
+    it('resize= sets the app-wide mode for the run, and rejects any other value', async () => {
+        await mountPanel('shell-shallow', new URLSearchParams('n=3&resize=outline'), tools, SMOKE_WAITS);
+
+        expect(Body.getInstance().getResizeMode()).toBe('outline');
+
+        await expect(mountPanel('shell-shallow', new URLSearchParams('n=3&resize=bogus'), tools, SMOKE_WAITS))
+            .rejects.toThrow('resize: unknown mode "bogus" (expected live, outline)');
+    });
+
+    it('every panel offering drag offers dragout on the same target', async () => {
+        const mounted = await mountPanel('shell-shallow', new URLSearchParams('n=3'), tools, SMOKE_WAITS);
+
+        expect(mounted.targets.dragout).toBe(mounted.targets.drag);
+    });
+
+    it.each(['shell-deep', 'shell-shallow', 'windows'])('%s labels the resize outline for the geometry probe', async (id) => {
+        const module = await loadPanel(id);
+        const build = module!.build(SMOKE_SCALE, new URLSearchParams());
+
+        expect(build.geometry!.resizeOutline).toBe('.ResizeOutline');
+    });
+});
 
 describe('P14 panel parameters', () => {
     it('form-flat rejects an unknown passes in build, before any wait', async () => {

@@ -4699,7 +4699,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * default) constraints when it is `false` ({@link Container} / {@link Panel},
      * which fit their allocation).
      */
-    private clampWidth(width: number): number {
+    protected clampWidth(width: number): number {
         const toContent = this.clampsToContentSize() && !this._contentClampSuspended;
 
         const maxSize = toContent ? this.getMaxSize() : (this.getMaxSizeConstraint());
@@ -4769,7 +4769,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * component's own explicit constraints depending on
      * {@link clampsToContentSize}. See {@link clampWidth} for the rationale.
      */
-    private clampHeight(height: number): number {
+    protected clampHeight(height: number): number {
         const toContent = this.clampsToContentSize() && !this._contentClampSuspended;
 
         const maxSize = toContent ? this.getMaxSize() : (this.getMaxSizeConstraint());
