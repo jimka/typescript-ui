@@ -39,6 +39,19 @@ Use this when:
 - You're mutating dozens or hundreds of components in one logical operation.
 - You want to guarantee a single layout pass without relying on rAF coalescing.
 
+## Outline resizing
+
+Dragging a [`Split`](/layouts/Split) gutter, a resizable [`Accordion`](/layouts/Accordion) gutter or a window edge lays out again on every frame: the whole subtree beside the gutter re-measures and re-places, which on the QA shells costs 25–60 ms per frame against a 9–17 ms idle frame. The content reflowing under the pointer is the point of that cost, but it is a cost, and a pane hosting a code editor or a wide table pays it a hundred times over one drag.
+
+`resizeMode: 'outline'` trades the reflow for one composited write per frame: the drag moves a thin, pre-promoted outline to where the edge will land, and the layout runs once, on release.
+
+```typescript
+await Body.init({ layoutManager: Fit(), resizeMode: 'outline' });   // app-wide
+const split = Split({ orientation: 'horizontal', resizeMode: 'outline' });   // or per owner
+```
+
+Nothing is paused while the drag runs — the real layout simply is not written — so no component's [`pauseLayout`](#pauselayout-resumelayout) flag changes and no widget sees `isLayoutPaused()` flip. What it does not cover: table column resize, which stays live; a window moved by its header, which already only translates; and the OS window frame under Tauri, which is not the library's drag.
+
 ## Virtual scrolling
 
 [`Table`](/components/Table) and [`Tree`](/components/Tree) both render only the rows visible in the viewport plus a small buffer. The mechanics:
@@ -80,6 +93,7 @@ Elements that animate via `translate3d` (table rows during scroll, the header du
 - **Window drag** — set on `mousedown`, cleared on `mouseup`. The first dragged frame is layer-ready.
 - **Virtual table / tree rows** — set when a row joins the pool, cleared when it leaves. Pool size is bounded by the visible window plus buffer, so the hint count stays well under the browser threshold.
 - **Table header** — set once for the Table's lifetime, since the header is always the scroll-mirror target.
+- **Resize outline** — set when an outline drag starts; the outline is removed when it ends.
 
 Custom code that drives its own continuous motion can use the same setter:
 

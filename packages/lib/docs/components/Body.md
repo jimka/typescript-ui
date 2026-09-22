@@ -79,12 +79,23 @@ await Body.init({ layoutManager: Fit(), nativeContextMenu: true });   // native 
 
 A menu the library or your app opens on `contextmenu` — `Tree`, `DiagramView`, a `Split` gutter's chevron, your own `Event.addListener(comp, 'contextmenu', …)` handler — keeps working unchanged either way. To suppress the native menu from an app that mounts without `Body.init`, call `Body.getInstance().setNativeContextMenu(false)` directly.
 
+## Resize mode
+
+`Body.init` also sets the app-wide **resize mode** — how a `Split` gutter, a resizable `Accordion` gutter and a window edge show a drag:
+
+```typescript
+await Body.init({ layoutManager: Fit(), resizeMode: 'outline' });
+```
+
+Every such drag then moves a thin outline to where the edge will land and lays the content out once, on release — including the splits and float windows a [`Dock`](/components/Dock) builds, which an app cannot reach to configure one by one. A manager or window that sets its own `resizeMode` keeps it. `Body.getInstance().setResizeMode(mode)` changes the app-wide mode later; either way it takes effect from the next drag. The default is `'live'`, today's behaviour.
+
 ## Notes
 
 - **Singleton** — constructed on the first `Body.init()` or `Body.getInstance()` call, not when the `Body` module is imported. Both hand back that same instance for the rest of the page's life. Do not `Body()` yourself. `Body.init` resolves once the theme's web font is active or a 50 ms deadline expires, so text built after it is measured against the face the page keeps.
 - **Resize listener** — `Body` listens for `window.resize` and re-runs layout from itself. Adding a top-level component to `Body` is what wires it into the responsive layout pass.
 - **Theme bootstrap** — call `ThemeManager.setTheme(ClassicTheme)` (or any theme) before adding components, so style rules pick up the right CSS variables. A theme chosen before the body is first reached is kept — `Body` applies `ModernTheme` only when no theme has been set.
 - **Context menu** — the browser's native right-click menu is suppressed page-wide by default; pass `nativeContextMenu: true` to restore it, including on text inputs.
+- **Resize mode** — gutter and window-edge drags lay out live by default; pass `resizeMode: 'outline'` for an outline and one layout on release.
 
 ## See also
 

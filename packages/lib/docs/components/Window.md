@@ -63,6 +63,7 @@ Inherits all [`PanelOptions`](/api/core/interfaces/PanelOptions) / [`ComponentOp
 | `show()` | Display the window and bring it to the front. |
 | `setSize(w, h)` / `setPosition(x, y)` | Initial geometry. |
 | `setResizeFps(fps)` | Throttle resize-driven layout (default 60). |
+| `setResizeMode(mode)` | `'outline'` moves a frame during an edge drag and lays the window out once on release. |
 | `on("close", fn)` | Called when the user clicks the × button. |
 
 The full surface — drag listeners, focus / activation events, viewport-clamping — is in the [API reference](/api/overlay/classes/Window).
@@ -111,6 +112,16 @@ win.setSnapModifier('meta');   // Cmd on macOS
 win.setSnapThreshold(20);      // 20 px instead of the default 12
 win.setSnapResizeEnabled(false); // opt out
 ```
+
+## Outline resizing
+
+With `resizeMode: 'outline'` an edge or corner drag leaves the window where it is and moves a 2 px frame on the box the window will take — clamped exactly as the resize itself is, by the chrome's own minimum and by the viewport edge — and the window and its content are laid out once, on release. Press Escape before releasing to cancel: the frame disappears and the window keeps the geometry it had.
+
+```typescript
+const win = Window('Report', { resizeMode: 'outline' });
+```
+
+A window with no `resizeMode` of its own follows the app-wide default set through [`Body.init`](/components/Body#resize-mode). `setResizeFps` caps live frames only — an outline frame runs no layout, so capping it would just make the frame lag the pointer. Moving a window by its header is unaffected: it already only translates.
 
 ## Gotchas
 
