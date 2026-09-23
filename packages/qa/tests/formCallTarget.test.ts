@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 //
 // C21's witness: `form-flat`'s `call` target types past both decorated
-// fields' limit, hovers the first, and once its error tooltip is up types one
-// character into the second. The panel mounts through the real `mountPanel`
-// into the page body, as in mount.test.ts, so this file needs a real DOM.
+// fields' limit, hovers the first, and once its error tooltip is up deletes
+// one character from the second, which clears its error. The panel mounts
+// through the real `mountPanel` into the page body, as in mount.test.ts, so
+// this file needs a real DOM.
 //
 // The fields measure their baselines through the canvas 2D context, which
 // jsdom does not implement, so every test here stubs it, as mount.test.ts's
@@ -144,8 +145,8 @@ describe('form-flat call target (C21)', () => {
 
         runUnits(call, HOVER_DELAY_UNITS + 1, C21_UNITS);
 
-        expect(tooltipElement(mounted)?.isConnected, 'the tooltip survives the second field\'s re-attach').toBe(true);
-        expect(decoratedTexts(), 'exactly one keystroke').toEqual([OVER, OVER + 'x']);
+        expect(tooltipElement(mounted)?.isConnected, 'the tooltip survives the second field\'s cleared error').toBe(true);
+        expect(decoratedTexts(), 'exactly one keystroke').toEqual([OVER.slice(0, -1), OVER]);
     });
 
     it('reads null once the keystroke hides the tooltip, as before C21\'s fix', async () => {
@@ -154,8 +155,8 @@ describe('form-flat call target (C21)', () => {
         const detach = Tooltip.detach.bind(Tooltip);
 
         // `detach` before C21's fix: it ended by hiding the tooltip whoever
-        // owned it. `attach` calls `Tooltip.detach` by name, so the spy is the
-        // one it reaches.
+        // owned it. `clearError` calls `Tooltip.detach` by name, so the spy is
+        // the one it reaches.
         vi.spyOn(Tooltip, 'detach').mockImplementation(function detachThenHide(component: Component): void {
             detach(component);
             Tooltip.hide();
@@ -164,7 +165,7 @@ describe('form-flat call target (C21)', () => {
         vi.useFakeTimers();
         runUnits(call, 0, C21_UNITS);
 
-        expect(decoratedTexts(), 'exactly one keystroke').toEqual([OVER, OVER + 'x']);
-        expect(tooltipElement(mounted), 'hidden by the second field\'s re-attach').toBeNull();
+        expect(decoratedTexts(), 'exactly one keystroke').toEqual([OVER.slice(0, -1), OVER]);
+        expect(tooltipElement(mounted), 'hidden by the second field\'s detach').toBeNull();
     });
 });
