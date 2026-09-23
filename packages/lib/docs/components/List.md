@@ -41,6 +41,11 @@ The list root is focusable; rows are not. Focus tracks the active row via `aria-
 | Printable character | Type-ahead — focus the first row whose label starts with the buffer. The buffer resets after a 700ms pause. |
 | `Escape` | Clear the type-ahead buffer. |
 
+A navigation key that leaves the selection where it was — `ArrowDown` on the last row,
+`Home` on the first — fires no `change`. `Enter`, `Space` and a click fire it even on the
+row already selected, since a host such as [`ComboBox`](/components/ComboBox) treats them
+as the user's pick.
+
 A host that drives the list from its own input surface — a search field filtering the rows
 as you type — can highlight a row up front with
 [`setFocusedIndex`](/api/component/list/classes/List#setfocusedindex), so `Enter` commits it

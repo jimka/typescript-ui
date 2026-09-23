@@ -103,6 +103,8 @@ for (const node of loadStoredExpandedNodes()) {
 | `setChildren(parent, children)` | Replace `parent`'s child list, or the root list. The array is stored by reference. |
 | `notifyNodeChanged(node)` | Repaint the row showing `node` after you changed its `label`, `data` or `hasChildren` in place. |
 
+The tree repaints its rows when one of these methods, a gesture, a scroll or a change to the tree's own size asks it to. A layout pass that leaves the tree's size as it was repaints nothing, so a node changed in place stays as drawn until `notifyNodeChanged(node)`.
+
 A node keeps its expansion, selection and loaded children for as long as the tree holds it — reuse the same object to keep it. Under `setChildren`, a new object starts collapsed and unselected, and an object left out is removed with everything under it. The scroll offset stays put, and only rows whose content changed are rebound, so re-listing a folder does not collapse the tree or lose the user's place:
 
 ```typescript
