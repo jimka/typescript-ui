@@ -120,4 +120,18 @@ describe('subtree-listener dispatch survives same-event reentrant dispose', () =
         expect(middleListener).toHaveBeenCalledTimes(1);
         expect(spy).not.toHaveBeenCalled();
     });
+
+    it('EV5 — a subtree listener disposing a not-yet-visited ancestor ends the walk without crashing', () => {
+        const type = 'ev5-click';
+        const [outer, middle, target] = buildChain(3);
+
+        const spy = vi.fn();
+        Event.addSubtreeListener(outer, type, spy);
+        Event.addSubtreeListener(middle, type, () => outer.dispose());
+
+        const caught = dispatchAndCatch(target, type);
+
+        expect(caught).toBeNull();
+        expect(spy).not.toHaveBeenCalled();
+    });
 });

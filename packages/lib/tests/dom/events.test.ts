@@ -2,7 +2,7 @@
 // by driving the framework's real `baseListener` over a sink-recorded modelled
 // tree with plain-sentinel synthetic events, so the Event namespace's routing
 // (exact-target, subtree, viewport, consume-once) is exercised offline.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import { Event } from '~/core/Event';
@@ -1248,6 +1248,156 @@ describe('Modelled event delivery — setId reindex', () => {
 
         DOM.sink.dispatchEvent(unrelated.getElement()!, makeEvent(unrelated.getElement()!, type));
 
+        expect(runs).toBe(1);
+    });
+});
+
+describe('Modelled event delivery — subtree walk seam economy', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        DOM.reset();
+    });
+
+    /**
+     * A chain of `depth` components, each added to the one before, with a
+     * materialised root. The last entry is the dispatch target, so index
+     * `depth - 1 - n` is the component `n` levels above it.
+     */
+    function buildChain(depth: number): Component[] {
+        const chain: Component[] = [new Component({})];
+
+        chain[0].getElement(true);
+
+        for (let i = 1; i < depth; i++) {
+            const child = new Component({});
+
+            chain[i - 1].addComponent(child);
+            chain.push(child);
+        }
+
+        return chain;
+    }
+
+    /** The three seam reads the walk can make, counted over one dispatch of `type` on `target`. */
+    function countSeamReads(target: Component, type: string): { closestWithId: number; getParentElement: number; getId: number } {
+        const closestWithId    = vi.spyOn(DOM.source, 'closestWithId');
+        const getParentElement = vi.spyOn(DOM.source, 'getParentElement');
+        const getId            = vi.spyOn(DOM.source, 'getId');
+
+        DOM.sink.dispatchEvent(target.getElement()!, makeEvent(target.getElement()!, type));
+
+        return {
+            closestWithId:    closestWithId.mock.calls.length,
+            getParentElement: getParentElement.mock.calls.length,
+            getId:            getId.mock.calls.length,
+        };
+    }
+
+    // S1 (slice 03's probe P3): the type has a subtree registration somewhere
+    // on the page, but none on the target's path — the common case for a
+    // `mousemove` while any component anywhere holds a subtree listener. One
+    // seam call settles the whole 20-level path.
+    it('S1 — a path with no registered ancestor costs one seam call, whatever its depth', () => {
+        installTestDOM(CONFIG);
+
+        const chain     = buildChain(20);
+        const target    = chain[chain.length - 1];
+        const elsewhere = new Component({});
+        const type      = uniqueType();
+
+        elsewhere.getElement(true);
+
+        let runs = 0;
+
+        Event.addSubtreeListener(elsewhere, type, () => { runs += 1; });
+
+        expect(countSeamReads(target, type)).toEqual({ closestWithId: 1, getParentElement: 0, getId: 0 });
+        expect(runs).toBe(0);
+    });
+
+    // S2 (slice 03's probe P2): one registered ancestor two levels up — a
+    // chart mark under its chart. One call finds it, one more finds that
+    // nothing is above it, and the restart between them reads its parent.
+    it('S2 — one registered ancestor costs two seam calls and one parent read', () => {
+        installTestDOM(CONFIG);
+
+        const chain  = buildChain(12);
+        const target = chain[chain.length - 1];
+        const type   = uniqueType();
+
+        let runs = 0;
+
+        Event.addSubtreeListener(chain[chain.length - 3], type, () => { runs += 1; });
+
+        expect(countSeamReads(target, type)).toEqual({ closestWithId: 2, getParentElement: 1, getId: 0 });
+        expect(runs).toBe(1);
+    });
+
+    // S3: the exact-target phase is unchanged, and adds exactly its own one
+    // `getId` on top of S2's walk.
+    it('S3 — an exact-target listener adds one getId and nothing else', () => {
+        installTestDOM(CONFIG);
+
+        const chain  = buildChain(12);
+        const target = chain[chain.length - 1];
+        const type   = uniqueType();
+        const order: string[] = [];
+
+        Event.addSubtreeListener(chain[chain.length - 3], type, () => { order.push('subtree'); });
+        Event.addListener(target, type, () => { order.push('exact'); });
+
+        expect(countSeamReads(target, type)).toEqual({ closestWithId: 2, getParentElement: 1, getId: 1 });
+        expect(order).toEqual(['exact', 'subtree']);
+    });
+
+    // S4: the climb costs one call per registered ancestor plus one, and the
+    // per-level reads between them are gone whatever the gap.
+    it('S4 — two registered ancestors cost three seam calls and two parent reads', () => {
+        installTestDOM(CONFIG);
+
+        const chain  = buildChain(12);
+        const target = chain[chain.length - 1];
+        const type   = uniqueType();
+        const order: string[] = [];
+
+        Event.addSubtreeListener(chain[chain.length - 3], type, () => { order.push('nearer'); });
+        Event.addSubtreeListener(chain[chain.length - 6], type, () => { order.push('farther'); });
+
+        expect(countSeamReads(target, type)).toEqual({ closestWithId: 3, getParentElement: 2, getId: 0 });
+        expect(order).toEqual(['nearer', 'farther']);
+    });
+
+    // S5: a stop disposition ends the walk before its restart, so the farther
+    // registrant costs nothing at all — not even the parent read.
+    it('S5 — a stop at the nearer ancestor ends the walk after one seam call', () => {
+        installTestDOM(CONFIG);
+
+        const chain  = buildChain(12);
+        const target = chain[chain.length - 1];
+        const type   = uniqueType();
+        const order: string[] = [];
+
+        Event.addSubtreeListener(chain[chain.length - 3], type, () => { order.push('nearer'); return true; });
+        Event.addSubtreeListener(chain[chain.length - 6], type, () => { order.push('farther'); });
+
+        expect(countSeamReads(target, type)).toEqual({ closestWithId: 1, getParentElement: 0, getId: 0 });
+        expect(order).toEqual(['nearer']);
+    });
+
+    // S6: a type with no subtree registration at all still returns before any
+    // walk, as it did before — the short-circuit this change leaves in place.
+    it('S6 — a type with no subtree registration makes no walk call at all', () => {
+        installTestDOM(CONFIG);
+
+        const chain  = buildChain(12);
+        const target = chain[chain.length - 1];
+        const type   = uniqueType();
+
+        let runs = 0;
+
+        Event.addListener(target, type, () => { runs += 1; });
+
+        expect(countSeamReads(target, type)).toEqual({ closestWithId: 0, getParentElement: 0, getId: 1 });
         expect(runs).toBe(1);
     });
 });

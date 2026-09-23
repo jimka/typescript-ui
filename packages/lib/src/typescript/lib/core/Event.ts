@@ -2,7 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
-import type { Handle } from "~/core/DOM.js";
+import type { Handle, IdMatch } from "~/core/DOM.js";
 
 /**
  * Event routing system that manages DOM event listeners on behalf of components.
@@ -245,6 +245,70 @@ export namespace Event {
         DOM.sink.removeListener(DOM.source.getWindow(), type, baseListener, opts);
     }
 
+    /**
+     * Runs the subtree listeners registered for `evnt`'s type on the event
+     * target and its ancestors, nearest first. Each step asks the seam for the
+     * next element whose id holds a registration, so an ancestor with none
+     * costs no seam call. The next step starts from the live parent of the
+     * element just matched, read after its listeners ran, so a listener that
+     * disposes, moves, adds or removes a registration is seen as a walk that
+     * visited every ancestor would see it.
+     *
+     * @param evnt - The event being dispatched.
+     * @param targetHandle - The event target's handle, or `null` when the event has no target.
+     * @param subtreeListeners - The type's subtree registrations, keyed by component id, read once per event.
+     */
+    function dispatchToSubtreeListeners(evnt: Event, targetHandle: Handle | null, subtreeListeners: Map<String, CompFunc>): void {
+        let handle: Handle | null = targetHandle;
+
+        while (handle !== null) {
+            let match: IdMatch | null;
+
+            try {
+                match = DOM.source.closestWithId(handle, subtreeListeners);
+            } catch {
+                // `handle` was released by a disposal that ran synchronously earlier
+                // in this same event's dispatch. Only the event target can be in that
+                // state here: the exact-target phase may dispose it (a click that
+                // disposes its own target, e.g. a tab's close button). Nothing further
+                // up can be resolved through this handle, so the walk ends here instead
+                // of throwing. Mirrors FocusHistory.isLive's identical guard around a
+                // stale focus handle (core/FocusHistory.ts:82-92).
+                return;
+            }
+
+            if (match === null) {
+                return;
+            }
+
+            const compFunc = subtreeListeners.get(match.id)!;
+            let propagationStopped = false;
+
+            for (let entry of compFunc.listeners) {
+                if (!passesButtonFilter(evnt, evnt.type, entry.options?.button)) {
+                    continue;
+                }
+
+                if (applyDisposition(evnt, entry.listener.apply(compFunc.component, [evnt]), entry.options)) {
+                    propagationStopped = true;
+                }
+            }
+
+            if (propagationStopped) {
+                return;
+            }
+
+            try {
+                handle = DOM.source.getParentElement(match.handle);
+            } catch {
+                // The listeners that just ran can have disposed the component that
+                // owns `match.handle`, releasing it. Nothing above it can be reached
+                // through that handle, so the walk ends here.
+                return;
+            }
+        }
+    }
+
     let baseListener = function (evnt: Event) {
         // "click" is the framework-wide activation event (buttons, links,
         // checkboxes, menu items, ...) and is meant to represent a primary
@@ -298,53 +362,7 @@ export namespace Event {
             return;
         }
 
-        let handle: Handle | null = targetHandle;
-        while (handle) {
-            let id: string;
-
-            try {
-                id = DOM.source.getId(handle);
-            } catch {
-                // `handle` was released by a disposal that ran synchronously earlier
-                // in this same event's dispatch — the exact-target listener phase
-                // above (a click that disposes its own target, e.g. a tab's close
-                // button), or a subtree listener on a nearer ancestor already
-                // visited by this same walk, disposing itself or a not-yet-visited
-                // ancestor. Nothing further up this chain can be resolved through
-                // this handle either, so the walk ends here instead of throwing.
-                // Mirrors FocusHistory.isLive's identical guard around a stale focus
-                // handle (core/FocusHistory.ts:82-92).
-                return;
-            }
-
-            if (id) {
-                let compFunc = subtreeListeners.get(id);
-                if (compFunc) {
-                    for (let entry of compFunc.listeners) {
-                        if (!passesButtonFilter(evnt, evnt.type, entry.options?.button)) {
-                            continue;
-                        }
-
-                        if (applyDisposition(evnt, entry.listener.apply(compFunc.component, [evnt]), entry.options)) {
-                            propagationStopped = true;
-                        }
-                    }
-                }
-            }
-
-            if (propagationStopped) {
-                return;
-            }
-
-            try {
-                handle = DOM.source.getParentElement(handle);
-            } catch {
-                // Same reentrancy hazard as above, at the climb-to-parent step: the
-                // listeners that just ran on `handle` (immediately above) can
-                // themselves have disposed the component `handle` belongs to.
-                return;
-            }
-        }
+        dispatchToSubtreeListeners(evnt, targetHandle, subtreeListeners);
     };
 
     let baseViewportListener = function (evnt: Event) {
