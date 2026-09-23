@@ -52,6 +52,15 @@ The following components consume the registry by name:
 - [`IconText`](/api/component/display/classes/IconText) / [`IconLabel`](/api/component/display/classes/IconLabel) — small composites pairing a glyph with a [`Text`](/api/component/input/classes/Text) or `<label>`.
 - Table cells via the `glyph` field type — see [`GlyphCell`](/api/component/table/classes/GlyphCell) and [`GlyphRenderer`](/api/component/table/classes/GlyphRenderer).
 
+## Changing the glyph
+
+```typescript
+const g = Glyph('xmark');
+g.setGlyphName('check');
+```
+
+The instance survives the change, and so does everything set on it — its size, colour, animation, cursor, style trait, class tokens and any `aria-*` you wrote on its root. Only which registry entry is painted changes, and an unregistered name throws exactly as the constructor does (`Error("Unknown glyph: nope")`), leaving the glyph as it was. Every built-in icon swap goes through it: `Button.setGlyph` (and everything built on it), the `Tree` and `TreeTable` expand/collapse carets, the list and tree icon renderers, the table's glyph cells, `WindowHeader.setGlyph`, and `IconText` / `IconLabel.setGlyph`.
+
 ## Animation
 
 Glyphs can play one of three named, continuous animations — `spin`, `pulse`, `beat` — by toggling a CSS class on the root element. The names mirror FontAwesome's `fa-spin` / `fa-pulse` / `fa-beat` vocabulary.
@@ -82,7 +91,7 @@ The animation class lands on the glyph's HTML root, which is what lets the brows
 
 ## Notes
 
-- The root element is a `<span>` for both registry kinds; an SVG entry paints through an inner `<svg>`. The registry name is fixed at construction — to swap glyph, discard the instance and create a new one.
+- The root element is a `<span>` for both registry kinds; an SVG entry paints through an inner `<svg>`. Change the icon with `setGlyphName(name)`.
 - Default preferred size is 16×16.
 - Passing an unknown name throws at construction: `Glyph('nope')` → `Error("Unknown glyph: nope")`.
 - Colour follows the cascade — set `setForegroundColor(...)` on the Glyph or any ancestor.

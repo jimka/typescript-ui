@@ -36,9 +36,10 @@ function iconSizePx(): number {
  * either directly on an array-supplied item or from a store record via the
  * list's `glyphField`. An item with no glyph renders label-only, with the label
  * filling the full row — matching the render-blank-on-empty contract of the
- * table glyph cell renderer. Because [`Glyph`](/api/component/display/classes/Glyph)
- * names are immutable, a fresh `Glyph` is constructed whenever the bound name
- * changes, matching the pattern `TreeRow` uses for its toggle.
+ * table glyph cell renderer. A name change renames the bound
+ * [`Glyph`](/api/component/display/classes/Glyph) in place, matching the
+ * pattern `TreeRow` uses for its toggle; only gaining or losing an icon
+ * altogether builds or destroys one.
  *
  * Register the glyphs the items reference before use, exactly as the table
  * glyph cell renderer requires:
@@ -81,8 +82,9 @@ class GlyphListItemRenderer extends ListItemRenderer {
     }
 
     /**
-     * Rebinds the icon (constructing a new Glyph when the item's glyph name
-     * changed, removing it when the item has none) and the label text.
+     * Rebinds the icon (renaming it in place when the item's glyph name
+     * changed, building it when the renderer had none, removing it when the
+     * item has none) and the label text.
      *
      * @param context - The bound-item state for this render pass.
      */
@@ -90,22 +92,27 @@ class GlyphListItemRenderer extends ListItemRenderer {
         const next = context.item.glyph ? context.item.glyph : null;
 
         if (next !== this._currentGlyph) {
-            const el = this.getElement();
+            if (next !== null && this._icon) {
+                this._icon.setGlyphName(next);
+            } else {
+                const el = this.getElement();
 
-            this._icon?.dispose();
+                this._icon?.dispose();
 
-            this._icon         = null;
-            this._currentGlyph = next;
+                this._icon = null;
 
-            if (next !== null) {
-                this._icon = new Glyph(next);
-                this._icon.clearInsets();
-                this._icon.setPointerEvents("none");
+                if (next !== null) {
+                    this._icon = new Glyph(next);
+                    this._icon.clearInsets();
+                    this._icon.setPointerEvents("none");
 
-                if (el) {
-                    DOM.sink.insertBefore(el, this._icon.getElement(true)!, this._label.getElement() ?? null);
+                    if (el) {
+                        DOM.sink.insertBefore(el, this._icon.getElement(true)!, this._label.getElement() ?? null);
+                    }
                 }
             }
+
+            this._currentGlyph = next;
         }
 
         this._label.setText(context.item.label);

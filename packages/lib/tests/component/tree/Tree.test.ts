@@ -11,8 +11,14 @@ import { LabelTreeNodeRenderer } from '~/component/tree/renderer/Label';
 import { IconLabelTreeNodeRenderer } from '~/component/tree/renderer/IconLabel';
 import { Glyph } from '~/component/display/Glyph';
 import { Scrollbar } from '~/component/container/Scrollbar';
-import { installTestDOM, makeEvent } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent, ruleStyleWrites, type RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
+
+/** Every recorded stylesheet-rule write, of any of the three kinds. */
+function ruleOps(sink: RecordingDOMSink): RecordingDOMSink['writes'] {
+    return sink.writes.filter(w =>
+        w.op === 'ensureStyleRule' || w.op === 'setRuleStyles' || w.op === 'deleteStyleRule');
+}
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -65,7 +71,9 @@ function fruitTree(): TreeNode[] {
 // fix mirrors the codebase's own compare-then-rebuild pattern".
 // ---------------------------------------------------------------------------
 describe('TreeRow.isBoundTo / toggle memoization', () => {
-    beforeEach(() => installTestDOM(CONFIG));
+    let sink: RecordingDOMSink;
+
+    beforeEach(() => { sink = installTestDOM(CONFIG); });
     afterEach(() => DOM.reset());
 
     const branch: TreeNode = { label: 'branch', children: [{ label: 'child' }] };
@@ -95,15 +103,42 @@ describe('TreeRow.isBoundTo / toggle memoization', () => {
         expect(row.getToggle()).toBe(toggle);
     });
 
-    it('rebinding with a different expanded value swaps the toggle to a new caret-down instance', () => {
+    it('rebinding with a different expanded value renames the same toggle instance to caret-down', () => {
         const row = makeRow();
         row.setRowData(branch, 0, true, false, 1, 1, false, false);
         const toggle = row.getToggle();
 
+        // One warm-up flip first: the caret-down sprite `<symbol>` is module
+        // state mounted once per process, not once per rename, so measuring
+        // the very first flip would count that mount as the rename's own work.
+        row.setRowData(branch, 0, true, true, 1, 1, false, false);
+        row.setRowData(branch, 0, true, false, 1, 1, false, false);
+
+        sink.writes.length = 0;
         row.setRowData(branch, 0, true, true, 1, 1, false, false);
 
-        expect(row.getToggle()).not.toBe(toggle);
+        expect(row.getToggle()).toBe(toggle);
         expect(row.getToggle()?.getGlyphName()).toBe('caret-down');
+        expect(ruleOps(sink)).toHaveLength(0);
+        expect(sink.writes.filter(w => w.op === 'createElementNS')).toHaveLength(0);
+    });
+
+    it('a branch toggle takes its pointer cursor from the shared tree-toggle trait', () => {
+        const row = makeRow();
+        row.setRowData(branch, 0, true, false, 1, 1, false, false);
+
+        const toggle = row.getToggle()!;
+        const el     = toggle.getElement(true)!;
+        const tokens = sink.writes
+            .filter(w => w.op === 'apply' && w.args[0] === el)
+            .flatMap(w => (w.args[1] as { addClass?: string[] }).addClass ?? []);
+        const cursorRows = ruleStyleWrites(sink).filter(r =>
+            r.selector === '#' + DOM.source.escapeSelector(toggle.getId()) && r.key === 'cursor');
+
+        expect(tokens).toContain('Glyph');
+        expect(tokens).toContain('ts-ui-trait-tree-toggle');
+        expect(toggle.getCursor()).toBe('pointer');
+        expect(cursorRows).toEqual([]);
     });
 
     it('rebinding into loading disposes the toggle for a spinner, and back out reconstructs a toggle', () => {
@@ -1529,7 +1564,9 @@ describe('VirtualRowView.reconcilePoolByKey — pool reconciliation by key ident
 // identity".
 // ---------------------------------------------------------------------------
 describe('Tree — rebind gating after a reflatten (isBoundTo)', () => {
-    beforeEach(() => installTestDOM(CONFIG));
+    let sink: RecordingDOMSink;
+
+    beforeEach(() => { sink = installTestDOM(CONFIG); });
     afterEach(() => DOM.reset());
 
     // Each branch has exactly one child, so toggling one branch adds exactly
@@ -1625,7 +1662,7 @@ describe('Tree — rebind gating after a reflatten (isBoundTo)', () => {
         expect(n5Row.getToggle()).toBe(n5ToggleBefore);
     });
 
-    it('after expanding the middle branch, its own row gets a fresh caret-down Glyph — the one case an index-keyed diff would miss', () => {
+    it('after expanding the middle branch, its own row keeps its toggle Glyph and renames it to caret-down', () => {
         const BRANCH_COUNT = 6;
         const tree = mountBranches(BRANCH_COUNT, (BRANCH_COUNT + 1) * ROW_HEIGHT) as any;
         const nodes: TreeNode[] = tree._nodes;
@@ -1636,8 +1673,36 @@ describe('Tree — rebind gating after a reflatten (isBoundTo)', () => {
 
         tree._onToggle(middle);
 
-        expect(middleRow.getToggle()).not.toBe(toggleBefore);
+        expect(middleRow.getToggle()).toBe(toggleBefore);
         expect(middleRow.getToggle().getGlyphName()).toBe('caret-down');
+    });
+
+    // The whole point of the rename: a settled tree's expand/collapse stops
+    // writing to the stylesheet altogether, which in WebKitGTK is what forces
+    // a whole-document restyle for the frame. One warm-up cycle first, since
+    // the first expand grows the pool and materialises the new row's rules.
+    it('a warmed-up collapse and expand of an icon-row tree touches no stylesheet rule', () => {
+        const BRANCH_COUNT = 6;
+        const tree = new _Tree() as any;
+
+        tree.setRendererFactory(() => new IconLabelTreeNodeRenderer(
+            (node: TreeNode) => (node.children?.length ? 'folder' : 'file')));
+        tree.getElement(true);
+        tree.setWidth(200);
+        tree.setHeight((BRANCH_COUNT + 1) * ROW_HEIGHT);
+        tree.setNodes(branchTree(BRANCH_COUNT));
+        tree.renderWindow();
+
+        const middle = tree._nodes[3];
+
+        tree._onToggle(middle);
+        tree._onToggle(middle);
+
+        sink.writes.length = 0;
+        tree._onToggle(middle);
+        tree._onToggle(middle);
+
+        expect(ruleOps(sink)).toEqual([]);
     });
 
     it('collapsing the middle branch again rebinds exactly one row and returns its caret to caret-right, without touching the rows after it', () => {
@@ -3971,5 +4036,69 @@ describe('Tree — expandTrigger and _handleDblClick', () => {
 
         expect(fired).toEqual([nodeHello]);
         expect(p._expandedNodes.has(nodeHello)).toBe(false);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// IconLabelTreeNodeRenderer's icon half — a resolver returning a different
+// name renames the icon in place instead of rebuilding it. SVG registry
+// entries of this suite's own, so the "builds nothing" assertions are about
+// real element creation rather than a char glyph that never creates any.
+// ---------------------------------------------------------------------------
+describe('IconLabelTreeNodeRenderer icon rebinding', () => {
+    let sink: RecordingDOMSink;
+
+    beforeEach(() => {
+        sink = installTestDOM(CONFIG);
+        Glyph.register(
+            { name: 'iltnr-a', kind: 'svg', viewBox: '0 0 512 512', path: 'M0 0h512v512z' },
+            { name: 'iltnr-b', kind: 'svg', viewBox: '0 0 512 512', path: 'M0 0h256v256z' },
+        );
+    });
+
+    afterEach(() => {
+        Glyph.unregister('iltnr-a');
+        Glyph.unregister('iltnr-b');
+        DOM.reset();
+    });
+
+    function ctx(label: string): TreeNodeRenderContext {
+        return {
+            node:        { label },
+            depth:       0,
+            expanded:    false,
+            selected:    false,
+            hasChildren: false,
+        };
+    }
+
+    it('the first update builds the icon', () => {
+        const renderer = new IconLabelTreeNodeRenderer(() => 'iltnr-a');
+        renderer.getElement(true);
+
+        renderer.update(ctx('Hello'));
+
+        const icon = (renderer as unknown as { _icon: { getGlyphName(): string } | null })._icon;
+
+        expect(icon).not.toBeNull();
+        expect(icon!.getGlyphName()).toBe('iltnr-a');
+    });
+
+    it('a resolver returning a different name renames the same icon instance and builds nothing', () => {
+        let name = 'iltnr-a';
+        const renderer = new IconLabelTreeNodeRenderer(() => name);
+        renderer.getElement(true);
+        renderer.update(ctx('Hello'));
+
+        const icon = (renderer as unknown as { _icon: { getGlyphName(): string } | null })._icon;
+
+        name = 'iltnr-b';
+        sink.writes.length = 0;
+        renderer.update(ctx('Hello'));
+
+        expect((renderer as unknown as { _icon: unknown })._icon).toBe(icon);
+        expect(icon!.getGlyphName()).toBe('iltnr-b');
+        expect(ruleOps(sink)).toEqual([]);
+        expect(sink.writes.filter(w => w.op === 'createElementNS')).toHaveLength(0);
     });
 });

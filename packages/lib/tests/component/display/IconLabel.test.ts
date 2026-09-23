@@ -4,6 +4,8 @@ import { HBox } from '~/layout/HBox';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
+import { Diagnostics } from '~/core/Diagnostics';
+import { _ruleCacheKeys } from '~/core/StyleTarget';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -30,17 +32,50 @@ describe('IconLabel child wiring', () => {
     });
 });
 
-describe('IconLabel setGlyph replace', () => {
-    it('swaps in a fresh Glyph for the new name at index 0', () => {
+describe('IconLabel setGlyph rename', () => {
+    it('renames the glyph in place, keeping it at index 0', () => {
         const il = new IconLabel('unicode-arrow-up', 'X', 'field-1');
+        const glyph = il.getGlyphComponent();
 
         il.setGlyph('unicode-arrow-down');
 
+        expect(il.getGlyphComponent()).toBe(glyph);
         expect(il.getGlyphComponent().getGlyphName()).toBe('unicode-arrow-down');
 
         const kids = (il as unknown as { getComponents(): unknown[] }).getComponents();
 
         expect(kids[0]).toBe(il.getGlyphComponent());
+    });
+
+    // Mirrors TreeCellRenderer.test.ts's C10 round-trip measure — the same two
+    // exact, deterministic quantities, run twice so the first pass absorbs the
+    // shared class-tier rules no instance's dispose() is meant to reclaim.
+    it('strands neither a component nor a stylesheet rule across a glyph round trip', () => {
+        const liveComponents = (): number => {
+            const counters = Diagnostics.counters();
+
+            return counters.componentsConstructed - counters.componentsDestroyed;
+        };
+
+        const driveGlyphs = (): void => {
+            const il = new IconLabel('unicode-arrow-up', 'X', 'field-1');
+
+            il.getElement(true);
+            il.setGlyph('unicode-arrow-down');
+            il.setGlyph('unicode-arrow-left');
+            il.setGlyph('unicode-arrow-right');
+            il.dispose();
+        };
+
+        driveGlyphs();
+
+        const components = liveComponents();
+        const rules      = _ruleCacheKeys().length;
+
+        driveGlyphs();
+
+        expect(liveComponents()).toBe(components);
+        expect(_ruleCacheKeys().length).toBe(rules);
     });
 });
 

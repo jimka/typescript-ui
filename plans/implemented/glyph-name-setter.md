@@ -636,4 +636,87 @@ A runtime prototype of this plan's rename, sprite and trait changes, patched int
 
 ## Implementation Notes
 
-(Step 1: record the base commit SHA here.)
+**Base commit (step 1).** `ac017455dd9e5827e99928f99e41b0cb8bbca833` — the tip
+of `feature/drag-resize-outline-mode`, this branch's start point. That is the
+SHA the A/B's `wt` arm is built from.
+
+**Pending: the in-engine A/B.** *Verification*'s MiniBrowser run was not
+performed — every path into it opens a full-screen window on the user's
+desktop, which this run is not permitted to do. It is left for the user,
+exactly as written in *Verification*, with `<base-sha>` being the SHA above:
+
+```sh
+cd /home/jika/typescript/typescript-ui
+git worktree add .worktrees/_g17-base ac017455dd9e5827e99928f99e41b0cb8bbca833 --detach
+ln -sfn "$PWD/node_modules" .worktrees/_g17-base/node_modules
+(cd .worktrees/_g17-base/packages/lib && npm run build:lib)
+export QA_WT_LIB="$PWD/.worktrees/_g17-base/packages/lib"
+```
+
+then, from `.worktrees/glyph-name-setter` after `npm run build:lib`, the ten
+`packages/qa/runqa.sh` cells and the two `qa-table.py` reads of *Verification*
+step 3–4. The *Expected readings* table and the `packages/qa/README.md`
+*Validated* lines are untouched until that run happens.
+
+**Everything else in *Verification* passed.** `npm run typecheck` 0 errors;
+`npm test` 8320 passed, 2 todo, 499 files; `npm run lint` 0 errors;
+`npm -w packages/qa run test` 344 passed, 17 files; `npm run build:lib`
+clean; `npm run docs:api` 0 errors and the same 14 pre-existing warnings as
+`master`; `npm run docs:llms:check` OK with 0 unaccounted for. Step 2's and step 18's greps all return what the plan says
+they should — the only surviving match for the "immutable" phrases was
+`docs/components/Glyph.md:85`, which step 17 then rewrote.
+
+**Case 9 asserts one `<symbol>` per name, not one mounted by the rename.**
+The plan's case 9 assumes the rename target's symbol is unmounted when the
+rename runs. Offline it never is: the sprite is module state that survives
+`DOM.reset()`, so by the time any case runs, `registerGlyph` already mounts a
+new SVG entry's `<symbol>` immediately — before a rename can ask for it. The
+case therefore counts mounts *for that registry name* (by the `ts-glyph-<name>`
+id the mount writes) and asserts exactly one, which is the property the
+mounted-symbol map actually buys. Case 10 keeps the tag-level count too, since
+nothing else in that test mounts a symbol.
+
+**Two cases needed a warm-up flip.** Case 12 (`TreeRow`) and case 23
+(`Button`) assert that a rename records no `createElementNS`. The first flip
+to a caret or icon the process has never shown mounts that name's sprite
+`<symbol>` and `<path>` — module state, mounted once per process, not once per
+rename — so both cases drive one full flip cycle before the measured one.
+
+**One test outside the plan's table pinned the old contract.**
+`tests/component/container/TabBar.test.ts`'s case 13, "setEntryGlyph disposes
+the glyph it replaces", asserted the instance swap on `Button.setGlyph`'s own
+`TabBar.setEntryGlyph` path — the same shape as the plan's cases 12, 15, 17,
+23, 25, 31 and 33, which the plan did list. It is rewritten to the new
+contract (the entry's glyph is renamed, not destroyed, and the caller's
+reference stays valid). No other suite failed.
+
+**The audit added one test file and reshaped case 21's two round trips.**
+Neither is in *Files to Create / Modify / Delete*, so both are recorded here.
+`tests/component/display/GlyphRenameSpriteMount.test.ts` is new: it pins that
+a rename mounts the incoming name's sprite `<symbol>` before repointing the
+`<use>`, which no case 1–33 reached. It needs a file of its own, holding
+exactly one case, for the module-state reason case 9 ran into — only the first
+SVG render of a fresh module instance leaves a registered-but-unmounted name
+for a rename to mount. Case 21's two C10 round trips in
+`tests/component/table/cell/TreeCellRenderer.test.ts` were rewritten rather
+than merely kept passing: after the rename, the plan's
+`driveToggles([false, true, false])` drives three *renames* and never reaches
+`refreshToggle`'s dispose, so both cases measured the same thing and the
+dispose could be deleted with the whole suite still green. `driveToggles` now
+takes `[hasChildren, expanded]` pairs, and the three cases cover never
+dropping a toggle, renaming one twice, and two branch-to-leaf transitions —
+the last being the only surviving cover for that dispose. Both fixes were
+confirmed by mutation: deleting the dispose, or the rename's
+`ensureGlyphSymbolMounted`, now fails exactly one case each.
+
+**No live demo was added.** The `implement` skill's demo step was answered by
+*Documentation Impact*'s own runnable example — `docs/components/Glyph.md`'s
+new `## Changing the glyph` section — rather than by extending
+`packages/docs/src/demos/glyph-gallery.ts`. A demo calling `setGlyphName`
+cannot be typechecked from a worktree: `packages/docs`'s `tsc` resolves
+`@jimka/typescript-ui` through the shared `node_modules` symlink, which points
+at the *main* checkout's `packages/lib` build (only the Vite config carries the
+own-checkout alias, per `packages/docs/tests/libraryResolution.test.ts`), so
+`npm -w packages/docs run typecheck` would fail on the branch until the main
+tree rebuilds the library. Adding the demo is a one-file follow-up once this
+lands, if the user wants it.

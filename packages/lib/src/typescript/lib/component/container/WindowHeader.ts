@@ -278,15 +278,18 @@ class WindowHeader extends Header {
      * @returns This component, for method chaining.
      *
      * @remarks
-     * Swaps the optional leading glyph child of the permanent title row built
-     * by the constructor. The inherited title text always lives inside that
-     * row, so the two never overlap and Border's WEST slot only ever tracks
-     * one component.
+     * Fills the optional leading glyph slot of the permanent title row built
+     * by the constructor, renaming the glyph already there rather than
+     * replacing it — so a reference from {@link getGlyph} stays valid and
+     * keeps the size and cursor the slot carries. The inherited title text
+     * always lives inside that row, so the two never overlap and Border's WEST
+     * slot only ever tracks one component.
      */
     setGlyph(name: string): this {
         if (this._titleGlyph) {
-            this._titleRow.removeComponent(this._titleGlyph);
-            this._titleGlyph = null;
+            this._titleGlyph.setGlyphName(name);
+
+            return this;
         }
 
         // The window's system-menu trigger, sized to the same ink the
@@ -310,14 +313,22 @@ class WindowHeader extends Header {
     }
 
     /**
-     * Removes the title icon from the header, if one is present.
+     * Removes the title icon from the header, if one is present. The removed
+     * glyph is destroyed, so a caller holding a reference from an earlier
+     * {@link getGlyph} must not reuse it across a `clearGlyph` call.
      *
      * @returns This component, for method chaining.
      */
     clearGlyph(): this {
         if (this._titleGlyph) {
-            this._titleRow.removeComponent(this._titleGlyph);
+            const outgoing = this._titleGlyph;
+
+            // `removeComponent` only detaches — without the dispose the glyph
+            // keeps its element, its per-instance stylesheet rule and its theme
+            // subscription for as long as the process lives.
+            this._titleRow.removeComponent(outgoing);
             this._titleGlyph = null;
+            outgoing.dispose();
         }
 
         return this;

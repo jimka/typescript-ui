@@ -5,6 +5,9 @@ import { SpinButton } from '~/component/input/SpinButton';
 import { TabButton } from '~/component/button/TabButton';
 import { WindowHeader } from '~/component/container/WindowHeader';
 import { ComboBox } from '~/component/input/ComboBox';
+import { _TreeRow } from '~/component/tree/TreeRow';
+import { TreeCellRenderer } from '~/component/table/cell/renderer/TreeCell';
+import { StringRenderer } from '~/component/table/cell/renderer/String';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../dom/TestDOM';
@@ -121,5 +124,38 @@ describe('glyph-md-ink trait: cross-class sharing between WindowHeader and Combo
         // shared token), not two same-named-but-distinct traits each
         // carrying its own token and its own rule.
         expect(addedClassesFor(writes, glyph.getElement(true)!)).toContain('ts-ui-trait-glyph-md-ink');
+    });
+});
+
+describe('tree-toggle trait: cross-class sharing between a Tree row and a TreeTable tree cell', () => {
+    it("a tree cell's caret, rendered after a Tree row's caret, writes no cursor declaration to its own #id rule", () => {
+        const row = new _TreeRow();
+        row.getElement(true);
+        row.setRowData({ label: 'branch', children: [{ label: 'child' }] }, 0, true, false, 1, 1, false, false);
+
+        const renderer = new TreeCellRenderer(new StringRenderer());
+        renderer.setTreeState(0, true, false);
+
+        const toggle = renderer.getToggle()!;
+
+        const start  = sink.writes.length;
+        const el     = toggle.getElement(true)!;
+        const writes = sink.writes.slice(start);
+
+        const declarations = declarationsFor(writes, idSelector(toggle));
+
+        expect(declarations.cursor).toBeUndefined();
+        expect(_ruleCacheHas('.ts-ui-component.ts-ui-trait-tree-toggle')).toBe(true);
+
+        // No `ensureStyleRule` op for the trait selector inside this capture
+        // window — the rule already existed from the Tree row's own caret, so
+        // the tree cell is joining it, not independently materialising a
+        // same-named-but-distinct rule of its own.
+        expect(ensureStyleRuleOpsFor(writes, '.ts-ui-component.ts-ui-trait-tree-toggle')).toHaveLength(0);
+
+        // This caret's own DOM class list carries the exact same trait token
+        // the Tree row's caret already materialised the rule under — proves
+        // genuine cross-class sharing (one shared rule, one shared token).
+        expect(addedClassesFor(writes, el)).toContain('ts-ui-trait-tree-toggle');
     });
 });

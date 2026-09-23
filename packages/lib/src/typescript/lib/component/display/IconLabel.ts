@@ -87,9 +87,8 @@ class IconLabel extends Component<IconLabelOptions> {
         // Build children with the effective values up front so the late-built
         // dispatch below has nothing to overwrite. The bag-written values
         // from the cascade take precedence over the positional arguments.
-        // `setGlyph` would rebuild the inner Glyph, and `setText`/`setForId`
-        // would push the same value into the Label a second time — so we
-        // resolve the effective value here once.
+        // `setGlyph`/`setText`/`setForId` would only push the same value into
+        // a child a second time — so we resolve the effective value here once.
         const effectiveGlyph = this._options.glyph ?? glyph;
         const effectiveText  = this._options.text  ?? text;
         const effectiveForId = this._options.forId ?? forId;
@@ -129,17 +128,14 @@ class IconLabel extends Component<IconLabelOptions> {
     }
 
     /**
-     * Replaces the leading glyph with a fresh instance for the given registry name.
+     * Changes the leading glyph to the given registry name, in place.
      *
      * @param name - Registry glyph name. Must be present in the internal registry.
      *
      * @returns This component, for method chaining.
      */
     setGlyph(name: string): this {
-        this.removeComponent(this._glyph);
-
-        this._glyph = new Glyph(name);
-        this.insertComponent(this._glyph, 0);
+        this._glyph.setGlyphName(name);
 
         return this;
     }

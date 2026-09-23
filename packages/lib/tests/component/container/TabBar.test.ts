@@ -738,7 +738,7 @@ describe('TabBar glyph', () => {
         expect(bar.isEntryBusy('a')).toBe(true);
     });
 
-    it('13 — setEntryGlyph disposes the glyph it replaces', () => {
+    it('13 — setEntryGlyph renames the glyph the entry already shows', () => {
         installTestDOM(CONFIG);
         Glyph.register(file, file_lines);
 
@@ -746,12 +746,17 @@ describe('TabBar glyph', () => {
 
         bar.createBarEntry('a', 'Alpha', glyphed('file'));
 
+        // `Button.setGlyph` renames in place, so nothing is destroyed here and
+        // a caller's reference to the entry's glyph stays valid across a swap.
+        const glyph = barEntries(bar)[0].button.getGlyph()!;
         const fn = vi.fn();
-        barEntries(bar)[0].button.getGlyph()!.onDestroy(fn);
+        glyph.onDestroy(fn);
 
         bar.setEntryGlyph('a', 'file-lines');
 
-        expect(fn).toHaveBeenCalled();
+        expect(fn).not.toHaveBeenCalled();
+        expect(barEntries(bar)[0].button.getGlyph()).toBe(glyph);
+        expect(glyph.getGlyphName()).toBe('file-lines');
         expect(bar.getEntryGlyph('a')).toBe('file-lines');
     });
 

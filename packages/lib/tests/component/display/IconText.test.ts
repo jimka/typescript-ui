@@ -4,6 +4,8 @@ import { HBox } from '~/layout/HBox';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
+import { Diagnostics } from '~/core/Diagnostics';
+import { _ruleCacheKeys } from '~/core/StyleTarget';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -36,15 +38,17 @@ describe('IconText child wiring', () => {
     });
 });
 
-describe('IconText setGlyph replace', () => {
-    it('swaps in a fresh Glyph for the new name', () => {
+describe('IconText setGlyph rename', () => {
+    it('renames the glyph in place', () => {
         const it = new IconText('unicode-arrow-up', 'X');
+        const glyph = it.getGlyphComponent();
 
         it.setGlyph('unicode-arrow-down');
 
+        expect(it.getGlyphComponent()).toBe(glyph);
         expect(it.getGlyphComponent().getGlyphName()).toBe('unicode-arrow-down');
     });
-    it('keeps the replacement glyph at index 0', () => {
+    it('keeps the renamed glyph at index 0', () => {
         const it = new IconText('unicode-arrow-up', 'X');
 
         it.setGlyph('unicode-arrow-down');
@@ -52,6 +56,37 @@ describe('IconText setGlyph replace', () => {
         const kids = (it as unknown as { getComponents(): unknown[] }).getComponents();
 
         expect(kids[0]).toBe(it.getGlyphComponent());
+    });
+
+    // Mirrors TreeCellRenderer.test.ts's C10 round-trip measure — the same two
+    // exact, deterministic quantities, run twice so the first pass absorbs the
+    // shared class-tier rules no instance's dispose() is meant to reclaim.
+    it('strands neither a component nor a stylesheet rule across a glyph round trip', () => {
+        const liveComponents = (): number => {
+            const counters = Diagnostics.counters();
+
+            return counters.componentsConstructed - counters.componentsDestroyed;
+        };
+
+        const driveGlyphs = (): void => {
+            const it = new IconText('unicode-arrow-up', 'X');
+
+            it.getElement(true);
+            it.setGlyph('unicode-arrow-down');
+            it.setGlyph('unicode-arrow-left');
+            it.setGlyph('unicode-arrow-right');
+            it.dispose();
+        };
+
+        driveGlyphs();
+
+        const components = liveComponents();
+        const rules      = _ruleCacheKeys().length;
+
+        driveGlyphs();
+
+        expect(liveComponents()).toBe(components);
+        expect(_ruleCacheKeys().length).toBe(rules);
     });
 });
 
@@ -92,6 +127,20 @@ describe('IconText options precedence', () => {
             text:  'bag',
         });
 
+        expect(it.getGlyphComponent().getGlyphName()).toBe('unicode-arrow-down');
+        expect(it.getTextComponent().getText()).toBe('bag');
+    });
+
+    it('builds the bag glyph once rather than constructing and discarding a positional one', () => {
+        const before = Diagnostics.counters().componentsConstructed;
+
+        const it = new IconText('unicode-arrow-up', 'pos', {
+            glyph: 'unicode-arrow-down',
+            text:  'bag',
+        });
+
+        // The IconText, its Glyph and its Text — not a fourth, discarded Glyph.
+        expect(Diagnostics.counters().componentsConstructed - before).toBe(3);
         expect(it.getGlyphComponent().getGlyphName()).toBe('unicode-arrow-down');
         expect(it.getTextComponent().getText()).toBe('bag');
     });

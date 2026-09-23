@@ -308,12 +308,15 @@ class DialogTitleBar extends Component {
      * @remarks
      * The current implementation positions the glyph in `doLayout`; only the
      * notification-detail path uses this slot, and the glyph never coexists with
-     * other left-side decoration on a Dialog title bar.
+     * other left-side decoration on a Dialog title bar. A second call renames
+     * the glyph already in the slot, which keeps its bounds and so needs no
+     * relayout.
      */
     setGlyph(name: string): this {
         if (this._titleGlyph) {
-            this.removeComponent(this._titleGlyph);
-            this._titleGlyph = null;
+            this._titleGlyph.setGlyphName(name);
+
+            return this;
         }
 
         const glyph  = new Glyph(name);
@@ -330,13 +333,22 @@ class DialogTitleBar extends Component {
 
     /**
      * Removes the leading title-bar glyph from the dialog, if one is present.
+     * The removed glyph is destroyed, so a caller holding a reference from an
+     * earlier {@link getGlyph} must not reuse it across a `clearGlyph` call.
      *
      * @returns This component, for method chaining.
      */
     clearGlyph(): this {
         if (this._titleGlyph) {
-            this.removeComponent(this._titleGlyph);
+            const outgoing = this._titleGlyph;
+
+            // `removeComponent` only detaches — without the dispose the glyph
+            // keeps its element, its per-instance stylesheet rule and its theme
+            // subscription for as long as the process lives.
+            this.removeComponent(outgoing);
             this._titleGlyph = null;
+            outgoing.dispose();
+
             this.doLayout();
         }
 

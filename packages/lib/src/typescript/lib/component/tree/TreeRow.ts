@@ -4,6 +4,7 @@ import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
+import { TREE_TOGGLE_TRAIT } from "~/core/StyleTraits.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
@@ -38,8 +39,8 @@ const SELECTED_BG = "var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))";
  * renderer are appended directly to the row's DOM element in `init()` rather
  * than via `addComponent`, so their preferred-size change notifications do not
  * propagate up to the Tree and trigger unnecessary layout passes. Leaf rows
- * have no toggle; non-leaf rows swap in a fresh `caret-down` / `caret-right`
- * glyph on each state change rather than mutating a single character. The row
+ * have no toggle; non-leaf rows rename their caret between `caret-down` and
+ * `caret-right` in place on each state change. The row
  * content area (everything to the right of the toggle) is owned by a
  * [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer) supplied
  * via the constructor factory.
@@ -207,9 +208,10 @@ class TreeRow extends Component {
      *
      * @remarks
      * The toggle/spinner block is skipped when `hasChildren`/`expanded`/`loading`
-     * all match what this row was last bound to — the same compare-then-rebuild
+     * all match what this row was last bound to — the same compare-then-rename
      * pattern `IconLabelTreeNodeRenderer.update` and `GlyphListItemRenderer.update`
-     * already use for their own icons.
+     * already use for their own icons. When they do differ, a branch row that
+     * stays an idle branch renames its existing caret rather than rebuilding it.
      */
     setRowData(node: TreeNode, depth: number, hasChildren: boolean, expanded: boolean, siblingCount: number, posInSet: number, selected: boolean, loading: boolean): this {
         const toggleUnchanged = hasChildren === this._hasChildren
@@ -226,39 +228,7 @@ class TreeRow extends Component {
         this._loading      = loading;
 
         if (!toggleUnchanged) {
-            if (this._toggle) {
-                this._toggle.dispose();
-                this._toggle = null;
-            }
-
-            if (this._spinner) {
-                this._spinner.dispose();
-                this._spinner = null;
-            }
-
-            if (loading) {
-                // No explicit size: the spinner tracks the theme font-size so it
-                // reads as the same visual weight as the caret glyph it replaces,
-                // and `layoutChildren` fits it into the TOGGLE_WIDTH box.
-                const spinner = new ProgressSpinner();
-                this._spinner = spinner;
-
-                const el = this.getElement();
-                if (el) {
-                    DOM.sink.appendChild(el, spinner.getElement(true)!);
-                }
-            } else if (hasChildren) {
-                const toggle = new Glyph(expanded ? "caret-down" : "caret-right");
-                toggle.setCursor("pointer");
-                toggle.clearInsets();
-                toggle.getAria().setHidden(true);
-                this._toggle = toggle;
-
-                const el = this.getElement();
-                if (el) {
-                    DOM.sink.appendChild(el, toggle.getElement(true)!);
-                }
-            }
+            this.rebindToggle(hasChildren, expanded, loading);
         }
 
         this._renderer.update({ node, depth, expanded, selected, hasChildren });
@@ -269,6 +239,63 @@ class TreeRow extends Component {
         this.getAria().setPosInSet(posInSet);
 
         return this;
+    }
+
+    /**
+     * Brings the toggle slot in line with a changed hasChildren / expanded /
+     * loading triple. A branch that stays an idle branch keeps its caret and
+     * only renames it — reaching that branch with a non-null toggle means the
+     * row was last bound as an idle branch too, so only `expanded` can have
+     * moved. Any other change disposes what the slot held and builds what the
+     * new state needs.
+     *
+     * @param hasChildren - Whether the newly bound node has child nodes.
+     * @param expanded - Whether the newly bound node is expanded.
+     * @param loading - Whether the newly bound node's children are loading.
+     */
+    private rebindToggle(hasChildren: boolean, expanded: boolean, loading: boolean): void {
+        const caret = expanded ? "caret-down" : "caret-right";
+
+        if (this._toggle && hasChildren && !loading) {
+            this._toggle.setGlyphName(caret);
+
+            return;
+        }
+
+        if (this._toggle) {
+            this._toggle.dispose();
+            this._toggle = null;
+        }
+
+        if (this._spinner) {
+            this._spinner.dispose();
+            this._spinner = null;
+        }
+
+        if (loading) {
+            // No explicit size: the spinner tracks the theme font-size so it
+            // reads as the same visual weight as the caret glyph it replaces,
+            // and `layoutChildren` fits it into the TOGGLE_WIDTH box.
+            const spinner = new ProgressSpinner();
+            this._spinner = spinner;
+
+            const el = this.getElement();
+            if (el) {
+                DOM.sink.appendChild(el, spinner.getElement(true)!);
+            }
+        } else if (hasChildren) {
+            // The pointer cursor comes from the shared tree-toggle trait, so a
+            // caret built here inserts no stylesheet rule of its own.
+            const toggle = new Glyph(caret, { styleTrait: TREE_TOGGLE_TRAIT });
+            toggle.clearInsets();
+            toggle.getAria().setHidden(true);
+            this._toggle = toggle;
+
+            const el = this.getElement();
+            if (el) {
+                DOM.sink.appendChild(el, toggle.getElement(true)!);
+            }
+        }
     }
 
     /**

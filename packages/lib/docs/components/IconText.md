@@ -35,7 +35,7 @@ Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) 
 
 | Method | Purpose |
 | --- | --- |
-| `setGlyph(name)` | Replace the leading glyph with a fresh instance for the given registry name. |
+| `setGlyph(name)` | Change the leading glyph to the given registry name, in place. |
 | `setText(text)` | Update the trailing label text. |
 | `setGap(px)` | Change the pixel gap between the glyph and the text. |
 | `getGlyphComponent()` | Access the inner [`Glyph`](/api/component/display/classes/Glyph). |

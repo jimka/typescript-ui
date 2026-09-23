@@ -4,6 +4,7 @@ import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Absolute } from "~/layout/Absolute.js";
 import { Insets } from "~/primitive/Insets.js";
+import { TREE_TOGGLE_TRAIT } from "~/core/StyleTraits.js";
 import { callable } from "~/core/Callable.js";
 import { caret_down }  from "~/glyphs/solid/caret_down.js";
 import { caret_right } from "~/glyphs/solid/caret_right.js";
@@ -26,9 +27,11 @@ export const DEFAULT_INDENT_PX = 16;
  * column's field type ({@link StringRenderer},
  * [`NumberRenderer`](/api/component/table/classes/NumberRenderer), …). It is
  * adopted as the tree renderer's only data-bearing child and handles
- * `getValue` / `setValue` unchanged. The toggle is a {@link Glyph}
- * rebuilt on each {@link setTreeState} call, mirroring the swap pattern
- * used by [`TreeRow.setRowData`](/api/component/tree/classes/TreeRow#setrowdata).
+ * `getValue` / `setValue` unchanged. The toggle is a {@link Glyph} renamed in
+ * place on each {@link setTreeState} call that changes it, mirroring the
+ * rename pattern used by
+ * [`TreeRow.setRowData`](/api/component/tree/classes/TreeRow#setrowdata); only
+ * a row that stops being a branch loses its toggle.
  *
  * Layout is absolute: the toggle (when present) is placed at
  * `depth * indentPx`, and the delegate immediately to its right —
@@ -97,10 +100,10 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
      * row. The host `TreeBody` reads this to dispatch toggle clicks
      * from its subtree-click listener.
      *
-     * Read-only access, and the reference is short-lived: a
-     * {@link TreeCellRenderer.setTreeState} call that changes the toggle
-     * destroys the one it replaces, so a caller holding a reference from an
-     * earlier call must not reuse it across a `setTreeState` call.
+     * Read-only access. A {@link TreeCellRenderer.setTreeState} call that
+     * changes the expansion state renames this toggle in place, so a caller's
+     * reference stays valid across it; only a row turning into a leaf destroys
+     * the toggle, and `getToggle` then reports `null`.
      *
      * @returns The toggle {@link Glyph}, or `null` when the row has no children.
      */
@@ -217,18 +220,27 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
     }
 
     /**
-     * Rebuilds the toggle glyph from `_hasChildren` and `_expanded`.
-     * A leaf row has no toggle. A branch row swaps in a fresh
-     * `caret-down` (expanded) or `caret-right` (collapsed) glyph —
+     * Brings the toggle glyph in line with `_hasChildren` and `_expanded`.
+     * A leaf row has no toggle. A branch row that stays a branch keeps its
+     * caret and only renames it between `caret-down` (expanded) and
+     * `caret-right` (collapsed) —
      * matches [`TreeRow.setRowData`](/api/component/tree/classes/TreeRow#setrowdata)'s
-     * swap pattern (no in-place name mutation API on `Glyph`).
+     * own rename pattern.
      *
-     * The outgoing glyph is destroyed, not merely detached: `removeComponent`
-     * takes it out of the child list but leaves it holding its element, its
-     * per-instance stylesheet rule and its theme subscription, so a row rebound
-     * on every scroll would strand one glyph per swap.
+     * A row that stops being a branch destroys its toggle rather than merely
+     * detaching it: `removeComponent` takes it out of the child list but
+     * leaves it holding its element, its per-instance stylesheet rule and its
+     * theme subscription, so a row rebound on every scroll would strand one.
      */
     private refreshToggle(): void {
+        const caret = this._expanded ? "caret-down" : "caret-right";
+
+        if (this._toggle && this._hasChildren) {
+            this._toggle.setGlyphName(caret);
+
+            return;
+        }
+
         if (this._toggle) {
             const outgoing = this._toggle;
 
@@ -244,9 +256,10 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
             return;
         }
 
-        const toggle = new Glyph(this._expanded ? "caret-down" : "caret-right");
+        // The pointer cursor comes from the shared tree-toggle trait, so a
+        // caret built here inserts no stylesheet rule of its own.
+        const toggle = new Glyph(caret, { styleTrait: TREE_TOGGLE_TRAIT });
 
-        toggle.setCursor("pointer");
         toggle.clearInsets();
         toggle.getAria().setHidden(true);
 

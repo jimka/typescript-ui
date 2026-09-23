@@ -58,6 +58,13 @@ let _spriteMounted: boolean        = false;
 let _spriteElement: Handle | null = null;
 
 /**
+ * Every `<symbol>` mounted in the sprite, by registry name, with its `<path>`
+ * child — the sprite's own record of what it holds, so mounting and removal
+ * never query the DOM. Module state, like the sprite it describes.
+ */
+const _mountedSymbols: Map<string, { symbol: Handle; path: Handle }> = new Map();
+
+/**
  * Registers a glyph by name. If the glyph is SVG-mode and the sprite is
  * already mounted, the corresponding `<symbol>` is appended immediately so
  * Glyphs constructed after this call can reference it.
@@ -146,28 +153,25 @@ export function ensureGlyphSymbolMounted(name: string): void {
 
 /**
  * Appends a `<symbol>` for the given SVG-mode glyph to the sprite. Idempotent:
- * a no-op when a `<symbol>` with the same id already exists.
+ * a no-op when this module has already mounted a `<symbol>` for the name.
  *
  * @internal
  */
 function _addSymbolToSprite(name: string, def: GlyphDef): void {
-    if (!_spriteElement || def.kind !== "svg") {
-        return;
-    }
-
-    const id = GLYPH_SYMBOL_ID_PREFIX + name;
-    if (DOM.source.querySelector(_spriteElement, `#${DOM.source.escapeSelector(id)}`)) {
+    if (!_spriteElement || def.kind !== "svg" || _mountedSymbols.has(name)) {
         return;
     }
 
     const symbol = DOM.sink.createElementNS(SVG_NS, "symbol");
-    DOM.sink.apply(symbol, { setAttr: { id: id, viewBox: def.viewBox } });
+    DOM.sink.apply(symbol, { setAttr: { id: GLYPH_SYMBOL_ID_PREFIX + name, viewBox: def.viewBox } });
 
     const path = DOM.sink.createElementNS(SVG_NS, "path");
     DOM.sink.apply(path, { setAttr: { d: def.path } });
     DOM.sink.appendChild(symbol, path);
 
     DOM.sink.appendChild(_spriteElement, symbol);
+
+    _mountedSymbols.set(name, { symbol, path });
 }
 
 /**
@@ -176,23 +180,16 @@ function _addSymbolToSprite(name: string, def: GlyphDef): void {
  * @internal
  */
 function _removeSymbolFromSprite(name: string): void {
-    if (!_spriteElement) {
+    const mounted = _mountedSymbols.get(name);
+    if (!_spriteElement || !mounted) {
         return;
     }
 
-    const id = GLYPH_SYMBOL_ID_PREFIX + name;
-    const symbol = DOM.source.querySelector(_spriteElement, `#${DOM.source.escapeSelector(id)}`);
-    if (symbol) {
-        // Release the symbol's retained `<path>` child too — releasing only the
-        // symbol would pin the detached path handle in the registry. Queried
-        // before removal so it resolves to its canonical retained handle.
-        const path = DOM.source.querySelector(symbol, "path");
+    // Release the symbol's retained `<path>` child too — releasing only the
+    // symbol would pin the detached path handle in the registry.
+    DOM.sink.removeChild(_spriteElement, mounted.symbol);
+    DOM.sink.release(mounted.symbol);
+    DOM.sink.release(mounted.path);
 
-        DOM.sink.removeChild(_spriteElement, symbol);
-        DOM.sink.release(symbol);
-
-        if (path) {
-            DOM.sink.release(path);
-        }
-    }
+    _mountedSymbols.delete(name);
 }

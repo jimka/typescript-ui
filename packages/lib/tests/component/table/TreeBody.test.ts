@@ -31,7 +31,9 @@ const CONFIG = {
     themeVars:       {},
 };
 
-beforeEach(() => installTestDOM(CONFIG));
+let sink: RecordingDOMSink;
+
+beforeEach(() => { sink = installTestDOM(CONFIG); });
 afterEach(() => DOM.reset());
 
 const MODEL = new Model([
@@ -395,5 +397,40 @@ describe('TreeBody — class-name collision fix', () => {
         expect((addClassOps[0].args[1] as { addClass: string[] }).addClass).toEqual([
             'ts-ui-component', 'VirtualRowView', 'TableBody', 'TreeBody',
         ]);
+    });
+});
+
+// The payoff of the tree-cell caret rename plus its shared cursor trait: a
+// settled tree body's expand/collapse stops writing to the stylesheet, which
+// in WebKitGTK is what forces a whole-document restyle for the frame. One
+// warm-up cycle first, because the first pass materialises the class-tier and
+// trait rules the freshly grown rows need.
+describe('TreeBody — a warmed-up collapseAll / expandAll touches no stylesheet rule', () => {
+    const DATA = [
+        { id: 1, parent: null, name: 'root' },
+        { id: 2, parent: 1,    name: 'child' },
+        { id: 3, parent: 2,    name: 'grandchild' },
+        { id: 4, parent: null, name: 'root2' },
+        { id: 5, parent: 4,    name: 'child2' },
+    ];
+
+    it('records no ensureStyleRule, setRuleStyles or deleteStyleRule on the second cycle', () => {
+        const tb = tree(DATA);
+
+        tb.getElement(true);
+        tb.setWidth(250);
+        tb.setHeight(200);
+        tb.expandAll();
+        (tb as any).renderWindow(250, [100, 100, 100]);
+
+        tb.collapseAll();
+        tb.expandAll();
+
+        sink.writes.length = 0;
+        tb.collapseAll();
+        tb.expandAll();
+
+        expect(sink.writes.filter(w =>
+            w.op === 'ensureStyleRule' || w.op === 'setRuleStyles' || w.op === 'deleteStyleRule')).toEqual([]);
     });
 });
