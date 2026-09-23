@@ -36,6 +36,12 @@ page resets to empty.
   act — `ProductionDOMSource` implements both. See
   [Migration](/reference/migration/next) for the full note.
 
+- **`DOMSource` gains one required member: `closestWithId()`.** It returns the
+  nearest element at or above a handle whose `id` is in a given set, climbing
+  inside the seam; `Event`'s subtree dispatch now finds each registered
+  ancestor with one call instead of reading every ancestor's id and parent.
+  Only a consumer implementing its own `DOMSource` is affected.
+
 ### Components
 
 - **`Slider`'s `showTicks` option and its `isShowTicks()` / `setShowTicks()`
