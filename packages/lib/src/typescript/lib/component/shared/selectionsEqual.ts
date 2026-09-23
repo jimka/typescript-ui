@@ -12,7 +12,7 @@
  * @returns `true` when both sets have the same size and every member of
  *   `a` is present in `b`.
  *
- * @internal Shared by `Tree` and `Body`; not barrel-exported.
+ * @internal Shared by `Tree`, `Body` and `AbstractSelectableList`; not barrel-exported.
  */
 export function selectionsEqual<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
     if (a.size !== b.size) {
