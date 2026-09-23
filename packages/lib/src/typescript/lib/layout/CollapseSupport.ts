@@ -184,7 +184,9 @@ export interface Rect {
 
 /**
  * One element animated by {@link animateLayout}: its captured start/end bounds
- * and whether its content must be re-laid-out each frame.
+ * and whether its content must be re-laid-out each frame. Only a participant
+ * whose end box differs from its start box becomes a mover — one that ends
+ * where it started is already at the box every frame would write.
  *
  * @remarks A content-bearing pane (`relayout: true`) needs `doLayout` per frame
  * so its children track the animating box instead of snapping to the final
@@ -290,6 +292,21 @@ const lerpRect = (a: Rect, b: Rect, t: number): Rect => ({
 });
 
 /**
+ * Whether two rects describe the same box, field for field. Exact, with no
+ * tolerance: {@link lerpRect} between two equal rects returns that rect at
+ * every step, so only an exact match proves a participant would be written
+ * the same box on every frame. A `NaN` field never matches, so a participant
+ * no layout has placed yet stays animated.
+ *
+ * @param a - The first rect.
+ * @param b - The second rect.
+ * @returns `true` when all four fields are equal.
+ */
+function sameRect(a: Rect, b: Rect): boolean {
+    return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+/**
  * Writes a resolved rect to a component as a single batched DOM update,
  * mirroring `LayoutManager.commitBounds`'s slow path: the positional setters
  * flush together, and a content-bearing participant re-lays-out its children
@@ -329,7 +346,7 @@ export function commitRect(component: Component, rect: Rect, relayout: boolean):
 }
 
 /**
- * Drives a coordinated collapse/restore by interpolating every participant's
+ * Drives a coordinated collapse/restore by interpolating every mover's
  * box from its `start` to its `end` over {@link COLLAPSE_DURATION} on
  * {@link COLLAPSE_EASING}, re-laying-out content-bearing panes each frame.
  *
@@ -345,6 +362,12 @@ export function commitRect(component: Component, rect: Rect, relayout: boolean):
  * written the end layout (its `doLayout`), and captured each mover's `end`.
  * This function lands on `start` synchronously — so the just-written end state
  * never paints — then animates forward.
+ *
+ * The list holds only the participants whose box changes; one that ends where
+ * it started never reaches here. An empty list still runs the frames for the
+ * full duration before `onComplete`, because the caller's idle work (clearing
+ * its collapsing flag, taking collapsed content out) must wait for the primed
+ * clip-path and colour transitions, which run that long regardless.
  *
  * Under `prefers-reduced-motion: reduce` it writes the end state and completes
  * immediately, with no animation frames.
@@ -408,8 +431,9 @@ function animateLayout(movers: CollapseMover[], onComplete?: () => void): () => 
 }
 
 /**
- * One participant in a {@link runCollapse} pass: the moving element, whether
- * its content must be re-laid-out each frame, and whether it is a gutter.
+ * One participant in a {@link runCollapse} pass: an element that may move,
+ * whether its content must be re-laid-out each frame, and whether it is a
+ * gutter.
  * `relayout` is `true` for a pane/region whose content is in the render tree
  * and `false` for an empty gutter — and also for a pane/region whose content
  * is out behind its strip, which moves as a box only. `gutter` is what selects
@@ -426,7 +450,7 @@ export interface CollapseParticipant {
  * plumbing behind [`Split.setPaneCollapsed`](/api/layout/classes/Split) and
  * [`Border.setRegionCollapsed`](/api/layout/classes/Border). The caller has
  * already flipped its own collapsed flag and assembled `participants`: every
- * box that moves — the panes/regions (`relayout: true`, or `false` for one
+ * box that may move — the panes/regions (`relayout: true`, or `false` for one
  * whose content is out behind its strip) and the gutters (`gutter: true`),
  * the `toggled` one included.
  *
@@ -434,12 +458,16 @@ export interface CollapseParticipant {
  * pane/region's clip-path reveal (it keeps its final size and only clips, so it
  * never reads as a content snap); snapshot every participant's start geometry;
  * write the end layout via the container's `doLayout`; capture the end geometry;
- * and hand the lot to the rAF driver, which interpolates the boxes — re-laying
- * out the content-bearing ones — in lockstep with the clip transition.
+ * and hand every participant whose end box differs from its start box to the
+ * rAF driver, which interpolates the boxes — re-laying out the content-bearing
+ * ones — in lockstep with the clip transition. A participant that ends where it
+ * started is left as the end layout placed it, since that layout already
+ * committed it — and laid its content out — at the one box every frame would
+ * write.
  *
  * @param container - The manager's container, laid out to compute the end state.
  * @param toggled - The pane/region being collapsed or restored (clip-revealed).
- * @param participants - Every moving box, including `toggled`.
+ * @param participants - Every box that may move, including `toggled`.
  * @param previous - The manager's current animation canceller, or null when idle.
  * @param pending - The manager's list of primed CSS transitions that have not
  *   settled yet. `runCollapse` appends to it and each entry removes itself on
@@ -485,17 +513,21 @@ export function runCollapse(
     }
 
     // Snapshot the start geometry, write the end layout, then capture the end
-    // geometry and animate between the two.
+    // geometry and animate between the two. A participant whose box ends where
+    // it started is left out: the end layout has just committed it at the one
+    // box every frame would write, and laid its content out there.
     const starts = participants.map(participant => captureRect(participant.component));
 
     container.doLayout();
 
-    const movers: CollapseMover[] = participants.map((participant, index) => ({
-        component: participant.component,
-        relayout:  participant.relayout,
-        start:     starts[index],
-        end:       captureRect(participant.component),
-    }));
+    const movers: CollapseMover[] = participants
+        .map((participant, index) => ({
+            component: participant.component,
+            relayout:  participant.relayout,
+            start:     starts[index],
+            end:       captureRect(participant.component),
+        }))
+        .filter(mover => !sameRect(mover.start, mover.end));
 
     return animateLayout(movers, onIdle);
 }

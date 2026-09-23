@@ -294,6 +294,14 @@ page resets to empty.
   writes to the tab's `LayoutConstraints` the same way `setTabGlyph` does,
   so the flag survives a tear-off, a re-dock, or a restored layout.
 
+- **A `Split` pane or `Border` region whose box does not move during a
+  collapse or expand is no longer re-laid-out on every animation frame.** The
+  animation now interpolates — and re-lays out each frame — only the panes,
+  regions and gutters whose box changes; one that ends where it started,
+  usually the collapsing pane or region itself, is laid out once for the end
+  state. A custom pane that relied on a `doLayout` call per animation frame to
+  pick up a change it never announced must call `scheduleLayout()` itself.
+
 ## Added
 
 ### Components

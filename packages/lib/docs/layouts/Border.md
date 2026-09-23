@@ -67,7 +67,9 @@ it and the track slides to the region's outer edge and widens into an opaque str
 under a clip-path and the centre grows into the reclaimed space. The whole pass is
 one coordinated animation — the toggled region clip-reveals while the centre and
 the gutter interpolate their geometry together, re-laying out their contents each
-frame so nothing snaps — mirroring the [`Accordion`](/layouts/Accordion). Double-clicking the same chevron slides it
+frame so nothing snaps — mirroring the [`Accordion`](/layouts/Accordion). A region whose box does not change — the
+collapsing region itself, and any edge the reclaimed space does not reach — is laid out once for the end state rather
+than on every frame. Double-clicking the same chevron slides it
 back and restores the region. Only a `dblclick` collapses, never a single click.
 Collapsed state is in-memory only.
 
