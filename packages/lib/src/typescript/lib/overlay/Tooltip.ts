@@ -97,8 +97,9 @@ export class Tooltip extends Component {
     // Components with a destroy hook already registered to auto-detach on
     // teardown. `attach` may be called many times over a component's life
     // (e.g. Button re-deriving its tooltip text on every setTitle), and each
-    // call already replaces the previous attachment via the `detach` below —
-    // this guard keeps that from also registering a redundant hook per call.
+    // call that changes the attachment replaces it through `_attachWith`'s
+    // `detach` — this guard keeps that from also registering a redundant
+    // hook per call.
     private static teardownWired: WeakSet<Component> = new WeakSet();
 
     // True while the anchor-watch viewport listener is installed (only while a
@@ -395,7 +396,12 @@ export class Tooltip extends Component {
      * own — on screen for it, or still waiting out the hover delay it armed. A
      * tooltip another component owns is left alone.
      *
-     * Calling `attach` on a component that already has an attachment replaces it.
+     * Calling `attach` on a component that already has an attachment replaces it,
+     * unless the call would rebuild that attachment unchanged — the same text and
+     * the same colors, compared by value. Such a call changes nothing: a hover
+     * delay the component armed keeps running, and a tooltip on screen for it
+     * stays up. A replacement cancels the component's own pending show and hides
+     * its own tooltip first.
      *
      * @param component - The component to attach hover behaviour to.
      * @param text - The tooltip text to display.
@@ -411,7 +417,8 @@ export class Tooltip extends Component {
      * over that area it takes precedence over a tooltip attached to a component
      * inside it. Meant for a wrapper whose child fills it and takes the pointer —
      * `FieldDecorator`'s validation error, whose field covers the decorator's
-     * whole box. Replaced, detached and torn down like an `attach` attachment.
+     * whole box. Kept when unchanged, and replaced, detached and torn down like
+     * an `attach` attachment.
      *
      * @param component - The wrapper to attach hover behaviour to.
      * @param text - The tooltip text to display.
@@ -424,9 +431,12 @@ export class Tooltip extends Component {
     }
 
     /**
-     * The body `attach` and `attachCovering` share: replaces any attachment
-     * `component` already has, builds its four hover listeners, registers them
-     * and records the attachment.
+     * The body `attach` and `attachCovering` share. Returns at once when
+     * `component`'s current attachment already has this text, these colors and
+     * this mode, keeping its listeners, its running hover delay and its tooltip
+     * on screen. Otherwise replaces any attachment `component` already has,
+     * builds its four hover listeners, registers them and records the
+     * attachment.
      *
      * @param component - The component to attach hover behaviour to.
      * @param text - The tooltip text to display.
@@ -434,6 +444,15 @@ export class Tooltip extends Component {
      * @param covering - `true` for `attachCovering`'s subtree-wide attachment.
      */
     private static _attachWith(component: Component, text: string, colors: TooltipColors | undefined, covering: boolean): void {
+        const current = Tooltip.attachments.get(component.getId());
+
+        // An identical call keeps the attachment it would rebuild. Replacing
+        // it detaches first, which cancels the hover delay this component armed
+        // and hides the tooltip on screen for it.
+        if (current !== undefined && Tooltip._sameAttachment(current, text, colors, covering)) {
+            return;
+        }
+
         Tooltip.detach(component);
 
         let cursorX = 0;
@@ -565,6 +584,30 @@ export class Tooltip extends Component {
         }
 
         Tooltip.pendingId = null;
+    }
+
+    /**
+     * Whether `att` is the attachment `_attachWith` would build from these
+     * arguments: the same text, the same mode and the same three colors.
+     * Colors are compared by value, key by key, so a fresh object with equal
+     * values matches — `FieldDecorator.showError` passes a new one on every
+     * call — and a color left out matches one set to `undefined`, since
+     * `_applyColors` reads both as the theme default. The three keys are the
+     * ones `_applyColors` reads; a key added to `TooltipColors` must be added
+     * to both.
+     *
+     * @param att - The component's current attachment.
+     * @param text - The text the new call passes.
+     * @param colors - The color overrides the new call passes.
+     * @param covering - Whether the new call is `attachCovering`'s.
+     * @returns `true` when the new call would rebuild `att` unchanged.
+     */
+    private static _sameAttachment(att: TooltipAttachment, text: string, colors: TooltipColors | undefined, covering: boolean): boolean {
+        return att.text === text
+            && att.covering === covering
+            && att.colors?.background === colors?.background
+            && att.colors?.color === colors?.color
+            && att.colors?.border === colors?.border;
     }
 
     /**
