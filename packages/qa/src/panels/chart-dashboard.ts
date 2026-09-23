@@ -5,7 +5,7 @@ import { Grid, Split, VBox } from '@jimka/typescript-ui/layout';
 import { barSeries, lineSeriesPoints, Y_SPAN } from '../builders/data.js';
 import { childGutter, elementFor } from '../builders/dom.js';
 import { awaitStoreView } from '../builders/store.js';
-import type { HarnessTools } from '../harness/types.js';
+import type { GeometryTarget, HarnessTools } from '../harness/types.js';
 import type { PanelBuild } from '../panels.js';
 
 /** The panel's id, for errors. */
@@ -28,7 +28,7 @@ const UPDATE_RECORD_STRIDE = 7;
 /** How far `update` moves a point's y, wrapped into [0, Y_SPAN): a visible move that keeps the axis range. */
 const UPDATE_Y_SHIFT = 13;
 
-export const description = 'Dashboard: a Split of a 2×2 grid of store-backed LineCharts (3 series of n points each, legend and markers on) beside two grouped BarCharts. Reproduces slice 26 F26.1 (a chart rebuilds every SVG mark per layout pass) and F26.2 (axis margins re-measured with 12 text measurements per pass): at n = 50, 840 createElementNS (4 × 210) and 48 measureText (4 × 12) per unchanged pass of the grid. The deep counterpart of chart-line.';
+export const description = 'Dashboard: a Split of a 2×2 grid of store-backed LineCharts (3 series of n points each, legend and markers on) beside two grouped BarCharts. Reproduces slice 26 F26.1 (fixed: a chart rebuilt every SVG mark per layout pass, and now keeps them while its plot and state are unchanged) and F26.2 (fixed by text-measurement-without-reflow: axis margins were re-measured with 12 text measurements per pass): at n = 50, per unchanged pass of the grid, 840 createElementNS (4 × 210) and 48 measureText (4 × 12) before the two fixes, and none of either after. The deep counterpart of chart-line.';
 
 /** 200 points per series: a dashboard's worth of data. */
 export const defaultScale = 200;
@@ -71,7 +71,9 @@ export function build(n: number): PanelBuild {
         ],
     });
 
-    const geometry: Record<string, Panel | LineChart> = { grid, bars };
+    // `point0` is the first line chart's first marker and `bar0` the first bar
+    // chart's first bar: marks the container labels cannot see.
+    const geometry: Record<string, GeometryTarget> = { grid, bars, point0: '.LineChart circle', bar0: '.BarChart rect' };
 
     lines.forEach((line, k) => {
         geometry[`chart${k}`] = line.chart;

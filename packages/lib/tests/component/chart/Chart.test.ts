@@ -9,7 +9,9 @@ import { _BarChart } from '~/component/chart/BarChart';
 import { Model } from '~/data/Model';
 import { MemoryStore } from '~/data/MemoryStore';
 import { DOM } from '~/core/DOM';
-import type { ChartSeriesModel } from '~/component/chart/types';
+import { Insets } from '~/primitive/Insets';
+import { ThemeManager, ModernTheme, defineTheme } from '~/core/Theme';
+import type { ChartSeriesModel, PlotRect } from '~/component/chart/types';
 import type { ElementPatch, Handle } from '~/core/DOM';
 
 const CONFIG = {
@@ -400,5 +402,349 @@ describe('steady-state layout stability', () => {
         chart.doLayout();
 
         expect(scheduleSpy).not.toHaveBeenCalled();
+    });
+});
+
+/** Counts the recorded writes of one sink operation. */
+function ops(sink: { writes: Array<{ op: string; args: unknown[] }> }, op: string): number {
+    return sink.writes.filter((w) => w.op === op).length;
+}
+
+/** Reads a chart's raw SVG surface handle. */
+function svgOf(chart: object): Handle {
+    return (chart as unknown as { _svg: Handle })._svg;
+}
+
+/** Collects the recorded `apply` writes that target a chart's SVG surface. */
+function surfaceApplies(sink: { writes: Array<{ op: string; args: unknown[] }> }, chart: object): Array<{ op: string; args: unknown[] }> {
+    const svg = svgOf(chart);
+
+    return sink.writes.filter((w) => w.op === 'apply' && w.args[0] === svg);
+}
+
+/** Reads how many marks a chart currently holds. */
+function markCount(chart: object): number {
+    return (chart as unknown as { _marks: unknown[] })._marks.length;
+}
+
+/** Runs one more layout pass on a laid-out chart, recording only that pass. */
+function pass(chart: { doLayout(): unknown }, sink: { writes: Array<{ op: string; args: unknown[] }> }): void {
+    sink.writes.length = 0;
+    chart.doLayout();
+}
+
+// A settled pass — no size change, no `scheduleLayout()` since the last
+// repaint — keeps every mark and writes nothing to the SVG surface; any state
+// change announced through `scheduleLayout()` redraws once.
+describe('repaint gate', () => {
+    /**
+     * Settled passes run after the first layout: enough that a gate which
+     * re-armed itself, or leaked a repaint every few passes, would show.
+     */
+    const SETTLED_PASSES = 10;
+
+    /** L1: one three-point series, legend off. */
+    function lineChart(): _LineChart {
+        return new _LineChart({ series: [{ name: 'A', data: [{ x: 0, y: 1 }, { x: 1, y: 3 }, { x: 2, y: 2 }] }], showLegend: false });
+    }
+
+    /** L2: L1's series plus a second of the same shape, legend on. */
+    function legendChart(): _LineChart {
+        return new _LineChart({
+            series: [
+                { name: 'A', data: [{ x: 0, y: 1 }, { x: 1, y: 3 }, { x: 2, y: 2 }] },
+                { name: 'B', data: [{ x: 0, y: 2 }, { x: 1, y: 1 }, { x: 2, y: 3 }] },
+            ],
+            showLegend: true,
+        });
+    }
+
+    /** B2: the file's two-series bar chart, legend off. */
+    function barChart(): _BarChart {
+        return new _BarChart({
+            series: [
+                { name: 'A', data: [{ x: 0, y: 1 }, { x: 1, y: 2 }] },
+                { name: 'B', data: [{ x: 0, y: 3 }, { x: 1, y: 4 }] },
+            ],
+            showLegend: false,
+        });
+    }
+
+    /**
+     * Applies `change` to a laid-out chart, then runs two passes.
+     *
+     * @returns The `createElementNS` count of each of the two passes.
+     */
+    function createsOverTwoPasses(chart: { doLayout(): unknown }, sink: { writes: Array<{ op: string; args: unknown[] }> }, change: () => void): [number, number] {
+        change();
+        pass(chart, sink);
+
+        const first = ops(sink, 'createElementNS');
+
+        pass(chart, sink);
+
+        return [first, ops(sink, 'createElementNS')];
+    }
+
+    it.each<[string, () => _LineChart | _BarChart]>([['LineChart', lineChart], ['BarChart', barChart]])(
+        'RG1 %s keeps every mark and the surface across settled passes',
+        (_name, make) => {
+            const sink = installTestDOM(CONFIG);
+            const chart = make();
+
+            layout(chart, sink);
+
+            const marks = markCount(chart);
+
+            for (let i = 0; i < SETTLED_PASSES; i++) {
+                pass(chart, sink);
+
+                expect(ops(sink, 'createElementNS')).toBe(0);
+                expect(ops(sink, 'removeChild')).toBe(0);
+                expect(ops(sink, 'release')).toBe(0);
+                expect(ops(sink, 'appendChild')).toBe(0);
+                expect(surfaceApplies(sink, chart)).toHaveLength(0);
+                expect(markCount(chart)).toBe(marks);
+            }
+        },
+    );
+
+    it('RG2 redraws every mark after setSeries with a same-extent data set, leaving the surface alone', () => {
+        const sink = installTestDOM(CONFIG);
+        const chart = lineChart();
+
+        layout(chart, sink);
+
+        const marks = markCount(chart);
+        const plot = { ...(chart as unknown as { _plot: PlotRect })._plot };
+
+        chart.setSeries([{ name: 'A', data: [{ x: 0, y: 3 }, { x: 1, y: 1 }, { x: 2, y: 2 }] }]);
+        pass(chart, sink);
+
+        expect((chart as unknown as { _plot: PlotRect })._plot).toEqual(plot);
+        expect(ops(sink, 'removeChild')).toBe(marks);
+        expect(ops(sink, 'release')).toBe(marks);
+        expect(ops(sink, 'createElementNS')).toBe(marks);
+        expect(surfaceApplies(sink, chart)).toHaveLength(0);
+    });
+
+    it('RG3a redraws once after setSeries with identical data', () => {
+        const sink = installTestDOM(CONFIG);
+        const chart = lineChart();
+
+        layout(chart, sink);
+
+        const [first, second] = createsOverTwoPasses(chart, sink, () => chart.setSeries(chart.getSeries()));
+
+        expect(first).toBeGreaterThan(0);
+        expect(second).toBe(0);
+    });
+
+    it('RG3b redraws once after a record is added to the bound store', async () => {
+        const store = new MemoryStore(new Model([{ name: 'id', type: 'number' }, { name: 'x', type: 'number' }, { name: 'y', type: 'number' }]), [
+            { id: 1, x: 0, y: 1 },
+            { id: 2, x: 1, y: 2 },
+        ]);
+
+        await store.load();
+
+        const sink = installTestDOM(CONFIG);
+        const chart = new _LineChart({ store, xField: 'x', yField: 'y', showLegend: false });
+
+        layout(chart, sink);
+
+        const [first, second] = createsOverTwoPasses(chart, sink, () => store.add({ id: 3, x: 2, y: 5 }));
+
+        expect(first).toBeGreaterThan(0);
+        expect(second).toBe(0);
+    });
+
+    it('RG3c redraws once after a legend toggle, absorbing the legend\'s mid-pass scheduleLayout()', () => {
+        const sink = installTestDOM(CONFIG);
+        const chart = legendChart();
+
+        layout(chart, sink);
+
+        const [first, second] = createsOverTwoPasses(chart, sink, () => {
+            (chart as unknown as { handleLegendToggle(i: number): void }).handleLegendToggle(0);
+        });
+
+        expect(first).toBeGreaterThan(0);
+        expect(second).toBe(0);
+    });
+
+    it('RG3d redraws once, ring included, after a point is selected', () => {
+        const sink = installTestDOM(CONFIG);
+        const chart = lineChart();
+
+        layout(chart, sink);
+
+        const marks = markCount(chart);
+        const [first, second] = createsOverTwoPasses(chart, sink, () => {
+            (chart as unknown as { selectPoint(series: number, index: number): void }).selectPoint(0, 1);
+        });
+
+        expect(first).toBe(marks + 1);
+        expect(second).toBe(0);
+    });
+
+    it('RG3e redraws once after an axis title is set', () => {
+        const sink = installTestDOM(CONFIG);
+        const chart = lineChart();
+
+        layout(chart, sink);
+
+        const [first, second] = createsOverTwoPasses(chart, sink, () => chart.setXAxisLabel('Month'));
+
+        expect(first).toBeGreaterThan(0);
+        expect(second).toBe(0);
+    });
+
+    it.each<[string, (chart: _LineChart) => void]>([
+        ['setShowPoints(false)', (chart) => chart.setShowPoints(false)],
+        ['setCurved(true)', (chart) => chart.setCurved(true)],
+        ['setXScaleType(\'time\')', (chart) => chart.setXScaleType('time')],
+    ])('RG3f redraws once after LineChart.%s', (_name, change) => {
+        const sink = installTestDOM(CONFIG);
+        const chart = lineChart();
+
+        layout(chart, sink);
+
+        const [first, second] = createsOverTwoPasses(chart, sink, () => change(chart));
+
+        expect(first).toBeGreaterThan(0);
+        expect(second).toBe(0);
+    });
+
+    it('RG3g redraws once after BarChart.setGrouped(false)', () => {
+        const sink = installTestDOM(CONFIG);
+        const chart = barChart();
+
+        layout(chart, sink);
+
+        const [first, second] = createsOverTwoPasses(chart, sink, () => chart.setGrouped(false));
+
+        expect(first).toBeGreaterThan(0);
+        expect(second).toBe(0);
+    });
+
+    it('RG4 redraws once after a theme switch', () => {
+        const sink = installTestDOM(CONFIG);
+        const chart = lineChart();
+
+        // Disposed before the default theme is restored, so the restore does
+        // not reach this chart's theme listener (GlyphIconScale.test.ts).
+        try {
+            layout(chart, sink);
+
+            const [first, second] = createsOverTwoPasses(chart, sink, () => {
+                ThemeManager.setTheme(defineTheme(ModernTheme, { scale: { base: 28 } }));
+            });
+
+            expect(first).toBeGreaterThan(0);
+            expect(second).toBe(0);
+        } finally {
+            chart.dispose();
+            ThemeManager.setTheme(ModernTheme);
+        }
+    });
+
+    it('RG5 redraws and resizes the surface once when the width changes', () => {
+        const sink = installTestDOM(CONFIG);
+        const chart = lineChart();
+
+        layout(chart, sink);
+
+        const marks = markCount(chart);
+
+        chart.setWidth(401);
+        pass(chart, sink);
+
+        const applies = surfaceApplies(sink, chart);
+
+        expect(ops(sink, 'createElementNS')).toBe(marks);
+        expect(applies).toHaveLength(1);
+        expect((applies[0].args[1] as ElementPatch).setAttr?.width).toBe(String(chart.getInnerSize()!.width));
+    });
+
+    it('RG6 keeps the marks and moves the surface when the insets grow with the outer size', () => {
+        // Insets grown on every side by this much, and the outer size by twice
+        // it on each axis, so the inner size — and so the plot — stays put.
+        const GROW = 5;
+        const sink = installTestDOM(CONFIG);
+        const chart = new _LineChart({
+            series:     [{ name: 'A', data: [{ x: 0, y: 1 }, { x: 1, y: 3 }, { x: 2, y: 2 }] }],
+            showLegend: false,
+            insets:     new Insets(0, 0, 0, 0),
+        });
+
+        layout(chart, sink);
+
+        const inner = chart.getInnerSize();
+        const left = chart.getPerimeterSize().left;
+
+        chart.setInsets(new Insets(GROW, GROW, GROW, GROW));
+        chart.setWidth(400 + 2 * GROW);
+        chart.setHeight(300 + 2 * GROW);
+        pass(chart, sink);
+
+        const applies = surfaceApplies(sink, chart);
+
+        expect(chart.getInnerSize()).toEqual(inner);
+        expect(ops(sink, 'createElementNS')).toBe(0);
+        expect(applies).toHaveLength(1);
+        expect((applies[0].args[1] as ElementPatch).style?.left).toBe(`${left + GROW}px`);
+    });
+
+    it('RG7 leaves a subclass state change undrawn until scheduleLayout() announces it', () => {
+        /** A chart whose series colour is subclass state its setter-less field changes. */
+        class TintChart extends _LineChart {
+            tint = 'red';
+
+            protected seriesColor(): string {
+                return this.tint;
+            }
+        }
+
+        /** Whether any recorded patch strokes in `colour`. */
+        const strokes = (sink: { writes: Array<{ op: string; args: unknown[] }> }, colour: string): boolean =>
+            sink.writes.some((w) => w.op === 'apply' && (w.args[1] as ElementPatch).style?.stroke === colour);
+
+        const sink = installTestDOM(CONFIG);
+        const chart = new TintChart({ series: [{ name: 'A', data: [{ x: 0, y: 1 }, { x: 1, y: 3 }, { x: 2, y: 2 }] }], showLegend: false });
+
+        layout(chart, sink);
+
+        const marks = markCount(chart);
+
+        chart.tint = 'blue';
+        pass(chart, sink);
+
+        expect(ops(sink, 'createElementNS')).toBe(0);
+        expect(strokes(sink, 'blue')).toBe(false);
+
+        chart.scheduleLayout();
+        pass(chart, sink);
+
+        const path = sink.writes.find((w) => w.op === 'apply' && (w.args[1] as ElementPatch).setAttr?.d !== undefined);
+
+        expect(ops(sink, 'createElementNS')).toBe(marks);
+        expect((path!.args[1] as ElementPatch).style?.stroke).toBe('blue');
+    });
+
+    it('RG8 releases the kept marks on dispose', () => {
+        const sink = installTestDOM(CONFIG);
+        const chart = lineChart();
+
+        layout(chart, sink);
+
+        const marks = markCount(chart);
+
+        pass(chart, sink);
+        sink.writes.length = 0;
+        chart.dispose();
+
+        expect(markCount(chart)).toBe(0);
+        expect(ops(sink, 'release')).toBeGreaterThanOrEqual(marks);
     });
 });

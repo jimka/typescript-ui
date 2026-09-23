@@ -1006,18 +1006,51 @@ function seamCountedLayout(chart: Component): PhaseCounts {
     return countAll(() => chart.doLayout());
 }
 
+/**
+ * Whether a phase's work counters hold any of ablation `name`'s own counters under `prefix`.
+ *
+ * @param counts - The phase's counters.
+ * @param prefix - `skipped` or `memo`.
+ * @param name - The ablation's `abl=` name.
+ * @returns `true` when one was bumped.
+ */
+function bumpedAny(counts: PhaseCounts, prefix: string, name: string): boolean {
+    return Object.keys(counts.work ?? {}).some((key) => key.startsWith(`${prefix}.${name}.`));
+}
+
+/**
+ * The prototype in `obj`'s chain that owns `scheduleLayout` nearest to it:
+ * `AbstractChart.prototype`, on a library whose chart gates its own repaint.
+ *
+ * @param obj - A chart.
+ * @returns The nearest prototype with an own `scheduleLayout`.
+ */
+function scheduleLayoutOwner(obj: object): AnyObj {
+    let proto = Object.getPrototypeOf(obj) as AnyObj;
+
+    while (!Object.hasOwn(proto, 'scheduleLayout')) {
+        proto = Object.getPrototypeOf(proto) as AnyObj;
+    }
+
+    return proto;
+}
+
+// The library's `AbstractChart` gates its own repaint from chart-repaint-gate
+// on, so both W3.0 chart ablations turn inert: installing their revision
+// stamp would replace the library's `scheduleLayout` override and break its
+// gate. The library's gate is what keeps the marks here.
 describe('A26 chart.repaint-gate', () => {
-    it('keeps the marks of an unchanged pass and rebuilds them after a data change', async () => {
+    it('notes the library\'s own gate and patches nothing; the library keeps an unchanged pass\'s marks', async () => {
         const mounted = await mount('chart-line', CHART_SCALE);
         const chart = mounted.build.root;
 
-        apply('chart.repaint-gate');
+        expect(apply('chart.repaint-gate')).toMatch(/^no ungated repaint/);
+
         installSeamCounters(DOM);
         chart.doLayout();
 
         const unchanged = seamCountedLayout(chart);
 
-        expect(unchanged.work?.['skipped.chart.repaint-gate.repaint']).toBe(1);
         expect(unchanged.seam?.sink.createElementNS ?? 0).toBe(0);
 
         (mounted.targets.update as CallTarget)(0);
@@ -1025,33 +1058,33 @@ describe('A26 chart.repaint-gate', () => {
         const changed = seamCountedLayout(chart);
 
         expect(changed.seam?.sink.createElementNS).toBeGreaterThan(0);
-        expect(changed.work?.['skipped.chart.repaint-gate.repaint']).toBeUndefined();
+        expect(bumpedAny(unchanged, 'skipped', 'chart.repaint-gate')).toBe(false);
+        expect(bumpedAny(changed, 'skipped', 'chart.repaint-gate')).toBe(false);
     });
 });
 
 describe('A27 chart.margin-memo', () => {
-    it('re-serves the plot rectangle of an unchanged pass and re-measures after a data change', async () => {
+    it('notes the library\'s own gate and leaves its scheduleLayout override in place', async () => {
         const mounted = await mount('chart-line', CHART_SCALE);
         const chart = mounted.build.root;
+        const proto = scheduleLayoutOwner(chart);
+        const override = Object.getOwnPropertyDescriptor(proto, 'scheduleLayout')!.value as unknown;
 
-        apply('chart.margin-memo');
+        expect(apply('chart.margin-memo')).toMatch(/^no ungated repaint/);
+        expect(Object.getOwnPropertyDescriptor(proto, 'scheduleLayout')!.value).toBe(override);
+
         installSeamCounters(DOM);
         chart.doLayout();
 
-        const plot = structuredClone((chart as unknown as AnyObj)._plot);
         const unchanged = seamCountedLayout(chart);
-
-        expect(unchanged.seam?.source.measureText ?? 0).toBe(0);
-        expect(unchanged.work?.['memo.chart.margin-memo.plotHit']).toBe(1);
-        expect((chart as unknown as AnyObj)._plot).toEqual(plot);
 
         (mounted.targets.update as CallTarget)(0);
 
-        // A miss is the evidence the memo let the data change through: the
-        // update keeps every tick label, and the library's own text
-        // measurement already serves a repeated label without a seam read, so
-        // a probe count cannot show the re-measure.
-        expect(seamCountedLayout(chart).work?.['memo.chart.margin-memo.plotHit']).toBeUndefined();
+        const changed = seamCountedLayout(chart);
+
+        expect(bumpedAny(unchanged, 'memo', 'chart.margin-memo')).toBe(false);
+        expect(bumpedAny(changed, 'memo', 'chart.margin-memo')).toBe(false);
+        expect(changed.seam?.sink.createElementNS).toBeGreaterThan(0);
     });
 });
 

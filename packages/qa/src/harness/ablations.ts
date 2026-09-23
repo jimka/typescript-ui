@@ -2466,21 +2466,41 @@ function chartRevision(chart: AnyObj): number {
     return (chart.__w3Revision as number | undefined) ?? 0;
 }
 
+/** A chart ablation's note on a library whose `AbstractChart` gates its own repaint (from chart-repaint-gate on). */
+const CHART_GATED_NOTE = 'no ungated repaint: AbstractChart gates its own';
+
+/**
+ * Whether the library's `AbstractChart` gates its own repaint: an own
+ * `scheduleLayout` that is not a revision stamp is the library's override,
+ * which marks the chart's marks stale. The stamp would replace that override,
+ * and the library's gate would then keep outdated marks through a data change.
+ *
+ * @param chartProto - `AbstractChart.prototype`.
+ * @returns `true` when the prototype carries the library's own override.
+ */
+function libraryGatesChartRepaint(chartProto: AnyObj): boolean {
+    return Object.hasOwn(chartProto, 'scheduleLayout') && !chartRevisionStamps.has(chartProto.scheduleLayout as object);
+}
+
 /**
  * `AbstractChart.prototype`, with the revision stamp installed.
  *
  * @param tools - The harness tools.
- * @returns The prototype, or `null` when no chart is mounted.
+ * @returns The prototype; or, installing nothing, the note `'no AbstractChart'` when no chart is mounted, or `CHART_GATED_NOTE` when the library gates its own repaint.
  */
-function chartPrototype(tools: HarnessTools): AnyObj | null {
+function chartPrototype(tools: HarnessTools): AnyObj | string {
     const chart = tools.findComponent('AbstractChart');
     const chartClass = chart ? chainClass(chart, 'AbstractChart') : null;
 
     if (!chartClass) {
-        return null;
+        return 'no AbstractChart';
     }
 
     const proto = chartClass.prototype as AnyObj;
+
+    if (libraryGatesChartRepaint(proto)) {
+        return CHART_GATED_NOTE;
+    }
 
     installChartRevision(proto);
 
@@ -2499,8 +2519,8 @@ function chartRepaintGate(tools: HarnessTools): string {
     const name = 'chart.repaint-gate';
     const proto = chartPrototype(tools);
 
-    if (!proto) {
-        return 'no AbstractChart';
+    if (typeof proto === 'string') {
+        return proto;
     }
 
     const repaint = proto.repaint as Method;
@@ -2551,8 +2571,8 @@ function chartMarginMemo(tools: HarnessTools): string {
     const name = 'chart.margin-memo';
     const proto = chartPrototype(tools);
 
-    if (!proto) {
-        return 'no AbstractChart';
+    if (typeof proto === 'string') {
+        return proto;
     }
 
     const computePlot = proto.computePlot as Method;

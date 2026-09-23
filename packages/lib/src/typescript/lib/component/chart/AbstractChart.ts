@@ -111,6 +111,14 @@ const _defaultAbstractChartOptions: Partial<AbstractChartOptions> = {
  * Concrete subtypes fill in the scale-building, series-drawing, and
  * point-anchor hooks.
  *
+ * A layout pass redraws the marks only when the plot rectangle has moved since
+ * they were drawn or {@link scheduleLayout} has been called since; a settled
+ * pass keeps every mark and writes nothing to the SVG surface. Every built-in
+ * state change calls `scheduleLayout()`. A subclass that changes anything the
+ * drawing reads — state of its own read in `buildScales`, `drawSeries`,
+ * `pointPixel` or `seriesColor`, or the inherited series model or selected
+ * point written directly — calls `scheduleLayout()` after changing it.
+ *
  * @typeParam O - The subtype's options interface.
  *
  * @remarks Abstract, so it is deliberately **not** wrapped with `callable()` (a
@@ -159,10 +167,22 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
     private _seriesGroup: Handle | null = null;
     private _overlayGroup: Handle | null = null;
 
+    // The inner size and perimeter origin `sizeSurface` last wrote to the SVG
+    // surface, so a pass that changes neither writes nothing. Null until the first
+    // write. Written only from `doLayout`, never during construction.
+    private _surfaceBox: { width: number; height: number; left: number; top: number } | null = null;
+
     // Every mark created since the last repaint, with its parent group, so a
     // repaint can detach and release each one (an unreleased handle pins the
     // detached node in the registry — the Glyphs sprite-leak lesson).
     private _marks: Array<{ parent: Handle; handle: Handle }> = [];
+
+    // The plot rectangle the current marks were drawn for. Undefined when no mark
+    // is current: before the first repaint, after `clearMarks`, and from any
+    // `scheduleLayout()` until the next repaint. `declare`d because
+    // `scheduleLayout()` can run inside the `super()` cascade, where a field
+    // initializer would run afterwards (CODE_CONVENTIONS.md).
+    declare private _paintedPlot: PlotRect | undefined;
 
     // The plot rectangle and scales from the last layout, cached so pointer
     // hit-testing (which runs outside layout, on every mousemove) can map the
@@ -564,10 +584,27 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
     // ── Layout ────────────────────────────────────────────────────────────────
 
     /**
+     * Queues a layout pass and marks the chart's marks stale, so that pass
+     * redraws them even when the plot rectangle has not moved. Every chart state
+     * change reaches the drawing through this method — the data and option
+     * setters, a bound store's events, a legend toggle, a point selection and a
+     * theme change all call it — and a subclass calls it after changing anything
+     * its drawing reads.
+     *
+     * @returns This chart, for method chaining.
+     */
+    scheduleLayout(): this {
+        this._paintedPlot = undefined;
+
+        return super.scheduleLayout();
+    }
+
+    /**
      * Lays the chart out: sizes the SVG surface to the inner box, reserves the
      * legend band, measures the axis margins, computes the plot rectangle,
-     * builds the final scales, and repaints. Reads only the cached inner size
-     * (no live geometry), so the stale-DOM hazard does not arise.
+     * builds the final scales, and redraws the marks when they are not current
+     * for the new plot rectangle. Reads only the cached inner size (no live
+     * geometry), so the stale-DOM hazard does not arise.
      *
      * @returns This chart, for method chaining.
      */
@@ -582,7 +619,7 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
 
         const origin = this.getPerimeterSize();
 
-        this.sizeSurface(inner);
+        this.sizeSurface(inner, origin);
 
         const plotOuter = this.reserveLegend(inner, origin);
         const plot = this.computePlot(plotOuter);
@@ -592,19 +629,29 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
         this._xScale = scales.x;
         this._yScale = scales.y;
 
-        this.repaint(plot, scales.x, scales.y);
+        if (!this.marksCurrentFor(plot)) {
+            this.repaint(plot, scales.x, scales.y);
+        }
 
         return this;
     }
 
     /**
      * Sizes and positions the SVG surface to cover the inner content box, with a
-     * user-space viewBox matching so marks are drawn in inner-box pixels.
+     * user-space viewBox matching so marks are drawn in inner-box pixels. Writes
+     * nothing when the inner size and origin equal the last write.
      *
      * @param inner - The inner content size.
+     * @param origin - The perimeter origin offset.
      */
-    private sizeSurface(inner: { width: number; height: number }): void {
-        const origin = this.getPerimeterSize();
+    private sizeSurface(inner: { width: number; height: number }, origin: { left: number; top: number }): void {
+        const last = this._surfaceBox;
+
+        if (last && last.width === inner.width && last.height === inner.height && last.left === origin.left && last.top === origin.top) {
+            return;
+        }
+
+        this._surfaceBox = { width: inner.width, height: inner.height, left: origin.left, top: origin.top };
 
         DOM.sink.apply(this._svg!, {
             setAttr: { width: String(inner.width), height: String(inner.height), viewBox: `0 0 ${inner.width} ${inner.height}` },
@@ -705,8 +752,9 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
     }
 
     /**
-     * Clears the previous marks and redraws the axes (with y-gridlines), the
-     * series, and the selection ring from scratch.
+     * Clears the previous marks, redraws the axes (with y-gridlines), the
+     * series, and the selection ring from scratch, and records the plot
+     * rectangle the marks were drawn for.
      *
      * @param plot - The plot rectangle.
      * @param xScale - The x scale.
@@ -723,6 +771,25 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
         this.drawAxisTitles(axis, plot);
         this.drawSeries(plot, xScale, yScale);
         this.drawSelection(plot, xScale, yScale);
+
+        this._paintedPlot = plot;
+    }
+
+    /**
+     * Whether the current marks were drawn for `plot` with no state change since.
+     *
+     * @param plot - The plot rectangle this pass computed.
+     *
+     * @returns `true` when the pass may keep every mark.
+     */
+    private marksCurrentFor(plot: PlotRect): boolean {
+        const painted = this._paintedPlot;
+
+        return painted !== undefined
+            && painted.x === plot.x
+            && painted.y === plot.y
+            && painted.width === plot.width
+            && painted.height === plot.height;
     }
 
     /**
@@ -832,7 +899,10 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
         return this.createMark(this._seriesGroup!, tag, patch);
     }
 
-    /** Detaches and releases every mark created since the last repaint. */
+    /**
+     * Detaches and releases every mark created since the last repaint, and
+     * forgets the plot rectangle they were drawn for.
+     */
     private clearMarks(): void {
         for (const { parent, handle } of this._marks) {
             DOM.sink.removeChild(parent, handle);
@@ -840,6 +910,7 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
         }
 
         this._marks.length = 0;
+        this._paintedPlot = undefined;
     }
 
     // ── Interaction ────────────────────────────────────────────────────────────

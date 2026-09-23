@@ -56,6 +56,17 @@ page resets to empty.
   receives a DOM `change` event rather than a `click`. See
   [Migration](/reference/migration/next) for the full note.
 
+- **A chart redraws its marks only when its plot rectangle moves or its state
+  changes.** A settled layout pass — a parent re-laying out a chart whose size
+  and data are unchanged — used to remove and re-create every axis, gridline,
+  label and series mark, and to rewrite the SVG surface's size attributes; it
+  now keeps them and writes nothing to the SVG. A state change is announced by
+  `scheduleLayout()`, which every built-in setter, store event, legend toggle,
+  selection and theme change already calls. A custom `AbstractChart` subclass
+  that changes something its drawing reads without calling `scheduleLayout()`
+  no longer sees that change drawn on the next pass. See
+  [Migration](/reference/migration/next) for the full note.
+
 ## Changed
 
 ### Core
