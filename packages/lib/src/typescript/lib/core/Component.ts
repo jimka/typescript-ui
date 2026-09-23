@@ -552,6 +552,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // layoutManager, insets, padding, ...) live in `this._options` instead.
     private _components: Array<Component>;
 
+    // The array `getLaidOutComponents` last returned: re-served while it still
+    // lists exactly the displayed children in order, replaced (never edited)
+    // when it does not, and dropped when a child leaves so it keeps none alive.
+    private _laidOutComponents: Component[] | null = null;
+
     // Callbacks queued via onFirstLayout, drained the first time this component
     // completes a doLayout while its element is connected. Null once fired (or
     // never registered) so the common case allocates nothing.
@@ -608,6 +613,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * ARCHITECTURE.md's third DOM-write rule.
      */
     declare private _layoutDirty  : boolean;
+    /**
+     * The `Util.textMetricsGeneration()` the last layout pass with an element ran
+     * against. Declared bare, like `_layoutDirty`; `undefined` until that pass.
+     */
+    declare private _layoutMetricsGeneration : number | undefined;
     private _translateX           : number                  = 0;
     private _translateY           : number                  = 0;
     private _scrollLeft           : number                  = 0;
@@ -1215,6 +1225,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             child.destructor();
         }
         this._components = [];
+        this._laidOutComponents = null;
 
         // Tear down any active content frame now that `_components` is empty
         // (mirroring `removeElement()`) so the wrapper is removed from the DOM
@@ -4485,12 +4496,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * the first connected one, and when attaching moved nothing, withholding
      * that pass would hold the callbacks forever.
      *
+     * A theme switch or a web-font load moves measured text without moving any
+     * rectangle, so a component last laid out against other text metrics is
+     * laid out again: its own pass is the only thing that re-measures the text
+     * beneath it once the parent's placement stops reading its size hints.
+     *
      * @internal
      */
     public canSkipUnchangedCommit(): boolean {
         return this.canSkipUnchangedLayout()
             && !this.isLayoutDirty()
             && this._firstLayoutCallbacks === null
+            && this._layoutMetricsGeneration === Util.textMetricsGeneration()
             && !!this.getElement();
     }
 
@@ -7604,6 +7621,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._components.splice(index, 1);
         }
 
+        this._laidOutComponents = null;
+
         const constraints = this.unwireChild(component);
 
         this.scheduleLayout();
@@ -7632,6 +7651,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const removed = this._components;
 
         this._components = [];
+        this._laidOutComponents = null;
 
         for (const component of removed) {
             this.unwireChild(component);
@@ -7701,9 +7721,53 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * teardown, event delegation, and DOM mounting.
      *
      * @returns The displayed child components, in order.
+     *
+     * @remarks The array is re-served, unchanged, for as long as the same
+     * children are displayed in the same order, so one array can reach several
+     * callers and none of them may modify it. Copy it before sorting or
+     * splicing.
      */
     getLaidOutComponents(): Component[] {
-        return this._components.filter(component => component.isDisplayed());
+        const cached = this._laidOutComponents;
+
+        if (cached !== null && this.laidOutStillMatches(cached)) {
+            return cached;
+        }
+
+        const laidOut = this._components.filter(component => component.isDisplayed());
+
+        this._laidOutComponents = laidOut;
+
+        return laidOut;
+    }
+
+    /**
+     * Whether a kept laid-out array still lists exactly the displayed children,
+     * in order. Walks the child list once, comparing by identity, so no hook is
+     * needed on any of the writers that change what the answer would be — the
+     * child list's five mutators and every path that flips a child's displayed
+     * state — and the answer cannot go stale between them.
+     *
+     * @param cached - The array {@link getLaidOutComponents} last returned.
+     *
+     * @returns `true` when the array may be re-served as is.
+     */
+    private laidOutStillMatches(cached: Component[]): boolean {
+        let index = 0;
+
+        for (const component of this._components) {
+            if (!component.isDisplayed()) {
+                continue;
+            }
+
+            if (cached[index] !== component) {
+                return false;
+            }
+
+            index += 1;
+        }
+
+        return index === cached.length;
     }
 
     /**
@@ -7879,6 +7943,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * pass once the element exists and the same rectangle is handed to it
      * again (the header-cell "no element" case the protected
      * `canSkipUnchangedLayout` gate's opt-ins guard against).
+     *
+     * The same point records the text-metrics generation the pass ran against,
+     * which the skip gate compares.
      */
     doLayout(): this {
         if (this.isLayoutPaused()) {
@@ -7907,6 +7974,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
             if (this.getElement()) {
                 this._layoutDirty = false;
+                // A theme or font change moves measured text without moving any
+                // rectangle; the skip gate compares against this.
+                this._layoutMetricsGeneration = Util.textMetricsGeneration();
             }
 
             lm.doLayout();

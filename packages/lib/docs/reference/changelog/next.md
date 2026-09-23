@@ -80,6 +80,22 @@ page resets to empty.
 
 ### Core
 
+- **`getLaidOutComponents()` re-serves the array it last returned while the
+  displayed children are unchanged.** Two calls with no child added, removed,
+  reordered, shown or hidden in between return the same array. So the list a
+  layout pass reads several times is built once. The contents are what they
+  always were, and an array a caller already holds is never edited afterwards.
+  A caller that sorts or splices the result must copy it first,
+  `[...container.getLaidOutComponents()]`.
+
+- **A theme switch or web-font load lays out every component that opted into
+  skipping an unchanged commit, on the first pass after it.** The skip now
+  also requires that the component was last laid out against the current text
+  metrics. This used to hold only by accident: a parent's layout read a
+  child's preferred size even when the child filled its cell.
+  `LayoutManager.resolveBounds` no longer does that. A child placed to fill
+  both axes is sized to the cell without any of its size hints being read.
+
 - **The placement inputs that schedule nothing now mark the layout pass as
   owed.** A child's `setDisplayed`, `setPadding` / `clearPadding`,
   `setBorder` / `clearBorder` and `removeAllComponents` each change how a

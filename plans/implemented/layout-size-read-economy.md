@@ -682,3 +682,82 @@ In the first two scenes and the three panels, the base tree's result also equals
 [^order]: Reversed, this plan's readings would be the addendum's base rows. Misses would fall 1–19% (`fnq` −9.0%, `ffq` −9.1%, `sdr` −6.1%, `ffh` −19.2%), close to the ablation's 3–19%, and arrays built would still fall by 99%. The gate condition would still be required: the moment the opt-ins landed, a skipping `Panel`'s text would keep its old size after a font swap. The opt-ins' A/B would then read smaller savings on the cells both plans touch. Landing the opt-ins first keeps each A/B attributing its own change: the opt-ins' theme-switch saving, then this gate giving it back.
 
 [^flat]: W3.0's frame-time wins for these candidates came on the form passes: G05 −0.45 and −0.29 ms, and G11 −0.36 ms, out of 7.09 and 5.35 ms passes. The opt-ins take those passes to about 0.7 and 0.6 ms by skipping nearly everything the two trims touched: they leave about a sixth of the passes cells' work, and this plan removes a few percent of that. That is roughly 0.02–0.05 ms, the size of the passes cells' brackets (0.02 ms on `fnq`, 0.27 ms on `ffq` in W3.0), so `fnq` may just read a win. The resize cells were already `flat` for both ablations against brackets of 0.73–0.90 ms, before the opt-ins removed half their work.
+
+---
+
+## Implementation Notes
+
+**Landed as one code commit.** The plan frames the three trims and the gate
+condition as "one change to the layout-manager path", and the gate must land
+with (or before) the lazy reads or the branch would carry a commit whose text
+goes stale after a font swap. They ship together, so no intermediate commit
+has that gap. Step order inside the commit still followed the plan: gate,
+`resolveBounds`, `reserveContentFrame`, laid-out list.
+
+**E6 asserts the ratio, not the plan's literal widths.** The plan predicts the
+label reads 70 px settled and 140 px after `widenFont`. In the scene as the
+plan specifies it — `Fit` host 800×600, an opted-in `VBox` container, one
+`Text('World')`, the baked test font under `ModernTheme` — it settles at 37 px
+and reads 74 px after the swap. The doubling is exact, so the test pins
+`after === before * WIDEN_FACTOR` with `before > 0` rather than the two
+literals; the plan's own wording for the case is "twice the settled width",
+which is what is asserted. The 70/140 figures came from the offline probe's
+own scene, not from this one.
+
+**The `reserveContentFrame` JSDoc sentence was merged, not appended.** The
+method's docblock already ended with "Non-scroll hosts clear any frame — the
+trailing-inset reserve is only meaningful when scrolling." Appending the
+plan's sentence verbatim would have said "clears any frame" twice in
+consecutive sentences, so the two are merged into one that keeps the existing
+*why* and adds the plan's new fact (no child read). Same content, no
+repetition.
+
+**The eager-reads mutation fails all five E1 rows, not only the `BOTH` ones.**
+The plan's mutation table predicts that hoisting the four reads back above the
+`BOTH` branch fails "E1's `BOTH` rows". It fails all five, because the hoisted
+form also reads `getSize()` unconditionally, which E1's non-`BOTH` rows pin at
+zero. The mutation is caught either way; the prediction was just narrower than
+the test. Every other mutation in the table failed exactly the rows it names.
+
+**Offline verification, all clean** (from `packages/lib`): `npm run typecheck`,
+`typecheck:test`, `lint`, `test:lint`; `npm test` — 8,227 passed, 2 todo, 493
+files, no failure at all (the plan's expected `llms-generate` doc-path failure
+is a probe-runner artefact and does not occur here); `npm run build:lib` then
+`(cd ../qa && npm test)` — 336 passed, 17 files, no window opened;
+`npm run docs:api` — 0 errors and the 14 pre-existing warnings, no new one;
+`npm run docs:llms:check` — coverage OK. The six mutation checks were run one
+at a time and reverted.
+
+### Pending: the in-engine A/B — the acceptance gate, not yet run
+
+Every run opens a full-screen MiniBrowser window, so it was left for the user.
+The base (`wt`) arm is the commit this branch forked from, which already
+carries the opt-ins:
+
+```
+base SHA: e6d2701a85ae384a1f4316621db53ec9d68bab88
+```
+
+Build both arms from the repository root of this checkout, per
+[`packages/qa/README.md:86`](packages/qa/README.md#L86):
+
+```sh
+git worktree add .worktrees/_lsre-base e6d2701a85ae384a1f4316621db53ec9d68bab88 --detach
+ln -sfn "$PWD/node_modules" .worktrees/_lsre-base/node_modules
+(cd .worktrees/_lsre-base/packages/lib && npm run build:lib)
+(cd packages/lib && npm run build:lib)
+export QA_WT_LIB="$PWD/.worktrees/_lsre-base/packages/lib"
+```
+
+Then save *Verification*'s `lsre-ab.sh` and `lsre-read.py` outside the
+repository and run, from the repository root:
+
+```sh
+bash lsre-ab.sh --dry-run
+bash lsre-ab.sh
+python3 packages/qa/bin/qa-table.py packages/qa/results lrs1-<cell>- --work
+python3 lsre-read.py packages/qa/results lrs1-<cell>-
+```
+
+Judge the readings by *Verification*'s four pass criteria and record them
+here. Until that runs, the plan's acceptance gate is open.
