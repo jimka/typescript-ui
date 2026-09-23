@@ -666,3 +666,114 @@ The minimized windows sat at y = 772 (800 − a 28 px header) before and after. 
 [^min0]: The panel's labels are `win0`, `bare`, `pinned`, `southStrip` and `header0` — all open windows or their parts — so W3.0's gate could not have caught a dock placed differently; the ablation shared the blind spot. `openWindows` holds windows in `show()` order, and the panel shows `windows` first and minimizes the last ⌊n/2⌋, so `windows[n - minimized]` holds slot 0. At `n=1` nothing is minimized and the label is left out.
 
 [^readings]: The base and W3.0-arm columns come from *Addendum: Measured Counts*. The fix's seam columns follow from the design: the dock's M² viewport reads become one per event (−15 at M=4, −3 at M=2), its slot-width read is a cache hit from mount onward, and every other listener still reads the viewport once. Its work and sink columns are the ablation's arm's: the ablation ran the dock's relayout once per task, which in these cells is once per event (the `viewport` driver dispatches each `resize` inside one animation-frame callback), and the listeners this plan removes did no counted work. `wdlg`'s theme-variable reads come from each dialog's controls estimating their borders at construction; the windows' own form fields read the same variables at mount, so the dialog finds them cached. `mt` keeps its two viewport reads per open, but neither forces a layout any more, which is where the ablation's 1.52 ms came from: it served the second read, taken after the menu's row rebuild, from the first.
+
+---
+
+## Implementation Notes
+
+Implemented as planned, with one source change the plan did not call for — a
+guard in `show()` the audit surfaced, described below. The greps of *Ordered
+Implementation Steps* 4, 5 and 7 all report what the plan says they should:
+`DOM.source.getThemeVar(` survives in `core/ThemeVars.ts` once and
+`core/Util.ts` three times, `Math.max(document.documentElement.client` is gone
+from `core/DOM.ts`, and `attachViewportResizeListener();` is left at three
+call sites (`show`, the `"normal"` branch, the maximize completion). Six
+things are worth recording.
+
+Verification steps 1-5 of *Verification* all pass: `npm run typecheck`,
+`npm -w packages/lib run typecheck:test`, `npm test` (504 files, 8,367 tests),
+`npm run lint`, `npm run build:lib` with `npm -w packages/qa run typecheck`
+and `npm -w packages/qa run test` (344 tests, A7 included), `npm run docs:api`
+at the 14 warnings `master` already has and no new one, and
+`npm run docs:llms:check`.
+
+**The G18 overlap landed first, and both clears are kept.**
+`plans/implemented/text-measurement-without-reflow.md` is in this branch's
+history, so `Util.invalidateTextMetricsCache` already called
+`clearTextMeasureCache()`; `clearThemeVars()` was added beside it rather than
+in place of it, and that function's JSDoc now names both the text measurements
+and the theme variables. *Potential Challenges*' step-4 grep was re-run
+afterwards: `component/input/Text.ts` reads its bound line-height variable
+through `readThemeVar`, with no `DOM.source.getThemeVar` left anywhere in it.
+
+**The changelog's *Changed → Overlay* sub-section already existed**, added by
+`plans/implemented/drag-resize-outline-mode.md` earlier in this stack, so the
+minimized-dock entry joined it instead of opening a new one as *Documentation
+Impact* assumed.
+
+**The QA panel's `geometry` map had gained `resizeOutline`** from that same
+plan, so `min0` was appended after it rather than after `header0`. The
+conditional spread and the label itself are the plan's.
+
+**Running `npm -w packages/qa run typecheck` inside a worktree needs a local
+package link.** Node resolves `@jimka/typescript-ui` by walking up to the main
+checkout's `node_modules`, so the QA package typechecks against whatever
+`packages/lib/dist` that checkout last built — stale here, and it failed on
+`Body.setResizeMode`, a symbol unrelated to this plan. An untracked
+`node_modules/@jimka/typescript-ui -> ../../packages/lib` symlink inside the
+worktree points it at this branch's own build; with it, `npm run build:lib`
+then `npm -w packages/qa run typecheck` and `npm -w packages/qa run test` are
+clean (344 tests, including A7's `g08.env-reads` arm, which still finds
+`relayoutMinimizedStack` under its own name).
+
+**The audit found one path the plan's design missed, and it needed a sixth
+source change — a guard in `show()`.** Footnote `[^stack-listener]` reasons
+that `relayoutMinimizedStack` "runs after every change to the minimized set",
+and lists close and the three state-change completions. A window constructed
+with `windowState: "minimized"` reaches none of them: `initChrome` calls
+`setWindowState(this.getWindowState())`, which short-circuits because the
+state is already current, so `show()` added the window to `openWindows`
+without the dock ever learning of it. With the window's own minimized branch
+now returning, nothing answered a resize — the window stayed where it was,
+where before this plan its own listener relaid the dock out. `show()`
+therefore calls `installStackResizeListener()` for an already-minimized,
+rail-less window, and case **W10** in
+`tests/overlay/AbstractWindow.minimizedViewportResize.test.ts` pins it.
+
+Installing the listener is deliberately *not* a relayout, though the plan
+gives the relayout sole ownership of the install. A first attempt did relayout
+there, and a second audit round caught what that costs: the window has had
+none of the docked branch's preparation — no captured `_restoreRect`, no
+relaxed minimum size, no hidden body host — so placing it in a dock slot
+clamps it to its 200x200 minimum at `show`, and a restore before any resize
+then hands back that clamped rect instead of the rect it was constructed with.
+Probed against `b9c159a3`, the guard as it now stands reproduces the base's
+geometry exactly on every path: `100,100 600x400` after `show`,
+`0,572 200x200` after a resize to 600, and `100,100 600x400` for a
+show-then-restore with no resize in between. So only the listener changes
+hands, which is why this needs no changelog entry of its own beyond the
+minimized-dock one already there. That a construct-minimized window is not
+docked until the first resize, and is clamped to its minimum when it is, is a
+pre-existing defect on both sides of this branch and is not this plan's to
+fix.
+
+A sibling path, `setWindowState("minimized")` before `show()`, was probed and
+left alone: it throws `Component doesn't seem to be rendered` from
+`animateRect`'s synchronous commit on `b9c159a3` too, so it is unsupported
+independently of this plan.
+
+**The in-engine A/B is pending, and is the user's to run** — every run opens a
+full-screen window. The base is this branch's start point, the tip of the
+wave-3 stack, **not** `git merge-base` with `master` (that is `37606021`,
+far behind the stack). Use:
+
+```sh
+git worktree add .worktrees/_g08-base b9c159a3683cfb3f9897b0acf4d2a8be40c32085 --detach
+ln -sfn "$PWD/node_modules" .worktrees/_g08-base/node_modules
+(cd .worktrees/_g08-base/packages/lib && npm run build:lib)
+export QA_WT_LIB="$PWD/.worktrees/_g08-base/packages/lib"
+npm run build:lib
+```
+
+then the `wtab` script of *Verification → In-engine A/B* unchanged, and read
+each cell with `python3 packages/qa/bin/qa-table.py packages/qa/results
+g08s1-<cell>- --seam --work` against that section's six pass criteria.
+That subsection's closing paragraph — recording the readings beside
+`96-w3-0-bounding-sweep.md` and filling the *Validated* cells of the `windows`
+and `menus` rows in `packages/qa/README.md` — waits on that run.
+
+Offline, the saving the A/B should confirm is already visible in the seam
+counts: `tests/overlay/AbstractWindow.minimizedStackResize.test.ts` (S1) pins
+one dispatched `resize` with four docked and three open windows at one dock
+relayout, four `getViewportSize` calls and zero `getThemeVar` calls, against
+the plan's recorded 4, 19 and 2,864 before the change.
