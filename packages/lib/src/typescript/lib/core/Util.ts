@@ -4,6 +4,7 @@ import { Size } from "~/primitive/Size.js";
 import type { Insets } from "~/primitive/Insets.js";
 import { DOM } from "~/core/DOM.js";
 import { clearTextMeasureCache, measureManyTextWidths, measureTextMetrics } from "~/core/TextMeasure.js";
+import { clearThemeVars } from "~/core/ThemeVars.js";
 
 /**
  * Font options for off-screen text measurement.
@@ -344,8 +345,9 @@ export namespace Util {
 
     /**
      * Discards every cached text metric (line box, baseline, optical offset,
-     * bound font sizes, and every cached text measurement) so the next read
-     * re-measures against the active theme font.
+     * bound font sizes, and every cached text measurement) and every cached
+     * theme variable, so the next read re-measures against the active theme
+     * font and re-reads the variable.
      *
      * @remarks Call this whenever the active theme's font size, family, or
      * line-height changes, since the cached values reflect the font in use at
@@ -353,7 +355,9 @@ export namespace Util {
      * against each other after a theme swap. `ThemeManager` calls it on every
      * theme change and every settled font load; call it yourself after
      * changing typography it cannot see — a `:root` variable, `<body>`
-     * letter-spacing, or a font the app loads itself.
+     * letter-spacing, or a font the app loads itself. Call it also after
+     * changing a `--ts-ui-*` variable on `:root` by any means other than
+     * `ThemeManager.setTheme`, which calls it itself.
      */
     export function invalidateTextMetricsCache(): void {
         clearTextMeasureCache();
@@ -362,6 +366,7 @@ export namespace Util {
         textBaselineCache  = -1;
         opticalOffsetCache = -1;
         boundFontSizeCache.clear();
+        clearThemeVars();
         metricsGeneration++;
     }
 

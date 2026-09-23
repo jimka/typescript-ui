@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
+import { readThemeVar } from "~/core/ThemeVars.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { WindowBorder, Direction } from "~/component/container/WindowBorder.js";
@@ -269,6 +270,15 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     protected static readonly ownClassStyleDefaults: StyleBag = _defaultWindowOptions;
 
     private static openWindows: Set<AbstractWindow> = new Set<AbstractWindow>();
+
+    // Owner for the minimized dock's single viewport `resize` listener.
+    // `Event.addViewportListener` binds a listener to a `Component`, but the
+    // handler is static — one for the whole dock, not one per docked window —
+    // so a single stable sentinel owns it, mirroring `Notification`'s
+    // `resizeListenerOwner`. `relayoutMinimizedStack`, which runs after every
+    // change to the set of minimized windows, installs and removes it.
+    private static readonly stackResizeListenerOwner: Component = new Component();
+    private static stackResizeListenerInstalled: boolean = false;
 
     private _borderComponents: {
         west: WindowBorder,
@@ -760,6 +770,22 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         AbstractWindow.openWindows.add(this);
         this.attachViewportResizeListener();
 
+        // A window constructed with `windowState: "minimized"` never passed
+        // through the docked branch of `setWindowState` — `initChrome`'s own
+        // call short-circuits on a state that is already current — so the
+        // dock never learned of it, and with a minimized window's own handler
+        // no longer relaying the dock out, nothing would answer a resize.
+        // Install the dock's listener directly rather than relaying the dock
+        // out here: the window has had none of that branch's preparation (no
+        // captured restore rect, no relaxed minimum size, no hidden body), so
+        // placing it in a slot now would clamp it to its minimum size and
+        // lose the rect a later restore hands back. The dock places it on the
+        // first resize instead, exactly as it did before the dock owned the
+        // listener, and the next relayout re-derives the flag either way.
+        if (this.getWindowState() === "minimized" && this._rail === null) {
+            AbstractWindow.installStackResizeListener();
+        }
+
         LayerManager.mount(el);
 
         this.setVisible(true);
@@ -1041,6 +1067,14 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * page, and the sheet growing with every open/close cycle.
      */
     protected destructor(): void {
+        // `openWindows` outlives every teardown, and the dock writes
+        // setX/setY to each minimized entry — so a window disposed without
+        // being closed must leave the set here, as Notification's destructor
+        // does for its toasts, and the dock closes the gap it leaves.
+        if (AbstractWindow.openWindows.delete(this)) {
+            AbstractWindow.relayoutMinimizedStack();
+        }
+
         // Before `super.destructor()` releases this window's element handle,
         // which every one of these animations' fallback timers would write to.
         this._stateAnimHandle?.cancel();
@@ -1192,10 +1226,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             const target = this._restoreRect ? this.clampRectToViewport(this._restoreRect) : this.currentRect();
             this._restoreRect = null;
 
-            // Idempotent: already bound for a window restoring from a docked
-            // minimize, but a rail-minimized window never attached it (hidden
-            // while docked, so nothing to clamp) — re-attach here so the
-            // restored window resumes tracking viewport resizes.
+            // Neither a docked nor a rail-minimized window keeps its own
+            // resize listener — the dock answers resizes for the docked ones
+            // through its own — so re-attach it here, and the restored window
+            // resumes tracking viewport resizes.
             this.attachViewportResizeListener();
             this.animateRect(target, () => {
                 this.restoreNormalMinSize();
@@ -1239,7 +1273,6 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
                 const target = this.computeDockRect();
                 this.animateRect(target, () => {
                     this.setBodyHostDisplayed(false);
-                    this.attachViewportResizeListener();
                     AbstractWindow.relayoutMinimizedStack();
                 });
 
@@ -2780,7 +2813,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns The dock slot width in pixels.
      */
     private getMinDockWidth(): number {
-        const cssVar = DOM.source.getThemeVar("--ts-ui-window-min-dock-width");
+        const cssVar = readThemeVar("--ts-ui-window-min-dock-width");
         if (cssVar) {
             const parsed = parseFloat(cssVar);
             if (!isNaN(parsed) && parsed > 0) {
@@ -2812,18 +2845,32 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /**
      * Re-positions every minimized window into a gap-free row along the bottom
-     * of the viewport. Run after any change to the open/minimized set.
+     * of the viewport. Runs after any change to the open/minimized set, and on
+     * every viewport `resize` through the dock's own listener, which it
+     * installs while the row holds a docked window and removes once it holds
+     * none.
      */
     private static relayoutMinimizedStack(): void {
-        let index = 0;
+        let index          = 0;
+        let docked         = 0;
+        let dockWidth      = 0;
+        let viewportHeight = 0;
+
         for (const win of AbstractWindow.openWindows) {
             if (win.getWindowState() !== "minimized") {
                 continue;
             }
-            const dockWidth   = win.getMinDockWidth();
+
+            // Read once per relayout, not per window: neither can change
+            // between two windows of the same row.
+            if (index === 0) {
+                dockWidth      = win.getMinDockWidth();
+                viewportHeight = DOM.source.getViewportSize().height;
+            }
+
             const headerHeight = win.chromeHeight() || CHROME_HEIGHT_FLOOR_PX;
             const x = index * (dockWidth + SNAP_DOCK_GAP_PX);
-            const y = DOM.source.getViewportSize().height - headerHeight;
+            const y = viewportHeight - headerHeight;
 
             win.setAutoCommitStyle(false);
             win.setX(x);
@@ -2834,7 +2881,47 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             win.setAutoCommitStyle(true);
 
             index++;
+
+            if (win._rail === null) {
+                docked++;
+            }
         }
+
+        if (docked > 0) {
+            AbstractWindow.installStackResizeListener();
+        } else {
+            AbstractWindow.uninstallStackResizeListener();
+        }
+    }
+
+    /**
+     * Viewport `resize` handler for the minimized dock: re-anchors every
+     * minimized window to the viewport's bottom edge, once per event.
+     */
+    private static onStackViewportResize(): void {
+        AbstractWindow.relayoutMinimizedStack();
+    }
+
+    /** Installs the dock's viewport `resize` listener, if it is not already installed. */
+    private static installStackResizeListener(): void {
+        if (AbstractWindow.stackResizeListenerInstalled) {
+            return;
+        }
+
+        Event.addViewportListener(AbstractWindow.stackResizeListenerOwner, "resize", AbstractWindow.onStackViewportResize);
+
+        AbstractWindow.stackResizeListenerInstalled = true;
+    }
+
+    /** Removes the dock's viewport `resize` listener, if it is installed. */
+    private static uninstallStackResizeListener(): void {
+        if (!AbstractWindow.stackResizeListenerInstalled) {
+            return;
+        }
+
+        Event.removeViewportListener(AbstractWindow.stackResizeListenerOwner, "resize", AbstractWindow.onStackViewportResize);
+
+        AbstractWindow.stackResizeListenerInstalled = false;
     }
 
     /**
@@ -3058,9 +3145,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /**
      * Attaches the viewport-resize listener that keeps a maximized window
-     * filling the viewport, re-anchors a docked-minimized window's stack to
-     * the bottom-left corner, or refits a normal window back on-screen.
-     * Bound for the life of the window from {@link show}; idempotent.
+     * filling the viewport, or refits a normal window back on-screen. Bound
+     * from {@link show}, and dropped while the window is minimized;
+     * idempotent.
      */
     private attachViewportResizeListener(): void {
         if (this._viewportResizeBound) {
@@ -3085,18 +3172,15 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /**
      * Re-fills the viewport when the browser window resizes while this window
-     * is maximized, re-anchors the whole minimized stack to the viewport's
-     * new bottom-left corner when this window is docked-minimized, or refits
-     * the window inside the viewport (see {@link fitNormalWindowToViewport})
-     * when it is in the normal state — so shrinking the viewport can never
-     * strand a window's header out of reach.
+     * is maximized, or refits the window inside the viewport (see
+     * {@link fitNormalWindowToViewport}) when it is in the normal state — so
+     * shrinking the viewport can never strand a window's header out of reach.
      */
     private onViewportResize(): void {
         const state = this.getWindowState();
 
+        // A minimized window is placed by the dock's own listener.
         if (state === "minimized") {
-            AbstractWindow.relayoutMinimizedStack();
-
             return;
         }
 
@@ -3114,8 +3198,6 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.setHeight(rect.height);
         this.doLayout();
         this.setAutoCommitStyle(true);
-
-        AbstractWindow.relayoutMinimizedStack();
     }
 
     /**

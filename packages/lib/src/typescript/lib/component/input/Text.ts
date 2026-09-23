@@ -6,6 +6,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Util } from "~/core/Util.js";
 import type { TextMetrics } from "~/core/Util.js";
 import { measureManyTextMetrics, measureTextMetrics } from "~/core/TextMeasure.js";
+import { readThemeVar } from "~/core/ThemeVars.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
@@ -341,7 +342,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         const fs = (this._options.fontSize as number | undefined) ?? (this._defaultOptions.fontSize as number | undefined) ?? 14;
 
         if (this._lineHeightCSSVar) {
-            const raw    = DOM.source.getThemeVar(this._lineHeightCSSVar);
+            const raw    = readThemeVar(this._lineHeightCSSVar);
             const parsed = parseFloat(raw);
 
             if (!isNaN(parsed)) {

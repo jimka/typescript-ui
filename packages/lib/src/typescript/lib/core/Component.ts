@@ -26,6 +26,7 @@ import { COMPONENT_CLASS, ensureClassStateRule, ensureClassStyleRule, ensureTrai
 import { endPointerDragFor } from "~/core/PendingPointerDrags.js";
 import { cancelTransitions } from "~/core/PendingTransitions.js";
 import { measureBorderWidths } from "~/core/BorderWidths.js";
+import { readThemeVar } from "~/core/ThemeVars.js";
 
 //import { FastDom } from "~/FastDom.js";
 
@@ -4208,7 +4209,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const varName = trimmed.match(/^var\(\s*(--[\w-]+)/)?.[1];
 
         if (varName) {
-            const resolved = DOM.source.getThemeVar(varName);
+            const resolved = readThemeVar(varName);
 
             if (resolved) {
                 return this.estimateBorderSideWidth(resolved);

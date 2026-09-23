@@ -61,7 +61,7 @@ const C25_LEFT_PX = 4;
  */
 const DIALOG_PERIOD_UNITS = 30;
 
-export const description = 'n floating Windows (default 8), each holding a four-field form, half of them minimized, plus a bare Window, one with insets (4, 12, 4, 4) and an always-on-top one overlapping window 0, over a toolbar, with one persistent toast; toggle opens and closes a six-field Dialog. Reproduces slice 09 F09.11 (a header move is not frame-coalesced: it re-applies the window and reads the viewport per mousemove): apply 1 and getViewportSize 1 per move; F09.4 (a settled window re-laid out and rewritten every pass): apply 38 per bare-window pass, no setRuleStyles; F09.6 (the minimized stack\'s resize handling is quadratic in minimized windows): getViewportSize at least minimized² per viewport unit; C25 (fixed: the south resize strip takes the bottom inset as its height): geometry.southStrip is 4 px tall, not 12; C30 (an ordinary window\'s stamp climbs past the pinned band, so after about 400 clicks the clicked windows paint over the pinned one); and C33 (a live toast adds one getViewportSize per viewport unit once it re-stacks on resize, and none before).';
+export const description = 'n floating Windows (default 8), each holding a four-field form, half of them minimized, plus a bare Window, one with insets (4, 12, 4, 4) and an always-on-top one overlapping window 0, over a toolbar, with one persistent toast; toggle opens and closes a six-field Dialog. Reproduces slice 09 F09.11 (a header move is not frame-coalesced: it re-applies the window and reads the viewport per mousemove): apply 1 and getViewportSize 1 per move; F09.4 (a settled window re-laid out and rewritten every pass): apply 38 per bare-window pass, no setRuleStyles; F09.6 (fixed: the minimized dock re-anchors once per resize event): getViewportSize one per open window plus one each for the dock, Body and the toast per viewport unit, and getThemeVar 0; C25 (fixed: the south resize strip takes the bottom inset as its height): geometry.southStrip is 4 px tall, not 12; C30 (an ordinary window\'s stamp climbs past the pinned band, so after about 400 clicks the clicked windows paint over the pinned one); and C33 (a live toast adds one getViewportSize per viewport unit once it re-stacks on resize, and none before).';
 
 /** Eight windows: four open and four minimized, a busy desktop. */
 export const defaultScale = 8;
@@ -214,7 +214,7 @@ export function build(n: number, params: URLSearchParams): PanelBuild {
                 hover: { element: elementFor(tools, windows[0], PANEL), axis: 'x' },
             };
         },
-        geometry: { win0: windows[0], bare, pinned, southStrip: southStrip.target, header0: windows[0].getHeader(), resizeOutline: RESIZE_OUTLINE_SELECTOR },
+        geometry: { win0: windows[0], bare, pinned, southStrip: southStrip.target, header0: windows[0].getHeader(), resizeOutline: RESIZE_OUTLINE_SELECTOR, ...(minimized > 0 ? { min0: windows[n - minimized] } : {}) },
         describe: () => ({ windows: n, minimized }),
     };
 }

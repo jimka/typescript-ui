@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
+import { readThemeVar } from "~/core/ThemeVars.js";
 import { callable } from "~/core/Callable.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
 
@@ -64,7 +65,7 @@ class ProgressSpinnerArc extends Component {
  * @returns The current theme font size in pixels, or `14` as a fallback.
  */
 function readThemeFontSizePx(): number {
-    const raw    = DOM.source.getThemeVar("--ts-ui-font-size");
+    const raw    = readThemeVar("--ts-ui-font-size");
     const parsed = parseFloat(raw);
 
     return isNaN(parsed) ? 14 : parsed;
