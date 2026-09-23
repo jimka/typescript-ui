@@ -510,3 +510,72 @@ Throwaway probes under `.worktrees/_probes/tooltip-idle-reattach/`, run against 
 [^work]: Per identical re-attach in `form-flat`, today's `detach` drops one of the four window-level listener types to no registrations, so `Event` uninstalls it and the new registration installs it again: one `removeListener`, one `addListener` and two `getWindow` calls. The typing phase re-attaches on 129 of 150 keystrokes — the text passes the 20-character limit on the 21st — so 129 × 2 = 258 sink calls, 1.72 per unit. In `form-nested` other registrations keep all four types installed, so the re-attach costs no seam call. Its saving there — four registry removals, four registrations, four closures and a record per keystroke — is script-side work no counter reads. W3.0's ablation counted 0.86 skips per unit in both cells.
 
 [^ab-shape]: `ffy` is the cell that bounded G19. `fny` is its deep partner and the deep half of the geometry gate. The campaign's rule is geometry equality in a deep and a shallow panel, since the test suite cannot see a layout change. `clh` and `cdh` are the other two cells W3.0 ran for G19; they never attach, so three runs confirm their counts are untouched. The `c21` runs are the ownership check in the engine: with this change, the witness's Backspace must still leave the first field's tooltip up. Base, fix, base, fix, base mirrors W3.0's scored cell, and base at both ends cancels a linear drift.
+
+---
+
+## Implementation Notes
+
+**`BASE_SHA` = `77ce5a1d422dd067f7ee7cf44557a5c5a396d6cd`** (step 1), the tip of
+`feature/event-dispatch-walk`. This branch starts from the wave-3 stack, not
+from the plan's `feature/w3-0-results` base, so the in-engine A/B's base arm is
+built from this SHA — `git merge-base … master` is far behind it. Line numbers
+in the plan sit about one line above their real positions in `Tooltip.ts`
+(`text-measurement-without-reflow` added an import); every anchor was matched by
+text, and the `Tooltip.ts` diff against `master` is otherwise only that plan's
+two `measureTextMetrics` call sites.
+
+**Three deviations, all local:**
+
+- *Step 13, the changelog.* `## Changed` already carried a `### Overlay`
+  subsection, in exactly the position the plan asks for a new one — after
+  `### Layouts` and before `## Added`. Earlier wave-3 plans in this stack added
+  it. The bullet was appended to that subsection rather than repeating the
+  heading.
+- *Step 3, `packages/qa/src/panels/form-flat.ts`.* `description` is a
+  single-quoted string literal, so the apostrophe in "field's error" is escaped
+  as `field\'s`, the spelling `form-nested.ts`, `list-items.ts` and the other
+  panels already use. Unescaped, the file does not parse.
+- *Step 7, the test file's constants.* Two beyond the plan's list, both because
+  the conventions require a literal to be named and explained: `HOVER_LISTENERS`
+  (4, case 10's expectation), copied with its comment from
+  `FieldDecorator.pointerTooltip.test.ts`, and `IDENTICAL_CALLS` (10, case 16's
+  repeat count).
+
+**Step 8's red list was exactly the plan's.** Against the unchanged library the
+new file failed cases 1, 2, 5, 7, 9, 11, 13, 14, 16 and 19, and passed the other
+nine; all 19 pass with the change. `npm test` is 8,411 green over 507 files,
+`npm -w packages/qa run test` 344 green, `npm run typecheck` and `npm run lint`
+clean, `npm run docs:api` 14 warnings (`master`'s own count, no new one) and
+`npm run docs:llms:check` OK.
+
+### Owed to the user — nothing in-engine was run
+
+Both of these open a full-screen window, so the implementation ran neither.
+
+**M1–M3, the manual checks** of *Expected Behaviour*, in the library demo app's
+*Binding* tab, whose name field errors past 50 characters. M1: with the error
+tooltip up, one more character leaves it up (it faded before). M2: a character
+typed within half a second of the pointer coming to rest still lets the tooltip
+appear (it did not before). M3: a keystroke that changes the message still fades
+the tooltip.
+
+**The in-engine A/B** of *Verification*, unchanged except for the base SHA:
+
+```sh
+cd /home/jika/typescript/typescript-ui
+git worktree add .worktrees/_g19-base 77ce5a1d422dd067f7ee7cf44557a5c5a396d6cd --detach
+ln -sfn "$PWD/node_modules" .worktrees/_g19-base/node_modules
+(cd .worktrees/_g19-base/packages/lib && npm run build:lib)
+export QA_WT_LIB="$PWD/.worktrees/_g19-base/packages/lib"
+```
+
+Then the 19 `packages/qa/runqa.sh` runs and the two readers of *Verification*
+step 3–4, from this worktree's root, scored by its step 5. The expected-readings
+table's `base` column is W3.0's reading on `83cfb0d7`; the `base` runs here are
+on the wave-3 stack tip instead, so a count may have moved — the gate that holds
+whatever the base is remains `ffy`'s `fix` at its `base` minus 1.72 on both sink
+calls and `getWindow`, geometry `=` everywhere, and `c21`'s one-liner `True`.
+
+One worktree-local convenience, untracked and not committed: a
+`node_modules/@jimka/typescript-ui -> ../../packages/lib` symlink, without which
+`npm -w packages/qa` resolves the library to the main checkout's stale build.
