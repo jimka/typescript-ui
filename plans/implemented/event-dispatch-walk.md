@@ -535,3 +535,92 @@ Record the readings in `plans/research/render-review-2026-09-15/`, beside `96-w3
 [^form-cell]: W3.0 had no cell for this path. With no decorator in error, `form-flat` registers no subtree `mousemove`, so a hover makes no walk for it. The `type` driver types 150 characters into the first decorated field, past its 20-character limit, then deletes them all, and the field's check shows its "Required" error for the empty text. So the decorator's covering tooltip holds four subtree registrations through the whole `hover` phase. The header grid lies outside every decorator, so each `mousemove` there walks to the root and matches nothing — one seam call after the change. Criterion 2 checks that the error was really up.
 
 [^counts]: A jsdom probe mounted the three panels through the QA app's `mountPanel` and counted the walk for single dispatched events. A `mousemove` on a `chart-line` mark climbs six levels (mark, `g`, `svg`, the chart, `body`, `html`) with one match, the chart: 6 `getId` + 6 `getParentElement`, matching W3.0's 5.99 + 5.99 per unit. On `chart-dashboard` it climbs eight levels with one match, plus one exact-target `getId`: 9 + 8, matching 9.20 + 8.17. On `form-flat` with a decorator in error, a `mousemove` on a header field's `<input>` climbs seven levels with no match (7 + 7); a `pointermove` there costs one exact-target `getId`. So one walked event per unit gives, after the fix, 2 `closestWithId` + 1 `getParentElement` on the charts, and 1 `closestWithId` and no `getParentElement` on the form. The form's 6–7 levels allow for hits on the header grid's own element, one level shallower than a field. Boundary crossings add walked `pointerover`/`pointerout`/`mouseover`/`mouseout` events, each also matching nothing on the header's path; they raise both arms' counts together and leave the fall near 85%.
+
+---
+
+## Implementation Notes
+
+### Anchors were found by symbol, not by line number
+
+Every line number in the plan is at `feature/w3-0-results` (`11ad15eb`), and
+this branch starts from `586d2102`, eleven wave-3 plans later. `core/DOM.ts`
+had drifted about 200 lines at `DOMSource`, 250 at `getParentElement` and 290
+at `ProductionDOMSource.getParentElement`; `core/Event.ts`'s walk sat at
+`:300-345` rather than `:301-347`. The plan anticipated this and says to place
+each insertion by the neighbouring symbol, which is what was done. No API the
+plan names had been renamed or removed, and no assumption it makes about the
+dispatcher had changed.
+
+### `Event.init()`'s removal is two commits, not one
+
+The plan's step 14 asks for the deletion "in its own commit" and lists its
+changelog and migration edits alongside it. The `commit` skill's buckets put
+source and docs in separate commits, one of each per functionality, so the
+removal lands as `Remove Event.init, a documented no-op with no callers`
+followed by `Document Event.init's removal in the changelog and migration
+notes`. Both are separate from the `closestWithId` pair, which is what step 14
+was asking for.
+
+### Offline verification, as run
+
+`npm run typecheck`, `npm -w packages/lib run typecheck:test`, `npm test`
+(8392 passed, 2 todo) and `npm run lint` are clean. `npm run build:lib`, then
+`npm -w packages/qa run typecheck` and `npm -w packages/qa run test` (344
+passed, A16 included) are clean. `npm run docs:api` reports 0 errors and 14
+warnings — the same 14 `master` already has, none of them touching `IdMatch`,
+`closestWithId` or `DOMSource`. `npm -w packages/lib run docs:llms:check`
+reports 0 unaccounted for. The greps of steps 9 and 14 all read as the plan
+predicts: no `DOM.source.getId(handle)` left in `Event.ts`, exactly one
+`closestWithId` there, four `closestWithId(` lines across `src` and
+`TestDOM.ts`, and no `Event.init` anywhere under `packages/`.
+
+The red-then-green sequence the plan asks for was observed: W1–W6 and EV5 pass
+on the unchanged `Event.ts`; W7 failed at `expected 6 to be 1` (the target plus
+the four intermediate `div`s plus `<html>`, exactly the interning the per-level
+walk does) and S1–S5 failed with `closestWithId: 0`, while S6 passed already.
+All seven pass after the change. `closestWithId.test.ts` was also checked
+against a tree with `core/DOM.ts` and `TestDOM.ts` stashed, where 10 of its 11
+cases fail with "closestWithId is not a function"; C7 and M2 then assert
+`/is not registered/` rather than a bare `toThrow()`, so neither can pass on a
+missing method.
+
+`npm -w packages/qa run typecheck` needs an untracked
+`node_modules/@jimka/typescript-ui -> ../../packages/lib` symlink inside the
+worktree, or it resolves the package up to the main checkout's stale build and
+fails on unrelated symbols. The symlink is ignored by `.gitignore` and is not
+committed.
+
+No demo or example surface applies: the change adds a seam read and rewrites a
+dispatcher's internal walk, with no component or screen to exercise it.
+
+### Pending — the in-engine A/B has not been run
+
+*Verification*'s in-engine A/B is the one step left, and it is the user's to
+run: every `runqa.sh` run opens a full-screen WebKitGTK window. `BASE_SHA` is
+**`586d21023c7317cd0b12ee8b92a579a9c3eeb26d`** — the parent of this branch's
+first commit, i.e. the tip of `feature/environment-read-caching`, which is the
+eleventh wave-3 plan stacked under this one. It is *not*
+`git merge-base … master`, which is far behind this stack and would put every
+other wave-3 change into the delta.
+
+From the root of the checkout that holds the fix:
+
+```sh
+git worktree add .worktrees/_edw-base 586d21023c7317cd0b12ee8b92a579a9c3eeb26d --detach
+ln -sfn "$PWD/node_modules" .worktrees/_edw-base/node_modules
+(cd .worktrees/_edw-base/packages/lib && npm run build:lib)
+export QA_WT_LIB="$PWD/.worktrees/_edw-base/packages/lib"
+npm run build:lib
+```
+
+Then the `wtab` script in *Verification*, unchanged — 15 runs over `clh`, `cdh`
+and `ffyh`, about 4 minutes — read with
+`python3 packages/qa/bin/qa-table.py packages/qa/results edws1-<cell>- --seam`
+against the five pass criteria, and `git worktree remove --force
+.worktrees/_edw-base` afterwards. The readings go in
+`plans/research/render-review-2026-09-15/`, beside `96-w3-0-bounding-sweep.md`.
+
+The offline seam-economy cases S1–S6 and W7 pin the same counts the A/B is
+expected to measure, so what the A/B adds is the geometry gate (criterion 1),
+the `ffyh` decorator-in-error path that jsdom cannot drive, and the flat frame
+time this plan claims.

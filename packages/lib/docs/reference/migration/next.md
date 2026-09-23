@@ -298,3 +298,25 @@ setSamples(samples: number[]): this {
 
 `scheduleLayout()` on the component works too, and is the right call when the
 component's own children need re-placing rather than its size re-measuring.
+
+## `Event.init` is removed
+
+**What changed and why.** `Event.init()` initialised nothing — the event
+system installs its single window-level capture listener on the first
+registration of each event type, so there has never been anything for a
+bootstrap call to do, and the function's own documentation said it was a
+no-op. Nothing in the library, and no consumer anywhere, ever called it.
+Pre-1.0.0, dead public surface with no callers is cut rather than deprecated.
+
+**Who needs to act.** Any `Event.init()` call is now a compile error. There is
+no replacement — delete the line; nothing happened when it ran:
+
+```typescript
+// Before
+Event.init();
+
+const body = await Body.init({ layoutManager: Fit() });
+
+// After
+const body = await Body.init({ layoutManager: Fit() });
+```

@@ -474,7 +474,7 @@ The W3.0 bounding sweep's arms, one per wave-3 candidate group (see
 | `g18.measure-memo` | G18 | Repeated text measurements are served from a memo until the theme or the fonts change. |
 | `g18.canvas-width` | G18 | `measureText` measures widths on a canvas instead of a DOM probe, taking the height and baseline from the font's first DOM measurement. |
 | `g19.tooltip-idle` | G19 | An attachment identical to the component's current one is not rebuilt. A `hide` with nothing showing is left alone: the tooltip then has no element, and `hide` already does no fade. |
-| `g20.walk-dose` | G20 | Nothing: a dose. `getParentElement` and `getId`, the event walk's reads, each run twice, so the arm pays one more walk — the cost of the walk the fix removes. |
+| `g20.walk-dose` | G20 | Nothing: a dose. `getParentElement` and `getId`, the event walk's reads, each run twice, so the arm pays one more walk — the cost of the walk the fix removes. On a build with `event-dispatch-walk` the walk reads neither method per level, so this arm doses only the exact-target `getId` and one `getParentElement` per matched ancestor, and no longer bounds the walk. |
 | `g21.render-pass` | G21 | A table's visible-record list is memoised, the focus sweep takes its targeted branch when no cell holds the focus style, and the required-empty state is skipped when no column is required. |
 | `g22.settle-relay` | G22 | During a table resize burst, cells keep their bounds until the settle re-renders them, as `Tree` already does. |
 | `g23.write-economy` | G23 | A filter cell skips re-offering its current operators and re-showing its current face, and dates are formatted through cached `Intl.DateTimeFormat`s. |

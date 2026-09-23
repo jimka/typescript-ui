@@ -12,7 +12,7 @@
 // reads the recorded scroll / value / id state back off that stub. The shared
 // `TestHandleTable` is what lets a write through the sink be read by the source.
 
-import { DOM, type DOMSink, type DOMSource, type DocumentSelectionRange, type TextSelectionRange, type ElementPatch, type Handle, type TimerId, type PatchBuilder, type Rect, type ScrollMetrics, type OffsetSize, type MediaState, type ComputedFont, type TextAdvanceSpacing } from '~/core/DOM';
+import { DOM, type DOMSink, type DOMSource, type DocumentSelectionRange, type TextSelectionRange, type IdMatch, type ElementPatch, type Handle, type TimerId, type PatchBuilder, type Rect, type ScrollMetrics, type OffsetSize, type MediaState, type ComputedFont, type TextAdvanceSpacing } from '~/core/DOM';
 import type { Component } from '~/core/Component';
 import type { Size } from '~/primitive/Size';
 import type { TextMeasureOptions, TextMeasureRequest, TextMetrics } from '~/core/Util';
@@ -1459,6 +1459,23 @@ export class ModelledDOMSource implements DOMSource {
     /** Returns the handle's recorded parent in the modelled tree. */
     getParentElement(handle: Handle): Handle | null {
         return _table.parent(handle);
+    }
+
+    /**
+     * Climbs the handle's recorded parents, the handle itself first, to the
+     * first stub whose id is in `ids`: the modelled tree's version of the
+     * production climb, as {@link ModelledDOMSource.isRenderedVisible} is.
+     */
+    closestWithId(handle: Handle, ids: { has(id: string): boolean }): IdMatch | null {
+        for (let h: Handle | null = handle; h !== null; h = _table.parent(h)) {
+            const id = _table.stub(h).id;
+
+            if (id !== '' && ids.has(id)) {
+                return { handle: h, id };
+            }
+        }
+
+        return null;
     }
 
     /** Returns the handle's recorded parent in the modelled tree. */

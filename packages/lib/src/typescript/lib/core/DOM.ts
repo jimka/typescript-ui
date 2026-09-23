@@ -1669,6 +1669,26 @@ export interface DOMSource {
     getParentElement(handle: Handle): Handle | null;
 
     /**
+     * The nearest element at or above `handle` whose `id` is in `ids`: the
+     * start node itself first, then each parent element in turn. The climb
+     * runs inside the seam, so the nodes it passes are neither resolved
+     * through the handle registry nor interned. A start node with no `id` of
+     * its own — a text node, the document, the window — is passed over, and
+     * the climb stops where `parentElement` stops: at the document root, the
+     * top of a detached subtree, or the top of a shadow tree. An empty `id`
+     * never matches.
+     *
+     * @param handle - The node to start from, usually an event target.
+     * @param ids - The ids to look for. Only `has` is called, so a `Set` of
+     *   ids and a `Map` keyed by id both serve.
+     * @returns The matched element and its id, or `null` when nothing up to
+     *   the root matches.
+     * @throws Error - When `handle` has been released or collected, as every
+     *   handle-taking read does.
+     */
+    closestWithId(handle: Handle, ids: { has(id: string): boolean }): IdMatch | null;
+
+    /**
      * Returns a node's parent node, or null.
      *
      * @param handle - The node to read.
@@ -1921,6 +1941,19 @@ export interface TextSelectionRange {
     start: number;
     /** Character offset of the range's end. Equal to `start` for a bare caret. */
     end:   number;
+}
+
+/**
+ * Seam-friendly result of {@link DOMSource.closestWithId}: the element that
+ * matched, as a handle, and the id it matched on.
+ *
+ * @category Core
+ */
+export interface IdMatch {
+    /** The matched element. */
+    handle: Handle;
+    /** The matched element's `id`: the key found in the lookup. */
+    id:     string;
 }
 
 /**
@@ -2974,6 +3007,30 @@ export class ProductionDOMSource implements DOMSource {
         const parent = (_registry.resolve(handle) as Element).parentElement;
 
         return parent === null ? null : _registry.intern(parent);
+    }
+
+    /** @inheritDoc */
+    closestWithId(handle: Handle, ids: { has(id: string): boolean }): IdMatch | null {
+        // Typed `Node`, not `Element`: an event target can be a text node, the
+        // document or the window. Reading `id` and `parentElement` off any node
+        // makes each climb, or stop, as a per-level `getId` / `getParentElement`
+        // pair did: a text node has no id and climbs to its parent element, the
+        // document's `parentElement` is null, and the window has none at all.
+        // `typeof` also rejects the element a window's named-property lookup can
+        // return for `id`.
+        let node: Node | null | undefined = _registry.resolve(handle);
+
+        while (node) {
+            const id: unknown = (node as Element).id;
+
+            if (typeof id === "string" && id !== "" && ids.has(id)) {
+                return { handle: _registry.intern(node), id };
+            }
+
+            node = (node as Element).parentElement;
+        }
+
+        return null;
     }
 
     /** @inheritDoc */
