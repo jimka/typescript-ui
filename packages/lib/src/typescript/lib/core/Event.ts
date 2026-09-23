@@ -386,13 +386,6 @@ export namespace Event {
     };
 
     /**
-     * Initialises the event system (currently a no-op).
-     */
-    export function init() {
-
-    }
-
-    /**
      * Dispatches a CustomEvent of the given type on the component's DOM element.
      *
      * @param component - The component whose DOM element will dispatch the event.
