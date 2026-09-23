@@ -811,6 +811,17 @@ page resets to empty.
   recovery covers a `setMarkdown` that lands while hidden. No consumer action
   is needed.
 
+- **A long Markdown document now renders in time proportional to its
+  length.** Lexing slowed quadratically with the document: two of the
+  library's own block extensions split the whole rest of the document into
+  lines at every block, and in WebKit six of `marked`'s block rules scanned
+  the whole rest of the document at every block too. A 480-section document
+  took about 4.2 s per `MarkdownViewer.setMarkdown` in WebKitGTK. Each
+  extension now reads only the lines it inspects, and those six rules run only
+  where their construct can start, on the text it can span. The tokens, the
+  rendered DOM and the heading ids are unchanged, and no consumer action is
+  needed.
+
 - **A table no longer writes an in-progress cell edit onto the wrong record
   when scrolling rebinds the row under it.** The body keeps a small pool of
   row components and rebinds them to new records as the user scrolls; an

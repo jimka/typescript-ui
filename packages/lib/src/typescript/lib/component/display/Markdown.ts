@@ -1167,10 +1167,13 @@ class Markdown extends Component<MarkdownOptions> {
     private clearContent(): void {
         for (const handle of this._contentHandles) {
             DOM.sink.removeElement(handle);
-            this.untrackHandle(handle);
             DOM.sink.release(handle);
         }
 
+        // In one pass rather than `untrackHandle` per element: a long document
+        // rebuilds thousands of handles, and an `indexOf` plus a `splice` each
+        // makes the untracking alone cost time in the square of that count.
+        this.untrackHandles(this._contentHandles);
         this._contentHandles.length = 0;
 
         // Bumped so any dynamic import already in flight for this render

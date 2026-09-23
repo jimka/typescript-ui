@@ -1370,6 +1370,37 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Stops tracking a whole set of already-released handles in one pass, for a
+     * caller tearing down a rebuild's worth of elements at once — `untrackHandle`
+     * per element is an `indexOf` and a `splice` each, which shifts the list's
+     * tail once per handle and so costs time in the square of the element count.
+     *
+     * The list is compacted in place, never reassigned: {@link trackHandle} hands
+     * this same array to the module's GC finalizer, which would otherwise go on
+     * releasing handles from an array this component no longer writes to.
+     *
+     * @param handles - The handles to drop from the tracked set; ones that are
+     *   not tracked are ignored.
+     */
+    protected untrackHandles(handles: readonly Handle[]): void {
+        if (handles.length === 0) {
+            return;
+        }
+
+        const dropped = new Set(handles);
+        let kept = 0;
+
+        for (const handle of this._ownedHandles) {
+            if (!dropped.has(handle)) {
+                this._ownedHandles[kept] = handle;
+                kept += 1;
+            }
+        }
+
+        this._ownedHandles.length = kept;
+    }
+
+    /**
      * Returns the HTML tag name used when creating this component's element.
      *
      * @returns The HTML tag string (e.g. "div", "button").

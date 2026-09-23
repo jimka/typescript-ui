@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import type { Token, TokenizerExtension } from "marked";
-import { resolveColumnWidth } from "~/component/display/markdownAttributes.js";
+import { lineEndAt, resolveColumnWidth } from "~/component/display/markdownAttributes.js";
 
 /** One header cell: never merged — only body cells carry `<<`/`^^` continuations. */
 export interface MdTableHeaderCell {
@@ -165,20 +165,21 @@ export const TABLE_EXTENSION: TokenizerExtension = {
     name:  "mdtable",
     level: "block",
     tokenizer(src) {
-        const lines = src.split("\n");
-        const delimiterLine = lines[1];
+        const headerEnd = src.indexOf("\n");
 
-        if (delimiterLine === undefined) {
+        // A single unterminated line cannot carry a delimiter row below it.
+        if (headerEnd === -1) {
             return undefined;
         }
 
-        const delimiter = parseDelimiterRow(delimiterLine);
+        const delimiterEnd = lineEndAt(src, headerEnd + 1);
+        const delimiter = parseDelimiterRow(src.slice(headerEnd + 1, delimiterEnd));
 
         if (delimiter === null) {
             return undefined;
         }
 
-        const headerCells = splitRow(lines[0]!);
+        const headerCells = splitRow(src.slice(0, headerEnd));
         const columnCount = headerCells.length;
 
         if (delimiter.align.length !== columnCount) {
@@ -186,18 +187,22 @@ export const TABLE_EXTENSION: TokenizerExtension = {
         }
 
         const bodyLines: string[] = [];
-        let consumedLines = 2;
+        let consumedEnd = delimiterEnd;
 
-        for (let i = 2; i < lines.length; i += 1) {
-            if (lines[i]!.trim() === "") {
+        while (consumedEnd < src.length) {
+            const lineStart = consumedEnd + 1;
+            const lineEnd = lineEndAt(src, lineStart);
+            const line = src.slice(lineStart, lineEnd);
+
+            if (line.trim() === "") {
                 break;
             }
 
-            bodyLines.push(lines[i]!);
-            consumedLines += 1;
+            bodyLines.push(line);
+            consumedEnd = lineEnd;
         }
 
-        const raw = lines.slice(0, consumedLines).join("\n");
+        const raw = src.slice(0, consumedEnd);
 
         const header: MdTableHeaderCell[] = headerCells.map((text, column) => ({
             text,
