@@ -243,6 +243,24 @@ page resets to empty.
   outside `ThemeManager` — a `:root` variable, `<body>` letter-spacing, an app's
   own font load — call `Util.invalidateTextMetricsCache()`.
 
+- **Theme variables are read once per theme.** The library reads a few
+  `--ts-ui-*` variables in script — a component's border width before its
+  element is attached, a minimized window's dock-slot width, a spinner's font
+  size, a `Text`'s bound line-height variable — and each read used to resolve
+  `:root`'s computed style, recalculating the document's style whenever a
+  write was pending (a window's first layout did so over a hundred times).
+  Each variable is now read once per `ThemeManager.setTheme` and served from
+  memory until the next one or the next settled font batch. A variable changed
+  on `:root` any other way is not seen by these reads until then; call
+  `Util.invalidateTextMetricsCache()` after such a change.
+
+- **`DOMSource.getViewportSize()` no longer forces a document layout.** The
+  production source read the root element's client size beside the window's
+  inner size and kept the larger, which on a desktop engine is always the
+  inner size. It now reads the inner size, and the root's client size only
+  where the window reports 0. The value is unchanged on desktop engines; on a
+  pinch-zoomed phone it is now the visual viewport's size.
+
 ### Components
 
 - **Moving the selection in a `List` or `MultiSelectList` writes only to the
@@ -350,6 +368,11 @@ page resets to empty.
   animation frame. Left to that frame, the last buffered move could land a
   frame or more after the release, since the `setResizeFps` cap re-arms when
   frames arrive just inside its period.
+
+- **Minimized windows re-anchor once per viewport resize.** Each window
+  docked along the bottom used to re-lay out the whole dock on every
+  `resize`, so M docked windows cost M² window layouts per event; the dock
+  now answers a resize through one listener of its own.
 
 ## Added
 
@@ -1572,3 +1595,7 @@ page resets to empty.
   it. The stack now installs one viewport `resize` listener while any toast is
   live, and removes it again once the last one leaves. No consumer action is
   needed.
+
+- **A window disposed without being closed stayed in
+  `AbstractWindow.getOpenWindows()`** and kept its dock slot. It now leaves
+  the list, and the dock closes the gap.

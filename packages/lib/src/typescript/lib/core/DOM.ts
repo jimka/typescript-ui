@@ -1424,7 +1424,8 @@ export interface DOMSource {
     getThemeVar(name: string): string;
 
     /**
-     * Returns the current viewport size in pixels.
+     * Returns the current viewport size in pixels: the window's inner size,
+     * which includes a classic scrollbar. Reading it forces no layout.
      *
      * @returns The viewport `{width, height}`.
      */
@@ -2733,8 +2734,13 @@ export class ProductionDOMSource implements DOMSource {
 
     /** @inheritDoc */
     getViewportSize(): Size {
-        const width  = Math.max(document.documentElement.clientWidth,  window.innerWidth  || 0);
-        const height = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
+        // `innerWidth` includes a classic scrollbar, so on a desktop engine it
+        // is never smaller than the root's `clientWidth` — the value the old
+        // `Math.max` of the two always returned — and reading it lays nothing
+        // out, where `clientWidth` forces a document layout. The root's client
+        // size is read only where the window reports 0 (no view yet).
+        const width  = window.innerWidth  || document.documentElement.clientWidth;
+        const height = window.innerHeight || document.documentElement.clientHeight;
 
         return { width, height };
     }
