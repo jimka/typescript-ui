@@ -671,4 +671,58 @@ The offline counts equal W3.0's engine counts for the same cells. With the proto
 
 ## Implementation Notes
 
-(Step 1: record the base commit SHA here.)
+**Base commit (step 1).** `9cd902a15595171cb0b0dd6badc7f44e9ff82c52` — the tip
+of `feature/glyph-name-setter`, which this branch starts from as *Land after
+`glyph-name-setter`* asks. That is the SHA the A/B's `wt` arm is built from.
+
+**The in-engine A/B has not been run.** Every cell in *Verification* opens a
+full-screen MiniBrowser window, which the implementation run is not permitted
+to do, so the whole orchestrator block is still owed. It is to be run in one
+session, from this worktree, with the base arm built as:
+
+```sh
+cd /home/jika/typescript/typescript-ui
+git worktree add .worktrees/_g24-base 9cd902a15595171cb0b0dd6badc7f44e9ff82c52 --detach
+ln -sfn "$PWD/node_modules" .worktrees/_g24-base/node_modules
+(cd .worktrees/_g24-base/packages/lib && npm run build:lib)
+export QA_WT_LIB="$PWD/.worktrees/_g24-base/packages/lib"
+```
+
+and then the 26 `packages/qa/runqa.sh` runs, the two `qa-table.py` reads, the
+scoring and the *Validated* lines in `packages/qa/README.md` exactly as
+*Verification* steps 2-5 list them. Until that runs, the saving is carried by
+the offline counts alone: case 1 records the plan's 7 `apply` + 1 dispatch at
+n=300 and case 2 the same at n=3,000, against the 604 writes the same fixture
+recorded before the change — which is W3.0's `li3` plain reading, write for
+write.
+
+**Every other *Verification* item passed.** `npm run typecheck` 0 errors;
+`npm test` 8,342 passed across 501 files; `npm run lint` 0 errors; step 3's
+grep finds no `applyRowClass` / `COMPONENT_CLASS` / `setElementAttribute("class"`
+left in `AbstractSelectableList.ts`; `npm run build:lib` clean;
+`npm run docs:api` "Found 0 errors and 14 warnings", the pre-existing count;
+`npm run docs:llms:check` "Coverage OK ... 0 unaccounted for". The red/green
+pattern the plan predicted held exactly: cases 1-4, 6 and 8 failed before the
+row change, 10, 13, 14 and 15 before `moveFocus`, and 16, 17 and 20-23 before
+the `Tree` change — no other case failed at any point.
+
+**Deviation: the new test files dispose their fixtures.** `Event`'s
+window-level base-listener bookkeeping is module state that survives
+`DOM.reset()`, so a list or combo left alive keeps `"change"` marked installed
+against the previous case's window handle and silently kills the *next* case's
+DOM-routed dispatch — the gotcha `ComboBoxDropdownClose.test.ts`'s own file
+header documents, which only bites once a file holds more than one such case.
+`Component.destructor` calls `Event.purgeComponent`, so disposing the fixture
+in `afterEach` clears it. `RowStateEconomy.test.ts` therefore tracks and
+disposes every list it mounts (cases 11, 12, 14 and 15 fail without it), and
+case 15 adds the same disposal to `ComboBoxDropdownClose.test.ts`'s existing
+case, which the plan described as an untouched file gaining one new case.
+`RenderPassEconomy.test.ts` inherits the disposal from the frame capture it
+copies.
+
+**Detail: the dispatch row of case 1's table is asserted by type, not target.**
+The recording sink records `dispatchCustomEvent` as `('dispatchEvent', type)` —
+the event type only, with no target handle (`TestDOM.ts`'s `dispatchEvent`), so
+the table's "list root" column for write 8 has nothing to compare against. The
+assertion pins the op and the `change` type in its exact position in the write
+order, which is what the row carries.
