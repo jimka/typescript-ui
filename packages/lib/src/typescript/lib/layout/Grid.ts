@@ -131,11 +131,13 @@ class Grid extends LayoutManager {
      * Sets the grid-wide default fill. Each child overrides this with its own
      * {@link GridConstraints} `fill`; otherwise this value drives whether the
      * child fills its cell.
+     * Marks the container's layout pass as owed.
      *
      * @param fill - The default fill strategy for children without their own `fill`.
      */
     setDefaultFill(fill: FillType): this {
         this._defaultFill = fill;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -154,11 +156,13 @@ class Grid extends LayoutManager {
      * Sets the grid-wide default anchor. Each child overrides this with its own
      * {@link GridConstraints} `anchor`; otherwise this value positions a
      * non-filling child within its cell.
+     * Marks the container's layout pass as owed.
      *
      * @param anchor - The default anchor for children without their own `anchor`.
      */
     setDefaultAnchor(anchor: AnchorType): this {
         this._defaultAnchor = anchor;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -180,11 +184,13 @@ class Grid extends LayoutManager {
      * [`HBox`](/api/layout/classes/HBox)'s baseline-aware placement. Orthogonal
      * to {@link Grid.setDefaultFill} — baseline alignment owns the vertical axis
      * while fill/anchor still drive the horizontal axis.
+     * Marks the container's layout pass as owed.
      *
      * @param baselineAlign - Pass `true` to enable per-row baseline alignment.
      */
     setBaselineAlign(baselineAlign: boolean): this {
         this._baselineAlign = baselineAlign;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -200,11 +206,13 @@ class Grid extends LayoutManager {
 
     /**
      * Sets the number of rows. Pass `0` to let the grid auto-calculate.
+     * Marks the container's layout pass as owed.
      *
      * @param rows - The desired row count, or `0` for automatic.
      */
     setRows(rows: number) : this {
         this._rows = rows;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -221,11 +229,13 @@ class Grid extends LayoutManager {
     /**
      * Sets the gap, in pixels, between adjacent cells. Applied both horizontally
      * (between columns) and vertically (between rows).
+     * Marks the container's layout pass as owed.
      *
      * @param spacing - Spacing in pixels. Falsy values are treated as `0`.
      */
     setComponentSpacing(spacing: number) : this {
         this._spacing = spacing || 0;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -241,11 +251,13 @@ class Grid extends LayoutManager {
 
     /**
      * Sets the number of columns. Pass `0` to let the grid auto-calculate.
+     * Marks the container's layout pass as owed.
      *
      * @param columns - The desired column count, or `0` for automatic.
      */
     setColumns(columns: number) : this {
         this._columns = columns;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -262,11 +274,13 @@ class Grid extends LayoutManager {
     /**
      * Sets the per-column sizing tracks. When fewer tracks are supplied than the
      * grid has columns, the missing tracks default to `{ mode: "weight", value: 1 }`.
+     * Marks the container's layout pass as owed.
      *
      * @param tracks - The column tracks; see {@link GridTrack}.
      */
     setColumnTracks(tracks: GridTrack[]): this {
         this._columnTracks = tracks;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -283,11 +297,13 @@ class Grid extends LayoutManager {
     /**
      * Sets the per-row sizing tracks. When fewer tracks are supplied than the
      * grid has rows, the missing tracks default to `{ mode: "weight", value: 1 }`.
+     * Marks the container's layout pass as owed.
      *
      * @param tracks - The row tracks; see {@link GridTrack}.
      */
     setRowTracks(tracks: GridTrack[]): this {
         this._rowTracks = tracks;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }

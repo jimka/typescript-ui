@@ -628,18 +628,17 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
      *   a layout on every ancestor, this bar included.
      * - `setInsets` / `clearInsets`, `setLayoutManager`, `sortComponents` and
      *   `setLayoutConstraints` — which a `Spacer` child's `setFlex` /
-     *   `setFlexWeight` reaches — on the bar or on anything inside it: each
-     *   marks the layout owed there and on this bar, like any
-     *   `invalidateLayout`.
+     *   `setFlexWeight` reaches — a child hidden or shown with
+     *   `setDisplayed`, padding and border, `removeAllComponents`, and the
+     *   `HBox` / `VBox` reconfigured through `getLayoutManager()`: on the bar
+     *   or on anything inside it, each marks the layout owed there and on
+     *   this bar, like any `invalidateLayout`.
      *
      * Not covered, and so not re-flowed — the overflow set included — until
      * the bar's rectangle next moves or something schedules it: a consumer
      * child that changes its own intrinsic size without calling
-     * `setPreferredSize` or `notifyIntrinsicSizeChanged`, a child hidden or
-     * shown with `setDisplayed`, a manager reconfigured through
-     * `getLayoutManager()`, and padding or border rewritten, on the bar or
-     * inside it, once laid out. Each should follow its change with
-     * `scheduleLayout()` on the bar.
+     * `setPreferredSize` or `notifyIntrinsicSizeChanged`. It should follow its
+     * change with `scheduleLayout()` on the bar.
      *
      * @returns `true`.
      */

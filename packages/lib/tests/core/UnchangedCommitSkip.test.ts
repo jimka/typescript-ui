@@ -146,8 +146,13 @@ const BASELINE = {
  * under a width sweep — is skipped on every one of the twenty frames, and the
  * other bar only on frame 0, whose triangle-wave offset repeats the initial
  * layout exactly.
+ *
+ * The four editor panes each wrap their content rows in a scrolling `Panel`,
+ * which `plans/implemented/unchanged-commit-opt-ins.md` opts in: a pane's
+ * `Border` re-commits that panel at the rectangle it already holds on every
+ * frame of either sweep, so four panes over twenty frames add eighty skips.
  */
-const SHELL_SWEEP_SKIPS = SWEEP_FRAMES + 1;
+const SHELL_SWEEP_SKIPS = SWEEP_FRAMES + 1 + 4 * SWEEP_FRAMES;
 
 /** A container that opts into the skip, the way `MenuBar` and `ToolBar` do. */
 class SkippableContainer extends Container {

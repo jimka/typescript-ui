@@ -202,6 +202,37 @@ class LabeledGrid extends Container<LabeledGridOptions> {
     }
 
     /**
+     * Opts into the unchanged-geometry layout skip: a grid re-committed at the
+     * rectangle it already holds, with no pass owed, is not re-laid-out.
+     *
+     * The writers that change the grid's layout without moving its rectangle,
+     * and why each is covered:
+     *
+     * - `addField`, `addRow` and `addFullWidthRow` — each adds children, which
+     *   schedules this grid's own layout and relays the new preferred size
+     *   upward. The grid-shape setters they call, `setRows` and
+     *   `setRowTracks`, mark the layout owed here as well.
+     * - A field's own content change — a `Text` or `TextField` re-measure
+     *   relays the new preferred size, marking every ancestor.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, `sortComponents`,
+     *   `setLayoutConstraints`, a child's `setDisplayed`, padding, border and
+     *   `removeAllComponents` — on the grid or on anything inside it: each
+     *   marks the layout owed there and on this grid.
+     * - A description tooltip — attached without touching layout.
+     *
+     * Not covered, and so not re-flowed until the grid's rectangle next moves
+     * or something schedules it: a consumer field that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
+
+    /**
      * Builds the `2 × columns` grid-column tracks: for each logical column a
      * content-sized title track (hugs its text) followed by a weight-sized input
      * track (takes the slack so inputs share a right edge).

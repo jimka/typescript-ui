@@ -607,3 +607,153 @@ What each opted-in class's layout reads, and how each change to it reaches a pas
 [^weight]: [`docs/layouts/Split.md`](packages/lib/docs/layouts/Split.md#L138): "A toggle produces no immediate visual change — the pin only bites on the next container resize." A resize moves the host's rectangle, which is never skipped.
 
 [^no-qa-ab]: `qa-ab.py` accepts only the arm `plain` and arms named by the report's `abl=`, and it reads engagement from an arm's own `skipped.` / `memo.` counters. A library build arm has neither. The arithmetic for one arm and five runs is short, and the engagement signal is the `doLayout@<Class>` counters `--work` already lists, so extending the analyser for a single A/B would add tooling and tests for no new information.
+
+---
+
+## Implementation Notes
+
+Implemented on `feature/unchanged-commit-opt-ins`, forked from
+`feature/markdown-lexer-linear-time` at **`8765632c`** — not the `11ad15eb`
+the *Verification* section guessed at, because the rest of the wave-3 stack
+landed first. `8765632c` is the base SHA the in-engine A/B's `wt` arm must be
+built from.
+
+### Step 4's grep check was incomplete, and one setter really is called from a layout pass
+
+The step-4 check greps for nine of the 23 setter names and concludes "no call
+inside any `doLayout` body". Run over all 23, it finds one:
+`BoxLayout.setMode` is called from
+[`TabBar.applyTabWidths`](packages/lib/src/typescript/lib/component/container/TabBar.ts#L2477),
+which `layoutChrome` calls on every pass, reached from `Tab.doLayout` through
+`placeStrip`. Its receiver is the layout manager of `ScrollStrip`'s inner clip
+— a **plain `Panel`**, so one this plan opts in.
+
+That is the hazard *Potential Challenges* names ("a future call from inside a
+`doLayout` would keep its container permanently marked"), so it was measured
+before the unconditional mark was written, with a three-arm probe over a
+`Panel` > `Tab` scene driven six passes: plain, opt-in only, and opt-in plus
+the `setMode` mark. All three arms recorded identical `doLayout` counts on the
+host panel and on the inner clip, under both a settled-pass and a resize
+drive, and the inner clip ended clean in every arm. Two independent reasons:
+
+- `TabBar`'s element is raw-appended to its host
+  ([`Tab.ts:985`](packages/lib/src/typescript/lib/layout/Tab.ts#L985)), so the
+  bar has no parent *component* and `markPassOwedAbove` reaches no opted-in
+  ancestor — the mark lands on the inner clip and stops there.
+- That clip is laid out by `layoutContent` immediately after `applyTabWidths`
+  in the same `layoutChrome`, which clears the flag it was just given.
+
+So the plan's conclusion holds even though its check did not establish it. The
+grep belongs in the checklist over all 23 names, not nine.
+
+### E8's `setAutoScroll` row contradicted step 5, and was rewritten
+
+*Expected Behaviour* E8 asks for `isLayoutDirty()` to read `true` after
+`setAutoScroll("both")` from `"none"`. Step 5 states the opposite in its own
+reasoning: the mark goes before `setOverflowing` precisely because that call
+"lays the panel out itself and clears the mark" when the overflow flags
+change, and `"none"` → `"both"` flips both flags. The test now pins the
+contract the mark actually carries, in two cases:
+
+- A mode change that flips a scrollable axis lays the panel out on the spot —
+  asserted through `doLayout`, so the write is provably not lost.
+- A mode change that leaves the axes alone — `"auto"` → `"both"`, both `x + y`
+  — leaves the panel owing a pass. This is the only case the mark carries, and
+  it is a real one: the two modes differ in whether the gutter is permanently
+  reserved.
+
+`setScrollShadows` and `setScrollbarStyle` keep E8's original shape.
+
+### E9's `WindowHeader` row needed a glyph-free baseline
+
+`WindowHeader`'s constructor installs a default `"window-maximize"` title
+glyph unless one was passed, so `setGlyph("xmark")` on a fresh instance swaps
+one glyph for another and moves the title nowhere. The case calls
+`clearGlyph()` and settles first, then asserts E9's rows against that
+baseline — which also exercises `clearGlyph`, itself in the writer audit.
+
+Positions throughout the file are read as `getX() + getTranslateX()`, as
+*Expected Behaviour* requires: a size-stable move commits through the
+translate fast path and leaves `getX()` at its old value.
+
+### `FlowLayout` and `BoxLayout` are abstract
+
+E7's table builds `HFlow` and `VBox` for their rows. The setters under test
+are the abstract bases' own.
+
+### The QA app's A8 ablation tests needed updating
+
+Not in *Files to Create / Modify / Delete*, but
+[`packages/qa/tests/ablations.test.ts`](packages/qa/tests/ablations.test.ts)
+encodes the shipped gate's baseline, and three of its cases asserted the old
+one. The ablations themselves are unchanged. The cases now read:
+
+- `g09.chrome` opts a `Header` in and leaves a **`Button`** out — the former
+  probe for "still opted out" was the page root, which is a plain `Panel`.
+- `g09.all`'s extra skips are counted by driving the `ToolBar` directly rather
+  than the page root: a pass from the root now stops at the shipped opt-ins
+  above the components the ablation alone opts in, so it commits nothing the
+  ablation answers for.
+- The "counts only its own gate's skips" case now expects **no**
+  `skipped.g09.chrome.commit`. `g09.chrome` opts in exactly `Header` and
+  `StatusBar`, and both ship the override, so that ablation is now wholly
+  subsumed by shipped behaviour and grants no skip of its own on any scene.
+
+Both cases assert the ablation's *install* as well as its effect — the base
+gate's identity changes, the counting wrapper is in place — so neither can
+pass with `apply()` removed, which the first rewrite of them could.
+
+**What the next stage must know:** `g09.all` measures the headroom left
+*over* the shipped opt-ins, not an absolute ceiling. Both scopes replace the
+base gate, which a class shipping its own override shadows — that shadowing is
+what keeps a skip the shipped build already gets out of the ablation's count,
+so it is the design rather than a defect. But it means this plan narrowed the
+`g09.all` arm: it no longer opts in `Panel` or any subclass of it
+(`ScrollStrip`, `Form`, `AbstractChart`, `DiagramView`, `MarkdownViewer`,
+`FloatingPanel`, …), `LabeledGrid`, `Header`, `WindowHeader` or `StatusBar`.
+Stage 1 had already narrowed it by `MenuBar`, `ToolBar` and the table's cells.
+The `Button`-family stage therefore cannot read its ceiling off `g09.all`
+directly and compare with *Addendum: Attribution*'s figures, which were taken
+against the un-narrowed arm; it needs either its own arm or an arm that
+patches every owning prototype and discriminates on the shipped answer rather
+than on the patched function's identity. Reworking the harness that way was
+left out of this plan, which changes nothing in `ablations.ts` but its
+now-false doc comment and the two arm descriptions it returns, and the
+matching two rows of the ablation table in
+[`packages/qa/README.md`](packages/qa/README.md#L466). `g09.chrome` is left
+registered, inert, as the narrow arm's historical reading.
+
+### Offline verification
+
+From `packages/lib`, all clean: `npm run typecheck`, `npm run typecheck:test`,
+`npm run lint`, `npm run test:lint`, `npm test` (**8,213 passed**, 2 todo,
+490 files), `npm run build:lib`, `npm run docs:api` (0 errors, the 14
+pre-existing warnings and no new one), `npm run docs:llms:check`. From
+`packages/qa`, `npm test` is green (336 passed).
+
+`grep -rn 'protected canSkipUnchangedLayout' src` lists the expected 8 lines.
+
+Case 13's skip count came out at exactly the predicted
+`SWEEP_FRAMES + 1 + 4 * SWEEP_FRAMES` = **101**, with both shell geometry
+digests unchanged against their pre-skip baselines.
+
+### Pending: the in-engine A/B, which is the acceptance gate
+
+**Not run — it opens a full-screen window, so it is the user's to run.** The
+offline suite is not the gate; this A/B is. From the repository root of this
+checkout:
+
+```sh
+git worktree add .worktrees/_g09-base 8765632c --detach
+ln -sfn "$PWD/node_modules" .worktrees/_g09-base/node_modules
+(cd .worktrees/_g09-base/packages/lib && npm run build:lib)
+(cd packages/lib && npm run build:lib)
+export QA_WT_LIB="$PWD/.worktrees/_g09-base/packages/lib"
+bash g09-opt-ins-ab.sh --dry-run
+bash g09-opt-ins-ab.sh
+```
+
+with `g09-opt-ins-ab.sh` saved outside the repository from the script in
+*Verification*. Read each cell with
+`python3 packages/qa/bin/qa-table.py packages/qa/results g9s1-<cell>- --work`
+and apply the pass criteria there. Record the readings here.

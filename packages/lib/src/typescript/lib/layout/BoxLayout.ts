@@ -194,6 +194,7 @@ export abstract class BoxLayout extends LayoutManager {
 
     /**
      * Sets the pixel spacing between child components.
+     * Marks the container's layout pass as owed.
      *
      * @param spacing - Spacing in pixels.
      *
@@ -201,6 +202,7 @@ export abstract class BoxLayout extends LayoutManager {
      */
     setComponentSpacing(spacing: number): this {
         this._spacing = spacing || 0;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -242,6 +244,7 @@ export abstract class BoxLayout extends LayoutManager {
     /**
      * Sets how a child is aligned within the cross axis when it sets no
      * explicit per-child cross intent (fill/anchor align-self).
+     * Marks the container's layout pass as owed.
      *
      * @param itemAlign - `"start"`/`"center"`/`"end"` pin to or centre within
      *   the cross band, `"baseline"` (the default) aligns HBox rows on their
@@ -252,6 +255,7 @@ export abstract class BoxLayout extends LayoutManager {
      */
     setItemAlign(itemAlign: BoxItemAlign): this {
         this._itemAlign = itemAlign;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -267,6 +271,7 @@ export abstract class BoxLayout extends LayoutManager {
 
     /**
      * Sets the sizing mode along the main axis.
+     * Marks the container's layout pass as owed.
      *
      * @param mode - `"preferred"` honours each child's preferred main-axis
      *   extent; `"equal"` divides the container's main axis equally among
@@ -276,6 +281,7 @@ export abstract class BoxLayout extends LayoutManager {
      */
     setMode(mode: BoxMode): this {
         this._mode = mode;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -293,6 +299,7 @@ export abstract class BoxLayout extends LayoutManager {
     /**
      * Sets the cell-sizing strategy used when an `"equal"`-mode row/column
      * overflows a scrolling host.
+     * Marks the container's layout pass as owed.
      *
      * @param overflowSizing - `"preferred"` grows every cell to the largest
      *   child's preferred extent and scrolls; `"min"` keeps cells at the min
@@ -302,6 +309,7 @@ export abstract class BoxLayout extends LayoutManager {
      */
     setOverflowSizing(overflowSizing: BoxOverflowSizing): this {
         this._overflowSizing = overflowSizing;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }
@@ -317,6 +325,7 @@ export abstract class BoxLayout extends LayoutManager {
 
     /**
      * Sets how leftover main-axis space is distributed in `"preferred"` mode.
+     * Marks the container's layout pass as owed.
      *
      * @param justify - `"start"` packs children at the leading edge (the
      *   default), `"center"`/`"end"` shift the block, and `"between"`/`"around"`
@@ -326,6 +335,7 @@ export abstract class BoxLayout extends LayoutManager {
      */
     setJustify(justify: BoxJustify): this {
         this._justify = justify;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }

@@ -65,6 +65,7 @@ class Fit extends LayoutManager {
 
     /**
      * Sets the fill mode applied to the single child.
+     * Marks the container's layout pass as owed.
      *
      * @param fill - `BOTH` stretches the child to fill (default), `NONE`
      * centres it at its preferred size, `HORIZONTAL` / `VERTICAL` stretch on
@@ -74,6 +75,7 @@ class Fit extends LayoutManager {
      */
     setFill(fill: FillType): this {
         this._fill = fill;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }

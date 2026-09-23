@@ -9,6 +9,15 @@ page resets to empty.
 
 ### Core
 
+- **A `Panel` re-committed at its own rectangle is no longer re-laid-out.**
+  `Panel` — the class itself, not its subclasses — now opts into the
+  unchanged-commit layout skip, so a settled subtree under one costs nothing
+  on a pass that moves it nowhere. Code that changes a component's intrinsic
+  size inside a plain `Panel` without calling `setPreferredSize` or
+  `notifyIntrinsicSizeChanged`, and relied on some later unrelated layout
+  pass to pick it up, must now announce the change. See
+  [Migration](/reference/migration/next) for the full note.
+
 - **`Body.init` returns `Promise<Body>`, and `BodyOptions.components` is
   removed.** An app now awaits the bootstrap and adds its tree afterward —
   `const body = await Body.init({ layoutManager }); body.addComponent(root);`
@@ -70,6 +79,16 @@ page resets to empty.
 ## Changed
 
 ### Core
+
+- **The placement inputs that schedule nothing now mark the layout pass as
+  owed.** A child's `setDisplayed`, `setPadding` / `clearPadding`,
+  `setBorder` / `clearBorder` and `removeAllComponents` each change how a
+  subtree is placed while scheduling no pass, so each now marks one owed the
+  way `setInsets` already did — on the component and on every opted-in
+  ancestor of it. `clearPadding` and `clearBorder` mark only when the value
+  really changed, so a host that re-asserts a cleared border on every pass
+  still skips. `Panel.setAutoScroll`, `setScrollShadows` and
+  `setScrollbarStyle` mark the panel the same way.
 
 - **`Component.setTransform()` writes the element's inline style, not the
   component's stylesheet rule, and composes with `setTranslate()`.** A
@@ -210,6 +229,16 @@ page resets to empty.
 
 ### Components
 
+- **`LabeledGrid`, `Header` (and so `WindowHeader`) and `StatusBar` are no
+  longer re-laid-out when their parent re-commits them at the rectangle they
+  already hold.** Each joins `MenuBar` and `ToolBar` in the unchanged-commit
+  layout skip, so a settled form, header or status strip costs nothing on a
+  pass that moves it nowhere. Each class's own writers — `addField`,
+  `getText().setText(...)`, `setMessage` and their siblings — still lay it
+  out. One path still announces nothing: a custom child's intrinsic size
+  changed without `setPreferredSize` / `notifyIntrinsicSizeChanged` must be
+  followed with `scheduleLayout()` on the component.
+
 - **`MenuBar` and `ToolBar` are no longer re-laid-out when their parent
   re-commits them at the rectangle they already hold.**
   `LayoutManager.commitBounds`, which the box, flow, grid, border, fit, card,
@@ -218,14 +247,12 @@ page resets to empty.
   in, and no pass is owed — the gate the table's cells already had through
   `applyBounds`, still off by default. These two bars are its first
   opt-ins. `ToolBar.setOrientation()` and `setFlat()` now lay the bar out
-  themselves, as `setCompact()` already did. A consumer that changes a bar's
-  layout through a path that announces nothing — a child's `setDisplayed`,
-  the manager reached through `getLayoutManager()`, the bar's own padding or
-  border, or a custom child's intrinsic size changed without
-  `setPreferredSize` / `notifyIntrinsicSizeChanged` — must now follow it with
-  `bar.scheduleLayout()`: such changes used to take effect on the next
-  incidental relayout, which no longer reaches a bar whose rectangle holds
-  still.
+  themselves, as `setCompact()` already did. One path still announces
+  nothing: a custom child's intrinsic size changed without
+  `setPreferredSize` / `notifyIntrinsicSizeChanged` must be followed with
+  `bar.scheduleLayout()`, because such a change used to take effect on the
+  next incidental relayout, which no longer reaches a bar whose rectangle
+  holds still.
 
 - **`CellEditorPool.release()` now takes the cell that is releasing the
   editor** — `release(cell: Cell<any>)`, where it previously took no
@@ -236,6 +263,16 @@ page resets to empty.
   `release()` directly must pass the releasing cell.
 
 ### Layouts
+
+- **A layout manager's configuration setters now mark their container's
+  layout pass as owed.** `BoxLayout`'s `setComponentSpacing`, `setItemAlign`,
+  `setMode`, `setOverflowSizing` and `setJustify`, `FlowLayout`'s six
+  equivalents, `Grid`'s eight, `Fit.setFill`, `Border.setComponentSpacing`
+  and `Split`'s `setOrientation` / `setPaneSize` each wrote a bare field and
+  scheduled nothing, so reconfiguring a manager behind a container that now
+  skips an unchanged commit would not have taken effect until something else
+  moved it. `Split.setPaneResizeWeight` is unchanged: a weight bites only on
+  a resize, which moves the rectangle anyway.
 
 - **`Tab.setTabItalic(content, italic)` is no longer view-only.** It now
   writes to the tab's `LayoutConstraints` the same way `setTabGlyph` does,

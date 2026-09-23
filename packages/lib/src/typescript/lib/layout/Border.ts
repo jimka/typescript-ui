@@ -293,11 +293,13 @@ class Border extends LayoutManager implements FocusRevealer {
 
     /**
      * Sets the pixel spacing between adjacent border regions.
+     * Marks the container's layout pass as owed.
      *
      * @param spacing - Spacing size in pixels.
      */
     setComponentSpacing(spacing: number) : this {
         this._spacing = spacing;
+        this.getContainer()?.invalidateLayout();
 
         return this;
     }

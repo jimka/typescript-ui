@@ -202,6 +202,42 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Container<T
     getBaseline(): number | null {
         return this.wrapInnerBaseline(this._text.getBaseline());
     }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a header re-committed at
+     * the rectangle it already holds, with no pass owed, is not re-laid-out.
+     * `WindowHeader` inherits this, and its own writers are audited below.
+     *
+     * The writers that change a header's layout without moving its rectangle,
+     * and why each is covered:
+     *
+     * - `getText().setText(...)` and the font setters — each schedules the
+     *   header's own layout, and the label's re-measure relays the new
+     *   preferred size upward.
+     * - The theme subscription — it re-derives the preferred size through
+     *   `setPreferredSize`, whose relay marks every ancestor.
+     * - `WindowHeader.setGlyph` / `clearGlyph` — each inserts into or removes
+     *   from the title row, which schedules that row's own pass and relays.
+     * - `WindowHeader.setMinimizable` / `setMaximizable` — `setVisible`, which
+     *   keeps the component's layout slot, so nothing moves.
+     * - `WindowHeader.setActive` and `setCloseable` — style or enabled state
+     *   only. The control buttons' glyph swaps relay.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, `sortComponents`,
+     *   `setLayoutConstraints`, a child's `setDisplayed`, padding, border and
+     *   `removeAllComponents` — on the header or on anything inside it: each
+     *   marks the layout owed there and on this header.
+     *
+     * Not covered, and so not re-flowed until the header's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
 }
 
 const HeaderCallable = callable(Header);
