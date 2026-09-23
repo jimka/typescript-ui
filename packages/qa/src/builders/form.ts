@@ -62,9 +62,6 @@ const DATE_TEXT = '2026-09-19';
 /** Text one character past the decorated fields' limit: the shortest text that shows their error. */
 const OVER_LIMIT_TEXT = 'x'.repeat(MAX_TEXT_CHARS + 1);
 
-/** The one character C21's sequence types into the second decorated field; the field stays over its limit. */
-const KEYSTROKE = 'x';
-
 /** The tooltip's element, by the class the library gives each component's element; a page has one tooltip. */
 const TOOLTIP_SELECTOR = '.Tooltip';
 
@@ -505,8 +502,11 @@ function tooltipOnScreen(tools: HarnessTools): boolean {
  * The `call` target: C21's sequence on the first two decorated text fields.
  * Unit 0 types both past their limit, so both show their error, then hovers
  * the first field. On the first later unit that finds the tooltip on screen,
- * one character is typed into the second field, whose error re-attaches its
- * own tooltip; nothing is typed after that.
+ * one character is deleted from the second field. That takes it back within
+ * its limit, so its check clears its error and detaches its tooltip — the
+ * `detach` C21 fixed. A keystroke that left its error as it was would
+ * re-attach an identical tooltip, which `Tooltip` keeps without detaching, so
+ * it would not reach C21's code. Nothing is typed after that.
  *
  * @param tools - The harness tools.
  * @param parts - The form's parts.
@@ -533,7 +533,8 @@ function tooltipOwnershipTarget(tools: HarnessTools, parts: FormParts, panel: st
         }
 
         if (!typed && tooltipOnScreen(tools)) {
-            enterText(other, other.field.getText() + KEYSTROKE);
+            // One Backspace: 21 characters become 20, back within the limit.
+            enterText(other, other.field.getText().slice(0, -1));
             typed = true;
         }
     };
