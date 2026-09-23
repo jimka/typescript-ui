@@ -39,6 +39,8 @@ panel.addComponent(tags);
 
 A `Shift`-extension that crosses a disabled row drops it from the resulting selection — see [Disabled rows](#disabled-rows).
 
+A navigation key that leaves the selection as it was — `Shift`-`ArrowDown` on the last row, say — fires no `change`.
+
 ## Common methods
 
 | Method | Purpose |

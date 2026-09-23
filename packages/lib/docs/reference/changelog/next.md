@@ -245,6 +245,31 @@ page resets to empty.
 
 ### Components
 
+- **Moving the selection in a `List` or `MultiSelectList` writes only to the
+  rows whose state changed.** A row toggles its `selected`, `focused` and
+  `disabled` class tokens one at a time instead of rewriting its whole `class`
+  attribute, and skips a state it already shows: one arrow key on a 300-item
+  list went from 603 attribute writes to 7. No consumer action is needed.
+
+- **A navigation key that leaves a `List` or `MultiSelectList` selection as it
+  was no longer fires `change` or `action`** — an `ArrowDown` on the last row,
+  a `Home` on the first, a `Shift`-`ArrowDown` that extends nothing. A click,
+  `Enter` or `Space` on the row already selected still fires, since
+  [`ComboBox`](/components/ComboBox) and
+  [`AutoCompleteField`](/components/AutoCompleteField) treat those as the
+  user's pick; an open `ComboBox` no longer fires its own `change` for an arrow
+  key at either end of its list. `Tree` and the table body already stayed
+  silent for an unchanged selection. A listener that used the repeat as a key
+  signal needs a `keydown` listener instead.
+
+- **A layout pass that leaves a `Tree`'s size unchanged no longer re-renders
+  its rows.** It re-renders when the tree's size, padding or border changed
+  since its last render; every change the tree makes itself — expanding,
+  selecting, scrolling, `setNodes`, `notifyNodeChanged`, a theme change — still
+  renders at once. A node changed in place must be announced with
+  `notifyNodeChanged(node)`, as documented: an unrelated layout pass used to
+  pick such a change up by accident and no longer does.
+
 - **Every built-in icon swap renames the glyph in place instead of building a
   new one.** `Button.setGlyph` (and so `Tab.setTabGlyph` / `TabBar.setEntryGlyph`,
   `TabWindow.setGlyph`, `VideoPlayer`'s transport buttons, `ScrollStrip`'s
@@ -869,6 +894,13 @@ page resets to empty.
   is needed.
 
 ### Components
+
+- **`Tree.setRowOverflow()` takes effect at once, and a Ctrl-click (Cmd-click)
+  rebinds the row it toggles.** `setRowOverflow` stored the new mode and waited
+  for an unrelated layout pass to apply it. A Ctrl-click repainted the row's
+  highlight but left its renderer's `selected` context stale until the next
+  render; a custom `TreeNodeRenderer` that reads `selected` now sees the change
+  at once. No consumer action is needed.
 
 - **`IconText.setGlyph`, `IconLabel.setGlyph`, `WindowHeader.setGlyph` /
   `clearGlyph`, `DialogTitleBar.setGlyph` / `clearGlyph` and the table's

@@ -61,6 +61,16 @@ interface FlatRow {
 }
 
 /**
+ * The box a row-window render read: the tree's outer height, which sizes the
+ * row window, and its content box, which places the rows, the scrollbars and
+ * the clip box.
+ */
+interface RenderedBox {
+    height:  number;
+    content: { x: number; y: number; width: number; height: number };
+}
+
+/**
  * Where a node sits in the tree: the array that holds it, that array's owner
  * (`null` for the root array), the node's index in it, and the path down to
  * it — everything the one search that finds a node can report.
@@ -218,6 +228,15 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     // DOM-write rule it gets no `TreeOptions` field and no public setter.
     private _flatRowsDirty      : boolean                                                 = false;
     private _lastRowWidth       : number                                                  = 0;
+    // The tree's own box as the last row-window render found it: the outer
+    // height that sizes the window and the content box that places the rows.
+    // `doLayout` compares against it and renders only on a difference, since
+    // a layout pass can change nothing else the render reads. Framework-managed
+    // bookkeeping, so per ARCHITECTURE.md's third DOM-write rule it gets no
+    // `TreeOptions` field and no public setter. A plain initializer is safe:
+    // only `renderWindow` writes it, and that needs an element, which no
+    // `super()`-cascade setter creates — the same reason `_lastRowWidth` has one.
+    private _renderedBox        : RenderedBox | null                                      = null;
     // Widest row content measured so far across the current flattened set. Only
     // the *visible* window is measured each frame, so tracking a running maximum
     // keeps the horizontal content width — and thus the H scrollbar — stable as
@@ -300,9 +319,16 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      *   scrolls; `"clip"` caps rows at the viewport width and truncates. See
      *   {@link TreeRowOverflow}.
      * @returns This tree, for method chaining.
+     *
+     * @remarks Takes effect immediately on a rendered tree, rather than waiting
+     * for the next layout pass to repaint the rows at the new width.
      */
     setRowOverflow(rowOverflow: TreeRowOverflow): this {
         this._options.rowOverflow = rowOverflow;
+
+        if (this.getElement()) {
+            this.renderWindow();
+        }
 
         return this;
     }
@@ -1902,6 +1928,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
                 this._anchorNode = node;
                 this._focusNode = node;
                 this._updateSelectionStyle();
+                // Rebind the toggled row at once, as `_selectAtIndex` does:
+                // the highlight above is a style toggle, but a renderer reading
+                // the bound `selected` flag only sees the change on a render.
+                this.renderWindow();
                 this._notifySelectionChange(before);
             } else {
                 this._selectAtIndex(clickedIdx);
@@ -2077,6 +2107,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             return;
         }
 
+        this.noteRenderedBox();
+
         const scroller = this._scroller;
 
         const totalRows   = this._flatRows.length;
@@ -2153,6 +2185,30 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this._updateSelectionStyle();
 
         scroller.layoutScrollbars(rowWidth, totalHeight);
+    }
+
+    /** Records the box this render reads, for {@link boxChangedSinceRender}. */
+    private noteRenderedBox(): void {
+        const content = this.getContentBounds();
+
+        this._renderedBox = content === null ? null : { height: this.getHeight(), content };
+    }
+
+    /**
+     * Whether the tree's box differs from the one the last render read. An
+     * unsized tree's `NaN` height never equals itself, so it always reads as changed.
+     */
+    private boxChangedSinceRender(): boolean {
+        const last    = this._renderedBox;
+        const content = this.getContentBounds();
+
+        return last === null
+            || content === null
+            || last.height         !== this.getHeight()
+            || last.content.x      !== content.x
+            || last.content.y      !== content.y
+            || last.content.width  !== content.width
+            || last.content.height !== content.height;
     }
 
     /**
@@ -2271,8 +2327,12 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * @returns This component, for method chaining.
      *
      * @remarks
-     * Overrides [`Component.doLayout`](/api/core/classes/Component#doLayout) so that layout-manager-driven size changes
-     * (e.g. from a parent Tab or Split) automatically update the rendered row window.
+     * Overrides [`Component.doLayout`](/api/core/classes/Component#doLayout) so that a layout-manager-driven
+     * change to the tree's size, padding or border (e.g. from a parent Tab or Split) automatically updates
+     * the rendered row window. A pass that leaves the tree's box as the last render found it renders
+     * nothing: the box is the only render input a layout pass can change, and every other change — an
+     * expansion, a selection, a scroll, `setNodes`, `notifyNodeChanged`, a theme change — already re-renders
+     * through the call that made it.
      */
     doLayout(): this {
         if (this.isLayoutPaused()) {
@@ -2281,7 +2341,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
         super.doLayout();
 
-        this.renderWindow();
+        if (this.boxChangedSinceRender()) {
+            this.renderWindow();
+        }
 
         return this;
     }

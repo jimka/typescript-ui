@@ -41,44 +41,67 @@ const DISABLED_ROWS = [
 ];
 
 /**
- * The last `class` attribute written to `handle` via the recording sink, split
- * into its class tokens. Empty when no class write was recorded.
+ * The class tokens `handle` currently carries, folded from every `apply` write
+ * recorded against it in order: a whole-attribute `setAttr.class` replaces the
+ * set, `addClass` adds and `removeClass` deletes. Reading the last write alone
+ * stopped working once the row began toggling one token at a time — see
+ * `RowStateEconomy.test.ts`, which carries the same fold.
  */
-function lastClassTokens(sink: RecordingDOMSink, handle: number): string[] {
-    const writes = sink.writes.filter(
-        w => w.op === 'apply'
-          && w.args[0] === handle
-          && (w.args[1] as { setAttr?: Record<string, string> })?.setAttr?.class !== undefined,
-    );
+function classTokens(sink: RecordingDOMSink, handle: number): Set<string> {
+    const tokens = new Set<string>();
 
-    const last = writes.at(-1);
-    if (!last) {
-        return [];
+    for (const write of sink.writes) {
+        if (write.op !== 'apply' || write.args[0] !== handle) {
+            continue;
+        }
+
+        const patch = write.args[1] as {
+            setAttr?:     Record<string, string>;
+            addClass?:    string[];
+            removeClass?: string[];
+        };
+
+        if (patch.setAttr?.class !== undefined) {
+            tokens.clear();
+            for (const token of patch.setAttr.class.split(' ')) {
+                tokens.add(token);
+            }
+        }
+
+        for (const token of patch.addClass ?? []) {
+            tokens.add(token);
+        }
+
+        for (const token of patch.removeClass ?? []) {
+            tokens.delete(token);
+        }
     }
 
-    return (last.args[1] as { setAttr: Record<string, string> }).setAttr.class.split(' ');
+    return tokens;
 }
 
 describe('List row carries the framework class after a state change (row-framework-class)', () => {
     afterEach(() => DOM.reset());
 
-    // Regression: applyRowClass rewrites the whole `class` attribute from the
-    // row's selected/focused state. Since `position: absolute` was hoisted onto
-    // the `:where(.ts-ui-component)` framework rule, a class write that omits
+    // Regression: the row used to rebuild its whole `class` attribute from its
+    // selected/focused state. Since `position: absolute` was hoisted onto the
+    // `:where(.ts-ui-component)` framework rule, a class write that omits
     // `ts-ui-component` drops the row's positioning and every row collapses to
-    // top:auto, stacking on top of each other. Any class the row writes must
-    // keep the framework class token.
-    it('keeps `ts-ui-component` when a selection change rewrites the row class', () => {
+    // top:auto, stacking on top of each other. The row now toggles one token
+    // per changed state and never rewrites the attribute, which is what makes
+    // the framework token unreachable by a state change — this pins that the
+    // token really does survive one.
+    it('keeps `ts-ui-component` through a selection change', () => {
         installTestDOM(CONFIG);
 
         const list = new TestList({ items: FRUITS });
         list.getElement(true);
 
-        // Drives refreshRowVisualState → row.setSelected/setFocused →
-        // applyRowClass, a post-render class rewrite (the path that clobbered).
+        // Drives refreshRowVisualState → row.setSelected/setFocused, the
+        // post-render state change whose class write used to clobber.
         list.setSelectedIndex(0, false);
 
-        const tokens = lastClassTokens(DOM.sink as RecordingDOMSink, list.firstRowHandle());
+        const tokens = classTokens(DOM.sink as RecordingDOMSink, list.firstRowHandle());
 
         expect(tokens).toContain('ts-ui-component');
         // The selected state still lands, so the fix adds to the class set
@@ -96,8 +119,8 @@ describe('List row reflects per-row disabled state (row-framework-class)', () =>
         const list = new TestList({ items: DISABLED_ROWS });
         list.getElement(true);
 
-        const disabledTokens = lastClassTokens(DOM.sink as RecordingDOMSink, list.rowHandle(1));
-        const enabledTokens  = lastClassTokens(DOM.sink as RecordingDOMSink, list.rowHandle(0));
+        const disabledTokens = classTokens(DOM.sink as RecordingDOMSink, list.rowHandle(1));
+        const enabledTokens  = classTokens(DOM.sink as RecordingDOMSink, list.rowHandle(0));
 
         expect(disabledTokens).toContain('disabled');
         expect(disabledTokens).toContain('SelectableListRow');
@@ -116,7 +139,7 @@ describe('List row reflects per-row disabled state (row-framework-class)', () =>
 
         list.setItemEnabled(1, true);
 
-        const tokens = lastClassTokens(DOM.sink as RecordingDOMSink, list.rowHandle(1));
+        const tokens = classTokens(DOM.sink as RecordingDOMSink, list.rowHandle(1));
         expect(tokens).not.toContain('disabled');
         expect(list.rowCursor(1)).toBe('pointer');
     });

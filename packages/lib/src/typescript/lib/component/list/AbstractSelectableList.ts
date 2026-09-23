@@ -17,9 +17,10 @@ import { _VBox } from "~/layout/VBox.js";
 import { Size } from "~/primitive/Size.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
+import { selectionsEqual } from "~/component/shared/selectionsEqual.js";
 import { ListItemRenderer } from "~/component/list/ListItemRenderer.js";
 import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
-import { COMPONENT_CLASS, type StyleBag } from "~/core/ClassStyleRules.js";
+import { type StyleBag } from "~/core/ClassStyleRules.js";
 import { Text } from "~/component/input/Text.js";
 
 /**
@@ -325,6 +326,14 @@ const _defaultSelectableListRowOptions: Partial<ComponentOptions> = {
  * label, the pool index, the selected flag, the focused flag, and the
  * enabled flag.
  *
+ * The selected, focused and disabled states are carried as class tokens
+ * toggled one at a time through `setStyleState`, each guarded on the row's
+ * own cached field: a state the row already shows costs nothing, so a
+ * selection sweep across the whole pool writes only to the rows that actually
+ * changed. The rules above match those tokens; none of the three is declared
+ * in `ownStyleStates`, which would generate a competing class-tier rule
+ * beside them.
+ *
  * Internal — not re-exported from the per-subpath barrel; the public
  * surface lives on `List` / `MultiSelectList`.
  */
@@ -373,6 +382,10 @@ class SelectableListRow extends Component {
         this._renderer.setPointerEvents("none");
 
         this.getAria().setRole("option");
+        // Every row starts unselected. Writing that once here keeps
+        // `aria-selected="false"` on every unselected row, now that `setSelected`
+        // skips a value the row already holds — its first call included.
+        this.getAria().setSelected(false);
         this.setPreferredSize({ width: 0, height: ROW_HEIGHT_PX });
         // Do NOT cap the row's max height. A finite per-row height max makes the
         // list's VBox sum to a finite content max (VBox.aggregateMaxSize), which
@@ -496,17 +509,23 @@ class SelectableListRow extends Component {
     }
 
     /**
-     * Toggles the `.selected` class and `aria-selected` to reflect
-     * membership in the owning list's selection set.
+     * Toggles the `selected` class token and `aria-selected` to reflect
+     * membership in the owning list's selection set. Does nothing for a value
+     * the row already shows, so a selection sweep over the whole pool reaches
+     * the DOM only for the rows that changed.
      *
      * @param value - `true` when this row is currently selected.
      *
      * @returns This row, for method chaining.
      */
     setSelected(value: boolean): this {
+        if (value === this._selected) {
+            return this;
+        }
+
         this._selected = value;
         this.getAria().setSelected(value);
-        this.applyRowClass();
+        this.setStyleState(".selected", value);
 
         return this;
     }
@@ -521,8 +540,8 @@ class SelectableListRow extends Component {
     }
 
     /**
-     * Toggles the `.focused` class to reflect the keyboard-focus position
-     * inside the owning list.
+     * Toggles the `focused` class token to reflect the keyboard-focus position
+     * inside the owning list. Does nothing for a value the row already shows.
      *
      * @param value - `true` when this row currently holds the keyboard
      *   focus position.
@@ -530,8 +549,12 @@ class SelectableListRow extends Component {
      * @returns This row, for method chaining.
      */
     setFocused(value: boolean): this {
+        if (value === this._focused) {
+            return this;
+        }
+
         this._focused = value;
-        this.applyRowClass();
+        this.setStyleState(".focused", value);
 
         return this;
     }
@@ -547,10 +570,10 @@ class SelectableListRow extends Component {
 
     /**
      * Toggles the row's interactive state: reflects `aria-disabled`, swaps
-     * the cursor between `pointer` and `default`, and repaints the
-     * `.disabled` class. Guarded on change so a selection repaint that
-     * revisits an already-current state does not re-queue a style write per
-     * row.
+     * the cursor between `pointer` and `default`, and toggles the `disabled`
+     * class token. Does nothing for a value the row already shows, so a
+     * selection repaint that revisits an already-current state does not
+     * re-queue a style write per row.
      *
      * @param value - `true` when the row is interactive.
      *
@@ -564,7 +587,7 @@ class SelectableListRow extends Component {
         this._enabled = value;
         this.getAria().setDisabled(!value);
         this.setCursor(value ? "pointer" : "default");
-        this.applyRowClass();
+        this.setStyleState(".disabled", !value);
 
         return this;
     }
@@ -576,19 +599,6 @@ class SelectableListRow extends Component {
      */
     isEnabled(): boolean {
         return this._enabled;
-    }
-
-    /**
-     * Renders the row's `<div>` with its current class set. The label content
-     * lives in the renderer child, appended by {@link init}.
-     *
-     * @returns The created element handle.
-     */
-    protected render(): Handle {
-        const element = super.render();
-        this.applyRowClass();
-
-        return element;
     }
 
     /**
@@ -647,35 +657,6 @@ class SelectableListRow extends Component {
         this._renderer.layoutChildren(box.width, box.height);
 
         return this;
-    }
-
-    /**
-     * Computes the row's class list from the cached selected/focused
-     * state. Writes via `setElementAttribute("class", …)` so the framework
-     * defer-write seam owns the DOM write.
-     *
-     * The write replaces the whole `class` attribute, so it must re-state the
-     * framework `COMPONENT_CLASS` that `Component.init` adds — otherwise a
-     * post-init rewrite (a selection change) drops it, and with it the
-     * `:where(.ts-ui-component)` rule that supplies `position: absolute`,
-     * collapsing every row to `top: auto` so they stack on top of each other.
-     */
-    private applyRowClass(): void {
-        const classes = [COMPONENT_CLASS, "SelectableListRow"];
-
-        if (this._selected) {
-            classes.push("selected");
-        }
-
-        if (this._focused) {
-            classes.push("focused");
-        }
-
-        if (!this._enabled) {
-            classes.push("disabled");
-        }
-
-        this.setElementAttribute("class", classes.join(" "));
     }
 
     /**
@@ -2168,6 +2149,12 @@ abstract class AbstractSelectableList<
      * highlight moves but the selection set is untouched and
      * `notifyUserChange` does not fire.
      *
+     * The change notification fires only when the selection set actually
+     * changed, so a move that leaves it as it was — a key clamped at the
+     * first or last row — fires nothing. The repaint, the
+     * `aria-activedescendant` update and the scroll check still run, and each
+     * writes nothing when nothing moved.
+     *
      * @param idx - The new focus index.
      * @param ctrl - When `true`, skip the selection update.
      * @param shift - When `true`, ask the reducer to extend the
@@ -2177,6 +2164,7 @@ abstract class AbstractSelectableList<
         this._focusedIndex = idx;
 
         const commit = !ctrl && this._selectFollowsFocus;
+        const before = commit ? new Set(this._selectedSet) : null;
 
         if (commit) {
             this.reduceSelection(idx, { ctrl: false, shift });
@@ -2186,7 +2174,7 @@ abstract class AbstractSelectableList<
         this.updateActiveDescendant();
         this.scrollIndexIntoView(idx);
 
-        if (commit) {
+        if (before !== null && !selectionsEqual(before, this._selectedSet)) {
             this.notifyUserChange();
         }
     }
