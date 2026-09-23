@@ -231,6 +231,8 @@ Components that need a theme value at construction time (rather than via a CSS v
 
 [`ThemeManager.onThemeChange`](/api/core/classes/ThemeManager#onthemechange) subscribes a callback that fires after every `setTheme` call, once all CSS variables have been written. `Text`-based components ([`Label`](/api/component/input/classes/Label), `Header` labels, table column headers) automatically recalculate their preferred size on each theme change so layout managers see updated dimensions.
 
+The library itself reads a handful of theme variables in script, such as a window's minimized dock-slot width, and it reads each one once per `setTheme`. A `--ts-ui-*` variable changed on `:root` by any other means is not seen by those reads until the next `setTheme`; call [`Util.invalidateTextMetricsCache()`](/api/core/namespaces/Util/functions/invalidateTextMetricsCache) after such a change.
+
 ```typescript
 const unsubscribe = ThemeManager.onThemeChange(() => {
     console.log('theme changed:', ThemeManager.getTheme().colorScheme);
