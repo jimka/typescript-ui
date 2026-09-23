@@ -384,6 +384,20 @@ page resets to empty.
   `resize`, so M docked windows cost M² window layouts per event; the dock
   now answers a resize through one listener of its own.
 
+- **Re-attaching a tooltip with the same text and colors no longer
+  rebuilds it.** `Tooltip.attach()` replaced a component's attachment on
+  every call, even an identical one, so re-running the same
+  `FieldDecorator.showError` on every keystroke, setting a `Button`'s
+  description to the one it already had, or rebinding a list row to an
+  item with the same tooltip removed and re-registered four listeners
+  each time — and dismissed that component's own tooltip if it was on
+  screen, or cancelled the hover delay it was waiting out. An identical
+  call now changes nothing: the tooltip stays up, or appears when its
+  delay runs out. Colors are compared by value. A call that changes the
+  text or a color still replaces the attachment as before. Code that
+  relied on an identical re-attach to dismiss its own tooltip calls
+  `Tooltip.detach(component)` first.
+
 ## Added
 
 ### Components
