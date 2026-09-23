@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { DOM } from "~/core/DOM.js";
+import { measureTextMetrics } from "~/core/TextMeasure.js";
 import { scaleTicks, tickPosition } from "~/component/chart/Scale.js";
 import type { ChartScale } from "~/component/chart/Scale.js";
 import type { MarkFactory, PlotRect } from "~/component/chart/types.js";
@@ -73,7 +73,7 @@ export function measureAxisMargin(
         let widest = 0;
 
         for (const value of ticks) {
-            widest = Math.max(widest, DOM.source.measureText(format(value)).width);
+            widest = Math.max(widest, measureTextMetrics(format(value)).width);
         }
 
         return TICK_LENGTH + LABEL_GAP + Math.ceil(widest);
@@ -81,7 +81,7 @@ export function measureAxisMargin(
 
     // Bottom axis: horizontal labels, so the reserved extent is one line's
     // height (the widest label height, which is font-driven and constant).
-    const labelHeight = DOM.source.measureText("0").height;
+    const labelHeight = measureTextMetrics("0").height;
 
     return TICK_LENGTH + LABEL_GAP + Math.ceil(labelHeight);
 }

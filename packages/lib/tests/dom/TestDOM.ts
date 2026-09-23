@@ -12,11 +12,12 @@
 // reads the recorded scroll / value / id state back off that stub. The shared
 // `TestHandleTable` is what lets a write through the sink be read by the source.
 
-import { DOM, type DOMSink, type DOMSource, type DocumentSelectionRange, type TextSelectionRange, type ElementPatch, type Handle, type TimerId, type PatchBuilder, type Rect, type ScrollMetrics, type OffsetSize, type MediaState } from '~/core/DOM';
+import { DOM, type DOMSink, type DOMSource, type DocumentSelectionRange, type TextSelectionRange, type ElementPatch, type Handle, type TimerId, type PatchBuilder, type Rect, type ScrollMetrics, type OffsetSize, type MediaState, type ComputedFont, type TextAdvanceSpacing } from '~/core/DOM';
 import type { Component } from '~/core/Component';
 import type { Size } from '~/primitive/Size';
 import type { TextMeasureOptions, TextMeasureRequest, TextMetrics } from '~/core/Util';
 import { clearBorderWidths } from '~/core/BorderWidths';
+import { clearTextMeasureCache } from '~/core/TextMeasure';
 import { _resetTextMeasurementRegistry } from '~/component/input/Text';
 
 /**
@@ -51,6 +52,12 @@ export interface ModelledDOMConfig {
     fontMetrics: FontMetricsTable;
     /** Resolved theme CSS variables (`--ts-ui-*` → value). */
     themeVars?: Record<string, string>;
+    /**
+     * Computed-font fields merged over the modelled ones, so a test can model
+     * `<body>` typography the canvas cannot reproduce (e.g.
+     * `{ letterSpacing: "1px" }`).
+     */
+    textContext?: Partial<ComputedFont>;
 }
 
 /**
@@ -974,6 +981,70 @@ function makeBuilder(commit: (patch: ElementPatch) => void): PatchBuilder {
     return builder as unknown as PatchBuilder;
 }
 
+/** The production probe's font defaults, mirrored for the modelled computed font. */
+const MODELLED_PROBE_DEFAULTS = {
+    fontFamily: 'var(--ts-ui-font-family, system-ui, sans-serif)',
+    fontSize:   'var(--ts-ui-font-size, 14px)',
+    lineHeight: 'calc(1em + var(--ts-ui-line-padding, 2px))',
+} as const;
+
+/** The weight keywords an engine computes to a number. */
+const MODELLED_WEIGHTS: Record<string, string> = { normal: '400', bold: '700' };
+
+/** The stretch keywords an engine computes to a percentage (the CSS Fonts keyword table). */
+const MODELLED_STRETCHES: Record<string, string> = {
+    'ultra-condensed': '50%',
+    'extra-condensed': '62.5%',
+    'condensed':       '75%',
+    'semi-condensed':  '87.5%',
+    'normal':          '100%',
+    'semi-expanded':   '112.5%',
+    'expanded':        '125%',
+    'extra-expanded':  '150%',
+    'ultra-expanded':  '200%',
+};
+
+/**
+ * The inherited typography of an unstyled `<body>`: each property at the
+ * first value the layout-free measurement treats as canvas-compatible.
+ */
+const MODELLED_TEXT_CONTEXT = {
+    letterSpacing:         'normal',
+    wordSpacing:           '0px',
+    textTransform:         'none',
+    fontFeatureSettings:   'normal',
+    fontVariationSettings: 'normal',
+    fontKerning:           'auto',
+    fontVariantLigatures:  'normal',
+    fontVariantNumeric:    'normal',
+    fontVariantEastAsian:  'normal',
+    fontSizeAdjust:        'none',
+    textRendering:         'auto',
+} as const;
+
+/** A `var()` with no parenthesis in its fallback: the innermost of a nested chain. */
+const INNERMOST_VAR = /var\(\s*(--[\w-]+)\s*(?:,\s*([^()]*?))?\s*\)/;
+
+/**
+ * Substitutes every `var(--name[, fallback])` in a CSS value, innermost first,
+ * with the theme variable's value, or its fallback when the variable is unset.
+ *
+ * @param value - The CSS value.
+ * @param vars - The theme variables.
+ * @returns The value with its variables resolved.
+ */
+function substituteThemeVars(value: string, vars: Record<string, string>): string {
+    let resolved = value;
+
+    for (let match = INNERMOST_VAR.exec(resolved); match !== null; match = INNERMOST_VAR.exec(resolved)) {
+        const substitute = vars[match[1]] ?? match[2] ?? '';
+
+        resolved = resolved.replace(match[0], () => substitute);
+    }
+
+    return resolved;
+}
+
 /**
  * Modelled read source: reproduces component geometry from committed layout
  * state (the residual-0 oracle) and resolves text metrics, theme variables, and
@@ -1089,11 +1160,7 @@ export class ModelledDOMSource implements DOMSource {
         // Mirror production: a line box taller than the font box splits the
         // surplus evenly above and below, which lowers the baseline.
         const baseline   = Math.round((lineHeight - fontBox) / 2 + font.ascent);
-        let   width      = 0;
-
-        for (const ch of text) {
-            width += font.advance[ch] ?? font.advance[' '] ?? 0;
-        }
+        const width      = this.advanceOf(text);
 
         // Model soft-wrap when a wrap width is supplied: pack the run into as
         // many equal lines as it takes to fit within maxWidth, so the reported
@@ -1125,6 +1192,58 @@ export class ModelledDOMSource implements DOMSource {
 
     measureTexts(requests: TextMeasureRequest[]): TextMetrics[] {
         return requests.map(r => this.measureText(r.text, r.options));
+    }
+
+    /**
+     * Models the probe's computed font: the option (or the probe's default)
+     * with its theme variables substituted, each field serialised as an engine
+     * computes it, and every inherited typography property at its first
+     * canvas-compatible value — then {@link ModelledDOMConfig.textContext}
+     * merged over the result.
+     */
+    getComputedFont(options: TextMeasureOptions = {}): ComputedFont {
+        const vars       = this._config.themeVars ?? {};
+        const font       = this.font();
+        const fontSize   = substituteThemeVars(options.fontSize ?? MODELLED_PROBE_DEFAULTS.fontSize, vars);
+        const weight     = options.fontWeight ?? 'normal';
+        const stretch    = options.fontStretch ?? 'normal';
+        const lineHeight = options.lineHeight ?? MODELLED_PROBE_DEFAULTS.lineHeight;
+
+        return {
+            fontFamily:      substituteThemeVars(options.fontFamily ?? MODELLED_PROBE_DEFAULTS.fontFamily, vars),
+            fontSize:        `${this.resolveFontSizePx(fontSize)}px`,
+            fontWeight:      MODELLED_WEIGHTS[weight] ?? weight,
+            fontStyle:       options.fontStyle ?? 'normal',
+            fontVariantCaps: options.fontVariant ?? 'normal',
+            fontStretch:     MODELLED_STRETCHES[stretch] ?? stretch,
+            lineHeight:      lineHeight === 'normal' ? 'normal' : `${this.resolveLineHeightPx(lineHeight, font.ascent + font.descent)}px`,
+            ...MODELLED_TEXT_CONTEXT,
+            ...this._config.textContext,
+        };
+    }
+
+    /**
+     * The unrounded sum of the baked advances — the width {@link measureText}
+     * ceils — so canvas and probe agree offline by construction. Ignores
+     * `font` and `spacing`, as the probe model ignores the font options.
+     */
+    measureTextAdvance(text: string, _font: string, _spacing: TextAdvanceSpacing): number | null {
+        return this.advanceOf(text);
+    }
+
+    /**
+     * Sums the baked per-character advances of `text`, a character missing
+     * from the table taking the space's advance.
+     */
+    private advanceOf(text: string): number {
+        const font = this.font();
+        let width  = 0;
+
+        for (const ch of text) {
+            width += font.advance[ch] ?? font.advance[' '] ?? 0;
+        }
+
+        return width;
     }
 
     /**
@@ -1607,6 +1726,10 @@ export function installTestDOM(config: ModelledDOMConfig): RecordingDOMSink {
     // Drop any border-width measurements shared from a previously installed
     // source, so a test file's cases cannot inherit widths measured against it.
     clearBorderWidths();
+
+    // Likewise drop every font, calibration, line box and memoised text
+    // measurement taken against a previously installed source.
+    clearTextMeasureCache();
 
     // Drop any Text instances registered by a previously installed source, so
     // one test file's cases cannot drag a previous case's Text into a batch.

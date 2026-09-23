@@ -826,3 +826,34 @@ WebKit's side is inference from its source, not measurement: its inline layout m
 [^offline-model]: `ModelledDOMSource.measureText` already sums baked per-character advances and ceils. Modelling `measureTextAdvance` as the same sum unrounded keeps every existing width expectation valid — `Tree.test.ts`, `ColumnWidths.test.ts` and `Util.test.ts` compute expected widths through the probe. It makes offline parity true by construction, which is the point: `TextBatchMeasure.test.ts`'s header already records that an offline parity assertion "would be true by construction and prove nothing". So the offline tests assert what only they can: which seam read ran, how many times, and when a cache clears.
 
 [^parity-panel]: The W3.0 record says the fix "must still prove canvas widths match the probe's for every font, weight and letter-spacing the library measures". In `code-document`, `status` and `editor` are `Border` regions whose widths do not depend on the status text; the shells, charts, tree and form likewise label only containers. `menus`' `menubarButton` is the one text-sized label, and it covers one font and a handful of strings. The `text-metrics` panel puts nine fonts and 24 strings under the gate, in a layout where every labelled width, and through `y`, every height, is a measured value, and its baseline row turns baselines into `y` offsets. Its `update` corpus is disjoint from its mount corpus so the fix's build measures it on the canvas; its own theme target changes the base font size so a missed invalidation shows as a width `DIFF`.
+
+---
+
+## Implementation Notes
+
+### Baseline (step 1)
+
+- **BASE_SHA = `376060218da848b0e4d123ffa5da78881bf864f0`** — the local `master` tip the branch starts from, and the commit the in-engine A/B builds its `wt` (base) arm from.
+- At that commit: `npm run build:lib` clean; `npm test` green (484 files, 8,043 tests, 2 todo); `npm run docs:api` 14 warnings — `MarkdownViewer` (3, `MarkdownContentPane`), `MarkdownEditor` (6, `$classifyContextMenuTarget` / `$selectEnclosingWordIfCollapsed`), `SpatialNavigation` (3), `rankInDirection` (1, `PRIMARY_GAP_EPSILON`), `FieldDecorator` (1, `Component.replaceComponent`). After this branch the list is identical: no new warning.
+
+### Deviations
+
+- **`packages/qa/tests/ablations.test.ts`, A27 `chart.margin-memo`, changed.** The plan said the W3.0 ablation tests "call the seam directly and must pass unchanged". A27 does not: it proves the ablation lets a data change through by counting `seam.source.measureText` > 0 on the pass after `chart-line`'s `update`. That update keeps every tick label, so after this plan the pass re-measures them from the memo with no seam read at all — exactly the saving *What the memo covers, for `chart-repaint-gate`* describes — and the count reads 0. The assertion now reads the ablation's own evidence instead: `memo.chart.margin-memo.plotHit` is absent on that pass, i.e. the wrapper called through to `computePlot` rather than re-serving the old insets (the unchanged pass before it still asserts `plotHit` = 1, so the check is not vacuous). `ablations.canvas.test.ts` and every other ablation test pass unchanged.
+- **`TextBatchMeasure.test.ts` case 11** also compares its first batch's length on `participants(...)`, not only `textCalls`: the wrapping `Text`'s text is canvas-eligible, so its first batch carries the default font's `CALIBRATION_TEXT` like case 1's.
+- **The `text-metrics` panel** also has the type-only imports every panel has — `PanelBuild` from `../panels.js` and `Component` from `@jimka/typescript-ui/core` — beyond the plan's "only `@jimka/typescript-ui/*` and `../pageTargets.js`". Both are inside the panel import rule (`tests/panels.test.ts` P5).
+- **References to this plan** in `core/TextMeasure.ts`, the two new test files, the panel's `description` and the QA README row point at `plans/implemented/text-measurement-without-reflow.md`, where the plan lives once the branch completes.
+
+### Pending — in-engine A/B (not run here)
+
+Every run opens a full-screen window, so the implementer ran none of it; it is the orchestrator's, with the user's go-ahead. From the root of the checkout that holds this branch, run the setup and the `wtab` script in *Verification → In-engine A/B* exactly as written, with `<BASE_SHA>` = `376060218da848b0e4d123ffa5da78881bf864f0`:
+
+```sh
+git worktree add .worktrees/_g18-base 376060218da848b0e4d123ffa5da78881bf864f0 --detach
+ln -sfn "$PWD/node_modules" .worktrees/_g18-base/node_modules
+(cd .worktrees/_g18-base/packages/lib && npm run build:lib)
+export QA_WT_LIB="$PWD/.worktrees/_g18-base/packages/lib"
+npm run build:lib
+bash /path/outside/the/repo/g18-ab.sh    # the plan's wtab script, 45 runs, about 15 minutes
+```
+
+Then read each cell with `python3 packages/qa/bin/qa-table.py packages/qa/results g18s1-<cell>- --seam` against *Expected readings* and the five *Pass criteria*, record the readings in `plans/research/render-review-2026-09-15/`, and fill in the `text-metrics` row's *Validated* cell in `packages/qa/README.md` (it reads "None yet."). A geometry `DIFF` anywhere — in `tmu` above all — blocks the merge until a follow-up decides.

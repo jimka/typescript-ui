@@ -3,6 +3,7 @@
 import { Size } from "~/primitive/Size.js";
 import type { Insets } from "~/primitive/Insets.js";
 import { DOM } from "~/core/DOM.js";
+import { clearTextMeasureCache, measureManyTextWidths, measureTextMetrics } from "~/core/TextMeasure.js";
 
 /**
  * Font options for off-screen text measurement.
@@ -70,20 +71,26 @@ export namespace Util {
     const boundFontSizeCache = new Map<string, number | null>();
 
     /**
-     * Measures the rendered size of a text string using an off-screen probe `<span>`.
+     * Measures the rendered size of a text string. A single line in a font a
+     * canvas reproduces is measured on the canvas, with no document layout;
+     * a wrap width, whitespace the page would collapse, or a font the canvas
+     * cannot reproduce is measured through an off-screen probe `<span>`. A
+     * repeated measurement is served from a cache until the next theme change
+     * or font load.
      *
      * @param text - The string to measure.
      * @param options - Font properties to apply. Defaults to the active theme variables.
      * @returns The measured `{width, height}` in pixels, ceiled to whole pixels.
      */
     export function measureTextSize(text: string, options: TextMeasureOptions = {}): Size {
-        const metrics = DOM.source.measureText(text, options);
+        const metrics = measureTextMetrics(text, options);
 
         return { width: metrics.width, height: metrics.height };
     }
 
     /**
-     * Returns the rendered pixel width of a text string.
+     * Returns the rendered pixel width of a text string, measured as
+     * {@link measureTextSize} measures it.
      *
      * @param text - The string to measure.
      * @param options - Font properties to apply. Defaults to the active theme variables.
@@ -94,15 +101,17 @@ export namespace Util {
     }
 
     /**
-     * Measures many strings under one font in a single document reflow,
-     * instead of one reflow per string.
+     * Measures many strings under one font with at most one document reflow,
+     * instead of one reflow per string. A single-line string in a font a
+     * canvas reproduces is measured on the canvas, with no reflow; the rest
+     * share one off-screen probe.
      *
      * @param texts - The strings to measure.
      * @param options - Font properties to apply. Defaults to the active theme variables.
      * @returns One width per input, in input order.
      */
     export function measureTextWidths(texts: string[], options?: TextMeasureOptions): number[] {
-        return DOM.source.measureTextWidths(texts, options);
+        return measureManyTextWidths(texts, options);
     }
 
     /**
@@ -335,15 +344,19 @@ export namespace Util {
 
     /**
      * Discards every cached text metric (line box, baseline, optical offset,
-     * bound font sizes) so the next read re-measures against the active theme
-     * font.
+     * bound font sizes, and every cached text measurement) so the next read
+     * re-measures against the active theme font.
      *
      * @remarks Call this whenever the active theme's font size, family, or
      * line-height changes, since the cached values reflect the font in use at
      * the time of the first measurement and would otherwise mis-align controls
-     * against each other after a theme swap.
+     * against each other after a theme swap. `ThemeManager` calls it on every
+     * theme change and every settled font load; call it yourself after
+     * changing typography it cannot see — a `:root` variable, `<body>`
+     * letter-spacing, or a font the app loads itself.
      */
     export function invalidateTextMetricsCache(): void {
+        clearTextMeasureCache();
         linePaddingCache   = -1;
         rootFontSizeCache  = -1;
         textBaselineCache  = -1;

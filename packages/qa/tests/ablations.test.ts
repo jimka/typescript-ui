@@ -1047,7 +1047,11 @@ describe('A27 chart.margin-memo', () => {
 
         (mounted.targets.update as CallTarget)(0);
 
-        expect(seamCountedLayout(chart).seam?.source.measureText).toBeGreaterThan(0);
+        // A miss is the evidence the memo let the data change through: the
+        // update keeps every tick label, and the library's own text
+        // measurement already serves a repeated label without a seam read, so
+        // a probe count cannot show the re-measure.
+        expect(seamCountedLayout(chart).work?.['memo.chart.margin-memo.plotHit']).toBeUndefined();
     });
 });
 
