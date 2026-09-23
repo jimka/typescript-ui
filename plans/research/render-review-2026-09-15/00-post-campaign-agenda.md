@@ -332,3 +332,43 @@ Found while planning, not in any plan:
 - **A rail-minimized window still takes a slot in the bottom dock and is moved
   into it** (found by `environment-read-caching`). The minimized-window stack
   counts windows the rail already holds.
+
+## Wave 3: implemented and measured in-engine (2026-09-23)
+
+All thirteen plans are implemented as one linear stack off master `37606021`,
+and measured: 456 MiniBrowser runs, none failed — 359 per-plan (each plan
+against the branch below it), 67 for the whole stack against master, 20
+confirmation re-runs and a 10-run probe. The full record, with every cell and
+each plan's acceptance criteria, is `97-w3-implementation-measurement.md`; the
+QA app's README now carries the readings in its Validated cells. The user ran
+the manual by-eye checks on 2026-09-23 and all pass.
+
+Found by the measurement, not by any plan:
+
+- **The QA app's `text-metrics` panel is not deterministic in its first
+  `update` phase.** Six of its 117 probed rectangles — all on row 9, widths
+  only, in unit 0 — vary by 1–2 px between runs, and the variation ignores
+  which library is loaded. It is the signature of measuring before the web font
+  swaps in. The consequence is that the cell's first phase cannot gate
+  anything. The fix is most likely to wait for the font-settled signal
+  `Body.init` already uses before driving the first phase. A QA-app defect, not
+  a library one.
+- **`FieldDecorator`'s error not arming under a resting pointer is now
+  confirmed user-visible**, in the tooltip plan's M3 check: the message changes
+  and the old tooltip fades, but the new message appears only after the pointer
+  leaves the field and returns. The bug is already recorded above under *Found
+  by the post-merge audit*; this raises its priority, because validation on
+  change after a click into the field is the common case.
+- **The layout-skip opt-ins have a second stage waiting on the form panels.**
+  `unchanged-commit-opt-ins` reaches −3.5% and −7.4% of the work on a form
+  layout pass where its plan predicted −84%: that figure came from W3.0's
+  ceiling ablation rather than the four classes that shipped. The form panels
+  are the obvious surface for the next staged opt-in, and `g09.all` now
+  measures headroom over the shipped opt-ins rather than an absolute ceiling.
+
+Costs accepted by the user (2026-09-23), all recorded in the measurement:
+a deep-shell resize is 1–2 ms slower under `layout-size-read-economy`, with
+every work counter and seam read falling — the cost is engine-side and
+invisible to the harness's instruments; the chart repaint gate costs 0.2–0.4 ms
+on a pass that repaints anyway; the dispatch walk costs under half a
+millisecond on a dashboard hover.
