@@ -85,6 +85,25 @@ function inlineStyleKeys(recorder: RecordingDOMSink): string[] {
     return keys;
 }
 
+/** Every value the sink recorded for inline-style key `key` on an `apply` patch. */
+function inlineStyleValues(recorder: RecordingDOMSink, key: string): Array<string | null> {
+    const values: Array<string | null> = [];
+
+    for (const write of recorder.writes) {
+        if (write.op !== 'apply') {
+            continue;
+        }
+
+        const style = (write.args[1] as { style?: Record<string, string | null> }).style;
+
+        if (style && key in style) {
+            values.push(style[key]);
+        }
+    }
+
+    return values;
+}
+
 /** Every value the sink recorded for attribute `name` on an `apply` patch. */
 function attributeWrites(recorder: RecordingDOMSink, name: string): string[] {
     const values: string[] = [];
@@ -137,6 +156,7 @@ describe('Component.setTransform — same-value guard', () => {
 
         component.setTransform('translateY(-1px)');
 
+        expect(inlineStyleKeys(sink)).not.toContain('transform');
         expect(ruleStyleWrites(sink)).toHaveLength(0);
     });
 
@@ -148,7 +168,8 @@ describe('Component.setTransform — same-value guard', () => {
 
         component.setTransform('translateY(-2px)');
 
-        expect(ruleWritesFor(sink, 'transform')).toEqual([{ key: 'transform', value: 'translateY(-2px)' }]);
+        expect(inlineStyleValues(sink, 'transform')).toContain('translateY(-2px)');
+        expect(ruleWritesFor(sink, 'transform')).toEqual([]);
         expect(component.getTransform()).toBe('translateY(-2px)');
     });
 });

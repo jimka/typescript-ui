@@ -501,6 +501,16 @@ const FRAMEWORK_BASELINE_KEYS: ReadonlySet<string> = new Set([
     "maxWidth", "maxHeight", "overflowX", "overflowY",
 ]);
 
+// A `setTransform` value that is not a list of transform functions: `none` and
+// the CSS-wide keywords. `transform` takes one of these only on its own, so
+// appended after a `setTranslate` offset it would make the whole composed
+// declaration invalid, and the browser would keep the element's previous
+// transform; `composeTransform` drops it there instead, which leaves the
+// offset alone, as the screen showed when the offset was inline and the
+// keyword on the rule. Matched the way CSS matches a keyword:
+// case-insensitively, ignoring surrounding whitespace.
+const STANDALONE_TRANSFORM_KEYWORD = /^\s*(?:none|inherit|initial|unset|revert-layer|revert)\s*$/i;
+
 // Mirrored onto the element by `setTabKeyOwner`, `setNavigationTarget`, and
 // `setClipFrame` respectively — exported so `FocusTraversal` and
 // `SpatialNavigation` read the exact same string they were written with,
@@ -3532,22 +3542,33 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns The transform string, or null.
      *
-     * @remarks Reflects the value written to the component's CSS rule by
-     * {@link setTransform}. {@link setTranslate} writes `transform` as an inline
-     * style on a separate surface — its value is **not** reflected here. The
-     * two transform surfaces (rule vs. inline) are independent; the cached
-     * value here is the rule-side value only.
+     * @remarks Returns the value last passed to {@link setTransform}, not the
+     * element's whole inline transform, which also carries any
+     * {@link setTranslate} offset — read that half through
+     * {@link getTranslateX} / {@link getTranslateY}.
      */
     getTransform(): string | null {
         return this._transform;
     }
 
     /**
-     * Sets the CSS transform on the element. Use {@link clearTransform} to remove.
+     * Sets the CSS transform on the element's inline style. Use
+     * {@link clearTransform} to remove.
      *
      * @param value - A CSS transform value (e.g. "translateY(-1px)").
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks The value is written inline, not to the component's stylesheet
+     * rule, because it can change per frame or per event (a pan, a toggle
+     * flip), and a stylesheet-rule write restyles the whole document in
+     * WebKitGTK while an inline write restyles only this element. The
+     * element's transform is {@link setTranslate}'s offset followed by this
+     * value. `none` or a CSS-wide keyword (`inherit`, `initial`, `unset`,
+     * `revert`) is written as given, but adds nothing while a
+     * {@link setTranslate} offset is set: the element then carries the offset
+     * alone. Inline style outranks every stylesheet rule, so a state rule
+     * cannot override it.
      */
     setTransform(value: string): this {
         if (this._transform === value) {
@@ -3555,20 +3576,24 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this._transform = value;
-
-        this.setElementCSSRule("transform", value);
+        this.writeTransform();
 
         return this;
     }
 
     /**
-     * Removes the transform CSS property from the element.
+     * Removes the value set by {@link setTransform}; a {@link setTranslate}
+     * offset stays.
      *
      * @returns This component, for method chaining.
      */
     clearTransform(): this {
+        if (this._transform === null) {
+            return this;
+        }
+
         this._transform = null;
-        this.setElementCSSRule("transform", null);
+        this.writeTransform();
 
         return this;
     }
@@ -5070,7 +5095,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Writes the element's `transform` to translate3d(x, y, 0). This positions on the
+     * Writes the element's inline `transform` as translate3d(x, y, 0), followed
+     * by any {@link setTransform} value. This positions on the
      * compositor without triggering layout/paint, complementing setX/setY (left/top).
      * Visual position of the element is `left + translateX, top + translateY`.
      *
@@ -5097,14 +5123,45 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         this._translateX = x;
         this._translateY = y;
-
-        if (x === 0 && y === 0) {
-            this.setElementStyle("transform", null);
-        } else {
-            this.setElementStyle("transform", "translate3d(" + Math.round(x) + "px," + Math.round(y) + "px,0)");
-        }
+        this.writeTransform();
 
         return this;
+    }
+
+    /**
+     * The element's inline `transform`: `setTranslate`'s rounded
+     * `translate3d(x, y, 0)` first, then the `setTransform` value, or `null` when
+     * neither is set. The translate goes first so the transform applies about the
+     * element's own origin and the offset then moves the result unchanged. A
+     * `setTransform` value of `none` or a CSS-wide keyword adds nothing after a
+     * translate (see `STANDALONE_TRANSFORM_KEYWORD`); with no translate it
+     * is written as given.
+     *
+     * @returns The composed value, or `null`.
+     */
+    private composeTransform(): string | null {
+        const hasTranslate = this._translateX !== 0 || this._translateY !== 0;
+        const translate    = hasTranslate ? "translate3d(" + Math.round(this._translateX) + "px," + Math.round(this._translateY) + "px,0)" : null;
+        const transform    = this._transform || null;
+
+        if (translate === null) {
+            return transform;
+        }
+
+        if (transform === null || STANDALONE_TRANSFORM_KEYWORD.test(transform)) {
+            return translate;
+        }
+
+        return translate + " " + transform;
+    }
+
+    /**
+     * Writes {@link composeTransform}'s value to the element's inline
+     * `transform`. Called by every setter that changes the translate or the
+     * transform.
+     */
+    private writeTransform(): void {
+        this.setElementStyle("transform", this.composeTransform());
     }
 
     /**
@@ -6974,7 +7031,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Replays the cached width / top / left / height and translate transform that
+     * Replays the cached width / top / left / height and the composed transform that
      * the leading inline-style wipe cleared — the second `applyStyle` phase.
      */
     private replayGeometryStyles(): void {
@@ -6996,12 +7053,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._inlineStyle.set("height", roundedExtent(this._top, this._height) + "px");
         }
 
-        // Replay the cached translate so a `setTranslate`'d transform survives
-        // the inline-style wipe above, the same way width/top/left/height are
-        // replayed. Skipped at the (0,0) default so components that drive
-        // `transform` through `setElementCSSRule` (rotation) are left untouched.
-        if (this._translateX !== 0 || this._translateY !== 0) {
-            this._inlineStyle.set("transform", "translate3d(" + Math.round(this._translateX) + "px," + Math.round(this._translateY) + "px,0)");
+        // Replay the composed transform so a `setTranslate` offset and a
+        // `setTransform` value survive the inline-style wipe above, the same way
+        // width/top/left/height are replayed. Skipped when neither is set, so a
+        // transform a stylesheet rule declares (`.CollapseButton`'s centring, its
+        // per-instance rotation) still applies.
+        const transform = this.composeTransform();
+
+        if (transform !== null) {
+            this._inlineStyle.set("transform", transform);
         }
     }
 

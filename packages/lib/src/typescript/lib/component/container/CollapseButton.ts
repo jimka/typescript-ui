@@ -211,10 +211,12 @@ class CollapseButton extends Component<CollapseButtonOptions> {
     /**
      * Writes the per-instance `transform` (centring plus the rotation for the
      * current direction) onto a `createStyleRule` rule, overriding the shared
-     * class rule's centring-only transform. Routed through `createStyleRule`
-     * rather than `setTransform` because that builder's rules are replayed by
-     * `applyStyle` at render time, whereas a main-rule write made before render
-     * is dropped when the rule is rebuilt.
+     * class rule's centring-only transform. That builder's rules are replayed
+     * by `applyStyle` at render time, so the rotation survives a render. A
+     * collapse toggle turns the chevron, so this is a stylesheet-rule write per
+     * toggle: ARCHITECTURE.md's *Motion properties write inline* names it as a
+     * known deviation, to move inline together with the toggle's other rule
+     * writes.
      */
     private applyRotation(): void {
         const degrees = _rotationByDirection[this._direction];

@@ -18,7 +18,7 @@ const LAYOUT_OPTIONS: Record<string, string> = { 'elk.algorithm': 'layered', 'el
 /** The view's zoom, held rather than fitted, so how many nodes are mounted depends on the viewport alone. */
 const VIEW_ZOOM = 1;
 
-export const description = 'DiagramView of an ELK-layered three-way tree of n nodes (default 400) at zoom 1, under a toolbar of zoom buttons, as DiagramPanel is. Reproduces slice 27 F27.2 (a click on the canvas looks up every node): getElementById + contains = 2n + 2 per click; F27.1 (a pan move writes a stylesheet rule): 1 setRuleStyles per pan unit; and F27.3 (a zoom notch recomputes edge residency): 1 setResidency@DiagramEdgeLayer per wheel unit.';
+export const description = 'DiagramView of an ELK-layered three-way tree of n nodes (default 400) at zoom 1, under a toolbar of zoom buttons, as DiagramPanel is. Reproduces slice 27 F27.2 (a click on the canvas looks up every node): getElementById + contains = 2n + 2 per click; F27.1 (fixed: a pan move wrote a stylesheet rule, 1 setRuleStyles per pan unit; it now writes the view\'s inline style, 1 apply); and F27.3 (a zoom notch recomputes edge residency): 1 setResidency@DiagramEdgeLayer per wheel unit.';
 
 /** 400 nodes: slice 27's graph. */
 export const defaultScale = 400;

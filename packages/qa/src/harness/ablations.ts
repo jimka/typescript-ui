@@ -2380,6 +2380,23 @@ function activeHeadingAt(headings: TrackedHeading[], offsets: Array<number | nul
     return active;
 }
 
+/** G28's note on a library whose `setTransform` already writes inline (from motion-transform-inline on). */
+const TRANSFORM_INLINE_NOTE = 'no rule-side transform: setTransform writes inline';
+
+/**
+ * Whether the library's `setTransform` already writes the element's inline
+ * style: its `Component` carries the `writeTransform` helper that composes the
+ * one inline declaration `setTranslate` and `setTransform` share. This
+ * ablation's raw inline write would drop a `setTranslate` offset composed into
+ * that declaration, so it patches nothing there.
+ *
+ * @param setProto - The prototype owning `setTransform`.
+ * @returns `true` when the library writes transforms inline itself.
+ */
+function libraryWritesTransformInline(setProto: AnyObj): boolean {
+    return typeof setProto.writeTransform === 'function';
+}
+
 /**
  * G28: `setTransform` writes the component's `#id` stylesheet rule, so every
  * continuous-motion frame restyles through the rule. Writes the same
@@ -2387,7 +2404,7 @@ function activeHeadingAt(headings: TrackedHeading[], offsets: Array<number | nul
  * already set move inline at install, uncounted.
  *
  * @param tools - The harness tools.
- * @returns A note saying what was patched.
+ * @returns A note saying what was patched, or `TRANSFORM_INLINE_NOTE` on a library that writes transforms inline itself.
  */
 function g28TransformInline(tools: HarnessTools): string {
     const name = 'g28.transform-inline';
@@ -2399,6 +2416,10 @@ function g28TransformInline(tools: HarnessTools): string {
 
     const setProto = tools.rootOwnerProto(any, 'setTransform')!;
     const clearProto = tools.rootOwnerProto(any, 'clearTransform')!;
+
+    if (libraryWritesTransformInline(setProto)) {
+        return TRANSFORM_INLINE_NOTE;
+    }
 
     setProto.setTransform = function (this: AnyObj, value: string): unknown {
         if (this._transform === value) {
