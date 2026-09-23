@@ -42,6 +42,10 @@ page resets to empty.
   ancestor with one call instead of reading every ancestor's id and parent.
   Only a consumer implementing its own `DOMSource` is affected.
 
+- **`Event.init()` is removed.** It was a documented no-op with no caller.
+  Delete any call to it; there is no replacement. See
+  [Migration](/reference/migration/next) for the full note.
+
 ### Components
 
 - **`Slider`'s `showTicks` option and its `isShowTicks()` / `setShowTicks()`
