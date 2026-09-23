@@ -21,6 +21,8 @@ import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
 import { RadioMenuRow } from "~/component/container/RadioMenuRow.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
+import { ResizeDrag, gutterOutline, rectOf, getAppResizeMode, IN_PAGE_OUTLINE_Z_INDEX } from "~/core/ResizeDrag.js";
+import type { OutlineRect, ResizeMode } from "~/core/ResizeDrag.js";
 
 // Pixel thickness of a single draggable gutter. The main-axis sizing math
 // subtracts the gutters' combined footprint before dividing space among
@@ -88,6 +90,11 @@ export interface SplitOptions extends LayoutManagerOptions {
      */
     collapseTrigger?: CollapseTrigger;
     /**
+     * How a gutter drag shows its progress. Omit it to follow the app-wide
+     * default set through `Body.setResizeMode`.
+     */
+    resizeMode?: ResizeMode;
+    /**
      * Multi-event listener bag dispatched to {@link Split.on} at
      * construction time.
      */
@@ -120,6 +127,36 @@ interface PaneContentSnapshot {
     min:       Size | null;
     max:       Size | null;
     displayed: Component[];
+}
+
+/** A dragged gutter's two neighbours' main-axis bounds, as {@link Split.onDrag} clamps them. */
+interface PairBounds {
+    /** The smallest the left/upper pane may become. */
+    minLhs: number;
+    /** The largest the left/upper pane may become. */
+    maxLhs: number;
+    /** The smallest the right/lower pane may become. */
+    minRhs: number;
+    /** The largest the right/lower pane may become. */
+    maxRhs: number;
+}
+
+/** One buffered gutter move: {@link Split.onDrag}'s three arguments. */
+interface SplitDragFrame {
+    /** The container that owns the panes. */
+    container: Component;
+    /** The gutter being dragged. */
+    gutter: SplitGutter;
+    /** The absolute pointer coordinate in the split axis. */
+    position: number;
+}
+
+/** An outline drag's state: the bounds read at the press, and the gutter's line. */
+interface SplitOutlineDrag {
+    /** The two neighbours' bounds, read once when the drag started. */
+    bounds: PairBounds;
+    /** The outline's box at the press. */
+    line: OutlineRect;
 }
 
 /**
@@ -175,11 +212,22 @@ class Split extends LayoutManager implements FocusRevealer {
     private _dragOriginLhsSize: number = 0;
     private _dragOriginRhsSize: number = 0;
 
-    // The most recent not-yet-applied `drag` event, and the animation frame
-    // scheduled to apply it — see `scheduleDrag`. `null`/`null` while no
-    // gutter is mid-drag or every buffered event has already been flushed.
-    private _pendingDrag: { container: Component; gutter: SplitGutter; position: number } | null = null;
-    private _dragRafHandle: number | null = null;
+    // This split's own resize mode; `null` follows the app-wide default.
+    private _resizeMode: ResizeMode | null = null;
+
+    // The outline drag in progress, or `null` in live mode and between drags.
+    private _outlineDrag: SplitOutlineDrag | null = null;
+
+    // The per-frame drag session every gutter move goes through: it applies at
+    // most one buffered move per animation frame, laying it out in live mode
+    // and moving the outline in outline mode.
+    private readonly _resizeDrag: ResizeDrag<SplitDragFrame> = new ResizeDrag<SplitDragFrame>({
+        // `this.onDrag` is looked up at call time, so a test's instance spy
+        // still sees every live frame.
+        apply:   (frame): void => this.onDrag(frame.container, frame.gutter, frame.position),
+        preview: (frame): OutlineRect | null => this.previewDrag(frame),
+        commit:  (frame): void => this.onDrag(frame.container, frame.gutter, frame.position),
+    });
 
     // The available (net-of-gutters) main-axis extent the stored `_sizes`
     // were last normalised against. Lets `recalculateSizes` rescale the
@@ -249,6 +297,10 @@ class Split extends LayoutManager implements FocusRevealer {
 
         if (options.collapseTrigger !== undefined) {
             this._collapseTrigger = options.collapseTrigger;
+        }
+
+        if (options.resizeMode !== undefined) {
+            this.setResizeMode(options.resizeMode);
         }
 
         if (options.collapsedPanes !== undefined) {
@@ -737,6 +789,33 @@ class Split extends LayoutManager implements FocusRevealer {
     setOrientation(orientation: AxisOrientation) : this {
         this._orientation = orientation;
         this.getContainer()?.invalidateLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the mode this split's gutter drags use: its own when it has one,
+     * otherwise the app-wide default set through `Body.setResizeMode`.
+     *
+     * @returns `'live'` or `'outline'`.
+     */
+    getResizeMode(): ResizeMode {
+        return this._resizeMode ?? getAppResizeMode();
+    }
+
+    /**
+     * Sets how this split's gutter drags show their progress. `'outline'`
+     * moves a thin line to where the gutter will land and lays the two panes
+     * out once, on release; `'live'` lays them out on every frame. Takes
+     * effect from the next drag.
+     *
+     * @param mode - The mode to use, or `null` to follow the app-wide default
+     *   set through `Body.setResizeMode` again.
+     *
+     * @returns This layout manager, for method chaining.
+     */
+    setResizeMode(mode: ResizeMode | null): this {
+        this._resizeMode = mode;
 
         return this;
     }
@@ -1295,6 +1374,10 @@ class Split extends LayoutManager implements FocusRevealer {
      * @param gutter - The gutter whose drag is starting.
      * @param position - The absolute pointer coordinate (`clientX`/`clientY`)
      *   in the split axis at the moment the drag began.
+     *
+     * @remarks Also starts the drag in this split's resize mode: an outline
+     * drag draws the gutter's line here, reading the pair's bounds once, and
+     * nothing is laid out again until the release.
      */
     onDragStart(container: Component, gutter: SplitGutter, position: number) {
         let gutterIdx = this._gutters.indexOf(gutter);
@@ -1303,12 +1386,24 @@ class Split extends LayoutManager implements FocusRevealer {
 
         this._dragOriginPointer = position;
 
-        if (this._orientation === "horizontal") {
+        const horizontal = this._orientation === "horizontal";
+
+        if (horizontal) {
             this._dragOriginLhsSize = lhs.getWidth();
             this._dragOriginRhsSize = rhs.getWidth();
         } else {
             this._dragOriginLhsSize = lhs.getHeight();
             this._dragOriginRhsSize = rhs.getHeight();
+        }
+
+        if (this.getResizeMode() === "outline") {
+            const line = gutterOutline(rectOf(gutter), horizontal ? "x" : "y");
+
+            this._outlineDrag = { bounds: this.pairBounds(lhs, rhs, horizontal), line };
+            this._resizeDrag.beginOutline({ parent: DOM.source.getParentNode(gutter.getElement()!)!, start: line, zIndex: IN_PAGE_OUTLINE_Z_INDEX });
+        } else {
+            this._outlineDrag = null;
+            this._resizeDrag.beginLive();
         }
     }
 
@@ -1345,31 +1440,8 @@ class Split extends LayoutManager implements FocusRevealer {
 
         const horizontal = this._orientation === "horizontal";
         const total      = this._dragOriginLhsSize + this._dragOriginRhsSize;
-
-        // Through the snapshots: the divider beside a collapsed pane is still
-        // draggable, and that pane's live bounds read deflated with its
-        // content out.
-        const lhsMin = this.paneMinSize(lhs);
-        const rhsMin = this.paneMinSize(rhs);
-        const lhsMax = this.paneMaxSize(lhs);
-        const rhsMax = this.paneMaxSize(rhs);
-        const minLhs = lhsMin ? (horizontal ? lhsMin.width : lhsMin.height) : 0;
-        const minRhs = rhsMin ? (horizontal ? rhsMin.width : rhsMin.height) : 0;
-        const maxLhs = lhsMax ? (horizontal ? lhsMax.width : lhsMax.height) : Number.POSITIVE_INFINITY;
-        const maxRhs = rhsMax ? (horizontal ? rhsMax.width : rhsMax.height) : Number.POSITIVE_INFINITY;
-
-        const offset = position - this._dragOriginPointer;
-
-        // Clamp the new lhs size to its own [min, max] AND to the room the
-        // partner's [min, max] leaves, keeping the pair's combined size (`total`)
-        // constant. `min = max` on either pane pins the gutter.
-        const loLhs = Math.max(minLhs, total - maxRhs);
-        const hiLhs = Math.min(maxLhs, total - minRhs);
-
-        let newLhs = this._dragOriginLhsSize + offset;
-        newLhs = Math.max(loLhs, Math.min(hiLhs, newLhs));
-
-        const newRhs    = total - newLhs;
+        const newLhs     = this.resolveLhsSize(this.pairBounds(lhs, rhs, horizontal), position);
+        const newRhs     = total - newLhs;
         const dragAmount = newLhs - (horizontal ? lhs.getWidth() : lhs.getHeight());
 
         if (horizontal) {
@@ -1399,14 +1471,85 @@ class Split extends LayoutManager implements FocusRevealer {
     }
 
     /**
-     * Buffers a gutter's `drag` event and applies at most one per animation
-     * frame, via {@link flushDrag}. A native `mousemove` fires far more often
-     * than the screen repaints, and `onDrag` is not cheap: it triggers a real
-     * `doLayout()` of both adjacent panes on every call — for two plain
-     * panels that is negligible, but a pane hosting something like a mounted
-     * `CodeEditor` reacts to its own width change with an internal remeasure,
-     * so an unthrottled drag can end up running that whole chain once per
-     * raw pointer-move rather than once per rendered frame, visibly
+     * The two panes' main-axis bounds for one drag, read through the collapse
+     * snapshots: the divider beside a collapsed pane is still draggable, and
+     * that pane's live bounds read deflated with its content out.
+     *
+     * @param lhs - The pane on the gutter's leading side.
+     * @param rhs - The pane on its trailing side.
+     * @param horizontal - Whether the split's main axis is the x axis.
+     *
+     * @returns Both panes' minimum and maximum main-axis extents.
+     */
+    private pairBounds(lhs: Component, rhs: Component, horizontal: boolean): PairBounds {
+        const lhsMin = this.paneMinSize(lhs);
+        const rhsMin = this.paneMinSize(rhs);
+        const lhsMax = this.paneMaxSize(lhs);
+        const rhsMax = this.paneMaxSize(rhs);
+
+        return {
+            minLhs: lhsMin ? (horizontal ? lhsMin.width : lhsMin.height) : 0,
+            minRhs: rhsMin ? (horizontal ? rhsMin.width : rhsMin.height) : 0,
+            maxLhs: lhsMax ? (horizontal ? lhsMax.width : lhsMax.height) : Number.POSITIVE_INFINITY,
+            maxRhs: rhsMax ? (horizontal ? rhsMax.width : rhsMax.height) : Number.POSITIVE_INFINITY,
+        };
+    }
+
+    /**
+     * The leading pane's new main-axis size for one pointer position: the drag
+     * origin plus the pointer's travel, clamped to the pane's own
+     * `[min, max]` AND to the room its partner's `[min, max]` leaves, keeping
+     * the pair's combined size constant. `min = max` on either pane pins the
+     * gutter. The pure half of one drag frame, so the outline preview and the
+     * live apply can never disagree about where the gutter lands.
+     *
+     * @param bounds - The pair's bounds, from {@link pairBounds}.
+     * @param position - The absolute pointer coordinate in the split axis.
+     *
+     * @returns The clamped main-axis size for the leading pane.
+     */
+    private resolveLhsSize(bounds: PairBounds, position: number): number {
+        const total  = this._dragOriginLhsSize + this._dragOriginRhsSize;
+        const offset = position - this._dragOriginPointer;
+        const loLhs  = Math.max(bounds.minLhs, total - bounds.maxRhs);
+        const hiLhs  = Math.min(bounds.maxLhs, total - bounds.minRhs);
+
+        return Math.max(loLhs, Math.min(hiLhs, this._dragOriginLhsSize + offset));
+    }
+
+    /**
+     * Where the outline goes for one buffered move: the gutter's own line,
+     * shifted by the size the leading pane would take on minus the size it
+     * had when the drag began.
+     *
+     * @param frame - The buffered move.
+     *
+     * @returns The outline's box, or `null` when no outline drag is live.
+     */
+    private previewDrag(frame: SplitDragFrame): OutlineRect | null {
+        const outline = this._outlineDrag;
+
+        if (outline === null) {
+            return null;
+        }
+
+        const travel = this.resolveLhsSize(outline.bounds, frame.position) - this._dragOriginLhsSize;
+
+        return this._orientation === "horizontal"
+            ? { ...outline.line, x: outline.line.x + travel }
+            : { ...outline.line, y: outline.line.y + travel };
+    }
+
+    /**
+     * Buffers a gutter's `drag` event in the shared per-frame drag session,
+     * which applies at most one per animation frame — laying it out in live
+     * mode, moving the outline in outline mode. A native `mousemove` fires far
+     * more often than the screen repaints, and `onDrag` is not cheap: it
+     * triggers a real `doLayout()` of both adjacent panes on every call — for
+     * two plain panels that is negligible, but a pane hosting something like a
+     * mounted `CodeEditor` reacts to its own width change with an internal
+     * remeasure, so an unthrottled drag can end up running that whole chain
+     * once per raw pointer-move rather than once per rendered frame, visibly
      * stuttering the gutter under a fast real drag. Only the most recent
      * event before a frame lands is kept — an intermediate position between
      * two `mousemove` events was never going to be visible anyway.
@@ -1417,51 +1560,28 @@ class Split extends LayoutManager implements FocusRevealer {
      *   in the split axis for this move.
      */
     private scheduleDrag(container: Component, gutter: SplitGutter, position: number): void {
-        this._pendingDrag = { container, gutter, position };
-
-        if (this._dragRafHandle === null) {
-            this._dragRafHandle = DOM.sink.requestAnimationFrame(() => this.flushDrag());
-        }
+        this._resizeDrag.schedule({ container, gutter, position });
     }
 
     /**
-     * Applies the most recently buffered {@link scheduleDrag} call, if one is
-     * pending — a no-op otherwise, which makes it safe to call unconditionally
-     * from both the scheduled animation frame and {@link onDragEnd}.
-     */
-    private flushDrag(): void {
-        this._dragRafHandle = null;
-
-        const pending = this._pendingDrag;
-
-        if (pending === null) {
-            return;
-        }
-
-        this._pendingDrag = null;
-
-        this.onDrag(pending.container, pending.gutter, pending.position);
-    }
-
-    /**
-     * Fires `paneresize` with the post-drag sizes once a gutter drag ends —
-     * the commit-grained signal a consumer persists, as opposed to the
-     * per-frame `drag` a gutter itself emits. Cancels and synchronously
-     * flushes any animation frame {@link scheduleDrag} still has pending
-     * first, so the committed sizes always reflect the pointer's actual last
-     * position rather than whichever buffered position a frame boundary
-     * happened to catch — and so this resolves at all offline, where the
-     * `requestAnimationFrame` this scheduled never fires (see DOMSink).
+     * Ends a gutter drag: the session flushes the freshest buffered move — so
+     * the committed sizes always reflect the pointer's actual last position
+     * rather than whichever buffered position a frame boundary happened to
+     * catch, and so this resolves at all offline, where the
+     * `requestAnimationFrame` it scheduled never fires (see DOMSink) — and in
+     * outline mode lays that move out once. Then fires `paneresize` with the
+     * post-drag sizes, the commit-grained signal a consumer persists, as
+     * opposed to the per-frame `drag` a gutter itself emits. A cancelled
+     * outline drag commits nothing and fires nothing.
      */
     private onDragEnd(): void {
-        if (this._dragRafHandle !== null) {
-            DOM.sink.cancelAnimationFrame(this._dragRafHandle);
-            this._dragRafHandle = null;
+        const committed = this._resizeDrag.end();
+
+        this._outlineDrag = null;
+
+        if (committed) {
+            this.emit("paneresize", this.getPaneSizes());
         }
-
-        this.flushDrag();
-
-        this.emit("paneresize", this.getPaneSizes());
     }
 
     /**
@@ -1733,14 +1853,12 @@ class Split extends LayoutManager implements FocusRevealer {
         // would never run again (see Border.detach).
         this._collapsing = false;
 
-        // Same idea for a still-buffered drag frame (see scheduleDrag): left
-        // alone, it would fire after this detach and call onDrag against
-        // panes `gutter.dispose()` below is about to tear down.
-        if (this._dragRafHandle !== null) {
-            DOM.sink.cancelAnimationFrame(this._dragRafHandle);
-            this._dragRafHandle = null;
-        }
-        this._pendingDrag = null;
+        // Same idea for a drag still in progress (see scheduleDrag): a
+        // buffered frame would fire after this detach against panes
+        // `gutter.dispose()` below tears down, and an outline would outlive
+        // the container.
+        this._resizeDrag.cancel();
+        this._outlineDrag = null;
 
         // Two shapes of detach. A manager swap leaves the panes mounted, so
         // their primed transitions must be settled — cleared — or each keeps a

@@ -479,7 +479,8 @@ abstract class VirtualRowView<
      * Decides whether this render pass may withhold the width-driven relayout of
      * every visible row's children because the view's width is still moving, and
      * arms (or extends) the settle relay that catches them up once it stops.
-     * Mirrors `Split.scheduleDrag`/`flushDrag`, which solves the same class of
+     * Mirrors `Split.scheduleDrag` and its per-frame drag session
+     * (`core/ResizeDrag.ts`), which solve the same class of
      * problem one layer up (a live pane resize).
      *
      * @param widthChanged - Whether this pass sizes rows to a different width than
@@ -523,7 +524,7 @@ abstract class VirtualRowView<
      * width changes arrive, matching `Split.scheduleDrag`.
      *
      * @remarks A single `afterNextLayout` call here is not enough. The owner
-     * driving this view's resize (`Split.flushDrag`, itself already coalesced
+     * driving this view's resize (`Split`'s per-frame drag flush, itself already coalesced
      * to one call per frame) calls `doLayout()` directly from its own
      * independently-scheduled `requestAnimationFrame`, registered by whichever
      * `mousemove` arrives after the previous frame finishes — chronologically

@@ -3,8 +3,8 @@
 // Simulates an actual multi-frame `Split`-gutter drag against
 // `VirtualRowView`'s row-child relayout coalescing (exercised here at the
 // `Tree` surface, its only current consumer): exactly one real `doLayout()`
-// pass per animation frame (`Split.flushDrag`'s own per-frame coalescing —
-// see `layout/Split.ts`'s `scheduleDrag`/`flushDrag` — cascades synchronously
+// pass per animation frame (`Split`'s per-frame drag flush's own coalescing —
+// see `layout/Split.ts`'s `scheduleDrag` and `core/ResizeDrag.ts` — cascades synchronously
 // through to a resized `Tree`'s own `doLayout()` -> `renderWindow()`),
 // interleaved with draining whatever settle-relay callback is currently
 // queued *before* each pass — mirroring the real timing: the view's own
@@ -143,7 +143,7 @@ function makeSettledTree(nodeCount: number, width: number, height: number): _Tre
 }
 
 /**
- * One real drag frame: the single `doLayout()` pass `Split.flushDrag`'s own
+ * One real drag frame: the single `doLayout()` pass `Split`'s per-frame drag flush's own
  * per-frame-coalesced drag callback would trigger this frame.
  */
 function realDragFrame(tree: _Tree, width: number): void {

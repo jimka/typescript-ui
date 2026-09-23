@@ -1281,3 +1281,94 @@ Also expected, per unit, on outline runs: `rules/u` ≤ 0.1 (the base writes 6.0
 [^readings]: The W3.0 figures are its plain arms: MiniBrowser, 2026-09-22, lib `83cfb0d7` (the 96 record and the raw `w3s1-*.json`). Absolutes drift 8–14% between sessions (`00-baseline.md`), so the gates compare each cell with its own base arms. Outline work is one live frame of work at the release plus the bounds read at the press, over 150 units — about base ÷ 150, or 0.7%; 2% leaves room. Outline applies are one outline write per frame plus the release's applies over 150 units. The base's per-frame stylesheet-rule writes (6 on `sdh`, 9 on `sds`) happen only in the release. The Δms column restates W3.0's counter-only bound — an outline frame is an idle frame plus one composited move — as drag average minus idle average.
 
 [^probe]: Probes run 2026-09-22 under the throwaway probe runner, against the library source of `feature/w3-0-results`, driving today's live path. Split: `lhs` 140 at +40, 250 at the clamp, 70 at −30, gutter 67, `rhs` 74, 0, 326, 300, sizes px 70 and ratio 1. Accordion: before and after heights, gutter boxes and `getSectionSizes()` as listed in A2. Window: the six W2 rows, and a chrome floor of 192×34 against an explicit minimum of 186×200. The same probes confirmed that a synchronous flush throws on a window with no element and runs on a rendered one.
+
+---
+
+## Implementation Notes
+
+**A/B base.** `d7bd731d3b4189207c5904987e1e6bdddcbbf403` — the branch's start
+point (`feature/split-collapse-static-participants`'s tip), recorded before
+any edit per *Ordered Implementation Steps* step 1. It is the SHA the `wt`
+arm of the in-engine A/B must be built at.
+
+**The in-engine A/B is pending, and was deliberately not run.** Every run
+opens a full-screen window, which the implementer never does. The script in
+*Verification* is unchanged; run it as written, with:
+
+```sh
+cd /home/jika/typescript/typescript-ui
+git worktree add .worktrees/_ro-base d7bd731d3b4189207c5904987e1e6bdddcbbf403 --detach
+ln -sfn "$PWD/node_modules" .worktrees/_ro-base/node_modules
+(cd .worktrees/_ro-base/packages/lib && npm run build:lib)
+export QA_WT_LIB="$PWD/.worktrees/_ro-base/packages/lib"
+# then, from .worktrees/drag-resize-outline-mode with its packages/lib built:
+bash resize-outline-ab.sh --dry-run   # expect 49 runqa lines
+bash resize-outline-ab.sh
+bash resize-outline-ab.sh --read
+```
+
+Everything in *Verification*'s **Implementer** list was run and is clean:
+`typecheck`, `typecheck:test`, `lint`, `test:lint`, the whole `npm test`
+(8,284 passing, with R1–R14, B1, S1–S7, A1–A4, W1–W5 new), every grep check in
+steps 2, 8, 10, 12 and 13, `npm run build:lib` followed by `npm test` in
+`packages/qa` (344 passing, Q1–Q3 new), `npm run docs:api` (the 14 warnings
+`master` already has, no new one) and `npm run docs:llms:check`.
+
+### Deviations
+
+- **Q1 lives in `packages/qa/tests/drivers.dom.test.ts`, not
+  `drivers.test.ts`.** `drivers.test.ts` runs in Vitest's node environment,
+  where `Element` and `document` are both undefined; `dragout` reaches
+  `requireElement` (an `instanceof Element` test) and dispatches its moves on
+  `document`, so the case would throw a `ReferenceError` there rather than
+  exercising the driver. `drivers.dom.test.ts` is the jsdom half of that same
+  split, and its own header already states the division. The case asserts
+  exactly what Q1 specifies.
+
+- **R12 reads the outline's class-tier chrome off the resolved class layer,
+  not the rule's CSS text.** The offline DOM source returns `''` from
+  `getRuleCssText`, so `styleRuleEntries()` cannot show that the rule names
+  `--ts-ui-drag-reorder-color`; and the class rule is written once per
+  process, so a later case cannot see the write either. The case still
+  asserts, as R12 asks, that a `.ResizeOutline` class rule exists and that
+  neither outline has a rule or a `setRuleStyles` write of its own.
+
+- **`tests/component/dispose-listener-teardown.test.ts` gains a baseline
+  entry for `ResizeOutline`.** That registry fails whenever a class gains its
+  first `Event.add*(this, …)` registration with neither a covering row nor a
+  baseline entry, which the plan did not foresee. A covering row is not
+  available: every row constructs its component directly and registers from
+  the constructor, while `ResizeOutline` is module-private and registers from
+  `show()`, which needs a rendered host and an installed test DOM. The entry
+  carries a comment naming `ResizeDrag.test.ts`'s R8, which pins the purge.
+
+- **Three offline-only adjustments inside the new test files**, each
+  commented at its site: `AbstractWindow.resizeMode.test.ts` pins one handle
+  from `DOM.source.getDocumentElement()` (the offline source mints a fresh
+  one per call) and drains no frame in W4's `setWindowState` case (a frame
+  would advance the maximize's own state animation); `Split.resizeMode` and
+  `Accordion.resizeMode` drop the layout frames their scene's construction
+  queued, and dispose their host in `afterEach` so the outline's viewport
+  listeners leave `Event`'s module-level maps — a surviving type map stops the
+  next `addViewportListener` re-registering against the fresh sink.
+
+- **`AbstractWindow.setWidth`'s JSDoc no longer calls `clampWidth` private**,
+  since step 3 made it `protected`. One word, in the comment the change
+  falsified.
+
+- **No demo-app panel was added.** The plan's sanctioned surface for
+  exercising this feature is the QA app, and its three additions are
+  implemented; adding a `SplitPanel` toggle as well would be a change the plan
+  does not call for.
+
+### Environment note
+
+`packages/qa`'s `npm run typecheck` resolves `@jimka/typescript-ui` through
+plain node resolution, which in a worktree with no `node_modules` of its own
+lands on the **main** checkout's built `dist` — a library build that predates
+`Body.setResizeMode`. A gitignored
+`.worktrees/drag-resize-outline-mode/node_modules/@jimka/typescript-ui ->
+../../packages/lib` symlink points it at this worktree's library instead, and
+the typecheck is then clean. Vitest was never affected: the QA Vite config's
+`libraryBuildPlugin` already aliases the library to this worktree's
+`packages/lib`.

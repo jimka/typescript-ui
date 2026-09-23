@@ -26,6 +26,10 @@ export { Container } from '~/core/Container.js';
 export type { ContainerOptions } from '~/core/Container.js';
 export { Panel } from '~/core/Panel.js';
 export type { AutoScrollMode, PanelOptions, ScrollbarStyle } from '~/core/Panel.js';
+// Only the mode type: the drag session, its outline and the app-wide default
+// in `core/ResizeDrag.ts` are framework-internal, reached through
+// `Body.setResizeMode` and each owner's own `resizeMode` option.
+export type { ResizeMode } from '~/core/ResizeDrag.js';
 export { Form } from '~/core/Form.js';
 export type { FormOptions } from '~/core/Form.js';
 export { Aria } from '~/core/Aria.js';

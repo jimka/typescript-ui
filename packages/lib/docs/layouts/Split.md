@@ -185,6 +185,16 @@ A saved array whose length or per-index unit no longer matches the live panes (e
 
 > **`getPaneRatios` / `applyPaneRatios` are a different surface.** They serve [Layout serialization](/layouts/LayoutSerialization)'s same-session topology switching — a weight-agnostic ratio of the *whole* pane set, with no unit tag. Using them for cross-session persistence would restore a `weight: 0` pane at the wrong px on a differently-sized window; use `getPaneSizes` / `applyPaneSizes` for that instead.
 
+## Live or outline resizing
+
+By default a gutter drag lays both neighbouring panes out on every frame, so their content reflows as the gutter moves. With `resizeMode: 'outline'` the panes stay put while a thin accent-blue line follows the pointer — stopping exactly where the drag would stop — and the panes are laid out once, on release. Press Escape before releasing to cancel: the line disappears and nothing changes.
+
+```typescript
+const split = Split({ orientation: 'horizontal', resizeMode: 'outline' });
+```
+
+A split with no `resizeMode` of its own follows the app-wide default set through [`Body.init`](/components/Body#resize-mode), which is `'live'` unless you change it. The mode is read when a drag starts. `paneresize` fires once per release in both modes, and not after a cancelled drag. Outline mode trades the live reflow for speed: a pane with expensive content — a code editor, a wide table — costs nothing while the gutter moves.
+
 ## Common methods
 
 | Method | Purpose |
@@ -197,6 +207,7 @@ A saved array whose length or per-index unit no longer matches the live panes (e
 | `getPaneSizes()` | Weight-aware, mixed-unit sizes for cross-session persistence. See [Saving and restoring layout](#saving-and-restoring-layout). |
 | `applyPaneSizes(sizes)` | Restore sizes captured by `getPaneSizes`. |
 | `setPaneResizeWeight(pane, weight)` | Pin (`0`) or weight a pane's share of a container resize; `undefined` clears the pin. |
+| `setResizeMode(mode)` | `'live'` or `'outline'`; `null` follows the app-wide default. |
 
 ## Notes
 

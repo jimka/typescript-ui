@@ -37,6 +37,37 @@ export interface MountedPanel {
 }
 
 /**
+ * Applies the run's `resize=` parameter: the app-wide resize mode every
+ * `Split`, resizable `Accordion` and window that sets none of its own then
+ * follows. Nothing to do when the run passed none.
+ *
+ * @param body - The mounted body singleton.
+ * @param value - The parameter's value: `live`, `outline`, `''` or `null`.
+ * @throws Error - `resize: unknown mode "<value>" (expected live, outline)`
+ *   for any other value, and
+ *   `resize=<value>: this library build has no Body.setResizeMode` when the
+ *   arm under test predates the setter — a silently ignored parameter would
+ *   let a run measure live mode under an outline name.
+ */
+export function applyResizeMode(body: Body, value: string | null): void {
+    if (value === null || value === '') {
+        return;
+    }
+
+    if (value !== 'live' && value !== 'outline') {
+        throw new Error(`resize: unknown mode "${value}" (expected live, outline)`);
+    }
+
+    const setResizeMode = (body as unknown as { setResizeMode?: (mode: string) => void }).setResizeMode;
+
+    if (typeof setResizeMode !== 'function') {
+        throw new Error(`resize=${value}: this library build has no Body.setResizeMode`);
+    }
+
+    setResizeMode.call(body, value);
+}
+
+/**
  * The real waits: `painted` polls until the root's element exists and is
  * painted, `settled` sleeps.
  *
@@ -76,6 +107,9 @@ export async function mountPanel(id: string, params: URLSearchParams, tools: Har
     }
 
     const body  = await Body.init({ layoutManager: Fit() });
+
+    applyResizeMode(body, params.get('resize'));
+
     const n     = parseScale(params.get('n'), module.defaultScale);
     const build = module.build(n, params);
 
@@ -92,7 +126,14 @@ export async function mountPanel(id: string, params: URLSearchParams, tools: Har
         await waits.settled();
     }
 
-    return { module, n, build, targets: { ...pageTargets(build.root), ...build.targets, ...mounted } };
+    const targets: Record<string, unknown> = { ...pageTargets(build.root), ...build.targets, ...mounted };
+
+    // `dragout` drags the same handle `drag` does, one way.
+    if (targets.drag !== undefined && targets.dragout === undefined) {
+        targets.dragout = targets.drag;
+    }
+
+    return { module, n, build, targets };
 }
 
 /**

@@ -302,6 +302,14 @@ page resets to empty.
   state. A custom pane that relied on a `doLayout` call per animation frame to
   pick up a change it never announced must call `scheduleLayout()` itself.
 
+### Overlay
+
+- **A window edge drag applies its last pointer position synchronously on
+  release**, as a `Split` gutter drag always has, rather than on the next
+  animation frame. Left to that frame, the last buffered move could land a
+  frame or more after the release, since the `setResizeFps` cap re-arms when
+  frames arrive just inside its period.
+
 ## Added
 
 ### Components
@@ -364,6 +372,10 @@ page resets to empty.
 
 ### Layouts
 
+- **`Split` and `Accordion` take `resizeMode`**, with `getResizeMode()` /
+  `setResizeMode(mode | null)`; a manager with none of its own follows the
+  app-wide mode set through `Body`.
+
 - **`Tab.setTabModified(content, modified)` / `isTabModified(content)`** show
   or hide a live tab's "unsaved changes" dot. The flag is written to the
   tab's `LayoutConstraints`, so it survives a tear-off, a re-dock, or a
@@ -381,6 +393,12 @@ page resets to empty.
   below).
 
 ### Core
+
+- **`resizeMode` — live or outline resizing.** `Body.init({ resizeMode })` and
+  `Body.setResizeMode(mode)` set the app-wide mode for gutter and
+  window-edge drags; `'outline'` moves an outline to where the edge will land
+  and lays the content out once on release, `'live'` (the default) keeps
+  today's behaviour. The `ResizeMode` type is exported from `core`.
 
 - **New `FocusReveal` broker**, exported from `core` alongside
   `FocusHistory`. Hiding containers (`Tab`, `Border`, `Accordion`, `Split`,
@@ -465,6 +483,9 @@ page resets to empty.
   action is needed.
 
 ### Overlay
+
+- **`Window` and `TabWindow` take `resizeMode`**, the same pair, for edge and
+  corner drags.
 
 - **`Dock` gains four panel-id-keyed presentation setters**:
   `setPanelTitle(id, title)`, `setPanelGlyph(id, glyph)`,

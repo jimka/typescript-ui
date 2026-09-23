@@ -103,7 +103,13 @@ const UNCLAIMED_LISTENER_CLASSES: readonly string[] = [
     'Dialog', 'DialogBackdrop', 'Drawer', 'FileDropZone', 'Form', 'HeaderCell', 'Markdown',
     'MarkdownViewer', 'MenuBar', 'Notification', 'Panel', 'ParentHeaderCell', 'PickerCell',
     'PickerDay', 'PickerMonthLabel', 'PickerNavButton', 'Popover', 'RadioButton',
-    'Rail', 'ResizeHandle', 'ScrollArrowButton', 'Scrollbar', 'Slider', 'SpinButton', 'SplitGutter',
+    // `ResizeOutline` is module-private to `core/ResizeDrag.ts` and registers
+    // its two viewport listeners from `show()`, which needs a rendered host and
+    // a test DOM — neither of which this file installs, since every row above
+    // registers from its constructor. Its purge is pinned instead by
+    // tests/core/ResizeDrag.test.ts's R8, which asserts the viewport listener
+    // count returns to its pre-drag value once the outline is disposed.
+    'Rail', 'ResizeHandle', 'ResizeOutline', 'ScrollArrowButton', 'Scrollbar', 'Slider', 'SpinButton', 'SplitGutter',
     'TabBar', 'TableBody', 'TextInput', 'TextInputCellEditor', 'TimeEditor', 'TimePickerDropdown', 'ToggleButton',
     'ToolBar', 'Tree', 'TreeTable', 'WebGLCanvas', 'WindowBorder', 'WindowHeader',
 ];

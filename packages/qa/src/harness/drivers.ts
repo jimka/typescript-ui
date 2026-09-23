@@ -158,20 +158,24 @@ function requireElement(driver: string, target: unknown): Element {
 }
 
 /**
- * Drags `target.element` along `target.axis`: a `mousedown` at its centre,
- * one `mousemove` on `document` per frame moving `stepPx` out for the first
- * half of the units and back for the second, then a `mouseup`.
+ * Presses `target.element` at its centre and drags it along `target.axis`,
+ * one `mousemove` on `document` per frame by whatever `stepFor` gives that
+ * unit, then releases where it ended up.
  *
  * @param ctx - The phase's context; `ctx.target` is `{ element, axis }`.
+ * @param name - The driver's name, for the errors.
+ * @param stepFor - This unit's signed step along the axis, in px.
  * @returns The frame gaps.
+ * @throws Error - `<name>: target is not an element` or
+ *   `<name>: target axis must be "x" or "y"`, before anything is dispatched.
  */
-async function drag(ctx: DriveContext): Promise<number[]> {
+async function pressAndDrag(ctx: DriveContext, name: string, stepFor: (index: number) => number): Promise<number[]> {
     const target = ctx.target as { element?: unknown; axis?: unknown } | null | undefined;
-    const element = requireElement('drag', target?.element);
+    const element = requireElement(name, target?.element);
     const axis = target?.axis;
 
     if (axis !== 'x' && axis !== 'y') {
-        throw new Error('drag: target axis must be "x" or "y"');
+        throw new Error(`${name}: target axis must be "x" or "y"`);
     }
 
     let { x, y } = centreOf(element);
@@ -179,7 +183,7 @@ async function drag(ctx: DriveContext): Promise<number[]> {
     ctx.tools.fireMouse('mousedown', element, x, y);
 
     const gaps = await ctx.tools.runFrames(ctx.units, (i) => {
-        const delta = triangleStep(i, ctx.units, ctx.stepPx);
+        const delta = stepFor(i);
 
         if (axis === 'x') {
             x += delta;
@@ -193,6 +197,33 @@ async function drag(ctx: DriveContext): Promise<number[]> {
     ctx.tools.fireMouse('mouseup', document, x, y);
 
     return gaps;
+}
+
+/**
+ * Drags `target.element` along `target.axis`: a `mousedown` at its centre,
+ * one `mousemove` on `document` per frame moving `stepPx` out for the first
+ * half of the units and back for the second, then a `mouseup`.
+ *
+ * @param ctx - The phase's context; `ctx.target` is `{ element, axis }`.
+ * @returns The frame gaps.
+ */
+async function drag(ctx: DriveContext): Promise<number[]> {
+    return pressAndDrag(ctx, 'drag', (i) => triangleStep(i, ctx.units, ctx.stepPx));
+}
+
+/**
+ * Drags `target.element` `stepPx` along `target.axis` every unit, never back:
+ * a `mousedown` at its centre, one `mousemove` on `document` per frame, and a
+ * `mouseup` `units × stepPx` px from where it started. Unlike `drag`'s
+ * triangle wave, this one ends somewhere else, so the layout it leaves behind
+ * is the one the drag actually asked for.
+ *
+ * @param ctx - The phase's context; `ctx.target` is `{ element, axis }`, the
+ *   same target `drag` uses.
+ * @returns The frame gaps.
+ */
+async function dragout(ctx: DriveContext): Promise<number[]> {
+    return pressAndDrag(ctx, 'dragout', () => ctx.stepPx);
 }
 
 /**
@@ -1123,6 +1154,7 @@ async function hwheel(ctx: DriveContext): Promise<number[]> {
 /** Driver name → driver. A panel names these by the keys of its targets. */
 export const DRIVERS: Record<string, Driver> = {
     drag,
+    dragout,
     wheel,
     resize,
     passes,

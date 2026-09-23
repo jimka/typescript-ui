@@ -18,13 +18,13 @@ import { Accordion, AccordionConstraints, Border, Split } from '@jimka/typescrip
 import { Dock } from '@jimka/typescript-ui/overlay';
 import type { DockLayoutSpec, DockPanelSpec } from '@jimka/typescript-ui/overlay';
 import { Placement } from '@jimka/typescript-ui/primitive';
-import type { CallTarget, HarnessTools } from '../harness/types.js';
+import type { CallTarget, GeometryTarget, HarnessTools } from '../harness/types.js';
 import type { PanelBuild } from '../panels.js';
 import { appMenuBar, appStatusBar, appToolBar, fileTreeRenderer } from './chrome.js';
 import { codeDocument, folderNodes, outlineLabels } from './data.js';
 import { childGutter, dockGutter, elementFor, firstPainted, requireElement } from './dom.js';
 import { choice } from './params.js';
-import { TYPE_TEXT } from './shared.js';
+import { RESIZE_OUTLINE_SELECTOR, TYPE_TEXT } from './shared.js';
 import { countInstance } from './work.js';
 
 /** A shell's depth: a 2×2 dock grid (S1's shape) or a single dock region (S3's). */
@@ -367,7 +367,7 @@ export function buildShell(n: number, depth: ShellDepth, params: URLSearchParams
     });
 
     const shell: ShellParts = { depth, params, panel, center, explorer: parts, menuBar, toolBar, dock };
-    const geometry: Record<string, Component> = { sidebar: parts.sidebar, files: parts.files, outline: parts.outline, history: parts.history, main, dock, header0: headers[0], status };
+    const geometry: Record<string, GeometryTarget> = { sidebar: parts.sidebar, files: parts.files, outline: parts.outline, history: parts.history, main, dock, header0: headers[0], status, resizeOutline: RESIZE_OUTLINE_SELECTOR };
 
     editors.forEach((editor, k) => {
         geometry[`editor${k}`] = editor;

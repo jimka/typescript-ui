@@ -131,6 +131,8 @@ No gutter appears with fewer than two open sections, and none ever appears under
 
 Resizable sections and [`Split`](/api/layout/classes/Split) solve different problems: reach for `resizable` when you want the accordion's own collapsible sections to also be reapportionable, and compose with `Split` instead when you want independent draggable panes that are not collapsible sections at all.
 
+`resizeMode: 'outline'` (or `setResizeMode('outline')`) makes a gutter drag move a line instead of the sections, and lays the sections out once on release, exactly where a live drag would have left them; Escape cancels. Without it the accordion follows the app-wide default set through [`Body.init`](/components/Body#resize-mode). `sectionresize` fires once per release in both modes, and not after a cancelled drag.
+
 ### Saving and restoring section sizes
 
 [`getSectionSizes`](/api/layout/classes/Accordion#getsectionsizes) / [`applySectionSizes`](/api/layout/classes/Accordion#applysectionsizes) and the `sectionSizes` option capture and restore open sections' content sizes for **cross-session persistence** — a consumer's own store, not built into the library. Each entry's unit follows the same `weight`/`fillHeight` rule the resize pin above reads: a resize-pinned section (`weight` unset or `0`, with `fillHeight` off) persists as **px**, restored verbatim regardless of the window size on reload; every other section persists as a **ratio** of the space the pinned sections leave. `sectionresize` fires once a completed gutter drag settles the sizes — never per frame — so a listener can persist on every commit without debouncing:
