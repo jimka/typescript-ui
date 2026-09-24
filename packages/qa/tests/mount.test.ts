@@ -9,11 +9,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Body, Component, DOM } from '@jimka/typescript-ui/core';
 import { AbstractWindow } from '@jimka/typescript-ui/overlay';
+import { startCounting, stopCounting } from '../src/harness/counters.js';
+import type { PhaseCounts } from '../src/harness/counters.js';
 import { createTools, parseDrive } from '../src/harness/run.js';
 import type { CallTarget, HarnessTools } from '../src/harness/types.js';
 import { mountPanel } from '../src/mount.js';
 import type { MountedPanel, MountWaits } from '../src/mount.js';
+import { elementFor } from '../src/builders/dom.js';
 import { getPanelIds, loadPanel } from '../src/panels.js';
+import { restorePatchables, snapshotPatchables } from './patchGuard.js';
 
 // The library applies its default theme at the first `Body` touch.
 // Constructing the singleton here applies that theme before any tree this
@@ -274,6 +278,150 @@ describe('P15 resize mode', () => {
         expect(build.geometry!.resizeOutline).toBe('.ResizeOutline');
     });
 });
+
+/**
+ * The handle whose scroll metrics a panel's `getMaxScrollTop` reads: the inner
+ * overlay scroller when one is installed, else the component's own element.
+ *
+ * @param pane - A scrolling panel.
+ * @returns The handle.
+ */
+function scrollHandleOf(pane: Component): unknown {
+    return (pane as unknown as { _overlayScrollElement?: unknown })._overlayScrollElement ?? pane.getElement();
+}
+
+/**
+ * Frames that let a scrolling panel's resize-settle relay run out: the mount's
+ * first layout arms it and it takes two layout flushes to clear, and until it
+ * has, a pane withholds the re-measure. One frame more than the two, as margin
+ * — `ablations.test.ts` waits the same.
+ */
+const PANEL_SETTLE_FRAMES = 3;
+
+describe('P16 scroll-panes', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('builds n panes of equal rows and resolves a wheel target in the document', async () => {
+        const mounted = await mountPanel('scroll-panes', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const host = mounted.build.describe!() as { panes: number; rowsPerPane: number };
+        const panes = mounted.build.root.getComponents();
+        const wheel = mounted.targets.wheel;
+
+        expect(host.panes).toBe(SMOKE_SCALE);
+        expect(panes).toHaveLength(SMOKE_SCALE);
+        expect(host.rowsPerPane).toBeGreaterThan(0);
+        expect(panes.map((pane) => pane.getComponents().length)).toEqual(panes.map(() => host.rowsPerPane));
+        expect(wheel instanceof Element && wheel.isConnected, 'wheel: element in the document').toBe(true);
+    });
+
+    it('lays every pane out on a settled pass, where a plain Panel would skip it', async () => {
+        const mounted = await mountPanel('scroll-panes', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const root = mounted.build.root;
+        const patched = snapshotPatchables([tools.ownerProto(root.getComponents()[0], 'remeasureScrollMetrics')!]);
+
+        await tools.waitFrames(PANEL_SETTLE_FRAMES);
+
+        try {
+            mounted.build.installWork!(tools);
+
+            // The pass moves no pane, so a plain `Panel` would take the
+            // unchanged-commit skip and never reach `remeasureScrollMetrics` —
+            // the call the cell measures. The counter is wrapped on
+            // `Panel.prototype`, so its key carries the receiver's class: the
+            // panes report under the subclass, the board root under `Panel`.
+            const work = counted(() => root.doLayout());
+
+            expect(work['pane.remeasure@ScrollPane']).toBe(SMOKE_SCALE);
+            expect(work['pane.remeasure@Panel']).toBe(1);
+        } finally {
+            restorePatchables(patched);
+        }
+    });
+
+    it('counts only the panes that overflow as scrollable', async () => {
+        const mounted = await mountPanel('scroll-panes', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const panes = mounted.build.root.getComponents();
+        const overflowing = scrollHandleOf(panes[0]);
+
+        // jsdom lays nothing out, so every pane's maximum scroll offset is 0 and
+        // the witness cannot be told from a plain count of panes. Stubbing the
+        // seam's scroll metrics — the read `getMaxScrollTop` takes them from —
+        // gives pane 0 content taller than its box and leaves the others
+        // fitting. A handle is an opaque number, so the panes are told apart by
+        // handle identity rather than by node containment.
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation((handle) => ({
+            scrollTop: 0,
+            scrollLeft: 0,
+            scrollWidth: 0,
+            clientWidth: 0,
+            clientHeight: PANE_CLIENT_HEIGHT_PX,
+            scrollHeight: handle === overflowing ? PANE_SCROLL_HEIGHT_PX : PANE_CLIENT_HEIGHT_PX,
+        }));
+
+        const host = mounted.build.describe!() as { panes: number; scrollablePanes: number; maxScrollTop0: number };
+
+        expect(host.panes).toBe(SMOKE_SCALE);
+        expect(host.scrollablePanes).toBe(1);
+        expect(host.maxScrollTop0).toBe(PANE_SCROLL_HEIGHT_PX - PANE_CLIENT_HEIGHT_PX);
+    });
+
+    it('labels a row of a pane no phase scrolls', async () => {
+        const mounted = await mountPanel('scroll-panes', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const panes = mounted.build.root.getComponents();
+        const row1 = mounted.build.geometry!.row1;
+
+        // `wheel` scrolls pane 0, and a label on scrolled content would move
+        // with an offset no two runs share. So `row1` is a row of pane 1: it
+        // still catches a wrongly reserved gutter or a wrongly sized shadow
+        // overlay, both of which move content, without moving itself.
+        expect(panes[1].getComponents()).toContain(row1);
+        expect(panes[0].getComponents()).not.toContain(row1);
+    });
+
+    it('counts a scroll tick delivered inside pane 0, captured rather than bubbled', async () => {
+        const mounted = await mountPanel('scroll-panes', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const pane0 = mounted.build.root.getComponents()[0];
+        const inner = document.createElement('div');
+
+        // `installWork` also puts a counter on `Panel.prototype`, which every
+        // later mount in this file would otherwise inherit.
+        const patched = snapshotPatchables([tools.ownerProto(pane0, 'remeasureScrollMetrics')!]);
+
+        try {
+            mounted.build.installWork!(tools);
+            elementFor(tools, pane0, 'scroll-panes').appendChild(inner);
+
+            // A `scroll` event does not bubble, and under overlay scrollbars it
+            // fires on an element inside the pane rather than on the pane's own:
+            // a listener that did not capture would never see this one.
+            expect(counted(() => inner.dispatchEvent(new Event('scroll')))['pane.scrollTick']).toBe(1);
+        } finally {
+            restorePatchables(patched);
+        }
+    });
+});
+
+/**
+ * The work counters of one counting window of one unit around `work`, as
+ * `ablations.test.ts`'s own helper takes them.
+ *
+ * @param work - The work to count.
+ * @returns The work counters; empty when nothing tallied.
+ */
+function counted(work: () => void): Record<string, number> {
+    let counts: PhaseCounts = {};
+
+    startCounting();
+
+    // Closed even when `work` throws, so no later case counts into it.
+    try {
+        work();
+    } finally {
+        counts = stopCounting(1);
+    }
+
+    return counts.work ?? {};
+}
 
 describe('P14 panel parameters', () => {
     it('form-flat rejects an unknown passes in build, before any wait', async () => {

@@ -595,6 +595,22 @@ describe('A11 g16.panel-settled', () => {
         expect(preferred).not.toHaveBeenCalled();
     });
 
+    it('engages on the board the cell measures: a settled pass skips every pane\'s re-measure', async () => {
+        const mounted = await mount('scroll-panes');
+        const root = mounted.build.root as unknown as Component;
+
+        await tools.waitFrames(PANEL_SETTLE_FRAMES);
+        apply('g16.panel-settled');
+        root.doLayout();
+
+        // The acceptance criterion for cell `spp`. The panes are a `Panel`
+        // subclass so that an unchanged commit cannot withhold their pass: a
+        // plain pane skips it, never reaches `remeasureScrollMetrics`, and this
+        // arm then produces no counter at all — a gate that ships dead while
+        // every other test stays green.
+        expect(counted(() => root.doLayout())['skipped.g16.panel-settled.remeasure']).toBe(SMOKE_SCALE);
+    });
+
     it('passes a non-scrolling panel through uncounted: its re-measure already does nothing', async () => {
         const mounted = await mount('markdown-doc');
         const root = mounted.build.root as unknown as AnyObj;
