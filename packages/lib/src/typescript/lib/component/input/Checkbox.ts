@@ -393,7 +393,9 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
      * `setSelected` — calling it from a mixed state always lands at
      * `selected=true` because its guard treats indeterminate as a force-out —
      * and then the DOM `change` that `on("action", fn)` listens for is fired.
-     * The enabled/read-only guard is applied by the base before this runs.
+     * The enabled/read-only guard is applied by the base before this runs. The
+     * DOM `change` is skipped when a `"change"` or `"binding"` listener
+     * disposed the checkbox.
      */
     protected activate(): void {
         if (this.isIndeterminate()) {
@@ -404,7 +406,12 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
 
         // Both branches change the state, so every activation announces itself.
         // `on("action", fn)` listens for this DOM `change`, as on RadioButton.
-        Event.fireEvent(this, "change");
+        // Re-read the element first: `setSelected` has just run this checkbox's
+        // `"change"` and `"binding"` listeners, and one of them may have disposed
+        // it — `fireEvent` would then throw and abort the rest of the dispatch.
+        if (this.getElement()) {
+            Event.fireEvent(this, "change");
+        }
     }
 
     /**

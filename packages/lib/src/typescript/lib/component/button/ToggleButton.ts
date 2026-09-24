@@ -276,12 +276,22 @@ class ToggleButton extends Button<ToggleButtonOptions> {
     }
 
     /**
-     * Toggles the selected state and fires a 'change' event when the button is clicked.
+     * Toggles the selected state and fires a 'change' event when the button is
+     * clicked. `setSelected` notifies no listener of its own here — unlike
+     * `Checkbox` and `RadioButton`, `ToggleButton` is not an `AbstractInput`
+     * and owns no listener bag — so the DOM `change` is skipped only when the
+     * button already has no element: `onAction` called directly on an
+     * unmounted button, or a subclass's override of the public `setSelected`
+     * disposed it before this line runs.
      */
     private onAction() {
         this.setSelected(!this.isSelected());
 
-        Event.fireEvent(this, "change");
+        // Guarded like the other three activation paths: a button with no element
+        // commits its state and announces nothing, rather than throwing.
+        if (this.getElement()) {
+            Event.fireEvent(this, "change");
+        }
     }
 
     /**

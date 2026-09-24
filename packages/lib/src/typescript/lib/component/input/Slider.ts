@@ -623,7 +623,8 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
      * The user's value path, for the pointer and keyboard handlers: sets the value
      * like {@link setValue} and, when that moved it, fires the DOM `input` that
      * `on("action", fn)` listens for. Dispatching here rather than in `setValue`
-     * is what keeps a programmatic write out of `"action"`.
+     * is what keeps a programmatic write out of `"action"`. The DOM `input` is
+     * skipped when a `"change"` or `"binding"` listener disposed the slider.
      *
      * @param value - The value the gesture asks for, before clamping and snapping.
      */
@@ -632,7 +633,10 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
 
         this.setValue(value);
 
-        if (this.getValue() !== before) {
+        // Re-read the element as well as the value: `setValue` has just run this
+        // slider's `"change"` and `"binding"` listeners, and one of them may have
+        // disposed it. Same guard as Checkbox.activate.
+        if (this.getValue() !== before && this.getElement()) {
             Event.fireEvent(this, "input");
         }
     }

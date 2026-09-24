@@ -326,12 +326,19 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
      * selected, never directly deselected by the user (the `ButtonGroup`
      * deselects siblings on change), so this selects and fires the DOM `change`
      * only on a real off→on transition. The enabled/read-only guard is applied
-     * by the base before this runs.
+     * by the base before this runs. The DOM `change` is skipped when a
+     * `"change"` or `"binding"` listener disposed the radio button.
      */
     protected activate(): void {
         if (!this.isSelected()) {
             this.setSelected(true);
-            Event.fireEvent(this, "change");
+
+            // Re-read the element first: `setSelected` has just run this radio's
+            // `"change"` and `"binding"` listeners, and one of them may have
+            // disposed it. Same guard as Checkbox.activate.
+            if (this.getElement()) {
+                Event.fireEvent(this, "change");
+            }
         }
     }
 
