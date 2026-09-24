@@ -96,7 +96,10 @@ export interface SplitNode {
  */
 export interface TabNode {
     kind:        "tab";
-    /** Child arrangement nodes, in tab order. */
+    /**
+     * Child arrangement nodes, in tab-strip order — the order the user sees,
+     * which a drag reorder makes differ from the container's own child order.
+     */
     children:    LayoutNode[];
     /**
      * Zero-based index, into `children`, of the active tab — `0` when no
@@ -235,6 +238,42 @@ function serializableChildren(component: Component): Component[] {
     return serializableChildIndices(component).map(index => children[index]);
 }
 
+// A child whose strip cell the next layout pass has yet to create reports -1
+// from indexOfContent. Rank it past every real strip position so it sorts
+// after the tabbed children rather than ahead of all of them.
+const UNTABBED_RANK = Number.MAX_SAFE_INTEGER;
+
+/**
+ * The serializable children of a {@link Tab} container in tab-strip order —
+ * the order the user sees. A drag reorder re-sorts the manager's entries and
+ * the strip and never the container's children, so from the first reorder
+ * onwards the two orders differ, and the strip is the one a restore has to
+ * reproduce.
+ *
+ * Each kept child is ranked by {@link Tab.indexOfContent} and the list sorted
+ * by that rank — the same re-derivation `Tab` performs on its own entries
+ * after a reorder. A child with no strip cell yet sorts after every tabbed
+ * child, where the next layout pass will place it, and keeps its container
+ * position against its untabbed siblings.
+ *
+ * @param component - The `Tab` container whose children to order.
+ * @param manager - The container's `Tab` layout manager.
+ * @returns The serializable children, in tab-strip order.
+ */
+function tabOrderedChildren(component: Component, manager: Tab): Component[] {
+    const ranked = serializableChildren(component).map((child, position) => {
+        const index = manager.indexOfContent(child);
+
+        return { child, position, rank: index < 0 ? UNTABBED_RANK : index };
+    });
+
+    // The container position breaks ties, so untabbed children keep their
+    // relative order without the sort having to be a stable one.
+    ranked.sort((a, b) => (a.rank - b.rank) || (a.position - b.position));
+
+    return ranked.map(entry => entry.child);
+}
+
 function nodeFor(component: Component): LayoutNode {
     const kind = managerKind(component);
 
@@ -259,11 +298,11 @@ function nodeFor(component: Component): LayoutNode {
 
     if (kind === "Tab") {
         const manager = component.getLayoutManager() as Tab;
-        const kept    = serializableChildren(component);
+        const kept    = tabOrderedChildren(component, manager);
         const active  = manager.getActiveContent();
 
-        // The manager's own active index counts tab-strip positions, which
-        // include a transient tab and follow a drag reorder, so it does not index
+        // The manager's own active index counts tab-strip positions, which include
+        // a transient tab and a lazy tab with no content yet, so it does not index
         // `kept`. The active tab is found in `kept` by identity instead, the way
         // Tab keeps its own selection across a reorder. With no captured child
         // active, the first tab is recorded.
