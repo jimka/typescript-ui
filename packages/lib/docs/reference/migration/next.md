@@ -320,3 +320,45 @@ const body = await Body.init({ layoutManager: Fit() });
 // After
 const body = await Body.init({ layoutManager: Fit() });
 ```
+
+## The absolute time form is read back exactly as it is written
+
+**What changed and why.** `TimeField` and the table's time cell editor each
+read the absolute time form with their own loose check: `TimeField` split the
+text on `:` and handed each piece to `Number`, and the time cell editor did
+the same with only an `isNaN` guard and no range check at all. `Number`
+accepts far more than the `H:MM[:SS]` the fields format, so both accepted an
+exponent or hex form (`1e1:30`, `0x9:30`), a fractional hour or minute
+(`9.5:30`), a sign (`+9:30`), a leftover fourth part (`9:30:00:99`), a
+trailing separator (`09:30:`), a missing hour (`:30`) and a three-digit hour
+(`009:30`), and both truncated a fractional second (`05.5`) rather than
+rejecting it. `DateTimeField` and the date-time cell editor already rejected
+each of those malformed forms, because each built a single date-time string
+and handed it to `new Date`, which rejects a malformed time half outright —
+but they kept a fractional second rather than truncating it.
+
+This release consolidates all four onto one anchored `H:MM[:SS]` grammar for
+the time half: one or two digits per part, seconds optional and defaulting to
+`0`. All four now reject a fractional second, and `TimeField` and the time
+cell editor also reject each of the malformed forms above, plus surrounding
+whitespace. Whitespace is the one place the two date-time components differ:
+`DateTimeField` trimmed the whole typed string before splitting it and still
+does, so it is unaffected, while the date-time cell editor had no trim of its
+own and no longer rejects text with surrounding or doubled whitespace.
+
+**Who needs to act.** The shared time parsing only runs on text a person
+types or pastes into one of these four components' input — a `Binding` writes through
+`setValue`, which formats rather than parses, and a store `time` or
+`datetime` column reads with `new Date(...)`, so neither ever reaches it.
+Code that types or pastes one of these forms into `TimeField`,
+`DateTimeField`, or the table's time/date-time cell editor — most likely a
+UI test driving the field programmatically — should use the form the
+component itself would produce instead:
+
+| Was accepted | Write instead |
+|---|---|
+| `" 9:30"` | `"9:30"` — trim first |
+| `"09:30:00.000"` | `"09:30:00"` — drop the fractional part |
+| `":30"` | `"0:30"` — name the hour |
+| `"+9:30"` | `"9:30"` — drop the sign |
+| `"9:30:00:99"` | `"9:30:00"` — at most three parts |
