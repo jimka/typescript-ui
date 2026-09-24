@@ -1396,6 +1396,21 @@ page resets to empty.
   now goes through `DOM.sink`, like `AutoCompleteField`'s. No consumer action
   is needed.
 
+- **A user activation no longer throws when its own listener disposes the
+  control.** `Checkbox`, `RadioButton` and `Slider` each dispatch a DOM event
+  at the end of a click or key activation, after the control's `"change"` and
+  `"binding"` listeners have run — so a listener that disposed the control (a
+  form rebuilt on a record change) left the dispatch with no element to fire
+  on, and the resulting `Cannot fire event` error ended the whole event's
+  dispatch, skipping every listener the framework had not yet reached. All
+  three now check for the element first and stay silent when it is gone; the
+  activation's own `"action"` listeners do not run then, because disposal has
+  already unregistered them. `ToggleButton` runs no listener of its own
+  between its state write and its dispatch, so its copy of the check covers
+  only a subclass whose `setSelected` override disposes the button. On all
+  four, an activation with no element now commits the state and skips just
+  the dispatch rather than throwing. No consumer action is needed.
+
 ### Data
 
 - **A store holding 1,000 records or more now builds its view.** Above that
