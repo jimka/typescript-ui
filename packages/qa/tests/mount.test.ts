@@ -8,6 +8,7 @@
 // rectangles instead.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Body, Component, DOM, ThemeManager } from '@jimka/typescript-ui/core';
+import { findActiveHeading } from '@jimka/typescript-ui/component/display';
 import { AbstractWindow } from '@jimka/typescript-ui/overlay';
 import { startCounting, stopCounting } from '../src/harness/counters.js';
 import type { PhaseCounts } from '../src/harness/counters.js';
@@ -401,6 +402,12 @@ describe('P16 scroll-panes', () => {
     });
 });
 
+/** The `MarkdownViewer` heading tracker P18 reaches into, as `markdown-doc`'s own counter does. */
+interface HeadingTracker {
+    getHeadings(): Array<{ id: string }>;
+    setActiveHeading(id: string | null): void;
+}
+
 /**
  * The work counters of one counting window of one unit around `work`, as
  * `ablations.test.ts`'s own helper takes them.
@@ -676,6 +683,310 @@ describe('P17 editor-tabs', () => {
 
         expect(tab.getActiveTabIndex()).toBe(0);
         expect(ThemeManager.getTheme()).toBe(started);
+    });
+});
+
+/** The scrollable span `getScrollTop` is stubbed to report, so the ladder has somewhere to walk: even, so half of it is a whole pixel. */
+const LADDER_SPAN_PX = 1200;
+
+/** The ladder units P18 walks: a whole lap of the triangle, at its two ends and its peak. */
+const LADDER_UNITS = [0, 6, 12, 18, 24];
+
+/** The offsets those units land on over `LADDER_SPAN_PX`. */
+const LADDER_OFFSETS = [0, LADDER_SPAN_PX / 2, LADDER_SPAN_PX, LADDER_SPAN_PX / 2, 0];
+
+/** The tolerance the oracle re-implements, used only to position the rectangles the pin straddles it with. */
+const HEADING_TOLERANCE_PX = 1;
+
+/** The pane's own top, and a heading top on either side of it, for the oracle's rectangle stubs. */
+const PANE_TOP_PX = 0;
+const BELOW_PANE_TOP_PX = 40;
+const ABOVE_PANE_TOP_PX = -40;
+
+/** A pane taller than its viewport, for the "scrolled to the maximum" stub. */
+const PANE_CLIENT_HEIGHT_PX = 500;
+const PANE_SCROLL_HEIGHT_PX = 1000;
+
+/**
+ * Stubs a jsdom element's rectangle top, as `drivers.dom.test.ts`'s own
+ * `stubRect` does: jsdom lays nothing out, so every rectangle the heading
+ * oracle reads is 0 and its rule collapses to one answer.
+ *
+ * @param element - The element.
+ * @param top - Its top edge.
+ */
+function stubTop(element: Element, top: number): void {
+    vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({
+        left: 0, top, width: 0, height: 0, right: 0, bottom: top, x: 0, y: top, toJSON: () => ({}),
+    } as DOMRect);
+}
+
+/**
+ * Stubs an element's scroll metrics as a pane whose content fits: no overflow,
+ * and an offset that is its maximum and its minimum at once.
+ *
+ * @param element - The element.
+ */
+function stubFitsContent(element: Element): void {
+    for (const name of ['clientHeight', 'scrollHeight']) {
+        Object.defineProperty(element, name, { value: PANE_CLIENT_HEIGHT_PX, writable: true, configurable: true });
+    }
+
+    Object.defineProperty(element, 'scrollTop', { value: 0, writable: true, configurable: true });
+}
+
+/**
+ * Stubs an element's scroll metrics as a pane scrolled to its maximum. jsdom
+ * reports 0 for all three, so the oracle's own `atMax` test — `scrollHeight >
+ * clientHeight` — can never hold without this. The properties are own
+ * properties of the element, which the panel's mount disposes after each case,
+ * and writable, because the panel's own teardown restores a subtree's scroll.
+ *
+ * @param element - The element.
+ */
+function stubScrolledToMax(element: Element): void {
+    const metrics = {
+        clientHeight: PANE_CLIENT_HEIGHT_PX,
+        scrollHeight: PANE_SCROLL_HEIGHT_PX,
+        scrollTop: PANE_SCROLL_HEIGHT_PX - PANE_CLIENT_HEIGHT_PX,
+    };
+
+    for (const [name, value] of Object.entries(metrics)) {
+        Object.defineProperty(element, name, { value, writable: true, configurable: true });
+    }
+}
+
+describe('P18 markdown-doc scroll ladder and heading oracle', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('walks a triangle of absolute offsets over the span it measured', async () => {
+        // jsdom neither lays out nor scrolls, so the span the probe reads back
+        // would be 0 and the ladder would write nothing. Stubbing the seam's
+        // scroll read — the one `setScrollTop` takes its clamped result from —
+        // gives the ladder a span, and the offsets are then arithmetic.
+        vi.spyOn(DOM.source, 'getScrollTop').mockReturnValue(LADDER_SPAN_PX);
+
+        const mounted = await mountPanel('markdown-doc', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const viewer = mounted.build.geometry!.viewer as Component;
+        const host = mounted.build.describe!() as { maxScrollTop: number };
+        const write = vi.spyOn(viewer, 'setScrollTop');
+        const ladder = mounted.targets.call as CallTarget;
+
+        expect(host.maxScrollTop).toBe(LADDER_SPAN_PX);
+
+        for (const unit of LADDER_UNITS) {
+            ladder(unit);
+        }
+
+        expect(write.mock.calls.map(([offset]) => offset)).toEqual(LADDER_OFFSETS);
+    });
+
+    it('writes no offset at all where nothing scrolls', async () => {
+        // A page whose clamped read-back is 0 cannot scroll, so the ladder has
+        // nowhere to walk and must leave the viewer alone rather than write a
+        // stream of zeroes. jsdom stores an unclamped `scrollTop`, so its own
+        // read-back is the probe's own value, not 0 — the seam's scroll read is
+        // stubbed to model the page that really cannot scroll.
+        vi.spyOn(DOM.source, 'getScrollTop').mockReturnValue(0);
+
+        const mounted = await mountPanel('markdown-doc', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const viewer = mounted.build.geometry!.viewer as Component;
+        const host = mounted.build.describe!() as { maxScrollTop: number };
+        const write = vi.spyOn(viewer, 'setScrollTop');
+        const ladder = mounted.targets.call as CallTarget;
+
+        expect(host.maxScrollTop).toBe(0);
+
+        for (const unit of LADDER_UNITS) {
+            expect(() => ladder(unit)).not.toThrow();
+        }
+
+        expect(write).not.toHaveBeenCalled();
+    });
+
+    it('agrees with the rule over live rectangles, and disagrees with any other answer', async () => {
+        const mounted = await mountPanel('markdown-doc', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const viewer = mounted.build.geometry!.viewer as unknown as { _tracker: HeadingTracker };
+        const pane = tools.findComponent('MarkdownContentPane')!;
+
+        mounted.build.installWork!(tools);
+
+        const tracker = viewer._tracker;
+        const ids = tracker.getHeadings().map((heading) => heading.id);
+
+        // Naming the pane is what arms the oracle: the panel takes it from a
+        // scroll event delivered by an element that holds the prose.
+        elementFor(tools, pane as unknown as { getId(): string }, 'P18').dispatchEvent(new Event('scroll'));
+
+        // jsdom gives every element an empty rectangle, so every heading's top
+        // is the pane's own — every one of them counts as at or above it, and
+        // the rule resolves to the last heading in the document. That the
+        // earlier headings and `null` both disagree is what says the oracle
+        // compares anything at all: a check that always agreed would report
+        // `heading.agree` here three times over.
+        expect(ids.length).toBeGreaterThan(1);
+        expect(counted(() => tracker.setActiveHeading(ids[ids.length - 1]))['heading.agree']).toBe(1);
+        expect(counted(() => tracker.setActiveHeading(ids[0]))['heading.disagree']).toBe(1);
+        expect(counted(() => tracker.setActiveHeading(null))['heading.disagree']).toBe(1);
+    });
+
+    it('resolves the heading at max scroll, where the top-crossing rule alone cannot', async () => {
+        const mounted = await mountPanel('markdown-doc', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const viewer = mounted.build.geometry!.viewer as unknown as { _tracker: HeadingTracker };
+        const pane = tools.findComponent('MarkdownContentPane')!;
+        const paneElement = elementFor(tools, pane as unknown as { getId(): string }, 'P18');
+
+        mounted.build.installWork!(tools);
+
+        const tracker = viewer._tracker;
+        const ids = tracker.getHeadings().map((heading) => heading.id);
+        const headings = ids.map((id) => paneElement.querySelector(`[id="${id}"]`)!);
+
+        paneElement.dispatchEvent(new Event('scroll'));
+
+        expect(headings.every((heading) => heading !== null)).toBe(true);
+
+        stubScrolledToMax(paneElement);
+        stubTop(paneElement, PANE_TOP_PX);
+
+        // Every heading still below the pane's top, with the pane scrolled to
+        // its maximum: nothing can bring the first one up any further, so it is
+        // active outright even though no earlier heading ever crossed the top —
+        // there is no earlier heading. This is the row the plan's predicate
+        // table required a previous heading for, and it is why the plain arm
+        // would raise `heading.disagree` at the foot of a document without the
+        // widening the `## Implementation Notes` record.
+        for (const heading of headings) {
+            stubTop(heading, BELOW_PANE_TOP_PX);
+        }
+
+        expect(counted(() => tracker.setActiveHeading(ids[0]))['heading.agree']).toBe(1);
+        expect(counted(() => tracker.setActiveHeading(ids[1]))['heading.disagree']).toBe(1);
+        expect(counted(() => tracker.setActiveHeading(null))['heading.disagree']).toBe(1);
+
+        // The first heading above the pane's top and the rest below it, still
+        // at max scroll: the first one *not* yet reached wins outright, so the
+        // heading that last crossed the top — the answer everywhere else in the
+        // document — is the wrong one here. This is what separates the at-max
+        // arm from the top-crossing rule; without it both answer alike.
+        stubTop(headings[0], ABOVE_PANE_TOP_PX);
+
+        expect(counted(() => tracker.setActiveHeading(ids[1]))['heading.agree']).toBe(1);
+        expect(counted(() => tracker.setActiveHeading(ids[0]))['heading.disagree']).toBe(1);
+
+        // Every heading above the pane's top, still at max scroll: none is left
+        // for the at-max arm to take, so the last one that crossed wins.
+        for (const heading of headings) {
+            stubTop(heading, ABOVE_PANE_TOP_PX);
+        }
+
+        expect(counted(() => tracker.setActiveHeading(ids[ids.length - 1]))['heading.agree']).toBe(1);
+        expect(counted(() => tracker.setActiveHeading(ids[0]))['heading.disagree']).toBe(1);
+    });
+
+    it('treats a pane that fits its content as not scrolled to its maximum', async () => {
+        const mounted = await mountPanel('markdown-doc', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const viewer = mounted.build.geometry!.viewer as unknown as { _tracker: HeadingTracker };
+        const pane = tools.findComponent('MarkdownContentPane')!;
+        const paneElement = elementFor(tools, pane as unknown as { getId(): string }, 'P18');
+
+        mounted.build.installWork!(tools);
+
+        const tracker = viewer._tracker;
+        const ids = tracker.getHeadings().map((heading) => heading.id);
+
+        paneElement.dispatchEvent(new Event('scroll'));
+
+        // A pane with nothing to scroll sits at offset 0 and at its maximum at
+        // once, so "at or past the maximum" alone is true of it. The rule
+        // requires overflow as well, and without that requirement a pane
+        // showing the whole document would resolve its first heading active
+        // rather than none — the one state the overflow clause decides.
+        stubFitsContent(paneElement);
+        stubTop(paneElement, PANE_TOP_PX);
+
+        for (const id of ids) {
+            stubTop(paneElement.querySelector(`[id="${id}"]`)!, BELOW_PANE_TOP_PX);
+        }
+
+        expect(counted(() => tracker.setActiveHeading(null))['heading.agree']).toBe(1);
+        expect(counted(() => tracker.setActiveHeading(ids[0]))['heading.disagree']).toBe(1);
+    });
+
+    it('answers as the exported library rule does over rectangles the tolerance alone separates', async () => {
+        const mounted = await mountPanel('markdown-doc', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const viewer = mounted.build.geometry!.viewer as unknown as { _tracker: HeadingTracker };
+        const pane = tools.findComponent('MarkdownContentPane')!;
+        const paneElement = elementFor(tools, pane as unknown as { getId(): string }, 'P18');
+
+        mounted.build.installWork!(tools);
+
+        const tracker = viewer._tracker;
+        const ids = tracker.getHeadings().map((heading) => heading.id);
+        const headings = ids.map((id) => paneElement.querySelector(`[id="${id}"]`)!);
+
+        paneElement.dispatchEvent(new Event('scroll'));
+
+        // Straddle the tolerance: the first heading sits one tolerance below the
+        // pane's top, which still counts as at or above it, and the rest sit a
+        // pixel further down, which does not. The oracle re-implements the
+        // library's `ACTIVE_HEADING_TOP_TOLERANCE_PX` because it is not
+        // exported, so this is what guards the two from drifting apart — the
+        // exported rule and the oracle have to answer the same over rectangles
+        // that only the tolerance separates. Move the library's value and the
+        // agreement breaks here.
+        stubTop(paneElement, PANE_TOP_PX);
+        stubTop(headings[0], PANE_TOP_PX + HEADING_TOLERANCE_PX);
+
+        for (const heading of headings.slice(1)) {
+            stubTop(heading, PANE_TOP_PX + HEADING_TOLERANCE_PX + 1);
+        }
+
+        // The exported rule takes a seam handle, not an element, and reads it
+        // through the same `getBoundingClientRect` the stubs above replaced — so
+        // both answer over one set of rectangles: the pane's own element, which
+        // is what the panel's scroll listener named as the pane.
+        const paneHandle = (pane as unknown as { getElement(): unknown }).getElement();
+        const expected = findActiveHeading(paneHandle as Parameters<typeof findActiveHeading>[0], tracker.getHeadings() as Parameters<typeof findActiveHeading>[1]);
+
+        expect(expected).toBe(ids[0]);
+        expect(counted(() => tracker.setActiveHeading(expected))['heading.agree']).toBe(1);
+        expect(counted(() => tracker.setActiveHeading(ids[1]))['heading.disagree']).toBe(1);
+    });
+
+    it('arms the oracle only from a scroller that holds the prose', async () => {
+        const mounted = await mountPanel('markdown-doc', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const viewer = mounted.build.geometry!.viewer as unknown as { _tracker: HeadingTracker };
+        const pane = tools.findComponent('MarkdownContentPane')!;
+        const stranger = document.createElement('div');
+
+        mounted.build.installWork!(tools);
+
+        const tracker = viewer._tracker;
+        const ids = tracker.getHeadings().map((heading) => heading.id);
+
+        elementFor(tools, viewer as unknown as { getId(): string }, 'P18').appendChild(stranger);
+
+        // A fence's editor scrolls its own `.cm-scroller` on the same capture
+        // path, and the minimap is another candidate; neither holds a heading.
+        // Taken for the pane, one of them would have the oracle compare against
+        // the wrong rectangles and raise `heading.disagree` on the plain arm —
+        // the counter cell `m60l` is gated on. So a scroll from an element that
+        // holds no heading must leave the oracle disarmed, counting neither.
+        stranger.dispatchEvent(new Event('scroll'));
+
+        const disarmed = counted(() => tracker.setActiveHeading(ids[ids.length - 1]));
+
+        expect(disarmed['heading.agree']).toBeUndefined();
+        expect(disarmed['heading.disagree']).toBeUndefined();
+
+        // The pane's own scroll arms it, and a later stranger does not unseat
+        // it: with the pane in hand the rule resolves to the last heading, which
+        // it could not do over an element holding none.
+        elementFor(tools, pane as unknown as { getId(): string }, 'P18').dispatchEvent(new Event('scroll'));
+        stranger.dispatchEvent(new Event('scroll'));
+
+        expect(counted(() => tracker.setActiveHeading(ids[ids.length - 1]))['heading.agree']).toBe(1);
     });
 });
 
