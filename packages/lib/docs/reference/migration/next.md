@@ -142,6 +142,75 @@ cb.on("change", syncPreview);
 A listener that read the event object sees a DOM `change` event on a checkbox,
 where it used to see a `click`. A slider's listener still sees an `input`.
 
+## `List`, `MultiSelectList` and `ComboBox` fire `"action"` for user selections only
+
+**What changed and why.** These were the last controls whose `"action"` still
+announced a programmatic write, and they got there by two different routes.
+`List` and `MultiSelectList` share one `setSelectedIndex`, whose notifying
+default path ended by dispatching the DOM `change` that `on("action", fn)`
+wraps — so a rendered list announced your own write as if the user had made
+it (an unrendered one did not, since that dispatch was already skipped
+without an element). `ComboBox` differed in kind: its `"action"` was not a DOM
+shorthand at all, but a plain alias of the inherited listener-bag `"change"`,
+so it announced every `setSelectedIndex(idx)` whether or not the combo box was
+rendered, and it was the one control in the family whose listener received a
+value rather than an event. Both now mean what
+[`RadioButton`](/components/RadioButton) and
+[`ToggleButton`](/components/ToggleButton) already meant by the name, and what
+`Checkbox` and `Slider` come to mean in this same release: `"action"` fires
+from the click and keyboard commit paths only, and `ComboBox`'s is a DOM
+`change` shorthand like its siblings'. A
+programmatic `setSelectedIndex(idx)` still fires `"change"` and `"binding"`;
+`setValue` and `setValues` stay silent on all three events, as before.
+
+**Who needs to act.** A consumer that relied on `"action"` after its own
+`setSelectedIndex` subscribes to `"change"` instead, which fires for the
+user's selections and your own index writes alike:
+
+```typescript
+// Before
+list.on("action", syncDetail);
+
+// After
+list.on("change", syncDetail);
+```
+
+A `ComboBox` `"action"` listener that used its argument reads
+`combo.getValue()` instead:
+
+```typescript
+// Before
+combo.on("action", (value: string) => status("Zoom " + value));
+
+// After
+combo.on("action", () => status("Zoom " + combo.getValue()));
+```
+
+**The compiler will not find these for you.** The overload's listener type is
+`Event.Listener`, whose parameter is `any`, so a listener still declared
+`(value: string) => …` type-checks exactly as before and silently receives a
+`CustomEvent` at runtime. Grep your combo boxes for `on("action"` and check
+each listener's parameter by hand. A listener that takes no parameter — the
+common shape — needs no change at all.
+
+**Match `off` to the name you registered with.** On a `ComboBox` the two names
+used to share one listener bag, and `off` substituted `"change"` for
+`"action"` exactly as `on` did, so either name removed a listener registered
+under the other. They are now separate registries — `"action"` a DOM
+registration, `"change"` the inherited bag — and a crossed pair removes
+nothing, throws nothing, and leaves the listener attached for the life of the
+component.
+
+```typescript
+// Before: either of these detached the listener
+combo.on("change", fn);  combo.off("action", fn);
+combo.on("action", fn);  combo.off("change", fn);
+
+// After: each name detaches only its own registration
+combo.on("change", fn);  combo.off("change", fn);
+combo.on("action", fn);  combo.off("action", fn);
+```
+
 ## `DOMSource` gains two members
 
 **What changed and why.** Every text measurement used to go through a hidden

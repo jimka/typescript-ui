@@ -84,6 +84,23 @@ page resets to empty.
   receives a DOM `change` event rather than a `click`. See
   [Migration](/reference/migration/next) for the full note.
 
+- **`List`, `MultiSelectList` and `ComboBox` fire `"action"` for the user's
+  own selections only.** All three used to announce `on("action", fn)` for a
+  programmatic `setSelectedIndex(idx)` as well, by two different routes: on a
+  rendered `List` or `MultiSelectList` the default path dispatched the DOM
+  `change` the shorthand wraps, while a `ComboBox`'s `"action"` was not a DOM
+  shorthand at all but an alias of its inherited `"change"`, so it announced
+  the write whether or not the combo box was rendered. Each now fires
+  `"action"` once per user selection — a row click, `Enter`, `Space`, or a
+  navigation key that moves the selection — joining
+  [`Checkbox`](/components/Checkbox) and [`Slider`](/components/Slider) above,
+  and matching [`RadioButton`](/components/RadioButton) and
+  [`ToggleButton`](/components/ToggleButton), which already meant that. A programmatic `setSelectedIndex(idx)` still fires `"change"`
+  and `"binding"`, and `setValue` / `setValues` stay silent as before. A
+  `ComboBox` `"action"` listener now receives a DOM `change` event rather than
+  the new value as a `string`, and the compiler does not flag the difference.
+  See [Migration](/reference/migration/next) for the full note.
+
 - **A chart redraws its marks only when its plot rectangle moves or its state
   changes.** A settled layout pass — a parent re-laying out a chart whose size
   and data are unchanged — used to remove and re-create every axis, gridline,

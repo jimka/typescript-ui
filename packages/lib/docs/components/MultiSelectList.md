@@ -11,13 +11,12 @@
 ## Usage
 
 ```typescript
-import { Event } from '@jimka/typescript-ui/core';
 import { MultiSelectList } from '@jimka/typescript-ui/component/list';
 const tags = MultiSelectList();
 tags.setItems(['Urgent', 'Blocked', 'Reviewed', 'In progress']);
 tags.setPreferredSize({ width: 180, height: 120 });
 
-Event.addListener(tags, 'change', () => {
+tags.on('action', () => {
     console.log('selected:', tags.getValue());
 });
 
@@ -39,14 +38,27 @@ panel.addComponent(tags);
 
 A `Shift`-extension that crosses a disabled row drops it from the resulting selection — see [Disabled rows](#disabled-rows).
 
-A navigation key that leaves the selection as it was — `Shift`-`ArrowDown` on the last row, say — fires no `change`.
+A navigation key that leaves the selection as it was — `Shift`-`ArrowDown` on the last row, say — fires no `change`, and announces no `"action"` either.
+
+## Selection events
+
+`on("action", fn)` fires once per user-driven selection — a row click, `Enter`, `Space`, or a navigation key that moves the selection — and never for a programmatic `setValues` or `setSelectedIndex`. `on("change", fn)` carries the committed value and fires for the user's gestures **and** your own `setSelectedIndex` calls; `setValues` is silent on both. [`List`](/components/List#selection-events), [`Checkbox`](/components/Checkbox) and [`Slider`](/components/Slider) follow the same contract.
+
+```typescript
+tags.on("action", () => console.log("user picked:", tags.getValue()));
+tags.on("change", values => console.log("now:", values));
+
+tags.setSelectedIndex(1);        // "change" and "binding" only
+tags.setSelectedIndex(1, false); // nothing at all
+tags.setValues(['Urgent']);      // nothing at all
+```
 
 ## Common methods
 
 | Method | Purpose |
 | --- | --- |
 | `getValue()` | Returns the selected row keys as a string array. |
-| `setValues(values[])` | Programmatically select the rows whose keys appear in `values`. |
+| `setValues(values[])` | Programmatically select the rows whose keys appear in `values`. Fires nothing — see [Selection events](#selection-events); `setSelectedIndex(i)` fires `"change"`, never `"action"`. |
 | `getSelectedRecords()` | When a store is bound, returns the selected [`ModelRecord`](/api/data/classes/ModelRecord) instances. |
 | `setSelectedRecords(records)` | Programmatically select the rows whose backing records appear in `records`. |
 
