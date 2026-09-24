@@ -581,19 +581,22 @@ Geometry is compared label by label against the first plain report, rectangle
 by rectangle, exactly. `--allow-diff` takes labels out of that comparison:
 `cell@0` takes `cell` out of phase 0 only, `files` out of every phase. When the
 plain reports disagree among themselves outside those labels, every arm's
-geometry is `unstable`. `--same PATTERN`, with the key syntax of a term, is for
+geometry is `unstable`, and the plain line reads `unstable(<labels>)`, naming
+them; a cell of three plain runs and no ablated arm is therefore a determinism
+check on the panel itself. `--same PATTERN`, with the key syntax of a term, is for
 what geometry cannot see — a chart's marks, a heading choice: every work or
 seam counter matching it must stay within 1% of the first plain report's value
 (within 0.01 when that is 0), or the arm reads `DIFF(same <key>)`.
 
 The output is one block per phase: a header naming the driver, the units and
 the counter; the plain line, with each plain average, their mean, the bracket
-(the largest plain average minus the smallest) and the counter's plain mean;
+(the largest plain average minus the smallest), the counter's plain mean and the
+plain arms' own agreement;
 then one line per arm, in order of first appearance:
 
 ```
 phase 0  park ×150  counter work
-  plain            3 reps  avg 20.51 / 20.80 / 20.62  mean 20.64  bracket 0.29  counter 2969.00
+  plain            3 reps  avg 20.51 / 20.80 / 20.62  mean 20.64  bracket 0.29  counter 2969.00  geom =
   split.noop-drag  2 reps  mean 19.10  Δms -1.54 win      counter 2201.00  Δ  -25.9% win   geom =  engaged yes  → win
 ```
 
