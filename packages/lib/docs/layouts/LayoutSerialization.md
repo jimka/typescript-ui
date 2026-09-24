@@ -80,7 +80,7 @@ interface LayoutState {
 | --- | --- |
 | [`PanelNode`](/api/layout/interfaces/PanelNode) | A content leaf's `panelId`, plus its captured `glyph`, `tooltip`, `closeable`, `disposeOnClose`, `italic` and `modified` constraints (all optional; a pre-0.4.1 state carries only `glyph`, and one written before `italic`/`modified` existed carries neither). |
 | [`SplitNode`](/api/layout/interfaces/SplitNode) | `direction`, child nodes, per-pane `ratios` (sum ~1.0) and `collapsed` flags. |
-| [`TabNode`](/api/layout/interfaces/TabNode) | Child nodes in tab order plus the `activeIndex`. |
+| [`TabNode`](/api/layout/interfaces/TabNode) | Child nodes in tab-strip order — the order the user sees, which a drag reorder makes differ from the container's own child order — plus the `activeIndex`. |
 | [`WindowNode`](/api/layout/interfaces/WindowNode) | A `content` region tree (the float's internal split/tab arrangement), title `header`, `rect`, `state`, and the normal-state `restoreRect`. The legacy single-panel `panelId` is still read on restore as a fallback. |
 
 Containers the serializer does not recognise (`Border`, `HBox`, `VBox`, `Accordion`, `Grid`, …) are treated as **opaque leaves**: the walk does not descend into them, and each is recorded as a single panel keyed by its own constraint `name`. Only `Split`/`Tab`/`Window` topologies are captured.
