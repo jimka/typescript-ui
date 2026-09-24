@@ -20,7 +20,7 @@ its own dev server, which writes it under `results/`.
 | `src/panels.ts`, `src/panels/` | The panel contract and the panels, one file each. |
 | `src/builders/` | Shared panel code: data generators, chrome, the shell and form builders, element lookups, the store-view wait and per-instance work counters. |
 | `src/mount.ts` | Mounts a panel through `Body.init` and collects its targets. |
-| `src/pageTargets.ts` | The `idle`, `theme` and `viewport` targets every panel gets. |
+| `src/pageTargets.ts` | The `idle`, `settle`, `theme` and `viewport` targets every panel gets. |
 | `src/harness/` | The harness: frame loop, drivers, counters, ablations, probes, the run. It imports nothing from the library; the page hands it `Body`, `DOM`, `Tooltip` and `AbstractWindow`. |
 | `vite.config.ts`, `vite/plugins.ts` | The app's own Vite config: the report endpoint, and the library-build alias from the shared [`build/libraryBuildAlias.ts`](../../build/libraryBuildAlias.ts). |
 | `runqa.sh` | Runs one measurement end to end. |
@@ -261,12 +261,12 @@ basename is its id. It exports exactly these four names:
 To add a panel, add its file; the lazy registry finds it, and the page loads
 only the measured panel's modules.
 
-**Page-wide targets.** Every panel also gets an `idle`, a `theme` and a
-`viewport` target: `mountPanel` merges `pageTargets(root)` from
+**Page-wide targets.** Every panel also gets an `idle`, a `settle`, a `theme`
+and a `viewport` target: `mountPanel` merges `pageTargets(root)` from
 `src/pageTargets.ts` under the panel's own targets, so the merge is the
-page-wide targets, then `targets`, then `afterMount`'s. The target of `idle`
-and of `viewport` is the root, which both drivers ignore; every page has
-viewport listeners, `Body`'s at least, so any panel can be driven with
+page-wide targets, then `targets`, then `afterMount`'s. The target of `idle`,
+of `settle` and of `viewport` is the root, which all three drivers ignore; every
+page has viewport listeners, `Body`'s at least, so any panel can be driven with
 `viewport`. `theme`'s is `themeTarget(THEME_CYCLE)`, which switches between
 `DarkTheme` and `ModernTheme` and restores the theme the page started with. A
 panel replaces any of them by giving its own entry, such as
@@ -310,7 +310,7 @@ records it as reproduced only after a run shows that symptom — the same count,
 the same failure or the same geometry. A panel built to look like another
 app's screen can easily exercise a different code path.
 
-Every panel also has the page-wide `idle`, `theme` and `viewport` targets.
+Every panel also has the page-wide `idle`, `settle`, `theme` and `viewport` targets.
 The *Reproduces* column gives the figure a run must show — M5–M14 in the
 panels plan, M16–M26 in the editors and overlays plan — before the *Validated*
 entry is filled in. A figure marked *from the report* comes from the slice
@@ -406,6 +406,7 @@ which gives every live candidate its cells; there G27's counters are
 | `resize` | a component with `getWidth()`, `setWidth(w)`, `doLayout()` | width −`step` for the first half, +`step` for the second, then `doLayout()`; the original width is restored at the end |
 | `passes` | a component with `doLayout()` | one synchronous `doLayout()`; the sample is its duration |
 | `idle` | any defined value; ignored | nothing: the frame holds only what the page does on its own, such as an animation loop |
+| `settle` | any defined value; ignored | nothing, as `idle` — but before the first unit it waits, unmeasured, until every probed rectangle has been unchanged for two frames, so every unit is a settled sample; it fails the run after 120 frames of movement |
 | `call`, `update`, `toggle` | a function `(index) => void` | calls it with the unit's index. Three names for one driver, so a panel can offer a data change and an expand or collapse side by side, and each report phase says which ran |
 | `hover` | `{ element, axis: 'x' \| 'y' }` | moves the pointer `step` px along the element's centre line, bouncing between its edges one pixel inside them, with no button held: `pointermove` and `mousemove` to the element under the pointer, preceded by `pointerout`/`mouseout` and `pointerover`/`mouseover` when that element changed. The element's and its descendants' rectangles are read once, before the first unit, so every arm of a comparison gets the same events; a descendant the engine's hit test passes through, one whose computed `pointer-events` is `none` or whose `visibility` is `hidden`, is left out, as it is from a real pointer's |
 | `park` | `{ element, axis, direction: 1 \| -1, leadPx }` | a `mousemove` on `document` to `leadPx` + `step` × k past the start in `direction`, k rising to half the units and falling back to 0, so the pointer never comes back closer than `leadPx`. Before the units, a press and a 10-frame drag of `leadPx`, past the pane's clamp; after them, a release and a drag back to the start. Needs at least 2 units |
@@ -425,13 +426,15 @@ the element moved during the measured units: its `leadPx` did not reach the
 clamp, and the run measured the wrong thing.
 
 The drivers from `idle` on keep their own setup and teardown out of the
-counters: reading rectangles, focusing, `park`'s lead-in and restore drags,
-`pan`'s press and release,
+counters: reading rectangles, focusing, `settle`'s wait for the page to rest,
+`park`'s lead-in and restore drags, `pan`'s press and release,
 `type`'s clean-up and `theme`'s restore run inside `tools.suspendCounting`,
 which pauses every counter family, and where that work changed the page — a
 focus, a caret move, a drag, a restyle — they wait a few frames
 (`tools.waitFrames`) inside the suspension for it to settle. Only the measured
-units land in a phase's counts. `hover`, `park`, `type` and `theme` each add a note: the
+units land in a phase's counts. `settle`, `hover`, `park`, `type` and `theme`
+each add a note: which frame the page came to rest on — or, with the probe off,
+how many frames it waited instead — the
 crossings, the rectangle the element was held at, the characters typed, and
 the page's CSS rule total before the first switch and after the last, which is
 where a leak of per-switch rules shows.
@@ -714,6 +717,14 @@ W3_SESSION=s2 packages/qa/sweeps/w3-0.sh b04
 - **Geometry equality is the soundness gate.** An arm whose `geom` column reads
   `DIFF` laid the page out differently, and its timing is void
   ([97-wave2-measurement.md](../../plans/research/render-review-2026-09-15/97-wave2-measurement.md#L62)).
+- **Gate a burst on its settled state.** A mid-burst rectangle is not a
+  soundness signal: a candidate that defers work inside a burst differs there
+  by design, and a burst whose own timing drives the layout — an eased wheel
+  scroll, which closes a fraction of the remaining distance per *real* frame —
+  differs there between two runs of one build. End such a phase with
+  `settle:<n>` and read the gate on that phase, taking the burst phase's moving
+  labels out with `--allow-diff <label>@0`
+  ([00-post-campaign-agenda.md](../../plans/research/render-review-2026-09-15/00-post-campaign-agenda.md#g22-unblocked-the-tree-tables-focused-cell-2026-09-24)).
 - **Check a deep panel and a shallow one** — `shell-deep` and
   `shell-shallow`, `chart-dashboard` and `chart-line`, or `form-nested` and
   `form-flat`. A change can hold
