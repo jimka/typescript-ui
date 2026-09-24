@@ -63,6 +63,11 @@ class FieldDecorator extends Component {
      * subtree rather than on its own element; over the field it takes precedence
      * over a tooltip attached to the field itself.
      *
+     * A message that changes while the pointer is already resting on the field —
+     * the usual shape of validation on change, since the pointer never moves
+     * between keystrokes — appears after the same hover delay without leaving
+     * the field and returning.
+     *
      * CSS `outline` is used instead of `border` so that the decorator's content area
      * and the wrapped field's size are completely unaffected — outline renders outside
      * the box model and takes up no layout space.

@@ -86,6 +86,29 @@ describe('production handle registry', () => {
     it('resolving a never-minted handle throws rather than silently no-opping', () => {
         expect(() => sink().apply(99999 as never, { text: 'x' })).toThrow(/not registered/);
     });
+
+    // `isRegistered` is the one read that reports a dead handle instead of
+    // throwing on it, for a caller holding a handle across time — a recorded
+    // pointer target, a remembered tooltip anchor.
+    it('reports a live handle as registered', () => {
+        const el = document.createElement('div');
+
+        expect(source().isRegistered(source().intern(el))).toBe(true);
+    });
+
+    it('reports a released handle as unregistered, where every other read throws', () => {
+        const el = document.createElement('div');
+        const h  = source().intern(el);
+
+        sink().release(h);
+
+        expect(source().isRegistered(h)).toBe(false);
+        expect(() => source().isConnected(h)).toThrow(/not registered/);
+    });
+
+    it('reports a never-minted handle as unregistered', () => {
+        expect(source().isRegistered(99999 as never)).toBe(false);
+    });
 });
 
 describe('component dispose releases every retained handle', () => {

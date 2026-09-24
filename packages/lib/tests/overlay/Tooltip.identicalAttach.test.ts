@@ -49,9 +49,9 @@ const HOST_HEIGHT      = 24;
 // Any in-viewport pointer position. No case here reads where the tooltip is
 // placed, only which element it is anchored to.
 const CURSOR_PX        = 10;
-// The listeners one attachment registers: `mouseover`, `mousemove`, `mouseout`
-// and `mousedown`, on the component's own element or across its subtree.
-const HOVER_LISTENERS  = 4;
+// The listeners one attachment registers: `mouseover`, `mouseout` and
+// `mousedown`, on the component's own element or across its subtree.
+const HOVER_LISTENERS  = 3;
 // Enough repeats of one identical call that a per-call listener rebuild would
 // be unmissable in the seam counts; case 16's reading is zero either way.
 const IDENTICAL_CALLS  = 10;
@@ -208,6 +208,11 @@ afterEach(() => {
     (Tooltip as any).pendingId = null;
     (Tooltip as any).dismissing = false;
     (Tooltip as any).attachments.clear();
+
+    // The pointer watch is installed with the first attachment and never
+    // removed during a session, so its viewport registration would outlive the
+    // DOM it was made against and silently swallow the next test's moves.
+    Tooltip._stopPointerWatch();
 
     DOM.reset();
 });

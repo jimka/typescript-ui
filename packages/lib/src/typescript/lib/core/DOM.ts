@@ -472,6 +472,28 @@ class HandleRegistry {
     }
 
     /**
+     * Whether a handle still names a live node — registered, and for an
+     * interned (weakly-held) one not yet collected. The same two conditions
+     * {@link resolve} throws on, asked without resolving, for a caller holding a
+     * handle across time that legitimately may not have survived: a recorded
+     * pointer target, a remembered anchor. It is not a licence to skip
+     * `resolve`'s failure — a handle a caller believes it owns must still be
+     * resolved, so that a genuine use-after-free stays loud.
+     *
+     * @param handle - The handle to test.
+     * @returns `true` when the handle resolves to a live node.
+     */
+    isRegistered(handle: Handle): boolean {
+        const entry = this._forward.get(handle);
+
+        if (entry === undefined) {
+            return false;
+        }
+
+        return !(entry instanceof WeakRef) || entry.deref() !== undefined;
+    }
+
+    /**
      * Releases an owned handle at its element's dispose site. Idempotent. A
      * missed release on a retained (strong) handle pins a detached element
      * forever, so the migration must place this at every created-element
@@ -1497,6 +1519,19 @@ export interface DOMSource {
      * @returns `true` when the element is connected.
      */
     isConnected(handle: Handle): boolean;
+
+    /**
+     * Whether a handle still names a live element, answered without resolving
+     * it, so a handle held across time can be tested rather than trusted. Every
+     * other read throws on a handle whose element has been released or
+     * collected, which is deliberate; this is the one query that reports it
+     * instead. `false` means the element is gone, so a caller that remembered
+     * this handle has nothing to act on.
+     *
+     * @param handle - The handle to test.
+     * @returns `true` when the handle still names a live element.
+     */
+    isRegistered(handle: Handle): boolean;
 
     /**
      * Reads the value of a form control.
@@ -2862,6 +2897,11 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     isConnected(handle: Handle): boolean {
         return (_registry.resolve(handle) as Element).isConnected;
+    }
+
+    /** @inheritDoc */
+    isRegistered(handle: Handle): boolean {
+        return _registry.isRegistered(handle);
     }
 
     /** @inheritDoc */
