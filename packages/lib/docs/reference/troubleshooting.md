@@ -93,7 +93,7 @@ The store offloads sort and filter to a Web Worker for datasets ≥ 1,000 rows. 
 
 - **Records with non-cloneable fields** (functions, DOM nodes, class instances with private state) trigger a clone error in the worker. Keep store data as plain objects.
 
-The sort or filter still completes. A store whose offload fails builds that view on the main thread instead and warns once, naming itself and the error, so the symptom is a console warning and slower sorting — never a view that stays empty. A worker that dies outright, rather than refusing one request, is retired for the rest of the page and every store works in process from then on. A worker that simply stops answering counts as dead too: every request is timed against a deadline that grows with the dataset, and one that says nothing for a whole deadline while a reply is owed is retired like any other.
+The sort or filter still completes. A store whose offload fails builds that view on the main thread instead and warns once, naming itself and the error, so the symptom is a console warning and slower sorting — never a view that stays empty. A worker that dies outright, rather than refusing one request, is retired for the rest of the page and every store works in process from then on. A worker that simply stops answering counts as dead too: every request is timed against a deadline that grows with the dataset, and one that says nothing for a whole deadline while a reply is owed is retired like any other. A construction the browser itself refuses — a Content-Security-Policy allowing neither `blob:` nor `data:` workers — retires the client the same way, on the first attempt, since the refusal cannot change while the page lives.
 
 ## "Drag interactions feel laggy"
 
