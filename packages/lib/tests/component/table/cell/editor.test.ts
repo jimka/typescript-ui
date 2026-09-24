@@ -853,6 +853,10 @@ describe('DateTimeEditor parse contract', () => {
         expect(parsed('2025-06-15 25:00')).toBe(null);
     });
 
+    it('a trailing separator with no seconds "2025-06-15 14:30:" is rejected', () => {
+        expect(parsed('2025-06-15 14:30:')).toBe(null);
+    });
+
     it('"total garbage" is rejected', () => {
         expect(parsed('total garbage')).toBe(null);
     });
@@ -895,8 +899,20 @@ describe('TimeEditor parse contract', () => {
         expect(parsed('09:30:45')).toEqual(new Date(1970, 0, 1, 9, 30, 45));
     });
 
-    it('":30" parses to 00:30, the quirk TimeField shares', () => {
-        expect(parsed(':30')).toEqual(new Date(1970, 0, 1, 0, 30, 0));
+    it('a missing hour ":30" is rejected', () => {
+        expect(parsed(':30')).toBe(null);
+    });
+
+    it('a trailing separator with no seconds "09:30:" is rejected', () => {
+        expect(parsed('09:30:')).toBe(null);
+    });
+
+    it('leading whitespace " 9:30" is rejected', () => {
+        expect(parsed(' 9:30')).toBe(null);
+    });
+
+    it('a fractional second "09:30:05.5" is rejected', () => {
+        expect(parsed('09:30:05.5')).toBe(null);
     });
 
     it('a bare hour "9" is rejected rather than read as 09:00', () => {

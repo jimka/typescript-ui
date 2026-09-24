@@ -62,6 +62,10 @@ describe('TimeField parseRaw strictness', () => {
         expect(d!.getHours()).toBe(9);
         expect(d!.getMinutes()).toBe(5);
     });
+
+    it('rejects leading whitespace', () => {
+        expect(parse(' 9:30')).toBe(null);
+    });
 });
 
 describe('TimeField value round-trip', () => {

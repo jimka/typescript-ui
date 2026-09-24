@@ -97,19 +97,21 @@ describe('DateTimeField parseRaw', () => {
         expect(d!.getSeconds()).toBe(0);
     });
 
+    it('ignores surrounding whitespace and a run of separating whitespace, because parseIsoDateTime trims', () => {
+        const d = parse('  2025-06-15   14:30  ');
+
+        expect(d).not.toBe(null);
+        expect(d!.getDate()).toBe(15);
+        expect(d!.getHours()).toBe(14);
+        expect(d!.getMinutes()).toBe(30);
+    });
+
     it('rejects a UTC/offset-suffixed time, which formatValue never produces', () => {
         expect(parse('2025-06-15 14:30Z')).toBe(null);
     });
 
-    it('drops the sub-second part of a fractional second instead of keeping it', () => {
-        // Still accepted, as TimeField accepts it — but the milliseconds the
-        // old `new Date` branch carried through are gone, which is the
-        // behaviour change the changelog names.
-        const d = parse('2025-06-15 14:30:05.5');
-
-        expect(d).not.toBe(null);
-        expect(d!.getSeconds()).toBe(5);
-        expect(d!.getMilliseconds()).toBe(0);
+    it('rejects a fractional second, which formatValue never produces', () => {
+        expect(parse('2025-06-15 14:30:05.5')).toBe(null);
     });
 
     it('rejects trailing text after the time half', () => {
