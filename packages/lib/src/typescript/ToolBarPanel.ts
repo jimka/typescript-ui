@@ -80,7 +80,7 @@ class ToolBarPanel extends Panel {
         saveSplit.on("action", () => { status("Save"); });
 
         const zoom = new ComboBox({ items: ["50%", "75%", "100%", "125%", "150%"] });
-        zoom.on("action", (value: string) => { status("Zoom " + value); });
+        zoom.on("action", () => { status("Zoom " + zoom.getValue()); });
 
         bar.addComponents(
             [bold, italic, underline],
