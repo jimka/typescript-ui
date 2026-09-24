@@ -22,6 +22,17 @@
 // The dock's listener is driven by calling its static handler directly: a real
 // `resize` dispatch needs a file of its own, since `Event`'s viewport listener
 // map is module-level (see AbstractWindow.minimizedStackResize.test.ts).
+//
+// W11-W17 are plans/implemented/rail-minimized-dock-slot.md's rows — the
+// dock's row holds only the minimized windows no rail holds. W18-W28 are that
+// plan's audit: attaching a rail to an already-docked window hides it (or the
+// slot its attach gives away is laid out under a window still on screen),
+// detaching one shows it again (or it holds that slot invisibly, with its
+// handle gone and no way back), and a detach undoes everything the collapse
+// installed rather than writing a resting state of its own over the top — see
+// the plan's Implementation Notes. The in-flight half of that is in
+// AbstractWindow.railHandoverAnimated.test.ts, which this file's
+// reduced-motion mock rules out.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Window } from '~/overlay/Window';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
@@ -30,6 +41,10 @@ import { Placement } from '~/primitive/Placement';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
+
+// One dock slot's pitch: DEFAULT_MIN_DOCK_WIDTH_PX (200) plus
+// SNAP_DOCK_GAP_PX (4), both module-private to AbstractWindow.ts.
+const DOCK_SLOT_PITCH_PX = 204;
 
 describe('AbstractWindow — the minimized dock answers a viewport resize through one listener', () => {
     let config: ReturnType<typeof makeConfig>;
@@ -103,6 +118,66 @@ describe('AbstractWindow — the minimized dock answers a viewport resize throug
         win.show();
 
         return win;
+    }
+
+    /** A mounted WEST rail, the minimize target a rail-held window gets. */
+    function mountedRail(): Rail {
+        const rail = new Rail({ edge: Placement.WEST });
+
+        rail.mount();
+
+        return rail;
+    }
+
+    /** Shows a window at an explicit position, so a dock write to it is unmistakable. */
+    function shownWindowAt(title: string, x: number, y: number): Window {
+        const win = new Window(title, { x, y });
+
+        win.show();
+
+        return win;
+    }
+
+    /** One window's dock slot index — the slot its minimize tween aims at. */
+    function dockSlotIndex(win: Window): number {
+        return (win as unknown as { computeDockSlotIndex(): number }).computeDockSlotIndex();
+    }
+
+    /**
+     * The values `spy` (a `DOM.sink.apply` spy) wrote for one style property
+     * against `win`'s element, in call order — the only way to see a property
+     * `Animation` wrote through its own buffer, which leaves the component's
+     * cached value untouched.
+     */
+    function styleWritesFor(
+        spy:  ReturnType<typeof vi.spyOn>,
+        win:  Window,
+        prop: string,
+    ): Array<string | null> {
+        const target = win.getElement();
+
+        return spy.mock.calls
+            .filter((args: unknown[]) => args[0] === target)
+            .map((args: unknown[]) => (args[1] as { style?: Record<string, string | null> }).style)
+            .filter((style: Record<string, string | null> | undefined): style is Record<string, string | null> =>
+                style !== undefined && prop in style)
+            .map((style: Record<string, string | null>) => style[prop]);
+    }
+
+    /**
+     * The style properties `spy` wrote against `win`'s element, flattened into
+     * one list in write order — what the per-property lists above cannot show:
+     * which property was written before which.
+     */
+    function styleWriteOrder(spy: ReturnType<typeof vi.spyOn>, win: Window): string[] {
+        const target = win.getElement();
+
+        return spy.mock.calls
+            .filter((args: unknown[]) => args[0] === target)
+            .map((args: unknown[]) => (args[1] as { style?: Record<string, string | null> }).style)
+            .filter((style: Record<string, string | null> | undefined): style is Record<string, string | null> =>
+                style !== undefined)
+            .flatMap((style: Record<string, string | null>) => Object.keys(style));
     }
 
     it('W1: relayouts a minimized window onto the new viewport height', () => {
@@ -193,9 +268,7 @@ describe('AbstractWindow — the minimized dock answers a viewport resize throug
     });
 
     it('W7: a rail-minimized window alone in the dock installs no listener', () => {
-        const rail = new Rail({ edge: Placement.WEST });
-
-        rail.mount();
+        const rail = mountedRail();
 
         const win = shownWindow('W');
 
@@ -252,5 +325,363 @@ describe('AbstractWindow — the minimized dock answers a viewport resize throug
         resizeViewport(500);
 
         expect(win.getY()).toBe(y1 - 300);
+    });
+
+    it('W11: a rail-held window between two docked ones leaves no gap in the row', () => {
+        const rail = mountedRail();
+
+        const a = shownWindow('A');
+        const b = shownWindow('B');
+        const c = shownWindow('C');
+
+        b.setRail(rail);
+
+        a.minimize();
+        b.minimize();
+        c.minimize();
+
+        expect(a.getX()).toBe(0);
+        expect(c.getX()).toBe(DOCK_SLOT_PITCH_PX);
+        expect(c.getY()).toBe(a.getY());
+    });
+
+    it('W12: the dock writes no geometry to a window its rail holds', () => {
+        const rail = mountedRail();
+
+        const a = shownWindow('A');
+        const b = shownWindow('B');
+
+        b.setRail(rail);
+        b.minimize();
+
+        const rectBefore = b.getRect();
+
+        a.minimize();
+        relayoutStack();
+
+        expect(b.getRect()).toEqual(rectBefore);
+    });
+
+    it('W13: a viewport resize moves the docked window and leaves the rail-held one alone', () => {
+        const rail = mountedRail();
+
+        const a = shownWindow('A');
+        const b = shownWindow('B');
+
+        b.setRail(rail);
+
+        a.minimize();
+        b.minimize();
+
+        resizeViewport(800);
+
+        const y1        = a.getY();
+        const rectBefore = b.getRect();
+
+        resizeViewport(500);
+
+        expect(a.getY()).toBe(y1 - 300);
+        expect(b.getRect()).toEqual(rectBefore);
+    });
+
+    it('W14: attaching a rail to a docked window closes the slot it leaves', () => {
+        const rail = mountedRail();
+
+        const a = shownWindow('A');
+        const b = shownWindow('B');
+
+        a.minimize();
+        b.minimize();
+
+        expect(b.getX()).toBe(DOCK_SLOT_PITCH_PX);
+
+        a.setRail(rail);
+
+        expect(b.getX()).toBe(0);
+    });
+
+    it('W15: detaching a rail from a minimized window joins it into the next free slot', () => {
+        const rail = mountedRail();
+
+        const a = shownWindow('A');
+        const b = shownWindowAt('B', 300, 200);
+
+        b.setRail(rail);
+
+        a.minimize();
+        b.minimize();
+
+        expect(b.getX()).toBe(300);
+
+        b.setRail(null);
+
+        expect(b.getX()).toBe(DOCK_SLOT_PITCH_PX);
+        expect(b.getY()).toBe(a.getY());
+    });
+
+    it('W16: setRail re-derives the dock listener on attach and detach', () => {
+        const rail = mountedRail();
+
+        const win = shownWindow('W');
+
+        win.minimize();
+
+        expect(listenerInstalled()).toBe(true);
+
+        win.setRail(rail);
+
+        expect(listenerInstalled()).toBe(false);
+
+        win.setRail(null);
+
+        expect(listenerInstalled()).toBe(true);
+    });
+
+    it('W17: a rail-held window takes no dock slot in another window\'s own index', () => {
+        const rail = mountedRail();
+
+        const b = shownWindow('B');
+        const a = shownWindow('A');
+
+        b.setRail(rail);
+        b.minimize();
+
+        expect(dockSlotIndex(a)).toBe(0);
+    });
+
+    it('W18: attaching a rail to a docked window hides it, handing it to the rail', () => {
+        const rail = mountedRail();
+
+        const win = shownWindow('W');
+
+        win.minimize();
+
+        // Docked: the window itself is the strip the user sees.
+        expect(win.isDisplayed()).toBe(true);
+
+        win.setRail(rail);
+
+        // Handed over: the rail's handle is now its representation, so the
+        // window leaves the screen along with its slot.
+        expect(win.isDisplayed()).toBe(false);
+    });
+
+    it('W19: the slot a rail attach gives away holds no second visible window', () => {
+        const rail = mountedRail();
+
+        const a = shownWindow('A');
+        const b = shownWindow('B');
+        const c = shownWindow('C');
+
+        a.minimize();
+        b.minimize();
+        c.minimize();
+
+        expect(b.getX()).toBe(DOCK_SLOT_PITCH_PX);
+
+        // The middle window goes to the rail: C closes up into slot 1, which
+        // is the rect B is frozen at, so only B's hide keeps the two off each
+        // other.
+        b.setRail(rail);
+
+        expect(a.getX()).toBe(0);
+        expect(c.getX()).toBe(DOCK_SLOT_PITCH_PX);
+        expect(b.getX()).toBe(DOCK_SLOT_PITCH_PX);
+        expect(b.isDisplayed()).toBe(false);
+        expect(c.isDisplayed()).toBe(true);
+    });
+
+    it('W20: detaching the rail again returns the window to the row it came from', () => {
+        const rail = mountedRail();
+
+        const win = shownWindow('W');
+
+        win.minimize();
+        win.setRail(rail);
+        win.setRail(null);
+
+        // The attach's hide is undone by its own reverse: the window is a
+        // docked strip again, not an invisible occupant of the slot the
+        // relayout just handed back to it.
+        expect(win.isDisplayed()).toBe(true);
+        expect(win.getX()).toBe(0);
+    });
+
+    it('W21: a window round-tripped through a rail still restores', () => {
+        const rail = mountedRail();
+
+        const win = shownWindow('W');
+
+        win.minimize();
+        win.setRail(rail);
+        win.setRail(null);
+
+        // The rail is gone, so `setWindowState`'s rail re-show cannot run and
+        // the handle that would restore it has been removed — the window has
+        // to come back through the ordinary dock path.
+        win.restore();
+
+        expect(win.getWindowState()).toBe('normal');
+        expect(win.isDisplayed()).toBe(true);
+    });
+
+    it('W22: detaching after a collapse clears the genie the collapse left behind', () => {
+        const rail = mountedRail();
+
+        const win = shownWindow('W');
+
+        // Rail-attached before minimizing, so this takes the collapse path:
+        // the reduced-motion mock commits the genie's end state — the
+        // shrink-into-the-rail transform and `opacity: 0` — synchronously.
+        win.setRail(rail);
+        win.minimize();
+
+        const apply = vi.spyOn(DOM.sink, 'apply');
+
+        win.setRail(null);
+
+        // Back in the dock, so the collapse's visuals are *undone*, not
+        // overwritten with a resting state of the window's own: the element
+        // ends carrying neither property, indistinguishable from a window no
+        // collapse ever touched. Read from the writes themselves — the
+        // window's cached transform / opacity never saw the animation, which
+        // wrote through an inline-style buffer of its own.
+        expect(styleWritesFor(apply, win, 'transform').pop()).toBeNull();
+        expect(styleWritesFor(apply, win, 'opacity').pop()).toBeNull();
+
+        // And the caches end as they began, so nothing is folded into a later
+        // transform write or replayed after an inline-style wipe.
+        expect(win.getTransform()).toBeNull();
+        expect(win.getOpacity()).toBeNull();
+    });
+
+    it('W23: a detach undoes nothing when no collapse ever applied', () => {
+        const rail = mountedRail();
+
+        const win = shownWindow('W');
+
+        // Minimized while docked, so no collapse ever ran and there is no
+        // genie to undo.
+        win.minimize();
+
+        const apply = vi.spyOn(DOM.sink, 'apply');
+
+        win.setRail(rail);
+        win.setRail(null);
+
+        // Nothing is written at all — asserting the caches end null would pass
+        // either way, since undoing a collapse ends by clearing those very
+        // caches. Only the absence of the writes distinguishes the two.
+        expect(styleWritesFor(apply, win, 'transform')).toEqual([]);
+        expect(styleWritesFor(apply, win, 'opacity')).toEqual([]);
+        expect(styleWritesFor(apply, win, 'transition')).toEqual([]);
+    });
+
+    it('W25: a restore ends the collapse\'s ownership, so a later detach undoes nothing', () => {
+        const rail = mountedRail();
+
+        const win = shownWindow('W');
+
+        // A real collapse, then the expansion that supersedes it.
+        win.setRail(rail);
+        win.minimize();
+        win.restore();
+        win.setRail(null);
+
+        // Docked from here, with no collapse in the picture: the window's
+        // styles belong to the dock, and a later rail round-trip must leave
+        // them alone.
+        win.minimize();
+
+        const apply = vi.spyOn(DOM.sink, 'apply');
+
+        win.setRail(rail);
+        win.setRail(null);
+
+        expect(styleWritesFor(apply, win, 'transform')).toEqual([]);
+        expect(styleWritesFor(apply, win, 'opacity')).toEqual([]);
+        expect(styleWritesFor(apply, win, 'transition')).toEqual([]);
+    });
+
+    it('W27: a detach after a completed collapse does not announce a second minimize', () => {
+        const rail = mountedRail();
+
+        const win = shownWindow('W');
+
+        const minimizes: number[] = [];
+
+        win.on('minimize', () => { minimizes.push(1); });
+
+        // The collapse runs to completion here, so it has already emitted and
+        // owes nothing: the debt it settled must not be paid twice.
+        win.setRail(rail);
+        win.minimize();
+
+        expect(minimizes.length).toBe(1);
+
+        win.setRail(null);
+
+        expect(minimizes.length).toBe(1);
+    });
+
+    it('W28: attaching a rail to a docked window does not announce a second minimize', () => {
+        const rail = mountedRail();
+
+        const win = shownWindow('W');
+
+        const minimizes: number[] = [];
+
+        win.on('minimize', () => { minimizes.push(1); });
+
+        // The docked path emits synchronously and defers nothing, so the
+        // hand-over has no debt of its own to settle.
+        win.minimize();
+
+        expect(minimizes.length).toBe(1);
+
+        win.setRail(rail);
+
+        expect(minimizes.length).toBe(1);
+    });
+
+    it('W26: the undo takes the transition off before it writes through it', () => {
+        const rail = mountedRail();
+
+        const win = shownWindow('W');
+
+        win.setRail(rail);
+        win.minimize();
+
+        const apply = vi.spyOn(DOM.sink, 'apply');
+
+        win.setRail(null);
+
+        // Order is load-bearing: a transform or opacity written while the
+        // collapse's transition is still installed animates through the very
+        // rule being removed.
+        const order = styleWriteOrder(apply, win);
+
+        expect(order.lastIndexOf('transition')).toBeLessThan(order.indexOf('transform'));
+        expect(order.lastIndexOf('transition')).toBeLessThan(order.indexOf('opacity'));
+    });
+
+    it('W24: a window detached after a collapse still frees its layer on drop', () => {
+        const rail = mountedRail();
+
+        const win = shownWindow('W');
+
+        win.setRail(rail);
+        win.minimize();
+        win.setRail(null);
+
+        const apply = vi.spyOn(DOM.sink, 'apply');
+
+        // A drag and its drop. `onMouseUp`'s contract is that the closing
+        // setTranslate(0, 0) frees the compositor layer — which it can only
+        // do while nothing else is cached into the composed transform.
+        win.setTranslate(20, 20);
+        win.setTranslate(0, 0);
+
+        expect(styleWritesFor(apply, win, 'transform').pop()).toBeNull();
     });
 });

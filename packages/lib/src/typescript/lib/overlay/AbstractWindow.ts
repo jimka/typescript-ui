@@ -332,6 +332,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private _bodyHost:          Component | null = null;
     /** True while a fade owns the body host's inline opacity. See `endBodyFade`. */
     private _bodyFadeActive: boolean = false;
+    /** True while a rail collapse owns the window's own transform, opacity and transition. See `endRailCollapse`. */
+    private _railCollapseActive: boolean = false;
+    /** True while a rail collapse still owes the deferred `"minimize"` its completion emits. See `setRail`. */
+    private _railMinimizeEmitPending: boolean = false;
 
     /** Rail this window minimizes into, or null for the built-in bottom strip. */
     private _rail:              Rail | null = null;
@@ -1249,7 +1253,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
                 // hide it outright and let the rail show its handle (via the
                 // deferred "minimize" event). The geometry is left untouched, so
                 // the reverse genie on restore replays from the same rect.
+                this._railMinimizeEmitPending = true;
                 this.animateRailCollapse(() => {
+                    this._railMinimizeEmitPending = false;
                     this.setDisplayed(false);
                     this.emit("minimize");
                 });
@@ -1399,6 +1405,26 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * to detach and fall back to the built-in strip. The rail subscribes to the
      * window's minimize / restore / close events.
      *
+     * @remarks Called on a window that is *already* minimized, this hands it
+     * over at once rather than at its next minimize: attaching hides the
+     * window and leaves the rail's new handle to represent it, detaching shows
+     * it again, and the dock's row closes or re-opens the slot either way. A
+     * collapsed rail raises that handle hidden, so attaching one leaves the
+     * window with no on-screen representation until the rail expands.
+     *
+     * Such a call can also emit `"minimize"` synchronously. On the rail path
+     * that event is deferred to the end of the shrink-into-the-rail animation,
+     * so a `setRail` that cancels one part-way fires it here instead — the
+     * window did enter `"minimized"`, and the event would otherwise be lost,
+     * leaving a later `"restore"` unpaired. It fires at most once per
+     * minimize, whichever route it takes. A
+     * detached window is cleared of the shrink-into-the-rail transform and
+     * fade a minimize into the rail leaves behind, and any collapse still
+     * running is cancelled, so it comes back visible and restorable. It comes
+     * back at its slot's position but at its normal minimum size rather than
+     * the row's strip height, so it stands taller than the strips beside it
+     * until it is restored.
+     *
      * @param rail - The rail to minimize into, or `null` to detach.
      *
      * @returns This window, for method chaining.
@@ -1416,6 +1442,72 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         if (rail !== null) {
             rail.registerWindow(this);
+        }
+
+        // Attaching or detaching a rail moves a minimized window between the
+        // rail and the dock, so the row the dock lays out has changed: close
+        // the slot the window leaves, or open the one it joins, and let the
+        // relayout re-derive the dock's resize listener from the new count.
+        if (this.isMinimized()) {
+            // A collapse or expansion still in flight belongs to the owner
+            // this call is replacing, and its completion would land after the
+            // hand-over: the collapse's completion ends in
+            // `setDisplayed(false)`, which would re-hide a window that is a
+            // dock strip again by then, with no rail left to hold a handle for
+            // it. Cancel both, the way `destructor` does.
+            this._railCollapseAnimation?.cancel();
+            this._railCollapseAnimation = null;
+            this._railExpandAnimation?.cancel();
+            this._railExpandAnimation = null;
+
+            // That completion was also the rail path's only emitter of
+            // `"minimize"`, deferred to the end of the collapse — so cancelling
+            // it would swallow the event outright, leaving a window that is
+            // minimized and docked having never announced it, and a later
+            // restore emitting an unpaired `"restore"`. Fire what the collapse
+            // owed, as `Accordion.detach` runs the cleanup branch its own
+            // cancelled animations owned. Sitting after the `unregisterWindow`
+            // above is not load-bearing — a rail reached here would raise a
+            // handle and have it removed again inside this same call — but it
+            // keeps the old rail out of an event that no longer concerns it. A
+            // newly attached rail has already raised its handle in
+            // `registerWindow`, and takes this as the no-op its
+            // `showWindowHandle` guard makes it.
+            if (this._railMinimizeEmitPending) {
+                this._railMinimizeEmitPending = false;
+                this.emit("minimize");
+            }
+
+            // Attaching hands a docked window to the rail, so hide it: the
+            // relayout below gives its slot to the next docked window, which
+            // would otherwise be laid out on top of it. The rail's handle is
+            // what represents the window from here — though a *collapsed*
+            // rail shows no handle until it expands, so an attach to one
+            // leaves the window with no on-screen representation at all
+            // (pre-existing, and the follow-up hand-over plan's to fix). No
+            // genie either way: the window is already minimized, so there is
+            // no minimize gesture left to animate.
+            //
+            // Detaching pairs that hide with its show, as every other
+            // ownership hand-over here does: the relayout below hands the
+            // window a slot of its own again, and `setWindowState`'s rail
+            // re-show cannot help once `_rail` is null, so a window left
+            // hidden would hold that slot invisibly, with its handle already
+            // removed and no way back.
+            this.setDisplayed(rail === null);
+
+            // A window that genuinely collapsed into the rail is still
+            // wearing that collapse, and the cancel above writes no styles —
+            // only a completion clears what `Animation` armed. Nothing else
+            // will take any of it off once the rail is gone, since the reverse
+            // genie is gated on `_rail`: the window would be shown still faded
+            // out, invisible but hit-testable above the rail, and every later
+            // write to it would animate through the transition left behind.
+            if (rail === null) {
+                this.endRailCollapse();
+            }
+
+            AbstractWindow.relayoutMinimizedStack();
         }
 
         return this;
@@ -2775,6 +2867,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return;
         }
 
+        // From here the collapse owns this element's transform, opacity and
+        // transition, whether it completes or is abandoned part-way — see
+        // `endRailCollapse`, which is what takes them back.
+        this._railCollapseActive = true;
+
         this._railCollapseAnimation?.cancel();
         this._railCollapseAnimation = Animation.play(element, {
             from:       { transformOrigin: "0 0", transform: "translate(0, 0) scale(1)", opacity: "1" },
@@ -2797,6 +2894,22 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return;
         }
 
+        // The expansion supersedes the collapse: from here these styles are
+        // the expansion's to land, so the collapse no longer owns them and
+        // `endRailCollapse` must not undo them out from under it. This is the
+        // intent of `beginStateAnimation`'s own `endBodyFade` call rather than
+        // its shape — that one runs the full undo, while this only hands
+        // ownership over, because the expansion's `from` is the genie itself
+        // and needs it left in place to animate out of.
+        this._railCollapseActive = false;
+
+        // And the collapse's deferred `"minimize"` is void: expanding means the
+        // window is no longer minimized, so there is nothing left to announce.
+        // A debt kept past the state it describes is a stale debt — the shape
+        // `Card`'s parked scroll restore follows when its own becomes
+        // unreachable.
+        this._railMinimizeEmitPending = false;
+
         this._railExpandAnimation?.cancel();
         this._railExpandAnimation = Animation.play(element, {
             from:       { transformOrigin: "0 0", transform: this.railGenieTransform(), opacity: "0" },
@@ -2804,6 +2917,45 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             durationMs: WINDOW_ANIM_DURATION_MS,
             properties: ["transform", "opacity"],
         });
+    }
+
+    /**
+     * Undoes everything a rail collapse installed on the window — the
+     * `transition` it armed, the shrink-into-the-rail transform and the fade —
+     * leaving the element as though no collapse had ever run. A no-op unless
+     * one actually applied. Used when a detach hands a minimized window back
+     * to the dock, where the collapse's own reverse never runs:
+     * `setWindowState` plays it only while a rail is still attached.
+     *
+     * @remarks `Animation` plays through an inline-style buffer of its own, so
+     * none of what it wrote is in the component's caches. The transform and
+     * transition setters skip a write whose value they believe is already
+     * current, so each of those two is moved off its cached value and then
+     * cleared, which makes the clear a real write while still ending with the
+     * cache where it started — a value left cached would be folded into every
+     * later transform write and replayed after every inline-style wipe, which
+     * is not undoing a collapse but installing a new resting state of its own.
+     * `clearOpacity` has no such guard and needs no such dance.
+     */
+    private endRailCollapse(): void {
+        if (!this._railCollapseActive) {
+            return;
+        }
+
+        this._railCollapseActive = false;
+
+        // The transition goes first, or the writes below animate through the
+        // very rule being taken off.
+        this.setTransition("none");
+        this.clearTransition();
+
+        // `translate(0, 0) scale(1)` is `animateRailExpand`'s end state, so
+        // the genie is neutralised the way a real expansion neutralises it
+        // before the clear takes the declaration back off entirely.
+        this.setTransform("translate(0, 0) scale(1)");
+        this.clearTransform();
+
+        this.clearOpacity();
     }
 
     /**
@@ -2826,7 +2978,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /**
      * Returns this window's slot index in the minimized dock — the count of
-     * minimized windows ahead of it in the open-windows order.
+     * docked windows ahead of it in the open-windows order. A minimized
+     * window its rail holds takes no slot, so it is not counted.
      *
      * @returns The zero-based dock slot index.
      */
@@ -2836,7 +2989,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             if (win === this) {
                 return index;
             }
-            if (win.getWindowState() === "minimized") {
+            if (win.getWindowState() === "minimized" && win._rail === null) {
                 index++;
             }
         }
@@ -2844,20 +2997,23 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
-     * Re-positions every minimized window into a gap-free row along the bottom
-     * of the viewport. Runs after any change to the open/minimized set, and on
-     * every viewport `resize` through the dock's own listener, which it
-     * installs while the row holds a docked window and removes once it holds
-     * none.
+     * Re-positions every docked window — a minimized window with no rail —
+     * into a gap-free row along the bottom of the viewport. A minimized
+     * window its rail holds is skipped: the rail's handle is that window's
+     * minimized representation, so it takes no slot here and this loop writes
+     * no geometry to it — a state animation already in flight when the rail
+     * was attached still lands, since only the rail animations are cancelled. Runs after any change to the open/minimized set or to a
+     * minimized window's rail, and on every viewport `resize` through the
+     * dock's own listener, which it installs while the row holds a docked
+     * window and removes once it holds none.
      */
     private static relayoutMinimizedStack(): void {
         let index          = 0;
-        let docked         = 0;
         let dockWidth      = 0;
         let viewportHeight = 0;
 
         for (const win of AbstractWindow.openWindows) {
-            if (win.getWindowState() !== "minimized") {
+            if (win.getWindowState() !== "minimized" || win._rail !== null) {
                 continue;
             }
 
@@ -2881,13 +3037,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             win.setAutoCommitStyle(true);
 
             index++;
-
-            if (win._rail === null) {
-                docked++;
-            }
         }
 
-        if (docked > 0) {
+        if (index > 0) {
             AbstractWindow.installStackResizeListener();
         } else {
             AbstractWindow.uninstallStackResizeListener();
