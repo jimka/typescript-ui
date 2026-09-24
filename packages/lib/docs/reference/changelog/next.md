@@ -1680,3 +1680,25 @@ page resets to empty.
 - **A window disposed without being closed stayed in
   `AbstractWindow.getOpenWindows()`** and kept its dock slot. It now leaves
   the list, and the dock closes the gap.
+
+- **A window minimized into a [`Rail`](/components/Rail) no longer takes a
+  slot in the bottom dock strip.** The strip counted every minimized window,
+  so a rail-held one left an empty slot in the row and had its position and
+  size overwritten with that slot's rect on every relayout and every
+  viewport resize — while the window itself was hidden and its rail handle
+  was what showed. The strip now holds only the minimized windows with no
+  rail, and attaching or detaching a rail on an already-minimized window
+  re-closes the row. Attaching one also hides the window, so the slot it
+  gives up is not laid out under a window still on screen; the rail has
+  raised its handle by then, and a click on that handle restores it as
+  usual — though a rail that is *collapsed* raises that handle hidden, so
+  attaching one to a minimized window leaves it with no on-screen
+  representation until the rail is expanded. Detaching one shows the window
+  again in the slot it is handed back, clearing the transform and fade a
+  minimize into the rail had left on it, and cancelling that collapse if it
+  is still running — so a window handed back is visible and restorable
+  however it reached the rail. It returns at its slot's position but at its
+  own normal minimum size rather than the row's strip height, so it stands
+  taller than the strips beside it until restored. A `setRail` that cancels a
+  running collapse also fires the `"minimize"` that collapse had deferred, so
+  the event is never lost and never doubled. No consumer action is needed.
