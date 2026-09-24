@@ -573,6 +573,28 @@ describe('A11 g16.panel-settled', () => {
         expect(counted(() => pane.doLayout())['skipped.g16.panel-settled.remeasure']).toBeUndefined();
     });
 
+    it('decides the skip from cached values, asking the panel for no size hint', async () => {
+        await mount('markdown-doc');
+
+        const pane = tools.findComponent('MarkdownContentPane') as unknown as Component;
+
+        await tools.waitFrames(PANEL_SETTLE_FRAMES);
+        apply('g16.panel-settled');
+
+        // Spied after the ablation is applied, so the spy sees the gate's own
+        // reads: the arm would otherwise pay a subtree size computation per
+        // pane per pass, which is the cost the gate exists to avoid. It pins
+        // the gate rather than the pass — `Panel.scheduleGutterSettleOnShrink`
+        // pays one of its own on any pass where the panel shows a scroll
+        // affordance, which jsdom, painting none, never reaches.
+        const preferred = vi.spyOn(pane, 'getPreferredSize');
+
+        pane.doLayout();
+
+        expect(counted(() => pane.doLayout())['skipped.g16.panel-settled.remeasure']).toBeGreaterThanOrEqual(1);
+        expect(preferred).not.toHaveBeenCalled();
+    });
+
     it('passes a non-scrolling panel through uncounted: its re-measure already does nothing', async () => {
         const mounted = await mount('markdown-doc');
         const root = mounted.build.root as unknown as AnyObj;
