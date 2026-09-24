@@ -435,7 +435,7 @@ every case below is about structure and bookkeeping, never about rectangles):
 Verified only in the engine, by the runs in `## Verification`:
 
 10. A `passes` unit of `scroll-panes` re-measures every pane:
-    `pane.remeasure@Panel` is about `n` per unit, and
+    `pane.remeasure@ScrollPane` is about `n` per unit, and
     `seam.source.getScrollMetrics` is of the same order.
 11. A `wheel` unit of `scroll-panes` really scrolls: `pane.scrollTick` is at
     least 1 per unit, and `describe().scrollablePanes` equals `n`.
@@ -488,7 +488,7 @@ packages/qa/runqa.sh w31s1-spp-plain-c                  main "$P&$FLAGS"
 python3 packages/qa/bin/qa-table.py packages/qa/results w31s1-spp- --work \
     --before host.scrollablePanes,host.maxScrollTop0
 python3 packages/qa/bin/qa-ab.py packages/qa/results w31s1-spp- \
-    --counter 'seam.source.getScrollMetrics' --same 'work.pane.remeasure@Panel'
+    --counter 'seam.source.getScrollMetrics' --same 'work.pane.remeasure@ScrollPane'
 python3 packages/qa/bin/qa-ab.py packages/qa/results w31s1-spp- \
     --counter 'seam.source.getScrollMetrics - work.memo.g16.scroll-reads.metricsHit'
 ```
@@ -499,7 +499,7 @@ phase block: `g16.panel-settled` reads `unreached` in the wheel phase, which
 drives no layout pass, and that is the shape of the cell rather than a finding.
 
 Before either verdict, the table must show `scrollablePanes` equal to `n`,
-`pane.remeasure@Panel` about `n` per `passes` unit, and `pane.scrollTick` at
+`pane.remeasure@ScrollPane` about `n` per `passes` unit, and `pane.scrollTick` at
 least 1 per `wheel` unit. If `scrollablePanes` is below `n`, the panes do not
 overflow at this viewport — raise `ROWS_PER_PANE` and re-run rather than reading
 the cell. If the settled arm's Δms sits inside the bracket — the spread between
@@ -790,3 +790,229 @@ symbol moves.
     That order is what makes the cell's scoring counter,
     `work.onThemeChange@CodeEditor - work.skipped.g25.theme-withhold.theme`, the
     number of reconfigures actually performed.
+
+---
+
+## Implementation Notes
+
+Ten deviations, all found while implementing, and three caveats on how a cell's
+own counters and one offline suite must be read. One deviation — the panes'
+subclass — changes what cell `spp` measures, from nothing to the candidate; the
+rest change none of it.
+
+**The heading oracle's third row was too narrow.** `## Internal Structure`'s
+predicate table required, for a reported heading that is *not* above the pane's
+top at max scroll, that "the previous present heading exists and is above".
+`findActiveHeading` also returns that heading when *no* present heading is above
+at all — at max scroll its first iteration breaks on a heading that has not
+reached the top and takes it outright, whether or not an earlier one exists
+([`Markdown.ts:2289`](packages/lib/src/typescript/lib/component/display/Markdown.ts#L2289)).
+The implemented row therefore reads "the previous present heading does not
+exist, or exists and is above". Without the widening the plain arm would raise
+`heading.disagree` at the bottom of a document whose first heading is still on
+screen, and void the cell.
+
+**`event.target` is not the pane by definition.** `## Internal Structure` said
+the capture `scroll` listener's `event.target` "is that element by definition".
+It is not: a `MarkdownViewer` also contains the fences' `CodeEditor`s, whose own
+`.cm-scroller` delivers `scroll` events on the same capture path, and the
+minimap is another candidate. A wrong pane would make the oracle compare against
+the wrong rectangles and raise `heading.disagree` on the plain arm — the exact
+counter the cell is gated on. The listener therefore accepts a target only when
+it holds the prose, tested by looking the document's first heading up inside it,
+which is the same predicate the rule already applies. The check also re-reads
+the pane on every scroll rather than latching the first one, so a rebuilt
+overlay scroll element is picked up.
+
+**jsdom does not clamp `scrollTop`.** `## Expected Behaviour` 8 and step 13
+assumed the ladder's span probe reads back 0 under jsdom, "which lays nothing
+out". jsdom stores an unclamped `scrollTop`, so the probe reads its own
+10,000,000 back and the ladder walks a full triangle there. The two ladder cases
+in `P18` therefore stub the DOM seam's scroll read — to a span of 1,200 px for
+the triangle's exact offsets, and to 0 for the page that really cannot scroll —
+rather than relying on jsdom's own answer. This makes the offsets a checked
+behaviour offline instead of an engine-only one.
+
+**A theme switch needs the font metrics stubbed offline.** `P17` switches the
+theme on a page holding a tab button per tab, and a switch re-derives every
+button's optical centre through `DOM.source.measureFontMetrics`, which takes a
+canvas 2D context jsdom does not implement. The describe stubs that one seam
+method, as the library's own offline DOM source models it; stubbing
+`getContext` instead would leave a fake context in the library's module-level
+metrics cache for the rest of the file, where a `JSDOM_GAPS` case asserts the
+real one is still absent. No `JSDOM_GAPS` entry is needed: both panels mount
+under jsdom, and only a theme switch needs the stub.
+
+**The panes had to become a `Panel` subclass, and that is a finding about G16
+itself.** `## Public API` builds each pane as `Panel({ autoScroll: 'y', … })`.
+Built that way the cell measures nothing: `Panel.canSkipUnchangedLayout` opts a
+*plain* `Panel` into the unchanged-commit layout skip by prototype identity
+([`Panel.ts:610`](packages/lib/src/typescript/lib/core/Panel.ts#L610)), the
+board re-commits every pane at the rectangle it already holds on a settled
+pass, so `applyBounds` withholds the pane's `doLayout`
+([`Component.ts:4461`](packages/lib/src/typescript/lib/core/Component.ts#L4461))
+and `remeasureScrollMetrics` — the one call the cell exists to measure — is
+never reached. Measured offline: with plain panes `g16.panel-settled` produces
+*no counter at all*; with the subclass it skips once per pane. The panes are now
+a file-local `ScrollPane extends Panel`, which opts out by construction, after
+the library's own `MarkdownContentPane` precedent for a file-local subclass that
+exists only to reach one behaviour. No library file changed.
+
+The more interesting half is what that says about the candidate. A subclassed
+scrolling pane is the *realistic* shape — a real application's scrolling pane is
+almost always a `Panel` subclass, so it genuinely pays the re-measure on every
+settled pass — and the plain `Panel` is the case stage 1's own opt-in already
+covers. So **G16's remaining cost exists only for panels that are not opted
+in**, and that is the scope of any win it is credited with. Whoever reads `spp`
+needs it to read the number, and whoever judges G16 needs it to bound the
+claim; it is in the panel's own `description` and in the README row as well as
+here.
+
+**The board's work-counter key is not `@Panel`.** `countMethod` tags each tally
+with the receiver's class
+([`counters.ts:597`](packages/qa/src/harness/counters.ts#L597)), so with the
+panes subclassed the per-pane tally is `pane.remeasure@ScrollPane`.
+`## Verification`'s `qa-ab.py` call and the reading note under it, and
+`## Expected Behaviour` 10, were corrected in place to that key rather than left
+for this section to explain: they are the runbook someone copies when they run
+the cell, and `--same 'work.pane.remeasure@Panel'` would have gated on a
+constant. That key does still appear, once per pass, for the board root — whose
+own re-measure returns at once because it does not scroll, and which the
+ablation passes through uncounted for the same reason.
+
+`## Public API`'s `installWork` row and `[^witness]` still name the old key.
+Both are the plan's pre-implementation design record, which this section is the
+correction to; editing them would erase the deviation rather than document it.
+
+**`scroll-panes` declares `pane1` and `row1` only above `n = 1`.** `n=1` is a
+legal scale and has no second pane; the other three labels are unconditional.
+
+**Two of `editor-tabs`' four geometry labels hold a box for only part of the
+run.** `## Architecture Decisions` → *No geometry label tracks scrolled content*
+says "every label these panels declare is a container whose box stays put". That
+is true of `tabbed` and `reference`, and false of `editor0` and `editorLast`:
+`Tab.doLayout` undisplays every inactive page, an undisplayed element resolves
+to `display: none`, and the probe records `[0, 0, 0, 0]` rather than `null`
+([`packages/qa/src/harness/probes.ts:70`](packages/qa/src/harness/probes.ts#L70)),
+so `qa-ab.py` compares a zero rectangle as a real one. Under the cell's
+`theme:14,idle:4`, `editor0` is zero from unit 0 — `cycle(0)` shows tab 1 before
+the unit is sampled — and real again only in the trailing settled phase, which
+`restore()` returns to tab 0; `editorLast` is the mirror, real from the unit that
+shows its tab to the end of the theme phase and zero throughout the trailing
+phase.
+
+Both labels stay, because each gates the half of the run the other cannot:
+`editorLast` gates the layout of an editor in the window where a withheld
+reconfigure is caught up, and `editor0` gates the trailing settled phase
+`[^settled-gate]` takes the soundness verdict from. Every run of the cell shows
+the same tab on the same unit, so the two series have the same shape in every
+arm and a `DIFF` still means the arm — what is not true is that either label
+gates every unit, and the panel's comment and the README row now say which units
+each one gates.
+
+**Each check is covered by a case that makes it fail.** The plan's unit-test
+list pins structure and bookkeeping. A check that cannot be shown to fail is
+not a measurement, so three cases were added beyond it: `P17` suppresses one tab
+editor's `onThemeChange` and requires `theme.mismatch`, since in the plain path
+every editor is themed alike and a check comparing the wrong pair would report
+`theme.match` just the same; `P18` feeds the oracle an earlier heading and
+`null` and requires `heading.disagree` for both, and delivers a scroll from an
+element inside the viewer that holds no heading and requires that the oracle
+stay disarmed; `P17` also asks one tab editor for a theme change on its own and
+requires `onThemeChange@CodeEditor` to rise with it, which is what pins the
+install order `[^counter-order]` turns on, and freezes the *reference* editor
+to require `theme.indistinct`; `P18` stubs the pane's rectangles and scroll
+metrics to reach the two at-max rows, the widened one included, which jsdom's
+empty rectangles otherwise leave unexecuted, and stubs a pane that fits its
+content to reach the overflow clause of the same test; and `P16` dispatches a
+non-bubbling `scroll` on an element inside pane 0 and requires
+`pane.scrollTick`, which a listener that did not capture would never see.
+
+Four more cases pin decisions whose reversal the counters alone cannot see:
+`P17` records which tab is selected at the instant the theme notification lands,
+because showing the tab *before* the switch leaves `theme.hidden`, `theme.shown`
+and every check reading exactly the same while the stale-show transition the
+cell exists to gate stops happening; it drives a unit past the lap and requires
+that one editor still take the switch shown, since `setActiveTabIndex` is a
+silent no-op past the last tab and the selection alone cannot tell a lap that
+ran one unit long; it adds `cm-focused` to one of the two compared views and
+requires `theme.match`, the one class difference the check is meant to drop; and
+it appends a stray `.cm-editor` outside the panel's root and requires
+`editorViews` not to count it.
+
+Five more pin `scroll-panes` and the oracle's one duplicated constant. `A11`
+carries the cell's acceptance criterion — mount the board, apply
+`g16.panel-settled`, and require `skipped.g16.panel-settled.remeasure` once per
+pane — which is the assertion that fails outright if the panes ever go back to
+being a plain `Panel`, where the arm produces no counter at all. `P16` requires
+`pane.remeasure@ScrollPane` to be `n` and `pane.remeasure@Panel` to be 1 on a
+settled pass, so deleting the `countMethod` call no longer passes; it stubs the
+seam's scroll metrics so that one pane overflows and the rest fit, and requires
+`scrollablePanes` to be 1, so the premise witness can no longer be a count of
+panes; and it requires `row1` to be a child of pane 1 and not of pane 0, which
+is `[^no-scrolled-labels]`'s whole justification for the label. `P18` straddles
+the oracle's re-stated `TOP_TOLERANCE_PX` with stubbed rectangles and requires
+the oracle and the *exported* `findActiveHeading` to answer the same, which
+guards the duplicated value without making the oracle depend on the function a
+candidate might change.
+
+`ROWS_PER_PANE` is the one value left unpinned, deliberately and not silently.
+Nothing offline observes overflow — jsdom lays nothing out — so a test can pin
+that the witness reports overflow correctly, which `P16` now does, but not that
+40 rows overflow a cell of the board at the host's viewport. That is a judgement
+about the screen, and the run's own `describe().scrollablePanes` is what checks
+it, with `## Potential Challenges`'s documented remedy — raise the constant and
+re-run — as the response. The constant's doc comment says so, so a reader does
+not mistake the absence of a test for an oversight.
+
+**`README.md` took a fourth edit.** `## Documentation Impact` says "Three
+edits, all in step 14". The *Measurement rules* bullet "Put `toggle`, `theme`,
+`type`, and `drag` with `grip=tab`, last in a `drive=` list" is contradicted by
+`editor-tabs`, whose `defaultDrive` is `theme:14,idle:4` and whose cell runs
+that order for the reason `[^settled-gate]` and `[^inside-theme]` give: the
+check only holds while the page is on the switched theme, and the soundness
+verdict is taken from a trailing settled phase. The bullet now carries that
+exception, since the README is the QA app's only reference and a reader who
+obeyed the rule as written would reorder the cell and destroy its check.
+
+**One caveat on `tests/sweep.test.ts`.** Its `LAST_ONLY_DRIVERS` list
+([`:29`](packages/qa/tests/sweep.test.ts#L29)) encodes the *Measurement rules*
+bullet as it read before the `editor-tabs` exception, and `W6`
+([`:203`](packages/qa/tests/sweep.test.ts#L203)) requires every page-changing
+driver to be a run's last phase. Nothing fails today: `W6` reads the runs of
+`sweeps/w3-0.sh`, and this plan adds no sweep script (`## Non-Goals`), so no
+scripted run carries `theme:14,idle:4`. The list was left as it is rather than
+broadened, because the README's exception turns on a `theme` target restoring its
+own page state, which `W6` cannot see from a `drive=` string, and a mechanical
+"a last-only driver may precede an `idle`" rule would be weaker than the README
+for `toggle` and `type` too. If the `etm` cell is ever scripted, `W6` needs the
+exception before it will pass.
+
+**One caveat on cell `spp`'s size-hint reading.** `[^gate-cost]` says the old
+gate's cost "would be paid 24 times" on the board. That is the cost the rewrite
+*avoids*, not the board's total, and with the panes subclassed the two are the
+same size. Each pane's own `Panel.scheduleGutterSettleOnShrink` reads the
+preferred extent once per pass while the pane shows a scroll affordance
+([`Panel.ts:936`](packages/lib/src/typescript/lib/core/Panel.ts#L936)), and the
+old gate read it once more. So per `passes` unit the plain arm pays about `n`
+`getPreferredSize@ScrollPane` calls, the old gate made it about `2n`, and the
+rewrite takes it back to about `n`: the arm's count roughly *halves* rather than
+falling to nothing. Two things follow for a reader of a future `spp`
+measurement. The key is `@ScrollPane`, not `@Panel`. And a fall to zero would
+mean the panes stopped laying out — the failure this branch had to fix — not
+that the gate got cheaper. While the panes were a plain `Panel` both counts were
+0, for that reason. The `A11` case pins the gate's own reads, not the pass's.
+
+**One caveat on cell `etm`'s scoring counter, found while wiring the work
+counters.** `[^counter-order]` calls
+`work.onThemeChange@CodeEditor - work.skipped.g25.theme-withhold.theme` "the
+number of reconfigures actually performed". It is the number the *theme
+notification* performed. `g25.theme-withhold`'s catch-up calls the prototype
+method it captured before any counter was installed
+([`packages/qa/src/harness/ablations.ts:2113`](packages/qa/src/harness/ablations.ts#L2113)),
+so a reconfigure run because a tab was shown reaches neither `countMethod`'s
+prototype counter nor the panel's instance wrapper, and the expression misses
+one per show — `n - 1` over one lap, which the phase's own schedule fixes.
+This is pre-existing ablation behaviour, not something this branch introduced,
+and the plan changes neither ablation (`## Non-Goals`); it is recorded here so
+the cell is read with the right denominator.
