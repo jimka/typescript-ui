@@ -7,12 +7,12 @@
 // drivers.dom.test.ts checks the drivers' event sequences on stubbed
 // rectangles instead.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Body, Component, DOM } from '@jimka/typescript-ui/core';
+import { Body, Component, DOM, ThemeManager } from '@jimka/typescript-ui/core';
 import { AbstractWindow } from '@jimka/typescript-ui/overlay';
 import { startCounting, stopCounting } from '../src/harness/counters.js';
 import type { PhaseCounts } from '../src/harness/counters.js';
 import { createTools, parseDrive } from '../src/harness/run.js';
-import type { CallTarget, HarnessTools } from '../src/harness/types.js';
+import type { CallTarget, HarnessTools, ThemeTarget } from '../src/harness/types.js';
 import { mountPanel } from '../src/mount.js';
 import type { MountedPanel, MountWaits } from '../src/mount.js';
 import { elementFor } from '../src/builders/dom.js';
@@ -422,6 +422,262 @@ function counted(work: () => void): Record<string, number> {
 
     return counts.work ?? {};
 }
+
+/**
+ * Font metrics a theme switch can re-measure offline. A switch re-derives every
+ * button's optical centre through `measureFontMetrics`, which takes a canvas 2D
+ * context jsdom does not implement (the gap `JSDOM_GAPS` records for
+ * `table-rows` and the two forms), and `editor-tabs` has a tab button per tab.
+ * Stubbed at the DOM seam, as the library's own offline DOM source models it,
+ * rather than on the canvas: the library caches its metrics canvas in a
+ * module-level variable, and a fake one would outlive this describe.
+ */
+const STUB_FONT_METRICS = { ascent: 13, descent: 3, capTop: 10 };
+
+describe('P17 editor-tabs', () => {
+    beforeEach(() => {
+        vi.spyOn(DOM.source, 'measureFontMetrics').mockReturnValue(STUB_FONT_METRICS);
+    });
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('builds one editor per tab beside the always-visible reference', async () => {
+        const mounted = await mountPanel('editor-tabs', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const [reference, tabbed] = mounted.build.root.getComponents();
+        const host = mounted.build.describe!() as { tabs: number };
+
+        expect(host.tabs).toBe(SMOKE_SCALE);
+        expect(reference).toBe(mounted.build.geometry!.reference);
+        expect(tabbed).toBe(mounted.build.geometry!.tabbed);
+        expect(tabbed.getComponents()).toHaveLength(SMOKE_SCALE);
+
+        // `editorViews` is the panel's own census — `n + 1` is what says every
+        // hidden tab still holds a view — so a `.cm-editor` outside the root,
+        // another panel's or a stray, must not inflate it.
+        const views = (mounted.build.describe!() as { editorViews: number }).editorViews;
+        const stray = document.createElement('div');
+
+        stray.className = 'cm-editor';
+        document.body.appendChild(stray);
+
+        try {
+            expect((mounted.build.describe!() as { editorViews: number }).editorViews).toBe(views);
+        } finally {
+            stray.remove();
+        }
+    });
+
+    it('splits a theme switch into one shown editor and n - 1 hidden ones, the reference counted through the prototype', async () => {
+        const mounted = await mountPanel('editor-tabs', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const theme = mounted.targets.theme as ThemeTarget;
+        const reference = mounted.build.root.getComponents()[0];
+        const hiddenEditor = mounted.build.root.getComponents()[1].getComponents()[1];
+
+        // `installWork` puts a counter on `CodeEditor.prototype`, which every
+        // later mount in this file would otherwise inherit.
+        const patched = snapshotPatchables([tools.ownerProto(reference, 'onThemeChange')!]);
+
+        try {
+            mounted.build.installWork!(tools);
+
+            // One tab editor asked on its own: its instance wrapper must
+            // delegate *into* the prototype counter, so both rise together. An
+            // instance wrapper installed before `countMethod` had replaced the
+            // prototype method would hold the unwrapped original, and the tab
+            // editors would be missing from `onThemeChange@CodeEditor` — the
+            // count the cell scores the arm on. Asked through this one editor
+            // rather than over a whole switch, because editors mounted by
+            // earlier cases in this file are still subscribed to the theme and
+            // the prototype counter sees them too.
+            const direct = counted(() => (hiddenEditor as unknown as { onThemeChange(): void }).onThemeChange());
+
+            expect(direct['theme.hidden']).toBe(1);
+            expect(direct['onThemeChange@CodeEditor']).toBe(1);
+
+            // Unit 0 switches the theme before it shows the next tab, so tab 0
+            // is still the selected one when the switch goes out: one editor
+            // takes it shown and the rest hidden, which is the population
+            // `g25.theme-withhold` could skip. Both counters are the panel's
+            // own instance wrappers, so no other editor contributes.
+            const work = counted(() => theme.cycle(0));
+
+            expect(work['theme.shown']).toBe(1);
+            expect(work['theme.hidden']).toBe(SMOKE_SCALE - 1);
+
+            // Past the lap — tab 2 is the last at n = 3 — no further unit shows
+            // anything, and the panel's record still names a tab that exists,
+            // so one editor keeps taking each switch shown. A lap that ran one
+            // unit long would leave the record naming a tab the panel does not
+            // have, and no editor would be the shown one; `setActiveTabIndex`
+            // is a silent no-op past the last tab, so the selection alone
+            // cannot tell.
+            theme.cycle(2);
+            theme.cycle(4);
+
+            const past = counted(() => theme.cycle(6));
+
+            expect(past['theme.shown']).toBe(1);
+            expect(past['theme.hidden']).toBe(SMOKE_SCALE - 1);
+        } finally {
+            restorePatchables(patched);
+            theme.restore();
+        }
+    });
+
+    it('checks the shown tab against the reference, and finds them themed alike', async () => {
+        const mounted = await mountPanel('editor-tabs', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const theme = mounted.targets.theme as ThemeTarget;
+
+        // Unit 0 switches the theme and then shows tab 1; unit 1 checks that
+        // tab before switching back. With nothing withholding a reconfigure,
+        // the tab's editor carries the same theme classes as the reference —
+        // and `theme.indistinct` stays absent, which is what says the switch
+        // left a trace in the class list at all, so the check could have failed.
+        theme.cycle(0);
+
+        const work = counted(() => theme.cycle(1));
+
+        expect(work['theme.match']).toBe(1);
+        expect(work['theme.mismatch']).toBeUndefined();
+        expect(work['theme.indistinct']).toBeUndefined();
+
+        theme.restore();
+    });
+
+    it('ignores the focus class, which no theme switch writes', async () => {
+        const mounted = await mountPanel('editor-tabs', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const theme = mounted.targets.theme as ThemeTarget;
+        const shown = mounted.build.root.getComponents()[1].getComponents()[1];
+        const view = elementFor(tools, shown, 'P17').querySelector('.cm-editor')!;
+
+        try {
+            theme.cycle(0);
+
+            // CodeMirror puts `cm-focused` on the view it has the caret in, and
+            // one editor of the two being compared can have it while the other
+            // does not. It is the one class expected to differ, so the check
+            // drops it: left in, a focused editor would read as a theme
+            // mismatch and void the cell.
+            view.classList.add('cm-focused');
+
+            expect(counted(() => theme.cycle(1))['theme.match']).toBe(1);
+        } finally {
+            theme.restore();
+        }
+    });
+
+    it('catches a shown tab whose editor was left on the theme it was hidden under', async () => {
+        const mounted = await mountPanel('editor-tabs', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const theme = mounted.targets.theme as ThemeTarget;
+        const stale = mounted.build.root.getComponents()[1].getComponents()[1] as unknown as Record<string, unknown>;
+
+        // Stands in for a withheld reconfigure that is never caught up: tab 1's
+        // editor takes no theme change at all, so it comes back carrying the
+        // classes it was mounted under while the reference carries the new ones.
+        // Without this the check could not be shown to discriminate — in the
+        // plain path every editor is themed alike, so a check comparing the
+        // wrong pair would report `theme.match` just the same.
+        stale.onThemeChange = (): void => {};
+
+        theme.cycle(0);
+
+        const work = counted(() => theme.cycle(1));
+
+        expect(work['theme.mismatch']).toBe(1);
+        expect(work['theme.match']).toBeUndefined();
+        expect(work['theme.indistinct']).toBeUndefined();
+
+        theme.restore();
+    });
+
+    it('switches the theme before it shows the next tab, so the tab coming back was hidden for it', async () => {
+        const mounted = await mountPanel('editor-tabs', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const tab = (mounted.build.geometry!.tabbed as unknown as { getTab(): { getActiveTabIndex(): number } }).getTab();
+        const theme = mounted.targets.theme as ThemeTarget;
+        const shown = mounted.build.root.getComponents()[1].getComponents()[1] as unknown as Record<string, unknown>;
+        const original = shown.onThemeChange as (this: unknown) => void;
+        const selectedWhenSwitched: number[] = [];
+
+        shown.onThemeChange = function (this: unknown): void {
+            selectedWhenSwitched.push(tab.getActiveTabIndex());
+            original.call(this);
+        };
+
+        try {
+            theme.cycle(0);
+
+            // The whole cell turns on this order. Shown first and switched
+            // after, tab 1's editor would be visible when the switch went out,
+            // `g25.theme-withhold` would never withhold from it, and the
+            // stale-show transition the cell exists to gate would not happen —
+            // while `theme.hidden`, `theme.shown` and every check read exactly
+            // the same. So the order is pinned by when the notification lands,
+            // not by what it counts.
+            expect(selectedWhenSwitched).toEqual([0]);
+            expect(tab.getActiveTabIndex()).toBe(1);
+        } finally {
+            theme.restore();
+        }
+    });
+
+    it('reports a check as indistinct when the switch left no trace on the reference', async () => {
+        const mounted = await mountPanel('editor-tabs', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const theme = mounted.targets.theme as ThemeTarget;
+        const reference = mounted.build.root.getComponents()[0] as unknown as Record<string, unknown>;
+
+        // The reference is the check's yardstick. An editor that takes no theme
+        // change keeps the classes it was mounted under, so the comparison
+        // proves nothing whatever the arm did, and `theme.indistinct` is what
+        // says so in the report. Without a case that makes it fire, a guard
+        // that could never fire — a `mountClasses` left empty, say — would pass
+        // the suite while telling the reader nothing.
+        reference.onThemeChange = (): void => {};
+
+        theme.cycle(0);
+
+        try {
+            const work = counted(() => theme.cycle(1));
+
+            expect(work['theme.indistinct']).toBe(1);
+            expect(work['theme.mismatch']).toBe(1);
+        } finally {
+            theme.restore();
+        }
+    });
+
+    it('shows each tab once inside the theme phase, and restores the tab and the theme', async () => {
+        const mounted = await mountPanel('editor-tabs', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const tab = (mounted.build.geometry!.tabbed as unknown as { getTab(): { getActiveTabIndex(): number } }).getTab();
+        const theme = mounted.targets.theme as ThemeTarget;
+        const started = ThemeManager.getTheme();
+
+        // `afterMount` shows every tab once so each editor mounts a view, then
+        // comes back to tab 0, where the phase starts.
+        expect(tab.getActiveTabIndex()).toBe(0);
+
+        theme.cycle(0);
+
+        expect(tab.getActiveTabIndex(), 'an even unit shows the next tab').toBe(1);
+        expect(ThemeManager.getTheme(), 'an even unit leaves the page on the other theme').not.toBe(started);
+
+        theme.cycle(1);
+
+        expect(tab.getActiveTabIndex(), 'an odd unit checks, and shows nothing').toBe(1);
+
+        theme.cycle(2);
+
+        expect(tab.getActiveTabIndex()).toBe(2);
+
+        theme.cycle(4);
+
+        expect(tab.getActiveTabIndex(), 'the lap is over at n = 3: there is no tab 3').toBe(2);
+
+        theme.restore();
+
+        expect(tab.getActiveTabIndex()).toBe(0);
+        expect(ThemeManager.getTheme()).toBe(started);
+    });
+});
 
 describe('P14 panel parameters', () => {
     it('form-flat rejects an unknown passes in build, before any wait', async () => {
