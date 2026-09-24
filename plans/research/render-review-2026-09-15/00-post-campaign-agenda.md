@@ -222,7 +222,9 @@ say so; the rest are open.
   arms for that reason, not mainly because of C40. The plan's reworked
   witness clicks the surfaces each control toggles from.
 - **`List` and `ComboBox` still announce `"action"` on a programmatic
-  `setSelectedIndex`** — open. `checkbox-action-activation` makes `"action"`
+  `setSelectedIndex`** — fixed by
+  `plans/implemented/programmatic-selection-action.md`.
+  `checkbox-action-activation` makes `"action"`
   mean user activation for `Checkbox` and `Slider` and names these two as
   the one known exception. They do not share C40's delivery bug, and
   aligning them changes `ComboBox`'s listener argument.
