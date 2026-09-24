@@ -372,3 +372,43 @@ every work counter and seam read falling — the cost is engine-side and
 invisible to the harness's instruments; the chart repaint gate costs 0.2–0.4 ms
 on a pass that repaints anyway; the dispatch walk costs under half a
 millisecond on a dashboard hover.
+
+## G22 unblocked: the tree table's focused cell (2026-09-24)
+
+W3.0 read `ttr`'s `DIFF(focused)` as "deferring the settle changes which cell
+holds focus" and sent G22 for a different surface. That reading is wrong, and
+two measurements retire it.
+
+**Offline** (throwaway probe, a `TreeTable` with a selected record, the
+ablation's deferral applied to `Cell.applyBounds`): the focused cell keeps its
+identity — same pool slot, same column, same record — mid-burst and after the
+settle. Its rectangle is stale mid-burst (526 px wide against the live arm's
+426) and identical once the settle runs.
+
+**In engine** (five runs, prefix `g22r-ttr-`, `panel=treetable-rows&drive=resize,idle:4`):
+every probed rectangle is `[1, 22, W, 20]` — only `W` moves. The plain arm's
+width tracks the drag continuously (2434 → 2323 → 2431); the ablated arm holds
+2434 for all 150 units, then reads 2434, 2434, 2431, 2431 across the four idle
+units. It converges within two frames and lands on the plain arm's exact width.
+The resize phase is 103.02 → 81.58 ms per frame, work −92.4%.
+
+So the geometry gate, not the change, is what failed the focus question: it
+compares every unit, including the mid-burst ones the deferral is meant to skip.
+A G22 plan needs a gate on the settled state — the last unit of the settle
+phase, or a probe taken after it — and the same treatment applies to any later
+candidate that defers work within a burst.
+`VirtualRowView.deferRowLayoutWhileResizing` already ships this contract for
+tree rows, so G22 extends a shipped pattern to table cells rather than inventing
+one.
+
+**But the deferral is visible, and that is the real decision.** Watching the
+ablated runs, the user saw the body cells stay put while the header moved: for
+the length of the drag the columns' contents no longer track their headers, and
+they snap into line only when the burst ends. The probes could not show this —
+they measure a converged rectangle, not whether the table looks right in the
+hand. So G22 is not a free win to be gated and landed; it is the same choice
+`drag-resize-outline-mode` put to the user one layer up, live against outline.
+A plan has to say whether a column resize may leave the body behind, and if so
+whether that is the default or an opt-in, or else find a way to keep header and
+body in step while still skipping the per-cell layout — moving the cells with a
+transform during the burst, for instance, and reconciling on the settle.
