@@ -1913,7 +1913,11 @@ export abstract class AbstractStore {
     protected applyView(): Promise<void> {
         this.rebuildIdIndex();
 
-        if (this._allRecords.length >= WORKER_THRESHOLD && StoreWorkerClient.isAvailable() && !this.hasCustomSorter()) {
+        // `isAvailable()` is tested last because it is the only one of the three
+        // with a side effect: it constructs the worker. A store that will not
+        // use one — too few records, or a sorter the worker protocol cannot
+        // carry — never asks.
+        if (this._allRecords.length >= WORKER_THRESHOLD && !this.hasCustomSorter() && StoreWorkerClient.isAvailable()) {
             this._viewAsync = true;
 
             return this.applyViewOnWorker();

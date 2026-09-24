@@ -35,7 +35,43 @@ describe('StoreWorkerClient fallback (no Worker global)', () => {
         await expect(client.snapshot('s', [])).rejects.toThrow('Worker unavailable');
         await expect(client.sortFilter('s')).rejects.toThrow('Worker unavailable');
     });
+
+    it('a missing Worker global is retried once one is installed, and never warns (case A)', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const client = await freshClient();
+
+        expect(client.isAvailable()).toBe(false);
+
+        // The same client, no module reset: `typeof Worker` is re-read on every
+        // call, so a global installed after the first miss is picked up by the
+        // next one — the check that stays retryable is not sticky.
+        vi.stubGlobal('Worker', FakeWorker);
+
+        expect(client.isAvailable()).toBe(true);
+        expect(warn).not.toHaveBeenCalled();
+
+        vi.unstubAllGlobals();
+        warn.mockRestore();
+    });
 });
+
+/**
+ * A fake Worker whose constructor always throws — stands in for a
+ * Content-Security-Policy that refuses both the `blob:` and `data:` schemes
+ * Vite's inline-worker shim tries, so `new Worker(...)` never returns.
+ */
+class RefusedWorker {
+    public static attempts: number = 0;
+
+    constructor() {
+        RefusedWorker.attempts++;
+
+        throw new Error(
+            "Refused to create a worker from 'blob:https://example.com/…' because it " +
+            'violates the following Content Security Policy directive: "worker-src \'none\'".',
+        );
+    }
+}
 
 /**
  * A fake Worker capturing the handlers the client assigns and recording every
@@ -107,6 +143,19 @@ describe('StoreWorkerClient happy path (faked Worker)', () => {
 
     it('isAvailable() is true once a Worker can be constructed', () => {
         expect(client.isAvailable()).toBe(true);
+    });
+
+    it('stays available across repeated calls, building one instance and never warning (case B)', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        expect(client.isAvailable()).toBe(true);
+        expect(client.isAvailable()).toBe(true);
+        expect(client.isAvailable()).toBe(true);
+
+        expect(FakeWorker.instances).toHaveLength(1);
+        expect(warn).not.toHaveBeenCalled();
+
+        warn.mockRestore();
     });
 
     it('snapshot posts the documented shape and resolves to undefined', async () => {
@@ -464,5 +513,60 @@ describe('StoreWorkerClient worker retirement (faked Worker)', () => {
         await expect(client.sortFilter('store-1')).rejects.toThrow('Worker unavailable');
 
         expect(FakeWorker.instances).toHaveLength(1);
+    });
+});
+
+describe('StoreWorkerClient construction refused (throwing Worker)', () => {
+    let client: ClientModule['StoreWorkerClient'];
+    let warn: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(async () => {
+        RefusedWorker.attempts = 0;
+        vi.stubGlobal('Worker', RefusedWorker);
+        warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        client = await freshClient();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    it('isAvailable() returns false, and the constructor ran exactly once', () => {
+        expect(client.isAvailable()).toBe(false);
+        expect(RefusedWorker.attempts).toBe(1);
+    });
+
+    it('stays false across repeated calls, and the constructor never runs again', () => {
+        for (let i = 0; i < 5; i++) {
+            expect(client.isAvailable()).toBe(false);
+        }
+
+        expect(RefusedWorker.attempts).toBe(1);
+    });
+
+    it('warns exactly once, naming the refusal and the main-thread fallback', () => {
+        for (let i = 0; i < 5; i++) {
+            client.isAvailable();
+        }
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('Content Security Policy');
+        expect(warn.mock.calls[0][0]).toContain('main thread');
+    });
+
+    it('rejects sortFilter with "Worker unavailable" after a refused construction', async () => {
+        await expect(client.sortFilter('s', undefined, undefined)).rejects.toThrow('Worker unavailable');
+    });
+
+    it('stays retired even once the global is replaced with a working Worker', () => {
+        expect(client.isAvailable()).toBe(false);
+
+        FakeWorker.instances = [];
+        vi.stubGlobal('Worker', FakeWorker);
+
+        expect(client.isAvailable()).toBe(false);
+        expect(FakeWorker.instances).toHaveLength(0);
     });
 });

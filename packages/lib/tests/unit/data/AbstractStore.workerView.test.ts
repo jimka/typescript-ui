@@ -106,6 +106,33 @@ describe('AbstractStore — the view is built in process when the offload fails'
         vi.spyOn(StoreWorkerClient, 'sortFilter').mockRejectedValue(new Error(OFFLOAD_FAILED));
     }
 
+    it('never asks the worker when a custom sorter is already active (case 6)', async () => {
+        const isAvailable = vi.spyOn(StoreWorkerClient, 'isAvailable');
+        const store = new MemoryStore(MODEL, []);
+        // `dir: 'desc'` negates whatever this returns (compareBySorter), so an
+        // ascending comparator here yields the descending order asserted below.
+        const sorterFn = (a: { get(field: string): any }, b: { get(field: string): any }) =>
+            (a.get('id') as number) - (b.get('id') as number);
+
+        // The order matters: the sorter is applied while the store is still
+        // empty, so the applyView() that loadData() triggers already carries
+        // it. loadData() first would reach isAvailable() legitimately, for a
+        // reason that has nothing to do with this change.
+        await store.sort([{ field: 'id', dir: 'desc', sorterFn }]);
+
+        const loaded: number[] = [];
+
+        store.on('load', () => loaded.push(store.getRecords().length));
+
+        store.loadData(rows(COUNT));
+
+        expect(isAvailable).not.toHaveBeenCalled();
+        expect(store.getRecords()).toHaveLength(COUNT);
+        expect(store.getRecords()[0].get('id')).toBe(COUNT - 1);
+        expect(store.getRecords()[COUNT - 1].get('id')).toBe(0);
+        expect(loaded).toEqual([COUNT]);
+    });
+
     it('builds the full view and fires "load" once when sortFilter rejects', async () => {
         offloadFailingAtSortFilter();
 
