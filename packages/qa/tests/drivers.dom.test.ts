@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { countCssRules, fireMouse } from '../src/harness/dom.js';
 import { DRIVERS } from '../src/harness/drivers.js';
+import { sampleGeometry, setGeometryTargets, takeGeometry } from '../src/harness/probes.js';
 import type { DriveContext, HarnessTools, ThemeTarget } from '../src/harness/types.js';
 
 /** The pointer and mouse event types a recording listener captures. */
@@ -336,6 +337,145 @@ describe('setup settles before the measured units', () => {
         await DRIVERS.type({ target: { element: input, text: 'ab' }, units: 2, stepPx: 3, params: new URLSearchParams(), notes: [], tools });
 
         expect(log).toEqual(['waitFrames 3 suspended', 'runFrames 2', 'waitFrames 3 suspended']);
+    });
+
+    describe('settle', () => {
+        /** The probed element's id, which the probe's target selects it by. */
+        const BOX_ID = 'settle-box';
+
+        /**
+         * The frame-by-frame samples of a rectangle that moves twice and then
+         * rests, as `[left, top, width, height]`: the worked example in
+         * plans/implemented/qa-panel-determinism.md.
+         */
+        const MOVING: ReadonlyArray<[number, number, number, number]> = [
+            [1, 82, 2431, 20],
+            [1, 68, 2431, 20],
+            [1, 62, 2431, 20],
+        ];
+
+        /** A rectangle that never moves at all. */
+        const AT_REST: [number, number, number, number] = [1, 62, 2431, 20];
+
+        /**
+         * An eased scroll's tail: three sub-pixel steps that all round to the
+         * same `top` as the rest they end at, then rest. What the driver must
+         * not read as settled on its first comparison.
+         */
+        const CLOSING: ReadonlyArray<[number, number, number, number]> = [
+            [1, 62.4, 2431, 20],
+            [1, 62.3, 2431, 20],
+            [1, 62.2, 2431, 20],
+            [1, 62, 2431, 20],
+        ];
+
+        afterEach(() => {
+            // The probe is module state in probes.ts, so a target left behind
+            // would be sampled by the next file's runs.
+            setGeometryTargets(null);
+        });
+
+        /**
+         * A probed box whose rectangle reads whatever `rectFor` gives for that
+         * call. jsdom lays nothing out and reports every rectangle as zero, so
+         * the samples the wait watches have to be scripted.
+         *
+         * @param rectFor - The rectangle for sample number `call`, counted from 0.
+         * @returns The spy on the box's `getBoundingClientRect`, for counting the samples taken.
+         */
+        function probedBox(rectFor: (call: number) => [number, number, number, number]): ReturnType<typeof vi.spyOn> {
+            const box = document.createElement('div');
+
+            box.id = BOX_ID;
+            document.body.appendChild(box);
+
+            let call = 0;
+
+            const spy = vi.spyOn(box, 'getBoundingClientRect').mockImplementation(() => {
+                const [left, top, width, height] = rectFor(call++);
+
+                return { left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) } as DOMRect;
+            });
+
+            setGeometryTargets({ box: `#${BOX_ID}` });
+
+            return spy;
+        }
+
+        /**
+         * A `settle` context over logging tools; the target is ignored.
+         *
+         * @param units - How many units to measure.
+         * @returns The context and the log.
+         */
+        function settleContext(units: number): { ctx: DriveContext; log: string[] } {
+            const { tools, log } = loggingTools();
+
+            return { ctx: { target: document.body, units, stepPx: 3, params: new URLSearchParams(), notes: [], tools }, log };
+        }
+
+        it('waits for the probed rectangle to stop moving, names the frame it rested on, and measures after it', async () => {
+            const spy = probedBox((call) => MOVING[Math.min(call, MOVING.length - 1)]);
+            const { ctx, log } = settleContext(4);
+
+            await DRIVERS.settle(ctx);
+
+            // Five samples: the one before any wait, the two that moved, and
+            // the two equal ones that end the wait — so four one-frame waits,
+            // every one of them inside the suspension, and only then the units.
+            expect(spy).toHaveBeenCalledTimes(5);
+            expect(ctx.notes).toEqual(['settle: stable after 4 frames']);
+            expect(log).toEqual(['waitFrames 1 suspended', 'waitFrames 1 suspended', 'waitFrames 1 suspended', 'waitFrames 1 suspended', 'runFrames 4']);
+        });
+
+        it('still waits for two equal samples when the page is already at rest', async () => {
+            const spy = probedBox(() => AT_REST);
+            const { ctx, log } = settleContext(4);
+
+            await DRIVERS.settle(ctx);
+
+            expect(spy).toHaveBeenCalledTimes(3);
+            expect(ctx.notes).toEqual(['settle: stable after 2 frames']);
+            expect(log).toEqual(['waitFrames 1 suspended', 'waitFrames 1 suspended', 'runFrames 4']);
+        });
+
+        it('keeps waiting while a rectangle is still moving by less than a pixel', async () => {
+            const spy = probedBox((call) => CLOSING[Math.min(call, CLOSING.length - 1)]);
+            const { ctx, log } = settleContext(4);
+
+            await DRIVERS.settle(ctx);
+
+            // Every one of those samples rounds to a `top` of 62, so a wait
+            // comparing the rounded samples the probe records would have called
+            // the page settled after two frames and left the last whole-pixel
+            // step of the ease to land in a measured unit.
+            expect(spy).toHaveBeenCalledTimes(6);
+            expect(ctx.notes).toEqual(['settle: stable after 5 frames']);
+            expect(log[log.length - 1]).toBe('runFrames 4');
+        });
+
+        it('records the rounded rectangle even though the wait compares the exact one', () => {
+            probedBox(() => CLOSING[0]);
+            sampleGeometry();
+
+            // The two readers are deliberately different: a report's series is
+            // rounded, because that is the resolution a geometry gate compares
+            // at, which is exactly why the wait above cannot round.
+            expect(takeGeometry()).toEqual({ box: [[1, 62, 2431, 20]] });
+        });
+
+        it('fails the run when the probed rectangle never stops moving', async () => {
+            const spy = probedBox((call) => [1, call, 2431, 20]);
+            const { ctx, log } = settleContext(4);
+
+            await expect(DRIVERS.settle(ctx)).rejects.toThrow('settle: still moving after 120 frames');
+
+            // The cap's worth of waits and one sample each side of them, and
+            // not one measured unit: a page that never rests is not measured.
+            expect(spy).toHaveBeenCalledTimes(121);
+            expect(log.filter((line) => line.startsWith('runFrames'))).toEqual([]);
+            expect(ctx.notes).toEqual([]);
+        });
     });
 });
 

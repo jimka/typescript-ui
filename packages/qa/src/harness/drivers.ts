@@ -7,6 +7,7 @@
 // units land in the counters.
 
 import { countCssRules } from './dom.js';
+import { awaitSettledGeometry } from './probes.js';
 import type {
     AnyObj,
     CallTarget,
@@ -42,6 +43,21 @@ const LEAD_FRAMES = 10;
  * update and relayout after it — before the measured units start.
  */
 const SETTLE_FRAMES = 3;
+
+/**
+ * Frames `settle` needs every probed rectangle to hold still for before it
+ * calls the page rested. Two, so one frame's pause inside a burst — an eased
+ * scroll's slowest step, or a dropped frame — does not read as rest.
+ */
+const SETTLE_STABLE_FRAMES = 2;
+
+/**
+ * The most frames `settle` waits before failing the run: two seconds at 60 Hz,
+ * and over ten at the 91.5 ms per frame `table-rows`' wheel phase runs at
+ * (plans/research/render-review-2026-09-15/96-w3-0-bounding-sweep.md, `trw`).
+ * A page still moving by then is not settling.
+ */
+const SETTLE_CAP_FRAMES = 120;
 
 /**
  * The fewest units `park` runs: its moved check reads the element's rectangle
@@ -369,6 +385,22 @@ export function makeCallDriver(name: string): Driver {
  * @returns The frame gaps.
  */
 async function idle(ctx: DriveContext): Promise<number[]> {
+    return ctx.tools.runFrames(ctx.units, () => {});
+}
+
+/**
+ * Waits, unmeasured, until the page stops moving, then runs frames that do
+ * nothing, as `idle` does. Every unit is therefore a settled sample, so a
+ * geometry gate read on this phase compares the layout the page rests in
+ * rather than one caught mid-burst. The target is ignored.
+ *
+ * @param ctx - The phase's context.
+ * @returns The frame gaps.
+ * @throws Error - `settle: still moving after <n> frames` when the page never rests.
+ */
+async function settle(ctx: DriveContext): Promise<number[]> {
+    ctx.notes.push(await ctx.tools.suspendCounting(async () => awaitSettledGeometry(ctx.tools, SETTLE_STABLE_FRAMES, SETTLE_CAP_FRAMES)));
+
     return ctx.tools.runFrames(ctx.units, () => {});
 }
 
@@ -1159,6 +1191,7 @@ export const DRIVERS: Record<string, Driver> = {
     resize,
     passes,
     idle,
+    settle,
     call: makeCallDriver('call'),
     update: makeCallDriver('update'),
     toggle: makeCallDriver('toggle'),

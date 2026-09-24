@@ -1,8 +1,8 @@
-// Targets every panel gets: `idle`, `theme` and `viewport` act on the whole
-// page rather than on one component, so `mountPanel` merges them under each
-// panel's own targets, and a panel can still replace any of them. The `theme`
-// driver lives in the library-free harness, so the library half of a theme
-// switch is built here, on the page side, and handed to it as its target.
+// Targets every panel gets: `idle`, `settle`, `theme` and `viewport` act on the
+// whole page rather than on one component, so `mountPanel` merges them under
+// each panel's own targets, and a panel can still replace any of them. The
+// `theme` driver lives in the library-free harness, so the library half of a
+// theme switch is built here, on the page side, and handed to it as its target.
 
 import { DarkTheme, ModernTheme, ThemeManager } from '@jimka/typescript-ui/core';
 import type { Component, Theme } from '@jimka/typescript-ui/core';
@@ -36,9 +36,9 @@ export function themeTarget(themes: readonly Theme[]): ThemeTarget {
  * viewport listeners, `Body`'s at least, so any panel can be driven with
  * `viewport`.
  *
- * @param root - The panel's root: the target of `idle` and `viewport`, which both drivers ignore but the run's target check needs defined.
- * @returns `{ idle: root, theme: themeTarget(THEME_CYCLE), viewport: root }`.
+ * @param root - The panel's root: the target of `idle`, `settle` and `viewport`, which all three drivers ignore but the run's target check needs defined.
+ * @returns `{ idle: root, settle: root, theme: themeTarget(THEME_CYCLE), viewport: root }`.
  */
 export function pageTargets(root: Component): Record<string, unknown> {
-    return { idle: root, theme: themeTarget(THEME_CYCLE), viewport: root };
+    return { idle: root, settle: root, theme: themeTarget(THEME_CYCLE), viewport: root };
 }

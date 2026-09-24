@@ -5,14 +5,21 @@ import type { DriveContext, HarnessTools } from '../src/harness/types.js';
 /** What the fake `runFrames` resolves to, so a test can tell the driver passed it through. */
 const FAKE_SAMPLES = [1, 2, 3];
 
+/** The spies `fakeTools` exposes, so a case can check what a driver asked for. */
+type FakeTools = HarnessTools & {
+    runFrames: ReturnType<typeof vi.fn>;
+    waitFrames: ReturnType<typeof vi.fn>;
+    fireMouse: ReturnType<typeof vi.fn>;
+};
+
 /**
  * Fake harness tools: `runFrames` calls `step` for every unit synchronously
  * and resolves to `FAKE_SAMPLES`, `suspendCounting` runs its work, and
  * `waitFrames` resolves at once. Nothing here needs a DOM.
  *
- * @returns The tools, with `runFrames` and `fireMouse` as spies.
+ * @returns The tools, with `runFrames`, `waitFrames` and `fireMouse` as spies.
  */
-function fakeTools(): HarnessTools & { runFrames: ReturnType<typeof vi.fn>; fireMouse: ReturnType<typeof vi.fn> } {
+function fakeTools(): FakeTools {
     const tools = {
         runFrames: vi.fn(async (units: number, step: (index: number) => void): Promise<number[]> => {
             for (let index = 0; index < units; index++) {
@@ -22,11 +29,11 @@ function fakeTools(): HarnessTools & { runFrames: ReturnType<typeof vi.fn>; fire
             return FAKE_SAMPLES;
         }),
         suspendCounting: async <T>(work: () => Promise<T>): Promise<T> => work(),
-        waitFrames: async (): Promise<void> => {},
+        waitFrames: vi.fn(async (): Promise<void> => {}),
         fireMouse: vi.fn(),
     };
 
-    return tools as unknown as HarnessTools & { runFrames: ReturnType<typeof vi.fn>; fireMouse: ReturnType<typeof vi.fn> };
+    return tools as unknown as FakeTools;
 }
 
 /**
@@ -139,6 +146,21 @@ describe('E16 call and idle', () => {
 
         await DRIVERS.idle(context({}, 5, tools));
 
+        expect(tools.runFrames).toHaveBeenCalledTimes(1);
+        expect(tools.runFrames.mock.calls[0][0]).toBe(5);
+    });
+
+    it('settle waits its frames and notes the probe was off, then runs the units', async () => {
+        const tools = fakeTools();
+        const ctx = context({}, 5, tools);
+
+        // No geometry targets: nothing has switched the probe on, so the wait
+        // has nothing to watch. It still takes the lead-in, so a phase driven
+        // without `geom=1` measures the same frames as one driven with it.
+        await DRIVERS.settle(ctx);
+
+        expect(tools.waitFrames.mock.calls).toEqual([[2]]);
+        expect(ctx.notes).toEqual(['settle: no geometry targets; waited 2 frames']);
         expect(tools.runFrames).toHaveBeenCalledTimes(1);
         expect(tools.runFrames.mock.calls[0][0]).toBe(5);
     });
