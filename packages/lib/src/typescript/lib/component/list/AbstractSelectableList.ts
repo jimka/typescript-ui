@@ -1454,12 +1454,14 @@ abstract class AbstractSelectableList<
     /**
      * Sets the single-selection anchor. The selection set becomes
      * exactly `{idx}` (or empty for `idx < 0`); `_focusedIndex` follows.
-     * Optionally fires the `change` event so binding listeners run.
+     * This is a programmatic write, so it never announces `"action"` —
+     * that reports the user's own row gestures.
      *
      * @param idx - The zero-based index to select, or a negative value
      *   to clear the selection.
-     * @param fireEvent - When `true` (default), fires the `change` event
-     *   after updating; pass `false` for programmatic writes.
+     * @param fireEvent - When `true` (default), fires the committed-value
+     *   `change` and `binding` events after updating and refreshes the
+     *   dirty state; pass `false` for a silent write.
      *
      * @returns This component, for method chaining.
      */
@@ -1479,7 +1481,10 @@ abstract class AbstractSelectableList<
         this.updateActiveDescendant();
 
         if (fireEvent) {
-            this.fireChange();
+            // The committed-value notification only. A programmatic write never
+            // announces "action", which reports the user's own row gestures —
+            // those route through `notifyUserChange` → `fireChange`.
+            this.notifyChange(this.getValue());
         }
 
         return this;
@@ -1525,10 +1530,12 @@ abstract class AbstractSelectableList<
     /**
      * Registers a listener for one of this list's events. `"action"` is a
      * typed semantic shorthand over {@link Event.addListener} for the DOM
-     * change event — fired only on user-driven (click / keyboard) selection
-     * changes, never on programmatic `setValue` / `setValues`, matching the
-     * prior native `<select>`-backed semantics. `"change"` and `"binding"`
-     * are the inherited {@link AbstractInput} listener-bag events.
+     * `change` the list fires once per user-driven selection gesture — a row
+     * click, Enter, Space, or a navigation key that moves the selection. It
+     * never fires for a programmatic write: `setSelectedIndex`, `setValue` or
+     * `setValues`. `"change"` and `"binding"` are the inherited
+     * {@link AbstractInput} listener-bag events and fire for programmatic
+     * writes too.
      *
      * `"contextmenu"` fires when a row is right-clicked, with the row index and
      * the raw {@link MouseEvent} (the native menu is suppressed); `"dblclick"`
@@ -1757,9 +1764,10 @@ abstract class AbstractSelectableList<
     }
 
     /**
-     * Fires the `change` event so `on("change", fn)` subscribers and
-     * `notifyChange`-fed bindings run. Subclasses route their own
-     * `notifyUserChange` through this after the reducer commits.
+     * The user path's dispatcher, reached only from a subclass's
+     * `notifyUserChange` after the click or keyboard reducer commits. Fires
+     * both the DOM `change` behind `on("action", fn)` and the committed-value
+     * notification `on("change", fn)` subscribers and bindings run on.
      */
     protected fireChange(): void {
         const element = this.getElement();

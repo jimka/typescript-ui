@@ -241,9 +241,10 @@ class MultiSelectList extends AbstractSelectableList<string[], MultiSelectListOp
     }
 
     /**
-     * User-driven selection commit. Fires the `change` event the same
-     * way the prior native `<select multiple>` did — only user-driven
-     * gestures (click / keyboard reducer) route through it.
+     * User-driven selection commit — the list's only `"action"`
+     * announcement. Only user-driven gestures (the click / keyboard
+     * reducer) route through it; a programmatic write never announces
+     * `"action"`, `setValues` and every `setSelectedIndex` call included.
      */
     protected notifyUserChange(): void {
         this.fireChange();
