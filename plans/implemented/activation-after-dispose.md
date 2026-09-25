@@ -356,3 +356,79 @@ One changelog entry, appended to the `### Components` list under `## Fixed` in `
 [^why-jsdom]: Measured: `RecordingDOMSink.removeElement` calls `_table.setParent(handle, null)` and nothing else, while `ModelledDOMSource.getElementById` answers from `_table.byId`, an index only ever written to. So after `dispose()` under the modelled DOM, `Component.getElement()` falls back to `getElementById`, finds the stale entry, and returns a handle — the unguarded `fireEvent` succeeds and the case passes without the fix. `tests/dom/event-subtree-reentrant-dispose.test.ts`'s own file header records the same trap for its own cases. Under jsdom with `ProductionDOMSource`, the element is genuinely out of the document and `getElement()` returns `undefined`, which is what reproduces the error. The `jsdom` pragma also keeps `tests/setup/node-setup.ts` from installing the modelled baseline, since that file self-guards on `typeof document === 'undefined'`.
 
 [^why-toggle-unmounted]: `ToggleButton` is the one control of the four with no mounted case, because nothing runs between its state write and its dispatch: `ToggleButton.setSelected` writes `_options`, an ARIA attribute and a style state, and notifies no listener at all — it is not an `AbstractInput` and owns no `ListenerBag`. Its own DOM `click` listener is registered in its constructor, ahead of any consumer's, and `ButtonGroup` subscribes through `on("action")`, which is the very event `onAction` dispatches. So the guard there covers the unmounted and already-disposed activation only. It is still worth having, for three reasons: the audit asks for all four together; `setSelected` is public and overridable, so a subclass can open the window that `Checkbox` and `RadioButton` have today; and B4 shows the throw is real on the path that is reachable.
+
+---
+
+## Implementation Notes
+
+- **A second, unrelated `DOM.reset()` trap surfaced while writing the new
+  test file, and needed a narrow test-only workaround.** `Glyphs.ts` caches
+  the shared SVG glyph sprite's own `Handle` in a module-level
+  `_spriteElement` variable, set once when the sprite is first mounted, and
+  never refreshed by `DOM.reset()` (unlike `DOM.ts`'s own `mainSheet()`,
+  which re-queries `<head>` for the `<style id="Base">` element by id on
+  every call and so stays correct across a reset). `afterEach(() =>
+  DOM.reset())` rebuilds the shared `HandleRegistry` from empty on every
+  case, so handle numbers are reused across cases. The plan's mounted cases
+  render two different SVG-mode glyphs — Checkbox's check mark and
+  RadioButton's dot — and case A1 (Checkbox) runs before case A2
+  (RadioButton) in file order. Mounting RadioButton for the first time in a
+  fresh case, after `DOM.reset()` has already run once, calls
+  `Glyphs.ts`'s `ensureGlyphSymbolMounted("circle")`, which resolves the
+  stale sprite handle against the *new* registry and appends the `<symbol>`
+  into whatever element that recycled handle number now happens to name —
+  observed as a real `<symbol>` being appended under an SVG `<path>`, which
+  jsdom rejects as `HierarchyRequestError: The operation would yield an
+  incorrect node tree`, aborting the whole case before it reaches the
+  behaviour under test. Confirmed with a minimal repro (a plain Checkbox
+  mount followed by a plain RadioButton mount, no dispose or activation
+  involved) that this reproduces from the reset/registry interaction alone
+  and is unrelated to this plan's fireEvent guards.
+  `tests/component/activation-after-dispose.test.ts` works around it with a
+  `beforeAll` that renders one throwaway `Checkbox` and one throwaway
+  `RadioButton` (each just `.getElement(true)`, unattached to any host)
+  before the file's first `DOM.reset()` ever runs. `Glyphs.ts`'s
+  `_addSymbolToSprite` is idempotent per symbol name (`_mountedSymbols.has`
+  short-circuits it), so once both symbols are registered against the
+  pristine initial registry, every later mount in the file — across as many
+  resets as it runs — finds its symbol already there and never touches the
+  stale sprite handle again. This is a test-file-local workaround, not a
+  library fix: `Glyphs.ts` itself is unchanged, and the underlying
+  `_spriteElement` staleness is a pre-existing gap outside this plan's
+  scope (guarding the four `fireEvent` call sites), surfaced only because
+  this is the first test in the suite to mount multiple distinct SVG-glyph
+  components under the real production DOM across more than one
+  `DOM.reset()`.
+
+- **`ToggleButton.onAction`'s JSDoc departs from step 8's prescribed
+  wording, because that wording is false for `ToggleButton`.** Steps 6–9
+  each say to extend the guarded method's JSDoc with "the DOM `change` is
+  skipped when a `\"change\"` or `\"binding\"` listener disposed the
+  control," copying `Checkbox.activate`'s case. `ToggleButton` is not an
+  `AbstractInput` and owns no listener bag — `setSelected`
+  ([`ToggleButton.ts`](packages/lib/src/typescript/lib/component/button/ToggleButton.ts))
+  notifies nobody — so it has no `"change"`/`"binding"` listener to dispose
+  it, and `onAction` is the only `"click"` listener registered on the
+  button ahead of any consumer's. The guard's real reach here, per
+  `[^why-toggle-unmounted]`, is `onAction` called directly on an unmounted
+  button, or a subclass's override of the public `setSelected` disposing
+  the button before the dispatch is reached — the JSDoc says that instead.
+
+- **The changelog entry departs from `## Documentation Impact`'s prescribed
+  text in two places, because both are inaccurate.** First, the prescribed
+  text ends "...makes an activation on an unmounted control a no-op
+  instead of a throw" — but the activation still commits its state
+  (`isSelected()`/`getValue()` change; see cases B1–B4 in `## Expected
+  Behaviour`), so it is not a no-op. The published entry instead says an
+  activation with no element "commits the state and skips just the dispatch
+  rather than throwing." Second, the prescribed lead names all four
+  controls as dispatching "after the control's `"change"` and `"binding"`
+  listeners have run" — true of `Checkbox`, `RadioButton` and `Slider`, but
+  not of `ToggleButton`, for the reason the bullet above and
+  `[^why-toggle-unmounted]` give. The published entry scopes that mechanism
+  to the three and describes `ToggleButton`'s narrower reach in its own
+  sentence. The same false generalisation had been copied into the new test
+  file's header comment, which is corrected the same way. The plan's prose
+  described the shared mechanism of the other three and let `ToggleButton`
+  ride along with it, which is why this needed catching in three separate
+  places.
