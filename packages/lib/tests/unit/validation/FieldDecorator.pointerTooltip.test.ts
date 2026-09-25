@@ -61,11 +61,19 @@ const EDGE_INSET_PX    = 1;
 // placed, and it moves the pointer somewhere else first.
 const CURSOR_PX        = 10;
 // The listeners one error attachment registers on the decorator's subtree:
-// `mouseover`, `mousemove`, `mouseout` and `mousedown`.
-const HOVER_LISTENERS  = 4;
+// `mouseover`, `mouseout` and `mousedown`.
+const HOVER_LISTENERS  = 3;
+// The viewport listeners the shared pointer watch installs: a `mousemove` that
+// records the pointer's position, a `mouseout` that forgets it once the pointer
+// leaves the window, and a `keydown` that lifts a press's arming suppression.
+const WATCH_LISTENERS  = 3;
 
-const ERROR = 'Too long';
-const HINT  = 'What goes here';
+const ERROR         = 'Too long';
+const HINT          = 'What goes here';
+// The messages a re-validation replaces `ERROR` with, one after the other, so
+// each `showError` is a real replacement rather than the kept-unchanged case.
+const CHANGED       = 'Too short';
+const CHANGED_AGAIN = 'Wrong format';
 
 let root: Component;
 let showSpy: MockInstance<typeof Tooltip.show>;
@@ -104,15 +112,28 @@ function hitAt(x: number, y: number): Handle {
 }
 
 /**
+ * The viewport point at the centre of `component`'s box: where a pointer that
+ * has come to rest on it sits.
+ *
+ * @param component - The rendered component the pointer rests on.
+ * @returns The centre of the component's box, in viewport coordinates.
+ */
+function centreOf(component: Component): { x: number; y: number } {
+    const rect = DOM.source.getElementRect(component.getElement()!);
+
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+}
+
+/**
  * The element a pointer resting at the centre of `component`'s box targets.
  *
  * @param component - The rendered component whose centre is hit.
  * @returns The topmost element at that point.
  */
 function hitCentre(component: Component): Handle {
-    const rect = DOM.source.getElementRect(component.getElement()!);
+    const centre = centreOf(component);
 
-    return hitAt(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    return hitAt(centre.x, centre.y);
 }
 
 /**
@@ -169,6 +190,20 @@ function move(target: Handle, x: number, y: number): void {
     );
 }
 
+/**
+ * The pointer leaves the window from `target`: a `mouseout` naming no element
+ * it moved to. The browser spells that `relatedTarget: null`; `makeEvent`
+ * spells it by leaving the key out, and the library reads both the same way.
+ *
+ * @param target - The element the pointer was over as it left.
+ */
+function leaveWindow(target: Handle): void {
+    DOM.sink.dispatchEvent(
+        DOM.source.getWindow(),
+        makeEvent(target, 'mouseout', { clientX: CURSOR_PX, clientY: CURSOR_PX }),
+    );
+}
+
 /** An element outside every decorated field: where an entering pointer comes from. */
 function outside(): Handle {
     return DOM.source.getDocumentElement();
@@ -193,6 +228,19 @@ function enter(target: Handle): void {
 function cross(from: Handle, to: Handle): void {
     pointer('mouseout', from, to);
     pointer('mouseover', to, from);
+}
+
+/**
+ * A key press anywhere: the typing that follows a click into a field, and what
+ * lifts a press's arming suppression.
+ *
+ * @param target - The element the key event targets.
+ */
+function typeKey(target: Handle): void {
+    DOM.sink.dispatchEvent(
+        DOM.source.getWindow(),
+        makeEvent(target, 'keydown', { key: 'a' }),
+    );
 }
 
 /**
@@ -238,6 +286,11 @@ afterEach(() => {
     (Tooltip as any).pendingId = null;
     (Tooltip as any).dismissing = false;
     (Tooltip as any).attachments.clear();
+
+    // The pointer watch is installed with the first attachment and never
+    // removed during a session, so its viewport registration would outlive the
+    // DOM it was made against and silently swallow the next test's moves.
+    Tooltip._stopPointerWatch();
 
     DOM.reset();
 });
@@ -579,5 +632,411 @@ describe('FieldDecorator — the error tooltip under a pointer', () => {
         vi.advanceTimersByTime(HOVER_DELAY_MS);
 
         expect(shownTexts()).toEqual([ERROR]);
+    });
+
+    /**
+     * A decorated text field in error, its error on screen, and the pointer
+     * come to rest at the field's centre without leaving it — the state a
+     * re-validation that changes the message is reached from.
+     *
+     * @returns The decorator, the element under the pointer and the rest point.
+     */
+    function restingOnShownError(): { decorator: FieldDecorator; target: Handle; rest: { x: number; y: number } } {
+        const field     = new TextField();
+        const decorator = mountDecorated(field);
+
+        decorator.showError(ERROR);
+
+        const target = hitCentre(decorator);
+        const rest   = centreOf(decorator);
+
+        expect(target).toBe(field.getElement());
+
+        enter(target);
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        move(target, rest.x, rest.y);
+
+        return { decorator, target, rest };
+    }
+
+    it('17. a changed error under a resting pointer shows without a re-hover', () => {
+        const { decorator, rest } = restingOnShownError();
+
+        decorator.showError(CHANGED);
+
+        expect((Tooltip as any).pendingId).toBe(decorator.getId());
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([ERROR, CHANGED]);
+        expect(showSpy).toHaveBeenLastCalledWith(CHANGED, rest.x, rest.y);
+    });
+
+    it('18. a first error under a resting pointer shows without a re-hover', () => {
+        const field     = new TextField();
+        const decorator = mountDecorated(field);
+
+        // The pointer watch starts with the session's first attachment, so no
+        // position is known before one exists. `root` has no box, so the
+        // modelled hit test never reports it under the pointer.
+        Tooltip.attach(root, HINT);
+
+        const rest = centreOf(decorator);
+
+        expect(hitAt(rest.x, rest.y)).toBe(field.getElement());
+
+        move(field.getElement()!, rest.x, rest.y);
+
+        decorator.showError(ERROR);
+
+        expect((Tooltip as any).pendingId).toBe(decorator.getId());
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([ERROR]);
+    });
+
+    it('19. an error attached while the pointer is elsewhere stays silent', () => {
+        const field     = new TextField();
+        const decorator = mountDecorated(field);
+
+        Tooltip.attach(root, HINT);
+
+        const rest = centreOf(decorator);
+        // One decorator height below its centre, so the point is clear of the
+        // decorator's box.
+        const awayY = rest.y + DECORATOR_HEIGHT;
+
+        expect(hitAt(rest.x, awayY)).not.toBe(field.getElement());
+
+        move(outside(), rest.x, awayY);
+
+        decorator.showError(ERROR);
+
+        expect((Tooltip as any).pendingId).toBe(null);
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([]);
+    });
+
+    it('20. a second decorator\'s changed error does not disturb the first\'s running delay', () => {
+        const { field, first, second } = twoDecorated();
+
+        const target = hitCentre(first);
+        const rest   = centreOf(first);
+
+        expect(target).toBe(field.getElement());
+
+        enter(target);
+        move(target, rest.x, rest.y);
+
+        second.showError('Other, changed');
+
+        expect((Tooltip as any).pendingId).toBe(first.getId());
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([ERROR]);
+    });
+
+    it('21. a second changed message arms again, with no pointer movement in between', () => {
+        const { decorator, rest } = restingOnShownError();
+
+        decorator.showError(CHANGED);
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        decorator.showError(CHANGED_AGAIN);
+
+        expect((Tooltip as any).pendingId).toBe(decorator.getId());
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([ERROR, CHANGED, CHANGED_AGAIN]);
+        expect(showSpy).toHaveBeenLastCalledWith(CHANGED_AGAIN, rest.x, rest.y);
+    });
+
+    it('22. the pointer watch is installed once and outlives the attachment', () => {
+        const decorator = mountDecorated(new TextField());
+        const before    = Event.listenerCounts().viewport;
+
+        decorator.showError(ERROR);
+
+        expect(Event.listenerCounts().viewport).toBe(before + WATCH_LISTENERS);
+
+        decorator.clearError();
+
+        expect(Event.listenerCounts().viewport).toBe(before + WATCH_LISTENERS);
+
+        decorator.showError(ERROR);
+
+        expect(Event.listenerCounts().viewport).toBe(before + WATCH_LISTENERS);
+    });
+
+    it('23. a changed error never takes over a hover delay the field itself armed', () => {
+        const field     = new TextField();
+        const decorator = mountDecorated(field);
+
+        // The field carries a tooltip of its own, and the pointer entering it
+        // armed that one's delay — the decorator is not in error yet, so
+        // nothing claims the hover from it.
+        Tooltip.attach(field, HINT);
+
+        const target = hitCentre(decorator);
+        const rest   = centreOf(decorator);
+
+        expect(target).toBe(field.getElement());
+
+        enter(target);
+
+        expect((Tooltip as any).pendingId).toBe(field.getId());
+
+        move(target, rest.x, rest.y);
+
+        // The pointer rests inside the decorator, so the error would arm if it
+        // were free to — but the delay running is somebody else's.
+        decorator.showError(ERROR);
+
+        expect((Tooltip as any).pendingId).toBe(field.getId());
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([HINT]);
+    });
+
+    it('24. a press keeps a changed error from arming until something is typed', () => {
+        const { decorator, target } = restingOnShownError();
+
+        press(target);
+
+        expect((Tooltip as any).dismissing).toBe(true);
+
+        decorator.showError(CHANGED);
+
+        expect((Tooltip as any).pendingId).toBe(null);
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([ERROR]);
+    });
+
+    it('26. typing after the press lets the changed error arm', () => {
+        const { decorator, target, rest } = restingOnShownError();
+
+        // Click into the field, type, and the message describing what was typed
+        // appears without the pointer moving — the sequence this plan exists for.
+        press(target);
+        typeKey(target);
+
+        decorator.showError(CHANGED);
+
+        expect((Tooltip as any).pendingId).toBe(decorator.getId());
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([ERROR, CHANGED]);
+        expect(showSpy).toHaveBeenLastCalledWith(CHANGED, rest.x, rest.y);
+    });
+
+    it('27. a press nobody types after suppresses only the component it pressed', () => {
+        const field  = new TextField();
+        const first  = mountDecorated(field);
+        const second = mountDecorated(new TextField(), 2 * DECORATOR_HEIGHT);
+
+        first.showError(ERROR);
+        second.showError('Other');
+
+        const firstTarget  = hitCentre(first);
+        const secondTarget = hitCentre(second);
+        const secondRest   = centreOf(second);
+
+        expect(firstTarget).toBe(field.getElement());
+
+        enter(firstTarget);
+        press(firstTarget);
+
+        expect((Tooltip as any).pendingId).toBe(null);
+
+        // The pointer settles on the second field without entering it, so only
+        // the attach below can arm — and the press it follows was somebody
+        // else's.
+        move(secondTarget, secondRest.x, secondRest.y);
+
+        second.showError('Other, changed');
+
+        expect((Tooltip as any).pendingId).toBe(second.getId());
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual(['Other, changed']);
+    });
+
+    it('29. a press stops suppressing once the pointer has left the component', () => {
+        const { decorator, target } = restingOnShownError();
+
+        press(target);
+
+        // The pointer leaves the field and comes back. Coming back raises a
+        // `mouseover` that shows the error again by itself, so whatever the press
+        // was for is over and a changed message must not be held back.
+        pointer('mouseout', target, outside());
+        enter(target);
+
+        decorator.showError(CHANGED);
+
+        expect((Tooltip as any).pendingId).toBe(decorator.getId());
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([ERROR, CHANGED]);
+    });
+
+    it('33. a leave of an inner part does not lift the decorator\'s own suppression', () => {
+        const field                 = new DateField();
+        const decorator             = mountDecorated(field);
+        const [input, pickerButton] = field.getComponents();
+
+        // The input carries a description of its own, so it has a `mouseout` of
+        // its own — the crossing below is a leave for the input while the pointer
+        // never leaves the decorator.
+        Tooltip.attach(input, HINT);
+        decorator.showError(ERROR);
+
+        const inputTarget  = hitCentre(input);
+        const buttonTarget = hitInsideLeftEdge(pickerButton);
+
+        expect(inputTarget).toBe(input.getElement());
+        expect(buttonTarget).toBe(pickerButton.getElement());
+
+        move(inputTarget, CURSOR_PX, CURSOR_PX);
+        press(inputTarget);
+
+        cross(inputTarget, buttonTarget);
+
+        decorator.showError(CHANGED);
+
+        expect((Tooltip as any).pendingId).toBe(null);
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([]);
+    });
+
+    it('30. a never-rendered decorator never reaches the containment read', () => {
+        const field  = new TextField();
+        const holder = new Component({});
+
+        holder.addComponent(field);
+
+        const decorator = new FieldDecorator(field, holder);
+
+        // Nothing here is rendered, so the decorator has no element — while the
+        // pointer's position is known, which is what leaves its own element the
+        // only thing that can stop the read. Reaching the containment read with
+        // no element resolves a null handle, which throws in production;
+        // `Binding` reaches `showError` before a decorator's first render.
+        Tooltip.attach(root, HINT);
+        move(root.getElement()!, CURSOR_PX, CURSOR_PX);
+
+        const contains = vi.spyOn(DOM.source, 'contains');
+
+        decorator.showError(ERROR);
+
+        expect(decorator.getElement() ?? null).toBe(null);
+        expect(contains).not.toHaveBeenCalled();
+        expect((Tooltip as any).pendingId).toBe(null);
+
+        decorator.dispose();
+        holder.dispose();
+    });
+
+    it('31. a hover with no move behind it still leaves the pointer recorded', () => {
+        const field     = new TextField();
+        const decorator = mountDecorated(field);
+
+        decorator.showError(ERROR);
+
+        const target = hitCentre(decorator);
+
+        expect(target).toBe(field.getElement());
+
+        // No `mousemove` anywhere in this case, so the hover itself is the only
+        // thing that can have recorded where the pointer is.
+        enter(target);
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        decorator.showError(CHANGED);
+
+        expect((Tooltip as any).pendingId).toBe(decorator.getId());
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([ERROR, CHANGED]);
+    });
+
+    it('32. a crossing that names where the pointer went keeps it recorded', () => {
+        const { decorator, target } = restingOnShownError();
+
+        // An ordinary boundary crossing inside the document, not the pointer
+        // leaving the window — only the latter forgets where the pointer is.
+        pointer('mouseout', target, outside());
+
+        decorator.showError(CHANGED);
+
+        expect((Tooltip as any).pendingId).toBe(decorator.getId());
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([ERROR, CHANGED]);
+    });
+
+    it('28. a recorded target whose element is gone means the pointer is over nothing', () => {
+        const field     = new TextField();
+        const decorator = mountDecorated(field);
+
+        Tooltip.attach(root, HINT);
+
+        const rest   = centreOf(decorator);
+        const target = field.getElement()!;
+
+        move(target, rest.x, rest.y);
+
+        // The production registry throws on a handle whose element has been
+        // released, and the modelled one cannot reproduce that state — so what
+        // this pins is that the attach asks the seam before it uses the target.
+        const live = vi.spyOn(DOM.source, 'isRegistered').mockReturnValue(false);
+
+        decorator.showError(ERROR);
+
+        expect(live).toHaveBeenCalledWith(target);
+        expect((Tooltip as any).pendingId).toBe(null);
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([]);
+    });
+
+    it('25. an error attached after the pointer left the window stays silent', () => {
+        const field     = new TextField();
+        const decorator = mountDecorated(field);
+
+        Tooltip.attach(root, HINT);
+
+        const rest   = centreOf(decorator);
+        const target = field.getElement()!;
+
+        expect(hitAt(rest.x, rest.y)).toBe(target);
+
+        move(target, rest.x, rest.y);
+        leaveWindow(target);
+
+        decorator.showError(ERROR);
+
+        expect((Tooltip as any).pendingId).toBe(null);
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([]);
     });
 });

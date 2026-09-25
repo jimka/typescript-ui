@@ -16,6 +16,7 @@ import { Container } from '~/core/Container';
 import { DOM } from '~/core/DOM';
 import { setAppResizeMode } from '~/core/ResizeDrag';
 import type { ResizeMode } from '~/core/ResizeDrag';
+import { Tooltip } from '~/overlay/Tooltip';
 import { Accordion } from '~/layout/Accordion';
 import { AccordionConstraints } from '~/layout/AccordionConstraints';
 import { Fit } from '~/layout/Fit';
@@ -94,6 +95,10 @@ describe('Accordion resize mode', () => {
 
         vi.restoreAllMocks();
         setAppResizeMode('live');
+        // A header's own tooltip installs `Tooltip`'s session-long viewport
+        // watch — a surviving `keydown` type map of exactly the kind described
+        // above.
+        Tooltip._stopPointerWatch();
         DOM.reset();
     });
 

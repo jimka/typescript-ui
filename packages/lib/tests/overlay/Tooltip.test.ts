@@ -321,6 +321,13 @@ describe('Tooltip.attach — teardown', () => {
         (Tooltip as any).watching = false;
         (Tooltip as any).activeElement = null;
         (Tooltip as any).pendingId = null;
+
+        // The pointer watch is installed with the first attachment and never
+        // removed during a session, so its viewport registration would outlive
+        // the DOM it was made against and silently swallow the next test's
+        // moves.
+        Tooltip._stopPointerWatch();
+
         DOM.reset();
     });
 
@@ -420,6 +427,12 @@ describe('Tooltip.detach — ownership', () => {
         (Tooltip as any).pendingId = null;
         (Tooltip as any).dismissing = false;
         (Tooltip as any).attachments.clear();
+
+        // The pointer watch is installed with the first attachment and never
+        // removed during a session, so its viewport registration would outlive
+        // the DOM it was made against and silently swallow the next test's
+        // moves.
+        Tooltip._stopPointerWatch();
 
         DOM.reset();
     });

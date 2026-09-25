@@ -18,7 +18,7 @@ import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } fr
 import { Component } from '~/core/Component';
 import { DOM, type Handle } from '~/core/DOM';
 import { Tooltip } from '~/overlay/Tooltip';
-import { installTestDOM, makeEvent } from '../dom/TestDOM';
+import { installTestDOM, makeEvent, setConnected } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -47,6 +47,12 @@ const ON_INNER       = { x: 100, y: 50 };
 
 const OUTER = 'Outer';
 const INNER = 'Inner';
+// The texts a changed attach installs over each host's original one, so a
+// re-attach is a real replacement rather than the kept-unchanged case.
+const OUTER_CHANGED = 'Changed';
+const INNER_CHANGED = 'Changed too';
+// The text attached to a component that is never rendered.
+const STRAY         = 'Nowhere';
 
 let root: Component;
 let showSpy: MockInstance<typeof Tooltip.show>;
@@ -63,6 +69,32 @@ function pointer(type: string, target: Handle, related: Handle): void {
     DOM.sink.dispatchEvent(
         DOM.source.getWindow(),
         makeEvent(target, type, { clientX: CURSOR_PX, clientY: CURSOR_PX, relatedTarget: related }),
+    );
+}
+
+/**
+ * The pointer moves to `(x, y)` over `target`: a real `mousemove` there.
+ *
+ * @param target - The element under the pointer.
+ * @param x - The pointer's viewport x coordinate.
+ * @param y - The pointer's viewport y coordinate.
+ */
+function move(target: Handle, x: number, y: number): void {
+    DOM.sink.dispatchEvent(
+        DOM.source.getWindow(),
+        makeEvent(target, 'mousemove', { clientX: x, clientY: y }),
+    );
+}
+
+/**
+ * A primary-button press on `target`.
+ *
+ * @param target - The element pressed.
+ */
+function press(target: Handle): void {
+    DOM.sink.dispatchEvent(
+        DOM.source.getWindow(),
+        makeEvent(target, 'mousedown', { clientX: CURSOR_PX, clientY: CURSOR_PX, button: 0, buttons: 1 }),
     );
 }
 
@@ -164,6 +196,11 @@ afterEach(() => {
     (Tooltip as any).dismissing = false;
     (Tooltip as any).attachments.clear();
 
+    // The pointer watch is installed with the first attachment and never
+    // removed during a session, so its viewport registration would outlive the
+    // DOM it was made against and silently swallow the next test's moves.
+    Tooltip._stopPointerWatch();
+
     DOM.reset();
 });
 
@@ -204,5 +241,119 @@ describe('Tooltip.attach — nested hosts under a real pointer', () => {
 
         expect(shownTexts()).toEqual([OUTER, INNER, OUTER]);
         expect((Tooltip as any).activeElement).toBe(outer.getElement());
+    });
+});
+
+describe('Tooltip.attach — arming under a pointer that is already resting', () => {
+    it('3. a changed attach arms over the host\'s own element', () => {
+        const { outer, outerEl } = nestedHosts();
+
+        move(outerEl, ON_OUTER.x, ON_OUTER.y);
+
+        Tooltip.attach(outer, OUTER_CHANGED);
+
+        expect((Tooltip as any).pendingId).toBe(outer.getId());
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([OUTER_CHANGED]);
+        expect((Tooltip as any).activeElement).toBe(outer.getElement());
+    });
+
+    it('4. a changed attach does not arm when a child covers the point', () => {
+        const { outer, inner, innerEl } = nestedHosts();
+
+        move(innerEl, ON_INNER.x, ON_INNER.y);
+
+        Tooltip.attach(outer, OUTER_CHANGED);
+
+        expect((Tooltip as any).pendingId).toBe(null);
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([]);
+
+        // The same position, and the host the pointer is actually over: a plain
+        // attachment arms for the innermost host, never for an ancestor.
+        Tooltip.attach(inner, INNER_CHANGED);
+
+        expect((Tooltip as any).pendingId).toBe(inner.getId());
+    });
+
+    it('5. a never-rendered component never arms', () => {
+        const { outerEl } = nestedHosts();
+        const stray       = new Component({});
+
+        move(outerEl, ON_OUTER.x, ON_OUTER.y);
+
+        Tooltip.attach(stray, STRAY);
+
+        expect((Tooltip as any).pendingId).toBe(null);
+        // Nothing for the pointer to rest on, so no delay is armed and the
+        // singleton is never built — a delay that ran out would materialise it.
+        expect((Tooltip as any).instance).toBe(null);
+
+        stray.dispose();
+    });
+
+    it('6. a changed attach decides without reading layout', () => {
+        const { outer, inner, innerEl } = nestedHosts();
+
+        move(innerEl, ON_INNER.x, ON_INNER.y);
+
+        const hitTest = vi.spyOn(DOM.source, 'elementsFromPoint');
+        const rect    = vi.spyOn(DOM.source, 'getElementRect');
+
+        // A list writing every row's tooltip in one reconciliation pass is one
+        // changed attach per row, and a split re-derives its collapse hint from
+        // inside a layout pass: neither may force a layout to decide.
+        Tooltip.attach(outer, OUTER_CHANGED);
+        Tooltip.attach(inner, INNER_CHANGED);
+
+        expect((Tooltip as any).pendingId).toBe(inner.getId());
+        expect(hitTest).toHaveBeenCalledTimes(0);
+        expect(rect).toHaveBeenCalledTimes(0);
+    });
+
+    it('7. a press keeps a changed attach on the host it pressed from arming', () => {
+        const { outer, outerEl } = nestedHosts();
+
+        move(outerEl, ON_OUTER.x, ON_OUTER.y);
+        press(outerEl);
+
+        // A `SplitGutter` re-derives its collapse hint from inside the layout
+        // pass the click triggers, so the changed attach lands with the pointer
+        // still recorded over the chevron it just pressed.
+        Tooltip.attach(outer, OUTER_CHANGED);
+
+        expect((Tooltip as any).pendingId).toBe(null);
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([]);
+    });
+
+    it('8. a tooltip whose anchor element is gone is dismissed on the next move', () => {
+        const { outer, outerEl } = nestedHosts();
+
+        // Seeded connected, so the anchor watch's own connectivity test passes
+        // and the liveness of the remembered handle is what decides.
+        setConnected(outerEl, true);
+
+        enter(outerEl);
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect((Tooltip as any).activeElement).toBe(outer.getElement());
+        expect((Tooltip as any).dismissing).toBe(false);
+
+        // The anchor's element has been released — a disposed component, or one
+        // that re-rendered. The modelled source cannot reach that state, so the
+        // seam is asked to report it.
+        vi.spyOn(DOM.source, 'isRegistered').mockReturnValue(false);
+
+        move(outerEl, ON_OUTER.x, ON_OUTER.y);
+
+        expect((Tooltip as any).dismissing).toBe(true);
+        expect((Tooltip as any).activeElement).toBe(null);
     });
 });

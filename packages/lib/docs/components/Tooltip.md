@@ -14,7 +14,11 @@ const saveButton = Button('Save');
 Tooltip.attach(saveButton, 'Save the document (Ctrl+S)');
 ```
 
-The tooltip appears 500 ms after the pointer enters the component and follows the pointer until it leaves.
+The tooltip appears 500 ms after the pointer enters the component and stays where it appeared until the pointer leaves.
+
+Attaching a tooltip, or attaching a different one over it, while the pointer is already resting on the component starts that same delay — so a tooltip whose text changes under a still pointer appears without having to leave the component and re-enter it. (Re-attaching the *same* text and colors changes nothing at all, and leaves a delay already running or a tooltip already on screen alone.) A press is the exception: pressing dismisses the tooltip and keeps a changed attachment *on that same component* from arming while the press's purpose stands. Three things end that — the next keyboard input, the pointer leaving the component, or a press on another attached component (only the most recently pressed one is ever held back). Keyboard input is what lets a validation error appear after the click that focused its field: click in, type, and the message appears, while a control that flips its own hint from the gesture that pressed it stays quiet.
+
+The pointer is watched from an app's first tooltip attachment onwards, and forgotten again whenever it leaves the window, so an attach made before the pointer has moved or hovered since either of those still waits for it to move. What "resting on the component" means is the element the pointer's last move or hover named — so a component that is *moved* out from under a still pointer by the same change that re-attached its tooltip is not noticed until the pointer moves again.
 
 Tooltip text may contain `\n` newlines to render across multiple lines — the tooltip sizes its height to the line count and its width to the widest line. (This is how a [`Button`](/components/Button) carrying both a title and a description shows them on separate lines.)
 

@@ -53,6 +53,38 @@ The pointer rests on the component when the topmost element at the last known po
 
 The last row follows the rule `mouseoverFn` already applies: a delay another component started is never taken over ([`overlay/Tooltip.ts:468`](packages/lib/src/typescript/lib/overlay/Tooltip.ts#L468)).
 
+### A press suppresses the component it pressed until the next keyboard input
+
+*Added after implementation, by the user's decision on the third audit round —
+this reverses what `[^state-change]` concluded.*
+
+A press dismisses the tooltip and also marks the component it pressed, which is
+then refused an attach-time arm until the next keyboard input lifts the mark.
+`mouseoverFn` is untouched, so a real re-hover still shows the tooltip as it
+always did.
+
+`[^state-change]` reasoned that the press rule survives the attach-time arm
+"because a press attaches nothing". That is true of `FieldDecorator`, and false
+of a control that re-derives its own hint from the gesture that pressed it. The
+case that decided it is `SplitGutter`: `Split.placeGutterAsStrip` calls
+`setOpaque(true)` from inside the layout pass a collapse triggers
+([`layout/Split.ts:2216`](packages/lib/src/typescript/lib/layout/Split.ts#L2216)),
+`setOpaque` re-derives the chevron's hint through `Tooltip.attach`
+([`component/container/SplitGutter.ts:399`](packages/lib/src/typescript/lib/component/container/SplitGutter.ts#L399),
+[`:469`](packages/lib/src/typescript/lib/component/container/SplitGutter.ts#L469)),
+and the chevron is what the pointer just pressed — so every collapse and expand
+of a core layout raised a "Click to expand …" hint beside the pointer, half a
+second after the click, next to a chevron that had moved away. A visible stray
+tooltip on every use of a shipped component is a regression, not a limitation to
+document, which is why this reverses the earlier decision rather than recording
+it as a known cost.
+
+Keyboard input is what lifts it because that is the sequence the plan exists
+for: click into a field, type, and the message describing what was typed must
+still appear. The mark names the pressed component's own id, so a press nobody
+types after suppresses nothing but that one component — a global flag would have
+held back every later attachment in the session.
+
 ### `attachToElement` keeps its own cursor tracking
 
 The raw-element family keeps its own `lastX` / `lastY` and its own `mousemove` listener, and gains no arming. Its listeners are native, registered through `DOM.sink` rather than the `Event` API, its timer sits outside `pendingId`, and it already repaints a tooltip that is on screen when its text changes.[^raw-element]
@@ -213,6 +245,17 @@ const TOOLTIP_HOVER_DELAY_MS: number = 500;
 | Modify | `packages/lib/docs/components/Tooltip.md` |
 | Modify | `packages/lib/docs/reference/changelog/next.md` |
 
+Added during implementation, each recorded in `## Implementation Notes`:
+
+| Action | File | Why |
+|---|---|---|
+| Modify | `packages/lib/src/typescript/lib/core/DOM.ts` | `DOMSource.isRegistered`, the non-throwing liveness query the two remembered handles need |
+| Modify | `packages/lib/tests/dom/TestDOM.ts` | the modelled source's `isRegistered`, and `has` on the handle table |
+| Modify | `packages/lib/tests/dom/handle-registry.test.ts` | the new query's own semantics, against the production registry |
+| Modify | `packages/lib/docs/concepts/dom-seams.md` | the one documented exception to resolve-throws |
+| Modify | `packages/lib/tests/component/layout/Split.resizeMode.test.ts` | the watch teardown its `keydown` registration made necessary |
+| Modify | `packages/lib/tests/component/layout/Accordion.resizeMode.test.ts` | the same |
+
 ---
 
 ## Expected Behaviour
@@ -315,7 +358,7 @@ Every numbered case below is unit-testable with the modelled DOM, in the shape t
 
 [^symptom]: Two routes reach it. With no attachment on the decorator — the first error on a field, or any error after a `clearError` — `showError` installs a covering attachment under a pointer that will never raise another `mouseover`. With one already there, `_attachWith` detaches first, which fades the tooltip on screen, and then installs a replacement that nothing arms; that is the route found by hand in the demo app's **Binding** tab on 2026-09-24, where changing a field's text so the message changes fades the old tooltip and shows the new one only after the pointer leaves the field and returns. The post-merge audit of phase 2's follow-ups found the same defect by reading the code (`plans/research/render-review-2026-09-15/00-post-campaign-agenda.md:297`).
 
-[^state-change]: The alternative — letting a move between two elements inside a covering attachment start the delay — was rejected because it contradicts a pinned rule. `FieldDecorator.pointerTooltip.test.ts` case 12 requires that after a press the error stays hidden while the pointer stays on the field, including across a move from a date field's input onto its picker button, and `mousedownFn`'s own comment states that rule. Arming from an intra-component move would re-show the error on that same move. Arming from the attach call keeps case 12 intact, because a press attaches nothing.
+[^state-change]: The alternative — letting a move between two elements inside a covering attachment start the delay — was rejected because it contradicts a pinned rule. `FieldDecorator.pointerTooltip.test.ts` case 12 requires that after a press the error stays hidden while the pointer stays on the field, including across a move from a date field's input onto its picker button, and `mousedownFn`'s own comment states that rule. Arming from an intra-component move would re-show the error on that same move. Arming from the attach call keeps case 12 intact, because a press attaches nothing. **Superseded in part:** a press attaches nothing *for `FieldDecorator`*, but not for a control that re-derives its own hint from the gesture that pressed it; see _A press suppresses the component it pressed until the next keyboard input_ above.
 
 [^one-position]: Each attachment's `mousemoveFn` existed only to keep `cursorX` / `cursorY` current for that attachment's own timer, so with N attachments the library held N copies of one global fact and re-wrote them all on every pointer move. Folding them into one viewport listener is also the cheaper shape: a covering attachment's `mousemove` is a *subtree* registration, which makes `Event` walk from the move's target to the root on every pointer move — a cost the `field-decorator-pointer-tooltip` plan recorded as a known charge of an attached error. One viewport listener writing two numbers replaces both that walk and the per-element registrations. The trade accepted in return is that the listener is installed whenever any tooltip is attached, rather than only while one is hovered.
 
@@ -326,3 +369,203 @@ Every numbered case below is unit-testable with the modelled DOM, in the shape t
 [^raw-element]: Converting `attachToElement` to the shared position would also be correct and would delete its `lastX` / `lastY` carry, but it is a separate change with its own risk surface: its callers are the table's header cells, which install a native listener per cell, and its mid-hover repaint already covers the one case this plan fixes for them — text changing while their tooltip is on screen. The `field-decorator-pointer-tooltip` plan drew the same line.
 
 [^teardown]: `_stopPointerWatch` has no production caller — nothing removes the watch during a session — so it exists for teardown, and the test suite is what calls it. Skipping it is not an option: `Event` keeps its viewport registrations in module state that outlives `DOM.reset()`, so a registration left behind would sit in the map while its window handler pointed at the replaced window. The next test's viewport `mousemove` deliveries, and the anchor watch's own re-install, would then silently stop working — the same module-state hazard the tooltip test files' headers already warn about for `Event`'s installed listener types.
+
+---
+
+## Implementation Notes
+
+**`_stopPointerWatch` is `@internal` rather than `private`.** `## Internal
+Structure` lists the five new members as "all private", but a private member
+with no production caller fails the library typecheck: `tsconfig.lib.json` sets
+`noUnusedLocals`, and TypeScript reports TS6133 for an unread private static
+method (confirmed on a probe file). Nothing calls this one during a session by
+design, so it is declared `static _stopPointerWatch()` with an `@internal` tag
+and a "for tests only" line — the shape the library already uses for a
+test-only seam on an exported symbol (`Event._registeredComponentIds`,
+`DragManager._registeredComponentIds`, `Text`'s instance count). It is excluded
+from the API docs by `@internal`, exactly as `attachCovering` is. The
+consequence for step 11 is that the five `afterEach` blocks call
+`Tooltip._stopPointerWatch()` directly instead of through `(Tooltip as any)`,
+since the member is now reachable and type-checked.
+
+**`npm run docs:api` finishes with 14 warnings, not zero.** `## Verification`
+expects zero. The 14 are pre-existing: the same count comes out of the tree with
+this change stashed, and none of them names `Tooltip`, `FieldDecorator.showError`
+or any member added here (they are `{@link}`s to excluded symbols from
+`SpatialNavigation`, `rankInDirection`, `FieldDecorator`'s own class comment,
+`MarkdownViewer` and `MarkdownEditor`). The new JSDoc adds no `{@link}` at all,
+per `## Documentation Impact`, so it cannot add one.
+
+**Both of the third audit round's findings came back from the user, not from
+this run.** The audit loop reached its three-round cap with them open, the
+branch was handed back, and the user decided both: a non-throwing liveness query
+on the seam rather than a swallowed throw, and the press suppression rather than
+a documented limit. Everything above that cites the third round is that
+decision being carried out, not a judgement made here.
+
+**The manual demo check was not run.** `## Expected Behaviour`'s closing step
+asks for a real-pointer check in the demo app's **Binding** tab; this run was
+not permitted to open a window on the user's desktop, so it is outstanding and
+a human should still do it. The sequences it describes are pinned offline by
+`FieldDecorator.pointerTooltip` 17 (a changed message under a resting pointer),
+21 (a second change with no movement in between) and 19 (no arming when the
+pointer is elsewhere), and by `Tooltip.pointer` 3–5 for the plain mode; what
+only the demo can show is real pointer input and painting.
+
+**No demo or example surface was added.** The plan's file table lists none, and
+the behaviour is a fix to a path the demo's **Binding** tab already exercises —
+the same tab the manual check uses — so there was nothing to add.
+
+**One helper was factored out in the decorator's test file.** Cases 17–21 need
+the rest point itself, not only the element under it, so
+`FieldDecorator.pointerTooltip.test.ts` gained a `centreOf(component)` helper
+and its existing `hitCentre` now reads through it rather than repeating the
+rect-centre arithmetic.
+
+**"Rests on" is answered from the last pointer event's target, not from
+`elementsFromPoint`.** This reverses `[^hit-test]`, which chose the hit test and
+rejected two alternatives — a `:hover` match and a rectangle comparison — but
+did not consider the target the browser already resolved when it raised the
+event. Two audit rounds found defects rooted in the hit test, and both come from
+its being a forced synchronous layout:
+
+- `SelectableListRow.applyTooltip` (`component/list/AbstractSelectableList.ts:436-441`)
+  calls `Tooltip.attach` from `updateItem` for every row `syncRows` reconciles,
+  so one `setItems` over a list whose items carry tooltips is one changed attach
+  per row — up to N forced layouts interleaved with the rows' own DOM writes.
+  `## Potential Challenges` had assumed a changed attach is rare.
+- `Split.placeGutterAsStrip` calls `gutter.setOpaque(true)` — which re-derives
+  the chevron's hint through `Tooltip.attach` — from *inside* the layout pass,
+  before it writes the gutter's new x/y/size (`layout/Split.ts:2216-2227`,
+  `component/container/SplitGutter.ts:399`, `:469-472`). A hit test there both
+  forces a layout mid-pass and measures geometry the pass has not finished
+  writing.
+
+The recorded target costs neither: the browser resolved it when it raised the
+event, so it already honours `pointer-events` — which the modelled
+`elementsFromPoint` does not, as `FieldDecorator.pointerTooltip.test.ts`'s own
+header warns — and reading it touches no layout. It is the same read
+`_containsTarget` already performs on a `relatedTarget`, so it is also the shape
+this file already uses. Every row of `## Architecture Decisions`' own "rests on"
+table holds unchanged under it. An intermediate fix in the first audit round
+memoised the hit test per pointer event; the second round showed the memo
+outliving the task that motivated it, and this replaces it outright.
+
+It buys those with two costs the plan did **not** already accept, and which are
+new with this approach rather than inherited from `[^hit-test]` — the third
+audit round found both, and the user decided both. The plan accepted a stale
+*position*; under a pointer that has not moved that position stays exact, and a
+hit test taken at attach time would have reflected the current layout. A
+recorded *target* does not: a component moved, hidden or replaced under a still
+pointer still reads as the one the pointer is on, until the pointer moves again.
+`Split`'s collapse chevron was the visible instance, and the press suppression
+in `## Architecture Decisions` is what settles it; what remains is a component
+moved under a still pointer by something other than that pointer's own press,
+which the `Tooltip` page states as a limit.
+
+The second cost is that the recorded `Handle` can outlive the element it names,
+and `DOM.source.contains` resolves it, which throws for a released or collected
+handle — a disposed dialog or a re-rendered row under a still pointer would make
+the next covering attach throw. `DOMSource` therefore gains `isRegistered`, the
+one read that reports a dead handle rather than throwing on it, and both
+`_pointerRestsOn` and the base's own anchor watch ask it before they use a
+handle they merely remember. `resolve` still throws, so a genuine use-after-free
+stays as loud as `core/DOM.ts` intends; the new member is public API and carries
+its own breaking-change entry, TSDoc and a paragraph in the DOM-seams page. The
+offline harness cannot reach a released handle — the modelled `contains` walks a
+parent table without resolving (`tests/dom/TestDOM.ts:1415-1423`) — so the query's
+own semantics are pinned against the production registry in
+`tests/dom/handle-registry.test.ts`, and `Tooltip`'s two uses of it are pinned by
+spying the seam (`FieldDecorator.pointerTooltip` 28, `Tooltip.pointer` 8).
+
+`pointerKnown` is gone with the same change. Once "rests on" is decided by the
+recorded target, `pointerTarget === null` already means "nothing is known about
+the pointer", so the separate flag was a second expression of one fact — and a
+redundant one: a mutation that cleared only the flag left every test green.
+`Tooltip.pointer` case 6 pins that a changed attach reads no layout at all.
+
+**The watch is three viewport registrations, not the one `## Architecture
+Decisions` describes.** `_startPointerWatch` installs all three and
+`_stopPointerWatch` removes all three, so `## Expected Behaviour` case 22 asserts
+that an attachment raises the viewport listener count by three
+(`WATCH_LISTENERS = 3`), not by one:
+
+- `mousemove` → `_recordPointer`, the one the plan specified.
+- `mouseout` → `_forgetPointerOnLeave`, which clears `pointerTarget` when the
+  event names no element the pointer moved to — the pointer leaving the window.
+  Without it the target recorded on the way out stayed trusted, so a changed
+  attach on the component it named would show a tooltip while the pointer sat in
+  another application, where no `mouseout` would ever arrive to dismiss it again.
+  `[^watch-stays]` names exactly this hazard but covers only gaps with no
+  attachments. `FieldDecorator.pointerTooltip` case 25 pins the forgetting, and
+  case 32 pins that an ordinary in-document crossing does *not* forget.
+- `keydown` → `_clearPressSuppression`, which is how the press suppression below
+  is lifted. Any key lifts it wherever it lands, which is why this is a viewport
+  registration rather than something the pressed component listens for itself.
+  Case 26 pins the lifting.
+
+**A press's suppression also ends when the pointer leaves the component.** Added
+after the fourth review round, again on the user's decision. As first shipped
+only a keystroke or another press lifted it, so the suppression outlived the
+gesture it belonged to: press a field, let the pointer leave and come back — the
+hover path itself re-shows the error, so the press is demonstrably spent — and a
+changed message was still refused, with the detach hiding the tooltip on screen
+and nothing replacing it. The attachment's own `mouseout` now clears it, which is
+where the "has the pointer really left" test already lives (a covering attachment
+ignores a move between two elements inside it), and it clears only its own
+component's suppression — lifting somebody else's would let a leave of an inner
+part revive the very hint the press silenced. Cases 29 and 33 pin the two halves.
+This follows the same shape as the two nearby pieces of id-keyed gesture state,
+`Tooltip.pendingId` (cleared by `_cancelPendingShow` when its wait ends) and
+`core/PendingPointerDrags.ts` (unregistered when its drag ends).
+
+**A press suppresses the component it pressed, reversing `[^state-change]`.**
+This was the third audit round's second finding and the user's second decision;
+the reasoning is in `## Architecture Decisions` above, under _A press suppresses
+the component it pressed until the next keyboard input_, because it changes what
+the plan decided rather than merely how it was carried out. Two rounds of this
+branch shipped the opposite behaviour, on the plan's reasoning that "a press
+attaches nothing" — true of `FieldDecorator`, false of `SplitGutter`'s chevron
+and of a `Button` that re-derives its own hint from its click handler
+(`component/button/Button.ts:1484-1488`). `mousedownFn`'s comment, the `attach`
+and `attachCovering` JSDoc, the `Tooltip` page and the changelog entry all now
+state the rule the code applies; the changelog's earlier "known limit" paragraph
+about `Split`'s chevron is gone, since the chevron no longer has the problem.
+
+**Two test files outside the plan's table needed the watch teardown.**
+`Split.resizeMode.test.ts` and `Accordion.resizeMode.test.ts` now call
+`Tooltip._stopPointerWatch()` in their `afterEach`. This is *not* the "another
+file leaves an attachment behind" case step 12 anticipated: a gutter and an
+accordion header attach tooltips, which installs the watch — and its `keydown`
+registration leaves a `viewportListenerMap` type map that survives `DOM.reset()`,
+so `ResizeDrag`'s own `Event.addViewportListener(this, "keydown", …)` found the
+type already present and never re-installed the base handler against the fresh
+sink. The next case's Escape then reached nothing and its outline drag was never
+cancelled. Both files' `afterEach` already carries a comment describing exactly
+this hazard for the outline's own listeners; the addition sits under it. Nothing
+in production is affected, since the window is never replaced there.
+
+**Eleven cases beyond the plan's enumerated set, plus three on the registry.**
+`FieldDecorator.pointerTooltip` 23 pins the "another component's delay is
+running" row of `## Architecture Decisions`' table, which case 20 was presented
+as covering but cannot — the pointer there rests on the first decorator, so the
+second's hit test already answers `false` whatever the guard does; case 23 puts
+the pointer inside the decorator while the field's own delay runs. 25 pins the
+pointer leaving the window and 32 that an ordinary crossing does not count as
+leaving it; 24, 26, 27, 29 and 33 pin the press suppression, its two liftings,
+and that each names only the component pressed; 28 and `Tooltip.pointer` 8 pin
+the two liveness guards; 30 pins that a never-rendered component never reaches
+the containment read, a guard a `Binding` validation can reach before a
+decorator's first render; 31 pins that a hover with no move behind it still
+records the pointer; `Tooltip.pointer` 6 pins that no layout is read and 7 the
+chevron's shape for a plain attach. `handle-registry` gains three for
+`isRegistered` itself. Every one was confirmed by a mutation that made that named
+case fail — 30's mutation also fails 31 and 32, because a case that throws before
+its own teardown leaves components registered and the file's later real-event
+dispatches then vanish, the hazard its own header documents.
+
+**Follow-up left open.** Making `ModelledDOMSink.release` actually drop its stub
+would let a dead handle be staged offline, which would retire the two seam spies
+cases 28 and `Tooltip.pointer` 8 use and let them drive the real path instead. It
+is a test-harness change with its own blast radius across every file that
+releases a handle and then reads it, so it is not folded in here.

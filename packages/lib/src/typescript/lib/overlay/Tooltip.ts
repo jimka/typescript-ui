@@ -12,6 +12,13 @@ import { Text } from "~/component/input/Text.js";
 
 const TOOLTIP_ANIM_DURATION_MS: number = 100;
 
+// The dwell a pointer must hold on a component before its tooltip appears.
+// Long enough that a pointer crossing a control on its way elsewhere never
+// summons one, short enough to read as an answer to resting there — the
+// platform convention, not a measured value, which is why it is a fixed
+// number rather than derived from anything.
+const TOOLTIP_HOVER_DELAY_MS: number = 500;
+
 /**
  * Optional color overrides for a tooltip attachment.
  *
@@ -38,7 +45,6 @@ interface TooltipAttachment {
     // component's own element only.
     covering    : boolean;
     mouseoverFn : (e: MouseEvent) => void;
-    mousemoveFn : (e: MouseEvent) => void;
     mouseoutFn  : (e: MouseEvent) => void;
     mousedownFn : () => void;
 }
@@ -114,9 +120,105 @@ export class Tooltip extends Component {
      * is no longer connected.
      */
     private static readonly _onAnchorWatch = (): void => {
-        if (Tooltip.activeElement !== null && !DOM.source.isConnected(Tooltip.activeElement)) {
+        if (Tooltip.activeElement === null) {
+            return;
+        }
+
+        // The anchor is remembered across time, so its element may have been
+        // released since — a disposed component, or one that re-rendered. Every
+        // other read of a handle throws on that, deliberately, so ask first: a
+        // handle that no longer names an element is an anchor that is certainly
+        // gone, which is the case this watch exists to dismiss.
+        if (!DOM.source.isRegistered(Tooltip.activeElement) || !DOM.source.isConnected(Tooltip.activeElement)) {
             Tooltip.hide();
         }
+    };
+
+    // The pointer's last known viewport position, and the element that pointer
+    // event named as its target: the element the pointer is over, as the
+    // browser itself resolved it — respecting `pointer-events`, and costing no
+    // layout read, unlike asking which element sits at a point.
+    //
+    // `pointerTarget` is the single "anything known about the pointer" fact. It
+    // is null before the watch has heard an event, when an event named no
+    // element, and once the pointer has left the window — and it is what every
+    // read guards on, so the coordinates beside it are only ever used when a
+    // real event set them and can never be mistaken for the viewport's origin.
+    private static pointerX: number = 0;
+    private static pointerY: number = 0;
+    private static pointerTarget: Handle | null = null;
+
+    // The component whose own press last dismissed a tooltip, refused an
+    // attach-time arm for as long as that press's purpose stands. A press means
+    // the hover hint has served its purpose, and a component that re-derives its
+    // own hint from the gesture that pressed it — a `Split` gutter's collapse
+    // chevron, re-attached from inside the layout pass the click triggers —
+    // would otherwise raise a fresh hint beside a pointer the user has just
+    // clicked with.
+    //
+    // Three things end it, each because the press's purpose is then spent: the
+    // next keyboard input, which is the sequence a validation error needs (click
+    // into a field, type, and the message that follows must still appear); the
+    // pointer leaving that component, after which a `mouseover` on the way back
+    // shows the tooltip anyway, so refusing an attach would hide a message the
+    // hover would have shown; and a press on another attached component, since
+    // this is one slot and the newest press owns it. One id, not a set, so a
+    // press nobody follows up can never hold back anything else.
+    private static pressSuppressedId: string | null = null;
+
+    // Owner of the three viewport listeners that keep the state above honest,
+    // and whether they are installed. Installed with the first attachment and
+    // kept for the rest of the session. Distinct from `watching`, the anchor
+    // watch installed only while a tooltip is on screen.
+    // `Event.addViewportListener` binds a listener to a `Component` while these
+    // handlers are static — one pair for the whole class, not one per
+    // attachment — so a single stable sentinel owns them, as `Notification`'s
+    // resize-listener owner does.
+    private static readonly pointerWatchOwner: Component = new Component();
+    private static pointerWatching: boolean = false;
+
+    /**
+     * Records the pointer's viewport position. Installed as the viewport
+     * `mousemove` watch, and called by every attachment's own `mouseover` so a
+     * hover that arrives before any move still leaves a position behind.
+     */
+    private static readonly _recordPointer = (e: MouseEvent): void => {
+        Tooltip.pointerX      = e.clientX;
+        Tooltip.pointerY      = e.clientY;
+        Tooltip.pointerTarget = DOM.source.isNode(e.target) ? DOM.source.intern(e.target) : null;
+    };
+
+    /**
+     * Forgets the pointer's position when it leaves the window — a `mouseout`
+     * naming no element the pointer moved to, which is how the browser reports
+     * it.
+     * Nothing else announces the pointer leaving, so a position recorded on the
+     * way out would stay trusted: a later changed attach on the component that
+     * position names would show a tooltip while the pointer is in another
+     * application, where no `mouseout` will ever arrive to dismiss it again.
+     */
+    private static readonly _forgetPointerOnLeave = (e: MouseEvent): void => {
+        // A `mouseout` naming no element the pointer went to is the pointer
+        // leaving the document. `isNode` is the test `_containsTarget` already
+        // applies to a `relatedTarget`, and it answers alike for the browser's
+        // `null` and for an event built without one.
+        if (DOM.source.isNode(e.relatedTarget)) {
+            return;
+        }
+
+        Tooltip.pointerTarget = null;
+    };
+
+    /**
+     * Lifts a press's arming suppression on the first keyboard input after it.
+     * Installed as the viewport `keydown` watch, so any key lifts it wherever it
+     * lands. Typing is the act that makes a component's own hint worth showing
+     * again — the validation error's path, where the click that focuses a field
+     * precedes the message that describes what was typed into it. A real leave
+     * lifts it too, in the attachment's own `mouseout`.
+     */
+    private static readonly _clearPressSuppression = (): void => {
+        Tooltip.pressSuppressedId = null;
     };
 
     // Set true while a fade-out is in flight; reset to false when the fade-out
@@ -403,6 +505,19 @@ export class Tooltip extends Component {
      * stays up. A replacement cancels the component's own pending show and hides
      * its own tooltip first.
      *
+     * An attach that does change the attachment also starts the hover delay
+     * itself when the pointer is already resting on the component, so a tooltip
+     * whose text changes under a still pointer appears without waiting for the
+     * pointer to leave and come back. A press is the exception: it dismisses the
+     * tooltip and keeps a changed attachment on that same component from arming,
+     * so a control that flips its own hint from the gesture that pressed it stays
+     * quiet. That lasts until the next keyboard input, until the pointer leaves
+     * the component, or until another attached component is pressed — only the
+     * most recently pressed component is ever held back. The pointer is watched
+     * from the app's first attachment onwards and forgotten again whenever it
+     * leaves the window, so an attach made before it has moved or hovered since
+     * either of those still waits for it to move.
+     *
      * @param component - The component to attach hover behaviour to.
      * @param text - The tooltip text to display.
      * @param colors - Optional color overrides applied while this tooltip is visible.
@@ -420,6 +535,14 @@ export class Tooltip extends Component {
      * whole box. Kept when unchanged, and replaced, detached and torn down like
      * an `attach` attachment.
      *
+     * A call that changes the attachment also starts the hover delay itself
+     * when the pointer is already resting anywhere inside the component, so a
+     * changed message appears without waiting for the pointer to leave and come
+     * back. A press inside the component suppresses that until the next keyboard
+     * input — the order a field's validation runs in: click in, type, and the
+     * message describing what was typed appears — or until the pointer leaves the
+     * component, after which a hover shows it again anyway.
+     *
      * @param component - The wrapper to attach hover behaviour to.
      * @param text - The tooltip text to display.
      * @param colors - Optional color overrides applied while this tooltip is visible.
@@ -435,8 +558,13 @@ export class Tooltip extends Component {
      * `component`'s current attachment already has this text, these colors and
      * this mode, keeping its listeners, its running hover delay and its tooltip
      * on screen. Otherwise replaces any attachment `component` already has,
-     * builds its four hover listeners, registers them and records the
-     * attachment.
+     * builds its three hover listeners, registers them, records the attachment
+     * and installs the pointer watch.
+     *
+     * A call that got this far then starts the hover delay itself when the
+     * pointer already rests on `component` and no other component's delay is
+     * running: the browser raises no `mouseover` under a pointer that has not
+     * moved, so nothing else would.
      *
      * @param component - The component to attach hover behaviour to.
      * @param text - The tooltip text to display.
@@ -455,10 +583,9 @@ export class Tooltip extends Component {
 
         Tooltip.detach(component);
 
-        let cursorX = 0;
-        let cursorY = 0;
-
         const mouseoverFn = (e: MouseEvent): void => {
+            Tooltip._recordPointer(e);
+
             // A covering attachment first claims the hover, and ignores a move
             // between two elements inside its component.
             if (covering && !Tooltip._claimCoveringHover(component, e)) {
@@ -469,34 +596,23 @@ export class Tooltip extends Component {
                 return;
             }
 
-            cursorX = e.clientX;
-            cursorY = e.clientY;
-
-            Tooltip.showTimer = setTimeout(() => {
-                Tooltip._applyColors(colors);
-                // Record the anchor so the anchor-watch dismisses the tooltip if
-                // this component is later removed from the DOM.
-                Tooltip.activeElement = component.getElement() ?? null;
-                Tooltip.show(text, cursorX, cursorY);
-                Tooltip.showTimer = null;
-            }, 500);
-
-            // Record who armed it, so only this component's own `detach` can
-            // cancel the wait. `show` clears the pointer again as it runs.
-            Tooltip.pendingId = component.getId();
-        };
-
-        const mousemoveFn = (e: MouseEvent) => {
-            cursorX = e.clientX;
-            cursorY = e.clientY;
+            Tooltip._armHoverDelay(component, text, colors);
         };
 
         // Leaving hides the tooltip only when it is this component's own — the
         // rule `detach` follows. A covering attachment also ignores a move
-        // between two elements inside it, which is not a leave.
+        // between two elements inside it, which is not a leave. A real leave also
+        // ends this component's own press suppression: past this point the
+        // pointer coming back raises a `mouseover` that shows the tooltip again,
+        // so going on refusing a changed attach would hide a message the hover
+        // itself would have shown.
         const mouseoutFn = (e: MouseEvent): void => {
             if (covering && Tooltip._containsTarget(component, e.relatedTarget)) {
                 return;
+            }
+
+            if (Tooltip.pressSuppressedId === component.getId()) {
+                Tooltip.pressSuppressedId = null;
             }
 
             if (Tooltip._owns(component)) {
@@ -508,19 +624,27 @@ export class Tooltip extends Component {
         // its tooltip: once the pointer is pressed the hover hint has served its
         // purpose and would only obscure the result of the action. `hide` also
         // cancels a still-pending show timer, so a press during the hover delay
-        // suppresses the tooltip entirely. It stays hidden until the pointer
-        // leaves and re-enters, since no fresh `mouseover` fires under a
-        // stationary cursor.
+        // suppresses the tooltip entirely. No hover brings it back while the
+        // pointer stays put, since no fresh `mouseover` fires under a stationary
+        // cursor, and neither does a changed attach on this same component while
+        // the press's purpose stands — see `pressSuppressedId` for the three
+        // things that end it. That is what lets a validation error appear after
+        // the click that focused its field, while a control that flips its own
+        // hint from the gesture that pressed it stays quiet.
         const mousedownFn = () => {
             Tooltip.hide();
+
+            Tooltip.pressSuppressedId = component.getId();
         };
 
         const attachment: TooltipAttachment = {
-            text, colors, covering, mouseoverFn, mousemoveFn, mouseoutFn, mousedownFn,
+            text, colors, covering, mouseoverFn, mouseoutFn, mousedownFn,
         };
 
         Tooltip._addHoverListeners(component, attachment);
         Tooltip.attachments.set(component.getId(), attachment);
+
+        Tooltip._startPointerWatch();
 
         // Auto-detach on teardown: without this, a destroyed component stays
         // reachable forever through its listener closures, retained by this
@@ -529,6 +653,17 @@ export class Tooltip extends Component {
         if (!Tooltip.teardownWired.has(component)) {
             Tooltip.teardownWired.add(component);
             component.onDestroy(() => Tooltip.detach(component));
+        }
+
+        // No `mouseover` reaches a pointer that is already resting on this
+        // component, so the attach starts the delay itself. The detach above
+        // cancelled any delay this component had armed, so a `showTimer` still
+        // running belongs to another component and is left alone, and a component
+        // whose own press has not been typed after stays suppressed.
+        const suppressed = Tooltip.pressSuppressedId === component.getId();
+
+        if (Tooltip.showTimer === null && !suppressed && Tooltip._pointerRestsOn(component, covering)) {
+            Tooltip._armHoverDelay(component, text, colors);
         }
     }
 
@@ -573,6 +708,31 @@ export class Tooltip extends Component {
     }
 
     /**
+     * Starts the hover delay for `component`, after which the tooltip shows at
+     * the pointer's position. The position is read when the delay runs out,
+     * not now, so the tooltip lands where the pointer came to rest rather than
+     * where it was when the delay was armed.
+     *
+     * @param component - The component the tooltip will be anchored to.
+     * @param text - The tooltip text to display.
+     * @param colors - Optional color overrides applied while this tooltip is visible.
+     */
+    private static _armHoverDelay(component: Component, text: string, colors: TooltipColors | undefined): void {
+        Tooltip.showTimer = setTimeout(() => {
+            Tooltip._applyColors(colors);
+            // Record the anchor so the anchor-watch dismisses the tooltip if
+            // this component is later removed from the DOM.
+            Tooltip.activeElement = component.getElement() ?? null;
+            Tooltip.show(text, Tooltip.pointerX, Tooltip.pointerY);
+            Tooltip.showTimer = null;
+        }, TOOLTIP_HOVER_DELAY_MS);
+
+        // Record who armed it, so only this component's own `detach` can
+        // cancel the wait. `show` clears the pointer again as it runs.
+        Tooltip.pendingId = component.getId();
+    }
+
+    /**
      * Cancels the hover delay armed by `attach`, clearing the timer and the
      * component that owns it together so the two can never disagree. Safe to
      * call when nothing is pending.
@@ -584,6 +744,52 @@ export class Tooltip extends Component {
         }
 
         Tooltip.pendingId = null;
+    }
+
+    /**
+     * Installs the three viewport listeners that keep the state above honest —
+     * a `mousemove` that records where the pointer is, a `mouseout` that forgets
+     * it when the pointer leaves the window, and a `keydown` that lifts a
+     * press's arming suppression — unless they are already installed. Called as
+     * an attachment is recorded, and nothing removes them afterwards: a position
+     * recorded before a gap with no attachments and trusted after it would arm a
+     * tooltip over a component the pointer had since left, and re-installing the
+     * watch under a pointer that then never moves would leave the position
+     * unknown for every later attach.
+     */
+    private static _startPointerWatch(): void {
+        if (Tooltip.pointerWatching) {
+            return;
+        }
+
+        Event.addViewportListener(Tooltip.pointerWatchOwner, "mousemove", Tooltip._recordPointer);
+        Event.addViewportListener(Tooltip.pointerWatchOwner, "mouseout",  Tooltip._forgetPointerOnLeave);
+        Event.addViewportListener(Tooltip.pointerWatchOwner, "keydown",   Tooltip._clearPressSuppression);
+
+        Tooltip.pointerWatching = true;
+    }
+
+    /**
+     * Removes the viewport pointer watch and forgets the position it recorded.
+     * Nothing removes the watch during a session — see `_startPointerWatch` —
+     * so this exists for a test suite that replaces the DOM the registrations
+     * were made against, which would otherwise leave them pointing at a
+     * discarded window; for tests only.
+     *
+     * @internal
+     */
+    static _stopPointerWatch(): void {
+        if (!Tooltip.pointerWatching) {
+            return;
+        }
+
+        Event.removeViewportListener(Tooltip.pointerWatchOwner, "mousemove", Tooltip._recordPointer);
+        Event.removeViewportListener(Tooltip.pointerWatchOwner, "mouseout",  Tooltip._forgetPointerOnLeave);
+        Event.removeViewportListener(Tooltip.pointerWatchOwner, "keydown",   Tooltip._clearPressSuppression);
+
+        Tooltip.pointerWatching   = false;
+        Tooltip.pointerTarget     = null;
+        Tooltip.pressSuppressedId = null;
     }
 
     /**
@@ -651,6 +857,52 @@ export class Tooltip extends Component {
     }
 
     /**
+     * Whether the pointer rests on `component`: the element the last pointer
+     * event named is `component`'s own element, or — for a covering attachment
+     * — that element or anything inside it. A pointer nobody has heard from
+     * yet, one that has left the window, and a component with no element, all
+     * read as `false`.
+     *
+     * The answer comes from the recorded event target rather than from asking
+     * which element sits at the recorded coordinates. The browser resolved that
+     * target itself when it raised the event, so it already honours
+     * `pointer-events` and it costs no layout read — and an attach may be made
+     * from inside a layout pass (`Split`'s collapse strip re-derives its
+     * chevron's hint there), where forcing a synchronous layout is both a real
+     * cost and a measurement of geometry the pass has not finished writing.
+     * `_containsTarget` reads a `relatedTarget` the same way.
+     *
+     * The target is as old as the position beside it: a component that moves
+     * out from under a still pointer is not noticed until the pointer moves
+     * again.
+     *
+     * @param component - The component the pointer may be resting on.
+     * @param covering - `true` for `attachCovering`'s subtree-wide attachment.
+     * @returns `true` when the pointer rests on `component`.
+     */
+    private static _pointerRestsOn(component: Component, covering: boolean): boolean {
+        const element = component.getElement() ?? null;
+
+        if (element === null || Tooltip.pointerTarget === null) {
+            return false;
+        }
+
+        // The target was recorded when the pointer last moved and may have been
+        // released since — a dialog closed under a still pointer, a list row or
+        // a preview re-rendered. `contains` would resolve it and throw, which is
+        // the right answer for a handle a caller owns and the wrong one for a
+        // handle it merely remembers, so ask whether it is still live first. A
+        // dead target means the pointer is over nothing this can name.
+        if (!DOM.source.isRegistered(Tooltip.pointerTarget)) {
+            return false;
+        }
+
+        return covering
+            ? DOM.source.contains(element, Tooltip.pointerTarget)
+            : Tooltip.pointerTarget === element;
+    }
+
+    /**
      * The covering half of an attachment's `mouseover`. Cancels a hover delay
      * that a component inside `component` armed earlier in this same dispatch —
      * exact-target listeners run before the subtree walk reaches `component`,
@@ -670,8 +922,8 @@ export class Tooltip extends Component {
     }
 
     /**
-     * Registers an attachment's four hover listeners on `component`: on its own
-     * element for `attach`, on its whole subtree for `attachCovering`.
+     * Registers an attachment's three hover listeners on `component`: on its
+     * own element for `attach`, on its whole subtree for `attachCovering`.
      *
      * @param component - The attached component.
      * @param att - The attachment whose listeners to register.
@@ -679,7 +931,6 @@ export class Tooltip extends Component {
     private static _addHoverListeners(component: Component, att: TooltipAttachment): void {
         if (att.covering) {
             Event.addSubtreeListener(component, "mouseover", att.mouseoverFn);
-            Event.addSubtreeListener(component, "mousemove", att.mousemoveFn);
             Event.addSubtreeListener(component, "mouseout",  att.mouseoutFn);
             Event.addSubtreeListener(component, "mousedown", { button: "any", handler: att.mousedownFn });
 
@@ -687,13 +938,12 @@ export class Tooltip extends Component {
         }
 
         Event.addListener(component, "mouseover", att.mouseoverFn);
-        Event.addListener(component, "mousemove", att.mousemoveFn);
         Event.addListener(component, "mouseout",  att.mouseoutFn);
         Event.addListener(component, "mousedown", { button: "any", handler: att.mousedownFn });
     }
 
     /**
-     * Removes an attachment's four hover listeners from `component`: from its
+     * Removes an attachment's three hover listeners from `component`: from its
      * own element for `attach`, from its whole subtree for `attachCovering`.
      *
      * @param component - The attached component.
@@ -702,7 +952,6 @@ export class Tooltip extends Component {
     private static _removeHoverListeners(component: Component, att: TooltipAttachment): void {
         if (att.covering) {
             Event.removeSubtreeListener(component, "mouseover", att.mouseoverFn);
-            Event.removeSubtreeListener(component, "mousemove", att.mousemoveFn);
             Event.removeSubtreeListener(component, "mouseout",  att.mouseoutFn);
             Event.removeSubtreeListener(component, "mousedown", att.mousedownFn);
 
@@ -710,7 +959,6 @@ export class Tooltip extends Component {
         }
 
         Event.removeListener(component, "mouseover", att.mouseoverFn);
-        Event.removeListener(component, "mousemove", att.mousemoveFn);
         Event.removeListener(component, "mouseout",  att.mouseoutFn);
         Event.removeListener(component, "mousedown", att.mousedownFn);
     }
@@ -780,7 +1028,7 @@ export class Tooltip extends Component {
                     Tooltip.activeElement = element;
                     Tooltip.show(att.text, att.lastX, att.lastY);
                     att.showTimer = null;
-                }, 500);
+                }, TOOLTIP_HOVER_DELAY_MS);
             },
             mousemoveFn: function onTooltipMouseMove(e: MouseEvent): void {
                 att.lastX = e.clientX;

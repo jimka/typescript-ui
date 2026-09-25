@@ -219,6 +219,11 @@ class TestHandleTable {
         return Array.from(this._stubs.keys());
     }
 
+    /** Whether the table still holds a stub for a handle. */
+    has(handle: Handle): boolean {
+        return this._stubs.has(handle);
+    }
+
     /**
      * Records or clears a child's parent pointer in the modelled tree.
      *
@@ -1339,6 +1344,17 @@ export class ModelledDOMSource implements DOMSource {
     /** Reads the connectivity seeded by {@link setConnected} (default `false`). */
     isConnected(handle: Handle): boolean {
         return _table.isConnected(handle);
+    }
+
+    /**
+     * Whether the table still holds this handle. The modelled sink's `release`
+     * only records the call, so a handle released offline stays registered here
+     * — the production registry's released and collected states have no
+     * offline equivalent, which is why `Tooltip`'s use of this query is pinned
+     * by spying the seam rather than by staging a dead handle.
+     */
+    isRegistered(handle: Handle): boolean {
+        return _table.has(handle);
     }
 
     /** Reads the value recorded onto the stub by the recording sink. */

@@ -36,6 +36,15 @@ page resets to empty.
   act — `ProductionDOMSource` implements both. See
   [Migration](/reference/migration/next) for the full note.
 
+- **`DOMSource` gains one required member: `isRegistered()`.** It answers
+  whether a handle still names a live element, without resolving it — the one
+  read that reports a released or collected handle instead of throwing on it, so
+  a caller holding a handle across time (`Tooltip`'s recorded pointer target and
+  its remembered anchor) can test one rather than trust it. `resolve` still
+  throws, deliberately. A custom `DOMSource` implements it by reporting whether
+  its own registry still holds the handle; `ProductionDOMSource` forwards to the
+  shared one. Only a consumer implementing its own `DOMSource` is affected.
+
 - **`DOMSource` gains one required member: `closestWithId()`.** It returns the
   nearest element at or above a handle whose `id` is in a given set, climbing
   inside the seam; `Event`'s subtree dispatch now finds each registered
@@ -1657,6 +1666,51 @@ page resets to empty.
   now also hides the tooltip only when it is that component's, the rule
   `Tooltip.detach()` already follows, so moving between a field's parts no
   longer dismisses the error on screen. No consumer action is needed.
+
+- **A tooltip whose anchor element has been released no longer throws on the
+  next pointer move.** While a tooltip is on screen `Tooltip` watches for its
+  anchor leaving the DOM, and read that anchor's connectivity through a handle
+  it had remembered. `Component.release()` frees a live component's handle, so
+  the anchor could name a released one — and the read resolves it, which throws
+  for a handle that is no longer registered, from a viewport `mousemove`
+  handler. The watch now asks whether the handle is still live first and treats
+  a dead one as an anchor that is certainly gone, dismissing the tooltip. No
+  consumer action is needed.
+
+- **A tooltip attached under a pointer that is already resting on its
+  component now appears without a re-hover.** The hover delay was started only
+  by a `mouseover`, and the browser raises none under a pointer that has not
+  moved — so attaching a tooltip, or replacing one with different text or
+  colours, while the pointer already sat on the component showed nothing until
+  the pointer left and came back. `FieldDecorator.showError` is the case that
+  motivated it: validating on change after a click into a field re-attaches
+  the error under a pointer that never moves between keystrokes, so the
+  message explaining the red outline stayed invisible. Both `Tooltip.attach`
+  and the decorator's subtree-wide error attachment now start the delay from
+  the attach call itself, whenever the element the pointer's last move or hover
+  named is the component or lies inside it, and no other component's delay is
+  running. Three consequences
+  to plan around. The pointer is only watched from an app's first attachment
+  onwards and is forgotten again whenever it leaves the window, so an attach
+  made before the pointer has moved or hovered since either of those still
+  waits for it to move. A press suppresses the component it pressed: pressing
+  still dismisses the tooltip, and a changed attach on that same component no
+  longer brings it back while the press's purpose stands — so clicking into a
+  field and typing still raises its validation error, while a control that
+  flips its own hint from the gesture that pressed it (a `Split` gutter's
+  collapse chevron, re-attached as the pane collapses) stays quiet. Three
+  things end it: the next keyboard input, the pointer leaving that component
+  (past which a hover shows the tooltip again anyway), and a press on another
+  attached component — only the most recently pressed one is ever held back, so
+  a press nobody follows up can never hold anything else back. And each
+  attachment now registers three listeners instead of four, its own
+  cursor-tracking `mousemove` replaced by three viewport listeners — one
+  recording where the pointer is, one forgetting it as the pointer leaves the
+  window, one lifting a press's suppression on the next keystroke — installed
+  with the first attachment and kept for the session.
+  `Tooltip.attachToElement`'s raw-element bindings are unchanged, and still
+  repaint only a tooltip already on screen for that element. No consumer action
+  is needed.
 
 - **A toast no longer ends up behind an open menu or picker.** A
   `Notification` stamped itself with a fixed `10002`, just above the dropdown
