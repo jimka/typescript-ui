@@ -659,3 +659,50 @@ on. It reproduces the desktop reading exactly: 98 withheld, tab 1 matches, tabs
   many open editors the user never returns to. The cell that settles it drives
   one switch and then a sweep of shows, and it belongs before a plan rather
   than inside one.
+
+## G25 closed: nothing is saved at a realistic ratio (2026-09-25)
+
+Measured on `master` at `73ab5253` (the ten-branch stack merged), runs `g25s-*`,
+with two throwaway edits neither of which was committed: a lap target on
+`editor-tabs` driving one theme switch then a walk through all seven hidden
+tabs, and the layout-pass catch-up the debug pass proposed, added to
+`g25.theme-withhold`. Eight laps over `update:64`, `idle:4`.
+
+- **The debug pass's remedy works in-engine.** Replaying the withheld
+  `onThemeChange` from `doLayout` when the editor is owed and effectively
+  visible gives **48 checks and no mismatch at all**, against the six
+  mismatches the `onEffectiveVisibilityChange` catch-up produced. Half the
+  checks (24 of 48) trip `theme.indistinct` at this lap length, so 24 of them
+  genuinely discriminated and none failed. `Tab.doLayout` is why the hook
+  choice matters: it flips `setDisplayed(true)`, lays the re-shown subtree out
+  synchronously through `placeComponent` → `commitBounds`, and only then fades
+  the page in from `opacity: 0` (`layout/Tab.ts:2227-2276`). A layout-pass
+  catch-up therefore lands before the fade's first painted frame; the
+  visibility hook lands one frame into it.
+
+- **And the counters close the candidate anyway.** Over the eight laps the arm
+  withholds 56 reconfigures — seven hidden editors per switch — and replays 49
+  of them, seven per lap. The 12% shortfall is only the last lap's shows
+  falling outside the measured window: in steady state at one switch per seven
+  shows, **replays equal withholds and no work is saved at all**. The original
+  −25.84 ms and −19% came from the opposite ratio — the `theme` driver switches
+  twice for every tab it shows, so 98 withholds met just 7 replays and 93% of
+  the withheld work was discarded before its editor was ever visited. G25's
+  value is the share of hidden editors the user never returns to, and a user
+  who walks their tabs after a theme switch returns to all of them.
+
+- **The clock agrees, weakly, and cannot do better here.** The arm reads 76.78
+  and 78.62 against plain's 72.95 and 75.37 — `+3.54` on a 2.42 bracket, which
+  by the cell's own rule is a regression, though on two plain reps that bracket
+  is thin. It cannot be sharpened on this surface: every unit after a show
+  carries the tab fade's opacity animation, which is what opened a 16.86
+  bracket on the first cell shape tried (`g25r-*`, a one-unit `theme` phase
+  that recorded no timing at all). The counters, not the timing, are what
+  decide this.
+
+- **No G25 plan, and no library defect either.** The stale paint exists only
+  inside the ablation: every plain run matches 7 of 7, because unmodified code
+  applies the theme to hidden editors immediately. The lap target and the
+  layout-pass catch-up were discarded with the worktree; both are about
+  twenty-five lines and the record above is enough to rebuild them, should a
+  later candidate of the same defer-while-hidden shape want the surface.
