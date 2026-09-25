@@ -1469,6 +1469,16 @@ page resets to empty.
   every store builds its view on the main thread from then on. No consumer
   action is needed.
 
+- **A page under a Content-Security-Policy blocking both `blob:` and `data:`
+  workers no longer retries the store worker's construction on every view
+  rebuild.** Each attempt left one object URL that Vite's worker shim never
+  revokes and reported two policy violations, so a table over the threshold
+  that was sorted, filtered, or mutated repeatedly paid that cost once per
+  operation, for the life of the page. The refusal is now recorded the first
+  time a store crosses the threshold, reported once through `console.warn`,
+  and never retried, since it cannot change while the page lives. No consumer
+  action is needed; the view and its events were, and remain, unaffected.
+
 ### Layouts
 
 - **`Tab.setTabGlyph(content, glyph)` / `clearTabGlyph(content)` no longer

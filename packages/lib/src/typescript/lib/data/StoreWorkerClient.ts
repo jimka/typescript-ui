@@ -7,13 +7,17 @@
 //
 // `isAvailable()` is false whenever there is no live worker to offload to, and
 // the AbstractStore caller reads it before dispatching and does the work
-// itself. Two different things make it false. A worker that cannot be
-// constructed at all — no `Worker` in a test environment or server-side, a
-// Content-Security-Policy that refuses a `blob:` worker — simply leaves the
-// client without one; the next call tries to construct it again. A worker that
-// was constructed and then proved dead — its script failed to run, a reply
-// could not be decoded, or it answered nothing for the whole deadline while a
-// reply was owed — is *retired*: terminated, every outstanding request
+// itself. Three different things make it false. A runtime with no `Worker`
+// global at all — a test environment, server-side rendering — simply leaves
+// the client without one; the next call tries to construct it again, since
+// rediscovering the answer costs nothing. A worker whose construction the
+// runtime itself refused — a Content-Security-Policy allowing neither `blob:`
+// nor `data:` — is *retired* on the spot: the refusal belongs to the document,
+// so it cannot change while the page lives, and retrying would only leak
+// another object URL that Vite's worker shim never revokes. A worker that was
+// constructed and then proved dead — its script failed to run, a reply could
+// not be decoded, or it answered nothing for the whole deadline while a reply
+// was owed — is retired the same way: terminated, every outstanding request
 // rejected, and never rebuilt. That deadline grows with the dataset, so a long
 // sort of a very large store is given room a small store's request is not.
 
@@ -132,6 +136,10 @@ function armSilenceTimer(): void {
  * caller pays a round trip that cannot succeed. Idempotent — the first of
  * several failures is the one that reports.
  *
+ * Also how a construction the runtime refused is recorded: there is nothing
+ * to terminate and no request to reject in that case, so the warning is the
+ * whole effect.
+ *
  * @param reason - What proved the worker dead; it goes into the rejection and the warning.
  */
 function retireWorker(reason: string): void {
@@ -194,6 +202,15 @@ function handleSilenceTimeout(): void {
     retireWorker(`it answered nothing for ${quiet}ms with ${pending.size} outstanding`);
 }
 
+/**
+ * Returns the one worker shared by every store, constructing it on first
+ * need.
+ *
+ * @returns The shared worker, or `null` when this runtime has no `Worker` at
+ *   all or the client has been retired — including by a construction this
+ *   call itself could not complete. The construction is attempted at most
+ *   once: a refusal retires the client, so no later call tries again.
+ */
 function ensureWorker(): Worker | null {
     if (workerRetired) return null;
     if (worker) return worker;
@@ -201,8 +218,14 @@ function ensureWorker(): Worker | null {
 
     try {
         worker = new (StoreWorkerCtor as any)() as Worker;
-    } catch {
-        worker = null;
+    } catch (error) {
+        // The construction ran and was refused — a Content-Security-Policy
+        // allowing neither `blob:` nor `data:` is the case in the field. The
+        // refusal belongs to the document, so it cannot change while the page
+        // lives, and each attempt costs a `blob:` URL that Vite's shim owns and
+        // never revokes. So the first refusal is the last attempt.
+        retireWorker(`the Worker constructor threw: ${String(error)}`);
+
         return null;
     }
 
@@ -271,7 +294,8 @@ export const StoreWorkerClient = {
     /**
      * Whether the offload is worth attempting: a worker can be constructed in
      * this runtime and has not been retired. A `false` here means the caller
-     * must do the work itself — nothing else will.
+     * must do the work itself — nothing else will. A construction the runtime
+     * refused is not attempted again.
      *
      * @returns true when a live worker is available.
      */

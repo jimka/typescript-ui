@@ -138,3 +138,86 @@ describe('AbstractStore — the store builds its view when the worker stops answ
         expect(SilentWorker.terminated).toBe(1);
     });
 });
+
+// The reported bug: a Content-Security-Policy blocking both `blob:` and
+// `data:` made every applyView() over the threshold retry the construction,
+// each attempt leaking an object URL Vite's worker shim never revokes and
+// reporting two policy violations. The fake here is a Worker whose
+// constructor always throws, redeclared locally — this file shares no module
+// with StoreWorkerClient.test.ts, which defines the same shape.
+describe('AbstractStore — a construction the runtime refuses is never retried', () => {
+    /** A fake Worker whose constructor counts its own calls and always throws. */
+    class RefusedWorker {
+        public static attempts: number = 0;
+
+        constructor() {
+            RefusedWorker.attempts++;
+
+            throw new Error(
+                "Refused to create a worker from 'blob:https://example.com/…' because it " +
+                'violates the following Content Security Policy directive: "worker-src \'none\'".',
+            );
+        }
+    }
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+        vi.resetModules();
+    });
+
+    it('builds the view and fires "load" once, synchronously, constructing the worker once (case 7)', async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        RefusedWorker.attempts = 0;
+        vi.stubGlobal('Worker', RefusedWorker);
+
+        // Reset AFTER stubbing so the store and the client share one fresh
+        // module graph that sees the refused-construction worker.
+        vi.resetModules();
+
+        const { MemoryStore } = await import('~/data/MemoryStore');
+        const { Model } = await import('~/data/Model');
+
+        const store = new MemoryStore(new Model([{ name: 'id' }, { name: 'name' }], 'id'), []);
+        const loaded: number[] = [];
+
+        store.on('load', () => loaded.push(store.getRecords().length));
+
+        // No fake timers needed: with isAvailable() false the store never
+        // leaves the main thread, so `load` fires synchronously here.
+        store.loadData(rows(RECORD_COUNT));
+
+        expect(store.getRecords()).toHaveLength(RECORD_COUNT);
+        expect(loaded).toEqual([RECORD_COUNT]);
+        expect(RefusedWorker.attempts).toBe(1);
+    });
+
+    it('never retries the construction across four applyView() calls, and warns once (case 8)', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        RefusedWorker.attempts = 0;
+        vi.stubGlobal('Worker', RefusedWorker);
+        vi.resetModules();
+
+        const { MemoryStore } = await import('~/data/MemoryStore');
+        const { Model } = await import('~/data/Model');
+
+        const store = new MemoryStore(new Model([{ name: 'id' }, { name: 'name' }], 'id'), []);
+
+        store.loadData(rows(RECORD_COUNT));
+        expect(store.getRecords()).toHaveLength(RECORD_COUNT);
+
+        store.add({ id: RECORD_COUNT, name: `n${RECORD_COUNT}` });
+        expect(store.getRecords()).toHaveLength(RECORD_COUNT + 1);
+
+        store.add({ id: RECORD_COUNT + 1, name: `n${RECORD_COUNT + 1}` });
+        expect(store.getRecords()).toHaveLength(RECORD_COUNT + 2);
+
+        store.add({ id: RECORD_COUNT + 2, name: `n${RECORD_COUNT + 2}` });
+        expect(store.getRecords()).toHaveLength(RECORD_COUNT + 3);
+
+        expect(RefusedWorker.attempts).toBe(1);
+        expect(warn).toHaveBeenCalledTimes(1);
+    });
+});
