@@ -75,7 +75,7 @@ win.setRail(rail);
 win.show();
 ```
 
-Passing `null` to `setRail` detaches the rail and falls back to the built-in strip. The opt-in is per window; windows without a rail keep docking along the bottom edge as before.
+Passing `null` to `setRail` detaches the rail and falls back to the built-in strip. While the rail holds a minimized window, that window takes no slot in the built-in strip, and the strip writes no geometry to it — it keeps the rect it had, unless a dock animation already in flight when the rail was attached carries it further. The strip lays out only the minimized windows with no rail. Attaching a rail to a window that is *already* minimized hands it over on the spot: the rail raises its handle, the window itself is hidden, and the strip closes the slot it held. A *collapsed* rail raises that handle hidden, so attaching one to a minimized window leaves it with no on-screen representation until the rail is expanded. Detaching one hands it back the same way — the window is shown again, the shrink-into-the-rail transform and fade the minimize left on it are cleared, and it takes a slot in the row. It comes back at that slot's position but at its own normal minimum size rather than the row's strip height, so it stands taller than the strips beside it until it is restored. Attaching or detaching a rail on a minimized window can also fire that window's `minimize` event: on the rail path the event is deferred to the end of the shrink-into-the-rail animation, so a `setRail` that cancels one part-way fires it instead of losing it. It arrives once per minimize either way. The opt-in is per window; windows without a rail keep docking along the bottom edge as before.
 
 ## Events
 

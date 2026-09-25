@@ -90,7 +90,7 @@ Double-clicking the header bar (anywhere that isn't one of the three trailing bu
 
 While `maximized`, the window registers a viewport `resize` listener and re-fills on every tick. Switch the fill target with `setMaximizeBounds("parent")` if the window has been re-parented out of `document.documentElement` and should fill its parent rect instead.
 
-While `minimized`, the body content (the first non-header child) is hidden via `setDisplayed(false)` and the window collapses to a fixed 200 px-wide strip docked along the viewport bottom. Multiple minimized windows lay out side-by-side in insertion order with a 4 px gap.
+While `minimized`, the body content (the first non-header child) is hidden via `setDisplayed(false)` and the window collapses to a fixed 200 px-wide strip docked along the viewport bottom. Multiple minimized windows lay out side-by-side in insertion order with a 4 px gap. A window with a [`Rail`](/components/Rail) attached minimizes into that rail instead and takes no slot in the strip.
 
 Drag and border-resize are gated to the `normal` state — a maximized or minimized window stays where it is until you call `setWindowState('normal')` (which also restores the pre-transition rect from the cache).
 
