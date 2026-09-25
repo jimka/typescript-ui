@@ -492,8 +492,8 @@ every cell.
   common path, not a corner. The one match is the tab that was visible when the
   switch went out. This is *not* the instrumentation artifact the plan's
   `[^counter-order]` predicts: that loses a count, it does not turn a match into
-  a mismatch. A G25 plan has to carry a catch-up on show, and the 19% is what it
-  may not simply bank.
+  a mismatch. A G25 plan may not simply bank the 19%, and the bullets below
+  show why the obvious remedy is not one.
 
 - **G27 inverts with document length; it is not a loss outright.** On the `call`
   ladder — a triangle of absolute offsets, the worst case for a cache, since
@@ -552,3 +552,40 @@ every cell.
   invalidation key.** `findActiveHeading` is a pure read batch, one layout
   flush and N cheap rects, and the seam counter's three-figure tallies were
   counting something that does not cost.
+
+- **G25's catch-up on show already exists, fires, and does not help.**
+  `g25ThemeWithhold` has always re-applied the withheld `onThemeChange` from
+  `onEffectiveVisibilityChange` (`ablations.ts:2095-2104`), so the reading above
+  that a plan must *add* a catch-up was wrong. Probed by counting that branch
+  (runs `g25p-*`, instrumentation since reverted): over the 14-unit lap the
+  flush fires 6 times out of 6 rising visibility changes, and the check still
+  reads 1 match against 6 mismatches, exactly as before. Deferring the flush by
+  a task instead (`g25q-*`) is strictly worse — 7 mismatches, 0 matches — so it
+  is not a timing problem. **The editor that received no flush is the one that
+  matched**, which points the correlation the other way: replaying the method
+  that applies a theme does not reproduce the theme. `theme.indistinct` never
+  fires, and `codeEditorTheme` memoises per mode (`theme.ts:83-88`) so the
+  style-module class is stable across calls — the oracle is canonical and this
+  is not a false alarm. The ms win is meanwhile steady at about −27 and −21%
+  across all four arm runs, plain reading 127.15 in the same sitting.
+
+- **One show in seven delivers no `onEffectiveVisibilityChange`.** The lap shows
+  seven tabs and the hook fires six times. Four library sites hang deferred work
+  off that hook — `Markdown.ts:1508`, `AbstractCanvasSurface.ts:472`,
+  `CodeEditor.ts:1943` and the catch-up layout at `Panel.ts:1159` — so a show
+  that skips it skips those flushes too, including the re-show re-measure
+  `CodeEditor`'s own doc says exists because CodeMirror's observer misses that
+  case. `Tab.lifecycle.test.ts` and `code-editor-reshow-measure.test.ts` both
+  pass, so whatever the gap is, neither covers it. Worth its own look
+  independently of G25.
+
+- **What G25 needs next is a debug pass, not another cell.** The question is
+  narrow enough to answer offline against the library's own tests: what leaves a
+  withheld-then-replayed `onThemeChange` with a different `.cm-editor` class
+  list from the reference editor's? Two cheap hypotheses are already dead — a
+  mistimed flush and a vacuous oracle — and each further guess costs a desktop
+  cell. Until that is answered the 19% cannot be banked, and even once it is,
+  the candidate defers rather than removes: the `theme` phase measures the
+  switch and never the show, so a cell that drives tab activation inside the
+  measured window has to price the relocated work before any of this is a
+  saving.
