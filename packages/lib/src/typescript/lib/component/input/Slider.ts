@@ -440,9 +440,19 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
     /**
      * Lays out the track, active fill, and thumb for the current size.
      *
+     * @remarks Opens with `super.doLayout()`, as
+     * [`Toggle`](/api/component/input/classes/Toggle) and the picker fields
+     * do. The base pass is the only place the layout-dirty flag is cleared and
+     * the text-metrics generation recorded, and the unchanged-commit skip reads
+     * both — without it every `Slider` is permanently owed a pass and can never
+     * be withheld. It also places the two registered children at their own
+     * boxes, which the hand placement below then overrides.
+     *
      * @returns This component, for method chaining.
      */
     doLayout(): this {
+        super.doLayout();
+
         // The content box, not the inner size: the inner size is the right
         // extent but carries no origin, so a padded slider would lay its track
         // out at the inner edge of its border and ignore the padding it just
@@ -765,6 +775,43 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
      */
     protected applyReadOnly(value: boolean): void {
         this.getAria().setReadOnly(value);
+    }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a slider re-committed at the
+     * rectangle it already holds, with no pass owed, is not re-laid-out.
+     *
+     * `doLayout` above reads the content box — which a skip by definition did
+     * not change — and `value`, `min`, `max` and the orientation. Every one of
+     * those, and every other input, announces itself:
+     *
+     * - `setValue`, `setMin` and `setMax` all route through `applyValue`, which
+     *   calls `scheduleLayout()`.
+     * - `setOrientation` routes through `applyOrientation`, which rewrites the
+     *   preferred and maximum sizes and calls `scheduleLayout()`.
+     * - A drag or an arrow key moves the value through the same `setValue`.
+     * - `setStep` and `setLargeStep` write options only, and neither is a
+     *   layout input: the placement above reads the value and the range, not the
+     *   grid the value is snapped to.
+     * - `setInsets` / `clearInsets`, padding and border — each marks the layout
+     *   owed here, like any `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     *
+     * The opt-in only works because `doLayout` now opens with
+     * `super.doLayout()`: the base pass is what records that a pass ran, and
+     * without it every slider would be permanently owed one.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
     }
 }
 

@@ -95,6 +95,39 @@ class FieldDecorator extends Component {
 
         return this;
     }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a decorator re-committed at
+     * the rectangle it already holds, with no pass owed, is not re-laid-out.
+     *
+     * A decorator is a `Fit` over exactly one child with cleared insets, so its
+     * pass reads nothing but the content box a skip by definition did not
+     * change. Every input announces itself:
+     *
+     * - {@link showError} and {@link clearError} write a CSS `outline` and
+     *   attach or detach a tooltip. An outline renders outside the box model and
+     *   takes no layout space, and a tooltip is an overlay with its own root, so
+     *   neither is a layout input — which is the whole point of decorating
+     *   instead of bordering the field.
+     * - The field's own re-measure schedules its parent, which is this
+     *   decorator, and a `setPreferredSize` on the field relays upward through
+     *   it.
+     * - The preferred size mirrored from the field in the constructor is copied
+     *   once, before the decorator is added.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, padding and border —
+     *   each marks the layout owed here, like any `invalidateLayout`.
+     *
+     * Not covered, and so not re-flowed until the decorator's rectangle next
+     * moves or something schedules it: a consumer field that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
 }
 
 const FieldDecoratorCallable = callable(FieldDecorator);

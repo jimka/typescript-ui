@@ -741,6 +741,48 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
+     * Opts into the unchanged-geometry layout skip: a plain `Text` re-committed
+     * at the rectangle it already holds, with no pass owed, is not
+     * re-laid-out.
+     *
+     * A `Text` has no `doLayout` override and no children, so its own pass
+     * places nothing — its default absolute manager runs over an empty child
+     * list. Nothing it can be told changes where that pass would put anything:
+     *
+     * - `setText`, `setFontFamily`, `setFontSize`, `setFontStyle`,
+     *   `setFontWeight`, `setLineHeight` and `setTruncate` each mark the
+     *   measurement stale and schedule this text's *parent* — the component
+     *   whose pass re-places it — directly, falling back to itself when it has
+     *   no parent yet. A width change re-measures a wrapping run inside
+     *   `setWidth` before the parent reads the new preferred height.
+     * - `setTextAlign` and the remaining font sub-properties write style only
+     *   and schedule nothing. None of them changes the measured run: alignment
+     *   moves the glyphs inside a box this text does not own, and a plain
+     *   `Text`'s own pass has nothing to place either way.
+     * - `setInsets` / `clearInsets`, padding and border — each marks the layout
+     *   owed here, like any `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     *
+     * The opt-in is this class exactly, by prototype identity rather than
+     * `instanceof`, so `Label`, `Link`, `SelectableText`, `Legend`,
+     * `ButtonLabelText`, `ListItemMarkerText` and the picker's own text classes
+     * keep being laid out on every commit until each is audited on its own. A
+     * subclass that wants the skip overrides this gate after that audit.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true` for a plain `Text`, `false` for any subclass.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return Object.getPrototypeOf(this) === Text.prototype;
+    }
+
+    /**
      * Whether the active {@link Component.setWritingMode | writing mode} rotates
      * the text run onto the block (vertical) axis, so the measured horizontal
      * extents must be swapped to describe the on-screen size.

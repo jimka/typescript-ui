@@ -589,6 +589,46 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         this._dash.setOpacity(indeterminate ? 1 : 0);
     }
 
+    /**
+     * Opts into the unchanged-geometry layout skip: a checkbox re-committed at
+     * the rectangle it already holds, with no pass owed, is not re-laid-out.
+     *
+     * A `Checkbox` has no `doLayout` override — its box, the check glyph and dash
+     * inside that box, and the optional inline label beside it are placed by its
+     * own box manager from the content box a skip by definition did not change —
+     * and every input to that placement announces itself:
+     *
+     * - `setSelected`, `setValue` and the indeterminate state swap CSS classes
+     *   and opacities on already-placed children; none is a layout input.
+     * - `setLabel` adds the label child, removes it, or writes text to the one
+     *   already there. The add and the remove schedule this checkbox as any
+     *   child change does, and `Text.setText` schedules its own parent, which is
+     *   this checkbox.
+     * - The box and check sizes are read from the theme once, at construction,
+     *   and pinned as the *box's* own min, preferred and max — so no later pass
+     *   resolves them differently. A theme switch or web-font swap still lays
+     *   every opted-in component out once, through the text-metrics condition
+     *   the skip's own gate applies.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, its configuration
+     *   setters, padding and border — each marks the layout owed here, like any
+     *   `invalidateLayout`.
+     *
+     * This is the class the commit rule was corrected for: a checkbox stretched
+     * across a grid cell is asked for the cell's width and commits the width its
+     * own children need, so "the rectangle changed" has to be read from the
+     * committed box rather than the request or this gate could never engage.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
 }
 
 const CheckboxCallable = callable(Checkbox);

@@ -391,6 +391,47 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
         this._track.applySelected(value);
     }
 
+    /**
+     * Opts into the unchanged-geometry layout skip: a toggle re-committed at the
+     * rectangle it already holds, with no pass owed, is not re-laid-out.
+     *
+     * `doLayout` above calls the base and then nudges an optional label by the
+     * track's centre offset, so it reads the content box — which a skip by
+     * definition did not change — and, for the offset, the track's and the
+     * label's own preferred heights. The track's is a theme-fixed class default.
+     * Every input announces itself:
+     *
+     * - `setValue` writes the thumb's transform and the track's class; neither
+     *   is a layout input, and the thumb's travel is a fixed distance rather
+     *   than a measured one.
+     * - `setLabel` adds the label child, removes it, or writes text to the one
+     *   already there. The add and the remove schedule this toggle as any child
+     *   change does, and `Text.setText` schedules its own parent, which is this
+     *   toggle.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, its configuration
+     *   setters, padding and border — each marks the layout owed here, like any
+     *   `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     *
+     * Like `Checkbox`, a toggle stretched across a grid cell is asked for the
+     * cell's width and commits the width its own children need — the pill, plus
+     * a label when it has one — so this gate only engages because the commit
+     * rule reads "the rectangle changed" from the committed box rather than the
+     * request.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
+
 }
 
 const ToggleCallable = callable(Toggle);
