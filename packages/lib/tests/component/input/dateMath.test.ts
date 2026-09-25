@@ -183,6 +183,10 @@ describe('parseClockTime', () => {
         expect(parseClockTime("09:30:45")).toEqual({ hours: 9, minutes: 30, seconds: 45 });
     });
 
+    it('accepts an unpadded seconds part', () => {
+        expect(parseClockTime("09:30:5")).toEqual({ hours: 9, minutes: 30, seconds: 5 });
+    });
+
     it('rejects an hour with no minutes', () => {
         expect(parseClockTime("09")).toBe(null);
     });
@@ -197,6 +201,29 @@ describe('parseClockTime', () => {
 
     it('rejects seconds outside 0-59', () => {
         expect(parseClockTime("09:30:61")).toBe(null);
+    });
+
+    it('rejects the empty string', () => {
+        expect(parseClockTime("")).toBe(null);
+    });
+
+    it('rejects internal whitespace between the hour and the minute', () => {
+        expect(parseClockTime("09:3 0")).toBe(null);
+    });
+
+    it.each([
+        "9:30:00:99", "1e1:30", "0x9:30", "9.5:30", "09:30:", ":30",
+        " 9:30", "9:30 ", "+9:30", "-0:30", "009:30", "09:30:05.5",
+    ])('rejects %j', (raw) => {
+        expect(parseClockTime(raw)).toBe(null);
+    });
+
+    it('accepts H:M:S with every part at its minimum', () => {
+        expect(parseClockTime("0:0:0")).toEqual({ hours: 0, minutes: 0, seconds: 0 });
+    });
+
+    it('accepts H:MM:SS with every part at its maximum', () => {
+        expect(parseClockTime("23:59:59")).toEqual({ hours: 23, minutes: 59, seconds: 59 });
     });
 });
 

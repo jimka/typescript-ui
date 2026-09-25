@@ -48,6 +48,7 @@ The typed shorthand stays on screen while typing; it resolves to the absolute ti
 
 ## Notes
 
+- The absolute form is read back exactly as it is written: one or two digits for the hour, the minute and the optional second, separated by `:`. A missing hour (`:30`), a trailing separator (`09:30:`), a fractional second (`09:30:05.5`), a sign, surrounding whitespace, or an out-of-range part all leave the field invalid rather than committing a time the text never named, and blurring on one clears it.
 - For the absolute format, an omitted `:SS` segment defaults seconds to `0`; typing one sets it explicitly, independent of the `showSeconds` display option. The date portion comes from the local clock at the moment of the most recent input event.
 - The dropdown is intentionally minimal — extend [`TimePickerDropdown`](/api/component/input/classes/TimePickerDropdown) to add 12-hour formatting or seconds.
 - Right-clicking the inner text input opens a Cut/Copy/Paste menu; Cut/Paste re-parse the field the same way typing does.

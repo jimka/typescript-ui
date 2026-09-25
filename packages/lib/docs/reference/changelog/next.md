@@ -1343,11 +1343,10 @@ page resets to empty.
   else leaves the field invalid until blur clears it. `DateTimeField`'s time
   half moves to `TimeField`'s own rule with it, so it starts accepting an
   unpadded `9:5`, stops accepting a UTC/offset-suffixed time (`14:30Z`,
-  `14:30+02:00`) or trailing text after the time, and now drops the
-  sub-second part of a fractional second instead of keeping it — none of
-  which `formatValue` produces. A consumer feeding one of those forms back
-  into a field should format it the way the field does. `TimeField` is
-  unchanged.
+  `14:30+02:00`) or trailing text after the time, and now rejects a
+  fractional second instead of keeping it — none of which `formatValue`
+  produces. A consumer feeding one of those forms back into a field should
+  format it the way the field does.
 
 - **The table's date, time and date-time cell editors no longer commit a
   value the typed text never named.** They parsed typed text through `new
@@ -1364,6 +1363,26 @@ page resets to empty.
   editor starts accepting an unpadded time such as `9:5` and stops accepting a
   `T` separator or a `Z`/offset suffix; the time editor stops accepting a bare
   hour such as `9`. None of those is a form the editors display.
+
+- **The absolute time form is now read back exactly as it is written.**
+  `TimeField`, `DateTimeField` and the table's time and date-time cell
+  editors share `H:MM[:SS]`: one or two digits per part, with seconds
+  optional and defaulting to `0`. All four now reject a fractional second
+  (`09:30:05.5`), which `formatValue` never produces — `TimeField` and the
+  time cell editor used to truncate it, `DateTimeField` and the date-time
+  cell editor used to keep it. `TimeField` and the time cell editor also
+  stop accepting a fourth part (`9:30:00:99`), an exponent or hex form
+  (`1e1:30`, `0x9:30`), a fractional hour or minute (`9.5:30`), a trailing
+  separator (`09:30:`), a missing hour (`:30`), a sign (`+9:30`) and a
+  three-digit hour (`009:30`) — forms `DateTimeField` and the date-time cell
+  editor already rejected — and now stop accepting surrounding whitespace
+  too. Whitespace is the one place the two date-time components differ:
+  `DateTimeField` trimmed the whole typed string before splitting it and
+  still does, so it is unaffected, while the date-time cell editor had no
+  trim of its own and no longer rejects text with surrounding or doubled
+  whitespace. Code that types or pastes one of those forms into a component
+  should use the form the component itself would produce instead. See
+  [Migration](/reference/migration/next).
 
 - **A date before the year 1000 now displays with a four-digit year.**
   `DateField`, `DateTimeField` and the table's date and date-time cell editors

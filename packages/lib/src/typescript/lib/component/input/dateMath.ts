@@ -152,10 +152,9 @@ export function resolveDateMath(raw: string, allowed: readonly DateMathUnit[], b
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /**
- * A wall-clock time parsed from "H:MM" or "H:MM:SS" text. Each part is only
- * range-checked, not rounded, so a fractional second typed as "05.5" arrives
- * here intact; the native `setHours` the callers hand it to truncates it, so
- * the sub-second part is dropped rather than kept.
+ * A wall-clock time parsed from "H:MM" or "H:MM:SS" text. Each part is a
+ * whole number already inside its own range, so a caller never rounds or
+ * clamps what it gets.
  *
  * @internal — not re-exported from the package barrel.
  */
@@ -228,10 +227,26 @@ export function parseIsoDate(raw: string): Date | null {
     return date.getDate() === Number(match[3]) ? date : null;
 }
 
+// A complete `H:MM[:SS]` wall-clock time, anchored at both ends. Each part is
+// one or two ASCII digits: the unpadded `9:5` the fields accept, and none of
+// the forms `Number` would otherwise widen a part to (`1e1`, `0x9`, `9.5`,
+// ` 9`, `+9`, an empty string). No `g` flag, so `exec` carries no state
+// between calls. The digit count cannot express the per-part upper bounds,
+// which the range check below covers.
+const CLOCK_TIME = /^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/;
+
+// Exclusive upper bound of each clock part. Named rather than inlined because
+// `\d{1,2}` admits 99, so the 24-hour day and the 60-minute hour are the
+// constraints the shape check cannot carry.
+const HOURS_PER_DAY      = 24;
+const MINUTES_PER_HOUR   = 60;
+const SECONDS_PER_MINUTE = 60;
+
 /**
- * Parses an `H:MM` or `H:MM:SS` wall-clock time. Hours, minutes and seconds
- * need not be zero-padded, but each must be a number inside its own range and
- * the minutes are mandatory.
+ * Parses a complete `H:MM[:SS]` wall-clock time. Each part is one or two
+ * digits; seconds are optional and default to `0`. A missing part, a
+ * trailing separator, a sign, a fractional or exponent form, surrounding
+ * whitespace, or an out-of-range value is rejected rather than normalised.
  *
  * @param raw - The raw text typed into the field.
  * @returns The parsed wall-clock time, or `null` when `raw` is not one.
@@ -239,17 +254,20 @@ export function parseIsoDate(raw: string): Date | null {
  * @internal — not re-exported from the package barrel.
  */
 export function parseClockTime(raw: string): ClockTime | null {
-    const [hStr, mStr, sStr] = raw.split(":");
-    const hours   = Number(hStr);
-    const minutes = Number(mStr);
-    const seconds = sStr === undefined ? 0 : Number(sStr);
+    const match = CLOCK_TIME.exec(raw);
 
-    const hasMinutes = mStr !== undefined && mStr !== "";
-    const validHour  = !isNaN(hours)   && hours   >= 0 && hours   < 24;
-    const validMin   = !isNaN(minutes) && minutes >= 0 && minutes < 60;
-    const validSec   = !isNaN(seconds) && seconds >= 0 && seconds < 60;
+    if (match === null) {
+        return null;
+    }
 
-    if (!hasMinutes || !validHour || !validMin || !validSec) {
+    const hours   = Number(match[1]);
+    const minutes = Number(match[2]);
+    // An absent seconds group is zero, so `9:30` and `9:30:00` agree.
+    const seconds = match[3] === undefined ? 0 : Number(match[3]);
+
+    // The regex admits no sign and no empty part, so every value is a
+    // non-negative integer and only the upper bound is left to check.
+    if (hours >= HOURS_PER_DAY || minutes >= MINUTES_PER_HOUR || seconds >= SECONDS_PER_MINUTE) {
         return null;
     }
 

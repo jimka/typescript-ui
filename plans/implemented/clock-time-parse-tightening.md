@@ -356,3 +356,98 @@ Run from `packages/lib` unless stated:
     than folded into them because it changes `TimeField` too, which those
     entries are explicitly about *not* changing — a reader tracing
     `TimeField`'s behaviour needs one entry that says so.
+
+## Implementation Notes
+
+Two deviations from step 11/12's exact wording, both found during audit and
+corrected in place rather than left as written:
+
+- **The "who needs to act" text named the wrong consumers.** Step 12 named "a
+  `Binding` whose `set` writes a formatted string, a store column holding a
+  `time` string, or a paste" as needing to act. Checking the actual call
+  paths shows this is wrong: `AbstractPickerField.setValue` (the path a
+  `Binding` writes through) calls `formatValue`, never `parseRaw`, and
+  `Field.convertValue` (`data/Field.ts:190-199`, the path a `time`/`datetime`
+  store column's raw value goes through) calls `new Date(raw)` directly,
+  never `parseClockTime` or `parseIsoDateTime`. Neither path can be affected
+  by this change. The migration note and the new changelog entry now say the
+  parser only ever sees text a person types or pastes into one of the four
+  components' input, or that an automated test drives through it that way.
+
+- **The "stops accepting" list in step 11 compared against the wrong
+  baseline.** Steps 11 and 12 name eight forms (`9:30:00:99`, `1e1:30`,
+  `0x9:30`, `9.5:30`, `09:30:`, `:30`, `+9:30`, `009:30`) as newly rejected
+  by all four components. That's only true measured against the current
+  unreleased `master`, where `DateTimeField` and the date-time cell editor
+  already delegate their time half to the old (pre-tightening)
+  `parseClockTime`. Measured against the last actual release (`v0.9.0`, the
+  baseline `next.md`'s other entries use — see the plan's own
+  `[^changelog-amend]` footnote), `DateTimeField.parseRaw` and the date-time
+  cell editor's `onInput` never used `parseClockTime` at all: both built a
+  composite date-time string and handed it to `new Date`, which already
+  returns `Invalid Date` for all eight forms (verified in `node`). So none
+  of the eight is a real behaviour change for `DateTimeField` or the
+  date-time cell editor — only for `TimeField` and the time cell editor,
+  which genuinely accepted all eight at `v0.9.0`. Note that `parseClockTime`
+  did not exist at `v0.9.0` at all: `TimeField` carried equivalent inline
+  code (`Number(hStr)` / `Number(mStr)` / `Number(sStr)`,
+  `v0.9.0:TimeField.ts:134-136`), and the time cell editor used a looser
+  check again — `raw.split(':').map(Number)` behind a `parts.some(isNaN)`
+  guard, with no range check at all (`v0.9.0:table/cell/editor/Time.ts:204-205`).
+  Consolidating those two onto one parser is part of what this change does,
+  so the docs must not describe `parseClockTime` as the thing either
+  component read through at the release baseline. The one change real for all
+  four components, at the release level, is the fractional second: `v0.9.0`'s
+  composite `new Date` parse for `DateTimeField`/the date-time cell editor
+  and both time components' own checks all accepted
+  `09:30:05.5`, and none of the four does now. The changelog entry and
+  migration note were corrected to attribute the eight-form rejection to
+  `TimeField` and the time cell editor only, and the fractional-second
+  rejection to all four.
+
+  The same wrong-baseline mistake recurred twice more on the first pass at
+  that correction, both caught by a further audit round: the fractional
+  second was described as "silently truncated rather than rejected" for all
+  four components, but at `v0.9.0` only `TimeField` and the time cell editor
+  truncated it (`setHours` / the `Date` constructor drop the fractional
+  part of a seconds argument); `DateTimeField` and the date-time cell
+  editor's composite `new Date` parse *kept* it (`getMilliseconds()` reads
+  `500` for `"...14:30:05.5"` on both, verified in `node`). And "surrounding
+  whitespace" was listed among the forms `DateTimeField` and the date-time
+  cell editor "already rejected," which is wrong for `DateTimeField`: it
+  accepted surrounding whitespace at `v0.9.0` via its own
+  `raw.trim().split(/\s+/)` and still does, so whitespace is genuinely
+  unchanged there.
+
+  The first correction of that clause then over-generalised in the other
+  direction, calling the tolerance unchanged for *both* date-time
+  components. It is not, for the date-time cell editor. Its `v0.9.0`
+  `onInput` was `new Date(raw.replace(' ', 'T'))` with no trim, and
+  `String.prototype.replace` with a string argument substitutes only the
+  first occurrence — so a leading space became the `T` and left the real
+  date-time separator in place, mangling the string. Measured against that
+  exact expression in `node`, `"2024-01-01 10:00"` parses while
+  `" 2024-01-01 10:00"`, `"2024-01-01 10:00 "` and `"2024-01-01  10:00"` are
+  all rejected. The editor therefore *gained* whitespace tolerance in this
+  unreleased cycle, through the earlier cell-editor rework that routed it at
+  the shared date-time parser, not through this plan. The docs now say only
+  `DateTimeField` is unaffected, and that the editor no longer rejects text
+  with surrounding or doubled whitespace — deliberately not stated as an
+  exhaustive rule, because `new Date`'s handling of a mangled non-ISO string
+  is engine-specific.
+
+A third audit finding added test coverage the plan's step 3 assumed already
+existed: `DateTimeField.parseRaw("  2025-06-15   14:30  ")` (the
+`parseIsoDateTime` whitespace-tolerance case) had no test at the
+`DateTimeField` level on `master` or on this branch — only a lower-level
+`parseIsoDateTime` test in `dateMath.test.ts` covered it. Step 3 says to
+leave this case "untouched," which was correct advice for the *behaviour*,
+but the component-level test it implicitly assumed was never there to leave
+alone. A test was added to `DateTimeField.test.ts` pinning it.
+
+The audit loop hit its three-iteration cap, every round on the same thing:
+the accuracy of the changelog and migration prose, never the code or the
+tests. The root cause was writing that prose from the current tree instead of
+from the release it ships against; the final corrections were each verified
+against the `v0.9.0` tag, reproducing the old parse expressions in `node`
+rather than reading the old source and inferring.
