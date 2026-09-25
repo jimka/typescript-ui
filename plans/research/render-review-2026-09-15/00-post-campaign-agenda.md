@@ -561,9 +561,11 @@ every cell.
   flush fires 6 times out of 6 rising visibility changes, and the check still
   reads 1 match against 6 mismatches, exactly as before. Deferring the flush by
   a task instead (`g25q-*`) is strictly worse — 7 mismatches, 0 matches — so it
-  is not a timing problem. **The editor that received no flush is the one that
-  matched**, which points the correlation the other way: replaying the method
-  that applies a theme does not reproduce the theme. `theme.indistinct` never
+  is not a timing problem in that direction. It also looked as though the
+  editor that received no flush was the one that matched, and so as though
+  replaying the method that applies a theme does not reproduce it. The next
+  section corrects both: the unflushed editor is tab 7, which mismatched, and
+  the replay is correct but one frame late. `theme.indistinct` never
   fires, and `codeEditorTheme` memoises per mode (`theme.ts:83-88`) so the
   style-module class is stable across calls — the oracle is canonical and this
   is not a false alarm. The ms win is meanwhile steady at about −27 and −21%
@@ -576,8 +578,9 @@ every cell.
   that skips it skips those flushes too, including the re-show re-measure
   `CodeEditor`'s own doc says exists because CodeMirror's observer misses that
   case. `Tab.lifecycle.test.ts` and `code-editor-reshow-measure.test.ts` both
-  pass, so whatever the gap is, neither covers it. Worth its own look
-  independently of G25.
+  pass, so whatever the gap is, neither covers it. That looked worth its own
+  look independently of G25; the next section places the seventh edge one frame
+  past the phase window instead, so it is most likely not a library gap.
 
 - **What G25 needs next is a debug pass, not another cell.** The question is
   narrow enough to answer offline against the library's own tests: what leaves a
@@ -589,3 +592,55 @@ every cell.
   switch and never the show, so a cell that drives tab activation inside the
   measured window has to price the relocated work before any of this is a
   saving.
+
+## G25 debugged offline: the catch-up is one frame late (2026-09-25)
+
+The debug pass the previous section asked for, run offline only. A throwaway
+test mounted a `Tab` of eight `CodeEditor`s beside a reference, stubbed each
+`_view` to record the last theme dispatched into it, reinstated
+`g25ThemeWithhold` verbatim, and replaced the recording sink's
+`requestAnimationFrame` with a FIFO queue that runs a callback requested inside
+a frame on the next one — the browser's order, and the order `runFrames` relies
+on. It reproduces the desktop reading exactly: 98 withheld, tab 1 matches, tabs
+2–7 mismatch as `light vs dark`. The test was not committed.
+
+- **The withhold and the catch-up read two different visibility clocks.** The
+  withhold asks the live `isEffectivelyVisible()` walk, which turns true the
+  moment `Tab.doLayout` calls `setDisplayed(true)` on the page. The catch-up
+  waits for `onEffectiveVisibilityChange`, which only the coalesced reconcile
+  delivers — and `setDisplayed` queues that reconcile from inside the layout
+  flush, so it lands one frame later. A show therefore spans three frames:
+  unit `2k` switches the theme and selects the tab (layout queued); the next
+  frame's layout flush displays it and queues the reconcile, then the
+  harness's unit `2k+1` checks it — still on the mount theme, a **mismatch** —
+  and switches back, which the now live-visible editor applies directly; the
+  frame after that, the rising edge replays `onThemeChange`, which reads the
+  current theme and changes nothing. The replay is correct; it is late. The
+  mismatch is a real one-frame stale paint of a re-shown tab, not an oracle
+  artifact.
+
+- **Every earlier reading follows from that.** Tab 1 matches only because a
+  reconcile frame was already pending from the lap's first theme switch, so its
+  edge coalesced into the frame before the check. Deferring the replay by a
+  task (`g25q-*`) pushes tab 1 past its check too, hence 0 of 7. The previous
+  section's pairing of "the editor that received no flush" with "the one that
+  matched" misread the counts: the unflushed editor is tab 7, which mismatched,
+  and tab 1, which matched, was flushed.
+
+- **The "one show in seven with no `onEffectiveVisibilityChange`" is most
+  likely the phase window, not a library gap.** Tab 7 is shown on unit 12 and
+  checked on unit 13; its rising edge arrives the frame after unit 13, outside
+  the measured phase, so an in-phase counter sees six. The offline model
+  delivers it (with and without the trailing `restore()`), so the separate look
+  at `Markdown.ts:1508`, `AbstractCanvasSurface.ts:472`, `CodeEditor.ts:1943`
+  and `Panel.ts:1159` the previous section proposed is not owed on this
+  evidence. Not confirmed in-engine.
+
+- **The remedy is to catch up in the pass that displays the editor.** With the
+  ablation additionally replaying from `doLayout` when the editor is owed and
+  `isEffectivelyVisible()` — the same layout flush `Tab.doLayout` displays the
+  page in, before paint — all seven checks match and the withheld count is
+  unchanged, so the skip survives. A G25 plan should hang its catch-up on the
+  layout pass (or the display flip), never on `onEffectiveVisibilityChange`.
+  The previous section's caveat stands unchanged: the `theme` phase never
+  measures the show, so the relocated work is still unpriced.
