@@ -1166,11 +1166,21 @@ function isSettledClosed(accordion: AnyObj, component: AnyObj, i: number): boole
 /**
  * G16, the settled pass: a scrolling `Panel` re-measures its scroll metrics
  * on every layout pass. Skips the re-measure while the panel's size, child
- * count and preferred size equal its last full run's. Only for `passes`: a
- * scroll moves the shadows without changing any of those. A panel whose
- * re-measure returns at once — not scrolling, not effectively visible, or
- * without an element — is passed through uncounted: skipping it would save
+ * count and recorded content extent equal its last full run's. Only for
+ * `passes`: a scroll moves the shadows without changing any of those. A panel
+ * whose re-measure returns at once — not scrolling, not effectively visible,
+ * or without an element — is passed through uncounted: skipping it would save
  * nothing.
+ *
+ * Every term is a value the panel has already cached, so the gate calls no
+ * size hint: `_lastContentExtent` is the content extent the panel's own
+ * `scheduleGutterSettleOnShrink` records at the end of the same `doLayout`
+ * that ran the re-measure, so the value compared here is the previous pass's
+ * — the "nothing has changed since last time" test the gate wants, without
+ * the subtree size computation `getPreferredSize` would cost once per pane
+ * per pass. That record is only refreshed while the panel shows a scroll
+ * affordance; for a panel that shows none it holds still, and the gate falls
+ * back to size and child count.
  *
  * @param tools - The harness tools.
  * @returns A note saying what was patched.
@@ -1192,11 +1202,14 @@ function g16PanelSettled(tools: HarnessTools): string {
             return remeasure.call(this);
         }
 
+        const extent = this._lastContentExtent as { width: number; height: number };
+
         const signature = [
             call(this, 'getWidth'),
             call(this, 'getHeight'),
             call<unknown[]>(this, 'getComponents').length,
-            JSON.stringify(call(this, 'getPreferredSize')),
+            extent.width,
+            extent.height,
         ];
 
         const last = lastRun.get(this);
