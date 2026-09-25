@@ -15,16 +15,11 @@ It implements [`Bindable<string>`](/api/core/interfaces/Bindable), so it can par
 Pass plain strings via the `items` option (or `addItem` / `setItems`):
 
 ```typescript
-import { Event } from '@jimka/typescript-ui/core';
 import { ComboBox } from '@jimka/typescript-ui/component/input';
 
 const role = ComboBox({ items: ['Admin', 'User', 'Guest'] });
 
-Event.addListener(role, 'change', () => {
-    // Plain string items are keyed by position, so `getValue()` returns the
-    // selected row index as a string; read `getSelectedIndex()` for the index.
-    // When each option needs its own distinct value, use keyed items or a
-    // store (below).
+role.on('action', () => {
     console.log('selected index:', role.getSelectedIndex());
 });
 
@@ -91,9 +86,29 @@ When nothing is selected the collapsed control renders blank. A store-bound comb
 | `addItem(item)` | Append an item (string or `{ key, label }`). |
 | `setItems(items[])` | Replace the item list (strings or `{ key, label }` pairs). |
 | `getValue()` / `setValue(value)` | Read / write the selected option's value. |
-| `getSelectedIndex()` / `setSelectedIndex(i)` | Index-based selection. |
+| `getSelectedIndex()` / `setSelectedIndex(i)` | Index-based selection. `setSelectedIndex(i)` fires `"change"`, never `"action"`; pass `false` as a second argument for a silent write. |
 | `setStore(store)` / `setDisplayField(name)` / `setValueField(name)` | Bind to a data store. |
 | `getSelectedRecord()` | When backed by a store, returns the currently selected `ModelRecord`. |
+
+## Selection events
+
+`on("action", fn)` fires once per user commit — a row click, or `Enter`, `Space` or an arrow
+key on the open dropdown — and never for a programmatic `setSelectedIndex` or `setValue`.
+`on("change", fn)` carries the committed value and fires for the user's commits **and** your
+own `setSelectedIndex` calls. `setValue` fires neither, so a host can resynchronise the
+displayed option without re-entering its own listener.
+
+```typescript
+role.on("action", () => console.log("user picked:", role.getValue()));
+role.on("change", value => console.log("now:", value));
+
+role.setSelectedIndex(1);        // "change" and "binding" only
+role.setSelectedIndex(1, false); // nothing at all
+role.setValue('admin');          // nothing at all
+```
+
+[`List`](/components/List#selection-events), [`Checkbox`](/components/Checkbox) and
+[`Slider`](/components/Slider) follow the same contract.
 
 ## Theming
 

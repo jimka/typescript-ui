@@ -383,3 +383,79 @@ Cases 1–14 are unit-testable offline in `packages/lib`; case 15 is a compile-t
 [^migration-cost]: A type-aware survey of both sibling checkouts found no edit needed in either. **Loom** (`/home/jika/typescript/loom/src`) has one `List` `"action"` subscriber, `CommandPalette.ts:78` (`this._resultsList.on('action', () => this.handleCommit())`), which wants user commits only; it drives the list with `setItemsArray`, `setFocusedIndex` and `handleKey` and never calls `setSelectedIndex`. Loom uses no `ComboBox` and no `MultiSelectList`. **SQLAdmin** (`/home/jika/typescript/sqladmin/frontend/src`) has no `List` or `ComboBox` `"action"` subscriber at all — every `on("action")` there is on a `Button`, `ToggleButton` or `Link`. Its two programmatic selections, `QueriesView.ts:258` and `:311`, pass `fireEvent: true` to arm the header tools through `list.on("change", syncTools)` at `:222`; that listener is the listener-bag `"change"`, which this plan leaves firing. Its combo boxes all subscribe with `on("change", (v: string) => …)`. Inside this repo the only affected call site is `ToolBarPanel.ts:83`; the docs demos (`list-selection.ts`, `multiselectlist-selection.ts`, `combobox-store.ts`) and the `packages/qa` panels use `"change"` or no listener at all.
 
 [^event-window]: `Event` installs one window-level listener per DOM event type on first registration and remembers it in module state that survives `DOM.reset()`. A file whose earlier cases leave instances undisposed keeps `"change"` marked installed against a dead window, so every later case in that file dispatches into nothing and each "zero actions" assertion passes vacuously. `ComboBoxDropdownClose.test.ts` was split out of `ComboBox.test.ts` for exactly this reason and says so in its header; `RowStateEconomy.test.ts:256-262` and `Link.test.ts` document the same trap. Disposing every instance in `afterEach` purges the registrations and uninstalls the base listener with them.
+
+---
+
+## Implementation Notes
+
+Seven points where the implementation had to depart from what the plan wrote
+down. The code is as designed in every case; what changed is the plan's
+factual claims about the baseline, the checks, and the blast radius.
+
+**1. `## Expected Behaviour` case 15 does not hold — the break is silent.**
+The plan predicted that changing the overload from `listener: Function` to
+`listener: Event.Listener` would make `combo.on("action", (value: string) => …)`
+a compile error, and that the compiler would therefore name every affected
+call site. It does not. `Event.Listener` is `(event: any) => ListenerResult`
+([`core/Event.ts:113`](packages/lib/src/typescript/lib/core/Event.ts#L113)),
+and `any` is assignable to `string`, so a listener declaring a typed value
+parameter type-checks exactly as it did before and silently receives a
+`CustomEvent` at runtime. Verified by compiling that exact line under
+`tsconfig.test.json`: zero errors. `ToolBarPanel.ts:83` was still rewritten —
+it would otherwise print `"Zoom [object CustomEvent]"` — but it was found by
+hand, not by `tsc`. The changelog and the migration note say so explicitly
+and tell consumers to grep, rather than promising compiler help the release
+cannot deliver.
+
+**2. `ComboBox.on("action", fn)` has three in-repo consumers, not one.** The
+`## Overview` names `ToolBarPanel.ts:83` as the only one. The others are
+[`BindingPanel.ts:280`](packages/lib/src/typescript/BindingPanel.ts#L280) and
+— the one that matters —
+[`lib/component/table/cell/editor/Combo.ts:64`](packages/lib/src/typescript/lib/component/table/cell/editor/Combo.ts#L64),
+the library's own combo cell editor, which commits the edit on `"action"`.
+Both take no listener parameter, so neither needed an edit, and both are
+behaviourally unchanged: `ComboEditor` drives its combo through `setValue` and
+`setItems` only and never calls `setSelectedIndex`, so its `"action"` fired
+once per user commit before and fires once per user commit now. The audit of
+`setSelectedIndex` callers confirms it — every call in `src/` outside
+`onRowSelected` passes `fireEvent: false`.
+
+**3. Step 18's second grep cannot read zero.** `grep -rn 'on("action", ('
+packages/lib/src/typescript/ToolBarPanel.ts` matches every arrow-function
+listener in the file, not just a typed-parameter one — 12 matches, all
+correct code. The check that was meant is `grep -rn 'on("action", ([a-z]'
+packages/lib/src/typescript`, which reads zero. That is what was run.
+
+**4. The `zoom` demo's output is preserved, but not for the plan's reason.**
+`## Potential Challenges` says `ToolBarPanel`'s plain-string items are keyed
+by array index, so `getValue()` returns `"2"` for `"100%"`, matching what the
+deleted `(value: string)` parameter carried. In fact
+`AbstractSelectableList.setItems` keys a plain string by its own value
+(`{ key: entry, label: entry }`), so the parameter carried `"100%"` and
+`zoom.getValue()` returns `"100%"`. The substitution preserves the demo's
+output, which is what the plan wanted; only the explanation was wrong, and the
+instruction not to "fix" the demo to print the label still stands.
+
+**5. The old behaviour was not one mechanism but two, and one of them was
+already conditional.** `AbstractSelectableList.fireChange` dispatched the DOM
+`change` only when the list had an element, so an **unrendered** `List` or
+`MultiSelectList` never announced `"action"` for `setSelectedIndex` even at
+`v0.9.0` — which is why `## Expected Behaviour` case 7 passes on both sides of
+the change. `ComboBox`'s alias had no such guard and announced the write
+whether or not the combo box was rendered. The changelog and migration note
+state the two routes separately rather than asserting a single shared
+mechanism.
+
+**6. The migration section names all three classes.** `## Documentation
+Impact` proposed the heading "`List` and `ComboBox` fire `"action"` for user
+selections only". `MultiSelectList` reaches the same
+`AbstractSelectableList.setSelectedIndex` and is affected identically, so it
+is named alongside them, as it already is in the plan's own `## Overview` and
+in the changelog bullet.
+
+**7. Two code commits, one documentation commit.** The plan splits the code
+into "code commit 1" (`List` / `MultiSelectList`) and "code commit 2"
+(`ComboBox`), which it got. The documentation is a single commit rather than
+one per code commit: the changelog bullet, the migration section and the
+events-page rule each describe the contract once, across all three classes,
+and splitting them would have produced two halves of one sentence.

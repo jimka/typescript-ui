@@ -141,10 +141,10 @@ class List extends AbstractSelectableList<string, ListOptions> {
     }
 
     /**
-     * User-driven selection commit. Mirrors the prior native `<select>`
-     * `change` event semantics — fired from the click / keyboard
-     * reducers, not from programmatic `setValue` / `setSelectedIndex(idx,
-     * false)`.
+     * User-driven selection commit — the list's only `"action"`
+     * announcement. Fired from the click / keyboard reducers, never from a
+     * programmatic write: `setValue` and every `setSelectedIndex` call, the
+     * notifying default included, leave `"action"` silent.
      */
     protected notifyUserChange(): void {
         this.fireChange();

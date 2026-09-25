@@ -11,7 +11,6 @@
 ## Usage
 
 ```typescript
-import { Event } from '@jimka/typescript-ui/core';
 import { List } from '@jimka/typescript-ui/component/list';
 const fruits = List();
 fruits.addItem('Apple');
@@ -19,7 +18,7 @@ fruits.addItem('Banana');
 fruits.addItem('Cherry');
 fruits.setPreferredSize({ width: 180, height: 120 });
 
-Event.addListener(fruits, 'change', () => {
+fruits.on('action', () => {
     console.log('selected:', fruits.getValue());
 });
 
@@ -42,9 +41,9 @@ The list root is focusable; rows are not. Focus tracks the active row via `aria-
 | `Escape` | Clear the type-ahead buffer. |
 
 A navigation key that leaves the selection where it was — `ArrowDown` on the last row,
-`Home` on the first — fires no `change`. `Enter`, `Space` and a click fire it even on the
-row already selected, since a host such as [`ComboBox`](/components/ComboBox) treats them
-as the user's pick.
+`Home` on the first — fires no `change`, and announces no `"action"` either. `Enter`,
+`Space` and a click fire both even on the row already selected, since a host such as
+[`ComboBox`](/components/ComboBox) treats them as the user's pick.
 
 A host that drives the list from its own input surface — a search field filtering the rows
 as you type — can highlight a row up front with
@@ -53,6 +52,24 @@ without an arrow keypress first. It moves the focus mark only: the selection is 
 no `change` event fires.
 
 Navigation and type-ahead skip disabled rows entirely — see [Disabled rows](#disabled-rows) below.
+
+## Selection events
+
+`on("action", fn)` fires once per user-driven selection — a row click, `Enter`, `Space`, or
+an arrow key that moves the selection — and never for a programmatic `setSelectedIndex` or
+`setValue`. `on("change", fn)` carries the committed value and fires for the user's gestures
+**and** your own `setSelectedIndex` calls.
+
+```typescript
+fruits.on("action", () => console.log("user picked:", fruits.getValue()));
+fruits.on("change", value => console.log("now:", value));
+
+fruits.setSelectedIndex(1);        // "change" and "binding" only
+fruits.setSelectedIndex(1, false); // nothing at all
+```
+
+[`Checkbox`](/components/Checkbox) and [`Slider`](/components/Slider) follow the same
+contract: `"action"` is the user's own activation, `"change"` is every committed value.
 
 ## Store-backed lists
 

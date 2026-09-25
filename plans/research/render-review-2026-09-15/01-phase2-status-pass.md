@@ -411,7 +411,13 @@ branch; each was left deliberately rather than missed.
   `fireEvent` flag also gates `"change"`, which live callers rely on, and
   `ComboBox`'s `"action"` is an alias of its `"change"` that passes listeners
   the value, so making it user-only means giving it a dispatch of its own and
-  changing its listener's argument.
+  changing its listener's argument. **Fixed by
+  `plans/implemented/programmatic-selection-action.md` (2026-09-24),** which
+  also covered `MultiSelectList`, reached through the same shared
+  `AbstractSelectableList.setSelectedIndex`. The `fireEvent` flag was kept,
+  now gating the committed-value `"change"` / `"binding"` notification alone,
+  and `ComboBox`'s `"action"` became a DOM `change` shorthand whose listener
+  receives a `CustomEvent` instead of the new value.
 - **`MiscPanel.ts:781`'s demo comment** still carries the stale "never touches
   a pending edit" claim the doc-gaps branch corrected everywhere else. **Fixed
   by `doc-and-qa-record-drift` (2026-09-21).**

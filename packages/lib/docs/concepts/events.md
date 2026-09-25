@@ -24,7 +24,7 @@ Interactive controls expose a typed **semantic** `on("action", fn)`
 shorthand over `Event.addListener` for their primary gesture — e.g.
 [`Button.on("action", fn)`](/api/component/button/classes/Button#on)
 wraps the DOM `click`, `Slider.on("action", fn)` wraps `input`, and
-`ComboBox.on("action", fn)` is an alias of its `"change"`. The dispatcher
+`ComboBox.on("action", fn)` wraps a DOM `change`. The dispatcher
 and the multi-listener bucket stay inside the `Event` class; the shorthand
 is a per-class typed convenience whose public name (`"action"`) is
 decoupled from the underlying DOM event.
@@ -38,12 +38,10 @@ sibling-deselect sweep announces nothing, and neither does a
 `Checkbox.setSelected` or a `Slider.setValue`. Subscribe to `"change"` to
 hear every committed change, your own writes included. The one way to
 announce an `"action"` from code is a verb that acts as the user:
-`Button.click()` and `Link.click()`.
-
-`List.setSelectedIndex` and `ComboBox.setSelectedIndex` are the exception:
-their default path still fires `"action"`. Pass `false` as the second
-argument to keep a programmatic selection silent — it suppresses the whole
-change notification, `"change"` included.
+`Button.click()` and `Link.click()`. A list's or combo box's
+`setSelectedIndex` is a programmatic write like any other — it fires
+`"change"` and `"binding"`, never `"action"` — and passing `false` as its
+second argument suppresses those two as well.
 
 This page covers the three DOM listener flavours, the `on`/`off`/`emit`
 surface, when to use each, and the hover-event quirk that bites everyone

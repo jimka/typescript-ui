@@ -75,36 +75,34 @@ describe('ComboBox — items & selection', () => {
         expect(combo.getValue()).toBe('x');
     });
 
-    it('setSelectedIndex fires change and action bag listeners with the new value by default', () => {
+    it('setSelectedIndex fires the change bag listener with the new value by default', () => {
         installTestDOM(CONFIG);
         const combo = new ComboBox();
         combo.setItems([{ key: 'x', label: 'X' }, { key: 'y', label: 'Y' }]);
 
-        // Notification now routes directly through AbstractInput.notifyChange
-        // (no self-consumed synthetic DOM `change`), so a real on("change") /
-        // on("action") bag listener is delivered reliably offline. `action` is
-        // an alias of `change` on ComboBox.
+        // Notification routes directly through AbstractInput.notifyChange, so a
+        // real on("change") bag listener is delivered reliably offline.
+        // `"action"` is no longer a `"change"` alias — it is a DOM-routed
+        // shorthand fired only from a user commit, and its delivery is covered
+        // in ComboBoxActionDelivery.test.ts, whose combos are disposed so the
+        // dispatch it asserts is real.
         let changeValue: string | null = null;
-        let actionCount = 0;
         combo.on('change', v => { changeValue = v; });
-        combo.on('action', () => { actionCount += 1; });
 
         combo.setSelectedIndex(1);
 
         expect(combo.getSelectedIndex()).toBe(1);
         expect(combo.getValue()).toBe('y');
         expect(changeValue).toBe('y');
-        expect(actionCount).toBe(1);
     });
 
-    it('setSelectedIndex with fireEvent=false fires neither change nor action', () => {
+    it('setSelectedIndex with fireEvent=false fires no change', () => {
         installTestDOM(CONFIG);
         const combo = new ComboBox();
         combo.setItems([{ key: 'x', label: 'X' }, { key: 'y', label: 'Y' }]);
 
         let fired = 0;
         combo.on('change', () => { fired += 1; });
-        combo.on('action', () => { fired += 1; });
 
         combo.setSelectedIndex(1, false);
 

@@ -1075,11 +1075,21 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * the close so browsing with the arrow keys previews each row without
      * dismissing the dropdown on every keystroke.
      *
+     * This is the combo box's single `"action"` announcement: every other
+     * path into the selection is a programmatic write and stays silent.
+     *
      * @param index - The selected row index.
      * @param keepOpen - True to leave the dropdown open after committing.
      */
     private onRowSelected(index: number, keepOpen: boolean): void {
         this.setSelectedIndex(index, true);
+
+        // The user's own commit, and the only place the combo box announces
+        // "action". Guarded like `AbstractSelectableList.fireChange`: `fireEvent`
+        // throws without an element, and a listener may dispose the combo box.
+        if (this.getElement()) {
+            Event.fireEvent(this, "change");
+        }
 
         if (!keepOpen) {
             this.closeDropdown();
@@ -1115,24 +1125,31 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Registers a listener for one of this combo box's events. `"action"` is
-     * the semantic alias of `"change"` — both fire on every committed
-     * selection through the inherited {@link AbstractInput} listener bag;
-     * `"binding"` is the inherited data-binding event.
+     * Registers a listener for one of this combo box's events. `"action"` is a
+     * typed semantic shorthand over {@link Event.addListener} for the DOM
+     * `change` the combo box fires once per user commit — a row click, or
+     * Enter, Space or an arrow key on the open dropdown. It never fires for a
+     * programmatic {@link setSelectedIndex} or {@link setValue}. `"change"`
+     * and `"binding"` are the inherited {@link AbstractInput} listener-bag
+     * events; `"change"` carries the new value and fires for
+     * {@link setSelectedIndex} too.
      *
      * @param event - The event name.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This component, for method chaining.
      */
-    on(event: "action",  listener: Function): this;
+    on(event: "action",  listener: Event.Listener): this;
     on(event: "change",  listener: (value: string) => void): this;
     on(event: "binding", listener: () => void): this;
     on(event: "action" | "change" | "binding", listener: Function): this {
-        return super.on(
-            (event === "action" ? "change" : event) as "change",
-            listener as (value: string) => void,
-        );
+        if (event === "action") {
+            Event.addListener(this, "change", listener as Event.Listener);
+
+            return this;
+        }
+
+        return super.on(event as "change", listener as (value: string) => void);
     }
 
     /**
@@ -1145,7 +1162,13 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @returns This component, for method chaining.
      */
     off(event: "action" | "change" | "binding", listener: Function): this {
-        return super.off(event === "action" ? "change" : event, listener);
+        if (event === "action") {
+            Event.removeListener(this, "change", listener as Event.Listener);
+
+            return this;
+        }
+
+        return super.off(event, listener);
     }
 
     /**
@@ -1190,10 +1213,13 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Sets the selected index and optionally fires a 'change' event.
+     * Sets the selected index. This is a programmatic write, so it never
+     * announces `"action"` — that reports the user's own commit.
      *
      * @param idx - The zero-based index to select.
-     * @param fireEvent - Optional. When true (default), fires the 'change' event after updating.
+     * @param fireEvent - Optional. When true (default), fires the
+     *   committed-value `change` and `binding` events after updating;
+     *   pass `false` for a silent write.
      */
     setSelectedIndex(idx: number, fireEvent: boolean = true): this {
         // Pass `false` to the inner list so its own `change` doesn't fire on
