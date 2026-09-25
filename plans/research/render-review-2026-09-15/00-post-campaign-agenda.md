@@ -733,3 +733,41 @@ default**, so nothing changes for an app that sets nothing.
   outline mode gates geometry on the settled state, because there the mid-burst
   units differ from the live arm **by design** rather than by accident.
 
+## Deferred during the ten-plan batch, now indexed (2026-09-25)
+
+Each of these was recorded in an implemented plan's own notes and nowhere else,
+so this file — the index a later session actually reads — did not carry them.
+Cited to where the detail already lives. `text-metrics`' non-repeatable first
+update and `table-rows`' settle-phase flake are above already.
+
+- **A rail follow-up plan, six pre-existing observations**, all in
+  `plans/implemented/rail-minimized-dock-slot.md` and none touched by it: a
+  window handed back to the dock lands at the right slot but at its own minimum
+  size instead of the row's strip height, so it stands taller than its
+  neighbours until restored; `Rail.showWindowHandle` creates its handle with
+  `setDisplayed(!isCollapsed())` (`Rail.ts:1054`), so attaching a *collapsed*
+  rail to a docked window leaves that window with no on-screen representation at
+  all until the rail expands; `Rail.unmount` (`:824`) detaches the strip while
+  keeping its registrations, stranding minimized windows hidden with no
+  `setRail` to hand them back; `setRail` cancels the two rail animations but not
+  `_stateAnimHandle`, so a rail attached during a *docked* minimize tween lets
+  that tween keep writing dock geometry (programmatic-only — no gesture reaches
+  it); `endRailCollapse` never undoes the `transformOrigin` it set and clears
+  transform, opacity and transition outright rather than restoring what a
+  consumer had; and `onExitAction` cancels no rail animation handle, so closing
+  a window mid-collapse leaves one running.
+
+- **A stage 4 opting in the field internals.** `PickerButton` 0.2,
+  `ButtonIconGlyph` 0.2, `ButtonLabelText` 0.2 and `PickerInput` 0.1 are the
+  `doLayout` counters `unchanged-commit-opt-ins-forms` stopped short of, and
+  they are why `DateField` and `TimeField` are the two of its ten opt-ins that
+  never reach zero. Its notes call this the measured next increment, with a
+  ceiling now known rather than modelled.
+
+- **`validation-error-arming`'s manual check was never run**, as its own notes
+  state (`:406`). Run the demo, open the **Binding** tab, click into **Name**
+  and type past its limit without moving the mouse: the outline and the error
+  tooltip should appear together after the hover delay, re-appear with new text
+  as the message changes, and go when the pointer leaves. The offline harness
+  models neither real pointer input nor painting, which is why this is a manual
+  step and not a test.
