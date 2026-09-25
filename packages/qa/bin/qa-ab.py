@@ -666,6 +666,9 @@ def print_phase(index: int, runs: list[Run], terms: list[tuple[int, str]], optio
     Print one phase's block: the header, the plain line and one line per arm,
     in order of first appearance.
 
+    The plain line's own geom reading names the labels the plain arms disagree
+    on, so a cell of plain runs alone is a determinism check on the panel.
+
     Args:
         index: the phase's index.
         runs: the cell's runs.
@@ -675,18 +678,19 @@ def print_phase(index: int, runs: list[Run], terms: list[tuple[int, str]], optio
     plain_phases = [run.report['phases'][index] for run in runs if run.arm == PLAIN]
     reference = plain_phases[0]
     plain_avgs = [avg_ms(phase) for phase in plain_phases]
-    unstable = any(differing_labels(phase, reference, index, options) for phase in plain_phases[1:])
+    unstable_labels = sorted({label for phase in plain_phases[1:] for label in differing_labels(phase, reference, index, options)})
+    plain_geom = f'unstable({",".join(unstable_labels)})' if unstable_labels else '='
     plain_counter = mean([evaluate(terms, phase) for phase in plain_phases])
     arms = list(dict.fromkeys(run.arm for run in runs if run.arm != PLAIN))
     width = max([len(PLAIN)] + [len(arm) for arm in arms])
 
     print(f"phase {index}  {reference.get('driver')} ×{reference.get('units')}  counter {options.counter}")
     print(f"  {PLAIN:{width}}  {len(plain_phases)} reps  avg {' / '.join(f'{a:.2f}' for a in plain_avgs)}  mean {mean(plain_avgs):.2f}"
-          f"  bracket {max(plain_avgs) - min(plain_avgs):.2f}  counter {plain_counter:.2f}")
+          f"  bracket {max(plain_avgs) - min(plain_avgs):.2f}  counter {plain_counter:.2f}  geom {plain_geom}")
 
     for arm in arms:
         phases = [run.report['phases'][index] for run in runs if run.arm == arm]
-        r = read_arm(arm, phases, plain_phases, index, terms, options, unstable)
+        r = read_arm(arm, phases, plain_phases, index, terms, options, bool(unstable_labels))
 
         print(f'  {r.arm:{width}}  {r.reps} reps  mean {r.mean:.2f}  Δms {signed(r.delta_ms, 2)} {r.ms:7}  counter {r.counter:.2f}'
               f'  Δ {r.delta_pct:>7} {r.work:4}  geom {r.geom}  engaged {r.engaged}  → {r.verdict}')

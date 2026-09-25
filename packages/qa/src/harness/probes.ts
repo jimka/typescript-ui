@@ -6,7 +6,7 @@
 import { countPainted, elementOf, isPainted } from './dom.js';
 import type { AnyObj, GeometryTarget, HarnessTools } from './types.js';
 
-/** One rounded `[left, top, width, height]` rectangle, or `null` for a missing element. */
+/** One `[left, top, width, height]` rectangle, or `null` for a missing element; the recorded samples are rounded. */
 type GeometrySample = [number, number, number, number] | null;
 
 /** The labelled targets the probe samples, or `null` while the probe is off. */
@@ -61,12 +61,79 @@ export function takeGeometry(): Record<string, GeometrySample[]> | null {
 }
 
 /**
- * The rounded rectangle of one geometry target.
+ * Every probed target's current rectangle as one string, for comparing two
+ * frames exactly. A `null` for a missing element is part of the signature, so
+ * an element that appears or disappears counts as movement.
+ *
+ * The rectangles are the engine's own, not the rounded ones the probe records:
+ * an eased scroll writes a fractional transform and snaps to its target only
+ * once the remaining gap is under half a pixel, so several frames of its tail
+ * round to one value with a whole-pixel step still to come. Rounding here would
+ * call that settled and leave the step to land in a measured unit — in unit 0 or
+ * unit 1 depending on how long the frames took, which is the run-to-run
+ * difference the wait exists to remove.
+ *
+ * @param targets - The targets to sample, in the order they are compared in.
+ * @returns The signature of this sample.
+ */
+function rectsSignature(targets: Record<string, GeometryTarget>): string {
+    return JSON.stringify(Object.values(targets).map((target) => rectOf(target)));
+}
+
+/**
+ * Waits, recording nothing, until every probed rectangle has been unchanged
+ * for `stableFrames` frames in a row: one sample per frame, compared exactly
+ * against the frame before. A phase that waits here first measures the layout
+ * the page came to rest in rather than one mid-flight.
+ *
+ * With the probe off there is nothing to watch, so it waits `stableFrames`
+ * frames and says so — a phase run without `geom=1` still gets its lead-in.
+ *
+ * @param tools - The harness tools, for `waitFrames`.
+ * @param stableFrames - How many consecutive equal samples end the wait.
+ * @param capFrames - The most frames to wait before failing the run.
+ * @returns A note saying which frame it rested on, or that the probe was off.
+ * @throws Error - `settle: still moving after <capFrames> frames` when the page never rests.
+ */
+export async function awaitSettledGeometry(tools: HarnessTools, stableFrames: number, capFrames: number): Promise<string> {
+    // Read once: the targets are the ones the phase was given, which
+    // `drivePhase` sets before it calls the driver and takes back after.
+    const targets = geometryTargets;
+
+    if (!targets) {
+        await tools.waitFrames(stableFrames);
+
+        return `settle: no geometry targets; waited ${stableFrames} frames`;
+    }
+
+    let previous = rectsSignature(targets);
+    let stable = 0;
+
+    // One frame per iteration, so `frame` is both the wait's length and the
+    // number of samples taken after the first.
+    for (let frame = 1; frame <= capFrames; frame++) {
+        await tools.waitFrames(1);
+
+        const current = rectsSignature(targets);
+
+        stable = current === previous ? stable + 1 : 0;
+        previous = current;
+
+        if (stable >= stableFrames) {
+            return `settle: stable after ${frame} frames`;
+        }
+    }
+
+    throw new Error(`settle: still moving after ${capFrames} frames`);
+}
+
+/**
+ * The exact rectangle of one geometry target, as the engine reports it.
  *
  * @param target - A CSS selector, or a component resolved through its id.
  * @returns `[left, top, width, height]`, or `null` when the target has no element.
  */
-function sampleTarget(target: GeometryTarget): GeometrySample {
+function rectOf(target: GeometryTarget): GeometrySample {
     const el = typeof target === 'string' ? document.querySelector(target) : elementOf(target);
 
     if (!el) {
@@ -75,7 +142,26 @@ function sampleTarget(target: GeometryTarget): GeometrySample {
 
     const r = el.getBoundingClientRect();
 
-    return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+    return [r.left, r.top, r.width, r.height];
+}
+
+/**
+ * The rounded rectangle of one geometry target: what the probe records, so a
+ * report's series is free of the sub-pixel noise a comparison cannot read.
+ *
+ * @param target - A CSS selector, or a component resolved through its id.
+ * @returns `[left, top, width, height]` rounded, or `null` when the target has no element.
+ */
+function sampleTarget(target: GeometryTarget): GeometrySample {
+    const rect = rectOf(target);
+
+    if (!rect) {
+        return null;
+    }
+
+    const [left, top, width, height] = rect;
+
+    return [Math.round(left), Math.round(top), Math.round(width), Math.round(height)];
 }
 
 /**

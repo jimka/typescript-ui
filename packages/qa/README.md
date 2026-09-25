@@ -20,7 +20,7 @@ its own dev server, which writes it under `results/`.
 | `src/panels.ts`, `src/panels/` | The panel contract and the panels, one file each. |
 | `src/builders/` | Shared panel code: data generators, chrome, the shell and form builders, element lookups, the store-view wait and per-instance work counters. |
 | `src/mount.ts` | Mounts a panel through `Body.init` and collects its targets. |
-| `src/pageTargets.ts` | The `idle`, `theme` and `viewport` targets every panel gets. |
+| `src/pageTargets.ts` | The `idle`, `settle`, `theme` and `viewport` targets every panel gets. |
 | `src/harness/` | The harness: frame loop, drivers, counters, ablations, probes, the run. It imports nothing from the library; the page hands it `Body`, `DOM`, `Tooltip` and `AbstractWindow`. |
 | `vite.config.ts`, `vite/plugins.ts` | The app's own Vite config: the report endpoint, and the library-build alias from the shared [`build/libraryBuildAlias.ts`](../../build/libraryBuildAlias.ts). |
 | `runqa.sh` | Runs one measurement end to end. |
@@ -261,12 +261,12 @@ basename is its id. It exports exactly these four names:
 To add a panel, add its file; the lazy registry finds it, and the page loads
 only the measured panel's modules.
 
-**Page-wide targets.** Every panel also gets an `idle`, a `theme` and a
-`viewport` target: `mountPanel` merges `pageTargets(root)` from
+**Page-wide targets.** Every panel also gets an `idle`, a `settle`, a `theme`
+and a `viewport` target: `mountPanel` merges `pageTargets(root)` from
 `src/pageTargets.ts` under the panel's own targets, so the merge is the
-page-wide targets, then `targets`, then `afterMount`'s. The target of `idle`
-and of `viewport` is the root, which both drivers ignore; every page has
-viewport listeners, `Body`'s at least, so any panel can be driven with
+page-wide targets, then `targets`, then `afterMount`'s. The target of `idle`,
+of `settle` and of `viewport` is the root, which all three drivers ignore; every
+page has viewport listeners, `Body`'s at least, so any panel can be driven with
 `viewport`. `theme`'s is `themeTarget(THEME_CYCLE)`, which switches between
 `DarkTheme` and `ModernTheme` and restores the theme the page started with. A
 panel replaces any of them by giving its own entry, such as
@@ -310,7 +310,7 @@ records it as reproduced only after a run shows that symptom — the same count,
 the same failure or the same geometry. A panel built to look like another
 app's screen can easily exercise a different code path.
 
-Every panel also has the page-wide `idle`, `theme` and `viewport` targets.
+Every panel also has the page-wide `idle`, `settle`, `theme` and `viewport` targets.
 The *Reproduces* column gives the figure a run must show — M5–M14 in the
 panels plan, M16–M26 in the editors and overlays plan — before the *Validated*
 entry is filled in. A figure marked *from the report* comes from the slice
@@ -336,7 +336,7 @@ report and was not re-measured before the panel was built.
 | `form-nested` | `form-flat`'s header and fields, the fields in two-column `LabeledFieldSet`s of eight in the scrolling panel, beside an inspector `Table` whose value column takes a cell type per row, in a `Split`. `n`: fields (default 64). | As `form-flat` | `header`, `form`, `tooltip`, `inspector` | M23–M25 and C23, as for `form-flat`; M23's header grid is the same in both, so its sum is 160 in both. | `minibrowser`: 2026-09-20, lib `608544c9` (`val-form-nest`, `shk-formnest`, `shk-form-combo`) — M23 exactly, the same 160 per header pass as `form-flat`, at 0.2 ms. M24, M25 and C23 were measured on `form-flat`, which builds the same fields, and were not run here. Over 744 elements at `n=64`; the shakedown's `click=combo` costs `apply` 210.7 and `measureText` 10 per open-and-close unit at 70.2 ms.<br>`tauri`: 2026-09-20, lib `608544c9` (`ta-form-nest`) — M23 again, the same 160 per header pass, at 0.2 ms (p90 1). M24, M25 and C23 were measured on `form-flat` here too, and the shakedown's `click=combo` under MiniBrowser only.<br>**W3.0 baseline** (MiniBrowser, 2026-09-22, lib `83cfb0d7`, runs `w3s1-b00-*`; [96-w3-0-bounding-sweep.md](../../plans/research/render-review-2026-09-15/96-w3-0-bounding-sweep.md#the-fresh-baseline-b00)), per unit: `fnh` (passes=header): `passes` 0.1 ms over 744 elements. The entries above are from `608544c9` and an earlier session; this one supersedes them as the record.<br>**Wave-3 implementation A/B** (MiniBrowser, 2026-09-23, the thirteen-branch wave-3 stack, `master` `37606021` → `9ea84575`, runs `g28i1-fnk-*`, `g9i1-fnq-*`, `lri1-fnq-*`, `g19i1-fny-*`, `stki1-fnq-*`; [97-w3-implementation-measurement.md](../../plans/research/render-review-2026-09-15/97-w3-implementation-measurement.md#results-by-plan)), per unit: `click=toggle` 34.9 → 17.0 ms, the same rule-write-to-inline-write swap as `form-flat`; `passes=form` 6.93 → 6.17 ms against `master` with work 13,550 → 11,290 — the opt-ins reach only `doLayout@TextField` 16 → 8, `@Text` 72 → 64 and `@LabeledGrid` 9 → 8, a twentieth of what the ceiling ablation promised, and the size-read economy takes size-hint calls 8,271 → 6,899 and `getLaidOutComponents` 1,407 → 1,238; typing is flat on every seam count, the tooltip plan's saving there being script-side. Geometry `=` on every run. |
 | `menus` | A menu bar and a toolbar around a header, and a rebuild-mode context `Menu` of `n` rows, opened once and closed after mounting, so every measured open is a re-open. `n`: rows (default 12). | `toggle` (default: opens the menu on even units, closes it on odd ones), `hover` (the menu bar), `click` (the first menu-bar button, opening and closing its menu) | `menubar`, `menubarButton` (selectors; the first match) | M26, slice 12 F12.3: `toggle` with `seam=1` gives, per unit, `sink/u` 456.68, `ensureStyleRule` 6, `setRuleStyles` 7, `deleteStyleRule` 6, `measureTexts` 0.5 and no `measureText`. C24 (fixed): with `geom=1`, `geometry.menubarButton` stops 1 px above the bar's bottom edge, on the border the bar now reserves; against a pre-fix arm, `geom` `DIFF` on that label only. | `minibrowser`: 2026-09-20, lib `608544c9` (`val-menus`, `shk-menus`) — M26 with `sink/u` 456.68 instead of the 412 derived offline (see the panels plan's M26): `ensureStyleRule` 6, `setRuleStyles` 7.03, `deleteStyleRule` 6, `measureTexts` 0.5 and no `measureText`, every one where the census put it, so the whole 44.68 sits in `apply`, measured 338.2. 35.8 ms per open-or-close unit over 133 elements at `n=12`. C24 shows: `menubarButton` is 4,4,39,28 inside a `menubar` of 4,4,5112,28 — the same bottom edge, the bar's border included.<br>`tauri`: 2026-09-20, lib `608544c9` (`ta-menus`) — M26 again, the same `sink/u` 456.68 with `apply` 338.2, the same rule counters 6, 7.03 and 6, `measureTexts` 0.5 and no `measureText`, and C24's same two rectangles, at 36.8 ms per open-or-close unit (p90 69).<br>**W3.0 baseline** (MiniBrowser, 2026-09-22, lib `83cfb0d7`, runs `w3s1-b00-*`; [96-w3-0-bounding-sweep.md](../../plans/research/render-review-2026-09-15/96-w3-0-bounding-sweep.md#the-fresh-baseline-b00)), per unit: `mn`: `toggle` 35.2 ms over 133 elements. The entries above are from `608544c9` and an earlier session; this one supersedes them as the record.<br>**Wave-3 implementation A/B** (MiniBrowser, 2026-09-23, the thirteen-branch wave-3 stack, `master` `37606021` → `9ea84575`, runs `g18i1-mt-*`, `g08i1-mt-*`, `stki1-mt-*`; [97-w3-implementation-measurement.md](../../plans/research/render-review-2026-09-15/97-w3-implementation-measurement.md#results-by-plan)), per unit: `toggle` 34.4 → 33.1 ms once M26's 0.5 `measureTexts` calls go, and 33.5 → 30.4 ms against `master`, with work 886.8 → 805.6 and `sink/u` held at 456.7. The environment-read plan's own cell reads −0.71 ms on a 2.06 ms bracket — `flat`, where its criterion demanded a `win` near −1.5 ms; this cell has the widest base bracket of the four in that A/B, and the same cell moves −1.23 ms under the text-measurement plan and −3.06 ms across the whole stack. |
 | `table-wide` | A `Table` over an id and 40 numeric columns, each at least 120 px wide, so it scrolls sideways. `n`: rows (default 2,000). | `hwheel` (default), `wheel`, `key` (ArrowRight and ArrowLeft on the body), `passes`, `resize` | `header`, `body` | None recorded: the horizontal counterpart of `table-rows`. | `minibrowser`: 2026-09-20, lib `608544c9` (`shk-wide`) — **baseline**, at `n=2,000` over 41 columns and 13,768 elements, per unit: `hwheel` 17.2 ms, `passes` 2.4 ms, `wheel` 119.8 ms, `resize` 183.5 ms and `key` 324.6 ms, against 17.2 ms idle frames. This is the run made after the store-view fix; every `table-wide` run before it is void.<br>`tauri`: 2026-09-20, lib `608544c9` (`ta-wide`) — **baseline**, the same rectangles in every unit, per unit: `hwheel` 17.0 ms (p90 17), `passes` 2.3 ms (p90 4), `wheel` 117.8 ms (p90 121), `resize` 177.0 ms (p90 181) and `key` 311.1 ms (p90 322), against 16.9 ms idle frames.<br>**W3.0 baseline** (MiniBrowser, 2026-09-22, lib `83cfb0d7`, runs `w3s1-b00-*`; [96-w3-0-bounding-sweep.md](../../plans/research/render-review-2026-09-15/96-w3-0-bounding-sweep.md#the-fresh-baseline-b00)), per unit: `tw`: `hwheel` 17.4, `passes` 2.5, `wheel` 117.2, `resize` 163.7, `key` 328.9 ms over 13,768 elements. The entries above are from `608544c9` and an earlier session; this one supersedes them as the record. |
-| `text-metrics` | `Text` labels at their preferred sizes in nine fonts — the default, weights `600` and `bold`, italic, small caps, 12 and 20 px, the theme's `calc()`-valued header size token and `serif`: a baseline row of one `Hxg` per font, over nine columns of `n` strings each, every width and height a measured text size. `n`: strings per column (default 12, the most). | `passes,update:24` (default), `passes` (the root), `update` (re-texts every column with strings absent at mount), `theme` (a switch to a 16 px base font, replacing the page-wide cycle) | `b0`–`b8` (the baseline row), `t<k>r<r>` (font `k`, row `r`) | G18's canvas-versus-probe parity gate ([text-measurement-without-reflow](../../plans/implemented/text-measurement-without-reflow.md)): an A/B of a probe-only build against a layout-free build reads geometry `=` on every label, and `update` with `seam=1` gives `measureText` + `measureTexts` + `measureTextWidths` 1.00 per unit on the probe-only build and 0 on the layout-free one, in each `update` phase of `update:24,theme:1,update:24`. | `minibrowser`: 2026-09-23, the wave-3 A/B of `text-measurement-without-reflow` (base `master` `37606021`, fix `f573d580`; runs `g18i1-tmu-*`; [97-w3-implementation-measurement.md](../../plans/research/render-review-2026-09-15/97-w3-implementation-measurement.md#results-by-plan)) — **G18's parity gate, with one caveat.** Over `update:24,theme:1,update:24` at `n=12`, the probe-only arm makes `measureTexts` 0.96 per `update` unit (23 calls in 24 units) and 1.00 in the `theme` phase, and no `measureText` or `measureTextWidths`; the layout-free arm makes none of the three in any phase, only 4.50 canvas `measureTextAdvance` calls per unit in the first `update` phase and none after the theme switch, so the canvas re-calibrates without going back to the DOM. Each `update` frame falls 51.7 → 17.1 ms and 54.0 → 17.0 ms over 24 units. Geometry is identical on all 117 labels in the `theme` phase, in the whole second `update` phase and in units 1–23 of the first; in **unit 0 of the first `update` phase** six labels of row 9 (`t0r9`, `t1r9`, `t2r9`, `t5r9`, `t6r9`, `t7r9`) differ by 1–2 px of **width** between runs, split across the arms rather than between them (`base-a` and `fix-2` against `base-b`, `base-c` and `fix-1`) — most likely the panel measuring before the web font settles. The panel owes a fix before this gate can be read cleanly; meanwhile the parity claim rests on the other 111 labels here and on the plan's eight other cells. |
+| `text-metrics` | `Text` labels at their preferred sizes in nine fonts — the default, weights `600` and `bold`, italic, small caps, 12 and 20 px, the theme's `calc()`-valued header size token and `serif`: a baseline row of one `Hxg` per font, over nine columns of `n` strings each, every width and height a measured text size. `n`: strings per column (default 12, the most). | `passes,update:24` (default), `passes` (the root), `update` (re-texts every column with strings absent at mount), `theme` (a switch to a 16 px base font, replacing the page-wide cycle) | `b0`–`b8` (the baseline row), `t<k>r<r>` (font `k`, row `r`) | G18's canvas-versus-probe parity gate ([text-measurement-without-reflow](../../plans/implemented/text-measurement-without-reflow.md)): an A/B of a probe-only build against a layout-free build reads geometry `=` on every label, and `update` with `seam=1` gives `measureText` + `measureTexts` + `measureTextWidths` 1.00 per unit on the probe-only build and 0 on the layout-free one, in each `update` phase of `update:24,theme:1,update:24`. | `minibrowser`: 2026-09-23, the wave-3 A/B of `text-measurement-without-reflow` (base `master` `37606021`, fix `f573d580`; runs `g18i1-tmu-*`; [97-w3-implementation-measurement.md](../../plans/research/render-review-2026-09-15/97-w3-implementation-measurement.md#results-by-plan)) — **G18's parity gate, with one caveat.** Over `update:24,theme:1,update:24` at `n=12`, the probe-only arm makes `measureTexts` 0.96 per `update` unit (23 calls in 24 units) and 1.00 in the `theme` phase, and no `measureText` or `measureTextWidths`; the layout-free arm makes none of the three in any phase, only 4.50 canvas `measureTextAdvance` calls per unit in the first `update` phase and none after the theme switch, so the canvas re-calibrates without going back to the DOM. Each `update` frame falls 51.7 → 17.1 ms and 54.0 → 17.0 ms over 24 units. Geometry is identical on all 117 labels in the `theme` phase, in the whole second `update` phase and in units 1–23 of the first; in **unit 0 of the first `update` phase** six labels of row 9 (`t0r9`, `t1r9`, `t2r9`, `t5r9`, `t6r9`, `t7r9`) differ by 1–2 px of **width** between runs, split across the arms rather than between them (`base-a` and `fix-2` against `base-b`, `base-c` and `fix-1`) — most likely the panel measuring before the web font settles. The panel owes a fix before this gate can be read cleanly; meanwhile the parity claim rests on the other 111 labels here and on the plan's eight other cells. **2026-09-24, the cause (runs `qpd-tmu-plain-*`, six plain runs over two sittings, each sitting scored on its own):** phase 0 still reads `unstable(t0r9,t1r9,t2r9,t5r9,t6r9,t7r9)` in both sittings while phases 1 and 2 read `geom =`, so the instability is confined to the first burst. Two things once assumed about it are wrong: `Body` subscribes to the theme reflow and schedules a layout pass whenever a font batch settles (`Body`'s `_onThemeReflow`, present on this cell's own base arm `37606021`), so a plain `Text` *is* laid out again when a subset lands; and `runFrames` samples geometry *after* the unit's step, so unit 0 of the first `update` phase is a fresh measurement of that unit's own strings, not the mount layout. What actually happens is that the framework fetches each subset lazily, on the first render of glyphs that need it — so the Latin-Ext subset `Łódź` needs has not been requested at all while the panel mounts. A wait on `document.fonts.ready` or `fonts.status` in `afterMount` therefore resolves against faces nobody has asked for, the subset is requested when the glyphs first render, lands a few hundred ms to about a second later, and the reflow resizes the text visibly after the phase has begun — which is what the wait was watched doing. **A gate has to force the request before it can wait on it:** `document.fonts.load('<spec>', '<the panel's own strings>')` is the shape that does, where awaiting `ready` cannot. A `afterMount` wait built on `ready` was implemented and measured on `feature/qa-panel-determinism` and removed again for this reason; the cell needs its own plan. |
 
 A parameter's first value is its default.
 
@@ -406,6 +406,7 @@ which gives every live candidate its cells; there G27's counters are
 | `resize` | a component with `getWidth()`, `setWidth(w)`, `doLayout()` | width −`step` for the first half, +`step` for the second, then `doLayout()`; the original width is restored at the end |
 | `passes` | a component with `doLayout()` | one synchronous `doLayout()`; the sample is its duration |
 | `idle` | any defined value; ignored | nothing: the frame holds only what the page does on its own, such as an animation loop |
+| `settle` | any defined value; ignored | nothing, as `idle` — but before the first unit it waits, unmeasured, until every probed rectangle has been unchanged for two frames, so every unit is a settled sample; it fails the run after 120 frames of movement |
 | `call`, `update`, `toggle` | a function `(index) => void` | calls it with the unit's index. Three names for one driver, so a panel can offer a data change and an expand or collapse side by side, and each report phase says which ran |
 | `hover` | `{ element, axis: 'x' \| 'y' }` | moves the pointer `step` px along the element's centre line, bouncing between its edges one pixel inside them, with no button held: `pointermove` and `mousemove` to the element under the pointer, preceded by `pointerout`/`mouseout` and `pointerover`/`mouseover` when that element changed. The element's and its descendants' rectangles are read once, before the first unit, so every arm of a comparison gets the same events; a descendant the engine's hit test passes through, one whose computed `pointer-events` is `none` or whose `visibility` is `hidden`, is left out, as it is from a real pointer's |
 | `park` | `{ element, axis, direction: 1 \| -1, leadPx }` | a `mousemove` on `document` to `leadPx` + `step` × k past the start in `direction`, k rising to half the units and falling back to 0, so the pointer never comes back closer than `leadPx`. Before the units, a press and a 10-frame drag of `leadPx`, past the pane's clamp; after them, a release and a drag back to the start. Needs at least 2 units |
@@ -425,13 +426,15 @@ the element moved during the measured units: its `leadPx` did not reach the
 clamp, and the run measured the wrong thing.
 
 The drivers from `idle` on keep their own setup and teardown out of the
-counters: reading rectangles, focusing, `park`'s lead-in and restore drags,
-`pan`'s press and release,
+counters: reading rectangles, focusing, `settle`'s wait for the page to rest,
+`park`'s lead-in and restore drags, `pan`'s press and release,
 `type`'s clean-up and `theme`'s restore run inside `tools.suspendCounting`,
 which pauses every counter family, and where that work changed the page — a
 focus, a caret move, a drag, a restyle — they wait a few frames
 (`tools.waitFrames`) inside the suspension for it to settle. Only the measured
-units land in a phase's counts. `hover`, `park`, `type` and `theme` each add a note: the
+units land in a phase's counts. `settle`, `hover`, `park`, `type` and `theme`
+each add a note: which frame the page came to rest on — or, with the probe off,
+how many frames it waited instead — the
 crossings, the rectangle the element was held at, the characters typed, and
 the page's CSS rule total before the first switch and after the last, which is
 where a leak of per-switch rules shows.
@@ -578,19 +581,22 @@ Geometry is compared label by label against the first plain report, rectangle
 by rectangle, exactly. `--allow-diff` takes labels out of that comparison:
 `cell@0` takes `cell` out of phase 0 only, `files` out of every phase. When the
 plain reports disagree among themselves outside those labels, every arm's
-geometry is `unstable`. `--same PATTERN`, with the key syntax of a term, is for
+geometry is `unstable`, and the plain line reads `unstable(<labels>)`, naming
+them; a cell of three plain runs and no ablated arm is therefore a determinism
+check on the panel itself. `--same PATTERN`, with the key syntax of a term, is for
 what geometry cannot see — a chart's marks, a heading choice: every work or
 seam counter matching it must stay within 1% of the first plain report's value
 (within 0.01 when that is 0), or the arm reads `DIFF(same <key>)`.
 
 The output is one block per phase: a header naming the driver, the units and
 the counter; the plain line, with each plain average, their mean, the bracket
-(the largest plain average minus the smallest) and the counter's plain mean;
+(the largest plain average minus the smallest), the counter's plain mean and the
+plain arms' own agreement;
 then one line per arm, in order of first appearance:
 
 ```
 phase 0  park ×150  counter work
-  plain            3 reps  avg 20.51 / 20.80 / 20.62  mean 20.64  bracket 0.29  counter 2969.00
+  plain            3 reps  avg 20.51 / 20.80 / 20.62  mean 20.64  bracket 0.29  counter 2969.00  geom =
   split.noop-drag  2 reps  mean 19.10  Δms -1.54 win      counter 2201.00  Δ  -25.9% win   geom =  engaged yes  → win
 ```
 
@@ -714,6 +720,14 @@ W3_SESSION=s2 packages/qa/sweeps/w3-0.sh b04
 - **Geometry equality is the soundness gate.** An arm whose `geom` column reads
   `DIFF` laid the page out differently, and its timing is void
   ([97-wave2-measurement.md](../../plans/research/render-review-2026-09-15/97-wave2-measurement.md#L62)).
+- **Gate a burst on its settled state.** A mid-burst rectangle is not a
+  soundness signal: a candidate that defers work inside a burst differs there
+  by design, and a burst whose own timing drives the layout — an eased wheel
+  scroll, which closes a fraction of the remaining distance per *real* frame —
+  differs there between two runs of one build. End such a phase with
+  `settle:<n>` and read the gate on that phase, taking the burst phase's moving
+  labels out with `--allow-diff <label>@0`
+  ([00-post-campaign-agenda.md](../../plans/research/render-review-2026-09-15/00-post-campaign-agenda.md#g22-unblocked-the-tree-tables-focused-cell-2026-09-24)).
 - **Check a deep panel and a shallow one** — `shell-deep` and
   `shell-shallow`, `chart-dashboard` and `chart-line`, or `form-nested` and
   `form-flat`. A change can hold

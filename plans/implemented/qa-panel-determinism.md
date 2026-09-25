@@ -606,3 +606,162 @@ docs.
     the plain line rather than on every arm line says them once, keeps the arm
     lines aligned, and covers the case the arm lines cannot: a cell run with no
     ablated arm at all, which is what a determinism check on a panel is.
+
+
+---
+
+## Implementation Notes
+
+The branch ships two of the plan's three changes. The `text-metrics` font wait
+was implemented, measured in the engine and removed again; what it taught is
+recorded below so a follow-up does not start from the same model.
+
+### The `text-metrics` font wait was measured and dropped
+
+Six plain runs of `panel=text-metrics&drive=update:24,theme:1,update:24` over
+two sittings, each sitting scored on its own. Phase 0 reads
+`unstable(t0r9,t1r9,t2r9,t5r9,t6r9,t7r9)` in **both** sittings — the same six
+labels the W3.0 sweep found — while phases 1 and 2 read `geom =` in both. So
+the wait did not work, and the instability is confined to the first burst.
+
+**The plan's `[^font-race]` footnote has the causation backwards**, on two
+counts that are checkable in the source:
+
+- It says "Nothing lays a plain `Text` out again when that subset lands".
+  `Body.init` subscribes `_onThemeReflow`, which calls `scheduleLayout()`, and
+  `git show 37606021:packages/lib/src/typescript/lib/core/Body.ts` puts it at
+  `:241` and `:278` on this cell's *own base arm*. A font batch settling runs
+  `reflowText`, which notifies that listener. Something does lay it out again.
+- It says the first `update` unit "is the only probe that reads the *mount*
+  layout". [frames.ts:62-66](packages/qa/src/harness/frames.ts#L62) runs
+  `step(index)` *before* `sampleGeometry()`, so unit 0 samples after `update(0)`
+  has re-texted every label — a fresh measurement of that unit's own strings.
+
+**The real mechanism**, established by the user watching a run with the wait in
+place: text visibly re-renders at a different size a few hundred ms to about a
+second after load. Subsets are fetched lazily, on the first render of glyphs
+that need them, so while the panel mounts the Latin-Ext subset has not been
+requested *at all*. A wait on `document.fonts.ready` or `fonts.status` in
+`afterMount` therefore resolves against faces nobody has asked for; the request
+happens when the glyphs first render, lands late, and `Body`'s reflow produces
+exactly the resize that was seen. The source findings and the user's eye agree.
+
+**What would work:** force the request before waiting on it.
+`document.fonts.load('<spec>', '<the panel's own strings>')` returns a promise
+for the faces those characters need, which is the shape a gate requires;
+awaiting `ready` cannot be, because `ready` describes only the batches already
+in flight. That cell needs its own plan and was not attempted here.
+
+Two details worth carrying forward. `Łódź` is row 9, so only `n>=10` mounts it
+(the default is 12); `żółć ąę`, among the update strings, is the panel's other
+Latin-Ext string. And the dropped implementation's last revision replaced a
+bespoke timeout raced against the wait — a timer it never cleared, which fired
+ten seconds after the mount whether or not the wait had succeeded — with
+`tools.waitFor`, which polls and returns leaving nothing armed. Reuse that
+shape rather than a raced timer.
+
+### `trw` is not repeatable yet, and the plan's criterion for it is unmet
+
+Its settle phase reads `geom =` in five of six runs. In the sixth (sitting 2,
+rep c) **only `focused` differs**: `[1, 44, 42, 20]` against `[1, 44, 78, 20]`
+in the other five — same x, same y, same height, width 42 against 78. It is
+constant across all four settle units, so the page had settled; it settled
+somewhere else. `table`, `header` and `body` are byte-identical across all six.
+
+Phase 0 of that same run localises it further: `cell` reads x 43 and width 912
+where the other five read x 79 and width 896. The run's whole column layout
+differs, and `focused` is a first-column cell, so what varies is the column
+geometry the run started from. **This is not a settle-driver defect and must not
+be "fixed" by raising `SETTLE_STABLE_FRAMES`** — more frames cannot change a
+state that was already stable for four units. Cause left to a follow-up.
+
+### `cell` measures nothing in the settle phase
+
+`cell` is `.TableBody .StringCell`
+([table-rows.ts:125](packages/qa/src/panels/table-rows.ts#L125)), unchanged at
+this branch's base. In the settle phase of all six `trw` runs it reads
+`[0, 0, 0, 0]`.
+
+It is not dead everywhere: in the wheel phase it reads `[0, 0, 0, 0]` in units
+0 and 1 only, and measures real rectangles for the other 148. Both zero regions
+are where the table sits at the top of its scroll — units 0-1 before the burst
+moves it, and the settle phase, which the burst's triangle returns to the start.
+So at rest the first `.TableBody .StringCell` in document order has a zero box:
+`querySelector` takes document order, which in a rotated virtual row pool is not
+the first visible row. `trw`'s settle gate is therefore really `table`,
+`header`, `body` and `focused`, with `cell` appearing in every report
+contributing nothing.
+
+This also retires half of the plan's `[^net-zero]` footnote: the net-zero
+argument holds for the outer boxes, but `.TableBody .StringCell` does not "read
+the rectangle it read at mount" — it reads `[0, 0, 0, 0]`.
+
+Not fixed here, because it falls outside this plan's scope:
+`src/panels/table-rows.ts` is not in its *Files to Create / Modify / Delete*,
+and the selector predates the branch. Checked elsewhere as far as the evidence allows —
+`treetable-rows` is the only other panel run with a settle phase and all four of
+its labels measure something. `chart-line`, `chart-dashboard`, `markdown-doc`
+and `menus` use descendant selectors too, but none is over a virtualised row
+pool and none has been run with a settle phase.
+
+### What shipped, and the choices the plan left open
+
+**"Basic Latin" is the wrong name for the subset the startup wait covers.**
+`startFontLoad`'s single-space sample text selects the framework's *Latin*
+subset, whose `unicode-range` is `U+0000-00FF` plus General Punctuation and a
+few symbols
+([Theme.ts:1262](packages/lib/src/typescript/lib/core/Theme.ts#L1262)) — so
+`x`, `-` and `...` style characters several panels use are already covered, and
+what singles `text-metrics` out is Latin-Ext characters rather than non-ASCII
+ones. Classifying every string literal under `packages/qa/src/` against the two
+declared ranges confirms it is the only file with Latin-Ext characters. The
+startup wait also settles on its own bounded deadline, not on the batch alone.
+
+**The settle wait compares the exact rectangles, not the rounded samples.** The
+plan's `rectsSignature` snippet reuses `sampleTarget`, and *Critical Files*
+calls for that reuse by name — but `sampleTarget` rounds. The row container
+scrolls by a fractional `translate3d`
+([VirtualScroller.updateTransform](packages/lib/src/typescript/lib/component/container/VirtualScroller.ts))
+and `SmoothScroller` snaps only once the gap falls under `STOP_PX = 0.5`
+([SmoothScroller.ts:94](packages/lib/src/typescript/lib/core/SmoothScroller.ts#L94)),
+so an ease tail spends several frames rounding to one value with a whole pixel
+still to travel. Two equal *rounded* samples would have ended the wait there and
+left that step to land in a measured unit. `sampleTarget` is now a rounding
+wrapper over a new `rectOf`, the wait compares `rectOf`, and the recorded series
+stays rounded. `tests/drivers.dom.test.ts` pins both readers.
+
+**`rectsSignature` takes its targets rather than reading module state.** The
+plan's snippet is `Object.values(geometryTargets)`, which does not typecheck —
+the field is nullable and the guard's narrowing cannot reach a separate
+function — and a `?? {}` there would be an unreachable branch behind that
+guard. The caller reads the module state once and passes it, matching
+`sampleTarget`, whose target is a parameter too.
+
+**One README surface beyond *Documentation Impact*.** *Page-wide targets*
+counted three page-wide targets and the files table named them, so both were
+wrong after the change.
+
+**The `settle` DOM test scripts its rectangles with a per-call function.** Step
+6 calls for "a `vi.fn` that returns a moving rectangle for the first two calls
+and a fixed one after", which cannot express the case that never settles. The
+helper takes `(call) => rect`, and the cases pass it the worked table above, a
+fixed rectangle, a sub-pixel ease tail, and one that moves every frame.
+
+### Session drift, for whoever reads the numbers
+
+The two sittings' wheel-phase brackets were 0.56 and 9.56 for the same cell —
+ordinary between-session drift, and the reason for the same-session rule. The
+geometry findings above survive it only because each sitting was scored on its
+own.
+
+### Open, and deliberately not acted on
+
+- `SETTLE_STABLE_FRAMES = 2` sits at the limit of the evidence the README's new
+  rule cites: in the G22 record the ablated arm reads 2434, 2434, 2431, 2431
+  across four idle units, so two equal frames would have called it rest just
+  before it moved. A deferral holding three frames or more would move inside the
+  measured units.
+- Comparing exact rectangles means endless sub-pixel jitter now fails the run at
+  the 120-frame cap. The README's `settle` row does not say so.
+- `tests/mount.test.ts`' `expectTargetsReady` checks `idle` and `theme` but not
+  the merged `settle` target — nor `viewport`, which predates this branch.

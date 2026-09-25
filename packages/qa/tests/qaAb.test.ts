@@ -79,7 +79,7 @@ describe('T2–T4 the fixture cell', () => {
         const { status, lines } = qaAb([CELL, 'ab-fix-']);
 
         expect(status).toBe(0);
-        expect(armLine(lines, 'plain')).toMatch(/mean 10\.20 {2}bracket 0\.40 {2}counter 100\.00/);
+        expect(armLine(lines, 'plain')).toMatch(/mean 10\.20 {2}bracket 0\.40 {2}counter 100\.00 {2}geom =$/);
         expect(armLine(lines, 'x.y')).toMatch(/Δms -0\.60 win .*counter 80\.00 +Δ +-20\.0% win .*geom = +engaged yes +→ win$/);
         expect(armLine(lines, 'x.z')).toMatch(/Δms \+0\.00 flat .*counter 100\.00 +Δ +\+0\.0% flat .*geom DIFF\(chart\) +engaged yes +→ void$/);
     });
@@ -142,7 +142,7 @@ describe('gates and failures', () => {
         expect(armLine(qaAb([CELL, 'ab-fix-', '--allow-diff', 'chart@1']).lines, 'x.z')).toMatch(/geom DIFF\(chart\)/);
     });
 
-    it('reads every arm as unstable when the plain arms disagree', () => {
+    it('reads every arm as unstable when the plain arms disagree, and names the label on the plain line', () => {
         const dir = cellCopy((report, file) => {
             if (file.startsWith('ab-fix-plain-b-')) {
                 report.phases[0].geometry.chart = [[0, 0, 100, 52], [0, 0, 100, 52]];
@@ -151,8 +151,33 @@ describe('gates and failures', () => {
 
         const { lines } = qaAb([dir, 'ab-fix-']);
 
+        expect(armLine(lines, 'plain')).toMatch(/geom unstable\(chart\)$/);
         expect(armLine(lines, 'x.y')).toMatch(/geom unstable +engaged yes +→ void$/);
         expect(armLine(lines, 'x.z')).toMatch(/geom unstable +engaged yes +→ void$/);
+    });
+
+    it('names every label the plain arms disagree on, sorted and de-duplicated', () => {
+        const dir = cellCopy((report, file) => {
+            // `point` on every report, so it is a label each of them has and
+            // the disagreement is between the plain arms rather than a label
+            // the reference is missing.
+            report.phases[0].geometry.point = [[0, 0, 4, 4], [0, 0, 4, 4]];
+
+            // plain-b differs on `point` alone and plain-c on `chart` and
+            // `point`, so the labels arrive as point, chart, point: a reading
+            // built by concatenating each report's own sorted labels would
+            // print them in that order, and print `point` twice.
+            if (file.startsWith('ab-fix-plain-b-')) {
+                report.phases[0].geometry.point = [[0, 0, 4, 5], [0, 0, 4, 5]];
+            }
+
+            if (file.startsWith('ab-fix-plain-c-')) {
+                report.phases[0].geometry.chart = [[0, 0, 100, 52], [0, 0, 100, 52]];
+                report.phases[0].geometry.point = [[0, 0, 4, 6], [0, 0, 4, 6]];
+            }
+        });
+
+        expect(armLine(qaAb([dir, 'ab-fix-']).lines, 'plain')).toMatch(/geom unstable\(chart,point\)$/);
     });
 
     it('stops at an arm that is not its report\'s ablation', () => {
