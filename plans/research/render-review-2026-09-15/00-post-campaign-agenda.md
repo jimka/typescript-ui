@@ -644,3 +644,16 @@ on. It reproduces the desktop reading exactly: 98 withheld, tab 1 matches, tabs
   layout pass (or the display flip), never on `onEffectiveVisibilityChange`.
   The previous section's caveat stands unchanged: the `theme` phase never
   measures the show, so the relocated work is still unpriced.
+
+- **The surface's theme-to-show ratio flatters the candidate.** Over the lap
+  the arm withholds 98 applications and replays seven, because the driver
+  switches the theme 14 times while showing seven tabs: most withheld work is
+  discarded by the next switch before its editor is ever visited. A user does
+  the reverse — one switch, then a walk through the tabs — and when every
+  hidden editor is eventually shown the replays equal the withholds and the
+  saving is the bookkeeping alone. So the −21% is a property of a two-to-one
+  switch-to-show ratio rather than of the candidate, and G25's real value is
+  about one minus the revisit rate: largest exactly where it matters least,
+  many open editors the user never returns to. The cell that settles it drives
+  one switch and then a sweep of shows, and it belongs before a plan rather
+  than inside one.
