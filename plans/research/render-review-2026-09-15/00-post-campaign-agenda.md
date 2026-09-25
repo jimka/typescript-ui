@@ -412,3 +412,50 @@ A plan has to say whether a column resize may leave the body behind, and if so
 whether that is the default or an opt-in, or else find a way to keep header and
 body in step while still skipping the per-cell layout — moving the cells with a
 transform during the burst, for instance, and reconciling on the settle.
+
+## Found while implementing the ten-plan batch (2026-09-25)
+
+The ten plans that close out this agenda's open items are implemented as one
+56-commit stack. Three defects surfaced during that work, none of them in any
+plan's scope, each verified against the source. The first two are why two
+branches had to reach for a production DOM seam they would otherwise not have
+needed.
+
+- **`Glyphs.ts` never resets its sprite handle, and this campaign's own report
+  says it does.** The module-level `_spriteElement` and `_spriteMounted`
+  (`Glyphs.ts:58`) are assigned once at `Glyphs.ts:132-133` and nothing ever
+  clears them: the module has no reset hook and `core/DOM.ts` never mentions
+  `Glyphs`. So a jsdom suite that mounts a new SVG glyph after a `DOM.reset()`
+  appends into a sprite element belonging to the torn-down document.
+  `activation-after-dispose`'s new regression suite hit exactly this and works
+  around it with a `beforeAll` priming step. `13-button-glyph-image.md:387-388`
+  asserts the opposite as fact — "which already resets
+  `_spriteMounted`/`_spriteElement`" — which is likely why the hole went
+  unnoticed. A fix needs a reset signal the module subscribes to; correcting
+  that sentence costs nothing and should happen either way.
+
+- **The modelled DOM's teardown records but never evicts.** `_byId` and
+  `_stubs` (`tests/dom/TestDOM.ts:141-143`) carry no `delete` and no `clear`
+  anywhere in the file. `removeElement` (`TestDOM.ts:603`) detaches the parent
+  and leaves the id index intact, so `getElementById` still answers for a
+  removed element, and `release` (`TestDOM.ts:559`) only records, so a released
+  handle still resolves. That makes a whole class of bug invisible offline:
+  disposal, and use-after-free. Both bit this batch —
+  `activation-after-dispose` needed a production-DOM regression file to see a
+  control disposed mid-activation, and `validation-error-arming` could not
+  stage a dead handle offline at all, so its new `isRegistered` query is pinned
+  against the real registry with spies standing in for its two consumers.
+  Making `release` drop its stub and `removeElement` clear the id would retire
+  both workarounds. The blast radius is every test that releases a handle and
+  then reads it, which is why neither branch attempted it.
+
+- **`component/table/Row.doLayout` never records its pass.** `Row.ts:1003`
+  returns `this` without calling `super.doLayout()`, documented as "No-op; cell
+  layout is driven by the Body's renderWindow" — but the base call is what
+  records that a pass ran, so every `Row` is permanently dirty and can never
+  skip an unchanged commit. This is the same defect
+  `unchanged-commit-opt-ins-forms` fixed in `Slider.doLayout`, and that
+  branch's AST scan of all 33 `doLayout(): this` overrides found exactly two
+  bodies missing the base call: `Component`'s own and this one. Nothing is
+  wrong today, because `Row` is not opted in; the cost is that it cannot be
+  until this is fixed.
