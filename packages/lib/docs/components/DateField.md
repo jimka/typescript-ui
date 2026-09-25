@@ -66,6 +66,7 @@ The typed shorthand stays on screen while typing; it resolves to the absolute da
 - The absolute form is read back exactly as it is written: a complete, zero-padded `YYYY-MM-DD` naming a real calendar day. A prefix typed on the way to one (`2026`, `2026-09`) and an impossible day (`2025-02-30`) both leave the field invalid rather than committing a date the text never named, and blurring on one clears it.
 - Cell editors in tables (`Date` / `DateTime` editor) pick up navigation automatically because they spawn the same dropdown.
 - Right-clicking the inner text input opens a Cut/Copy/Paste menu; Cut/Paste re-parse the field the same way typing does.
+- A date field whose parent re-commits it at the rectangle it already holds is not re-laid-out (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)). Its own pass reads only its content box, and `setValue`, typing and a pick from the calendar are value writes on the inner input; the shared single-line box height is relayed on every theme change. The opt-in is this field's, not `AbstractPickerField`'s, so [`DateTimeField`](/components/DateTimeField) and [`FileField`](/components/FileField) keep being laid out on every commit.
 
 ## Theming
 

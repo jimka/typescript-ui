@@ -116,6 +116,10 @@ The combo's thin gray border (and its dropdown panel's matching border) is drive
 
 The trigger chevron points down when the dropdown is closed and rotates to point up while it is open, animated in step with the dropdown's own fade (and snapping instantly when the dropdown is non-animated).
 
+## Notes
+
+- A combo box whose parent re-commits it at the rectangle it already holds is not re-laid-out (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)). Its own pass reads only its content box and the caret's square size, and the caret reads that size from the theme once at construction and never rewrites it. `setValue`, `setSelectedIndex`, `setItems`, `setStore` and the store's own changes all rebind the collapsed label and mark its pass owed, so a renderer child the rebind newly built is placed by the next pass that reaches the field and no skipping ancestor can withhold that pass. The rebind queues no frame of its own. None of these writes can move the field, since the label is sized from the field's content box rather than from its text. The dropdown is an overlay outside the field's layout.
+
 ## See also
 
 - [API: ComboBox](/api/component/input/classes/ComboBox)

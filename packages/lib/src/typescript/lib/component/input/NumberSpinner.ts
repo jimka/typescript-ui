@@ -550,6 +550,40 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
 
         return dotIdx >= 0 ? stepStr.length - dotIdx - 1 : 0;
     }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a spinner re-committed at
+     * the rectangle it already holds, with no pass owed, is not re-laid-out.
+     *
+     * A `NumberSpinner` has no `doLayout` override — its inner field and its
+     * two spin buttons are placed by its own box manager from the content box a
+     * skip by definition did not change — and every input to that placement
+     * announces itself:
+     *
+     * - `setValue` and `setPrecision` rewrite the inner field's `value`
+     *   attribute, and `setMin`, `setMax` and `setStep` write only options and
+     *   ARIA. None of them is a layout input: a `TextField`'s box does not track
+     *   its text, so the inner field keeps the rectangle this spinner's manager
+     *   gave it whatever the value reads.
+     * - The unified single-line box height, re-pinned on every theme change,
+     *   goes through `setPreferredSize`, which relays and marks every ancestor.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, its configuration
+     *   setters, padding and border — each marks the layout owed here, like any
+     *   `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
 }
 
 const NumberSpinnerCallable = callable(NumberSpinner);

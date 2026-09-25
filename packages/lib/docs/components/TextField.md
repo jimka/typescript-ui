@@ -50,6 +50,10 @@ binding.setRecord(store.getAt(0));
 
 The thin gray border shared with every other text input is driven by the `input.border` token — see [Theming › Theme keys](/concepts/theming#theme-keys).
 
+## Notes
+
+- A plain `TextField` whose parent re-commits it at the rectangle it already holds is not re-laid-out (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)). `setText`, `setPlaceholder` and the read-only and disabled states are element writes, not layout inputs; the theme's single-line box height and `setBorder` both relay a new preferred size, and adding a child, changing insets, padding or a border marks it owed for the next pass that reaches it. The opt-in is `TextField` exactly: [`PasswordField`](/components/PasswordField), [`UsernameField`](/components/UsernameField) and the three internal field subclasses the [`NumberSpinner`](/components/NumberSpinner), the [`AutoCompleteField`](/components/AutoCompleteField) and the table's number cell editor build on keep being laid out on every commit until each overrides the gate itself. [`TextArea`](/components/TextArea) is a sibling rather than a subclass and is likewise unaffected. One change does not announce itself: a custom child that changes its intrinsic size without calling `setPreferredSize` or `notifyIntrinsicSizeChanged`, which should be followed by `field.scheduleLayout()`.
+
 ## See also
 
 - [API: TextField](/api/component/input/classes/TextField)

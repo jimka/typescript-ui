@@ -40,6 +40,10 @@ panel.addComponent(quantity);
 - Display precision controls only how many digits are shown; the underlying value retains full precision.
 - Right-clicking the inner field opens a Cut/Copy/Paste menu. Cut/Paste act on the raw displayed text — uncommitted until blur or Enter, same as typing.
 
+## Notes
+
+- A spinner whose parent re-commits it at the rectangle it already holds is not re-laid-out (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)). Its inner field and spin buttons are placed from its content box, and none of `setValue`, `setMin`, `setMax`, `setStep` and `setPrecision` is a layout input — they rewrite the inner field's value or only its options, and a [`TextField`](/components/TextField)'s box does not track its text. Changing insets, padding or a border, or reconfiguring its layout manager, marks it owed for the next pass that reaches it.
+
 ## See also
 
 - [API: NumberSpinner](/api/component/input/classes/NumberSpinner)

@@ -40,6 +40,7 @@ panel.addComponent(wifi);
 - Themed through the shared `--ts-ui-form-*` family plus toggle-specific tokens (`--ts-ui-toggle-track-bg-off`, `--ts-ui-toggle-track-bg-on`, `--ts-ui-toggle-thumb-bg`, `--ts-ui-toggle-width`, `--ts-ui-toggle-height`).
 - Keyboard: Space and Enter both toggle the value.
 - Honours [`Animation.isReducedMotion`](/api/core/namespaces/Animation/functions/isReducedMotion) — when set, the thumb-slide and track-color transitions are suppressed.
+- A toggle whose parent re-commits it at the rectangle it already holds is not re-laid-out (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)) — including when a stretched grid cell asks it for the cell's whole width, since what it actually commits is only the width its own pill and label need. `setValue` writes the thumb's transform and the track's class rather than moving anything; `setLabel` adds or removes a child and the label's own text or font change schedules the toggle, so either still lays it out.
 
 ## See also
 

@@ -126,6 +126,43 @@ class TextField<TOptions extends TextFieldOptions = TextFieldOptions> extends Te
         return this;
     }
 
+    /**
+     * Opts into the unchanged-geometry layout skip: a plain `TextField`
+     * re-committed at the rectangle it already holds, with no pass owed, is not
+     * re-laid-out.
+     *
+     * A `TextField` has no `doLayout` override — its `<input>` is its own
+     * element, not a child component — so its own pass places only whatever a
+     * consumer added to it, and every input to that placement announces itself:
+     *
+     * - `setText`, `setPlaceholder`, the read-only and enabled state — attribute
+     *   and value writes on the field's own element, not layout inputs.
+     * - `setBorder` above, and the theme's own single-line box — both go through
+     *   `setPreferredSize`, which relays the new size and marks every ancestor.
+     * - Adding, removing or moving a child, `setInsets` / `clearInsets`,
+     *   `setLayoutManager`, padding and border — each marks the layout owed
+     *   here, like any `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     *
+     * The opt-in is this class exactly, by prototype identity rather than
+     * `instanceof`, so `PasswordField`, `UsernameField`, `NumberSpinnerField`,
+     * `AutoCompleteTextField` and the table's `NumberEditorField` keep being laid
+     * out on every commit until each is audited on its own. A subclass that wants
+     * the skip overrides this gate after that audit.
+     *
+     * Not covered, and so not re-flowed until the field's rectangle next moves
+     * or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true` for a plain `TextField`, `false` for any subclass.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return Object.getPrototypeOf(this) === TextField.prototype;
+    }
+
 }
 
 const TextFieldCallable = callable(TextField);

@@ -474,6 +474,16 @@ class ComboBoxLabel extends Component {
      */
     setItem(item: SelectableListItem, index: number): this {
         this._renderer.update({ item, index });
+        // `update` can build a child the renderer did not have — a glyph
+        // renderer bound to an item that carries one — and only this label's
+        // own pass places the renderer's children. The write announces nothing
+        // by itself, so with `ComboBox` opted into the unchanged-commit skip the
+        // new child would keep its never-assigned NaN box even on a pass that
+        // reached the field, because the field's own rectangle did not move.
+        // Marking the pass owed here — and, through it, on every opted-in
+        // ancestor — is the closure every other announce-nothing placement input
+        // uses.
+        this.invalidateLayout();
 
         return this;
     }
@@ -500,6 +510,12 @@ class ComboBoxLabel extends Component {
             DOM.sink.appendChild(el, this._renderer.getElement(true)!);
         }
 
+        // No `invalidateLayout()` here, although a brand-new renderer does hold
+        // the "never assigned" NaN box until this label's own pass sizes it:
+        // this class is file-local and `ComboBox.setRendererFactory` is its only
+        // caller, which calls `refreshLabel()` on the next line and marks the
+        // pass owed through {@link setItem}. A second mark could never be the
+        // one that closed the writer.
         return this;
     }
 
@@ -941,6 +957,46 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         this._caret.setHeight(caretSize);
 
         return this;
+    }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a combo box re-committed at
+     * the rectangle it already holds, with no pass owed, is not re-laid-out.
+     *
+     * `doLayout` above reads two things — the content box, which a skip by
+     * definition did not change, and the caret's own square size. Both, and
+     * every other input, announce themselves:
+     *
+     * - The caret's square size is read from the theme once, in the caret's own
+     *   constructor, and never rewritten — so it is not an input a later pass
+     *   could resolve differently. A theme switch or web-font swap still lays
+     *   every opted-in component out once, through the text-metrics condition
+     *   the skip's own gate applies.
+     * - `setValue`, `setSelectedIndex`, `setItems`, `setStore` and the store's
+     *   own changes all rebind the collapsed label through `ComboBoxLabel`'s
+     *   `setItem`, which marks the pass owed on the label and on every opted-in
+     *   ancestor — this field included. It queues no frame: the rebind is placed
+     *   by the next pass that reaches the field, and the marking is what stops
+     *   this field's own unchanged commit from withholding it. That pass is the
+     *   only thing that places the hosted renderer's children. None of these
+     *   writes can move the field: the label is sized from the field's content
+     *   box rather than from its text, and the dropdown's own width is measured
+     *   separately.
+     * - `setInsets` / `clearInsets`, padding and border — each marks the layout
+     *   owed here, like any `invalidateLayout`.
+     * - The dropdown is an overlay with its own root, outside this field's
+     *   layout entirely.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
     }
 
     /**

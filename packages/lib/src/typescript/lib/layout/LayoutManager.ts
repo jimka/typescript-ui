@@ -574,12 +574,17 @@ export abstract class LayoutManager extends BaseObject {
      * opted into the unchanged-geometry skip through its protected
      * `canSkipUnchangedLayout` gate (default `false`), owes no pass, and has
      * an element — the gate `Component.applyBounds` applies. "Moves nothing"
-     * is read back from the child after the setters ran rather than assumed
-     * from the request, so a clamp that moves the box, or a box resized out
-     * of band since its last commit, still lays out. A size-stable move
-     * marks every opted-in ancestor of the moved child as owing a pass, so
-     * the redundant pass that folds its translate back and releases the
-     * promotion is not withheld.
+     * is the child's committed rectangle before the write against its
+     * committed rectangle after it — the rule `Component.setBounds` and
+     * `applyBounds` share — never the request against the box the child
+     * already held. A child whose own size clamp bounds what it is handed, a
+     * `Checkbox` or `Toggle` stretched across a grid cell and committing only
+     * the width its own children need, therefore stops reporting a change on
+     * every pass for ever; a box
+     * resized out of band since its last commit still lays out, because the
+     * write moves it back. A size-stable move marks every opted-in ancestor
+     * of the moved child as owing a pass, so the redundant pass that folds
+     * its translate back and releases the promotion is not withheld.
      *
      * Used by {@link LayoutManager.placeComponent} (via {@link LayoutManager.resolveBounds}) and by
      * layout managers that need to bypass the cell clamp — e.g. [`Absolute`](/api/layout/classes/Absolute)
@@ -596,10 +601,15 @@ export abstract class LayoutManager extends BaseObject {
     protected commitBounds(component: Component, x: number, y: number, width: number, height: number): void {
         component.setAutoCommitStyle(false);
 
-        const sizeUnchanged = component.getWidth() === width && component.getHeight() === height;
+        const beforeX          = component.getX();
+        const beforeY          = component.getY();
+        const beforeWidth      = component.getWidth();
+        const beforeHeight     = component.getHeight();
         const beforeTranslateX = component.getTranslateX();
         const beforeTranslateY = component.getTranslateY();
-        const positionUnchanged = x === component.getX() + beforeTranslateX && y === component.getY() + beforeTranslateY;
+
+        const sizeUnchanged = beforeWidth === width && beforeHeight === height;
+        const positionUnchanged = x === beforeX + beforeTranslateX && y === beforeY + beforeTranslateY;
         const transition = component.getTransition();
         // The fast path writes `x - getX()` as a translate, so all four
         // operands must be real numbers. A child no layout manager ever
@@ -608,15 +618,12 @@ export abstract class LayoutManager extends BaseObject {
         // translate NaN — so without this the fast path engages on every
         // settled pass and never releases the promotion it takes.
         const positionKnown = Number.isFinite(x) && Number.isFinite(y)
-            && Number.isFinite(component.getX()) && Number.isFinite(component.getY());
+            && Number.isFinite(beforeX) && Number.isFinite(beforeY);
         const canFastPath = positionKnown && sizeUnchanged && !positionUnchanged && (transition === null || transition === "none");
-        // The only shape a skip is possible for: the box did not move at all.
-        // Every other shape sets `changed` below without reading anything back.
-        const mayBeUnchanged = sizeUnchanged && positionUnchanged;
 
         if (canFastPath) {
             component.setWillChange("transform");
-            component.setTranslate(x - component.getX(), y - component.getY());
+            component.setTranslate(x - beforeX, y - beforeY);
             // The redundant pass that folds this translate back and releases
             // the promotion is owed on the container, so no skipping ancestor
             // may withhold it.
@@ -631,13 +638,18 @@ export abstract class LayoutManager extends BaseObject {
         component.setWidth(width);
         component.setHeight(height);
 
-        // Read back, not assumed: `setWidth` / `setHeight` clamp, so an
-        // unchanged request can still move the box.
-        const changed = !mayBeUnchanged
-            || component.getWidth()      !== width
-            || component.getHeight()     !== height
-            || component.getTranslateX() !== beforeTranslateX
-            || component.getTranslateY() !== beforeTranslateY;
+        // "Moves nothing" is the committed rectangle before the write against
+        // the committed rectangle after it — the rule `Component.writeBounds`
+        // applies for `applyBounds`. Comparing the request instead would report
+        // a change for ever on a child whose own size clamp bounds what it is
+        // handed: a `Checkbox` stretched across a grid cell is asked for the
+        // cell's width and commits its own 16 pixels on every pass.
+        const changed = component.getX()          !== beforeX
+                     || component.getY()          !== beforeY
+                     || component.getWidth()      !== beforeWidth
+                     || component.getHeight()     !== beforeHeight
+                     || component.getTranslateX() !== beforeTranslateX
+                     || component.getTranslateY() !== beforeTranslateY;
 
         if (changed || !component.canSkipUnchangedCommit()) {
             component.doLayout();

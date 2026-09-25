@@ -195,10 +195,15 @@ function geometryOf(component: Component): string {
 
 /**
  * Stubs the four new opt-ins off, so a case can run its scene the way it ran
- * before this plan — the "plain" arm.
+ * before this plan — the "plain" arm. `Text` and `TextField` are on the list
+ * too, although they are stage 3's opt-ins and not this plan's: this file's
+ * scenes hold two `TextField`s and a `Text`, so leaving them opted in would
+ * make this a partial arm rather than the no-skip comparison the cases read it
+ * as.
  */
 function plainArm(): void {
-    for (const prototype of [Panel.prototype, LabeledGrid.prototype, Header.prototype, StatusBar.prototype]) {
+    for (const prototype of [Panel.prototype, LabeledGrid.prototype, Header.prototype, StatusBar.prototype,
+        Text.prototype, TextField.prototype]) {
         vi.spyOn(prototype as any, 'canSkipUnchangedLayout').mockReturnValue(false);
     }
 }

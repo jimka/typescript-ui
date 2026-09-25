@@ -389,6 +389,8 @@ Run each cell as `wt-a, main-1, wt-b, main-2, wt-c`, with `work=1&seam=1&geom=1`
 
 A geometry `DIFF` anywhere stops the plan until the writer behind it is found and closed. Narrowing the opt-in list until the symptom goes away is not a fix — that is stage 1's rule. Record the readings in this plan's *Implementation Notes*.
 
+**One cost this cell list does not price.** The `ComboBoxLabel` closure the audit added (see *Implementation Notes*) marks the combo box, its `LabeledGrid` and its `Panel` as owing a pass on every `setValue`, selection change and store refresh. The cells that drive a combo box — `ffc`, `ffu` and `ffk` — are all gate-only here, with no work or time expectation, so the A/B will read their geometry and their pinned counters and say nothing about what the extra marking costs. Read `ffc`'s work column and M25 as *unmeasured rather than unchanged*: a rise there is expected and is not a regression against this plan's stated figures, which were taken before the closure existed.
+
 ---
 
 ## Documentation Impact
@@ -528,3 +530,375 @@ What each opted-in class's layout reads, and how a change to it reaches a pass. 
 [^table-breaks]: The offline probe's "every class opted in" arm is the only arm whose geometry differs from the no-skip arm, and it differs only on `form-nested`, whose inspector is a `Table`. That arm is 109 work units cheaper than this plan's set on `fnq` and identical on `ffq`, so the table's classes are 2% of the cell for a broken rectangle. This plan's set holds geometry on both panels in every arm measured.
 
 [^suite-evidence]: All three changes were applied to the prototypes at runtime over this checkout, through a scratch Vitest setup file that edited no source, and the whole suite was run: **8,410 of 8,411 tests green**. The single failure is `UnchangedCommitOptIns.test.ts`'s E2 control arm, which spies `canSkipUnchangedLayout` to `false` on the four stage-2 prototypes only and so stops being a no-skip arm once `Text` opts in — step 3 repairs it. The commit rule alone, with no opt-in and no `Slider` change, was also run against the whole suite and left **all 8,411 green**. A second apparent failure, `component/input/focusRing.test.ts`, was reproduced by a setup file that only *imports* the input modules and patches nothing, so it is an artefact of importing them before the test registers its capture, not a consequence of any change here.
+
+---
+
+## Implementation Notes
+
+All three changes landed together, as *Potential Challenges* required, and the
+whole `packages/lib` suite is green: **8,568 tests** (the plan's 8,411 predates
+the nine branches beneath this one). `commitBounds`'s new rule was also run on
+its own, with no opt-in and no `Slider` change, and left the suite green — the
+footnote's claim, re-confirmed on this checkout. Every plan line number still
+resolved; the only drift is `FieldDecorator`'s class, at `:20` rather than
+`:21`.
+
+### The clamp is the content-derived maximum, not an explicit `maxSize`
+
+`[^commit-rule]` says "`setWidth` clamps to the component's own `maxSize`".
+Neither `Checkbox` nor `Toggle` calls `setMaxSize` on itself — `CheckboxBox`
+and `ToggleTrack` do, on the inner child. What clamps the control is
+`Component.clampsToContentSize()`, which defaults to `true` for everything that
+is not a `Container`: `setWidth` / `setHeight` clamp to the *merged* maximum,
+the component's own explicit constraint merged with the one derived from its
+children. So a `Checkbox`'s merged `getMaxSize()` reads `16 × 16` although the
+checkbox itself set no maximum. The mechanism, and everything the plan concludes
+from it, is unaffected; the prose written into `commitBounds`'s doc comment, the
+concept page and the changelog says "its own size ceiling" rather than naming
+`maxSize`.
+
+### E2's scene had to move from a stretching `VBox` to a stretched grid cell
+
+The plan's E2 builds `VBox({ stretching: true, spacing: 0 })` over one
+`Checkbox` — and that scene does not reproduce the defect. `BoxLayout` bounds
+the cross-axis stretch by the child's own maximum *before* committing, so its
+request already equals what the child can hold: measured on a 400-wide
+stretching row, the commit is `req 0,0,16,16` against a box of `0,0,16,16`, and
+the request-based rule reported "unchanged" too. A stretched **grid** cell does
+reproduce it, which is what the plan's own mechanism prose says ("in a stretched
+grid cell") and what the measured `form-flat` / `form-nested` cells are: in the
+form scene the grid asks the checkbox for `377 × 16` and it commits `16 × 16`,
+and the toggle for `377 × 20` against `36 × 20`. E2, E3 and E4 are therefore
+built on a `Fit` root over a one-column `LabeledGrid`, and E2 asserts the
+precondition directly — it reads the width the grid requested off a
+`commitBounds` spy and requires it to exceed the width the checkbox committed —
+rather than inferring the clamp from the row width.
+
+### Every skip assertion needs the container above it forced to lay out
+
+A case that settles the scene and then calls `root.doLayout()` proves nothing
+about a field's gate: the `Panel` and the grid are opted in and clean, so the
+root's commit is withheld at the `Panel` and the fields are never committed at
+all. The assertion then passes whether or not the fields opted in. E2, E7, E9,
+E11 and E13 each call `grid.invalidateLayout()` before the measured pass, so the
+grid must lay out and must commit every child, and the withheld pass is the
+field's own. E13's "the following `root.doLayout()` lays out none of them again"
+is vacuous without it, which the plan's wording does not say.
+
+### The form scene needed an undecorated `TextField`
+
+With only the decorated field the plan describes, `TextField`'s own opt-in
+decides nothing: the `FieldDecorator` above it skips first and withholds the
+field before its gate is ever asked. Dropping the `TextField` opt-in failed only
+E1's row. The scene therefore carries a ninth row, title `"I"`, holding a plain
+`TextField` with no decorator — the shape `packages/qa/src/builders/form.ts`'s
+*header* grid has, and the one `ffh`'s `doLayout@TextField` 8 → 0 measures — and
+that field is the `TextField` entry in E13's list of ten.
+
+### Corrections to the plan's expectations
+
+- **Step 2's check is wrong about E2.** E2 needs the `Checkbox` opt-in as well
+  as the commit rule; with step 2 alone the checkbox is not opted in and lays
+  out. E4 passes before *and* after the change. Both are consistent with
+  *Potential Challenges*' instruction to land steps 2, 4 and 5 together.
+- **E11 is not green before the change.** Its second clause — "and the eight
+  plain `Text` labels did not" — needs the `Text` opt-in, so E11 belongs with
+  E1, E2, E5, E7, E9 and E13 in the red set. E7's forced-off arm likewise only
+  passes once step 4 lands: without `super.doLayout()` a slider's track, active
+  fill and thumb are placed with raw setters and never receive a `doLayout` of
+  their own, so "every component in the grid lays out" is false.
+- **`new Label("A")` throws.** `Label`'s constructor requires a non-empty
+  `forId`; E1 and E11 pass one.
+- **`Toggle` has no `setSelected`.** Its boolean accessors are `getValue` /
+  `setValue`, so E8 writes `toggle.setValue(true)`.
+- **A `TextField`'s preferred width is not derived from its text.** It stayed at
+  200 across E8's `setText`, so that row asserts the `<input>`'s value instead
+  of a width that grew.
+- **A `ComboBox`'s label `Text` is not a registered child.** The collapsed
+  control's `LabelListItemRenderer` and the `Text` inside it are raw-appended,
+  so neither is reachable through `getComponents()`. E8 reaches the label
+  through one `any` hop confined to a named helper, the idiom
+  `tests/component/input/Slider.test.ts` already uses for the same reason.
+- **`TextField` has five library subclasses, not four.** `[^exact-class]` lists
+  `PasswordField`, `UsernameField`, `NumberSpinnerField` and
+  `AutoCompleteTextField`; the table's `NumberEditorField`
+  (`component/table/cell/editor/Number.ts`) is a fifth. With `Text`'s eleven —
+  which the footnote lists exactly — that is sixteen subclasses the exact-class
+  gates hold back. `TextArea` and `AutoCompleteField` are *not* `TextField`
+  subclasses (`TextInput` and `AbstractInput` respectively), so the docs name
+  them as controls no opted-in class covers rather than as subclasses.
+
+### `Row.doLayout` re-verified, and still out of scope
+
+An AST scan of every `doLayout(): this` override in `packages/lib/src` confirms
+`[^slider]`'s claim: exactly two `Component` subclasses never reach the base,
+`Slider` — fixed here — and `component/table/Row`, whose whole body is
+`return this;` under the comment "No-op; cell layout is driven by the Body's
+renderWindow." Everything else the scan flagged is a `LayoutManager.doLayout`
+implementation, a different hierarchy. `Row` is left alone, as the plan directs.
+
+### Why a checkbox is handed 377 pixels at all
+
+`ARCHITECTURE.md`'s size-constraint rules say a layout manager must not stretch
+a child past its maximum, but `LayoutManager.resolveBounds` deliberately hands a
+`FillType.BOTH` child the whole cell without reading its size hints, and `Grid`
+defaults to `BOTH` — which is why the request and the committed box diverge in
+the first place. Reading "changed" from the committed box is consistent with
+`Component.writeBounds` and is the fix this plan chose, so nothing here is a
+defect of this branch; but the plan's alternatives list never considered the
+manager side, and whether `resolveBounds` should clamp is worth a look for
+whoever takes the size-read-economy work next. Recorded rather than fixed here:
+changing how a manager resolves a `FillType.BOTH` child's rectangle is a
+different change with its own blast radius, and this plan's gate does not need
+it.
+
+### What was and was not measured here
+
+The *structural* premise — that a settled form's remaining work is in the fields
+rather than their containers, and that an opted-in field is withheld one child
+at a time even under a container that must lay out — was confirmed in the source
+and is what E7 pins. In E7's scene the grid's own subtree is **51 components**;
+on a pass the grid is forced to run, the opted-in arm lays out **3** (the root,
+the `Panel` and the grid) against the forced-off arm's **53**, at byte-identical
+geometry.
+
+The plan's work-unit figures — `ffq` 9,452 → 3,197 and `fnq` 11,135 → 4,887 —
+come from the plan's own offline probe and were **not** re-derived on this
+branch. *Verification*'s 20-cell A/B has since been run in the engine
+(2026-09-25, MiniBrowser, 100 runs, none failed, `wt` the fork point
+`16ad2cda`, runs `g9f-*`), and it **confirms the win and retires the
+prediction**. The *Overview*'s −66% / −56% figures are a `doLayout` ceiling,
+not a work ceiling, and should be read as superseded by what follows.
+
+*Acceptance criterion 1 passes.* `geom` is `=` on every run of all 20 cells.
+
+*The time win is unambiguous.* `ffq` 4.27/4.17/4.29 → 2.89/2.45, Δ **−1.57 ms**
+per unit on a 0.12 bracket (−37%); `fnq` 5.81/5.70/6.56 → 3.91/3.91, Δ **−2.11
+ms** on a 0.86 bracket (−35%). Every other cell reads flat and `=`, as the
+tables predict — the shells, `chart-dashboard`, `table-rows`, `tree-nodes` and
+`windows` all confirm the commit-rule change is a no-op where nothing is
+clamped.
+
+*Acceptance criterion 2 fails, and the opt-ins are not the reason.* Overall
+work per unit falls to 0.66 × `wt` on `ffq` (against the tabled 0.34) and 0.71
+on `fnq` (against 0.44) — 32 and 27 percentage points outside the 10-point
+tolerance. But every opted-in class reached exactly **0**: 20 distinct
+`doLayout@<Class>` counters on `ffq`, 31 on `fnq`, including all ten this plan
+opts in. `doLayout` fell harder than any other family, 2.8 → 1.1 per unit
+(0.38×). It is simply not where a settled form pass spends itself:
+`getMinSize` 16.4 → 11.7, `sizeHintMiss` 14.0 → 9.6, `getPreferredSize` 11.9 →
+9.3, `getMaxSize` 11.1 → 6.3, `getLaidOutComponents` 6.7 → 4.0 — the size-query
+families are roughly 95% of the pass and fall only 20–43%, as a side effect of
+fewer layouts rather than as a target. The offline model weighted `doLayout`
+as though it were the pass.
+
+*The residual `doLayout` has one cause, and it names the next increment.* Seven
+`doLayout@` counters stay live on `ffq` (nine on `fnq`), and they are the field
+*internals* this plan's list stops short of: `PickerButton` 0.2,
+`ButtonIconGlyph` 0.2, `ButtonLabelText` 0.2, `PickerInput` 0.1. Those keep
+owing passes and drag their parents with them, which is exactly why `DateField`
+and `TimeField` are the two of the ten that never reach 0. A stage 4 opting in
+the field internals is the measured next step, and its ceiling is now known
+rather than modelled.
+
+*Two smaller readings.* `ffu`'s work rises 0.1 → 0.3 per unit, and it is **not**
+the combo-box closure: it is `SliderThumb` / `SliderTrack` /
+`SliderActiveTrack` size reads at +0.01–0.02 each, the price of
+`Slider.doLayout` finally calling `super.doLayout()`. `ffc` reads flat at
+0.4 → 0.4, so the closure's ancestor-marking cost stayed unpriced rather than
+absent, as *Verification*'s caveat says.
+
+### The audit found a third writer to close: the combo box's label
+
+The plan's *Architecture Decisions* assert that "every write that changes one of
+those inputs already marks the component". For `ComboBox` that is false, and the
+opt-in turned it into a real geometry regression the audit caught.
+`ComboBox.refreshLabel` — reached from `setValue`, `setSelectedIndex`,
+`setItems`, `setStore`, `setRendererFactory` and every store refresh — rebinds
+the collapsed control's hosted renderer through `ComboBoxLabel.setItem` and
+schedules nothing. That renderer's children are placed only by
+`ComboBoxLabel.doLayout`, which before this change ran only because
+`ComboBox.doLayout` called it. Reproduced against a `GlyphListItemRenderer`,
+with the field opted in and the grid above it forced to lay out:
+
+| Write | Opt-ins off | Opted in, before the closure |
+|---|---|---|
+| `setSelectedIndex` onto an item that gains a glyph | icon `0,0,16,16`, label x `20` | icon `NaN,NaN,NaN,NaN`, label x `0` |
+| `setRendererFactory` | renderer `0,0,456,16` | renderer `NaN,NaN,NaN,NaN` |
+
+The plan's own rule decides the fix: "A geometry `DIFF` anywhere stops the plan
+until the writer behind it is found and closed. Narrowing the opt-in list until
+the symptom goes away is not a fix." So `ComboBoxLabel.setItem` and
+`setRenderer` each call `this.invalidateLayout()` — the closure shape stage 2's
+plan names for exactly this case: "Any write that changes how its subtree is
+placed, but schedules nothing, must therefore call `invalidateLayout()`. That
+call marks the component and every opted-in ancestor, without scheduling a
+frame." The ancestor half is what makes it work here: the `ComboBox` above the
+label is opted in, so marking it is what stops the field's own unchanged commit
+from withholding the pass that calls `label.doLayout()`. Removing
+`markPassOwedAbove` from `invalidateLayout` fails both of this closure's cases,
+which is the check that the ancestor marking, not the self-mark, is load-bearing.
+
+A first attempt used `scheduleLayout()` instead. That queues a frame of its own
+*and* calls `invalidateSizeHints()` on every value write, selection change and
+store refresh — a stronger mechanism than any existing closure uses, a per-value
+cost the `ffc` / M25 readings would have to absorb, and a divergence with no
+*Architecture Decisions* entry behind it. `invalidateLayout()` restores exactly
+the behaviour a `ComboBox` had before it opted in: the rebind is placed by the
+next pass that reaches the field, and no skipping ancestor may withhold it.
+
+`ComboBoxLabel.setRenderer` carries **no** closure of its own, although a
+brand-new renderer does hold the never-assigned NaN box until a pass sizes it.
+The class is file-local and `ComboBox.setRendererFactory` is its only caller,
+which calls `refreshLabel()` — and so `setItem`, and so `invalidateLayout()` —
+on the very next line, so a mark there could never be the one that closed the
+writer. A first attempt put one in both; a mutation run showed that removing only
+`setRenderer`'s left all cases green while removing only `setItem`'s failed the
+rebind case, which is what the caller analysis predicts. It was deleted, per
+CLAUDE.md's rule against code for scenarios that cannot arise, and the
+renderer-swap case now passes through the single closure rather than beside it —
+removing that one closure fails both renderer cases.
+
+This is still a deviation: the plan enumerates two defects to close and this is a
+third. It lands in `component/input/ComboBox.ts`, which the *Files* table already
+lists, and the test file carries a two-arm case for it beyond the plan's E1–E13.
+That case drives the write, then forces the grid to run a pass, which is exactly
+the contract `invalidateLayout()` promises — not over-driving, since a closure
+that only marks the label and not the field fails it.
+
+### Four of the plan's Writer Audit entries were wrong
+
+Each conclusion — that the class is safe to opt in — survives, but for a
+different reason than the plan gives, so the shipped comments and doc bullets
+state the true one:
+
+- **`ComboBox`**: "`setValue` and the store's changes write the label's text
+  (own pass on the label, relay on a width change)". The collapsed label's
+  `Text` is raw-appended inside the renderer and has no parent component, so
+  there is no relay and, before the closure above, no own pass either. What
+  makes the skip safe is that the label is sized from the *field's* content box
+  rather than from its text, so no value can change the field's rectangle; the
+  dropdown measures its own width separately.
+- **`NumberSpinner`**: "`setValue`, `setMin`, `setMax` and `setStep` write the
+  inner field's text". `setMin`, `setMax` and `setStep` write only `_options`
+  and ARIA; only `setValue` and `setPrecision` touch the text. And
+  `TextInput.setText` is a bare value write — no re-measure, no relay — so
+  "relay on a width change" is wrong for all of them. The skip is safe because
+  a `TextField`'s box does not track its text at all.
+- **`Slider`**: "`setValue`, `setMin`, `setMax` and `setStep` all route through
+  `applyValue`". `setStep` only stores the option; it is not a layout input,
+  since the placement reads the value and the range, not the snap grid.
+
+- **`Text`**: "its text, font, writing mode, alignment and wrapping all schedule
+  its *parent*". `setText`, `setFontFamily`, `setFontSize`, `setFontStyle`,
+  `setFontWeight`, `setLineHeight` and `setTruncate` do, by calling
+  `(getParentComponent() ?? this).scheduleLayout()` — which is a direct schedule
+  on the parent, not the preferred-size relay the first draft of the comment
+  claimed, so nothing above the parent is told. `setTextAlign`,
+  `setFontKerning`, `setFontStretch`, `setFontVariant`, `setFontSizeAdjust` and
+  `setTextOverflow` write style only and schedule nothing. The skip stays safe
+  because a plain `Text`'s own pass places nothing and none of the silent
+  setters changes the measured run.
+
+Three smaller ones, all in comments this branch wrote rather than in the plan:
+the `Checkbox` comment implied a theme switch re-resolves the box and check
+sizes (they are read once, at construction, and pinned on the *inner box*, not
+on the checkbox); the `Checkbox` and `Toggle` comments and doc bullets called the
+committed box a "fixed square" and a "fixed pill", which is wrong for a labelled
+control, since `AbstractBooleanInput` places an optional inline label beside the
+graphic and the content-derived width includes it; and the `ComboBox` comment
+said the caret size "changes only with the theme" when `ComboBoxCaret` reads it
+once in its own constructor and never rewrites it.
+
+The plan's step 5 asked every override comment to carry "the remaining caveat".
+Only two did on the first pass; all ten carry it now.
+
+### `Slider` now drains its first-layout callbacks
+
+`Component.doLayout` is the only place `onFirstLayout` callbacks are drained, so
+before the `super.doLayout()` call a `Slider`'s callbacks never fired. That is a
+consumer-visible consequence of the fix rather than a side effect to hide, and
+the changelog's `Slider` bullet records it.
+
+### "Marks the pass owed" is not "schedules a pass"
+
+The closure's first prose called the rebind a schedule. It is not:
+`invalidateLayout` marks the label dirty and calls `markPassOwedAbove`, and
+queues no frame — on a settled grid scene a `setSelectedIndex` plus a full frame
+flush leaves the new glyph child at its NaN box with zero pending frames, and a
+later `root.doLayout()` is what places it. That is still a real improvement over
+the base commit, where no later pass placed it at all, but it is not a
+scheduling one. The changelog bullet was the worst place for the slip, because it
+listed the rebind beside `setText`'s parent schedule and `Slider`'s `applyValue`,
+which genuinely do queue a frame. All three places now state the consumer-facing
+fact: the rebind is placed by the next pass that reaches the field, and no
+skipping ancestor can withhold it.
+
+### Two cases the mutation matrix was missing
+
+- **`changed`'s `getX` term.** Deleting it left every case green. E3 moves its
+  child only vertically, and stage 1's pure-x case takes the translate fast path,
+  whose translate terms catch the move instead. E3 now has a horizontal arm: a
+  same-size sideways move on a child with a `transition` set, which forces
+  `commitBounds`'s slow path with the translate already zero, so the committed-x
+  term is the only one that can fire. It is the widest-blast-radius change on the
+  branch and was its one unguarded term.
+- **`Slider`'s first-layout drain.** Removing `super.doLayout()` outright is
+  caught, but the narrower "record the pass" helper `[^slider]` considered and
+  dropped would have kept every case green while silently dropping the drain —
+  confirmed by writing that helper as a mutation. E5 now has a drain arm: a
+  callback registered on a *detached* slider fires on its first connected pass.
+  A callback registered on a connected slider goes to the shared after-layout
+  queue and always fired, which is why the arm has to detach first — and why the
+  changelog's claim is narrowed to the detached case.
+
+### Two cases were driven harder than their contract
+
+E10 ran an extra `root.doLayout()` and E13 an extra four-pass `settle()` after
+the flush. E13's contract is "`doLayout` called at least once *during that
+flush*", and extra root passes re-lay out anything with stale text metrics
+whether or not the theme switch scheduled a thing — so the extra driving could
+only mask a missing schedule. Both now assert on the flush alone and both pass.
+E8's checkbox row asserted only `isSelected()`, which says nothing about what
+the control shows; it now asserts the check glyph's opacity goes 0 → 1, which is
+the plan's "its check glyph is painted". That opacity is written synchronously by
+`applySelected`, so it is evidence of the paint, not of a layout pass — E8's
+subject is the visible result of each field's own write, and the passes are E7's
+and E13's subject.
+
+### Mutation results
+
+Each change was broken in turn and a named case failed — 22 runs over the 16
+rows below, since the one-class-per-run rows were each run separately. Two of
+those runs are the reason `setRenderer` carries no closure of its own: removing
+only `setItem`'s fails the rebind case, removing only `setRenderer`'s leaves
+every case green.
+`UnchangedCommitSkip`, `UnchangedCommitOptIns` and `UnchangedCommitFormOptIns`
+are 119 cases together and green at baseline.
+
+| Mutation | Cases that fail |
+|---|---|
+| `commitBounds`'s `changed` back to the request-based rule | E2, E5, E7, E13 |
+| `changed` without its `getX` / `getY` terms | E3 |
+| `changed` without its translate terms | stage 1's case 4, "lays out a same-size move through the transform fast path, and the fold back after it" |
+| `Slider.doLayout`'s `super.doLayout()` removed | E1's `Slider` row, E5, E7's forced-off arm, E13 |
+| `Text`'s gate → `false` | E1's `Text` row, E7, E11, E13 |
+| `TextField`'s gate → `false` | E1's `TextField` row, E7, E13 |
+| `ComboBox`, `DateField`, `TimeField`, `NumberSpinner`, `Toggle`'s gate → `false` | that class's E1 row, E7, E13 |
+| `Checkbox`'s gate → `false` | E1's `Checkbox` row, E2, E7, E13 |
+| `Slider`'s gate → `false` | E1's `Slider` row, E5, E7, E13 |
+| `FieldDecorator`'s gate → `false` | E1's decorator row, E7, E9, E13 |
+| `ComboBoxLabel.setItem`'s closure removed | both renderer-geometry cases |
+| `Component.invalidateLayout` stops marking opted-in ancestors | ten cases: both renderer-geometry cases, stage 2's E3, four of stage 2's closure cases, both E7 arms and E11 |
+| `Slider`'s `super.doLayout()` replaced by a record-the-pass helper that never drains | E5's drain arm, and E7's forced-off arm |
+| `changed` without its `getX` term | E3's horizontal arm |
+| `Text`'s gate → `true` (inherited) | E1's `Label`, `Link`, `SelectableText` and local-subclass rows, E11, and stage 1's two shell sweeps |
+| `TextField`'s gate → `true` (inherited) | E1's `PasswordField` and `UsernameField` rows |
+
+### Offline verification
+
+`npm run typecheck`, `typecheck:test`, `lint` and `test:lint` clean; `npm test`
+8,568 green; `npm run build:lib` clean; `(cd ../qa && npm test)` 379 green;
+`npm run docs:api` 0 errors and the 14 pre-existing warnings, no new one;
+`npm run docs:llms:check` clean; `grep -rn 'protected canSkipUnchangedLayout'
+src` lists 18 lines.

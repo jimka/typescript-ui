@@ -48,6 +48,10 @@ Pass `null` to drop back to the theme's additive line box (`font-size + --ts-ui-
 
 `Text` subscribes to the active theme on construction so it can re-measure itself on every theme change. **Custom components that create `Text` instances dynamically** and remove them must call `text.dispose()` — the general teardown call every component supports — to detach the listener. The framework does this automatically for built-in components.
 
+## Notes
+
+- A plain `Text` whose parent re-commits it at the rectangle it already holds is not re-laid-out (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)) — it has no children of its own to place. `setText`, `setFontFamily`, `setFontSize`, `setFontStyle`, `setFontWeight`, `setLineHeight` and `setTruncate` each mark the measurement stale and schedule the *parent*, whose pass re-places it; `setTextAlign` and the remaining font sub-properties write style only, and none of them changes the measured run. Changing insets, padding or a border marks it owed for the next pass that reaches it. The opt-in is `Text` exactly: [`Label`](/components/Label), [`Link`](/components/Link), [`SelectableText`](/api/component/input/classes/SelectableText), [`Legend`](/components/Legend) and every other subclass keeps being laid out on every commit until it overrides the gate itself.
+
 ## See also
 
 - [API: Text](/api/component/input/classes/Text)

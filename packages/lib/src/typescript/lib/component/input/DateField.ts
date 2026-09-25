@@ -173,6 +173,42 @@ class DateField extends AbstractPickerField<Date, DatePickerDropdown, DateFieldO
     protected getPreferredWidth(): number {
         return 160;
     }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a date field re-committed at
+     * the rectangle it already holds, with no pass owed, is not re-laid-out.
+     *
+     * The inherited `doLayout` reads the content box alone — which a skip by
+     * definition did not change — and places the inner input and the picker
+     * button, calling the button's own `doLayout` directly so the button's gate
+     * cannot withhold it. Every other input announces itself:
+     *
+     * - `setValue`, typing, and the dropdown's commit write the inner input's
+     *   value, which is an element write and not a layout input.
+     * - The unified single-line box height, re-pinned on every theme change,
+     *   goes through `setPreferredSize`, which relays and marks every ancestor.
+     * - `setInsets` / `clearInsets`, padding and border — each marks the layout
+     *   owed here, like any `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     * - The calendar dropdown is an overlay with its own root, outside this
+     *   field's layout entirely.
+     *
+     * The opt-in is this concrete field's, not `AbstractPickerField`'s, so
+     * `DateTimeField` and `FileField` keep the default until each is audited on
+     * its own.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
 }
 
 const DateFieldCallable = callable(DateField);
