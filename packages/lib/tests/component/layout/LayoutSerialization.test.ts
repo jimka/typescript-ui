@@ -29,6 +29,90 @@ function instanceFactory(map: Record<string, Component>): LayoutFactory {
     return (id: string) => map[id] ?? null;
 }
 
+/**
+ * A sized Tab host. The host is rendered and sized so a layout pass gives
+ * every child its tab, which `setActiveContent` needs to activate one.
+ *
+ * @returns The host and its Tab manager.
+ */
+function tabHost(): { host: Container; tab: Tab } {
+    installTestDOM(CONFIG);
+
+    const tab  = new Tab();
+    const host = new Container({ layoutManager: tab });
+
+    host.getElement(true);
+    host.setWidth(400);
+    host.setHeight(300);
+
+    return { host, tab };
+}
+
+/** Components A, B and C with ids `a`, `b` and `c`. */
+function panels(): { a: Component; b: Component; c: Component } {
+    const a = new Component({}); a.setId('a');
+    const b = new Component({}); b.setId('b');
+    const c = new Component({}); c.setId('c');
+
+    return { a, b, c };
+}
+
+/** Layout constraints marking a child transient: shown as a tab, never captured. */
+function transient(): LayoutConstraints {
+    return Object.assign(new LayoutConstraints(), { transient: true });
+}
+
+/** The captured root of `host`, narrowed to a tab node. */
+function tabRoot(host: Container): TabNode {
+    const state = serializeLayout(host);
+
+    expect(state.root.kind).toBe('tab');
+
+    return state.root as TabNode;
+}
+
+/** The panel id of the captured child the node's active index names. */
+function activePanelId(root: TabNode): string {
+    return (root.children[root.activeIndex] as { panelId: string }).panelId;
+}
+
+/**
+ * A host holding a transient placeholder P ahead of A, B and C, laid out,
+ * with B active: the strip is P A B C, so B is the third tab but the
+ * second captured child.
+ */
+function placeholderFirstWithBActive(): { host: Container; a: Component; b: Component; c: Component } {
+    const { host, tab } = tabHost();
+    const { a, b, c }   = panels();
+
+    host.addComponent(new Component({}), transient());
+    host.addComponent(a);
+    host.addComponent(b);
+    host.addComponent(c);
+    host.doLayout();
+    tab.setActiveContent(b);
+
+    return { host, a, b, c };
+}
+
+/**
+ * Drags the strip cell at `fromIndex` to `toIndex`, the way
+ * `tests/layout/Tab.doubleClick.test.ts:163-190` drives one — there is no
+ * public reorder entry point, so the bar and the strip's `"reorder"`
+ * handler are driven directly.
+ *
+ * @param tab - The Tab manager whose strip to reorder.
+ * @param fromIndex - The strip position of the cell to move.
+ * @param toIndex - The strip position to move it to.
+ */
+function reorder(tab: Tab, fromIndex: number, toIndex: number): void {
+    const bar = (tab as unknown as { _bar: { getEntryIds(): string[]; moveBarEntry(id: string, to: number): unknown } })._bar;
+    const id  = bar.getEntryIds()[fromIndex];
+
+    bar.moveBarEntry(id, toIndex);
+    (tab as unknown as { _onBarReordered(fromId: string, toIndex: number): void })._onBarReordered(id, toIndex);
+}
+
 describe('serializeLayout shape', () => {
     afterEach(() => DOM.reset());
 
@@ -539,72 +623,6 @@ describe('serializeLayout of a Split holding a transient child', () => {
 describe('serializeLayout of a Tab: the active index names the active child', () => {
     afterEach(() => DOM.reset());
 
-    /**
-     * A sized Tab host. The host is rendered and sized so a layout pass gives
-     * every child its tab, which `setActiveContent` needs to activate one.
-     *
-     * @returns The host and its Tab manager.
-     */
-    function tabHost(): { host: Container; tab: Tab } {
-        installTestDOM(CONFIG);
-
-        const tab  = new Tab();
-        const host = new Container({ layoutManager: tab });
-
-        host.getElement(true);
-        host.setWidth(400);
-        host.setHeight(300);
-
-        return { host, tab };
-    }
-
-    /** Components A, B and C with ids `a`, `b` and `c`. */
-    function panels(): { a: Component; b: Component; c: Component } {
-        const a = new Component({}); a.setId('a');
-        const b = new Component({}); b.setId('b');
-        const c = new Component({}); c.setId('c');
-
-        return { a, b, c };
-    }
-
-    /** Layout constraints marking a child transient: shown as a tab, never captured. */
-    function transient(): LayoutConstraints {
-        return Object.assign(new LayoutConstraints(), { transient: true });
-    }
-
-    /** The captured root of `host`, narrowed to a tab node. */
-    function tabRoot(host: Container): TabNode {
-        const state = serializeLayout(host);
-
-        expect(state.root.kind).toBe('tab');
-
-        return state.root as TabNode;
-    }
-
-    /** The panel id of the captured child the node's active index names. */
-    function activePanelId(root: TabNode): string {
-        return (root.children[root.activeIndex] as { panelId: string }).panelId;
-    }
-
-    /**
-     * A host holding a transient placeholder P ahead of A, B and C, laid out,
-     * with B active: the strip is P A B C, so B is the third tab but the
-     * second captured child.
-     */
-    function placeholderFirstWithBActive(): { host: Container; a: Component; b: Component; c: Component } {
-        const { host, tab } = tabHost();
-        const { a, b, c }   = panels();
-
-        host.addComponent(new Component({}), transient());
-        host.addComponent(a);
-        host.addComponent(b);
-        host.addComponent(c);
-        host.doLayout();
-        tab.setActiveContent(b);
-
-        return { host, a, b, c };
-    }
-
     it('1. a transient tab ahead of the active one does not shift the recorded index', () => {
         const { host } = placeholderFirstWithBActive();
 
@@ -657,7 +675,7 @@ describe('serializeLayout of a Tab: the active index names the active child', ()
         expect(root.activeIndex).toBe(0);
     });
 
-    it('5. a drag-reordered strip records the active child by identity, not by strip position', () => {
+    it('5. a drag-reordered strip captures its children in strip order, with the active child by identity', () => {
         const { host, tab } = tabHost();
         const { a, b, c }   = panels();
 
@@ -668,17 +686,14 @@ describe('serializeLayout of a Tab: the active index names the active child', ()
 
         // Drag C to the front, the way Tab.doubleClick's reorder case drives
         // it: the strip becomes C A B while the container keeps A B C.
-        const cId = (tab as any)._bar.getEntryIds()[2];
-
-        (tab as any)._bar.moveBarEntry(cId, 0);
-        (tab as any)._onBarReordered(cId, 0);
+        reorder(tab, 2, 0);
         tab.setActiveContent(a);
 
         const root = tabRoot(host);
 
-        // Only the pairing is pinned: the order `children` is captured in is a
-        // separate, open defect.
         expect(activePanelId(root)).toBe('a');
+        expect(root.children.map(child => (child as { panelId: string }).panelId)).toEqual(['c', 'a', 'b']);
+        expect(root.activeIndex).toBe(1);
     });
 
     it('6. a host whose children were never laid out records the first tab', () => {
@@ -693,12 +708,88 @@ describe('serializeLayout of a Tab: the active index names the active child', ()
         expect(root.children.length).toBe(2);
         expect(root.activeIndex).toBe(0);
     });
+
+    it('7. an unreordered strip still captures the container order (control)', () => {
+        const { host, tab } = tabHost();
+        const { a, b, c }   = panels();
+
+        host.addComponent(a);
+        host.addComponent(b);
+        host.addComponent(c);
+        host.doLayout();
+        tab.setActiveContent(a);
+
+        const root = tabRoot(host);
+
+        expect(root.children.map(child => (child as { panelId: string }).panelId)).toEqual(['a', 'b', 'c']);
+        expect(root.activeIndex).toBe(0);
+    });
+
+    it('8. a strip reordered to put the active tab last captures that order', () => {
+        const { host, tab } = tabHost();
+        const { a, b, c }   = panels();
+
+        host.addComponent(a);
+        host.addComponent(b);
+        host.addComponent(c);
+        host.doLayout();
+
+        // A B C -> B C A.
+        reorder(tab, 0, 2);
+        tab.setActiveContent(c);
+
+        const root = tabRoot(host);
+
+        expect(root.children.map(child => (child as { panelId: string }).panelId)).toEqual(['b', 'c', 'a']);
+        expect(root.activeIndex).toBe(1);
+    });
+
+    it('9. a transient tab in the reordered strip is dropped from the capture, not counted in its rank', () => {
+        const { host, tab } = tabHost();
+        const { a, b, c }   = panels();
+
+        host.addComponent(new Component({}), transient());
+        host.addComponent(a);
+        host.addComponent(b);
+        host.addComponent(c);
+        host.doLayout();
+
+        // P A B C -> C P A B.
+        reorder(tab, 3, 0);
+        tab.setActiveContent(b);
+
+        const root = tabRoot(host);
+
+        expect(root.children.map(child => (child as { panelId: string }).panelId)).toEqual(['c', 'a', 'b']);
+        expect(root.activeIndex).toBe(2);
+    });
+
+    it('10. a child with no strip cell yet is captured after every tabbed child', () => {
+        const { host, tab } = tabHost();
+        const { a, b, c }   = panels();
+        const d = new Component({}); d.setId('d');
+
+        host.addComponent(a);
+        host.addComponent(b);
+        host.addComponent(c);
+        host.doLayout();
+
+        // A B C -> C A B.
+        reorder(tab, 2, 0);
+        tab.setActiveContent(a);
+        host.addComponent(d);
+
+        const root = tabRoot(host);
+
+        expect(root.children.map(child => (child as { panelId: string }).panelId)).toEqual(['c', 'a', 'b', 'd']);
+        expect(root.activeIndex).toBe(1);
+    });
 });
 
 // A factory that no longer supplies a saved panel makes the restore skip it.
 // The saved active index counts every saved child, so each child skipped ahead
 // of the active one moves it one slot left in the strip that is built.
-describe('restoreLayout of a Tab node with a skipped leaf', () => {
+describe('restoreLayout of a Tab node: the saved order and the active index', () => {
     afterEach(() => {
         vi.restoreAllMocks();
         DOM.reset();
@@ -712,13 +803,14 @@ describe('restoreLayout of a Tab node with a skipped leaf', () => {
      * @param saved - The saved children's panel ids, in order.
      * @param activeIndex - The saved active index.
      * @param kept - The ids the factory still supplies.
-     * @returns The restored Tab's active content, and the components by id.
+     * @returns The restored Tab's active content, the components by id, and
+     *   the Tab manager itself, for reading the restored strip back.
      */
     function restoreSkipping(
         saved: string[],
         activeIndex: number,
         kept: string[],
-    ): { active: Component | null; byId: Record<string, Component> } {
+    ): { active: Component | null; byId: Record<string, Component>; tab: Tab } {
         installTestDOM(CONFIG);
 
         const host = new Container({ layoutManager: new Tab() });
@@ -748,7 +840,9 @@ describe('restoreLayout of a Tab node with a skipped leaf', () => {
 
         restoreLayout(host, state, instanceFactory(byId));
 
-        return { active: (host.getLayoutManager() as Tab).getActiveContent(), byId };
+        const tab = host.getLayoutManager() as Tab;
+
+        return { active: tab.getActiveContent(), byId, tab };
     }
 
     it('1. a skipped tab ahead of the active one keeps the saved tab active', () => {
@@ -785,5 +879,142 @@ describe('restoreLayout of a Tab node with a skipped leaf', () => {
         const { active } = restoreSkipping(['a', 'b', 'c'], 1, []);
 
         expect(active).toBe(null);
+    });
+
+    it('7. a saved order restores as the strip, in that order', () => {
+        const { active, byId, tab } = restoreSkipping(['c', 'a', 'b'], 1, ['c', 'a', 'b']);
+
+        expect(tab.indexOfContent(byId.c)).toBe(0);
+        expect(tab.indexOfContent(byId.a)).toBe(1);
+        expect(tab.indexOfContent(byId.b)).toBe(2);
+        expect(active).toBe(byId.a);
+    });
+
+    it('8. a tab skipped ahead of the active one moves it one slot left in the restored strip', () => {
+        const { active, byId, tab } = restoreSkipping(['c', 'a', 'b'], 2, ['a', 'b']);
+
+        expect(tab.indexOfContent(byId.a)).toBe(0);
+        expect(tab.indexOfContent(byId.b)).toBe(1);
+        expect(active).toBe(byId.b);
+    });
+
+    it('9. a skipped active tab hands the selection to the tab that slid into its slot', () => {
+        const { active, byId, tab } = restoreSkipping(['c', 'a', 'b'], 1, ['c', 'b']);
+
+        expect(tab.indexOfContent(byId.c)).toBe(0);
+        expect(tab.indexOfContent(byId.b)).toBe(1);
+        expect(active).toBe(byId.b);
+    });
+
+    it('10. every child but the saved order\'s first is skipped, and the first stays active', () => {
+        const { active, byId, tab } = restoreSkipping(['c', 'a', 'b'], 0, ['c']);
+
+        expect(tab.indexOfContent(byId.c)).toBe(0);
+        expect(active).toBe(byId.c);
+    });
+});
+
+describe('a reordered Tab strip survives save and restore', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        DOM.reset();
+    });
+
+    /**
+     * Builds A B C, drags C to the front (strip C A B), activates A, and
+     * captures the state — the save half of every row below.
+     *
+     * @returns The host, its panels, and the captured state.
+     */
+    function reorderedCapture(): { host: Container; a: Component; b: Component; c: Component; state: LayoutState } {
+        const { host, tab } = tabHost();
+        const { a, b, c }   = panels();
+
+        host.addComponent(a);
+        host.addComponent(b);
+        host.addComponent(c);
+        host.doLayout();
+        reorder(tab, 2, 0);
+        tab.setActiveContent(a);
+
+        return { host, a, b, c, state: serializeLayout(host) };
+    }
+
+    it('1. restoring a reordered capture reproduces the strip and the active tab', () => {
+        const { host, a, b, c, state } = reorderedCapture();
+
+        restoreLayout(host, state, instanceFactory({ a, b, c }));
+
+        const tab = host.getLayoutManager() as Tab;
+
+        expect(tab.indexOfContent(c)).toBe(0);
+        expect(tab.indexOfContent(a)).toBe(1);
+        expect(tab.indexOfContent(b)).toBe(2);
+        expect(tab.getActiveContent()).toBe(a);
+    });
+
+    it('2. capturing a restored order again yields the same node', () => {
+        const { host, a, b, c, state } = reorderedCapture();
+
+        restoreLayout(host, state, instanceFactory({ a, b, c }));
+
+        expect(serializeLayout(host)).toEqual(state);
+
+        const root = state.root as TabNode;
+
+        expect(root.children.map(child => (child as { panelId: string }).panelId)).toEqual(['c', 'a', 'b']);
+        expect(root.activeIndex).toBe(1);
+    });
+
+    it('3. a tab added after the save is parked, not placed, when its factory still knows it', () => {
+        const { host, a, b, c, state } = reorderedCapture();
+        const d = new Component({}); d.setId('d');
+
+        host.addComponent(d);
+
+        const disposeSpy = vi.spyOn(d, 'dispose');
+
+        restoreLayout(host, state, instanceFactory({ a, b, c, d }));
+
+        const tab = host.getLayoutManager() as Tab;
+
+        expect(tab.indexOfContent(c)).toBe(0);
+        expect(tab.indexOfContent(a)).toBe(1);
+        expect(tab.indexOfContent(b)).toBe(2);
+        expect(d.getParentComponent()).toBeNull();
+        expect(disposeSpy).not.toHaveBeenCalled();
+    });
+
+    it('4. a tab added after the save is disposed with the rest of the scaffold when its factory no longer knows it', () => {
+        const { host, a, b, c, state } = reorderedCapture();
+        const d = new Component({}); d.setId('d');
+
+        host.addComponent(d);
+
+        const disposeSpy = vi.spyOn(d, 'dispose');
+
+        restoreLayout(host, state, instanceFactory({ a, b, c }));
+
+        const tab = host.getLayoutManager() as Tab;
+
+        expect(tab.indexOfContent(c)).toBe(0);
+        expect(tab.indexOfContent(a)).toBe(1);
+        expect(tab.indexOfContent(b)).toBe(2);
+        expect(disposeSpy).toHaveBeenCalled();
+    });
+
+    it('5. a tab removed before the restore is skipped and the selection lands on its neighbour', () => {
+        const { host, b, c, state } = reorderedCapture();
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        restoreLayout(host, state, instanceFactory({ b, c }));
+
+        const tab = host.getLayoutManager() as Tab;
+
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('"a"'));
+        expect(tab.indexOfContent(c)).toBe(0);
+        expect(tab.indexOfContent(b)).toBe(1);
+        expect(tab.getActiveContent()).toBe(b);
     });
 });

@@ -1541,6 +1541,19 @@ page resets to empty.
   collapsed flags. When the active panel is itself skipped, the tab that slid
   into its slot becomes active.
 
+- **A drag-reordered `Tab` strip now survives save and restore.**
+  `TabNode.children` was written in the container's child order, but a drag
+  reorder moves only the tab strip and the `Tab` manager's own entries and
+  leaves the container's children exactly where they were — so a restore put
+  every dragged tab back in the order it was added, contradicting both
+  `TabNode`'s own declaration and the
+  [Layout serialization](/layouts/LayoutSerialization) page, which both
+  promise tab order. The capture now reads the strip instead of the
+  container. `activeIndex` still names the same panel; only its number
+  changes when a reorder moved that panel. A tab whose strip cell does not
+  exist yet — added since the last layout pass — is captured after every tab
+  that has one. A state saved before this change restores exactly as it did.
+
 ### Overlay
 
 - **A modal [`Dialog`](/components/Dialog)'s Tab trap no longer takes `Tab`
