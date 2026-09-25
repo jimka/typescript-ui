@@ -706,3 +706,30 @@ tabs, and the layout-pass catch-up the debug pass proposed, added to
   layout-pass catch-up were discarded with the worktree; both are about
   twenty-five lines and the record above is enough to rebuild them, should a
   later candidate of the same defer-while-hidden shape want the surface.
+
+## G22 decided: the deferral ships as an outline mode (2026-09-25)
+
+The answer to the previous section's question: the table's column-resize drag
+gains the same choice the gutters already have. Under `"outline"` it shows a
+resize bar and lays the body out once, when the button is released — the
+deferral G22 measured, now a mode's stated behaviour rather than a surprise.
+Under `"live"` the body tracks the header every frame, and **`"live"` stays the
+default**, so nothing changes for an app that sets nothing.
+
+- **The contract already exists, so a plan extends it rather than inventing a
+  flag.** `ResizeMode` is `"live" | "outline"` (`core/ResizeDrag.ts:25`), the
+  app-wide default is `"live"` through `Body.setResizeMode` (`Body.ts:237`,
+  `ResizeDrag.ts:102`), and an owner overrides it with its own
+  `setResizeMode(mode | null)` — `Split` (`Split.ts:817`), `Accordion` and the
+  window edges are the three owners today, and `gutterOutline` already draws
+  the bar. The column drag becomes the fourth. That is the same move the
+  previous section noted for `VirtualRowView.deferRowLayoutWhileResizing`:
+  extend a shipped pattern rather than run a parallel one beside it.
+
+- **The measured figures become the opt-in path's payoff, not the default's.**
+  103.02 → 81.58 ms per frame and work −92.4% are what `"outline"` buys on a
+  column drag; `"live"` keeps today's behaviour and today's cost. This also
+  settles the verification question the previous section raised: a cell of the
+  outline mode gates geometry on the settled state, because there the mid-burst
+  units differ from the live arm **by design** rather than by accident.
+
