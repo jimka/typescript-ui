@@ -57,6 +57,7 @@ cb.setSelected(true); // "change" and "binding" only
 - Themed through the shared `--ts-ui-form-*` family plus checkbox-specific tokens (`--ts-ui-checkbox-bg`, `--ts-ui-checkbox-bg-selected`, `--ts-ui-checkbox-check-color`, `--ts-ui-checkbox-size`, `--ts-ui-checkbox-radius`).
 - Keyboard: Space toggles the checked state.
 - Honours [`Animation.isReducedMotion`](/api/core/namespaces/Animation/functions/isReducedMotion) — the check / dash crossfade is suppressed when set.
+- A checkbox whose parent re-commits it at the rectangle it already holds is not re-laid-out (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)) — including when a stretched grid cell asks it for the cell's whole width, since what it actually commits is only the width its own box and label need. `setSelected`, `setValue` and the indeterminate state swap classes and opacities on already-placed children rather than moving anything; `setLabel` adds or removes a child, which schedules the checkbox, and the label's own `setText` schedules its parent, which is the checkbox; and the box and check sizes are pinned from the theme at construction, so no later pass resolves them differently. A theme switch still lays every opted-in component out once.
 
 ## See also
 

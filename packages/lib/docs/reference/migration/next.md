@@ -368,6 +368,41 @@ setSamples(samples: number[]): this {
 `scheduleLayout()` on the component works too, and is the right call when the
 component's own children need re-placing rather than its size re-measuring.
 
+### The form controls opt in too
+
+**What changed and why.** The same skip now covers the classes a form's fields
+are built from:
+[`Text`](/api/component/input/classes/Text) itself and
+[`TextField`](/api/component/input/classes/TextField) itself — by prototype
+identity, as with `Panel`, so every library subclass of either is unaffected —
+plus [`ComboBox`](/api/component/input/classes/ComboBox),
+[`DateField`](/api/component/input/classes/DateField),
+[`TimeField`](/api/component/input/classes/TimeField),
+[`NumberSpinner`](/api/component/input/classes/NumberSpinner),
+[`Checkbox`](/api/component/input/classes/Checkbox),
+[`Toggle`](/api/component/input/classes/Toggle),
+[`Slider`](/api/component/input/classes/Slider) and
+[`FieldDecorator`](/api/validation/classes/FieldDecorator).
+
+This reaches further than the container opt-ins did, because the skip is
+decided one child at a time: a field grid that must lay out — which, in a form,
+it usually must — still withholds every opted-in field it hands an unchanged
+rectangle. Two library changes come with it. `LayoutManager.commitBounds` now
+reads "the rectangle changed" from the child's committed box before versus
+after the write rather than from the request, so a control whose own size
+ceiling clamps a stretched cell no longer reports a move on every pass; and
+`Slider.doLayout` now opens with `super.doLayout()`, which is what records that
+a pass ran. A consumer subclass of `Slider` that overrides `doLayout` must keep
+that call.
+
+**Who needs to act.** The same case as above, one level down: code that changes
+a *field's* intrinsic size from outside the library — writing to the inner
+`<input>` directly, swapping a glyph by hand, drawing into a control's own
+element — without calling `setPreferredSize` or `notifyIntrinsicSizeChanged`,
+and relying on an unrelated later pass to pick it up. That pass no longer
+reaches a field whose rectangle holds still; announce the change, or call
+`scheduleLayout()` on the field.
+
 ## `Event.init` is removed
 
 **What changed and why.** `Event.init()` initialised nothing — the event

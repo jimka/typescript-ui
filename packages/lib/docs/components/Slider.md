@@ -53,6 +53,7 @@ panel.addComponent(volume);
 - Drag is handled via `pointerdown` + `setPointerCapture`, so the cursor can leave the track mid-drag without losing the input stream.
 - Themed through the shared `--ts-ui-form-*` family plus per-control slider tokens (`--ts-ui-slider-track-bg`, `--ts-ui-slider-track-active-bg`, `--ts-ui-slider-thumb-bg`, `--ts-ui-slider-thumb-size`, `--ts-ui-slider-track-thickness`).
 - `on("change", fn)` covers the user's steps and your own `setValue` calls alike, while `on("action", fn)` carries the user's per-step drag and key stream alone.
+- A slider whose parent re-commits it at the rectangle it already holds is not re-laid-out (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)). `setValue`, `setMin`, `setMax` and `setOrientation` each schedule the slider's own pass, which is what re-places the track, the active fill and the thumb; `setStep` writes an option the placement never reads. `doLayout` now calls the base pass before its own placement, so a slider records the pass it ran; a subclass that overrides `doLayout` must keep that `super.doLayout()` call or the slider is never skipped and its first-layout callbacks are never drained.
 
 ## See also
 

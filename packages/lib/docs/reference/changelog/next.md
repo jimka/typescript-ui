@@ -340,6 +340,38 @@ page resets to empty.
   producing a fresh, unstyled glyph must reset that style itself; nothing else
   needs to change.
 
+- **The form controls are no longer re-laid-out when their parent re-commits
+  them at the rectangle they already hold.** `Text` itself and `TextField`
+  itself — not their subclasses — `ComboBox`, `DateField`, `TimeField`,
+  `NumberSpinner`, `Checkbox`, `Toggle` and `Slider` join the containers in the
+  unchanged-commit layout skip, so a settled form's fields cost nothing on a
+  pass that moves none of them, even when the field grid above them must lay
+  out. Each class's own writers still reach it: `setText` and the font setters
+  schedule the text's parent, `Slider`'s `setValue` and range setters schedule
+  its own pass, a `ComboBox`'s `setValue` / `setItems` / `setStore` mark the
+  collapsed label's pass owed so the next pass that reaches the field places it,
+  and a theme or web-font swap lays every opted-in component out once. Every `Text` and `TextField` subclass keeps the default — `Label`,
+  `Link`, `SelectableText`, `Legend`, `PasswordField`, `UsernameField` and the
+  rest — and so do the controls no opted-in class covers: `TextArea`,
+  `RadioButton`, `DateTimeField`, `FileField` and `AutoCompleteField`. Each is
+  audited on its own. One path still announces nothing: a custom child's
+  intrinsic size changed without `setPreferredSize` /
+  `notifyIntrinsicSizeChanged` must be followed with `scheduleLayout()` on the
+  component.
+
+- **`Slider.doLayout()` now calls `super.doLayout()` before placing its track,
+  active fill and thumb.** The base pass is the only place a component records
+  that a pass ran, so without it every slider stayed permanently owed one:
+  `isLayoutDirty()` read `true` for the whole life of the page and no ancestor
+  could ever withhold the slider's pass. A side effect is that an
+  `onFirstLayout` callback registered on a slider *before* its element is
+  connected now fires: those wait on the drain at the end of the base pass,
+  which a slider never reached. One registered on an already-connected slider
+  always fired, through the shared after-layout queue. The geometry is unchanged — the base pass places the two
+  registered children at their own boxes and the hand placement below then
+  overrides them. A consumer subclass that overrides `doLayout` must keep the
+  `super.doLayout()` call.
+
 - **`LabeledGrid`, `Header` (and so `WindowHeader`) and `StatusBar` are no
   longer re-laid-out when their parent re-commits them at the rectangle they
   already hold.** Each joins `MenuBar` and `ToolBar` in the unchanged-commit
@@ -375,6 +407,20 @@ page resets to empty.
 
 ### Layouts
 
+- **`LayoutManager.commitBounds` reads "the rectangle changed" from the child's
+  committed box, not from the request.** It compares the child's committed
+  rectangle before the write with its committed rectangle after it — the rule
+  `Component.setBounds` and `applyBounds` already shared — where it previously
+  compared the request with the box the child held. A child whose own size
+  ceiling bounds what it is handed therefore stops reporting a change on every
+  pass for ever: a `Checkbox` stretched across a grid cell is asked for the
+  cell's whole width and commits only the width its own children need, which
+  the old rule read as a move. A box resized out of band since its last commit still lays out,
+  because the write moves it back, and the translate fast path still decides
+  from the request, so how a clamped child moves is unchanged. Only a class
+  that opted into the unchanged-commit skip can observe the difference; every
+  other class is laid out on every commit either way.
+
 - **A layout manager's configuration setters now mark their container's
   layout pass as owed.** `BoxLayout`'s `setComponentSpacing`, `setItemAlign`,
   `setMode`, `setOverflowSizing` and `setJustify`, `FlowLayout`'s six
@@ -396,6 +442,15 @@ page resets to empty.
   usually the collapsing pane or region itself, is laid out once for the end
   state. A custom pane that relied on a `doLayout` call per animation frame to
   pick up a change it never announced must call `scheduleLayout()` itself.
+
+### Validation
+
+- **A `FieldDecorator` is no longer re-laid-out when its parent re-commits it
+  at the rectangle it already holds.** A decorator is a `Fit` over one field
+  with cleared insets, and `showError` / `clearError` write a CSS `outline` and
+  attach or detach a tooltip — an outline renders outside the box model and a
+  tooltip is an overlay, so neither takes layout space. The decorated field's
+  own re-measure still relays upward and lays the decorator out.
 
 ### Overlay
 
