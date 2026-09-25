@@ -459,3 +459,52 @@ needed.
   bodies missing the base call: `Component`'s own and this one. Nothing is
   wrong today, because `Row` is not opted in; the cost is that it cannot be
   until this is fixed.
+
+## First measurements of G16, G25 and G27 (2026-09-25)
+
+The three candidates W3.0 sent away for want of a surface now have numbers. All
+readings are from the ten-branch batch's tip (the new panels ship on it), one
+session per cell, the sweep's scored-cell shape, `work=1&seam=1&geom=1`, runs
+`w31s1-*`, `w31b-*` and `w31c-*`. Geometry is `=` on every run of every cell.
+
+- **G16 `panel-settled` is a work win, and only measurable because the panes are
+  subclassed.** `seam.source.getScrollMetrics` falls from 48.00 to 0.32 per unit
+  on the settled `passes` phase — **−99.3%**, engaged, geometry identical. The
+  ms
+  delta (−0.60) sits inside a 1.40 bracket that `plain-a`'s 4.47 warm-up outlier
+  opened, so the time verdict is flat and the work verdict is decisive. Worth
+  remembering why the cell reads at all: with plain `Panel` panes it emitted no
+  counter whatsoever and scored `unreached`, because stage 1's opt-in already
+  withholds the whole pass from an exactly-`Panel` pane. **G16's remaining cost
+  therefore exists only for panels that are not opted in** — which in practice
+  means subclasses, i.e. most application panes. `g16.scroll-reads` never
+  engaged on this surface and is still unmeasured.
+
+- **G25 is unsound as ablated, and the new panel caught it on its first run.**
+  `g25.theme-withhold` shows a large win — **−25.84 ms per unit, −19%**, engaged
+  — and the cell is nonetheless **void**, because `editor-tabs`' own
+  shown-tab check fires. Over the 14-unit phase at `n = 8`: 14 shown, 98
+  withheld,
+  7 checks; the plain arm matches 7 of 7, the ablated arm matches **1 and
+  mismatches 6**, deterministically in both runs. So bringing a hidden tab back
+  after a theme switch shows a stale-themed editor six times in seven — the
+  common path, not a corner. The one match is the tab that was visible when the
+  switch went out. This is *not* the instrumentation artifact the plan's
+  `[^counter-order]` predicts: that loses a count, it does not turn a match into
+  a mismatch. A G25 plan has to carry a catch-up on show, and the 19% is what it
+  may not simply bank.
+
+- **G27 inverts with document length; it is not a loss outright.** On the `call`
+  ladder — a triangle of absolute offsets, the worst case for a cache, since
+  every
+  tick jumps — `g27.heading-cache` reads, by section count: `n = 60` **+3.76
+  ms**
+  (bracket 2.39, regress); `n = 90` −2.18 (3.10, flat); `n = 120` −2.45 (3.02,
+  flat); `n = 200` **−1.27** (0.24, win). Sixty is the only size where the
+  sign is
+  positive, and the crossover lies between 60 and 90: below it the cache's
+  bookkeeping exceeds the scan it replaces, above it saves one to two and a half
+  milliseconds a tick. The `wheel` phase is flat at every size. So a G27 plan
+  chooses between gating on heading count and accepting a cost on short
+  documents — and the 90 and 120 cells want a quieter session before their sign
+  is relied on.
