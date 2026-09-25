@@ -465,7 +465,8 @@ needed.
 The three candidates W3.0 sent away for want of a surface now have numbers. All
 readings are from the ten-branch batch's tip (the new panels ship on it), one
 session per cell, the sweep's scored-cell shape, `work=1&seam=1&geom=1`, runs
-`w31s1-*`, `w31b-*` and `w31c-*`. Geometry is `=` on every run of every cell.
+`w31s1-*`, `w31b-*`, `w31c-*` and `w31d-*`. Geometry is `=` on every run of
+every cell.
 
 - **G16 `panel-settled` is a work win, and only measurable because the panes are
   subclassed.** `seam.source.getScrollMetrics` falls from 48.00 to 0.32 per unit
@@ -505,6 +506,49 @@ session per cell, the sweep's scored-cell shape, `work=1&seam=1&geom=1`, runs
   positive, and the crossover lies between 60 and 90: below it the cache's
   bookkeeping exceeds the scan it replaces, above it saves one to two and a half
   milliseconds a tick. The `wheel` phase is flat at every size. So a G27 plan
-  chooses between gating on heading count and accepting a cost on short
-  documents — and the 90 and 120 cells want a quieter session before their sign
-  is relied on.
+  looked to be choosing between gating on heading count and accepting a cost on
+  short documents, until the bullets below found what sits underneath that
+  choice — and the 90 and 120 cells want a quieter session before their sign is
+  relied on.
+
+- **G27's residual cost is a cache-miss rate, not a document length.** The arm's
+  own counters put the rebuild rate at a fifth to a third of the ticks it serves
+  on the `call` ladder: `trackHit` 0.75 against `rebuildMiss` 0.21 per unit at
+  `n = 60`, and 0.65 against 0.31 at `n = 200`, identically in both reps. Every
+  miss re-measures every heading, and the arithmetic closes: 0.21 × 60 and
+  0.31 × 200 are 12.6 and 62, against a measured `querySelector` of 14.42 and
+  68.23 per unit, the small remainder being the `_pendingClickScrollTop`
+  passthrough a programmatic scroll takes by design. So the arm's entire
+  remaining scan is its own misses. `g27HeadingCache` (`ablations.ts:2309`) keys
+  invalidation on `_headings` identity, `scrollHeight` and `clientWidth`, and
+  `scrollHeight` grows while a lazily-rendered document scrolls, which throws
+  the cache away on the very ticks it exists to serve. Section count is a proxy
+  for that rate, not its cause.
+
+- **The `wheel` phase already shows a perfect cache buying nothing.** There
+  `trackHit` is 0.99 with no misses at all and `querySelector` falls from 24.79
+  to 0.03 per unit at `n = 200` — the scan eliminated, −99.9% — while the time
+  goes 60.70 to 61.32, flat, and 62.37 to 61.77 at `n = 60`. Since `call` units
+  average 70 to 92 ms, every G27 ms reading is 1.5% to 5% of a unit. The signs
+  are still real: both arm reps sit outside the plain spread on `call` (75.4
+  against 70.7–73.1 at `n = 60`, 90.9 against 92.0–92.3 at `n = 200`). But the
+  phase where the mechanism demonstrably works is the phase where the clock
+  does not notice, which points at the rebuild burst — N heading measurements in
+  one tick — as the thing being timed, not the steady-state scan.
+
+- **G27 is closed: at `n = 1000` the scan is still free.** Five runs at five
+  times the largest size measured before, same cell shape, runs `w31d-*`. On
+  `wheel` the cache reaches a 0.97 hit rate and strips `querySelector` from
+  91.07 to 26.83 and `getElementRect` from 108.03 to 42.81 per unit — about 129
+  source reads a tick removed — for Δ −0.67 ms against a 1.57 bracket. On
+  `call` it removes about 367 reads a tick, 501.44 to 318.19 and 603.88 to
+  419.98, for Δ −1.22 against a 3.82 bracket. Both flat, both reps agreeing,
+  and `heading.agree` identical at 0.960 and 0.990, so the cache's answers are
+  right: the candidate is sound and worthless. Read as upper bounds, those two
+  deltas put a source read at three to five microseconds on WebKitGTK, so a
+  pane would need some thousands of headings above the fold before the scan
+  cost a frame. The `n = 60` regression does not scale either — by `n = 1000`
+  the rebuild burst is repaid. **No G27 plan, no length gate, no tightened
+  invalidation key.** `findActiveHeading` is a pure read batch, one layout
+  flush and N cheap rects, and the seam counter's three-figure tallies were
+  counting something that does not cost.
