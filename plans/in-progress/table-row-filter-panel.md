@@ -615,6 +615,28 @@ moves.
 
 ---
 
+## Implementation Notes
+
+**Step 12's target text no longer exists on `master`.** The two sentences it
+names — the unfiltered branch "hands back the store's own array, allocating
+nothing" at `:953-954`, and "22 calls a unit, 220,000 predicate calls and 22
+array allocations per unit" at `:961-962` — were already corrected in
+`master` `f3b3b994` ("Correct G21's memo entry: getRecords slices, so the
+memo removes real work"), committed before this branch's implementation
+began. That commit's own message attributes the correction to "the
+`table-row-filter-panel` planner," i.e. this plan's own `[^slice]` footnote
+and `## Overview`, landed directly by the user rather than through this
+plan's step 12. Its replacement text restructures three bullets rather than
+editing two sentences in place, but covers the same ground this plan's
+`## Documentation Impact` prescribed — the allocation correction and the
+per-unit call-count correction — and adds no claim this plan disputes. No
+edit was made to `00-post-campaign-agenda.md` on this branch: doing so over
+already-corrected text would either be a no-op diff or fight the user's own
+wording for no benefit. `touches-shared` still lists the file for any
+sibling branch that plans around the pre-correction text.
+
+---
+
 ## Notes
 
 [^slice]: The agenda's stated reason for closing the memo — that the unfiltered
