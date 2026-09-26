@@ -1021,6 +1021,11 @@ page resets to empty.
   been reconciled, so ordinary tree building costs nothing. No consumer action
   is needed.
 
+- **The offline test harness's modelled DOM now evicts a released handle and
+  un-indexes a detached element's id, matching the production seam.** This is
+  a test-infrastructure fix: it changes no shipped behaviour, only what the
+  offline suite can observe.
+
 ### Components
 
 - **`Tree.setRowOverflow()` takes effect at once, and a Ctrl-click (Cmd-click)
