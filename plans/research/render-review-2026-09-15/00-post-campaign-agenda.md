@@ -1042,10 +1042,11 @@ is now drafted as eight plans, listed here so the index carries them.
 | `test-dom-handle-eviction` | the modelled DOM honours the production contract |
 | `glyph-sprite-reset-hook` | a sink-identity reset for the sprite handles |
 | `rail-handover-follow-ups` | three of six rail observations, plus a seventh |
+| `split-noop-drag-frame-gate` | F06.3's gate, on the opt-in predicate (added later) |
 
 - **A second systematic caveat on every figure in this file: an ablation bounds
-  a mechanism adjacent to the one that ships.** Three of the eight plans found
-  the arm that produced their measurement could not ship as written. G21's memo
+  a mechanism adjacent to the one that ships.** Four of the nine plans found the
+  arm that produced their measurement could not ship as written. G21's memo
   caches the **post-filter** result, which the library cannot, because an
   in-cell edit changes a record's contents without rebuilding the view and both
   `Table.setRowVisible`'s contract and `renderWindowPass`'s post-commit re-read
@@ -1255,3 +1256,34 @@ digit budget.
   reduction on `Split.onDrag`'s no-op drag frames, clock not a regression,
   which under the standing rule turns on what the gate costs in code. The other
   four measured candidates all have plans.
+
+## F06.3 planned, and its ablation was unsound too (2026-09-26)
+
+`plans/split-noop-drag-frame-gate.md` closes the last measured candidate without
+a plan. It ships on the work criterion with the clock recorded as flat: three
+sampled reads, two comparisons, and one private `Split.layoutDraggedPane` helper
+that asks `Component.canSkipUnchangedCommit()` before withholding a pane's pass
+— the same predicate `Split.commitPanes` → `LayoutManager.commitBounds` already
+applies to those panes. Verified by a `wt`/`main` library A/B on
+`panel=shell-deep&drive=park`, compared against the control arm rather than
+plain, since a runtime patch costs about 4 ms there.
+
+- **The ablated gate would have shipped a visible artefact.** `split.noop-drag`
+  skips an unmoved pane's layout **unconditionally**. But `commitBounds`'
+  size-stable-move fast path calls `markPassOwedAbove`, so a pane can be left
+  owing a fold-back pass — and skipping unconditionally means that pass never
+  runs, stranding a descendant's `will-change: transform` promotion and a live
+  translate **for the whole duration of the park**. Gating the skip on the
+  opt-in predicate fixes it, and it makes the measured −85.5% an upper bound
+  that holds only where the panes' class has opted in. It does on the measured
+  cell, whose two panes are plain `Panel`s, so the figure stands there and
+  should not be generalised to a subclassed pane.
+
+- **That is four of nine, and the pattern is now the campaign's most reliable
+  finding about itself.** A memo caching a post-filter result the library must
+  recompute; a guard missing a one-time sweep; an unsound content-extent
+  signature; and now an ungated skip that strands a compositor promotion. In
+  every case the plan's mechanism differs from the arm that measured it, and in
+  every case the difference was found by reading the library rather than by any
+  cell. An ablation bounds the opportunity; it does not prototype the fix, and a
+  plan that inherits its mechanism inherits a defect.
