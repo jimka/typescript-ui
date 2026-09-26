@@ -1144,19 +1144,26 @@ designed.
   the standing rule, and the ladder should be treated as spent effort rather
   than a surface to build on.
 
-- **The park cell is broken on a wide display, so F06.3 is still unsettled.**
-  One run returned an error result: `park: the element moved during the
-  measured units (3802,42,10,1998 → 165,42,10,1998); leadPx does not reach the
-  clamp`. The cause is exact: `leadPx` is `SIDEBAR_PREFERRED_PX −
-  SIDEBAR_MIN_PX + PARK_OVERSHOOT_PX` = 280 − 160 + 40 = **160 px**
-  (`builders/shell.ts:56`, `:59`, `:65`, `:316`), computed from sidebar
-  constants, while the element it drags is the **centre's** gutter — which on a
-  3840-wide display sits at x=3802 and needs about 3,640 px to reach its clamp.
-  The arm reps show it: `split.noop-drag` read 7.06 and 13.13 against an 8.75
-  plain mean. Face value puts the control arm's tax (+2.25) above the drag
-  arm's (+1.35), which is consistent with the instrument-tax hypothesis and is
-  not a verdict. The fix is to derive the lead from the live gutter position
-  and its clamp target rather than from constants.
+- **The park cell lost three runs to the mouse on the desk, so F06.3 is still
+  unsettled — though not for the reason first written here.** The 160 px lead is
+  right for this panel: seven of the nine `sdp` runs parked the sidebar at
+  `165,42,10,1998` and held that one rectangle for all 150 units, every one of
+  them at a 5120 × 2075 viewport. What spoiled the other three was a trusted
+  `mousemove` at the physical cursor reaching the driver's live drag.
+  `w6b-warm-sdp-0` and the first `w6b-sdp-split.noop-drag-2` both returned an
+  error result, with lead rectangles out at x 4404 and x 3802; the re-run that
+  replaced the second passed the driver's end-of-phase check yet carries six
+  distinct `sidebar` rectangles, its width sweeping 4520 → 4675 px across units
+  26–30 before unit 31 re-parks it, at a `maxMs` of 88 against plain means of
+  8.56–8.91. `Split.onDrag` resolves the left pane as `originLhs + (position −
+  originPointer)`, so with this panel's origin those widths name a pointer at
+  about x 3,807, x 4,409 and x 4,530–4,685 — and no driver sends one there, the
+  lead-in running from x 290 down to 130. So that rep's 13.13 ms is real drag
+  frames, not an instrument tax, and the +1.35 read from it is not a reading.
+  The repair is two things, both landed by `qa-cell-determinism`: a page-level
+  input guard that drops every trusted device event for the length of a run, and
+  a `park` driver that proves the element has parked *before* the measured units
+  rather than only after them.
 
 - **The sweep priced the date formatters, and they are worth much more than G23
   measured.** Two rungs agreeing to 6.4% on the click cell and 14.0% on the

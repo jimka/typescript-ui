@@ -534,11 +534,14 @@ python3 packages/qa/bin/qa-table.py packages/qa/results w6b-sdp- --work
 python3 packages/qa/bin/qa-ab.py packages/qa/results w6b-sdp- --counter 'work'
 ```
 
-The `park` driver proves its own premise: it throws after restoring if the
-gutter moved during the measured units
-([`packages/qa/src/harness/drivers.ts:875`](packages/qa/src/harness/drivers.ts#L875)),
-and every report's notes carry the rectangle it held. A run that did not park
-fails with exit 1 and cannot be read by mistake.
+The `park` driver proves its own premise twice. Before the measured units its
+lead-in pushes one more step and requires the gutter's rectangle to be
+unchanged, doubling the lead while it still moves
+([`packages/qa/src/harness/drivers.ts:816`](packages/qa/src/harness/drivers.ts#L816));
+after restoring it throws if the gutter moved during the units
+([`:929`](packages/qa/src/harness/drivers.ts#L929)). Every report's notes carry
+the lead it parked at, how many extra pushes that took, and the rectangle it
+held. A run that did not park fails with exit 1 and cannot be read by mistake.
 
 Read case 13's agreement check first. Then define the gate's own time as
 

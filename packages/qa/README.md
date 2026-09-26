@@ -209,13 +209,15 @@ A *phase* is one driver run over a number of *units*: one animation frame for a
 frame driver, one layout pass for `passes`. A `:<units>` count must be a
 positive integer written in digits. The counters reset for every phase.
 
-A run mounts the panel, checks the phases (an unknown driver or a missing
-target fails here, before anything is instrumented), installs the requested
-instruments — write counters, stylesheet, ablations, work counters, seam
-counters, platform counters, in that order — snapshots the page into `before`,
-measures 60 idle frames, drives each phase, measures 30 idle frames, and POSTs
-the report. A failure anywhere, a throw inside the frame loop included, posts an
-error report instead.
+A run first drops the real mouse and keyboard: every trusted pointer, mouse,
+wheel and key event is stopped at `window` before the library sees it, and
+`notes` says what was dropped. It then mounts the panel, checks the phases (an
+unknown driver or a missing target fails here, before anything is instrumented),
+installs the requested instruments — write counters, stylesheet, ablations,
+work counters, seam counters, platform counters, in that order — snapshots the
+page into `before`, measures 60 idle frames, drives each phase, measures 30 idle
+frames, and POSTs the report. A failure anywhere, a throw inside the frame loop
+included, posts an error report instead.
 
 **Work counters.** `work=1` counts calls as `<method>@<receiver class>`:
 `Component`'s `doLayout`, `scheduleLayout`, `getMinSize`, `getMaxSize`,
@@ -425,7 +427,7 @@ which gives every live candidate its cells; there G27's counters are
 | `settle` | any defined value; ignored | nothing, as `idle` — but before the first unit it waits, unmeasured, until every probed rectangle has been unchanged for two frames, so every unit is a settled sample; it fails the run after 120 frames of movement |
 | `call`, `update`, `toggle` | a function `(index) => void` | calls it with the unit's index. Three names for one driver, so a panel can offer a data change and an expand or collapse side by side, and each report phase says which ran |
 | `hover` | `{ element, axis: 'x' \| 'y' }` | moves the pointer `step` px along the element's centre line, bouncing between its edges one pixel inside them, with no button held: `pointermove` and `mousemove` to the element under the pointer, preceded by `pointerout`/`mouseout` and `pointerover`/`mouseover` when that element changed. The element's and its descendants' rectangles are read once, before the first unit, so every arm of a comparison gets the same events; a descendant the engine's hit test passes through, one whose computed `pointer-events` is `none` or whose `visibility` is `hidden`, is left out, as it is from a real pointer's |
-| `park` | `{ element, axis, direction: 1 \| -1, leadPx }` | a `mousemove` on `document` to `leadPx` + `step` × k past the start in `direction`, k rising to half the units and falling back to 0, so the pointer never comes back closer than `leadPx`. Before the units, a press and a 10-frame drag of `leadPx`, past the pane's clamp; after them, a release and a drag back to the start. Needs at least 2 units |
+| `park` | `{ element, axis, direction: 1 \| -1, leadPx }` | a `mousemove` on `document` to the parked lead + `step` × k past the start in `direction`, k rising to half the units and falling back to 0, so the pointer never comes back closer than that lead. Before the units, a press, a 10-frame drag of `leadPx`, and a proof that the element has parked: one more `step` must leave its rectangle alone, or the lead doubles and the proof is taken again, up to twelve times — all before any unit runs, so a lead that reaches no clamp costs no samples. After them, a release and a drag back to the start. The note carries the lead it parked at, how many extra pushes that took, and the rectangle it held. Needs at least 2 units |
 | `click` | `{ elements: [element, …] }` | a press and release at the centre of the next element in turn: `pointerdown`, `mousedown`, `pointerup`, `mouseup`, `click` |
 | `key` | `{ element, keys: [key, …] }` | a `keydown` and a `keyup` with the next key in turn; the element is focused, and the page left to settle, first |
 | `type` | `{ element, text }` | inserts the next character of `text` with `document.execCommand('insertText')`, which makes the engine fire its own trusted `beforeinput` and `input` events, as a keystroke does; a synthetic `KeyboardEvent` would insert nothing. The element is focused with the caret at its end first, and what was typed is deleted after |
@@ -813,6 +815,13 @@ price, once per call the cell doses.
   so drift shows
   ([00-baseline.md](../../plans/research/render-review-2026-09-15/00-baseline.md#L186),
   [97-wave2-measurement.md](../../plans/research/render-review-2026-09-15/97-wave2-measurement.md#L3)).
+- **Device input is dropped, not tolerated.** A run stops every trusted pointer,
+  mouse, wheel and key event at `window` before the library sees it, and its
+  `notes` name what was dropped. On 2026-09-26 a moved mouse cost two of nine
+  `sdp` runs and polluted a third: the gutter followed the physical cursor while
+  the driver's drag was live, so a run now drops what it did not dispatch. A
+  running panel therefore cannot be poked at by hand — drop `qa=` and use the
+  preview page for that.
 - **Work counts must match across hosts at the same viewport; frame times
   and geometry are compared only within one host** (the `host` column). Seam,
   work and native mutation counts come from the library and the engine's DOM,
