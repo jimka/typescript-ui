@@ -470,6 +470,7 @@ The W3.0 bounding sweep's arms, one per wave-3 candidate group (see
 | Ablation | Candidate | What it removes |
 |---|---|---|
 | `split.noop-drag` | G12 F06.3 | A `Split` drag frame lays out neither pane the frame left at its rectangle; the stored sizes are still written. |
+| `split.noop-control` | G12 F06.3 (control) | Nothing: the control for `split.noop-drag`. Built from the same code, so it pays the same per-frame bookkeeping over the same pane pair — the own-method install and restore, the rectangle snapshot and the compare — and skips no layout, counting each one it would have skipped as `dose.split.noop-control.wouldSkip`. `mean(split.noop-drag) − mean(split.noop-control)` is then the gate's own time, with the roughly 3.4 ms a park cell charges any runtime patch on this path cancelled. |
 | `split.recalc-gate` | G12 F06.4 | `Split.recalculateSizes` is skipped when every input it reads — the space, the panes, their stored sizes, bounds and weights — equals the previous call's and that call changed no stored size. |
 | `g12.collapse-static` | G12 F06.9 | During a pane collapse, a pane's layout is skipped at the rectangle its last layout ran at; the first, the end layout, always runs. |
 | `g05.lazy-reads` | G05 | `LayoutManager.resolveBounds` serves a both-axes fill without reading the child's four sizes. |
