@@ -1840,3 +1840,8 @@ page resets to empty.
   taller than the strips beside it until restored. A `setRail` that cancels a
   running collapse also fires the `"minimize"` that collapse had deferred, so
   the event is never lost and never doubled. No consumer action is needed.
+
+- **`Dialog.hide` no longer animates the backdrop it has already destroyed.**
+  Under `prefers-reduced-motion: reduce` the panel animation completes
+  synchronously, which runs `hide`'s own `finalize` and destroys the
+  backdrop, and the backdrop animation then ran against a released handle.
