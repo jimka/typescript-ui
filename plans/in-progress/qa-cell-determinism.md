@@ -724,3 +724,27 @@ every report's notes carry the lead it parked at.
     swap to get a side effect. Waiting for the view before the first layout
     would need a change to `mountPanel` and would take away the very thing this
     panel exists to measure at 10,000 rows: rows that arrive after the mount.
+
+---
+
+## Implementation Notes
+
+**`isTrusted` cannot be forged the way step 10 describes.** The plan's
+`Object.defineProperty(event, 'isTrusted', { value: true })` throws under jsdom:
+the specification marks the attribute `[LegacyUnforgeable]`, so every event
+carries it as an own, non-configurable accessor, and jsdom implements that
+faithfully. Setting the flag on jsdom's implementation object behind the
+accessor does not work on its own either, because `dispatchEvent`'s first step
+is to set the flag false. `packages/qa/tests/input.test.ts` therefore stages a
+trusted event by defining an `isTrusted` accessor *on the implementation
+object* — a getter that answers `true` and a setter that swallows the
+dispatch's write. Everything the plan's cases assert is unchanged; only how a
+trusted event is presented to the guard differs.
+
+**`packages/qa/tests/run.test.ts` moved to the jsdom environment.** It ran in
+node, and step 2 puts `installInputGuard()` on the path of every run, which
+needs a `window`. jsdom also lets the file cover the success path the plan's
+fifth expected behaviour names: `location` stubs cleanly there, and the run's 90
+idle frames go through a stubbed `requestAnimationFrame`, the shape
+`tests/frames.test.ts` already uses. The guard's own dropping behaviour stays in
+`input.test.ts`; this file pins only that both notes reach a posted report.
