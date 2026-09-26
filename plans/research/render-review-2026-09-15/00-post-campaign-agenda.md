@@ -1020,3 +1020,83 @@ entry says which factor decided it.
   platform sweep is discovery rather than a gap, F06.3 needs a control arm, and
   a `scroll-panes` ladder for `g16.scroll-reads` would be a second surface for
   a candidate already measured on three cells — useful, not owed.
+
+## The remaining work, planned (2026-09-26)
+
+The measurement surface is complete and merged (`aca769ab`): `table-rows` has a
+body row filter and a `g21.visible-memo` arm, `scroll-panes` has a `call` ladder
+  and two witnesses so `g16.scroll-reads` can engage, `split.noop-control`
+  shares a `splitDragGate` with `split.noop-drag` so the park cell's instrument
+  tax can be
+subtracted, and the `plat=1` family ships with eight two-rung dose arms,
+`bin/qa-price.py` and an 84-run matrix. Everything else the campaign still owed
+is now drafted as eight plans, listed here so the index carries them.
+
+| Plan | What it lands |
+|---|---|
+| `table-cell-date-formatter-memo` | six module-level formatters; the only measured render win |
+| `table-column-resize-outline-mode` | the table as the fourth `ResizeMode` owner, live path untouched |
+| `table-body-visible-records-memo` | a view-generation key, plus the `_anyColumnRequired` flag |
+| `panel-scroll-read-economy` | both G16 halves; 3→1 and 4→1 reads per event |
+| `field-internals-unchanged-commit-opt-in` | eleven classes, two forced child passes converted |
+| `test-dom-handle-eviction` | the modelled DOM honours the production contract |
+| `glyph-sprite-reset-hook` | a sink-identity reset for the sprite handles |
+| `rail-handover-follow-ups` | three of six rail observations, plus a seventh |
+
+- **A second systematic caveat on every figure in this file: an ablation bounds
+  a mechanism adjacent to the one that ships.** Three of the eight plans found
+  the arm that produced their measurement could not ship as written. G21's memo
+  caches the **post-filter** result, which the library cannot, because an
+  in-cell edit changes a record's contents without rebuilding the view and both
+  `Table.setRowVisible`'s contract and `renderWindowPass`'s post-commit re-read
+  depend on the filter re-running. G21's empty-state guard needs a one-time
+  outline-clearing sweep the ablation lacks. G16's settled pass used an unsound
+  content-extent signature, where the plan instead earns the skip from the
+  layout system's own dirty/metrics state — which reaches every subclassed pane
+  with no per-class audit, a better outcome than the arm's. None of that is a
+  failure of the ablations: W3.0 built them to bound, and they bounded. It
+  means a recorded delta is an upper bound on something **next to** the fix, so
+  each plan carries its own verification cell rather than inheriting the arm's
+  number. This sits beside the counters-are-not-time finding above.
+
+- **The shippable G21 figure comes from a library A/B, not another arm.** The
+  `g21.visible-memo` arm now on `master` removes the filter work too, so under
+  `rowfilter=title` it reads as an upper bound. The figure to trust comes from
+  building the branch's `packages/lib` and comparing it against the fork-point
+  build, the way `unchanged-commit-opt-ins-forms` was measured. No third arm is
+  wanted; an ablation that duplicates a plan would only drift from it.
+
+- **`Favicon` carries the same defect as `Glyphs` and no plan covers it.** The
+  `glyph-sprite-reset-hook` plan names `Favicon` as the only other module with
+  an unreset cache keyed to a torn-down document — which is its reason for not
+  building a general registry — but its scope stops at `Glyphs`. So the same
+  class of bug ships on in `Favicon` unless someone takes it.
+
+- **Stage 4 may not close stage 3's residual.** That residual named four
+  classes: `PickerButton` 0.2, `PickerInput` 0.1, `ButtonIconGlyph` 0.2 and
+  `ButtonLabelText` 0.2. `field-internals-unchanged-commit-opt-in` opts in
+  eleven classes including the two picker ones, but the two Button internals
+  are out of its scope, being button rather than field internals. Since the
+  residual attributed `DateField` and `TimeField` never reaching zero to all
+  four, that plan's verification has to say whether they reach zero or whether
+  a stage 5 for the button internals is implied.
+
+- **Two production bugs were found by making the test instrument honest**, both
+  inside `test-dom-handle-eviction`'s scope and fixed there: `Dialog.hide`
+  animates a backdrop its own synchronous reduced-motion completion has already
+  destroyed, and `Component.release()` leaves both element buffers bound to the
+  handle it just released. The blast radius that had deterred this work turned
+  out to be five failing cases in four files out of 8,572 — far smaller than
+  feared — while the workaround inventory it retires is nine files rather than
+  the two recorded above, including two behaviours with no offline coverage at
+  all. One claim above is wrong as a result: eviction retires *one* workaround,
+  not both. `validation-error-arming`'s `isRegistered` spies stay, because the
+  migrated cases survive the mutation that deletes the guard they pin — a
+  disposed anchor also stops being a hit-test result, so the outcome is reached
+  by a second route.
+
+- **The rail's item 6 is a hard lock, not a loose end.** `onExitAction`
+  cancelling no rail animation handle was recorded above as minor. It leaves a
+  window **hidden while its state reads `"normal"`**, unrecoverable by the
+  user, and emits a spurious `"minimize"` after `"close"`. It is reachable by
+  ordinary gesture, and it is the strongest reason to land that branch.
