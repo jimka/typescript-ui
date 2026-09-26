@@ -1100,3 +1100,81 @@ is now drafted as eight plans, listed here so the index carries them.
   window **hidden while its state reads `"normal"`**, unrecoverable by the
   user, and emits a spurious `"minimize"` after `"close"`. It is reachable by
   ordinary gesture, and it is the strongest reason to land that branch.
+
+## The sitting: one verdict, two blocked cells, one new price (2026-09-26)
+
+Run on `master` at `bf654e64` with the merged measurement surface — 25 runs for
+the three candidate cells (`w6a-*`, `w6b-*`), then the platform sweep's 24-run
+census and the 31 dose runs the census nominated (`plats1-p00/p01/p02/p05`).
+Batches p03 and p04, 28 runs pricing `getComputedStyle` and `measureText`, were
+never run: the census closed both on count, which is the gate working as
+designed.
+
+- **G21's memo under a real body row filter is a work win and nothing more.**
+  At n=900 with `rowfilter=title`: `key` work 22 → 16 per unit, **−27.3%**,
+  against Δ −0.11 ms on a 0.38 bracket — flat, geometry `=`. That is the same
+  verdict the unfiltered cell gave, so the filter does not turn the memo into a
+  time win at this scale, exactly as the arithmetic predicted: six calls over
+  900 predicates is too little to see. Plannable on work and complexity, as it
+  already was.
+
+- **And n=10,000, the scale where the filter's cost would show, is void
+  again.** Both phases failed on `geom DIFF(focused)`. That probe has now
+  voided three cells — `w4a`, `w5a` and `w6a-trv` — always on a table panel at
+  the large scale. **It is a surface defect, not a candidate's fault**, and it
+  is the single thing standing between this campaign and a verdict on G21's
+  filtered case. Fixing it is worth more than any remaining table candidate.
+
+- **The `scroll-panes` ladder does not reach the scroll-shadow path, so part
+  one of `unreached-ablation-surfaces` did not achieve its goal.**
+  `g16.scroll-reads` reads `unreached` on all three phases, and the `call`
+  phase fired **no witness at all** — neither `pane.scrollTick` nor
+  `Panel.updateScrollShadows`, though the run's notes confirm both counters
+  were installed. A programmatic `setScrollTop` does not drive the path; only a
+  real scroll event does. G16's scroll half therefore still rests on W3.0's
+  three wheel cells (work −50%, clock flat), which is enough to plan it under
+  the standing rule, and the ladder should be treated as spent effort rather
+  than a surface to build on.
+
+- **The park cell is broken on a wide display, so F06.3 is still unsettled.**
+  One run returned an error result: `park: the element moved during the
+  measured units (3802,42,10,1998 → 165,42,10,1998); leadPx does not reach the
+  clamp`. The cause is exact: `leadPx` is `SIDEBAR_PREFERRED_PX −
+  SIDEBAR_MIN_PX + PARK_OVERSHOOT_PX` = 280 − 160 + 40 = **160 px**
+  (`builders/shell.ts:56`, `:59`, `:65`, `:316`), computed from sidebar
+  constants, while the element it drags is the **centre's** gutter — which on a
+  3840-wide display sits at x=3802 and needs about 3,640 px to reach its clamp.
+  The arm reps show it: `split.noop-drag` read 7.06 and 13.13 against an 8.75
+  plain mean. Face value puts the control arm's tax (+2.25) above the drag
+  arm's (+1.35), which is consistent with the instrument-tax hypothesis and is
+  not a verdict. The fix is to derive the lead from the live gutter position
+  and its clamp target rather than from constants.
+
+- **The sweep priced the date formatters, and they are worth much more than G23
+  measured.** Two rungs agreeing to 6.4% on the click cell and 14.0% on the
+  filter cell put a `toLocale*String` call at **74 to 193 microseconds** — the
+  90 µs prior was the right order. The ceiling is **62.09 ms per unit, 39.0% of
+  a header-sort unit**, and 23.76 ms, 14.7%, on the filter update. Both read
+  `plan it`. G23's measured −36.97 ms on click is therefore about three fifths
+  of what is there, the remainder being the `format()` call a memo still pays.
+  The census also found the same cost on a **third** surface the plan does not
+  mention, `treetable-rows` · `toggle` at 108 calls a unit.
+
+- **And `string.localeCompare` is not a candidate, which is the sweep's real
+  vindication.** The census counted **2,807.67 calls per unit** on a 900-row
+  header sort — nearly nine times G23's call volume — which at the 5 µs prior
+  nominated it at 14.04 ms a unit. Priced, it collapses: the ×4 rung adds
+  11,230 calls for **+0.66 ms**, inside the bracket, implying about 0.06 µs a
+  call, while the ×1 rung's +5.67 ms sits outside it. The two disagree, so the
+  ladder cannot price it and the verdict is a 5.67 ms ceiling, 3.6%, `needs a
+  removal arm` — and there is no reason to build one. The engine evidently
+  reuses its collator, so the calls are near-free repeats. A count-only sweep
+  would have made this the campaign's headline finding. On the tree table's key
+  cell `localeCompare` is not called at all, so that cell reads `drop it`.
+
+- **The instrument costs 1.4%.** The `plat=1` counters add **+2.22 ms per
+  unit** on the busiest cell (161.17/162.58/160.98 with, against
+  159.50/159.95/158.61 without), and since every arm of a dose cell carries
+  them, the cost cancels within a cell. `getComputedStyle` peaks at 74.24 calls
+  a unit for 0.37 ms, 0.7%, and `canvas.measureText` at 27.00 for 0.14 ms, so
+  both are closed on count without a run spent on them.
