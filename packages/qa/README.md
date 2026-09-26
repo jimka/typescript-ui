@@ -198,6 +198,7 @@ npm -w packages/qa run test
 | `deepwrites=1` | also count camelCase style assignments (needs `count=1`) | off |
 | `work=1` | per-class work counters | off |
 | `seam=1` | DOM seam counters | off |
+| `plat=1` | platform-call counters | off |
 | `geom=1` | geometry probe, every unit | off |
 | `abl=<a>[,<b>…]` | ablations to apply | none |
 | `css=<css>` | extra stylesheet injected before measuring | none |
@@ -211,10 +212,10 @@ positive integer written in digits. The counters reset for every phase.
 A run mounts the panel, checks the phases (an unknown driver or a missing
 target fails here, before anything is instrumented), installs the requested
 instruments — write counters, stylesheet, ablations, work counters, seam
-counters, in that order — snapshots the page into `before`, measures 60 idle
-frames, drives each phase, measures 30 idle frames, and POSTs the report. A
-failure anywhere, a throw inside the frame loop included, posts an error report
-instead.
+counters, platform counters, in that order — snapshots the page into `before`,
+measures 60 idle frames, drives each phase, measures 30 idle frames, and POSTs
+the report. A failure anywhere, a throw inside the frame loop included, posts an
+error report instead.
 
 **Work counters.** `work=1` counts calls as `<method>@<receiver class>`:
 `Component`'s `doLayout`, `scheduleLayout`, `getMinSize`, `getMaxSize`,
@@ -226,6 +227,19 @@ computation, that is per miss of the per-pass size-hint memo;
 `accordion.openContentHeight`, `tabbar.prepareStrip`,
 `collapse.applyRotation` and `border.getPreferredSize` when the panel holds
 that manager or component. A panel adds its own; its row names them.
+
+**Platform counters.** `plat=1` counts the engine calls no other family
+watches, one key per wrapped function: `date.toLocaleDateString`,
+`date.toLocaleTimeString` and `date.toLocaleString` for the three
+`Date.prototype` locale formatters, whose `Intl.DateTimeFormat` construction
+G23 priced at about 90 µs; `string.localeCompare`, `compareValues`' only
+platform call and so every string-column sort's; `style.getComputedStyle`; and
+`canvas.measureText`. A target the engine does not expose is skipped and named
+in the run's notes rather than thrown on — jsdom has no
+`CanvasRenderingContext2D` — so a report says which of the six were actually
+watched. `Intl.DateTimeFormat` itself is deliberately not wrapped: ECMA-402
+specifies `toLocale*String` as constructing the intrinsic, not the global
+binding, so a counter on `Intl` would read zero for every library call.
 
 ## Panels
 
@@ -504,6 +518,34 @@ cell can attribute that part's time on its own:
 |---|---|---|
 | `g21.visible-memo` | G21 | Only the visible-record memo of `g21.render-pass`, so a cell can attribute the group's time to that part alone. |
 
+The platform-call cost sweep's dose arms remove nothing: each makes the page
+perform one platform operation an extra `k` times per real call and returns the
+**last** result, so the arm is behaviour-identical and its `Δms` is that
+operation's cost in milliseconds per unit. Every dosed method is pure — its
+answer follows from its arguments and the page's current style, and nothing it
+writes survives the call — which is what makes returning the last result sound.
+Each operation gets two rungs, `-d1` and `-d4`: `-d1`'s reading is the price,
+and `-d4` resolves a cost a quarter of the cell's bracket and checks that
+repeating the call is linear, since a repeat served from a cache would make the
+reading a weaker bound than it looks. An arm counts one
+`dose.<arm>.extraCall` per extra *operation*, not per call, so a batch
+measurement of twelve labels counts twelve; every hundredth extra call compares
+its result with the first's and counts a `dose.<arm>.resultMismatch`, which a
+cell's `--same` gate reads as a void. **A dose reading is a lower bound on the
+saving**: the repeat runs with every cache warm, so it can only under-read what
+removing the call would save. An arm that doses the very function a platform
+counter watches is installed *before* that counter, so its `plat` count stays
+at the plain arm's value and only `dose.<arm>.extraCall` records the extra
+work. See
+[platform-call-cost-sweep.md](../../plans/implemented/platform-call-cost-sweep.md).
+
+| Ablation | Call | What it doses |
+|---|---|---|
+| `plat.intl-d1`, `plat.intl-d4` | `date.toLocale*String` | The three `Date.prototype` locale formatters, so the arm pays one or four more `Intl.DateTimeFormat` constructions per formatted cell. |
+| `plat.collate-d1`, `plat.collate-d4` | `string.localeCompare` | `String.prototype.localeCompare`, `compareValues`' only platform call, so a string-column sort pays it *n* log *n* more times. |
+| `plat.computed-d1`, `plat.computed-d4` | `style.getComputedStyle` | `DOM.source`'s `getThemeVar`, `getBorderWidths`, `getComputedOverflow` and `isRenderedVisible` — the seam methods, not the bare call, because WebKit resolves the style on the first property read of the returned live declaration, so doubling the call alone would price the call and miss the resolution. |
+| `plat.measure-d1`, `plat.measure-d4` | `canvas.measureText` | `DOM.source`'s `measureText`, `measureTextAdvance`, `measureTexts` and `measureTextWidths`, so a cell prices whichever path its panel takes. `measureText`'s probe element is appended and removed again before it returns, so a repeat leaves the document as it found it. |
+
 The earlier ones:
 
 | Ablation | What it removes |
@@ -538,14 +580,16 @@ One JSON object per run, `results/<name>-<epoch ms>.json`:
 | `params`, `ua`, `notes` | Every URL parameter, the engine's user agent, and what the run did, in order. |
 | `before` | `viewport`, `elements`, `svgPainted`, `textPainted`, `invisible`, `undisplayed`, `clampTally`, `scan` (paint features and scroll containers) and `host` (the panel's `describe()`). |
 | `idle`, `idleAfter` | Idle-frame timing before and after the phases. |
-| `phases[]` | Per phase: `driver`, `units`, `timing` (`n`, `avgMs`, `p50Ms`, `p90Ms`, `maxMs`, `over16`), and per unit `writes` and `forcedStacks` (`count=1`), `work` (`work=1`), `seam.sink` and `seam.source` (`seam=1`), and `geometry` (`geom=1`: one rounded `[x, y, width, height]` per unit and label). |
+| `phases[]` | Per phase: `driver`, `units`, `timing` (`n`, `avgMs`, `p50Ms`, `p90Ms`, `maxMs`, `over16`), and per unit `writes` and `forcedStacks` (`count=1`), `work` (`work=1`), `seam.sink` and `seam.source` (`seam=1`), `plat` (`plat=1`), and `geometry` (`geom=1`: one rounded `[x, y, width, height]` per unit and label). |
 | `error`, `stack` | Instead of the measurements, when the run failed. |
 
 ## Analysers
 
 ```sh
-python3 packages/qa/bin/qa-table.py packages/qa/results <prefix> [--writes] [--seam] [--work] [--before <path>[,<path>…]]
+python3 packages/qa/bin/qa-table.py packages/qa/results <prefix> [--writes] [--seam] [--work] [--plat] [--before <path>[,<path>…]]
 python3 packages/qa/bin/qa-ab.py packages/qa/results <cell-prefix> [--counter EXPR] [--allow-diff LABEL[@PHASE],…] [--same PATTERN]…
+python3 packages/qa/bin/qa-price.py packages/qa/results <prefix> --census
+python3 packages/qa/bin/qa-price.py packages/qa/results <cell-prefix> --call KEY[+KEY…] [--ladder NAME]
 python3 packages/qa/bin/qa-forced.py packages/qa/results <prefix>
 python3 packages/qa/bin/qa-verdict.py <result.json>
 ```
@@ -561,7 +605,8 @@ the first successful report listed: `base` for the reference itself, `=` or
 `DIFF` against it, `?` when the reference phase has none, `-` when this phase
 has none. `--writes` lists each write counter of at least 0.05 per unit under
 the row; `--seam` lists the seam counters; `--work` lists each work counter of
-at least 0.05 per unit, largest first, bookkeeping included. An error report
+at least 0.05 per unit, largest first, bookkeeping included; `--plat` lists each
+platform counter of at least 0.05 per unit, largest first. An error report
 prints an `ERROR` row, and a file in an older format prints `old format,
 skipped`.
 
@@ -581,7 +626,7 @@ Its terms are separated by spaces, with `+` and `-` the only operators:
 |---|---|
 | `work` | the phase's `work/u`, bookkeeping left out, as in `qa-table.py` |
 | `sink` | the sum of `seam.sink` |
-| `work.<key>`, `seam.sink.<key>`, `seam.source.<key>` | that counter, 0 when absent |
+| `work.<key>`, `plat.<key>`, `seam.sink.<key>`, `seam.source.<key>` | that counter, 0 when absent |
 | any of the above ending in `*` | the sum of every counter whose key starts with the text before `*` |
 
 So `--counter 'seam.source.getThemeVar - work.memo.g08.env-reads.themeVarHit'`
@@ -639,6 +684,41 @@ for an error, unreadable or old-format report, after a `MISMATCH`, with fewer
 than two plain reports, or when the reports' phases differ; 2 for bad
 arguments.
 
+`qa-price.py` turns a platform counter into a price. It owns no gate it shares
+with `qa-ab.py` — geometry, engagement and `--same` stay there — so every
+pricing cell is read with both scripts.
+
+`--census` prints one line per run, phase and non-zero `plat` counter: the
+count per unit, the count per millisecond of the unit, what that count would
+cost at the call's prior per-call price (90 µs for a date format, G23's own
+measurement; 5 µs for any other call, G27's upper bound on a source read), that
+cost as a share of the phase, and `→ price` or `→ skip`. A call is nominated
+when its count could reach half a millisecond a unit at that price — the floor
+of what any cell in this campaign has resolved — which is 6 calls a unit for a
+date format and 100 for the rest.
+
+The default mode reads one pricing cell: the plain arms give the mean, the
+bracket and the `--call` count, and each `-d<k>` arm gives its `Δms` and its
+extra operations. Arms pair into a ladder by their trailing `-d<k>`, and one
+ladder is priced per invocation — `--ladder` names it, and a cell holding
+several exits 2 rather than judge them all against one call's count, since that
+count is what Gate 3's drop row reads. The ladder prints one line per rung:
+`Δms` `outside` or `inside` the bracket, the implied price in µs per operation
+for a rung that is outside, and, above the first rung, the dose fidelity,
+printed as `FIDELITY` when the rung's extra operations are more than 5% from
+`k` times the first rung's, which means it did not reach every call site the
+first rung did. Then, keyed by the ladder's name, the linearity of the two
+rungs' implied prices when both cleared the bracket, and the verdict: the
+ceiling — the lowest rung that cleared the bracket, over its dose factor — its
+share of the phase's plain mean, and the first row that applies of **plan it**
+(at least 1.0 ms a unit and at least 5%), **drop it** (fewer than 12 calls a
+unit, so the call cannot reach 1.0 ms even at 90 µs) or **needs a removal
+arm**. A cell that resolves no rung prints `no ceiling`, and
+only the drop row can then decide it: the sweep can prove a cost and cannot
+disprove one. It exits 0 when every report was read, 1 for an unreadable or
+error report, a cell with fewer than two plain reports or reports whose phases
+differ, and 2 for bad arguments.
+
 `qa-forced.py` prints, per file and phase, the forced reads per unit, the
 attributed class and attribute toggles, the top mutations and the stored
 stacks.
@@ -691,6 +771,38 @@ against itself:
 ```sh
 W3_SESSION=s2 packages/qa/sweeps/w3-0.sh b04
 ```
+
+`sweeps/plat.sh` is the platform-call cost sweep: a census of every panel's
+platform counters, an overhead witness that prices the counters themselves, and
+then a dose ladder per nominated call on the surfaces that reach it. Its matrix,
+cell shapes and the three gates a reading passes are in
+[platform-call-cost-sweep.md](../../plans/implemented/platform-call-cost-sweep.md#the-matrix).
+
+```sh
+packages/qa/sweeps/plat.sh [--dry-run | --list] [<batch> …]
+```
+
+With no batch named it runs all six, `p00` to `p05`, in order. Every run
+carries `work=1&seam=1&geom=1&plat=1` and nothing else, with one declared
+exception — the `ohn` cell of `p01`, whose whole purpose is to run without
+`plat=1` so the shim's own cost can be read off the two groups' overlapping
+`avg` ranges. Runs are named `plat<session>-<batch>-<cell>-<arm>-<rep>`, and
+every invocation opens with one discarded run named `plat<session>-warm`, which
+no cell prefix matches and no analyser reads: the campaign has a recorded
+cold-start outlier of 97.69 ms against 31 to 36 for the rest of its cell.
+
+| Option or variable | Effect |
+|---|---|
+| `--list` | prints each selected batch's run count and the total (84 for all, the warm-up included); opens nothing |
+| `--dry-run` | prints each runner call, `runqa <name> main <params>`; opens nothing |
+| `PLAT_SESSION` | the session tag in every run name (default `s1`) |
+| `PLAT_RUNQA` | the runner to call (default `runqa.sh` beside `sweeps/`); the tests point it at a stub |
+| `QA_MAIN_LIB` | as for `runqa.sh`; a missing build exits 2 before anything starts |
+
+Each pricing cell is read twice: `qa-ab.py` for the geometry and engagement
+gates, with `--same work.dose.<arm>.resultMismatch` so a repeat that disagreed
+voids the cell, and then `qa-price.py --call <keys> --ladder <ladder>` for the
+price, once per call the cell doses.
 
 ## Measurement rules
 
@@ -758,6 +870,17 @@ W3_SESSION=s2 packages/qa/sweeps/w3-0.sh b04
 - **An ablation bounds only the code it reaches in the panel it runs in.**
   Confirm it engaged through its own counters
   ([97-wave2-measurement.md](../../plans/research/render-review-2026-09-15/97-wave2-measurement.md#L157)).
+- **A count is not a cost; price it.** A counter proves an arm engaged and
+  stayed correct; its magnitude is not milliseconds. Four of the five
+  candidates the W3.0 sweep surfaced moved large counters and no time —
+  `getScrollMetrics` fell 99.3% and `querySelector` up to 99.9%, and neither
+  moved the clock — while the one that moved time, G23's 18.5%, moved no
+  counter at all, because its cost was a platform call no counter watched. A
+  count is good for two things: nominating a call for a dose cell, and — times
+  the largest per-call price ever measured — closing one that cannot possibly
+  matter. Every number that becomes a verdict is a millisecond reading from a
+  dose arm
+  ([00-post-campaign-agenda.md](../../plans/research/render-review-2026-09-15/00-post-campaign-agenda.md)).
 - **Score work avoided as well as milliseconds** (the `work/u` column).
 - **A green test suite is not evidence of unchanged geometry**
   ([97-wave2-measurement.md](../../plans/research/render-review-2026-09-15/97-wave2-measurement.md#L177)).
