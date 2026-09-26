@@ -96,7 +96,7 @@ export interface ParkTarget {
     axis: 'x' | 'y';
     /** Which way along `axis` the drag pushes: towards the clamp. */
     direction: 1 | -1;
-    /** How far the unmeasured lead-in drags; must reach past the clamp. */
+    /** How far the unmeasured lead-in's first push drags; the driver doubles it until the element stops moving. */
     leadPx: number;
 }
 

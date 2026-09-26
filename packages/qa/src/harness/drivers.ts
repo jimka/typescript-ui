@@ -66,6 +66,15 @@ const SETTLE_CAP_FRAMES = 120;
  */
 const PARK_MIN_UNITS = 2;
 
+/** Frames `park` waits for a push to land before reading whether the element moved: one to apply the move, one spare. */
+const PARK_HOLD_FRAMES = 2;
+
+/** How much further each extra push travels, as a multiple of the lead so far. */
+const PARK_PUSH_FACTOR = 2;
+
+/** The most extra pushes before the run fails: twelve doublings take a 10 px lead past 40,000 px, wider than any display. */
+const PARK_PUSH_CAP = 12;
+
 /** Mouse moves in `park`'s restore drag, one per frame, for `LEAD_FRAMES`' reason. */
 const RESTORE_FRAMES = 10;
 
@@ -769,15 +778,42 @@ function parkPoint(start: Point, target: ParkTarget, offset: number): Point {
 }
 
 /**
- * `park`'s unmeasured lead-in: presses the element at its centre and drags
- * `leadPx` in the park's direction over `LEAD_FRAMES` frames, one move per
- * frame, then lets the page settle.
+ * Pushes the held pointer `offset` px past the drag's start and reads the
+ * element's rectangle once that push has landed.
  *
  * @param tools - The harness tools.
  * @param target - `park`'s target.
- * @returns Where the drag started, and the element's rectangle once parked.
+ * @param start - Where the drag started.
+ * @param offset - How far past the start to push.
+ * @returns The element's rectangle after the push.
  */
-async function leadIn(tools: HarnessTools, target: ParkTarget): Promise<{ start: Point; rect: string }> {
+async function pushAndRead(tools: HarnessTools, target: ParkTarget, start: Point, offset: number): Promise<string> {
+    const point = parkPoint(start, target, offset);
+
+    tools.fireMouse('mousemove', document, point.x, point.y);
+    await tools.waitFrames(PARK_HOLD_FRAMES);
+
+    return rectKey(target.element);
+}
+
+/**
+ * `park`'s unmeasured lead-in: presses the element at its centre, drags
+ * `leadPx` in the park's direction over `LEAD_FRAMES` frames, one move per
+ * frame, lets the page settle, and then proves the element has parked.
+ *
+ * The proof pushes the first measured unit's own step and requires the
+ * element's rectangle to be unchanged. While it changes, the lead doubles and
+ * the proof is taken again, so a cell parks whatever the element's distance
+ * from its clamp is and a lead that cannot reach one fails before a unit is
+ * spent rather than after all of them.
+ *
+ * @param tools - The harness tools.
+ * @param target - `park`'s target.
+ * @param stepPx - Pixels per unit; the step the proof pushes.
+ * @returns Where the drag started, the lead it parked at, how many extra pushes that took, and the parked rectangle.
+ * @throws Error - `park: the element never parked; …` when `PARK_PUSH_CAP` doublings all still moved it.
+ */
+async function leadIn(tools: HarnessTools, target: ParkTarget, stepPx: number): Promise<{ start: Point; lead: number; pushes: number; rect: string }> {
     const start = centreOf(target.element);
 
     tools.fireMouse('mousedown', target.element, start.x, start.y);
@@ -791,7 +827,23 @@ async function leadIn(tools: HarnessTools, target: ParkTarget): Promise<{ start:
 
     await tools.waitFrames(SETTLE_FRAMES);
 
-    return { start, rect: rectKey(target.element) };
+    let lead = target.leadPx;
+    let parked = rectKey(target.element);
+
+    for (let pushes = 0; ; pushes++) {
+        const stepped = await pushAndRead(tools, target, start, lead + stepPx);
+
+        if (stepped === parked) {
+            return { start, lead, pushes, rect: parked };
+        }
+
+        if (pushes === PARK_PUSH_CAP) {
+            throw new Error(`park: the element never parked; at a ${lead}px lead one more ${stepPx}px step still moved it (${parked} → ${stepped})`);
+        }
+
+        lead *= PARK_PUSH_FACTOR;
+        parked = await pushAndRead(tools, target, start, lead);
+    }
 }
 
 /**
@@ -822,11 +874,11 @@ async function dragBack(tools: HarnessTools, element: Element, to: Point): Promi
  * `park`'s unmeasured teardown: reads the element's rectangle, releases the
  * drag, and drags the element back to where the lead-in started.
  *
- * The last measured unit returns the pointer to `leadPx`, where the lead-in
- * left it, so the rectangle is read before that move lands: a `Split` or
- * `Accordion` gutter applies a move in the frame after it arrives. An element
- * that followed the pointer is therefore read one unit further out and differs
- * from the lead-in's rectangle.
+ * The last measured unit returns the pointer to the lead the element parked at,
+ * so the rectangle is read before that move lands: a `Split` or `Accordion`
+ * gutter applies a move in the frame after it arrives. An element that followed
+ * the pointer is therefore read one unit further out and differs from the
+ * parked rectangle.
  *
  * @param tools - The harness tools.
  * @param target - `park`'s target.
@@ -845,14 +897,15 @@ async function releaseAndRestore(tools: HarnessTools, target: ParkTarget, start:
 
 /**
  * A gutter drag parked against its clamp. An unmeasured lead-in presses the
- * element and drags it `leadPx` in `direction`, past the clamp; each measured
- * unit then moves the pointer on `document` to `parkOffset(…)` past the start,
- * out for the first half of the units and back for the second, never closer
- * than `leadPx`. An unmeasured teardown releases and drags the element back.
+ * element, drags it `leadPx` in `direction` and proves it has parked, extending
+ * the lead until it holds; each measured unit then moves the pointer on
+ * `document` to `parkOffset(…)` past the start, out for the first half of the
+ * units and back for the second, never closer than the parked lead. An
+ * unmeasured teardown releases and drags the element back.
  *
  * @param ctx - The phase's context; `ctx.target` is a `ParkTarget`.
  * @returns The frame gaps.
- * @throws Error - Before anything is dispatched, for fewer than two units; after restoring, when the element moved during the measured units: `leadPx` did not reach the clamp.
+ * @throws Error - Before anything is dispatched, for fewer than two units; before the first unit, when no lead parks the element; after restoring, when something moved the element during the measured units.
  */
 async function park(ctx: DriveContext): Promise<number[]> {
     const target = requireParkTarget(ctx.target);
@@ -861,21 +914,22 @@ async function park(ctx: DriveContext): Promise<number[]> {
         throw new Error(`park: needs at least ${PARK_MIN_UNITS} units, got ${ctx.units}`);
     }
 
-    const lead = await ctx.tools.suspendCounting(async () => leadIn(ctx.tools, target));
-    let pointer = parkPoint(lead.start, target, target.leadPx);
+    const parked = await ctx.tools.suspendCounting(async () => leadIn(ctx.tools, target, ctx.stepPx));
+    // Where the proof's last push left it.
+    let pointer = parkPoint(parked.start, target, parked.lead + ctx.stepPx);
 
     const samples = await ctx.tools.runFrames(ctx.units, (index) => {
-        pointer = parkPoint(lead.start, target, parkOffset(index, ctx.units, ctx.stepPx, target.leadPx));
+        pointer = parkPoint(parked.start, target, parkOffset(index, ctx.units, ctx.stepPx, parked.lead));
         ctx.tools.fireMouse('mousemove', document, pointer.x, pointer.y);
     });
 
-    const held = await ctx.tools.suspendCounting(async () => releaseAndRestore(ctx.tools, target, lead.start, pointer));
+    const held = await ctx.tools.suspendCounting(async () => releaseAndRestore(ctx.tools, target, parked.start, pointer));
 
-    if (held !== lead.rect) {
-        throw new Error(`park: the element moved during the measured units (${lead.rect} → ${held}); leadPx does not reach the clamp`);
+    if (held !== parked.rect) {
+        throw new Error(`park: the element moved during the measured units (${parked.rect} → ${held}); it parked before them, so something moved it after`);
     }
 
-    ctx.notes.push(`park: lead ${target.leadPx}px, element held at ${lead.rect} for ${ctx.units} units`);
+    ctx.notes.push(`park: lead ${target.leadPx}px + ${parked.pushes} pushes = ${parked.lead}px, element parked at ${parked.rect} and held for ${ctx.units} units`);
 
     return samples;
 }

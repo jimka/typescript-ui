@@ -61,7 +61,7 @@ const SIDEBAR_PREFERRED_PX = 280;
 /** The sidebar's preferred height: any value works, since the split fills the viewport; this one is a typical screen's. */
 const SIDEBAR_PREFERRED_HEIGHT_PX = 600;
 
-/** How far past the sidebar's minimum `park`'s lead-in drags, so every measured unit is past the clamp. */
+/** How far past the sidebar's minimum `park`'s lead-in aims its first push; the driver extends the lead if that push does not park the gutter. */
 const PARK_OVERSHOOT_PX = 40;
 
 /** Folders in the open Files tree: 240 nodes, a tree that scrolls. */

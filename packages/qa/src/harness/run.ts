@@ -20,6 +20,7 @@ import {
 import { countPainted, elementOf, findButtonByText, fireMouse, isPainted, sleep, waitFor } from './dom.js';
 import { DRIVERS } from './drivers.js';
 import { currentFrame, measureIdle, runFrames, runPasses, summarize, waitFrames } from './frames.js';
+import { droppedInputNote, installInputGuard } from './input.js';
 import { setGeometryTargets, snapshotBefore, takeGeometry } from './probes.js';
 import { className, findComponent, findLayoutManager, isA, noopOnOwningProto, ownerProto, rootOwnerProto, walkComponents } from './tree.js';
 import type { AnyObj, GeometryTarget, HarnessLibrary, HarnessTools, PanelHost, PhaseReport, QaReport, RunOptions, Subject } from './types.js';
@@ -77,6 +78,12 @@ export async function runQa(options: RunOptions): Promise<void> {
 
     const run: RunContext = { params, notes: [], tools: createTools(options.lib), lib: options.lib };
 
+    // Before anything else, and `Body.init()` in `mountPanel` in particular: the
+    // library registers its own `window` capture listener for an event type the
+    // first time something asks for that type, and a guard registered after it
+    // cannot stop it. This is the earliest point that knows a run is a run.
+    run.notes.push(installInputGuard());
+
     const report: QaReport = {
         schema: 1,
         name,
@@ -97,6 +104,10 @@ export async function runQa(options: RunOptions): Promise<void> {
         report.error = error instanceof Error ? error.message : String(error);
         report.stack = error instanceof Error ? error.stack : undefined;
     }
+
+    // Outside the `try`, so a failed run records what reached the page too —
+    // which is often why it failed.
+    run.notes.push(droppedInputNote());
 
     await postReport(name, report);
 }
