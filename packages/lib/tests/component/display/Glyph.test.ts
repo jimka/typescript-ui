@@ -347,10 +347,11 @@ describe('Glyph renders an HTML root so its animation can composite', () => {
 });
 
 // ---------------------------------------------------------------------------
-// setGlyphName — the in-place rename. The sprite and its mounted-symbol record
-// are module state that `DOM.reset()` does not touch, so every case below that
-// asserts a `<symbol>` mount registers a name no other case in this file uses,
-// and drops it again afterwards.
+// setGlyphName — the in-place rename. `beforeEach`'s `installTestDOM` swaps the
+// sink, which drops the sprite and its mounted-symbol record, so each case
+// starts with an empty sprite. Every case below that asserts a `<symbol>` mount
+// still registers a name no other case in this file uses and drops it again
+// afterwards, because the glyph *definition* registry does outlive a swap.
 // ---------------------------------------------------------------------------
 describe('Glyph.setGlyphName', () => {
 

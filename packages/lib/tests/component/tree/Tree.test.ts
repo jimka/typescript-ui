@@ -4093,6 +4093,12 @@ describe('IconLabelTreeNodeRenderer icon rebinding', () => {
         const icon = (renderer as unknown as { _icon: { getGlyphName(): string } | null })._icon;
 
         name = 'iltnr-b';
+
+        // Warm-up: the incoming name's sprite `<symbol>` is mounted on its first
+        // use in this case, which is a sprite write rather than an icon rebuild.
+        // Mount it here so the count below sees only the rename.
+        new Glyph('iltnr-b').getElement(true);
+
         sink.writes.length = 0;
         renderer.update(ctx('Hello'));
 

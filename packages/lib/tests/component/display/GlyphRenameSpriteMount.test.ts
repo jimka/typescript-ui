@@ -6,13 +6,14 @@
 // eagerly only once the sprite itself exists, which does not happen until the
 // first SVG glyph renders.
 //
-// This needs its own file, and exactly one case in it. The sprite and its
-// mounted-symbol record are module state that `DOM.reset()` does not touch, so
-// the moment anything in a file has rendered an SVG glyph, every later
-// `Glyph.register` mounts its `<symbol>` there and then — and the rename has
-// nothing left to mount. Only the first SVG render of a fresh module instance
-// leaves a registered-but-unmounted name behind, so the case has to be the
-// first thing the file does.
+// The sprite and its mounted-symbol record are module state, dropped when the
+// installed sink changes — which `beforeEach`'s `installTestDOM` does, so this
+// case starts with no sprite at all. Within the case, the moment anything has
+// rendered an SVG glyph every later `Glyph.register` mounts its `<symbol>`
+// there and then, leaving the rename nothing to mount, so the registration
+// below must come before the first render. The file kept its own single case
+// from when the sprite survived every reset and only a fresh module instance
+// could stage this.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Glyph } from '~/component/display/Glyph';
 import { DOM, type Handle } from '~/core/DOM';

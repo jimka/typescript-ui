@@ -562,8 +562,8 @@ describe('Button setter guards', () => {
 
         const glyph = btn.getGlyph()!;
 
-        // Warm-up swap first: the check sprite `<symbol>` is module state
-        // mounted once per process, not once per rename.
+        // Warm-up swap first: the check sprite `<symbol>` is mounted once per
+        // installed sink, not once per rename.
         btn.setGlyph('check');
         btn.setGlyph('xmark');
 
