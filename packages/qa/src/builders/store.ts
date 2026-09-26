@@ -89,3 +89,45 @@ export async function awaitStoreView(tools: HarnessTools, store: ViewedStore, la
 
     await tools.waitFrames(RENDER_FRAMES);
 }
+
+/** What `admittedAt` needs of a store: indexed access to its filtered, sorted view. */
+export interface IndexedStore<R> {
+    getAt(index: number): R | undefined;
+}
+
+/**
+ * The `index`-th record a body row filter admits, walking the view from its
+ * start rather than filtering a copy of it. With no predicate this is exactly
+ * `store.getAt(index)`; with one, an `index` past the last admitted record
+ * clamps to it, and a predicate admitting none returns `undefined`.
+ *
+ * @param store - The store the panel built.
+ * @param admits - The row filter, or `null` for none.
+ * @param index - The position among admitted records to return.
+ * @returns The record, or `undefined` when the view holds none `admits` admits.
+ */
+export function admittedAt<R>(store: IndexedStore<R>, admits: ((record: R) => boolean) | null, index: number): R | undefined {
+    if (admits === null) {
+        return store.getAt(index);
+    }
+
+    let admitted = -1;
+    let last: R | undefined;
+
+    for (let position = 0; ; position++) {
+        const record = store.getAt(position);
+
+        if (record === undefined) {
+            return last;
+        }
+
+        if (admits(record)) {
+            admitted++;
+            last = record;
+
+            if (admitted === index) {
+                return last;
+            }
+        }
+    }
+}

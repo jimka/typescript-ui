@@ -187,6 +187,39 @@ describe('P8 panel parameters', () => {
         expect(waited).toEqual([]);
     });
 
+    it('table-rows rejects an unknown rowfilter before any wait', async () => {
+        const waited: string[] = [];
+
+        const waits: MountWaits = {
+            painted: async (): Promise<void> => {
+                waited.push('painted');
+            },
+            settled: async (): Promise<void> => {
+                waited.push('settled');
+            },
+        };
+
+        await expect(mountPanel('table-rows', new URLSearchParams('n=3&rowfilter=nope'), tools, waits))
+            .rejects.toThrow('table-rows: unknown rowfilter "nope" (expected off, title)');
+        expect(waited).toEqual([]);
+    });
+
+    it('table-rows sets no body row filter with rowfilter absent', async () => {
+        // table-rows cannot mount under jsdom (JSDOM_GAPS), so this reads
+        // build() and describe() without mounting.
+        const module = await loadPanel('table-rows');
+        const build = module!.build(20, new URLSearchParams());
+
+        expect(build.describe!()).toMatchObject({ rowFilter: 'off', storeRecords: 20, filteredRows: 20, bodyRowFilter: false });
+    });
+
+    it('table-rows sets a body row filter admitting 2/5 of the rows under rowfilter=title', async () => {
+        const module = await loadPanel('table-rows');
+        const build = module!.build(20, new URLSearchParams('rowfilter=title'));
+
+        expect(build.describe!()).toMatchObject({ rowFilter: 'title', storeRecords: 20, filteredRows: 8, bodyRowFilter: true });
+    });
+
     it('shell-deep drags a tab button under grip=tab', async () => {
         const mounted = await mountPanel('shell-deep', new URLSearchParams('n=3&grip=tab'), tools, SMOKE_WAITS);
 
