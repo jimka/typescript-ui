@@ -948,22 +948,36 @@ entry says which factor decided it.
   required and already empty" is the cheap end of the scale. Worth pricing
   properly rather than dropping.
 
-- **G21's `getVisibleRecords` memo stays closed, and for a better reason than
-  the clock.** `Body.ts:502-506` is `return this._rowVisible ?
-  records.filter(this._rowVisible) : records` — with no row filter set it hands
-  back the store's own array, allocating nothing. **No QA panel sets a body row
-  filter**, and `table-rows`' own filter mode calls `store.setFilter` instead,
-  which is a store-level filter. So on every surface measured the memoised
-  method took its free branch and there was no work to remove beyond the six
-  avoided call entries. The counter fell 22 → 16 and nothing else did.
+- **Correction, and it reopens G21's `getVisibleRecords` memo.** Two sentences
+  first written here were wrong, both raised by the `table-row-filter-panel`
+  planner and verified since. `getRecords()` is `return this._records.slice()`
+  (`AbstractStore.ts:653`), so the unfiltered branch of `Body.ts:502-506` does
+  **not** hand back the store's own array — it allocates an n-element copy on
+  every call. And the “22 calls a unit” was the phase's whole work counter: the
+  real split is `getVisibleRecords@TableBody` 6 per unit on `key` and 2 on
+  `update`, `getRecords@MemoryStore` the same, and ten scrollbar
+  `getMinSize`/`getMaxSize` entries with nothing to do with G21. The arm
+  removes every `getRecords` call and leaves `getVisibleRecords` untouched,
+  which is the whole of the 22 → 16.
 
-- **But that names the campaign's largest unmeasured candidate.** With
-  `_rowVisible` set, `getVisibleRecords` is an O(n) `filter` — at n=10,000 and
-  22 calls a unit, 220,000 predicate calls and 22 array allocations per unit,
-  every one of them thrown away. The memo would be a large win there and the
-  work has never been measured, because no panel exercises the feature. A panel
-  setting a body row filter is a small addition, and it should be built before
-  G21 is called closed for good.
+- **So the memo removes real work already, and that changes its verdict.** At
+  n=10,000 it drops six n-element slices per unit on `key`, about 60,000
+  element copies, and the clock stays flat — which prices a 10,000-element
+  `slice` rather than excusing it: six of them cost well under a millisecond
+  against a 16 ms unit. Under the standing rule that is a real work reduction
+  with a flat clock, and its cost is a `WeakMap` keyed on two array identities,
+  the shape `size-hint-per-pass-memo` and `border-region-size-memo` already
+  ship. It passes on complexity, so it is worth doing on the work criterion
+  alone.
+
+- **And the filtered case is still the larger unmeasured question.** With
+  `_rowVisible` set each call adds n predicate invocations on top of the slice
+  — at n=10,000 and six calls a unit, about 60,000 predicate calls per unit on
+  `key`, every result discarded. **No QA panel sets a body row filter**;
+  `table-rows`' own filter mode calls `store.setFilter`, which is store-level.
+  `Table.setRowVisible` (`Table.ts:552`) is public API, so the feature is
+  reachable by applications and the candidate is real. That cell decides
+  whether the memo is a render win as well as a work win.
 
 - **`g21.focus-sweep` has nothing to reopen.** It reads `unreached` in every
   phase; `_updateFocusStyle`'s pool-wide sweep never runs on this panel.
