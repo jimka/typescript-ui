@@ -11,6 +11,7 @@ import {
     listItems,
     markdownDocument,
     outlineLabels,
+    ROW_FILTER_TITLES,
     tableRows,
     wideRows,
 } from '../src/builders/data.js';
@@ -95,6 +96,19 @@ describe('P10 data', () => {
         expect(rows[2].notes).toBe('Note 3');
         expect(rows[1].hired).toEqual(new Date(Date.UTC(2010, 0, 98)));
         expect(rows[1].shiftStart).toEqual(new Date(Date.UTC(1970, 0, 1, 9, 15)));
+    });
+
+    it('ROW_FILTER_TITLES holds two of tableRows\' five titles, admitting 2/5 of the rows', () => {
+        const rows = tableRows(20);
+        const titles = new Set(rows.map((r) => r.title));
+
+        expect(ROW_FILTER_TITLES.size).toBe(2);
+
+        for (const title of ROW_FILTER_TITLES) {
+            expect(titles.has(title)).toBe(true);
+        }
+
+        expect(rows.filter((r) => ROW_FILTER_TITLES.has(r.title))).toHaveLength(8);
     });
 
     it('folderRows gives 13 rows per root, children after their parent', () => {

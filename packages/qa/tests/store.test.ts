@@ -22,8 +22,8 @@
 // neither list names. Only a run in the engine, where `StoreWorkerClient` has
 // a worker, exercises the path itself.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { awaitStoreView } from '../src/builders/store.js';
-import type { ViewedStore } from '../src/builders/store.js';
+import { admittedAt, awaitStoreView } from '../src/builders/store.js';
+import type { IndexedStore, ViewedStore } from '../src/builders/store.js';
 import type { HarnessTools } from '../src/harness/types.js';
 import { loadPanel } from '../src/panels.js';
 
@@ -246,5 +246,43 @@ describe('P13 store-backed panels await the view', () => {
         // store here, it would have to join STORE_PANELS, and this case says so.
         expect(() => build.afterMount!(tools)).toThrow(`${id}: no element matches`);
         expect(frames).toEqual([]);
+    });
+});
+
+/**
+ * A store of ten records, `0`…`9`, at their own index.
+ *
+ * @returns The store.
+ */
+function tenRecords(): IndexedStore<number> {
+    return { getAt: (index: number): number | undefined => (index >= 0 && index < 10 ? index : undefined) };
+}
+
+describe('P19 admittedAt', () => {
+    it('with a null predicate, returns the record at that position', () => {
+        const store = tenRecords();
+
+        expect(admittedAt(store, null, 3)).toBe(3);
+        expect(admittedAt(store, null, 15)).toBeUndefined();
+    });
+
+    it('with a predicate, returns the index-th admitted record', () => {
+        const store = tenRecords();
+        const admits = (k: number): boolean => k % 5 < 2;
+
+        expect([0, 1, 2, 3].map((index) => admittedAt(store, admits, index))).toEqual([0, 1, 5, 6]);
+    });
+
+    it('returns the last admitted record for an index past the admitted count', () => {
+        const store = tenRecords();
+        const admits = (k: number): boolean => k % 5 < 2;
+
+        expect(admittedAt(store, admits, 4)).toBe(6);
+    });
+
+    it('returns undefined when the predicate admits none', () => {
+        const store = tenRecords();
+
+        expect(admittedAt(store, () => false, 0)).toBeUndefined();
     });
 });

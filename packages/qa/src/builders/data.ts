@@ -80,6 +80,9 @@ export const DEPARTMENTS: readonly string[] = ['Engineering', 'Sales', 'Marketin
 /** The job titles `table-rows` cycles through; a count coprime with DEPARTMENTS', so the pairs vary. */
 const TITLES: readonly string[] = ['Engineer', 'Manager', 'Analyst', 'Director', 'Associate'];
 
+/** The job titles `table-rows`' `rowfilter=title` predicate admits: two of the five `tableRows` cycles through, so it keeps 2/5 of the rows. */
+export const ROW_FILTER_TITLES: ReadonlySet<string> = new Set(['Engineer', 'Manager']);
+
 /** Salaries lie in [SALARY_FLOOR, SALARY_FLOOR + SALARY_SPAN): a plausible band, wide enough that sorting reorders the rows. */
 const SALARY_FLOOR = 40000;
 const SALARY_SPAN = 90000;

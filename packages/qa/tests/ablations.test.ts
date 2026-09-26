@@ -205,18 +205,21 @@ const EARLIER_ABLATIONS = [
     'tab.doLayout', 'tree.renderWindow', 'tree.doLayout', 'scroller.layoutScrollbars', 'accordion.doLayout', 'card.doLayout',
 ];
 
+/** Arms added after W3.0, each isolating one part of an earlier bundled arm. */
+const LATER_ABLATIONS = ['g21.visible-memo'];
+
 describe('A1 registry', () => {
-    it('holds the W3.0 ablations and every earlier one', () => {
+    it('holds the W3.0 ablations, every earlier one and every later one', () => {
         expect(W3_ABLATIONS).toHaveLength(26);
-        expect(Object.keys(ABLATIONS).sort()).toEqual([...W3_ABLATIONS, ...EARLIER_ABLATIONS].sort());
+        expect(Object.keys(ABLATIONS).sort()).toEqual([...W3_ABLATIONS, ...EARLIER_ABLATIONS, ...LATER_ABLATIONS].sort());
     });
 });
 
 /** The ablations whose component or layout-manager target `canvas-idle` does not mount. */
 const ABSENT_ON_CANVAS_IDLE = [
-    'split.noop-drag', 'split.recalc-gate', 'g12.collapse-static', 'g14.closed-section', 'g21.render-pass', 'g22.settle-relay',
-    'g23.write-economy', 'g24.list-rows', 'g24.tree-window', 'g25.theme-withhold', 'g26.viewer-resize', 'g27.heading-cache',
-    'chart.repaint-gate', 'chart.margin-memo',
+    'split.noop-drag', 'split.recalc-gate', 'g12.collapse-static', 'g14.closed-section', 'g21.render-pass', 'g21.visible-memo',
+    'g22.settle-relay', 'g23.write-economy', 'g24.list-rows', 'g24.tree-window', 'g25.theme-withhold', 'g26.viewer-resize',
+    'g27.heading-cache', 'chart.repaint-gate', 'chart.margin-memo',
 ];
 
 describe('A2 absent targets', () => {
@@ -1249,6 +1252,39 @@ describe('A29 work counters', () => {
         await mount('chart-dashboard');
 
         expect(installWorkCounters(tools)).toContain('counting Grid.measureContent');
+    });
+});
+
+describe('A30 g21.visible-memo', () => {
+    it('memoises the visible records and patches nothing else of g21.render-pass', async () => {
+        await mount('treetable-rows');
+
+        const body = tools.findComponent('TableBody')!;
+
+        apply('g21.visible-memo');
+
+        let first: unknown;
+        let second: unknown;
+        const visible = counted(() => {
+            first = invoke(body, 'getVisibleRecords');
+            second = invoke(body, 'getVisibleRecords');
+        });
+
+        expect(second).toBe(first);
+        expect(visible['memo.g21.visible-memo.visibleHit']).toBeGreaterThanOrEqual(1);
+
+        // Unlike g21.render-pass, this arm patches neither the focus sweep nor
+        // the required-empty pass, so calling each for real — as A17 does for
+        // g21.render-pass — raises neither skip counter.
+        const [firstRow] = body._rowPool as AnyObj[];
+
+        body._previousFocusedCell = null;
+
+        expect(counted(() => invoke(body, '_updateFocusStyle'))['skipped.g21.visible-memo.focusSweep']).toBeUndefined();
+
+        const required = counted(() => invoke(body, 'applyRequiredEmptyState', firstRow, invoke<unknown[]>(body, 'getVisibleRecords')[0]));
+
+        expect(required['skipped.g21.visible-memo.requiredEmpty']).toBeUndefined();
     });
 });
 

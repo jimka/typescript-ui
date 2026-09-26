@@ -1712,6 +1712,27 @@ function g21RenderPass(tools: HarnessTools): string {
 }
 
 /**
+ * A later arm isolating one part of `g21.render-pass`: only the
+ * visible-record memo, so a cell can attribute the group's time to that part
+ * alone rather than the three-part bundle.
+ *
+ * @param tools - The harness tools.
+ * @returns A note saying what was patched.
+ */
+function g21VisibleMemo(tools: HarnessTools): string {
+    const name = 'g21.visible-memo';
+    const body = tools.findComponent('TableBody');
+
+    if (!body) {
+        return 'no TableBody';
+    }
+
+    memoiseVisibleRecords(tools, name, tools.ownerProto(body, 'getVisibleRecords')!);
+
+    return 'visible records memoised';
+}
+
+/**
  * Serves `getVisibleRecords` while the arrays it is built from are the same:
  * the store's records and the row filter for a flat body, the flattened rows
  * for a tree body.
@@ -2676,6 +2697,8 @@ export const ABLATIONS: Record<string, Ablation> = {
     'g19.tooltip-idle': g19TooltipIdle,
     'g20.walk-dose': g20WalkDose,
     'g21.render-pass': g21RenderPass,
+    // A later arm, outside the sweep: isolates one part of a W3.0 group.
+    'g21.visible-memo': g21VisibleMemo,
     'g22.settle-relay': g22SettleRelay,
     'g23.write-economy': g23WriteEconomy,
     'g24.list-rows': g24ListRows,
