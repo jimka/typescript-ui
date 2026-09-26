@@ -1118,12 +1118,20 @@ designed.
   900 predicates is too little to see. Plannable on work and complexity, as it
   already was.
 
-- **And n=10,000, the scale where the filter's cost would show, is void
-  again.** Both phases failed on `geom DIFF(focused)`. That probe has now
-  voided three cells — `w4a`, `w5a` and `w6a-trv` — always on a table panel at
-  the large scale. **It is a surface defect, not a candidate's fault**, and it
-  is the single thing standing between this campaign and a verdict on G21's
-  filtered case. Fixing it is worth more than any remaining table candidate.
+- **And n=10,000, the scale where the filter's cost would show, is void again —
+  though not for the reason first written here.** Both phases failed on `geom
+  DIFF(focused)`, and the rects say why: the focused cell's width is **78 in
+  four runs of the cell and 42 in the fifth**, constant within each run, while
+  all five runs at n=900 agreed on 42. So it is neither a flaky probe nor the
+  arm changing behaviour — it is the **column layout coming up differently in
+  one run out of five**, which is the `table-rows` settle-phase flake already
+  recorded above, one run in six starting from a different column layout. It
+  bites at n=10,000 because that is the scale where `AbstractStore` hands the
+  view rebuild to a worker, so the initial column sizing races the view's
+  arrival. The fix therefore belongs in the panel's initial column layout, not
+  in the geometry probe, and it would close both symptoms at once since the
+  flake and this void are one defect. It remains the single thing standing
+  between this campaign and a verdict on G21's filtered case.
 
 - **The `scroll-panes` ladder does not reach the scroll-shadow path, so part
   one of `unreached-ablation-surfaces` did not achieve its goal.**
