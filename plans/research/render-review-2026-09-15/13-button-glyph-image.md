@@ -384,10 +384,13 @@ against the lib's own vitest setup and modelled DOM.
   path that runs per instance.
 - **Risk / blast radius**: `Glyphs.ts` has three internal callers
   (`registerGlyph`, `unregisterGlyph`, `ensureGlyphSymbolMounted`) and no
-  external ones; the set and the DOM must be kept in step across `DOM.reset()`,
-  which already resets `_spriteMounted`/`_spriteElement` — the new set must be
-  cleared on the same signal. `tests/component/display/Glyph.test.ts` registers
-  and unregisters SVG glyphs, which exercises both directions.
+  external ones; the set and the DOM must be kept in step across `DOM.reset()`.
+  `tests/component/display/Glyph.test.ts` registers and unregisters SVG glyphs,
+  which exercises both directions.
+- **Correction (2026-09-26)**: the bullet above originally said `DOM.reset()`
+  "already resets `_spriteMounted`/`_spriteElement`". It never did — nothing in
+  the library cleared either variable, and the mounted-symbol set shipped with
+  the same hole. `plans/implemented/glyph-sprite-reset-hook.md` closes it.
 - **Proof at implement time**: re-run the probe and assert `querySelector` calls
   drop to 1 per distinct glyph name rather than 1 per instance.
 
