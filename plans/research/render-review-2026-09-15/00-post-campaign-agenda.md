@@ -451,6 +451,12 @@ needed.
   both workarounds. The blast radius is every test that releases a handle and
   then reads it, which is why neither branch attempted it.
 
+  **Resolved by `plans/implemented/test-dom-handle-eviction.md`.** Two
+  corrections to the above: the workaround inventory was nine files, not
+  two, and two behaviours — `Component.ts:305`'s same-flush disposal guard
+  and `Image`'s decode-settlement recheck — had no offline coverage at all,
+  rather than merely a workaround.
+
 - **`component/table/Row.doLayout` never records its pass.** `Row.ts:1003`
   returns `this` without calling `super.doLayout()`, documented as "No-op; cell
   layout is driven by the Body's renderWindow" — but the base call is what

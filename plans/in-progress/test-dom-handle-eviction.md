@@ -417,6 +417,12 @@ The five failures the eviction alone produces, with the cause each was hiding. T
 
 ---
 
+## Implementation Notes
+
+- **A tenth stale comment, not in step 15's nine-file list.** `TestHandleTable.isRegistered`'s own docstring (`tests/dom/TestDOM.ts`, next to the method it documents) stated the pre-eviction behaviour as fact — "the modelled sink's `release` only records the call, so a handle released offline stays registered here" — which step 4's `release()` addition makes false. Corrected in the same commit as the harness change, on the same reasoning as the plan's other eight comment corrections: the technique the two `isRegistered` spies use is unchanged (see `[^spies-stay]`), only the stated reason.
+
+---
+
 ## Notes
 
 [^one-step]: The count is five failing cases in four files out of 8572 cases in 512 files — 0.06% — and every one traces to a specific defect with a specific fix, not to a technique the suite relies on broadly. A staged opt-in would cost more than it saves: it needs a flag on `installTestDOM` or per-file, a migration list, a second pass to flip the default, and — for as long as it exists — two modelled DOMs with different contracts, which is the ambiguity this plan exists to remove. The measurement, including the variants that were rejected, is in `## Addendum: Blast-radius measurement`.
