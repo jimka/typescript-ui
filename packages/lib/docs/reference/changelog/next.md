@@ -1523,6 +1523,17 @@ page resets to empty.
   four, an activation with no element now commits the state and skips just
   the dispatch rather than throwing. No consumer action is needed.
 
+- **A glyph `<symbol>` mounted after a seam swap now lands in a live sprite.**
+  The shared hidden SVG sprite, and the record of which `<symbol>`s it carries,
+  were cached at module scope and never dropped when the write seam was
+  replaced — so the first symbol mounted against a new sink appended through a
+  dead handle, into whichever element had inherited that recycled handle
+  number. The sprite is now remembered alongside the sink that minted it and
+  rebuilt on the first mount after `DOM.install` or `DOM.reset` replaces that
+  sink; the glyph *definition* registry holds no handle and still outlives every
+  swap. Production swaps no seam, so only a consumer installing its own
+  `DOMSink` could reach this. No consumer action is needed.
+
 ### Data
 
 - **A store holding 1,000 records or more now builds its view.** Above that
