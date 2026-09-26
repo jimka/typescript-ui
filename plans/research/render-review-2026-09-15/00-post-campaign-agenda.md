@@ -981,3 +981,42 @@ entry says which factor decided it.
 
 - **`g21.focus-sweep` has nothing to reopen.** It reads `unreached` in every
   phase; `_updateFocusStyle`'s pool-wide sweep never runs on this panel.
+
+## Corrections: two candidates were already measured (2026-09-26)
+
+- **`g16.scroll-reads` is not unmeasured, and the note above saying so is
+  wrong.** It engaged and won on three of W3.0's wheel cells: `cdw` work 4.00 →
+  2.00 per unit, −50%, with Δ −4.80 ms inside an 11.95 bracket; `ssw` the same
+  −50% with −3.41 inside 10.75; and `shell-deep`'s editor wheel −3.29 ms with
+  reads −50% (`96-w3-0-bounding-sweep.md:51`, `:316`, `:318`). Every one of
+  those ms deltas is *flat* — the verdicts are work wins — so it belongs in the
+  same class as G16's settled pass rather than being a time win. It scored
+  `unreached` on `scroll-panes` only because every method it patches is
+  reachable from a scroll event alone, so no `passes` phase can engage it.
+  Under the standing rule it is plannable now: a real halving of the
+  scroll-path reads with a flat clock, pending only its complexity.
+
+- **F06.3 is measured too, and a `park` target has existed all along.**
+  `builders/shell.ts:316` already parks a `Split` gutter against the sidebar's
+  clamp, with a `leadPx` that overshoots deliberately, and W3.0 drove it: `sdp`
+  gives `split.noop-drag` work 4712.31 → 293.00 per unit, **−93.8%**, geometry
+  `=`, against Δ **+3.28 ms** (`96-w3-0-bounding-sweep.md:181`). The wave-2
+  line above saying it was never measured for want of a clamp is stale, and it
+  is what sent this agenda looking for a surface that was already there.
+
+- **That +3.28 is very likely the instrument, not the candidate.** The same
+  cell's co-run `split.recalc-gate` arm reads **+3.52 ms while avoiding no work
+  at all** (4712.31 → 4688.47, −0.5%, flat) (`:187`), and the sweep already
+  observed that “both arms of `sdp` are about 3.4 ms slower than its plain
+  arms” (`:191`). A park cell therefore charges roughly 3.4 ms to any runtime
+  patch, which puts F06.3's real clock effect at about zero and its work
+  verdict at −93.8%. Subtracting that tax needs a control arm patched from the
+  same code but removing nothing, which is what
+  `plans/unreached-ablation-surfaces.md` adds; no new panel or target is owed.
+
+- **So the campaign's remaining measurement scope is one surface, not three.**
+  Only G21's `getVisibleRecords` memo under a body row filter needs a surface
+  that does not exist, and `plans/table-row-filter-panel.md` covers it. The
+  platform sweep is discovery rather than a gap, F06.3 needs a control arm, and
+  a `scroll-panes` ladder for `g16.scroll-reads` would be a second surface for
+  a candidate already measured on three cells — useful, not owed.
