@@ -771,3 +771,76 @@ update and `table-rows`' settle-phase flake are above already.
   as the message changes, and go when the pointer leaves. The offline harness
   models neither real pointer input nor painting, which is why this is a manual
   step and not a test.
+
+## G21 and G23 measured: the prize is a formatter memo (2026-09-26)
+
+Twenty runs in one sitting on `master` at `fd3f5e29`, runs `w4a-*` to `w4d-*`,
+the sweep's scored-cell shape, `work=1&seam=1&geom=1`. No code was written:
+`table-rows` and `treetable-rows` already carry every target the sweep asked
+for, and both ablations were already registered.
+
+- **G23 is a large win, and not for the reason it is named.** On
+  `table-rows` n=900, `update=filter` falls from 156.69 to 127.66 ms per unit —
+  **−29.04, −18.5%** on a 2.61 bracket — and a header-sort `click` from 151.90
+  to 114.93, **−24.3%**. The click cell's plain bracket is a wide 20.31, but
+  every arm rep beats every plain rep by at least 22.7 ms, which is a stronger
+  statement than the bracket rule makes. Geometry is `=` on both. The arm's own
+  counters name the cause: `memo.intlHit` is 4,494 per phase — about **321
+  `Intl.DateTimeFormat` constructions per unit** — while `skipped.operators`
+  and `skipped.operatorFace` do not appear in the `click` phase at all. So the
+  whole click win, and most of the update win, is `cacheDateFormatters`, not the
+  filter-cell write economy the group is named for. This is also why G23 read as
+  stalled: the sweep scores it on `sink`, where `apply` moves −0.4% on update
+  and is identical on click, because what is left of G23 after the button and
+  text guards (`8d8adb29`) took its rule and DOM halves is **CPU, which no
+  DOM-write counter can see**.
+
+- **The fix is six formatters.** `data/temporalText.ts:25-36` calls
+  `toLocaleDateString()`, `toLocaleTimeString(undefined, …)` and
+  `toLocaleString(undefined, …)`, building a formatter *and* a fresh options
+  object on every call. The locale is `undefined` and no time zone is passed, so
+  the entire cache key is the type (`date`, `time`, `datetime`) crossed with
+  `showSeconds` — six module-level `Intl.DateTimeFormat` instances, with no
+  invalidation question to answer. A plan should be scoped to that and should
+  say the operator guards are unattributed rather than bundling them in.
+
+- **G21 moves counters, and mostly not the clock.** Work falls −27.3% on `key`
+  (22 → 16 per unit) and −14.3% on `update` (14 → 12), **identically at n=900
+  and n=10,000** — as are the sink totals, 1288.86 and 1320.00 in both cells,
+  because the table is virtualised and the window is fixed, so row count never
+  drove this. `key` is flat in time at both scales (−0.01, −0.07). `passes`
+  reads −0.32 at one scale and +0.32 at the other, which is noise. The `update`
+  phase is the only time effect, about −2.2 ms or 6%, and it survives at n=900
+  only: there the plain reps show no trend (35.15, 36.54, 35.00) and both arm
+  reps sit below all three, while at n=10,000 the plain reps decline
+  monotonically (41.85, 39.46, 37.23) and `plain-c` lands *below* `arm-2`, so
+  that cell measures warm-up drift rather than the arm.
+
+- **And G21's dominant skip is provably cheap.** Its sub-item counters give
+  `skipped.requiredEmpty` about 107 per unit on `key`, `update` and `passes`
+  alike, with `memo.visibleHit` at 2 to 6. The same 107 skips buy −2.2 ms on
+  `update` (35 ms units) and **nothing at all** on `key` (16 ms units) or
+  `passes` (2.3 ms units, which have no room to give). So the volume is not
+  where the value is, and nothing yet attributes the one real effect to any of
+  the group's six patches. `skipped.focusSweep` engages only under `wheel`,
+  whose verdict is unobtainable (below).
+
+- **G21's narrowing sub-item is dropped by its own pre-registered rule.** W3.0
+  asked for `sink/u(update) − sink/u(passes)` to be at least 10% of
+  `sink/u(update)` and at least 1.0 per unit (`w3-0-bounding-sweep.md:1149`).
+  Measured: **−31.14, or −2.4%** — a one-record update costs slightly *less*
+  sink than a settled pass, so there is no rebind excess to narrow. Identical at
+  both scales. F19.5 and F22.2 are closed.
+
+- **G21 does nothing on the tree table.** `treetable-rows` reads work 16 → 16,
+  0.0%, with `geom DIFF(focused)` — void. Its `update` phase also produced three
+  identical plain readings (bracket 0.00), the coincidence that manufactured a
+  false regression earlier in this campaign; the verdict is `void` on geometry
+  regardless, so no extra rep was spent on it.
+
+- **A surface defect: `table-rows` cannot answer a `wheel` question.** Every
+  `wheel` phase in the sitting voided on `geom unstable(cell,focused)` — in the
+  **plain** arm, so it is the panel's own nondeterminism, not the ablation's.
+  Any candidate whose value lives in `wheel` on this panel is unmeasurable until
+  those two probes settle. This sits beside the known `table-rows` settle-phase
+  flake, one run in six starting from a different column layout.
