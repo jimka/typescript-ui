@@ -496,6 +496,13 @@ The W3.0 bounding sweep's arms, one per wave-3 candidate group (see
 | `chart.repaint-gate` | F26.1 | A chart keeps its marks when the plot, both scales and its state are unchanged. Inert on a library whose `AbstractChart` gates its own repaint (from `chart-repaint-gate` on): it notes `no ungated repaint` and patches nothing, so it bounds only an earlier build. |
 | `chart.margin-memo` | F26.2 | A chart re-applies its axis insets instead of re-measuring them until its state changes. Inert on a library whose `AbstractChart` gates its own repaint (from `chart-repaint-gate` on): it notes `no ungated repaint` and patches nothing, so it bounds only an earlier build. |
 
+A later arm, added outside the sweep, isolates one part of a W3.0 group so a
+cell can attribute that part's time on its own:
+
+| Ablation | Candidate | What it removes |
+|---|---|---|
+| `g21.visible-memo` | G21 | Only the visible-record memo of `g21.render-pass`, so a cell can attribute the group's time to that part alone. |
+
 The earlier ones:
 
 | Ablation | What it removes |
