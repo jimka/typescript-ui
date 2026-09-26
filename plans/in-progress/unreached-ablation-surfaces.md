@@ -688,6 +688,59 @@ two corrections, each replacing one sentence:
 
 ---
 
+## Implementation Notes
+
+**Step 11 was skipped: `master` already carries both corrections, in a shape
+that replacing the two sentences would break.** `master` `6db01b15` ("Correct
+the record: g16.scroll-reads and F06.3 were both measured in W3.0") added a
+dated `## Corrections: two candidates were already measured (2026-09-26)`
+section to `00-post-campaign-agenda.md`, covering the same two claims this
+plan's `## Documentation Impact` prescribed and more of them. It does so by
+*pointing at* the stale sentences rather than editing them — "the note above
+saying so is wrong" for the G16 bullet, "The wave-2 line above saying it was
+never measured for want of a clamp is stale" for F06.3. So rewriting either
+sentence in place would orphan those back-references, and would also falsify
+a record the file dates: the G16 sentence lives inside *First measurements of
+G16, G25 and G27 (2026-09-25)*, which states what was believed then. That
+commit's own text already names this plan as the control arm's home. No edit
+was made to the agenda on this branch; `touches-shared` still lists it for any
+sibling branch planned against the pre-correction text.
+
+**Three smaller departures, all in test scaffolding.** `mount.test.ts`'s three
+ladder constants were shared with the new `P16` cases rather than duplicated:
+`LADDER_PERIOD` was added, `LADDER_UNITS` derived from it, and the group's
+comments generalised from naming `P18` to naming both blocks. `P16` sits above
+those declarations and reads them from test bodies, which run after the module
+is evaluated. `ablations.test.ts` needed two roster edits step 8 does not
+mention — `split.noop-control` joins `LATER_ABLATIONS` for `A1` and
+`ABSENT_ON_CANVAS_IDLE` for `A2` — because both lists are exhaustive over
+`ABLATIONS`. And `gateUnmovedLayout` takes `pane` last, after the three new
+switches, so its parameter order matches `splitDragGate`'s rather than keeping
+`pane` third.
+
+**`row0`'s wheel exemption is documented, not left to a future cell.** The
+`## Potential Challenges` bullet on `row0` frames a wheel over pane 0 as a
+*future* phase, but the panel's own `defaultDrive` already drives one, and
+geometry labels are the panel's rather than a phase's — so the recorded default
+cell would read `DIFF(row0)` the moment its wheel scrolls, with nothing telling
+a reader to discount it. Rather than drop the label the plan asks for, the
+panel's `geometry` comment, its `description` and the README row now all name
+the remedy the campaign already uses for a burst phase's moving labels,
+`--allow-diff row0@<phase>`, and say that such a cell reads `pane1` and `row1`
+instead. Relatedly, both the `description` and the README row now say that the
+ladder reaches the scroll-shadow path *deterministically* rather than that it
+is the only phase that reaches it: the panel's existing text says the `wheel`
+phase really scrolls pane 0, and `pane.shadowUpdate` is the instrument that
+settles which of the two is right, so neither document may assume the answer.
+
+**No measurement was run.** Both cells in `## Verification`, and the by-eye
+`npm -w packages/qa run dev` check, need a desktop window and are left to the
+user; the code is in place and covered offline by `P16` cases 1–6 and `A3b`
+cases 7–9. Cases 10–13 remain unanswered by construction — they are the cells'
+own readings.
+
+---
+
 ## Notes
 
 [^why-unreached]: What was verified, and what was ruled out. The reading the
