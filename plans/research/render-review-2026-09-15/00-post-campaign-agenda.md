@@ -892,3 +892,78 @@ the worktree was kept.
   and F19.5 and F22.2 were already dropped at their own threshold yesterday.
   **Three of the four candidates that finally got a surface closed on
   measurement**, which is what the surfaces were built to do.
+
+## Judged again: render time first, work second, complexity last (2026-09-26)
+
+The user's standing rule, set after the five surfaced candidates were measured:
+render performance is the primary priority and reduced work is secondary, but
+**a work reduction with a flat clock is still worth shipping unless it costs
+considerable code complexity**. The closures above were written against
+"counters moved, the clock did not", which is not a sufficient reason on its
+own. Every verdict is re-stated here against the three factors — does render
+time improve; is the work reduction real; what does it cost in code — and each
+entry says which factor decided it.
+
+- **What the counters watch, and why they diverged from the clock.** Of the
+  five candidates, the four with the largest counter deltas moved no time at
+  all — G16's `getScrollMetrics` −99.3%, G27's `querySelector` −37% to −99.9%,
+  G21's work counter −27.3%, G25's 98 withholds — and the one that moved time
+  most, G23 at −18.5% and −24.3%, barely moved its counter (`apply` −0.4% on
+  update, identical on click). The mechanism is not a coincidence:
+  `work=1&seam=1` counts framework bookkeeping — method entries, DOM reads,
+  style writes — which G27 priced at three to five microseconds a call on this
+  engine. G23's win was `Intl.DateTimeFormat` construction, about 321 a unit, a
+  **platform** call no counter in the harness watches. Counters remain the
+  right instrument for proving an arm engaged and, with the geometry probes,
+  that it stayed correct. They are not a proxy for time, and their magnitude
+  should never stand in for one.
+
+- **A sweep worth running: per-call platform-constructor cost.** G23 suggests
+  the milliseconds live where the harness is blind. `Intl.NumberFormat`,
+  `Intl.Collator`, `RegExp` compilation, `getComputedStyle` and `measureText`
+  are the same shape as `Intl.DateTimeFormat` — constructed or invoked per
+  cell, per row or per frame, invisible to every counter a panel installs. A
+  counting shim over each, run against the existing panels, would say whether
+  any other candidate-sized cost is hiding in plain sight. Speculative, but
+  cheap to scope and the only lead this campaign has on where its remaining
+  time went.
+
+- **G16 ships under the rule.** Its work reduction is real DOM reads removed
+  (`getScrollMetrics` 48.00 → 0.32 per unit), the clock is flat, and the cost
+  is extending an opt-in whose pattern already ships from stage 1. Factors two
+  and three both pass; the flat clock does not retire it.
+
+- **G27 stays closed — on complexity, not on the clock.** Its seam reduction is
+  genuine, but the cache as ablated discards itself on 22 to 32% of the ticks
+  it serves, because the key includes a `scrollHeight` that grows while a
+  lazily rendered document scrolls. A version that worked would need a tuned
+  invalidation key and incremental offset extension, with two live paths
+  through `trackScroll`. That is considerable complexity for a saving of three
+  to five microseconds a heading, so factor three decides it.
+
+- **G21's `applyRequiredEmptyState` guard is reopened.** It skips about 107
+  calls a unit of a per-cell loop over every rendered row (`Body.ts:1464`,
+  `:2498`) and reads flat in time. Under the old rule that closed it; under
+  this one the question is only what the guard costs, and a guard on "not
+  required and already empty" is the cheap end of the scale. Worth pricing
+  properly rather than dropping.
+
+- **G21's `getVisibleRecords` memo stays closed, and for a better reason than
+  the clock.** `Body.ts:502-506` is `return this._rowVisible ?
+  records.filter(this._rowVisible) : records` — with no row filter set it hands
+  back the store's own array, allocating nothing. **No QA panel sets a body row
+  filter**, and `table-rows`' own filter mode calls `store.setFilter` instead,
+  which is a store-level filter. So on every surface measured the memoised
+  method took its free branch and there was no work to remove beyond the six
+  avoided call entries. The counter fell 22 → 16 and nothing else did.
+
+- **But that names the campaign's largest unmeasured candidate.** With
+  `_rowVisible` set, `getVisibleRecords` is an O(n) `filter` — at n=10,000 and
+  22 calls a unit, 220,000 predicate calls and 22 array allocations per unit,
+  every one of them thrown away. The memo would be a large win there and the
+  work has never been measured, because no panel exercises the feature. A panel
+  setting a body row filter is a small addition, and it should be built before
+  G21 is called closed for good.
+
+- **`g21.focus-sweep` has nothing to reopen.** It reads `unreached` in every
+  phase; `_updateFocusStyle`'s pool-wide sweep never runs on this panel.
