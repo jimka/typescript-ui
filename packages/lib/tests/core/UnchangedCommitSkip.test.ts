@@ -770,13 +770,7 @@ describe('A component with no element is never skipped (case 6)', () => {
         expect(child.release()).toBe(true);
         expect(child.isLayoutDirty()).toBe(false);
 
-        // The offline `getElementById` model does not evict a released node
-        // (see `element-release.test.ts`), so model the real document's miss
-        // for this one id.
-        const lookup = DOM.source.getElementById.bind(DOM.source);
-
-        vi.spyOn(DOM.source, 'getElementById').mockImplementation(id => (id === child.getId() ? null : lookup(id)));
-
+        // release() un-indexes the id, so the lookup misses for real.
         expect(child.getElement()).toBeFalsy();
 
         const layout = vi.spyOn(child, 'doLayout');

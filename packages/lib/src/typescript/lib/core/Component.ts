@@ -1555,6 +1555,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         DOM.sink.release(element);
         this.untrackHandle(element);
 
+        // Both buffers are still bound to the handle released above, so the
+        // next commit would write through it. Detaching keeps their retained
+        // state, which `init()`'s `attach` replays onto the fresh element.
+        this._inlineStyle.detach();
+        this._elementAttributes.detach();
+
         this._element               = undefined;
         this._pendingRematerialize   = true;
 

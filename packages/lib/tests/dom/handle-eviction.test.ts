@@ -5,6 +5,8 @@
 // and detaching an element from the modelled tree un-indexes its id.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
+import type { Handle } from '~/core/DOM';
+import { Component } from '~/core/Component';
 import { installTestDOM } from './TestDOM';
 import fontMetrics from './font-metrics.test-font.json';
 
@@ -18,6 +20,17 @@ const DOM_CONFIG = {
 
 beforeEach(() => installTestDOM(DOM_CONFIG));
 afterEach(() => DOM.reset());
+
+/** Test-only seam onto `Component`'s protected `render()`. Isolated to E4, below; never exported. */
+type Renderable = { render(): Handle };
+
+/** Test-only seam onto `RecordingDOMSink`'s recorded writes. */
+type Recorder = { writes: Array<{ op: string; args: unknown[] }> };
+
+/** The one test-only releasable subclass this file needs — mirrors `element-release.test.ts`'s `ReleasableProbe`. */
+class ReleasableComponent extends Component {
+    protected canRelease(): boolean { return true; }
+}
 
 describe('modelled handle eviction', () => {
     it('E1. a released handle stops resolving and stops being findable', () => {
@@ -70,5 +83,29 @@ describe('modelled handle eviction', () => {
             style: { left: '5px', top: '7px', width: '10px', height: '10px' },
         })).not.toThrow();
         expect(DOM.source.getElementRect(row).x).toBe(5);
+    });
+
+    it('E4. a commit after Component.release() writes nothing through the released handle', () => {
+        const recorder = DOM.sink as unknown as Recorder;
+        const probe    = new ReleasableComponent({});
+        const handle   = probe.getElement(true)!;
+
+        expect(probe.release()).toBe(true);
+        expect(DOM.source.isRegistered(handle)).toBe(false);
+
+        // Only writes from here on are the released handle's own commit —
+        // render()'s own init() already recorded an `apply` against `handle`.
+        const sinceRelease = recorder.writes.length;
+
+        expect(() => {
+            probe.setWidth(321);
+            probe.setAutoCommitStyle(true);
+        }).not.toThrow();
+
+        expect(recorder.writes.slice(sinceRelease).some(w => w.op === 'apply' && w.args[0] === handle)).toBe(false);
+
+        const fresh = (probe as unknown as Renderable).render();
+
+        expect(recorder.writes.slice(sinceRelease).some(w => w.op === 'apply' && w.args[0] === fresh)).toBe(true);
     });
 });

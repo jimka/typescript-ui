@@ -121,6 +121,11 @@ abstract class StyleTarget<T> {
         this._dirty = {};
     }
 
+    /** Unbinds the buffer; later writes accumulate in the dirty bag again. */
+    protected dematerialize(): void {
+        this._target = null;
+    }
+
     /**
      * Terminal write for a single property onto the now-attached target. Each
      * subclass resolves its own target kind through the seam — an element via
@@ -510,6 +515,15 @@ class InlineStyle extends StyleTarget<Handle> {
      */
     attach(handle: Handle): void {
         this.materialize(handle);
+    }
+
+    /**
+     * Unbinds this buffer from a released element handle. A later write
+     * accumulates in the dirty bag rather than flushing through the dead
+     * handle, and the next {@link attach} replays it onto the fresh one.
+     */
+    detach(): void {
+        this.dematerialize();
     }
 
     /** @inheritDoc */
