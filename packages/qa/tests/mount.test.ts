@@ -412,6 +412,128 @@ describe('P16 scroll-panes', () => {
         expect(panes[0].getComponents()).not.toContain(row1);
     });
 
+    it('labels pane 0\'s first row, which moves with the ladder by a repeatable offset', async () => {
+        const mounted = await mountPanel('scroll-panes', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const panes = mounted.build.root.getComponents();
+        const { row0, row1 } = mounted.build.geometry!;
+
+        // `row0` sits on content the ladder scrolls, which a wheel phase would
+        // make useless as a gate. The ladder writes `Math.round(fraction *
+        // span)` from the unit index alone, so unit `k` is at the same integer
+        // pixel in every run and `row0` is a probe instead of a liability.
+        expect(panes[0].getComponents()).toContain(row0);
+        expect(panes[0].getComponents()).not.toContain(row1);
+    });
+
+    it('walks a triangle of absolute offsets, and leaves the pane it excludes at rest', async () => {
+        // jsdom lays nothing out, so every pane's clamped read-back would be 0
+        // and the ladder would write nothing. Stubbing the seam's scroll read —
+        // the one `setScrollTop` takes its clamped result from — gives every
+        // pane a span, and the offsets are then arithmetic. It has to be in
+        // place before the mount, because the spans are measured once in
+        // `afterMount` and held for the run. The ladder constants are the ones
+        // P18 shares, below.
+        vi.spyOn(DOM.source, 'getScrollTop').mockReturnValue(LADDER_SPAN_PX);
+
+        const mounted = await mountPanel('scroll-panes', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const panes = mounted.build.root.getComponents();
+
+        // Spied after the mount, so the span probe's own writes per pane are
+        // not among these calls. jsdom's `scrollTop` is not a layout value, so
+        // the write is what the case can read; the offset never lands.
+        const writes = panes.map((pane) => vi.spyOn(pane, 'setScrollTop'));
+        const ladder = mounted.targets.call as CallTarget;
+
+        for (const unit of LADDER_UNITS) {
+            ladder(unit);
+        }
+
+        expect(writes[0].mock.calls.map(([offset]) => offset)).toEqual(LADDER_OFFSETS);
+        expect(writes[2].mock.calls.map(([offset]) => offset)).toEqual(LADDER_OFFSETS);
+
+        // Pane 1 is the one the ladder leaves alone, so the `pane1` and `row1`
+        // labels hold still and the case above them stays true.
+        expect(writes[1]).not.toHaveBeenCalled();
+    });
+
+    it('repeats a lap, so units a period apart write the same offset', async () => {
+        vi.spyOn(DOM.source, 'getScrollTop').mockReturnValue(LADDER_SPAN_PX);
+
+        const mounted = await mountPanel('scroll-panes', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const pane0 = mounted.build.root.getComponents()[0];
+        const write = vi.spyOn(pane0, 'setScrollTop');
+        const ladder = mounted.targets.call as CallTarget;
+
+        // A whole lap plus its mirror image: the cells drive whole multiples of
+        // the period, so every position has to be visited the same number of
+        // times by every run of every arm.
+        for (let unit = 0; unit <= LADDER_PERIOD; unit++) {
+            ladder(unit);
+            ladder(unit + LADDER_PERIOD);
+        }
+
+        const offsets = write.mock.calls.map(([offset]) => offset);
+
+        expect(offsets).toHaveLength(2 * (LADDER_PERIOD + 1));
+        expect(offsets.filter((_, i) => i % 2 === 0)).toEqual(offsets.filter((_, i) => i % 2 === 1));
+    });
+
+    it('writes no offset, and counts no pane, where nothing scrolls', async () => {
+        // A pane whose clamped read-back is 0 cannot scroll, so the ladder has
+        // nowhere to walk and must leave it alone rather than write a stream of
+        // zeroes. jsdom stores an unclamped `scrollTop`, so its own read-back
+        // is the probe's own value rather than 0 — the seam's scroll read is
+        // stubbed to model the pane that really cannot scroll.
+        vi.spyOn(DOM.source, 'getScrollTop').mockReturnValue(0);
+
+        const mounted = await mountPanel('scroll-panes', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const panes = mounted.build.root.getComponents();
+        const host = mounted.build.describe!() as { ladderPanes: number };
+        const writes = panes.map((pane) => vi.spyOn(pane, 'setScrollTop'));
+        const ladder = mounted.targets.call as CallTarget;
+
+        expect(host.ladderPanes).toBe(0);
+
+        for (const unit of LADDER_UNITS) {
+            expect(() => ladder(unit)).not.toThrow();
+        }
+
+        expect(writes.every((write) => write.mock.calls.length === 0)).toBe(true);
+    });
+
+    it('counts the panes the ladder writes to, leaving one of n out', async () => {
+        vi.spyOn(DOM.source, 'getScrollTop').mockReturnValue(LADDER_SPAN_PX);
+
+        const mounted = await mountPanel('scroll-panes', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const host = mounted.build.describe!() as { panes: number; ladderPanes: number };
+
+        // The witness the run reads before either arm: it separates "the ladder
+        // wrote to nothing" from "it wrote and the arm still saved nothing",
+        // which is the distinction the `unreached` reading could not make.
+        expect(host.panes).toBe(SMOKE_SCALE);
+        expect(host.ladderPanes).toBe(SMOKE_SCALE - 1);
+    });
+
+    it('counts every entry into the framework\'s scroll-shadow path', async () => {
+        const mounted = await mountPanel('scroll-panes', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
+        const pane0 = mounted.build.root.getComponents()[0];
+
+        // One snapshot covers both counters: `remeasureScrollMetrics` and
+        // `updateScrollShadows` are own properties of the same prototype.
+        const patched = snapshotPatchables([tools.ownerProto(pane0, 'remeasureScrollMetrics')!]);
+
+        try {
+            mounted.build.installWork!(tools);
+
+            // The witness that says the scroll-shadow path ran at all. It is
+            // wrapped on `Panel.prototype`, so the key carries the receiver's
+            // class, as `pane.remeasure` does.
+            expect(counted(() => (pane0 as unknown as { updateScrollShadows(): void }).updateScrollShadows())['pane.shadowUpdate@ScrollPane']).toBe(1);
+        } finally {
+            restorePatchables(patched);
+        }
+    });
+
     it('counts a scroll tick delivered inside pane 0, captured rather than bubbled', async () => {
         const mounted = await mountPanel('scroll-panes', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
         const pane0 = mounted.build.root.getComponents()[0];
@@ -719,11 +841,19 @@ describe('P17 editor-tabs', () => {
     });
 });
 
+// The ladder constants P16 and P18 share: `markdown-doc` and `scroll-panes`
+// walk the same triangle, so the two blocks' cases straddle the same positions.
+// P16's own cases sit above these declarations and read them from their test
+// bodies, which run once the module has been evaluated.
+
 /** The scrollable span `getScrollTop` is stubbed to report, so the ladder has somewhere to walk: even, so half of it is a whole pixel. */
 const LADDER_SPAN_PX = 1200;
 
-/** The ladder units P18 walks: a whole lap of the triangle, at its two ends and its peak. */
-const LADDER_UNITS = [0, 6, 12, 18, 24];
+/** Units per lap, as both panels declare it: a lap is a whole second of units at 60 Hz. */
+const LADDER_PERIOD = 24;
+
+/** The ladder units the two blocks walk: a whole lap of the triangle, at its two ends and its peak. */
+const LADDER_UNITS = [0, LADDER_PERIOD / 4, LADDER_PERIOD / 2, (3 * LADDER_PERIOD) / 4, LADDER_PERIOD];
 
 /** The offsets those units land on over `LADDER_SPAN_PX`. */
 const LADDER_OFFSETS = [0, LADDER_SPAN_PX / 2, LADDER_SPAN_PX, LADDER_SPAN_PX / 2, 0];

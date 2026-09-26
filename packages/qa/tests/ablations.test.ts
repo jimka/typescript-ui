@@ -205,8 +205,8 @@ const EARLIER_ABLATIONS = [
     'tab.doLayout', 'tree.renderWindow', 'tree.doLayout', 'scroller.layoutScrollbars', 'accordion.doLayout', 'card.doLayout',
 ];
 
-/** Arms added after W3.0, each isolating one part of an earlier bundled arm. */
-const LATER_ABLATIONS = ['g21.visible-memo'];
+/** Arms added after W3.0, each isolating one part of an earlier bundled arm, or pricing one's own instrument. */
+const LATER_ABLATIONS = ['g21.visible-memo', 'split.noop-control'];
 
 describe('A1 registry', () => {
     it('holds the W3.0 ablations, every earlier one and every later one', () => {
@@ -217,7 +217,7 @@ describe('A1 registry', () => {
 
 /** The ablations whose component or layout-manager target `canvas-idle` does not mount. */
 const ABSENT_ON_CANVAS_IDLE = [
-    'split.noop-drag', 'split.recalc-gate', 'g12.collapse-static', 'g14.closed-section', 'g21.render-pass', 'g21.visible-memo',
+    'split.noop-drag', 'split.noop-control', 'split.recalc-gate', 'g12.collapse-static', 'g14.closed-section', 'g21.render-pass', 'g21.visible-memo',
     'g22.settle-relay', 'g23.write-economy', 'g24.list-rows', 'g24.tree-window', 'g25.theme-withhold', 'g26.viewer-resize',
     'g27.heading-cache', 'chart.repaint-gate', 'chart.margin-memo',
 ];
@@ -283,6 +283,47 @@ describe('A3 split.noop-drag', () => {
         expect(invoke(lhs, 'getWidth')).toBe(width + 20);
         expect(Object.hasOwn(lhs, 'doLayout')).toBe(false);
         expect(Object.hasOwn(rhs, 'doLayout')).toBe(false);
+    });
+});
+
+describe('A3b split.noop-control', () => {
+    it('counts every pane layout split.noop-drag would have skipped, and skips none of them', async () => {
+        const { split, gutter, container, lhs, rhs } = await splitFixture();
+        const width = invoke<number>(lhs, 'getWidth');
+
+        expect(apply('split.noop-control')).not.toMatch(/^no /);
+
+        // The control's whole job: the same per-frame bookkeeping over the same
+        // population as `split.noop-drag`, counted under `dose.` so it stays
+        // out of `work/u` and the arm's own `work` verdict reads flat — which
+        // is the statement that it removes nothing. A3's count of 2 for the
+        // candidate and this count of 2 are what make the two arms comparable.
+        const parked = counted(() => invoke(split, 'onDrag', container, gutter, 0));
+
+        expect(parked['dose.split.noop-control.wouldSkip']).toBe(2);
+        expect(parked['skipped.split.noop-drag.paneLayout']).toBeUndefined();
+
+        // A frame that really moves the panes counts nothing, exactly as the
+        // candidate skips nothing on one, and the drag still lands.
+        expect(counted(() => invoke(split, 'onDrag', container, gutter, 20))['dose.split.noop-control.wouldSkip']).toBeUndefined();
+        expect(invoke(lhs, 'getWidth')).toBe(width + 20);
+        expect(Object.hasOwn(lhs, 'doLayout')).toBe(false);
+        expect(Object.hasOwn(rhs, 'doLayout')).toBe(false);
+    });
+
+    it('still lays both panes out on the frame it counts', async () => {
+        const { split, gutter, container, lhs, rhs } = await splitFixture();
+
+        // Own properties, which is what the stand-in delegates to: installed
+        // before the drag, so `withOwnMethod` saves each one, delegates to it
+        // and puts it back. A candidate that skipped would leave them unused,
+        // so this is the assertion that tells the control from the candidate.
+        const layouts = [lhs, rhs].map((pane) => vi.spyOn(pane as unknown as { doLayout(): unknown }, 'doLayout'));
+
+        apply('split.noop-control');
+        invoke(split, 'onDrag', container, gutter, 0);
+
+        expect(layouts.map((layout) => layout.mock.calls.length)).toEqual([1, 1]);
     });
 });
 

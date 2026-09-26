@@ -381,18 +381,34 @@ function afterRootStyleApply(lib: HarnessLibrary, listener: () => void): void {
 }
 
 /**
- * G12 / F06.3: a `Split` drag frame whose clamp leaves both panes where they
- * were still lays both out again. Skips the layout of a pane the frame left
- * at its rectangle — F06.3's proposed fix, a port of
- * `Accordion.layoutSections`' `contentHeight !== oldHeight` gate — while
- * `onDrag`'s write of the pair's stored sizes still runs, since a frame at
- * offset 0 writes the rendered size back into them.
+ * G12 / F06.3 and its control: a `Split` drag frame whose clamp leaves both
+ * panes where they were still lays both out again. `skip` says which of the two
+ * arms this is; everything else — the gutter lookup, the pane pair, the
+ * per-frame `withOwnMethodOnEach` install and restore, the rectangle snapshot
+ * and the compare — is shared, so the control pays it too.
+ *
+ * With `skip`, the layout of a pane the frame left at its rectangle is skipped:
+ * F06.3's proposed fix, a port of `Accordion.layoutSections`'
+ * `contentHeight !== oldHeight` gate. `onDrag`'s write of the pair's stored
+ * sizes still runs either way, since a frame at offset 0 writes the rendered
+ * size back into them.
+ *
+ * Without `skip` every one of those layouts still runs and is only counted,
+ * which is the control: it carries exactly the candidate's patching cost and
+ * removes none of its work, so `mean(candidate) − mean(control)` is the gate's
+ * own time with the instrument's cost cancelled. W3.0's park cell charged about
+ * 3.4 ms to *any* runtime patch on this path — its co-run `split.recalc-gate`
+ * arm read +3.52 ms while avoiding no work at all — and that tax is what the
+ * control prices.
  *
  * @param tools - The harness tools.
+ * @param name - The ablation's `abl=` name, for its counter.
+ * @param prefix - `skipped` for the candidate; `dose` for the control, which keeps its count out of `work/u`.
+ * @param what - The counter's one-word `<what>`.
+ * @param skip - Whether an unmoved pane's layout is skipped, or only counted and then run.
  * @returns A note saying what was patched.
  */
-function splitNoopDrag(tools: HarnessTools): string {
-    const name = 'split.noop-drag';
+function splitDragGate(tools: HarnessTools, name: string, prefix: OwnCounterPrefix, what: string, skip: boolean): string {
     const split = tools.findLayoutManager('Split');
 
     if (!split) {
@@ -412,29 +428,36 @@ function splitNoopDrag(tools: HarnessTools): string {
             return drag();
         }
 
-        return withOwnMethodOnEach([panes[index], panes[index + 1]], 'doLayout', (pane) => skipLayoutIfUnmoved(tools, name, pane), drag);
+        return withOwnMethodOnEach([panes[index], panes[index + 1]], 'doLayout', (pane) => gateUnmovedLayout(tools, name, prefix, what, skip, pane), drag);
     };
 
-    return 'Split.onDrag skips the layout of a pane the frame left in place';
+    return `Split.onDrag ${skip ? 'skips' : 'still runs'} the layout of a pane the frame left in place`;
 }
 
 /**
- * A `doLayout` stand-in that skips the pass while `pane` still sits at the
- * rectangle it had when the stand-in was built.
+ * A `doLayout` stand-in that counts every pass `pane` takes while it still sits
+ * at the rectangle it had when the stand-in was built, and skips that pass when
+ * `skip`. Without `skip` it counts the same population and runs it anyway,
+ * which is what makes the control's `work` verdict read flat.
  *
  * @param tools - The harness tools.
  * @param name - The ablation's name, for its counter.
+ * @param prefix - The counter's prefix.
+ * @param what - The counter's `<what>`.
+ * @param skip - Whether the counted pass is skipped or delegated.
  * @param pane - The pane.
  * @returns The stand-in.
  */
-function skipLayoutIfUnmoved(tools: HarnessTools, name: string, pane: AnyObj): Replacement {
+function gateUnmovedLayout(tools: HarnessTools, name: string, prefix: OwnCounterPrefix, what: string, skip: boolean, pane: AnyObj): Replacement {
     const before = rectOf(pane);
 
     return (self, args, delegate): unknown => {
         if (sameValues(rectOf(self), before)) {
-            bump(tools, 'skipped', name, 'paneLayout');
+            bump(tools, prefix, name, what);
 
-            return self;
+            if (skip) {
+                return self;
+            }
         }
 
         return delegate(self, args);
@@ -2681,7 +2704,11 @@ export const ABLATIONS: Record<string, Ablation> = {
     // The W3.0 bounding sweep's arms: one per wave-3 candidate group (G…) or
     // finding (F26.…), named after it; see
     // plans/implemented/w3-0-bounding-sweep.md.
-    'split.noop-drag': splitNoopDrag,
+    'split.noop-drag': (tools) => splitDragGate(tools, 'split.noop-drag', 'skipped', 'paneLayout', true),
+    // A later arm, outside the sweep: the control for the line above. Same
+    // code, same per-frame cost, no skip, so a park cell can price the
+    // instrument and subtract it from the candidate's reading.
+    'split.noop-control': (tools) => splitDragGate(tools, 'split.noop-control', 'dose', 'wouldSkip', false),
     'split.recalc-gate': splitRecalcGate,
     'g12.collapse-static': g12CollapseStatic,
     'g05.lazy-reads': g05LazyReads,
