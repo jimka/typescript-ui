@@ -49,7 +49,7 @@ function armLine(lines: string[], arm: string): string {
 /** A fixture report, as far as these cases change it. */
 interface FixtureReport {
     params: Record<string, string>;
-    phases: Array<{ work: Record<string, number>; seam: { source: Record<string, number> }; geometry: Record<string, number[][]>; timing: { avgMs: number } }>;
+    phases: Array<{ work: Record<string, number>; seam: { source: Record<string, number> }; plat?: Record<string, number>; geometry: Record<string, number[][]>; timing: { avgMs: number } }>;
 }
 
 /**
@@ -126,6 +126,23 @@ describe('engagement', () => {
 
         expect(armLine(lines, 'x.y')).toMatch(/engaged yes +→ dose$/);
         expect(doseLine).toMatch(/dose: counter 60\.0% of seam\.source → work win; Δms \+0\.90 vs bracket 0\.40 → ms win/);
+    });
+});
+
+describe('counter families', () => {
+    it('scores a keyed platform counter, which only a plat=1 cell carries', () => {
+        const dir = cellCopy((report) => {
+            report.phases[0].plat = { 'string.localeCompare': report.params.abl === 'x.y' ? 80 : 100 };
+        });
+
+        const { status, lines } = qaAb([dir, 'ab-fix-', '--counter', 'plat.string.localeCompare', '--allow-diff', 'chart']);
+
+        expect(status).toBe(0);
+        expect(armLine(lines, 'plain')).toMatch(/counter 100\.00 {2}geom =$/);
+        expect(armLine(lines, 'x.y')).toMatch(/counter 80\.00 +Δ +-20\.0% win /);
+
+        // A key no phase carries is 0, not an error, as for every other family.
+        expect(armLine(qaAb([dir, 'ab-fix-', '--counter', 'plat.canvas.measureText']).lines, 'plain')).toMatch(/counter 0\.00 /);
     });
 });
 

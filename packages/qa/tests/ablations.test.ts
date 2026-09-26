@@ -208,10 +208,17 @@ const EARLIER_ABLATIONS = [
 /** Arms added after W3.0, each isolating one part of an earlier bundled arm, or pricing one's own instrument. */
 const LATER_ABLATIONS = ['g21.visible-memo', 'split.noop-control'];
 
+/** The platform-call cost sweep's dose arms: four priced operations, each on a two-rung ladder. */
+const PLAT_ABLATIONS = [
+    'plat.intl-d1', 'plat.intl-d4', 'plat.collate-d1', 'plat.collate-d4',
+    'plat.computed-d1', 'plat.computed-d4', 'plat.measure-d1', 'plat.measure-d4',
+];
+
 describe('A1 registry', () => {
-    it('holds the W3.0 ablations, every earlier one and every later one', () => {
+    it('holds the W3.0 ablations, every earlier one, every later one and the platform doses', () => {
         expect(W3_ABLATIONS).toHaveLength(26);
-        expect(Object.keys(ABLATIONS).sort()).toEqual([...W3_ABLATIONS, ...EARLIER_ABLATIONS, ...LATER_ABLATIONS].sort());
+        expect(PLAT_ABLATIONS).toHaveLength(8);
+        expect(Object.keys(ABLATIONS).sort()).toEqual([...W3_ABLATIONS, ...EARLIER_ABLATIONS, ...LATER_ABLATIONS, ...PLAT_ABLATIONS].sort());
     });
 });
 
@@ -1326,6 +1333,179 @@ describe('A30 g21.visible-memo', () => {
         const required = counted(() => invoke(body, 'applyRequiredEmptyState', firstRow, invoke<unknown[]>(body, 'getVisibleRecords')[0]));
 
         expect(required['skipped.g21.visible-memo.requiredEmpty']).toBeUndefined();
+    });
+});
+
+/** How often a dose checks its repeat against its first result: `doseCalls`' `DOSE_CHECK_EVERY`. */
+const DOSE_CHECK_EVERY = 100;
+
+/** Page calls the self-verification cases make: two whole check intervals at the `-d1` rung. */
+const SELF_CHECK_CALLS = 2 * DOSE_CHECK_EVERY;
+
+/** Requests the batch-measurement case passes `measureTexts`: one dose adds one operation per request. */
+const BATCH_REQUESTS = 3;
+
+describe('A31 plat.intl-d1', () => {
+    it('runs each formatter twice and returns the second result', async () => {
+        await mount('canvas-idle');
+
+        const format = vi.spyOn(Date.prototype, 'toLocaleDateString')
+            .mockReturnValueOnce('first')
+            .mockReturnValueOnce('second');
+
+        apply('plat.intl-d1');
+
+        const text = new Date().toLocaleDateString();
+
+        expect(format).toHaveBeenCalledTimes(2);
+        expect(text).toBe('second');
+    });
+
+    it('bumps one extra call per page call', async () => {
+        await mount('canvas-idle');
+
+        apply('plat.intl-d1');
+
+        expect(counted(() => {
+            new Date().toLocaleDateString();
+        })['dose.plat.intl-d1.extraCall']).toBe(1);
+    });
+});
+
+describe('A32 plat.intl-d4', () => {
+    it('runs each formatter five times and bumps four extra calls per page call', async () => {
+        await mount('canvas-idle');
+
+        const format = vi.spyOn(Date.prototype, 'toLocaleTimeString');
+
+        apply('plat.intl-d4');
+
+        const dose = counted(() => {
+            new Date().toLocaleTimeString();
+        });
+
+        expect(format).toHaveBeenCalledTimes(5);
+        expect(dose['dose.plat.intl-d4.extraCall']).toBe(4);
+    });
+});
+
+describe('A33 dose self-verification', () => {
+    it('counts a mismatch on every hundredth extra call', async () => {
+        await mount('canvas-idle');
+
+        let call = 0;
+
+        vi.spyOn(Date.prototype, 'toLocaleDateString').mockImplementation(() => String(call++));
+        apply('plat.intl-d1');
+
+        const dose = counted(() => {
+            for (let i = 0; i < SELF_CHECK_CALLS; i++) {
+                new Date().toLocaleDateString();
+            }
+        });
+
+        expect(dose['dose.plat.intl-d1.resultMismatch']).toBe(SELF_CHECK_CALLS / DOSE_CHECK_EVERY);
+    });
+
+    it('counts none when the repeat agrees', async () => {
+        await mount('canvas-idle');
+
+        vi.spyOn(Date.prototype, 'toLocaleDateString').mockReturnValue('same');
+        apply('plat.intl-d1');
+
+        const dose = counted(() => {
+            for (let i = 0; i < SELF_CHECK_CALLS; i++) {
+                new Date().toLocaleDateString();
+            }
+        });
+
+        expect(dose['dose.plat.intl-d1.extraCall']).toBe(SELF_CHECK_CALLS);
+        expect(dose['dose.plat.intl-d1.resultMismatch']).toBeUndefined();
+    });
+});
+
+describe('A34 plat.measure-d1 and plat.measure-d4', () => {
+    /** Three measurement requests, as one `measureTexts` call from a chart's axis would make. */
+    const requests = [{ text: 'abc' }, { text: 'xyz' }, { text: 'pqr' }];
+
+    it('counts one extra operation per request, not per call', async () => {
+        await mount('chart-line');
+
+        const source = DOM.source as unknown as AnyObj;
+
+        apply('plat.measure-d1');
+
+        expect(counted(() => invoke(source, 'measureTexts', requests))['dose.plat.measure-d1.extraCall']).toBe(BATCH_REQUESTS);
+    });
+
+    it('counts four extra operations per request at the upper rung', async () => {
+        await mount('chart-line');
+
+        const source = DOM.source as unknown as AnyObj;
+
+        apply('plat.measure-d4');
+
+        expect(counted(() => invoke(source, 'measureTexts', requests))['dose.plat.measure-d4.extraCall']).toBe(4 * BATCH_REQUESTS);
+    });
+
+    it('reports an absent method and doses the rest', async () => {
+        await mount('canvas-idle');
+
+        const source: AnyObj = {
+            measureText: () => 0,
+            measureTexts: () => [],
+            measureTextWidths: () => [],
+        };
+
+        const note = apply('plat.measure-d1', { Body, DOM: { sink: {}, source, install: (): void => {} } });
+
+        expect(note).toContain('NOT FOUND measureTextAdvance');
+
+        for (const method of ['measureText', 'measureTexts', 'measureTextWidths']) {
+            expect(note, method).toContain(method);
+            expect(Object.hasOwn(source, method), method).toBe(true);
+        }
+    });
+});
+
+describe('A35 plat.computed-d1', () => {
+    it('doses all four computed-style source methods and names each', async () => {
+        await mount('canvas-idle');
+
+        const note = apply('plat.computed-d1');
+
+        for (const method of ['getThemeVar', 'getBorderWidths', 'getComputedOverflow', 'isRenderedVisible']) {
+            expect(note, method).toContain(method);
+        }
+
+        expect(note).not.toContain('NOT FOUND');
+    });
+});
+
+describe('A36 dose restore', () => {
+    it('leaves every patched method restorable', async () => {
+        await mount('chart-line');
+
+        const source = DOM.source as unknown as AnyObj;
+        const dateFormat = Date.prototype.toLocaleDateString;
+        const collate = String.prototype.localeCompare;
+        const measure = source.measureText;
+        const themeVar = source.getThemeVar;
+
+        for (const name of PLAT_ABLATIONS) {
+            expect(apply(name), name).not.toContain('NOT FOUND');
+        }
+
+        // The snapshot `mount` pushed covers every host these arms patch,
+        // `Date.prototype` and `String.prototype` included.
+        restorePatchables(snapshots[snapshots.length - 1]);
+
+        expect(Date.prototype.toLocaleDateString).toBe(dateFormat);
+        expect(String.prototype.localeCompare).toBe(collate);
+        expect(source.measureText).toBe(measure);
+        expect(source.getThemeVar).toBe(themeVar);
+        expect(Object.hasOwn(source, 'measureText')).toBe(false);
+        expect(Object.hasOwn(source, 'getThemeVar')).toBe(false);
     });
 });
 

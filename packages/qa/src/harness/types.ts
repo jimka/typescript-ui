@@ -226,6 +226,8 @@ export interface PhaseReport {
     work?: Record<string, number>;
     /** `seam=1`: DOM seam calls by method name, per unit. */
     seam?: { sink: Record<string, number>; source: Record<string, number> };
+    /** `plat=1`: platform calls by name, per unit. */
+    plat?: Record<string, number>;
     /** `geom=1`: one `[x, y, width, height]` (rounded) per unit and label; `null` when the target has no element. */
     geometry?: Record<string, Array<[number, number, number, number] | null>>;
 }

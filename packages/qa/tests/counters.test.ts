@@ -1,5 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { installSeamCounters, perUnit, startCounting, stopCounting, suspendCounting } from '../src/harness/counters.js';
+// @vitest-environment jsdom
+//
+// The counter families, offline. E19 needs a document and a global
+// `getComputedStyle`, which the platform counters wrap, so the whole file
+// runs under jsdom; the other cases are DOM-free and unaffected.
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { installPlatformCounters, installSeamCounters, perUnit, startCounting, stopCounting, suspendCounting } from '../src/harness/counters.js';
+import { restorePatchables, snapshotPatchables } from './patchGuard.js';
+import type { PatchSnapshot } from './patchGuard.js';
 
 describe('E2 perUnit', () => {
     it('divides by the units and orders keys largest first', () => {
@@ -227,6 +234,95 @@ describe('E18 suspendCounting', () => {
     });
 });
 
+/** The platform counter the date cases read: `installPlatformCounters`' key for `Date.prototype.toLocaleDateString`. */
+const DATE_KEY = 'date.toLocaleDateString';
+
+/** How many units E19's per-unit case divides its three calls by. */
+const THREE_UNITS = 3;
+
+describe('E19 platform counters', () => {
+    /** The note the one install returned; every case reads the same one. */
+    let note = '';
+
+    /** `Date.prototype` and `String.prototype` as they were before the install. */
+    let prototypes: PatchSnapshot = [];
+
+    /** The engine's own `getComputedStyle`, which lives on the global rather than a prototype. */
+    let computedStyle: typeof window.getComputedStyle;
+
+    // Installed once: installing twice would wrap the wrappers and tally
+    // every call as two.
+    beforeAll(() => {
+        prototypes = snapshotPatchables([Date.prototype, String.prototype]);
+        computedStyle = window.getComputedStyle;
+        note = installPlatformCounters();
+    });
+
+    afterAll(() => {
+        restorePatchables(prototypes);
+        window.getComputedStyle = computedStyle;
+    });
+
+    it('does not tally a call made while not counting', () => {
+        startCounting();
+        stopCounting(1);
+        new Date().toLocaleDateString();
+
+        // A second stop reads the tallies again without resetting them.
+        expect(stopCounting(1).plat).toEqual({});
+    });
+
+    it('tallies the date formatters per unit', () => {
+        startCounting();
+
+        for (let i = 0; i < THREE_UNITS; i++) {
+            new Date().toLocaleDateString();
+        }
+
+        expect(stopCounting(THREE_UNITS).plat?.[DATE_KEY]).toBe(1);
+    });
+
+    it('tallies a collation and returns the engine\'s own answer', () => {
+        startCounting();
+
+        const order = 'x'.localeCompare('y');
+
+        expect(stopCounting(1).plat).toEqual({ 'string.localeCompare': 1 });
+        expect(order).toBeLessThan(0);
+    });
+
+    it('tallies a computed-style read and returns a declaration that still reads', () => {
+        const element = document.createElement('div');
+
+        document.body.appendChild(element);
+        startCounting();
+
+        const declaration = getComputedStyle(element);
+        const display = declaration.display;
+
+        expect(stopCounting(1).plat?.['style.getComputedStyle']).toBe(1);
+        expect(display).toBe('block');
+        element.remove();
+    });
+
+    it('names the target the engine does not expose instead of throwing', () => {
+        expect(note).toContain(DATE_KEY);
+        expect(note).toMatch(/not exposed: CanvasRenderingContext2D$/);
+    });
+
+    it('leaves the suspended calls out of the tallies', async () => {
+        startCounting();
+        new Date().toLocaleDateString();
+
+        await suspendCounting(async () => {
+            new Date().toLocaleDateString();
+            new Date().toLocaleDateString();
+        });
+
+        expect(stopCounting(1).plat?.[DATE_KEY]).toBe(1);
+    });
+});
+
 describe('stopCounting without installed families', () => {
     it('reports a family that recorded something, as an ablation\'s own counters do', async () => {
         // A fresh module: the tests above installed the seam family.
@@ -244,6 +340,7 @@ describe('stopCounting without installed families', () => {
         expect(counts.writes).toEqual({ 'skip@left': 0.5 });
         expect(counts.forcedStacks).toEqual({});
         expect(counts).not.toHaveProperty('seam');
+        expect(counts).not.toHaveProperty('plat');
     });
 
     it('reports nothing when nothing is installed or recorded', async () => {
