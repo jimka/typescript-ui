@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Body, Component, DOM, ThemeManager } from '@jimka/typescript-ui/core';
 import { findActiveHeading } from '@jimka/typescript-ui/component/display';
 import { AbstractWindow } from '@jimka/typescript-ui/overlay';
+import type { Table } from '@jimka/typescript-ui/component/table';
 import { startCounting, stopCounting } from '../src/harness/counters.js';
 import type { PhaseCounts } from '../src/harness/counters.js';
 import { createTools, parseDrive } from '../src/harness/run.js';
@@ -210,14 +211,26 @@ describe('P8 panel parameters', () => {
         const module = await loadPanel('table-rows');
         const build = module!.build(20, new URLSearchParams());
 
-        expect(build.describe!()).toMatchObject({ rowFilter: 'off', storeRecords: 20, filteredRows: 20, bodyRowFilter: false });
+        expect(build.describe!()).toMatchObject({ rowFilter: 'off', storeRecords: 20, filteredRows: 20, bodyRowFilter: false, idColumnWidth: 0 });
     });
 
     it('table-rows sets a body row filter admitting 2/5 of the rows under rowfilter=title', async () => {
         const module = await loadPanel('table-rows');
         const build = module!.build(20, new URLSearchParams('rowfilter=title'));
 
-        expect(build.describe!()).toMatchObject({ rowFilter: 'title', storeRecords: 20, filteredRows: 8, bodyRowFilter: true });
+        expect(build.describe!()).toMatchObject({ rowFilter: 'title', storeRecords: 20, filteredRows: 8, bodyRowFilter: true, idColumnWidth: 0 });
+    });
+
+    it('table-rows declares a digit budget on its three number columns and on no other', async () => {
+        const module = await loadPanel('table-rows');
+        const build = module!.build(20, new URLSearchParams());
+        const columns = (build.root as Table).getColumns().map((col) => [col.getField().getName(), col.getMaxContentLength()]);
+
+        // A `number` column's width otherwise comes from a 50-row sample of the
+        // store, which at the panel's default scale arrives on a worker and so
+        // races the first layout. The other nine columns must stay unbudgeted:
+        // the five flex ones are what share the width the three free up.
+        expect(columns.filter(([, budget]) => budget !== undefined)).toEqual([['id', 8], ['salary', 8], ['score', 8]]);
     });
 
     it('shell-deep drags a tab button under grip=tab', async () => {

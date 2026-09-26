@@ -1,9 +1,25 @@
+// @vitest-environment jsdom
+//
+// A run installs the device-input guard on `window` before it does anything
+// else, and node has no window. The guard's own behaviour is checked in
+// input.test.ts; what this file pins is that every report carries its two
+// notes.
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { removeInputGuard } from '../src/harness/input.js';
 import { parseDrive, runQa } from '../src/harness/run.js';
 import type { PanelHost, QaReport, Subject } from '../src/harness/types.js';
 
 /** `frames=`'s default, which the `drive=` table's rows assume. */
 const FRAMES = 150;
+
+/** The note the guard returns when it is installed; 22 device-input types. */
+const INSTALL_NOTE = 'input guard: 22 device-input types dropped at window capture';
+
+/** The note the guard's tally reads as when nothing reached the page. */
+const TALLY_NOTE = 'input guard: nothing reached the page';
+
+/** Delay of the stubbed frame callback, as frames.test.ts uses: the idle loops only need it asynchronous. */
+const STUB_FRAME_DELAY_MS = 1;
 
 describe('E3 parseDrive', () => {
     it.each([
@@ -59,6 +75,13 @@ async function runWith(search: string, panels: PanelHost): Promise<ReturnType<ty
 
     vi.stubGlobal('location', { search, origin: 'http://localhost:5190' });
     vi.stubGlobal('fetch', fetch);
+    // The idle frames a measured run takes, on a timer rather than a display's
+    // clock, so a successful run here costs milliseconds.
+    vi.stubGlobal('requestAnimationFrame', (callback: (now: number) => void): number => {
+        setTimeout(() => callback(performance.now()), STUB_FRAME_DELAY_MS);
+
+        return 0;
+    });
     await runQa({ lib: LIB, build: '/lib', panels });
 
     return fetch;
@@ -79,6 +102,7 @@ function onlyReport(fetch: ReturnType<typeof vi.fn>): { url: string; body: QaRep
 }
 
 afterEach(() => {
+    removeInputGuard();
     vi.unstubAllGlobals();
 });
 
@@ -120,5 +144,21 @@ describe('runQa', () => {
         const fetch = await runWith('?qa=t', fakePanels({ a: { defaultDrive: 'passes', targets: {} } }));
 
         expect(onlyReport(fetch).body.error).toBe('panel "a" gives no target for driver "passes"');
+    });
+
+    it('opens and closes a successful run\'s notes with the input guard\'s', async () => {
+        const fetch = await runWith('?qa=t', fakePanels({ a: { defaultDrive: '', targets: {} } }));
+        const { body } = onlyReport(fetch);
+
+        expect(body).not.toHaveProperty('error');
+        expect(body.notes).toEqual([INSTALL_NOTE, TALLY_NOTE]);
+    });
+
+    it('records what the guard dropped even when the run fails', async () => {
+        const fetch = await runWith('?qa=t&panel=nope', fakePanels({ a: { defaultDrive: '', targets: {} } }));
+        const { body } = onlyReport(fetch);
+
+        expect(body.error).toBe('unknown panel "nope" (registered: a)');
+        expect(body.notes).toEqual([INSTALL_NOTE, TALLY_NOTE]);
     });
 });

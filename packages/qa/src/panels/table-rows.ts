@@ -45,6 +45,16 @@ const KEY_START_ROW = 3;
 /** The header cell `click` sorts by: `name`. The first columns are always inside the header's column window. */
 const SORT_COLUMN_INDEX = 1;
 
+/**
+ * Digits every `number` column declares room for. `Table` derives a number
+ * column's width from a declared budget, else a 50-row sample of the store,
+ * else eight digits — and at n ≥ 1,000 the view arrives on a worker, so
+ * whether the sample exists at the first layout is a race. Eight is the
+ * library's own unsampled default, so the pinned width is the one the
+ * majority of runs already produced.
+ */
+const NUMBER_DIGITS = 8;
+
 export const description = 'Table of n rows (default 10,000) over a 12-field model with every cell type, the filter row shown. Reproduces slice 19 F19.2 (the focus style re-materialises the whole visible-record list at the tail of every render pass): 6 getVisibleRecords calls per ArrowDown. rowfilter=title sets a body row filter through Table.setRowVisible that admits two titles in five, so getVisibleRecords filters the whole store view on every call — the state G21\'s memo needs and no panel had.';
 
 /** 10,000 rows: a store large enough that the view is built off the main thread and the body virtualises. */
@@ -118,6 +128,10 @@ export function build(n: number, params: URLSearchParams): PanelBuild {
             return { field: f.name, values: [...DEPARTMENTS] };
         }
 
+        if (f.type === 'number') {
+            return { field: f.name, maxContentLength: NUMBER_DIGITS };
+        }
+
         return f.name === 'notes' ? { field: f.name, filterable: false } : { field: f.name };
     });
 
@@ -163,6 +177,11 @@ export function build(n: number, params: URLSearchParams): PanelBuild {
             storeRecords: store.getCount(),
             filteredRows: rowVisible === null ? store.getCount() : store.getRecords().filter(rowVisible).length,
             bodyRowFilter: hasRowFilter(table.getBody()),
+            // `[0]` is the `id` column, since the panel hides none. It reads 0
+            // before the layout manager has run, so only a measured run's report
+            // carries a width — where it witnesses the determinism the digit
+            // budget buys: every run of a cell must report the same number.
+            idColumnWidth: Math.round(table.getColumnWidths()[0] ?? 0),
         }),
         installWork: (tools: HarnessTools): string[] => [tools.countMethod(table.getBody(), 'getVisibleRecords'), tools.countMethod(store, 'getRecords')],
     };

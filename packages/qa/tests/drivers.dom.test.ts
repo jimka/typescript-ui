@@ -484,26 +484,46 @@ describe('park', () => {
     const START = { left: 100, top: 0, width: 10, height: 200 };
     const PARKED = { left: 40, top: 0, width: 10, height: 200 };
 
+    /** Where the gutter sits while a 50 px lead still drags it, and one 3 px step further. */
+    const AT_LEAD = { ...START, left: 50 };
+    const PAST_LEAD = { ...START, left: 47 };
+
+    /** The lead the driver reaches after twelve doublings of 50 px, the cap's worth. */
+    const CAPPED_LEAD_PX = 204_800;
+
     /**
-     * A gutter whose rectangle reads, call by call: its start (the lead-in's
-     * press), `lead` (once the lead-in settled), `held` (at the end of the
-     * measured units), then the parked place (the restore's press).
+     * A gutter whose rectangle reads whatever `rectFor` gives for that read,
+     * counted from 0. jsdom lays nothing out and reports every rectangle as
+     * zero, so every read a park takes has to be scripted: the lead-in's press,
+     * its settled rectangle, one per push of the proof, the one at the end of
+     * the measured units, and the restore's press.
      *
-     * @param lead - The rectangle after the lead-in.
-     * @param held - The rectangle after the measured units.
+     * @param rectFor - The rectangle for read number `call`.
      * @returns The gutter.
      */
-    function gutter(lead: typeof START, held: typeof START): HTMLElement {
+    function gutter(rectFor: (call: number) => typeof START): HTMLElement {
         const element = document.createElement('div');
-        const spy = vi.spyOn(element, 'getBoundingClientRect');
+        let call = 0;
 
-        for (const r of [START, lead, held, PARKED]) {
-            spy.mockReturnValueOnce({ ...r, right: r.left + r.width, bottom: r.top + r.height, x: r.left, y: r.top, toJSON: () => ({}) } as DOMRect);
-        }
+        vi.spyOn(element, 'getBoundingClientRect').mockImplementation(() => {
+            const r = rectFor(call++);
+
+            return { ...r, right: r.left + r.width, bottom: r.top + r.height, x: r.left, y: r.top, toJSON: () => ({}) } as DOMRect;
+        });
 
         document.body.appendChild(element);
 
         return element;
+    }
+
+    /**
+     * `rects` in order, the last one repeating for every further read.
+     *
+     * @param rects - The rectangles, read first to last.
+     * @returns The rectangle function `gutter` takes.
+     */
+    function reads(...rects: Array<typeof START>): (call: number) => typeof START {
+        return (call) => rects[Math.min(call, rects.length - 1)];
     }
 
     /**
@@ -519,22 +539,27 @@ describe('park', () => {
         return { ctx: { target: { element, axis: 'x', direction: -1, leadPx: 50 }, units, stepPx: 3, params: new URLSearchParams(), notes: [], tools }, log };
     }
 
-    it('leads in, pushes past the lead, releases and drags back, all but the pushes suspended', async () => {
-        const element = gutter(PARKED, PARKED);
+    // Centre (105, 100); ten lead-in moves of 5 px.
+    const leadIn = Array.from({ length: 10 }, (_, f) => [`mousemove document ${100 - 5 * f},100`, 'waitFrames 1 suspended']).flat();
+    // From the parked centre (45, 100) back to the start in ten 6 px moves.
+    const dragBack = Array.from({ length: 10 }, (_, f) => [`mousemove document ${51 + 6 * f},100`, 'waitFrames 1 suspended']).flat();
+
+    it('proves the park before the measured units, then pushes past the lead, releases and drags back', async () => {
+        const element = gutter(reads(START, PARKED));
         const { ctx, log } = parkContext(element, 4);
 
         await DRIVERS.park(ctx);
-
-        // Centre (105, 100); ten lead-in moves of 5 px; measured offsets 53, 56, 53, 50.
-        const leadIn = Array.from({ length: 10 }, (_, f) => [`mousemove document ${100 - 5 * f},100`, 'waitFrames 1 suspended']).flat();
-        // From the parked centre (45, 100) back to the start in ten 6 px moves.
-        const dragBack = Array.from({ length: 10 }, (_, f) => [`mousemove document ${51 + 6 * f},100`, 'waitFrames 1 suspended']).flat();
 
         expect(log).toEqual([
             'mousedown element 105,100',
             ...leadIn,
             'waitFrames 3 suspended',
+            // The proof: the first measured unit's own step, 3 px past the
+            // 50 px lead, and the rectangle it must leave alone.
+            'mousemove document 52,100',
+            'waitFrames 2 suspended',
             'runFrames 4',
+            // Measured offsets 53, 56, 53, 50, from the lead the proof held at.
             'mousemove document 52,100',
             'mousemove document 49,100',
             'mousemove document 52,100',
@@ -545,20 +570,67 @@ describe('park', () => {
             'mouseup document 105,100',
             'waitFrames 3 suspended',
         ]);
-        expect(ctx.notes).toEqual(['park: lead 50px, element held at 40,0,10,200 for 4 units']);
+        expect(ctx.notes).toEqual(['park: lead 50px + 0 pushes = 50px, element parked at 40,0,10,200 and held for 4 units']);
     });
 
-    it('fails after restoring when the element moved during the measured units', async () => {
-        const element = gutter(PARKED, { ...PARKED, left: 37 });
+    it('doubles the lead until the park holds, and measures from the lead it reached', async () => {
+        const element = gutter(reads(START, AT_LEAD, PAST_LEAD, PARKED));
         const { ctx, log } = parkContext(element, 4);
 
-        await expect(DRIVERS.park(ctx)).rejects.toThrow('park: the element moved during the measured units (40,0,10,200 → 37,0,10,200); leadPx does not reach the clamp');
+        await DRIVERS.park(ctx);
+
+        expect(log).toEqual([
+            'mousedown element 105,100',
+            ...leadIn,
+            'waitFrames 3 suspended',
+            // The proof at a 50 px lead moves the gutter, so the lead doubles
+            // to 100 and the proof is taken again there, where it holds.
+            'mousemove document 52,100',
+            'waitFrames 2 suspended',
+            'mousemove document 5,100',
+            'waitFrames 2 suspended',
+            'mousemove document 2,100',
+            'waitFrames 2 suspended',
+            'runFrames 4',
+            // Measured offsets 103, 106, 103, 100: the achieved lead, not the declared one.
+            'mousemove document 2,100',
+            'mousemove document -1,100',
+            'mousemove document 2,100',
+            'mousemove document 5,100',
+            'mouseup document 5,100',
+            'mousedown element 45,100',
+            ...dragBack,
+            'mouseup document 105,100',
+            'waitFrames 3 suspended',
+        ]);
+        expect(ctx.notes).toEqual(['park: lead 50px + 1 pushes = 100px, element parked at 40,0,10,200 and held for 4 units']);
+    });
+
+    it('fails before the first unit when the element never parks', async () => {
+        const element = gutter((call) => ({ ...START, left: 100 - call }));
+        const { ctx, log } = parkContext(element, 4);
+
+        await expect(DRIVERS.park(ctx)).rejects
+            .toThrow(`park: the element never parked; at a ${CAPPED_LEAD_PX}px lead one more 3px step still moved it (75,0,10,200 → 74,0,10,200)`);
+
+        // Not one measured unit and no note: a lead that cannot reach a clamp
+        // costs the cap's worth of pushes, not 150 spoiled samples.
+        expect(log.filter((line) => line.startsWith('runFrames'))).toEqual([]);
+        expect(ctx.notes).toEqual([]);
+    });
+
+    it('fails after restoring when something moved the element during the measured units', async () => {
+        const element = gutter(reads(START, PARKED, PARKED, { ...PARKED, left: 37 }));
+        const { ctx, log } = parkContext(element, 4);
+
+        await expect(DRIVERS.park(ctx)).rejects
+            .toThrow('park: the element moved during the measured units (40,0,10,200 → 37,0,10,200); it parked before them, so something moved it after');
         expect(log.slice(-2)).toEqual(['mouseup document 105,100', 'waitFrames 3 suspended']);
         expect(ctx.notes).toEqual([]);
     });
 
     it('needs at least two units, before dispatching anything', async () => {
-        const element = gutter(PARKED, PARKED);
+        const element = gutter(reads(START, PARKED));
         const { ctx, log } = parkContext(element, 1);
 
         await expect(DRIVERS.park(ctx)).rejects.toThrow('park: needs at least 2 units, got 1');

@@ -489,13 +489,15 @@ the milliseconds are the new information.
 
 ### Reading a geometry `DIFF`
 
-If a phase reports `DIFF(focused)` or `unstable(focused)` while `table`,
-`header`, `body` and `cell` are `=`, re-read that cell with
-`--allow-diff focused` and record that the known-flaky focus probe, not the arm,
-opened it: the same arms read `=` on `focused` at n = 900 and `DIFF` at
-n = 10,000 in the sitting of 2026-09-26, and `treetable-rows` showed the same
-([`00-post-campaign-agenda.md`, *G21 closed*](plans/research/render-review-2026-09-15/00-post-campaign-agenda.md#L848)).
-A `DIFF` on `cell`, `table`, `header` or `body` is not that, and voids the cell.
+Superseded. The `focused` probe was never flaky: the `DIFF` at n = 10,000 in the
+sitting of 2026-09-26 was the panel's first column coming up 78 px wide in some
+runs and 42 in others, because `Table` sampled a `number` column's digits from a
+store whose view arrives on a worker at that scale
+([`00-post-campaign-agenda.md`, *The sitting*](plans/research/render-review-2026-09-15/00-post-campaign-agenda.md#L1104)).
+`qa-cell-determinism` declares an 8-digit budget on the three `number` columns,
+so a `DIFF` or `unstable` on `focused` now voids the cell like any other label
+and is never to be waved through by exempting that label; `host.idColumnWidth`
+says which layout each run measured when it happens.
 
 ### By eye
 
@@ -548,9 +550,12 @@ moves.
 
 ## Potential Challenges
 
-- **The `focused` geometry probe is flaky at n = 10,000.** The contingency is
-  written into `## Verification`: re-read with `--allow-diff focused` when the
-  four stable labels agree, and void the cell when they do not.
+- **The `focused` geometry probe is not flaky after all.** The contingency once
+  written into `## Verification` — waving a `focused` disagreement through when
+  the four other labels agree — is superseded: the probe was reading a real
+  column-layout race at n = 10,000, which `qa-cell-determinism` closed by
+  declaring a digit budget on the panel's three `number` columns. A `DIFF` on
+  `focused` voids the cell like any other label.
 - **A memo that served a stale list would be invisible to geometry.** A wrong
   record bound to the same rectangle changes text, not a box. The arm's key is
   the store's records array and the body's predicate, and the panel's predicate
