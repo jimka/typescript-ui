@@ -844,3 +844,51 @@ for, and both ablations were already registered.
   Any candidate whose value lives in `wheel` on this panel is unmeasurable until
   those two probes settle. This sits beside the known `table-rows` settle-phase
   flake, one run in six starting from a different column layout.
+
+## G21 closed: the counters move, the clock never does (2026-09-26)
+
+Eighteen runs, one sitting, runs `w5a-*` and `w5b-*`, on a throwaway split of
+`g21.render-pass` into its three parts — one ablation each, so a cell could
+attribute the group's time rather than read the bundle. `wheel` was dropped from
+the drive, its verdict being unobtainable on this panel. Neither the split nor
+the worktree was kept.
+
+- **The attribution cell says no part carries any time.** On `table-rows` n=900
+  with three interleaved plain reps and every arm run in both orders, the
+  `update` phase reads a 2.77 bracket against plain's 38.54, 35.77, 36.08 — and
+  every arm is inside it: `g21.visible-memo` −0.38, `g21.required-empty` −0.87,
+  `g21.focus-sweep` +0.05, and the **bundle itself −0.30**. `key` and `passes`
+  are flat for every arm too, the largest reading being −0.05 on a 0.05 bracket.
+  So the group's whole measurable effect on this surface is under a millisecond
+  on a 36 ms unit, under 2.5%, and the cell cannot resolve it.
+
+- **The earlier −2.2 ms does not reproduce, and it was never real.** Yesterday's
+  n=900 cell had all three plain reps land above both arm reps, which read as
+  a −2.22 win on a 1.54 bracket. Run again with the arms spread through the
+  sitting rather than clustered in it, the same bundle reads −0.30. The counters
+  were unchanged between the two cells, so nothing about the arm differed — only
+  where in the session its reps fell.
+
+- **And n=10,000 cannot be measured in this shape at all.** The alternating
+  drift cell was meant to settle that scale; instead its first plain rep came in
+  at **97.69 ms** against the next three at 31.69, 35.00 and 36.54, a cold-start
+  outlier that opens a 66.00 bracket. Every phase of that cell also voided on
+  `geom DIFF(focused)`, where the same arms at n=900 read `=` — and
+  `treetable-rows` showed `DIFF(focused)` earlier too, so the `focused` probe is
+  flaky rather than the arm being wrong. A scale that needs a discarded warm-up
+  run per rep is a surface problem, not a candidate problem.
+
+- **One part of G21 is never reached on this panel.** `g21.focus-sweep` reads
+  `unreached` in all three phases — `_updateFocusStyle`'s pool-wide sweep never
+  runs here, so a third of the group has no surface even now that the other two
+  have one.
+
+- **So G21 is closed on the same finding as G25 and G27: work counters are not
+  time.** Its `getVisibleRecords` memo genuinely removes work — −27.3% on `key`
+  (22 → 16 per unit) and −14.3% on `update` (14 → 12), reproducibly, at both
+  scales — and removing it buys nothing a user could perceive. Judged on work
+  alone the candidate would have been planned; judged on the clock it should
+  not be. Set against G23's 18–24% for six formatters, G21 is not worth a plan,
+  and F19.5 and F22.2 were already dropped at their own threshold yesterday.
+  **Three of the four candidates that finally got a surface closed on
+  measurement**, which is what the surfaces were built to do.
