@@ -9,6 +9,7 @@ import {
     bumpWrite,
     countMethod,
     installDeepStyleCounters,
+    installPlatformCounters,
     installSeamCounters,
     installWorkCounters,
     installWriteCounters,
@@ -229,10 +230,15 @@ function parseDriveEntry(entry: string, defaultUnits: number): Phase {
 
 /**
  * Installs what the URL asks for, in Loom's order: write counters, then the
- * stylesheet, then ablations, then work counters, then the seam counter.
- * Write counters come before ablations so an ablation that replaces a method
- * the counters wrap still has its DOM writes counted; work and seam counters
- * come after them so a count taken under an ablation reflects the ablated code.
+ * stylesheet, then ablations, then work counters, then the seam counter, then
+ * the platform counters. Write counters come before ablations so an ablation
+ * that replaces a method the counters wrap still has its DOM writes counted;
+ * work, seam and platform counters come after them so a count taken under an
+ * ablation reflects the ablated code. A platform counter therefore wraps
+ * whatever the ablations left at the call site: an arm that doses the very
+ * function the counter watches still tallies one call per page call, and its
+ * extra calls show in its own `dose.<arm>.extraCall` instead, which is what
+ * the dose-fidelity check reads.
  *
  * @param subject - The mounted panel.
  * @param run - The run's shared context.
@@ -261,6 +267,10 @@ async function instrument(subject: Subject, run: RunContext): Promise<void> {
 
     if (params.get('seam') === '1') {
         notes.push(installSeamCounters(run.lib.DOM));
+    }
+
+    if (params.get('plat') === '1') {
+        notes.push(installPlatformCounters());
     }
 
     if (ablations > 0) {

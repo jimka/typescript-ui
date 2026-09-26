@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "name": "plats0-p02-fx-plat.collate-d1-1",
+  "panel": "table-rows",
+  "host": "minibrowser",
+  "build": "/repo/packages/lib",
+  "params": {
+    "qa": "plats0-p02-fx-plat.collate-d1-1",
+    "host": "minibrowser",
+    "panel": "table-rows",
+    "n": "900",
+    "drive": "click",
+    "work": "1",
+    "seam": "1",
+    "geom": "1",
+    "plat": "1",
+    "abl": "plat.collate-d1"
+  },
+  "ua": "fixture",
+  "notes": [
+    "panel table-rows n=900",
+    "platform counters on date.toLocaleDateString"
+  ],
+  "before": {
+    "elements": 4200,
+    "host": {}
+  },
+  "idle": {
+    "n": 59,
+    "avgMs": 16.67,
+    "p50Ms": 16.66,
+    "p90Ms": 16.8,
+    "maxMs": 17.2,
+    "over16": 3
+  },
+  "phases": [
+    {
+      "driver": "click",
+      "units": 150,
+      "timing": {
+        "n": 150,
+        "avgMs": 101.5,
+        "p50Ms": 101.5,
+        "p90Ms": 101.5,
+        "maxMs": 101.5,
+        "over16": 150
+      },
+      "work": {
+        "doLayout@Table": 40.0,
+        "dose.plat.collate-d1.extraCall": 100.0
+      },
+      "seam": {
+        "sink": {
+          "apply": 241.0
+        },
+        "source": {
+          "getBorderWidths": 12.0
+        }
+      },
+      "plat": {
+        "date.toLocaleDateString": 100.0,
+        "string.localeCompare": 100.0
+      },
+      "geometry": {
+        "cell": [
+          [
+            0,
+            0,
+            100,
+            20
+          ]
+        ]
+      }
+    }
+  ],
+  "idleAfter": {
+    "n": 29,
+    "avgMs": 16.67,
+    "p50Ms": 16.66,
+    "p90Ms": 16.8,
+    "maxMs": 17.1,
+    "over16": 2
+  }
+}

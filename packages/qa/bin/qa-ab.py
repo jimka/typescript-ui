@@ -239,17 +239,17 @@ def check_shape(runs: list[Run]) -> bool:
 
 def counter_family(phase: dict, family: str) -> dict:
     """
-    One counter family of a phase: `work`, or `sink` / `source` of `seam`.
+    One counter family of a phase: `work` or `plat`, or `sink` / `source` of `seam`.
 
     Args:
         phase: one phase of a report.
-        family: `work`, `seam.sink` or `seam.source`.
+        family: `work`, `plat`, `seam.sink` or `seam.source`.
 
     Returns:
         Key → value per unit; empty when the phase has none.
     """
-    if family == 'work':
-        return phase.get('work') or {}
+    if family in ('work', 'plat'):
+        return phase.get(family) or {}
 
     return (phase.get('seam') or {}).get(family.removeprefix('seam.')) or {}
 
@@ -259,12 +259,12 @@ def split_term(term: str) -> tuple[str, str] | None:
     Split a keyed counter term into its family and key.
 
     Args:
-        term: `work.<key>`, `seam.sink.<key>` or `seam.source.<key>`, each optionally ending in `*`.
+        term: `work.<key>`, `plat.<key>`, `seam.sink.<key>` or `seam.source.<key>`, each optionally ending in `*`.
 
     Returns:
         `(family, key)`, or None when the term names no keyed family.
     """
-    for family in ('seam.sink', 'seam.source', 'work'):
+    for family in ('seam.sink', 'seam.source', 'work', 'plat'):
         if term.startswith(family + '.') and len(term) > len(family) + 1:
             return family, term[len(family) + 1:]
 

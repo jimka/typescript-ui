@@ -1,8 +1,8 @@
 // Undoes what an ablation or a counter patched, so one test's patches never
 // reach the next. Every ablation patches shared objects — prototypes, the DOM
 // seam's sink and source, `Tooltip`'s and `AbstractWindow`'s statics,
-// `Date.prototype` — and those outlive the test that patched them, as the
-// page-level `Body` singleton does.
+// `Date.prototype`, `String.prototype` — and those outlive the test that
+// patched them, as the page-level `Body` singleton does.
 
 import type { AnyObj, HarnessLibrary, HarnessTools } from '../src/harness/types.js';
 
@@ -85,7 +85,9 @@ function chainOf(obj: object): object[] {
  * Every object an ablation or a counter may patch on the mounted page: each
  * prototype, and its constructor, along the chain of every live component and
  * layout manager; `lib.DOM` itself and its sink and source, with their
- * prototypes; `lib.Tooltip`, `lib.AbstractWindow`; and `Date.prototype`.
+ * prototypes; `lib.Tooltip`, `lib.AbstractWindow`; and the two global
+ * prototypes an ablation patches, `Date.prototype` for the locale formatters
+ * and `String.prototype` for `localeCompare`.
  *
  * @param tools - The harness tools, for the component-tree walk.
  * @param lib - The library objects the ablations receive.
@@ -93,7 +95,7 @@ function chainOf(obj: object): object[] {
  * @returns The objects, for `snapshotPatchables`.
  */
 export function patchablesOf(tools: HarnessTools, lib: HarnessLibrary, extras: object[] = []): object[] {
-    const out: object[] = [lib.DOM, lib.DOM.sink, lib.DOM.source, Date.prototype];
+    const out: object[] = [lib.DOM, lib.DOM.sink, lib.DOM.source, Date.prototype, String.prototype];
 
     out.push(Object.getPrototypeOf(lib.DOM.sink) as object, Object.getPrototypeOf(lib.DOM.source) as object);
 

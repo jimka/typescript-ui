@@ -554,3 +554,77 @@ test -x packages/qa/bin/qa-price.py && test -x packages/qa/sweeps/plat.sh
 [^computed-shape]: `getBorderWidths` ([`DOM.ts:3092`](packages/lib/src/typescript/lib/core/DOM.ts#L3092)) makes one `getComputedStyle` call and four property reads; `isRenderedVisible` ([`DOM.ts:3118`](packages/lib/src/typescript/lib/core/DOM.ts#L3118)) makes one call and two reads per ancestor. In WebKit the style resolution is triggered by the first property read of the returned live declaration, not by the call, so the platform *count* and the platform *cost* attach to different statements. The counter is on the call, because that is the countable event and its ratio to the seam count is itself the finding — one seam call can be a whole ancestor chain of resolutions. The dose is on the seam method, because that is the smallest pure unit containing the resolution.
 
 [^two-scripts]: Folding the price arithmetic into `qa-ab.py` was considered and rejected. `qa-ab.py`'s `dose_reading` ([`qa-ab.py:605`](packages/qa/bin/qa-ab.py#L605)) frames a dose's work verdict as a share of the phase's seam-source calls, which is G20's question and not this one, and its `cell_verdict` returns `dose` for any dose arm before ms or work is consulted. Reusing that machinery would mean two unrelated dose rules in one function. `bin/` already holds four small single-purpose scripts; a fifth follows the pattern, and reading a cell twice with two scripts is what the W3.0 sweep already does when it scores one cell once per arm with a different `--counter`.
+
+---
+
+## Implementation Notes
+
+Places where the implementation had to settle a question the plan left open, or
+extend it. The last three were found by the audit.
+
+**`tests/counters.test.ts` runs under jsdom now.** Cases 4 and 5 need a global
+`getComputedStyle` and an absent `CanvasRenderingContext2D`, and vitest's
+default environment for that file was `node`, which has neither. The file
+gained a `// @vitest-environment jsdom` header; its existing cases are DOM-free
+and unaffected, and they pass unchanged. The platform counters are installed
+once per file, in a `beforeAll`, because a second install would wrap the
+wrappers and tally every call twice; `Date.prototype` and `String.prototype`
+are restored with `tests/patchGuard.ts` and `getComputedStyle` by hand, since
+it lives on the global object rather than a prototype.
+
+**`qa-price.py`'s summary lines are keyed by their ladder.** The illustrated
+pricing output in *Internal Structure* shows `linearity …` and `ceiling …`
+unprefixed, which is unambiguous for the one-ladder cell it illustrates — but
+*The Matrix*'s `p02` `t9c` cell carries two ladders, `plat.intl` and
+`plat.collate`, and so do the plan's own fixtures for cases 19 and 20. Each
+ladder's two summary lines therefore carry its name in the same column as its
+rungs' arm names. Every token the plan specifies is unchanged.
+
+**A dose's self-verification interval is per dosed method.** *Internal
+Structure* says every `DOSE_CHECK_EVERY`-th extra call checks its result
+without saying whether the count is the arm's or the method's. It is the
+method's: `doseCalls` keeps its own counter, so each of an arm's methods gets
+its own check and the helper stays self-contained. Case 12, which doses one
+method, reads the same either way.
+
+**The census cells pass `panel=<id>` and nothing else,** so each panel's own
+`defaultDrive` applies, as *The Matrix* specifies. `tests/platSweep.test.ts`
+asserts the census covers every registered panel exactly once, so a panel added
+later fails the test rather than going uncounted.
+
+**A dose of a counted function does not raise that function's `plat` count.**
+*Internal Structure* says installing the platform counters after the ablations
+"is what makes the counter report the *ablated* page's platform calls, which is
+the dose-fidelity check's input." The first half holds; the second does not.
+`installPlatformCounters` wraps whatever the ablations left at the call site, so
+under `plat.intl-*` or `plat.collate-*` — the two arms that dose the very
+function a counter watches — the counter fires once per *page* call and the
+plain and dose arms read the same count. Gate 2's fidelity input is
+`dose.<arm>.extraCall`, which is correct and unaffected. The install order is
+the plan's and is kept; `instrument`'s comment and the README say what it
+actually gives, and the `plat` counts of the pricing fixtures' dose arms were
+set to the plain arms' values, against the *Expected Behaviour* fixture table's
+200.00 and 500.00, because a fixture is a claim about what the harness emits and
+no assertion reads those numbers.
+
+**`qa-price.py` gained `--ladder`.** Gate 3's *count* is "the call's census
+count per unit", and `--call` names one call — but *The Matrix*' `p02` `t9c`
+cell doses two operations, so printing every ladder's verdict against one
+`--call` count would print a verdict Gate 3 does not define. One ladder is
+priced per invocation: `--ladder` names it, a cell with exactly one needs no
+flag, and a cell with several exits 2 naming them. *Running the sweep* step 7's
+invocation therefore carries `--ladder` as well, once per call the cell doses.
+
+**`tests/patchGuard.ts` reaches `String.prototype` now.** `plat.collate-*`
+patches `String.prototype.localeCompare`, and `patchablesOf` is the single
+shared restore list that already holds `Date.prototype` for exactly this reason,
+so the new host belongs there rather than in a per-case hand-snapshot. The file
+is outside *Files to Create / Modify / Delete*; adding it was the precedent-
+conforming fix, and without it `ablations.test.ts`' `afterEach` could not undo a
+collation dose.
+
+**`tests/qaAb.test.ts` gained a case for the `plat` counter family.** Step 8
+asks only that the existing file still pass unchanged, and *Expected Behaviour*
+has no case for `--counter plat.<key>` — but that term is what the sweep's own
+read step uses, and `qaAb.test.ts` is the file that covers the same mechanism
+for `work` and `seam`. One case was added there.

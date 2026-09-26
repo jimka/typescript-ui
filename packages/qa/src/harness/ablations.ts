@@ -1709,6 +1709,175 @@ function g20WalkDose(tools: HarnessTools, lib: HarnessLibrary): string {
 }
 
 /**
+ * How often a dose's repeat is checked against its first result: every
+ * hundredth extra call, as `INTL_CHECK_EVERY` does for a cached format, so a
+ * repeat that disagrees shows in `resultMismatch` while the check itself stays
+ * out of the timing.
+ */
+const DOSE_CHECK_EVERY = 100;
+
+/**
+ * Replaces `host[method]` with one that calls the original `1 + extra` times
+ * and returns the *last* result, so the page's behaviour is unchanged while
+ * the engine does the work `1 + extra` times. Every dosed method is pure — its
+ * answer follows from its arguments and the page's current style, and nothing
+ * it writes survives the call — which is what makes returning the last result
+ * behaviour-identical.
+ *
+ * `extra × items(args)` operations are counted per call, so the counter's unit
+ * is priced operations rather than calls: a batch measurement of twelve labels
+ * doses twelve measurements, not one. Every `DOSE_CHECK_EVERY`-th extra call
+ * of this method compares its result with the first call's, and a
+ * disagreement lands in `resultMismatch`, which the cell's `--same` gate reads
+ * as a void.
+ *
+ * @param tools - The harness tools.
+ * @param name - The arm's `abl=` name, for its counters.
+ * @param host - The object that owns the method.
+ * @param method - The method to dose.
+ * @param extra - How many extra calls each real call makes.
+ * @param items - How many priced operations one call covers; 1 when omitted.
+ * @returns The method's name, or `NOT FOUND <method> on <class>` when it is absent, in which case nothing is patched.
+ */
+function doseCalls(tools: HarnessTools, name: string, host: AnyObj, method: string, extra: number, items?: (args: unknown[]) => number): string {
+    const original = host[method] as Method | undefined;
+
+    if (typeof original !== 'function') {
+        return `NOT FOUND ${method} on ${tools.className(host)}`;
+    }
+
+    let extras = 0;
+
+    host[method] = function dosedCall(this: unknown, ...args: unknown[]): unknown {
+        const first = original.apply(this, args);
+        const operations = items?.(args) ?? 1;
+        let last = first;
+
+        for (let call = 0; call < extra; call++) {
+            last = original.apply(this, args);
+            extras++;
+
+            for (let operation = 0; operation < operations; operation++) {
+                bump(tools, 'dose', name, 'extraCall');
+            }
+
+            if (extras % DOSE_CHECK_EVERY === 0 && JSON.stringify(last) !== JSON.stringify(first)) {
+                bump(tools, 'dose', name, 'resultMismatch');
+            }
+        }
+
+        return last;
+    };
+
+    return method;
+}
+
+/**
+ * One dose function's note: what it dosed, and how many times each dosed
+ * method now runs.
+ *
+ * @param methods - What `doseCalls` returned per method: its name, or a `NOT FOUND` note.
+ * @param extra - How many extra calls each real call makes.
+ * @returns The arm's note.
+ */
+function doseNote(methods: string[], extra: number): string {
+    return `${methods.join(', ')} each run ${extra + 1} times`;
+}
+
+/**
+ * `plat.intl-*`: the three `Date.prototype` locale formatters each run
+ * `1 + extra` times, so the arm pays that many `Intl.DateTimeFormat`
+ * constructions per formatted cell — the cost `g23.write-economy`'s cached
+ * formatters removed, measured here without a cache to build.
+ *
+ * @param tools - The harness tools.
+ * @param name - The arm's `abl=` name.
+ * @param extra - How many extra calls each real call makes.
+ * @returns A note saying what was dosed.
+ */
+function platIntlDose(tools: HarnessTools, name: string, extra: number): string {
+    const host = Date.prototype as unknown as AnyObj;
+
+    return doseNote(DATE_FORMATTERS.map(([method]) => doseCalls(tools, name, host, method, extra)), extra);
+}
+
+/**
+ * `plat.collate-*`: `String.prototype.localeCompare` runs `1 + extra` times.
+ * It is `compareValues`' only platform call, and `compareValues` is the single
+ * comparator of the library's stores, so a string-column sort of *n* records
+ * pays this about *n* log *n* times.
+ *
+ * @param tools - The harness tools.
+ * @param name - The arm's `abl=` name.
+ * @param extra - How many extra calls each real call makes.
+ * @returns A note saying what was dosed.
+ */
+function platCollateDose(tools: HarnessTools, name: string, extra: number): string {
+    const host = String.prototype as unknown as AnyObj;
+
+    return doseNote([doseCalls(tools, name, host, 'localeCompare', extra)], extra);
+}
+
+/**
+ * The `DOM.source` methods a computed-style dose prices. The dose is on the
+ * seam method rather than on `getComputedStyle` itself because WebKit resolves
+ * the style on the first property read of the returned live declaration, not
+ * on the call: doubling the call alone would price the call and miss the
+ * resolution, while doubling the seam method prices the whole operation, its
+ * property reads included.
+ */
+const COMPUTED_SOURCE_METHODS = ['getThemeVar', 'getBorderWidths', 'getComputedOverflow', 'isRenderedVisible'];
+
+/**
+ * `plat.computed-*`: each computed-style source method runs `1 + extra` times.
+ *
+ * @param tools - The harness tools.
+ * @param lib - The library objects: the DOM seam.
+ * @param name - The arm's `abl=` name.
+ * @param extra - How many extra calls each real call makes.
+ * @returns A note saying what was dosed.
+ */
+function platComputedDose(tools: HarnessTools, lib: HarnessLibrary, name: string, extra: number): string {
+    const source = lib.DOM.source as AnyObj;
+
+    return doseNote(COMPUTED_SOURCE_METHODS.map((method) => doseCalls(tools, name, source, method, extra)), extra);
+}
+
+/**
+ * The `DOM.source` text-measurement methods a measurement dose prices, with
+ * how many priced operations one call covers. The two batch methods measure
+ * one text per entry of their first argument, so a dose of them adds that many
+ * operations rather than one; doing all four lets a cell price whichever path
+ * its panel takes — the `<span>` probe or the canvas advance — without the
+ * matrix having to decide which in advance.
+ */
+const MEASURE_SOURCE_METHODS: ReadonlyArray<readonly [method: string, items?: (args: unknown[]) => number]> = [
+    ['measureText'],
+    ['measureTextAdvance'],
+    ['measureTexts', (args) => (args[0] as unknown[]).length],
+    ['measureTextWidths', (args) => (args[0] as unknown[]).length],
+];
+
+/**
+ * `plat.measure-*`: each text-measurement source method runs `1 + extra`
+ * times. `ProductionDOMSource.measureText` appends a probe element and removes
+ * it again before returning, so a repeat repeats the insert, the forced layout
+ * and the rect reads, and leaves the document as it found it.
+ *
+ * @param tools - The harness tools.
+ * @param lib - The library objects: the DOM seam.
+ * @param name - The arm's `abl=` name.
+ * @param extra - How many extra calls each real call makes.
+ * @returns A note saying what was dosed.
+ */
+function platMeasureDose(tools: HarnessTools, lib: HarnessLibrary, name: string, extra: number): string {
+    const source = lib.DOM.source as AnyObj;
+    const notes = MEASURE_SOURCE_METHODS.map(([method, items]) => doseCalls(tools, name, source, method, extra, items));
+
+    return doseNote(notes, extra);
+}
+
+/**
  * G21: a table's render pass rebuilds the same visible-record list many
  * times, sweeps every pooled cell's focus style when none holds it, and
  * re-applies the required-empty state with no column requiring anything. The
@@ -2736,6 +2905,22 @@ export const ABLATIONS: Record<string, Ablation> = {
     'g28.transform-inline': g28TransformInline,
     'chart.repaint-gate': chartRepaintGate,
     'chart.margin-memo': chartMarginMemo,
+    // The platform-call cost sweep's dose arms: four priced operations, each
+    // on a two-rung ladder. `-d1` adds one extra call per real call and is the
+    // reading; `-d4` adds four, so a cost a quarter of the cell's bracket
+    // still resolves and the two rungs' implied per-operation prices agree
+    // only if repeating the call is linear. Four rather than eight because an
+    // eight-fold dose of the date formatters on a 900-row table would add
+    // about 230 ms to a 152 ms unit, and a unit that slow stops being the unit
+    // that was measured. See plans/implemented/platform-call-cost-sweep.md.
+    'plat.intl-d1': (tools) => platIntlDose(tools, 'plat.intl-d1', 1),
+    'plat.intl-d4': (tools) => platIntlDose(tools, 'plat.intl-d4', 4),
+    'plat.collate-d1': (tools) => platCollateDose(tools, 'plat.collate-d1', 1),
+    'plat.collate-d4': (tools) => platCollateDose(tools, 'plat.collate-d4', 4),
+    'plat.computed-d1': (tools, lib) => platComputedDose(tools, lib, 'plat.computed-d1', 1),
+    'plat.computed-d4': (tools, lib) => platComputedDose(tools, lib, 'plat.computed-d4', 4),
+    'plat.measure-d1': (tools, lib) => platMeasureDose(tools, lib, 'plat.measure-d1', 1),
+    'plat.measure-d4': (tools, lib) => platMeasureDose(tools, lib, 'plat.measure-d4', 4),
     // Component.syncScrollOffsets becomes a no-op: no live scrollLeft/scrollTop
     // read anywhere during layout (the caches stay as last written).
     'sync.scroll': (tools) => {

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tabulate QA results: qa-table.py <results-dir> <name-prefix> [--writes] [--seam] [--work] [--before <path>[,<path>...]].
+Tabulate QA results: qa-table.py <results-dir> <name-prefix> [--writes] [--seam] [--work] [--plat] [--before <path>[,<path>...]].
 
 Reads <results-dir>/<name-prefix>*.json, oldest first, and prints one row per
 phase of each report. The geom column compares each phase's geometry with the
@@ -236,7 +236,7 @@ def phase_cells(report: dict, phase: dict | None, index: int, reference: dict | 
 
 def print_details(phase: dict, args: argparse.Namespace, indent: int) -> None:
     """
-    Print the --writes, --seam and --work detail lines under a phase's row.
+    Print the --writes, --seam, --work and --plat detail lines under a phase's row.
 
     Args:
         phase: one phase of a report.
@@ -256,6 +256,10 @@ def print_details(phase: dict, args: argparse.Namespace, indent: int) -> None:
         ranked = sorted(phase['work'].items(), key=lambda item: item[1], reverse=True)
         items = [f'{k}={v}' for k, v in ranked if v >= WRITES_FLOOR]
         print(f"{'':{indent}} work/unit: " + ', '.join(items))
+
+    if args.plat and phase.get('plat'):
+        items = [f'{k}={v}' for k, v in phase['plat'].items() if v >= WRITES_FLOOR]
+        print(f"{'':{indent}} plat/unit: " + ', '.join(items))
 
 
 def print_report(path: str, report: dict | None, reference: dict | None, args: argparse.Namespace, widths: list[int]) -> None:
@@ -308,6 +312,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--writes', action='store_true', help='list each phase\'s write counters under its row')
     parser.add_argument('--seam', action='store_true', help='list each phase\'s seam counters under its row')
     parser.add_argument('--work', action='store_true', help='list each phase\'s work counters under its row, bookkeeping included')
+    parser.add_argument('--plat', action='store_true', help='list each phase\'s platform-call counters under its row')
     parser.add_argument('--before', default='', help='comma-separated dotted paths into `before`, one column each')
     args = parser.parse_args()
     args.before = [p for p in args.before.split(',') if p]

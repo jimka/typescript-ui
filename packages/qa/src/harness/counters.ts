@@ -1,15 +1,16 @@
 // The counter families: native DOM/CSSOM writes with the forced-layout
 // detector (`count=1`), camelCase style writes (`deepwrites=1`), per-class
-// method calls (`work=1`) and DOM seam calls (`seam=1`). Ported from Loom's
-// qa-harness.ts except the seam counter, which is new. Every family tallies
-// only between `startCounting()` and `stopCounting()`; nothing here patches
-// anything at import time.
+// method calls (`work=1`), DOM seam calls (`seam=1`) and platform calls
+// (`plat=1`). Ported from Loom's qa-harness.ts except the seam and platform
+// counters, which are new. Every family tallies only between
+// `startCounting()` and `stopCounting()`; nothing here patches anything at
+// import time.
 
 import { className, ownerProto, rootOwnerProto } from './tree.js';
 import type { AnyObj, HarnessLibrary, HarnessTools, PhaseReport } from './types.js';
 
 /** The counter fields of one phase's report. */
-export type PhaseCounts = Pick<PhaseReport, 'writes' | 'forcedStacks' | 'work' | 'seam'>;
+export type PhaseCounts = Pick<PhaseReport, 'writes' | 'forcedStacks' | 'work' | 'seam' | 'plat'>;
 
 /**
  * How many distinct stacks are kept per forced-read API. Loom's value: the
@@ -44,11 +45,12 @@ const PER_UNIT_DECIMALS = 2;
 let counting = false;
 
 /** Which families have been installed; `stopCounting` reports these. */
-const installed = { writes: false, work: false, seam: false };
+const installed = { writes: false, work: false, seam: false, plat: false };
 
 let writeCounts: Record<string, number> = {};
 let workCounts: Record<string, number> = {};
 const seamCounts: { sink: Record<string, number>; source: Record<string, number> } = { sink: {}, source: {} };
+let platCounts: Record<string, number> = {};
 
 /** Set by any counted DOM write; the next layout-reading call clears it and counts a forced read. */
 let layoutDirty = false;
@@ -62,6 +64,7 @@ export function startCounting(): void {
     workCounts = {};
     seamCounts.sink = {};
     seamCounts.source = {};
+    platCounts = {};
     layoutDirty = false;
 
     for (const key of Object.keys(forcedStacks)) {
@@ -79,7 +82,7 @@ export function startCounting(): void {
  * on a run that did not install that family's counters.
  *
  * @param units - How many units the window covered.
- * @returns `writes` and `forcedStacks`, `work` and `seam`, each only when reported.
+ * @returns `writes` and `forcedStacks`, `work`, `seam` and `plat`, each only when reported.
  */
 export function stopCounting(units: number): PhaseCounts {
     counting = false;
@@ -97,6 +100,10 @@ export function stopCounting(units: number): PhaseCounts {
 
     if (installed.seam) {
         out.seam = { sink: perUnit(seamCounts.sink, units), source: perUnit(seamCounts.source, units) };
+    }
+
+    if (installed.plat) {
+        out.plat = perUnit(platCounts, units);
     }
 
     return out;
@@ -163,6 +170,19 @@ export function bumpWrite(kind: string): void {
 export function bumpWork(kind: string): void {
     if (counting) {
         workCounts[kind] = (workCounts[kind] ?? 0) + 1;
+    }
+}
+
+/**
+ * Adds one to platform counter `key` while counting. Unlike `bumpWork` it is
+ * module-private and absent from `HarnessTools`: no ablation and no panel
+ * tallies into this family, which holds engine calls alone.
+ *
+ * @param key - The counter's key; one of `PLATFORM_CALLS`' constants.
+ */
+function bumpPlat(key: string): void {
+    if (counting) {
+        platCounts[key] = (platCounts[key] ?? 0) + 1;
     }
 }
 
@@ -745,4 +765,96 @@ export function installSeamCounters(dom: HarnessLibrary['DOM']): string {
     dom.install({ sink: countingProxy(dom.sink, 'sink'), source: countingProxy(dom.source, 'source') });
 
     return 'seam counters on DOM.sink and DOM.source';
+}
+
+/**
+ * The platform calls `plat=1` counts: the counter's key, the global whose
+ * prototype declares the method — `''` for the global object itself — and the
+ * method's name. Each key is a constant here, so no wrapper builds one per
+ * call.
+ *
+ * `Intl.DateTimeFormat` is deliberately absent. ECMA-402 specifies
+ * `Date.prototype.toLocale*String` as constructing the intrinsic
+ * `%Intl.DateTimeFormat%`, not the global binding, so a wrapper on `Intl`
+ * would count zero for every library call; the three `Date.prototype` entries
+ * are the only countable proxy for that construction.
+ */
+const PLATFORM_CALLS: ReadonlyArray<readonly [key: string, global: string, method: string]> = [
+    ['date.toLocaleDateString', 'Date', 'toLocaleDateString'],
+    ['date.toLocaleTimeString', 'Date', 'toLocaleTimeString'],
+    ['date.toLocaleString', 'Date', 'toLocaleString'],
+    ['string.localeCompare', 'String', 'localeCompare'],
+    ['style.getComputedStyle', '', 'getComputedStyle'],
+    ['canvas.measureText', 'CanvasRenderingContext2D', 'measureText'],
+];
+
+/**
+ * The object one platform call's method lives on.
+ *
+ * @param global - The global whose prototype declares it, or `''` for the global object.
+ * @returns The host, or `undefined` when the engine exposes no such global.
+ */
+function platformHost(global: string): AnyObj | undefined {
+    const globals = globalThis as unknown as AnyObj;
+
+    if (global === '') {
+        return globals;
+    }
+
+    return (globals[global] as { prototype?: AnyObj } | undefined)?.prototype;
+}
+
+/**
+ * Replaces `host[method]` with one that tallies `key` and delegates to the
+ * original. A bare call such as the library's `getComputedStyle(el)` arrives
+ * with no receiver, so the host stands in as `this` — which is what the
+ * global object's own functions expect.
+ *
+ * @param host - The object that owns the method.
+ * @param method - The method's name.
+ * @param key - The counter's key.
+ */
+function countPlatformCall(host: AnyObj, method: string, key: string): void {
+    const original = host[method] as (...args: unknown[]) => unknown;
+
+    host[method] = function countedPlatformCall(this: unknown, ...args: unknown[]): unknown {
+        bumpPlat(key);
+
+        return original.apply(this ?? host, args);
+    };
+}
+
+/**
+ * Installs the platform-call counters (`plat=1`): the three `Date.prototype`
+ * locale formatters, `String.prototype.localeCompare`, `getComputedStyle` and
+ * the canvas `measureText`. Patching global prototypes is what
+ * `installWriteCounters` already does; this is that pattern applied to
+ * compute rather than to DOM writes.
+ *
+ * A target the engine does not expose is skipped rather than thrown on —
+ * jsdom has no `CanvasRenderingContext2D` — and the note names it, so a
+ * report says which of the six were actually watched.
+ *
+ * @returns A note naming what was wrapped and what the engine does not expose.
+ */
+export function installPlatformCounters(): string {
+    installed.plat = true;
+
+    const wrapped: string[] = [];
+    const absent: string[] = [];
+
+    for (const [key, global, method] of PLATFORM_CALLS) {
+        const host = platformHost(global);
+
+        if (host && typeof host[method] === 'function') {
+            countPlatformCall(host, method, key);
+            wrapped.push(key);
+        } else {
+            absent.push(global || method);
+        }
+    }
+
+    const note = `platform counters on ${wrapped.join(', ')}`;
+
+    return absent.length > 0 ? `${note}; not exposed: ${absent.join(', ')}` : note;
 }
