@@ -659,6 +659,9 @@ page resets to empty.
   layer gives itself, and the toast stack is the one that uses it. No consumer
   action is needed.
 
+- **`InlineStyle` and `ElementAttributes` gain `detach()`**, the unbind twins
+  of `attach()`, for an owner whose element handle has been released.
+
 ### Overlay
 
 - **`Window` and `TabWindow` take `resizeMode`**, the same pair, for edge and
@@ -694,6 +697,10 @@ page resets to empty.
 ## Fixed
 
 ### Core
+
+- **`Component.release()` now detaches its inline-style and attribute
+  buffers.** A layout commit after a dematerialize wrote through the
+  released handle.
 
 - **`SpatialNavigation.disable()` now empties its focus memory even when
   `enable()` was never called.** The memory (`_lastFocus`, which of a marked
