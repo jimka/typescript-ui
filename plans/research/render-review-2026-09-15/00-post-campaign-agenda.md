@@ -1128,10 +1128,28 @@ designed.
   recorded above, one run in six starting from a different column layout. It
   bites at n=10,000 because that is the scale where `AbstractStore` hands the
   view rebuild to a worker, so the initial column sizing races the view's
-  arrival. The fix therefore belongs in the panel's initial column layout, not
-  in the geometry probe, and it would close both symptoms at once since the
-  flake and this void are one defect. It remains the single thing standing
-  between this campaign and a verdict on G21's filtered case.
+  arrival. The mechanism is exact: `Table` takes a `number` column's width from
+  `col.getMaxContentLength() ?? sampledDigits(col) ?? DEFAULT_NUMBER_DIGITS`
+  (`Table.ts:2700`) and samples the store whatever `autoSizeColumns` says, so
+  `id` is 78 px — eight digits — when the first layout wins the race and 42 px —
+  the four-digit floor — when the worker's view does. `qa-cell-determinism`
+  declares an 8-digit budget on the panel's three `number` columns, which takes
+  the store out of the derivation and pins the majority layout, and
+  `describe()`'s new `idColumnWidth` says which layout a run measured. Both
+  symptoms close at once, since the flake and this void are one defect, and with
+  that G21's filtered case is measurable.
+
+- **The library's own re-sample is gated on `autoSizeColumns` while its digit
+  sample is not, which is a production question no plan owns.**
+  `maybeResampleColumnWidths` returns at once unless the flag is set
+  (`Table.ts:2811`), but `samplesRecordText` answers `true` for a `number`
+  column whatever the flag says (`Table.ts:2637`), so any consumer over a
+  worker-backed store gets a `number` column whose width depends on whether the
+  view arrived before the first layout — and no event ever corrects it. Found
+  while planning `qa-cell-determinism`, which pins the QA panel's own widths and
+  deliberately leaves the library alone: moving that gate would move the
+  geometry baseline of every table cell measured so far. Needs its own plan and
+  its own measurement.
 
 - **The `scroll-panes` ladder does not reach the scroll-shadow path, so part
   one of `unreached-ablation-surfaces` did not achieve its goal.**
