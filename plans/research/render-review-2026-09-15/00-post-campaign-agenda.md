@@ -1211,3 +1211,47 @@ designed.
   them, the cost cancels within a cell. `getComputedStyle` peaks at 74.24 calls
   a unit for 0.37 ms, 0.7%, and `canvas.measureText` at 27.00 for 0.14 ms, so
   both are closed on count without a run spent on them.
+
+## The two repaired cells answer, and both change a verdict (2026-09-26)
+
+Fourteen runs on `master` at `423b3a7c`, prefixes `w7a-*` and `w7b-*`, the same
+cell shapes as the sitting above. Both instrument repairs are confirmed on real
+data rather than only in unit tests: the input guard reports 22 device-input
+types dropped on every run, and names live interference it absorbed during two
+**scored** runs — `pointermove×9`/`mousemove×9`/`pointerover×5` and the rest on
+`w7a-trv-plain-a`, four events on `w7b-sdp-plain-c`, and 29 pointermoves on the
+discarded warm-up. That is the corruption which produced the phantom park
+reading above, now caught and recorded. The focused cell's width reads **78 in
+all five reps** of the table cell, against four at 78 and one at 42 before the
+digit budget.
+
+- **G21's memo is a render-time win after all, in the case that had never been
+  measurable.** At n=10,000 with `rowfilter=title`, `key` gives plain 17.91,
+  18.03, 17.80 for a 0.23 bracket against the arm's 17.16 — **−0.75 ms, −4.2%,
+  more than three times the bracket** — with work 22 → 16, −27.3%, and geometry
+  `=`. The settled `passes` phase reads −0.40 ms on a 0.35 bracket, **−21.5%**.
+  Every earlier reading of this candidate was a work win with a flat clock, at
+  n=900 filtered and at both scales unfiltered; the one configuration that
+  could show the filter's O(n) cost was the one the column race kept voiding.
+  So `table-body-visible-records-memo` is no longer a work-only argument, and
+  its plan understates itself — though note the shippable memo keeps the filter
+  re-running, so the figure it can bank is the slice half of this, not the
+  whole.
+
+- **And F06.3's recorded regression was the instrument, as suspected — now with
+  a control arm to prove it.** Against a plain mean of 8.84 (7.26, 8.97, 10.30;
+  bracket 3.04), `split.noop-drag` reads **+2.90 ms, inside the bracket**,
+  while removing **85.5%** of the work (2018.46 → 293.00 per unit). The control
+  arm, patched from the same `splitDragGate` code but removing nothing, reads
+  **+4.27 ms** — *more* than the arm that removes the work. Net of the tax the
+  candidate is about −1.4 ms, so W3.0's `+3.28` regress verdict is retired:
+  F06.3 is a large work win whose clock cost is the cell's own bookkeeping. Two
+  caveats on the magnitude: the plain bracket is a wide 3.04, and subtracting
+  one arm's delta from another's compounds both arms' noise. The direction is
+  solid; the −1.4 is not a figure to quote.
+
+- **So F06.3 becomes plannable, and nothing plans it.** It is the only
+  candidate in the campaign with a measured verdict and no plan — a −85.5% work
+  reduction on `Split.onDrag`'s no-op drag frames, clock not a regression,
+  which under the standing rule turns on what the gate costs in code. The other
+  four measured candidates all have plans.
