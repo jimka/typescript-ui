@@ -7,9 +7,7 @@
  * two-half technique established by dom-state-replay-probe.test.ts: the
  * detach half is asserted on recorded `DOM.sink` writes, and the rebuild
  * half calls the protected `render()` directly (never `getElement()` after
- * `release()`), because the offline `getElementById` model does not evict a
- * released id until the next `setId()` re-indexes it — see the plan's
- * `[^offline-byid]` footnote and TestDOM.ts's `indexId`/`byId`.
+ * `release()`).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

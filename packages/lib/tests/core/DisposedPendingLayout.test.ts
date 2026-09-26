@@ -13,8 +13,12 @@
 // The offline sink's `requestAnimationFrame` is a no-op recorder, so these spy
 // on it to drive the flush deterministically — the same shim
 // `AfterNextLayout.test.ts` uses. They assert on whether `doLayout` ran rather
-// than on `not.toThrow()`, because the recording sink keeps serving released
-// handles and would make a throw-based assertion pass vacuously.
+// than on `not.toThrow()` — `flushPendingLayouts` isolates each `doLayout`
+// call in its own try/catch (`reportFlushFailure` logs the error and moves
+// on, `Component.ts`'s own comment on that line explains why), so no
+// exception ever escapes to a `not.toThrow()` wrapped around the flush,
+// whether or not a guard fires. Asserting on the call is the only way to
+// observe a guard directly.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Component } from '~/core/Component';
 import { Container } from '~/core/Container';
@@ -84,14 +88,27 @@ describe('pending layout queue — disposed components', () => {
         expect(survivorLayout).toHaveBeenCalledTimes(1);
     });
 
-    // The flush's other guard — skipping a component that an *earlier entry in
-    // the same flush* disposed — cannot be pinned here. It reads `getElement()`,
-    // and against the recording sink a disposed component still answers with a
-    // live handle: `release()` does not evict the stub, so `getElementById`
-    // keeps resolving the id. Offline the guard therefore never fires, and a
-    // test that made it fire would have to stub `getElement` itself — asserting
-    // the mock, not the behaviour. It is verified live instead; see
-    // `plans/implemented/table-column-virtualization.md`'s Implementation Notes.
+    it('skips a component that an earlier entry in the same flush disposed', () => {
+        const first  = new Container();
+        const second = new Container();
+
+        first.getElement(true);
+        second.getElement(true);
+        first.scheduleLayout();
+        second.scheduleLayout();
+
+        const secondLayout = vi.spyOn(second, 'doLayout');
+
+        vi.spyOn(first, 'doLayout').mockImplementation(() => {
+            second.dispose();
+
+            return first;
+        });
+
+        flushFrame();
+
+        expect(secondLayout).not.toHaveBeenCalled();
+    });
 
     it('skips a component that never rendered', () => {
         // The same guard reads the element, so a component that scheduled a

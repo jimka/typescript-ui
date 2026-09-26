@@ -132,6 +132,14 @@ interface HandleStub {
 }
 
 /**
+ * Opt-in release-site capture. Recording a stack per release costs roughly
+ * 40% of the offline suite's runtime, so it stays off unless
+ * `TESTDOM_TRACE_RELEASES=1` is set for the run that needs it.
+ */
+const TRACE_RELEASES = (globalThis as { process?: { env?: Record<string, string | undefined> } })
+    .process?.env?.TESTDOM_TRACE_RELEASES === '1';
+
+/**
  * Mints synthetic numeric handles from a private counter and parks a
  * {@link HandleStub} behind each, shared by the recording sink and modelled
  * source so a sink write is visible to a source read. Rebuilt per
@@ -146,6 +154,8 @@ class TestHandleTable {
     /** Root → selector → handles, seeded by {@link setQuerySelectorAllResult}. There is no selector engine offline. */
     private readonly _byRootSelector = new Map<Handle, Map<string, Handle[]>>();
     private readonly _connected = new Set<Handle>();
+    /** Release-site stacks, keyed by the released handle. Populated only under {@link TRACE_RELEASES}. */
+    private readonly _releaseSites = new Map<Handle, string>();
     private _focus: Handle | null = null;
     private _next = 1;
     /** The modelled `location.hash`, seeded empty. Shared so a sink write is visible to a source read. */
@@ -208,7 +218,10 @@ class TestHandleTable {
         const stub = this._stubs.get(handle);
 
         if (!stub) {
-            throw new Error(`TestHandleTable: handle ${handle} is not registered`);
+            const releasedAt = this._releaseSites.get(handle);
+
+            throw new Error(`TestHandleTable: handle ${handle} is not registered`
+                + (releasedAt ? `\n--- released at ---\n${releasedAt}` : ''));
         }
 
         return stub;
@@ -225,7 +238,53 @@ class TestHandleTable {
     }
 
     /**
+     * Drops a handle's stub, parent pointer and id index entry, and clears
+     * focus if it named the handle. The modelled twin of
+     * {@link HandleRegistry.release} dropping the entry `resolve` would have
+     * found: after this call `stub` throws for the handle, the way `resolve`
+     * throws against the production registry.
+     *
+     * @param handle - The handle to evict.
+     */
+    release(handle: Handle): void {
+        if (TRACE_RELEASES) {
+            this._releaseSites.set(handle, (new Error().stack ?? '').split('\n').slice(2, 12).join('\n'));
+        }
+
+        this.unindexId(handle);
+        this._stubs.delete(handle);
+        this._parents.delete(handle);
+
+        if (this._focus === handle) {
+            this._focus = null;
+        }
+    }
+
+    /**
+     * Clears a handle's id-index entry, if it is still the handle that entry
+     * names. Called from {@link release} (before the stub is dropped, since
+     * this reads it) and from {@link setParent}'s detach branch.
+     *
+     * @param handle - The handle to un-index.
+     */
+    unindexId(handle: Handle): void {
+        const stub = this._stubs.get(handle);
+
+        if (stub && this._byId.get(stub.id) === handle) {
+            this._byId.delete(stub.id);
+        }
+    }
+
+    /** Whether a handle is a modelled `DocumentFragment`, minted by {@link RecordingDOMSink.createDocumentFragment}. */
+    isFragment(handle: Handle): boolean {
+        return this._stubs.get(handle)?.tagName === 'FRAGMENT';
+    }
+
+    /**
      * Records or clears a child's parent pointer in the modelled tree.
+     * Un-indexes the child's id on detach and re-indexes it on attach, so a
+     * detached element stops being found by {@link byId} and a re-attached
+     * one is found again.
      *
      * @param child - The child handle.
      * @param parent - The parent handle, or null to clear.
@@ -233,11 +292,30 @@ class TestHandleTable {
     setParent(child: Handle, parent: Handle | null): void {
         if (parent === null) {
             this._parents.delete(child);
+            this.unindexId(child);
 
             return;
         }
 
         this._parents.set(child, parent);
+        this.indexId(child, this._stubs.get(child)?.id ?? '');
+    }
+
+    /**
+     * Moves every child of `from` onto `to`, in place — what the browser does
+     * when a `DocumentFragment` is inserted. Called on the fragment handle
+     * before it is parented, so the fragment itself never gets a parent
+     * pointer and none of its former children are left pointing at it.
+     *
+     * @param from - The fragment handle whose children move.
+     * @param to - The handle the children move onto.
+     */
+    reparentChildren(from: Handle, to: Handle): void {
+        for (const [child, parent] of this._parents) {
+            if (parent === from) {
+                this.setParent(child, to);
+            }
+        }
     }
 
     /**
@@ -563,6 +641,7 @@ export class RecordingDOMSink implements DOMSink {
 
     release(handle: Handle): void {
         this.record('release', handle);
+        _table.release(handle);
     }
 
     setRuleStyles(rule: CSSStyleRule, styles: Record<string, string | null>): void {
@@ -597,6 +676,17 @@ export class RecordingDOMSink implements DOMSink {
 
     appendChild(parent: Handle, child: Handle): void {
         this.record('appendChild', parent, child);
+
+        // The browser moves a DocumentFragment's children into the parent and
+        // leaves the fragment itself empty and unparented, so releasing the
+        // fragment afterwards (as VirtualRowView.growRowPool does) leaves no
+        // row pointing at a dead handle.
+        if (_table.isFragment(child)) {
+            _table.reparentChildren(child, parent);
+
+            return;
+        }
+
         _table.setParent(child, parent);
     }
 
@@ -809,6 +899,13 @@ export class RecordingDOMSink implements DOMSink {
 
     insertBefore(parent: Handle, node: Handle, _reference: Handle | null): void {
         this.record('insertBefore');
+
+        if (_table.isFragment(node)) {
+            _table.reparentChildren(node, parent);
+
+            return;
+        }
+
         _table.setParent(node, parent);
     }
 
@@ -1347,11 +1444,14 @@ export class ModelledDOMSource implements DOMSource {
     }
 
     /**
-     * Whether the table still holds this handle. The modelled sink's `release`
-     * only records the call, so a handle released offline stays registered here
-     * — the production registry's released and collected states have no
-     * offline equivalent, which is why `Tooltip`'s use of this query is pinned
-     * by spying the seam rather than by staging a dead handle.
+     * Whether the table still holds this handle. `release` evicts the stub
+     * (see {@link TestHandleTable.release}), so a handle released offline now
+     * correctly reports `false` here too, mirroring the production registry's
+     * released/collected states. The `isRegistered` spies in
+     * `Tooltip.pointer.test.ts` and `FieldDecorator.pointerTooltip.test.ts`
+     * stay regardless — see their own comments — because a released anchor
+     * also fails the modelled hit test, and the spy is what isolates the
+     * liveness guard from that other route.
      */
     isRegistered(handle: Handle): boolean {
         return _table.has(handle);

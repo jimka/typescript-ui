@@ -163,10 +163,8 @@ describe('Split / Border / Accordion — gutter and chrome style-rule disposal',
         // so disposing the wrapper must not take them with it: each keeps its
         // own rule.
         //
-        // `getElement()` is deliberately NOT used as the survival check — it
-        // falls back to a lookup by id, and the offline harness never evicts
-        // the id, so it resolves even for a fully disposed component. The rule
-        // keys are the assertion that can actually fail.
+        // `getElement()` is deliberately NOT used as the survival check. The
+        // rule keys are the assertion that can actually fail.
         expect(_ruleCacheKeys().some((key) => key.includes(a.getId()))).toBe(true);
         expect(_ruleCacheKeys().some((key) => key.includes(b.getId()))).toBe(true);
 
