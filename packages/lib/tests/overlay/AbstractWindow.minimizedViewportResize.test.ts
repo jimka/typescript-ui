@@ -33,10 +33,17 @@
 // the plan's Implementation Notes. The in-flight half of that is in
 // AbstractWindow.railHandoverAnimated.test.ts, which this file's
 // reduced-motion mock rules out.
+//
+// W29-W32 are plans/implemented/rail-handover-follow-ups.md's sizing rows — a window
+// handed back to the dock arrives as a dock strip, not at its own minimum
+// size. W32 is the dock-first arm of the same preparation's guard, which the
+// plan names in prose but prescribes no row for (see its Implementation
+// Notes).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Window } from '~/overlay/Window';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { Rail } from '~/overlay/Rail';
+import { Panel } from '~/core/Panel';
 import { Placement } from '~/primitive/Placement';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
@@ -45,6 +52,13 @@ import fontMetrics from '../dom/font-metrics.test-font.json';
 // One dock slot's pitch: DEFAULT_MIN_DOCK_WIDTH_PX (200) plus
 // SNAP_DOCK_GAP_PX (4), both module-private to AbstractWindow.ts.
 const DOCK_SLOT_PITCH_PX = 204;
+
+// The body floor `initChrome` seeds into every window's explicit minSize, and
+// the value the dock relaxes away so a strip can reach header height. Used by
+// W29 as the baseline a real strip height must sit below: asserting only that
+// two windows agree would hold just as well with both stuck at this floor,
+// which is the very defect the row is about.
+const NORMAL_MIN_HEIGHT_PX = 200;
 
 describe('AbstractWindow — the minimized dock answers a viewport resize through one listener', () => {
     let config: ReturnType<typeof makeConfig>;
@@ -118,6 +132,28 @@ describe('AbstractWindow — the minimized dock answers a viewport resize throug
         win.show();
 
         return win;
+    }
+
+    /**
+     * A shown window carrying a body host, which a bare `new Window(title)`
+     * has none of: `findBodyHost` returns the first non-chrome child, so the
+     * body-host rows need real content to have anything to observe.
+     */
+    function contentWindow(title: string): Window {
+        const win = new Window(title, { contentFactory: () => new Panel() });
+
+        win.show();
+
+        return win;
+    }
+
+    /**
+     * Whether `win`'s body host is displayed, or `undefined` when it has none
+     * at all — which is itself a fixture failure for the rows that read it.
+     */
+    function bodyHostDisplayed(win: Window): boolean | undefined {
+        return (win as unknown as { resolveBodyHost(): { isDisplayed(): boolean } | null })
+            .resolveBodyHost()?.isDisplayed();
     }
 
     /** A mounted WEST rail, the minimize target a rail-held window gets. */
@@ -683,5 +719,111 @@ describe('AbstractWindow — the minimized dock answers a viewport resize throug
         win.setTranslate(0, 0);
 
         expect(styleWritesFor(apply, win, 'transform').pop()).toBeNull();
+    });
+
+    it('W29: a window handed back to the dock lands at the row\'s strip height', () => {
+        const rail = mountedRail();
+
+        // A goes straight into the dock; B round-trips through the rail. The
+        // contract is that the two are indistinguishable afterwards, so the
+        // comparison is against A rather than against a pixel value.
+        const a = contentWindow('A');
+
+        a.minimize();
+
+        const b = contentWindow('B');
+
+        b.setRail(rail);
+        b.minimize();
+        b.setRail(null);
+
+        // A's own height is the baseline the comparison needs: two windows
+        // agreeing proves nothing if both are stuck at the normal-resize floor
+        // the dock is supposed to relax, or collapsed to nothing. A real strip
+        // sits between the two.
+        expect(a.getHeight()).toBeGreaterThan(0);
+        expect(a.getHeight()).toBeLessThan(NORMAL_MIN_HEIGHT_PX);
+
+        expect(b.getHeight()).toBe(a.getHeight());
+
+        // Both are anchored to the viewport's bottom edge by the same
+        // relayout, so this holds however tall either one ended up — it pins
+        // the shared anchor, not the hand-back.
+        expect(b.getY()).toBe(a.getY());
+    });
+
+    it('W30: a window handed back to the dock arrives with its body hidden', () => {
+        const rail = mountedRail();
+
+        const a = contentWindow('A');
+
+        a.minimize();
+
+        const b = contentWindow('B');
+
+        // The fixture guard: a bare window has no body host at all, and the
+        // assertions below would then compare `undefined` with `undefined`.
+        expect(bodyHostDisplayed(b)).toBe(true);
+
+        b.setRail(rail);
+        b.minimize();
+        b.setRail(null);
+
+        // A dock strip shows only its title bar, whichever route it took to
+        // get there.
+        expect(bodyHostDisplayed(b)).toBe(false);
+        expect(bodyHostDisplayed(a)).toBe(false);
+    });
+
+    it('W31: restoring a handed-back window undoes the relaxation and the hide', () => {
+        const rail = mountedRail();
+
+        const b = contentWindow('B');
+
+        const min = b.getMinSizeConstraint();
+
+        expect(min).not.toBeNull();
+        expect(min!.height).toBe(NORMAL_MIN_HEIGHT_PX);
+
+        b.setRail(rail);
+        b.minimize();
+        b.setRail(null);
+        b.restore();
+
+        // The guard that the hand-back's preparation is undone by the existing
+        // restore path rather than stranded on the window: the floor comes
+        // back, the body comes back, and the window is ordinary again.
+        expect(b.getMinSizeConstraint()).toEqual(min);
+        expect(bodyHostDisplayed(b)).toBe(true);
+        expect(b.getWindowState()).toBe('normal');
+    });
+
+    it('W32: a dock-rail-dock round trip keeps the real floor, not the relaxed one', () => {
+        const rail = mountedRail();
+
+        const b = contentWindow('B');
+
+        const min = b.getMinSizeConstraint();
+
+        expect(min).not.toBeNull();
+        expect(min!.height).toBe(NORMAL_MIN_HEIGHT_PX);
+
+        // Docked *first*, so the dock's own branch has already captured the real
+        // floor and relaxed the live constraint to 0x0 by the time the rail
+        // takes the window. W29-W31 all reach the detach from the rail side,
+        // where nothing is captured yet — this is the arm where the capture's
+        // guard has something to refuse.
+        b.minimize();
+
+        expect(b.getMinSizeConstraint()).toEqual({ width: 0, height: 0 });
+
+        b.setRail(rail);
+        b.setRail(null);
+        b.restore();
+
+        // Unguarded, the detach would re-capture the relaxed 0x0 as though it
+        // were the floor, and the restore would reinstate that instead — losing
+        // the window's real minimum for the rest of its life.
+        expect(b.getMinSizeConstraint()).toEqual(min);
     });
 });
