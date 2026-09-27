@@ -267,7 +267,9 @@ const _defaultTableBodyOptions: Partial<ComponentOptions> = {
  *
  * Only the rows visible in the viewport plus SCROLL_BUFFER rows above and below
  * are ever in the DOM. The store is queried on every render so the body always
- * reflects current store state without maintaining a duplicate data array.
+ * reflects current store state; the body's only copy of that state is the one
+ * `getRecords()` hands back, refreshed whenever the store rebuilds its
+ * filtered/sorted view rather than once per query.
  *
  * A fixed pool of Row components (`rowPool`) is reused as the user scrolls.
  * Each pool slot is tracked in `boundIndices`: when a slot is mapped to a new
@@ -294,6 +296,12 @@ class TableBody extends VirtualRowView<Row> {
     private _columnConfigs   : Map<string, ColumnConfig> = new Map();
     private _rowReadOnly     : ((record: ModelRecord) => boolean) | null = null;
     private _rowVisible      : ((record: ModelRecord) => boolean) | null = null;
+    // The store's view as `getRecords()` last copied it, together with the store's
+    // view generation at that moment. `-1` is a generation no store reports, so the
+    // first read — and the first read after a store swap — always re-copies.
+    // Framework-managed bookkeeping: no `BodyOptions` field, no public setter.
+    private _storeView          : ModelRecord[] = [];
+    private _storeViewGeneration: number        = -1;
     private _rowSeparator    : ((record: ModelRecord) => { label: string, color: string | null } | null) | null = null;
     private _rowIndented     : ((record: ModelRecord) => boolean) | null = null;
     private _lastBodyWidth   : number                    = 0;
@@ -485,12 +493,33 @@ class TableBody extends VirtualRowView<Row> {
     }
 
     /**
+     * Returns the store's filtered/sorted view, re-copied only when the store
+     * has rebuilt it since the last call.
+     *
+     * @returns The store's view. Do not mutate — the same array is served to
+     *   every caller until the store rebuilds its view.
+     */
+    private getStoreView(): ModelRecord[] {
+        const generation = this._store.getViewGeneration();
+
+        if (this._storeViewGeneration !== generation) {
+            this._storeView           = this._store.getRecords();
+            this._storeViewGeneration = generation;
+        }
+
+        return this._storeView;
+    }
+
+    /**
      * Returns the records visible in the current scroll window. Default
      * behaviour delegates to the store's view (filtered + sorted master
      * collection), further filtered through {@link setRowVisible}'s
      * predicate when one is active.
      *
-     * @returns The records the row pool should bind to, in display order.
+     * @returns The records the row pool should bind to, in display order. Do
+     *   not mutate — with no row-visibility predicate set this is the body's
+     *   own copy of the store's view, handed to every caller until the store
+     *   rebuilds it.
      *
      * @remarks Subclassing seam — `TreeBody` overrides this to return its
      * depth-flattened, expansion-aware visible subtree, and does not
@@ -498,9 +527,15 @@ class TableBody extends VirtualRowView<Row> {
      * site that needs the visible records — virtual-window math, click
      * dispatch, focus + active-descendant tracking, keyboard nav,
      * scroll-into-view — goes through this method. Not for consumer use.
+     *
+     * The store's view is re-copied only when the store has rebuilt it since
+     * the last call. The row-visibility predicate is a separate matter: it
+     * re-runs on every call, because its answer depends on a record's
+     * contents and an in-cell edit changes those without the store rebuilding
+     * anything — see {@link setRowVisible}.
      */
     protected getVisibleRecords(): ModelRecord[] {
-        const records = this._store.getRecords();
+        const records = this.getStoreView();
 
         return this._rowVisible ? records.filter(this._rowVisible) : records;
     }
@@ -949,6 +984,9 @@ class TableBody extends VirtualRowView<Row> {
         this.unbindStore(this._store);
 
         this._store = store;
+        // Two stores can report the same view generation — both start at 0 — so the
+        // stash cannot survive a swap on the number alone.
+        this._storeViewGeneration = -1;
         this.bindStore(store);
         this.invalidateGeom();
     }
