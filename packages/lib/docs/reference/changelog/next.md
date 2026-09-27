@@ -418,6 +418,19 @@ page resets to empty.
   doing it per cell took 18.5% off a filter update and 24.3% off a header-sort
   click.
 
+- **A table body copies the store's view once per rebuild instead of once per
+  query.** Every internal read of the visible records used to take a fresh
+  whole-view copy from the store; the body now keeps one copy and refreshes it
+  whenever the store rebuilds its filtered/sorted view — an add, a remove, a
+  store-level filter, a sort, a reload or a store swap. A row-visibility
+  predicate set through `Table.setRowVisible`, and the quick search, still
+  re-run on every render pass, because their answers depend on a record's
+  contents and an in-cell edit changes those without the store rebuilding
+  anything. No consumer action is needed, with one exception: a `Body`
+  subclass reading the `protected` `getVisibleRecords()` now receives a shared
+  array it must not mutate, as `getColumnConfigs()` and `getRowPool()` already
+  documented for their own return values.
+
 ### Layouts
 
 - **`LayoutManager.commitBounds` reads "the rectangle changed" from the child's
