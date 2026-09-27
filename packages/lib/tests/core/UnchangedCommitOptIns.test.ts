@@ -28,6 +28,7 @@ import { Border } from '~/layout/Border';
 import { Fit } from '~/layout/Fit';
 import { Grid } from '~/layout/Grid';
 import { Split } from '~/layout/Split';
+import { Absolute } from '~/layout/Absolute';
 import { HBox } from '~/layout/HBox';
 import { VBox } from '~/layout/VBox';
 import { BoxLayout } from '~/layout/BoxLayout';
@@ -657,6 +658,7 @@ const MANAGER_SETTERS: ReadonlyArray<readonly [string, () => LayoutManager, (man
     ['Border.setComponentSpacing', () => new Border(),         m => m.setComponentSpacing(PROBE_SPACING), 2],
     ['Split.setOrientation',   () => new Split({ orientation: 'horizontal' }), m => m.setOrientation('vertical'), 2],
     ['Split.setPaneSize',      () => new Split({ orientation: 'horizontal' }), (m, panes) => m.setPaneSize(panes[0], LEAF_WIDTH * 2), 2],
+    ['Absolute.setSizing',     () => new Absolute(),           m => m.setSizing('committed'), 2],
 ];
 
 describe('Every listed manager setter marks its container (E7)', () => {

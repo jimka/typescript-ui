@@ -19,6 +19,7 @@ import { ComboCell } from "~/component/table/cell/Combo.js";
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
 import { TreeCellRenderer, DEFAULT_INDENT_PX } from "~/component/table/cell/renderer/TreeCell.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
+import { Absolute } from "~/layout/Absolute.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
@@ -157,7 +158,15 @@ class Row extends Component {
         onCellCommit?: (record: ModelRecord) => void,
         treeFieldName?: string,
     ) {
-        super({ tag: "tr" });
+        // A row's cells are placed from outside — the body's render window and
+        // the header both commit each cell through `applyBounds` — so the row's
+        // own pass must keep the rectangle each cell holds rather than re-size
+        // it to its preferred size: a `BooleanCell` reports 20x16 against the
+        // 48x20 the render window gave it, and a narrow `FilterCell` 236x22
+        // against 25x22. The pass still has to run, since it is what records
+        // that the row laid out, drains `onFirstLayout`, and lays out any cell
+        // that owes a pass the batched flush folded into this row's.
+        super({ tag: "tr", layoutManager: new Absolute({ sizing: "committed" }) });
 
         this.getAria().setRole("row");
 
@@ -993,15 +1002,6 @@ class Row extends Component {
         }
 
         this._cellCache.clear();
-    }
-
-    /**
-     * No-op; cell layout is driven by the Body's renderWindow.
-     *
-     * @returns This component, for method chaining.
-     */
-    doLayout(): this {
-        return this;
     }
 
     /**
