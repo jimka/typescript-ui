@@ -987,6 +987,41 @@ entry says which factor decided it.
   is extending an opt-in whose pattern already ships from stage 1. Factors two
   and three both pass; the flat clock does not retire it.
 
+  **Resolved by `plans/implemented/panel-scroll-read-economy.md`**, both halves.
+  One correction to the framing above: the cost is *not* extending the opt-in.
+  The settled pass earns its skip from the layout system's own dirty-flag and
+  text-metrics state — factored out of `Component.canSkipUnchangedCommit` as a
+  protected `isLayoutSettled` — rather than from the per-class gate, so it
+  reaches every `Panel` subclass with no audit and no override, which is where
+  the measured cost actually is (the wave-2 note above: "G16's remaining cost
+  therefore exists only for panels that are not opted in"). `canSkipUnchangedLayout`
+  still answers exactly what it answered before. The scroll half merges the two
+  subtree `scroll` listeners into one that reads once and hands the result to
+  both consumers, and moves `resizeScrollShadowOverlay` off the scroll path to
+  install time; the wheel half derives both maxima from one read and lends the
+  pair to the clamp `SmoothScroller.scrollBy` performs inside the same call. Both
+  ship as work reductions with no render-time claim, per the standing rule.
+
+  One thing is left open, and it is this file's own question rather than the
+  plan's: both arms' `packages/qa` self-tests and the `scroll-panes`
+  `pane.remeasure@ScrollPane` witness assert the counts the library no longer
+  produces, so five of that package's 453 tests go red on the branch (453/453
+  against its start point). The plan's *Non-Goals* forbid touching `packages/qa`,
+  so they are left standing for a decision here: retire both arms with their
+  witnesses, or keep them as inverted regression detectors, where an arm that
+  engages again would mean the library had stopped withholding. Four of the five
+  are an absent counter; the fifth, `g16.scroll-reads`' own self-test, instead
+  throws, because it invokes `Panel.syncOverlayScrollbars` through untyped
+  reflection with no argument and that method now takes the already-read metrics.
+  That one needs its call site updated whichever way the decision goes.
+
+  A second correction, to this file's *counters are not time* bullet by way of
+  example: the plan's own prescribed offline verifications were mutation-tested
+  during implementation and **seven of them could not have caught a regression**
+  — chiefly a set of read-count comparisons calibrated against a figure that a
+  total regression collapses to zero, satisfying every one of them. The plan file
+  records each. A prescribed counter assertion is not self-validating either.
+
 - **G27 stays closed — on complexity, not on the clock.** Its seam reduction is
   genuine, but the cache as ablated discards itself on 22 to 32% of the ticks
   it serves, because the key includes a `scrollHeight` that grows while a
