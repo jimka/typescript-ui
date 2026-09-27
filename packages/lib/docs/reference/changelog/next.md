@@ -1966,3 +1966,28 @@ page resets to empty.
   Under `prefers-reduced-motion: reduce` the panel animation completes
   synchronously, which runs `hide`'s own `finalize` and destroys the
   backdrop, and the backdrop animation then ran against a released handle.
+
+- **A rail-minimized window survives a restore or a close that arrives
+  mid-animation.** A window minimizing into a [`Rail`](/components/Rail)
+  shrinks into its handle over 150 ms, and three paths let that animation
+  outlive the thing it belonged to. A `restore()` inside the window — two
+  quick clicks on the minimize button — left the shrink to complete afterwards
+  and hide a window whose state was already `"normal"`, with no route back:
+  the rail's handle no longer restored it and `setWindowState` refused a state
+  it was already in. A close inside the same window left it to complete
+  against a closing window, emitting a `"minimize"` after the `"close"` and
+  writing its own transform and fade over the close's. And a minimize
+  arriving during a restore's reverse animation let that animation's end clear
+  the transition the new one was running through, cutting it short. Each of
+  the three now cancels both animations, as disposing and re-railing the
+  window already did.
+
+  One emitted event changes with them. The abandoned animation fired a
+  `"minimize"` of its own as it landed, after the `"restore"` or `"close"`
+  that had superseded it and for a window that was no longer minimized; that
+  stray event is gone. A restore interrupting the shrink therefore announces
+  `"restore"` alone, because the shrink's deferred `"minimize"` was already
+  void once the window left `"minimized"`. That void-debt rule is itself
+  unchanged — it is the one `restore()` has followed since the rail hand-over
+  landed; what changed is only that the abandoned animation no longer fires a
+  second, later event of its own. No consumer action is needed.
