@@ -1529,3 +1529,100 @@ would have caught, since every prescribed case is horizontal.
   library A/B has not been run; it opens a full-screen window and needs the
   user's go-ahead. The offline work stands on its own for correctness, and the
   −85.5% remains the arm's upper bound, unconfirmed for the shipped gate.
+
+## The rail follow-ups: three fixed, four stand, and item 6 was mis-scoped (2026-09-27)
+
+**Closed by `plans/implemented/rail-handover-follow-ups.md`**, the last plan of
+the nine-phase batch. Of the six observations indexed above plus the seventh
+recorded only in `rail-minimized-dock-slot`'s notes, three are fixed and four
+stand with a stated reason. `setRail`'s detach branch now runs the preparation
+`setWindowState`'s docked branch runs — capture the normal-resize minimum,
+relax it, hide the body host — so a window handed back to the dock arrives at
+the row's strip height instead of its own 200 px floor. And every path that
+supersedes or ends the rail collapse/expand pair now cancels **both** handles:
+`animateRailExpand`, `animateRailCollapse` and `onExitAction`, joining
+`destructor` and `setRail`, which already did. The four that stand — the
+collapsed rail's hidden handle, `Rail.unmount`'s kept registrations,
+`setRail` not cancelling `_stateAnimHandle`, and `endRailCollapse`'s
+`transform-origin` — are argued in that plan's `## Architecture Decisions`; two
+gain a doc sentence and one a corrected source comment, none a mechanism.
+
+- **Item 6 is a hard lock, but not the one recorded above.** The note at the end
+  of the ten-plan section puts "hidden while its state reads `"normal"`,
+  unrecoverable by the user" on `onExitAction`. It belongs to the *seventh*
+  observation — `animateRailExpand` cancelling only its own handle — where a
+  restore arriving inside the 150 ms collapse lets that collapse complete and
+  call `setDisplayed(false)` on a window whose state already reads `"normal"`,
+  which no gesture undoes: `restore()` early-returns on a window that is not
+  minimized, `setWindowState` early-returns on the state it is already in, and
+  the rail's handle calls `restore()`. `onExitAction`'s own two defects are a
+  `"minimize"` emitted after the window's `"close"` and a close fade cut short
+  by the superseded animation's deadline. The agenda's verdict — that this is a
+  lock rather than a loose end, and the strongest reason to land the branch —
+  was right; only its attribution was off, and the seventh observation was the
+  one carrying it.
+
+- **Two of the plan's own prescribed verifications were vacuous, and two of its
+  additions were unpinned.** This is the batch's recurring finding, and it held
+  here too. W29's `b.getY()` equality cannot fail from the fix it is listed
+  under, because the dock writes `y = viewportHeight - headerHeight` for both
+  windows regardless of the height clamp; and its `b.getHeight()` equality
+  passes with *both* routes broken, since A and B then agree at 200, so the row
+  needed a non-zero baseline bound rather than a bare comparison. Worse, two
+  shipped lines were pinned by nothing: deleting `onExitAction`'s expand cancel
+  left the prescribed R1-R13 green, and replacing the detach's
+  `if (this._normalMinSize === null)` guard with an unconditional capture left
+  **all 518 files green, 8707 passed and 2 todo — the whole suite as it stood
+  before W32 was written** — a guard whose contract the plan
+  states in prose and prescribes no row for is exactly what a later reader
+  deletes as dead. R14 and W32 close both; nine cases ship where seven were
+  prescribed, and every mutation of every added line now kills at least one.
+
+- **Open candidate: the unpaired `"restore"` a voided collapse debt leaves.**
+  Raised by this plan's audit and left unchanged, because it is not this
+  branch's behaviour and its fix reverses a decision the previous plan made on
+  the record. A rail minimize defers its `"minimize"` to the end of the 150 ms
+  shrink; `animateRailExpand` voids that debt when a restore interrupts the
+  shrink, on the ground that a window leaving `"minimized"` has nothing left to
+  announce. A consumer pairing the two events therefore sees a `"restore"` with
+  no `"minimize"` before it. The rule and its rationale predate this branch and
+  are pinned by name on `feature/split-noop-drag-frame-gate` by R9, "a restore
+  voids the collapse's debt". The alternative — fire the owed `"minimize"`
+  first, as `setRail` does for a window that *stays* minimized, giving
+  `['minimize', 'restore']` — is a public event-contract change and wants its
+  own plan. Note the asymmetry is deliberate rather than accidental: `setRail`
+  pays the debt because its window is still minimized, `animateRailExpand`
+  voids it because its window is not.
+
+- **Open candidate: `Animation.finish`'s transition clear can cut short a live
+  sibling animation, in eight pairs beyond the rail's.** Half of this plan's
+  cancel-both argument is specific to the rail — the collapse's `onComplete` is
+  destructive, calling `setDisplayed(false)` and emitting `"minimize"`, which no
+  other pair does. The other half is not: `finish` writes
+  `buf.set("transition", null)` (`core/Animation.ts:201`), so whenever one
+  animation supersedes another on the same element, the superseded one's
+  deadline clears the `transition` the live one is running through and truncates
+  it. An independent search for the precedent found every other animation pair
+  in the library cancels only its *own* handle at the play site and both only at
+  teardown: `AnimatedDropdown.ts:224/268/379`, `Tooltip.ts:436/470/1158`,
+  `Popover.ts:511/538/647`, `Menu.ts:739/753/763`,
+  `Notification.ts:335/582/713`, `Dialog.ts:989/1302/1340`,
+  `Drawer.ts:535/570/753` and `Rail.ts:676/848/1374`. The rail's fix is pinned
+  by R13 and R14; whether the same truncation is reachable by gesture in the
+  other eight is unmeasured, and wants one plan across them rather than eight
+  one-line patches.
+
+- **Open candidate: `onExitAction` cancels the rail collapse but never undoes
+  it.** The natural next follow-up after this plan, and named in its manual-
+  verification caveat. `setRail`'s detach calls `endRailCollapse()` because
+  `Animation.cancel` writes no styles, so the genie's `transform` and `opacity`
+  stay declared on the element; `onExitAction` does not, and its
+  `[^exit-no-emit]` justifies leaving `_railCollapseActive` set on the ground
+  that "nothing reads either again". That holds for the flag but not for the
+  element, which is still on screen for the close fade's 150 ms — so a close
+  arriving mid-collapse fades out from the shrunken, faded state rather than
+  from the window's resting one. Strictly better than before this plan, where
+  the collapse also ran to completion and called `setDisplayed(false)` in the
+  middle of the fade, so it is an improvement that stops short rather than a
+  regression. One `endRailCollapse()` call, plus a row pinning the fade's start
+  state, is the whole fix.
