@@ -1053,6 +1053,24 @@ entry says which factor decided it.
   reflection with no argument and that method now takes the already-read metrics.
   That one needs its call site updated whichever way the decision goes.
 
+  **Decided, and done on `feature/qa-scroll-ablation-record`: they are inverted
+  regression detectors.** Both arms stay registered and both keep their
+  self-tests, but the five cases now assert the library's new behaviour, so a
+  counter appearing where the library should have withheld is a failure rather
+  than a reading. A11's three cases and P16's witness count
+  `Panel.remeasureScrollMetrics` calls rather than the arm's skips, and each
+  pairs the absence on a settled pass with the *same key's* non-zero count on a
+  pass whose size moved or whose layout is owed — so none of them is satisfiable
+  by a counter that was never wired, which is the failure mode the seven vacuous
+  verifications above share. A12's throwing case hands the metrics in and asserts
+  that the bar sync now measures nothing of its own, with `updateScrollShadows` —
+  which still reads when handed none — as that key's non-zero baseline. Every one
+  of the five was proved red by reverting in the working tree the library hunk it
+  guards, and green again with it restored. Two stale `scroll-panes` comments went
+  with it: `resizeScrollShadowOverlay` is no longer on the scroll path at all, so
+  the arm's shadow-resize sub-patch is now reachable only from an overlay install
+  or refresh, which no phase drives. `packages/qa` is back to 453/453.
+
   A second correction, to this file's *counters are not time* bullet by way of
   example: the plan's own prescribed offline verifications were mutation-tested
   during implementation and **seven of them could not have caught a regression**
