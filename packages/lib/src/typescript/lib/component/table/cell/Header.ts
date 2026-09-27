@@ -26,7 +26,7 @@ import { SelectableText, SelectableTextOptions } from "~/component/input/Selecta
  *
  * @category Components
  */
-export type HeaderCellEvent = CellEvent | "sortclick" | "contextmenu" | "resizestart" | "resizedrag";
+export type HeaderCellEvent = CellEvent | "sortclick" | "contextmenu" | "resizestart" | "resizedrag" | "resizeend";
 
 /**
  * Square edge length (px) used both for the side-loaded `Glyph`'s preferred
@@ -222,6 +222,7 @@ class HeaderCell extends DefaultCell {
             listeners: {
                 dragstart: (e: MouseEvent)   => this.onResizeDragStart(e),
                 dragmove : (clientX: number) => this.emit("resizedrag", clientX),
+                dragend  : ()                => this.emit("resizeend"),
             },
         });
         this._priorityBadge = new SortPriorityBadge();
@@ -503,7 +504,10 @@ class HeaderCell extends DefaultCell {
      *   field name and the viewport x/y; `"resizestart"` fires on mousedown
      *   over the resize handle, receiving the absolute pointer `clientX` at the
      *   moment the drag began; `"resizedrag"` fires on each mousemove during a
-     *   resize drag, receiving the absolute pointer `clientX`.
+     *   resize drag, receiving the absolute pointer `clientX`; `"resizeend"`
+     *   fires when that drag's mouseup releases the handle, carrying no
+     *   payload — exactly one resize drag is ever live, so a consumer needs no
+     *   index to know which one ended.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This cell, for method chaining.
@@ -514,6 +518,7 @@ class HeaderCell extends DefaultCell {
     on(event: "contextmenu", listener: (fieldName: string, x: number, y: number) => void): this;
     on(event: "resizestart", listener: (clientX: number) => void): this;
     on(event: "resizedrag",  listener: (clientX: number) => void): this;
+    on(event: "resizeend",   listener: () => void): this;
     on(event: HeaderCellEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -548,6 +553,7 @@ class HeaderCell extends DefaultCell {
     protected emit(event: "contextmenu",     fieldName: string, x: number, y: number): void;
     protected emit(event: "resizestart",     clientX: number): void;
     protected emit(event: "resizedrag",      clientX: number): void;
+    protected emit(event: "resizeend"): void;
     protected emit(event: HeaderCellEvent,   ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }

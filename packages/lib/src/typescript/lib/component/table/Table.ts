@@ -42,6 +42,8 @@ import { VBox } from "~/layout/VBox.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { chainRoom, distributeDragChain, DRAG_DISTRIBUTION_EPSILON } from "~/core/DragChain.js";
+import { ResizeDrag, gutterOutline, getAppResizeMode, IN_PAGE_OUTLINE_Z_INDEX } from "~/core/ResizeDrag.js";
+import type { OutlineRect, ResizeMode } from "~/core/ResizeDrag.js";
 
 // Register the column context menu's item glyphs eagerly at module load —
 // same pattern as PaginationBar's nav glyphs — so a consumer never has to
@@ -90,6 +92,71 @@ const REFERENCE_DATE = new Date(2000, 11, 31, 23, 59, 59);
 // instead of recording a target the layout would treat as already-grown).
 // The same 0.5 the file's existing width comparisons use (see setColumnVisible).
 const WIDTH_TARGET_EPSILON_PX = 0.5;
+
+/** One buffered column-resize move: {@link Table.onColumnResize}'s two arguments. */
+interface ColumnDragFrame {
+    /** Visible index of the column whose right edge is being dragged. */
+    colIndex: number;
+    /** The absolute pointer `clientX` for this move. */
+    clientX: number;
+}
+
+/** What one frame of a column drag resolves to, before anything is written. */
+interface ColumnResizeStep {
+    /** The per-column widths this move lands on. */
+    widths: number[];
+    /** The tracked pointer x, advanced only by the travel actually applied. */
+    lastClientX: number;
+    /** The total-width target these widths imply; `0` when the table fits. */
+    widthTarget: number;
+}
+
+/** An outline drag's own state: the bar, and the widths only the release commits. */
+interface ColumnOutlineDrag {
+    /** The bar's box at the press, in the table's own coordinate space. */
+    line: OutlineRect;
+    /** The pointer x at the press; the bar's travel is measured from it. */
+    startClientX: number;
+    /** The widths resolved so far, starting from the committed ones. */
+    widths: number[];
+    /** The tracked pointer x, advanced only by applied travel. */
+    lastClientX: number;
+    /** The total-width target `widths` implies. */
+    widthTarget: number;
+    /** Visible indices of every column any frame of this drag moved. */
+    moved: Set<number>;
+}
+
+/**
+ * Whether two width arrays describe the same number of columns at the same
+ * widths.
+ *
+ * @param a - One width array.
+ * @param b - The other.
+ * @returns `true` when they are the same length and equal element-wise.
+ */
+function sameColumnWidths(a: number[], b: number[]): boolean {
+    return a.length === b.length && a.every((w, i) => w === b[i]);
+}
+
+/**
+ * The visible column indices whose width differs between two width arrays.
+ *
+ * @param before - The widths before the move.
+ * @param after - The widths after it.
+ * @returns The indices that changed.
+ */
+function movedColumns(before: number[], after: number[]): Set<number> {
+    const moved = new Set<number>();
+
+    for (let i = 0; i < after.length; i++) {
+        if (after[i] !== before[i]) {
+            moved.add(i);
+        }
+    }
+
+    return moved;
+}
 
 // Column show/hide entries. At or below the threshold they live in a submenu of
 // the header context menu; past it a leaf row opens a modal dialog instead,
@@ -226,8 +293,21 @@ class Table extends Component<TableOptions> {
     // drag is live.
     private _dragEdgeIndex    : number | null = null;
     // Pointer x consumed so far — advanced only by applied travel (see
-    // `onColumnResize`), never the raw `clientX`.
+    // `resolveColumnResize`), never the raw `clientX`. An outline drag tracks
+    // its own copy instead and only writes this one back when it commits.
     private _dragLastClientX  : number = 0;
+    // This table's own resize mode; `null` follows the app-wide default.
+    private _resizeMode       : ResizeMode | null = null;
+    // The outline drag in progress, or `null` in live mode and between drags.
+    private _outlineDrag      : ColumnOutlineDrag | null = null;
+    // The drag session: in outline mode it buffers each move, moves the bar, and
+    // lays the drag out once on release. A live drag applies its own moves (see
+    // `onColumnResize`) and uses the session only for its begin/end bookkeeping.
+    private readonly _resizeDrag: ResizeDrag<ColumnDragFrame> = new ResizeDrag<ColumnDragFrame>({
+        apply:   (frame): void => this.applyColumnResize(frame.colIndex, frame.clientX),
+        preview: (frame): OutlineRect | null => this.previewColumnResize(frame),
+        commit:  (): void => this.commitColumnResize(),
+    });
     // The total column width a resize drag grew the table to, or `0` when the
     // table sits at its available width. Backing field for `getColumnWidthTarget`.
     private _columnWidthTarget: number = 0;
@@ -329,6 +409,7 @@ class Table extends Component<TableOptions> {
         this._header = new TableHeader(store.model, store);
         this._header.on("columnresizestart",  (i, clientX) => this.onColumnResizeStart(i, clientX));
         this._header.on("columnresize",        (i, clientX) => this.onColumnResize(i, clientX));
+        this._header.on("columnresizeend",    () => this.onColumnResizeEnd());
         this._header.on("columncontextmenu",  (_, x, y) => this.showColumnMenu(x, y));
         // The header is the permanent target of horizontal scroll mirroring (see the
         // scroll listener below), so promote it to its own compositor layer for the
@@ -708,6 +789,7 @@ class Table extends Component<TableOptions> {
      * @param store - The new store to bind to the table.
      */
     setStore(store: AbstractStore): this {
+        this.cancelOutlineColumnDrag();
         this.setDisplayMode("normal");
 
         this._header.setStore(store);
@@ -782,8 +864,23 @@ class Table extends Component<TableOptions> {
      * @param widths - The new column widths in pixels.
      * @remarks Also mirrors each width into `savedColumnWidths` keyed by field name so
      * that show/hide toggles can restore per-column widths without a full re-initialisation.
+     *
+     * A write that changes the widths while an outline column drag is open
+     * abandons that drag: the drag's press-time snapshot then describes widths
+     * the table no longer has, so committing it would undo whatever changed.
+     * This catches the rebuilds nothing announces — a container resize, a
+     * vertical scrollbar appearing on load — which reach the columns only
+     * through a layout pass. It is a backstop, not the whole rule: a path that
+     * writes the widths itself before laying out arrives here with the widths
+     * already in place and nothing to compare, so each one abandons the drag on
+     * its own. An unchanged write, which is what an ordinary pass mid-drag
+     * performs, leaves the drag alone.
      */
     setColumnWidths(widths: number[]): this {
+        if (this._outlineDrag !== null && !sameColumnWidths(this._columnWidths, widths)) {
+            this.cancelOutlineColumnDrag();
+        }
+
         this._columnWidths = widths;
 
         const visibleColumns = this.getColumns();
@@ -826,6 +923,33 @@ class Table extends Component<TableOptions> {
     }
 
     /**
+     * Returns the mode this table's column-resize drags use: its own when it
+     * has one, otherwise the app-wide default set through `Body.setResizeMode`.
+     *
+     * @returns `'live'` or `'outline'`.
+     */
+    getResizeMode(): ResizeMode {
+        return this._resizeMode ?? getAppResizeMode();
+    }
+
+    /**
+     * Sets how this table's column-resize drags show their progress.
+     * `'outline'` moves a thin bar to where the dragged edge will land and lays
+     * the header and body out once, on release; `'live'` lays them out on every
+     * frame. Takes effect from the next drag.
+     *
+     * @param mode - The mode to use, or `null` to follow the app-wide default
+     *   set through `Body.setResizeMode` again.
+     *
+     * @returns This table, for method chaining.
+     */
+    setResizeMode(mode: ResizeMode | null): this {
+        this._resizeMode = mode;
+
+        return this;
+    }
+
+    /**
      * Shows or hides the column identified by the given field name.
      *
      * Only columns present in the resolved column list can be toggled; columns
@@ -857,6 +981,8 @@ class Table extends Component<TableOptions> {
                 return this;
             }
         }
+
+        this.cancelOutlineColumnDrag();
 
         if (visible) {
             this._hiddenColumns.delete(fieldName);
@@ -1063,6 +1189,8 @@ class Table extends Component<TableOptions> {
             if (record === this._rotatedRecord) {
                 return this;
             }
+
+            this.cancelOutlineColumnDrag();
 
             this._rotatedRecord = record;
             this.rebuildRotatedStore();
@@ -1371,6 +1499,7 @@ class Table extends Component<TableOptions> {
             }
         }
 
+        this.cancelOutlineColumnDrag();
         this.rebuildRotatedStore();
 
         this._columnWidths      = [];
@@ -1673,6 +1802,8 @@ class Table extends Component<TableOptions> {
 
         this._suppressSelectionForward = false;
 
+        this.cancelOutlineColumnDrag();
+
         this._columnWidths      = [];
         this._savedColumnWidths = new Map();
         this._columnWidthTarget = 0;
@@ -1706,6 +1837,11 @@ class Table extends Component<TableOptions> {
         this._columnDialog?.dispose();
         this._columnContextMenu.dispose();
         this._cellText.dispose();
+        // A drag still in progress, as in `Split.detach`: a buffered frame would
+        // resolve against columns this teardown is destroying, and an outline
+        // drag's bar would outlive the table with its two viewport listeners.
+        this._resizeDrag.cancel();
+        this._outlineDrag = null;
 
         super.destructor();
     }
@@ -2119,9 +2255,16 @@ class Table extends Component<TableOptions> {
     /**
      * Captures the dragged edge when a column-resize drag begins: the index of
      * the column whose right edge is being dragged and the pointer's starting
-     * `clientX`. {@link onColumnResize} distributes each subsequent frame's
+     * `clientX`. {@link resolveColumnResize} distributes each subsequent frame's
      * travel from this state, nearest-first, across the columns fanning
      * outward from the edge.
+     *
+     * Also starts the drag in this table's {@link getResizeMode | resize mode}.
+     * An outline drag draws its bar here and resolves every later move against
+     * a private copy of the widths, so nothing is laid out until the release. A
+     * table that can give the bar no span to draw — one with no committed height
+     * yet — starts live instead, since a zero-height bar would track the drag
+     * invisibly.
      *
      * @param colIndex - Zero-based index of the column whose right edge is being dragged.
      * @param clientX  - The absolute pointer `clientX` at the moment the drag began.
@@ -2133,15 +2276,122 @@ class Table extends Component<TableOptions> {
 
         this._dragEdgeIndex   = colIndex;
         this._dragLastClientX = clientX;
+
+        const line = this.getResizeMode() === "outline" ? this.columnEdgeOutline(colIndex) : null;
+
+        if (line === null) {
+            this._outlineDrag = null;
+            this._resizeDrag.beginLive();
+
+            return;
+        }
+
+        this._outlineDrag = {
+            line,
+            startClientX: clientX,
+            widths:       this._columnWidths.slice(),
+            lastClientX:  clientX,
+            widthTarget:  this._columnWidthTarget,
+            moved:        new Set<number>(),
+        };
+
+        this._resizeDrag.beginOutline({ parent: this.getElement(true)!, start: line, zIndex: IN_PAGE_OUTLINE_Z_INDEX });
     }
 
     /**
-     * Handles a column resize drag: the dragged edge splits the visible
-     * columns into a left chain `[colIndex, colIndex - 1, …, 0]` and a right
-     * chain `[colIndex + 1, …, n - 1]`, each ordered nearest-first. This
-     * frame's pointer travel is applied on top of the live widths — the
-     * nearest column in the direction of travel absorbs it first, spilling to
-     * the next only once it hits its `minWidth`/`maxWidth`.
+     * Handles one move of a column-resize drag. A live drag applies it now, as
+     * it always has; an outline drag buffers it in the drag session instead,
+     * which moves the bar at most once per animation frame and lays the move out
+     * only when the drag is released.
+     *
+     * @param colIndex - Zero-based index of the column whose right edge is being dragged.
+     * @param clientX  - The absolute pointer `clientX` for this move.
+     */
+    private onColumnResize(colIndex: number, clientX: number): void {
+        if (this._dragEdgeIndex === null || colIndex !== this._dragEdgeIndex) {
+            return;
+        }
+
+        if (this._outlineDrag !== null) {
+            this._resizeDrag.schedule({ colIndex, clientX });
+
+            return;
+        }
+
+        this.applyColumnResize(colIndex, clientX);
+    }
+
+    /**
+     * Ends a column-resize drag: the session flushes the freshest buffered move
+     * — so an outline drag commits the pointer's actual last position rather
+     * than whichever buffered position a frame boundary happened to catch, and
+     * so this resolves at all offline, where the `requestAnimationFrame` it
+     * scheduled never fires — and in outline mode lays that move out once. A
+     * cancelled outline drag (Escape, or the browser window losing focus)
+     * commits nothing.
+     *
+     * The two fields are cleared *after* `end()`, which is what reaches
+     * {@link commitColumnResize} and needs `_outlineDrag` still set. Clearing
+     * `_dragEdgeIndex` also closes a long-standing hole: nothing reset it
+     * before, so it survived until the next press and a stray move in between
+     * was still honoured.
+     */
+    private onColumnResizeEnd(): void {
+        this._resizeDrag.end();
+
+        this._outlineDrag   = null;
+        this._dragEdgeIndex = null;
+    }
+
+    /**
+     * Abandons an outline drag in progress, committing nothing. An outline drag
+     * holds a private copy of the widths taken at the press, so a release after
+     * something else rebuilt the columns would write back numbers describing a
+     * set the table no longer has — and, if the set shrank, index past the end
+     * of it. The bar goes too, since the header cell whose release would have
+     * taken it down may have been recycled away with the column.
+     *
+     * Called from every path that rebuilds the columns or their widths, and from
+     * `setColumnWidths` as a backstop for the rebuilds that announce themselves
+     * only as a layout pass. The explicit calls are not redundant: a path that
+     * assigns the widths itself before laying out leaves the setter nothing to
+     * compare, and when the pass that follows rescales nothing — every column
+     * fixed-width, or the rebuilt widths already at the target — the backstop
+     * sees no change at all.
+     *
+     * The dragged edge goes with it, which ends the gesture: the button is
+     * still down, so moves keep arriving, and with only `_outlineDrag` cleared
+     * they would apply *live* from `_dragLastClientX` — which an outline drag
+     * never advances, so the first one would jump the edge by the whole travel
+     * since the press. The user has to release and press again, against the
+     * columns the table now has.
+     *
+     * `AbstractWindow.setWindowState` cancels its own session for the same
+     * reason, and blocks the moves that follow through its own state guard.
+     * `Split` needs no equivalent: a pane cannot leave mid-gutter-drag.
+     *
+     * A no-op outside an outline drag, so `'live'` never reaches it: a live drag
+     * advances its tracked pointer every move and reads the rebuilt widths on
+     * the next one, exactly as it does today.
+     */
+    private cancelOutlineColumnDrag(): void {
+        if (this._outlineDrag === null) {
+            return;
+        }
+
+        this._resizeDrag.cancel();
+
+        this._outlineDrag   = null;
+        this._dragEdgeIndex = null;
+    }
+
+    /**
+     * Resolves one frame of a column-resize drag: the dragged edge splits the
+     * visible columns into a left chain `[colIndex, colIndex - 1, …, 0]` and a
+     * right chain `[colIndex + 1, …, n - 1]`, each ordered nearest-first. This
+     * frame's pointer travel is applied on top of `widths` — the nearest column
+     * in the direction of travel absorbs it first, spilling to the next only
+     * once it hits its `minWidth`/`maxWidth`.
      *
      * Scavenging from the right chain only happens while the columns still fit
      * the viewport. Moving right, the right chain gives up width first; once it
@@ -2152,8 +2402,8 @@ class Table extends Component<TableOptions> {
      * columns left of it. Moving left, that accrued growth is given back first
      * — the total never falls below {@link getAvailableColumnWidth} — and only
      * travel past it, once the table fits again, regrows the right chain. The
-     * grown-or-not total is recorded via `_columnWidthTarget` so the layout
-     * manager preserves it instead of rescaling it away.
+     * grown-or-not total comes back as `widthTarget` so the layout manager
+     * preserves it instead of rescaling it away.
      *
      * The tracked pointer position advances only by the travel actually
      * applied, not the raw `clientX`. When every chain is exhausted the
@@ -2162,20 +2412,18 @@ class Table extends Component<TableOptions> {
      * glued to the handle on reversal instead of the handle jumping to meet a
      * far-off cursor.
      *
-     * The pass is queued onto the animation-frame layout queue rather than run
-     * synchronously, so every move dispatched within one frame collapses into a
-     * single pass. No pass is needed between moves — the drag arithmetic reads
-     * only state a layout pass does not produce.
+     * Nothing here is written back: the caller owns every write, which is what
+     * lets the live apply and the outline preview share one clamp. Both pass
+     * their own widths and tracked pointer in, so neither mode can resolve a
+     * move differently from the other.
      *
      * @param colIndex - Zero-based index of the column whose right edge is being dragged.
      * @param clientX  - The absolute pointer `clientX` for this move.
+     * @param widths - The widths this move is resolved on top of.
+     * @param lastClientX - The tracked pointer x this move is measured from.
+     * @returns The resolved step, or `null` when the move lands inside the dead zone.
      */
-    private onColumnResize(colIndex: number, clientX: number): void {
-        if (this._dragEdgeIndex === null || colIndex !== this._dragEdgeIndex) {
-            return;
-        }
-
-        const widths  = this._columnWidths;
+    private resolveColumnResize(colIndex: number, clientX: number, widths: number[], lastClientX: number): ColumnResizeStep | null {
         const columns = this.getColumns();
         const mins    = columns.map(col => col.getMinWidth() ?? MIN_COLUMN_WIDTH_PX);
         const maxs    = columns.map(col => col.getMaxWidth() ?? Number.POSITIVE_INFINITY);
@@ -2192,7 +2440,7 @@ class Table extends Component<TableOptions> {
             right.push(i);
         }
 
-        const frameDelta = clientX - this._dragLastClientX;
+        const frameDelta = clientX - lastClientX;
         const sign       = frameDelta >= 0 ? 1 : -1;
         const available  = this.getAvailableColumnWidth();
         const total      = widths.reduce((s, w) => s + w, 0);
@@ -2205,7 +2453,7 @@ class Table extends Component<TableOptions> {
             : Math.min(-frameDelta, chainRoom(left, widths, -1, mins, maxs), chainRoom(right, widths, 1, mins, maxs) + growth);
 
         if (delta <= DRAG_DISTRIBUTION_EPSILON) {
-            return;   // dead zone — the tracked pointer deliberately stays put
+            return null;   // dead zone — the tracked pointer deliberately stays put
         }
 
         // Rightward: the right chain absorbs everything it can, the rest grows the
@@ -2221,25 +2469,158 @@ class Table extends Component<TableOptions> {
         distributeDragChain(left,  widths, delta,    sign, mins, maxs, out);
         distributeDragChain(right, widths, absorbed, -sign, mins, maxs, out);
 
-        // A column the drag actually moved is now user-set: the data-driven
-        // re-sample must not overwrite it. `out` starts as a copy of `widths`, so
-        // an untouched entry is bit-identical and needs no epsilon.
-        if (this._displayMode !== "rotated") {
-            out.forEach((w, i) => {
-                if (w !== widths[i]) {
-                    this._pinnedColumnWidths.set(columns[i].getField().getName(), w);
-                }
-            });
-        }
-
-        this._dragLastClientX += sign * delta;
-        this._columnWidths     = out;
-
         const newTotal = out.reduce((s, w) => s + w, 0);
 
-        this._columnWidthTarget = newTotal > available + WIDTH_TARGET_EPSILON_PX ? newTotal : 0;
+        return {
+            widths:      out,
+            lastClientX: lastClientX + sign * delta,
+            widthTarget: newTotal > available + WIDTH_TARGET_EPSILON_PX ? newTotal : 0,
+        };
+    }
+
+    /**
+     * Records the widths a drag just moved as user-set, so the data-driven
+     * re-sample cannot overwrite them. Skipped while rotated: the two-column
+     * projection's widths are not the consumer's columns.
+     *
+     * @param moved - Visible indices of the columns the drag moved.
+     * @param widths - The widths those indices landed on.
+     */
+    private pinColumnWidths(moved: Set<number>, widths: number[]): void {
+        if (this._displayMode === "rotated") {
+            return;
+        }
+
+        const columns = this.getColumns();
+
+        for (const i of moved) {
+            this._pinnedColumnWidths.set(columns[i].getField().getName(), widths[i]);
+        }
+    }
+
+    /**
+     * Applies one move of a live drag: resolves it against the table's own
+     * state and writes the result back.
+     *
+     * The pass is queued onto the animation-frame layout queue rather than run
+     * synchronously, so every move dispatched within one frame collapses into a
+     * single pass. No pass is needed between moves — the drag arithmetic reads
+     * only state a layout pass does not produce.
+     *
+     * @param colIndex - Zero-based index of the column whose right edge is being dragged.
+     * @param clientX  - The absolute pointer `clientX` for this move.
+     */
+    private applyColumnResize(colIndex: number, clientX: number): void {
+        const step = this.resolveColumnResize(colIndex, clientX, this._columnWidths, this._dragLastClientX);
+
+        if (step === null) {
+            return;
+        }
+
+        this.pinColumnWidths(movedColumns(this._columnWidths, step.widths), step.widths);
+
+        this._dragLastClientX   = step.lastClientX;
+        this._columnWidths      = step.widths;
+        this._columnWidthTarget = step.widthTarget;
 
         this.scheduleLayout();
+    }
+
+    /**
+     * Where the bar goes for one buffered move of an outline drag: its press
+     * box, shifted by the travel the drag has applied since the press. The
+     * resolved widths accumulate on the drag's own copy and reach the table only
+     * when {@link commitColumnResize} runs.
+     *
+     * The shift is read off the tracked pointer rather than re-summed from the
+     * widths: `resolveColumnResize` caps each frame's travel at what the left
+     * chain can absorb, so the left chain's summed width — which is where the
+     * dragged edge sits — moves by exactly the travel the tracked pointer
+     * advanced by. Measuring it this way keeps the two in lockstep by
+     * construction and costs no DOM read.
+     *
+     * @param frame - The buffered move.
+     * @returns The bar's box, or `null` when no outline drag is live or the move
+     *   lands inside the dead zone.
+     */
+    private previewColumnResize(frame: ColumnDragFrame): OutlineRect | null {
+        const outline = this._outlineDrag;
+
+        if (outline === null) {
+            return null;
+        }
+
+        const step = this.resolveColumnResize(frame.colIndex, frame.clientX, outline.widths, outline.lastClientX);
+
+        if (step === null) {
+            return null;
+        }
+
+        for (const i of movedColumns(outline.widths, step.widths)) {
+            outline.moved.add(i);
+        }
+
+        outline.widths      = step.widths;
+        outline.lastClientX = step.lastClientX;
+        outline.widthTarget = step.widthTarget;
+
+        return { ...outline.line, x: outline.line.x + (step.lastClientX - outline.startClientX) };
+    }
+
+    /**
+     * Lays an outline drag out, once, on release: the widths every previewed
+     * frame accumulated become the table's, and one layout pass places the
+     * header and body against them.
+     */
+    private commitColumnResize(): void {
+        const outline = this._outlineDrag;
+
+        if (outline === null) {
+            return;
+        }
+
+        this.pinColumnWidths(outline.moved, outline.widths);
+
+        this._dragLastClientX   = outline.lastClientX;
+        this._columnWidths      = outline.widths;
+        this._columnWidthTarget = outline.widthTarget;
+
+        this.scheduleLayout();
+    }
+
+    /**
+     * The bar's box at the press: a `gutterOutline` line on the dragged edge,
+     * spanning the table's content box top to bottom so it crosses the header
+     * band and the body together.
+     *
+     * The edge's x is built from the header's own box and the widths left of the
+     * edge rather than from a measured rectangle, so the press costs no forced
+     * layout — the same reason `Split` reads its gutter through `rectOf`. It
+     * adds the header's content-box origin but no border width, which is correct
+     * only because `TableHeader`'s class chrome declares `borderBottom` alone: a
+     * left or right border added to the header later would shift the bar by its
+     * width.
+     *
+     * @param colIndex - Zero-based index of the column whose right edge is being dragged.
+     * @returns The bar's box, or `null` when the table has no box to span — which
+     *   is what makes an outline drag fall back to live.
+     */
+    private columnEdgeOutline(colIndex: number): OutlineRect | null {
+        const box = this.getContentBounds();
+
+        if (box === null || !Number.isFinite(box.height)) {
+            return null;
+        }
+
+        const headerBox = this._header.getContentBounds();
+
+        let edgeX = this._header.getX() + (headerBox?.x ?? 0) - this._header.getScrollX();
+
+        for (let i = 0; i <= colIndex; i++) {
+            edgeX += this._columnWidths[i] ?? 0;
+        }
+
+        return gutterOutline({ x: edgeX, y: box.y, width: 0, height: box.height }, "x");
     }
 
     /**
@@ -2249,6 +2630,8 @@ class Table extends Component<TableOptions> {
      * All manually resized widths are discarded and recomputed from defaults.
      */
     private resetColumns(): void {
+        this.cancelOutlineColumnDrag();
+
         this._hiddenColumns = new Set();
         this.initHiddenFromSpec();
         this._savedColumnWidths = new Map();
@@ -2805,12 +3188,14 @@ class Table extends Component<TableOptions> {
      * A no-op when auto-size is off (rotated mode included) or the store is
      * empty. The pass is queued onto the animation-frame layout queue rather
      * than run synchronously, so a burst of adds, removes or edits collapses
-     * into one layout — mirroring `onColumnResize`.
+     * into one layout — mirroring `applyColumnResize`.
      */
     private maybeResampleColumnWidths(): void {
         if (!this.isAutoSizeColumns() || this._store.getCount() === 0) {
             return;
         }
+
+        this.cancelOutlineColumnDrag();
 
         this._columnWidths      = [];
         this._savedColumnWidths = new Map();
