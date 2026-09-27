@@ -403,6 +403,56 @@ and relying on an unrelated later pass to pick it up. That pass no longer
 reaches a field whose rectangle holds still; announce the change, or call
 `scheduleLayout()` on the field.
 
+## A settled scrolling `Panel` does not re-measure its scroll metrics
+
+**What changed and why.** A scrolling [`Panel`](/api/core/classes/Panel) ends
+every layout pass by re-measuring its scroll metrics — the reserved scrollbar
+gutter, the scroll-shadow overlay's size, and the four edge strengths — from a
+fresh read of its own box. That re-measure is now withheld on a pass that
+commits the rectangle the previous one did with nothing having marked the panel
+since its last completed pass, because none of those three inputs can have moved:
+every placement input the library owns either lays the panel out or marks a pass
+owed on it, and a theme or web-font swap moves the text-metrics generation the
+same check compares.
+
+Unlike the whole-pass skip above, this one is granted by that settled state
+rather than by a per-class opt-in, so it reaches every `Panel` subclass — a
+library one or your own — with no audit and no override. The whole-pass skip is
+unchanged and still `Panel` exactly.
+
+The resize-settle relay is unaffected: while a live external resize is still
+moving the panel every frame the re-measure is withheld by that relay instead,
+and its catch-up on the first quiet frame still runs in full.
+
+**Who needs to act.** Code that changes content inside a scrolling panel without
+telling the framework — the same case as the two notes above, one instrument
+further on — and relied on an unrelated later pass to re-measure the affordances
+rather than the layout. The symptom is a scrollbar gutter that stays reserved
+after the content shrank back inside the viewport, or an edge shadow left lit,
+until something else moves the panel. Announce the change:
+
+```typescript
+// Before — the gutter and the shadows cleared on whatever pass came next
+class LogView extends Component {
+    setLines(lines: string[]): this {
+        this.renderOwnDOM(lines);   // the content is now 300px shorter
+
+        return this;
+    }
+}
+
+// After — announce it, and the enclosing panel re-measures on the next pass
+setLines(lines: string[]): this {
+    this.renderOwnDOM(lines);
+    this.notifyIntrinsicSizeChanged();
+
+    return this;
+}
+```
+
+`scheduleLayout()` on the panel itself works too, and is the direct call when
+there is no intrinsic size to announce.
+
 ## `Event.init` is removed
 
 **What changed and why.** `Event.init()` initialised nothing — the event
