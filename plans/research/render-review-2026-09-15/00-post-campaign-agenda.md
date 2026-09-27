@@ -820,6 +820,18 @@ for, and both ablations were already registered.
   invalidation question to answer. A plan should be scoped to that and should
   say the operator guards are unattributed rather than bundling them in.
 
+  **Resolved by `plans/implemented/table-cell-date-formatter-memo.md`.** Six
+  module-level formatters in `data/temporalText.ts`, keyed on the type crossed
+  with `showSeconds`, with the operator guards named unattributed and left
+  undecided. Two corrections to the above: the key is complete but the memo is
+  not total — `Intl.DateTimeFormat.prototype.format` throws a `RangeError` on a
+  non-finite time value where each `toLocale*String` returns text, so an invalid
+  `Date` still takes the engine's own calls in a private function holding the
+  old `switch` verbatim. And the "no invalidation question to answer" holds only
+  because no locale is ever passed; that premise is now a test assertion rather
+  than an argument, since the plan's own call-site grep cannot see what the
+  constructor is handed.
+
 - **G21 moves counters, and mostly not the clock.** Work falls −27.3% on `key`
   (22 → 16 per unit) and −14.3% on `update` (14 → 12), **identically at n=900
   and n=10,000** — as are the sink totals, 1288.86 and 1320.00 in both cells,

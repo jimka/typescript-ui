@@ -591,3 +591,82 @@ the parity check on this change:
     one and make the next measurement of either impossible to read. They keep
     whatever standing they had as part of G23; this plan simply does not decide
     them.
+
+---
+
+## Implementation Notes
+
+The change landed as designed: `TemporalFormatKey`, `TEMPORAL_FORMAT_OPTIONS`,
+`_formats`, `temporalFormat`, the two-branch `temporalDisplayText` and
+`temporalDisplayTextUncached` holding the old `switch` verbatim, all in the one
+file, with no signature and no export moved. Cases 30–34 passed against the
+unchanged source and case 35 failed on 0 constructions, exactly as
+`## Expected Behaviour` predicted; all nine passed after. The suite went from
+514 files / 8582 tests (2 `todo`) to 514 files / 8588 tests (2 `todo`), all
+green, and `npm run docs:api` still reports its 14 pre-existing warnings and no
+new one. Four deviations are worth recording, the first of them a defect in the
+verification this plan prescribed, and with them one note on how every
+prescribed assertion was checked.
+
+**The prescribed sample could not fail on a wrong option bag, which is the
+whole risk this change carries.** `## Expected Behaviour` says "The sample is
+the file's existing `D = new Date(2021, 4, 17, 14, 30, 20)`" and has cases
+30–32 compare `temporalDisplayText` against the engine's own `toLocale*String`
+call for that one value. `D`'s day (17), hour (14), minute (30) and second (20)
+are two-digit already, so for four of the six fields the option table names,
+`'numeric'` and `'2-digit'` render identically; only `D`'s month (5) is
+single-digit. The assertion therefore checks the option bag on one field out of
+five. Proved by mutation: changing `day: '2-digit'` to `day: 'numeric'` in both
+`datetime` rows of `TEMPORAL_FORMAT_OPTIONS` leaves **all nine cases green**
+with `D` alone, while shipping a formatter that differs from the call it
+replaced for every date before the 10th of a month — precisely the silent
+text change `[^options-parity]` reasons the plan safe against. The fix is a
+second sample, `SINGLE_DIGIT = new Date(2021, 0, 5, 9, 8, 7)`, whose month,
+day and hour are every one of them single-digit; cases 30–32 run over both, and
+the same `day` mutation then fails case 32 with
+`'01/5/2021, 09:08 AM'` against `'01/05/2021, 09:08 AM'`. `D` itself is
+unchanged, and cases 27–29 still use it alone as step 1 required. The minute
+and the second stay beyond reach of any sample, and the comment on
+`SINGLE_DIGIT` says so: ICU pads both inside a time pattern whichever of
+`'numeric'` and `'2-digit'` the option names, so setting `second` to
+`'numeric'` leaves every case green. Of the option table's six fields, four —
+year, month, day and hour — are now pinned, against one before.
+
+**Case 35 also asserts that no construction is passed a locale.** The plan
+specified a construction count and per-call parity. The memo's soundness
+argument — `[^no-invalidation]`, and the `## Architecture Decisions` claim that
+the key is complete — rests on the premise that no locale ever reaches
+`Intl.DateTimeFormat`, so the locale needs no place in the key; the plan pinned
+that premise with a call-site grep only, which cannot see what the constructor
+is handed. The counting stand-in already receives the argument, so case 35
+records it and asserts every one is `undefined`. Mutation-proved: passing
+`'en-US'` explicitly — the host default under the test environment, so no text
+moves — fails this assertion and nothing else.
+
+**Every prescribed assertion was mutation-checked before the branch was
+declared done.** Removing the `Number.isNaN` guard fails case 33 with
+`RangeError: Invalid time value`; dropping `showSeconds` from the key fails 28,
+31, 32, 34 and 35; dropping `type` from the key fails the same five; removing
+the memo and constructing per call fails case 35 at 60 constructions against
+6; caching the formatted text per variant instead of the formatter fails 30,
+31, 32 and 34; the `day` slip above fails 32; and an explicit locale fails 35.
+No prescribed assertion was left that a regression could pass.
+
+**The QA README note rode in the documentation commit, not one of its own.**
+`worker.md`'s step 8 says to give each `touches-shared` file its own commit,
+while its own _Shared-file etiquette_ section and the `commit` skill both say a
+shared file rides in its functionality's commit and never gets one to itself.
+The latter pair governs, and `37a3f785` — `motion-transform-inline`'s docs
+commit, the precedent `[^ablation-stays]` cites for this exact annotation — put
+its own `g28.transform-inline` README note beside the changelog the same way.
+
+**Line references are as of `master` at `6db01b15`, and this branch is phase 3
+of a sequential batch.** On its start point, `feature/glyph-sprite-reset-hook`,
+`packages/qa/README.md`'s `g23.write-economy` row is at 506 rather than 489 and
+the `g28.transform-inline` row at 512 rather than 495, `cacheDateFormatters` is
+at `ablations.ts:2156` rather than 1943, and the agenda's G23 section is at 791
+with its "fix is six formatters" bullet at 814 rather than 775.
+`next.md`'s `### Layouts` heading is at 408 exactly as step 4 said. No API,
+signature or file-location drift: all four call sites, both precedents and the
+`g23.write-economy` registration, its two registry lists and its four sweep
+cells are where the plan describes them.
