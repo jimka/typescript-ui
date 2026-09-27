@@ -194,14 +194,14 @@ describe('Split resize mode', () => {
         const rhsLayout = vi.spyOn(scn.rhs, 'doLayout');
 
         expect(visualBox(scn.lhs)).toEqual({ x: 0, y: 0, width: 100, height: 300 });
-        expect(visualBox(scn.gutter)).toEqual({ x: 97, y: 0, width: 10, height: 300 });
-        expect(visualBox(scn.rhs)).toEqual({ x: 104, y: 0, width: 296, height: 300 });
+        expect(visualBox(scn.gutter)).toEqual({ x: 95, y: 0, width: 10, height: 300 });
+        expect(visualBox(scn.rhs)).toEqual({ x: 100, y: 0, width: 300, height: 300 });
 
         drive(scn, [140]);
 
         expect(visualBox(scn.lhs)).toEqual({ x: 0, y: 0, width: 100, height: 300 });
-        expect(visualBox(scn.gutter)).toEqual({ x: 97, y: 0, width: 10, height: 300 });
-        expect(visualBox(scn.rhs)).toEqual({ x: 104, y: 0, width: 296, height: 300 });
+        expect(visualBox(scn.gutter)).toEqual({ x: 95, y: 0, width: 10, height: 300 });
+        expect(visualBox(scn.rhs)).toEqual({ x: 100, y: 0, width: 300, height: 300 });
         expect(scn.split.getPaneSize(scn.lhs)).toBe(100);
         expect(lhsLayout).not.toHaveBeenCalled();
         expect(rhsLayout).not.toHaveBeenCalled();
@@ -209,7 +209,7 @@ describe('Split resize mode', () => {
         const outline = outlineOf(scn.split)!;
 
         expect(DOM.source.getParentElement(outline.getElement()!)).toBe(DOM.source.getParentElement(scn.gutter.getElement()!));
-        expect(outline.getX()).toBe(100);
+        expect(outline.getX()).toBe(98);
         expect(outline.getY()).toBe(0);
         expect(outline.getWidth()).toBe(4);
         expect(outline.getHeight()).toBe(300);
@@ -244,8 +244,8 @@ describe('Split resize mode', () => {
         scn.gutter.onDragStop();
 
         expect(visualBox(scn.lhs)).toEqual({ x: 0, y: 0, width: 70, height: 300 });
-        expect(visualBox(scn.gutter)).toEqual({ x: 67, y: 0, width: 10, height: 300 });
-        expect(visualBox(scn.rhs)).toEqual({ x: 74, y: 0, width: 326, height: 300 });
+        expect(visualBox(scn.gutter)).toEqual({ x: 65, y: 0, width: 10, height: 300 });
+        expect(visualBox(scn.rhs)).toEqual({ x: 70, y: 0, width: 330, height: 300 });
         expect(scn.split.getPaneSizes()).toEqual([{ unit: 'px', value: 70 }, { unit: 'ratio', value: 1 }]);
         expect(resized).toHaveBeenCalledTimes(1);
         expect(resized).toHaveBeenCalledWith(scn.split.getPaneSizes());
@@ -271,8 +271,8 @@ describe('Split resize mode', () => {
         scn.gutter.onDragStop();
 
         expect(visualBox(scn.lhs)).toEqual({ x: 0, y: 0, width: 100, height: 300 });
-        expect(visualBox(scn.gutter)).toEqual({ x: 97, y: 0, width: 10, height: 300 });
-        expect(visualBox(scn.rhs)).toEqual({ x: 104, y: 0, width: 296, height: 300 });
+        expect(visualBox(scn.gutter)).toEqual({ x: 95, y: 0, width: 10, height: 300 });
+        expect(visualBox(scn.rhs)).toEqual({ x: 100, y: 0, width: 300, height: 300 });
         expect(resized).not.toHaveBeenCalled();
     });
 

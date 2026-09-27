@@ -62,8 +62,12 @@ export interface SplitGutterOptions extends ComponentOptions {
     collapseTrigger?: CollapseTrigger;
     /**
      * The background painted in the expanded (divider) state, restored when
-     * {@link SplitGutter.setOpaque} is cleared. Defaults to the gutter token;
-     * `Border` passes `"transparent"` for its minimal-until-collapsed look.
+     * {@link SplitGutter.setOpaque} is cleared. Defaults to `"transparent"`,
+     * because no owning manager paints an expanded gutter — the divider a
+     * user sees is the manager's own configured gap, not this element. A
+     * caller-supplied value fills the whole element -- 10px under `Split` and
+     * `Border`, 6px under `Accordion` -- which for the first two overlaps both
+     * neighbouring panes/regions.
      */
     expandedBackground?: string;
     /**
@@ -86,6 +90,11 @@ const _defaultSplitGutterOptions: Partial<SplitGutterOptions> = {
     collapsible: true,
     movable:     true,
 };
+
+// Above the panes (which carry no z-index) so DOM insertion order cannot put a
+// pane on top of the gutter, and below a Panel's overlay scrollbar (z-index 2)
+// so the bar still wins where the gutter's overhang lies over it.
+const GUTTER_Z_INDEX = 1;
 
 /** `.opaque`'s chrome declarations, read by `ownStyleStates`' entry below. */
 const OPAQUE_DECLARATIONS: StyleBag = {
@@ -154,7 +163,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
     private _dragging: boolean = false;
     private _collapseDirection: CollapseDirection = "west";
     private _collapseTrigger: CollapseTrigger = "dblclick";
-    private _expandedBackground: string = "var(--ts-ui-gutter-bg, #AAAAAA)";
+    private _expandedBackground: string = "transparent";
     private _tooltipText: string = "";
     private _listeners: ListenerBag<SplitGutterEvent> = this.registerListenerBag(new ListenerBag<SplitGutterEvent>());
 
@@ -181,9 +190,11 @@ class SplitGutter extends Component<SplitGutterOptions> {
             this._direction = direction;
         }
 
-        // The expanded fill is the gutter token by default; Border passes a
-        // transparent value so its divider state shows only the chevron.
-        this._expandedBackground = options?.expandedBackground ?? "var(--ts-ui-gutter-bg, #AAAAAA)";
+        // No manager paints an expanded gutter — the divider a user sees is
+        // the owning manager's own configured gap — so the expanded fill
+        // defaults to transparent. A caller can still supply a fill for a
+        // custom divider look.
+        this._expandedBackground = options?.expandedBackground ?? "transparent";
         this.setBackgroundColor(this._expandedBackground);
 
         // The chevron's collapse heading points the way the gutter travels on
@@ -204,14 +215,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
 
         this._collapseButton.setVisible(this._collapsible);
 
-        // A fixed gutter (Border) never resizes, so its body should not swallow
-        // pointer events — the transparent track must let clicks reach the
-        // region behind it, and the opaque strip has nothing behind to click.
-        // The chevron child keeps its own `pointer-events: auto`, so it stays
-        // clickable regardless.
-        if (!this._movable) {
-            this.setPointerEvents("none");
-        }
+        this.setZIndex(options?.zIndex ?? GUTTER_Z_INDEX);
 
         // Drag wiring lives here, NOT in `applyOptions`: Component's constructor
         // runs applyOptions from inside super(), and the listener machinery
@@ -322,13 +326,28 @@ class SplitGutter extends Component<SplitGutterOptions> {
      * Sets whether the gutter is draggable. Live: the `mousedown` drag wiring
      * is always in place, and `onDragStart` checks this flag on each press, so
      * toggling it at any time enables or disables dragging and the resize
-     * cursor immediately.
+     * cursor immediately. Also toggles whether the gutter body takes pointer
+     * events at all: a locked gutter is not a resize handle, so its body must
+     * not swallow the pointer events of the pane/region edges its overhang
+     * lies over — the chevron child keeps its own `pointer-events: auto`, so
+     * it stays clickable either way. Unlocking clears the inline override
+     * rather than pinning it to `"auto"`: an inline value would beat the
+     * viewport-drag suppression rule (`html.ts-ui-dragging > *`,
+     * PointerDrag.ts) that every *other* handle's drag relies on to take this
+     * gutter out of hit-testing for the duration, leaving it with the correct
+     * inherited value in every case instead.
      *
      * @param value - True for a draggable gutter, false for a locked one.
      * @returns This gutter, for method chaining.
      */
     setMovable(value: boolean): this {
         this._movable = value;
+
+        if (value) {
+            this.clearPointerEvents();
+        } else {
+            this.setPointerEvents("none");
+        }
 
         // A gutter locked while the mouse sits stationary over it gets no
         // native mouseout to clear the hover wash itself (mouseover/mouseout
@@ -673,8 +692,10 @@ class SplitGutter extends Component<SplitGutterOptions> {
 
     /**
      * Records a real hover enter and re-derives the hover wash. A no-op for a
-     * locked or opaque gutter — hit-widening and the hover fade both gate on
-     * the same `isMovable() && !isOpaque()` condition the resize cursor uses.
+     * locked or opaque gutter — the hover fade gates on the same
+     * `isMovable() && !isOpaque()` condition the resize cursor uses; the
+     * gutter's own box does not gate on either, though it is the expanded 10px
+     * only while not opaque -- a collapsed gutter widens to its strip.
      * Ignores a boundary crossing onto the gutter's own chevron child, which
      * is not a real enter.
      *

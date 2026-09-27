@@ -491,11 +491,11 @@ describe('A toggled pane that moves is still animated (E3)', () => {
 
         settle();
 
-        expect(visualBox(panes[0])).toEqual({ x: 0, y: 0, width: 189, height: 300 });
-        expect(visualBox(panes[1])).toEqual({ x: 193, y: 0, width: 100, height: 300 });
+        expect(visualBox(panes[0])).toEqual({ x: 0, y: 0, width: 191, height: 300 });
+        expect(visualBox(panes[1])).toEqual({ x: 191, y: 0, width: 100, height: 300 });
         expect(panes[1].getClipPath()).toBe('inset(0 100% 0 0)');
-        expect(visualBox(panes[2])).toEqual({ x: 211, y: 0, width: 189, height: 300 });
-        expect(visualBox(splitGutters(split)[1])).toEqual({ x: 193, y: 0, width: 18, height: 300 });
+        expect(visualBox(panes[2])).toEqual({ x: 209, y: 0, width: 191, height: 300 });
+        expect(visualBox(splitGutters(split)[1])).toEqual({ x: 191, y: 0, width: 18, height: 300 });
 
         host.dispose();
     });

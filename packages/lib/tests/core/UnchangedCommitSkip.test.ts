@@ -111,6 +111,15 @@ const SWEEP_STEP = { width: 20, height: 10 } as const;
  * exactly on pre-change `MenuBar` code, so the equality still compares the
  * skip against an unskipped scene rather than against itself.
  *
+ * All four were re-captured again when `Split`'s gutter became zero-thickness
+ * and its inter-pane gap moved to a `spacing` option defaulting to 0: the panes
+ * absorb the 4px the gutter used to reserve, so every pane box in a scene
+ * holding a `Split` shifts by 2px while the scene's own extent does not. The
+ * byte length each digest carries after its colon is unchanged across that
+ * re-capture -- 107980, 112303, 114540 and 123515 -- which is what shows the
+ * scene kept its shape and only positions and extents moved. They were
+ * re-captured under the same skip-forced-off condition as the originals.
+ *
  * Forcing it off means stubbing `canSkipUnchangedLayout` false on
  * `MenuBar.prototype` and `ToolBar.prototype` as well as on
  * `Component.prototype`: those two override it, so the mirror image of
@@ -125,12 +134,12 @@ const BASELINE = {
     shellRepeatCommits: 31,
     /** Cases 12 and 13: every component's visual rectangle, per frame, hashed. */
     geometry: {
-        deepWidth:     '31d51d08:107980',
-        deepHeight:    '3593254e:112303',
+        deepWidth:     'fa8ee37c:107980',
+        deepHeight:    'de69f1e0:112303',
         shallowWidth:  '5dd52043:25040',
         shallowHeight: '613bf4ee:25040',
-        shellWidth:    'd616d000:114540',
-        shellHeight:   '88754fc4:123515',
+        shellWidth:    '655ad9f8:114540',
+        shellHeight:   '1b3c1572:123515',
     },
     /** Cases 12 and 13: `doLayout` plus size-hint calls over each whole sweep. */
     work: {

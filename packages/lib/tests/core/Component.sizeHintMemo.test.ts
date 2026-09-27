@@ -89,12 +89,20 @@ const SWEEP_STEP       = 20;
  * in `Component` — by running each case and printing what it measured. Every
  * one of them is a *pre-change* number, which is what makes them an assertion
  * about the record changing nothing rather than a restatement of its output.
+ *
+ * `deepSweepGeometry` was re-captured once, when `Split`'s gutter became
+ * zero-thickness and its inter-pane gap moved to a `spacing` option defaulting
+ * to 0: the panes absorb the 4px the gutter used to reserve, so the deep
+ * scene's pane boxes shift by 2px while its own extent does not. The byte
+ * length after the colon is unchanged at 107980, which is what shows the scene
+ * kept its shape. It is the same scene digest `UnchangedCommitSkip.test.ts`
+ * records as `deepWidth`, re-captured under that file's same condition.
  */
 const BASELINE = {
     /** Case 1: size-hint calls anywhere in the 19-component `Border` scene, per pass. */
     borderSceneCalls: 210,
     /** Case 9 / case 2: `[x, y, width, height]` of every component, per frame, hashed. */
-    deepSweepGeometry:    '31d51d08:107980',
+    deepSweepGeometry:    'fa8ee37c:107980',
     shallowSweepGeometry: '5dd52043:25040',
     /** Case 9: size-hint calls over the whole 20-frame sweep of each scene. */
     deepSweepCalls:    109260,

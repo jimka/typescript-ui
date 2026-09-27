@@ -82,7 +82,8 @@ export interface ResizeDragHooks<T> {
 const OUTLINE_BORDER_PX: number = 2;
 
 // Thickness of a gutter's outline, in px: its two borders meet, so it reads as
-// one solid bar. Equals Split's 4 px visual gutter (its own GUTTER_SIZE).
+// one solid bar. Independent of any gutter's own geometry — it is a fixed
+// visual weight for the drag line, not a stand-in for a reserved gap.
 const OUTLINE_LINE_PX: number = 2 * OUTLINE_BORDER_PX;
 
 /**
