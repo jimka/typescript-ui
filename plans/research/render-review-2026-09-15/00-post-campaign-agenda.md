@@ -976,6 +976,21 @@ entry says which factor decided it.
   required and already empty" is the cheap end of the scale. Worth pricing
   properly rather than dropping.
 
+  **Resolved by `plans/implemented/table-body-visible-records-memo.md`.** The
+  guard is one boolean recomputed at each of `Body`'s two `_columnConfigs`
+  writes, and it costs slightly more than this entry priced: the recompute also
+  has to clear every pooled cell's required-empty state whenever the new flag is
+  false, because `syncPoolCells` does not rebuild a cell that keeps its column,
+  so a configuration change dropping the last required column would otherwise
+  strand an outline the skipped loop could never clear. Two corrections to the
+  above: the guard is not "not required and already empty" — emptiness is a
+  property of the record and cannot be hoisted out of the loop, so only the
+  configuration half is — and the skip cannot be asserted through the config
+  map's own `get`, since `isRecordFieldReadOnly` calls it once per cell as well.
+  `Cell.setRequiredEmpty` is the witness for the loop running, counted across a
+  plain re-render rather than a config write — the clearing sweep is its second
+  caller.
+
 - **Correction, and it reopens G21's `getVisibleRecords` memo.** Two sentences
   first written here were wrong, both raised by the `table-row-filter-panel`
   planner and verified since. `getRecords()` is `return this._records.slice()`
@@ -1266,6 +1281,20 @@ digit budget.
   its plan understates itself — though note the shippable memo keeps the filter
   re-running, so the figure it can bank is the slice half of this, not the
   whole.
+
+  **Resolved by `plans/implemented/table-body-visible-records-memo.md`.** The
+  key shipped is not the `WeakMap` on two array identities the entry above
+  predicted: `_records` is private, so the library cannot reach the identity the
+  ablation keyed on without exposing a mutable array the store owns. It is an
+  `@internal` `AbstractStore.getViewGeneration()` counter instead, bumped from
+  one new private `setRecordView` that both `_records` assignments now route
+  through, with `Body` stashing the number beside its copy and resetting the
+  stash on a store swap. One correction to the above, and it sharpens the
+  caveat: the banked figure is not merely "the slice half" of −4.2%/−21.5% but
+  an unquantified fraction of it, because the −4.2% cell's arm removed n
+  predicate invocations per call as well as the slice, and at n=10,000 with a
+  row filter those dominate what the slice costs. The plan does not claim the
+  figure, and nothing in this branch re-measures it.
 
 - **And F06.3's recorded regression was the instrument, as suspected — now with
   a control arm to prove it.** Against a plain mean of 8.84 (7.26, 8.97, 10.30;
