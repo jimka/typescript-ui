@@ -1022,6 +1022,18 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this._stateAnimHandle?.cancel();
         this._stateAnimHandle = null;
 
+        // A close arriving inside a rail minimize's 150ms genie ends this
+        // window's animated life, so the pair goes too — the way `destructor`
+        // and `setRail` cancel it. Left running, the collapse's completion
+        // emits `"minimize"` after the `"close"` above, on a window whose rail
+        // has already dropped it, and writes its own `transform` / `opacity`
+        // over the close fade below; a superseded expansion's completion
+        // instead clears the `transition` that fade arms, cutting it short.
+        this._railCollapseAnimation?.cancel();
+        this._railCollapseAnimation = null;
+        this._railExpandAnimation?.cancel();
+        this._railExpandAnimation = null;
+
         // Drop any pending factory / onReady closure so its captured
         // references are free for GC if the window is closed before show()
         // ran the factory.
@@ -2872,6 +2884,14 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // `endRailCollapse`, which is what takes them back.
         this._railCollapseActive = true;
 
+        // And the expansion this collapse supersedes, for the same reason in
+        // the other direction: its completion clears the `transition` it armed
+        // (`Animation`'s own `finish` does), which is the very declaration this
+        // collapse is running through, so leaving it to land cuts the genie
+        // short at whatever frame it reached.
+        this._railExpandAnimation?.cancel();
+        this._railExpandAnimation = null;
+
         this._railCollapseAnimation?.cancel();
         this._railCollapseAnimation = Animation.play(element, {
             from:       { transformOrigin: "0 0", transform: "translate(0, 0) scale(1)", opacity: "1" },
@@ -2909,6 +2929,17 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // `Card`'s parked scroll restore follows when its own becomes
         // unreachable.
         this._railMinimizeEmitPending = false;
+
+        // The collapse this expansion supersedes goes with the ownership handed
+        // over above. `Animation.cancel` writes no styles, so the genie this
+        // expansion animates out of is left exactly where it is — what the
+        // cancel stops is the collapse's completion, which ends in
+        // `setDisplayed(false)` and an `emit("minimize")` and would otherwise
+        // land on a window whose state is `"normal"` again by then, hiding it
+        // with no route back (`setWindowState` early-returns on the state it is
+        // already in). Cancel both, the way `setRail` and `destructor` do.
+        this._railCollapseAnimation?.cancel();
+        this._railCollapseAnimation = null;
 
         this._railExpandAnimation?.cancel();
         this._railExpandAnimation = Animation.play(element, {

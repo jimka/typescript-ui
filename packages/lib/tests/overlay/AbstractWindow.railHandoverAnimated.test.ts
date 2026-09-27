@@ -20,6 +20,9 @@
 // Animation.play's completion always arrives through its fallback setTimeout,
 // and the offline sink discards its rAF callback, so requestAnimationFrame is
 // spied and drained by hand.
+//
+// R10-R14 are plans/implemented/rail-handover-follow-ups.md's rows — every path that
+// supersedes or ends the collapse/expand pair cancels both of its handles.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Window } from '~/overlay/Window';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
@@ -97,16 +100,24 @@ describe('AbstractWindow — changing a window\'s rail mid-collapse', () => {
     }
 
     /**
-     * The values `spy` (a `DOM.sink.apply` spy) wrote for one style property
-     * against `win`'s element, in call order.
+     * The values `spy` (a `DOM.sink.apply` spy) wrote for one style property,
+     * in call order.
+     *
+     * @param spy - The `DOM.sink.apply` spy whose calls are read.
+     * @param win - The window whose element the writes are filtered against.
+     * @param prop - The style property to collect.
+     * @param target - The element to filter on, defaulting to `win`'s current
+     *   one. Passed explicitly by a case whose window is destroyed before the
+     *   assertion runs, since `getElement()` is null by then.
+     *
+     * @returns The values written for `prop`, oldest first.
      */
     function styleWritesFor(
-        spy:  ReturnType<typeof vi.spyOn>,
-        win:  Window,
-        prop: string,
+        spy:    ReturnType<typeof vi.spyOn>,
+        win:    Window,
+        prop:   string,
+        target: ReturnType<Window['getElement']> = win.getElement(),
     ): Array<string | null> {
-        const target = win.getElement();
-
         return spy.mock.calls
             .filter((args: unknown[]) => args[0] === target)
             .map((args: unknown[]) => (args[1] as { style?: Record<string, string | null> }).style)
@@ -123,7 +134,7 @@ describe('AbstractWindow — changing a window\'s rail mid-collapse', () => {
      * would leave nothing installed to undo, which is the state these cases
      * exist to exercise.
      */
-    function collapsingWindow(): { win: Window; rail: Rail } {
+    function collapsingWindow(events?: string[]): { win: Window; rail: Rail } {
         const rail = new Rail({ edge: Placement.WEST });
 
         rail.mount();
@@ -134,9 +145,39 @@ describe('AbstractWindow — changing a window\'s rail mid-collapse', () => {
         flushFrame();   // drain the two frames show()'s entrance play() queued
         flushFrame();
 
+        // Wired before `setRail`, not in the cases themselves: `ListenerBag.fire`
+        // walks the live bucket array, and the rail's own `close` listener
+        // unregisters the window mid-fire — so a listener sitting behind it is
+        // shifted down and skipped entirely.
+        if (events) {
+            win.on('minimize', () => { events.push('minimize'); });
+            win.on('restore',  () => { events.push('restore');  });
+            win.on('close',    () => { events.push('close');    });
+        }
+
         win.setRail(rail);
         win.minimize();
         flushFrame();   // and the two the collapse's own play() queues
+        flushFrame();
+
+        return { win, rail };
+    }
+
+    /**
+     * A window whose *expand* is in flight and armed: the collapse is allowed
+     * to land first, then a restore plays the reverse genie and its two frames
+     * are drained so the `transition` shorthand and the expansion's end state
+     * are on the element. No timer advance may follow before the case arms a
+     * collapse of its own, or the expand's fallback deadline fires first and
+     * the superseded-clear the R13/R14 rows are about can no longer happen.
+     */
+    function restoringWindow(events?: string[]): { win: Window; rail: Rail } {
+        const { win, rail } = collapsingWindow(events);
+
+        runAnimationToCompletion();
+
+        win.restore();
+        flushFrame();
         flushFrame();
 
         return { win, rail };
@@ -289,5 +330,105 @@ describe('AbstractWindow — changing a window\'s rail mid-collapse', () => {
         runAnimationToCompletion();
 
         expect(win.isDisplayed()).toBe(false);
+    });
+
+    it('R10: a restore mid-collapse leaves the window on screen and restorable', () => {
+        const { win } = collapsingWindow();
+
+        win.restore();
+
+        // The expansion supersedes the collapse, so the collapse's completion
+        // must not land: it ends in `setDisplayed(false)`, and a window hidden
+        // while its state already reads `"normal"` has no route back —
+        // `restore()` early-returns on a window that is not minimized, and so
+        // does `setWindowState` on the state it is already in.
+        runAnimationToCompletion();
+
+        expect(win.isDisplayed()).toBe(true);
+        expect(win.getWindowState()).toBe('normal');
+    });
+
+    it('R11: a restore mid-collapse announces no minimize after it', () => {
+        const events: string[] = [];
+
+        const { win } = collapsingWindow(events);
+
+        win.restore();
+        runAnimationToCompletion();
+
+        // The cancelled collapse owes nothing: the window is `"normal"` again,
+        // so there is no minimize left to announce, and one arriving after the
+        // restore would leave the pair inverted.
+        expect(events).toEqual(['restore']);
+    });
+
+    it('R12: a close mid-collapse announces no minimize after the close', () => {
+        const events: string[] = [];
+
+        const { win } = collapsingWindow(events);
+
+        win.requestClose();
+        runAnimationToCompletion();
+
+        // The close ends this window's animated life, so the collapse goes with
+        // it — left running, its completion emits a `"minimize"` after the
+        // `"close"`, on a window the rail has already dropped.
+        expect(events).toEqual(['close']);
+    });
+
+    it('R13: a minimize mid-expand runs through a transition the expand cannot clear', () => {
+        const { win } = restoringWindow();
+
+        const apply = vi.spyOn(DOM.sink, 'apply');
+
+        // The collapse supersedes the armed expansion. Both fallback deadlines
+        // now sit at the same virtual time, and the expansion's was registered
+        // first — so left uncancelled it fires first and `finish` clears the
+        // `transition` the live collapse is animating through, cutting the genie
+        // short at whatever frame it had reached.
+        win.minimize();
+        flushFrame();
+        flushFrame();
+        vi.advanceTimersByTime(PAST_FALLBACK_MS);
+        flushFrame();
+
+        const transitions = styleWritesFor(apply, win, 'transition');
+
+        // The collapse armed one of its own — without this the row could pass
+        // on an empty list, which is the absence of the mechanism, not its
+        // presence.
+        expect(transitions[0]).not.toBeNull();
+
+        // And exactly one clear landed: the collapse's own, at its own end.
+        expect(transitions.filter((value) => value === null)).toEqual([null]);
+
+        // The collapse still completed on its own terms, so the cancel took the
+        // superseded half of the pair and not the live one.
+        expect(win.isDisplayed()).toBe(false);
+    });
+
+    it('R14: a close mid-expand fades out through a transition the expand cannot clear', () => {
+        const { win } = restoringWindow();
+
+        // Captured before the close: `finalize` releases the window's element
+        // handle at the fade's completion, and the writes are read afterwards.
+        const element = win.getElement();
+
+        const apply = vi.spyOn(DOM.sink, 'apply');
+
+        // R12's other arm, and the only row that reaches `onExitAction`'s
+        // *expand* cancel: the close fade arms a transition of its own, and the
+        // superseded expansion's deadline — registered first — would clear it
+        // out from under the fade.
+        win.requestClose();
+        flushFrame();
+        flushFrame();
+        vi.advanceTimersByTime(PAST_FALLBACK_MS);
+        flushFrame();
+
+        const transitions = styleWritesFor(apply, win, 'transition', element);
+
+        expect(transitions[0]).not.toBeNull();
+        expect(transitions.filter((value) => value === null)).toEqual([null]);
     });
 });
