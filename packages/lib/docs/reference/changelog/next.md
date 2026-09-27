@@ -1956,11 +1956,10 @@ page resets to empty.
   again in the slot it is handed back, clearing the transform and fade a
   minimize into the rail had left on it, and cancelling that collapse if it
   is still running — so a window handed back is visible and restorable
-  however it reached the rail. It returns at its slot's position but at its
-  own normal minimum size rather than the row's strip height, so it stands
-  taller than the strips beside it until restored. A `setRail` that cancels a
-  running collapse also fires the `"minimize"` that collapse had deferred, so
-  the event is never lost and never doubled. No consumer action is needed.
+  however it reached the rail. It returns as a strip like any other in the
+  row. A `setRail` that cancels a running collapse also fires the
+  `"minimize"` that collapse had deferred, so the event is never lost and
+  never doubled. No consumer action is needed.
 
 - **`Dialog.hide` no longer animates the backdrop it has already destroyed.**
   Under `prefers-reduced-motion: reduce` the panel animation completes
