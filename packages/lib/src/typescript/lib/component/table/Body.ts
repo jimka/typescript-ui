@@ -302,6 +302,9 @@ class TableBody extends VirtualRowView<Row> {
     // Framework-managed bookkeeping: no `BodyOptions` field, no public setter.
     private _storeView          : ModelRecord[] = [];
     private _storeViewGeneration: number        = -1;
+    // Whether any column config carries `required` or a `requiredPredicate`.
+    // Recomputed at every `_columnConfigs` write by `refreshRequiredColumnFlag`.
+    private _anyColumnRequired  : boolean       = false;
     private _rowSeparator    : ((record: ModelRecord) => { label: string, color: string | null } | null) | null = null;
     private _rowIndented     : ((record: ModelRecord) => boolean) | null = null;
     private _lastBodyWidth   : number                    = 0;
@@ -862,6 +865,7 @@ class TableBody extends VirtualRowView<Row> {
      */
     setColumnConfigs(configs: Map<string, ColumnConfig>): this {
         this._columnConfigs = configs;
+        this.refreshRequiredColumnFlag();
         this.registerComboEditors(configs);
         this.syncPoolCells();
         this.renderWindow();
@@ -1030,6 +1034,7 @@ class TableBody extends VirtualRowView<Row> {
 
         this._columns       = state.columns;
         this._columnConfigs = state.columnConfigs;
+        this.refreshRequiredColumnFlag();
         this._hiddenColumns = this.filterUnhideable(state.hiddenColumns);
         this._rowReadOnly   = state.rowReadOnly;
         this._rowVisible    = state.rowVisible;
@@ -2514,6 +2519,41 @@ class TableBody extends VirtualRowView<Row> {
     }
 
     /**
+     * Recomputes {@link _anyColumnRequired} from the current `_columnConfigs`
+     * and, when nothing is required any more, clears every pooled cell's
+     * required-empty state once.
+     *
+     * @remarks Called from both `_columnConfigs` write sites. The clearing
+     * sweep is what makes {@link applyRequiredEmptyState}'s early return safe:
+     * a cell that keeps its column across a config change also keeps its
+     * `.requiredEmpty` state, and the skipped loop would never clear it.
+     * `Cell.setRequiredEmpty` is idempotent, so the sweep costs one comparison
+     * per cell when no cell was outlined.
+     */
+    private refreshRequiredColumnFlag(): void {
+        let anyRequired = false;
+
+        for (const config of this._columnConfigs.values()) {
+            if (config.required === true || config.requiredPredicate !== undefined) {
+                anyRequired = true;
+                break;
+            }
+        }
+
+        this._anyColumnRequired = anyRequired;
+
+        if (anyRequired) {
+            return;
+        }
+
+        for (const row of this._rowPool) {
+            for (const cell of row.getComponents() as Cell<any>[]) {
+                cell.setRequiredEmpty(false);
+            }
+        }
+    }
+
+    /**
      * Computes the required union per cell and forwards it, AND-ed with
      * emptiness, to {@link Cell.setRequiredEmpty}. Unlike
      * {@link applyReadOnlyState}, this runs on every render (not gated
@@ -2522,7 +2562,10 @@ class TableBody extends VirtualRowView<Row> {
      * through `store.notifyRecordChanged` back into a `renderWindow`
      * pass, and this must re-run then to clear a filled cell's tint.
      * `setRequiredEmpty` is idempotent, so an unchanged cell costs one
-     * comparison.
+     * comparison. The loop is skipped entirely while no column config carries
+     * `required` or a `requiredPredicate` — see
+     * {@link refreshRequiredColumnFlag}, which is also what clears a live
+     * outline when a configuration change drops the last required column.
      *
      * The union is OR-composed from two sources:
      *
@@ -2534,6 +2577,10 @@ class TableBody extends VirtualRowView<Row> {
      * @param record - The record currently bound to that row.
      */
     private applyRequiredEmptyState(row: Row, record: ModelRecord): void {
+        if (!this._anyColumnRequired) {
+            return;
+        }
+
         const cells      = row.getComponents() as Cell<any>[];
         const fieldNames = row.getFieldNames();
 
