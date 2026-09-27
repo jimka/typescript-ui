@@ -585,6 +585,16 @@ page resets to empty.
   whose content changed are rebound, and `notifyNodeChanged(node)` repaints
   just the row showing a node changed in place. No consumer action is needed.
 
+- **`Table` gains `getResizeMode()` / `setResizeMode(mode | null)`**, giving a
+  column-resize drag the choice the split and accordion gutters and the window
+  edges already have. Under `'outline'` the table holds its layout while a thin
+  bar follows the pointer to where the dragged edge would land, spanning the
+  header band and the body, and the columns are laid out once on release;
+  Escape cancels and commits nothing. `'live'` stays the default and is
+  unchanged. `TreeTable` inherits both methods, and a table that sets no mode
+  of its own follows the app-wide mode set through `Body`. No consumer action
+  is needed.
+
 ### Layouts
 
 - **`Split` and `Accordion` take `resizeMode`**, with `getResizeMode()` /

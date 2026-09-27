@@ -41,16 +41,17 @@ Use this when:
 
 ## Outline resizing
 
-Dragging a [`Split`](/layouts/Split) gutter, a resizable [`Accordion`](/layouts/Accordion) gutter or a window edge lays out again on every frame: the whole subtree beside the gutter re-measures and re-places, which on the QA shells costs 25–60 ms per frame against a 9–17 ms idle frame. The content reflowing under the pointer is the point of that cost, but it is a cost, and a pane hosting a code editor or a wide table pays it a hundred times over one drag.
+Dragging a [`Split`](/layouts/Split) gutter, a resizable [`Accordion`](/layouts/Accordion) gutter, a [`Table`](/components/Table) column edge or a window edge lays out again on every frame: the whole subtree beside the moving edge re-measures and re-places — for a column edge, every rendered body cell placed again under its header. On the QA shells a gutter or window-edge drag costs 25–60 ms per frame against a 9–17 ms idle frame; the column drag has not been measured. The content reflowing under the pointer is the point of that cost, but it is a cost, and a pane hosting a code editor or a wide table pays it a hundred times over one drag.
 
 `resizeMode: 'outline'` trades the reflow for one composited write per frame: the drag moves a thin, pre-promoted outline to where the edge will land, and the layout runs once, on release.
 
 ```typescript
 await Body.init({ layoutManager: Fit(), resizeMode: 'outline' });   // app-wide
 const split = Split({ orientation: 'horizontal', resizeMode: 'outline' });   // or per owner
+table.setResizeMode('outline');   // a Table has the setter pair, no option
 ```
 
-Nothing is paused while the drag runs — the real layout simply is not written — so no component's [`pauseLayout`](#pauselayout-resumelayout) flag changes and no widget sees `isLayoutPaused()` flip. What it does not cover: table column resize, which stays live; a window moved by its header, which already only translates; and the OS window frame under Tauri, which is not the library's drag.
+Nothing is paused while the drag runs — the real layout simply is not written — so no component's [`pauseLayout`](#pauselayout-resumelayout) flag changes and no widget sees `isLayoutPaused()` flip. What it does not cover: a window moved by its header, which already only translates, and the OS window frame under Tauri, which is not the library's drag.
 
 ## Virtual scrolling
 
