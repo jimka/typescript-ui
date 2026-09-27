@@ -279,10 +279,29 @@ async function splitFixture(): Promise<SplitFixture> {
     return { split, gutter, container, lhs, rhs };
 }
 
+/**
+ * Marks both panes of `fixture` as owing a layout pass. The library's own
+ * `Split.onDrag` gate withholds an unmoved pane's `doLayout` whenever the pane's
+ * class opted into the unchanged-commit skip and the pane owes nothing — which
+ * `shell-shallow`'s `Panel` panes do — so without this the arms' `doLayout`
+ * stand-ins would never run and every counter below would read 0. The arms
+ * bound the work the build this branch forked from did, so the fixture has to
+ * owe both panes a pass rather than let the shipped gate withhold it.
+ *
+ * @param fixture - The split fixture whose panes to mark.
+ */
+function owePaneLayouts({ lhs, rhs }: SplitFixture): void {
+    invoke(lhs, 'invalidateLayout');
+    invoke(rhs, 'invalidateLayout');
+}
+
 describe('A3 split.noop-drag', () => {
     it('skips both panes\' layout on a drag that moves nothing, and none on one that does', async () => {
-        const { split, gutter, container, lhs, rhs } = await splitFixture();
+        const fixture = await splitFixture();
+        const { split, gutter, container, lhs, rhs } = fixture;
         const width = invoke<number>(lhs, 'getWidth');
+
+        owePaneLayouts(fixture);
 
         expect(apply('split.noop-drag')).not.toMatch(/^no /);
         expect(counted(() => invoke(split, 'onDrag', container, gutter, 0))['skipped.split.noop-drag.paneLayout']).toBe(2);
@@ -295,8 +314,11 @@ describe('A3 split.noop-drag', () => {
 
 describe('A3b split.noop-control', () => {
     it('counts every pane layout split.noop-drag would have skipped, and skips none of them', async () => {
-        const { split, gutter, container, lhs, rhs } = await splitFixture();
+        const fixture = await splitFixture();
+        const { split, gutter, container, lhs, rhs } = fixture;
         const width = invoke<number>(lhs, 'getWidth');
+
+        owePaneLayouts(fixture);
 
         expect(apply('split.noop-control')).not.toMatch(/^no /);
 
@@ -319,7 +341,10 @@ describe('A3b split.noop-control', () => {
     });
 
     it('still lays both panes out on the frame it counts', async () => {
-        const { split, gutter, container, lhs, rhs } = await splitFixture();
+        const fixture = await splitFixture();
+        const { split, gutter, container, lhs, rhs } = fixture;
+
+        owePaneLayouts(fixture);
 
         // Own properties, which is what the stand-in delegates to: installed
         // before the drag, so `withOwnMethod` saves each one, delegates to it
