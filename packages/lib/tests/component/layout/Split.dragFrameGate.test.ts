@@ -450,24 +450,17 @@ describe('Split drag-frame gate', () => {
         expect(scn.split.getPaneSize(scn.lhs)).toBe(LHS_MAX);
     });
 
-    // D2b and D2c drive the state in which the trailing pane's two comparison
-    // terms come apart, which is what tells the committed-box read-back from the
-    // `dragAmount === 0` test F06.3's finding proposed. `onDrag` captures the
-    // pair's combined size once, at the press, and a container resize under a
-    // live drag leaves that capture larger than the two panes now hold, so a
-    // later frame's requested trailing size stops following from the leading
-    // pane's travel.
+    // D2b and D2c resize the container under a live drag; the geometry those
+    // frames produce is pinned by Split.dragGeometry.test.ts, and these cases
+    // keep asserting the pass counts, which are this gate's own contract.
     //
-    // That stale capture is itself a pre-existing `onDrag` defect: the trailing
-    // pane's requested size is `total - newLhs`, so on these frames it commits
-    // wider than the shrunken host and overflows it. Neither case asserts the
-    // trailing pane's box, because doing so would pin that overflow as expected
-    // output; each asserts the pass counts, which are this gate's contract, and
-    // the leading pane's box. The overflow predates this branch, the gate
-    // neither causes nor fixes it, and the agenda records it as its own
-    // candidate — as it does D2d's sibling instance of the same capture defect.
+    // Since `onDrag` divides the pair's *live* combined extent, the trailing
+    // pane's requested size follows the leading pane's travel on every reachable
+    // frame, so its position and extent move together and no case here isolates
+    // `rhsMoved`'s position term on its own. D2d remains the extent-only
+    // witness: its position is unchanged and its own clamp cuts its extent.
 
-    it('D2b. lays out the trailing pane when only the stale total moves its extent', () => {
+    it('D2b. lays out neither pane on a frame that a mid-drag resize left with nothing to move', () => {
         const scn = scene(skippablePane, skippablePane);
 
         press(scn);
@@ -476,12 +469,12 @@ describe('Split drag-frame gate', () => {
 
         const count = passes(scn.lhs, scn.rhs);
 
-        // Back at the press coordinate: the leading pane is asked for the width
-        // it already holds, so nothing moves it and no gutter travel reaches the
-        // trailing pane's position — but the stale total still widens it.
+        // Back at the press coordinate after the host shrank: the leading pane is
+        // asked for the width it holds and the trailing pane for the width it
+        // holds, so neither moves.
         move(scn, PRESS_X);
 
-        expect(count()).toEqual([0, 1]);
+        expect(count()).toEqual([0, 0]);
         expect(box(scn.lhs)).toEqual({ x: 0, y: 0, width: PANE_PREFERRED, height: HOST_HEIGHT });
     });
 
@@ -494,9 +487,8 @@ describe('Split drag-frame gate', () => {
 
         const count = passes(scn.lhs, scn.rhs);
 
-        // 200 is the one travel for which the stale total asks the trailing pane
-        // for the 196 px it already holds, so its extent is unchanged and only
-        // the gutter's travel moves it.
+        // The frame moves the leading pane by 100, and the trailing pane's
+        // position and extent both follow.
         move(scn, 200);
 
         expect(count()).toEqual([1, 1]);
@@ -511,9 +503,9 @@ describe('Split drag-frame gate', () => {
         // `resolveLhsSize` clamps the leading size into `[loLhs, hiLhs]` as
         // `max(loLhs, min(hiLhs, …))`, so once the trailing pane's ceiling drops
         // far enough that `loLhs` passes `hiLhs`, the low bound wins and the
-        // leading pane is handed 296 — past its own 250 px maximum. Its
+        // leading pane is handed 300 — past its own 250 px maximum. Its
         // `setWidth` clamps that straight back, so the frame moves it nowhere
-        // even though the requested delta is 46: the case that separates the
+        // even though the requested delta is 50: the case that separates the
         // committed-box read-back from a `dragAmount !== 0` test, and the one
         // `Component.writeBounds` and `commitBounds` both warn about.
         scn.rhs.setMaxSize({ width: 100, height: UNBOUND_HEIGHT });
@@ -525,12 +517,9 @@ describe('Split drag-frame gate', () => {
         expect(count()).toEqual([0, 1]);
         expect(box(scn.lhs)).toEqual(PINNED_LHS);
 
-        // Only the leading pane's box is asserted. `onDrag` moves the gutter and
-        // the trailing pane by the *unclamped* delta, so this frame leaves the
-        // gutter detached from the leading pane's edge — a pre-existing defect in
-        // how `dragAmount` is reused for those two writes, which this gate
-        // neither causes nor fixes, and which the agenda records as its own
-        // candidate.
+        // Only the leading pane's box is asserted here; the geometry this frame
+        // produces is pinned by Split.dragGeometry.test.ts, and this case keeps
+        // asserting the pass counts, which are this gate's own contract.
     });
 
     it('D3. still lays out a pane that did not opt in on a parked frame', () => {

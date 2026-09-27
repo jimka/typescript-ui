@@ -274,7 +274,6 @@ async function splitFixture(): Promise<SplitFixture> {
 
     split._dragOriginPointer = 0;
     split._dragOriginLhsSize = invoke(lhs, 'getWidth');
-    split._dragOriginRhsSize = invoke(rhs, 'getWidth');
 
     return { split, gutter, container, lhs, rhs };
 }
