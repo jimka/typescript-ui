@@ -270,25 +270,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     // doLayout() call always measures the scroll metrics live. `setAutoScroll`
     // (dispatched from `applyOptions`, below) can itself trigger a `doLayout()`
     // call from inside the `super()` cascade (via `LayoutManager.setOverflowing`),
-    // so — like `_shadowEdges`/`_lastContentExtent` above — these five fields
-    // are `declare`d and seeded in `applyOptions` rather than given plain
+    // so — like `_shadowEdges`/`_lastContentExtent` above — both fields are
+    // `declare`d and seeded in `applyOptions` rather than given plain
     // initialisers, which would silently revert whatever that cascade-time
     // pass wrote.
     declare private _lastPanelWidth:  number;
     declare private _lastPanelHeight: number;
-
-    // Whether a pass withheld the post-layout scroll-metrics remeasure
-    // (remeasureScrollMetrics) that is still owed once the current resize
-    // burst settles.
-    declare private _scrollMetricsOwed: boolean;
-
-    // Whether a further width/height change landed after the settle frame was
-    // armed.
-    declare private _panelSizeMoved: boolean;
-
-    // The afterNextLayout relay armed to end a resize burst, or null when none
-    // is in flight.
-    declare private _scrollMetricsSettleHandle: { cancel(): void } | null;
 
     /**
      * Creates a panel with 4-pixel insets on all sides by default.
@@ -336,18 +323,14 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         this._shadowEdges       = { top: 0, bottom: 0, left: 0, right: 0 };
         this._lastContentExtent = { width: 0, height: 0 };
 
-        // Seed the resize-metrics settle-relay state for the same reason:
+        // Seed the last-committed-box baseline for the same reason:
         // `setAutoScroll` below can itself trigger a `doLayout()` call from
         // inside this cascade (via `LayoutManager.setOverflowing`), whose
-        // `deferScrollMetricsWhileResizing` reads all five of these
-        // `declare`d fields — left undefined, `_scrollMetricsSettleHandle
-        // === null` would read `false` (`undefined === null` is `false`),
-        // sending that cascade-time pass down the wrong branch.
+        // `sizeChanged` computation reads both fields. -1 is a box no pass can
+        // commit, so that cascade-time pass reads as a size change and
+        // remeasures live rather than skipping as an unchanged settled pass.
         this._lastPanelWidth            = -1;
         this._lastPanelHeight           = -1;
-        this._scrollMetricsOwed         = false;
-        this._panelSizeMoved            = false;
-        this._scrollMetricsSettleHandle = null;
 
         // Seed the shared scroll listener's field here rather than beside either
         // consumer's own state below: `setAutoScroll` is the first setter this
@@ -715,14 +698,17 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * post-gutter content area. The follow-up is the "one-frame reflow"
      * documented on {@link AutoScrollMode}.
      *
-     * While this panel's own committed width or height is still changing every
-     * pass — a live external resize, e.g. a `Split` gutter drag resizing this
-     * panel — the post-layout scroll-metrics remeasure (`remeasureScrollMetrics`:
-     * the scroll-shadow overlay resize, the scrollbar gutter measurement, and
-     * the scroll-shadow edge recompute) is withheld until a couple of quiet
-     * frames confirm the resize has stopped moving. Children are unaffected:
-     * they are already laid out against this frame's real size by
-     * `super.doLayout()` above, before that decision runs.
+     * The post-layout remeasure runs on every pass whose box moved, a live
+     * external resize included — a `Split` gutter drag or a window resize
+     * remeasures each frame rather than at the end of the burst. It has to:
+     * within a layout pass the remeasure is the only thing that reserves or
+     * releases the scrollbar gutter, shows or hides an overlay bar and sets its
+     * box, or ramps the scroll-shadow edges. (Outside a layout pass the overlay
+     * install path and the scroll handler write the same state, which is why a
+     * scroll still updates a bar and its shadows.) So a pass that skipped the
+     * remeasure would paint a scrollbar that is missing, stale or in the wrong
+     * place, and would lay this panel's children out against a gutter the
+     * content no longer needs.
      *
      * A pass that commits the same rectangle as the previous one with nothing
      * having marked this panel since its last completed pass withholds the
@@ -762,37 +748,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         }
 
         if (!this.canSkipSettledRemeasure(sizeChanged, settledAtEntry)) {
-            if (!this.deferScrollMetricsWhileResizing(sizeChanged)) {
-                this.remeasureScrollMetrics();
-            } else if (this._scrollbarStyle === "overlay" && this._overlayScrollElement) {
-                // The remeasure above is withheld, but the inner scroller's own
-                // size must still track this panel's current committed size every
-                // pass — unlike the gutter reservation or shadow strength, this is
-                // a plain write against already-cached data, not a fresh
-                // `getScrollMetrics` read, so writing it unconditionally costs
-                // nothing the withholding exists to avoid. Skipping it would
-                // otherwise leave the inner scroller — and the content it clips —
-                // visibly stuck at its pre-burst size for the whole resize burst
-                // (a `Split` gutter widening the panel would reveal a growing gap
-                // between the frozen inner viewport and the live-resizing outer
-                // border), rather than the single-frame staleness the gutter
-                // reservation itself tolerates.
-                //
-                // `layoutOverlayScrollbars`'s own pre-read sizing write uses
-                // `getScrollMetrics(panelEl).clientWidth/clientHeight` — the
-                // border-box `width`/`height` above minus this panel's own
-                // border, not minus nothing — so this must subtract the border
-                // too, via the already-cached `getBorderSize()`, or a bordered
-                // panel would jump by its border widths on every withheld frame
-                // and back at settle. No new read either way: `getBorderSize()`
-                // is measured once and cached until the border or theme changes.
-                const border = this.getBorderSize();
-
-                this._overlayScrollStyle.setMany({
-                    width:  (width  - border.left - border.right  - this._scrollbarGutter.right)  + "px",
-                    height: (height - border.top  - border.bottom - this._scrollbarGutter.bottom) + "px",
-                });
-            }
+            this.remeasureScrollMetrics();
         }
 
         this.scheduleGutterSettleOnShrink();
@@ -807,11 +763,13 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * panel was settled when the pass began, and nothing marked it from inside
      * the pass either.
      *
-     * The gate sits here rather than inside `remeasureScrollMetrics`, so the
-     * resize-settle relay's own catch-up ({@link flushScrollMetricsSettle}) is
-     * left alone: by the time a burst settles the panel is settled and its size
-     * has not moved since the last pass, so a gate inside the method would
-     * swallow exactly the re-measure the relay exists to perform.
+     * The gate sits on the caller's side rather than inside
+     * {@link remeasureScrollMetrics} because both of its inputs belong to
+     * `doLayout` and neither survives the call: `sizeChanged` compares against
+     * the box the *previous* pass recorded, which this pass has already
+     * overwritten by the time the remeasure runs, and `settledAtEntry` has to be
+     * sampled before `super.doLayout()` clears the dirty flag. A gate inside the
+     * method would have to be handed both anyway.
      *
      * @param sizeChanged - Whether this pass committed a different width or
      *   height than the previous pass did.
@@ -822,122 +780,6 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      */
     private canSkipSettledRemeasure(sizeChanged: boolean, settledAtEntry: boolean): boolean {
         return !sizeChanged && settledAtEntry && !this.isLayoutDirty();
-    }
-
-    /**
-     * Decides whether this layout pass may withhold the post-layout scroll-metrics
-     * remeasure — {@link remeasureScrollMetrics} — because a resize burst is in
-     * flight, and arms (or extends) the settle pass that catches it up once the
-     * burst goes quiet. Mirrors `Split.scheduleDrag` and its per-frame drag
-     * session (`core/ResizeDrag.ts`), and `ScrollStrip`'s
-     * own settle relay, which solve the same class of problem for a pane resize and a
-     * tab strip's scroll resync respectively.
-     *
-     * @param sizeChanged - Whether this pass committed a different width or height
-     *   than the previous pass did.
-     *
-     * @returns `true` when the caller must withhold this pass's remeasure.
-     *
-     * @remarks A panel with `autoScroll === "none"` never reaches a state where
-     * withholding matters — none of the three helpers perform a live DOM read in
-     * that mode — so this returns `false` immediately for one, without touching
-     * any settle state. The same applies before this panel has ever rendered:
-     * `Panel.applyOptions` dispatching a non-`"none"` `setAutoScroll` from
-     * inside the `super()` cascade (via `LayoutManager.setOverflowing`) can
-     * trigger a `doLayout()` call before `getElement()` resolves to anything —
-     * a pass with no element yet has nothing for any of the three helpers to
-     * measure (each already no-ops on a missing element or overlay), so
-     * arming a settle frame for it would only outlive construction and
-     * wrongly mark this panel's genuine first post-render pass as "mid-burst"
-     * before it ever ran. Otherwise, whether a settle frame is already
-     * armed — not `sizeChanged` — decides withholding: a pass with no settle
-     * frame armed always remeasures live, while any pass that finds one
-     * already armed withholds regardless of whether *this specific* pass's
-     * size moved. The first size change of a burst is still always applied in
-     * full, because the check that matters — "is a settle frame already
-     * armed" — is false until this call arms one.
-     */
-    private deferScrollMetricsWhileResizing(sizeChanged: boolean): boolean {
-        if (this._autoScroll === "none" || !this.getElement()) {
-            return false;
-        }
-
-        if (this._scrollMetricsSettleHandle === null) {
-            if (sizeChanged) {
-                this.scheduleScrollMetricsSettle();
-            }
-
-            return false;
-        }
-
-        if (sizeChanged) {
-            this._panelSizeMoved = true;
-        }
-
-        this._scrollMetricsOwed = true;
-
-        return true;
-    }
-
-    /**
-     * Arms the two-frame relay that ends a resize burst: a decoy
-     * `Component.afterNextLayout` callback that does nothing but register a
-     * second one on the *following* frame, which is what {@link
-     * flushScrollMetricsSettle} runs from. Armed once and left alone while
-     * further size changes arrive, matching `Split.scheduleDrag`.
-     *
-     * @remarks A single `afterNextLayout` call here is not enough. The owner
-     * driving this panel's resize (e.g. `Split`'s per-frame drag flush, itself already
-     * coalesced to one call per frame) calls `doLayout()` directly from its
-     * own independently-scheduled `requestAnimationFrame`, registered by
-     * whichever `mousemove` arrives after the previous frame finishes —
-     * chronologically *after* this method's own registration for the same
-     * upcoming frame, made synchronously inside the *current* frame's pass.
-     * `afterNextLayout`'s ordering guarantee is scoped to `Component`'s own
-     * coalesced flush and says nothing about `Split`'s separate registration,
-     * so a single relay hop would still always fire and resolve *before* that
-     * frame's real layout pass runs, making `_scrollMetricsSettleHandle` read
-     * as `null` again just before the pass that needed to see it armed. Two
-     * hops fixes this: the decoy, nested here, only relays the handle to a
-     * second frame, costing nothing but keeping `_scrollMetricsSettleHandle`
-     * continuously non-null across the boundary — a callback registered from
-     * inside an `afterNextLayout` callback defers to the *following* frame
-     * rather than running re-entrantly within the same drain
-     * (`Component.afterNextLayout`'s own doc comment; confirmed by
-     * `AfterNextLayout.test.ts`). {@link flushScrollMetricsSettle} then checks
-     * `_panelSizeMoved`, set by any pass over the *prior* frame — an entirely
-     * separate, already-completed frame batch — so it is never racing
-     * anything by the time this one reads it.
-     */
-    private scheduleScrollMetricsSettle(): void {
-        this._scrollMetricsSettleHandle = Component.afterNextLayout(() => {
-            this._scrollMetricsSettleHandle = Component.afterNextLayout(() => this.flushScrollMetricsSettle());
-        });
-    }
-
-    /**
-     * The settle relay's second hop: ends a resize burst, or extends it by
-     * another two-frame relay when this panel's size moved again during the
-     * frame between the two hops. On the first quiet cycle it performs the
-     * withheld remeasure — {@link remeasureScrollMetrics} — in the same order
-     * `doLayout` itself uses.
-     */
-    private flushScrollMetricsSettle(): void {
-        this._scrollMetricsSettleHandle = null;
-
-        if (this._panelSizeMoved) {
-            this._panelSizeMoved = false;
-            this.scheduleScrollMetricsSettle();
-
-            return;
-        }
-
-        if (!this._scrollMetricsOwed) {
-            return;
-        }
-
-        this._scrollMetricsOwed = false;
-        this.remeasureScrollMetrics();
     }
 
     /**
@@ -1316,14 +1158,8 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * the element. The overlay is a child of that element, so it is removed
      * with it; only the window-level listener registration needs explicit
      * cleanup.
-     *
-     * A still-armed scroll-metrics settle frame is cancelled first, so it
-     * never fires against a disposed panel.
      */
     protected destructor(): void {
-        this._scrollMetricsSettleHandle?.cancel();
-        this._scrollMetricsSettleHandle = null;
-
         FocusReveal.unregister(this);
 
         this.removeScrollShadows();
@@ -1563,12 +1399,9 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * neither. Every write that does move one of them ends in a layout pass, and
      * a measuring pass asserts the same size without coming through here — from
      * the {@link resolveShadowOverlaySize} / {@link applyShadowOverlaySize} pair
-     * it drives off its own read. The exception is a pass the resize-settle relay
-     * is withholding, which measures nothing and so leaves the overlay at its
-     * pre-burst box until {@link flushScrollMetricsSettle} catches up: the same
-     * few frames of staleness `doLayout`'s own withheld branch already accepts
-     * for the gutter reservation, and which the scroll path used to paper over by
-     * re-asserting the size on every scroll.
+     * it drives off its own read. Every measuring pass does, including each
+     * frame of a live resize, which is why the scroll path no longer needs to
+     * re-assert the size the way it once did.
      *
      * @param element - Optional. The panel element; falls back to the rendered
      *   element. Passed explicitly from `init`, where `getElement` is not yet

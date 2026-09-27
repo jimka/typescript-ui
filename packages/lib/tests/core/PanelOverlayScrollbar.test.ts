@@ -29,11 +29,11 @@ const CONFIG = {
 
 // Capture (rather than let the default sink drop) any requestAnimationFrame
 // registration, so afterEach below can drain Component's shared
-// afterNextLayout/scheduleLayout flush queue — a test that mounts an
-// autoScroll Panel can arm its resize-settle relay (Component.afterNextLayout)
-// as a side effect, and an undrained registration leaves Component's
-// module-level rafHandle non-null, silently swallowing the NEXT test's own
-// registration attempt. Tests that need to drive frames themselves still
+// afterNextLayout/scheduleLayout flush queue — mounting an autoScroll Panel over
+// overflowing content reserves a scrollbar gutter, which schedules a follow-up
+// layout pass as a side effect, and an undrained registration leaves
+// Component's module-level rafHandle non-null, silently swallowing the NEXT
+// test's own registration attempt. Tests that need to drive frames themselves still
 // install their own local override, which simply shadows this one.
 let frames: FrameRequestCallback[] = [];
 
@@ -345,10 +345,10 @@ describe('Panel — overlay scrollbar default', () => {
         //
         // Each viewport change below is driven to quiescence (drainFrames())
         // before its assertion, standing in for the real animation frames a
-        // one-off resize (not a live drag burst) settles across — Panel's
-        // resize-metrics settle relay only withholds a remeasure while a burst
-        // is still in flight (see PanelResizeMetricsCoalescing.test.ts); a
-        // settled panel always remeasures live on its next pass.
+        // one-off resize settles across: a gutter change schedules a follow-up
+        // pass, and the assertion wants the box that pass lands on. Every pass
+        // whose committed box moved remeasures live, live drag frames included
+        // (see PanelResizeMetricsLive.test.ts).
         const sink = installTestDOM(CONFIG);
         let nextFrameHandle = 1;
         const frames = new Map<number, FrameRequestCallback>();
@@ -391,11 +391,11 @@ describe('Panel — overlay scrollbar default', () => {
         expect(lastStyle(sink, inner, 'width')).toBe('388px');   // 400 − 12
 
         // The panel's own committed width must move together with the mocked
-        // viewport: deferScrollMetricsWhileResizing's "did this pass's size
-        // change" check reads the panel's real getWidth(), never this stub's
-        // clientWidth. Leaving getWidth() unset (NaN) would never resolve
-        // that check to "unchanged" — NaN !== NaN is always true in JS — so
-        // the settle relay would re-extend forever instead of settling.
+        // viewport: `doLayout`'s "did this pass's size change" check reads the
+        // panel's real getWidth(), never this stub's clientWidth, and that is
+        // what decides whether the settled-pass skip applies. Leaving getWidth()
+        // unset (NaN) would never resolve the check to "unchanged" — NaN !== NaN
+        // is always true in JS — so no pass would ever be skippable.
         spy.mockReturnValue(metrics(600));
         panel.setWidth(600);
         panel.doLayout();

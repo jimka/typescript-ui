@@ -624,14 +624,6 @@ describe('A10 g14.closed-section', () => {
 });
 
 /**
- * Frames that let a scrolling panel's resize-settle relay run out: the
- * mount's first layout arms it, it takes two layout flushes to clear, and
- * until it has, the panel withholds the re-measure these cases read for a
- * reason of the relay's own. One frame more than the two, as margin.
- */
-const PANEL_SETTLE_FRAMES = 3;
-
-/**
  * The work key `countMethod` files a `markdown-doc` content pane's
  * scroll-metrics re-measure under: the tag, then the receiver's class, because
  * the counter wraps the declaring `Panel.prototype`.
@@ -652,7 +644,6 @@ describe('A11 g16.panel-settled', () => {
 
         const pane = tools.findComponent('MarkdownContentPane') as unknown as Component;
 
-        await tools.waitFrames(PANEL_SETTLE_FRAMES);
         apply('g16.panel-settled');
         tools.countMethod(pane, 'remeasureScrollMetrics', 'pane.remeasure');
         pane.doLayout();
@@ -669,7 +660,6 @@ describe('A11 g16.panel-settled', () => {
 
         const pane = tools.findComponent('MarkdownContentPane') as unknown as Component;
 
-        await tools.waitFrames(PANEL_SETTLE_FRAMES);
         apply('g16.panel-settled');
         tools.countMethod(pane, 'remeasureScrollMetrics', 'pane.remeasure');
 
@@ -700,7 +690,6 @@ describe('A11 g16.panel-settled', () => {
         const root = mounted.build.root as unknown as Component;
         const panes = root.getComponents();
 
-        await tools.waitFrames(PANEL_SETTLE_FRAMES);
         apply('g16.panel-settled');
         tools.countMethod(panes[0], 'remeasureScrollMetrics', 'pane.remeasure');
         root.doLayout();
@@ -730,7 +719,6 @@ describe('A11 g16.panel-settled', () => {
         const mounted = await mount('markdown-doc');
         const root = mounted.build.root as unknown as AnyObj;
 
-        await tools.waitFrames(PANEL_SETTLE_FRAMES);
         apply('g16.panel-settled');
 
         expect(root._autoScroll).toBe('none');
