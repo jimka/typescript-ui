@@ -4485,14 +4485,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Whether a commit that moves nothing may withhold this component's layout
-     * pass right now: this class opted in through
-     * {@link canSkipUnchangedLayout}, no pass is owed, and the component has
-     * an element. The one definition of the gate that {@link applyBounds},
-     * `LayoutManager.commitBounds` and the batched layout flush all ask;
-     * public only so the latter two can reach it on arbitrary instances.
+     * Whether nothing has marked this component's layout since its last
+     * completed pass — the per-moment half of the unchanged-commit gate, asked
+     * without the per-class opt-in {@link canSkipUnchangedCommit} adds on top.
+     * A narrower unit of work than a whole pass can be withheld on this alone,
+     * which is what `Panel` does for its post-layout scroll-metrics remeasure.
      *
-     * @returns `true` when an unchanged commit may skip this component's pass.
+     * @returns `true` when no pass is owed here or beneath, no first-layout
+     *   drain is queued, and the last pass ran against the current text metrics.
      *
      * @remarks A pass is owed when {@link isLayoutDirty} says so — which
      * includes a pass owed anywhere beneath, see {@link markPassOwedAbove} —
@@ -4503,16 +4503,37 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * A theme switch or a web-font load moves measured text without moving any
      * rectangle, so a component last laid out against other text metrics is
-     * laid out again: its own pass is the only thing that re-measures the text
+     * not settled: its own pass is the only thing that re-measures the text
      * beneath it once the parent's placement stops reading its size hints.
+     */
+    protected isLayoutSettled(): boolean {
+        return !this.isLayoutDirty()
+            && this._firstLayoutCallbacks === null
+            && this._layoutMetricsGeneration === Util.textMetricsGeneration();
+    }
+
+    /**
+     * Whether a commit that moves nothing may withhold this component's layout
+     * pass right now: this class opted in through
+     * {@link canSkipUnchangedLayout}, nothing has marked the layout since the
+     * last pass, and the component has an element. The one definition of the
+     * gate that {@link applyBounds}, `LayoutManager.commitBounds` and the
+     * batched layout flush all ask; public only so the latter two can reach it
+     * on arbitrary instances.
+     *
+     * @returns `true` when an unchanged commit may skip this component's pass.
+     *
+     * @remarks What "nothing has marked the layout" means, and why each term
+     * belongs, is on the settled predicate this delegates to. What this method
+     * adds is the per-class opt-in and the element check — a component with no
+     * element cannot lay out, so recording that pass as done would skip it
+     * forever.
      *
      * @internal
      */
     public canSkipUnchangedCommit(): boolean {
         return this.canSkipUnchangedLayout()
-            && !this.isLayoutDirty()
-            && this._firstLayoutCallbacks === null
-            && this._layoutMetricsGeneration === Util.textMetricsGeneration()
+            && this.isLayoutSettled()
             && !!this.getElement();
     }
 

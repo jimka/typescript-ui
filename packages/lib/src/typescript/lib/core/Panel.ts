@@ -712,9 +712,23 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * they are already laid out against this frame's real size by
      * `super.doLayout()` above, before that decision runs.
      *
+     * A pass that commits the same rectangle as the previous one with nothing
+     * having marked this panel since its last completed pass withholds the
+     * remeasure outright: its three inputs — this panel's own box, the
+     * currently-cached gutter, and its content's extent — cannot have moved
+     * without one of the writers `canSkipUnchangedLayout`'s own comment
+     * enumerates, and every one of those either lays the panel out or marks a
+     * pass owed on it. Unlike the whole-pass skip that comment governs, this one
+     * is granted by that state rather than per class, so a subclass earns it too.
+     *
      * @returns This panel, for method chaining.
      */
     doLayout(): this {
+        // Sampled before `super.doLayout()`, which clears the dirty flag and
+        // records the current text-metrics generation — the two things the
+        // predicate reads.
+        const settledAtEntry = this.isLayoutSettled();
+
         super.doLayout();
 
         // Flush queued inline-style writes (own size in particular) before
@@ -735,41 +749,67 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             this._lastPanelHeight = height;
         }
 
-        if (!this.deferScrollMetricsWhileResizing(sizeChanged)) {
-            this.remeasureScrollMetrics();
-        } else if (this._scrollbarStyle === "overlay" && this._overlayScrollElement) {
-            // The remeasure above is withheld, but the inner scroller's own
-            // size must still track this panel's current committed size every
-            // pass — unlike the gutter reservation or shadow strength, this is
-            // a plain write against already-cached data, not a fresh
-            // `getScrollMetrics` read, so writing it unconditionally costs
-            // nothing the withholding exists to avoid. Skipping it would
-            // otherwise leave the inner scroller — and the content it clips —
-            // visibly stuck at its pre-burst size for the whole resize burst
-            // (a `Split` gutter widening the panel would reveal a growing gap
-            // between the frozen inner viewport and the live-resizing outer
-            // border), rather than the single-frame staleness the gutter
-            // reservation itself tolerates.
-            //
-            // `layoutOverlayScrollbars`'s own pre-read sizing write uses
-            // `getScrollMetrics(panelEl).clientWidth/clientHeight` — the
-            // border-box `width`/`height` above minus this panel's own
-            // border, not minus nothing — so this must subtract the border
-            // too, via the already-cached `getBorderSize()`, or a bordered
-            // panel would jump by its border widths on every withheld frame
-            // and back at settle. No new read either way: `getBorderSize()`
-            // is measured once and cached until the border or theme changes.
-            const border = this.getBorderSize();
+        if (!this.canSkipSettledRemeasure(sizeChanged, settledAtEntry)) {
+            if (!this.deferScrollMetricsWhileResizing(sizeChanged)) {
+                this.remeasureScrollMetrics();
+            } else if (this._scrollbarStyle === "overlay" && this._overlayScrollElement) {
+                // The remeasure above is withheld, but the inner scroller's own
+                // size must still track this panel's current committed size every
+                // pass — unlike the gutter reservation or shadow strength, this is
+                // a plain write against already-cached data, not a fresh
+                // `getScrollMetrics` read, so writing it unconditionally costs
+                // nothing the withholding exists to avoid. Skipping it would
+                // otherwise leave the inner scroller — and the content it clips —
+                // visibly stuck at its pre-burst size for the whole resize burst
+                // (a `Split` gutter widening the panel would reveal a growing gap
+                // between the frozen inner viewport and the live-resizing outer
+                // border), rather than the single-frame staleness the gutter
+                // reservation itself tolerates.
+                //
+                // `layoutOverlayScrollbars`'s own pre-read sizing write uses
+                // `getScrollMetrics(panelEl).clientWidth/clientHeight` — the
+                // border-box `width`/`height` above minus this panel's own
+                // border, not minus nothing — so this must subtract the border
+                // too, via the already-cached `getBorderSize()`, or a bordered
+                // panel would jump by its border widths on every withheld frame
+                // and back at settle. No new read either way: `getBorderSize()`
+                // is measured once and cached until the border or theme changes.
+                const border = this.getBorderSize();
 
-            this._overlayScrollStyle.setMany({
-                width:  (width  - border.left - border.right  - this._scrollbarGutter.right)  + "px",
-                height: (height - border.top  - border.bottom - this._scrollbarGutter.bottom) + "px",
-            });
+                this._overlayScrollStyle.setMany({
+                    width:  (width  - border.left - border.right  - this._scrollbarGutter.right)  + "px",
+                    height: (height - border.top  - border.bottom - this._scrollbarGutter.bottom) + "px",
+                });
+            }
         }
 
         this.scheduleGutterSettleOnShrink();
 
         return this;
+    }
+
+    /**
+     * Whether this pass may withhold the post-layout scroll-metrics remeasure —
+     * {@link remeasureScrollMetrics} — outright, because nothing it reads can
+     * have moved: this pass committed the rectangle the previous one did, the
+     * panel was settled when the pass began, and nothing marked it from inside
+     * the pass either.
+     *
+     * The gate sits here rather than inside `remeasureScrollMetrics`, so the
+     * resize-settle relay's own catch-up ({@link flushScrollMetricsSettle}) is
+     * left alone: by the time a burst settles the panel is settled and its size
+     * has not moved since the last pass, so a gate inside the method would
+     * swallow exactly the re-measure the relay exists to perform.
+     *
+     * @param sizeChanged - Whether this pass committed a different width or
+     *   height than the previous pass did.
+     * @param settledAtEntry - {@link Component.isLayoutSettled} as sampled
+     *   before `super.doLayout()` cleared the dirty flag.
+     *
+     * @returns `true` when the caller may skip this pass's remeasure entirely.
+     */
+    private canSkipSettledRemeasure(sizeChanged: boolean, settledAtEntry: boolean): boolean {
+        return !sizeChanged && settledAtEntry && !this.isLayoutDirty();
     }
 
     /**
