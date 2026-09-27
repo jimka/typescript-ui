@@ -431,6 +431,18 @@ page resets to empty.
   array it must not mutate, as `getColumnConfigs()` and `getRowPool()` already
   documented for their own return values.
 
+- **A table skips its required-empty pass when no column asks for it.** The
+  per-cell loop that resolves the required-empty outline no longer runs while
+  no column config carries `required` or a `requiredPredicate`; a column that
+  carries either is unaffected, and an outline is cleared as soon as a
+  configuration change drops the last required column. One consequence: mutating
+  a `ColumnConfig` object in place after it has been handed to `Table` is not
+  picked up any more. `Table` takes its column spec at construction, so a
+  configuration that has to change means building the table again, or driving
+  `Body.setColumnConfigs` directly with a new map. The header's asterisk already
+  behaved this way, reading a `required` cached at `Column` construction, so this
+  makes the cells agree with it.
+
 ### Layouts
 
 - **`LayoutManager.commitBounds` reads "the rectangle changed" from the child's
