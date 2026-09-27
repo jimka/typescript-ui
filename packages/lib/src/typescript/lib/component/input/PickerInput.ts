@@ -46,6 +46,39 @@ class PickerInput extends TextInput<TextInputOptions> {
     constructor() {
         super(undefined, _defaultPickerInputOptions);
     }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a picker's inner input
+     * re-committed at the rectangle it already holds, with no pass owed, is not
+     * re-laid-out.
+     *
+     * A `PickerInput` is an `<input>` leaf with no registered children, so its
+     * own pass places nothing — its default absolute manager runs over an empty
+     * child list, the same argument that made a plain `Text` safe. Every input
+     * announces itself:
+     *
+     * - The text, value, placeholder, read-only and enabled state are attribute
+     *   writes on an already-placed element; none is a layout input, and the
+     *   inherited on-input sync only refreshes the cached text.
+     * - Its rectangle is written by {@link AbstractPickerField}'s own pass,
+     *   which commits it through `applyBounds` — so the field's content box
+     *   moving, on a resize or a chrome change, lays this input out.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, padding and border —
+     *   each marks the layout owed here, like any `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
 }
 
 const PickerInputCallable = callable(PickerInput);

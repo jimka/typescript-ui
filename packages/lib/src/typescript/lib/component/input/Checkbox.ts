@@ -162,6 +162,41 @@ class CheckboxBox extends Component {
         DOM.sink.apply(element, { toggleClass: { selected: this._selected && !this._indeterminate, indeterminate: this._indeterminate } });
         return element;
     }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a checkbox's box graphic
+     * re-committed at the rectangle it already holds, with no pass owed, is not
+     * re-laid-out.
+     *
+     * A `CheckboxBox` has no `doLayout` override: its own pass places the check
+     * glyph and the dash through its default absolute manager, at sizes pinned as
+     * their own min, preferred and max at construction — so no later pass
+     * resolves them differently. Every input announces itself:
+     *
+     * - `applyState` swaps CSS state classes on already-placed children; neither
+     *   the classes nor the opacities `Checkbox.applyValue` writes are layout
+     *   inputs.
+     * - This box's own square is pinned at construction too, and its rectangle is
+     *   written by the owning `Checkbox`'s pass, so the box moving lays it out.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, padding and border —
+     *   each marks the layout owed here, like any `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     *
+     * The check glyph and the dash keep the default gate: each sits under this
+     * box, which is withheld first, so a gate on either would never be asked.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
 }
 
 const _defaultCheckboxCheckGlyphOptions: Partial<GlyphOptions> = {

@@ -86,6 +86,59 @@ class PickerButton extends Button {
             { ..._defaultPickerButtonOptions, ...(subclassDefaults ?? {}) },
         );
     }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a picker's trigger button
+     * re-committed at the rectangle it already holds, with no pass owed, is not
+     * re-laid-out.
+     *
+     * A `PickerButton`'s own pass places one content row, in a `Fit`, at the
+     * button's own inner rect — which a skip by definition did not change. Every
+     * input announces itself:
+     *
+     * - `clearGlyph`, the *first* `setGlyph`, `setDescription` /
+     *   `clearDescription`, `setShowText`, `setShowDescription`,
+     *   `setDescriptionUnderGlyph` and a writing-mode change each go through the
+     *   inherited content-row rebuild, which empties and refills that row — child
+     *   changes that schedule the row itself — and then recompute the button's own
+     *   preferred size, whose relay marks every ancestor. A scheduled content row
+     *   still gets its own top-level pass under a skipping button, because the
+     *   batched layout flush stops walking up at the first ancestor that may
+     *   withhold a commit.
+     * - A *later* `setGlyph` renames the existing glyph in place and returns
+     *   without rebuilding or recomputing anything. That is sound rather than a
+     *   gap: a glyph's box never depends on its name, so the content row's shape
+     *   is unchanged and no pass is owed.
+     * - `setText` writes the label's text, which schedules the label's own parent
+     *   — the content row — and then recomputes the button's preferred size,
+     *   whose relay marks every ancestor.
+     * - The flat and compact insets write this button's own insets, which mark
+     *   the layout owed here like any `invalidateLayout`.
+     * - Its rectangle is written by {@link AbstractPickerField}'s own pass,
+     *   which commits it through `applyBounds` — so a horizontal resize moves the
+     *   button, and a change in the field's height re-centres the Fit-centred
+     *   glyph. Either is a rectangle change, so neither is withheld.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, padding and border —
+     *   each marks the layout owed here, like any `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     *
+     * The opt-in is this class, not `Button`: `ButtonIconGlyph` and
+     * `ButtonLabelText` are shared by every button in the library and stay on
+     * the default gate, which costs nothing here — the button above them is
+     * withheld whole, so nothing reaches them on a settled pass.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
 }
 
 const PickerButtonCallable = callable(PickerButton);
