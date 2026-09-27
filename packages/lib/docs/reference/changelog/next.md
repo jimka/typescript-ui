@@ -352,6 +352,42 @@ page resets to empty.
   producing a fresh, unstyled glyph must reset that style itself; nothing else
   needs to change.
 
+- **The parts a form control is built from are no longer re-laid-out when the
+  control re-commits them at the rectangle they already hold.** `PickerInput`
+  and `PickerButton`, and the file-local `ComboBoxLabel`, `ComboBoxCaret`,
+  `CheckboxBox`, `ToggleTrack`, `SliderTrack`, `SliderThumb`,
+  `NumberSpinnerField`, `SpinButtonUp` and `SpinButtonDown` join the controls
+  themselves in the unchanged-commit layout skip. A settled `DateField`'s or
+  `TimeField`'s own pass now costs one `doLayout` call where it cost ten, a
+  `ComboBox`'s one where it cost five, a `NumberSpinner`'s two where it cost
+  eleven, and a `Checkbox`'s, `Toggle`'s and `Slider`'s one each where they cost
+  four, three and four. Every writer still reaches its part: a resize moves the
+  rectangles and so lays them out, a button's `setText` relays its preferred size
+  and a `clearGlyph` or first `setGlyph` rebuilds its content row as well (a later
+  `setGlyph` renames the glyph in place, which changes no box), a `ComboBox`'s
+  rebind marks the collapsed label's pass owed, and a theme or web-font swap lays
+  every opted-in component out once. `CheckboxCheckGlyph`, `CheckboxDash`, `ToggleThumb`,
+  `SliderActiveTrack` and `ComboBoxCaretGlyph` keep the default, and lose nothing
+  by it: each sits under a part that is withheld first, so nothing reaches it on a
+  settled pass anyway. `ButtonIconGlyph`, `ButtonLabelText` and a bare
+  `SpinButton` keep the default too, and are audited on their own: the first two
+  are shared by every button in the library, and reach zero inside these controls
+  only because the button above them is withheld whole. One path still
+  announces nothing: a custom child's intrinsic size changed without
+  `setPreferredSize` / `notifyIntrinsicSizeChanged` must be followed with
+  `scheduleLayout()` on the component.
+
+- **`AbstractPickerField.doLayout` and `ComboBox.doLayout` place their
+  hand-positioned children through `Component.applyBounds` instead of forcing
+  that child's pass.** Each wrote the child's `x`/`y`/`width`/`height` with raw
+  setters and then called the child's `doLayout()` unconditionally; the same four
+  writes now go through `applyBounds`, which lays the child out when the
+  rectangle it committed moved or the child cannot skip. The consumer-facing
+  fact: a hand-placed child is laid out when its rectangle moved, not on every
+  pass. A subclass that overrides either `doLayout` must keep that shape — raw
+  setters plus an unconditional `doLayout()` re-lays the child out on every pass
+  and defeats the skip above.
+
 - **The form controls are no longer re-laid-out when their parent re-commits
   them at the rectangle they already hold.** `Text` itself and `TextField`
   itself — not their subclasses — `ComboBox`, `DateField`, `TimeField`,

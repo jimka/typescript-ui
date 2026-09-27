@@ -403,6 +403,54 @@ and relying on an unrelated later pass to pick it up. That pass no longer
 reaches a field whose rectangle holds still; announce the change, or call
 `scheduleLayout()` on the field.
 
+### The controls' inner parts opt in too
+
+**What changed and why.** The skip now reaches one level further down, into the
+parts each control is built from:
+[`PickerInput`](/api/component/input/classes/PickerInput) and
+[`PickerButton`](/api/component/input/classes/PickerButton) — the inner
+`<input>` and trigger button of every `DateField`, `TimeField` and
+`DateTimeField` — plus the file-local `ComboBoxLabel`, `ComboBoxCaret`,
+`CheckboxBox`, `ToggleTrack`, `SliderTrack`, `SliderThumb`,
+`NumberSpinnerField`, `SpinButtonUp` and `SpinButtonDown`. A settled control's
+*own* pass is what this saves: a `DateField`'s or `TimeField`'s falls from ten
+`doLayout` calls to one, a `ComboBox`'s from five to one, a `NumberSpinner`'s
+from eleven to two, and a `Checkbox`'s, `Toggle`'s and `Slider`'s from four,
+three and four to one each.
+
+One library change comes with it.
+[`AbstractPickerField`](/api/component/input/classes/AbstractPickerField)'s and
+[`ComboBox`](/api/component/input/classes/ComboBox)'s `doLayout` each wrote a
+child's `x`/`y`/`width`/`height` with raw setters and then called that child's
+`doLayout()` unconditionally, because raw setters do not relayout and the child
+would otherwise stay anchored to its pre-resize rectangle. Both now commit
+through [`Component.applyBounds`](/api/core/classes/Component#applybounds),
+which writes the identical four values and then lays the child out when the
+rectangle it committed moved or the child cannot skip. Nothing an ungated
+`doLayout()` call used to guarantee is lost — a resize is exactly the case where
+the rectangle moved — but the call is no longer unconditional, which is what
+lets the gates above engage at all.
+
+Every part the controls do *not* opt in keeps the default and is laid out on
+every commit: `ButtonIconGlyph` and `ButtonLabelText`, which every button in the
+library shares, a bare `SpinButton`, and `CheckboxCheckGlyph`, `CheckboxDash`,
+`ToggleThumb`, `SliderActiveTrack` and `ComboBoxCaretGlyph`. Each of the last
+five sits under a part that is withheld first, so nothing reaches it on a
+settled pass in any case.
+
+**Who needs to act.** Two cases. A consumer that subclasses
+`AbstractPickerField` and overrides `doLayout` should place the inherited
+`protected` `_input` and `_button` through `applyBounds` rather than raw setters
+plus an unconditional `doLayout()` — the latter still works, but re-lays the
+child out on every pass and gives up the saving. A `ComboBox` subclass has
+nothing to do here: its label and caret are `private`, so only `ComboBox`'s own
+`doLayout` can place them. And a consumer that reaches into a control's inner
+parts and changes their intrinsic size from outside the library — writing to the
+inner `<input>`'s element directly, resizing a picker button's glyph by hand —
+without calling `setPreferredSize` or `notifyIntrinsicSizeChanged` must announce
+the change, or call `scheduleLayout()` on the part, exactly as in the two notes
+above.
+
 ## A settled scrolling `Panel` does not re-measure its scroll metrics
 
 **What changed and why.** A scrolling [`Panel`](/api/core/classes/Panel) ends

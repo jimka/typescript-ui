@@ -64,6 +64,7 @@ The typed shorthand stays on screen while typing; it resolves to the absolute da
 - The absolute form is read back exactly as it is written: a complete, zero-padded `YYYY-MM-DD` naming a real calendar day, then a `HH:MM` or `HH:MM:SS` wall-clock time. A partial date, an impossible day, a UTC/offset-suffixed time, a fractional second (`14:30:05.5`), a trailing separator (`14:30:`), a missing hour (`:30`), and anything trailing the time all leave the field invalid rather than committing a value the text never named, and blurring on one clears it.
 - The dropdown stacks a month-view calendar over an hour/minute selector. Updates fire incrementally — every day/hour/minute click fires `input` with the latest aggregate value.
 - Right-clicking the inner text input opens a Cut/Copy/Paste menu; Cut/Paste re-parse the field the same way typing does.
+- The field itself is laid out on every commit — the unchanged-commit skip's opt-in is [`DateField`](/components/DateField)'s and [`TimeField`](/components/TimeField)'s, not `AbstractPickerField`'s (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)). Its inner input and trigger button do opt in, so a pass that reaches this field and hands them the rectangles they already hold does not re-lay them out. A resize does, because it moves both rectangles; the field's value writes are attribute writes on the inner input and need no pass, and a theme or web-font swap lays every opted-in component out once.
 
 ## See also
 
