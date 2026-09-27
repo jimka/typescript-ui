@@ -400,3 +400,118 @@ The `@remarks` edit in step 5 is public JSDoc, so per [CODE_CONVENTIONS.md](CODE
 [^stored-sizes]: `_sizes` is the stored ratio the next `doLayout` reproduces and, through `getPaneSizes()`, the array a consumer persists when `paneresize` fires. On U1's frame today it records 296 for a pane that committed 250. Storing the committed extents changes nothing for an ordinary drag — `Split.resizeMode.test.ts`'s S4 (`[{px 70}, {ratio 1}]`) and `Split.dragFrameGate.test.ts`'s D2 and D4 (250) all read the same either way, because their frames commit what they were handed — and case S1 is the only place the difference shows.
 
 [^siblings]: `Border`'s gutters are constructed `movable: false` and carry only a collapse chevron ([`Border.ensureGutter:819-824`](packages/lib/src/typescript/lib/layout/Border.ts#L819)), so no `Border` region is ever dragged and neither defect has a site there. `Accordion` does have a gutter drag, and it is built differently in both respects: `readOpenSections` re-reads every open section's live height, minimum and maximum on every frame ([`Accordion.ts:2040`](packages/lib/src/typescript/lib/layout/Accordion.ts#L2040)), so there is no press-time total to go stale; and `applySectionHeights` re-runs the shared `layoutSections` for the whole stack rather than nudging a gutter by a delta ([:2129](packages/lib/src/typescript/lib/layout/Accordion.ts#L2129)), so no gutter position is derived from a size a section refused. `layoutSections` does advance its cursor by the height it *requests* for each wrapper ([`placeSection:1658`](packages/lib/src/typescript/lib/layout/Accordion.ts#L1658)), which is the same latent shape as `Split.doLayout`'s cursor and is out of scope for the same reason.
+
+---
+
+## Implementation Notes
+
+Five things happened that the plan either left conditional, did not foresee, or
+predicted but could not confirm. Nothing here is a redesign; the plan's
+decisions were followed as written.
+
+### The conditional in step 6 resolved: every scene passes `spacing: 4`
+
+`split-gutter-zero-thickness-gap` landed first, so `SplitOptions` does carry a
+`spacing` field and it does default to `0`. Every `Split` in
+`Split.dragGeometry.test.ts` is therefore constructed with `spacing: SPACING`
+(`4`), which restores the pre-change reserve exactly and leaves every literal in
+*Expected Behaviour* holding unchanged — the rest state is leading pane
+`{x 0, w 100}`, gutter `{x 97, w 10}`, trailing pane `{x 104, w 296}`, and the
+two invariants read `2` and `4` rather than the vacuous `0 === 0` a
+`spacing: 0` fixture would have produced. `onDrag` itself needed no change under
+this landing order, as the plan anticipated: both position writes are relative
+deltas.
+
+### One numeric correction in `Split.dragFrameGate.test.ts` beyond step 7's three edits
+
+D2d's explanatory comment claimed the inverted bracket hands the leading pane
+**296** with a requested delta of **46**. Those were the figures under the old
+fixed 4 px `GUTTER_SIZE`; that file constructs its `Split` with no `spacing`, so
+after phase 1 its pair holds 400 px rather than 396 and the bracket's low bound
+is `400 − 100 = 300`, for a delta of 50. Verified by spying on the leading pane's
+`setWidth` on that exact frame, which recorded `300`. The comment now reads 300
+and 50. This is a stale-number fix in a comment step 7 already rewrites either
+side of, not an unrelated cleanup.
+
+### Two files the Files table does not list had to change
+
+The plan's survey of `_dragOriginRhsSize`'s users only covered `packages/lib`, so
+its Files table misses **`packages/qa/tests/ablations.test.ts`**. That package's
+`splitFixture()` seeds a drag by writing `Split`'s private origin fields
+directly, including `split._dragOriginRhsSize`, and its docstring says it
+prepares the drag "as `onDragStart` would". With the field deleted that write
+only created a stray property on the instance and the claim stopped being true,
+so the line is gone. JavaScript accepts a write to a non-existent field, so
+nothing failed to warn about it; it is the orphan cleanup
+[CLAUDE.md](../../CLAUDE.md)'s *Surgical Changes* rule asks for.
+
+`onDragStart`'s own JSDoc in `layout/Split.ts` also had to be corrected, which
+step 5 does not cover — it scopes the doc fix to `onDrag`'s `@remarks`. The
+sibling summary claimed the method captures "the current sizes of the two
+adjacent panels" and that later frames derive the new sizes from them, both
+false once the trailing capture went away and the total became a per-frame read.
+It now says what it captures — the pointer coordinate and the leading panel's
+size — and that a live frame reads the pair's room off the two panels instead.
+
+### The measured suite baseline is phase 1's, not the plan's
+
+*Verification* step 2 quotes 518 files / 8708 passed at the plan's own branch
+point and 519 / 8721 after. The actual start point —
+`feature/split-gutter-zero-thickness-gap` — already carries one more test file,
+so the measured baseline was **519 files / 8721 passed / 2 todo / 0 failed** and
+the finish is **520 / 8734 / 2 todo / 0 failed**. That is exactly the +1 file and
++13 cases the plan predicted; only the starting figures moved.
+
+### Verification integrity: every assertion was mutation-checked
+
+Each prescribed *Catches* claim was checked by applying the named mutation to
+`onDrag`, running `Split.dragGeometry.test.ts` and `Split.dragFrameGate.test.ts`,
+and restoring. Every case named by the plan reddened for its own mutation:
+
+| Mutation applied to `onDrag` | Cases that caught it |
+|---|---|
+| `dragAmount` from `newLhs`, x arm | U1, U7 |
+| `dragAmount` from `newLhs`, y arm | U2 |
+| Trailing pane's position write dropped, x arm | U1, U3, U5, U6, C2, C4, C5, D1, D2, D3 |
+| `dragAmount` mis-signed, x arm | U1, U3, U5, U6, C2, C4, C5, D1, D2, D3 |
+| Gutter write dropped, x arm | U1, U3, U5, U6, C2 |
+| Gutter written absolutely off `getX() + getWidth()`, translate ignored | **U7 only** |
+| Combined extent captured at the press again | C1, C2, C3, C4, C5, D2b |
+| Press-time extent on the y arm only | **C3 only** |
+| `_outlineDrag.total` preferred over the live read | **C5 only** |
+| `_sizes.set(lhs, newLhs)` | **S1 only** |
+| `_sizes.set(rhs, total - committedLhs)` | **S1 only** |
+
+The four single-case rows are the ones that matter: U7 is the only witness for
+the translate fold-in, C3 for the y arm's live read, C5 for an outline release
+preferring the press-time total, and S1 for a refused size reaching `_sizes`.
+U7's fixture was confirmed to build what it claims before the drag runs — the
+middle pane reports `getX()` 104 with `getTranslateX()` 40 and width 100, and
+`gutter[1]` sits at 241 — and the pre-fix run reproduced the plan's pinned buggy
+numbers exactly: gutter at 293 against a pane edge at 250 (U1, U2), gutter at 281
+(U7), and the trailing pane committing 296 at x 104 for a far edge of 400 inside
+a 300 px host (C1).
+
+**Two mutations were caught by nothing, both predicted by the plan and both left
+as they are.** Neither is a vacuous assertion; each is a documented equivalence.
+
+- Writing the trailing pane's extent as `total - newLhs` instead of
+  `total - committedLhs` reddens no case, which is exactly what
+  `[^rhs-expression]` argues: the two commit the same box in every state
+  reachable through `resolveLhsSize`. `total - committedLhs` is kept because it
+  states the rule the frame implements.
+- Dropping `rhsMoved`'s position term reddens no case, which is what *Potential
+  Challenges* predicts: with a live total the trailing pane's position and extent
+  move together on every reachable frame. The term is kept, per the plan, because
+  it mirrors `commitBounds`' own comparison and a redundant term is cheaper than
+  a gate that silently stops working if the coupling breaks. Dropping the
+  *extent* term instead reddens **D2d alone**, confirming D2d survives as the
+  gate's extent-only witness. No replacement for the lost position-only witness
+  was invented.
+
+### Still owed
+
+*Verification* step 6 — one real drag in a windowed app, past a pane's minimum
+and its maximum in both orientations, plus a window resize under a held drag —
+was **not run**: every route to it opens a window on the user's desktop. It
+remains owed and is the only unverified item.
