@@ -354,3 +354,294 @@ Nothing goes in `## Fixed`, and nothing goes in the migration page: the coalesci
 [^mutation-run]: Each row was executed against a prototype in an isolated copy of the library: the named change was applied, the suite run, and the failing set recorded. Two results are worth noting because they are not obvious from the code. Dropping the cached shadow-overlay write reddens H4 and N3 as well as R, because both scenes cross the threshold mid-burst and their post-crossing frames therefore run the cached branch, not the live one. Inverting the predicate reddens every case including R, since it both withholds the frames that must read and reads on the frames that must not.
 
 [^verification-standard]: The batch this plan's base commit belongs to shipped twelve prescribed verifications across nine plans that could not fail, catalogued in `panel-scroll-read-economy.md`'s *Prescribed verifications that could not have caught a regression*. The three recurring shapes were an `expect(x).toBe(y)` satisfiable when both sides are `0`, a case list covering one of two symmetric arms, and an assertion on a call count where the contract was a consequence. The three properties listed above are those three failures inverted, one for one.
+
+---
+
+## Implementation Notes
+
+**The design in this plan's body was superseded during implementation, by the
+user, and the body was left as written.** What shipped is not the gated design
+below but a full withdrawal of the deferral. This section records both, since the
+body is now a description of a road not taken.
+
+### What happened
+
+The gated design was implemented first, exactly as `## Ordered Implementation
+Steps` prescribes: the `showsScrollAffordance()` early return in
+`deferScrollMetricsWhileResizing`, a new `commitCachedScrollGeometry` holding the
+read-free writes on the withheld branch, the four doc-comment corrections, and
+the changelog amendment. It passed, with 19 prescribed cases green and the
+library suite clean.
+
+The user then tested by hand and walked straight into the plan's documented
+Non-Goal: on the `Split` demo, shrinking a viewport over a list that was showing
+**no** scrollbar produced no scrollbar and no shadow until the drag settled.
+Already-visible bars behaved correctly, which is exactly what the gate fixed.
+They judged the appearing direction a defect that had to be fixed rather than a
+Non-Goal, and chose a full revert.
+
+### Why fixing the appearing direction empties the gate
+
+`deferScrollMetricsWhileResizing` opened with
+`if (this._autoScroll === "none" || !this.getElement()) return false;`, so a
+non-scrolling panel never deferred at all, before or after the gated change. That
+leaves exactly three populations, and the gated design covers them like this:
+
+| Population | Under the gated design |
+|---|---|
+| `autoScroll: "none"` | never deferred; unaffected |
+| scrolling, **showing** an affordance | reads live — the gate's whole purpose |
+| scrolling, showing **no** affordance | still coalesced — and this is the reported defect |
+
+So the only population the gate still coalesced is the one whose behaviour the
+user rejected. Fixing the appearing direction empties the gate's population
+entirely, which makes the gate a predicate that always returns the same answer,
+and makes `commitCachedScrollGeometry` — which only ever ran on the withheld
+branch — unreachable. Both were therefore removed rather than kept as dead code.
+
+The saving being given up was never established in the first place: the plan that
+introduced the deferral, `panel-scroll-metrics-resize-coalescing`, retracted its
+own 133→1 forced-layout measurement in its `## Implementation Notes`
+(correction 2), having failed to reproduce it, and downgraded the live trace to
+corroborating evidence. So the trade was a read-count reduction of unproven
+frame-time value against three defects a user could see.
+
+This is a revert of a *behaviour*, not of a commit: `1a11db34` is far back in
+history and `core/Panel.ts` has moved under it since, including on a branch below
+this one in the same stack. The end state was reached by editing current code.
+
+### The symptom, stated correctly
+
+Three details matter and two of them contradict the plan's body, which describes
+the panel as holding its *pre-burst* box:
+
+- **The freeze is at the burst's first drag frame's value, not the pre-drag
+  value.** Frame 1 of a burst finds no settle frame armed, so it arms one and
+  measures live; frames 2..n are withheld. The stale value is whatever frame 1
+  committed, and the error is the pane's extent change *since frame 1*. Measured
+  offline here: over the four-frame growing drag, the vertical bar's track length
+  froze at 348 while the pane reached 498 — the pane was 298 before the press, so
+  the frozen figure is frame 1's, not the resting one.
+- **It self-corrects after roughly three motion-free frames, then re-freezes.**
+  Two still frames let the relay lapse, so the next moving frame measures live and
+  the geometry is briefly exact again. At 60 Hz that is about 50 ms, which is why
+  the defect is easy to miss by hand and plausibly why only the appearing half
+  was reported: a bar that is merely mis-positioned keeps snapping back, while a
+  bar that is entirely absent stays absent.
+- **All of it froze together, from the one withheld call.** `commitOverlayLayout`
+  holds each bar's `setX`/`setY`/track length *and* its thumb (`setMetrics`), plus
+  the scrollbar-gutter commit; the shadow overlay's box and its four edge
+  strengths follow in the same method. One withheld `remeasureScrollMetrics`
+  withheld every one of them.
+
+Two sub-cases are invisible even though the committed geometry is wrong, and the
+fixtures avoid both deliberately:
+
+- On a **shrink**, the stale bar overshoots past the pane's edge, and
+  `autoScroll: "y"` sets `overflow-x: hidden`, so the wrongness is clipped out of
+  sight. Every case here asserts a committed rectangle or a recorded style write,
+  never apparent visibility.
+- On a **scrolled** panel the thumb has a second writer outside the withheld path
+  (`syncOverlayScrollbars` → `Scrollbar.setMetrics`, from the scroll listener), so
+  the thumb keeps tracking while the track length freezes. No fixture here
+  scrolls during a burst, so the track length stays a witness.
+
+One more correction to the plan's framing: the cached writes already on the
+withheld branch (`core/Panel.ts:767-796` at the base commit) covered
+`_overlayScrollStyle`'s width/height only — the inner scroller, and nothing else.
+Confirmed by probe: the inner rectangle tracked every frame while the bar, the
+gutter and the shadow froze. Removing that branch removed one write's worth of
+caching, not a broad cache — and it arguably made the defect *more* legible,
+since the content viewport visibly grew away from a motionless bar.
+
+### What was removed from `core/Panel.ts`
+
+`deferScrollMetricsWhileResizing`, `scheduleScrollMetricsSettle` and
+`flushScrollMetricsSettle`; the `_scrollMetricsOwed`, `_panelSizeMoved` and
+`_scrollMetricsSettleHandle` fields with their `applyOptions` seeding and the
+destructor's cancel; and `doLayout`'s withheld branch, which reduces to one
+unconditional `this.remeasureScrollMetrics()` behind the surviving settled-pass
+skip. Six comment sites were corrected to match: the `_lastPanelWidth` /
+`_lastPanelHeight` field block (which counted five fields), `applyOptions`'
+seeding comment, `doLayout`'s own public comment, `canSkipSettledRemeasure`,
+the destructor, and `resizeScrollShadowOverlay`.
+
+Two things deliberately stayed. `canSkipSettledRemeasure` is a different
+mechanism — it skips a pass that committed the same rectangle with nothing marked
+— and the plan's `## Non-Goals` already ruled it out of scope; its comment lost
+the sentence about protecting the settle relay. The replacement first claimed the
+gate stays on the caller's side because `remeasureScrollMetrics` has other
+callers that would be wrongly skipped. That was wrong and an audit caught it:
+after this change the method has exactly one caller, `doLayout`. The reason now
+given is the true one — both of the predicate's inputs are `doLayout`'s own and
+neither survives the call, since `sizeChanged` compares against a baseline this
+pass overwrites and `settledAtEntry` must be sampled before `super.doLayout()`
+clears the dirty flag. `showsScrollAffordance()` keeps its original
+caller, `scheduleGutterSettleOnShrink`, so it is not orphaned and the pre-1.0
+unused-private-API rule does not apply. `_lastPanelWidth`/`_lastPanelHeight` also
+stay: they compute `sizeChanged`, which is what keeps the settled-pass skip from
+swallowing a resize frame.
+
+### Tests: what was dropped, and why
+
+Dropped outright, because the mechanism they pinned no longer exists — none of
+these was renumbered around or quietly reinterpreted:
+
+- **Cases G1 and G3–G6**, added to `PanelResizeMetricsCoalescing.test.ts` under
+  the gated design. Each seeded one branch of `showsScrollAffordance()` and
+  asserted the gate sent that frame live. There is no gate.
+- **Case R**, the gated design's "the arm that stays coalesced". It asserted that
+  a burst on a panel painting no affordance keeps taking zero reads — precisely
+  the behaviour the user rejected. Keeping it would have pinned the defect.
+- **`PanelResizeMetricsCoalescing.test.ts` and
+  `PanelResizeMetricsCoalescingRealtime.test.ts`, both deleted.** Their subject
+  was the withholding: "withholds the remeasure for a second size change",
+  "performs exactly one catch-up at settle", "extends the burst between the
+  relay's two hops", "still withholds a same-size pass inside a burst", "stays
+  withheld through a 35-frame drag", "cancels an armed settle frame on teardown".
+  (The same-size case's answer survives on its own terms rather than inverted: a
+  same-size pass after a drain still reads nothing, via the settled-pass skip,
+  which `PanelResizeMetricsLive.test.ts`'s "reads nothing on a pass that commits
+  the same box" asserts — and which still catches a stale
+  `_lastPanelWidth`/`_lastPanelHeight` baseline.) The cases that outlived the
+  mechanism moved into a
+  new `PanelResizeMetricsLive.test.ts`, with the burst assertions inverted: the
+  absolute per-pass read count (2, overlay and native), the write-before-read
+  ordering in the native gutter branch, the `"none"` and pre-render no-ops, and a
+  33-frame realistic one-pass-per-frame drag that now asserts every frame
+  measures.
+- **Two cases lost their subject rather than their answer** and were dropped
+  instead of inverted: "keeps the overlay inner scroller tracking this panel's
+  live size even while withheld" and "accounts for this panel's own border when
+  tracking the live size while withheld". Both tested arithmetic that existed
+  only inside the cached write — the live path takes `clientWidth`/`clientHeight`
+  from its own read, so `Panel` performs no border subtraction for the inner
+  scroller any more. Under a stubbed `getScrollMetrics` the inverted versions were
+  tautological (the stub dictates the value the code writes back). The real claim
+  is now case V6 in `PanelResizeGeometryStaleness.test.ts`, which asserts the
+  inner scroller's box against *modelled* geometry across a real drag.
+
+`PanelScrollReadEconomy.test.ts` case F was inverted in place — it pinned the
+withheld pass plus its catch-up, and now pins that the settled-pass skip does not
+swallow a resize frame and that a burst leaves nothing owed. Its case G lost two
+assertions on the deleted relay handle. Stale comments naming the removed methods
+were corrected in that file and in `PanelOverlayScrollbar.test.ts`.
+
+### The scenes need an explicit `spacing: 4` on the `Split`
+
+`Split`'s own default `spacing` is `0`, which gives each pane exactly half the
+host and lands the overflow threshold on the drive's *first* frame. A 4 px gap
+makes each pane half the host less half the gap, which puts the crossing strictly
+inside the drive — between frames 1 and 2 in both directions — which is what the
+mid-burst coverage requires. This also reproduces the pane extents the plan's own
+`## Expected Behaviour` tables assert (298 / 348 / 398 / 448 / 498), which are
+unreachable at the default spacing.
+
+### Verification
+
+Twenty-three cases in `PanelResizeGeometryStaleness.test.ts` cover both
+directions of the overflow threshold, on both axes, in overlay and native mode:
+scenes V/H/N grow the pane past its content so a reservation must be released, a
+bar hidden and an edge ramped down mid-drag; scenes AV/AH/AN shrink it until the
+content overflows so a gutter must be reserved, a bar shown and an edge lit
+mid-drag. The appearing scenes are the user's reported defect. Every case pins a
+committed box, a recorded style write or the cached gutter, and every transition
+is anchored on the same observable against an earlier frame of the same burst.
+
+All 23 were confirmed red against the base commit's source before the source
+changed, each failing on the assertion its scene predicts. Three mutations were
+then applied to the implemented source, the seven `Panel` test files run, and the
+source restored:
+
+| Mutation | Cases reddened |
+|---|---|
+| Restore the withheld branch — the defect itself | 29: all 23 geometry cases, the 5 live-burst cases, and read-economy F |
+| `canSkipSettledRemeasure` always `true` — never remeasure | 42: the above plus the per-pass-count cases, read-economy A–E, and two cases in other `Panel` files |
+| Drop `sizeChanged` from `canSkipSettledRemeasure` — let the settled skip swallow a resize frame | 31: all 23 geometry cases, the 5 live-burst cases, read-economy B and F, and one `PanelOverlayScrollbar` case |
+
+Every case that claims a pass measured is reddened by at least one mutation, and
+each of the 23 geometry cases by mutation 1, which is the defect itself. Exactly
+two cases are immune to all three, and neither is vacuous: the two whose whole
+claim is that a configuration measures *nothing* at all —
+`PanelResizeMetricsLive`'s `"none"`-panel case and read-economy's G. No mutation
+to the resize path can make a non-measuring configuration measure, so neither has
+a live-pass anchor available, and each states in place what would make it
+non-zero. Read-economy's A is *not* in that set, though an earlier draft of this
+note claimed it was: it asserts zero for a *settled* pass but opens with its own
+live-pass anchor, and mutation 2 reddens it. The mutation table's second row names
+representative groups rather than an exhaustive list; its total of 42 is exact. `PanelResizeMetricsLive`'s
+header was corrected to scope its own anti-vacuity claim to the deltas it
+actually covers, rather than claiming it of every assertion in the file.
+
+`npm test` from the worktree root: 520 files / 8750 passed / 2 todo / 0 failed,
+against a start-point baseline of 520 / 8734 / 2 / 0 measured before any change —
+two test files deleted and two added, and a net 16 more cases.
+`npm -w packages/qa run test`: 453 passed / 0 failed, the baseline.
+`npm run typecheck` and `npm run lint` clean. `npm run docs:api`: 0 errors and 14
+warnings, the pre-existing baseline, so `doLayout`'s prose-only comment held.
+`npm run docs:llms:check` and `npm run build:lib` clean.
+
+### The changelog entry is deleted, not rewritten
+
+The first attempt rewrote the coalescing entry in
+`docs/reference/changelog/next.md` to describe the withdrawal and state the cost.
+An audit showed that was the wrong treatment and that the rewrite miscounted: a
+withheld burst paid two reads on its first frame plus two at its catch-up — four,
+not "two for the whole burst" — and the measurement the origin plan downgraded
+was a count of forced `Layout` events, not a frame-time figure. More importantly
+the entry had no consumer to address. `1a11db34` landed on 2026-09-13, after
+`0.9.0` was cut, so the withholding only ever existed on the unreleased `next`
+page: a consumer upgrading from `0.9.0` never met the stale geometry and never
+meets its fix, and their per-pass read count still goes *down* (five to two, via
+the read-economy entry that remains). This is the same reasoning the plan's own
+`## Documentation Impact` used to keep the change out of `## Fixed` and out of
+the migration page, carried to its conclusion — so the entry is removed. No other
+entry on the page narrates "an earlier revision of this release", and adding the
+first one to describe a behaviour no release carried would have been noise.
+
+The consumer migration page needed a real correction, which the first attempt
+missed: `docs/reference/migration/next.md` told readers that "the resize-settle
+relay is unaffected" and that its catch-up "still runs in full". That paragraph
+now says a live external resize never reaches the settled-pass skip, because such
+a pass commits a different rectangle every frame.
+
+Four stale comments naming the removed mechanism also survived the first pass and
+were caught by the same audit: the `requestAnimationFrame`-capture rationale in
+`PanelOverlayScrollbar.test.ts`, a helper's doc comment in
+`PanelScrollReadEconomy.test.ts`, and the `PANEL_SETTLE_FRAMES = 3` rationale in
+both `packages/qa/tests/mount.test.ts` and `packages/qa/tests/ablations.test.ts`.
+That constant took two further audit rounds to settle, and the honest answer
+turned out to be deletion. The first replacement rationale claimed the mount
+reserves a scrollbar gutter whose follow-up pass the cases wait for — false, since
+jsdom paints no scroll affordance at all, as `ablations.test.ts`'s own comment
+says. The second claimed the wait is what leaves the panel settled for the
+settled-pass skip these cases read — also false: with the constant set to `0` all
+453 qa tests still pass, because every `ablations` case calls `doLayout()` itself
+before counting and the `mount` case's own `mountPanel(..., SMOKE_WAITS)` already
+settles the panes. The removed relay was the wait's only reason to exist, so
+rather than write a third rationale to fit it, the constant and its five `await
+tools.waitFrames(...)` calls are deleted. This change is what orphaned them, which
+is exactly the case the repo's own guidance says to clean up. `npm -w packages/qa
+run test` stays at 453 passed / 0 failed without them.
+
+### Manual verification is outstanding, and is the user's
+
+The plan's `## Verification` is a bullet list, not numbered steps; its only manual
+item is the closing bullet of `## Expected Behaviour`. That bullet, plus the
+appearing direction the user found by hand, needs real pointer input and real
+paint: drag a `Split` gutter over a scrolling `Panel` both ways and confirm the
+content re-flows, the bar tracks the panel edge and appears when the content
+starts overflowing, and the shadow edge follows — all during the drag. Nothing in
+this run opened a window: no `packages/qa/runqa.sh`, no MiniBrowser, no Tauri
+qa-host, no `npm run dev`. Every automated assertion above is offline.
+
+`ScrollStrip` and `VirtualRowView` still carry the same two-hop withholding for
+their own resize bursts, which this plan's `## Non-Goals` put out of scope and
+which stays out of scope here. Worth recording for whoever picks them up: if
+either paints an affordance that only appears on overflow — `ScrollStrip`'s
+scroll arrows are the candidate — it has the same appearing-direction defect the
+user hit on `Panel`, for the same reason, and no cached signal can fix it either.
+
+Gutter and overlay-scrollbar reachability after the gutter became pure overhang is
+already settled — the user confirmed both by hand on the branch below this one —
+so this branch does not re-argue it.
