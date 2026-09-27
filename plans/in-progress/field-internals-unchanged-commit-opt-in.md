@@ -553,3 +553,265 @@ What each opted-in class's own pass reads, and how a change to it reaches a pass
 [^unexplained-trigger]: On the settled `ffq` drive the offline model runs one `doLayout` per unit and never enters a field, so it cannot say why the engine enters one. Candidates the model does not carry are real text metrics, the scrolling panel's own overflow recalculation and a size-stable move folding a translate back somewhere above the fields — a fold-back marks every opted-in ancestor, which would let one settled pass reach a field. Finding it needs an in-engine run, which this plan does not do. The consequence for the A/B's expectations is stated rather than hidden: `doLayout@DateField` and `@TimeField` are not predicted to reach zero, and a reading where they stay non-zero while the four internal counters reach zero is a pass, not a failure.
 
 [^standing-rule]: The agenda's *Judged again: render time first, work second, complexity last* (2026-09-26) sets the rule: render performance is the primary priority and reduced work secondary, but a work reduction with a flat clock is still worth shipping unless it costs considerable code complexity. This stage is eleven protected one-line overrides with their doc comments, two hand-placement sites converted to the `applyBounds` call the table already uses, and one missing `super.doLayout()` restored — no new state, no new abstraction, no second code path. The work reduction is measured and large where it lands (a picker field's own pass 10 → 1, a resize pass 444 → 228 per unit). The clock is expected flat on the settled form cells and unmeasured on `ffd`, `ffc` and the resize cells until the user's A/B runs.
+
+---
+
+## Implementation Notes
+
+**Steps 1 to 4 and 7 landed as written. Steps 5 and 6 — the `Row.doLayout` base
+call and its test — were implemented, found to corrupt cell geometry, and
+reverted; `Row.ts` is untouched on this branch.** That is the one prescribed item
+this branch does not deliver, and the section *Why the `Row` half was reverted*
+below is the whole account. Everything that follows about the eleven opt-ins and
+the two `applyBounds` conversions stands.
+
+For the opt-in half, the plan's own prediction of which cases fail before the
+change held exactly: E1's
+opts-in-with-`true` clause, E2 (both fields), E5, E7, E8 (all three controls) and
+E11 were red on the unchanged tree; E3, E4, E6, E9, E10 and E12 were green before
+it and stayed green. The per-field ladder the plan measured offline is now pinned
+by the test suite rather than modelled — E2, E5, E7 and E8 assert the opted-in
+census exactly (`{ DateField: 1 }`, `{ ComboBox: 1 }`,
+`{ NumberSpinner: 1, Component: 1 }`, `{ Checkbox: 1 }`, `{ Toggle: 1 }`,
+`{ Slider: 1 }`) against the shipped 10, 5, 11, 4, 3 and 4, all six confirmed
+against the live tree before the change.
+
+### One prescribed verification was vacuous: E11's second clause
+
+**E11's second clause, as the plan wrote it, could not have caught a
+regression.** The plan says: after the theme switch, "the following
+`root.doLayout()` lays out none of them again". Mutation-tested with
+`PickerButton`'s gate stubbed to `false`, that assertion stays **green** — a
+settled `root.doLayout()` stops at the `LabeledGrid`, because every control above
+the eleven internals opted in at stage 3 and is settled again by the end of the
+theme flush, so the pass never reaches an internal whatever these eleven gates
+answer. The clause is satisfied by the pass not descending, not by the gates
+engaging.
+
+The case now drives each of the seven controls' **own** passes instead, which is
+what puts the eleven gates on the path. That version goes red under all eleven
+gate flips *and* under both `applyBounds` reverts — it is the single most
+sensitive case in the file. The substitution is marked in a comment at the call
+site.
+
+The other eight prescribed mutations were all confirmed live, one at a time, each
+reverted: `AbstractPickerField.doLayout` back to raw setters plus
+`_button.doLayout()` reddens E2 (and E3 and E11); `ComboBox.doLayout` back
+reddens E5 (and E11); removing `ComboBoxLabel.setItem`'s `invalidateLayout()`
+reddens E6 (and stage 3's own closure case); each of the eleven gate flips
+reddens E1's row plus the pass case the plan names for it. Fourteen mutations,
+fourteen reds, no silent pass. The two `Row` mutations the plan lists were also
+confirmed red against E13 while that half was on the branch; they no longer apply,
+since it was reverted.
+
+### Why the `Row` half was reverted
+
+The plan's steps 5 and 6 were implemented as written — `Row.doLayout` became
+`return super.doLayout();` and `tests/component/table/RowLayoutPass.test.ts`
+covered E13 — and the audit then showed the change **corrupts cell geometry**. It
+is reverted rather than patched, because the premise it rests on is the plan's,
+and fixing it is a library design decision no plan has taken.
+
+**What the plan assumed.** `[^row]` and *Internal Structure* both say the base
+pass "re-commits every cell at the rectangle it already holds", so "each cell's
+commit reports unchanged and stage 1's `Cell` opt-in withholds it", and that "the
+geometry was identical in every arm".
+
+**What actually happens.** A `Row` runs the default `Absolute` manager, and
+`Absolute.doLayout` (`packages/lib/src/typescript/lib/layout/Absolute.ts:52`)
+places each child at `preferredSize ?? size` — it never re-commits the rectangle
+the child already holds. Where a cell's `getPreferredSize()` is `null` the
+fallback makes that a no-op, which is why a string or number column shows nothing
+and why the plan's own measurement ("a settled pass costs five `doLayout` calls
+before and after") saw nothing. A `BooleanCell` reports `{ width: 20, height: 16 }`.
+Measured on a rendered 40-record table with one `boolean` column, the body's
+render window places that cell at 33×20 and the restored base pass shrinks it to
+**20×16**. The `Cell` opt-in cannot withhold it, because the commit genuinely
+changes the rectangle.
+
+**And it is reachable, not theoretical.** A row is parentless — `growRowPool`
+raw-appends its element — so `flushPendingLayouts` gives it a top-level pass
+whenever anything schedules it, which `Row.addComponent` does on exactly the
+column-window change and pool growth the plan's *Potential Challenges* names as
+the base call's cost. Measured: `row.scheduleLayout()` plus one frame takes the
+boolean cell to 20×16, where it stays until the body next re-places the window.
+So a narrower, shorter cell background and selection band render in between.
+
+**Why not fix it here.** Every candidate — giving `Row` a manager that places
+nothing, making `Cell` report no preferred size, or finding another way for a row
+to record its pass without its manager re-placing cells — is a library design
+choice with its own blast radius, and the plan sanctions none of them. Under
+`worker.md`'s *Deviating from the plan*, a broken assumption is a stop-and-ask,
+not something to re-plan around mid-implementation. Reverting leaves the
+pre-existing defect exactly as it was before this branch — a row still reports
+`isLayoutDirty()` `true` for life and still never drains an `onFirstLayout`
+callback — which is no worse than the start point, and keeps this branch free of
+a regression it would otherwise ship. The agenda entry is corrected to record what
+the next attempt has to solve, rather than marked resolved.
+
+**E13 is therefore not covered by a test**, since the behaviour it describes is
+not on this branch. Its own first implementation was also vacuous, which is worth
+recording for whoever takes this next: the plan says "the whole table's geometry
+is unchanged", a table's geometry reads naturally as a walk from the table, and
+such a walk reaches neither the pooled row nor its cells — the same raw-append
+that keeps `Row` out of the opt-in. A digest for this behaviour has to reach
+through `_rowPool`, and it should prove it can see the cells rather than assume
+it.
+
+### Mechanism claims inherited from the plan that were wrong
+
+Each was copied from the plan's *Addendum: Writer Audit* or its
+*Documentation Impact* formula, and each was corrected after the audit probed the
+real behaviour on a settled scene. They are collected here because the pattern
+matters more than any one of them: this plan's prose about *why* a skip is safe
+was in several places a plausible mechanism rather than the real one.
+
+- **`setText` and `setGlyph` do not "go through the content-row rebuild".**
+  `Button.setGlyph` on a button that already has a glyph **renames it in place and
+  returns** (`component/button/Button.ts:1843`) — no rebuild, no preferred-size
+  recompute — which is sound because a glyph's box never depends on its name.
+  `Button.setText` writes the label's text and calls `recomputePreferredSize`
+  (`:1189`), also without a rebuild. What does rebuild the row is `clearGlyph`,
+  the *first* `setGlyph`, `setDescription` / `clearDescription`, `setShowText`,
+  `setShowDescription`, `setDescriptionUnderGlyph` and a writing-mode change; the
+  flat and compact insets are not among them and instead mark the layout owed as
+  any inset write does. The safety conclusion is unchanged — a rename moves
+  nothing and every other path relays — but the stated mechanism was not the real
+  one. Corrected in `PickerButton`'s and `SpinButtonDown`'s overrides,
+  `docs/components/SpinButton.md` and the changelog bullet.
+- **"The control's own writes, a resize and a theme switch each still lay the
+  parts out" is false for most of the controls.** Measured on the settled scene,
+  one isolated case per write: `checkbox.setSelected`, `toggle.setValue`,
+  `dateField.setValue`, `numberSpinner.setValue` and `comboBox.setValue` lay out
+  **nothing** in the control's subtree — which is the whole reason the opt-in is
+  safe, not a gap — and `checkbox.setLabel` and `slider.setValue` lay out only the
+  control itself. A resize reaches the `ComboBox`'s label and caret, the picker
+  fields' input and button, and the spinner's inner field, but **not**
+  `CheckboxBox`, `ToggleTrack`, `SliderTrack` or `SliderThumb`: a checkbox and a
+  toggle are pinned to the size their own children need so their rectangles do not
+  track the cell, and a slider writes its track's and thumb's rectangles with
+  plain setters rather than through a commit. Only the theme switch holds for all
+  eleven. The seven affected control pages now say what is actually true per
+  control; `Slider.md`'s sentence already did and was left alone.
+- **"A control that places one of its own children by hand commits it through
+  `applyBounds`" over-generalises.** Only `AbstractPickerField` and `ComboBox`
+  were converted; `Slider` still hand-places its track, fill and thumb with plain
+  setters (`component/input/Slider.ts:553`) and is in the same opted-in list, so
+  the concept page's sentence was false for it. It now names the two converted
+  sites and states that a control which hand-places without recursing — a slider —
+  is unchanged, because it never forced those passes to begin with.
+- **"A resize moves the inner field but not the fixed-width spin column" was the
+  wrong reason.** Measured, a resize's spinner census is
+  `{ NumberSpinner: 1, NumberSpinnerField: 1, Component: 1 }` — the spin column
+  moves with the field and *is* laid out. The conclusion held (neither button is
+  re-laid-out) but the mechanism is that the column's own width is fixed, so it
+  hands each button back the rectangle it already held.
+- **"Each sits under a part that is withheld first" did not scope.** True of
+  `CheckboxCheckGlyph`, `CheckboxDash`, `ToggleThumb`, `SliderActiveTrack` and
+  `ComboBoxCaretGlyph`; false of a bare `SpinButton`, and false of
+  `ButtonIconGlyph` / `ButtonLabelText` in any button other than these controls'
+  own. The changelog bullet now splits the two groups, as the migration note
+  already did.
+- **The migration note told `ComboBox` subclassers to do something impossible.**
+  `ComboBox._label` and `_caret` are `private` (`component/input/ComboBox.ts:835`),
+  so no subclass can place them; only `AbstractPickerField`'s `_input` and
+  `_button` are `protected`. The *Who needs to act* paragraph now says so.
+
+### Three plan details that did not survive contact
+
+- **E4's `setGlyph('xmark')` is not runnable.** `Glyph`'s registry starts empty
+  but for four `unicode-*` char entries, and each glyph is registered by the
+  module that needs it — `DateField.ts` registers `calendar`, `TimeField.ts`
+  `clock`. `xmark` is never registered anywhere in the library, and
+  `Glyph.setGlyphName` throws `Unknown glyph: xmark` rather than degrading. The
+  case swaps to `clock` instead, which the scene's own `TimeField` registers.
+- **The *Addendum: The field subtrees* diagram mis-draws the slider.** It reads
+  `Slider  SliderTrack → SliderActiveTrack · SliderThumb`, which puts the thumb
+  under the track. E1's own table has it right and stage 3's test file already
+  relied on the right shape: `slider.getComponents()` is
+  `[SliderTrack, SliderThumb]`, and `SliderActiveTrack` is the track's only
+  child. The addressing follows E1. Every index in E1's table was confirmed
+  against the live scene, and the test file asserts each reached instance's class
+  name, so a future change to a control's child order fails loudly instead of
+  silently testing the wrong object.
+- **The `grep` check in *Verification* cannot reach zero as written.** Both new
+  comments name the call they replaced, so
+  `grep -rn '_button.doLayout()\|_label.doLayout()' src/typescript/lib/component/input`
+  reports two *comment* lines. The code-only form,
+  `grep -rnE '^\s*this\._(button|label)\.doLayout\(\)' src/typescript/lib/component/input`,
+  returns zero. `grep -rn 'protected canSkipUnchangedLayout' src` reports 29, as
+  prescribed.
+
+### One file outside the plan's list had to change
+
+`packages/lib/tests/core/UnchangedCommitFormOptIns.test.ts` (stage 3's suite).
+Its E7 forced-off arm asserts that **every** component in the grid is laid out,
+which held only while nothing in the scene skipped; the eleven new opt-ins
+withhold the internals, so that arm went red. Its `optedInPrototypes()` helper now
+returns stage 4's eleven prototypes as well as stage 3's ten, harvested through
+throwaway controls because nine of the eleven are file-local and unimportable.
+The alternative — narrowing the assertion to the fields — would have given up a
+regression guard that proves the whole subtree is reachable on that pass, so the
+list grew instead. The plan did not anticipate this; the edit rides in the code
+commit, as a fix the functionality itself requires.
+
+### The open question the plan flagged is still open, and stays open here
+
+The plan's *Non-Goals* and the agenda's *Stage 4 may not close stage 3's
+residual* both ask whether `doLayout@DateField` and `@TimeField` reach zero.
+**They do not, and this stage does not make them.** What is measured offline, and
+now pinned, is narrower and should not be read as more:
+
+- Every call *inside* a settled picker field's own pass is gone. The census is
+  `{ DateField: 1 }` — not just `PickerInput` and `PickerButton` at zero, but
+  `ButtonIconGlyph`, `ButtonLabelText` and the button's inner plain `Component`
+  too, because the button above them is withheld whole. That is stronger than
+  the agenda entry feared: the two `Button` internals being out of scope costs
+  nothing on a picker field's own pass, so **no stage 5 is implied by this
+  cell**. The `fnq` remainder the agenda mentions is `TableHeaderMenuButton`,
+  already in this plan's *Non-Goals*.
+- The field's **own** call is untouched and was never in scope. Whether it still
+  runs on a settled `ffq` unit depends on what makes a settled picker field lay
+  out in-engine, which `[^unexplained-trigger]` records as unidentified and which
+  the offline model does not reproduce. So the `ffq` / `fnq` reading of
+  `@DateField` and `@TimeField` is unresolved, and resolving it needs the
+  in-engine A/B.
+
+Stated plainly, so no later reader takes a zero this code does not reach: stage 4
+closes the four counters stage 3 named, on the drive where a field's own pass is
+the unit; it does not close `@DateField` and `@TimeField`, and it does not
+explain them.
+
+### What was not measured, and why
+
+- **The in-engine A/B is untouched.** Every cell in *Verification*'s table opens
+  a full-screen MiniBrowser window on the user's desktop, which this run is
+  forbidden to do. All 20 scored and gate-only cells, the `packages/qa/README.md`
+  `form-flat` / `form-nested` figures, and the re-measured M24 / M25 readings are
+  the user's step. Nothing here should be read as an in-engine result.
+- **The resize ladder (444 → 228 `doLayout` per unit) was not re-derived.** That
+  figure comes from the plan's own modelled ablation, which this run did not
+  rebuild. E3 pins the behavioural half instead — a narrowed root really does
+  move both picker children and lay both out, the button keeps its 24-pixel
+  column, and a round trip back to 800 restores every rectangle in the scene to
+  its settled value.
+- **One *Potential Challenges* worry did not arise.** The plan warns that under a
+  theme where the picker button's content-derived preferred width diverges from
+  `PICKER_BUTTON_WIDTH_PX` the button would take one extra pass per field pass.
+  E11 settles the scene under a `ModernTheme` clone at a 20px font and then drives
+  each control's own pass asserting that no internal lays out, which it does —
+  so the two still agree at that font size.
+
+### Offline verification, as run
+
+`npm run typecheck`, `npm run typecheck:test`, `npm run lint`, `npm run test:lint`
+— all clean. `npm test` from the repo root — green, with the start point's
+516 files / 8664 tests plus this branch's one new file and its 21 cases (the
+figures were 518 / 8689 before the `Row` half was reverted, which took a file and
+four cases with it).
+`npm run docs:api` — 0 errors and 14 warnings, the pre-existing set unchanged.
+`npm run docs:llms:check` — clean. `npm run build:lib` then `packages/qa`'s own
+`npm test` — 448 / 453, which is the start point's figure exactly: the five red
+cases are phase 6's four `A11` / `A12` ablation counters and the `P16
+scroll-panes` witness, all about `Panel`'s scroll-metrics skip and none reachable
+from this change.
