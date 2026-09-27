@@ -199,14 +199,13 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     declare private _autoScroll:      AutoScrollMode;
     declare private _scrollbarGutter: { right: number; bottom: number };
 
-    // Scroll-shadow state. `_scrollShadows`, `_shadowOverlay` and `_shadowScrollHandler`
+    // Scroll-shadow state. `_scrollShadows` and `_shadowOverlay`
     // are written by `setScrollShadows` / `setAutoScroll` during the super-time
     // options cascade, so they are `declare`d (no initialiser) and seeded in
     // `applyOptions` to dodge the class-field super-cascade trap — an
     // initialiser would run after super() and clobber the seeded value.
     declare private _scrollShadows:       boolean;
     declare private _shadowOverlay:       Handle | null;
-    declare private _shadowScrollHandler: (() => void) | null;   // cached bound scroll handler — wired once
     // The overlay's four edge strips. Written by the same `setScrollShadows`
     // super-cascade dispatch as `_shadowOverlay` above, so it needs the same
     // `declare` + `applyOptions`-seed treatment for the same reason.
@@ -234,16 +233,25 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
     // Overlay-scrollbar state. `_scrollbarStyle` is written by
     // `setScrollbarStyle` during the super-time options cascade, and
-    // `_overlayScrollElement` / `_scrollbarV` / `_scrollbarH` / `_overlayScrollHandler`
+    // `_overlayScrollElement` / `_scrollbarV` / `_scrollbarH`
     // are read (for the teardown guard) by the setter's install/refresh path
-    // it triggers — so all five are `declare`d and seeded in `applyOptions`
+    // it triggers — so all four are `declare`d and seeded in `applyOptions`
     // for the same class-field super-cascade reason as the scroll-shadow
     // fields above.
     declare private _scrollbarStyle:       ScrollbarStyle;
     declare private _overlayScrollElement: Handle | null;            // raw inner scroll div (bars are its siblings)
     declare private _scrollbarV:           Scrollbar | null;
     declare private _scrollbarH:           Scrollbar | null;
-    declare private _overlayScrollHandler: (() => void) | null;      // native "scroll" -> sync
+
+    // The one subtree "scroll" listener both the overlay bars and the shadow
+    // edges are driven from: it reads the scrolling element's metrics once and
+    // hands them to each. Either consumer can be installed while the other is
+    // absent, so whether the listener is still needed is read off both their
+    // fields rather than owned by one of them. `declare`d and seeded in `applyOptions` for the
+    // same class-field super-cascade reason as the two handler fields it
+    // replaces: both teardown paths that read it can run from a setter
+    // dispatched during the `super()` cascade.
+    declare private _scrollHandler: (() => void) | null;
 
     // Runtime-only: never touched during the super cascade (the inner scroll
     // element only exists post-render), so a plain initialiser is safe here —
@@ -341,6 +349,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         this._panelSizeMoved            = false;
         this._scrollMetricsSettleHandle = null;
 
+        // Seed the shared scroll listener's field here rather than beside either
+        // consumer's own state below: `setAutoScroll` is the first setter this
+        // cascade dispatches whose teardowns (`refreshOverlayScrollbars` and
+        // `refreshScrollShadows`) reach `releaseScrollListener`, which reads it.
+        this._scrollHandler             = null;
+
         // Always dispatch `setAutoScroll` — the fallback is the class
         // default from `_defaultPanelOptions`. Routing through the setter
         // (even for the default) keeps the `declare`d backing field
@@ -348,11 +362,10 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // would bite a `= "none"` initialiser.
         this.setAutoScroll(options.autoScroll ?? this.getAutoScroll());
 
-        // Seed the `declare`d overlay/handler fields before `setScrollShadows`
+        // Seed the `declare`d overlay fields before `setScrollShadows`
         // dispatches — the setter's teardown branch reads them, and the
         // `declare` leaves them `undefined` until first written.
         this._shadowOverlay        = null;
-        this._shadowScrollHandler  = null;
         this._shadowStrips         = [];
 
         // Always dispatch so the backing field is seeded through the setter,
@@ -367,7 +380,6 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         this._overlayScrollElement = null;
         this._scrollbarV           = null;
         this._scrollbarH           = null;
-        this._overlayScrollHandler = null;
 
         // Always dispatch so the backing field is seeded through the setter,
         // mirroring the `setAutoScroll` / `setScrollShadows` cascades above;
@@ -1374,10 +1386,10 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     }
 
     /**
-     * Creates the overlay and wires the scroll listener if they are not
-     * already present. Idempotent: the `_shadowOverlay` / `_shadowScrollHandler` guards
-     * keep it from stacking a duplicate overlay or listener across repeated
-     * calls (the "wire once" rule).
+     * Creates the overlay, sizes it, and wires the shared scroll listener if
+     * they are not already present. Idempotent: the `_shadowOverlay` guard and
+     * {@link ensureScrollListener}'s own keep it from stacking a duplicate
+     * overlay or listener across repeated calls (the "wire once" rule).
      *
      * @param element - The rendered panel element to append the overlay to.
      */
@@ -1386,18 +1398,71 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             this.createScrollShadowOverlay(element);
         }
 
-        if (!this._shadowScrollHandler) {
-            const handler = (): void => {
-                this.updateScrollShadows();
-            };
+        this.ensureScrollListener();
+        this.resizeScrollShadowOverlay(element);
+    }
 
-            this._shadowScrollHandler = handler;
-            // Subtree, not exact-target: in overlay mode the scroll fires on the
-            // id-less inner element, which only reaches the panel's id-keyed
-            // listener bag by climbing the subtree. Native mode's scroll fires on
-            // the panel element itself, which the subtree walk also matches.
-            Event.addSubtreeListener(this, "scroll", handler);
+    /**
+     * Wires the one subtree `"scroll"` listener both the overlay bars and the
+     * shadow edges are driven from, unless it is already wired.
+     *
+     * @remarks Subtree, not exact-target: in overlay mode the scroll fires on
+     * the id-less inner element, which only reaches the panel's id-keyed
+     * listener bag by climbing the subtree. Native mode's scroll fires on the
+     * panel element itself, which the subtree walk also matches. The handler
+     * reads `getScrollElement()`, not the event target, so a nested descendant's
+     * scroll only triggers a harmless re-read.
+     */
+    private ensureScrollListener(): void {
+        if (this._scrollHandler) {
+            return;
         }
+
+        const handler = (): void => {
+            this.handleScroll();
+        };
+
+        this._scrollHandler = handler;
+        Event.addSubtreeListener(this, "scroll", handler);
+    }
+
+    /**
+     * Unwires the shared scroll listener, but only once neither consumer is left
+     * to need it — the shadow overlay and the inner overlay scroller are
+     * installed and torn down independently of each other.
+     *
+     * @remarks Each teardown path must call this *after* nulling its own field,
+     * or the guard reads the state the caller is in the middle of leaving and a
+     * panel that dropped its last consumer keeps a listener with nothing to
+     * serve.
+     */
+    private releaseScrollListener(): void {
+        if (!this._scrollHandler || this._shadowOverlay || this._overlayScrollElement) {
+            return;
+        }
+
+        Event.removeSubtreeListener(this, "scroll", this._scrollHandler);
+        this._scrollHandler = null;
+    }
+
+    /**
+     * The shared scroll listener's body: reads the scrolling element's metrics
+     * once and hands the same read to both consumers, rather than letting each
+     * measure the same element for itself. The same shape
+     * {@link remeasureScrollMetrics} already uses one layer in, where a single
+     * box read feeds three pure calculations over it.
+     */
+    private handleScroll(): void {
+        const el = this.getScrollElement();
+
+        if (!el) {
+            return;
+        }
+
+        const metrics = DOM.source.getScrollMetrics(el);
+
+        this.syncOverlayScrollbars(metrics);
+        this.updateScrollShadows(undefined, metrics);
     }
 
     /**
@@ -1445,16 +1510,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     }
 
     /**
-     * Tears the overlay down and unwires the scroll listener, resetting the
-     * cached edge state. Each step is guarded so this is safe to call before
-     * the overlay was ever created (e.g. during the construction cascade).
+     * Tears the overlay down and releases the shared scroll listener (unless the
+     * overlay bars still need it), resetting the cached edge state. Each step is
+     * guarded so this is safe to call before the overlay was ever created (e.g.
+     * during the construction cascade).
      */
     private removeScrollShadows(): void {
-        if (this._shadowScrollHandler) {
-            Event.removeSubtreeListener(this, "scroll", this._shadowScrollHandler);
-            this._shadowScrollHandler = null;
-        }
-
         if (this._shadowOverlay) {
             for (const strip of this._shadowStrips) {
                 DOM.sink.removeElement(strip);
@@ -1474,6 +1535,9 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             this._shadowOverlayStyle = new InlineStyle();
         }
 
+        // After `_shadowOverlay` is null, so the release guard reads the truth.
+        this.releaseScrollListener();
+
         this._shadowEdges = { top: 0, bottom: 0, left: 0, right: 0 };
     }
 
@@ -1492,6 +1556,19 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * measures, which is what keeps the "stays inside the viewport box, so it
      * never extends the scrollable region" invariant true on the shrinking pass
      * as well as the settled one.
+     *
+     * Called when the overlay is installed or refreshed, and never from the
+     * scroll path, which cannot have changed either input: the size is a function
+     * of the panel's own client box and the cached gutter, and a scroll moves
+     * neither. Every write that does move one of them ends in a layout pass, and
+     * a measuring pass asserts the same size without coming through here — from
+     * the {@link resolveShadowOverlaySize} / {@link applyShadowOverlaySize} pair
+     * it drives off its own read. The exception is a pass the resize-settle relay
+     * is withholding, which measures nothing and so leaves the overlay at its
+     * pre-burst box until {@link flushScrollMetricsSettle} catches up: the same
+     * few frames of staleness `doLayout`'s own withheld branch already accepts
+     * for the gutter reservation, and which the scroll path used to paper over by
+     * re-asserting the size on every scroll.
      *
      * @param element - Optional. The panel element; falls back to the rendered
      *   element. Passed explicitly from `init`, where `getElement` is not yet
@@ -1513,32 +1590,32 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     }
 
     /**
-     * Sizes the overlay to the live viewport and recomputes each edge's shadow
-     * strength from its distance to that extreme. `sticky` handles the
-     * positioning, so the per-scroll path only re-asserts the viewport size (a
-     * no-op write unless it changed) and rescales the edges — no positioning
-     * work runs here.
+     * Recomputes each edge's shadow strength from its distance to that edge's
+     * extreme. `sticky` handles the positioning and
+     * {@link resizeScrollShadowOverlay} owns the sizing, so this is all the
+     * per-scroll path does — no positioning and no box write run here.
      *
      * @param element - Optional. The panel element; falls back to the rendered
      *   element. Passed explicitly from `init`, where `getElement` is not yet
      *   populated.
+     * @param metrics - Optional. The scrolling element's already-read metrics,
+     *   handed in by the shared scroll listener so one read serves both
+     *   consumers. Read here when absent.
      */
-    private updateScrollShadows(element?: Handle): void {
+    private updateScrollShadows(element?: Handle, metrics?: ScrollMetrics): void {
         const el = element ?? this.getElement();
 
         if (!el || !this._shadowOverlay) {
             return;
         }
 
-        // Read the scroll offsets and extents from the element that actually
+        // Without a read handed in, take one from the element that actually
         // scrolls — the inner scroller in overlay mode (the panel element's own
-        // offsets are always 0 there), the panel element otherwise. The overlay
-        // is still sized against, and pinned to, the panel element (`el`).
-        const metrics = DOM.source.getScrollMetrics(this.getScrollElement() ?? el);
-
-        this.resizeScrollShadowOverlay(el);
-
-        const edges = this.resolveShadowEdges(metrics);
+        // offsets are always 0 there), the panel element otherwise. That is the
+        // same element the shared handler reads, so either source measures the
+        // same box.
+        const resolved = metrics ?? DOM.source.getScrollMetrics(this.getScrollElement() ?? el);
+        const edges    = this.resolveShadowEdges(resolved);
 
         if (edges) {
             this.applyShadowEdges(edges);
@@ -1590,7 +1667,8 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
     /**
      * Creates the inner scroll element (if absent), appends the two `Scrollbar`
-     * widgets as its siblings on the panel element, and hides the native bar.
+     * widgets as its siblings on the panel element, wires the shared scroll
+     * listener, and hides the native bar.
      * Idempotent: the element/bars/listener are each guarded by a `null` check,
      * so repeated calls neither stack duplicates nor re-hide an already-hidden
      * bar — but the inner element's per-axis overflow IS re-asserted on every
@@ -1665,28 +1743,18 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             this._scrollbarH.on("scroll", this._onOverlayScrollH);
         }
 
-        if (!this._overlayScrollHandler) {
-            // Subtree, not exact-target: the inner scroll element is a raw,
-            // id-less div, so its native "scroll" only reaches the panel's
-            // id-keyed listener bag by climbing the subtree to the panel element
-            // (the same mechanism the wheel listener uses). The handler reads
-            // `getScrollElement()`, not the event target, so a nested
-            // descendant's scroll only triggers a harmless re-read.
-            const handler = (): void => {
-                this.syncOverlayScrollbars();
-            };
-
-            this._overlayScrollHandler = handler;
-            Event.addSubtreeListener(this, "scroll", handler);
-        }
+        this.ensureScrollListener();
 
         this.setNativeScrollbarHidden(true);
     }
 
     /**
-     * Tears the overlay scrollbar down: unwires the native scroll listener,
-     * disposes both bars, re-parents content off the inner scroll host and
-     * removes it, un-hides the native bar, and clears any reserved gutter.
+     * Tears the overlay scrollbar down: disposes both bars, re-parents content
+     * off the inner scroll host and removes it, then — last, once
+     * `_overlayScrollElement` is null, which is the ordering
+     * {@link releaseScrollListener}'s guard depends on — releases the shared
+     * scroll listener unless the shadow overlay still needs it, un-hides the
+     * native bar and clears any reserved gutter.
      * Each step is guarded so this is safe to
      * call before the overlay was ever created (e.g. during the construction
      * cascade). Disposing (rather than only detaching) is required because
@@ -1697,11 +1765,6 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * stylesheet rule.
      */
     private removeOverlayScrollbars(): void {
-        if (this._overlayScrollHandler) {
-            Event.removeSubtreeListener(this, "scroll", this._overlayScrollHandler);
-            this._overlayScrollHandler = null;
-        }
-
         if (this._scrollbarV) {
             this._scrollbarV.off("scroll", this._onOverlayScrollV);
             this._scrollbarV.dispose();
@@ -1734,6 +1797,10 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             // in `removeScrollShadows`).
             this._overlayScrollStyle = new InlineStyle();
         }
+
+        // After `_overlayScrollElement` is null, so the release guard reads the
+        // truth.
+        this.releaseScrollListener();
 
         this.setNativeScrollbarHidden(false);
 
@@ -1799,21 +1866,23 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
     /**
      * Re-pushes metrics (thumb size/position only) to both overlay bars against
-     * the inner scroller's live scroll offset. Called from the native `"scroll"`
+     * the inner scroller's live scroll offset. Called from the shared `"scroll"`
      * handler — geometry (bar position/size, reserved gutter, inner element
      * size) changes only on layout, so this never repositions or resizes
      * anything and never schedules a layout.
+     *
+     * @param metrics - The inner scroller's already-read metrics. The shared
+     *   handler reads them from `getScrollElement()`, which resolves to that
+     *   same inner element whenever the bars are installed, so no read of its
+     *   own is needed here.
      */
-    private syncOverlayScrollbars(): void {
-        const innerEl = this._overlayScrollElement;
-        if (!innerEl || !this._scrollbarV || !this._scrollbarH) {
+    private syncOverlayScrollbars(metrics: ScrollMetrics): void {
+        if (!this._overlayScrollElement || !this._scrollbarV || !this._scrollbarH) {
             return;
         }
 
-        const m = DOM.source.getScrollMetrics(innerEl);
-
-        this._scrollbarV.setMetrics(m.clientHeight, m.scrollHeight, m.scrollTop);
-        this._scrollbarH.setMetrics(m.clientWidth,  m.scrollWidth,  m.scrollLeft);
+        this._scrollbarV.setMetrics(metrics.clientHeight, metrics.scrollHeight, metrics.scrollTop);
+        this._scrollbarH.setMetrics(metrics.clientWidth,  metrics.scrollWidth,  metrics.scrollLeft);
     }
 }
 
