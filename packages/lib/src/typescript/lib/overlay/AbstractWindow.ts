@@ -1500,9 +1500,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             // what represents the window from here — though a *collapsed*
             // rail shows no handle until it expands, so an attach to one
             // leaves the window with no on-screen representation at all
-            // (pre-existing, and the follow-up hand-over plan's to fix). No
-            // genie either way: the window is already minimized, so there is
-            // no minimize gesture left to animate.
+            // (by design — the collapsed strip's chevron is what expands it
+            // again). No genie either way: the window is already minimized, so
+            // there is no minimize gesture left to animate.
             //
             // Detaching pairs that hide with its show, as every other
             // ownership hand-over here does: the relayout below hands the
