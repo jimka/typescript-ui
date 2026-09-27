@@ -42,6 +42,24 @@ workspace.addComponent(content);    // centre
 workspace.addComponent(properties); // right
 ```
 
+## Spacing between panes
+
+`Split` reserves a `spacing` pixel gap between each pair of panes, defaulting to `0` — panes touch out of the box, and the gutter that sits between them contributes nothing to the layout. Set `spacing` for a wider gap:
+
+```typescript
+const workspace = Component();
+workspace.setLayoutManager(Split({ orientation: 'horizontal', spacing: 8 }));
+```
+
+The visible divider between two panes is the `spacing` gap plus each neighbour's own **unpainted** facing content inset — a pane's inset only shows as empty space when the pane paints no background of its own; a pane that paints has its inset inside its own painted surface, contributing nothing extra:
+
+| panes (facing content insets) | paints a background? | divider at `spacing: 0` |
+|---|---|---|
+| `Component` 0 \| `Component` 0 | no \| no | 0 px |
+| `List` 0 \| `TextArea` 3 | yes \| yes | 0 px |
+| `Button` 10 \| `Text` 0 | yes \| no | 0 px |
+| `Panel` 4 \| `Panel` 4 | no \| no | 8 px |
+
 ## Per-child constraints
 
 Each panel starts at its **preferred size** (explicit or class-default), clamped to its min/max — the same base-plus-weight model as [`HBox`](/layouts/HBox) / [`VBox`](/layouts/VBox). The `weight` constraint distributes the leftover space among the weighted panels, so a fixed panel sits beside a `weight: 1` panel that absorbs the remainder; a panel with neither a preferred size nor a weight falls back to an equal share. A later change to a panel's preferred size is ignored (the seed is a one-time hint), but **min/max are enforced live** — setting `min == max` pins a panel to that width (a collapse), and the other panels reflow to fill.
@@ -200,6 +218,7 @@ A split with no `resizeMode` of its own follows the app-wide default set through
 | Method | Purpose |
 | --- | --- |
 | `setOrientation(value)` | `'horizontal'` (default) or `'vertical'`. |
+| `setComponentSpacing(px)` | Pixel gap reserved between adjacent panes; defaults to `0`. |
 | `setPaneSize(pane, px)` | Seed or override a pane's stored main-axis size in pixels. |
 | `getPaneSize(pane)` | Read a pane's stored main-axis size, or `undefined` when unset. |
 | `setPaneCollapsed(index, value)` | Collapse or restore the pane at `index`. |
@@ -211,8 +230,8 @@ A split with no `resizeMode` of its own follows the app-wide default set through
 
 ## Notes
 
-- A `Split` reports a content-derived **preferred** (and **minimum**) size, like [`HBox`](/layouts/HBox) / [`VBox`](/layouts/VBox): pane sizes summed along the split axis plus the gutter footprint, and the largest pane across it. So a host layout sizes the split to fit its panes (a vertical split prefers the sum of its panes' heights; a horizontal split, the sum of their widths). This is a hint to the host and is separate from the dragged per-pane sizes, which only distribute the split's actual extent.
-- Gutter visuals are themed via the `gutter.background` token — see [Theming](/concepts/theming#theme-keys). A movable gutter's real hit box extends a few pixels past its visual footprint into each neighbouring pane, and fades in a `gutter.hoverBackground` wash on hover, mirroring VS Code's sash.
+- A `Split` reports a content-derived **preferred** (and **minimum**) size, like [`HBox`](/layouts/HBox) / [`VBox`](/layouts/VBox): pane sizes summed along the split axis plus the reserved inter-pane `spacing`, and the largest pane across it. So a host layout sizes the split to fit its panes (a vertical split prefers the sum of its panes' heights; a horizontal split, the sum of their widths). This is a hint to the host and is separate from the dragged per-pane sizes, which only distribute the split's actual extent.
+- The gutter reserves no space of its own and paints nothing in its expanded state; a movable gutter's hit box is 10px, centred on the `spacing` gap between panes (at the default `spacing: 0` that means straddling the pane boundary, 5px into each neighbour), and fades in a `gutter.hoverBackground` wash on hover, mirroring VS Code's sash.
 - Drag interactions disable body pointer events during the drag to suppress text selection.
 - For a non-resizable two-region split, use [`Border`](/layouts/Border) instead.
 
