@@ -337,3 +337,167 @@ The two `@remarks` edits in step 2 are public JSDoc, so per [CODE_CONVENTIONS.md
 [^guard]: From *The two repaired cells answer* and *The sitting* in the post-campaign agenda. Three of nine `sdp` runs in the earlier sitting were spoiled by a trusted `mousemove` at the physical cursor reaching the driver's live drag: two returned error results and a third passed the end-of-phase check while carrying six distinct sidebar rectangles, its width sweeping 4520 → 4675 px across five units at a `maxMs` of 88 against plain means near 8.7. Both repairs landed with `qa-cell-determinism`, and the repaired sitting confirms them on real data — the guard reports 22 device-input types dropped on every run and names the interference it absorbed during two scored runs of this cell.
 
 [^accordion]: `Accordion`'s drag path calls `layoutSections` with `reflowAll: false` (`Accordion.ts:2148`), which withholds a section's `doLayout()` whenever `contentHeight === oldHeight`, asking nothing about that section's own dirty or metrics state. A section owed a fold-back pass loses it for the length of a parked accordion-gutter drag, the same way an ungated `Split` pane would. F06.10 already records that the two managers mirror each other's drag mechanics, and this is one more instance. It is left alone here deliberately: this plan's measured surface is the `Split` park cell, and no cell in the campaign parks an `Accordion` gutter, so a change there would ship unmeasured.
+
+---
+
+## Implementation Notes
+
+Implemented as designed: three samples in `onDrag`'s `const` block, two
+read-back comparisons, one private `Split.layoutDraggedPane(pane, moved)` holding
+the collapsed-neighbour early return and the `canSkipUnchangedCommit()` gate. No
+public API moved. `grep -n '\.doLayout();' layout/Split.ts` gives the two matches
+step 8 lists, and `canSkipUnchangedCommit(` gives one.
+
+### The test set is larger than D1-D8, because D1-D8 did not pin the gate
+
+`Split.dragFrameGate.test.ts` carries fourteen cases, not eight. Fourteen
+mutations of the shipped gate were applied one at a time and the suite re-run
+against each; every one kills at least one case. With only the prescribed D1-D8 in
+place, **eight of the fourteen stayed green** — the prescribed set could not tell
+the implementation from:
+
+- `rhsMoved` with its position term deleted;
+- `rhsMoved` with its extent term deleted;
+- the two panes' verdicts swapped, so each pane is gated on the other's;
+- `lhsMoved` computed as `dragAmount !== 0` instead of from the read-back;
+- any of the **four orientation ternaries** collapsed onto the x axis —
+  `wasLhsMain`, `wasRhsMain`, `wasRhsPos` or `lhsMoved` reading `getWidth()` /
+  `getX()` unconditionally.
+
+Four cases close them. **D2b** and **D2c** drive the state in which the *trailing*
+pane's two terms come apart: `onDrag` captures the pair's combined size once, at
+the press, so a container resize under a live drag leaves that capture larger than
+the two panes now hold. D2b then drives a frame back to the press coordinate,
+where the leading pane is asked for the width it already has and nothing moves it,
+while the stale capture still widens the trailing pane: extent term only. D2c
+drives the one travel for which the stale capture asks the trailing pane for the
+width it already holds, so only the gutter's travel moves it: position term only.
+The swap dies on D2b.
+
+**That stale capture is a pre-existing `onDrag` defect, not a legitimate state**,
+and neither case asserts the geometry it produces. Because the trailing pane's
+requested size is `total − newLhs`, both frames commit it wider than the shrunken
+host and overflow it. D2b and D2c therefore assert only the pass counts — this
+gate's contract — and the leading pane's box, with the overflow named in a comment
+as out of scope, exactly as D2d does for its sibling instance of the same capture
+defect. Asserting the overflowing boxes would have pinned a bug as expected
+output. Both instances are recorded in the agenda as their own candidate.
+
+**D6b** is the case the plan's own `[^unsound]` argues for but does not
+prescribe, and the one a counter cannot express. An opted-in pane whose manager
+commits one child against its trailing edge takes `LayoutManager.commitBounds`'
+size-stable-move fast path on the first moving frame. D6b asserts, on the *next
+and parked* frame, that `child.getTranslateX()` is back to `0`, that
+`getWillChange()` is `null`, and that the child's committed box carries the real
+position — and that the frame after that skips. Dropping the gate turns it red.
+The soundness claim is pinned by its consequence, not by a call count.
+
+**D2d** closes the fourth, and it exists because the first version of these notes
+got the mechanism wrong; the audit caught it. This file previously claimed the
+leading pane's read-back was provably equal to `dragAmount !== 0` and that the
+plan's `[^read-back]` described a case that could not happen. Both claims were
+false, for a reason neither the plan nor the first reading of it named:
+`resolveLhsSize` clamps as `Math.max(loLhs, Math.min(hiLhs, …))`
+(`layout/Split.ts:1561`), so when the bracket **inverts** — `loLhs`, which is
+`total − maxRhs`, passing `hiLhs`, which is `min(maxLhs, total − minRhs)` — the low
+bound wins and the returned size can sit past the leading pane's own maximum.
+Dropping the trailing pane's ceiling mid-drag does exactly that: on the scene's
+parked 250, a trailing max of 100 makes `loLhs` 296, the leading pane is handed
+296, its own `setWidth` clamps it back to 250, and `dragAmount` is 46 while the
+pane moved nowhere. D2d drives that and the read-back skips it correctly, where
+`dragAmount !== 0` would not. The `[^read-back]` rationale stands; it simply
+names a different trigger (a grown `minSize`) than the reachable one (an inverted
+bracket).
+
+Two smaller claims in that first version were wrong too, and are worth recording
+so they are not repeated: `pairBounds` does **not** read the panes' live sizes
+directly — it goes through `paneMinSize` / `paneMaxSize`, which return the collapse
+snapshot for an undisplayed pane (`layout/Split.ts:753-772`); and
+`Component.clampWidth` does not apply the merged min/max for every pane — a
+`Container` or `Panel` clamps only to its explicit constraints
+(`core/Component.ts:4734-4750`). So `pairBounds` and the pane's own clamp have two
+independent reasons to disagree, not zero.
+
+**Dv1** and **Dv2** close the last four. Every case D1-D8 prescribes is
+horizontal, and `onDrag` samples its three numbers through an orientation
+ternary, so the whole `getHeight()` / `getY()` arm of the gate was unexercised:
+collapsing any of those ternaries onto the x axis left the other twelve cases —
+and the whole library suite — green while a vertical `Split` over opted-in panes
+stopped laying its panes out on a gutter move at all. Dv1 and Dv2 repeat D1 and
+D2 on a 300x400 vertical split whose main-axis figures are chosen to match the
+horizontal scene's exactly, so the two pairs read against each other. This gap was
+found by the audit, not by the prescribed set.
+
+### D6's prescribed expectation was wrong, and needed splitting in two
+
+The plan's D6 reuses "a scene whose leading pane holds one child" and expects the
+same counts as D5 — one pass per pane after driving `[400, 500]`. It cannot be:
+once the pane's manager really places that child, the moving frame can leave the
+pane owed the fold-back pass, which the parked frame then runs, giving `[2, 1]`.
+The plan predicts this in *Potential Challenges* ("The first parked frame of a
+real drag may still lay out") without carrying it into D6. Rather than assert the
+compound number, the two mechanisms were separated: D6 uses a `PinnedChild`
+manager that commits the child at the pane's origin, so no frame moves it and
+`markPassOwedAbove()` is isolated, and D6b uses `TrailingEdge` for the fold-back.
+
+One pre-existing defect surfaced while proving D2d, and is left alone: on the
+inverted-bracket frame `onDrag` moves the gutter and the trailing pane by the
+*unclamped* `dragAmount` while the leading pane's own clamp holds it back, so the
+gutter ends up detached from the pane edge it divides (gutter x 293 against a
+leading pane ending at 250). It predates this branch — `dragAmount` was computed
+and used the same way before it — and this gate neither causes nor fixes it. D2d
+therefore asserts only the leading pane's box, with a comment saying why, rather
+than locking the wrong geometry in. The agenda entry records it as its own
+candidate.
+
+### One instruction had to be weighed against another — flagged for the user
+
+The dispatch for this phase said **do not touch `packages/qa/tests/`**, scoped to
+five inherited failures (A11's three cases, A12, P16) that this worker was told
+not to fix. The plan's step 4 requires an additive fixture change in
+`packages/qa/tests/ablations.test.ts`: the shipped gate withholds the pane passes
+that A3's and A3b's `doLayout` stand-ins intercept, so without it this branch adds
+**three new failures** (A3, and A3b's two cases) — which the other half of the
+same instruction, *no new failures beyond those five*, forbids. Step 4 was
+implemented, as narrowly as possible: one `owePaneLayouts(fixture)` helper beside
+`splitFixture` calling `invalidateLayout()` on both panes, and one call in each of
+the three cases. It touches none of the five inherited cases and makes none of
+them pass. `npm -w packages/qa run test` reads **448 passed / 5 failed both
+before and after**, with the same five titles. The user may still prefer this hunk
+to move to whichever branch settles the five.
+
+### Smaller notes
+
+- **`npm run docs:api` finishes with 14 warnings, not the zero step 2 asks for.**
+  All 14 pre-date this branch and none names `Split` or a symbol this change
+  touches; the bar applied was no new warnings. Neither `@remarks` edit links
+  `canSkipUnchangedCommit`, as the plan requires — both describe the predicate in
+  prose.
+- **`plans/in-progress/` did not exist** in this worktree, so the plan's move
+  needed the directory created before `git mv`.
+- **Line numbers drifted, no API did.** `Component.canSkipUnchangedCommit` is at
+  `:4540` (plan: 4507) and `Panel.canSkipUnchangedLayout` at `:622` (plan: 610);
+  phase 6's `protected isLayoutSettled()` sits between them and
+  `canSkipUnchangedCommit` now delegates to it, which changes nothing this plan
+  relies on. Phase 7's eleven opt-ins are all form-control internals and reach no
+  `Split` pane.
+- **Baselines measured on the start point before any edit:** library `npm test`
+  8685 passed / 517 files; `npm -w packages/qa run test` 448 passed, 5 failed. The
+  library suite now reads 8699 passed / 518 files, all green.
+
+### Manual verification still owed
+
+Neither manual case was run: both open a window on the user's desktop, which this
+run was forbidden from doing.
+
+- **D9 — a real parked drag.** In the demo or Loom, drag a `Split` gutter past a
+  pane's minimum, hold, wiggle the pointer, then reverse. Expect: the gutter stays
+  glued to the cursor; the panes' content does not change or flicker while parked,
+  including on the first parked frame; and the reversal starts moving at the
+  boundary coordinate with no dead zone. A pane whose content visibly settles one
+  frame *into* the park is the fold-back D6b pins, and is correct.
+- **D10 — the engine cell.** The `wt`/`main` library A/B on
+  `panel=shell-deep&drive=park` exactly as *Verification → The engine cell*
+  specifies, read against `split.noop-control` and never against plain. Expect
+  `geom =` on every run, `work` about 2018 → 293 per unit, and Δms inside the
+  cell's own bracket. Nothing here may be reported as a render-time win.

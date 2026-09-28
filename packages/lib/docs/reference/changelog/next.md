@@ -529,6 +529,20 @@ page resets to empty.
   state. A custom pane that relied on a `doLayout` call per animation frame to
   pick up a change it never announced must call `scheduleLayout()` itself.
 
+- **A `Split` gutter-drag frame whose clamp leaves a pane at the box it already
+  holds no longer lays that pane out.** Dragging a gutter past a pane's minimum
+  or maximum and holding there — what dragging a sidebar shut produces — runs
+  one frame per repaint in which no pane moves, and each of those frames used to
+  lay both neighbouring panes out anyway. The skip applies to a pane whose class
+  opted into the unchanged-commit layout skip and which owes no pass; a pane that
+  did not opt in is laid out on every frame as before, and so is one that is
+  owed a pass, including the one that folds back a descendant moved by the
+  compositor on an earlier frame of the same drag. The panes' stored sizes are
+  still written on every frame, parked or not, so the split ratio the next
+  `doLayout` restores is unaffected. A custom pane that relied on a `doLayout`
+  call per drag frame to pick up a change it never announced must call
+  `scheduleLayout()` itself.
+
 ### Validation
 
 - **A `FieldDecorator` is no longer re-laid-out when its parent re-commits it

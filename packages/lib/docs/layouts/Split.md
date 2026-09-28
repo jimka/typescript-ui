@@ -187,7 +187,7 @@ A saved array whose length or per-index unit no longer matches the live panes (e
 
 ## Live or outline resizing
 
-By default a gutter drag lays both neighbouring panes out on every frame, so their content reflows as the gutter moves. With `resizeMode: 'outline'` the panes stay put while a thin accent-blue line follows the pointer — stopping exactly where the drag would stop — and the panes are laid out once, on release. Press Escape before releasing to cancel: the line disappears and nothing changes.
+By default a gutter drag lays both neighbouring panes out on every frame that moves them, so their content reflows as the gutter moves. A frame that can move neither pane — the pointer held past a pane's minimum or maximum, which is what dragging a sidebar shut produces — lays out neither, as long as the pane's own class opts into the unchanged-geometry layout skip (`Panel` does) and the pane is not owed a pass. With `resizeMode: 'outline'` the panes stay put while a thin accent-blue line follows the pointer — stopping exactly where the drag would stop — and the panes are laid out once, on release. Press Escape before releasing to cancel: the line disappears and nothing changes.
 
 ```typescript
 const split = Split({ orientation: 'horizontal', resizeMode: 'outline' });

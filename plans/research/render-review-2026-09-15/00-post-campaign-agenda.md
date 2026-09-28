@@ -1456,3 +1456,76 @@ plain, since a runtime patch costs about 4 ms there.
   every case the difference was found by reading the library rather than by any
   cell. An ablation bounds the opportunity; it does not prototype the fix, and a
   plan that inherits its mechanism inherits a defect.
+
+## F06.3 implemented, and its read-back rule was only half right (2026-09-27)
+
+**Closed by `plans/implemented/split-noop-drag-frame-gate.md`.** `Split.onDrag`
+now samples the leading pane's main-axis extent and the trailing pane's position
+and extent before its four setter writes, compares all three back after them, and
+routes both layout calls through a private `layoutDraggedPane(pane, moved)` that
+lays the pane out when this frame moved its committed box or when
+`Component.canSkipUnchangedCommit()` refuses to let the pass be withheld. The
+collapsed-neighbour early return moved into the helper unchanged. Fourteen offline
+cases in `Split.dragFrameGate.test.ts` pin it, and all fourteen mutations of the
+gate that were tried kill at least one of them — including the four that collapse
+its orientation ternaries onto the x axis, which nothing in the plan's own D1-D8
+would have caught, since every prescribed case is horizontal.
+
+- **The stranded promotion is now a test, not an argument.** The entry above
+  reasons about a descendant left with `will-change: transform` and a live
+  translate for the length of a park. That is executable offline: an opted-in
+  pane whose manager commits one child against its trailing edge takes
+  `commitBounds`' size-stable-move fast path on the first moving frame, and case
+  D6b then asserts on the *next, parked* frame that the translate is back to 0,
+  that `getWillChange()` is `null`, and that the child's committed box carries
+  the real position — and that the frame after that skips. Mutating the gate away
+  turns it red. So the plan's central soundness claim is pinned by consequence
+  rather than by a call count, which is what the campaign's vacuous-verification
+  record asked for.
+
+- **The read-back earns its place twice over, and `resolveLhsSize` can return a
+  size past a pane's own maximum.** Both halves of the three-sample comparison are
+  load-bearing, for two independent reasons the plan does not name. For the
+  *trailing* pane it is the drag's **captured pair total**: `total` is sampled once
+  at the press, so a container resize under a live drag leaves it larger than the
+  two panes now hold and the trailing pane's requested size stops following from
+  the leading pane's travel — cases D2b and D2c drive that and are the only two
+  that distinguish its extent term from its position term. For the *leading* pane
+  it is an **inverted clamp bracket**: `resolveLhsSize` clamps as
+  `Math.max(loLhs, Math.min(hiLhs, …))` (`layout/Split.ts:1561`), so once `loLhs`
+  (`total − maxRhs`) passes `hiLhs` (`min(maxLhs, total − minRhs)`) the low bound
+  wins and the returned size sits *above* `maxLhs`. Dropping the trailing pane's
+  ceiling mid-drag does it: the leading pane is handed 296, its own `setWidth`
+  clamps back to 250, and `dragAmount` reads 46 for a pane that moved nowhere.
+  Case D2d drives that. So `[^read-back]`'s rationale holds and only its example
+  is wrong — the trigger is the inverted bracket, not a grown `minSize`.
+
+- **Two things this file asserted on 2026-09-27 and had to take back.** The first
+  version of this entry claimed the leading pane's read-back was provably
+  equivalent to `dragAmount !== 0`; an audit disproved it with the scene above.
+  It also claimed `pairBounds` reads the panes' live merged sizes and that those
+  are what `Component.clampWidth` applies. Neither is true: `pairBounds` goes
+  through `paneMinSize` / `paneMaxSize`, which substitute the collapse snapshot
+  for an undisplayed pane (`layout/Split.ts:753-772`), and a `Container` or
+  `Panel` clamps only to its *explicit* constraints, not the merged ones
+  (`core/Component.ts:4734-4750`). The pair therefore has two independent reasons
+  to disagree with the pane's own clamp. Recorded because the campaign's habit of
+  arguing a mechanism from a partial read is exactly what the four-of-nine finding
+  above is about, and this entry did it once more.
+
+- **Two pre-existing `Split.onDrag` defects surfaced while proving that, both from
+  the same once-captured drag state.** On the inverted-bracket frame `onDrag` moves
+  the gutter and the trailing pane by the **unclamped** `dragAmount` while the
+  leading pane's clamp holds it back, leaving the gutter detached from the pane
+  edge it divides (gutter x 293 against a leading pane ending at 250). And because
+  the trailing pane's size is `total − newLhs` against a `total` sampled at the
+  press, a container resize under a live drag makes the next frame commit that pane
+  **wider than its host** (296 px inside a 300 px host whose leading pane holds
+  100). Both predate this branch and this gate neither causes nor fixes either, so
+  D2b, D2c and D2d assert only the leading pane's box and the pass counts, rather
+  than locking the wrong geometry in. One candidate covering both, unplanned.
+
+- **Still owed: the engine cell.** `panel=shell-deep&drive=park` as a `wt`/`main`
+  library A/B has not been run; it opens a full-screen window and needs the
+  user's go-ahead. The offline work stands on its own for correctness, and the
+  −85.5% remains the arm's upper bound, unconfirmed for the shipped gate.

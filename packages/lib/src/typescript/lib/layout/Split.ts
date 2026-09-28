@@ -1424,6 +1424,17 @@ class Split extends LayoutManager implements FocusRevealer {
      * coordinate. The stored sizes for both affected panels are updated so the
      * next `doLayout` call preserves the user-defined split ratio.
      *
+     * A frame whose clamp leaves a panel at the box it already holds does not
+     * lay that panel out again, provided the panel's class opted into the
+     * unchanged-geometry layout skip and the panel owes no pass — nothing has
+     * marked its layout since it last ran, no first-layout callback is waiting,
+     * and its last pass measured text against the current metrics. A panel that
+     * did not opt in is laid out on every frame, as before. Whether a panel
+     * moved is read back off its committed box after the writes, never inferred
+     * from the requested delta, because a panel's own size clamp can commit
+     * somewhere other than the size it was handed. The stored sizes above are
+     * written on every frame either way, parked or not.
+     *
      * This clamp is deliberately not core/DragChain.ts's N-way chainRoom /
      * distributeDragChain mechanism, which Accordion's gutter drag and Table's
      * column-resize drag share: a Split boundary always has exactly two
@@ -1442,7 +1453,14 @@ class Split extends LayoutManager implements FocusRevealer {
         const total      = this._dragOriginLhsSize + this._dragOriginRhsSize;
         const newLhs     = this.resolveLhsSize(this.pairBounds(lhs, rhs, horizontal), position);
         const newRhs     = total - newLhs;
-        const dragAmount = newLhs - (horizontal ? lhs.getWidth() : lhs.getHeight());
+        // Read before the writes and compared after them, the rule
+        // `Component.writeBounds` and `commitBounds` share: a pane's own clamp
+        // can move it somewhere other than the size it was handed. These three
+        // numbers are the whole of what one frame writes.
+        const wasLhsMain = horizontal ? lhs.getWidth() : lhs.getHeight();
+        const wasRhsMain = horizontal ? rhs.getWidth() : rhs.getHeight();
+        const wasRhsPos  = horizontal ? rhs.getX()     : rhs.getY();
+        const dragAmount = newLhs - wasLhsMain;
 
         if (horizontal) {
             lhs.setWidth(newLhs);
@@ -1459,14 +1477,41 @@ class Split extends LayoutManager implements FocusRevealer {
         this._sizes.set(lhs, newLhs);
         this._sizes.set(rhs, newRhs);
 
-        // A collapsed neighbour whose content is out gets its box only, as in
-        // `commitPanes`: its own layout must not run while it stays collapsed.
-        if (!this._undisplayedPaneContent.has(lhs)) {
-            lhs.doLayout();
+        const lhsMoved = (horizontal ? lhs.getWidth() : lhs.getHeight()) !== wasLhsMain;
+
+        const rhsMoved = (horizontal ? rhs.getWidth() : rhs.getHeight()) !== wasRhsMain
+                      || (horizontal ? rhs.getX()     : rhs.getY())      !== wasRhsPos;
+
+        this.layoutDraggedPane(lhs, lhsMoved);
+        this.layoutDraggedPane(rhs, rhsMoved);
+    }
+
+    /**
+     * Lays a dragged pane out, unless this frame left the pane's committed box
+     * where it was *and* the pane's own unchanged-commit gate allows the pass to
+     * be withheld — the per-moment predicate {@link Component.applyBounds} and
+     * `LayoutManager.commitBounds` apply to the very same panes on every
+     * non-drag pass, here through {@link Split.commitPanes}. Withholding on the
+     * unmoved box alone would be unsound: a size-stable move commits as a
+     * compositor transform and marks the pass that folds it back as owed, and
+     * the drag's own frames are the only passes either pane gets while the
+     * pointer is down, so an ungated skip would strand that fold-back — and the
+     * `will-change` promotion with it — for as long as the drag stays parked.
+     *
+     * The collapsed-neighbour early return is behaviour moved out of
+     * {@link Split.onDrag} unchanged: a pane whose content is out gets its box
+     * only, as in {@link Split.commitPanes}.
+     *
+     * @param pane - The pane beside the dragged gutter.
+     * @param moved - Whether this frame changed the pane's committed main-axis box.
+     */
+    private layoutDraggedPane(pane: Component, moved: boolean): void {
+        if (this._undisplayedPaneContent.has(pane)) {
+            return;
         }
 
-        if (!this._undisplayedPaneContent.has(rhs)) {
-            rhs.doLayout();
+        if (moved || !pane.canSkipUnchangedCommit()) {
+            pane.doLayout();
         }
     }
 
@@ -1545,14 +1590,19 @@ class Split extends LayoutManager implements FocusRevealer {
      * which applies at most one per animation frame — laying it out in live
      * mode, moving the outline in outline mode. A native `mousemove` fires far
      * more often than the screen repaints, and `onDrag` is not cheap: it
-     * triggers a real `doLayout()` of both adjacent panes on every call — for
-     * two plain panels that is negligible, but a pane hosting something like a
-     * mounted `CodeEditor` reacts to its own width change with an internal
-     * remeasure, so an unthrottled drag can end up running that whole chain
-     * once per raw pointer-move rather than once per rendered frame, visibly
-     * stuttering the gutter under a fast real drag. Only the most recent
-     * event before a frame lands is kept — an intermediate position between
-     * two `mousemove` events was never going to be visible anyway.
+     * triggers a real `doLayout()` of both adjacent panes on every call that
+     * moves them — for two plain panels that is negligible, but a pane hosting
+     * something like a mounted `CodeEditor` reacts to its own width change with
+     * an internal remeasure, so an unthrottled drag can end up running that
+     * whole chain once per raw pointer-move rather than once per rendered
+     * frame, visibly stuttering the gutter under a fast real drag. A frame that
+     * moves neither pane, the pointer held past a pane's own clamp, lays out
+     * neither — but only for a pane whose class opted into the
+     * unchanged-geometry layout skip and which owes no pass, so that spares a
+     * parked drag and not a moving one, which is what this coalescing is for.
+     * Only the most recent event before a frame lands is kept — an intermediate
+     * position between two `mousemove` events was never going to be visible
+     * anyway.
      *
      * @param container - The gutter's owning container, forwarded to `onDrag`.
      * @param gutter - The gutter being dragged, forwarded to `onDrag`.

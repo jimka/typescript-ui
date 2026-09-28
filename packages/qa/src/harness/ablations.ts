@@ -387,11 +387,14 @@ function afterRootStyleApply(lib: HarnessLibrary, listener: () => void): void {
  * per-frame `withOwnMethodOnEach` install and restore, the rectangle snapshot
  * and the compare — is shared, so the control pays it too.
  *
- * With `skip`, the layout of a pane the frame left at its rectangle is skipped:
- * F06.3's proposed fix, a port of `Accordion.layoutSections`'
- * `contentHeight !== oldHeight` gate. `onDrag`'s write of the pair's stored
- * sizes still runs either way, since a frame at offset 0 writes the rendered
- * size back into them.
+ * With `skip`, the layout of a pane the frame left at its rectangle is skipped
+ * unconditionally, a port of `Accordion.layoutSections`'
+ * `contentHeight !== oldHeight` gate. The shipped fix is not this: it asks each
+ * pane's own unchanged-commit gate before withholding the pass, which this arm
+ * never does, so the arm bounds the shipped gate from above — it reproduces its
+ * full saving only where both panes' class opted into the skip. `onDrag`'s write
+ * of the pair's stored sizes still runs either way, since a frame at offset 0
+ * writes the rendered size back into them.
  *
  * Without `skip` every one of those layouts still runs and is only counted,
  * which is the control: it carries exactly the candidate's patching cost and
