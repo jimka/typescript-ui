@@ -160,6 +160,8 @@ interface SplitDragFrame {
 interface SplitOutlineDrag {
     /** The two neighbours' bounds, read once when the drag started. */
     bounds: PairBounds;
+    /** The pair's combined main-axis extent, read once when the drag started. */
+    total: number;
     /** The outline's box at the press. */
     line: OutlineRect;
 }
@@ -216,7 +218,6 @@ class Split extends LayoutManager implements FocusRevealer {
 
     private _dragOriginPointer: number = 0;
     private _dragOriginLhsSize: number = 0;
-    private _dragOriginRhsSize: number = 0;
 
     // This split's own resize mode; `null` follows the app-wide default.
     private _resizeMode: ResizeMode | null = null;
@@ -1397,10 +1398,12 @@ class Split extends LayoutManager implements FocusRevealer {
 
     /**
      * Captures the drag origin when a gutter's drag begins: the absolute
-     * pointer coordinate and the current sizes of the two adjacent panels.
-     * Subsequent `drag` events derive the new sizes from these origins so
+     * pointer coordinate and the leading panel's current size. Subsequent
+     * `drag` events derive the pointer's travel from that origin, so
      * over-travel past a panel's minimum is absorbed without decoupling the
-     * gutter from the cursor on reversal.
+     * gutter from the cursor on reversal. The room that travel is divided into
+     * is not captured here for a live drag — it is read off the two panels on
+     * every frame, so a container resized mid-drag is followed.
      *
      * @param container - The container component that owns the panels.
      * @param gutter - The gutter whose drag is starting.
@@ -1408,8 +1411,10 @@ class Split extends LayoutManager implements FocusRevealer {
      *   in the split axis at the moment the drag began.
      *
      * @remarks Also starts the drag in this split's resize mode: an outline
-     * drag draws the gutter's line here, reading the pair's bounds once, and
-     * nothing is laid out again until the release.
+     * drag draws the gutter's line here, reading the pair's bounds and their
+     * combined extent once — it writes no panel while the pointer is down, so
+     * its preview replays one press-time basis — and nothing is laid out again
+     * until the release.
      */
     onDragStart(container: Component, gutter: SplitGutter, position: number) {
         let gutterIdx = this._gutters.indexOf(gutter);
@@ -1420,18 +1425,17 @@ class Split extends LayoutManager implements FocusRevealer {
 
         const horizontal = this._orientation === "horizontal";
 
-        if (horizontal) {
-            this._dragOriginLhsSize = lhs.getWidth();
-            this._dragOriginRhsSize = rhs.getWidth();
-        } else {
-            this._dragOriginLhsSize = lhs.getHeight();
-            this._dragOriginRhsSize = rhs.getHeight();
-        }
+        this._dragOriginLhsSize = horizontal ? lhs.getWidth() : lhs.getHeight();
+
+        // The pair's combined main-axis extent at the press. Only an outline
+        // drag keeps it: it writes no pane while the pointer is down, so it
+        // replays the same press-once basis its `bounds` already come from.
+        const originTotal = this._dragOriginLhsSize + (horizontal ? rhs.getWidth() : rhs.getHeight());
 
         if (this.getResizeMode() === "outline") {
             const line = gutterOutline(rectOf(gutter), horizontal ? "x" : "y");
 
-            this._outlineDrag = { bounds: this.pairBounds(lhs, rhs, horizontal), line };
+            this._outlineDrag = { bounds: this.pairBounds(lhs, rhs, horizontal), total: originTotal, line };
             this._resizeDrag.beginOutline({ parent: DOM.source.getParentNode(gutter.getElement()!)!, start: line, zIndex: IN_PAGE_OUTLINE_Z_INDEX });
         } else {
             this._outlineDrag = null;
@@ -1447,14 +1451,23 @@ class Split extends LayoutManager implements FocusRevealer {
      * @param position - The absolute pointer coordinate (`clientX`/`clientY`) in
      *   the split axis for this move.
      *
-     * @remarks The new panel sizes are computed from the drag origin captured in
-     * {@link onDragStart} as `origin + (position − originPointer)`, then clamped
-     * against each panel's minimum size while conserving the pair's combined
-     * size. Clamping the absolute result (rather than accumulating per-move
-     * deltas) means dragging past a panel's minimum is idempotent: the panel
-     * stays at its floor until the pointer returns past the boundary
+     * @remarks The new panel sizes are computed from two bases: the drag origin
+     * captured in {@link onDragStart} for the pointer's travel, as
+     * `origin + (position − originPointer)`, and the panels' own live combined
+     * extent for the room that travel is clamped into, so a container resize
+     * under a live drag is followed rather than overflowed. The travel is
+     * clamped against each panel's minimum size while conserving the pair's
+     * combined size. Clamping the absolute result (rather than accumulating
+     * per-move deltas) means dragging past a panel's minimum is idempotent: the
+     * panel stays at its floor until the pointer returns past the boundary
      * coordinate. The stored sizes for both affected panels are updated so the
      * next `doLayout` call preserves the user-defined split ratio.
+     *
+     * The gutter's and the trailing panel's writes are derived from the extent
+     * the leading panel actually committed, never from the size it was handed:
+     * a panel refuses a size outside its own bounds, so a frame its own clamp
+     * rejects moves neither the gutter nor its neighbour, and the gutter stays
+     * on the panel edge it divides for as long as the drag is held past a limit.
      *
      * A frame whose clamp leaves a panel at the box it already holds does not
      * lay that panel out again, provided the panel's class opted into the
@@ -1482,9 +1495,6 @@ class Split extends LayoutManager implements FocusRevealer {
         let rhs = container.getLaidOutComponents()[gutterIdx + 1];
 
         const horizontal = this._orientation === "horizontal";
-        const total      = this._dragOriginLhsSize + this._dragOriginRhsSize;
-        const newLhs     = this.resolveLhsSize(this.pairBounds(lhs, rhs, horizontal), position);
-        const newRhs     = total - newLhs;
         // Read before the writes and compared after them, the rule
         // `Component.writeBounds` and `commitBounds` share: a pane's own clamp
         // can move it somewhere other than the size it was handed. These three
@@ -1492,30 +1502,46 @@ class Split extends LayoutManager implements FocusRevealer {
         const wasLhsMain = horizontal ? lhs.getWidth() : lhs.getHeight();
         const wasRhsMain = horizontal ? rhs.getWidth() : rhs.getHeight();
         const wasRhsPos  = horizontal ? rhs.getX()     : rhs.getY();
-        const dragAmount = newLhs - wasLhsMain;
+        // The pair's combined extent, which this frame divides between the two
+        // panes. Read live rather than captured at the press: the drag's own
+        // writes conserve it, so a per-frame read agrees with a press capture on
+        // every frame of an ordinary drag and follows the container when a
+        // resize under a live drag re-divides the panes.
+        const total      = wasLhsMain + wasRhsMain;
+        const newLhs     = this.resolveLhsSize(this.pairBounds(lhs, rhs, horizontal), position, total);
+
+        let committedLhs: number;
 
         if (horizontal) {
             lhs.setWidth(newLhs);
+
+            committedLhs = lhs.getWidth();
+
+            const dragAmount = committedLhs - wasLhsMain;
+
             gutter.setX(gutter.getX() + dragAmount);
             rhs.setX(rhs.getX() + dragAmount);
-            rhs.setWidth(newRhs);
+            rhs.setWidth(total - committedLhs);
         } else {
             lhs.setHeight(newLhs);
+
+            committedLhs = lhs.getHeight();
+
+            const dragAmount = committedLhs - wasLhsMain;
+
             gutter.setY(gutter.getY() + dragAmount);
             rhs.setY(rhs.getY() + dragAmount);
-            rhs.setHeight(newRhs);
+            rhs.setHeight(total - committedLhs);
         }
 
-        this._sizes.set(lhs, newLhs);
-        this._sizes.set(rhs, newRhs);
+        const nowRhsMain = horizontal ? rhs.getWidth() : rhs.getHeight();
+        const nowRhsPos  = horizontal ? rhs.getX()     : rhs.getY();
 
-        const lhsMoved = (horizontal ? lhs.getWidth() : lhs.getHeight()) !== wasLhsMain;
+        this._sizes.set(lhs, committedLhs);
+        this._sizes.set(rhs, nowRhsMain);
 
-        const rhsMoved = (horizontal ? rhs.getWidth() : rhs.getHeight()) !== wasRhsMain
-                      || (horizontal ? rhs.getX()     : rhs.getY())      !== wasRhsPos;
-
-        this.layoutDraggedPane(lhs, lhsMoved);
-        this.layoutDraggedPane(rhs, rhsMoved);
+        this.layoutDraggedPane(lhs, committedLhs !== wasLhsMain);
+        this.layoutDraggedPane(rhs, nowRhsMain !== wasRhsMain || nowRhsPos !== wasRhsPos);
     }
 
     /**
@@ -1582,11 +1608,12 @@ class Split extends LayoutManager implements FocusRevealer {
      *
      * @param bounds - The pair's bounds, from {@link pairBounds}.
      * @param position - The absolute pointer coordinate in the split axis.
+     * @param total - The pair's combined main-axis extent to divide: read live
+     *   by a live frame, and captured at the press by an outline preview.
      *
      * @returns The clamped main-axis size for the leading pane.
      */
-    private resolveLhsSize(bounds: PairBounds, position: number): number {
-        const total  = this._dragOriginLhsSize + this._dragOriginRhsSize;
+    private resolveLhsSize(bounds: PairBounds, position: number, total: number): number {
         const offset = position - this._dragOriginPointer;
         const loLhs  = Math.max(bounds.minLhs, total - bounds.maxRhs);
         const hiLhs  = Math.min(bounds.maxLhs, total - bounds.minRhs);
@@ -1610,7 +1637,7 @@ class Split extends LayoutManager implements FocusRevealer {
             return null;
         }
 
-        const travel = this.resolveLhsSize(outline.bounds, frame.position) - this._dragOriginLhsSize;
+        const travel = this.resolveLhsSize(outline.bounds, frame.position, outline.total) - this._dragOriginLhsSize;
 
         return this._orientation === "horizontal"
             ? { ...outline.line, x: outline.line.x + travel }

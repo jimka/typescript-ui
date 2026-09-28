@@ -1541,7 +1541,11 @@ would have caught, since every prescribed case is horizontal.
   **wider than its host** (296 px inside a 300 px host whose leading pane holds
   100). Both predate this branch and this gate neither causes nor fixes either, so
   D2b, D2c and D2d assert only the leading pane's box and the pass counts, rather
-  than locking the wrong geometry in. One candidate covering both, unplanned.
+  than locking the wrong geometry in. **Both fixed by
+  [`plans/implemented/split-drag-unclamped-geometry.md`](../../implemented/split-drag-unclamped-geometry.md)**:
+  the gutter and the trailing pane are now placed from the extent the leading pane
+  committed, re-read after the write, and the pair's combined extent is read live
+  each frame instead of at the press.
 
 - **Still owed: the engine cell.** `panel=shell-deep&drive=park` as a `wt`/`main`
   library A/B has not been run; it opens a full-screen window and needs the

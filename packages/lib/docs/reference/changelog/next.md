@@ -1695,6 +1695,17 @@ page resets to empty.
 
 ### Layouts
 
+- **A `Split` gutter dragged past a pane's own size limit no longer detaches
+  from the pane edge it divides, and a container resized under a live drag no
+  longer leaves the trailing pane committed wider than its host.** One drag
+  frame placed the gutter and the trailing pane from the size the leading pane
+  was handed, which its own clamp can refuse, and divided a combined extent
+  captured when the pointer went down. Both are now derived from the extent the
+  leading pane actually committed, re-read after the write, and the pair's
+  combined extent is read once per frame instead of at the press.
+  `getPaneSizes()` likewise reports the committed extent rather than the
+  requested one on a frame a pane's clamp refused.
+
 - **`Tab.setTabGlyph(content, glyph)` / `clearTabGlyph(content)` no longer
   silently drop a write made before the tab's strip cell exists.** Both used
   to return `false` and write nothing for a tab added moments ago but not yet
