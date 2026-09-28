@@ -34,9 +34,9 @@ export interface BodyOptions extends Omit<ComponentOptions, "components"> {
     nativeContextMenu?: boolean;
 
     /**
-     * The resize mode of every `Split`, resizable `Accordion` and window that
-     * sets none of its own — including the ones a `Dock` builds. Defaults to
-     * `"live"`. See {@link Body.setResizeMode}.
+     * The resize mode of every `Split`, resizable `Accordion`, `Table` and
+     * window that sets none of its own — including the ones a `Dock` builds.
+     * Defaults to `"live"`. See {@link Body.setResizeMode}.
      */
     resizeMode?: ResizeMode;
 }
@@ -97,7 +97,8 @@ export class Body extends Component<BodyOptions> {
      * `<link rel="icon">` of its own or `options.favicon` is `false`, and
      * suppresses the browser's native right-click menu page-wide, unless
      * `options.nativeContextMenu` is `true`. `options.resizeMode` sets the
-     * app-wide gutter- and window-edge-drag mode at the same time.
+     * app-wide gutter-, table-column- and window-edge-drag mode at the same
+     * time.
      *
      * @param options - Component options to apply (layout manager, background,
      *   …); `components` is not a field — see {@link BodyOptions}.
@@ -220,10 +221,10 @@ export class Body extends Component<BodyOptions> {
 
     /**
      * Sets the app-wide resize mode: how every `Split` gutter, resizable
-     * `Accordion` gutter and window edge that sets no mode of its own shows a
-     * drag. `"outline"` moves a thin outline to where the edge will land and
-     * lays the content out once, on release; `"live"` (the default) lays it
-     * out on every frame.
+     * `Accordion` gutter, `Table` column edge and window edge that sets no mode
+     * of its own shows a drag. `"outline"` moves a thin outline to where the
+     * edge will land and lays the content out once, on release; `"live"` (the
+     * default) lays it out on every frame.
      *
      * @param mode - The app-wide mode; takes effect from the next drag.
      *

@@ -415,6 +415,32 @@ whether that is the default or an opt-in, or else find a way to keep header and
 body in step while still skipping the per-cell layout — moving the cells with a
 transform during the burst, for instance, and reconciling on the settle.
 
+**Resolved by `plans/implemented/table-column-resize-outline-mode.md`.** The
+answer the user gave is the opt-in, and it dissolves the question rather than
+answering it: `Table` becomes the fourth owner of `core/ResizeDrag.ts`'s
+`ResizeMode` seam, and under `"outline"` the *header* is held back too, so header
+and body never disagree — what the user saw in the ablated runs was a header that
+moved over a body that did not, and here neither moves until the release. Nothing
+is deferred, because no layout pass runs during the drag at all; a 4 px bar on the
+dragged edge, spanning the header band and the body together, is what tracks the
+pointer. `"live"` stays the default, unchanged down to the frame a layout lands
+on.
+
+Two corrections to the above. `VirtualRowView.deferRowLayoutWhileResizing` is
+*not* the pattern to extend: its trigger is a width change observed inside a
+render pass, with a two-frame settle relay to catch the rows up, and an outline
+drag produces no pass for it to withhold while knowing exactly when the drag
+ended — extending it would keep a settle relay armed for a burst with nothing in
+it. And the settled-state gate this entry asks for is still needed here, though
+not because the focus question was ever real: the mid-burst units differ from the
+live arm by design under `"outline"` too, so the measurement cell recorded in the
+plan gates geometry on the last unit of its trailing `idle` phase rather than
+across the burst. No
+measurement was run — every harness that could take one opens a full-screen
+window — and the `103.02 → 81.58 ms` figure above is not a prediction for this
+mode: it was driven by `drive=resize`, the window-resize stand-in, not a
+column-edge drag.
+
 ## Found while implementing the ten-plan batch (2026-09-25)
 
 The ten plans that close out this agenda's open items are implemented as one

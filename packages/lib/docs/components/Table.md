@@ -327,6 +327,40 @@ For example, with available width 500 and four columns at `[200, 150, 100,
 gives up 130px from its neighbours before they bottom out, and the remaining
 70px widens the table to 570.
 
+### Live or outline resizing
+
+By default a column-resize drag lays the table out on every frame, so the
+header cells move and every rendered body cell is placed again under them.
+With `setResizeMode('outline')` the table stays exactly as it is while a thin
+accent-blue bar follows the pointer to where the dragged edge would land —
+stopping exactly where the drag would stop — and the columns are laid out once,
+on release. Press Escape before releasing to cancel: the bar disappears and
+nothing changes.
+
+```typescript
+table.setResizeMode('outline');
+```
+
+The bar spans the table from the top of the header band to the bottom of the
+body, so the edge it marks reads against both at once. A table with no mode of
+its own follows the app-wide default set through
+[`Body.init`](/components/Body#resize-mode), which is `'live'` unless you
+change it; `setResizeMode(null)` goes back to following it. The mode is read
+when a drag starts, so a call made mid-drag takes effect from the next one.
+`TreeTable` inherits all of this. Outline mode trades the live reflow for one
+composited write per frame; how much that saves depends on the table, and is
+not something this page puts a number on.
+
+Because the columns are laid out only at the end, an outline drag is abandoned
+— bar removed, nothing committed — if anything else changes the columns or
+their widths while it is running: showing or hiding a column, swapping the
+store, resetting the columns, switching to the rotated view, a re-sample driven
+by incoming data on an `autoSizeColumns` table, or the container resizing. The
+drag's widths were resolved against the columns as they were at the press, so
+committing them afterwards would undo whatever changed. Release and press again
+to resize against the new columns. A live drag is unaffected: it has already
+applied every move it made.
+
 ## Dirty state
 
 The table reports itself dirty, through the framework's
@@ -383,6 +417,7 @@ table.on("cellclick", e => {
 | `getSelectedRecord()` / `getSelectedRecords()` | Current selection. |
 | `setColumnVisible(field, boolean)` | Show / hide a column. |
 | `setColumnWidths(widths[])` | Set all column widths at once. |
+| `getResizeMode()` / `setResizeMode(mode)` | Whether a column-resize drag lays the table out live or moves a bar and lays out once on release. `null` follows the app-wide default. |
 | `setHeaderVisible(boolean)` / `setBodyVisible(boolean)` / `setFooterVisible(boolean)` | Toggle structural sections. |
 | `exportCSV(options?)` / `exportJSON(options?)` / `exportTSV(options?)` | Trigger a download of the current store view. |
 | `setExportMenuEnabled(boolean)` | Adds "Export as CSV" / "Export as JSON" / "Export as TSV" entries to the column context menu. |

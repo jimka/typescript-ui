@@ -519,3 +519,244 @@ From `packages/lib`:
 [^bar-x-assert]: The bar's absolute x depends on `TableHeader`'s content insets, which come from the theme's default options rather than from anything the fixture sets. Asserting `getX() + 2` against the header's own content origin plus the first column's width states the real contract — the bar is centred on the dragged edge — without pinning a number the theme owns.
 
 [^measurement]: The figures the agenda records for `g22.settle-relay` — `treetable-rows` · `resize` at 103.02 → 81.58 ms per frame and work −92.4% — are indicative of the payoff, not a prediction for this mode. Two things differ. That ablation was driven by `drive=resize`, the harness's window-resize stand-in, which re-lays the whole table out at a new width each frame ([packages/qa/src/harness/drivers.ts:272](packages/qa/src/harness/drivers.ts#L272)) — not a column-edge drag. And it deferred cell bounds within a pass that still ran, whereas `"outline"` runs no pass at all and paints a bar instead. The cell above measures the mode as built; nothing here should be reported as its expected result.
+
+---
+
+## Implementation Notes
+
+Eleven notes. Five are prescribed verifications that could not have caught a
+regression; three are gaps the prescribed cases left open; one is a defect the
+audit found in the shipped code, over two rounds, and the plan's own blind spot
+behind it; one records a step of the implement skill this plan deliberately
+scoped out; one lists what is left to verify by hand.
+
+### T8 as prescribed cannot pass
+
+`## Expected Behaviour`'s T8 asks that after `table.dispose()` mid-drag,
+"`Event.listenerCounts().viewport` is back to its pre-drag value". It is not, and
+cannot be: disposing the table also unregisters the eight viewport listeners a
+live table of this fixture holds, so the count reads 3 against a pre-drag 11
+whether or not the bar was cleaned up. The assertion compares two different
+populations and fails on a correct implementation — it failed on the first run of
+the finished code.
+
+Rewritten to measure the residue instead: a control table of the same shape is
+built and disposed first, giving what one table's disposal leaves behind (the
+session-wide watches a `Tooltip` installs, which outlive every table); the case
+then asserts that starting the drag adds exactly two listeners — the bar's
+`keydown` and its window `blur` — and that disposing the dragging table returns
+the count to that residue. Mutation-checked: deleting `this._resizeDrag.cancel()`
+from `Table.destructor` turns it red, which the prescribed form would not have.
+
+### Three of T2's geometry assertions cannot fail in T2's own fixture
+
+T2 asserts `getY()` against `table.getContentBounds()!.y` and `getX() + 2`
+against `header.getX() + header.getContentBounds()!.x + 200`. In the fixture the
+content origin is `(0, 0)`, the header sits at `x: 0`, and the header's scroll
+offset is 0 — so a `columnEdgeOutline` that wrote `y: 0` outright, or dropped
+`this._header.getX()`, or dropped `- this._header.getScrollX()`, passes T2
+unchanged. All three were confirmed by mutation.
+
+Two cases were added rather than the fixture changed, since `## Ordered
+Implementation Steps` step 14 asks for it verbatim. **T14** gives a table of the
+same shape `Insets(7, 0, 0, 5)`, which moves the content origin to `(5, 7)` and
+the header to `x: 5`, and asserts the bar's top, height and x against them; it
+plants the widths after the fixture's own layout pass, because a pass over an
+inset table rescales them to its narrower band. **T15** scrolls the header 30 px
+and asserts the bar lands on the visible edge. One term stays unfalsifiable
+offline: `headerBox?.x ?? 0` is 0 for every table the harness can build, because
+`TableHeader` declares no left content inset. It is defensive against one being
+added later — which is the exposure `## Potential Challenges` already names — and
+only T10, by hand, sees the composed result.
+
+### Nothing in T1–T9 reaches the widths a release pins
+
+`commitColumnResize`'s `pinColumnWidths(outline.moved, outline.widths)` could be
+deleted outright, and every prescribed case stays green; so could
+`movedColumns`'s own comparison, and so could `commitColumnResize`'s
+`scheduleLayout()`. Three assertions were added. T5 now asserts the pinned map
+and that exactly one layout is scheduled across the whole drag in **both** modes
+— outline on the release, live on the move, one either way. **T16** runs the same
+drag out and back in both modes and asserts they pin the identical map, which is
+what the `moved` Set buys: column A ends where it started, so a diff of the
+committed widths against the final ones would not pin it, while `moved` does.
+Substituting that diff is a mutation only T16 catches.
+
+### The event chain the plan adds is verified by greps alone
+
+`## Verification` checks `resizeend` and `columnresizeend` with `grep -n`. A grep
+cannot tell a wired listener from an unwired one, and the chain — `ResizeHandle`'s
+`dragend` to `HeaderCell`'s `"resizeend"` to `TableHeader`'s `"columnresizeend"`
+to `Table.onColumnResizeEnd` — is the whole reason two files outside `Table.ts`
+are touched. Every prescribed case calls `onColumnResizeEnd()` directly, so
+deleting any one of the three forwardings leaves the suite green. **T17** drives
+the gesture through the real events instead: a `mousedown` on the first header
+cell's resize handle, then the viewport `mousemove` and `mouseup` that
+`HeaderCell.onResizeDragStart` installs. Deleting any of the three forwardings
+turns it red.
+
+### Nothing pinned `beginLive()`
+
+`[^live-untouched]` argues the call earns its place because it resets the
+session, "so a previous outline drag left open cannot leak its bar or its
+buffered move into a live one" — but no prescribed case switches mode with a
+drag open. **T18** does: it presses in outline mode, switches the table to
+`'live'`, presses again, and asserts the stale bar is gone and off screen.
+Removing `this._resizeDrag.beginLive()` was the only one of twenty-six mutations
+the suite failed to catch before T18 existed.
+
+### T1's tables had to be registered for disposal
+
+As prescribed, T1 builds `new Table(store)` three times and disposes none of
+them. Every `Table` leaves entries in `Event`'s per-type registration maps, which
+`DOM.reset()` does not clear; a surviving type map then stops the next case's
+`addListener` re-registering the base listener against the fresh sink, and T17 —
+the only case that dispatches real DOM events — heard nothing and failed. T1 now
+builds its tables through a helper that registers them for the `afterEach`
+disposal every other case already relied on. This is the same hazard
+`Split.resizeMode.test.ts`'s `afterEach` comment describes, reached from the
+other side.
+
+### The `moved` Set, and what `commit`'s argument is for
+
+`ResizeDragHooks.commit` receives the last buffered move; `commitColumnResize`
+ignores it, as `## Internal Structure` specifies. Worth recording why that is
+sound rather than sloppy: `ResizeDrag.end()` force-flushes the buffer through
+`preview` before it calls `commit`, so `_outlineDrag.widths` already holds the
+freshest move's result and the argument would be a second, redundant route to
+the same numbers — resolving it again would double-count the travel.
+
+### The abnormal-termination paths, and where each is pinned
+
+Enumerated because deferring the body's relayout means the header and body
+disagree for the length of the drag, and every way the drag can end has to
+resolve that. Escape — T7. The browser window losing focus — T11 (the plan pins
+only Escape; both reach `ResizeDrag.cancel` through the bar's own viewport
+listeners, but only a Table-level case proves the table's session is the one
+being cancelled). Disposal mid-drag — T8. A fresh press over a drag still open,
+in outline mode — T12, and in live mode — T18. A release after a cancel, which
+must commit nothing — the tails of T7 and T11. A release with no move at all —
+T6. A move after a release, which the newly-cleared `_dragEdgeIndex` makes inert
+— T13. There is no `pointercancel` path to pin: `HeaderCell` drives the gesture
+with mouse events, and a release outside the browser window arrives as the
+window blur T11 covers.
+
+### The plan never considers the column set changing mid-drag
+
+Found by the audit, and a real defect in the code as first written. An outline
+drag holds a private copy of the widths taken at the press, and `## Internal
+Structure` has the release commit that copy back unconditionally. Seven paths
+rebuild the columns or their widths without knowing a drag is open —
+`setStore`, `setColumnVisible`, `resetColumns`, `bindView`, the two rotated
+rebuilds and `maybeResampleColumnWidths` — and the plan considers none of them.
+`[^end-no-payload]` makes it worse by arguing the release needs no column index
+because "exactly one drag is ever live", which is true, and because
+`columnIndexOf` returns `-1` for a recycled cell, which is exactly how a release
+can go missing altogether.
+
+Three consequences were reproduced. Hiding a column the drag had spilled travel
+onto made the release throw, because `pinColumnWidths` looks each moved index up
+in a column list that had since shrunk — and it had already pinned a stale width
+before throwing, and the throw skipped `onColumnResizeEnd`'s own clearing.
+Hiding the dragged column itself stranded the bar on screen with its two
+viewport listeners, because the cell whose mouseup would have released it was
+recycled away. And a width re-sample mid-drag was overwritten on release by the
+press-time snapshot, so the two modes stopped landing in the same place — the
+one thing T5 exists to guarantee.
+
+Fixed with `Table.cancelOutlineColumnDrag()`, called from every path that
+rebuilds the columns or their widths. It follows `AbstractWindow.setWindowState`,
+which cancels its own session when another path changes what the drag is
+resizing; `Split` needs no equivalent because a pane cannot leave
+mid-gutter-drag, which is why the plan's precedent had nothing to copy here. The
+method is a no-op outside an outline drag, so `'live'` never reaches it — a live
+drag advances its tracked pointer every move and reads the rebuilt widths on the
+next one, exactly as it does today, which `## Non-Goals` requires.
+
+Two further defects in that fix, both found by the audit's second round, both in
+the same blind spot. First, clearing `_outlineDrag` alone was not enough to end
+the gesture: the button is still down, so moves keep arriving, and with the
+dragged edge still set they applied *live* from `_dragLastClientX` — which an
+outline drag never advances — jumping the edge by the whole travel since the
+press and pinning the result. The dragged edge is cleared too now, which ends
+the gesture; the user releases and presses again. The first attempt left it set
+on the reasoning that a live drag survives a rebuild today, which was wrong: a
+live drag advances its tracked pointer every move, so it has no accumulated
+travel to jump by. `AbstractWindow` blocks post-cancel moves through its own
+state guard, which is the half of that precedent the first fix missed.
+
+Second, the explicit call sites were not the whole set. The layout manager writes
+the widths back through `setColumnWidths` on every pass and rescales them when
+the available width changes, so a pass the drag never asked for — the container
+resized, a vertical scrollbar appearing on load — left the snapshot describing
+widths the table no longer had, and the release undid the rescale and restored a
+total the container could not hold. `setColumnWidths` now abandons an open drag
+when the widths it writes differ from the ones already there; an unchanged write,
+which is what an ordinary pass mid-drag performs, leaves it alone, or every
+unrelated layout during a drag would silently cancel it. T21 pins that, T27 the
+pass that must not abandon.
+
+**A third round of the audit caught a regression introduced by the second.**
+Seeing the backstop catch every case the tests then covered, the second fix
+deleted six of the seven explicit calls as dead code. They are not. The
+mutation tests that licensed the deletion all ran on the suite's flexible
+`string` fixture, where a layout pass always rescales, so the backstop always saw
+a change. On a table whose every column is fixed-width — four `number` columns —
+`rescaleWidths` returns the widths it was handed untouched
+(`layout/Table.ts:492`), and `setColumnVisible` and `resetColumns` assign
+`_columnWidths` themselves *before* laying out. The setter then compares the new
+widths against themselves, finds no change, and the drag survives: hiding a
+column the drag had spilled onto made the release throw again, and a reset was
+undone by it. That is the same crash this note opened by claiming was fixed.
+
+The six calls are restored, and `## Expected Behaviour`'s reasoning is not
+something the flexible fixture can check. T28–T30 run the hide, the re-show and
+the reset against a fixed-width fixture built for the purpose, and pin
+`setColumnVisible`'s and `resetColumns`' own calls; T22 pins
+`maybeResampleColumnWidths`', which the backstop cannot cover at all because it
+clears the widths itself and only *schedules* the pass. The remaining four —
+`setStore`, `bindView`, the rotated `selectRecord` and the rotated store refresh
+— are belt-and-braces: each sets `_columnWidths = []`, so the length change alone
+guarantees the backstop fires whatever the fixture, and removing any of them
+leaves the suite green. They stay anyway. Deleting a guard because the tests in
+hand cannot distinguish it from a redundant one is precisely the move that
+produced this regression, and the lesson is recorded here rather than acted on
+twice.
+
+This reached beyond the plan's `## Files to Create / Modify / Delete` in one
+other way. `core/Body.ts`'s three API-doc mentions of the drags the app-wide
+mode governs, `core/ResizeDrag.ts`'s own header comment and `ResizeMode`
+docstring, and `core/index.ts`'s barrel comment all still said three owners and
+"each owner's own `resizeMode` option" — which is wrong twice over now, since
+`Table` is the fourth and deliberately has no such option. `## Documentation
+Impact` lists only the `docs/` tree, so the generated API reference would have
+kept contradicting the feature. Two comments inside `Table.ts` also pointed at
+`onColumnResize` for behaviour that step 5's rename moved into
+`resolveColumnResize` and `applyColumnResize`. And `Table.md` gained a paragraph
+on the abandon rule, since when a drag is called off rather than committed is
+something a consumer has to be able to predict.
+
+### No permanent demo
+
+The implement skill's step 7 asks for a demo of the new feature. This plan
+instead folds the demo line into T10's manual procedure and says to revert it
+before committing, and `MiscPanel.ts` is absent from `## Files to Create /
+Modify / Delete`. Left as the plan has it: a demo table permanently in outline
+mode would contradict the decision that `'live'` is the default, and a toggle
+control is more than the plan sanctions.
+
+### Still to verify by hand
+
+This section and the closure of the render-review agenda's G22 entry
+(`plans/research/render-review-2026-09-15/00-post-campaign-agenda.md`, a file
+`## Files to Create / Modify / Delete` does not list) ride in the branch's one
+extra bookkeeping commit, following the precedent of `bf83fc4c`, `e06c4170`,
+`5f4003d3` and `f9b458a5`.
+
+T10 is unchanged and is the only step of `## Verification` not run here: offline
+tests cannot show a bar tracking a real pointer, nor the clipping at the table's
+right edge once the dragged edge passes it. Its procedure stands as written —
+temporarily add `specTable.setResizeMode('outline');` after
+`specTable.setExportMenuEnabled(true);` in `MiscPanel.ts`, `npm run dev` from
+`packages/lib`, and drag in the **Misc.** section. No window was opened from this
+run.

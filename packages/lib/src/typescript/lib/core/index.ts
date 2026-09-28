@@ -28,7 +28,9 @@ export { Panel } from '~/core/Panel.js';
 export type { AutoScrollMode, PanelOptions, ScrollbarStyle } from '~/core/Panel.js';
 // Only the mode type: the drag session, its outline and the app-wide default
 // in `core/ResizeDrag.ts` are framework-internal, reached through
-// `Body.setResizeMode` and each owner's own `resizeMode` option.
+// `Body.setResizeMode` and each owner's own override — a `resizeMode` option on
+// `Split`, `Accordion` and a window, and `Table.setResizeMode` on a table,
+// whose options bag never reaches a consumer.
 export type { ResizeMode } from '~/core/ResizeDrag.js';
 export { Form } from '~/core/Form.js';
 export type { FormOptions } from '~/core/Form.js';

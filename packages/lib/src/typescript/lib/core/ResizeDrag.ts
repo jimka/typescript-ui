@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 // Framework-internal drag-frame seam shared by every resize drag that can run
-// live or as an outline: a Split gutter, a resizable Accordion gutter and a
-// window edge. Only `ResizeMode` is exported from `core/index.ts`; the three
-// owners and `Body` import the rest directly, mirroring
-// `core/PendingPointerDrags.ts`.
+// live or as an outline: a Split gutter, a resizable Accordion gutter, a Table
+// column edge and a window edge. Only `ResizeMode` is exported from
+// `core/index.ts`; the four owners and `Body` import the rest directly,
+// mirroring `core/PendingPointerDrags.ts`.
 
 import { Component } from "~/core/Component.js";
 import type { ComponentOptions } from "~/core/Component.js";
@@ -19,6 +19,10 @@ import { PerFrameCoalescer } from "~/core/PerFrameCoalescer.js";
  * How a resize drag shows its progress. `"live"` lays the content out on every
  * frame of the drag; `"outline"` moves an outline to where the edge will land
  * and lays the content out once, when the drag is released.
+ *
+ * Read by a `Split` gutter, a resizable `Accordion` gutter, a `Table` column
+ * edge and a window edge, each of which resolves its own mode first and the
+ * app-wide one second.
  *
  * @category Core
  */

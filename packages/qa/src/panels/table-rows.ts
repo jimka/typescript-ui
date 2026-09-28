@@ -4,6 +4,7 @@ import type { FieldType, ModelRecord } from '@jimka/typescript-ui/data';
 import { DEPARTMENTS, ROW_FILTER_TITLES, tableRows } from '../builders/data.js';
 import { elementFor, requireElement } from '../builders/dom.js';
 import { choice } from '../builders/params.js';
+import { RESIZE_OUTLINE_SELECTOR } from '../builders/shared.js';
 import { admittedAt, awaitStoreView } from '../builders/store.js';
 import type { CallTarget, HarnessTools } from '../harness/types.js';
 import type { PanelBuild } from '../panels.js';
@@ -169,7 +170,7 @@ export function build(n: number, params: URLSearchParams): PanelBuild {
                 click: { elements: [headerCell] },
             };
         },
-        geometry: { table, header: table.getHeader(), body: table.getBody(), focused: '.Cell.focused', cell: '.TableBody .StringCell' },
+        geometry: { table, header: table.getHeader(), body: table.getBody(), focused: '.Cell.focused', cell: '.TableBody .StringCell', resizeOutline: RESIZE_OUTLINE_SELECTOR },
         describe: () => ({
             rows: n,
             columns: FIELDS.length,

@@ -81,13 +81,13 @@ A menu the library or your app opens on `contextmenu` — `Tree`, `DiagramView`,
 
 ## Resize mode
 
-`Body.init` also sets the app-wide **resize mode** — how a `Split` gutter, a resizable `Accordion` gutter and a window edge show a drag:
+`Body.init` also sets the app-wide **resize mode** — how a `Split` gutter, a resizable `Accordion` gutter, a `Table` column edge and a window edge show a drag:
 
 ```typescript
 await Body.init({ layoutManager: Fit(), resizeMode: 'outline' });
 ```
 
-Every such drag then moves a thin outline to where the edge will land and lays the content out once, on release — including the splits and float windows a [`Dock`](/components/Dock) builds, which an app cannot reach to configure one by one. A manager or window that sets its own `resizeMode` keeps it. `Body.getInstance().setResizeMode(mode)` changes the app-wide mode later; either way it takes effect from the next drag. The default is `'live'`, today's behaviour.
+Every such drag then moves a thin outline to where the edge will land and lays the content out once, on release — including the splits and float windows a [`Dock`](/components/Dock) builds, which an app cannot reach to configure one by one. A manager or window that sets its own `resizeMode`, and a table that sets its own through `Table.setResizeMode`, keeps it. `Body.getInstance().setResizeMode(mode)` changes the app-wide mode later; either way it takes effect from the next drag. The default is `'live'`, today's behaviour.
 
 ## Notes
 
@@ -95,7 +95,7 @@ Every such drag then moves a thin outline to where the edge will land and lays t
 - **Resize listener** — `Body` listens for `window.resize` and re-runs layout from itself. Adding a top-level component to `Body` is what wires it into the responsive layout pass.
 - **Theme bootstrap** — call `ThemeManager.setTheme(ClassicTheme)` (or any theme) before adding components, so style rules pick up the right CSS variables. A theme chosen before the body is first reached is kept — `Body` applies `ModernTheme` only when no theme has been set.
 - **Context menu** — the browser's native right-click menu is suppressed page-wide by default; pass `nativeContextMenu: true` to restore it, including on text inputs.
-- **Resize mode** — gutter and window-edge drags lay out live by default; pass `resizeMode: 'outline'` for an outline and one layout on release.
+- **Resize mode** — gutter, table-column and window-edge drags lay out live by default; pass `resizeMode: 'outline'` for an outline and one layout on release.
 
 ## See also
 

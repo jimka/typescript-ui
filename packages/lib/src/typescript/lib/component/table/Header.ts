@@ -179,7 +179,7 @@ class TableHeaderMenuButton extends Button {
  *
  * @category Components
  */
-export type TableHeaderEvent = "columnresizestart" | "columnresize" | "columncontextmenu";
+export type TableHeaderEvent = "columnresizestart" | "columnresize" | "columnresizeend" | "columncontextmenu";
 
 /**
  * The geometry the table layout supplies to the header on each pass. Cached
@@ -500,7 +500,11 @@ class TableHeader extends Component {
      *   resize handle, receiving the zero-based column index and the absolute
      *   pointer `clientX` at the moment the drag began; `"columnresize"` fires
      *   when the user drags a column resize handle, receiving the zero-based
-     *   column index and the absolute pointer `clientX`; `"columncontextmenu"`
+     *   column index and the absolute pointer `clientX`; `"columnresizeend"`
+     *   fires when that drag's mouseup releases the handle, carrying no payload
+     *   — exactly one resize drag is ever live, and a cell the column window
+     *   has recycled away resolves to no index at all, so an index here would
+     *   only give the release a way to be missed; `"columncontextmenu"`
      *   fires on a right-click anywhere in the header band, or on an activation
      *   of {@link getMenuButton}'s column-menu button, receiving the field name
      *   (empty string when the click landed on a parent-header cell or on the
@@ -511,6 +515,7 @@ class TableHeader extends Component {
      */
     on(event: "columnresizestart", listener: (colIndex: number, clientX: number) => void): this;
     on(event: "columnresize",      listener: (colIndex: number, clientX: number) => void): this;
+    on(event: "columnresizeend",   listener: () => void): this;
     on(event: "columncontextmenu", listener: (fieldName: string, x: number, y: number) => void): this;
     on(event: TableHeaderEvent,         listener: Function): this {
         this._listeners.add(event, listener);
@@ -542,6 +547,7 @@ class TableHeader extends Component {
      */
     protected emit(event: "columnresizestart", colIndex: number, clientX: number): void;
     protected emit(event: "columnresize",      colIndex: number, clientX: number): void;
+    protected emit(event: "columnresizeend"): void;
     protected emit(event: "columncontextmenu", fieldName: string, x: number, y: number): void;
     protected emit(event: TableHeaderEvent,         ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
@@ -1222,6 +1228,7 @@ class TableHeader extends Component {
         cell.on("sortclick",   (fieldName, shiftKey) => this.handleSortClick(fieldName, shiftKey));
         cell.on("resizestart", (clientX) => this.emit("columnresizestart", this.columnIndexOf(cell), clientX));
         cell.on("resizedrag",  (clientX) => this.emit("columnresize", this.columnIndexOf(cell), clientX));
+        cell.on("resizeend",   () => this.emit("columnresizeend"));
         cell.on("contextmenu", (fieldName, x, y) => this.emit("columncontextmenu", fieldName, x, y));
     }
 

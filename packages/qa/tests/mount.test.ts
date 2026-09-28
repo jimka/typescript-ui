@@ -318,7 +318,7 @@ describe('P15 resize mode', () => {
         expect(mounted.targets.dragout).toBe(mounted.targets.drag);
     });
 
-    it.each(['shell-deep', 'shell-shallow', 'windows'])('%s labels the resize outline for the geometry probe', async (id) => {
+    it.each(['shell-deep', 'shell-shallow', 'windows', 'table-rows'])('%s labels the resize outline for the geometry probe', async (id) => {
         const module = await loadPanel(id);
         const build = module!.build(SMOKE_SCALE, new URLSearchParams());
 
