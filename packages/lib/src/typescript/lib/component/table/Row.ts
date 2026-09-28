@@ -158,14 +158,15 @@ class Row extends Component {
         onCellCommit?: (record: ModelRecord) => void,
         treeFieldName?: string,
     ) {
-        // A row's cells are placed from outside — the body's render window and
-        // the header both commit each cell through `applyBounds` — so the row's
-        // own pass must keep the rectangle each cell holds rather than re-size
-        // it to its preferred size: a `BooleanCell` reports 20x16 against the
-        // 48x20 the render window gave it, and a narrow `FilterCell` 236x22
-        // against 25x22. The pass still has to run, since it is what records
-        // that the row laid out, drains `onFirstLayout`, and lays out any cell
-        // that owes a pass the batched flush folded into this row's.
+        // A row's cells are placed from outside — the body's render window,
+        // the header, and the footer all commit each cell through
+        // `applyBounds` — so the row's own pass must keep the rectangle each
+        // cell holds rather than re-size it to its preferred size: a
+        // `BooleanCell` reports 20x16 against the 48x20 the render window gave
+        // it, and a narrow `FilterCell` 236x22 against 25x22. The pass still
+        // has to run, since it is what records that the row laid out, drains
+        // `onFirstLayout`, and lays out any cell that owes a pass the batched
+        // flush folded into this row's.
         super({ tag: "tr", layoutManager: new Absolute({ sizing: "committed" }) });
 
         this.getAria().setRole("row");

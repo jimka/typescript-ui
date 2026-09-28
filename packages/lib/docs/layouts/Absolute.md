@@ -53,9 +53,16 @@ Use `"committed"` for a container whose children are sized by the code that owns
 canvas.setLayoutManager(Absolute({ sizing: 'committed' }));
 ```
 
-The library's own user of `"committed"` is the table's `Row`: the body's render window and the header size every cell to its column, and the row's pass has to keep that rectangle rather than shrink each cell to its preferred size.
+The library's own user of `"committed"` is the table's `Row`: the body's render window, the header, and the footer each size every cell to its column, and the row's pass has to keep that rectangle rather than shrink each cell to its preferred size.
 
 `setSizing` switches the mode at runtime and marks the container's layout pass as owed.
+
+<!-- demo: absolute-sizing -->
+> **Live demo** — the same child in two `Absolute` containers: `sizing:
+> "preferred"` re-sizes it to the 90x40 it reports, `sizing: "committed"`
+> keeps the 200x40 it already holds, and neither moves it.
+> [Open the Absolute page](https://jimka.github.io/typescript-ui/layouts/Absolute)
+<!-- /demo -->
 
 ## When to use it
 
