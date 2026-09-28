@@ -817,7 +817,11 @@ class Rail extends Component<RailOptions> {
     /**
      * Unmounts the rail: stops tracking viewport resizes and detaches the
      * element. Registered drawers and windows keep their subscriptions, so a
-     * later `mount()` restores a working strip.
+     * later `mount()` restores a working strip. A window minimized into the
+     * rail therefore stays minimized and hidden while the rail is unmounted,
+     * with no handle anywhere on screen; mounting the rail again brings its
+     * handle back, and {@link AbstractWindow.restore} still reaches it
+     * meanwhile.
      *
      * @returns This rail, for method chaining.
      */

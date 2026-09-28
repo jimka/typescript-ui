@@ -357,3 +357,242 @@ Two doc sentences stay softened, because O4 is not fixed: `relayoutMinimizedStac
 [^null-min]: `initChrome` seeds `setMinSize` unless the caller passed an explicit `minSize` in the options bag, so every window has a non-`null` minimum constraint and the capture in both branches always stores a real value. A consumer passing `minSize: null` would reach the state where `_normalMinSize` stays `null`, the guard stays armed, and the relaxed `0 × 0` is never reinstated — identical to what the docked branch has always done. Adding a branch for it in one of the two places would leave the pair inconsistent for a case no window reaches.
 
 [^listener-order]: `ListenerBag.fire` iterates the live bucket array with `for...of`. `Rail.registerWindow` subscribes `onClose`, which calls `unregisterWindow`, which calls `window.off("close", reg.onClose)` — removing the entry being iterated, shifting everything after it down one, and skipping the next listener. A `"close"` listener registered after `setRail` is therefore never called at all; registered before it, the rail's own listener sits second and nothing is skipped. Verified on the harness: the same R12 case reports `['minimize']` with the listener registered late and `['close', 'minimize']` with it registered early.
+
+---
+
+## Implementation Notes
+
+Implemented as designed, at all four sites and with no exported symbol moved,
+with one prose edit beyond the plan's eight (see `### Deviations`).
+`onExitAction`, `animateRailExpand` and `animateRailCollapse` each gained the
+cancel pairing; `setRail`'s `rail === null` branch gained the capture, the
+`setMinSize({ width: 0, height: 0 })` relaxation and the `setBodyHostDisplayed(false)`
+hide, still ahead of `relayoutMinimizedStack()`. All four checkpoint greps of
+*Ordered Implementation Steps* 12 give the prescribed answers: `5`, `5`, two
+`setMinSize({ width: 0, height: 0 })` sites (`:1289` the docked branch, `:1542`
+the new detach branch) and zero matches for `follow-up hand-over plan`.
+
+Baselines measured on the start point (`feature/split-noop-drag-frame-gate`,
+`349c975b`) before anything was edited: the library suite at **518 files /
+8699 passed / 2 todo**, and the QA package at **448 passed / 5 failed** — the
+five inherited `ablations.test.ts` A11/A12 and `mount.test.ts` P16 cases, not
+this plan's and not touched by it. The suite now reports **8708 passed**, the
+same 518 files plus this plan's nine cases, and the QA package is unchanged.
+
+### The test set is W29-W32 and R10-R14, because the prescribed set did not pin the code
+
+Nine cases ship, not the seven prescribed. Each added line of the
+implementation was mutated away one at a time and the relevant file re-run;
+every mutation now kills at least one case. Two did not, with the prescribed
+set alone.
+
+**`onExitAction`'s expand cancel was unpinned — R14 closes it.** The plan
+prescribes four animation rows, and R10-R13 between them cover
+`animateRailExpand`'s collapse cancel (R10, R11), `animateRailCollapse`'s
+expand cancel (R13) and `onExitAction`'s *collapse* cancel (R12). Nothing
+reaches `onExitAction`'s *expand* cancel: deleting those two lines leaves
+R1-R13 green. This is the plan's own asymmetry — its `## Expected Behaviour`
+gives `onExitAction` one row, driven from `collapsingWindow()`, while the line
+it adds there is two cancels covering two arms. **R14** drives the other arm
+from the new `restoringWindow()` helper: a close arriving inside a restore's
+reverse genie, where the superseded expansion's deadline — registered before
+the close fade's, at the same virtual time — clears the `transition` the close
+fade is running through. It fails with `[null, null]` against `[null]` before
+the fix and passes after, and `exit-no-expand-cancel` is the only mutation it
+catches.
+
+**The capture's guard was unpinned by the entire suite — W32 closes it.** The
+plan's `[^o1-attach]` states the guard's contract in prose — "what keeps a
+dock → rail → dock round trip from overwriting the real floor with the relaxed
+`0 × 0` the window is already carrying" — and prescribes no row for it.
+Replacing `if (this._normalMinSize === null) { … }` with an unconditional
+capture leaves **all 518 files green — 8707 passed and 2 todo, the whole suite
+as it stood before W32 was written**: every prescribed row reaches the detach
+from the rail side, where nothing has been captured yet and the guard has
+nothing to refuse. That is the shape a later reader deletes
+as dead. **W32** minimizes into the dock *first*, so the docked branch has
+already captured the real floor and relaxed the live constraint, then attaches
+and detaches the rail and restores; unguarded, the detach re-captures the
+relaxed `0 × 0` and the restore reinstates that as the floor, losing the
+window's real minimum permanently. It reports `{ width: 0, height: 0 }`
+against `{ width: 186, height: 200 }` with the guard removed.
+
+### Two of W29's prescribed assertions would not have caught a regression
+
+**`b.getY()` equals `a.getY()` is vacuous for this fix.** The plan lists it as
+a W29 expectation while conceding in the same cell that it already matches.
+It cannot do otherwise: `relayoutMinimizedStack` writes
+`y = viewportHeight - headerHeight` from `chromeHeight()`, independently of the
+height clamp the fix removes, so both windows receive the same `setY` whether
+or not the relaxation ran. Confirmed by stripping W29's height assertions and
+removing the relaxation: the row still passed. It is kept, because it pins the
+shared bottom anchor, but the row's weight is entirely on the height.
+
+**`b.getHeight()` equals `a.getHeight()` needed a non-zero baseline.** As
+prescribed the comparison is an equality between two values that move
+together: with the relaxation removed from *both* routes — the docked branch as
+well as the new detach branch — A and B agree at `200` and the row passes,
+which is the defect present on both sides rather than absent from either. W29
+therefore asserts `a.getHeight()` is above `0` and below the documented
+`NORMAL_MIN_HEIGHT_PX` floor before comparing B against it; that bound is what
+fails (`expected 200 to be less than 200`) in the both-routes mutation. W30
+needed no such anchor, because it asserts the absolute `false` on both windows
+rather than one against the other, and it carries the `true` fixture guard the
+plan's `## Potential Challenges` asks for, so it cannot pass on a window with
+no body host.
+
+### R13's contract is a write count, so it carries two guards
+
+The other flagged shape — asserting a call count where the contract is a
+consequence — has no clean escape here: "the superseded expansion did not
+clear the live collapse's transition" *is* a statement about which writes
+landed. R13 keeps the prescribed single-`null` assertion and adds two things a
+count alone cannot give. `transitions[0]` must be non-`null`, so the row cannot
+pass on an empty list, which is the absence of the mechanism rather than its
+presence; and `win.isDisplayed()` must be `false` afterwards, so the collapse
+still reached its own completion and the cancel took the superseded half of the
+pair rather than the live one. R14 carries the same two.
+
+### Deviations
+
+- **`styleWritesFor` gained a fourth parameter** in
+  `AbstractWindow.railHandoverAnimated.test.ts`, defaulting to
+  `win.getElement()`. R14 reads the writes after the close fade completes, and
+  `finalize` has released the window's element handle by then, so the row
+  captures the element before closing and passes it in. The four existing call
+  sites are unchanged.
+- **`onExitAction`'s comment says more than the plan's text**, adding the
+  clause about a superseded expansion clearing the fade's transition. The plan
+  wrote that comment for the collapse arm only, while the lines it prescribes
+  cover both; R14 exists for the second arm, so the comment names it.
+- **Changelog edit #8 diverged in content as well as company.** The plan's
+  prescribed entry ends "as closing and re-railing the window already did".
+  Shipped is "as **disposing** and re-railing": closing is `onExitAction`, one
+  of the three paths this plan *fixes*, so it cannot also be the precedent the
+  three are joining — the paths that already cancelled both are `destructor`
+  (disposing) and `setRail` (re-railing). A plan error, corrected rather than
+  copied. The same entry also gained a second paragraph disclosing the one
+  emitted event that changes with the fix, which the plan did not prescribe; see
+  `### Surfaced, not changed` for why that disclosure is owed.
+- **A ninth prose edit, beyond the plan's prescribed eight.**
+  `restoreNormalMinSize`'s JSDoc (`AbstractWindow.ts:1325-1337`) named
+  `setWindowState`'s `"minimized"` branch as the only place the floor is
+  relaxed, and said the no-op "covers both a rail-docked window (geometry, and
+  so this floor, is never touched)". The detach branch is now a second
+  relaxation site, which falsified both clauses, so the JSDoc names both sites
+  and scopes the untouched-geometry claim to a window its rail still holds. The
+  plan's `## Documentation Impact` prescribes "Eight prose edits across four
+  files" and does not list this one; it is a comment this plan's own change made
+  wrong, so it is corrected here rather than left for a reader to trip over.
+- **Blank lines separate each addition from the code it sits against**, where
+  the plan's snippets show them flush: after the multi-line guard in the detach
+  branch (the docked-branch precedent at `:1285` has none), and between each new
+  cancel pair and the pre-existing `?.cancel()` it precedes in
+  `animateRailCollapse` and `animateRailExpand`. The first follows the global
+  `CODE_CONVENTIONS.md` blank-line rule for multi-line statements; the other two
+  separate "cancel the superseded other half" from "cancel my own previous run",
+  which are different concerns. Per `pattern-conformance.md` a cosmetic
+  difference from a precedent is not a divergence.
+
+- **The two test-header plan references name `plans/implemented/`**, not the
+  bare `plans/rail-handover-follow-ups.md` that the plan's steps 1 and 3 dictate
+  verbatim. The bare path matches no location the plan ever occupies — it is at
+  `plans/in-progress/` while the work runs and `plans/implemented/` afterwards —
+  and both files' existing references already use the resolved form
+  (`plans/implemented/environment-read-caching.md`,
+  `plans/implemented/rail-minimized-dock-slot.md`).
+
+### Checked but not changed
+
+- **Both `AbstractWindow` subclasses behave identically.** `Window` and
+  `TabWindow` both override `chromeHeight()` and neither overrides
+  `findBodyHost`, `getMinSizeConstraint` or `setMinSize`, so no touched line
+  branches on the subclass. Verified with a throwaway case: a `TabWindow`
+  handed back from a rail lands at the same height as a directly-docked
+  `TabWindow`, and that shared height is above `0` and below `200`, so the
+  agreement is not the both-stuck-at-the-floor reading. The case was not kept —
+  the W rows stay on `Window`, as prescribed.
+- **Cancelling an already-completed animation is safe.** `animateRailExpand`
+  now cancels `_railCollapseAnimation`, which in `restoringWindow()`'s setup is
+  a handle whose completion has already run. R13 and R14 both go through that
+  state and pass.
+- **The agenda misattributes the hard lock.** Its `## Deferred` entry and its
+  "item 6 is a hard lock" note both put "hidden while its state reads
+  `"normal"`, unrecoverable by the user" on `onExitAction`. That consequence
+  belongs to O7 — `animateRailExpand`'s missing collapse cancel, which R10
+  pins. `onExitAction`'s own defects are the `"minimize"` after `"close"` (R12)
+  and the cut-short close fade (R14). Both are fixed here either way; the
+  agenda closure records the correction.
+
+### Surfaced, not changed: the unpaired `"restore"` a voided debt leaves
+
+The audit asked whether a restore arriving mid-collapse should announce
+`['minimize', 'restore']` rather than `['restore']` alone, since a consumer
+pairing the two events now sees an unmatched restore. **Not changed here, and
+recorded for the user to decide.**
+
+It is not this branch's behaviour. `animateRailExpand`'s
+`_railMinimizeEmitPending = false` and the paragraph above it are pre-existing
+and untouched — `git diff` against the start point adds no line mentioning that
+flag — and the rule is already pinned by name on the start point by **R9**, "a
+restore voids the collapse's debt", whose first asserted event is an unpaired
+`'restore'` and whose comment states the reasoning: "the window is not
+minimized any more, so there is nothing left to announce".
+
+What this branch removed is a different event: the `"minimize"` the *abandoned*
+collapse emitted as it landed, **after** the `"restore"` that had superseded it,
+for a window whose state already read `"normal"`. That is an inverted event for
+a state the window had left, and it is O7's defect rather than the other half of
+a pair. So R11 pins the documented contract, not the code's current output.
+
+Nor does `setRail` contradict it. `setRail` fires the owed `"minimize"` because
+the window it hands over **stays** minimized and a later `"restore"` would
+otherwise be unpaired; `animateRailExpand` voids it because the window is
+**leaving** minimized. Two arms of one deliberate distinction, each stated in
+source.
+
+Reversing it would change a public event contract the previous plan chose with
+its reasons written down, which `worker.md` puts outside an implementation run.
+The changelog now discloses the stray event's removal; the pairing question is
+carried to the agenda as its own candidate.
+
+### Environment notes for the next run
+
+- **The QA package needs `npm run build:lib` before its suite means anything.**
+  In a fresh worktree six of its twenty files fail to *collect* —
+  `Failed to resolve import "@jimka/typescript-ui/core"` — and the run reports
+  `238 passed / 7 failed` of 245 rather than `448 passed / 5 failed` of 453,
+  because the 208 cases in those six files never run and `store.test.ts`'s P13
+  block contributes seven failures that the built-`dist` run does not. The
+  briefed baseline is the post-build one.
+- **`npm run docs:llms:check` needs `npm run docs:api` to have run first**, or
+  it aborts on a missing `docs/api/typedoc-model.json`. `docs:api` reports
+  `0 errors and 14 warnings`, matching the stated pre-existing count — the new
+  `{@link AbstractWindow.restore}` in `Rail.unmount`'s JSDoc adds none.
+  `docs:llms:check` then reports `108 catalogued, 0 unaccounted for`.
+
+### Manual verification — carried forward, unrun
+
+`## Expected Behaviour`'s in-engine list is the user's to run and was not run
+here: every item opens a window on the desktop, which this run was fenced off
+from. The four behaviours to look for, all offline-pinned by the rows named:
+
+1. A window handed back from a rail sits flush in the row beside its docked
+   neighbours, rather than standing taller with a sliver of its body showing
+   (W29, W30).
+2. Clicking minimize twice in quick succession on a rail-docked window leaves
+   the window on screen and usable, not hidden with a dead handle (R10, R11).
+3. Closing a rail-docked window immediately after minimizing it fades out once,
+   rather than fighting the shrink-into-the-rail genie (R12, R14). **Caveat
+   before judging this one passed:** `onExitAction` cancels the collapse but
+   does not call `endRailCollapse()`, and `Animation.cancel` writes no styles,
+   so the genie's `transform` and `opacity` are still declared on the element
+   when the close fade starts. The fade therefore begins from the shrunken,
+   faded state rather than from the window's resting one. That is pre-existing
+   and outside this plan — `[^exit-no-emit]` leaves `_railCollapseActive` set on
+   the ground that nothing reads it again, which holds for the flag but not for
+   the element's declarations. What this plan fixes is the *second* animation
+   and the stray event, so expect one fade, not a fade from full size.
+4. Restoring a rail-docked window and immediately minimizing it again plays the
+   full genie rather than snapping part-way (R13); closing it instead of
+   minimizing fades out over the full duration (R14).
