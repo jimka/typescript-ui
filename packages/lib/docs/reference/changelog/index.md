@@ -5,6 +5,7 @@ Release history for `@jimka/typescript-ui`.
 ## Versions
 
 - [Next](/reference/changelog/next) — unreleased
+- [0.10.0](/reference/changelog/0.10.0)
 - [0.9.0](/reference/changelog/0.9.0)
 - [0.8.0](/reference/changelog/0.8.0)
 - [0.7.0](/reference/changelog/0.7.0)
