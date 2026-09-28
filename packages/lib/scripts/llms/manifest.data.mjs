@@ -45,7 +45,7 @@ export const groups = [
         { task: "Stretch a single child to fill the container", symbol: "Fit" },
         { task: "Wrap children like text that reflows (horizontal flow)", symbol: "HFlow" },
         { task: "Wrap children like text that reflows (vertical flow)", symbol: "VFlow" },
-        { task: "Position children manually at explicit x/y (no automatic layout)", symbol: "Absolute" },
+        { task: "Position children manually at explicit x/y (sizing configurable)", symbol: "Absolute" },
         { task: "Pin or stretch children to container edges by proportional offset, re-resolved on resize", symbol: "Anchor" },
     ] },
 
