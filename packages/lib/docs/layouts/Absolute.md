@@ -57,6 +57,13 @@ The library's own user of `"committed"` is the table's `Row`: the body's render 
 
 `setSizing` switches the mode at runtime and marks the container's layout pass as owed.
 
+<!-- demo: absolute-sizing -->
+> **Live demo** — the same child in two `Absolute` containers: `sizing:
+> "preferred"` re-sizes it to the 90x40 it reports, `sizing: "committed"`
+> keeps the 200x40 it already holds, and neither moves it.
+> [Open the Absolute page](https://jimka.github.io/typescript-ui/layouts/Absolute)
+<!-- /demo -->
+
 ## When to use it
 
 - You're building a draggable canvas where the user controls each item's position.
