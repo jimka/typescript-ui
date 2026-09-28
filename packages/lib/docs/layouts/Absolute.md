@@ -53,7 +53,7 @@ Use `"committed"` for a container whose children are sized by the code that owns
 canvas.setLayoutManager(Absolute({ sizing: 'committed' }));
 ```
 
-The library's own user of `"committed"` is the table's `Row`: the body's render window and the header size every cell to its column, and the row's pass has to keep that rectangle rather than shrink each cell to its preferred size.
+The library's own user of `"committed"` is the table's `Row`: the body's render window, the header, and the footer each size every cell to its column, and the row's pass has to keep that rectangle rather than shrink each cell to its preferred size.
 
 `setSizing` switches the mode at runtime and marks the container's layout pass as owed.
 
