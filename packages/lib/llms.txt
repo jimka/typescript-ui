@@ -22,7 +22,7 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - Stretch a single child to fill the container → **Fit** · `@jimka/typescript-ui/layout` · A layout manager that expects exactly one child component and positions it inside the container's entire inner bounds. The default fill mod… · docs/layouts/Fit.md
 - Wrap children like text that reflows (horizontal flow) → **HFlow** · `@jimka/typescript-ui/layout` · A layout manager that packs children in horizontal rows, wrapping to a new line when the next child would exceed the container's inner widt… · docs/layouts/HFlow.md
 - Wrap children like text that reflows (vertical flow) → **VFlow** · `@jimka/typescript-ui/layout` · A layout manager that packs children in vertical columns, wrapping to a new column when the next child would exceed the container's inner h… · docs/layouts/VFlow.md
-- Position children manually at explicit x/y (no automatic layout) → **Absolute** · `@jimka/typescript-ui/layout` · A layout manager that places each child at its preferred (or current) size at the position the application has already set on the child. No… · docs/layouts/Absolute.md
+- Position children manually at explicit x/y (no automatic layout) → **Absolute** · `@jimka/typescript-ui/layout` · A layout manager that places each child at its preferred (or current) size at the position the application has already set on the child. Th… · docs/layouts/Absolute.md
 - Pin or stretch children to container edges by proportional offset, re-resolved on resize → **Anchor** · `@jimka/typescript-ui/layout` · A resize-reactive layout manager that positions each child by edge-relative and proportional offsets, re-resolving them on every `doLayout`… · docs/layouts/Anchor.md
 
 ### Containers / Windows

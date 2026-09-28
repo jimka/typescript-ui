@@ -6,7 +6,7 @@ export { LayoutConstraints } from '~/layout/LayoutConstraints.js';
 export { AnchorType } from '~/layout/AnchorType.js';
 export { FillType } from '~/layout/FillType.js';
 export { Absolute } from '~/layout/Absolute.js';
-export type { AbsoluteOptions } from '~/layout/Absolute.js';
+export type { AbsoluteOptions, AbsoluteSizing } from '~/layout/Absolute.js';
 export { Anchor } from '~/layout/Anchor.js';
 export type { AnchorOptions, AnchorValue } from '~/layout/Anchor.js';
 export { AnchorConstraints } from '~/layout/AnchorConstraints.js';

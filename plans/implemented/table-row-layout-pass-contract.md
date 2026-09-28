@@ -403,3 +403,128 @@ All figures are offline, from throwaway probes on the stack tip (`5e4cec4c`), de
 [^digest]: `field-internals-unchanged-commit-opt-in`'s notes record that its first E13 test walked from the table, reached neither the pooled row nor its cells, and so passed vacuously. The fixture's `_rowPool` access and R1's class-name check are the answer to that.
 
 [^cost]: The re-commit count is from the *Addendum*'s probe: 1,122 on the window-changing scroll and 1,020 on the resize. For a re-commit of a settled cell, `commitBounds` takes its slow path (size and position unchanged), where `setX`, `setY`, `setTranslate(0, 0)`, `setWillChange(null)`, `setWidth` and `setHeight` each return early on an equal value, and `Cell`'s opt-in then withholds the pass. The size-hint turnover comes from `Component.doLayout`'s `finally` block, which every row pass now reaches. It invalidates hints recorded earlier in the frame, which matters only to a size query later in the same frame.
+
+---
+
+## Implementation Notes
+
+### The mutation table, executed
+
+Every mutation in *Verification* was applied alone against the finished code,
+run over `RowLayoutPass.test.ts`, `Absolute.test.ts` and
+`UnchangedCommitOptIns.test.ts`, and reverted. All eight reddened the case the
+table names; five also reddened cases the table did not claim, which is extra
+coverage rather than a discrepancy.
+
+| # | Cases the table names | Observed red |
+|---|---|---|
+| M1 | R1 `BooleanCell` / `GlyphCell` / `DynamicCell`, R2 | exactly those |
+| M2 | R1 (all four), R2, R3, R4 | exactly those |
+| M3 | A4, R4 | exactly those |
+| M4 | A1, R1 sized arms, R2 | those, **and A4** |
+| M5 | A1, A3, R1 (all four) | those, **and R2, R4** |
+| M6 | A4 | exactly A4 |
+| M7 | A5 | exactly A5 |
+| M8 | A6, R1 sized arms | those, **and A1, A4, R2** |
+
+`R1 StringCell` stayed green under M1 and M4, exactly as the plan predicted,
+and went red under M2 and M5 — the null arm behaving as designed.
+
+Two mutations show a limit worth naming: under M3 (the committed arm placing
+nothing) A1 and A3 both stay green, because their child already holds the
+rectangle `setBounds` wrote and nothing re-commits it. A4's dirty-flag
+assertions and R4 are what tell "committed correctly" from "committed nothing"
+apart, which is the division of labour the plan assigned them.
+
+### Deviations
+
+- **`Absolute.doLayout`'s two arms were extracted** into private
+  `committedPlacement` / `preferredPlacement` helpers, which *Internal
+  Structure* sanctions as the alternative once the loop body's comments are in.
+  An inline ladder would have put an eight-line branch and a five-line branch
+  inside the loop, which CODE_CONVENTIONS.md's *Decompose large or complex
+  functions* asks to split.
+
+- **`ThemeManager.setTheme(ModernTheme)` was left out** of
+  `RowLayoutPass.test.ts`'s `afterEach`, although *Verification* lists it. No
+  case in the file changes the theme, and the harness precedent *Verification*
+  itself names — `ScrollRebindLayoutEconomy.test.ts`'s `afterEach` — calls
+  neither `setTheme` nor `vi.restoreAllMocks()`, so the plan's description of
+  that precedent was wrong on both counts. The nearest file that does reset the
+  theme, `CellLayoutSkip.test.ts`, gives the reason in its own comment: it
+  restores the theme because it changes it, and `setTheme` fires every listener
+  still registered in the process. Vitest isolates module state per file, so
+  nothing else can have moved the theme by the time this file runs. The table
+  disposal and `vi.restoreAllMocks()` halves are both there, the latter because
+  R3 spies on `DOM.source.isConnected`.
+
+- **The changelog bullet names `Row`, not `TableRow`.** *Documentation Impact*
+  wrote `TableRow.isLayoutDirty()`; the class is exported from
+  `component/table` as `Row`, and `TableRow` appears nowhere else in the
+  changelog.
+
+- **No live demo was added** to `packages/docs/src/demos/`. The docs package
+  does hold one per-option demo per layout feature (`hbox-justify`,
+  `grid-uniform`), but nothing in its test suite invokes a demo's `create()` —
+  only source-hygiene regexes run — so a new demo's correctness can only be
+  confirmed by opening the docs site in a browser, which this run's constraints
+  forbid. The `## Sizing` section carries a code example instead. A live
+  `absolute-sizing` demo is a clean follow-up for whoever can view it, and
+  would need a `<!-- demo: absolute-sizing -->` marker in
+  `docs/layouts/Absolute.md` to satisfy the corpus↔registry bijection test.
+
+- **`plans/in-progress/` did not exist** in this worktree and was created by the
+  in-progress move.
+
+- **`docs/concepts/layout-system.md` was updated, though *Documentation Impact*
+  never names it.** Its "the placement inputs that announce nothing mark the
+  pass owed that way themselves" list enumerates every such setter, including
+  the configuration setters of the box, flow, grid, fit and border managers and
+  `Split.setOrientation` / `setPaneSize`. `Absolute.setSizing` is now one of
+  them — it is in the `MANAGER_SETTERS` registry for exactly that reason — so
+  leaving it out would have made the page incomplete. The precedent is the pair
+  of commits that added those `Split` setters: `4ab9794c` put them in the
+  registry, and its documentation commit `e0ab00f6` added them to this same
+  paragraph. Found by the audit.
+
+### Verification, as run
+
+- **`llms.txt` was regenerated even though `docs:llms:check` reported clean.**
+  That check verifies catalogue coverage, not summary text; the checked-in row
+  quotes the first ~200 characters of `Absolute`'s class JSDoc, which the new
+  sentence changed, so `npm run docs:llms` was run and the one-line diff is
+  included. `packages/docs/public/llms.txt` is gitignored.
+
+- **Counts differ from the figures in *Verification*,** which were taken before
+  the three phases that landed below this one. Measured on the start point
+  (`feature/panel-resize-metrics-staleness`, `b78e3526`): **520 files / 8750
+  passed / 2 todo / 0 failed**. After this plan: **521 files / 8763 passed / 2
+  todo / 0 failed** — one new file and thirteen new cases (seven R, five A in
+  `Absolute.test.ts`, one `MANAGER_SETTERS` row).
+
+- `npm run typecheck`, `npm run typecheck:test`, `npm run lint`, `npm run
+  test:lint` clean; `npm run docs:api` reports **0 errors and 14 warnings**, the
+  pre-existing set unchanged; `npm -w packages/qa run test` **453 passed / 0
+  failed**, matching its baseline. No golden-geometry digest moved —
+  `UnchangedCommitSkip.test.ts` and `Component.sizeHintMemo.test.ts` both stayed
+  green, so no re-capture was needed.
+
+- **The dependants table was re-derived, not trusted.** A fresh search of every
+  `isLayoutDirty()` and `onFirstLayout(` caller across `src/` and `tests/`
+  confirms it holds after the `core/Panel.ts` rework two branches below: the
+  only `isLayoutDirty()` reads in `src/` are `Panel.canSkipSettledRemeasure`
+  (its own flag, on a `Panel`), `Component.isLayoutSettled`, and the accessor
+  itself, and the library registers `onFirstLayout` only on `Markdown`,
+  `WebGLCanvas`, `DiagramNodeLayer`, `DiagramEdgeLayer`, `AbstractCanvasSurface`,
+  `MarkdownEditor` and `CodeEditor` — none a row. `Row` still has not opted into
+  the unchanged-commit skip, so `canSkipUnchangedCommit()` stays `false` for a
+  row and the flush's ancestor walk does not break at one.
+
+### Still the user's step
+
+The in-engine A/B on the table's scroll panels, per *Potential Challenges*.
+Each row pass now re-commits every cell — about 1,100 on a window-changing
+horizontal scroll or a table resize — and every setter that re-commit reaches
+returns early on an equal value, so the expectation is a flat clock. Under the
+standing *render time first, work second* rule a flat clock ships and a
+regressed clock is a stop-and-report.

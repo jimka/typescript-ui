@@ -14,8 +14,8 @@ const CONFIG = {
     themeVars:       {},
 };
 
-function hostAbsolute(width: number, height: number): Container {
-    const host = new Container({ layoutManager: new Absolute() });
+function hostAbsolute(width: number, height: number, manager: Absolute = new Absolute()): Container {
+    const host = new Container({ layoutManager: manager });
 
     host.getElement(true);
     host.setWidth(width);
@@ -152,5 +152,114 @@ describe('Absolute — a child no layout manager ever positioned', () => {
         // position, which is the geometry change this fix must not make.
         expect(Number.isNaN(child.getX())).toBe(true);
         expect(Number.isNaN(child.getY())).toBe(true);
+    });
+});
+
+// plans/implemented/table-row-layout-pass-contract.md, cases A1 to A6. A5 is the
+// one case this block does not hold: it is a `MANAGER_SETTERS` row in
+// tests/core/UnchangedCommitOptIns.test.ts, which owns the settled-host probe
+// that case needs.
+describe('Absolute — sizing', () => {
+    afterEach(() => DOM.reset());
+
+    /** The whole committed rectangle, so a case cannot pass on one axis alone. */
+    function rectOf(component: Component): { x: number; y: number; width: number; height: number } {
+        return {
+            x:      component.getX(),
+            y:      component.getY(),
+            width:  component.getWidth(),
+            height: component.getHeight(),
+        };
+    }
+
+    it('keeps a sized child\'s own rectangle in "committed" mode (A1)', () => {
+        installTestDOM(CONFIG);
+
+        const host  = hostAbsolute(300, 200, new Absolute({ sizing: 'committed' }));
+        const child = new Component({ preferredSize: { width: 40, height: 25 } });
+
+        host.addComponent(child);
+        child.setBounds(17, 33, 90, 60);
+
+        host.doLayout();
+
+        // Both extents differ from the preferred size *and* from each other, so
+        // a preferred-size read and an axis swap each show up here.
+        expect(rectOf(child)).toEqual({ x: 17, y: 33, width: 90, height: 60 });
+    });
+
+    it('still moves the same child to its preferred size in the default mode (A2)', () => {
+        installTestDOM(CONFIG);
+
+        const host  = hostAbsolute(300, 200);
+        const child = new Component({ preferredSize: { width: 40, height: 25 } });
+
+        host.addComponent(child);
+        child.setBounds(17, 33, 90, 60);
+
+        host.doLayout();
+
+        // A1's anchor: the same fixture discriminates, and `"preferred"` is
+        // still what a manager built without the option does.
+        expect(rectOf(child)).toEqual({ x: 17, y: 33, width: 40, height: 25 });
+    });
+
+    it('keeps a null-preferred child\'s rectangle in "committed" mode (A3)', () => {
+        installTestDOM(CONFIG);
+
+        const host  = hostAbsolute(300, 200, new Absolute({ sizing: 'committed' }));
+        const child = new Component();
+
+        host.addComponent(child);
+        child.setBounds(5, 6, 70, 50);
+
+        // The arm that hid the defect: a `StringCell` reports no preferred
+        // size, so both modes agree and only a zero fallback or an axis swap
+        // shows here.
+        expect(child.getPreferredSize()).toBeNull();
+
+        host.doLayout();
+
+        expect(rectOf(child)).toEqual({ x: 5, y: 6, width: 70, height: 50 });
+    });
+
+    it('skips a never-sized child yet lays out a sized one that owes a pass (A4)', () => {
+        installTestDOM(CONFIG);
+
+        const host    = hostAbsolute(300, 200, new Absolute({ sizing: 'committed' }));
+        const sized   = new Component({ preferredSize: { width: 40, height: 25 } });
+        const unsized = new Component({ preferredSize: { width: 40, height: 25 } });
+
+        host.addComponent(sized);
+        host.addComponent(unsized);
+        sized.setBounds(0, 0, 50, 20);
+
+        // A pass on an element-less component leaves the dirty flag set
+        // whatever the manager did, which would make both assertions vacuous.
+        expect(sized.getElement()).toBeTruthy();
+        expect(unsized.getElement()).toBeTruthy();
+
+        host.doLayout();
+        sized.invalidateLayout();
+
+        expect(sized.isLayoutDirty()).toBe(true);
+        expect(unsized.isLayoutDirty()).toBe(true);
+
+        host.doLayout();
+
+        // The non-zero baseline: the committed arm does commit, so a child that
+        // owes a pass gets one.
+        expect(sized.isLayoutDirty()).toBe(false);
+        // Committing a NaN extent reports a change on every pass, so dropping
+        // the skip would clear this flag and lay the child out for ever.
+        expect(unsized.isLayoutDirty()).toBe(true);
+        expect(Number.isNaN(unsized.getWidth())).toBe(true);
+    });
+
+    it('reports the default and the constructed mode through the getter (A6)', () => {
+        // Both halves are required: the default alone passes whatever
+        // `applyOptions` dispatches.
+        expect(new Absolute().getSizing()).toBe('preferred');
+        expect(new Absolute({ sizing: 'committed' }).getSizing()).toBe('committed');
     });
 });

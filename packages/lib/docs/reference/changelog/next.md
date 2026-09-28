@@ -659,6 +659,15 @@ page resets to empty.
 
 ### Layouts
 
+- **`Absolute` takes `sizing`** (`"preferred"`, the default, or `"committed"`),
+  with `getSizing()` / `setSizing()`, and the `AbsoluteSizing` type is exported
+  from `layout`. `"preferred"` is the existing behaviour: each child is
+  committed at its preferred size, falling back to its current size, then to
+  `0`. `"committed"` re-commits each child at the width and height it already
+  holds, for a container whose children are sized by the code that owns them
+  rather than by the manager; a child nobody has sized yet is skipped, since it
+  holds no rectangle to keep. Both modes leave the child's own position alone.
+
 - **`Split` and `Accordion` take `resizeMode`**, with `getResizeMode()` /
   `setResizeMode(mode | null)`; a manager with none of its own follows the
   app-wide mode set through `Body`.
@@ -1144,6 +1153,20 @@ page resets to empty.
   offline suite can observe.
 
 ### Components
+
+- **A table row now records its layout pass.** The table's `Row.doLayout()` was
+  a no-op, and the base pass is the only place a component records that a pass
+  ran, so `Row.isLayoutDirty()` read `true` for the whole life of the page, an
+  `onFirstLayout` callback registered on a row before it was connected never
+  fired, and a cell whose pass was queued in the same frame as its row's was
+  dropped by the batched flush — which prunes a queued component under a queued
+  ancestor on the promise that the ancestor's pass recurses into it — and left
+  owing that pass until the next render. The row now runs the base pass over an
+  `Absolute({ sizing: "committed" })` manager, so the geometry is unchanged: the
+  pass re-commits every cell at the rectangle the table gave it. A consumer
+  `Row` subclass that replaces the row's layout manager must keep one that does
+  not re-size cells, and one that overrides `doLayout` must keep the
+  `super.doLayout()` call.
 
 - **`Tree.setRowOverflow()` takes effect at once, and a Ctrl-click (Cmd-click)
   rebinds the row it toggles.** `setRowOverflow` stored the new mode and waited
