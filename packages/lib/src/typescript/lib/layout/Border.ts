@@ -15,17 +15,14 @@ import type { Handle } from "~/core/DOM.js";
 import { FocusReveal } from "~/core/FocusReveal.js";
 import type { FocusRevealer } from "~/core/FocusReveal.js";
 
-// Pixel thickness of a region's transparent collapse track in its expanded
-// state — just enough to carry the (overflowing) chevron at the region's inner
-// edge. Mirrors `Split`'s GUTTER_SIZE so the two managers' divider tracks match.
-const TRACK_SIZE = 4;
-
-// Extra px the expanded gutter's element extends past its TRACK_SIZE track on
-// each side across it (so its total thickness is TRACK_SIZE +
-// 2 × TRACK_OVERHANG = 10px), matching CollapseButton's own GRIP_ACROSS. The
-// gutter clips to its own box, so a bare 4px element would show only a sliver
-// of the chevron. Mirrors `Split`'s GUTTER_HIT_OVERHANG.
-const TRACK_OVERHANG = 3;
+// Half the expanded gutter's element thickness across a region's inner edge.
+// The gutter reserves no space of its own — the gap between regions is the
+// configurable `spacing` inter-region gap — so the element is pure overhang:
+// 2 × TRACK_OVERHANG = 10px, centred on the gap's midline, matching
+// CollapseButton's own GRIP_ACROSS. The gutter clips to its own box, so a
+// narrower element would show only a sliver of the chevron. Mirrors `Split`'s
+// GUTTER_HIT_OVERHANG.
+const TRACK_OVERHANG = 5;
 
 // The way each region's chevron points (and the gutter travels) when collapsing
 // — toward the region's outer edge. The restore heading is its opposite,
@@ -800,9 +797,10 @@ class Border extends LayoutManager implements FocusRevealer {
 
     /**
      * Returns the existing fixed gutter for a region, creating and wiring it on
-     * first use. The gutter is non-movable, transparent in its divider state,
-     * and carries the chevron pointing toward the region's outer edge; its
-     * double-click collapses the region.
+     * first use. The gutter is non-movable and paints nothing in its divider
+     * state — `expandedBackground` defaults to "transparent" — and carries the
+     * chevron pointing toward the region's outer edge; its double-click
+     * collapses the region.
      *
      * @param placement - The region the gutter collapses.
      * @returns The region's gutter.
@@ -817,10 +815,9 @@ class Border extends LayoutManager implements FocusRevealer {
         const vertical  = placement === Placement.NORTH || placement === Placement.SOUTH;
 
         gutter = new SplitGutter(vertical ? "vertical" : "horizontal", {
-            movable:            false,
-            collapseDirection:  COLLAPSE_CHEVRON[placement],
-            expandedBackground: "transparent",
-            listeners:          { collapse: () => this.setRegionCollapsed(placement, !this.isRegionCollapsed(placement)) },
+            movable:           false,
+            collapseDirection: COLLAPSE_CHEVRON[placement],
+            listeners:         { collapse: () => this.setRegionCollapsed(placement, !this.isRegionCollapsed(placement)) },
         });
 
         gutter.setVisible(false);
@@ -938,9 +935,10 @@ class Border extends LayoutManager implements FocusRevealer {
         gutter.setVisible(true);
 
         // Collapsed: the gutter fills the region's strip-sized rect. Expanded:
-        // a thin transparent track in the gap just past the region's
-        // center-facing edge, where the chevron reads naturally.
-        const rect = collapsed ? { x, y, width, height } : this.innerEdgeTrack(placement, x, y, width, height);
+        // a thin transparent hit box centred on the inter-region `spacing`
+        // gap just past the region's center-facing edge, where the chevron
+        // reads naturally.
+        const rect = collapsed ? { x, y, width, height } : this.innerEdgeHitBox(placement, x, y, width, height);
 
         gutter.setX(rect.x);
         gutter.setY(rect.y);
@@ -949,14 +947,14 @@ class Border extends LayoutManager implements FocusRevealer {
     }
 
     /**
-     * Computes the expanded gutter's rect around the thin transparent track in
-     * the gap just past a region's center-facing edge, where the gutter parks
-     * its chevron. The track sits flush against the region's outer edge of the
-     * gap; the rect widens it by `TRACK_OVERHANG` on each side across it, so
-     * the gutter contains the whole chevron instead of clipping it. The
-     * overhang lies over the region and the gap without taking their clicks:
-     * a fixed gutter's body passes pointer events through, and only the
-     * chevron catches them.
+     * Computes the expanded gutter's rect: a thin transparent hit box centred
+     * on the inter-region `spacing` gap's midline, just past a region's
+     * center-facing edge, where the gutter parks its chevron. The gutter
+     * reserves no space of its own — it is `2 × TRACK_OVERHANG` of pure
+     * overhang — so the rect contains the whole chevron instead of clipping
+     * it. The overhang lies over the region and the gap without taking their
+     * clicks: a fixed gutter's body passes pointer events through, and only
+     * the chevron catches them.
      *
      * @param placement - The edge region.
      * @param x - The region's left position.
@@ -965,14 +963,15 @@ class Border extends LayoutManager implements FocusRevealer {
      * @param height - The region's height.
      * @returns The gutter rect.
      */
-    private innerEdgeTrack(placement: Placement, x: number, y: number, width: number, height: number): { x: number; y: number; width: number; height: number } {
-        const across = TRACK_SIZE + 2 * TRACK_OVERHANG;
+    private innerEdgeHitBox(placement: Placement, x: number, y: number, width: number, height: number): { x: number; y: number; width: number; height: number } {
+        const across = 2 * TRACK_OVERHANG;
+        const midGap = this._spacing / 2;
 
         switch (placement) {
-            case Placement.NORTH: return { x, y: y + height - TRACK_OVERHANG,     width, height: across };
-            case Placement.SOUTH: return { x, y: y - TRACK_SIZE - TRACK_OVERHANG, width, height: across };
-            case Placement.WEST:  return { x: x + width - TRACK_OVERHANG,     y, width: across, height };
-            case Placement.EAST:  return { x: x - TRACK_SIZE - TRACK_OVERHANG, y, width: across, height };
+            case Placement.NORTH: return { x, y: y + height + midGap - TRACK_OVERHANG, width, height: across };
+            case Placement.SOUTH: return { x, y: y - midGap - TRACK_OVERHANG,          width, height: across };
+            case Placement.WEST:  return { x: x + width + midGap - TRACK_OVERHANG, y, width: across, height };
+            case Placement.EAST:  return { x: x - midGap - TRACK_OVERHANG,          y, width: across, height };
             default:              return { x, y, width, height };
         }
     }

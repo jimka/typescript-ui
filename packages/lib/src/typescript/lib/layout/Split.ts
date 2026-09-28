@@ -24,17 +24,16 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { ResizeDrag, gutterOutline, rectOf, getAppResizeMode, IN_PAGE_OUTLINE_Z_INDEX } from "~/core/ResizeDrag.js";
 import type { OutlineRect, ResizeMode } from "~/core/ResizeDrag.js";
 
-// Pixel thickness of a single draggable gutter. The main-axis sizing math
-// subtracts the gutters' combined footprint before dividing space among
-// panes, so this constant is the single source of truth for both the size
-// reservation and the gutter placement in `doLayout`.
-const GUTTER_SIZE = 4;
-
-// Extra px a movable gutter's real hit box extends past its GUTTER_SIZE
-// visual footprint on each side (so its total hit width is GUTTER_SIZE +
-// 2 × GUTTER_HIT_OVERHANG = 10px). Chosen to match CollapseButton's own
-// GRIP_ACROSS (10px) — see SplitGutter.ts's `.hover` state.
-const GUTTER_HIT_OVERHANG = 3;
+// Half the gutter element's main-axis thickness. The gutter reserves
+// no main-axis space of its own — the space between panes is the configurable
+// `spacing` gap — so the element is pure overhang: 2 × GUTTER_HIT_OVERHANG =
+// 10px, centred on the gap's midline. At the default `spacing: 0` the midline
+// is the pane boundary itself, so the element straddles it 5px into each
+// neighbour; a wider `spacing` shifts less (or none, past 2 × this value) of
+// that overhang onto the panes. 10px matches CollapseButton's own
+// GRIP_ACROSS, which is what keeps the whole chevron inside the element
+// (every Component clips).
+const GUTTER_HIT_OVERHANG = 5;
 
 // Probe weight for the refill's resize-pin test. Any positive value works: it
 // exists only so a pane with *no* weight set resolves through
@@ -77,6 +76,12 @@ export type PaneCollapseCallback = (index: number, collapsed: boolean) => void;
  */
 export interface SplitOptions extends LayoutManagerOptions {
     orientation?: AxisOrientation;
+    /**
+     * Pixel gap reserved between adjacent panes — the space a gutter sits in.
+     * Defaults to `0`, so panes touch and any visible divider comes from the
+     * panes' own insets.
+     */
+    spacing?: number;
     /** Indices of panes to start collapsed (applied on first layout). */
     collapsedPanes?: number[];
     /** Pane sizes to restore on first layout; discarded whole when stale. */
@@ -169,6 +174,7 @@ interface SplitOutlineDrag {
 class Split extends LayoutManager implements FocusRevealer {
 
     private _orientation: AxisOrientation = "horizontal";
+    private _spacing: number = 0;
     private _collapseTrigger: CollapseTrigger = "dblclick";
     private _sizes: Map<Component, number> = new Map<Component, number>();
     private _gutters: Array<SplitGutter> = [];
@@ -293,6 +299,10 @@ class Split extends LayoutManager implements FocusRevealer {
 
         if (options.orientation !== undefined) {
             this.setOrientation(options.orientation);
+        }
+
+        if (options.spacing !== undefined) {
+            this.setComponentSpacing(options.spacing);
         }
 
         if (options.collapseTrigger !== undefined) {
@@ -794,6 +804,28 @@ class Split extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * Returns the pixel gap reserved between adjacent panes.
+     *
+     * @returns The current spacing in pixels.
+     */
+    getComponentSpacing(): number {
+        return this._spacing;
+    }
+
+    /**
+     * Sets the pixel gap between adjacent panes.
+     * Marks the container's layout pass as owed.
+     *
+     * @param spacing - Gap size in pixels.
+     */
+    setComponentSpacing(spacing: number): this {
+        this._spacing = spacing;
+        this.getContainer()?.invalidateLayout();
+
+        return this;
+    }
+
+    /**
      * Returns the mode this split's gutter drags use: its own when it has one,
      * otherwise the app-wide default set through `Body.setResizeMode`.
      *
@@ -1132,7 +1164,7 @@ class Split extends LayoutManager implements FocusRevealer {
     /**
      * Shared core of {@link getPreferredSize} / {@link getMinSize}: sums the
      * panes' sizes (selected by `sizeOf`) along the split axis together with the
-     * gutter footprint, takes the largest across it, and adds the container
+     * reserved `spacing` gaps, takes the largest across it, and adds the container
      * perimeter. Panes reporting no size are skipped, as in the other box
      * managers.
      *
@@ -1162,7 +1194,7 @@ class Split extends LayoutManager implements FocusRevealer {
             cross  = Math.max(cross, horizontal ? size.height : size.width);
         }
 
-        main += this.gutterTotal(components.length);
+        main += this.spacingTotal(components.length);
 
         return horizontal
             ? { width:  main  + perimeter.left + perimeter.right,
@@ -1207,7 +1239,7 @@ class Split extends LayoutManager implements FocusRevealer {
         // ratio-invariant sizes up on the first connected layout.
         const innerSize = container.getInnerSize();
         const main      = innerSize ? (this._orientation === "horizontal" ? innerSize.width : innerSize.height) : 0;
-        const available = Math.max(0, main - this.gutterTotal(count));
+        const available = Math.max(0, main - this.spacingTotal(count));
         const base      = available > 0 ? available : 1;
 
         components.forEach((component, idx) => {
@@ -1298,7 +1330,7 @@ class Split extends LayoutManager implements FocusRevealer {
 
         const innerSize = container.getInnerSize();
         const main      = innerSize ? (this._orientation === "horizontal" ? innerSize.width : innerSize.height) : 0;
-        const available = Math.max(0, main - this.gutterTotal(components.length));
+        const available = Math.max(0, main - this.spacingTotal(components.length));
         const stored    = fromLayoutSizes(sizes, available);
 
         components.forEach((pane, idx) => this.setPaneSize(pane, stored[idx]));
@@ -1976,15 +2008,15 @@ class Split extends LayoutManager implements FocusRevealer {
     }
 
     /**
-     * Returns the combined pixel footprint of all gutters for a given pane
-     * count: one gutter sits between each adjacent pane pair.
+     * Returns the combined pixel total of the reserved `spacing` gaps for a
+     * given pane count: one gap sits between each adjacent pane pair.
      *
      * @param componentCount - The number of panes in the container.
      *
-     * @returns The total gutter thickness along the split axis.
+     * @returns The total reserved gap along the split axis.
      */
-    private gutterTotal(componentCount: number): number {
-        return Math.max(0, componentCount - 1) * GUTTER_SIZE;
+    private spacingTotal(componentCount: number): number {
+        return Math.max(0, componentCount - 1) * this._spacing;
     }
 
     /**
@@ -2036,7 +2068,7 @@ class Split extends LayoutManager implements FocusRevealer {
                 }
 
                 if (hasGutter) {
-                    splitTotal += GUTTER_SIZE;
+                    splitTotal += this._spacing;
                 }
             }
 
@@ -2093,10 +2125,11 @@ class Split extends LayoutManager implements FocusRevealer {
         let gutterCount = componentCount - 1;
 
         for (let i = this._gutters.length; i < gutterCount; i += 1) {
-            // Transparent divider track (like Border): only the chevron grip
-            // shows in the expanded state; the gutter paints itself only once
-            // collapsed into its button-styled strip.
-            let gutter = new SplitGutter(this._orientation, { expandedBackground: "transparent", collapseTrigger: this._collapseTrigger });
+            // Transparent divider (like Border): only the chevron grip shows in
+            // the expanded state — `expandedBackground` defaults to
+            // "transparent" — and the gutter paints itself only once collapsed
+            // into its button-styled strip.
+            let gutter = new SplitGutter(this._orientation, { collapseTrigger: this._collapseTrigger });
             let gutterIndex = i;
 
             gutter.on("dragstart", function (position: number) {
@@ -2206,22 +2239,29 @@ class Split extends LayoutManager implements FocusRevealer {
                     if (target >= 0) {
                         gutter.setCollapseDirection(this.paneDirection(components[target]));
                     }
-                    const overhang = gutter.isMovable() ? GUTTER_HIT_OVERHANG : 0;
+                    // The element reserves nothing: 2 × GUTTER_HIT_OVERHANG of
+                    // pure overhang, centred on the gap's midline. Not gated on
+                    // `isMovable()` — with no reserve left, a locked gutter
+                    // would collapse to 0px and clip its chevron away; a locked
+                    // gutter drops its pointer events instead (see
+                    // SplitGutter.setMovable).
+                    const hitSize = 2 * GUTTER_HIT_OVERHANG;
+                    const midGap  = this._spacing / 2;
 
                     if (horizontal) {
-                        gutter.setX(x - overhang);
+                        gutter.setX(x + midGap - GUTTER_HIT_OVERHANG);
                         gutter.setY(y);
-                        gutter.setWidth(GUTTER_SIZE + 2 * overhang);
+                        gutter.setWidth(hitSize);
                         gutter.setHeight(crossSize);
 
-                        x += GUTTER_SIZE;
+                        x += this._spacing;
                     } else {
                         gutter.setX(x);
-                        gutter.setY(y - overhang);
+                        gutter.setY(y + midGap - GUTTER_HIT_OVERHANG);
                         gutter.setWidth(crossSize);
-                        gutter.setHeight(GUTTER_SIZE + 2 * overhang);
+                        gutter.setHeight(hitSize);
 
-                        y += GUTTER_SIZE;
+                        y += this._spacing;
                     }
 
                     placed.add(idx);
@@ -2412,7 +2452,8 @@ class Split extends LayoutManager implements FocusRevealer {
 
                 // A pane collapsing toward the end uses its *leading* gutter as
                 // the strip, leaving its trailing gutter (when it has one)
-                // hidden — that 4px divider is reclaimed by the expanded panes.
+                // hidden — that reserved spacing gap is reclaimed by the
+                // expanded panes.
                 if (!this.collapsesTowardStart(this.paneDirection(component)) && idx < gutterCount) {
                     hiddenDividers += 1;
                 }
@@ -2421,19 +2462,19 @@ class Split extends LayoutManager implements FocusRevealer {
             }
         }
 
-        // The expanded panes share the inner main extent net of the GUTTER_SIZE
-        // dividers between displayed panes. Derived from `mainInner` rather than
-        // Σ stored, because a hidden pane keeps its stored size (frozen for a
-        // later restore) yet is absent from `components` — so its slot and gutter
-        // are genuinely reclaimed here, and the expanded panes inflate to fill
-        // via `factor` without `_sizes` being rewritten (preserving the ratio a
-        // re-shown pane returns to). Each collapsed pane's gutter becomes a
-        // `COLLAPSE_STRIP_SIZE` strip in place of its `GUTTER_SIZE` divider, the
-        // pane yields its whole slot, and any toward-end-hidden divider is
-        // reclaimed — so panes + strips + visible dividers still sum to the inner
-        // extent.
-        const available     = Math.max(0, mainInner - this.gutterTotal(components.length));
-        const expandedTotal = Math.max(0, available - strips * (COLLAPSE_STRIP_SIZE - GUTTER_SIZE) + hiddenDividers * GUTTER_SIZE);
+        // The expanded panes share the inner main extent net of the reserved
+        // `spacing` gaps between displayed panes. Derived from `mainInner`
+        // rather than Σ stored, because a hidden pane keeps its stored size
+        // (frozen for a later restore) yet is absent from `components` — so its
+        // slot and gap are genuinely reclaimed here, and the expanded panes
+        // inflate to fill via `factor` without `_sizes` being rewritten
+        // (preserving the ratio a re-shown pane returns to). Each collapsed
+        // pane's gutter becomes a `COLLAPSE_STRIP_SIZE` strip in place of its
+        // reserved `spacing` gap, the pane yields its whole slot, and any
+        // toward-end-hidden gap is reclaimed — so panes + strips + visible gaps
+        // still sum to the inner extent.
+        const available     = Math.max(0, mainInner - this.spacingTotal(components.length));
+        const expandedTotal = Math.max(0, available - strips * (COLLAPSE_STRIP_SIZE - this._spacing) + hiddenDividers * this._spacing);
         const factor        = expandedStored > 0 ? expandedTotal / expandedStored : 0;
 
         const sizes = new Map<Component, number>();
@@ -2501,13 +2542,13 @@ class Split extends LayoutManager implements FocusRevealer {
         }
 
         // `getInnerSize` already removed the perimeter (insets + border +
-        // padding); the only thing the panes don't get is the gutters, so the
-        // space to divide is the inner main axis minus the gutter footprint.
-        // `doLayout` places panes from `getContentInsets` and advances by this
-        // same gutter total, so a pane sum of `available` lands flush with the
-        // inner edge — no `gutterCount × GUTTER_SIZE` overflow.
+        // padding); the only thing the panes don't get is the reserved
+        // `spacing` gaps, so the space to divide is the inner main axis minus
+        // their total. `doLayout` places panes from `getContentInsets` and
+        // advances by this same spacing total, so a pane sum of `available`
+        // lands flush with the inner edge — no `gutterCount × spacing` overflow.
         let main = this._orientation === "horizontal" ? containerSize.width : containerSize.height;
-        let available = Math.max(0, main - this.gutterTotal(components.length));
+        let available = Math.max(0, main - this.spacingTotal(components.length));
 
         const horizontal = this._orientation === "horizontal";
 
@@ -2721,7 +2762,7 @@ class Split extends LayoutManager implements FocusRevealer {
         }
 
         // Only remember a positive extent. If the container collapsed below the
-        // gutter footprint (`available == 0`) the stored sizes were left frozen,
+        // reserved `spacing` gaps (`available == 0`) the stored sizes were left frozen,
         // so keeping the last positive baseline lets the next growth rescale
         // them back to fill instead of stranding the pre-collapse sizes.
         if (available > 0) {

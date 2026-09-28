@@ -42,7 +42,7 @@ app.addComponent(detailPanel,                     { placement: Placement.EAST   
 app.addComponent(Table(store),                { placement: Placement.CENTER });
 ```
 
-[`BorderOptions`](/api/layout/interfaces/BorderOptions) accepts `spacing` declaratively (the inter-region pixel spacing); the `setComponentSpacing` setter still works for runtime updates.
+[`BorderOptions`](/api/layout/interfaces/BorderOptions) accepts `spacing` declaratively (the inter-region pixel spacing); the `setComponentSpacing` setter still works for runtime updates. `spacing` also positions a collapsible region's gutter: its 10px element is centred on the gap, so at the default `spacing` of 5 it straddles the region's inner edge by 2.5px each side, while at a `spacing` of exactly 10 it fills the gap, and beyond that it sits wholly inside it. Only the chevron takes clicks -- a `Border` gutter is constructed `movable: false`, which drops the element's own pointer events.
 
 ## Per-child constraints
 

@@ -1894,7 +1894,7 @@ class Accordion extends LayoutManager implements FocusRevealer {
         }
 
         const container = this.getContainer()!;
-        const gutter = new SplitGutter("vertical", { collapsible: false, expandedBackground: "transparent" });
+        const gutter = new SplitGutter("vertical", { collapsible: false });
 
         gutter.setTransition("none");
         gutter.on("dragstart", (position: number) => this.onGutterDragStart(index, position));

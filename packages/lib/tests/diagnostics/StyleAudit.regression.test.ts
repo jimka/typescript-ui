@@ -110,7 +110,8 @@ const NOOP = (): void => {};
 // over from any other plan or document.
 // Raised from 68 to 69 by plans/split-accordion-panel-scroll-convergence.md's
 // SplitGutter `.opaque` migration: `_expandedBackground` (a genuine per-caller
-// value — Border passes "transparent", others can override it — so it stays
+// value — the option defaults to "transparent" and no manager passes it
+// explicitly any more, but a caller can still override it — so it stays
 // a per-instance `setBackgroundColor` call, not a class-tier default) now
 // shares a property key with the new `.opaque` `ownStyleStates` bag, so
 // `isRestingChromeIsolated` isolates it onto its own `#id:not(.opaque)` rule

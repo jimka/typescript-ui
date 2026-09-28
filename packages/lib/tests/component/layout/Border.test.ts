@@ -63,6 +63,10 @@ describe('Border setters/getters and collapse state', () => {
         expect(border.getComponentSpacing()).toBe(12);
     });
 
+    it('defaults componentSpacing to 5', () => {
+        expect(new Border().getComponentSpacing()).toBe(5);
+    });
+
     it('CENTER is never collapsible and rejects a collapse request', () => {
         const border = new Border();
 
@@ -370,22 +374,19 @@ describe('Border overflow inflation', () => {
 
 describe('Border collapse gutter geometry', () => {
     // CollapseButton's GRIP_ACROSS: the chevron handle's thickness across its
-    // host gutter. A gutter clips to its own box, so it must be at least this
-    // thick or the handle shows only as a sliver.
+    // host gutter, and the gutter element's own fixed main-axis size — pure
+    // overhang, with no reserve of its own (mirrors Split's GUTTER_HIT_OVERHANG).
     const GRIP_ACROSS_PX = 10;
-    // Half of the 4px track the chevron has always been centred on, flush
-    // against the region's centre-facing edge.
-    const TRACK_MID_PX = 2;
 
     /** `_gutters` is non-public; every gutter-geometry probe goes through here. */
     function gutterOf(border: Border, p: Placement): Component {
         return (border as unknown as { _gutters: Map<Placement, Component> })._gutters.get(p)!;
     }
 
-    function hostCollapsibleRegions(): { border: Border; host: Container; regions: Record<string, Component> } {
+    function hostCollapsibleRegions(spacing?: number): { border: Border; host: Container; regions: Record<string, Component> } {
         installTestDOM(CONFIG);
 
-        const border  = new Border();
+        const border  = new Border(spacing !== undefined ? { spacing } : undefined);
         const host    = hostBorder(400, 300, border);
         const regions = {
             north: new Component({ preferredSize: { width: 50, height: 40 } }),
@@ -404,24 +405,34 @@ describe('Border collapse gutter geometry', () => {
         return { border, host, regions };
     }
 
-    it("sizes an expanded region's gutter to contain its chevron, still centred on the region's inner-edge track", () => {
-        const { border, regions } = hostCollapsibleRegions();
+    /** Asserts every region's gutter is exactly 10px, centred on the spacing gap's midline. */
+    function expectHitBoxCentredOnGap(spacing?: number): void {
+        const { border, regions } = hostCollapsibleRegions(spacing);
+        const midGap = border.getComponentSpacing() / 2;
         const north = gutterOf(border, Placement.NORTH);
         const south = gutterOf(border, Placement.SOUTH);
         const west  = gutterOf(border, Placement.WEST);
         const east  = gutterOf(border, Placement.EAST);
 
-        expect(north.getHeight()).toBeGreaterThanOrEqual(GRIP_ACROSS_PX);
-        expect(north.getY() + north.getHeight() / 2).toBe(regions.north.getY() + regions.north.getHeight() + TRACK_MID_PX);
+        expect(north.getHeight()).toBe(GRIP_ACROSS_PX);
+        expect(north.getY() + north.getHeight() / 2).toBe(regions.north.getY() + regions.north.getHeight() + midGap);
 
-        expect(south.getHeight()).toBeGreaterThanOrEqual(GRIP_ACROSS_PX);
-        expect(south.getY() + south.getHeight() / 2).toBe(regions.south.getY() - TRACK_MID_PX);
+        expect(south.getHeight()).toBe(GRIP_ACROSS_PX);
+        expect(south.getY() + south.getHeight() / 2).toBe(regions.south.getY() - midGap);
 
-        expect(west.getWidth()).toBeGreaterThanOrEqual(GRIP_ACROSS_PX);
-        expect(west.getX() + west.getWidth() / 2).toBe(regions.west.getX() + regions.west.getWidth() + TRACK_MID_PX);
+        expect(west.getWidth()).toBe(GRIP_ACROSS_PX);
+        expect(west.getX() + west.getWidth() / 2).toBe(regions.west.getX() + regions.west.getWidth() + midGap);
 
-        expect(east.getWidth()).toBeGreaterThanOrEqual(GRIP_ACROSS_PX);
-        expect(east.getX() + east.getWidth() / 2).toBe(regions.east.getX() - TRACK_MID_PX);
+        expect(east.getWidth()).toBe(GRIP_ACROSS_PX);
+        expect(east.getX() + east.getWidth() / 2).toBe(regions.east.getX() - midGap);
+    }
+
+    it("sizes an expanded region's gutter to exactly 10px, centred on the default 5px spacing gap", () => {
+        expectHitBoxCentredOnGap();
+    });
+
+    it("sizes an expanded region's gutter to exactly 10px, centred on the region edge when spacing is 0", () => {
+        expectHitBoxCentredOnGap(0);
     });
 
     it("keeps a collapsed region's gutter at exactly the collapse strip, with no overhang", () => {

@@ -423,7 +423,7 @@ describe('Split drag-frame gate', () => {
 
     /** The boxes the scene's panes hold once the leading one is pinned at its maximum. */
     const PINNED_LHS = { x: 0, y: 0, width: LHS_MAX, height: HOST_HEIGHT };
-    const PINNED_RHS = { x: 254, y: 0, width: 146, height: HOST_HEIGHT };
+    const PINNED_RHS = { x: 250, y: 0, width: 150, height: HOST_HEIGHT };
 
     it('D1. lays both panes out on a frame that moves them, whatever the pane class', () => {
         for (const makePane of [plainPane, skippablePane]) {
@@ -683,7 +683,7 @@ describe('Split drag-frame gate', () => {
 
         expect(count()).toEqual([1, 1]);
         expect(box(scn.lhs)).toEqual({ x: 0, y: 0, width: VERTICAL_HOST_WIDTH, height: LHS_MAX });
-        expect(box(scn.rhs)).toEqual({ x: 0, y: 254, width: VERTICAL_HOST_WIDTH, height: 146 });
+        expect(box(scn.rhs)).toEqual({ x: 0, y: 250, width: VERTICAL_HOST_WIDTH, height: 150 });
     });
 
     it('Dv2. lays out neither opted-in pane on a parked vertical frame', () => {
@@ -698,7 +698,7 @@ describe('Split drag-frame gate', () => {
 
         expect(count()).toEqual([1, 1]);
         expect(box(scn.lhs)).toEqual({ x: 0, y: 0, width: VERTICAL_HOST_WIDTH, height: LHS_MAX });
-        expect(box(scn.rhs)).toEqual({ x: 0, y: 254, width: VERTICAL_HOST_WIDTH, height: 146 });
+        expect(box(scn.rhs)).toEqual({ x: 0, y: 250, width: VERTICAL_HOST_WIDTH, height: 150 });
         expect(scn.split.getPaneSize(scn.lhs)).toBe(LHS_MAX);
     });
 });
