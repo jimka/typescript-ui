@@ -26,7 +26,7 @@ export type AbsoluteSizing = "preferred" | "committed";
  */
 export interface AbsoluteOptions extends LayoutManagerOptions {
     /** How each child is sized. Default `"preferred"`. See {@link AbsoluteSizing}. */
-    sizing ?: AbsoluteSizing;
+    sizing?: AbsoluteSizing;
 }
 
 /**
