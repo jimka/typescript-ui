@@ -361,25 +361,46 @@ describe('P16 scroll-panes', () => {
         expect(wheel instanceof Element && wheel.isConnected, 'wheel: element in the document').toBe(true);
     });
 
-    it('lays every pane out on a settled pass, where a plain Panel would skip it', async () => {
+    it('withholds every pane\'s re-measure on a settled pass, but still lays every pane out', async () => {
         const mounted = await mountPanel('scroll-panes', new URLSearchParams({ n: String(SMOKE_SCALE) }), tools, SMOKE_WAITS);
         const root = mounted.build.root;
-        const patched = snapshotPatchables([tools.ownerProto(root.getComponents()[0], 'remeasureScrollMetrics')!]);
+        const panes = root.getComponents();
+        const patched = snapshotPatchables([tools.ownerProto(panes[0], 'remeasureScrollMetrics')!]);
 
         await tools.waitFrames(PANEL_SETTLE_FRAMES);
 
         try {
             mounted.build.installWork!(tools);
 
-            // The pass moves no pane, so a plain `Panel` would take the
-            // unchanged-commit skip and never reach `remeasureScrollMetrics` —
-            // the call the cell measures. The counter is wrapped on
-            // `Panel.prototype`, so its key carries the receiver's class: the
-            // panes report under the subclass, the board root under `Panel`.
-            const work = counted(() => root.doLayout());
+            const laidOut = vi.spyOn(panes[0], 'doLayout');
 
-            expect(work['pane.remeasure@ScrollPane']).toBe(SMOKE_SCALE);
-            expect(work['pane.remeasure@Panel']).toBe(1);
+            // The two halves of what a settled pass now costs a pane, which the
+            // one re-measure count used to conflate. The panes are a `Panel`
+            // subclass, so an unchanged commit still cannot withhold their pass
+            // — but `Panel` withholds that pass's scroll-metrics re-measure
+            // anyway, from settled state rather than from the per-class opt-in,
+            // so the call the cell measures is no longer reached on a pass that
+            // moves nothing. The counter is wrapped on `Panel.prototype`, so its
+            // key carries the receiver's class: the panes report under the
+            // subclass, the board root under `Panel`.
+            const settled = counted(() => root.doLayout());
+
+            expect(laidOut).toHaveBeenCalledTimes(1);
+            expect(settled['pane.remeasure@ScrollPane']).toBeUndefined();
+            expect(settled['pane.remeasure@Panel']).toBeUndefined();
+
+            // The counts the cell used to read on every pass are what a pass
+            // with a layout owed still costs, and they are the non-zero baseline
+            // the absence above is read against: the same keys, wired the same
+            // way, on the same board.
+            for (const pane of panes) {
+                pane.invalidateLayout();
+            }
+
+            const owed = counted(() => root.doLayout());
+
+            expect(owed['pane.remeasure@ScrollPane']).toBe(SMOKE_SCALE);
+            expect(owed['pane.remeasure@Panel']).toBe(1);
         } finally {
             restorePatchables(patched);
         }

@@ -627,64 +627,104 @@ describe('A10 g14.closed-section', () => {
 /**
  * Frames that let a scrolling panel's resize-settle relay run out: the
  * mount's first layout arms it, it takes two layout flushes to clear, and
- * until it has, the panel withholds the re-measure `g16.panel-settled` gates.
- * One frame more than the two, as margin.
+ * until it has, the panel withholds the re-measure these cases read for a
+ * reason of the relay's own. One frame more than the two, as margin.
  */
 const PANEL_SETTLE_FRAMES = 3;
 
+/**
+ * The work key `countMethod` files a `markdown-doc` content pane's
+ * scroll-metrics re-measure under: the tag, then the receiver's class, because
+ * the counter wraps the declaring `Panel.prototype`.
+ */
+const PANE_REMEASURE = 'pane.remeasure@MarkdownContentPane';
+
+/**
+ * A11 is a regression detector rather than a witness: `Panel` itself now
+ * withholds a settled pass's scroll-metrics re-measure, so the arm's gate is
+ * never reached on the pass it was built to skip and bumps no counter of its
+ * own there. Each case therefore counts the library's own calls — absent on a
+ * settled pass, and a known non-zero count on a pass whose size moved or whose
+ * layout is owed, so the absence cannot pass as a counter that was never wired.
+ */
 describe('A11 g16.panel-settled', () => {
-    it('skips a settled panel\'s remeasure, and not once its size changes', async () => {
+    it('withholds a settled panel\'s re-measure, and runs it once the size moves', async () => {
         await mount('markdown-doc');
 
         const pane = tools.findComponent('MarkdownContentPane') as unknown as Component;
 
         await tools.waitFrames(PANEL_SETTLE_FRAMES);
         apply('g16.panel-settled');
+        tools.countMethod(pane, 'remeasureScrollMetrics', 'pane.remeasure');
         pane.doLayout();
 
-        expect(counted(() => pane.doLayout())['skipped.g16.panel-settled.remeasure']).toBeGreaterThanOrEqual(1);
+        expect(counted(() => pane.doLayout())[PANE_REMEASURE]).toBeUndefined();
 
         pane.setWidth(pane.getWidth() - 10);
 
-        expect(counted(() => pane.doLayout())['skipped.g16.panel-settled.remeasure']).toBeUndefined();
+        expect(counted(() => pane.doLayout())[PANE_REMEASURE]).toBe(1);
     });
 
-    it('decides the skip from cached values, asking the panel for no size hint', async () => {
+    it('decides the withholding from cached values, asking the panel for no size hint', async () => {
         await mount('markdown-doc');
 
         const pane = tools.findComponent('MarkdownContentPane') as unknown as Component;
 
         await tools.waitFrames(PANEL_SETTLE_FRAMES);
         apply('g16.panel-settled');
+        tools.countMethod(pane, 'remeasureScrollMetrics', 'pane.remeasure');
 
-        // Spied after the ablation is applied, so the spy sees the gate's own
-        // reads: the arm would otherwise pay a subtree size computation per
-        // pane per pass, which is the cost the gate exists to avoid. It pins
-        // the gate rather than the pass — `Panel.scheduleGutterSettleOnShrink`
-        // pays one of its own on any pass where the panel shows a scroll
-        // affordance, which jsdom, painting none, never reaches.
+        // Spied after the ablation is applied, so the spy sees every read the
+        // decision makes, the arm's own included: a gate free to ask the panel
+        // for a size hint would pay a subtree size computation per pane per pass,
+        // which is what deciding from cached state avoids. It pins the decision
+        // rather than the pass — `Panel.scheduleGutterSettleOnShrink` pays one of
+        // its own on any pass where the panel shows a scroll affordance, which
+        // jsdom, painting none, never reaches.
         const preferred = vi.spyOn(pane, 'getPreferredSize');
 
         pane.doLayout();
 
-        expect(counted(() => pane.doLayout())['skipped.g16.panel-settled.remeasure']).toBeGreaterThanOrEqual(1);
+        expect(counted(() => pane.doLayout())[PANE_REMEASURE]).toBeUndefined();
         expect(preferred).not.toHaveBeenCalled();
+
+        // The settled term, not the rectangle alone: a pass arriving with a
+        // layout owed re-measures at the very same box. Also the non-zero
+        // baseline the absence above is read against, on the same key.
+        pane.invalidateLayout();
+
+        expect(counted(() => pane.doLayout())[PANE_REMEASURE]).toBe(1);
     });
 
-    it('engages on the board the cell measures: a settled pass skips every pane\'s re-measure', async () => {
+    it('on the board the cell measures, a settled pass withholds every pane\'s re-measure', async () => {
         const mounted = await mount('scroll-panes');
         const root = mounted.build.root as unknown as Component;
+        const panes = root.getComponents();
 
         await tools.waitFrames(PANEL_SETTLE_FRAMES);
         apply('g16.panel-settled');
+        tools.countMethod(panes[0], 'remeasureScrollMetrics', 'pane.remeasure');
         root.doLayout();
 
-        // The acceptance criterion for cell `spp`. The panes are a `Panel`
-        // subclass so that an unchanged commit cannot withhold their pass: a
-        // plain pane skips it, never reaches `remeasureScrollMetrics`, and this
-        // arm then produces no counter at all — a gate that ships dead while
-        // every other test stays green.
-        expect(counted(() => root.doLayout())['skipped.g16.panel-settled.remeasure']).toBe(SMOKE_SCALE);
+        // The acceptance criterion for cell `spp`, inverted. The panes are a
+        // `Panel` subclass, so an unchanged commit cannot withhold their pass —
+        // and they still earn the narrower skip, which the library grants from
+        // settled state rather than from the per-class opt-in. The counter is
+        // wrapped on `Panel.prototype`, so its key carries the receiver's class:
+        // the panes report under the subclass, the board root under `Panel`.
+        const settled = counted(() => root.doLayout());
+
+        expect(settled['pane.remeasure@ScrollPane']).toBeUndefined();
+        expect(settled['pane.remeasure@Panel']).toBeUndefined();
+
+        for (const pane of panes) {
+            pane.invalidateLayout();
+        }
+
+        const owed = counted(() => root.doLayout());
+
+        expect(owed['pane.remeasure@ScrollPane']).toBe(SMOKE_SCALE);
+        expect(owed['pane.remeasure@Panel']).toBe(1);
     });
 
     it('passes a non-scrolling panel through uncounted: its re-measure already does nothing', async () => {
@@ -733,11 +773,23 @@ describe('A12 g16.scroll-reads', () => {
 
         apply('g16.scroll-reads');
 
-        // `markdown-doc`'s pane uses overlay scrollbars, which re-read the inner scroller's metrics per sync.
+        // `markdown-doc`'s pane uses overlay scrollbars, whose bar sync the
+        // library now hands the read the shared scroll listener already made,
+        // so it measures nothing of its own and the memo has nothing to serve
+        // it. A sync that read for itself would score a hit on the second call,
+        // exactly as the shadow update — which still reads when it is handed no
+        // metrics — does below, on the same key.
         expect(handle).toBeTruthy();
+
+        const metrics = invoke(DOM.source, 'getScrollMetrics', handle);
+
         expect(counted(() => {
-            invoke(pane, 'syncOverlayScrollbars');
-            invoke(pane, 'syncOverlayScrollbars');
+            invoke(pane, 'syncOverlayScrollbars', metrics);
+            invoke(pane, 'syncOverlayScrollbars', metrics);
+        })['memo.g16.scroll-reads.metricsHit']).toBeUndefined();
+        expect(counted(() => {
+            invoke(pane, 'updateScrollShadows');
+            invoke(pane, 'updateScrollShadows');
         })['memo.g16.scroll-reads.metricsHit']).toBe(1);
         expect(counted(() => {
             invoke(DOM.source, 'getScrollMetrics', handle);
