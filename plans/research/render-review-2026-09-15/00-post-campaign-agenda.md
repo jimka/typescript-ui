@@ -436,6 +436,16 @@ needed.
   unnoticed. A fix needs a reset signal the module subscribes to; correcting
   that sentence costs nothing and should happen either way.
 
+  **Resolved by `plans/implemented/glyph-sprite-reset-hook.md`.** The module now
+  remembers the `DOMSink` its handles were minted against and drops the sprite
+  when a different one is installed, so the reset signal called for above turned
+  out not to be needed: no registration, and nothing new on `core/DOM.ts`.
+  `activation-after-dispose`'s `beforeAll` priming step is gone, and
+  `13-button-glyph-image.md` carries a dated correction where the false sentence
+  was. One correction to the above: the hole was wider than the two variables
+  named here — the mounted-symbol record at `Glyphs.ts:65` shipped with the same
+  lifetime bug, and clearing it is what a rebuilt sprite actually depends on.
+
 - **The modelled DOM's teardown records but never evicts.** `_byId` and
   `_stubs` (`tests/dom/TestDOM.ts:141-143`) carry no `delete` and no `clear`
   anywhere in the file. `removeElement` (`TestDOM.ts:603`) detaches the parent

@@ -561,3 +561,153 @@ succeeds forever after.
     `beforeAll` block before deleting it — the surrounding imports and hooks may
     have moved. The two changes do not conflict in substance: the priming step is
     owed regardless of which DOM the file runs against.
+
+---
+
+## Implementation Notes
+
+The change itself landed exactly as designed: `_spriteSink`,
+`_forgetSpriteIfSinkChanged`, and the four first-statement calls, with the
+helper above both `_spriteMounted` early-outs. The new test file failed on
+S1/S2/S4 and passed S3 before the fix, S1 with the very
+`HierarchyRequestError: The operation would yield an incorrect node tree` the
+plan recorded from its throwaway reproduction, and all four passed after. The
+`Tree` icon-rebinding case broke with exactly the predicted 2
+`createElementNS` writes and step 7's warm-up restored it. Thirteen deviations
+and corrections are worth recording, six of them found by the audit loop.
+
+**The suite baseline is not the one `[^suite-baseline]` measured.** That
+footnote measured against `master` at `6db01b15`; this branch is phase 2 of a
+sequential batch and sits on `feature/test-dom-handle-eviction`, which added a
+test file of its own. Measured on this branch's start point the baseline is 513
+files and 8576 tests (2 `todo`), all green — already the totals the footnote
+predicted for *after* this change. With this plan's file added the suite is 514
+files and 8582 tests (2 `todo`), all green. The absolute numbers in step 11 and
+in `## Verification` should be read as "baseline plus one file and six tests" —
+six rather than the plan's four because the audit added two cases (below).
+
+**One verification grep cannot pass as written.** `## Verification` asks for
+zero matches of `grep -n 'already resets'` in
+`plans/research/render-review-2026-09-15/13-button-glyph-image.md`, but the
+correction bullet the plan itself prescribes quotes the retired phrase
+verbatim — `the bullet above originally said … "already resets …"`. The false
+*assertion* is gone, which is what the grep was standing in for; the one
+surviving occurrence is inside the correction's quotation of it.
+
+**The correction bullet points at `plans/implemented/`.** The plan's prescribed
+text references `plans/glyph-sprite-reset-hook.md`, a path that stops resolving
+the moment this branch's last commit moves the plan. It was written as
+`plans/implemented/glyph-sprite-reset-hook.md`, the form the other research
+reports under `render-review-2026-09-15/` use for landed plans.
+
+**`[^why-jsdom-here]`'s justification was superseded before it was used.** That
+footnote argues for the jsdom pragma on the grounds that `TestDOM.ts`'s
+`release` only records and `removeElement` leaves the id index intact, so a
+dead handle still answers. The phase-1 branch this one sits on changed exactly
+that. The *instruction* still holds and was followed unchanged — jsdom pragma,
+production seam pair, no `installTestDOM` — so the new file's header states the
+reason that is still true instead: the modelled DOM models its own handle
+table, so the corruption these cases pin is a property of the production
+sink/source pair.
+
+**The shared file needed no re-location.** `[^shared-file]` allowed for
+`test-dom-handle-eviction` landing first and warned that the `beforeAll` block
+might have moved. That plan did land first but did not touch
+`tests/component/activation-after-dispose.test.ts` at all, so the priming block
+was still at lines 29-44 exactly as described.
+
+**A stale comment in the shared file was left alone, deliberately.** That
+file's header still says the modelled DOM's `removeElement` "clears a handle's
+parent but leaves it in the id index, so `DOM.source.getElementById()` still
+answers after a dispose". The phase-1 branch made that false and rewrote the
+identical claim in the sibling `tests/dom/event-subtree-reentrant-dispose.test.ts`,
+but missed this copy. Correcting it is that plan's scope, not this one's —
+`## Non-Goals` excludes modelled-DOM eviction, and a minimal shared-file diff
+is what keeps the chained rebase resolvable — so it is left for the phase-1
+author. The file's cases pass either way; only the explanation is out of date.
+
+**A changelog entry was added beyond the file table.** `## Fixed` › `###
+Components` in `docs/reference/changelog/next.md` gains an entry for the fix.
+The plan's table lists only `docs/concepts/dom-seams.md`, but a consumer that
+installs its own `DOMSink` through the documented `DOM.install` could reach
+this defect, and the phase-1 branch set the precedent of recording a seam-level
+fix there even when it changes no shipped behaviour.
+
+**The seam-doc paragraph is not the plan's verbatim wording.** Step 10 prescribed
+a block asserting that "`install` and `reset` invalidate every handle held
+anywhere in the library at once", and offering `core/ThemeVars.ts` as a worked
+instance of "a module that caches a `Handle`". Both halves are false. Only
+`DOM.reset()` rebuilds the shared registry
+([core/DOM.ts:3336](packages/lib/src/typescript/lib/core/DOM.ts#L3336));
+`DOM.install` ([core/DOM.ts:3317](packages/lib/src/typescript/lib/core/DOM.ts#L3317))
+reassigns the seam properties and leaves `_registry`
+([core/DOM.ts:536](packages/lib/src/typescript/lib/core/DOM.ts#L536)) standing,
+which is exactly why this plan keys the check on `DOM.sink` and why S4 asserts a
+source-only install *keeps* the sprite — a reader following the prescribed
+sentence literally would write the bug the plan's own *"keyed on `DOM.sink`, not
+`DOM.source`"* decision exists to prevent. And `ThemeVars` caches
+`Map<string, string>` ([core/ThemeVars.ts:19](packages/lib/src/typescript/lib/core/ThemeVars.ts#L19)),
+holding no handle at all, so it cannot illustrate a handle cache. The shipped
+paragraph states the obligation over seam-derived state generally — a minted
+handle or a value read through a seam — distinguishes what `reset` and `install`
+each do, and says the identity check is deliberately conservative rather than a
+test for actual invalidation. The rule, the two worked instances, and the "no
+registration, no teardown call" close are unchanged. The same false claim had
+been restated in the new test file's own header and was corrected with it.
+
+**The prescribed S2 and S4 assertions were vacuous, and were replaced.**
+`## Expected Behaviour` pins S2's "the mounted-symbol record was cleared with
+it" on `symbolParent('gss-alpha') === 'svg'`, and S4's on
+`symbolParent('gss-beta') === 'svg'`. Both are `document.querySelector` id
+lookups, and `## Potential Challenges` already predicted why they cannot work:
+a reset orphans the sprite it replaces without removing it, so the document
+holds several `<symbol>`s with the same id and the lookup only ever answers with
+the oldest. Deleting `_mountedSymbols.clear()` from the helper left the entire
+suite green — the one line the plan's S2 exists to pin was pinned by nothing.
+Both cases now assert a *delta* on `document.querySelectorAll('#ts-glyph-…')`,
+which is 1 without the clear and 2 with it; each independently fails when the
+clear is removed. Scoping the query to the newest sprite instead does not work:
+under jsdom a scoped `#id` query takes a document-wide `getElementById` fast
+path and returns the earlier duplicate.
+
+**Two cases were added beyond S1–S4, for guards the plan sanctioned but never
+gave a case.** `## Internal Structure`'s table authorises the
+`_forgetSpriteIfSinkChanged()` call in `registerGlyph` and `unregisterGlyph`,
+but `## Expected Behaviour` covers neither, and the suite stayed green with
+either one deleted. Each guards a hard throw: after a render and a `DOM.reset()`,
+`Glyph.unregister(name)` reaches `DOM.sink.removeChild` on the discarded
+registry's handles, and `Glyph.register(svgDef)` reaches `DOM.sink.appendChild`
+on the dead sprite handle. Both now have a case. Writing the second one also
+corrected a wrong expectation of mine: registering after a reset mounts
+*nothing*, because the reset left no sprite to mount into, and the `<symbol>`
+arrives on the name's first render — the assertion follows the contract rather
+than the guess it started from.
+
+**One line is deliberately left unpinned.** The guard in
+`ensureGlyphSymbolMounted` cannot be reached with a stale sink: both callers
+(`Glyph.mountSvgChild` and `Glyph.repaintName`) run `ensureGlyphSprite()`
+immediately before it, which has already dropped the stale state, so removing
+the guard leaves every test green. It stays because `## Internal Structure`
+names it and its ordering rule wants it above the `_spriteMounted` early-out;
+it is defence-in-depth on an `@internal` entry point, not dead weight, but no
+behavioural test can distinguish it.
+
+**The `_spriteSink` JSDoc carried the same over-claim as the seam doc.** It
+asserted that "a swapped sink invalidates all of them at once", the third copy
+of the sentence corrected above, and the helper's release note gave "they belong
+to a registry that no longer exists" as the reason for not releasing — true
+after `DOM.reset()`, false after a bare `DOM.install({ sink })`, where
+`_registry` survives and the handles stay pinned. Both were reworded, and the
+two commit messages that restated the claim were amended with it.
+
+**The campaign agenda's own entry was closed, which the file table also omits.**
+`plans/research/render-review-2026-09-15/00-post-campaign-agenda.md`'s *"`Glyphs.ts`
+never resets its sprite handle"* bullet is the second record of this defect — the
+plan's `[^reproduced]` footnote cites it — and it stated three things this branch
+falsifies: that the module has no reset hook, that `activation-after-dispose`
+works around the hole with a `beforeAll` priming step, and that
+`13-button-glyph-image.md` asserts the opposite as fact. The phase directly below
+this one on the stack set the precedent in its own bookkeeping commit
+(`bf83fc4c`), appending a **Resolved by** paragraph plus corrections to the bullet
+it closed; this branch does the same. The plan's file table names only
+`13-button-glyph-image.md`, so this is a file beyond it.

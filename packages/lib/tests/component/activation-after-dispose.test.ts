@@ -17,7 +17,7 @@
 // tests/dom/event-subtree-reentrant-dispose.test.ts for the same recipe), and
 // must not call installTestDOM, which would install the modelled baseline and
 // make the cases vacuous again.
-import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { DOM, ProductionDOMSink, ProductionDOMSource } from '~/core/DOM';
 import { Event } from '~/core/Event';
 import { Container } from '~/core/Container';
@@ -25,22 +25,6 @@ import { Checkbox } from '~/component/input/Checkbox';
 import { RadioButton } from '~/component/input/RadioButton';
 import { ToggleButton } from '~/component/button/ToggleButton';
 import { Slider } from '~/component/input/Slider';
-
-// Primes the shared SVG glyph sprite (Glyphs.ts) for Checkbox's "check" symbol
-// and RadioButton's "circle" symbol before this file's first DOM.reset() runs.
-// Glyphs.ts caches the sprite's own Handle at module scope and never
-// refreshes it on reset, so a symbol mounted for the first time *after* a
-// reset resolves that stale Handle against the fresh registry and can append
-// into whatever element now holds that recycled handle number instead of the
-// sprite — corrupting the DOM. Rendering both glyphs once, here, before any
-// reset, registers them in Glyphs.ts's idempotency map so every later mount
-// in this file (across as many resets as it runs) finds its symbol already
-// there and never touches the sprite Handle again. See `## Implementation
-// Notes` in the plan for the full root-cause trace.
-beforeAll(() => {
-    (new Checkbox() as any).getElement(true);
-    (new RadioButton() as any).getElement(true);
-});
 
 afterEach(() => {
     DOM.reset();
