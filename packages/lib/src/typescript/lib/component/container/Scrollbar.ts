@@ -615,7 +615,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         // event type, shared by every registration of that type — so this
         // isn't scoped to just this Scrollbar. Constructing ANY Scrollbar
         // locks "touchstart" as passive: false for the WHOLE PAGE for the
-        // lifetime of the app (see docs/reference/migration/next.md).
+        // lifetime of the app (see docs/reference/migration/0.6.0.md).
         Event.addListener(this._thumb, "touchstart", { passive: false, prevent: true, handler: this._onDragStart });
         Event.addListener(this._thumb, "mouseover",  this._onThumbMouseOver);
         Event.addListener(this._thumb, "mouseout",   this._onThumbMouseOut);
