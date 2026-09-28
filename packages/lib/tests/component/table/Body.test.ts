@@ -2166,6 +2166,186 @@ describe('Body required-empty cell outline resolution', () => {
         const cell = newRow[newFields.indexOf('plainField')];
         expect(cell.getShadow()).toBeNull();
     });
+
+    // -----------------------------------------------------------------------
+    // Part two of plans/implemented/table-body-visible-records-memo.md. The
+    // per-cell required-empty loop ran once per rendered row on every render
+    // pass whether or not any column asked for the outline — about 107
+    // skippable calls a unit on the QA app's `table-rows` panel. `Body` now
+    // recomputes a flag at each `_columnConfigs` write and skips the loop
+    // while it is false, clearing every pooled cell's outline once when the
+    // new configuration drops the last required column.
+    //
+    // `Cell.setRequiredEmpty` is the witness for "the loop ran". It has exactly
+    // two callers: the loop itself, and `refreshRequiredColumnFlag`'s clearing
+    // sweep — which is why `requiredEmptyWrites` spies across a plain
+    // re-render and never across a config write, where the sweep would be
+    // counted too. The config map's own `get` cannot serve as the witness at
+    // all, because `isRecordFieldReadOnly` calls it once per cell as well — 8
+    // calls over 2 rows x 2 cells with no config map set.
+    // -----------------------------------------------------------------------
+
+    /** A realized body over `REQ_MODEL`, with `configs` applied when given. */
+    async function bodyWithConfigs(configs: Map<string, ColumnConfig> | null): Promise<{ b: Body; store: MemoryStore }> {
+        const store = new MemoryStore(REQ_MODEL, [
+            { a: 'new',      reqField: '', predField: '', plainField: '' },
+            { a: 'existing', reqField: 'filled', predField: '', plainField: '' },
+        ]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(400);
+        b.setHeight(200);
+
+        if (configs) {
+            b.setColumnConfigs(configs);
+        } else {
+            (b as any).renderWindow(400, [100, 100, 100, 100]);
+        }
+
+        return { b, store };
+    }
+
+    /** The pooled cell for `field` on the row bound to the record whose `a` is `key`. */
+    function cellFor(b: Body, key: string, field: string): Cell<any> {
+        const row = ((b as any).getRowPool() as any[]).find(r => r.getData()?.get('a') === key);
+
+        return (row.getComponents() as Cell<any>[])[(row.getFieldNames() as string[]).indexOf(field)];
+    }
+
+    /** Every pooled cell's shadow, flattened across the whole pool. */
+    function poolShadows(b: Body): (string | null)[] {
+        return ((b as any).getRowPool() as any[])
+            .flatMap(row => (row.getComponents() as Cell<any>[]).map(cell => cell.getShadow()));
+    }
+
+    /** How many `Cell.setRequiredEmpty` calls a full re-render makes. */
+    function requiredEmptyWrites(b: Body): number {
+        const spy = vi.spyOn(Cell.prototype, 'setRequiredEmpty');
+
+        (b as any).invalidateRowBindings();
+        (b as any).renderWindow(400, [100, 100, 100, 100]);
+
+        const count = spy.mock.calls.length;
+        spy.mockRestore();
+
+        return count;
+    }
+
+    /** A `BodyViewState` carrying `configs` and otherwise reproducing `b`'s own state. */
+    function viewState(b: Body, store: MemoryStore, configs: Map<string, ColumnConfig>): any {
+        return {
+            store,
+            columns:       (b as any)._columns,
+            columnConfigs: configs,
+            hiddenColumns: new Set<string>(),
+            rowReadOnly:   null,
+            rowVisible:    null,
+            rowSeparator:  null,
+            rowIndented:   null,
+        };
+    }
+
+    it('skips the whole required-empty loop when no column config is set at all', async () => {
+        const { b } = await bodyWithConfigs(null);
+
+        expect(requiredEmptyWrites(b)).toBe(0);
+        expect(poolShadows(b).every(shadow => shadow === null)).toBe(true);
+    });
+
+    it('skips the loop when configs are present but none carries required or requiredPredicate', async () => {
+        const { b } = await bodyWithConfigs(new Map<string, ColumnConfig>([
+            ['reqField',  { field: 'reqField' }],
+            ['predField', { field: 'predField' }],
+        ]));
+
+        expect(requiredEmptyWrites(b)).toBe(0);
+        expect(poolShadows(b).every(shadow => shadow === null)).toBe(true);
+    });
+
+    it('treats an explicit required: false exactly as an absent one — no outline, loop skipped', async () => {
+        const { b } = await bodyWithConfigs(new Map<string, ColumnConfig>([
+            ['reqField', { field: 'reqField', required: false }],
+        ]));
+
+        expect(requiredEmptyWrites(b)).toBe(0);
+        expect(poolShadows(b).every(shadow => shadow === null)).toBe(true);
+    });
+
+    it('still runs the loop for a requiredPredicate that answers false for every record', async () => {
+        const { b } = await bodyWithConfigs(new Map<string, ColumnConfig>([
+            ['predField', { field: 'predField', requiredPredicate: () => false }],
+        ]));
+
+        // The flag asks whether a predicate is carried, not what it answers, so
+        // the loop runs — once per cell of every pooled row — and paints nothing.
+        expect(requiredEmptyWrites(b)).toBe(poolShadows(b).length);
+        expect(poolShadows(b).every(shadow => shadow === null)).toBe(true);
+    });
+
+    it('runs the loop, and outlines only the matched records, for a predicate-only config map', async () => {
+        const { b } = await bodyWithConfigs(new Map<string, ColumnConfig>([
+            ['predField', { field: 'predField', requiredPredicate: (record) => record.get('a') === 'new' }],
+        ]));
+
+        expect(cellFor(b, 'new', 'predField').getShadow()).toBe(REQUIRED_OUTLINE);
+        expect(cellFor(b, 'existing', 'predField').getShadow()).toBeNull();
+        expect(requiredEmptyWrites(b)).toBeGreaterThan(0);
+    });
+
+    it('clears a live outline the moment a config swap drops the last required column', async () => {
+        const { b } = await bodyWithConfigs(new Map<string, ColumnConfig>([
+            ['reqField', { field: 'reqField', required: true }],
+        ]));
+        expect(cellFor(b, 'new', 'reqField').getShadow()).toBe(REQUIRED_OUTLINE);
+
+        b.setColumnConfigs(new Map<string, ColumnConfig>([['reqField', { field: 'reqField' }]]));
+
+        // Cleared by the config write itself — the skipped loop would never
+        // clear it, and `syncPoolCells` does not rebuild a cell that keeps its
+        // column.
+        expect(cellFor(b, 'new', 'reqField').getShadow()).toBeNull();
+
+        expect(requiredEmptyWrites(b)).toBe(0);
+        expect(poolShadows(b).every(shadow => shadow === null)).toBe(true);
+    });
+
+    it('outlines an empty cell again when a config swap adds a required column back', async () => {
+        const { b } = await bodyWithConfigs(new Map());
+        expect(cellFor(b, 'new', 'reqField').getShadow()).toBeNull();
+
+        b.setColumnConfigs(new Map<string, ColumnConfig>([
+            ['reqField', { field: 'reqField', required: true }],
+        ]));
+
+        expect(cellFor(b, 'new', 'reqField').getShadow()).toBe(REQUIRED_OUTLINE);
+    });
+
+    it('clears a live outline when bindViewState is what drops the last required column', async () => {
+        const { b, store } = await bodyWithConfigs(new Map<string, ColumnConfig>([
+            ['reqField', { field: 'reqField', required: true }],
+        ]));
+        expect(cellFor(b, 'new', 'reqField').getShadow()).toBe(REQUIRED_OUTLINE);
+
+        b.bindViewState(viewState(b, store, new Map<string, ColumnConfig>([
+            ['reqField', { field: 'reqField' }],
+        ])));
+
+        expect(cellFor(b, 'new', 'reqField').getShadow()).toBeNull();
+        expect(requiredEmptyWrites(b)).toBe(0);
+    });
+
+    it('outlines an empty cell when bindViewState is what adds a required column', async () => {
+        const { b, store } = await bodyWithConfigs(new Map());
+        expect(cellFor(b, 'new', 'reqField').getShadow()).toBeNull();
+
+        b.bindViewState(viewState(b, store, new Map<string, ColumnConfig>([
+            ['reqField', { field: 'reqField', required: true }],
+        ])));
+
+        expect(cellFor(b, 'new', 'reqField').getShadow()).toBe(REQUIRED_OUTLINE);
+    });
 });
 
 // ---------------------------------------------------------------------------

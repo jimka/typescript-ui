@@ -19,6 +19,7 @@ import { Body } from '~/component/table/Body';
 import { Cell } from '~/component/table/cell/Cell';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
+import type { ModelRecord } from '~/data/ModelRecord';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -235,5 +236,243 @@ describe('Body — visible-records query economy (cell-range drag)', () => {
         (b as any).onCellDragMove(makeEvent(row.getElement(), 'mousemove'));
 
         expect(spy.mock.calls.length).toBe(0);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Part one of plans/implemented/table-body-visible-records-memo.md.
+// `Body.getVisibleRecords()` used to call `store.getRecords()` — which is
+// `this._records.slice()`, a whole-view copy — on every single call, six times
+// per keyboard-navigation unit and twice per update unit. It now keeps one copy
+// beside the store's view generation and re-copies only when the store has
+// rebuilt its view since. The row filter is deliberately NOT memoised: its
+// answer depends on a record's contents, which an in-cell edit changes without
+// the store rebuilding anything, so it re-runs on every call. The last cases
+// here pin both halves of that split.
+// ---------------------------------------------------------------------------
+describe('Body — store-view copy memo', () => {
+    const MEMO_MODEL = new Model([
+        { name: 'id',     type: 'number', order: 0 },
+        { name: 'title',  type: 'string', order: 1 },
+        { name: 'amount', type: 'number', order: 2 },
+    ], 'id');
+
+    /** A loaded six-record store — well below the store's worker threshold. */
+    async function memoStore(): Promise<MemoryStore> {
+        const store = new MemoryStore(MEMO_MODEL, Array.from({ length: 6 }, (_, r) => ({
+            id:     r + 1,
+            title:  `title ${r + 1}`,
+            amount: (r + 1) * 10,
+        })));
+        await store.load();
+
+        return store;
+    }
+
+    /** A realized, rendered body over `store`, tall enough to pool every row. */
+    async function memoBody(store: MemoryStore): Promise<Body> {
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(300);
+        b.setHeight(400);
+        (b as any).renderWindow(300, [100, 100, 100]);
+
+        return b;
+    }
+
+    /** The protected seam under test. */
+    function visible(b: Body): ModelRecord[] {
+        return (b as any).getVisibleRecords();
+    }
+
+    it('serves two consecutive unfiltered queries from one copy of the store view', async () => {
+        const store = await memoStore();
+        const b     = await memoBody(store);
+
+        visible(b);                                     // prime the copy
+        const spy = vi.spyOn(store, 'getRecords');
+
+        const first  = visible(b);
+        const second = visible(b);
+
+        expect(first).toBe(second);
+        expect(spy.mock.calls.length).toBe(0);
+        spy.mockRestore();
+    });
+
+    it('re-copies the store view after a record is added', async () => {
+        const store = await memoStore();
+        const b     = await memoBody(store);
+
+        const before = visible(b);
+        store.add({ id: 99, title: 'added', amount: 990 });
+        const after  = visible(b);
+
+        expect(after).not.toBe(before);
+        expect(after.length).toBe(before.length + 1);
+        expect(after.some(r => r.get('id') === 99)).toBe(true);
+    });
+
+    it('re-copies the store view after a store-level filter resolves', async () => {
+        const store = await memoStore();
+        const b     = await memoBody(store);
+
+        expect(visible(b).length).toBe(6);              // prime the copy
+
+        await store.setFilter('amount', { type: 'gt', field: 'amount', value: 30 });
+
+        const after = visible(b);
+
+        expect(after.length).toBe(3);
+        expect(after.every(r => (r.get('amount') as number) > 30)).toBe(true);
+    });
+
+    it('re-copies the store view after removeAll empties it', async () => {
+        const store = await memoStore();
+        const b     = await memoBody(store);
+
+        expect(visible(b).length).toBe(6);              // prime the copy
+
+        store.removeAll();
+
+        expect(visible(b).length).toBe(0);
+    });
+
+    it('re-copies the store view after a sort reorders it', async () => {
+        const store = await memoStore();
+        const b     = await memoBody(store);
+
+        expect(visible(b)[0].get('id')).toBe(1);        // prime the copy
+
+        await store.sort('amount', 'desc');
+
+        expect(visible(b)[0].get('id')).toBe(6);
+    });
+
+    it('re-runs a row filter on every call — a fresh array each time, and still no re-copy', async () => {
+        const store = await memoStore();
+        const b     = await memoBody(store);
+        b.setRowVisible(r => (r.get('amount') as number) > 30);
+
+        visible(b);                                     // prime the copy
+        const spy = vi.spyOn(store, 'getRecords');
+
+        const first  = visible(b);
+        const second = visible(b);
+
+        expect(first).not.toBe(second);
+        expect(first).toEqual(second);
+        expect(spy.mock.calls.length).toBe(0);
+        spy.mockRestore();
+    });
+
+    it('re-evaluates a row filter against an in-place edit the store rebuilt no view for', async () => {
+        const store = await memoStore();
+        const b     = await memoBody(store);
+        b.setRowVisible(r => (r.get('amount') as number) > 30);
+
+        expect(visible(b).length).toBe(3);
+
+        // The premise the whole design rests on: an in-cell edit reaches
+        // `notifyRecordChanged`, which emits but never calls `applyView()`, so
+        // the store's view — and its generation — are untouched.
+        const generation = (store as any).getViewGeneration();
+        store.getAt(0)!.set('amount', 1000);
+        expect((store as any).getViewGeneration()).toBe(generation);
+
+        expect(visible(b).length).toBe(4);
+    });
+
+    it('does not serve a swapped-in store from the outgoing store\'s copy, even at an equal generation', async () => {
+        const outgoing = await memoStore();
+        const incoming = new MemoryStore(MEMO_MODEL, [{ id: 500, title: 'other', amount: 1 }]);
+        await incoming.load();
+
+        const b = await memoBody(outgoing);
+        expect(visible(b).length).toBe(6);               // prime against `outgoing`
+
+        // Two stores loaded the same way agree on their counter, so the number
+        // alone cannot tell the swap — the stash reset in `rebindStore` is what
+        // does. Asserted rather than assumed, so this case cannot pass because
+        // the generations happened to differ.
+        expect((incoming as any).getViewGeneration()).toBe((outgoing as any).getViewGeneration());
+
+        b.setStore(incoming);
+
+        const records = visible(b);
+
+        expect(records.length).toBe(1);
+        expect(records[0].get('id')).toBe(500);
+    });
+
+    it('gives two bodies over one store their own copies', async () => {
+        const store = await memoStore();
+        const first  = await memoBody(store);
+        const second = await memoBody(store);
+
+        const firstView  = visible(first);
+        const secondView = visible(second);
+
+        expect(firstView).not.toBe(secondView);
+        expect(firstView).toEqual(secondView);
+        // The second body's read must not have taken the first body's copy away.
+        expect(visible(first)).toBe(firstView);
+    });
+
+    it('a keyboard navigation tick re-copies nothing, however often it asks for the view', async () => {
+        const table = await makeScrollableTable();
+        const body  = table.getBody() as any;
+        const store = table.getStore();
+
+        body.selectRecord(store.getAt(0)!);
+        runFrames();
+
+        // Settle first: one tick so nothing measured below is first-time work.
+        body.onKeyDown({ key: 'ArrowDown', preventDefault: () => {} });
+        runFrames();
+
+        const askSpy  = vi.spyOn(body, 'getVisibleRecords');
+        const copySpy = vi.spyOn(store, 'getRecords');
+
+        body.onKeyDown({ key: 'ArrowDown', preventDefault: () => {} });
+        runFrames();
+
+        const asks   = askSpy.mock.calls.length;
+        const copies = copySpy.mock.calls.length;
+
+        askSpy.mockRestore();
+        copySpy.mockRestore();
+
+        // The keyboard phase is where the measurement found six queries a unit.
+        // The tick still asks repeatedly — asserted, so this case cannot pass by
+        // the body having stopped asking — but it no longer copies per ask.
+        expect(asks).toBeGreaterThan(1);
+        expect(copies).toBe(0);
+    });
+
+    it('a one-row scroll tick and a full-page jump each re-copy nothing', async () => {
+        const table     = await makeScrollableTable();
+        const body      = table.getBody() as any;
+        const store     = table.getStore();
+        const rowHeight = body.getRowHeight();
+
+        // Settle first, so nothing below is first-time work.
+        body.setScrollY(rowHeight * 20);
+        runFrames();
+
+        const spy = vi.spyOn(store, 'getRecords');
+
+        body.setScrollY(rowHeight * 21);
+        runFrames();
+        const oneRow = spy.mock.calls.length;
+
+        body.setScrollY(rowHeight * 150);
+        runFrames();
+        const pageJump = spy.mock.calls.length - oneRow;
+
+        spy.mockRestore();
+
+        expect(oneRow).toBe(0);
+        expect(pageJump).toBe(0);
     });
 });

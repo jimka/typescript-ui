@@ -379,3 +379,220 @@ Two bullets go under `## Changed` → `### Components` in `packages/lib/docs/ref
 [^clear-sweep]: Two cheaper-looking variants are wrong or not cheaper. Sweeping only when the flag *falls* from true to false needs a previous-value comparison and is no simpler than sweeping whenever the new flag is false, which is a no-op through `Cell.setRequiredEmpty`'s equality guard when no cell was outlined. Relying on a rebind to clear the outline does not work: `syncPoolCells` (`Body.ts:880`) reconciles the cell set only on the *next* `renderWindow`, via `Row.setColumnWindow`, and a cell that keeps its column is neither rebuilt nor reset — it carries `_requiredEmpty` and replays it from `applyStyle` (`cell/Cell.ts:566`). The QA ablation (`skipUnrequiredEmptyState`, `ablations.ts:1785`) has no sweep at all, which is why it cannot ship as written. The sweep's cost is bounded by the pool, which is the visible window plus a margin — tens of rows — and it runs only when a column configuration is written.
 
 [^static-required]: `Table.buildColumnConfigs` (`Table.ts:1227-1235`) stores the consumer's own `ColumnConfig` objects by reference, so a consumer holding one could in principle flip `required` in place and, today, the body's per-render loop would pick it up on the next pass. That is not a supported path and the library is already inconsistent with it: `Column`'s constructor copies `config?.required ?? false` into `_required` (`Column.ts:58`), `isRequired()` returns the copy, and `Header` paints the asterisk from it (`Header.ts:1015`) — so an in-place flip already changes the cell outlines without changing the header. `Table._columnConfigs` is only ever assigned a freshly built map (`Table.ts:357`), and `Body.getColumnConfigs()` (`:649`) is `protected` and documented "do not mutate". Making the body agree with the header is the right direction, and the changelog says so.
+
+---
+
+## Implementation Notes
+
+Implemented on `feature/table-body-visible-records-memo`, branched from
+`feature/table-cell-date-formatter-memo` (`1eba8882`) as phase 4 of a
+nine-phase batch. Suite baseline on that start point: **514 files, 8588 passed,
+2 todo, 0 failed**. After this branch: **514 files, 8609 passed, 2 todo, 0
+failed** — 21 new cases: 11 for part one in
+`VisibleRecordQueryEconomy.test.ts`, one more for part one's worker path in
+`AbstractStore.workerView.test.ts`, and 9 for part two. `npm run
+typecheck` and `npm run lint` are clean, as is `typecheck:test` — which has no
+root alias and runs either as `npm -w packages/lib run typecheck:test` or as the
+first half of `npm test`. And
+`npm run docs:api` finishes with **0 errors and 14 warnings**, the count
+`master` already emits.
+
+The design shipped as planned. Both parts are the plan's own, unchanged: the
+memo covers only `getRecords()`'s copy and leaves the row-visibility predicate
+re-running on every call, and the required-column flag is recomputed at both
+`_columnConfigs` write sites with a clearing sweep when it falls false. Nine
+things diverged or needed correcting; three of the nine — sections 2, 4 and 5 —
+are prescribed assertions or coverage claims that could not have caught a
+regression.
+
+### 1. Verification step 4's second grep cannot pass, as written
+
+`## Ordered Implementation Steps` step 5 and `## Verification` step 4 both
+prescribe `grep -n '_store.getRecords()' …/Body.ts` — **zero matches**. That
+invariant is unsatisfiable, because the plan's own `getStoreView()` in
+`## Internal Structure` is built around `this._storeView = this._store.getRecords();`.
+The invariant the step means is **exactly one** match, inside `getStoreView`,
+and that is what was checked. `grep -n 'this\._records = '` on `AbstractStore.ts`
+(one match, inside `setRecordView`) and `grep -rn '_viewGeneration++'` (one
+match, same method) both pass as written.
+
+### 2. Case 10's prescribed skip assertion rests on a false premise
+
+The plan directs: "assert the skip with `vi.spyOn` on the config map instance's
+own `get`, which the loop is the only caller of per rendered cell." It is not.
+`applyReadOnlyState` → `isRecordFieldReadOnly` (`Body.ts:2458`) calls
+`this._columnConfigs.get(fieldName)` once per cell too, on every rebind.
+Measured before the guard existed, on a two-record × two-column body with **no
+column config map at all**: `Map.prototype.get` was called **8** times per
+render and `Cell.setRequiredEmpty` **4**. So the prescribed spy sees 4 calls
+after the guard lands, not 0 — an `expect(…).toBe(0)` on it would have gone red
+against a correct implementation, and any "fewer `get`s" form is confounded by a
+second caller that the guard does not and must not touch.
+
+Replaced with a spy on `Cell.prototype.setRequiredEmpty`, which
+`applyRequiredEmptyState`'s loop is the only caller of **on a render pass** — so
+its call count is an exact witness for "the loop ran", reading 4 before the guard
+and 0 after. The clearing sweep this branch adds to `refreshRequiredColumnFlag`
+is its one other caller, which is why the test helper spies across a plain
+re-render and never across a config write, where the sweep would be counted too.
+Cases 11, 14, 15 and 16 use the same witness. This is the defect class the batch
+has now hit five times, and it is the second to be a wrong assertion rather than
+a merely weak one.
+
+### 3. Every prescribed assertion was mutation-tested
+
+Each of the 21 new cases, and 2 of the 4 pre-existing required-empty cases, was
+proved able to fail by mutating the implementation and confirming the test went
+red, then restoring. No new assertion survived every mutation.
+
+Part one (11 cases, all in `VisibleRecordQueryEconomy.test.ts`):
+
+| Mutation | Cases it turns red |
+|---|---|
+| `getStoreView`'s generation guard removed (always re-copy) | same-instance, row-filter-fresh-array, two-bodies, scroll-tick, keyboard-tick |
+| Guard changed to copy once and never invalidate | add, store filter, `removeAll`, sort |
+| `setRecordView` stops bumping the generation | add, store filter, `removeAll`, sort |
+| The **worker** path bypasses `setRecordView` | the worker-view generation case |
+| `rebindStore`'s stash reset removed | store swap at equal generation |
+| **Memo moved to cover the post-filter result** (what the QA ablation did) | row-filter-fresh-array, in-place-edit-re-evaluation |
+
+The last row is the one that matters: it reproduces the ablation's unsound
+design inside the library and shows the two cases that catch it, which is the
+evidence that `## Architecture Decisions`' "only the store's view is memoised"
+is a correctness requirement and not a scoping preference. The keyboard-tick
+case is the other one worth singling out; section 4 records why it had to be
+written at all.
+
+Part two (9 cases, in `Body.test.ts`):
+
+| Mutation | Cases it turns red |
+|---|---|
+| The `_anyColumnRequired` guard removed | all 3 skip cases, both clear-on-swap cases |
+| The clearing sweep removed, guard kept | both clear-on-swap cases |
+| The guard's test inverted | 11 of the block's 13 cases |
+| Flag ignores `requiredPredicate` | predicate-answers-false, predicate-only map |
+| Flag treats `required: false` as required | explicit-`required: false` |
+| `setColumnConfigs` stops recomputing the flag | 7 cases, 2 of them pre-existing |
+| `bindViewState` stops recomputing the flag | both `bindViewState` cases |
+| `required && empty` weakened to `required` | pre-existing "once its value is filled" |
+
+### 4. Case 2's keyboard half was not covered by the tests it names
+
+`## Expected Behaviour` case 2 requires that a keyboard-navigation tick make at
+most one `store.getRecords()` call, and justifies asserting only on `getRecords`
+by saying "the existing `VisibleRecordQueryEconomy` tests already pin the
+`getVisibleRecords()` counts". They do not. That file's two `describe` blocks
+cover a scroll tick and a cell-range drag; it contains no keyboard case at all.
+Taking the claim at face value would have left the plan's headline phase — six
+queries a unit, against two on `update` — with no coverage of either count.
+
+A keyboard-tick case was added, and it pins both numbers rather than one: the
+tick must still ask for the visible records more than once (`asks > 1`, so the
+case cannot pass by the body having stopped asking) while copying the store's
+view zero times. Under the always-re-copy mutation it reads **6** copies, which
+reproduces offline the "six calls per keyboard-navigation unit" the agenda
+measured in-engine.
+
+### 5. The worker-built view had no prescribed case, and needed one
+
+`## Expected Behaviour` covers a store above the worker threshold only *before*
+the worker answers — the worked-cases table's "`store.add(record)` above the
+worker threshold, before the worker answers" row — and never after. But the
+worker's `.then` is the **second** `setRecordView` call site
+(`AbstractStore.ts:2104`) and the only one reached at or above
+`WORKER_THRESHOLD = 1000`, which is to say it is the production path at the
+10,000-row scale this plan's measurement comes from. Every part-one case in
+`VisibleRecordQueryEconomy.test.ts` uses a six-record in-process store, so
+reverting that one line to a bare `this._records = …` would have left the whole
+suite green; only the `## Verification` grep would have caught it, and a grep is
+not a test.
+
+One case was added to the existing
+`tests/unit/data/AbstractStore.workerView.test.ts`, whose worker stub already
+exists for exactly this path: the generation must hold while the worker is
+pending and move once its view lands. Under the revert mutation it reads
+`expected 0 to be greater than 0`.
+
+### 6. The recorded −4.2% / −21.5% is a looser upper bound than the agenda says
+
+`## Verification` says performance is not part of acceptance and quotes the
+work-only figures; the agenda's later cell (`00-post-campaign-agenda.md:1257`)
+records `key` **−0.75 ms, −4.2%** and `passes` **−21.5%** at n=10,000 under
+`rowfilter=title`, and notes the shippable memo banks "the slice half of this".
+Even that understates the gap. The `g21.visible-memo` arm cached the post-filter
+result, so under a row filter it removed **n predicate invocations per call** as
+well as the n-element slice — and at n=10,000 the predicate sweep is the larger
+of the two by construction, which is precisely why that cell was the first to
+show a clock effect at all while every unfiltered cell read flat. What this
+branch removes is the slice only. The honest statement is that the banked
+fraction of −4.2% is unquantified and could be small; the plan's own claim —
+real work removed, clock not claimed — is what this branch stands on. Nothing
+here was re-measured: the standing instruction for this run forbids any command
+that opens a window, which every in-engine A/B does.
+
+### 7. Both manual verification steps were not performed
+
+`## Verification` steps 6 and 7 call for the library's demo app (`npm run dev`)
+— a real browser window, which this run is forbidden from opening. What covers
+them offline instead:
+
+- Step 6 (scroll, sort, column filter, quick search, cell edit over a large
+  table). The store-view invalidation paths are each pinned by a case: `add`,
+  `setFilter`, `sort`, `removeAll`, a store swap at an equal generation, the
+  in-place-edit case that proves the row predicate still re-runs when the store
+  rebuilt nothing, and — in `tests/unit/data/AbstractStore.workerView.test.ts` —
+  the worker-built view, which is the production path at or above the
+  1,000-record threshold and so the one that matters at the scale this plan was
+  measured at (section 5). The quick search is **not** a store-level filter —
+  `Table.setQuickSearch` composes through `applyRowVisible` into
+  `Body.setRowVisible` (`Table.ts:611`), never `store.setFilter` — so what covers
+  it is the row-predicate half: the two row-filter cases, and the file's
+  pre-existing "an active quick search does not change either call count" case.
+  That is also why leaving the predicate unmemoised is what keeps the quick
+  search correct, as `QuickSearchState.cache`'s own JSDoc (`Table.ts:133-139`)
+  already assumes. The scroll-tick and keyboard-tick cases drive a realized
+  400-row `Table`. What remains genuinely unverified is painting, which no
+  offline harness models.
+- Step 7 (a required column's empty cell still shows its outline and loses it
+  once filled). The four pre-existing cases in `Body required-empty cell outline
+  resolution` assert exactly that through `Cell.getShadow()`. Two of the four
+  were shown able to fail: "outlines a statically required column's cell" under
+  the stopped-recomputing-the-flag mutation, and "does not outline once its value
+  is filled" under `required && empty` weakened to `required`. The other two are
+  negative assertions predating this branch that no mutation of this branch's own
+  code turns red; establishing their coverage is not this plan's to do. The nine
+  new cases add the swap-in-both-directions and skip cases the plan asked for.
+
+### 8. No demo surface was added
+
+Work Instructions step 7 asks for a demo of the new feature. Both parts are
+invisible internal optimisations: no new consumer-facing API, no behaviour a
+demo could show that the existing table demo does not already show. The one
+member added, `AbstractStore.getViewGeneration()`, is `@internal`. Nothing was
+added to the demo surface.
+
+### 9. Four texts corrected beyond the plan's own edit list
+
+The audit round found that inserting `setRecordView` and
+`refreshRequiredColumnFlag` "immediately above" their neighbours, as steps 1 and
+8 word it, had been read as *above the declaration* rather than *above the
+declaration's JSDoc* — which left `applyViewInProcess` and
+`applyRequiredEmptyState` undocumented and orphaned both of their doc blocks,
+including the sentence step 10 adds. Both are now genuinely above the
+neighbouring doc comment. The audit also found `Body`'s class-level JSDoc
+claiming the body reflects store state "without maintaining a duplicate data
+array", which part one makes false; that sentence now says the body's one copy
+is the one `getRecords()` hands back, refreshed per view rebuild.
+
+The fourth is in the changelog rather than the source. `## Documentation Impact`
+prescribes telling a consumer to "pass a new config map to `Table`'s spec path
+instead", but `Table` builds its column configs only from the `spec` its
+constructor is given (`Table.ts:355-358`) and exposes no later spec setter — so
+that instruction cannot be followed as written. The bullet now says what is
+actually available: build the table again, or drive `Body.setColumnConfigs` with
+a new map. None of the four is in the plan's edit list.
+
+### Incidental
+
+`plans/in-progress/` did not exist on the start point, so the in-progress `git
+mv` needed the directory created first.

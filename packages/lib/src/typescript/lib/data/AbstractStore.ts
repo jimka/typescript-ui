@@ -175,6 +175,11 @@ export abstract class AbstractStore {
 
     private _allRecords: ModelRecord[] = [];
     private _records: ModelRecord[] = [];
+    // Bumped once every time the filtered/sorted view is replaced. A caller that
+    // stashed this value beside its own copy of the view can tell, without holding
+    // a store subscription, whether that copy is still current. Mirrors the
+    // counter `Util.textMetricsGeneration()` gives `Text`.
+    private _viewGeneration: number = 0;
     // Whether the most recent applyView() offloaded to the worker (so `_records`
     // is populated only when its promise resolves, not synchronously). Read right
     // after an ingestRaw() to decide whether the 'load' emit must wait for the
@@ -651,6 +656,19 @@ export abstract class AbstractStore {
      */
     getRecords(): ModelRecord[] {
         return this._records.slice();
+    }
+
+    /**
+     * Returns a counter bumped once every time this store rebuilds its
+     * filtered/sorted view.
+     *
+     * @returns The current view generation.
+     *
+     * @internal Framework wiring; stashed by a view that caches the result of
+     *   `getRecords()` so it can tell whether its copy is still current.
+     */
+    getViewGeneration(): number {
+        return this._viewGeneration;
     }
 
     /**
@@ -1930,6 +1948,20 @@ export abstract class AbstractStore {
     }
 
     /**
+     * Replaces the filtered/sorted view and bumps the view generation.
+     *
+     * @param view - The newly built view; becomes `_records` verbatim.
+     *
+     * @remarks The only place `_records` is assigned, so no rebuild can land
+     * without the generation moving. Bumping for a rebuild that happens to
+     * produce an equal view costs a caller one re-copy and is never wrong.
+     */
+    private setRecordView(view: ModelRecord[]): void {
+        this._records = view;
+        this._viewGeneration++;
+    }
+
+    /**
      * Rebuilds the visible records slice from `allRecords` in process, applying
      * every active filter and then every active sorter. This is both the
      * below-threshold path and what the worker path falls back to when its
@@ -1961,7 +1993,7 @@ export abstract class AbstractStore {
             });
         }
 
-        this._records = view;
+        this.setRecordView(view);
     }
 
     /**
@@ -2069,7 +2101,7 @@ export abstract class AbstractStore {
                     return this.applyView();
                 }
 
-                this._records = indices.map(i => this._allRecords[i]);
+                this.setRecordView(indices.map(i => this._allRecords[i]));
                 return undefined;
             })
             .catch((error: unknown) => this.fallBackToInProcessView(error));

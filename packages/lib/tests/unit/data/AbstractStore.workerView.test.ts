@@ -59,6 +59,37 @@ describe('AbstractStore — loadData waits for the worker-built view', () => {
         expect(loadedCount).toBe(N);
     });
 
+    it('bumps the view generation when the worker-built view lands, and not before', async () => {
+        // The worker path is the second and only other place the view is
+        // replaced (`setRecordView`), and it is the production path at the scale
+        // `table-body-visible-records-memo` targets. A `Body` stashing the
+        // generation beside its copy of the view must re-copy when the worker
+        // answers, and must not be told to re-copy while it is still pending.
+        let resolveWorker: ((idx: number[]) => void) | null = null;
+        vi.spyOn(StoreWorkerClient, 'isAvailable').mockReturnValue(true);
+        vi.spyOn(StoreWorkerClient, 'snapshot').mockResolvedValue(undefined);
+        vi.spyOn(StoreWorkerClient, 'sortFilter').mockImplementation(
+            () => new Promise<number[]>(res => { resolveWorker = res; }),
+        );
+
+        const store = new MemoryStore(MODEL, []);
+
+        store.loadData(rows(COUNT));
+        await flush();
+
+        // Worker pending: the view has not been replaced, so the counter holds.
+        expect(resolveWorker).not.toBeNull();
+        const pending = store.getViewGeneration();
+        await flush();
+        expect(store.getViewGeneration()).toBe(pending);
+
+        resolveWorker!(Array.from({ length: COUNT }, (_, i) => i));
+        await flush();
+
+        expect(store.getRecords().length).toBe(COUNT);
+        expect(store.getViewGeneration()).toBeGreaterThan(pending);
+    });
+
     it('emits "load" synchronously below the worker threshold', () => {
         // Even with a worker "available", a sub-threshold dataset stays in-process.
         vi.spyOn(StoreWorkerClient, 'isAvailable').mockReturnValue(true);
