@@ -245,6 +245,13 @@ abstract class AbstractPickerField<
      * against its right edge at the fixed 24-px column width. Both edges are
      * the content box's, not the field's outer box, so the button does not
      * overhang the border.
+     *
+     * @remarks Both rectangles are committed through `applyBounds`, so each
+     * child is laid out when the rectangle it was handed moved — a resize still
+     * re-centres the button's Fit-centred glyph — and withheld when it did not
+     * and the child allows it. A subclass overriding this method must keep that
+     * shape: writing the four setters by hand and calling the child's
+     * `doLayout()` unconditionally re-lays it out on every pass.
      */
     doLayout(): this {
         super.doLayout();
@@ -257,22 +264,17 @@ abstract class AbstractPickerField<
 
         const inputWidth = Math.max(0, box.width - PICKER_BUTTON_WIDTH_PX);
 
-        this._input.setX(box.x);
-        this._input.setY(box.y);
-        this._input.setWidth(inputWidth);
-        this._input.setHeight(box.height);
-
-        this._button.setX(box.x + inputWidth);
-        this._button.setY(box.y);
-        this._button.setWidth(PICKER_BUTTON_WIDTH_PX);
-        this._button.setHeight(box.height);
-
-        // The button was already laid out by `super.doLayout()` against its
-        // construction-time preferred size; the manual setWidth/setHeight
-        // calls above don't auto-relayout, so the inner glyph would stay
-        // anchored to the smaller pre-resize inner rect. Re-fire the button's
-        // own layout so the Fit-centred content row tracks the new height.
-        this._button.doLayout();
+        // `applyBounds` writes the same x / y / width / height in the same
+        // order, then lays the child out only when the committed rectangle
+        // moved or the child cannot skip — the shape `Body.renderWindow` uses
+        // for a table cell. It replaces the unconditional `_button.doLayout()`
+        // this method used to end with, which existed because the raw setters
+        // do not relayout and the button's Fit-centred content row would
+        // otherwise stay anchored to its pre-resize inner rect. A resize is
+        // exactly the case where the rectangle changed, so the placement still
+        // covers it.
+        this._input.applyBounds(box.x, box.y, inputWidth, box.height);
+        this._button.applyBounds(box.x + inputWidth, box.y, PICKER_BUTTON_WIDTH_PX, box.height);
 
         return this;
     }

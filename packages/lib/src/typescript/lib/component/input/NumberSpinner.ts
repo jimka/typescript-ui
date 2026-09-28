@@ -106,6 +106,42 @@ class NumberSpinnerField extends TextField {
     constructor() {
         super(undefined, NUMBER_SPINNER_FIELD_CHROME);
     }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a spinner's inner numeric
+     * field re-committed at the rectangle it already holds, with no pass owed, is
+     * not re-laid-out.
+     *
+     * A `NumberSpinnerField` is an `<input>` leaf with no registered children, so
+     * its own pass places nothing — its default absolute manager runs over an
+     * empty child list. Every input announces itself:
+     *
+     * - The text, value, placeholder, read-only and enabled state are attribute
+     *   writes on an already-placed element; none is a layout input.
+     * - Its box height comes from the inherited single-line box, resolved through
+     *   `setPreferredSize`, whose relay marks every ancestor — so a theme switch
+     *   re-heights the spinner around it.
+     * - Its rectangle is written by the owning `NumberSpinner`'s pass, so the
+     *   field moving lays it out.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, padding and border —
+     *   each marks the layout owed here, like any `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     *
+     * The override is what opts this class in: `TextField`'s own gate is the
+     * exact-class form, which answers `false` for a subclass.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
 }
 
 /**
@@ -132,6 +168,17 @@ class SpinButtonUp extends SpinButton {
     constructor() {
         super("▲", undefined, _defaultSpinButtonUpOptions);
     }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a spinner's up button
+     * re-committed at the rectangle it already holds, with no pass owed, is not
+     * re-laid-out. See {@link SpinButtonDown} — the audit is the same one.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
 }
 
 /**
@@ -151,6 +198,61 @@ class SpinButtonDown extends SpinButton {
 
     constructor() {
         super("▼", undefined, _defaultSpinButtonDownOptions);
+    }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a spinner's down button
+     * re-committed at the rectangle it already holds, with no pass owed, is not
+     * re-laid-out.
+     *
+     * A spin button's own pass places one content row, in a `Fit`, at the
+     * button's own inner rect — which a skip by definition did not change. Every
+     * input announces itself:
+     *
+     * - `clearGlyph`, the *first* `setGlyph`, `setDescription` /
+     *   `clearDescription`, `setShowText`, `setShowDescription`,
+     *   `setDescriptionUnderGlyph` and a writing-mode change each go through the
+     *   inherited content-row rebuild, which empties and refills that row — child
+     *   changes that schedule the row itself — and then recompute the button's own
+     *   preferred size, whose relay marks every ancestor. A scheduled content row
+     *   still gets its own top-level pass under a skipping button, because the
+     *   batched layout flush stops walking up at the first ancestor that may
+     *   withhold a commit.
+     * - A *later* `setGlyph` renames the existing glyph in place and returns
+     *   without rebuilding or recomputing anything. That is sound rather than a
+     *   gap: a glyph's box never depends on its name, so the content row's shape
+     *   is unchanged and no pass is owed.
+     * - `setText` writes the label's text, which schedules the label's own parent
+     *   — the content row — and then recomputes the button's preferred size,
+     *   whose relay marks every ancestor.
+     * - The flat and compact insets write this button's own insets, which mark
+     *   the layout owed here like any `invalidateLayout`.
+     * - `SpinButton` re-reads its own size from the theme on every theme change,
+     *   through the single-line box and `setPreferredSize`, and pins its chevron
+     *   so no later pass re-tracks it.
+     * - Its rectangle is written by the spin column's pass, which the owning
+     *   `NumberSpinner`'s pass runs, so either button moving lays it out.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, padding and border —
+     *   each marks the layout owed here, like any `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     *
+     * The opt-in is these two concrete classes, not `SpinButton`: a bare
+     * `SpinButton` a consumer builds is unaudited and keeps the default gate, as
+     * do `ButtonIconGlyph` and `ButtonLabelText`, which every button in the
+     * library shares. Keeping them out costs nothing here — the button above them
+     * is withheld whole, so nothing reaches them on a settled pass.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
     }
 }
 

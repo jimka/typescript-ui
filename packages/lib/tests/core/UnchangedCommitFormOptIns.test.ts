@@ -285,12 +285,40 @@ function geometryOf(component: Component): string {
         .join('|');
 }
 
-/** The ten prototypes this plan opts in — the list a forced-off arm stubs. */
+/**
+ * The prototypes a forced-off arm stubs: the ten this plan opts in, plus the
+ * eleven inner parts stage 4 opted in
+ * (`plans/implemented/field-internals-unchanged-commit-opt-in.md`). Both lists
+ * belong here because E7's forced-off arm asserts that *every* component in the
+ * grid is laid out, which is only true while nothing in the scene skips.
+ *
+ * Nine of stage 4's eleven classes are file-local and unimportable, so each
+ * prototype is reached through a throwaway control built and disposed here.
+ *
+ * @returns The prototypes.
+ */
 function optedInPrototypes(): object[] {
+    const controls = [new DateField(), new ComboBox(), new Checkbox(), new Toggle(),
+        new Slider(), new NumberSpinner()];
+    const [dateField, comboBox, checkbox, toggle, slider, numberSpinner] = controls;
+
+    const internals = [
+        ...dateField.getComponents(),
+        ...comboBox.getComponents(),
+        checkbox.getComponents()[0],
+        toggle.getComponents()[0],
+        ...slider.getComponents(),
+        numberSpinner.getComponents()[0],
+        ...numberSpinner.getComponents()[1].getComponents(),
+    ].map(component => Object.getPrototypeOf(component) as object);
+
+    controls.forEach(control => control.dispose());
+
     return [
         Text.prototype, TextField.prototype, ComboBox.prototype, DateField.prototype,
         TimeField.prototype, NumberSpinner.prototype, Checkbox.prototype, Toggle.prototype,
         Slider.prototype, FieldDecorator.prototype,
+        ...internals,
     ];
 }
 

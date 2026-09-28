@@ -638,6 +638,42 @@ class ComboBoxLabel extends Component {
     }
 
     /**
+     * Opts into the unchanged-geometry layout skip: a collapsed combo box's
+     * label re-committed at the rectangle it already holds, with no pass owed,
+     * is not re-laid-out.
+     *
+     * `doLayout` above sizes the hosted renderer to this label's own content box
+     * — which a skip by definition did not change — and then lets the renderer
+     * lay its own children out. The renderer is raw-appended rather than
+     * registered, so that pass is the only thing that places it, and every input
+     * to it announces itself:
+     *
+     * - `setItem` rebinds the renderer, which can build a child the renderer did
+     *   not have. The write announces nothing by itself, so it closes with
+     *   `invalidateLayout()` — marking this label and, through it, every opted-in
+     *   ancestor, so the next pass reaching the field places the new child.
+     * - `setRenderer` swaps the renderer wholesale and then reaches the same
+     *   rebind, so the closure above covers it too.
+     * - `setLineHeight` is written by `ComboBox.doLayout` from this label's own
+     *   height, so it cannot change while the rectangle holds still.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, padding and border —
+     *   each marks the layout owed here, like any `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer renderer that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
+
+    /**
      * Disposes the renderer, then runs the inherited teardown. `_renderer`
      * is raw-appended rather than registered, so the base destructor's
      * recursion over `_components` cannot reach it.
@@ -725,6 +761,44 @@ class ComboBoxCaret extends Component {
      */
     getGlyph(): Glyph {
         return this._glyph;
+    }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a combo box's caret box
+     * re-committed at the rectangle it already holds, with no pass owed, is not
+     * re-laid-out.
+     *
+     * A `ComboBoxCaret` has no `doLayout` override: its own pass places one
+     * chevron glyph through its default absolute manager, at the square size
+     * read from the theme once, in this caret's constructor, and never rewritten.
+     * Every input announces itself:
+     *
+     * - `ComboBox.setCaretOpen` rotates the glyph with a CSS transform and a
+     *   transition; neither is a layout input.
+     * - Its rectangle is written by `ComboBox.doLayout`, which commits it through
+     *   `applyBounds` — so the field's content box moving lays the caret out.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, padding and border —
+     *   each marks the layout owed here, like any `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies. The caret's pinned square is read
+     *   from the theme at construction only, so a switch resizes the field
+     *   around it rather than the caret itself.
+     *
+     * The glyph inside keeps the default gate. Its x and y were never assigned,
+     * so every commit of it compares `NaN` against `NaN` and reports a change —
+     * a gate on it could never engage. Nothing reaches it on a settled pass
+     * anyway, because this caret is withheld whole.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
     }
 }
 
@@ -921,6 +995,12 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * against its right edge, both vertically centered within its height. Replaces the prior `display: flex`
      * arrangement on the surface element so every child position is committed
      * via framework setters.
+     *
+     * @remarks Both rectangles are committed through `applyBounds`, so each
+     * child is laid out when the rectangle it was handed moved and withheld when
+     * it did not and the child allows it. A subclass overriding this method must
+     * keep that shape: writing the four setters by hand and calling the child's
+     * `doLayout()` unconditionally re-lays it out on every pass.
      */
     doLayout(): this {
         super.doLayout();
@@ -941,20 +1021,22 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         const caretX    = box.x + labelW + gap;
         const caretY    = box.y + Math.max(0, (box.height - caretSize) / 2);
 
-        this._label.setX(box.x);
-        this._label.setY(box.y);
-        this._label.setWidth(labelW);
-        this._label.setHeight(box.height);
         // `lineHeight` equals the label's height so the single line of label
         // text vertically centers without `display: flex` on the parent.
+        // Written before the placement, so a pass the placement does run reads
+        // the new value.
         this._label.setLineHeight(box.height);
-        // Position the label's hosted renderer now that its box is sized.
-        this._label.doLayout();
 
-        this._caret.setX(caretX);
-        this._caret.setY(caretY);
-        this._caret.setWidth(caretSize);
-        this._caret.setHeight(caretSize);
+        // `applyBounds` writes the same x / y / width / height in the same
+        // order, then lays the child out only when the committed rectangle moved
+        // or the child cannot skip — the shape `Body.renderWindow` uses for a
+        // table cell. It replaces the unconditional `_label.doLayout()` that
+        // positioned the label's hosted renderer on every pass: a renderer
+        // rebind that moves nothing is reached through `ComboBoxLabel.setItem`'s
+        // `invalidateLayout()` instead, which marks the label and every opted-in
+        // ancestor.
+        this._label.applyBounds(box.x, box.y, labelW, box.height);
+        this._caret.applyBounds(caretX, caretY, caretSize, caretSize);
 
         return this;
     }

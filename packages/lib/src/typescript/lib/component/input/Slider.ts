@@ -66,6 +66,40 @@ class SliderTrack extends Component {
     constructor() {
         super(undefined, _defaultSliderTrackOptions);
     }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a slider's track re-committed
+     * at the rectangle it already holds, with no pass owed, is not re-laid-out.
+     *
+     * A `SliderTrack` has no `doLayout` override: its own pass would re-place the
+     * active fill through its default absolute manager, at the rectangle
+     * `Slider.doLayout` already gave it. Every input announces itself:
+     *
+     * - `Slider.doLayout` places the track, the active fill and the thumb with
+     *   raw setters from the slider's own content box, the value and the range,
+     *   and every write that changes any of them is routed through `applyValue`
+     *   or `applyOrientation`, both of which call `scheduleLayout()` on the
+     *   slider. So a value, range or orientation change reaches the fill through
+     *   the slider's pass, not through this track's.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, padding and border —
+     *   each marks the layout owed here, like any `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     *
+     * The active fill keeps the default gate: it sits under this track, which is
+     * withheld first, so a gate on it would never be asked.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
 }
 
 const _defaultSliderActiveTrackOptions: Partial<ComponentOptions> = {
@@ -104,6 +138,37 @@ const _defaultSliderThumbOptions: Partial<ComponentOptions> = {
 class SliderThumb extends Component {
     constructor() {
         super(undefined, _defaultSliderThumbOptions);
+    }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a slider's thumb re-committed
+     * at the rectangle it already holds, with no pass owed, is not re-laid-out.
+     *
+     * A `SliderThumb` has no children at all, so its own pass places nothing —
+     * its default absolute manager runs over an empty child list. Every input
+     * announces itself:
+     *
+     * - Its size is a class-default maximum, and its position is written by
+     *   `Slider.doLayout` with raw setters from the slider's own content box, the
+     *   value and the range. Every write that changes any of those is routed
+     *   through `applyValue` or `applyOrientation`, both of which call
+     *   `scheduleLayout()` on the slider — so a drag, a keystroke, a value or a
+     *   range change moves this thumb through the slider's pass.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, padding and border —
+     *   each marks the layout owed here, like any `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
     }
 }
 

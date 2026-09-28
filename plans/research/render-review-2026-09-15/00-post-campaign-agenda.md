@@ -504,6 +504,33 @@ needed.
   wrong today, because `Row` is not opted in; the cost is that it cannot be
   until this is fixed.
 
+  **Still open, and harder than it looks.**
+  `field-internals-unchanged-commit-opt-in` set out to fix this and **reverted the
+  fix**, because restoring the base call is not geometry-neutral. Two corrections
+  to the entry above, both established offline on a rendered 40-record table:
+
+  - The defect is worse than a blocked optimisation. The missing base call also
+    holds every `onFirstLayout` callback registered on a row for ever, which is a
+    live consumer-visible defect — the same half `unchanged-commit-opt-ins-forms`
+    found in `Slider.doLayout`.
+  - But `return super.doLayout()` **corrupts cell geometry**. A `Row` runs the
+    default `Absolute` manager, and `Absolute.doLayout` (`layout/Absolute.ts:52`)
+    places each child at `preferredSize ?? size` — it does not re-commit the
+    rectangle the child already holds. For a cell whose `getPreferredSize()` is
+    `null` that fallback is a no-op, which is why string and number columns show
+    nothing; a `BooleanCell` reports `{20,16}`, so the base pass shrinks it from
+    the 33×20 the body's render window gave it to 20×16. Stage 1's `Cell` opt-in
+    cannot withhold that, because the commit genuinely changes the rectangle.
+    It is reachable rather than theoretical: a row is parentless, so any
+    `scheduleLayout()` on one — which `Row.addComponent` does on a column-window
+    change or pool growth — gets a top-level pass from the batched flush, and the
+    narrow cell then renders until the body next re-places the window.
+
+  So the fix needs a library design decision this file should record before
+  someone tries again: what a `Row` should run as its layout manager, or how a
+  row can record its pass without its manager re-placing cells at their preferred
+  sizes. Restoring the base call alone is not it.
+
 ## First measurements of G16, G25 and G27 (2026-09-25)
 
 The three candidates W3.0 sent away for want of a surface now have numbers. All
@@ -805,6 +832,17 @@ update and `table-rows`' settle-phase flake are above already.
   they are why `DateField` and `TimeField` are the two of its ten opt-ins that
   never reach zero. Its notes call this the measured next increment, with a
   ceiling now known rather than modelled.
+
+  **Resolved by `plans/implemented/field-internals-unchanged-commit-opt-in.md`**,
+  with one correction to the causality above. The four counters are not why
+  `DateField` and `TimeField` never reach zero; they are live *because* the field
+  lays out, since every one of those calls is inside `AbstractPickerField.doLayout`.
+  Eleven inner classes now opt in and the two hand-placement sites commit through
+  `applyBounds` instead of forcing the child's pass, which takes a settled picker
+  field's own pass from ten `doLayout` calls to one — `ButtonIconGlyph` and
+  `ButtonLabelText` included, because the button above them is withheld whole. So
+  the field's own counter is the only one left, and what makes a settled field lay
+  out at all stays unidentified. See the entry below for what that leaves open.
 
 - **`validation-error-arming`'s manual check was never run**, as its own notes
   state (`:406`). Run the demo, open the **Binding** tab, click into **Name**
@@ -1185,6 +1223,19 @@ is now drafted as eight plans, listed here so the index carries them.
   residual attributed `DateField` and `TimeField` never reaching zero to all
   four, that plan's verification has to say whether they reach zero or whether
   a stage 5 for the button internals is implied.
+
+  **Answered, half of it, by that plan's `## Implementation Notes`: no stage 5 is
+  implied, and `@DateField` / `@TimeField` are not made to reach zero.** Measured
+  offline and now pinned by `tests/core/UnchangedCommitFieldInternals.test.ts`, a
+  settled picker field's own pass costs exactly one `doLayout` call — the field's
+  — so all four residual counters go to zero on that drive, the two `Button`
+  internals among them, without opting either in: the picker button is withheld
+  whole, and nothing reaches its content row. The field's own call was never in
+  scope and is untouched. Whether it still runs on a settled `ffq` unit depends on
+  what makes a settled picker field lay out in-engine, which that plan records as
+  unidentified and which its offline model does not reproduce — so the `ffq` and
+  `fnq` reading of those two counters is still owed, from the user's in-engine A/B
+  rather than from another plan.
 
 - **Two production bugs were found by making the test instrument honest**, both
   inside `test-dom-handle-eviction`'s scope and fixed there: `Dialog.hide`

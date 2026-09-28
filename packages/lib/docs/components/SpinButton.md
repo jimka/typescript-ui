@@ -37,6 +37,10 @@ This produces a quick ramp-up that feels responsive without runaway speed.
 | `on("tick", fn)` | Subscribe to repeat ticks (also fires once on initial click). |
 | `off("tick", fn)` | Unsubscribe. |
 
+## Notes
+
+- The two spin buttons a [`NumberSpinner`](/components/NumberSpinner) builds are not re-laid-out when the spinner's pass hands them the rectangles they already hold (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)). A button's own pass places one content row inside its inner rect, and every change to that row still reaches it: `clearGlyph`, a first `setGlyph`, `setDescription` and a writing-mode change rebuild the row and relay the button's preferred size, `setText` writes the label's text (which schedules the row) and relays the same size, and the flat/compact insets mark the button's own layout owed. A later `setGlyph` renames the glyph in place and relays nothing, which is sound because a glyph's box never depends on its name. `SpinButton` also re-reads its own size from the theme on every theme change. A bare `SpinButton` built by a consumer keeps the default and is laid out on every commit — the opt-in is on the spinner's own two concrete subclasses.
+
 ## See also
 
 - [API: SpinButton](/api/component/input/classes/SpinButton)

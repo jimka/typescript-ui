@@ -95,6 +95,40 @@ class ToggleTrack extends Component {
         DOM.sink.apply(element, { toggleClass: { selected: this._checked } });
         return element;
     }
+
+    /**
+     * Opts into the unchanged-geometry layout skip: a toggle's track re-committed
+     * at the rectangle it already holds, with no pass owed, is not re-laid-out.
+     *
+     * A `ToggleTrack` has no `doLayout` override: its own pass places one thumb
+     * through its default absolute manager, at the size pinned as the thumb's own
+     * class-default maximum. Every input announces itself:
+     *
+     * - `applySelected` swaps a CSS state class, and `Toggle.applyValue` writes
+     *   the thumb's transform over a fixed travel distance; neither is a layout
+     *   input.
+     * - This track's own pill size is a theme-fixed class default, and its
+     *   rectangle is written by the owning `Toggle`'s pass, so the track moving
+     *   lays it out.
+     * - `setInsets` / `clearInsets`, `setLayoutManager`, padding and border —
+     *   each marks the layout owed here, like any `invalidateLayout`.
+     * - A theme switch or web-font swap — re-measured through the text-metrics
+     *   condition the skip's own gate applies.
+     *
+     * The thumb keeps the default gate: it sits under this track, which is
+     * withheld first, so a gate on it would never be asked.
+     *
+     * Not covered, and so not re-flowed until this component's rectangle next
+     * moves or something schedules it: a consumer child that changes its own
+     * intrinsic size without calling `setPreferredSize` or
+     * `notifyIntrinsicSizeChanged`. It should follow its change with
+     * `scheduleLayout()`.
+     *
+     * @returns `true`.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
 }
 
 const _defaultToggleThumbOptions: Partial<ComponentOptions> = {
