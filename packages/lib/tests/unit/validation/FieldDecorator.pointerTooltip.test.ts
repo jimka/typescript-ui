@@ -1003,8 +1003,10 @@ describe('FieldDecorator — the error tooltip under a pointer', () => {
         move(target, rest.x, rest.y);
 
         // The production registry throws on a handle whose element has been
-        // released, and the modelled one cannot reproduce that state — so what
-        // this pins is that the attach asks the seam before it uses the target.
+        // released. Releasing it for real offline also makes it fail the
+        // modelled hit test, so the outcome would be reached by that second
+        // route too; the spy is what isolates the liveness guard — that the
+        // attach asks the seam before it uses the target.
         const live = vi.spyOn(DOM.source, 'isRegistered').mockReturnValue(false);
 
         decorator.showError(ERROR);

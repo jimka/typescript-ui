@@ -732,22 +732,11 @@ describe('Image decode() settlement guards', () => {
     });
 
     // The two tests below pin "a decode settlement after disposal does not
-    // throw" (triggerDecode's live-element recheck) — but cannot independently
-    // exercise that recheck's own getElement() branch offline: Component's
-    // destructor() clears `_element`, so getElement() falls back to
-    // DOM.source.getElementById(this.getId()), and the modelled
-    // TestHandleTable._byId index is never evicted on element removal (see
-    // Component.ts's own comment on this exact gap, next to its
-    // clearContentFrame() ordering discussion). TextInput.test.ts's own
-    // disposal-guard test for paste() has the identical limitation. `fired`
-    // stays 0 here because registerListenerBag's onDestroy hook clears the
-    // ListenerBag on dispose, not because the guard's getElement() check
-    // no-oped — so what these tests actually prove is "no throw and no
-    // listener fan-out reaches a disposed instance's consumers"; the
-    // getElement()-based no-op itself is the same, already-proven pattern
-    // TextInput.paste() uses (TextInput.ts:795-797) and is verified by code
-    // inspection against Component.ts's documented contract, not by this
-    // offline harness.
+    // throw" (triggerDecode's live-element recheck). `fired` stays 0 because
+    // registerListenerBag's onDestroy hook clears the ListenerBag on dispose,
+    // not because the guard's getElement() check no-oped — so what these
+    // tests actually prove is "no throw and no listener fan-out reaches a
+    // disposed instance's consumers".
     it('a decode settlement after disposal does not throw and does not fire "load"', async () => {
         const img = new Image('/x.png');
         let resolvePending: () => void = () => {};

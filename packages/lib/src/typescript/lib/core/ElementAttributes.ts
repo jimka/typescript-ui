@@ -133,6 +133,16 @@ class ElementAttributes {
     }
 
     /**
+     * Unbinds this buffer from a released element handle; retained state
+     * survives. A later `set`/`remove` queues rather than flushing through
+     * the dead handle, and the next {@link attach} writes the whole retained
+     * state onto the fresh element.
+     */
+    detach(): void {
+        this._handle = null;
+    }
+
+    /**
      * Returns whether this buffer is attached to a live element handle.
      */
     isMaterialized(): boolean {

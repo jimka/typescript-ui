@@ -2,12 +2,10 @@
 //
 // A component disposed synchronously by a handler running during an event's
 // own dispatch can leave `Event.ts`'s subtree-listener ancestor walk holding a
-// handle that disposal just released. The offline modelled DOM (RecordingDOMSink)
-// doesn't evict its stub table on release, so a throw-based case would pass
-// vacuously there — this file runs under the real production seam
-// (ProductionDOMSink/ProductionDOMSource), mirroring handle-registry.test.ts,
-// where `release()` genuinely evicts the registry entry and a later resolve
-// genuinely throws.
+// handle that disposal just released. This file runs under the real
+// production seam (ProductionDOMSink/ProductionDOMSource) specifically,
+// mirroring handle-registry.test.ts, rather than the modelled pair the rest
+// of the suite defaults to.
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { DOM, ProductionDOMSink, ProductionDOMSource } from '~/core/DOM';
 import { Component } from '~/core/Component';

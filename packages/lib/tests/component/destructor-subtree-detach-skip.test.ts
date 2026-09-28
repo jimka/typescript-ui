@@ -98,12 +98,7 @@ describe('Component.destructor() — every component still removes its own eleme
         // merely found "already disconnected" (which the rejected isConnected
         // gate would have read as true here too) and left dangling inside a
         // container that gets reused. Calls `child.dispose()` directly rather
-        // than routing through `disposeAllComponents()`: the offline harness's
-        // `getElementById` model never evicts a removed id
-        // (`TestHandleTable._byId`), so `unwireChild()`'s follow-up
-        // `removeElement()` call would recover the handle through that stale
-        // index and pass vacuously even with the rejected gate reinstated —
-        // production's `document.getElementById` has no such fallback.
+        // than routing through `disposeAllComponents()`.
         const container = new Component({});
         container.getElement(true);
 

@@ -659,6 +659,9 @@ page resets to empty.
   layer gives itself, and the toast stack is the one that uses it. No consumer
   action is needed.
 
+- **`InlineStyle` and `ElementAttributes` gain `detach()`**, the unbind twins
+  of `attach()`, for an owner whose element handle has been released.
+
 ### Overlay
 
 - **`Window` and `TabWindow` take `resizeMode`**, the same pair, for edge and
@@ -694,6 +697,10 @@ page resets to empty.
 ## Fixed
 
 ### Core
+
+- **`Component.release()` now detaches its inline-style and attribute
+  buffers.** A layout commit after a dematerialize wrote through the
+  released handle.
 
 - **`SpatialNavigation.disable()` now empties its focus memory even when
   `enable()` was never called.** The memory (`_lastFocus`, which of a marked
@@ -1020,6 +1027,11 @@ page resets to empty.
   element is built after the attach, is deliberately not queued: it has never
   been reconciled, so ordinary tree building costs nothing. No consumer action
   is needed.
+
+- **The offline test harness's modelled DOM now evicts a released handle and
+  un-indexes a detached element's id, matching the production seam.** This is
+  a test-infrastructure fix: it changes no shipped behaviour, only what the
+  offline suite can observe.
 
 ### Components
 
@@ -1828,3 +1840,8 @@ page resets to empty.
   taller than the strips beside it until restored. A `setRail` that cancels a
   running collapse also fires the `"minimize"` that collapse had deferred, so
   the event is never lost and never doubled. No consumer action is needed.
+
+- **`Dialog.hide` no longer animates the backdrop it has already destroyed.**
+  Under `prefers-reduced-motion: reduce` the panel animation completes
+  synchronously, which runs `hide`'s own `finalize` and destroys the
+  backdrop, and the backdrop animation then ran against a released handle.

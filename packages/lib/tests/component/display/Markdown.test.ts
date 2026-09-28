@@ -1481,26 +1481,21 @@ describe('Markdown content-height measurement', () => {
         }
     });
 
-    it('dispose() detaches the theme listener so a later theme change does not re-measure', () => {
-        const spy = stubScrollHeight(300);
+    it('dispose() detaches the theme listener', () => {
+        stubScrollHeight(300);
         const md = new Markdown('# A');
         md.getElement(true);
         md.setWidth(300);
         expect(md.getMinSize()!.height).toBe(300);
 
+        // Read the count before disposing, then assert it dropped by exactly
+        // one — never dispatch a theme change or read `md` again afterwards,
+        // both of which reach the now-released handle for real.
+        const before = ThemeManager._themeListenerCount();
+
         md.dispose();
 
-        spy.mockReturnValue({
-            scrollTop: 0, scrollLeft: 0,
-            scrollWidth: 0, scrollHeight: 700,
-            clientWidth: 0, clientHeight: 700,
-        });
-        try {
-            ThemeManager.setTheme(DarkTheme);
-            expect(md.getMinSize()!.height).toBe(300);   // unchanged: listener detached
-        } finally {
-            ThemeManager.setTheme(ModernTheme);
-        }
+        expect(ThemeManager._themeListenerCount()).toBe(before - 1);
     });
 
     it('grows a Fit scroll host past its inner height to the measured content height', () => {

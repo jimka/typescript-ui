@@ -902,6 +902,29 @@ describe('Dialog — afterNextLayout cancellation', () => {
     });
 });
 
+describe('Dialog — hide under reduced motion', () => {
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    it('G1. does not write through the backdrop handle its own completion released', () => {
+        installTestDOM(CONFIG);
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+        void dialog.show();
+
+        // White-box: no public accessor names the backdrop's own element handle.
+        const backdropHandle: Handle = (dialog as any)._backdrop.getElement();
+
+        expect(() => dialog.hide('confirm')).not.toThrow();
+
+        const recorder     = DOM.sink as unknown as { writes: Array<{ op: string; args: unknown[] }> };
+        const releaseIndex = recorder.writes.findIndex(w => w.op === 'release' && w.args[0] === backdropHandle);
+
+        expect(releaseIndex).toBeGreaterThan(-1);
+        expect(recorder.writes.slice(releaseIndex).some(w => w.op === 'apply' && w.args[0] === backdropHandle)).toBe(false);
+    });
+});
+
 describe('Dialog — button onClick veto', () => {
     afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
 

@@ -347,8 +347,10 @@ describe('Tooltip.attach — arming under a pointer that is already resting', ()
         expect((Tooltip as any).dismissing).toBe(false);
 
         // The anchor's element has been released — a disposed component, or one
-        // that re-rendered. The modelled source cannot reach that state, so the
-        // seam is asked to report it.
+        // that re-rendered. Releasing it for real offline also makes it fail
+        // the modelled hit test, so the outcome would be reached by that
+        // second route too; the spy is what isolates the liveness guard this
+        // case pins.
         vi.spyOn(DOM.source, 'isRegistered').mockReturnValue(false);
 
         move(outerEl, ON_OUTER.x, ON_OUTER.y);

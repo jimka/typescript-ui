@@ -1292,8 +1292,7 @@ class Dialog extends Component implements DismissableLayer {
             }
         };
 
-        const el   = this.getElement();
-        const bdEl = this._backdrop.getElement();
+        const el = this.getElement();
 
         if (!el) {
             finalize();
@@ -1307,6 +1306,13 @@ class Dialog extends Component implements DismissableLayer {
             properties: ["opacity", "transform"],
             onComplete: finalize,
         });
+
+        // Read only after the panel animation returns: under
+        // `prefers-reduced-motion: reduce`, `Animation.play` above has already
+        // run `onComplete` (`finalize`) synchronously, which destroys the
+        // backdrop — reading `bdEl` any earlier would hand the second
+        // `Animation.play` below a handle `finalize` already released.
+        const bdEl = this._backdrop.getElement();
 
         if (bdEl) {
             this._backdropOutAnimation?.cancel();

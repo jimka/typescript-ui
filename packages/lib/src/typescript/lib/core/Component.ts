@@ -1247,13 +1247,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // `getElement()` calls that never reach the fallback, because those
         // components cache `_element` at creation via `getElement(true)`
         // (`Accordion.ts:1357-1358`, `Split.ts:1185`). The offline test
-        // harness cannot settle the question either way: its modelled
-        // `getElementById` (`TestHandleTable._byId`) is never evicted on
-        // `removeElement`, so a stale id keeps resolving regardless of
-        // ordering. A prior investigation into this exact ordering question
-        // reordered detach to run after element removal and left the full
-        // suite green, so detach running after removal — as it now does — is
-        // not known to require an override. This is also what makes
+        // harness now evicts a removed element's id (`TestHandleTable`'s
+        // `setParent` un-indexes it on detach), so the ordering question is
+        // answerable offline: detach running after removal — as it now
+        // does — leaves the full suite green, so no override is known to
+        // require a connected element at detach time. This is also what makes
         // `Tab.detach()` reachable on this path at all — it disposes the
         // raw-appended `TabBar` (`Tab.attach()` appends it directly to the
         // container element instead of registering it as a child), which the
@@ -1556,6 +1554,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // _ownedHandles does not accumulate a dead entry per release cycle.
         DOM.sink.release(element);
         this.untrackHandle(element);
+
+        // Both buffers are still bound to the handle released above, so the
+        // next commit would write through it. Detaching keeps their retained
+        // state, which `init()`'s `attach` replays onto the fresh element.
+        this._inlineStyle.detach();
+        this._elementAttributes.detach();
 
         this._element               = undefined;
         this._pendingRematerialize   = true;
