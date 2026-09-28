@@ -337,14 +337,6 @@ function scrollHandleOf(pane: Component): unknown {
     return (pane as unknown as { _overlayScrollElement?: unknown })._overlayScrollElement ?? pane.getElement();
 }
 
-/**
- * Frames that let a scrolling panel's resize-settle relay run out: the mount's
- * first layout arms it and it takes two layout flushes to clear, and until it
- * has, a pane withholds the re-measure. One frame more than the two, as margin
- * — `ablations.test.ts` waits the same.
- */
-const PANEL_SETTLE_FRAMES = 3;
-
 describe('P16 scroll-panes', () => {
     afterEach(() => vi.restoreAllMocks());
 
@@ -366,8 +358,6 @@ describe('P16 scroll-panes', () => {
         const root = mounted.build.root;
         const panes = root.getComponents();
         const patched = snapshotPatchables([tools.ownerProto(panes[0], 'remeasureScrollMetrics')!]);
-
-        await tools.waitFrames(PANEL_SETTLE_FRAMES);
 
         try {
             mounted.build.installWork!(tools);

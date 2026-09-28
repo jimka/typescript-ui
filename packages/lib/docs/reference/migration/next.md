@@ -468,9 +468,11 @@ rather than by a per-class opt-in, so it reaches every `Panel` subclass — a
 library one or your own — with no audit and no override. The whole-pass skip is
 unchanged and still `Panel` exactly.
 
-The resize-settle relay is unaffected: while a live external resize is still
-moving the panel every frame the re-measure is withheld by that relay instead,
-and its catch-up on the first quiet frame still runs in full.
+Every frame of a live external resize that actually moves this panel's box
+re-measures, because a changed rectangle is the first thing the skip rules out. A
+frame that leaves the box exactly where it was — a gutter drag parked against a
+pane's minimum, or a window resize this panel does not follow — takes the skip,
+correctly.
 
 **Who needs to act.** Code that changes content inside a scrolling panel without
 telling the framework — the same case as the two notes above, one instrument

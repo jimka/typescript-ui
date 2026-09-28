@@ -15,14 +15,14 @@
 //      `SmoothScroller.scrollBy` performs inside the same call.
 //
 // Assertions are call-count DELTAS against `DOM.source.getScrollMetrics`, not
-// absolute counts, for the reason PanelResizeMetricsCoalescing.test.ts's own
-// header gives: the absolute count varies with scrollbarStyle/scrollShadows/
+// absolute counts: the absolute count varies with scrollbarStyle/scrollShadows/
 // autoScroll while the delta claim holds for every configuration. Each case
 // that names "the live-pass count" calibrates it from a live pass in the same
-// test rather than hardcoding it.
+// test rather than hardcoding it. PanelResizeMetricsLive.test.ts is where the
+// absolute per-pass count is pinned, and where the resize-burst cases live.
 //
-// Mirrors the harness of PanelResizeMetricsCoalescing.test.ts (CONFIG,
-// stubMetrics, the Map-keyed frame capture, the `internals()` cast) and
+// Mirrors the harness of PanelResizeMetricsLive.test.ts (CONFIG, stubMetrics,
+// the Map-keyed frame capture, the `internals()` cast) and
 // PanelScrollChaining.test.ts's wheel()/wheelEvent() helpers.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { _Panel } from '~/core/Panel';
@@ -44,7 +44,7 @@ const CONFIG = {
 
 // The panel's mount size, and the step a resize burst moves it to. Arbitrary,
 // distinct values — no dimension here binds any min/max/content-size
-// constraint. Copied from PanelResizeMetricsCoalescing.test.ts's S1/S2.
+// constraint. Shared with PanelResizeMetricsLive.test.ts's S1/S2.
 const S1W = 400; const S1H = 300;
 const S2W = 300; const S2H = 200;
 
@@ -53,9 +53,8 @@ const S2W = 300; const S2H = 200;
 const CHILD_W = 900; const CHILD_H = 800;
 
 // The offline sink drops requestAnimationFrame/cancelAnimationFrame; capture
-// them so the settle relay (Component.afterNextLayout — see Panel.ts's
-// scheduleScrollMetricsSettle) and the batched layout flush can both be driven
-// to completion explicitly.
+// them so the batched layout flush (Component.afterNextLayout) can be driven to
+// completion explicitly.
 let nextFrameHandle = 1;
 let frames: Map<number, FrameRequestCallback> = new Map();
 let sink: RecordingDOMSink;
@@ -82,12 +81,11 @@ afterEach(() => {
     // swapped theme behind pollutes every later theme case.
     ThemeManager.setTheme(ModernTheme);
 
-    // A still-armed settle handle leaves Component's shared afterNextLayout
-    // flush queued — cancel() only sets a flag, it doesn't deregister the
-    // frame. Drain it here so a test that ends mid-burst doesn't leave
-    // Component's module-level rafHandle non-null, which would make the next
-    // test's own registration find a flush already "pending" and skip
-    // registering a fresh frame.
+    // A case that ends with frames still queued leaves Component's shared
+    // afterNextLayout/scheduleLayout flush queued with them. Drain it here, so
+    // Component's module-level rafHandle does not stay non-null into the next
+    // case, where its own registration would find a flush already "pending" and
+    // register no fresh frame.
     drainFrames();
     vi.restoreAllMocks();
     DOM.reset();
@@ -144,7 +142,6 @@ type ScrollInternals = {
     _scrollHandler: (() => void) | null;
     _shadowScrollHandler?: (() => void) | null;
     _overlayScrollHandler?: (() => void) | null;
-    _scrollMetricsSettleHandle: { cancel(): void } | null;
     _shadowEdges: Record<'top' | 'bottom' | 'left' | 'right', number>;
     _shadowOverlay: Handle | null;
     _overlayScrollElement: Handle | null;
@@ -201,7 +198,7 @@ function mountPanel(autoScroll: 'auto' | 'both' | 'y' | 'none', scrollbarStyle?:
 
 /**
  * Runs one live pass and drains every queued frame, so the panel ends settled
- * with no resize-settle relay armed — the state every settled-pass case below
+ * with nothing queued against it — the state every settled-pass case below
  * starts from.
  *
  * @param panel - The mounted panel to settle.
@@ -305,50 +302,42 @@ describe('Panel — the settled pass withholds its scroll-metrics remeasure', ()
         })).toBe(live);
     });
 
-    it("F: still performs the resize burst's catch-up remeasure at settle", () => {
-        // Deliberately NOT pre-settled: the burst has to start with the relay
-        // already armed by the mount pass, which is what makes the next pass a
-        // withheld one that owes a catch-up. Pre-draining first would leave the
-        // burst's own first step live and its second step an ordinary settled
-        // pass, with nothing owed at all.
+    it('F: remeasures live on each pass of a resize burst, and needs no catch-up afterwards', () => {
+        // This case once pinned the opposite — a withheld second pass plus a
+        // catch-up once the burst went quiet — because `doLayout` used to
+        // withhold the remeasure on every frame of a resize burst past the
+        // first. Withholding it also withheld the scrollbar-gutter commit, both
+        // overlay bars' geometry and both halves of the scroll-shadow overlay,
+        // which is the visible defect PanelResizeGeometryStaleness.test.ts now
+        // covers frame by frame. What remains to pin here is that the settled
+        // pass skip — case A above, a separate mechanism — does not swallow a
+        // resize frame, and that a burst leaves no measurement owed behind it.
         const spy = stubMetrics();
         const panel = mountPanel('auto');
-        const before = spy.mock.calls.length;
-
-        panel.doLayout();   // live; arms the relay
-
-        const live = spy.mock.calls.length - before;
+        const live = readsDuring(spy, () => panel.doLayout());
 
         expect(live).toBeGreaterThan(0);
 
         panel.setWidth(S2W);
         panel.setHeight(S2H);
 
-        expect(readsDuring(spy, () => panel.doLayout())).toBe(0);
+        expect(readsDuring(spy, () => panel.doLayout())).toBe(live);
 
-        // The catch-up runs outside the settled gate: by the time the burst goes
-        // quiet the panel IS settled at a box that has not moved since the last
-        // pass — exactly the shape an ordinary pass skips on — so a gate placed
-        // inside remeasureScrollMetrics, or inside the relay, would swallow the
-        // one re-measure the relay exists to perform.
-        expect(readsDuring(spy, () => drainFrames())).toBe(live);
+        // Nothing is owed: every pass of the burst already measured, so draining
+        // to quiescence performs no further read. Read against `live` on the same
+        // spy, so a run that measured nothing anywhere fails the anchor above.
+        expect(readsDuring(spy, () => drainFrames())).toBe(0);
     });
 
-    it('G: reads nothing and arms no settle frame for an autoScroll: "none" panel', () => {
+    it('G: reads nothing for an autoScroll: "none" panel, before or after a drain', () => {
         const spy = stubMetrics();
         const panel = mountPanel('none');
 
-        // The first pass's own size change is what would arm a settle frame, so
-        // the handle is asserted HERE rather than after the drain below: a drain
-        // clears whatever was armed, and a post-drain null says nothing about
-        // whether one was ever armed at all.
         expect(readsDuring(spy, () => panel.doLayout())).toBe(0);
-        expect(internals(panel)._scrollMetricsSettleHandle).toBeNull();
 
         drainFrames();
 
         expect(readsDuring(spy, () => panel.doLayout())).toBe(0);
-        expect(internals(panel)._scrollMetricsSettleHandle).toBeNull();
     });
 
     it('remeasures live when the pass itself is marked from inside its own run', () => {
