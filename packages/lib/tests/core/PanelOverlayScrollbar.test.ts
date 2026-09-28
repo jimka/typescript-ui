@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { _Panel } from '~/core/Panel';
 import { DOM } from '~/core/DOM';
-import type { Handle } from '~/core/DOM';
+import type { Handle, ScrollMetrics } from '~/core/DOM';
 import { ScrollStrip } from '~/component/container/ScrollStrip';
 import { installTestDOM, ruleStyleWrites } from '../dom/TestDOM';
 import type { RecordingDOMSink } from '../dom/TestDOM';
@@ -81,13 +81,13 @@ type OverlayInternals = {
     _overlayScrollElement:  Handle | null;
     _scrollbarV:            { getX(): number; getY(): number; getWidth(): number; getHeight(): number; isDisplayed(): boolean } | null;
     _scrollbarH:            { getX(): number; getY(): number; getWidth(): number; getHeight(): number; isDisplayed(): boolean } | null;
-    _overlayScrollHandler:  (() => void) | null;
+    _scrollHandler:         (() => void) | null;
     _shadowOverlay:         Handle | null;
     _onOverlayScrollV(position: number): void;
     _onOverlayScrollH(position: number): void;
     getScrollElement(): Handle | undefined;
     layoutOverlayScrollbars(element?: Handle): void;
-    syncOverlayScrollbars(): void;
+    syncOverlayScrollbars(metrics: ScrollMetrics): void;
 };
 
 function internals(panel: _Panel): OverlayInternals {
@@ -145,7 +145,7 @@ describe('Panel — overlay scrollbar default', () => {
         expect(i._overlayScrollElement).not.toBeNull();
         expect(i._scrollbarV).not.toBeNull();
         expect(i._scrollbarH).not.toBeNull();
-        expect(i._overlayScrollHandler).not.toBeNull();
+        expect(i._scrollHandler).not.toBeNull();
     });
 
     it('updates the inner scroller overflow axes on a runtime mode-to-mode change (no teardown)', () => {
@@ -450,8 +450,12 @@ describe('Panel — overlay scrollbar default', () => {
         const setScrollTop  = vi.spyOn(panel, 'setScrollTop');
         const setScrollLeft = vi.spyOn(panel, 'setScrollLeft');
 
-        internals(panel).syncOverlayScrollbars();
-        internals(panel).syncOverlayScrollbars();
+        // The metrics are now handed in by the shared scroll handler rather than
+        // read here, so the call site passes the stubbed read.
+        const metrics = DOM.source.getScrollMetrics(internals(panel).getScrollElement()!);
+
+        internals(panel).syncOverlayScrollbars(metrics);
+        internals(panel).syncOverlayScrollbars(metrics);
 
         expect(setScrollTop).not.toHaveBeenCalled();
         expect(setScrollLeft).not.toHaveBeenCalled();

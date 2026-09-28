@@ -429,3 +429,278 @@ No exported symbol is added, removed or renamed, so no TypeDoc page, catalog ent
 [^paint-untouched]: Read cost and paint cost. The consuming application traced a real per-frame cost to this framework's scroll cue: WebKitGTK software-rasterises a blurred inset `box-shadow` every frame for any populated scroller. Nothing in this plan removes an overlay, a strip, a shadow layer or a repaint; the writes it stops issuing were writing values already in place, and the reads it stops issuing never painted anything. So a flat clock here is not evidence about the paint, and a falling read counter is not a claim about it either — the same distinction the sibling QA plan draws for its own cell. The paint side's shipped answer is [`scroll-shadow-edge-strips`](plans/implemented/scroll-shadow-edge-strips.md), which left the overlay in place as an inert host and moved each edge's single shadow layer onto its own 12-pixel strip, cutting the blurred area per frame from four viewport-sized boxes to four bands. Anything beyond that needs an engine recording rather than a counter, per the campaign's own rule that a Chromium measurement can miss a paint-bound cost entirely.
 
 [^sibling-cell]: The ordering question, and why it is small. [`unreached-ablation-surfaces`](plans/unreached-ablation-surfaces.md) builds a `call` target on `scroll-panes` so `g16.scroll-reads` can engage there; it edits `packages/qa` only. `g16.scroll-reads` is already measured on three W3.0 wheel cells, and the agenda's own reading is that a `scroll-panes` ladder for it "would be a second surface for a candidate already measured on three cells — useful, not owed" (*Corrections*, 2026-09-26). So this plan does not wait for it; it only notes that the cell measures nothing once the library stops issuing the reads.
+
+---
+
+## Implementation Notes
+
+Implemented 2026-09-27 on `feature/panel-scroll-read-economy`, off
+`feature/table-column-resize-outline-mode` (`750e11ef`) as phase 6 of a
+nine-phase batch. Two code commits, matching `[^one-plan]`'s own split: steps
+1–3, then steps 4–7 with step 6's test follow-up folded in. No exported signature
+changed; `npm run typecheck`, `npm run lint` and the whole library suite are
+clean, and `npm run docs:api` still emits exactly the 14 pre-existing warnings.
+
+### Prescribed verifications that could not have caught a regression
+
+Every assertion the plan prescribes was mutation-tested — the implementation was
+broken in the specific way the assertion names, and the test had to go red.
+Seven prescriptions did not, and are recorded here with what replaced them.
+
+1. **Case F's shape as written cannot exercise the relay at all.** The plan
+   describes F as "a resize burst driven to settle | the catch-up still
+   remeasures", and cases A–E all start from a pre-settled panel (mount, one
+   pass, drain). Started from there, the burst's first step is a size change that
+   re-arms the relay and remeasures *live*, and its second step is an ordinary
+   settled pass at an unchanged box — so nothing is owed and the catch-up
+   correctly reads nothing. F only reaches the relay when the burst begins with
+   the relay already armed by the mount pass, i.e. **without** the drain the
+   other cases need. F is written that way, with the reason in a comment.
+
+2. **Every "the live-pass count" comparison was satisfiable by zero.** B, C, E, F
+   and the two child cases compare a later pass's read count against a `live`
+   count calibrated from a live pass in the same test. An implementation that
+   stopped remeasuring altogether collapses `live` to 0 and satisfies every
+   `toBe(live)`. Proved: a gate evaluated *inside* `remeasureScrollMetrics` at
+   call time — the exact mistake the plan's *Internal Structure* warns against —
+   left F green while breaking A. Each of those cases now also asserts
+   `live > 0`, and with that the same mutation turns seven cases red.
+
+3. **Case G asserted the settle handle after a drain, which clears it.** The plan
+   says G pins "zero calls, as before, and no settle frame armed". Asserting the
+   handle after the settled pass says nothing: whatever the panel's *first* pass
+   armed has already been drained by then. Removing
+   `deferScrollMetricsWhileResizing`'s own `_autoScroll === "none"` early return
+   left G green. G now asserts the handle immediately after the first pass,
+   before the drain, and goes red for that mutation.
+
+4. **No prescribed case reaches the gate's second `isLayoutDirty()` read.** A–G
+   all mark the panel (or not) *before* the pass starts, which only the entry
+   sample sees. Deleting `canSkipSettledRemeasure`'s `&& !this.isLayoutDirty()`
+   term left all seven green. Added a case whose child republishes its preferred
+   size from inside its own `doLayout` — the shape a `Text` descendant takes when
+   it re-measures at a new width, and the only way a panel enters a pass settled
+   and leaves it marked. This is the term the plan's *Internal Structure*
+   introduces as "the second read of `isLayoutDirty()` catches anything that
+   marked the panel from inside its own pass"; without this case it was dead
+   code by test.
+
+5. **The four listener install/teardown combinations are not pinned by H, I, J
+   and K as *Potential Challenges* claims.** Three of the four were vacuous:
+   - **I cannot see whether the bars wire a listener of their own.** It turns the
+     shadows off *after* mount, by when the shadow install has already wired one.
+     Removing `ensureScrollListener()` from `installOverlayScrollbars` left every
+     case green. Added **I2**, a panel built with `scrollShadows: false`.
+   - **J cannot isolate either teardown.** `setAutoScroll("none")` runs
+     `removeOverlayScrollbars` and then `removeScrollShadows` back to back, so a
+     release placed *before* either one nulled its own field is silently rescued
+     by the other's release — and a release guard that has lost one of its two
+     terms is masked the same way. Three separate mutations (drop the
+     `_shadowOverlay` term; release before nulling in either teardown) all left J
+     green. Added **J2/J3/J4**, each driving one teardown through the
+     `internals()` cast, because no public setter isolates one.
+   - **K's native-with-shadows run pins reads, not listener state**, so it says
+     nothing about the shadows-only teardown that *Potential Challenges* assigns
+     to it. J4 is what covers that combination.
+
+6. **Case K was satisfiable without the scroll doing anything.** `init` already
+   computes the four `_shadowEdges` from the same stubbed read, so asserting them
+   after a mount-then-scroll would pass whatever the scroll did. K now scrolls
+   *from* a rest position whose four edges all differ from the scrolled ones, and
+   uses a scroll offset where all four land on distinct, non-saturated ramp
+   values (20/70/50/30), so a transposed axis cannot coincide with the right
+   answer.
+
+7. **Case O is satisfied by a plain assignment after the call**, not only by the
+   `finally` the plan specifies. O now also drives a `scrollBy` that throws,
+   which is the only shape that distinguishes them — and the reason the plan gives
+   for the `finally` in the first place.
+
+8. **The merged listener's own wire-once guard was untested — found by the
+   audit, not by this sweep.** `## Expected Behaviour` prescribes driving the
+   scroll "by invoking the merged handler through the `internals()` cast", which
+   by construction cannot observe how many listeners are wired, and cases H–J
+   only read private fields. So deleting `ensureScrollListener`'s
+   `if (this._scrollHandler) { return; }` left the whole library suite green while
+   a shadowed overlay-mode panel registered the listener **twice** — once per
+   installer — reading the metrics twice per scroll, exactly the cost this change
+   removes, and leaking the first handler, which `_scrollHandler` no longer holds
+   for `releaseScrollListener` to remove. Deleting the `Event.addSubtreeListener`
+   call outright was also silent. The guard is newly load-bearing: before this
+   change each consumer had its own guard field that the other could not defeat,
+   and now one shared guard mediates two independent callers. Added a
+   registration-count case, following `WindowHeader.test.ts:122`'s "does not stack
+   a duplicate subtree listener" convention — the count, not an observable effect,
+   because `ensureScrollListener` builds a fresh arrow per call, which `Event`'s
+   own identity dedupe cannot collapse. It goes red for both mutations, and for a
+   same-value `setScrollbarStyle` / `setScrollShadows` refresh that re-enters both
+   installers.
+
+Case **P** already held before the change (one read each was already the
+behaviour), so it is a regression guard rather than a test of new behaviour. It
+does go red for a transposed `readMaxScroll`, so it is not vacuous.
+
+### Other deviations and findings
+
+- **The three direct child-`doLayout()` call sites in *Potential Challenges* are
+  moot, not merely safe.** `ScrollStrip`'s clip (`setOverflow("hidden")`, never
+  `setAutoScroll`), `AbstractChart`'s legend and `DiagramView`'s spinner set no
+  `autoScroll` at all, so `remeasureScrollMetrics` already returns at its first
+  line for each of the three and the new gate cannot change anything there. The
+  plan's reasoning ("each of the three resizes the child first") is also not true
+  of `ScrollStrip.layoutItems`, which calls `this._clip.doLayout()` with no prior
+  resize — it just does not matter.
+
+- **`[^resize-at-install]`'s justification is inaccurate mid-burst, and the
+  comment restating it was corrected.** The footnote says "Every path that does
+  change them ends in a layout pass, which applies the size directly from its own
+  fresh read". That does not hold on a pass the resize-settle relay is
+  withholding: `doLayout`'s withheld branch writes the inner scroller's size only,
+  and `resolveShadowOverlaySize` / `applyShadowOverlaySize` never run. Before this
+  change the scroll path papered over it by re-asserting the overlay's size on
+  every scroll; now it does not, so scrolling a pane while dragging a `Split`
+  gutter over it leaves the overlay and its four strips at the pre-burst box until
+  the relay's catch-up. Self-correcting, `pointerEvents: none`, and no worse than
+  the "single-frame staleness the gutter reservation itself tolerates" that the
+  adjacent comment already accepts — so the change stands, but
+  `resizeScrollShadowOverlay`'s doc comment now says so instead of repeating the
+  footnote's unqualified claim. It is also the one behaviour the un-run manual
+  step 5 would exercise, which is why that step is called out below.
+
+- **The init path's native-mode read order changed, which the read-count claim
+  above does not convey.** `installScrollShadows` now sizes the overlay *before*
+  `init`'s `updateScrollShadows(resolved)` reads, where the old order read first
+  and resized after. In native mode that read is of the panel element, whose
+  `scrollHeight` the in-flow overlay floors, so the first pass's four edge
+  strengths now derive from a post-resize read. This brings the init path into line
+  with `remeasureScrollMetrics`'s own "size the overlay before you read" invariant
+  and is a correctness improvement, but it is a behaviour change on that path, not
+  only a reshuffle of two reads, and the modelled DOM cannot observe it — its
+  `getScrollMetrics` is stubbed, so a write cannot change a later read.
+
+- **The wheel path no longer routes through the two public max-scroll getters.**
+  `onWheelScroll` and the clamp closure called `getMaxScrollLeft()` /
+  `getMaxScrollTop()` before and call the private `readMaxScroll()` now. No library
+  class overrides either getter — the only other callers are
+  `ScrollStrip.mainScrollMax` and `Menu.ts:421` — so nothing in-library changes,
+  and the plan's `## Public API` claim that both getters "keep their signatures and
+  their answers" holds for every caller. What it does not cover is a *consumer*
+  subclass overriding one to alter clamping: the wheel path would silently stop
+  consulting it. The plan prescribes this shape and its `## Documentation Impact`
+  fixes the doc scope at three files, so nothing was added to the changelog for it;
+  if that override seam counts as part of the contract, one migration sentence is
+  owed and is the user's call rather than this run's.
+
+- **Nesting the withheld branch inside the new gate moved two side effects behind
+  it, and no test pins that they are unreachable.** A skipped pass no longer calls
+  `deferScrollMetricsWhileResizing`, so it neither sets `_scrollMetricsOwed` nor
+  takes the overlay-mode inner-scroller size write in the `else if`. Both are safe
+  by construction rather than by test: the gate only skips when `!sizeChanged`,
+  while arming the relay, setting `_scrollMetricsOwed` and reaching that `else if`
+  all require either `sizeChanged` or a pass the gate does not skip. Case F and
+  `PanelResizeMetricsCoalescing.test.ts` cover the relay end to end, so this is a
+  gap in the record rather than in coverage — recorded here so it is not mistaken
+  for one that was checked by assertion.
+
+- **`_scrollHandler` is seeded beside the settle-relay block, not beside either
+  consumer's own state.** The plan says to seed it in `applyOptions`; the two
+  fields it replaces were seeded immediately before the setter that reads each,
+  which cannot work for a field *both* later setters' teardowns read. It is
+  seeded after the settle-relay block instead, which is before `setAutoScroll` —
+  the first cascade-dispatched setter whose teardowns reach
+  `releaseScrollListener`.
+
+- **Step 5's `resizeScrollShadowOverlay` call landed in step 4's commit.** Steps
+  4–7 are one commit by the plan's own `[^one-plan]`, so there was nothing to
+  separate. The install path's read count is unchanged by the move: `init` and
+  `refreshScrollShadows` each paid two reads before (one in
+  `updateScrollShadows`, one in the `resizeScrollShadowOverlay` it called) and
+  pay two now (one in `installScrollShadows`, one in `updateScrollShadows`).
+
+- **Step 4's prescribed grep cannot come out as the plan predicts.** It expects
+  `_shadowScrollHandler|_overlayScrollHandler` to match "only in
+  `tests/core/PanelOverlayScrollbar.test.ts`"; it also matches the new test file,
+  which deliberately reads both removed fields as `undefined` for case H.
+
+- **Step 1's refactor was mutation-tested too**, against the four `UnchangedCommit*`
+  files the plan names: dropping each of `isLayoutSettled`'s three terms turns 31,
+  1 and 4 of their assertions red respectively. The move is a pure refactor and
+  all four files pass untouched.
+
+- **The QA package's suite cannot run in a fresh worktree at all** until
+  `npm run build:lib` has run: `packages/qa` imports `@jimka/typescript-ui/*`
+  subpath exports, which resolve into `packages/lib/dist`, so 7 of its 20 test
+  files fail at import resolution before that. That part is environment, not this
+  branch.
+
+- **Once it can run, this change turns five of its 453 tests red, and the plan's
+  *Non-Goals* forbid the fix.** Verified both ways with the same worktree: against
+  the start point's `packages/lib` the suite is 453/453, against this branch's it
+  is 448 passed / 5 failed. **Four** are one mechanism — a QA ablation or witness
+  that counted work the library no longer does — and the fifth is a different
+  thing, which an earlier draft of this note got wrong:
+  - `tests/ablations.test.ts` A11 `g16.panel-settled`, three cases. The arm patches
+    the panel's own re-measure and counts what it withheld; the library now
+    withholds it first, so `skipped.g16.panel-settled.remeasure` is absent rather
+    than ≥ 1 (or `SMOKE_SCALE`).
+  - `tests/mount.test.ts` P16 `scroll-panes`, one case. Its `pane.remeasure@ScrollPane`
+    witness expects `SMOKE_SCALE` calls of `remeasureScrollMetrics` on a settled
+    pass; a settled pass now makes none.
+  - `tests/ablations.test.ts` A12 `g16.scroll-reads`, one case — **not** an absent
+    counter but a `TypeError: Cannot read properties of undefined (reading
+    'clientHeight')` thrown from `Panel.syncOverlayScrollbars`. The test invokes
+    that private method through the harness's untyped reflection with no argument
+    (`tests/ablations.test.ts:714-715`), and it now takes a required
+    `ScrollMetrics`. Nothing in the library can reach it argument-less —
+    TypeScript covers every in-library caller, and `handleScroll` is the only one
+    — so this is a QA call site to update, not a library defect. It also narrows
+    the choice below: "keep the arm as an inverted regression detector" is not
+    available for A12 on its own, because the test throws before it could read a
+    counter; that call site has to pass metrics either way.
+
+  The first four are the end state `## Verification` step 6 predicts — "Both G16 ablations
+  then have nothing left to remove and will read as unengaged. That is the
+  intended end state, not a defect" — but the plan states it as an in-engine
+  reading only and does not say that five `packages/qa` unit tests encode the
+  same expectation and therefore fail. *Non-Goals* rules the fix out explicitly
+  ("Retiring or rewriting the `g16.panel-settled` and `g16.scroll-reads`
+  ablations, or editing `packages/qa` … what to do with an ablation whose
+  candidate landed is the QA record's own question"), so nothing under
+  `packages/qa` is touched here and the five failures are left standing for that
+  decision. The two options are to retire both arms with their witnesses and
+  self-tests, or to keep them as inverted regression detectors — an arm that
+  engages again would mean the library had stopped withholding. Whichever is
+  chosen is one small `packages/qa` change and belongs with the record, not here.
+  Two `packages/qa` comments go stale with it, under the same bar:
+  `src/panels/scroll-panes.ts:62` and `README.md:350` both say
+  `resizeScrollShadowOverlay` and `updateScrollShadows` "are reachable from a
+  scroll event alone and no layout pass calls either", and `resizeScrollShadowOverlay`
+  is now reachable only from install and refresh.
+
+### Not done, and left for the user
+
+- **`## Verification` step 5 (manual, by eye) was not performed.** It needs a
+  window, which this run is forbidden from opening. The steps to run are the
+  plan's own: on the **Markdown** tab, scroll and confirm the edge shadows still
+  fade in and out, the overlay thumb tracks the content, and no band is mis-sized
+  or left lit at an extreme; resize the window until a scrollbar appears and
+  disappears and confirm the gutter still reserves and releases; repeat the
+  scroll check on a plain `Panel` on the **Grid** tab; then drag a `Split` gutter
+  on a scrolling pane on the **Complex UI** tab and confirm the pane's shadows
+  and thumb settle correctly when the drag stops. The last of those is the
+  resize-settle relay's own path, and the one this change most needs a human eye
+  on: case F covers it offline, but only against the modelled DOM.
+
+- **`## Verification` step 6 (in engine) was not run and nothing was
+  re-measured.** The record's figures stand as taken on 2026-09-25 and
+  2026-09-26. Note what they are and are not: `spp`'s −99.3% on
+  `seam.source.getScrollMetrics` was measured on a cell whose panes are
+  `Panel` **subclasses**, which is why the arm read at all — so it bounds the
+  cost this change removes, while the three W3.0 wheel cells' −50% bounds the
+  scroll-read half. Both clocks were flat, and this change claims no render-time
+  improvement. Both G16 ablations should now read as unengaged.
+
+- **The read-count table in *Internal Structure* was not re-derived by
+  measurement**, only by construction: the offline harness's own counts are what
+  the new test file asserts (2 per live pass, 0 per settled pass, 1 per scroll, 1
+  per wheel event), and they agree with the table.

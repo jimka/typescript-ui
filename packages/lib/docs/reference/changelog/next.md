@@ -18,6 +18,18 @@ page resets to empty.
   pass to pick it up, must now announce the change. See
   [Migration](/reference/migration/next) for the full note.
 
+- **A scrolling `Panel` no longer re-measures its scroll metrics on a settled
+  pass.** A pass that commits the rectangle the previous one did, with nothing
+  having marked the panel since its last completed pass, withholds the
+  post-layout scroll-metrics re-measure — the scrollbar gutter, the shadow
+  overlay's size and the four edge strengths. Unlike the whole-pass skip above
+  this is granted by that state rather than per class, so every `Panel`
+  subclass gets it with no audit. Code that changes content inside a scrolling
+  panel without calling `setPreferredSize`, `notifyIntrinsicSizeChanged` or
+  `scheduleLayout`, and relied on an unrelated later pass to re-measure the
+  gutter or the edge shadows, must now announce the change. See
+  [Migration](/reference/migration/next) for the full note.
+
 - **`Body.init` returns `Promise<Body>`, and `BodyOptions.components` is
   removed.** An app now awaits the bootstrap and adds its tree afterward —
   `const body = await Body.init({ layoutManager }); body.addComponent(root);`

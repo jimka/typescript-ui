@@ -664,6 +664,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // Eased wheel-scroll controller, lazily attached while an overflow axis is
     // scrollable (auto/scroll). Null otherwise — most components never scroll.
     private _wheelScroller        : SmoothScroller | null     = null;
+    // Both axes' maximum scroll offsets, lent to the wheel scroller's clamp for
+    // the duration of one `onWheelScroll` call so the clamp reuses the read the
+    // handler already made instead of measuring the same element again. Null
+    // outside that call. Plain initializer, mirroring `_wheelScroller` above: no
+    // setter `applyOptions` dispatches ever writes it.
+    private _wheelMaxScroll       : { x: number; y: number } | null = null;
     private _contain              : string | null           = null;
     private _animation            : string | null           = null;
     // Edge-trigger cache for the effective-visibility walk; null = not yet
@@ -4485,14 +4491,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Whether a commit that moves nothing may withhold this component's layout
-     * pass right now: this class opted in through
-     * {@link canSkipUnchangedLayout}, no pass is owed, and the component has
-     * an element. The one definition of the gate that {@link applyBounds},
-     * `LayoutManager.commitBounds` and the batched layout flush all ask;
-     * public only so the latter two can reach it on arbitrary instances.
+     * Whether nothing has marked this component's layout since its last
+     * completed pass — the per-moment half of the unchanged-commit gate, asked
+     * without the per-class opt-in {@link canSkipUnchangedCommit} adds on top.
+     * A narrower unit of work than a whole pass can be withheld on this alone,
+     * which is what `Panel` does for its post-layout scroll-metrics remeasure.
      *
-     * @returns `true` when an unchanged commit may skip this component's pass.
+     * @returns `true` when no pass is owed here or beneath, no first-layout
+     *   drain is queued, and the last pass ran against the current text metrics.
      *
      * @remarks A pass is owed when {@link isLayoutDirty} says so — which
      * includes a pass owed anywhere beneath, see {@link markPassOwedAbove} —
@@ -4503,16 +4509,37 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * A theme switch or a web-font load moves measured text without moving any
      * rectangle, so a component last laid out against other text metrics is
-     * laid out again: its own pass is the only thing that re-measures the text
+     * not settled: its own pass is the only thing that re-measures the text
      * beneath it once the parent's placement stops reading its size hints.
+     */
+    protected isLayoutSettled(): boolean {
+        return !this.isLayoutDirty()
+            && this._firstLayoutCallbacks === null
+            && this._layoutMetricsGeneration === Util.textMetricsGeneration();
+    }
+
+    /**
+     * Whether a commit that moves nothing may withhold this component's layout
+     * pass right now: this class opted in through
+     * {@link canSkipUnchangedLayout}, nothing has marked the layout since the
+     * last pass, and the component has an element. The one definition of the
+     * gate that {@link applyBounds}, `LayoutManager.commitBounds` and the
+     * batched layout flush all ask; public only so the latter two can reach it
+     * on arbitrary instances.
+     *
+     * @returns `true` when an unchanged commit may skip this component's pass.
+     *
+     * @remarks What "nothing has marked the layout" means, and why each term
+     * belongs, is on the settled predicate this delegates to. What this method
+     * adds is the per-class opt-in and the element check — a component with no
+     * element cannot lay out, so recording that pass as done would skip it
+     * forever.
      *
      * @internal
      */
     public canSkipUnchangedCommit(): boolean {
         return this.canSkipUnchangedLayout()
-            && !this.isLayoutDirty()
-            && this._firstLayoutCallbacks === null
-            && this._layoutMetricsGeneration === Util.textMetricsGeneration()
+            && this.isLayoutSettled()
             && !!this.getElement();
     }
 
@@ -5133,20 +5160,36 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Reads the scrolling element's metrics once and derives both axes' maximum
+     * offsets from that one read, so a caller needing the pair pays for a single
+     * measurement rather than two.
+     *
+     * @returns The maximum `scrollLeft` as `x` and `scrollTop` as `y`, both 0
+     *   when there is no element to measure.
+     */
+    private readMaxScroll(): { x: number; y: number } {
+        const element = this.getScrollElement();
+
+        if (!element) {
+            return { x: 0, y: 0 };
+        }
+
+        const metrics = DOM.source.getScrollMetrics(element);
+
+        return {
+            x: metrics.scrollWidth  - metrics.clientWidth,
+            y: metrics.scrollHeight - metrics.clientHeight,
+        };
+    }
+
+    /**
      * Returns the maximum horizontal scroll offset — the content's overflow past
      * the element's viewport (`scrollWidth - clientWidth`).
      *
      * @returns The last-page `scrollLeft` in pixels, or 0 when nothing overflows.
      */
     getMaxScrollLeft(): number {
-        const element = this.getScrollElement();
-        if (!element) {
-            return 0;
-        }
-
-        const metrics = DOM.source.getScrollMetrics(element);
-
-        return metrics.scrollWidth - metrics.clientWidth;
+        return this.readMaxScroll().x;
     }
 
     /**
@@ -5156,14 +5199,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The last-page `scrollTop` in pixels, or 0 when nothing overflows.
      */
     getMaxScrollTop(): number {
-        const element = this.getScrollElement();
-        if (!element) {
-            return 0;
-        }
-
-        const metrics = DOM.source.getScrollMetrics(element);
-
-        return metrics.scrollHeight - metrics.clientHeight;
+        return this.readMaxScroll().y;
     }
 
     /**
@@ -5469,7 +5505,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
                 return element ? (axis === "x" ? DOM.source.getScrollLeft(element) : DOM.source.getScrollTop(element)) : 0;
             },
             write: (axis, value) => this.writeNativeScroll(axis, value),
-            clamp: (axis, value) => Util.clamp(value, 0, axis === "x" ? this.getMaxScrollLeft() : this.getMaxScrollTop()),
+            clamp: (axis, value) => {
+                // `onWheelScroll` has already read both maxima for its own
+                // can-this-axis-move decision and lends them here, so the two
+                // clamps `scrollBy` performs inside that same call re-use one
+                // read. Every other caller measures for itself.
+                const max = this._wheelMaxScroll ?? this.readMaxScroll();
+
+                return Util.clamp(value, 0, axis === "x" ? max.x : max.y);
+            },
         });
 
         Event.addSubtreeListener(this, "wheel", { passive: false, handler: this.onWheelScroll });
@@ -5539,6 +5583,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * around a Dialog's `autoScroll` panel, say) is reached later and would
      * find the event already consumed. Ignoring it lets the wheel chain
      * outward, as it does natively.
+     *
+     * Both maxima come from one read, and that pair is then lent to the clamp
+     * the eased scroller performs against the same two numbers inside this same
+     * synchronous call — one measurement of the element per gesture instead of
+     * four.
      */
     private onWheelScroll(e: WheelEvent): Event.ListenerResult {
         if (this.isForeignWheelTarget(e)) {
@@ -5549,8 +5598,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return;
         }
 
-        const canX = this.isOverflowScrollable(this.getOverflowX()) && this.getMaxScrollLeft() > 0;
-        const canY = this.isOverflowScrollable(this.getOverflowY()) && this.getMaxScrollTop()  > 0;
+        const max  = this.readMaxScroll();
+        const canX = this.isOverflowScrollable(this.getOverflowX()) && max.x > 0;
+        const canY = this.isOverflowScrollable(this.getOverflowY()) && max.y > 0;
 
         let dx = canX ? e.deltaX : 0;
         let dy = canY ? e.deltaY : 0;
@@ -5568,7 +5618,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return;
         }
 
-        this._wheelScroller?.scrollBy(dx, dy);
+        // Lent only for the duration of this call, and cleared in a `finally`
+        // because `scrollBy` runs the clamp and write callbacks synchronously
+        // and either may throw — a pair left set would serve a later, unrelated
+        // task a stale maximum.
+        this._wheelMaxScroll = max;
+
+        try {
+            this._wheelScroller?.scrollBy(dx, dy);
+        } finally {
+            this._wheelMaxScroll = null;
+        }
 
         return { prevent: true };
     }
