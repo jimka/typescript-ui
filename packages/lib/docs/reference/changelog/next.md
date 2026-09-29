@@ -41,3 +41,14 @@ page resets to empty.
   instance `rail-handover-follow-ups` had fixed per-site. No consumer action
   is needed.
 
+### Overlay
+
+- **A window closed while its rail-minimize genie is still running now fades
+  out from its resting state.** Closing a window mid-collapse cancelled the
+  genie, but a cancel writes no styles, so the shrink-into-the-rail
+  `transform` and `opacity` were still on the element and the close fade
+  animated out of the shrunken, half-faded state — reading as the window
+  simply disappearing. The collapse is now undone and the window's resting
+  state committed two animation frames before the fade arms, so the close
+  fade of a window caught mid-collapse starts that much later than an
+  ordinary one, which is unchanged. No consumer action is needed.
