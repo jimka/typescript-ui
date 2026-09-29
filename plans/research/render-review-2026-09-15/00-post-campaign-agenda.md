@@ -2039,3 +2039,84 @@ case is a fix assumed to cover something it does not. A patch justified by
 reading is how that happens; a patch justified by a failing case is not. When it
 comes, it wants a test on Panel's own path: the branch's two tests cover
 `VirtualScroller` and the Table resize case only.
+
+## The release sweep: two confirmations, one partial, three empty cells (2026-09-29)
+
+Run as `packages/qa/sweeps/release-v0-10-0.sh r1 r2 r3 r4 r5`, MiniBrowser host,
+session prefix `rels1`, `work=1&seam=1&geom=1`, five runs per cell interleaved
+`wt-a, main-1, wt-b, main-2, wt-c`. 41 runs completed; the 42nd failed and
+stopped the sweep, for a reason recorded at the end of this section. The `wt`
+arm is the tight arm `5a2f4960`, not v0.9.0 — see the sweep script's own header
+for why, and the previous section for the analysis that forced the change.
+
+**F06.3's gate delivers the whole of its ablation's bound.** `rels1-r2-sdp`:
+work per unit **2018.5 → 292.0, −85.5%**, sink ops **96.4 → 1.0, −99%**. This
+file carried −85.5% as the arm's figure and flagged it as *unconfirmed for the
+shipped gate*; the shipped gate reaches it exactly. `sidebar.doLayout` and
+`main.doLayout` go 0.99 → absent, so the gate engaged. Clock flat — wt
+9.6/6.7/7.6 ms against main 7.3/9.0, p90 17/15/15 against 14/17 — consistent
+with the ≈3.4 ms park-cell instrument tax, and with a real work win that the
+clock does not show.
+
+`geom` reads **DIFF** on both `main` runs, **and that is the expected result,
+not a fault.** The park line records the parked element at `165,42,10,1998` on
+the tight arm and `163,42,10,1998` on v0.10.0: `split-drag-unclamped-geometry`
+deliberately moving a parked drag's rectangle. A later reader must not take
+this cell's DIFF for a regression.
+
+**The settled-pass gate is confirmed outright.** `rels1-r3-spp`:
+`pane.remeasure@ScrollPane` **24 → 0** and `pane.remeasure@Panel` **1 → 0**,
+identically across all five runs. Geometry `=` on every row *including* `row0`,
+so the `--allow-diff row0@1,row0@2` allowance recorded above was not needed.
+Clock flat (3.1 → 2.9 ms); work 18,693 → 18,476; sink 1,249 → 1,153.
+
+**E14's residual counters: one of four, and the plan's claim does not reproduce
+in-engine.** `rels1-r1-ffq` and `-fnq`. `doLayout@PickerInput` falls **16 → 0**
+on both panels, every run. `doLayout@PickerButton` stays at **32**, and
+`@ButtonIconGlyph` and `@ButtonLabelText` at **32** (flat form) and **33**
+(nested), unchanged. `@DateField` and `@TimeField` hold at 8 on both arms, which
+is what that plan says should happen.
+
+So `field-internals-unchanged-commit-opt-in`'s claim — that a settled picker
+field's own pass costs exactly one `doLayout` call, taking all four residual
+counters to zero with the two `Button` internals withheld whole — is **not**
+what the engine shows on this drive. That plan's own notes record that its
+offline model does not reproduce what makes a settled field lay out in-engine,
+and this is that gap showing. One caveat before anyone calls the plan wrong: 32
+counts over 150 units is 0.21 per unit, so those three may be mount-time rather
+than steady-state. A per-phase reading would separate the two; this cell cannot.
+
+**Three cells measured nothing.** `rels1-r3-cdw`, `-sdw` and `-ssw` emit no
+scroll-read counter on *either* arm, `work/u` 0.0 on both sides — the wheel half
+of `panel-scroll-read-economy` is unwitnessed by them. `rels1-r4-tw` reports
+`work/u` and `sink/u` **identical to the decimal on both arms and both phases**
+(`hwheel` 0.0 / 1.0; `resize` 772.8 / 4624.9), so the ≈1,100 re-committed cells
+never appear and the cell does not reach `table-row-layout-pass-contract`'s
+mechanism at all. That is neither a pass nor a regression but an empty cell — the
+failure this file has warned about in the other direction, and the reason a
+figure is only as good as the cell that produced it.
+
+**The walk cell cannot run against v0.9.0, and the reason is worth keeping.**
+`rels1-r5-twv-wt-a` failed with `ERROR table-wide: the store's view is still
+empty 10000ms after loadData; the store never fired load` — the
+pre-`store-worker-fail-safe` defect. v0.9.0 cannot mount any panel over
+`WORKER_THRESHOLD`. So **no v0.9.0-armed cell on a large-store panel was ever
+runnable**, which independently vindicates moving the four plans' cells to the
+tight arm: the sweep as originally specified would have died in the same place,
+after burning a sitting. The visibility walk stays unpriced, and pricing it needs
+the isolated `33e33af7^1` pair or a new ablation.
+
+**Nothing regressed.** No clock worsened beyond run-to-run noise on any cell, and
+every geometry DIFF is attributable to a deliberate change inside the delta.
+`table-row-layout-pass-contract`'s stop-and-report condition did not trigger.
+
+**What this leaves, and one question for the user.** Two of the four owed
+confirmations are now confirmed in-engine: F06.3's gate and the settled pass.
+E14 is answered, and the answer is negative-to-inconclusive. Three cells need
+replacements that actually reach their mechanisms before they can say anything,
+and the walk needs an isolated pair. The campaign was held open until "the
+manual checks and that sweep are done"; the manual checks passed seven for seven
+and the sweep has run, but it discharged two of four cells rather than four. So
+the closing decision is now a real one rather than a formality: close on the two
+confirmations plus a recorded list of what the empty cells could not show, or
+hold open for replacement cells. Not decided here.
