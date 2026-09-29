@@ -4,9 +4,42 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { VirtualScroller } from "~/component/container/VirtualScroller.js";
+import { Animation } from "~/core/Animation.js";
+import { COLLAPSE_DURATION, COLLAPSE_EASE } from "~/layout/CollapseSupport.js";
 
 /** Number of off-screen rows to render above and below the visible viewport. */
 const SCROLL_BUFFER = 2;
+
+/**
+ * Where a toggled row's children sit in the row list a motion renders: the
+ * child block starts one row after the toggled row and runs for its length.
+ */
+export interface RowMotionBlock {
+    /** Index of the first child row: one past the toggled row. */
+    blockStart:  number;
+    /** Number of rows under the toggled row, every depth included. */
+    blockLength: number;
+}
+
+/**
+ * One expand or collapse motion, from scheduling until it settles or is
+ * stopped. Held by {@link VirtualRowView._rowMotion}.
+ */
+interface RowMotion extends RowMotionBlock {
+    /** The toggled node or record; a second toggle of the same key reverses from `reveal`. */
+    key:     object;
+    /** 0 = children hidden under the toggled row, 1 = fully shown. */
+    reveal:  number;
+    /** False until the first frame applies the motion; render passes ignore an unstarted one. */
+    started: boolean;
+    /**
+     * Whether the committed row list holds the block (an expand, or a
+     * collapse reversed into one) or has already dropped it (a collapse).
+     */
+    expanding: boolean;
+    /** Cancels the driving {@link Animation.tween}. */
+    handle:  Animation.CancelHandle;
+}
 
 /** Rotates `arr` left by `shift` in place: `arr[i]` becomes what was at `arr[(i + shift) % arr.length]`. */
 function rotateLeft<T>(arr: T[], shift: number): void {
@@ -49,7 +82,14 @@ function reorder<T>(arr: T[], order: number[]): void {
  * shared primitives it calls ({@link computeVisibleWindow},
  * {@link computePoolTarget}, {@link growRowPool}, {@link positionRow},
  * {@link hideExcessPoolRows}, {@link reconcilePoolByKey} — currently called only
- * by `Tree`).
+ * by `Tree`), plus the expand/collapse row-motion primitives
+ * ({@link commitWithRowMotion}, {@link rowMotionY}, {@link rowMotionContentHeight},
+ * {@link rowMotionOverhang}, {@link applyRowMotionStyle}, {@link rowMotionBlock},
+ * {@link stopRowMotion}, {@link settleRowMotion},
+ * {@link settleRowMotionIfEntering}, {@link isRowMotionRunning},
+ * {@link rowMotionCommittedIndex}, {@link isRowMotionLeavingSlot},
+ * {@link scrollToCommittedY}, {@link noteRowMotionPass}) each subclass's
+ * toggle and render paths compose.
  *
  * @typeParam TRow - The concrete pooled row component type.
  * @typeParam TOptions - The subclass's options bag.
@@ -76,6 +116,11 @@ abstract class VirtualRowView<
     private _rowWidthMoved: boolean = false;
     /** The `afterNextLayout` relay armed to end a resize burst, or `null` when none is in flight. */
     private _resizeSettleHandle: { cancel(): void } | null = null;
+
+    /** The running (or pending) expand/collapse row motion, or `null` when idle. */
+    private _rowMotion: RowMotion | null = null;
+    /** Whether the last render pass rendered a running row motion, for {@link noteRowMotionPass}. */
+    private _lastPassInMotion: boolean = false;
 
     /**
      * Returns the height in pixels of a single row. Read on every window /
@@ -146,6 +191,11 @@ abstract class VirtualRowView<
         // is disposed, re-laying out rows that no longer exist.
         this._resizeSettleHandle?.cancel();
         this._resizeSettleHandle = null;
+
+        // Likewise, a running row motion would otherwise keep ticking against
+        // a disposed pool.
+        this._rowMotion?.handle.cancel();
+        this._rowMotion = null;
 
         for (const row of this._rowPool) {
             row.dispose();
@@ -457,8 +507,22 @@ abstract class VirtualRowView<
     protected hideExcessPoolRows(windowSize: number): void {
         for (let i = windowSize; i < this._rowPool.length; i++) {
             if (this._rowDisplayed[i]) {
-                this._rowPool[i].setDisplayed(false);
+                const row = this._rowPool[i];
+
+                row.setDisplayed(false);
                 this._rowDisplayed[i] = false;
+
+                // A row hidden mid-motion (or as a collapse settles) would
+                // otherwise keep the motion's opacity and pointer-events.
+                if (row.getOpacity() !== null) {
+                    row.clearOpacity();
+                }
+
+                if (row.getPointerEvents() !== null) {
+                    row.clearPointerEvents();
+                }
+
+                this.setLeavingRowHidden(row, false);
             }
             this._boundIndices[i] = -1;
             this._rowGeom[i] = null;
@@ -474,6 +538,442 @@ abstract class VirtualRowView<
             this._rowGeom[i] = null;
         }
     }
+
+    /**
+     * Whether a row motion has started applying itself to the render pass.
+     * `false` both when idle and when a motion is scheduled but has not yet
+     * reached its first frame (see {@link stepRowMotion}).
+     */
+    protected isRowMotionRunning(): boolean {
+        return this._rowMotion !== null && this._rowMotion.started;
+    }
+
+    /**
+     * Records whether the render pass calling it rendered a running row
+     * motion, and reports whether that pass must re-point
+     * `aria-activedescendant`: on every motion frame, and on the first pass
+     * after the motion ends. A motion's commit, its first frame (which binds
+     * the pool from the motion row list) and its end (which binds it back
+     * from the committed one) can each move the focused row to another pool
+     * slot, or into a hidden leaving block, so those passes re-point the
+     * pointer. Passes outside a motion leave it to their callers. Each
+     * subclass's render pass calls this once, at its end, and supplies only
+     * the pointer update itself.
+     *
+     * @returns Whether the calling pass must re-point `aria-activedescendant`.
+     */
+    protected noteRowMotionPass(): boolean {
+        const inMotion = this.isRowMotionRunning();
+        const refresh  = inMotion || this._lastPassInMotion;
+
+        this._lastPassInMotion = inMotion;
+
+        return refresh;
+    }
+
+    /**
+     * The running motion's hidden height in pixels — the height its child
+     * block has not yet revealed (or has already re-hidden, for a collapse) —
+     * or `0` when no motion is running.
+     */
+    private rowMotionHiddenHeight(): number {
+        const motion = this._rowMotion;
+
+        if (motion === null || !motion.started) {
+            return 0;
+        }
+
+        return (1 - motion.reveal) * motion.blockLength * this.getRowHeight();
+    }
+
+    /**
+     * The Y offset a row at `dataIndex` should be positioned at, given any
+     * running row motion. Rows before the motion's child block are
+     * unaffected; rows at or after it are pulled up by the block's current
+     * hidden height.
+     *
+     * @param dataIndex - The row's index into the row list the current render
+     *   pass is reading.
+     */
+    protected rowMotionY(dataIndex: number): number {
+        const y      = dataIndex * this.getRowHeight();
+        const motion = this._rowMotion;
+
+        if (motion === null || !motion.started || dataIndex < motion.blockStart) {
+            return y;
+        }
+
+        return y - this.rowMotionHiddenHeight();
+    }
+
+    /**
+     * Maps an index into the row list the current render pass reads to the
+     * same row's index in the committed row list. The two differ only while
+     * a collapse motion runs: its row list still holds the leaving block,
+     * which the committed list has already dropped, so every row after the
+     * block sits `blockLength` further down. A leaving row has no committed
+     * index and keeps its index in the motion row list — its pre-collapse
+     * one.
+     *
+     * @param dataIndex - The row's index into the row list the current render
+     *   pass is reading.
+     * @returns The row's committed index, or `dataIndex` for a leaving row.
+     */
+    protected rowMotionCommittedIndex(dataIndex: number): number {
+        const motion = this._rowMotion;
+
+        if (motion === null || !motion.started || motion.expanding) {
+            return dataIndex;
+        }
+
+        return dataIndex < motion.blockStart + motion.blockLength ? dataIndex : dataIndex - motion.blockLength;
+    }
+
+    /**
+     * The total content height for `totalRows` rows, given any running row
+     * motion — `totalRows` rows' worth of height, less the motion's current
+     * hidden height.
+     *
+     * @param totalRows - The number of rows in the row list the current
+     *   render pass is reading.
+     */
+    protected rowMotionContentHeight(totalRows: number): number {
+        return totalRows * this.getRowHeight() - this.rowMotionHiddenHeight();
+    }
+
+    /**
+     * Extra pixels the visible window must cover beyond the viewport height,
+     * for rows pulled up by a running motion's hidden height.
+     */
+    protected rowMotionOverhang(): number {
+        return this.rowMotionHiddenHeight();
+    }
+
+    /**
+     * Whether `dataIndex` falls inside a started motion's child block.
+     *
+     * @param dataIndex - The row's index into the row list the current render
+     *   pass is reading.
+     */
+    private isInRowMotionBlock(dataIndex: number): boolean {
+        const motion = this._rowMotion;
+
+        return motion !== null && motion.started
+            && dataIndex >= motion.blockStart && dataIndex < motion.blockStart + motion.blockLength;
+    }
+
+    /**
+     * Whether the row bound to pool slot `slot` is a *leaving* row: one inside
+     * a running collapse motion's child block, which the committed row list
+     * has already dropped. Such a row is hidden from assistive technology
+     * while it plays (see {@link applyRowMotionStyle}), so nothing may point
+     * `aria-activedescendant` at it.
+     *
+     * @param slot - The pool-slot index.
+     */
+    protected isRowMotionLeavingSlot(slot: number): boolean {
+        const dataIndex = this._boundIndices[slot];
+
+        return dataIndex >= 0 && this.isInRowMotionBlock(dataIndex) && !this._rowMotion!.expanding;
+    }
+
+    /**
+     * Applies a running motion's visual state to one pool slot: fading and
+     * disabling pointer events on a row inside the motion's child block by
+     * how much of it has emerged, and clearing both on every other row. A
+     * leaving row (inside a collapse's block) is also hidden from assistive
+     * technology: the committed row list no longer holds it, and its
+     * `aria-rowindex` (or `aria-posinset` / `aria-setsize`) would duplicate
+     * the committed rows' values. Every other row has that cleared, so a slot
+     * the pass rebinds, or a pass after the motion settles or stops, reveals
+     * it again.
+     *
+     * @param slot - The pool-slot index.
+     * @param dataIndex - The row's index into the row list the current render
+     *   pass is reading.
+     */
+    protected applyRowMotionStyle(slot: number, dataIndex: number): void {
+        const row = this._rowPool[slot];
+
+        if (this.isInRowMotionBlock(dataIndex)) {
+            const motion    = this._rowMotion!;
+            const rowHeight = this.getRowHeight();
+            const emerged   = (this.rowMotionY(dataIndex) + rowHeight - motion.blockStart * rowHeight) / rowHeight;
+
+            row.setOpacity(Math.min(1, Math.max(0, emerged)));
+
+            if (row.getPointerEvents() !== "none") {
+                row.setPointerEvents("none");
+            }
+
+            this.setLeavingRowHidden(row, !motion.expanding);
+
+            return;
+        }
+
+        if (row.getOpacity() !== null) {
+            row.clearOpacity();
+        }
+
+        row.clearPointerEvents();
+        this.setLeavingRowHidden(row, false);
+    }
+
+    /**
+     * Hides a leaving row from assistive technology, or reveals a row that a
+     * previous motion pass hid. Revealing removes the attribute rather than
+     * writing `aria-hidden="false"`, and only on a row actually hidden, so a
+     * revealed row ends up identical to one no motion ever touched.
+     *
+     * @param row - The pool row.
+     * @param hidden - `true` to set `aria-hidden="true"`, `false` to remove it.
+     */
+    private setLeavingRowHidden(row: TRow, hidden: boolean): void {
+        const aria = row.getAria();
+
+        if (hidden) {
+            aria.setHidden(true);
+        } else if (aria.getHidden() === true) {
+            aria.setHidden(null);
+        }
+    }
+
+    /**
+     * Locates the child block under the row at `parentIndex` in `rows`: every
+     * following row whose depth is greater, up to (not including) the first
+     * row back at `parentIndex`'s own depth or shallower.
+     *
+     * @param rows - The row list to search, each entry carrying at least its `depth`.
+     * @param parentIndex - The toggled row's index in `rows`, or `-1` when it
+     *   is not present (the toggled node/record was removed from the render).
+     * @returns The block's bounds, or `null` when `parentIndex` is negative.
+     */
+    protected rowMotionBlock(rows: ReadonlyArray<{ depth: number }>, parentIndex: number): RowMotionBlock | null {
+        if (parentIndex < 0) {
+            return null;
+        }
+
+        const depth = rows[parentIndex].depth;
+        let   end   = parentIndex + 1;
+
+        while (end < rows.length && rows[end].depth > depth) {
+            end++;
+        }
+
+        return { blockStart: parentIndex + 1, blockLength: end - parentIndex - 1 };
+    }
+
+    /**
+     * Runs `commit` — the state change plus its synchronous final-state
+     * render — then schedules a row motion for the child block it returns,
+     * when the rules in {@link mayAnimateRowMotion} allow one.
+     *
+     * @param key - Identity of the toggled node/record; a second toggle of
+     *   the same key while a motion for it is in flight retargets it instead
+     *   of starting a fresh one from the far end.
+     * @param expanding - Whether this toggle is an expand (`reveal` runs 0→1)
+     *   or a collapse (`reveal` runs 1→0).
+     * @param commit - Performs the state change and its final-state render,
+     *   then returns the toggled row's child block (via {@link rowMotionBlock}),
+     *   or `null` when there is nothing to animate (e.g. the toggled row left
+     *   the render entirely).
+     * @returns `true` when a motion was scheduled.
+     */
+    protected commitWithRowMotion(key: object, expanding: boolean, commit: () => RowMotionBlock | null): boolean {
+        const motion        = this._rowMotion;
+        const retarget      = motion !== null && motion.key === key ? motion.reveal : null;
+        const scrollYBefore = this._scroller?.getScrollY() ?? 0;
+        const block         = commit();
+
+        if (block === null || !this.mayAnimateRowMotion(block, scrollYBefore)) {
+            return false;
+        }
+
+        const from = retarget ?? (expanding ? 0 : 1);
+        const to   = expanding ? 1 : 0;
+
+        if (from === to) {
+            return false;
+        }
+
+        this.scheduleRowMotion(key, block, from, to);
+
+        return true;
+    }
+
+    /**
+     * Whether a toggle's child block may animate: motion is not disabled by
+     * `prefers-reduced-motion`, the view is rendered, the block fits within
+     * one viewport's worth of rows, and the commit's own render left the
+     * scroll offset unchanged (a scroll clamp mid-commit would make the first
+     * frame jump).
+     *
+     * @param block - The child block the toggle would animate.
+     * @param scrollYBefore - The vertical scroll offset captured before the commit ran.
+     */
+    private mayAnimateRowMotion(block: RowMotionBlock, scrollYBefore: number): boolean {
+        if (Animation.isReducedMotion() || this._scroller === null) {
+            return false;
+        }
+
+        const viewportRows = Math.ceil((this.getHeight() || 0) / this.getRowHeight());
+
+        return block.blockLength > 0
+            && block.blockLength <= viewportRows
+            && this._scroller.getScrollY() === scrollYBefore;
+    }
+
+    /**
+     * Starts (or retargets) the driving {@link Animation.tween} for a row
+     * motion.
+     *
+     * @param key - Identity of the toggled node/record.
+     * @param block - The child block to animate.
+     * @param from - The starting reveal value (0..1).
+     * @param to - The ending reveal value (0..1).
+     */
+    private scheduleRowMotion(key: object, block: RowMotionBlock, from: number, to: number): void {
+        const motion: RowMotion = {
+            key, ...block, reveal: from, started: false, expanding: to === 1, handle: { cancel: (): void => {} },
+        };
+
+        this._rowMotion = motion;
+
+        motion.handle = Animation.tween({
+            from:       { reveal: from },
+            to:         { reveal: to },
+            durationMs: COLLAPSE_DURATION * Math.abs(to - from),
+            // Clamped below 0: a frame's timestamp can predate the tween's
+            // start. In production that happens whenever the toggle ran from an
+            // input handler: `Animation.tween` reads `performance.now()` there,
+            // but the next frame's rAF timestamp is the frame's start time,
+            // which can fall before that read in the same frame. A test that
+            // drives frames with `now = 0` hits the same case. Either way the
+            // negative progress must read as "not started", not extrapolate
+            // the curve backwards.
+            easing:     (t: number): number => COLLAPSE_EASE(Math.max(0, t)),
+            onStep:     (values) => this.stepRowMotion(motion, values.reveal),
+            onComplete: () => this.finishRowMotion(motion),
+        });
+    }
+
+    /**
+     * The driving tween's per-frame callback: updates the motion's reveal,
+     * flips {@link RowMotion.started} to `true` and notifies
+     * {@link onRowMotionRowsChanged} on the very first frame, then re-renders.
+     * A no-op when `motion` is no longer the current motion (stopped or
+     * superseded since the tween was scheduled).
+     *
+     * @param motion - The motion this tween is driving.
+     * @param reveal - This frame's interpolated reveal value.
+     */
+    private stepRowMotion(motion: RowMotion, reveal: number): void {
+        if (this._rowMotion !== motion) {
+            return;
+        }
+
+        motion.reveal = reveal;
+
+        if (!motion.started) {
+            motion.started = true;
+            this.onRowMotionRowsChanged();
+        }
+
+        this.renderWindow();
+    }
+
+    /**
+     * The driving tween's completion callback: clears the motion, notifies
+     * {@link onRowMotionRowsChanged} and re-renders at the settled state. A
+     * no-op when `motion` is no longer the current motion.
+     *
+     * @param motion - The motion that just completed.
+     */
+    private finishRowMotion(motion: RowMotion): void {
+        if (this._rowMotion !== motion) {
+            return;
+        }
+
+        this._rowMotion = null;
+        this.onRowMotionRowsChanged();
+        this.renderWindow();
+    }
+
+    /**
+     * Abandons a pending or running motion without rendering; the caller is
+     * expected to render the new state itself right after. `Animation.tween`'s
+     * `cancel()` suppresses its `onComplete`, so this method — not the
+     * tween's completion callback — is what {@link onRowMotionRowsChanged}
+     * fires from on this path.
+     */
+    protected stopRowMotion(): void {
+        const motion = this._rowMotion;
+
+        if (motion === null) {
+            return;
+        }
+
+        this._rowMotion = null;
+        motion.handle.cancel();
+        this.onRowMotionRowsChanged();
+    }
+
+    /**
+     * Abandons a pending or running motion, as {@link stopRowMotion} does, and
+     * hands the scroller the committed row list's content height, so a scroll
+     * the caller makes before its render clamps against the committed extent.
+     * Without it the scroller would still hold the motion's height from the
+     * last frame: smaller than the committed one mid-expand, clamping a
+     * scroll short, and larger mid-collapse, letting a scroll overshoot that
+     * the next render then pulls back. Like {@link stopRowMotion}, it leaves
+     * the render to the caller.
+     */
+    protected settleRowMotion(): void {
+        const motion   = this._rowMotion;
+        const scroller = this._scroller;
+
+        if (motion !== null && motion.started && scroller !== null) {
+            // The last frame gave the scroller the rendered row list's
+            // height less the hidden height. The committed list holds the
+            // block on an expand, and has already dropped it on a collapse.
+            const droppedHeight = motion.expanding ? 0 : motion.blockLength * this.getRowHeight();
+
+            scroller.setContentHeight(scroller.getContentHeight() + this.rowMotionHiddenHeight() - droppedHeight);
+        }
+
+        this.stopRowMotion();
+    }
+
+    /**
+     * Settles a pending or running expand motion (see {@link settleRowMotion})
+     * when `index` names one of its entering rows, so a keyboard move onto a
+     * row still fading in renders it final at once, instead of putting the
+     * selection tint and focus ring on a nearly transparent row. A move to
+     * any other row leaves the motion alone; {@link scrollToCommittedY}
+     * still settles it if the move scrolls. A collapse has no entering rows:
+     * its leaving rows are not in the committed list a move can target.
+     * Leaves the render to the caller.
+     *
+     * @param index - The move's target row, as an index into the committed
+     *   row list.
+     */
+    protected settleRowMotionIfEntering(index: number): void {
+        const motion = this._rowMotion;
+
+        if (motion !== null && motion.expanding
+            && index >= motion.blockStart && index < motion.blockStart + motion.blockLength) {
+            this.settleRowMotion();
+        }
+    }
+
+    /**
+     * Called whenever the row list a motion renders switches: on a motion's
+     * first frame (to the motion's own row list) and on its end, settled or
+     * stopped (back to the committed one). A subclass whose render pass reads
+     * through a cached row/record list overrides this to invalidate that
+     * cache; the base implementation does nothing.
+     */
+    protected onRowMotionRowsChanged(): void {}
 
     /**
      * Decides whether this render pass may withhold the width-driven relayout of
@@ -637,7 +1137,37 @@ abstract class VirtualRowView<
             target = bottom - viewportHeight;
         }
         if (target !== scrollTop) {
-            this.setScrollY(target);
+            this.scrollToCommittedY(target);
+        }
+    }
+
+    /**
+     * Sets the vertical scroll offset to `target`, a position computed from
+     * committed row positions (`index * rowHeight`). A running row motion
+     * renders rows away from those positions, so when the move will change
+     * the offset this settles the motion first (see {@link settleRowMotion}),
+     * and the row the caller is scrolling to renders where the scroll put it,
+     * in one step. When the offset already equals `target` a running motion
+     * keeps playing, so a toggle whose own row is in view still animates.
+     *
+     * @param target - The new vertical scroll offset in pixels.
+     */
+    protected scrollToCommittedY(target: number): void {
+        const scrollY = this._scroller?.getScrollY();
+        const moves   = scrollY !== undefined && target !== scrollY;
+        const running = moves && this.isRowMotionRunning();
+
+        if (moves) {
+            this.settleRowMotion();
+        }
+
+        this.setScrollY(target);
+
+        // A target the scroller clamps back to the current offset fires no
+        // scroll tick, and `stopRowMotion` leaves the render to its caller,
+        // so render the settled state here.
+        if (running && this._scroller!.getScrollY() === scrollY) {
+            this.renderWindow();
         }
     }
 }

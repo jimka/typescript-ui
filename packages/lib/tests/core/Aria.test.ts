@@ -62,6 +62,12 @@ describe('Aria — boolean attributes', () => {
         a.setExpanded(false);
         expect(a.getExpanded()).toBe(false);
     });
+    it('setHidden(null) returns the getter to null', () => {
+        const a = aria();
+        a.setHidden(true);
+        a.setHidden(null);
+        expect(a.getHidden()).toBeNull();
+    });
 });
 
 describe('Aria — checked (tri-state)', () => {
@@ -232,5 +238,25 @@ describe('Aria — unchanged writes are skipped', () => {
 
         expect(expandedSets).toEqual(['true', 'true']);
         expect(expandedRemoves.length).toBe(1);
+    });
+
+    it('setHidden(null) removes aria-hidden from the element, and a later value writes again', () => {
+        const sink = installTestDOM(CONFIG);
+        const c = new Component();
+
+        c.getElement(true);
+
+        const element = c.getElement()!;
+
+        c.getAria().setHidden(true);
+        c.getAria().setHidden(null);
+        c.getAria().setHidden(true);
+
+        const patches = sink.writes.filter(w => w.op === 'apply' && w.args[0] === element);
+        const hiddenRemoves = patches.filter(w =>
+            (w.args[1] as { removeAttr?: string[] }).removeAttr?.includes('aria-hidden'));
+
+        expect(hiddenWrites(sink, element)).toEqual(['true', 'true']);
+        expect(hiddenRemoves.length).toBe(1);
     });
 });

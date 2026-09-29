@@ -200,6 +200,16 @@ const _defaultTreeOptions: Partial<TreeOptions> = {
  * rows-container transform, two custom scrollbar overlays, and the wheel/touch
  * handlers with fling momentum.
  *
+ * A single node's expand or collapse — a caret click, a row-click toggle,
+ * `ArrowRight` / `ArrowLeft`, {@link expandNode}, {@link expandNodeAsync}, or
+ * a lazy load settling with an expand waiting on it — commits its state
+ * synchronously and then animates: the toggle turns and the affected rows
+ * slide into place over 200 ms. Bulk and structural calls (`expandAll`,
+ * `revealByPredicate`, `setNodes`, `insertNode`, `removeNode`,
+ * `setChildren`) and `prefers-reduced-motion: reduce` never animate; a
+ * toggle whose children would not fit in the current viewport, or whose
+ * commit moves the scroll offset, snaps instead.
+ *
  * @example
  * ```typescript
  * const tree = new Tree();
@@ -220,6 +230,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     private _nodes              : TreeNode[]                                              = [];
     private _expandedNodes      : Set<TreeNode>                                           = new Set();
     private _flatRows           : FlatRow[]                                               = [];
+    // The row list a motion renders: `_flatRows` for an expand, the
+    // pre-collapse list for a collapse. Read only while a motion runs, via
+    // `_renderedRows`; `null` when idle. Framework-managed, no option.
+    private _motionRows         : FlatRow[] | null                                        = null;
     // Set by `_flatten`, cleared by the render pass that consumes it. Tells
     // `renderWindow` whether the pool has to be re-matched to its nodes by
     // identity (a reflatten moved rows between flat positions) or can take the
@@ -1119,6 +1133,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * computing `siblingCount` and `posInSet` (1-based) for each entry.
      */
     private _flatten(): void {
+        this.stopRowMotion();
+
         this._flatRows = [];
         this._flatRowsDirty = true;
 
@@ -1158,6 +1174,59 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     private _reflattenAndRender(): void {
         this._flatten();
         this.renderWindow();
+    }
+
+    /**
+     * The row list the current render pass should read: the motion row list
+     * while a row motion is running, `_flatRows` otherwise.
+     */
+    private _renderedRows(): FlatRow[] {
+        return this.isRowMotionRunning() && this._motionRows !== null ? this._motionRows : this._flatRows;
+    }
+
+    /**
+     * Re-flattens and renders `node`'s expand or collapse, then schedules a
+     * row motion for its child block when {@link commitWithRowMotion}'s rules
+     * allow one. The motion row list is `_flatRows` itself for an expand
+     * (children are already in it) and the pre-toggle row list for a collapse
+     * (its children are no longer in `_flatRows`, but the motion must keep
+     * showing them while it plays).
+     *
+     * @param node - The node being expanded or collapsed.
+     * @param expanding - `true` for an expand, `false` for a collapse.
+     */
+    private _reflattenWithMotion(node: TreeNode, expanding: boolean): void {
+        const before = this._flatRows;
+
+        const scheduled = this.commitWithRowMotion(node, expanding, () => {
+            this._reflattenAndRender();
+
+            const rows = expanding ? this._flatRows : before;
+
+            this._motionRows = rows;
+
+            return this.rowMotionBlock(rows, rows.findIndex(row => row.node === node));
+        });
+
+        if (!scheduled) {
+            this._motionRows = null;
+        }
+    }
+
+    /**
+     * Marks the flat-row set dirty so the next render re-matches the pool by
+     * node identity against whichever row list {@link _renderedRows} now
+     * returns — a motion's start switches it to the motion row list, and its
+     * end switches it back to `_flatRows` — and resets the running
+     * max-content-width the same way a structural reflatten does.
+     */
+    protected onRowMotionRowsChanged(): void {
+        this._flatRowsDirty   = true;
+        this._maxContentWidth = 0;
+
+        if (!this.isRowMotionRunning()) {
+            this._motionRows = null;
+        }
     }
 
     /**
@@ -1353,6 +1422,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      *
      * @see Use {@link expandNodeAsync} instead when the caller needs to know
      *   when a lazy expansion finished.
+     *
+     * @remarks The row animation follows the commit and does not delay it —
+     * `getExpandedNodes()` and the flattened rows already reflect the
+     * expansion by the time this method returns.
      */
     expandNode(node: TreeNode): this {
         if (!this._expandedNodes.has(node)) {
@@ -1387,6 +1460,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * one of those calls itself drops its own load the same way. A node removed while its load
      * was in flight and then inserted again, or handed back to `setNodes`, is
      * a new node: its next expand starts a fresh load.
+     *
+     * The row animation follows the commit and does not delay this promise's
+     * resolution.
      */
     async expandNodeAsync(node: TreeNode): Promise<boolean> {
         if (this._expandedNodes.has(node)) {
@@ -1439,7 +1515,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         }
 
         this._expandedNodes.add(node);
-        this._reflattenAndRender();
+        this._reflattenWithMotion(node, true);
         this.emit("expand", node);
 
         return Promise.resolve(true);
@@ -1452,7 +1528,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      */
     private _collapse(node: TreeNode): void {
         this._expandedNodes.delete(node);
-        this._reflattenAndRender();
+        this._reflattenWithMotion(node, false);
         this.emit("collapse", node);
     }
 
@@ -1652,7 +1728,11 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         }
 
         const thrown = this._captureThrow(() => {
-            this._reflattenAndRender();
+            if (expanding) {
+                this._reflattenWithMotion(node, true);
+            } else {
+                this._reflattenAndRender();
+            }
 
             if (expanding) {
                 this.emit("expand", node);
@@ -1726,6 +1806,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             return;
         }
 
+        // A keyboard move onto a row an expand is still fading in. A click
+        // never lands on one: an entering row ignores the pointer.
+        this.settleRowMotionIfEntering(index);
+
         const node = this._flatRows[index].node;
         const before = new Set(this._selectedNodes);
 
@@ -1750,6 +1834,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         if (index < 0 || index >= this._flatRows.length) {
             return;
         }
+
+        // As in `_selectAtIndex`: only a keyboard move can reach an entering row.
+        this.settleRowMotionIfEntering(index);
 
         const before = new Set(this._selectedNodes);
 
@@ -2060,7 +2147,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
-     * Sets `aria-activedescendant` on the tree container to the pool row bound to `_focusNode`.
+     * Sets `aria-activedescendant` on the tree container to the pool row bound
+     * to `_focusNode`. Neither an undisplayed pool row (which keeps the node
+     * it last showed) nor a leaving row of a running collapse motion
+     * qualifies: both are hidden from assistive technology.
      *
      * @remarks Must be called after `renderWindow()` so the pool slot is guaranteed in the DOM.
      */
@@ -2071,8 +2161,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             return;
         }
 
-        for (const row of this._rowPool) {
-            if (row.getNode() === this._focusNode) {
+        for (let i = 0; i < this._rowPool.length; i++) {
+            const row = this._rowPool[i];
+
+            if (this._boundIndices[i] >= 0 && row.getNode() === this._focusNode && !this.isRowMotionLeavingSlot(i)) {
                 this.getAria().setActiveDescendant(row.getId());
 
                 return;
@@ -2110,32 +2202,34 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this.noteRenderedBox();
 
         const scroller = this._scroller;
+        const rows     = this._renderedRows();
 
-        const totalRows   = this._flatRows.length;
-        const totalHeight = totalRows * ROW_HEIGHT;
+        const totalRows   = rows.length;
+        const totalHeight = this.rowMotionContentHeight(totalRows);
 
         // Loose clamp using the last-known content width (the actual contentW
         // for this frame is computed below from the first row-bind pass).
         scroller.clampToContent(this._lastRowWidth, totalHeight);
 
         const visibleHeight = this.getHeight() || 0;
-        const win = this.computeVisibleWindow(scroller.getScrollY(), visibleHeight, totalRows);
+        const win = this.computeVisibleWindow(scroller.getScrollY(), visibleHeight + this.rowMotionOverhang(), totalRows);
 
         const poolTarget = this.computePoolTarget(win.windowSize, visibleHeight, totalRows);
         this.growRowPool(poolTarget);
 
-        // A pure scroll leaves `_flatRows` untouched, so every slot's node shifts
-        // by the same amount and the base's rotation is the cheapest correct
-        // answer. A reflatten moves rows by differing amounts either side of the
-        // change point, so which slot keeps which node has to be resolved by node
-        // identity instead.
+        // A pure scroll leaves the rendered row list untouched, so every slot's
+        // node shifts by the same amount and the base's rotation is the
+        // cheapest correct answer. A reflatten — or a row motion switching
+        // which list it renders — moves rows by differing amounts either side
+        // of the change point, so which slot keeps which node has to be
+        // resolved by node identity instead.
         if (this._flatRowsDirty) {
             this._flatRowsDirty = false;
 
             this.reconcilePoolByKey(
                 win.firstRow,
                 win.windowSize,
-                (dataIndex) => this._flatRows[dataIndex].node,
+                (dataIndex) => rows[dataIndex].node,
                 (slot) => this._rowPool[slot].getNode(),
             );
         } else {
@@ -2143,7 +2237,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         }
 
         const { reboundFlags, maxContentWidth } =
-            this._bindAndMeasure(win.firstRow, win.windowSize);
+            this._bindAndMeasure(rows, win.firstRow, win.windowSize);
 
         // Only the visible window was measured, so fold the widest row seen this
         // frame into the running maximum for the current flattened set (reset in
@@ -2185,6 +2279,13 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this._updateSelectionStyle();
 
         scroller.layoutScrollbars(rowWidth, totalHeight);
+
+        // A collapse can take the focused node into its hidden leaving block,
+        // and a motion's frames re-match the pool by node identity, so a
+        // motion pass re-points aria-activedescendant (see noteRowMotionPass).
+        if (this.noteRowMotionPass()) {
+            this._updateActiveDescendant();
+        }
     }
 
     /** Records the box this render reads, for {@link boxChangedSinceRender}. */
@@ -2216,19 +2317,21 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * rebound) and computes the maximum content width across visible rows so
      * the second pass knows how wide each row should be.
      *
+     * @param rows - The row list this render pass is reading — `_flatRows`,
+     *   or the motion row list while a row motion is running.
      * @param firstRow - The first data index covered by the visible window.
      * @param windowSize - The number of rows in the window.
      * @returns Per-slot rebind flags (parallel to the window) and the widest
      * content width seen, both consumed by {@link _positionRows}.
      */
-    private _bindAndMeasure(firstRow: number, windowSize: number): { reboundFlags: boolean[], maxContentWidth: number } {
+    private _bindAndMeasure(rows: FlatRow[], firstRow: number, windowSize: number): { reboundFlags: boolean[], maxContentWidth: number } {
         const reboundFlags: boolean[] = new Array(windowSize);
         let maxContentWidth = 0;
 
         for (let i = 0; i < windowSize; i++) {
             const row         = this._rowPool[i];
             const dataIndex   = firstRow + i;
-            const flatRow     = this._flatRows[dataIndex];
+            const flatRow     = rows[dataIndex];
             const hasChildren = this._isExpandable(flatRow.node);
             const expanded    = this._expandedNodes.has(flatRow.node);
             const loading     = this._loadingNodes.has(flatRow.node);
@@ -2270,10 +2373,12 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
-     * Second pass: positions visible rows at `dataIndex * ROW_HEIGHT`, sizes
-     * them to `rowWidth`, marks them displayed, and re-lays out their children
-     * when the row was rebound, or when its geometry changed and no live
-     * resize is withholding the pass.
+     * Second pass: positions visible rows (offset by any running row motion),
+     * sizes them to `rowWidth`, marks them displayed, applies the running
+     * motion's per-row opacity/pointer-events, and re-lays out a row's
+     * children only when it was rebound or its own size changed — never for
+     * a Y-only move, so a motion's per-frame reposition does not re-lay out
+     * every visible row's toggle and renderer on every tick.
      *
      * @param firstRow - The first data index covered by the visible window.
      * @param windowSize - The number of rows in the window.
@@ -2288,9 +2393,14 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             const dataIndex  = firstRow + i;
             const wasRebound = reboundFlags[i];
 
-            const geomChanged = this.positionRow(i, dataIndex * ROW_HEIGHT, rowWidth);
+            const prev        = this._rowGeom[i];
+            const sizeChanged = prev === null || prev.w !== rowWidth || prev.h !== ROW_HEIGHT;
 
-            if (wasRebound || (geomChanged && !deferChildLayout)) {
+            const geomChanged = this.positionRow(i, this.rowMotionY(dataIndex), rowWidth);
+
+            this.applyRowMotionStyle(i, dataIndex);
+
+            if (wasRebound || (geomChanged && sizeChanged && !deferChildLayout)) {
                 row.layoutChildren(ROW_HEIGHT, INDENT_PX);
             }
         }
