@@ -1,13 +1,17 @@
 //
 // Coverage for the deferred-child seam on Component.addComponent: a child may be
 // passed as a zero-argument factory instead of a live instance. A layout manager
-// gets first refusal through LayoutManager.addDeferredComponent; the base hook
-// declines, so every manager except Tab behaves as if the caller had written
-// addComponent(factory()).
+// gets first refusal through LayoutManager.addDeferredComponent and claims the
+// factory only if it wants to: Tab claims by default, Card claims one whose
+// constraints carry a `key`, and the base hook declines — so every other manager
+// behaves as if the caller had written addComponent(factory()). The Card rows
+// live in Card.deferred.test.ts.
 //
-// A factory that returns a promise is only meaningful on the deferred path,
-// because that path is the one with a spinner to show and an owner for the wait.
-// On the eager path it throws rather than silently adding nothing.
+// A factory that returns a promise is only meaningful where something can host
+// the wait, which is Tab alone — the path with a spinner to show and an owner for
+// the pending state. Card's deferred path has neither, because it builds
+// synchronously, so it throws just as the eager path does rather than silently
+// adding nothing.
 //
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Component } from '~/core/Component';

@@ -15,6 +15,15 @@ export class LayoutConstraints {
     name?: string | null = null;
     description?: string | null = null;
     /**
+     * Caller-supplied name for a child slot, read by the
+     * [`Card`](/api/layout/classes/Card) manager only. A key selects a child
+     * through `Card.setVisibleKey`, and — unlike a component id — it can name a
+     * child that has not been built yet, which is what lets a factory passed to
+     * `Component.addComponent` be registered and selected later. Ignored by
+     * every other layout manager.
+     */
+    key?: string | null = null;
+    /**
      * Optional registry glyph name shown leading a tab button's label. Read by
      * the [`Tab`](/api/layout/classes/Tab) manager into the button's `setGlyph`;
      * ignored by other layout managers.
@@ -56,10 +65,14 @@ export class LayoutConstraints {
     /**
      * Whether a factory passed to
      * [`Component.addComponent`](/api/core/classes/Component#addcomponent) is
-     * registered without being run. Read by the
-     * [`Tab`](/api/layout/classes/Tab) manager only, where it defaults to
-     * `true`; pass `false` to build the child immediately instead. Ignored when
-     * the child is an already-constructed component, and by every other manager.
+     * registered without being run. Read by two managers. On the
+     * [`Tab`](/api/layout/classes/Tab) manager deferral is the default, so only
+     * an explicit `false` declines it. On the
+     * [`Card`](/api/layout/classes/Card) manager it is an opt-out and nothing
+     * more: a card defers a factory because its constraints carry a `key`, and
+     * `lazy: false` declines that deferral. Either way `false` has the container
+     * build the child immediately. Ignored when the child is an
+     * already-constructed component.
      */
     lazy?: boolean;
     /**
