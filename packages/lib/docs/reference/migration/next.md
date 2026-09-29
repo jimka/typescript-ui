@@ -67,3 +67,30 @@ DOM.install({ sink: myRecordingSink });
 // … and to restore the production pair
 DOM.reset();
 ```
+
+## `Tree` and `TreeTable` no longer register `caret-down` / `caret-right`
+
+**What changed and why.** `Tree` and `TreeTable` row toggles are now one
+`angle-right` glyph, turned 90° to point down when expanded instead of being
+swapped for a differently-named glyph — a rotation can be animated with a CSS
+transition, and a glyph-name swap cannot. `TreeRow.ts` and `TreeCell.ts`
+previously registered `caret-down` and `caret-right` with the shared glyph
+registry as a side effect of importing them; neither file references those
+names any more, so that registration is gone too.
+
+**Who needs to act.** Code that shows a `caret-down` or `caret-right` glyph
+elsewhere — a `Button` glyph, an icon renderer's resolver — and relied on
+importing `Tree` or `TreeTable` to have registered them for it must now
+register them itself:
+
+```typescript
+import { Glyph } from '@jimka/typescript-ui/component/display';
+import { caret_down, caret_right } from '@jimka/typescript-ui/glyphs/solid';
+
+Glyph.register(caret_down, caret_right);
+```
+
+Code that read a tree row's toggle via `getToggle().getGlyphName()` to learn
+whether it was expanded should call `Tree.getExpandedNodes()` /
+`TreeTable.isExpanded(record)` instead — the glyph name is now `angle-right`
+in both states, and the rotation (`getTransform()`) carries the state.

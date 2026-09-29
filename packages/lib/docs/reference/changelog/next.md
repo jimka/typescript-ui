@@ -7,6 +7,15 @@ page resets to empty.
 
 ## Breaking changes
 
+### Components
+
+- **`Tree` and `TreeTable` no longer register `caret-down` / `caret-right`
+  at module load.** Their row toggles are now a single `angle-right` glyph,
+  turned to point down instead of swapped for a different one. Code that
+  displays `caret-down` / `caret-right` elsewhere and relied on importing
+  `Tree` or `TreeTable` to have registered them must now register them
+  itself. See [Migration](/reference/migration/next) for the full note.
+
 ### Core
 
 - **`DOM.sink` and `DOM.source` are now read-only.** Swap a seam through
@@ -32,6 +41,16 @@ page resets to empty.
   [Migration](/reference/migration/next) for the full note.
 
 ## Changed
+
+### Components
+
+- **`Tree` and `TreeTable` toggles are a thin angle that turns to point
+  down.** The toggle turns 90° when its row expands and back when it
+  collapses, with a short transition when the row keeps its node or record
+  and only its expanded state changed, and never under
+  `prefers-reduced-motion: reduce`. `TreeCellRenderer`'s
+  `setTreeState` gains an optional fourth `animate` parameter (default
+  `false`) for a caller that wants the turn animated.
 
 ### Overlay
 
