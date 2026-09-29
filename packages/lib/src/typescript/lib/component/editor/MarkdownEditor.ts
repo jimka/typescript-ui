@@ -1378,9 +1378,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Toggles bold on the current selection, first expanding a collapsed
-     * caret to its enclosing word (see {@link $selectEnclosingWordIfCollapsed})
-     * so the toggle has more than an empty span to act on. No-op (without
-     * throwing) when there is no range selection.
+     * caret to its enclosing word so the toggle has more than an empty span
+     * to act on. No-op (without throwing) when there is no range selection.
      *
      * @returns This component, for method chaining.
      */
@@ -1395,8 +1394,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Toggles italic on the current selection, first expanding a collapsed
-     * caret to its enclosing word (see {@link $selectEnclosingWordIfCollapsed}).
-     * No-op without a range selection.
+     * caret to its enclosing word. No-op without a range selection.
      *
      * @returns This component, for method chaining.
      */
@@ -1411,8 +1409,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Toggles inline code on the current selection, first expanding a
-     * collapsed caret to its enclosing word or run (see
-     * {@link $selectEnclosingWordIfCollapsed}). No-op without a range selection.
+     * collapsed caret to its enclosing word or run. No-op without a range
+     * selection.
      *
      * @returns This component, for method chaining.
      */
@@ -1427,8 +1425,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Toggles strikethrough on the current selection, first expanding a
-     * collapsed caret to its enclosing word (see {@link $selectEnclosingWordIfCollapsed}).
-     * No-op without a range selection.
+     * collapsed caret to its enclosing word. No-op without a range selection.
      *
      * @returns This component, for method chaining.
      */
@@ -1648,13 +1645,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Writes the current selection's text to the system clipboard, first
-     * expanding a collapsed caret to its enclosing word or run (see
-     * {@link $selectEnclosingWordIfCollapsed}) so Copy has something to act
-     * on — matching the right-click menu's own Cut/Copy-enabled state, which
-     * reflects that same hypothetical expansion without performing it (see
-     * {@link $classifyContextMenuTarget}). No-op (without throwing, and
-     * without writing) when there is no range selection, or the selection is
-     * collapsed with nothing to expand into.
+     * expanding a collapsed caret to its enclosing word or run so Copy has
+     * something to act on — matching the right-click menu's own
+     * Cut/Copy-enabled state, which reflects that same hypothetical expansion
+     * without performing it. No-op (without throwing, and without writing)
+     * when there is no range selection, or the selection is collapsed with
+     * nothing to expand into.
      *
      * @returns This component, for method chaining.
      */

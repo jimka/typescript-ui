@@ -108,8 +108,8 @@ class MarkdownContentPane extends Panel {
  * that event to highlight whichever heading is currently on screen without
  * depending on this class concretely.
  *
- * The viewer itself never scrolls: `_markdown` renders into an internal
- * {@link MarkdownContentPane} (a plain scrolling `Panel`, stretched to fill)
+ * The viewer itself never scrolls: `_markdown` renders into an internal,
+ * plain scrolling `Panel`, stretched to fill,
  * so the minimap and controls — anchored directly on this outer, non-scrolling
  * `Anchor` host, the same way `DocsShell` anchors its own floating panels
  * beside (not inside) the scrolling `DocsContent` — stay pinned over the
@@ -450,9 +450,9 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
     }
 
     /**
-     * The prose's scroll offset — delegates to the internal {@link
-     * MarkdownContentPane} that actually scrolls; this outer viewer never does
-     * (see the class doc for why).
+     * The prose's scroll offset — delegates to the internal `Panel` that
+     * actually scrolls; this outer viewer never does (see the class doc for
+     * why).
      *
      * @returns The cached `scrollTop` in pixels.
      */
@@ -462,7 +462,7 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
 
     /**
      * Scrolls the prose to the given offset — delegates to the internal
-     * {@link MarkdownContentPane}; see {@link getScrollTop}.
+     * `Panel`; see {@link getScrollTop}.
      *
      * @param value - The new `scrollTop` in pixels.
      * @returns This viewer, for method chaining.

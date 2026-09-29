@@ -9,7 +9,7 @@ import { callable } from "~/core/Callable.js";
  * A thin wrapper component that provides error visualisation for a field component.
  *
  * On construction the decorator replaces the field in its current parent — via
- * {@link Component.replaceComponent}, so it takes the field's original index and
+ * {@link core!Component.replaceComponent | Component.replaceComponent}, so it takes the field's original index and
  * layout constraints — then re-adds the field as its own child. This means the error
  * border is applied to the decorator — never to the field itself — so the field's own
  * border is left untouched, removing the validation state is a clean one-step reset,

@@ -101,7 +101,7 @@ export interface SpatialCandidate {
  * Eligible candidates in `direction` from `origin`, best first. Pure; reads
  * no DOM. A candidate is eligible when its primary gap (the clearance between
  * `origin`'s forward edge and its near edge) is no more than
- * {@link PRIMARY_GAP_EPSILON} negative — tolerating the sub-pixel overlap
+ * 1px negative — tolerating the sub-pixel overlap
  * `getBoundingClientRect()` can report between two visually-flush siblings —
  * and its rect is not the zero rect (`width === 0 && height === 0`). A
  * negative gap within that tolerance scores as `0`, not as a small negative
@@ -734,7 +734,7 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
  * marked via {@link Component.setNavigationTarget} and hands focus to that
  * container's remembered — or first — focusable descendant. When one marked
  * container nests another, a move approaching from outside both always lands
- * on the outer one first — see {@link outermostTargets} — which then hands
+ * on the outer one first, which then hands
  * off to its own remembered descendant, drilling down through any further
  * nesting the same way; a move already inside the nest reaches the specific
  * inner container directly, since the outer one no longer lies in that
@@ -742,9 +742,9 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
  * first candidate in DOM order (south/east) or the last (north/west)
  * instead of ranking against `<body>`'s own rect. The component tier never
  * lands on a composite widget's own wrapping container while a real
- * descendant is also a candidate ({@link leafFocusables}), and never on a
- * candidate a collapsed ancestor is currently clipping to nothing
- * ({@link ancestorGeometry}). Opt-in — call {@link enable} to start;
+ * descendant is also a candidate, and never on a candidate a collapsed
+ * ancestor is currently clipping to nothing. Opt-in — call
+ * {@link enable} to start;
  * nothing auto-starts it.
  *
  * Any new framework arrow-key handler must guard itself with
