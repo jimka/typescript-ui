@@ -5,7 +5,7 @@ import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { LayerManager } from "~/core/LayerManager.js";
-import { focusScopeRoot, visibleFocusable, findTabKeyOwner, MODIFIER_KEYS, stopAfterOwner, stopBeforeOwner } from "~/core/Focusable.js";
+import { focusScopeRoot, visibleFocusable, findTabKeyOwner, ownsTabKey, MODIFIER_KEYS, stopAfterOwner, stopBeforeOwner } from "~/core/Focusable.js";
 
 /**
  * Options for {@link FocusTraversal.enable} / {@link FocusTraversal.configure}.
@@ -126,6 +126,15 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         return;
     }
 
+    const root = focusScopeRoot();
+
+    // A layer that claims Tab for its whole subtree (an open `Dialog`) runs
+    // its own trap and Escape release; a second release armed here would move
+    // focus a second time on the same Tab.
+    if (ownsTabKey(root)) {
+        return;
+    }
+
     if (e.key !== "Tab") {
         if (e.key === "Escape") {
             const active = DOM.source.getActiveElement();
@@ -149,7 +158,6 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         return; // the owner keeps Tab.
     }
 
-    const root = focusScopeRoot();
     let moved: boolean;
 
     if (owner !== null) {
@@ -178,7 +186,9 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
  * (see the plan's `## When To Pick This Up`). Stands down for a component
  * marked via {@link Component.setTabKeyOwner} while focus is inside it, so a
  * third-party editor or `Table`'s own cell-to-cell Tab handling keeps working
- * unmodified; `Escape` then `Tab`/`Shift+Tab` steps past it. Opt-in, matching
+ * unmodified; `Escape` then `Tab`/`Shift+Tab` steps past it. Stands down
+ * entirely while the topmost layer claims the Tab key for its whole subtree —
+ * an open `Dialog`, which runs its own trap and Escape release. Opt-in, matching
  * {@link FocusHistory}'s stance — call {@link enable} to start.
  *
  * @category Core
