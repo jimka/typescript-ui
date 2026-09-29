@@ -217,26 +217,31 @@ caret sits.
 ## Selection
 
 `getSelection()` returns the primary selection's
-`{ characterCount, lineCount }`, and `on('selectionchange', fn)` fires
-whenever either changes — once per real change, not once per keystroke or
-transaction. Like `cursorchange`, the event does not fire for the
-editor's initial position, so a status bar seeds itself by calling
-`getSelection()` once when it wires the listener.
+`{ characterCount, lineCount, from, to }`, and `on('selectionchange', fn)`
+fires whenever any of the four changes — once per real change, not once
+per keystroke or transaction. Like `cursorchange`, the event does not
+fire for the editor's initial position, so a status bar seeds itself by
+calling `getSelection()` once when it wires the listener.
 
 `characterCount` is 0 and `lineCount` is 1 for a collapsed selection (a
 bare caret with nothing highlighted) — the same shape a freshly mounted
-editor reports. Both are derived from the selection's normalized bounds,
-so dragging backward (moving the caret before the anchor) reports the
-same values as dragging forward. `characterCount` counts UTF-16 code
-units, the same convention [`getCursorPosition()`](#cursor-position)'s
-`offset` uses, so an emoji counts as two. With a multi-cursor selection,
-only the primary range is measured, matching
-[`getCursorPosition()`](#cursor-position)'s own rule.
+editor reports. All four fields are derived from the selection's
+normalized bounds, so dragging backward (moving the caret before the
+anchor) reports the same values as dragging forward. `from` and `to` are
+the same 0-based document offsets [`getCursorPosition()`](#cursor-position)'s
+`offset` reports, usable directly with `getValue().slice(from, to)`;
+`characterCount` counts UTF-16 code units the same way, so an emoji
+counts as two. With a multi-cursor selection, only the primary range is
+measured, matching [`getCursorPosition()`](#cursor-position)'s own rule.
 
 `selectionchange` and `cursorchange` are independent: selecting all text
 while the caret is already at the document's last position moves no
 caret (so `cursorchange` does not fire) but still changes the
-selection's extent (so `selectionchange` does).
+selection's extent (so `selectionchange` does). Comparing `from`/`to` too,
+not just the two counts, also means a same-length selection dragged to a
+different place in the document — a fresh two-character selection moved
+from one spot to another — now emits, which the two counts alone would
+have missed.
 
 ## Keyboard
 
@@ -341,9 +346,10 @@ Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / P
 | `paste()` | Read the system clipboard and insert it at the primary selection, replacing any selected text. Async: resolves `true` when the clipboard was read, `false` when there is no mounted view or the browser refused the read. |
 | `getCursorPosition()` | Read the primary caret's `{ line, column, offset }` — `line`/`column` 1-based, `offset` a 0-based raw document position. Returns the document start when the editor is not mounted. |
 | `on('cursorchange', fn)` / `off('cursorchange', fn)` | Subscribe to caret moves — fires once per real move to a different line, column, or offset. |
-| `getSelection()` | Read the primary selection's `{ characterCount, lineCount }`. `0`/`1` for a collapsed selection (a bare caret). Returns that same value when the editor is not mounted. |
-| `on('selectionchange', fn)` / `off('selectionchange', fn)` | Subscribe to selection changes — fires once per real change to the character or line count. |
+| `getSelection()` | Read the primary selection's `{ characterCount, lineCount, from, to }`. `0`/`1`/`0`/`0` for a collapsed selection (a bare caret) at the document start. Returns that same value when the editor is not mounted. |
+| `on('selectionchange', fn)` / `off('selectionchange', fn)` | Subscribe to selection changes — fires once per real change to the character count, line count, or either document offset. |
 | `revealRange(at, options?)` | Select, scroll to and highlight a 1-based `{ line, column, length }` range. `options.focus` (default `true`) takes keyboard focus; `options.highlight` (default `true`) paints the highlight. No-op before the editor is mounted. |
+| `replaceRange(from, to, insert, selection?)` | Replace a `[from, to)` range and optionally place the resulting selection, in one transaction (one undo step). Both are clamped against the live document; refused, with the read-only flash, while the editor is read-only. Updates the cached value (with no `"change"`) before the editor mounts. |
 
 ## Theming
 

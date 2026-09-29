@@ -102,6 +102,8 @@ Each command operates on the current selection and no-ops (without throwing) whe
 
 `paste()` depends on the browser granting a clipboard-read permission, which some browsers prompt for and some refuse outright for page scripts; a refused or unavailable read resolves `false` rather than throwing. The context menu's own Paste item shows a toast asking the user to press Ctrl/Cmd+V instead when this happens — `paste()` itself stays silent, so a consumer wiring their own Paste button can show their own message.
 
+In `"source"` mode, the following edit the raw Markdown directly instead of the Lexical document: the five format toggles, `toggleLink`/`removeLink`, `clearFormatting`, `cut`/`copy`/`paste`, `setBlockType`, `toggleUnorderedList`/`toggleOrderedList`, `insertParagraphBeforeBlock`/`insertParagraphAfterBlock`, `insertImage`, and `insertTable`. The other fourteen — `setTextColor`/`setFontFamily`/`setFontSize`, `setBlockAlignment`, `setColumnCount`, and the nine table-structure commands (`insertTableRow`/`deleteTableRow`, `insertTableColumn`/`deleteTableColumn`, `setTableColumnAlignment`, `deleteTable`, `mergeTableCells`, `unmergeTableCell`, `setTableColumnWidth`) — stay WYSIWYG-only and no-op in `"source"` mode.
+
 ## Live selection state
 
 `getSelectionState()` returns a snapshot of what the caret currently sits
@@ -129,6 +131,22 @@ from the last one reported — including a same-position format toggle
 it reports), not just a caret move. Outside a table, `tableColumnAlignment`
 is `null`; outside a `:::` block, `blockAlignment` is `null` and
 `columnCount` is `1`.
+
+In `"source"` mode the five format flags, `hasSelectedText`, and `linkUrl`
+are derived from the raw Markdown around the caret; `inTable` is always
+`false`, `tableColumnAlignment` and `blockAlignment` are always `null`, and
+`columnCount` is always `1` — the fields a Lexical-only construct has no
+raw-text equivalent for. `setMode` emits a fresh state for the surface it
+switches to, so a toolbar never keeps the outgoing surface's last-reported
+state after a switch.
+
+A source-mode format flag is set whenever a run of that format encloses the
+selection, however far out it sits — `bar` in `**foo, **bar** az**` reports
+`bold` — and pressing that format's toggle then removes it from the whole
+selection, as in WYSIWYG mode: every run of it around the selection goes, and
+a run covering more than the selection is split around it
+(`**foo,** bar **az**`). When no Markdown the editor can write reads back
+that way, the press changes nothing.
 
 ## Common methods
 
@@ -162,6 +180,8 @@ editor.getValue();           // same Markdown, regardless of the active mode
 
 Like the [command API](#command-api), the mode toggle is **consumer-wired** — the editor ships no built-in chrome. Drive `setMode` from your own control (e.g. a [`ToggleButton`](/components/ToggleButton)) when you want to expose the switch to users.
 
+Which [command API](#command-api) commands edit the raw Markdown directly in `"source"` mode, and which stay WYSIWYG-only and no-op there, is listed at the end of that section.
+
 ## Dirty state
 
 The editor reports itself dirty, via [`Component.isDirty()`](/api/core/classes/Component), whenever `getValue()` differs from the Markdown at the last clean point — the clean point is the value it was constructed with, or the value `markClean()` last accepted. Both surfaces go through the same check, so an edit undone back to the clean text clears the flag on its own, and a mode switch that changes nothing textually does not set it. `isDirty()` folds up into every ancestor container automatically. A host that loads a document with `setValue()` should follow it with `markClean()`, so the loaded text becomes the clean text.
@@ -171,6 +191,8 @@ One corner case: because the editor emits its own canonical Markdown, a `markCle
 ## Read-only
 
 `setReadOnly(true)` locks the editor against edits (dropping the caret and editing affordances); `false` restores them. For a purely *display* use case, prefer the leaner [`Markdown`](/components/Markdown) viewer, which needs no Lexical — `MarkdownEditor`'s read-only mode is for temporarily locking an editor, not for replacing the viewer.
+
+A source-mode command refused because the editor is read-only flashes the source `CodeEditor`, the same feedback a rejected keystroke gets. That editor fires its own `"readonlyedit"` event, but it is `MarkdownEditor`'s private child: `MarkdownEditor` neither exposes it nor re-emits the event, so there is currently no public hook for the refusal.
 
 ## Theming
 

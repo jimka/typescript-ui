@@ -293,6 +293,19 @@ page resets to empty.
   tab strip still takes focus. `Dock.focusPanel()` on a float rebuilt this way
   no longer moves focus into it.
 
+- **`CodeEditorSelection` gains `from`/`to`, and `"selectionchange"` widens
+  its dedup to match.** The two 0-based document offsets join
+  `characterCount` and `lineCount`, giving `getSelection()`'s payload the
+  same offsets `getCursorPosition()` already reports — usable directly with
+  `getValue().slice(from, to)` or as a CodeMirror selection anchor.
+  `"selectionchange"` now fires when any of the four fields changes, not just
+  `characterCount`/`lineCount`, so a same-length selection dragged to a
+  different place in the document — which left both counts unchanged — now
+  emits where it previously did not. A consumer reading only
+  `characterCount`/`lineCount` off the payload is unaffected; one that reads
+  the new fields, or relies on `"selectionchange"` firing only on a count
+  change, should account for the wider dedup.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
@@ -415,6 +428,27 @@ page resets to empty.
   format cleanly. `LanguageDefinition`'s three loaders now receive the
   options; definitions that take no argument keep working. No consumer
   action is needed.
+
+- **`MarkdownEditor`'s command API edits the raw Markdown directly in
+  `"source"` mode**, instead of leaving the visible source text untouched.
+  The five format toggles, `toggleLink`/`removeLink`, `clearFormatting`,
+  `cut`/`copy`/`paste`, `setBlockType`, `toggleUnorderedList`/`toggleOrderedList`,
+  `insertParagraphBeforeBlock`/`insertParagraphAfterBlock`, `insertImage`, and
+  `insertTable` all rewrite the raw text in place around the source
+  `CodeEditor`'s own selection, emitting only the dialect's own markers so the
+  result round-trips back through `"wysiwyg"` unchanged. The other fourteen
+  commands — `setTextColor`/`setFontFamily`/`setFontSize`,
+  `setBlockAlignment`, `setColumnCount`, and the nine table-structure commands
+  — still no-op in `"source"` mode; each needs its own design (a styled-span
+  merge, a `:::` fence rewrite, or a parsed pipe grid) and is left for a
+  follow-up. `getSelectionState()` and `"selectionstate"` are mode-aware too:
+  in `"source"` mode the five format flags, `hasSelectedText`, and `linkUrl`
+  are derived from the raw text, while `inTable`, `tableColumnAlignment`,
+  `blockAlignment`, and `columnCount` report the fields that mode has no
+  notion of, and `setMode` emits a fresh state so a toolbar's pressed/enabled
+  state never lags a mode switch. `CodeEditor` gains the public
+  `replaceRange(from, to, insert, selection?)`, the one-transaction seam this
+  all rides on. No consumer action is needed.
 
 ### Core
 
@@ -820,6 +854,18 @@ page resets to empty.
 - **A paste into a `Table` that was disposed while the clipboard was being
   read writes nothing.** It used to write the clipboard into the store. No
   consumer action is needed.
+
+- **`MarkdownEditor`'s 32 command-API methods no longer mutate the hidden
+  Lexical document while `"source"` mode is showing.** Every command called
+  `ensureEditor()` and acted on the Lexical state regardless of which surface
+  was visible, so pressing one in `"source"` mode silently rebuilt the Lexical
+  document from the stale text it last held, fired a `"change"` carrying
+  content the user never typed (the Lexical round-trip's own normalisation),
+  and could desync `getValue()` from what the visible `CodeEditor` showed.
+  No command reaches the hidden Lexical document in `"source"` mode any more:
+  the eighteen listed under *Added* rewrite the visible source text instead,
+  and the other fourteen are explicit, documented no-ops. No consumer action
+  is needed.
 
 ### Core
 
