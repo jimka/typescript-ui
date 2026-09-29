@@ -192,3 +192,34 @@ own date until the user edits it.
 **Who needs to act.** Code that reads the date part of a `TimeField` value,
 or compares it with today, should read only its hours, minutes and seconds,
 or combine them with the date it wants.
+
+## A `Dialog`'s first Escape inside an editor releases it
+
+**What changed and why.** A modal `Dialog` whose only focusable content was
+a `CodeEditor` trapped a keyboard user: the dialog opened with focus in the
+editor, `Tab` and `Shift+Tab` indented and dedented, and `Escape` closed the
+whole dialog, so no key reached its buttons. `Escape` inside an editing
+surface in a dialog now releases that surface for one `Tab` instead of
+closing the dialog, and a second `Escape` closes it. Inside a `Table` the
+first `Escape` does not close the dialog either, but the table's own `Tab`
+handling can still pull focus back into it.
+
+| Focus | Release armed for this owner? | Key | Result |
+|---|---|---|---|
+| in the editor | no | `Escape` | release armed; dialog stays open; the editor also receives the Escape |
+| in the editor | yes | `Tab` / `Shift+Tab` | focus moves to the dialog's next / previous control, wrapping inside the dialog |
+| in the editor | yes | `Escape` | dialog closes with `'close'` |
+
+Any other key, or focus leaving the editor, cancels the release. A mandatory
+modal (`dismissable: false`) releases the same way and still ignores the
+second `Escape`. To support this, `DismissableLayer.requestClose()` may now
+return `false` to decline, and `Dialog.requestClose()` returns `boolean`:
+`false` when it armed the release, `true` otherwise.
+
+**Who needs to act.** An automated UI test or script that closes a dialog
+with a single `Escape` while focus is in a `CodeEditor`, `MarkdownEditor` or
+`Table` must send two, or move focus to a button first. A `Dialog` subclass
+that overrides `requestClose(): void` no longer compiles: return `boolean`,
+and call `super.requestClose()` and return its result to keep the release.
+Other `DismissableLayer` implementations need no change; a `requestClose()`
+that returns nothing is handled as before.

@@ -208,7 +208,12 @@ close-brackets and autocompletion bindings, with one addition: **Tab
 indents** and **Shift-Tab dedents**.
 
 That binding traps Tab inside the editor, so Tab no longer moves focus to the
-next control while the caret is in the document. To move focus out, press
+next control while the caret is in the document. Pressing **Escape** and then
+**Tab** moves focus out once. Outside a dialog this is CodeMirror's own
+tab-focus window: the Tab must follow within two seconds, and an Escape that
+closes the completion list, the search panel or a multi-cursor selection does
+not open it. Inside a [`Dialog`](/components/Dialog) it is the dialog's
+release, with no time limit. To switch Tab to moving focus for longer, press
 **Ctrl-m** (**Alt-Shift-m** on macOS) to toggle CodeMirror's tab-focus mode;
 Tab then moves focus again, and the same shortcut switches back to indenting.
 
