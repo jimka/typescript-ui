@@ -1958,3 +1958,84 @@ manual step 5 exercises that path — the two are deliberately not run twice.
 Note that `changelog/next.md` is shared by four of the seven, so it is the file
 the chain rebase will conflict on; keep each plan's diff to it minimal and edit
 it late.
+
+## The by-eye pass: seven for seven, and two observations (2026-09-29)
+
+The user ran all seven owed by-eye checks against `master` at `df533b75`.
+**Every one passes.** In the list's order, as reported: right-click reaches the
+correct pane and the gutter does not block it; collapse and expand work without
+issue; the held drag past both clamps works as expected; the live re-flow sweep
+shows nothing wrong; validation arming under a resting pointer works; the four
+rail items show nothing wrong; and scrollbar and shadow placement are correct.
+
+**So the campaign's by-eye debt is discharged.** What stands between it and
+closure is the combined v0.9.0/v0.10.0 in-engine sweep above, and nothing else.
+
+Two observations came out of the pass, neither of them a failure of the check
+that surfaced it.
+
+**A rail-docked window maximizes and restores with no animation — cause still
+open, and not the truncation it first looked like.** The asymmetry is real: the
+minimize direction runs `animateRailCollapse` alone, while every transition out
+of `"minimized"` while railed runs both `animateRailExpand()` and the state
+branch's `animateRect()`. The first attribution — that the genie's deadline
+clears a `transition` the rect animation is running through — was **wrong**, and
+was corrected by tracing rather than by argument:
+
+- `tweenRect` (`:3338`), the small-change path a **restore** takes, is
+  `Animation.tween`: a JS `requestAnimationFrame` loop whose `onStep` is
+  `commitRect`. It takes no `Handle`, declares no `transition` and never calls
+  `registerTransition`, so there is nothing for a superseded `finish` to clear.
+- `fadeRectSwap` (`:3193`), the large-change path a **maximize** takes, does run
+  two `Animation.play` calls — but on `resolveBodyHost()?.getElement()`
+  (`:3194-3195`), and `findBodyHost` (`:2737`) returns a non-chrome *child*,
+  never `this`. A different element, so no supersession arises.
+
+So `animation-finish-transition-clear` does **not** fix what the user saw, and
+it scopes this out in its Non-Goals rather than claiming it. Three candidates
+stand, and separating them needs the engine:
+
+1. A restore's `animateRect` target is the rect the window never left — the rail
+   branch leaves geometry untouched (`:1266-1267`) — so `isLargeRectChange` is
+   false and `tweenRect` tweens from a rect to an identical one. No rect motion,
+   **by design**: the genie is the intended motion, and the by-eye pass confirms
+   the genie itself plays.
+2. `fadeRectSwap` with no body host commits the target and returns synchronously
+   (`:3199-3204`) — its own comment calls this "just the jump" for "a
+   chrome-only window, or one not rendered yet".
+3. Following from 2: the rail path calls `setDisplayed(true)` in the *same task*
+   as the restore, so the body host may not be rendered when `fadeRectSwap`
+   reads it — which would take a railed window down the jump path where a
+   non-railed one animates. Untested.
+
+That plan now carries the observation, the traced disproof, a by-eye control
+step expecting the missing motion to persist, and case R16 guarding that the
+central fix does not suppress the reverse genie's own clear on this path.
+
+**The lesson is the day's own, applied to itself.** A mechanism asserted from
+reading a call path, and written into this file as confirmed, was wrong within
+the hour — the same shape as the four already-fixed items and the over-claimed
+scrollbar fix above. What made it wrong was cheap to find: two file reads,
+by someone who then said so.
+
+**The Grid panel's scrollbar and shadow flicker on a sub-pixel float error, and
+`feature/scrollbar-overflow-epsilon` does not reach it.** That branch put
+`OVERFLOW_EPSILON_PX = 0.5` into `component/container/Scrollbar.ts` and
+`component/container/VirtualScroller.ts`. The Grid demo panel's overlay
+scrollbar and its shadow are decided in `core/Panel.ts`, which the branch does
+not touch and which still compares bare: `:895` and `:896` derive `vVisible` and
+`hVisible` from `scrollHeight > clientHeight` and `scrollWidth > clientWidth`,
+and `:952`/`:953` reserve the gutters the same way. The shadow is conclusive —
+`_shadowEdges` exists only in `core/Panel.ts`, so nothing on that branch can
+affect it.
+
+**Deferred deliberately, and test-first.** The obvious move is to extend the
+epsilon to those four sites on that branch now. The user chose instead to wait
+until everything is merged, so the gap can be **proved** rather than argued: run
+the Grid panel against the merged fix, show the flicker survives, and only then
+extend the epsilon. That ordering is right on this file's own evidence — four
+items on the 2026-09-29 inventory turned out to be already fixed, and this very
+case is a fix assumed to cover something it does not. A patch justified by
+reading is how that happens; a patch justified by a failing case is not. When it
+comes, it wants a test on Panel's own path: the branch's two tests cover
+`VirtualScroller` and the Table resize case only.
