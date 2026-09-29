@@ -7,7 +7,11 @@
 // `play`'s two-frame entrance dance — or the `transition: null` reset its
 // completion performs, or the `transitionend` removal an abandoned
 // `afterTransition` wait still owes — never lands on a handle already returned
-// to the pool. Not exported from `core/index.ts`:
+// to the pool. It also answers, for a transition about to finish, whether a
+// later one on the same element is still running through the `transition` rule
+// it is about to clear — the per-handle set is insertion-ordered, so "another
+// transition started after this one" is a question the registry already holds
+// the answer to. Not exported from `core/index.ts`:
 // this module exists purely to let `Animation.ts` and `Component.ts` share
 // this bookkeeping without importing each other, mirroring
 // `core/ClassStyleRules.ts` and `core/ComponentDefaults.ts`.
@@ -53,6 +57,38 @@ export function unregisterTransition(handle: Handle, cancel: () => void): void {
     if (cancels.size === 0) {
         running.delete(handle);
     }
+}
+
+/**
+ * Returns whether another transition has been registered against `handle`
+ * since `cancel` was — i.e. whether the transition `cancel` belongs to has
+ * been superseded by a later one on the same element.
+ *
+ * @param handle - The element handle the transition is writing to.
+ * @param cancel - The transition's own cancel function.
+ *
+ * @returns `true` when a transition registered after this one is still live.
+ */
+export function isSupersededTransition(handle: Handle, cancel: () => void): boolean {
+    const cancels = running.get(handle);
+
+    if (!cancels) {
+        return false;
+    }
+
+    let found = false;
+
+    for (const registered of cancels) {
+        if (found) {
+            return true;
+        }
+
+        if (registered === cancel) {
+            found = true;
+        }
+    }
+
+    return false;
 }
 
 /**

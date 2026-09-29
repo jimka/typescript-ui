@@ -5,7 +5,7 @@ import type { ComponentFactory } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle, TimerId } from "~/core/DOM.js";
 import { InlineStyle } from "~/core/StyleTarget.js";
-import { registerTransition, unregisterTransition } from "~/core/PendingTransitions.js";
+import { isSupersededTransition, registerTransition, unregisterTransition } from "~/core/PendingTransitions.js";
 
 /**
  * Small helpers for playing CSS transitions on raw DOM elements.
@@ -94,6 +94,13 @@ export namespace Animation {
      * Honours `prefers-reduced-motion: reduce`: when set, the `to` styles are
      * applied synchronously and `onComplete` fires on the same tick.
      *
+     * The `transition` rule this call installs is taken back off the element at
+     * its completion — unless another animation has since started on the same
+     * element, in which case that later one's completion does it. A CSS
+     * `transition` is one property on one element, so clearing it regardless
+     * would take the rule out from under whichever animation superseded this
+     * one and snap that animation straight to its end state.
+     *
      * @returns A handle whose `cancel()` abandons the animation and suppresses
      * `onComplete`. Cancelling writes no styles, but it does remove the
      * `transitionend` and `transitionstart` listeners this call registered, so
@@ -181,6 +188,10 @@ export namespace Animation {
             }
             done = true;
 
+            // Read before the unregister below, which takes this transition
+            // out of the registry the answer is derived from.
+            const superseded = isSupersededTransition(el, cancel);
+
             unregisterTransition(el, cancel);
 
             stopListening();
@@ -198,7 +209,15 @@ export namespace Animation {
             // through it. Done before `onComplete` so callers that
             // start a fresh `play()` from the callback can install
             // their own transition without it being clobbered.
-            buf.set("transition", null);
+            //
+            // Skipped when a later animation on this same element is running
+            // through that rule: `transition` is one property on one element,
+            // so this deadline would otherwise take the live animation's rule
+            // away and snap it to its end state. The live one clears it at its
+            // own completion instead.
+            if (!superseded) {
+                buf.set("transition", null);
+            }
 
             config.onComplete?.();
         };

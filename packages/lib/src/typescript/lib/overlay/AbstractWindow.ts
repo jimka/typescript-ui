@@ -1027,8 +1027,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // and `setRail` cancel it. Left running, the collapse's completion
         // emits `"minimize"` after the `"close"` above, on a window whose rail
         // has already dropped it, and writes its own `transform` / `opacity`
-        // over the close fade below; a superseded expansion's completion
-        // instead clears the `transition` that fade arms, cutting it short.
+        // over the close fade below. A superseded expansion no longer has a
+        // clear of its own to land — `Animation`'s `finish` leaves the
+        // `transition` to whichever animation is still running through it — so
+        // its cancel releases the handle now rather than one deadline later,
+        // and keeps every path that supersedes or ends the pair taking both.
         this._railCollapseAnimation?.cancel();
         this._railCollapseAnimation = null;
         this._railExpandAnimation?.cancel();
@@ -2908,11 +2911,14 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // `endRailCollapse`, which is what takes them back.
         this._railCollapseActive = true;
 
-        // And the expansion this collapse supersedes, for the same reason in
-        // the other direction: its completion clears the `transition` it armed
-        // (`Animation`'s own `finish` does), which is the very declaration this
-        // collapse is running through, so leaving it to land cuts the genie
-        // short at whatever frame it reached.
+        // And the expansion this collapse supersedes. `Animation`'s own
+        // `finish` no longer clears the `transition` of a superseded
+        // transition — the declaration is one property on one element, so it
+        // leaves the rule to whichever animation is still running through it —
+        // so what the cancel buys here is releasing the superseded half's
+        // `transitionend` handle now rather than one deadline later, and
+        // keeping all five paths that start, supersede or end the pair
+        // cancelling both handles alike.
         this._railExpandAnimation?.cancel();
         this._railExpandAnimation = null;
 
