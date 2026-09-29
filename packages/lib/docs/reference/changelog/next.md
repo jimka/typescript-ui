@@ -44,6 +44,23 @@ page resets to empty.
   for the end event instead of debouncing `"columnresize"`. The existing
   `"columnresizestart"` and `"columnresize"` are unchanged.
 
+### Layouts
+
+- **A `Card` can now select its visible child by a caller-supplied key.**
+  `LayoutConstraints` gained a `key` field, and `Card` gained
+  `setVisibleKey`, `getVisibleKey`, `hasKey` and a `visibleKey` option. A key
+  names a child slot the way a component id does, with one difference that is
+  the point of it: a key can name a child that has not been built yet. So
+  `container.addComponent(() => new Panel(), { key: "misc" })` registers a page
+  unbuilt, and the page is constructed the first time `setVisibleKey("misc")`
+  asks for it — or, when the key was selected before the registration arrived,
+  on the first layout pass of a rendered container. Selection by id is
+  unchanged and keeps working; the two share one selection, so each setter
+  retires the other. The build is synchronous, so a factory returning a promise
+  throws and an asynchronous one still needs a `Tab`. `lazy: false` declines
+  the deferral on a `Card` exactly as it does on a `Tab`, and `lazy` is
+  therefore now read by two managers rather than one.
+
 ## Fixed
 
 ### Core
