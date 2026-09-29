@@ -1037,6 +1037,16 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this._railExpandAnimation?.cancel();
         this._railExpandAnimation = null;
 
+        // The cancel above writes no styles, so the genie's transform and
+        // opacity are still on the element and the close fade below would
+        // animate out of the shrunken, faded state. `endRailCollapse` takes
+        // them and the collapse's own `transition` back off, as `setRail`'s
+        // detach does for the same reason. Captured first, because the call
+        // clears the flag that says whether there was anything to undo.
+        const wasCollapsing = this._railCollapseActive;
+
+        this.endRailCollapse();
+
         // Drop any pending factory / onReady closure so its captured
         // references are free for GC if the window is closed before show()
         // ran the factory.
@@ -1070,6 +1080,18 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         this._closeAnimation?.cancel();
         this._closeAnimation = Animation.play(el, {
+            // The resting state `endRailCollapse` just restored is only the
+            // fade's start state if the browser reaches a style recalculation
+            // with it in place — a transition starts from the element's state
+            // at the *previous* recalculation, and everything here runs in one
+            // task. A `from` buys that: `play` writes it, yields two animation
+            // frames, and arms the transition afterwards. Omitted for an
+            // ordinary close, which already rests where the fade should start
+            // and must not pay two frames for it — nor have a drag's own
+            // `transform` overwritten.
+            from:       wasCollapsing
+                ? { transform: "translate(0, 0) scale(1)", opacity: "1" }
+                : undefined,
             to:         { opacity: "0", transform: "scale(0.97)" },
             durationMs: WINDOW_ANIM_DURATION_MS,
             properties: ["opacity", "transform"],
