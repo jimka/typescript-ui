@@ -199,6 +199,15 @@ page resets to empty.
   on the previous day west of UTC. A date with a time, such as
   `2026-06-28 12:04`, is read as before.
 
+- **A `Table` whose columns fit no longer flashes a horizontal scrollbar while
+  it is resized.** A resize rescales the columns
+  proportionally, and for some widths the rescaled widths summed to a fraction
+  of a pixel over the width they fill. The virtual scroller and the
+  `Scrollbar` both read that float error as overflow, so the horizontal bar
+  showed for a frame and the viewport shrank by a track, pulling the bottom
+  scroll shadow up with it. Content now has to exceed the viewport by more
+  than half a pixel to count as overflow. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
