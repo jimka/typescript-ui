@@ -397,11 +397,21 @@ branch; each was left deliberately rather than missed.
 - **The table's `Date`/`DateTime` cell editors keep the old lenient parse.** A
   `DateField` now rejects `2025-02-30` while the equivalent table cell still
   commits 2 March. `tooltip-picker-and-serialization-fixes` called them "not
-  affected", true about code sharing but not about the defect.
+  affected", true about code sharing but not about the defect. **Fixed, and by
+  the picker-field plan after all:** the strict parse went into the shared
+  `dateMath` helper (`parseIsoDate:227` rejects a day the engine would roll
+  forward), which both cell editors call, so the table inherited it. Pinned by
+  `tests/component/table/cell/editor.test.ts:756`, `:824` and `:989`, and by
+  `DynamicCell.test.ts:357` for the dynamic row. Confirmed 2026-09-29.
 - **`Tab`'s `activeIndex` is not remapped across the transient filter** — the
-  same index-shift class C29 cured one branch over.
+  same index-shift class C29 cured one branch over. **Fixed:**
+  `layout/LayoutSerialization.ts:617-636` decrements `activeIndex` once per
+  filtered child below it and then calls `setActiveTabIndex`. Confirmed
+  2026-09-29.
 - **`DateField.formatValue` does not zero-pad the year**, so a year below 1000
-  formats to a spelling the new strict parser rejects.
+  formats to a spelling the new strict parser rejects. **Fixed:**
+  `formatIsoDate:188` pads to `ISO_YEAR_DIGITS` and carries the sign for a
+  negative year. Confirmed 2026-09-29.
 - **`Slider.setValue` fans out unconditionally with no opt-out**, the same
   shape C34 gave `Checkbox` an opt-out for. Belongs beside C40. Fixed by the
   same plan: `setValue` no longer fires `"action"`; no opt-out was needed.
@@ -455,7 +465,12 @@ branch; each was left deliberately rather than missed.
   while reproducing the two above, fixed by the same plan.
 - **Open: `Notification.startTimer`** is a bare `setTimeout` whose callback
   writes to elements, left armed by about 60 tests per run and dormant only
-  because 3 s outlasts every test file.
+  because 3 s outlasts every test file. **Still open, and now the only one of
+  these left** — planned 2026-09-29 as `notification-dismiss-timer-seam`, which
+  routes both timer sites through the `DOMSink` seam that
+  `animation-timer-cancellation` established, so `DOM.reset()` cancels them.
+  This is the third instance of the same defect, after `TableHeader`'s
+  filter-row debounce and `Animation`'s fallbacks.
 
 **Unmeasured cost:** `canvas-idle-loops` leaves one `isEffectivelyVisible()`
 ancestor walk per child re-attach, on a path that runs per frame during a
@@ -463,7 +478,9 @@ column-window slide. The plan's original one-term guard would have queued a
 full reconcile there; the two-term guard reduces it to the walk. The
 campaign's own measurement that 1,929 size-hint calls per frame cost nothing
 suggests this is immaterial, but it is not measured. `table-wide` with
-`hwheel` is the witness.
+`hwheel` is the witness. **Folded into the combined v0.9.0/v0.10.0 release
+sweep** decided 2026-09-29 rather than given a sitting of its own — see the
+consolidated verification list in `00-post-campaign-agenda.md`.
 
 **A consumer-visible consequence of `body-lazy-singleton`:** the library's own
 `<style>` element is created at its first stylesheet write, which importing

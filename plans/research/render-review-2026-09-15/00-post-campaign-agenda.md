@@ -15,6 +15,12 @@ the correctness bugs, then wave 3.
 | Style-write filter | `same-value-style-write-filter` (G04's surviving half) | S1 −44% |
 | Wave 2 | `border-region-size-memo` (G12's F06.5), `accordion-seed-pass-economy` (G13), `size-hint-per-pass-memo` (X4), `unchanged-commit-skip-staged` (G09, staged) | work −56.7% S1, −43.3% S3; geometry identical |
 | Outside the waves | `no-dom-access-at-import`, found through a Loom test that crashed on import | every entry point but `core` imports with no DOM |
+| Phase 1 | `qa-app`, `qa-app-tauri`, `qa-app-panels`, `qa-app-panels-editors-overlays` | `packages/qa` is the measurement surface; merged `aca769ab` |
+| Phase 2 | eleven plans against the C-register, plus `test-suite-health` | C6-C36 closed 2026-09-21; three residues survived, two since fixed |
+| Wave 3 | thirteen plans, W3.0-bounded before planning | all implemented and measured in-engine 2026-09-23 — 446 runs, none failed |
+| The ten-plan batch | the nine plans tabled under *The remaining work, planned*, plus `split-noop-drag-frame-gate` | one measured render win (the formatter memo); four arms could not ship as written |
+| The four-plan batch | `split-gutter-zero-thickness-gap`, `split-drag-unclamped-geometry`, `panel-resize-metrics-staleness`, `table-row-layout-pass-contract` | shipped 2026-09-28; see that section below |
+| Released | **v0.10.0, 2026-09-29** | every campaign branch merged to `master`; none exists any more |
 
 ## Phase 1 — a QA app as the measurement surface
 
@@ -184,8 +190,15 @@ G10 and G15 stay dropped (`98-wave2-rejustification.md`,
   configs and pulls `@types/node` into the program. The bare command measures
   the wrong program: it wants an `include` or `"types": []`, or removal from
   this list. Still a user call, but no longer an open question.
-- `npm run docs:api` emits 14 warnings on `master`, so plans must stop
-  writing a zero-warning bar into their verification, or the 14 get fixed.
+  **Decided 2026-09-29: it gets an `include`** scoping the program to the
+  library sources, which should drop `build/`, the Vite configs and the test
+  files in one change and clear all 30. Planned as
+  `docs-api-warning-clearance`.
+- ~~`npm run docs:api` emits 14 warnings on `master`, so plans must stop
+  writing a zero-warning bar into their verification, or the 14 get fixed.~~ —
+  **decided 2026-09-29: the 14 get fixed**, so zero becomes the real bar and the
+  "no new warnings" language retires with them. No CI gate was wanted. Planned
+  as `docs-api-warning-clearance`, together with the `tsconfig` item above.
 - **A blob object URL leaks on every blocked store-worker construction
   under a strict CSP** (found 2026-09-20 by the review that consolidated
   phase 2's first batch; moved here from `01-phase2-status-pass.md`
@@ -201,10 +214,24 @@ G10 and G15 stay dropped (`98-wave2-rejustification.md`,
   `plans/implemented/store-worker-fail-safe.md`'s Architecture Decisions,
   which state the opposite as the design, so it needs its own small plan
   that revisits that decision rather than an in-flight fix.
+
+  **Fixed by `plans/implemented/store-worker-blob-url-leak.md`** (`74082206`),
+  which did exactly that: `ensureWorker`'s `catch` now calls `retireWorker`, so
+  a refused construction is the last one and `isAvailable()` is false for the
+  rest of the page — one leaked object URL and two violation reports per page
+  instead of one and two per `applyView()`. `store-worker-fail-safe`'s "the next
+  call tries to construct it again" is overturned for a throwing constructor
+  only; a missing `Worker` global still retires nothing, because rediscovering
+  that answer is free. `applyView` also asks the pure `hasCustomSorter()` before
+  the side-effecting `isAvailable()`.
 - The library's own demo app (`packages/lib/index.html`, entry
   `src/typescript/main.ts`) puts 32 demo panels in one `Tab` layout, so the
   tab bar is squashed. The user wants it restructured; it is its own piece of
-  work, separate from the measurement surface.
+  work, separate from the measurement surface. **Decided 2026-09-29: a category
+  tree in a `Split`** — a tree or list of grouped demos on the left, the selected
+  demo on the right, the SQLAdmin and Loom shape — rather than nested tabs, an
+  activity rail, or a scrolling tab strip. Planned as
+  `demo-app-category-navigation`.
 
 ## Found while planning phase 2's follow-ups (2026-09-21)
 
@@ -361,12 +388,26 @@ Found by the measurement, not by any plan:
   leaves the field and returns. The bug is already recorded above under *Found
   by the post-merge audit*; this raises its priority, because validation on
   change after a click into the field is the common case.
+
+  **Fixed 2026-09-27 by `plans/implemented/validation-error-arming.md`**: one
+  viewport `mousemove` is enough, and `_attachWith` starts the hover delay when
+  the pointer already rests on the component. Only the by-eye Binding-tab check
+  is outstanding — see the consolidated list below.
 - **The layout-skip opt-ins have a second stage waiting on the form panels.**
   `unchanged-commit-opt-ins` reaches −3.5% and −7.4% of the work on a form
   layout pass where its plan predicted −84%: that figure came from W3.0's
   ceiling ablation rather than the four classes that shipped. The form panels
   are the obvious surface for the next staged opt-in, and `g09.all` now
   measures headroom over the shipped opt-ins rather than an absolute ceiling.
+
+  **Served, and the ladder is finished.** `unchanged-commit-opt-ins-forms` took
+  the form panels (stage 3) and `field-internals-unchanged-commit-opt-in` took
+  the field internals (stage 4), whose notes state that no stage 5 is implied:
+  a settled picker field's own pass costs exactly one `doLayout` call, so all
+  four of stage 3's residual counters reach zero without opting either `Button`
+  internal in. What stays open is not a stage but a question — what makes a
+  settled picker field lay out at all — and it is answered in-engine, not by
+  another plan.
 
 Costs accepted by the user (2026-09-23), all recorded in the measurement:
 a deep-shell resize is 1–2 ms slower under `layout-size-read-economy`, with
@@ -504,7 +545,9 @@ needed.
   wrong today, because `Row` is not opted in; the cost is that it cannot be
   until this is fixed.
 
-  **Still open, and harder than it looks.**
+  **Closed 2026-09-28 by `plans/implemented/table-row-layout-pass-contract.md`.**
+  The analysis below stands as the record of why it took three attempts; the
+  fix is described at the end of this entry.
   `field-internals-unchanged-commit-opt-in` set out to fix this and **reverted the
   fix**, because restoring the base call is not geometry-neutral. Two corrections
   to the entry above, both established offline on a rendered 40-record table:
@@ -526,10 +569,17 @@ needed.
     change or pool growth — gets a top-level pass from the batched flush, and the
     narrow cell then renders until the body next re-places the window.
 
-  So the fix needs a library design decision this file should record before
-  someone tries again: what a `Row` should run as its layout manager, or how a
-  row can record its pass without its manager re-placing cells at their preferred
-  sizes. Restoring the base call alone is not it.
+  The library design decision this entry asked for was taken by
+  `table-row-layout-pass-contract`: `Absolute` gained a
+  `sizing: "preferred" | "committed"` option, and `Row` is built with
+  `sizing: "committed"` and loses its `doLayout` override entirely. The base
+  pass therefore runs — recording the pass, draining `onFirstLayout`, and
+  laying out any cell that owes a pass — while committing each child at the
+  rectangle it already holds rather than at its preferred size. `Cell` keeps
+  its preferred size and no other class changes its manager. That plan also
+  found a second instance the analysis above missed, in the opposite
+  direction: a narrow header `FilterCell` *grows* from 25x22 to 236x22 under
+  the preferred-size commit, so both directions are now pinned as rectangles.
 
 ## First measurements of G16, G25 and G27 (2026-09-25)
 
@@ -1233,6 +1283,18 @@ is now drafted as eight plans, listed here so the index carries them.
   building a general registry — but its scope stops at `Glyphs`. So the same
   class of bug ships on in `Favicon` unless someone takes it.
 
+  **Still open, and the defect is sharper than this entry says.** It is not that
+  nothing resets `Favicon`: `Favicon._reset()` exists (`core/Favicon.ts:123`),
+  it predates the campaign (`321d9532`), and it is `@internal Test-only`. The
+  defect is that it is *manual* — four suites must remember to call it
+  (`tests/core/Body.test.ts:26`, `BodyContextMenu.test.ts:57`,
+  `ResizeDrag.test.ts:107`, `Favicon.test.ts:71`), two of them carrying comments
+  apologising for a call that is not part of the feature under test — where
+  `Glyphs` resets *automatically* on sink identity. **Decided 2026-09-29: build
+  the registry `glyph-sprite-reset-hook` declined** and move both modules onto
+  it, so a later sink-keyed cache joins by construction. Planned as
+  `document-cache-reset-registry`.
+
 - **Stage 4 may not close stage 3's residual.** That residual named four
   classes: `PickerButton` 0.2, `PickerInput` 0.1, `ButtonIconGlyph` 0.2 and
   `ButtonLabelText` 0.2. `field-internals-unchanged-commit-opt-in` opts in
@@ -1648,3 +1710,145 @@ gain a doc sentence and one a corrected source comment, none a mechanism.
   middle of the fade, so it is an improvement that stops short rather than a
   regression. One `endRailCollapse()` call, plus a row pinning the fade's start
   state, is the whole fix.
+
+## The four-plan batch shipped, and v0.10.0 released (2026-09-29)
+
+The 2026-09-28 batch is merged and released. Four plans, run sequentially with
+each phase branching from the previous chain tip —
+`split-gutter-zero-thickness-gap`, `split-drag-unclamped-geometry`,
+`panel-resize-metrics-staleness`, `table-row-layout-pass-contract`, in that
+order, because the gutter plan changes the box the drag plan's literals were
+pinned against. Three of the four fix defects the user reported by eye rather
+than candidates this file bounded, which is worth noting: the campaign's own
+sweep did not find them.
+
+- **The gutter is zero-thickness and the reserve is an option.**
+  `GUTTER_SIZE` is gone, `GUTTER_HIT_OVERHANG` went 3 to 5, and the inter-pane
+  reserve is a `Split.spacing` option defaulting to 0 — so a gutter is pure
+  overhang, 5px into each pane, and reachability is the acceptance criterion
+  rather than a side effect of its width. `Border` keeps its own default of 5
+  and `Accordion` was left out, both user-confirmed. The `isMovable()` box gate
+  is deleted, because with no reserve it would yield a 0px element and clip the
+  chevron; `setMovable(false)` drops the gutter's pointer events instead. The
+  overlay scrollbar's `setZIndex(2)` is why the gutter takes 1 and never more.
+- **A held drag past a clamp keeps the gutter on the pane edge.** The stale
+  total was the only thing decoupling the trailing pane's extent from its
+  position, which is why D2b deliberately moved from `[0,1]` to `[0,0]` and no
+  case can isolate `rhsMoved`'s position term afterwards; D2d stays the
+  extent-only witness. The `setX`/stale-translate issue is a third, separate
+  defect, held out of scope with U7 pinning that it rides through correctly.
+- **The resize-burst deferral is reverted, not extended.** A `Split` gutter
+  dragged over a scrolling, overflowing `Panel` now re-flows content, tracks
+  the overlay bar and moves the shadow edge *during* the drag. Two traps found
+  while prototyping are in the plan: the new test file's `afterEach` must drain
+  captured frames or seven of eight scene cases fail spuriously, and
+  `doLayout`'s public comment must stay prose-only or `docs:api` warnings
+  multiply across eight subclasses. Its stated non-goal is that
+  `showsScrollAffordance()` is false on the frame a bar must *appear*, so that
+  direction still lands at the catch-up.
+- **A table `Row` records its pass** — see the closure on the `Row.doLayout`
+  entry above.
+
+The user's verdict on the chain tip, before release: *"I just tested Loom with
+the chain tip. I can almost not believe the difference from how pre-campaign
+behaved."* Both gutter and scrollbars easy to drag. That is the campaign's
+outcome in the application it was run for.
+
+## Owed manual verification, consolidated (2026-09-29)
+
+Nine implemented plans each left a step their offline harness could not reach,
+recorded only in the plan that owed it. They are collected here because a list
+spread across nine files is a list nobody runs, and because the campaign stays
+open until they are discharged.
+
+**Only the user can run any of these** — each needs real pointer input, real
+painting, or a window on their desktop. No agent runs them.
+
+1. **The gutter's context-menu lock** (`split-gutter-zero-thickness-gap`, item
+   16). A right-click over a locked gutter should reach the pane beneath it,
+   now that `setMovable(false)` drops pointer events rather than gating a hit
+   box.
+2. **Collapse and restore** (same plan, item 17). A gutter that paints nothing
+   must become an opaque 18px strip on collapse, and return with no visible
+   jump.
+3. **A drag held past both clamps** (`split-drag-unclamped-geometry` — its own
+   notes call this the only unverified item on the branch). Drag past a pane's
+   minimum and past its maximum, both orientations, holding at each: the gutter
+   stays glued to the pane edge. Then, with the drag still held, resize the
+   window — the trailing pane stays inside it.
+4. **The live re-flow sweep** (`panel-resize-metrics-staleness`). One fast, far
+   sweep of a `Split` gutter over a scrolling, overflowing `Panel`, watching the
+   bar's *far end* rather than the thumb: a slow drag self-corrects every ~3
+   still frames, so a gentle pass cannot fail.
+5. **Validation arming under a resting pointer** (`validation-error-arming`,
+   never run). Binding tab, click into **Name**, type past the limit *without
+   moving the mouse*: outline and error tooltip appear together after the hover
+   delay, re-appear with new text as the message changes, and go when the
+   pointer leaves.
+6. **Four rail window items** (`rail-handover-follow-ups`): a window handed back
+   sits flush with its neighbours; a double-minimize leaves the window usable; a
+   close after a minimize fades once; a restore then minimize plays the full
+   genie.
+7. **The scroll and shadow pass** (`panel-scroll-read-economy`): the Markdown,
+   Grid and Complex UI tabs, by eye.
+
+The `absolute-sizing` demo's "funky" appearance, deferred 2026-09-28, is off
+this list: it was traced 2026-09-29 to the docs site's demo embedding and is
+not specific to that demo or to the `sizing` option. See the decisions below.
+
+**In-engine, as one combined sweep.** Every campaign branch is merged, so the
+`main`/`wt` arm pair no longer exists and isolating one plan would need a
+revert build per plan. Decided 2026-09-29: one **v0.9.0-against-v0.10.0** A/B
+over every cell the release touched. It cannot attribute a result to a single
+plan and a surprise would need follow-up isolation — accepted, because three of
+the four predict a flat clock and their work reductions are already pinned
+offline.
+
+| Cell | What it answers |
+|---|---|
+| `field-internals`' E14, with the `ffq`/`fnq` counters | the acceptance gate that plan declared, and what makes a *settled* picker field lay out at all — which it records as unidentified. The counter reading is a read on the new arm rather than a comparison, so the combined sweep still answers it. |
+| `panel=shell-deep&drive=park` | F06.3's gate on the shipped opt-in predicate. The −93.8% work figure is an adjacent arm's upper bound, and a park cell charges roughly 3.4 ms of instrument tax to any runtime patch. |
+| `spp`, plus `cdw`/`sdw`/`ssw` | `panel-scroll-read-economy`'s settled-pass and wheel-read cells: reads down by half or more, geometry `=`, clock flat by design. |
+| the table-scroll cell | `table-row-layout-pass-contract`: roughly 1,100 cells re-committed per window-changing horizontal scroll and per table resize. A flat clock ships; a regressed clock is a stop-and-report. |
+| `table-wide` with `hwheel` | `canvas-idle-loops`' per-re-attach `isEffectivelyVisible()` walk — the campaign's last unmeasured cost, folded in here rather than given a sitting of its own. |
+
+Read with `python3 packages/qa/bin/qa-table.py packages/qa/results <prefix>
+--work`, five runs per cell as `wt-a, main-1, wt-b, main-2, wt-c`, under
+`work=1&seam=1&geom=1`. Never compare harness absolutes across sessions.
+
+## Decisions taken 2026-09-29
+
+Taken one at a time with the user after v0.10.0 shipped, against an inventory
+of what the campaign had left. The inventory itself is the reason this pass
+happened: **four of its items turned out to be already fixed**, because this
+file had gone stale in six places since 2026-09-27.
+
+**Already fixed, corrected in place above:** the table's `Date`/`DateTime` cell
+editors — the strict parse landed in the shared `dateMath` helper
+(`parseIsoDate:227`), so the table inherited it, pinned by
+`tests/component/table/cell/editor.test.ts:756`, `:824`, `:989` and
+`DynamicCell.test.ts:357`; the CSP blob-URL leak
+(`store-worker-blob-url-leak`); `DateField.formatValue`'s year padding
+(`formatIsoDate:188` pads to `ISO_YEAR_DIGITS` and carries the sign for
+negative years); and `Tab`'s `activeIndex` across the transient filter
+(`layout/LayoutSerialization.ts:617-636` decrements it per filtered child
+below it, then calls `setActiveTabIndex`). `Favicon` stands, with a sharper
+defect than was recorded.
+
+| Decision | Plan |
+|---|---|
+| `Animation.finish`'s transition clear gets a **central** fix — `finish` stops clearing `transition` when it has been superseded — with a pinning row per pair, rather than eight per-site cancel-both edits, because the per-site version leaves the underlying behaviour in place and a ninth pair added later reintroduces the bug. `onExitAction`'s missing `endRailCollapse()` rides along as its own commit on that branch. | `animation-finish-transition-clear` |
+| The unpaired `"restore"` **pays the debt**: the owed `"minimize"` fires first, giving `['minimize','restore']`, as `setRail` already does for a window that stays minimized. This reverses R9 and is a public event-contract change, so it carries changelog and migration entries. The deciding argument: a window's state reads `"minimized"` during the shrink, so a consumer polling state sees a transition no event ever announced. | `rail-minimize-restore-event-pairing` |
+| `Favicon` and `Glyphs` both move onto **the general registry** `glyph-sprite-reset-hook` declined, so a later sink-keyed cache joins by construction; `Favicon._reset()` and its four call sites go with it. Chosen over a second one-off hook. | `document-cache-reset-registry` |
+| **All 14 `docs:api` warnings get fixed**, making zero the real bar; no CI gate. `packages/lib/tsconfig.json` gets an **`include`** scoping it to the library sources. | `docs-api-warning-clearance` |
+| `Notification`'s dismiss timer routes through the **`DOMSink` seam** — the last of the phase-2 residue, and the third instance of this defect after `TableHeader`'s debounce and `Animation`'s fallbacks. | `notification-dismiss-timer-seam` |
+| The docs site's injected demos **match the prose column**: the left inset prose blocks already get, plus top and bottom insets so a demo's rhythm stops depending on what precedes it. This is what the `absolute-sizing` demo's odd appearance actually was — `DocsContent.ts:440` passes `proseMargin` to the missing-demo fallback but not to the real `DocsDemo`, and `:140`'s `spacing: 0` leaves vertical rhythm to CSS margins that a component tree does not have, which is why the missing gap was intermittent. | `docs-demo-prose-alignment` |
+| The demo app's 32 panels get **a category tree in a `Split`**, rather than nested tabs, an activity rail, or a scrolling tab strip. | `demo-app-category-navigation` |
+| The two public events v0.10.0 shipped without notes — `TableHeaderEvent`'s `"columnresizeend"` and `HeaderCellEvent`'s `"resizeend"`, confirmed by diffing both aliases against the `v0.9.0` tag — are recorded in `changelog/next.md`, treating 0.10.0's published notes as immutable. Done 2026-09-29. | — |
+| The in-engine debt is discharged by **one combined sweep**, not four isolated revert builds. | — |
+| **The campaign stays open** until the manual checks and that sweep are done, then closes in one pass with the results recorded here. Closing now and demoting the residue to an ordinary backlog was rejected, so that evidence and outcome stay in one place. | — |
+
+Four rail observations stand by decision rather than omission, each argued in
+`rail-handover-follow-ups`' own Architecture Decisions: the collapsed rail's
+hidden handle, `Rail.unmount`'s kept registrations, `setRail` not cancelling
+`_stateAnimHandle`, and `endRailCollapse`'s `transform-origin`.
