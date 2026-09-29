@@ -625,6 +625,40 @@ which hits only three files inside `docs/api/`.
 
 ---
 
+## Implementation Notes
+
+**One row of the `## Expected Behaviour` table cannot read as specified.**
+The table predicts that after the fix, `delegates to the internal ` +
+backticked `Panel` occurs **1** time in
+`component/display/classes/MarkdownViewer.md` (the `setScrollTop` row).
+Applying steps 6 and 7 exactly as written — byte for byte — makes it occur
+**2** times: step 6's own replacement text for `getScrollTop` is "The
+prose's scroll offset — delegates to the internal `Panel` that actually
+scrolls…", which itself contains the substring "delegates to the internal "
++ backticked `Panel`, so the pattern also matches inside `getScrollTop`'s
+paragraph before `setScrollTop`'s is ever reached. This is a specificity gap
+in the table's check pattern, not a suppression or an incorrect fix: both
+paragraphs read correctly and match steps 6 and 7's literal specified text
+word for word. (The table's *other* three `MarkdownViewer.md` rows —
+`MarkdownContentPane`, `plain scrolling`, and `internal ` + backticked
+`Panel` + ` that actually scrolls` — all read exactly as predicted and
+distinguish the two paragraphs correctly; only this one row's pattern is too
+short to do the same.) Verified command:
+`tr '\n' ' ' < packages/lib/docs/api/component/display/classes/MarkdownViewer.md | grep -o -F 'delegates to the internal \`Panel\`' | wc -l` → `2`.
+
+**Step 13 and `## Verification` step 1's expected `docs:api` output cannot
+print either, on a clean run.** Both say to expect the literal line
+`Found 0 errors and 0 warnings`. TypeDoc's `logRunSummary`
+(`node_modules/typedoc/dist/lib/cli.js:102-111`) logs that line only when
+`errorCount` or `warningCount` is truthy — a 0/0 run calls neither
+`logger.error` nor `logger.warn` and prints no summary line at all. The
+actual, correct signal that this plan's `docs:api` gate passed is exit code
+0 with no line containing the word "warning" in the output (verified: the
+only match `grep -i warning` finds in a clean run is the worktree's own path
+containing "docs-api-warning-clearance"), not a specific string to grep for.
+A future plan copying this expected string as a check would be waiting on
+output a correct run never produces.
+
 ## Notes
 
 [^drifted-bar]: The phrasings currently in `plans/`, all of which

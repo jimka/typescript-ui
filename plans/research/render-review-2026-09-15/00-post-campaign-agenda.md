@@ -193,12 +193,30 @@ G10 and G15 stay dropped (`98-wave2-rejustification.md`,
   **Decided 2026-09-29: it gets an `include`** scoping the program to the
   library sources, which should drop `build/`, the Vite configs and the test
   files in one change and clear all 30. Planned as
-  `docs-api-warning-clearance`.
+  `docs-api-warning-clearance`. **Cleared 2026-09-29** by that plan's
+  `include`, scoping the program to the library sources exactly as decided —
+  by then the count had grown from 30 to 37.
 - ~~`npm run docs:api` emits 14 warnings on `master`, so plans must stop
   writing a zero-warning bar into their verification, or the 14 get fixed.~~ —
-  **decided 2026-09-29: the 14 get fixed**, so zero becomes the real bar and the
-  "no new warnings" language retires with them. No CI gate was wanted. Planned
-  as `docs-api-warning-clearance`, together with the `tsconfig` item above.
+  ~~**decided 2026-09-29: the 14 get fixed**, so zero becomes the real bar and
+  the "no new warnings" language retires with them. No CI gate was wanted.
+  Planned as `docs-api-warning-clearance`, together with the `tsconfig` item
+  above.~~ — **answered 2026-09-29: all 14 cleared** by
+  `docs-api-warning-clearance`. Zero is now the standing bar, recorded in
+  `CODE_CONVENTIONS.md`.
+- **Three `externalSymbolLinkMappings` entries in `typedoc.json` suppress
+  three type-reference warnings**, left in place by `docs-api-warning-clearance`
+  because fixing them is a different, wider change. `CellTextResolver`
+  (referenced from `buildColumnFilter`'s `display` parameter),
+  `ColumnWindowSlidePlan` (`Row.setColumnWindow`'s `plan` parameter) and
+  `RetargetedCell` (`Row.getRetargetedCells`'s return type) are each exported
+  from their own module inside `component/table` but not re-exported from
+  `component/table/index.ts`, so a public signature names a type the docs
+  never describe. Deleting the three mappings takes `docs:api` from 0 to 3
+  warnings. Exporting `CellTextResolver` from the barrel to fix it would make
+  it a concrete public class, which `scripts/llms/check-coverage.mjs` then
+  requires be catalogued in or excluded from `manifest.data.mjs` — so this
+  needs its own plan, not an in-flight fix.
 - **A blob object URL leaks on every blocked store-worker construction
   under a strict CSP** (found 2026-09-20 by the review that consolidated
   phase 2's first batch; moved here from `01-phase2-status-pass.md`
