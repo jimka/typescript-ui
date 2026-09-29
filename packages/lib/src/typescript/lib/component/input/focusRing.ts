@@ -66,7 +66,7 @@ export function registerFocusWithinRing(baseSelector: string): void {
  * native `:focus-visible` heuristic does not treat a keydown with `ctrlKey` /
  * `altKey` held as keyboard-navigation-worthy, even when it synchronously
  * drives a real `.focus()` call — exactly the shape of `SpatialNavigation`'s
- * own `Ctrl+Alt` / `Ctrl+Shift` chords — so a bare `:focus-visible` rule alone
+ * own `Ctrl+Alt` / `Ctrl+Alt+Shift` chords — so a bare `:focus-visible` rule alone
  * would silently never show a ring for either chord. The marker attribute is
  * the service's own explicit assertion that this focus move should look the
  * same as a native one; it self-clears on the element's next `focusout`.

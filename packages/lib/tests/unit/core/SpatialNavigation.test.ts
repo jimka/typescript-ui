@@ -115,7 +115,7 @@ afterEach(() => {
     _registeredRevealers = [];
 
     SpatialNavigation.disable();
-    SpatialNavigation.configure({ componentModifiers: { ctrl: true, alt: true }, targetModifiers: { ctrl: true, shift: true } });
+    SpatialNavigation.configure({ componentModifiers: { ctrl: true, alt: true }, targetModifiers: { ctrl: true, alt: true, shift: true } });
     DOM.reset();
 });
 
@@ -284,10 +284,10 @@ describe('SpatialNavigation.claimsKey', () => {
         installTestDOM(CONFIG);
 
         expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, altKey: true }))).toBe(false);
-        expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, shiftKey: true }))).toBe(false);
+        expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, altKey: true, shiftKey: true }))).toBe(false);
     });
 
-    it('once enabled with defaults, claims Ctrl+Alt+Arrow* and Ctrl+Shift+Arrow*, and refuses a bare arrow, Ctrl-only, Shift-only, Alt-only, and a non-arrow code', () => {
+    it('once enabled with defaults, claims Ctrl+Alt+Arrow* and Ctrl+Alt+Shift+Arrow*, and refuses a bare arrow, Ctrl-only, Shift-only, Alt-only, Ctrl+Shift, and a non-arrow code', () => {
         installTestDOM(CONFIG);
         SpatialNavigation.enable();
 
@@ -295,11 +295,13 @@ describe('SpatialNavigation.claimsKey', () => {
         expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowDown', ctrlKey: true, altKey: true }))).toBe(true);
         expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowLeft', ctrlKey: true, altKey: true }))).toBe(true);
         expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, altKey: true }))).toBe(true);
-        expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, shiftKey: true }))).toBe(true);
+        expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, altKey: true, shiftKey: true }))).toBe(true);
 
         expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight' }))).toBe(false);
         expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true }))).toBe(false);
         expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', shiftKey: true }))).toBe(false);
+        expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowLeft', ctrlKey: true, shiftKey: true }))).toBe(false);
+        expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, shiftKey: true }))).toBe(false);
         expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', altKey: true }))).toBe(false);
         expect(SpatialNavigation.claimsKey(keyEvent({ code: 'KeyA', ctrlKey: true, altKey: true }))).toBe(false);
     });
@@ -313,14 +315,24 @@ describe('SpatialNavigation.claimsKey', () => {
         expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', altKey: true }))).toBe(true);
         expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, altKey: true }))).toBe(false);
         // The target tier's default is untouched by the component reconfigure.
-        expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, shiftKey: true }))).toBe(true);
+        expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, altKey: true, shiftKey: true }))).toBe(true);
 
         SpatialNavigation.configure({ componentModifiers: { ctrl: true, alt: true }, targetModifiers: { meta: true } });
 
         expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', metaKey: true }))).toBe(true);
-        expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, shiftKey: true }))).toBe(false);
+        expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, altKey: true, shiftKey: true }))).toBe(false);
         // The component tier's reconfigured set is untouched by the target reconfigure.
         expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, altKey: true }))).toBe(true);
+    });
+
+    it('configure({ targetModifiers }) with the old Ctrl+Shift set restores it, and no longer claims the new default', () => {
+        installTestDOM(CONFIG);
+        SpatialNavigation.enable();
+
+        SpatialNavigation.configure({ targetModifiers: { ctrl: true, shift: true } });
+
+        expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, shiftKey: true }))).toBe(true);
+        expect(SpatialNavigation.claimsKey(keyEvent({ code: 'ArrowRight', ctrlKey: true, altKey: true, shiftKey: true }))).toBe(false);
     });
 
     it('is false while a non-"manual" layer is registered, even underneath a "manual" one stacked on top, and true once only the "manual" layer remains', () => {
@@ -392,6 +404,33 @@ describe('SpatialNavigation keydown wiring', () => {
 
         expect(event.preventDefault).not.toHaveBeenCalled();
         expect(event.stopPropagation).not.toHaveBeenCalled();
+    });
+
+    it('leaves Ctrl+Shift+arrow — the superseded target-tier chord — unclaimed, preserving native word selection', () => {
+        installTestDOM(CONFIG);
+        SpatialNavigation.enable();
+
+        const body = stableBody();
+        const origin = liveHandle();
+        const target = liveHandle();
+        const targetChild = liveHandle();
+
+        place(origin, 0, 0, 100, 20);
+        place(target, 200, 0, 300, 20); // east of origin
+        markNavigationTarget(target);
+        setQuerySelectorAllResult(body, NAVIGATION_TARGET_SELECTOR, [target]);
+        // A focusable descendant, so the target tier has somewhere to land —
+        // without it, "focus stays on the origin" would hold regardless of
+        // whether the chord was claimed, since a claimed-but-landing-nowhere
+        // move also leaves the origin focused.
+        setQuerySelectorAllResult(target, FOCUSABLE_SELECTOR, [targetChild]);
+        DOM.sink.focus(origin);
+
+        const event = dispatchKeyDown({ code: 'ArrowRight', ctrlKey: true, shiftKey: true });
+
+        expect(event.preventDefault).not.toHaveBeenCalled();
+        expect(event.stopPropagation).not.toHaveBeenCalled();
+        expect(DOM.source.getActiveElement()).toBe(origin);
     });
 
     it('ignores an OS auto-repeat keydown, moving focus only once per physical key-hold', () => {

@@ -181,7 +181,7 @@ export interface SpatialNavigationModifiers {
 export interface SpatialNavigationOptions {
     /** Fine tier. Default `{ ctrl: true, alt: true }`. Replaces the whole set, not merged. */
     componentModifiers?: SpatialNavigationModifiers;
-    /** Coarse tier. Default `{ ctrl: true, shift: true }`. Replaces the whole set, not merged. */
+    /** Coarse tier. Default `{ ctrl: true, alt: true, shift: true }`. Replaces the whole set, not merged. */
     targetModifiers?:    SpatialNavigationModifiers;
 }
 
@@ -191,7 +191,7 @@ export interface SpatialNavigationOptions {
 // Chromium's native `:focus-visible` heuristic does not treat a keydown with
 // `ctrlKey` / `altKey` held as keyboard-navigation-worthy, even when it
 // synchronously drives a real `.focus()` call — exactly the shape of this
-// service's own `Ctrl+Alt` / `Ctrl+Shift` chords — so relying on the bare
+// service's own `Ctrl+Alt` / `Ctrl+Alt+Shift` chords — so relying on the bare
 // pseudo-class alone would silently never show a ring for either chord.
 // Exported so `focusRing` reads the exact string this module writes.
 export const FOCUS_VISIBLE_ATTR = "data-ts-ui-focus-visible";
@@ -200,13 +200,17 @@ const ARROW_DIRECTIONS: Record<string, SpatialDirection> = {
     ArrowUp: "north", ArrowDown: "south", ArrowLeft: "west", ArrowRight: "east",
 };
 
-// Ctrl+Alt + arrow (fine) and Ctrl+Shift + arrow (coarse, kept from the
-// superseded directional-panel-navigation plan): free of OS/browser bindings
-// on Windows and macOS; GNOME's Ctrl+Alt+arrow workspace-switch collision is
-// a known, documented trade the configurable modifier set exists to work
-// around — see the plan's `[^chords]` note.
+// Ctrl+Alt + arrow (fine) and Ctrl+Alt+Shift + arrow (coarse). Neither
+// chord is bound by a browser, by native text editing, or by CodeMirror's
+// default keymap, except Ctrl+Alt+Up/Down, which CodeEditor binds to
+// add-cursor-above/below on Windows and Linux. GNOME binds Ctrl+Alt+arrow
+// (switch workspace) and, on older releases, Ctrl+Alt+Shift+arrow (move
+// the window to a workspace). These are documented trades; each tier's
+// modifier set is configurable to work around them. The coarse tier was
+// Ctrl+Shift + arrow in 0.10.0, which took word selection away from
+// every text input.
 const DEFAULT_COMPONENT_MODIFIERS: SpatialNavigationModifiers = { ctrl: true, alt: true };
-const DEFAULT_TARGET_MODIFIERS:    SpatialNavigationModifiers = { ctrl: true, shift: true };
+const DEFAULT_TARGET_MODIFIERS:    SpatialNavigationModifiers = { ctrl: true, alt: true, shift: true };
 
 // Sentinel used to register the service's viewport listener — mirrors
 // FocusHistory's identical `_owner` pattern. `SpatialNavigation` has no DOM
@@ -730,7 +734,7 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
  * Global spatial-focus-navigation service: moves keyboard focus to the
  * nearest candidate in the pressed direction. `Ctrl+Alt`+arrow (the
  * `"component"` tier) moves to the nearest individual focusable element;
- * `Ctrl+Shift`+arrow (the `"target"` tier) moves to the nearest container
+ * `Ctrl+Alt+Shift`+arrow (the `"target"` tier) moves to the nearest container
  * marked via {@link Component.setNavigationTarget} and hands focus to that
  * container's remembered — or first — focusable descendant. When one marked
  * container nests another, a move approaching from outside both always lands
