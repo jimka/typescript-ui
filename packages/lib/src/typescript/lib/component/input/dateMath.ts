@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { parseIsoDate } from "~/data/temporalValue.js";
+
+// Moved down to data/, which may not import from component/; re-exported so
+// every existing importer of it from here keeps working.
+export { parseIsoDate };
+
 /**
  * A unit accepted by the relative date/time shorthand grammar. `mo` (month)
  * and `mi` (minute) are two letters on purpose — a bare `m` would be
@@ -147,10 +153,6 @@ export function resolveDateMath(raw: string, allowed: readonly DateMathUnit[], b
     return isNaN(result.getTime()) ? null : result;
 }
 
-// A complete, zero-padded ISO calendar date — the only absolute form the date
-// fields format, and therefore the only one they read back.
-const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
-
 /**
  * A wall-clock time parsed from "H:MM" or "H:MM:SS" text. Each part is a
  * whole number already inside its own range, so a caller never rounds or
@@ -164,8 +166,9 @@ export interface ClockTime {
     seconds: number;
 }
 
-// ISO 8601 writes a calendar year as four digits, and ISO_DATE above reads
-// back exactly four, so a shorter year is zero-padded to that width.
+// ISO 8601 writes a calendar year as four digits, and `parseIsoDate` in
+// `data/temporalValue.ts` reads back exactly four, so a shorter year is
+// zero-padded to that width.
 const ISO_YEAR_DIGITS = 4;
 
 // ISO 8601 writes the month and the day as two digits each.
@@ -191,40 +194,6 @@ export function formatIsoDate(date: Date): string {
     const dd   = String(date.getDate()).padStart(ISO_MONTH_DAY_DIGITS, "0");
 
     return `${yyyy}-${mm}-${dd}`;
-}
-
-/**
- * Parses a complete, zero-padded `YYYY-MM-DD` calendar date at local midnight.
- * Anything the date fields' own `formatValue` could not have produced — a
- * partial prefix, an unpadded part, or a day that does not exist in the named
- * month — is rejected rather than normalised.
- *
- * @param raw - The raw text typed into the field.
- * @returns The date at local midnight, or `null` when `raw` is not a complete
- *   ISO date naming a real calendar day.
- *
- * @internal — not re-exported from the package barrel.
- */
-export function parseIsoDate(raw: string): Date | null {
-    const match = ISO_DATE.exec(raw);
-
-    if (match === null) {
-        return null;
-    }
-
-    // Local midnight, appended so the day is not shifted by the UTC parse
-    // `new Date("YYYY-MM-DD")` would otherwise perform.
-    const date = new Date(`${raw}T00:00:00`);
-
-    if (isNaN(date.getTime())) {
-        return null;
-    }
-
-    // The engine range-checks the month and the bare day but rolls an
-    // impossible calendar day forward — 30 February becomes 2 March — which
-    // would commit a date the text never named. A rolled date is the one case
-    // the shape check above cannot see.
-    return date.getDate() === Number(match[3]) ? date : null;
 }
 
 // A complete `H:MM[:SS]` wall-clock time, anchored at both ends. Each part is

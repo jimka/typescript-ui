@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import type { ValidationRule } from '~/validation/ValidationRule.js';
+import { parseLocalTemporal } from '~/data/temporalValue.js';
 
 /**
  * Built-in field types supported by {@link Model} and {@link AbstractModel}.
@@ -192,6 +193,14 @@ export class Field {
             case 'time': {
                 if (raw instanceof Date) {
                     return raw;
+                }
+
+                // A bare date or a time of day is read as a local value first;
+                // any other text goes through `new Date(raw)`, as it always has.
+                const local = typeof raw === 'string' ? parseLocalTemporal(this._type, raw) : null;
+
+                if (local) {
+                    return local;
                 }
 
                 const date = new Date(raw);
