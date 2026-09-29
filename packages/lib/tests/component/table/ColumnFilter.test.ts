@@ -222,7 +222,27 @@ describe('buildColumnFilter', () => {
     it('date gte with a parseable date builds a gte descriptor with a Date value', () => {
         const result = buildColumnFilter('due', { type: 'date' }, oneClause('gte', '2024-01-15'), display);
 
-        expect(result).toEqual({ type: 'gte', field: 'due', value: new Date('2024-01-15') });
+        expect(result).toEqual({ type: 'gte', field: 'due', value: new Date(2024, 0, 15) });
+    });
+
+    it('date eq with a typed YYYY-MM-DD brackets that local day', () => {
+        expect(buildColumnFilter('due', { type: 'date' }, oneClause('eq', '2026-06-28'), display)).toEqual({
+            type:    'and',
+            filters: [
+                { type: 'gte', field: 'due', value: new Date(2026, 5, 28) },
+                { type: 'lt',  field: 'due', value: new Date(2026, 5, 29) },
+            ],
+        });
+    });
+
+    it('datetime gte with a typed YYYY-MM-DD reads it as local midnight', () => {
+        expect(buildColumnFilter('at', { type: 'datetime' }, oneClause('gte', '2026-06-28'), display))
+            .toEqual({ type: 'gte', field: 'at', value: new Date(2026, 5, 28) });
+    });
+
+    it('datetime gte with a typed date and time still reads it as local time', () => {
+        expect(buildColumnFilter('at', { type: 'datetime' }, oneClause('gte', '2026-06-28 12:04'), display))
+            .toEqual({ type: 'gte', field: 'at', value: new Date(2026, 5, 28, 12, 4) });
     });
 
     it('date gte with an unparseable date builds nothing', () => {
@@ -410,14 +430,11 @@ describe('buildColumnFilter', () => {
         });
 
         it('22c. date eq "2021-05-17" -> and(gte local midnight, lt following midnight)', () => {
-            // Relational, not a hard-coded literal: `new Date(text)` parses an
-            // ISO date-only string as UTC, so the *local calendar day* it
-            // names depends on the runner's offset — exactly the day
-            // `DateRenderer` would also read the same instant as.
+            // A typed `YYYY-MM-DD` is read as that local calendar day, so the
+            // bucket is the day the text names in every runner's zone.
             const target: ColumnFilterTarget = { type: 'date' };
-            const operand     = new Date('2021-05-17');
-            const expectedLo  = new Date(operand.getFullYear(), operand.getMonth(), operand.getDate());
-            const expectedHi  = new Date(expectedLo.getFullYear(), expectedLo.getMonth(), expectedLo.getDate() + 1);
+            const expectedLo  = new Date(2021, 4, 17);
+            const expectedHi  = new Date(2021, 4, 18);
 
             expect(buildColumnFilter('due', target, oneClause('eq', '2021-05-17'), display)).toEqual({
                 type:    'and',
