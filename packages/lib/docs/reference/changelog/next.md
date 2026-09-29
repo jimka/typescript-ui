@@ -45,18 +45,20 @@ page resets to empty.
 ### Components
 
 - **`Tree` and `TreeTable` toggles are a thin angle that turns to point
-  down, and a single `Tree` expand or collapse animates.** On `Tree`, a
-  caret click, row toggle, `ArrowLeft` / `ArrowRight`, `expandNode(Async)`
-  or a lazy load settling with an expand waiting plays a 200ms row motion
-  after its state commits — the toggled node's children slide out and fade
-  in, and the rows below move to make room — while bulk/structural calls,
-  a block taller than the viewport, a commit that moves the scroll offset,
-  and `prefers-reduced-motion: reduce` all snap instead. While a collapse
-  plays, the rows sliding away carry `aria-hidden="true"`, so assistive
-  technology reads only the committed rows. A call that has to scroll a row
-  into view settles a running motion first, while one whose row is already
-  in view leaves it playing; a keyboard move onto a child that an expand is
-  still fading in also settles it. `TreeCellRenderer`'s
+  down, and a single expand or collapse animates.** On `Tree`, a caret
+  click, row toggle, `ArrowLeft` / `ArrowRight`, `expandNode(Async)` or a
+  lazy load settling with an expand waiting, and on `TreeTable`,
+  `setExpanded`, a toggle click or `ArrowLeft` / `ArrowRight`, plays a
+  200ms row motion after its state commits — the toggled node's children
+  slide out and fade in, and the rows below move to make room — while
+  bulk/structural calls, a block taller than the viewport, a commit that
+  moves the scroll offset, and `prefers-reduced-motion: reduce` all snap
+  instead. While a collapse plays, the rows sliding away carry
+  `aria-hidden="true"`, so assistive technology reads only the committed
+  rows. A call that has to scroll a row into view settles a running motion
+  first, while one whose row is already in view leaves it playing; a
+  keyboard move onto a child that an expand is still fading in also settles
+  it. `TreeCellRenderer`'s
   `setTreeState` gains an optional fourth `animate` parameter (default
   `false`) for a caller that wants the turn animated.
 

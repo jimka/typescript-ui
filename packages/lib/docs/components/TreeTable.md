@@ -73,6 +73,12 @@ The tree column is automatically marked `unhideable: true` so the indent and exp
 
 Expand state is keyed by the record's `idField` value (not by `ModelRecord` reference), so a store sync that replaces records preserves expansion.
 
+### Animation
+
+A single record's expand or collapse — via `setExpanded`, `ArrowLeft` / `ArrowRight`, or a click on the toggle — animates after its state commits: the toggle turns from pointing right to pointing down (or back), the record's children slide out from under it and fade in as they emerge, and the rows below move to make room, over 200ms. State, `isExpanded()` and the flattened rows all commit synchronously, before the motion starts.
+
+The bulk and structural calls — `expandToDepth()`, `collapseAll()`, `expandAll()`, and any store change — never animate; they can change many rows at once, which a single reveal value cannot describe. A toggle whose children would not fit in the current viewport, or whose commit moves the scroll offset, also snaps instead of animating. `prefers-reduced-motion: reduce` turns off every animation, toggle included. While a collapse plays, the rows sliding away carry `aria-hidden="true"`, so assistive technology reads only the committed rows. A call that has to scroll a row into view — `selectRecord()` or a keyboard move — settles a running motion first; one whose row is already in view leaves it playing. A keyboard move onto a child that an expand is still fading in also settles it, so the selection and focus ring never land on a row that is not yet fully drawn.
+
 ## Keyboard
 
 Inherits everything from [`Table`](/components/Table) (`ArrowUp` / `ArrowDown` for row nav, `ArrowLeft` / `ArrowRight` for column nav, `Enter` / `Space` to edit, `Home` / `End`, `PageUp` / `PageDown`) and overrides `ArrowLeft` / `ArrowRight` to act on the tree structure when a tree row is focused:
@@ -139,7 +145,6 @@ A filter that drops a parent record drops its entire subtree from the flat view 
 
 - **Pinned columns.** Not yet supported on `TreeTable`.
 - **Async lazy-load.** The store must already hold every record the user can expand into. A future plan can layer an "on-expand fetch" mode.
-- **Animation.** Expand / collapse is instant, unlike [`Tree`](/components/Tree), which animates a single toggle.
 - **Sibling reorder inside a directory.** The drag-and-drop integration reparents only; the store has no per-record order field, so dropping a sibling next to another sibling under the same directory is a no-op (rejected as "no change"). Adding an order field is a future plan.
 - **`setRowVisible`.** Inherited from [`Table`](/components/Table#row-visibility) but has no effect: a bare per-record predicate can't decide what to do with a hidden parent's children (keep them, drop them, re-parent them) — that needs the same kind of parent/child-aware pass the store's own [filter](#filtering) already does, and is a different, larger feature with no requester today. **`setQuickSearch`** is inherited through the same predicate slot and is equally inert, for the same reason.
 
