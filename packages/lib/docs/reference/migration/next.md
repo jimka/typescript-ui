@@ -114,3 +114,81 @@ its own `targetModifiers` is not affected. To keep the old chord:
 ```typescript
 SpatialNavigation.configure({ targetModifiers: { ctrl: true, shift: true } });
 ```
+
+## A `Date` crosses the wire in local form
+
+**What changed and why.** `JsonWriter` and `AjaxProxy`'s `filter=` wrote
+every `Date` with `toISOString()`, a UTC instant. That instant no longer
+named the calendar day or wall-clock time the user saw: a `date` of 28 June
+typed in Tokyo was sent as `2026-06-27T15:00:00.000Z`, and a server that
+kept the first ten characters stored the 27th. `JsonWriter` now writes each
+top-level `Date` in the form its field type is read back in, and `AjaxProxy`
+— whose filter descriptors name a field but not its type — writes every
+filter `Date` as local ISO 8601 with its UTC offset.
+
+| Where | Value (local) | Before | After |
+|---|---|---|---|
+| `JsonWriter`, `date` field | 28 June 2026, 00:00 in Tokyo | `2026-06-27T15:00:00.000Z` | `2026-06-28` |
+| `JsonWriter`, `time` field | 09:30:15.250 in Kolkata | `1970-01-01T04:00:15.250Z` | `09:30:15.250` |
+| `JsonWriter`, any other field | 28 June 2026, 12:04:59.123 in Los Angeles | `2026-06-28T19:04:59.123Z` | `2026-06-28T12:04:59.123-07:00` |
+| `AjaxProxy` `filter=` | 28 June 2026, 00:00 in Tokyo | `2026-06-27T15:00:00.000Z` | `2026-06-28T00:00:00.000+09:00` |
+
+An offset of zero is written `+00:00`, never `Z`. An Invalid `Date` is still
+written as `null`, a `Date` nested inside an object or array field value
+keeps its `toISOString()` form, and `sort=` is unchanged.
+
+**Who needs to act.** A server that matches a trailing `Z`, or that parses a
+`date` value as an instant and relied on the day being UTC's, must parse
+each value by its type instead: a bare date, a bare time, or an ISO 8601
+date-time with an offset, which any ISO parser reads as the same instant as
+before. A consumer who needs the old body can pass a custom `writer` to
+`AjaxProxy`.
+
+## A store reads a bare date or a time of day as a local value
+
+**What changed and why.** `Field` converted every `date`, `time` and
+`datetime` value with `new Date(raw)`. That read a bare `2026-06-28` as UTC
+midnight — 27 June in Los Angeles — and could not read a time of day at all:
+`new Date("09:30:00")` is an Invalid Date, so a store `time` column was
+always empty. A bare `YYYY-MM-DD` in a `date` or `datetime` field is now
+read as local midnight, and a `time` field reads a two-digit
+`HH:MM[:SS[.fraction]]` as that time on 1 January 1970, local, to the
+millisecond. Any other text still goes through `new Date(raw)`.
+
+| Field type | Raw value | Before | After |
+|---|---|---|---|
+| `date` | `"2026-06-28"` | UTC midnight | 28 June, 00:00 local |
+| `datetime` | `"2026-06-28"` | UTC midnight | 28 June, 00:00 local |
+| `time` | `"09:30:15.250000"` | `undefined` | 1 January 1970, 09:30:15.250 local |
+| `date` | `"2026-06-28T12:04:00Z"` | that instant | that instant (unchanged) |
+
+0.10.0's migration note says "a store `time` or `datetime` column reads with
+`new Date(...)`"; that no longer holds for `time`, nor for a bare-date
+`datetime` value. The 0.10.0 page is left as it was released.
+
+**Who needs to act.** Code that relied on a bare date loading as UTC
+midnight — for example by reading it back with `getUTCDate()` — should read
+it with the local getters. Code that relied on a `time` column being empty,
+or that filled it in by hand after load, now receives the stored time.
+
+## `TimeField` values sit on 1 January 1970
+
+**What changed and why.** `TimeField` put a typed or picked time on today's
+date. A store `time` field, the time cell editor, the filter row and the
+table's paste path all use 1 January 1970, so a `TimeField` bound to a
+`time` field could mark an untouched value dirty. `TimeField`'s values now
+sit on 1 January 1970, local. A relative shorthand is still resolved
+against now; only its time of day is kept.
+
+| Input | Before | After |
+|---|---|---|
+| typed `09:30` on 28 June 2026 | 28 June 2026, 09:30 | 1 January 1970, 09:30 |
+| picked 14:45 from the dropdown | today, 14:45 | 1 January 1970, 14:45 |
+| typed `+30mi` at 23:50 on 28 June 2026 | 29 June 2026, 00:20 | 1 January 1970, 00:20 |
+
+`setValue` keeps the `Date` it is given, so a value set from code keeps its
+own date until the user edits it.
+
+**Who needs to act.** Code that reads the date part of a `TimeField` value,
+or compares it with today, should read only its hours, minutes and seconds,
+or combine them with the date it wants.

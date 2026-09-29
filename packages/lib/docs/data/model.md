@@ -52,9 +52,9 @@ Both forms are accepted everywhere a `Model` is expected.
 | `'string'` | Text value |
 | `'number'` | Numeric value; integer or float |
 | `'boolean'` | True / false |
-| `'date'` | JavaScript `Date` object (date only) |
-| `'time'` | Time-of-day value |
-| `'datetime'` | Combined date and time |
+| `'date'` | JavaScript `Date` object (date only); a bare `YYYY-MM-DD` reads as local midnight |
+| `'time'` | Time-of-day value; `HH:MM[:SS[.fraction]]` reads as that time on 1 January 1970, local, to the millisecond |
+| `'datetime'` | Combined date and time; a bare `YYYY-MM-DD` reads as local midnight |
 | `'glyph'` | Registry glyph name |
 | `'auto'` | No coercion; stores the raw value (the default) |
 
@@ -62,7 +62,7 @@ The supported set lives in [`FieldType`](/api/data/type-aliases/FieldType).
 
 ## Value coercion
 
-A field's `type` is not just metadata — raw values are coerced to it the moment they enter a record, both when a store loads data (`createRecord`) and when you call `record.set(name, value)`. A JSON `"10"` becomes the number `10`, a date string becomes a `Date`, and `"true"` becomes `true`. Because the stored value is already correctly typed, sort and filter compare it directly: numbers compare numerically, dates as `Date` objects.
+A field's `type` is not just metadata — raw values are coerced to it the moment they enter a record, both when a store loads data (`createRecord`) and when you call `record.set(name, value)`. A JSON `"10"` becomes the number `10`, a date string becomes a `Date`, and `"true"` becomes `true`. A bare `YYYY-MM-DD` in a `date` or `datetime` field is read as that local day, and a `time` field reads `HH:MM[:SS[.fraction]]` onto 1 January 1970, local; any other temporal text goes through `new Date(raw)`. Because the stored value is already correctly typed, sort and filter compare it directly: numbers compare numerically, dates as `Date` objects.
 
 `null` and `undefined` always pass through unchanged. An empty number value (`''`) and an unparseable date are stored as `undefined` rather than `NaN` or an Invalid Date; an unparseable non-empty `number` value is stored as `NaN`, which the [record's](/data/record#validation) implicit type check flags as invalid. `'auto'` and `'glyph'` fields are never coerced.
 

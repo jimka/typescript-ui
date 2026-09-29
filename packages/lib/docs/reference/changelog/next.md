@@ -16,6 +16,14 @@ page resets to empty.
   `Tree` or `TreeTable` to have registered them must now register them
   itself. See [Migration](/reference/migration/next) for the full note.
 
+- **`TimeField` values sit on 1 January 1970, local.** A typed or picked
+  time used to land on today's date, while a store `time` field, the time
+  cell editor, the filter row and the table's paste path all use 1 January
+  1970, so a `TimeField` bound to a `time` field could mark an untouched
+  value dirty. A relative shorthand such as `+30mi` is still resolved
+  against now; only its time of day is kept. See
+  [Migration](/reference/migration/next) for the full note.
+
 ### Core
 
 - **`DOM.sink` and `DOM.source` are now read-only.** Swap a seam through
@@ -34,6 +42,32 @@ page resets to empty.
   is unchanged. Restore the old chord with
   `SpatialNavigation.configure({ targetModifiers: { ctrl: true, shift: true } })`.
   See [Migration](/reference/migration/next) for the full note.
+
+### Data
+
+- **`JsonWriter` writes each `Date` in its field type's form.** A `date`
+  field is written as `2026-06-28`, a `time` field as `09:30:15.250`, and
+  any other field as local ISO 8601 with its UTC offset
+  (`2026-06-28T12:04:59.123-07:00`), no longer as `toISOString()`. The UTC
+  instant did not name the day the user saw: a `date` of 28 June typed in
+  Tokyo went out as `2026-06-27T15:00:00.000Z`. See
+  [Migration](/reference/migration/next) for the full note.
+
+- **`AjaxProxy`'s `filter=` writes each `Date` as local ISO 8601 with its
+  offset.** A filter operand of midnight on 28 June in Los Angeles is sent
+  as `2026-06-28T00:00:00.000-07:00` rather than
+  `2026-06-28T07:00:00.000Z`: the same instant, plus the calendar day and
+  wall-clock time the user saw. `sort=` is unchanged. See
+  [Migration](/reference/migration/next) for the full note.
+
+- **A store reads a bare date as local midnight, and a `time` field reads
+  `HH:MM[:SS[.fraction]]`.** A `date` or `datetime` value of `2026-06-28`
+  was read as UTC midnight, the previous day west of UTC; it is now that
+  local day. A `time` value such as `09:30:15.250000` was an Invalid Date,
+  so a store `time` column was always empty; it now reads as that time on
+  1 January 1970, local, to the millisecond. Any other temporal text still
+  goes through `new Date(raw)`. See [Migration](/reference/migration/next)
+  for the full note.
 
 ### Overlay
 
@@ -114,6 +148,13 @@ page resets to empty.
   it leaves the element as if the attribute had never been set, where
   `setHidden(false)` writes `aria-hidden="false"`.
 
+### Data
+
+- **`JsonWriter.dataFor` is `protected`.** A subclass can override it to
+  change which fields are written — to drop server-generated columns, say —
+  and keep `'dirty'` mode and the per-type `Date` forms, instead of
+  re-implementing the `Writer` interface.
+
 ### Layouts
 
 - **A `Card` can now select its visible child by a caller-supplied key.**
@@ -132,6 +173,14 @@ page resets to empty.
   therefore now read by two managers rather than one.
 
 ## Fixed
+
+### Components
+
+- **The table's filter row reads a typed `YYYY-MM-DD` as a local day.** A
+  `date` or `datetime` operand was parsed with `new Date(text)`, which reads
+  a bare date as UTC midnight, so "Equals" and the ordering operators landed
+  on the previous day west of UTC. A date with a time, such as
+  `2026-06-28 12:04`, is read as before.
 
 ### Core
 

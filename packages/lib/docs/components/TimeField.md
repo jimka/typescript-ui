@@ -2,7 +2,7 @@
 
 [`TimeField`](/api/component/input/classes/TimeField) is a time picker backed by a focusable text input plus a framework-built [`TimePickerDropdown`](/api/component/input/classes/TimePickerDropdown) that fades in via the shared [`AnimatedDropdown`](/api/core/classes/AnimatedDropdown) lifecycle. Returns `null` from `getValue` when the field is empty.
 
-The Date returned uses the local date for its date portion; only hours and minutes are meaningful.
+The Date returned sits on 1 January 1970, local — the date a store `time` field and the table's time cells use; only hours and minutes are meaningful. A relative shorthand is resolved against now, then its time of day is placed on that date.
 
 It implements [`Bindable<Date | null>`](/api/core/interfaces/Bindable).
 
@@ -49,7 +49,7 @@ The typed shorthand stays on screen while typing; it resolves to the absolute ti
 ## Notes
 
 - The absolute form is read back exactly as it is written: one or two digits for the hour, the minute and the optional second, separated by `:`. A missing hour (`:30`), a trailing separator (`09:30:`), a fractional second (`09:30:05.5`), a sign, surrounding whitespace, or an out-of-range part all leave the field invalid rather than committing a time the text never named, and blurring on one clears it.
-- For the absolute format, an omitted `:SS` segment defaults seconds to `0`; typing one sets it explicitly, independent of the `showSeconds` display option. The date portion comes from the local clock at the moment of the most recent input event.
+- For the absolute format, an omitted `:SS` segment defaults seconds to `0`; typing one sets it explicitly, independent of the `showSeconds` display option. The date portion is always 1 January 1970, local; a relative shorthand is resolved against now and then placed on that date.
 - The dropdown is intentionally minimal — extend [`TimePickerDropdown`](/api/component/input/classes/TimePickerDropdown) to add 12-hour formatting or seconds.
 - Right-clicking the inner text input opens a Cut/Copy/Paste menu; Cut/Paste re-parse the field the same way typing does.
 - A time field whose parent re-commits it at the rectangle it already holds is not re-laid-out (see [the write is diffed](/concepts/layout-system#the-write-is-diffed)). Its own pass reads only its content box, and `setValue`, typing and a pick from the dropdown are value writes on the inner input; the shared single-line box height is relayed on every theme change. The opt-in is this field's, not `AbstractPickerField`'s, so [`DateTimeField`](/components/DateTimeField) and [`FileField`](/components/FileField) keep being laid out on every commit. The inner input and the trigger button opt in too, so a settled field's own pass does not re-lay *them* out either. A resize does: it moves both rectangles, and a change in the field's height is what re-centres the button's glyph. The value writes above are attribute writes on the inner input and need no pass at all, and a theme or web-font swap lays every opted-in component out once.
