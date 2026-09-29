@@ -1844,6 +1844,7 @@ defect than was recorded.
 | `Notification`'s dismiss timer routes through the **`DOMSink` seam** — the last of the phase-2 residue, and the third instance of this defect after `TableHeader`'s debounce and `Animation`'s fallbacks. | `notification-dismiss-timer-seam` |
 | The docs site's injected demos **match the prose column**: the left inset prose blocks already get, plus top and bottom insets so a demo's rhythm stops depending on what precedes it. This is what the `absolute-sizing` demo's odd appearance actually was — `DocsContent.ts:440` passes `proseMargin` to the missing-demo fallback but not to the real `DocsDemo`, and `:140`'s `spacing: 0` leaves vertical rhythm to CSS margins that a component tree does not have, which is why the missing gap was intermittent. | `docs-demo-prose-alignment` |
 | The demo app's 32 panels get **a category tree in a `Split`**, rather than nested tabs, an activity rail, or a scrolling tab strip. | `demo-app-category-navigation` |
+| The library gap that work uncovered is **closed first, upstream**, rather than worked around in the demo app: `Card` gains a caller-supplied key so a deferred child can be selected unbuilt, which only `Tab` could express before. Chosen over shipping the demo rebuild with an app-level lazy record, on the ground that the demo app exists to exercise the library rather than to route around it. | `card-deferred-child-keys` |
 | The two public events v0.10.0 shipped without notes — `TableHeaderEvent`'s `"columnresizeend"` and `HeaderCellEvent`'s `"resizeend"`, confirmed by diffing both aliases against the `v0.9.0` tag — are recorded in `changelog/next.md`, treating 0.10.0's published notes as immutable. Done 2026-09-29. | — |
 | The in-engine debt is discharged by **one combined sweep**, not four isolated revert builds. | — |
 | **The campaign stays open** until the manual checks and that sweep are done, then closes in one pass with the results recorded here. Closing now and demoting the residue to an ordinary backlog was rejected, so that evidence and outcome stay in one place. | — |
@@ -1944,8 +1945,15 @@ doc comments spread across many library sources and wants a quiet tree.
 | 1 | `docs-api-warning-clearance` |
 | 2 | `animation-finish-transition-clear` |
 | 3 | `rail-minimize-restore-event-pairing` (depends on phase 2; shares `Rail.ts`, `AbstractWindow.ts`, `changelog/next.md`) |
-| 4 | `document-cache-reset-registry`, `docs-demo-prose-alignment`, `demo-app-category-navigation` — no file overlap between them |
-| 5 | `notification-dismiss-timer-seam`, after the registry's `core/DOM.ts` edits land |
+| 4 | `document-cache-reset-registry`, `docs-demo-prose-alignment`, `card-deferred-child-keys` — no file overlap between the three |
+| 5 | `demo-app-category-navigation` (depends on phase 4's `Card` change), `notification-dismiss-timer-seam` (after the registry's `core/DOM.ts` edits land) |
+
+Phases 4 and 5 must stay adjacent in that order for a second reason:
+`card-deferred-child-keys`' only manual verification is "start the demo app,
+click three sections, return to the first", which cannot run until the demo-app
+plan is on top of it. Its sixteen offline cases carry the fix on their own, so
+this is a sequencing constraint rather than a gap, and the demo-app plan's own
+manual step 5 exercises that path — the two are deliberately not run twice.
 
 Note that `changelog/next.md` is shared by four of the seven, so it is the file
 the chain rebase will conflict on; keep each plan's diff to it minimal and edit
