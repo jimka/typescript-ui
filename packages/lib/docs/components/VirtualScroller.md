@@ -64,6 +64,7 @@ class MyList extends Component {
 | `getRowsContainer()` | The `<div>` to append pool rows into. |
 | `getScrollX()` / `getScrollY()` | Current scroll positions. |
 | `setScrollX(x)` / `setScrollY(y)` | Clamp against last-known content size, update transform, fire `onScroll`. |
+| `getContentHeight()` / `setContentHeight(h)` | Read or replace the last-known content height without clamping or re-laying out the scrollbars — for content that changed between renders, so a `setScrollY` before the next render clamps against the new height. |
 | `clampToContent(w, h)` | Loose clamp using full viewports. Call at the start of `renderWindow`. |
 | `layoutScrollbars(w, h)` | Tight clamp using effective viewports (cross-axis scrollbar reservation), then position scrollbars + push metrics. Call at the end of `renderWindow`. |
 
