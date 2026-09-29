@@ -1274,3 +1274,337 @@ entry for `CodeEditorSelection`'s two new fields and the widened
     constructs the source surface genuinely has no notion of, and the
     consumer-visible effect (a greyed-out Table button, an Alignment menu
     showing "Default") is the honest one.
+
+---
+
+## Implementation Notes
+
+- **Guard counts matched exactly.** Step 4's `grep -c 'this.isSourceMode()'`
+  read 30 (the 29 Phase 0 guards plus `paste`'s) and Step 25's
+  `grep -c 'if (this.isSourceMode()) { return this; }'` read 12
+  (`patchSelectionStyle`, `setBlockAlignment`, `setColumnCount`, and the nine
+  table-structure commands) on the first count, both against the file as it
+  actually stood at that point in implementation — no mismatch to report.
+
+- **The offline "pressing Bold twice" round-trip doesn't hold as literally
+  stated.** Phase 1's Expected Behaviour says a second `toggleBold()` on the
+  same editor, with no injected view, returns `'**hello** world'` to
+  `'hello world'`. It doesn't: offline, `CodeEditor.getSelection()`
+  always reports a collapsed caret at document offset 0 (per its own
+  specified default), and after the first press the character at offset 0 is
+  the leading `*` marker, not a word character — so `BOLD_SOURCE`'s
+  normalised-range rule (a collapsed caret expands only to an *immediately
+  adjacent* run of word characters, per its own spec) correctly declines the
+  second press as a no-op rather than undoing the first. The round-trip only
+  holds when the second press's caret is where a live CodeMirror view would
+  actually leave it, inside the just-inserted markers. Both specs (the
+  offline `getSelection()` default and the collapsed-caret expansion rule)
+  are implemented exactly as written; they just don't compose the way that
+  one Expected-Behaviour sentence assumed. The test for it
+  (`markdown-editor.test.ts`, `'MarkdownEditor source-mode commands'` ›
+  `'pressing bold twice returns the original'`) now demonstrates the
+  round-trip by injecting a duck-typed view for the second press (mirroring
+  a live view's actual caret position) and asserting the dispatched
+  transaction, rather than asserting `getValue()` against the fully-offline
+  default caret. No source code changed as a result of this finding.
+
+- **`insertParagraphBeforeBlock` / `insertParagraphAfterBlock` insert two
+  newlines, not the one the plan specifies.** Phase 2 specifies inserting
+  "a `\n`  … leaving the caret on the new blank line". A single newline does
+  not produce a paragraph *outside* the block: it leaves the caret on a line
+  directly adjacent to the quote, list, table or fence, which Markdown reads
+  as a lazy continuation, so text typed there re-parses straight back into
+  that block (`> q` + typing gives `> q\n> p`; a table gains a `| p |  |`
+  row; a list stays one list). Inserting `"\n\n"`, and landing the caret past
+  both newlines for the `after` case, gives the blank separator line the
+  command's own contract needs. This is a deviation from the plan's literal
+  text in service of the behaviour the plan's own description asks for
+  ("insert an empty paragraph … before/after the block"). Pinned by two tests
+  that type into the inserted line and assert the resulting top-level block
+  types, rather than only asserting the inserted text.
+
+- **`copy`/`cut`'s source-mode guard is not written in Step 16's literal
+  form.** Step 16 gives the guard as a single line,
+  `if (this.isSourceMode()) { this._codeEditor.copy(); return this; }`, but
+  the global `CODE_CONVENTIONS.md` requires one statement per line and a
+  blank line before every `return`, and that snippet packs two statements onto
+  one line with no blank line before the `return`. Both guards are therefore
+  written as a normal four-line block. (Single-line braced `if` bodies as such
+  are fine and do have precedent in this repo — e.g. `layout/Border.ts` and
+  `component/table/Body.ts` — so it is the two-statements-per-line part, not
+  the one-line form, that the snippet got wrong.) The conventions document
+  wins over a plan's incidental formatting of a snippet; behaviour is
+  identical.
+
+- **`npm run docs:api` reports 14 warnings, all pre-existing.** The plan's
+  checks ask for 0 link warnings. The run is 0 errors / 14 warnings, and none
+  of the 14 names a symbol this branch adds — they sit in `SpatialNavigation`,
+  `rankInDirection`, `FieldDecorator`, `MarkdownViewer` and five
+  `MarkdownEditor` `{@link}`s this branch never touched, and they are present
+  on `master` at the branch point too. The branch introduces no new warning;
+  the plan's "0 warnings" bar was already unmet before it.
+
+- **`tableSource`'s blank-line separator is decided from the line above the
+  insertion point, not from the caret's own line.** The plan asks for "a blank
+  line (unless one is already there)" above the table. The first implementation
+  keyed that off whether the *caret's* line was blank, which cannot answer the
+  question: the insert lands at that line's start, so the caret's line ends up
+  *below* the table. It produced two blank lines above a table inserted on a
+  non-blank line (`'para\nhello'`), two at the document start where none is
+  wanted, and none at all when the caret sat on a blank line under a heading —
+  the table then abutted the heading. The separator is now `"\n"` when the
+  preceding line is non-blank and `""` when it is blank or the table lands at
+  offset 0. Both branches are covered; before this, every test drove
+  `tableSource` with `''`, so the separator branch never ran and no test
+  asserted the surrounding blank lines.
+
+  Residual, and deliberately left: when the caret sits on a pre-existing blank
+  line, that line survives *below* the table, so the table can carry two blank
+  lines beneath it instead of one. Removing it would mean consuming the line's
+  terminator, which the plan does not ask for; the plan specifies only the
+  leading separator and "a trailing blank line", and both shapes re-space
+  canonically on the next `setMode("wysiwyg")`.
+
+- **The hand-resolved changelog conflict initially dropped a blank line.**
+  `master` moved during implementation and added its own `next.md` entry, so the
+  rebase conflicted. The union resolution (master's entry first, this branch's
+  after) left `## Added` with no preceding blank line — the only such heading in
+  `docs/reference/changelog/`. Restored; every heading in the file is now
+  preceded by one.
+
+### Whole-stack review fixes
+
+A review of the whole unmerged Markdown stack ran after this branch was
+finished; these are its findings against this branch, fixed here and folded
+into the commits they belong to.
+
+- **C3 — a link's title was read as part of its URL.** The link locator took
+  everything inside the parentheses as the URL, so for `[docs](/d "Title")`
+  `linkUrl` was `/d "Title"` and `toggleLink("/e")` dropped the title. The
+  pattern now follows CommonMark's inline-link grammar — a `<…>` or
+  whitespace-free destination, then an optional `"…"`, `'…'` or `(…)` title —
+  so `linkUrl` is the destination alone (angle brackets stripped) and an
+  in-place URL update keeps the title as written.
+- **C8 — three `CodeEditor` comments still described the old
+  `"selectionchange"` dedup** (character and line count only): the
+  `CodeEditorEvent` doc, `_lastSelection`, and the public
+  `on("selectionchange")` overload. All three, and `readSelection`'s own
+  summary, now describe the four-field dedup, including that a same-length
+  selection moved elsewhere fires.
+- **C9 — `tableSource`'s JSDoc** said the separator is skipped when the
+  caret's line is blank (the code checks the line above the insertion point,
+  per the earlier note above) and said "`rows` unaligned … columns". Both
+  corrected.
+- **F13 — `clearFormatting` orphaned markers and ate thematic breaks.** It
+  deleted only the marker characters inside the selection, so selecting `d**`
+  in `a **bold** b` gave `a **bold b` (likewise a code span's closing
+  backtick), and a selected `***` thematic break was deleted outright. It now
+  pairs markers the way Markdown reads them — code spans first, then a
+  simplified CommonMark delimiter-stack pass over `*`, `~~` and `++` runs with
+  the flanking rules, backslash escapes and the rule of three, one paragraph
+  at a time — and removes every whole pair the selection touches, both
+  markers together. A thematic break, a list bullet, an escaped marker, a
+  marker inside a code span and a marker with no partner are never pairs, so
+  they are left alone; a selection touching no pair is declined. This
+  deliberately removes the *whole* pair even when the selection covers only
+  part of its text, rather than splitting the span the way WYSIWYG would.
+- **Advisory — inline toggles ignored CommonMark flanking.** `a hello.b`
+  toggled bold gave `a **hello.**b`, which Markdown reads as literal text,
+  while the selection state then reported bold. The marker-run measurement is
+  now flanking-aware (for `*`, `~` and `+`, as Lexical 0.49's importer
+  flanks all three; the viewer's `marked` rules flank `*` and `~` but read
+  `++` with no flanking test, so for `+` the check errs toward declining;
+  inline code has none), and a
+  toggle checks its own result: if the markers it would add would not read
+  back as that format, it declines.
+- **Advisory — a backslash just before the selection.** In `C:\Users`, bold
+  on `Users` produced `C:\**Users**`, whose first `*` is escaped. The same
+  result check covers it: an escaped opening marker (or, outside inline code,
+  an escaped closing one — a selection ending in `\`) does not count as a
+  marker, so the toggle declines. Inline code may still close after a
+  backslash, which is literal inside a code span.
+- **Advisory — no-op edits cost an undo step.** `CLEAR_FORMAT_SOURCE`,
+  `blockPrefixSource` and `FENCED_CODE_SOURCE` (`setBlockType("code")` on an
+  existing fenced block — the same defect class) now decline rather than
+  return an identical rewrite, as the styled-span transform does.
+  `listSource` was also named, but it cannot produce one: every path either
+  strips or adds a marker on at least one line. An exhaustive check over
+  ~3.5 million small documents and selections built from list, quote,
+  heading, fence and text atoms found no identical rewrite, so no unreachable
+  guard was added.
+- **Advisory — `linkSource` wrapped an image's alt text**
+  (`![alt](src)` → `![[alt](/e)](src)`). The link locator now reports image
+  matches instead of skipping them; `toggleLink`/`removeLink` decline inside
+  one, and the selection state reports no `linkUrl` there.
+- **Advisory — `UNALIGNED_DELIMITER_CELL` re-implemented `formatDelimiterRow`
+  and its test hardcoded the row.** Reusing the helper from production code
+  would make this module import `markdownTableTransformer.ts`, a Lexical
+  module, breaking the leaf boundary the module is built on (no
+  DOM/Lexical/component dependency). Instead `formatDelimiterRow` is exported
+  and the test compares `tableSource`'s delimiter row against its output for
+  1, 3 and 5 columns, so a drift in either fails the suite.
+- **Advisory — `getSelectionState`'s `@returns`** said it returns the neutral
+  default before Lexical is built, which is untrue in source mode (it always
+  reads the raw Markdown there). Reworded per mode.
+- **`npm run docs:api` now reports 0 warnings** on this branch; the 14 noted
+  above were cleared on `master` since.
+- **Fuzz #4 — a line command unbalanced a code fence.** `blockPrefixSource`
+  and `FENCED_CODE_SOURCE` dropped every selected line matching a ` ``` `
+  fence, so a selection holding only a closing fence and the paragraph below
+  it (`` ```\nx\n```\n\npara *em* ``, `setBlockType("paragraph")`) deleted
+  that one fence and turned the rest of the document into code; `listSource`
+  prefixed fence lines with a marker. The line commands now find the
+  document's multi-line constructs first and decline a selection touching
+  one. A fenced code block (` ``` ` or `~~~`) whose lines are all selected is
+  the one exception, still converting as one unit with both fences dropped,
+  per this plan's ` ``` `/`hello`/` ``` ` → `hello` row; `listSource` declines
+  even that, since code lines are no list items.
+- **Fuzz #15 — line commands rewrote lines of other multi-line constructs.**
+  A heading on a definition's continuation line (`[r]:\n  /u` →
+  `[r]:\n##   /u`) destroyed the definition, and a heading or list marker on a
+  table row (`| c |` → `## | c |`) cut the table short. The same construct
+  scan declines a selection touching a table (header, delimiter or body row,
+  read the way `markdownTableExtension.ts` reads one), a link reference
+  definition with its continuation lines, an indented code block, a `:::`
+  fence line (the Markdown between two of them stays editable), or an HTML
+  block (CommonMark's seven start conditions, with their end conditions). The
+  scan stays line-based, as this module is: it reads top-level lines only, and
+  where a line is ambiguous it errs toward a construct, which only declines.
+- **Fuzz #16a — inline commands wrapped or split a table cell's paragraph
+  break.** A cell writes its paragraph breaks as a literal `\n\n`, which the
+  viewer splits the cell's text on; inline code over `a\n\nb` showed the
+  `\n\n` as literal text, and a wrap starting between the two `\n`s left a
+  lone `\n` that shows literally too. An inline toggle's wrap and a new
+  link's wrap now decline a range that holds or cuts into one inside a table;
+  the same characters in prose are ordinary text and still wrap.
+- **Fuzz (a) — a line command split a paragraph, and its other lines were
+  re-read on their own.** A heading or fence on the first line of a
+  paragraph that went on lazily or indented below left those lines to start
+  afresh after the new block: an indented line became code, a
+  definition-shaped line a (dropped) definition, and a setext underline
+  closed only the rest into a heading (`foo\nbar\n===` → `## foo\nbar\n===`).
+  Per case: `setBlockType` (heading, quote, paragraph) and `setBlockType("code")`
+  now **include** the whole paragraph — every line it continues onto, above
+  and below the selection — reading continuation with a line-based scan like
+  the rest of the module (a line continues the paragraph text above unless it
+  is blank, part of a construct, or starts a block that interrupts a
+  paragraph, read past shared quote markers; inside a list item any list
+  marker interrupts), and drop a setext underline with the rest of the block
+  syntax. A continuation line keeps a leading `2.` as its text rather than
+  losing it as a marker, and a new prefix drops the line's leftover
+  indentation. The list toggle keeps its one-item-per-selected-line reading
+  (the lines below still continue the last item lazily — WYSIWYG's own
+  meaning, the paragraph becoming the item), so there it **declines**
+  instead: when a selected continuation line would open something other than
+  text as an item's first line (a definition, an HTML block, a list item —
+  `ul` on `foo\n<span>`'s second line made an HTML block of it), when a line
+  below would interrupt the new item rather than continue it (`ol` on
+  `foo\n2. bar` made `2. bar` a second item), and on a setext heading, whose
+  underline would close the item into a heading. A new item also drops its
+  line's leftover indentation, which read as code after the marker.
+  `insertTable` likewise goes above the caret's whole paragraph instead of
+  splitting it, so `tableSource`'s separator test now starts from a heading
+  line above rather than a paragraph line.
+- **Fuzz (b) — a marker on a blank line joined the blocks around it.** A list
+  marker written onto a blank line (`foo\n\nbar` → `foo\n- \nbar`) read as
+  an empty item, which cannot interrupt a paragraph — `marked` took
+  `foo\n-` as a setext heading, and `1. ` as text continuing it, with the
+  block below continuing in turn. A blank line is no block, so the heading,
+  quote and list commands now leave blank lines blank: alone, the command
+  declines; inside a multi-block selection, only the non-blank lines get the
+  marker (`- foo\n\n- bar`, numbered across the gap), and a list toggles off
+  across the blank lines between its items.
+- **Fuzz (c) — a fence or table inside a list item ended the list.**
+  `setBlockType("code")` and `insertTable` wrote ` ``` ` and `|` rows at
+  column 0 on a list item's indented content, ending the list and leaving
+  the rest of the item outside it. Writing them at the item's indentation
+  instead would keep the list, but the WYSIWYG editor holds no code block or
+  table inside a list item and would keep the whole list as source, so both
+  **decline** there (a line indented under a list item marker, a nested
+  item's marker line included). A top-level item's own marker line still
+  converts, as before.
+- **Stack fuzz round 2 — an image inserted inside an image or a link's
+  destination.** `insertImage` replaced the selection wherever it sat, so the
+  caret in `![alt](/a.png)`'s alt text wrote a second image into the alt
+  text (`![al![i](/i.png)t](/a.png)`), and one in a link's destination cut
+  the link. `imageSource` now **declines** when either end of the selection
+  sits strictly inside an image (alt text, source or `{…}` size group) or
+  inside a link's syntax beyond its text (`](`, destination, title). A link's
+  text still takes an image (`[do![i](/i.png)cs](/d)`), and a selection
+  covering a whole link or image still replaces it.
+- **Stack fuzz round 3 — an image inserted across a table's structure.**
+  With the alt-text cases gone, the same check showed `insertImage` over a
+  table's row break (`|\n` selected) joining two rows, and one written
+  after a row's closing pipe standing as a cell past the header, which the
+  viewer drops — words lost beyond the selection. `imageSource` now also
+  declines when the selection touches a table's lines and does not lie
+  inside one cell (`cutsTableStructure`): it must sit on one header or body
+  row, not the delimiter row, hold no unescaped `|`, and stay between the
+  row's outer pipes. Inside a cell, an empty one included, it inserts.
+- **Stack fuzz round 3 — an image inserted on a `:::` fence's own lines.**
+  A caret in `::: columns {align=center}` wrote the image into the fence's
+  attribute group, and a selection over a fence or `|||` line removed it.
+  `imageSource` also declines when the selection touches an opening or
+  closing `:::` line or a `|||` separator (`touchesFenceLine`); a column's
+  own text still takes an image.
+- **Stack fuzz round 5 — an image inserted on a code fence's line.**
+  Replacing the three-space indentation of a ```` ``` ```` line with an image
+  (or writing one anywhere on an opening or closing fence line) ended the code block or
+  opened one elsewhere, so the lines it held — a definition, a heading — read
+  as something else. `touchesFenceLine` now also counts a fenced code block's
+  opening and closing lines, its indentation included, so `imageSource`
+  declines there as it does on a `:::` line; the code block's content lines
+  and the text around the block still take an image.
+- **Stack fuzz round 5 — a toggle must actually toggle (user-approved design
+  change).** This plan's inline-marker rule read a format as active only
+  when its markers sat *right around* the selection, and a press removed just
+  those. Text carrying the same format twice — `**foo, **bar** az**` bold over
+  `bar` — lost only the inner pair, so it stayed bold and the press looked
+  like it did nothing; a selection inside a longer run (`world` in
+  `**hello world**`) read as not bold at all. The user approved replacing the
+  rule: a format is active when any pair of it Markdown reads (the same
+  pairing `clearFormatting` uses) covers the normalised selection, however
+  far out, and the selection state reports exactly that. Pressing an active
+  format removes it from the whole selection, as the WYSIWYG toggle does:
+  every pair of it inside the outermost covering one is dropped, and that
+  pair's marker is written again around the text left before and after the
+  selection (`**foo,** bar **az**`, `**hello** world`, `**h**ell**o**`). The
+  split points step outward over whitespace, over the dropped markers and out
+  of another format's pair that opens or closes right at the selection
+  (`*a **b** c*` → `*a* **b** *c*`); a code span splits without moving past
+  its spaces, which are code. The result is re-read — the paragraphs' pairs
+  found again — and kept only when the selected text (and the whitespace at a
+  split) no longer shows the format and every other character reads as
+  before; otherwise the press declines. At this branch's line level a split
+  whose new markers would cross a link's brackets also declines
+  (`**[foo bar](/u)**`), since the link is no pair this reading can re-split.
+
+**Manual verification.** Run in the library demo (worktree dev server, **MD
+Editor** page, **Edit Markdown source** toggle), driven through
+chrome-devtools: Bold wraps the selected word, leaves it selected and keeps
+focus in the source editor; pressing it again unwraps it; one real
+**Ctrl+Z** restores both the text and the selection; pressing Bold with the
+caret near the bottom of a 200-line document leaves the scroll position
+unchanged; the five format buttons press and release as the caret moves
+through `**…**`, `*…*`, `++…++`, `~~…~~` and `` `…` `` runs; the **Table**
+button is disabled in source mode; **Insert › Table** writes the skeleton
+with the caret in the first header cell, renders as a table in WYSIWYG, and
+comes back with the delimiter row unchanged; the Bold button matched the
+caret's real state across a source → WYSIWYG → source round trip; and the new
+fixes behave live — Bold on `a hello.b` and on `Users` in `C:\Users` changes
+nothing, and the **Link…** dialog on `[docs](/d "Title")` is prefilled with
+`/d` and updating it gives `[docs](/e "Title")`. Not run live: the read-only
+flash (the demo has no read-only toggle for this editor; covered by unit
+tests), the Table button re-enabling with the caret in a WYSIWYG table, and
+`clearFormatting`, which the demo reaches only through the WYSIWYG context
+menu, so in source mode it is API-only and covered by unit tests.
+
+**Review fixes.** The source guard the plan spells as
+`if (this.editSource(<transform>)) { return this; }` is written in two lines
+at all 15 commands — `const handledBySource = this.editSource(<transform>);`
+then `if (handledBySource) { return this; }` — so no call sits directly in an
+`if` condition. Nothing behaves differently. A third review round did the
+same for `copy()`'s own guard, which names `isSourceMode()`'s result
+(`sourceMode`) before testing it; the guards of `cut()`, `paste()` and the
+commands that do nothing in source mode are named further up the stack,
+where later rounds rewrote them.
