@@ -6,6 +6,7 @@ import { Proxy, ReadParams } from '~/data/proxy/Proxy.js';
 import { AjaxError } from '~/data/proxy/AjaxError.js';
 import { Reader, JsonReader, JsonReaderMode } from '~/data/proxy/Reader.js';
 import { Writer, JsonWriter, JsonWriterMode } from '~/data/proxy/Writer.js';
+import { stringifyWithLocalDates } from '~/data/temporalValue.js';
 
 /**
  * Construction-time options for {@link AjaxProxy}.
@@ -185,7 +186,10 @@ export class AjaxProxy extends Proxy {
         }
 
         if (params.filters != null && params.filters.length > 0) {
-            search.set('filter', JSON.stringify(params.filters));
+            // A descriptor names a field but not its type, so every Date is
+            // written as local ISO 8601 with its offset: the same instant
+            // toISOString() names, plus the day and time the user saw.
+            search.set('filter', stringifyWithLocalDates(params.filters));
         }
 
         const query = search.toString();

@@ -5,6 +5,7 @@ import type { Reader, ReadResult } from '~/data/proxy/Reader';
 import type { Writer } from '~/data/proxy/Writer';
 import { Model } from '~/data/Model';
 import { ModelRecord } from '~/data/ModelRecord';
+import { toLocalIsoString } from '~/data/temporalValue';
 
 const MODEL = new Model([{ name: 'id' }, { name: 'name' }], 'id');
 
@@ -130,6 +131,19 @@ describe('AjaxProxy', () => {
         const calledUrl = fetchMock.mock.calls[0][0] as string;
         expect(calledUrl).toContain('sort=' + encodeURIComponent(JSON.stringify([{ field: 'name', dir: 'asc' }])));
         expect(calledUrl).toContain('filter=' + encodeURIComponent(JSON.stringify([{ type: 'eq', field: 'name', value: 'Bob' }])));
+    });
+
+    it('read() writes a filter Date as local ISO 8601 with its offset', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(okResponse([]));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const day   = new Date(2026, 5, 28);
+        const proxy = new AjaxProxy({ url: '/api/users' });
+        await proxy.read({ filters: [{ type: 'gte', field: 'd', value: day }] });
+
+        const calledUrl = new URL(fetchMock.mock.calls[0][0] as string, 'http://host');
+        const filter    = JSON.parse(calledUrl.searchParams.get('filter')!);
+        expect(filter).toEqual([{ type: 'gte', field: 'd', value: toLocalIsoString(day) }]);
     });
 
     it('read() omits sort= and filter= when no descriptors are given', async () => {
