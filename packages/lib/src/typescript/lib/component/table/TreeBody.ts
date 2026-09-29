@@ -149,6 +149,16 @@ class TreeBody extends _Body {
      */
     private _treeStateRecords: WeakMap<Row, ModelRecord> = new WeakMap();
 
+    // The row list a motion renders: `_flatRows` for an expand, the
+    // pre-collapse list (with the toggled record's own entry patched back to
+    // `expanded: false`, see `collapsingMotionRows`) for a collapse. Read only
+    // while a motion runs, via `renderedFlatRows`; `null` when idle.
+    // `_motionRecords` caches `_motionRows.map(f => f.record)` so
+    // `getRenderedRecords` returns a stable array `Body` can index into.
+    // Framework-managed, no option.
+    private _motionRows:    FlatRecord[] | null  = null;
+    private _motionRecords: ModelRecord[] | null = null;
+
     /**
      * Constructs a TreeBody bound to the given store, configured by the
      * tree spec.
@@ -321,6 +331,13 @@ class TreeBody extends _Body {
      * Expands or collapses the given record. No-op for leaves and for
      * records not present in the current store view.
      *
+     * The change commits at once — `isExpanded` and `getFlatRecords` reflect
+     * it before this method returns — and a single toggle then animates the
+     * affected rows over 200ms, unless it fails one of the conditions in
+     * `commitWithRowMotion` (a block taller than the viewport, a commit that
+     * moves the scroll offset, `prefers-reduced-motion: reduce`), in which
+     * case it snaps.
+     *
      * @param record - The record to expand or collapse.
      * @param expanded - `true` to expand, `false` to collapse.
      *
@@ -334,23 +351,34 @@ class TreeBody extends _Body {
             return this;
         }
 
-        if (expanded) {
-            if (this._expanded.has(id)) {
-                return this;
-            }
-
-            this._expanded.add(id);
-        } else {
-            if (!this._expanded.has(id)) {
-                return this;
-            }
-
-            this._expanded.delete(id);
+        if (expanded ? this._expanded.has(id) : !this._expanded.has(id)) {
+            return this;
         }
 
-        this.flatten();
-        this.invalidateRowBindings();
-        this.renderWindow();
+        const before    = this._flatRows;
+        const scheduled = this.commitWithRowMotion(record, expanded, () => {
+            if (expanded) {
+                this._expanded.add(id);
+            } else {
+                this._expanded.delete(id);
+            }
+
+            this.flatten();
+            this.invalidateRowBindings();
+            this.renderWindow();
+
+            const rows = expanded ? this._flatRows : this.collapsingMotionRows(before, record);
+
+            this._motionRows    = rows;
+            this._motionRecords = rows.map(f => f.record);
+
+            return this.rowMotionBlock(rows, rows.findIndex(f => f.record === record));
+        });
+
+        if (!scheduled) {
+            this._motionRows    = null;
+            this._motionRecords = null;
+        }
 
         return this;
     }
@@ -523,6 +551,65 @@ class TreeBody extends _Body {
     }
 
     /**
+     * The flat-record list the current render pass should read: the motion
+     * row list while a row motion is running, `_flatRows` otherwise.
+     */
+    private renderedFlatRows(): FlatRecord[] {
+        return this.isRowMotionRunning() && this._motionRows !== null ? this._motionRows : this._flatRows;
+    }
+
+    /**
+     * {@link Body.getRenderedRecords} override: substitutes the motion row
+     * list's records while a row motion is running, so every bound-index
+     * lookup in `Body` (selection, the focus ring, range highlight,
+     * `aria-activedescendant`, the click repaint) reads the same list the
+     * render pass just bound from.
+     *
+     * @param visible - This pass's committed visible-record list.
+     * @returns `visible`, or the motion row list's records while a motion runs.
+     */
+    protected getRenderedRecords(visible: ModelRecord[]): ModelRecord[] {
+        return this.isRowMotionRunning() && this._motionRecords !== null ? this._motionRecords : visible;
+    }
+
+    /**
+     * Called whenever the row list a motion renders switches: on a motion's
+     * first frame and on its end, settled or stopped. `Body` binds pool
+     * slots by index, so a list switch has to force every visible slot
+     * through a full rebind — an index that kept the same record in the old
+     * list can hold a different one in the new list.
+     */
+    protected onRowMotionRowsChanged(): void {
+        if (this._motionRows !== null && this._motionRows !== this._flatRows) {
+            this.invalidateRowBindings();
+        }
+
+        if (!this.isRowMotionRunning()) {
+            this._motionRows    = null;
+            this._motionRecords = null;
+        }
+    }
+
+    /**
+     * Returns a copy of `before` whose entry for `record` has `expanded`
+     * patched to `false` — the row list a collapse motion renders while it
+     * plays.
+     *
+     * @param before - The flat-record list as it stood immediately before
+     *   the collapse committed (still showing the collapsing record's children).
+     * @param record - The record being collapsed.
+     * @returns `before`, with the collapsing record's own entry re-marked collapsed.
+     *
+     * @remarks `FlatRecord` bakes `expanded` in, so without this the
+     * collapsing parent's toggle and `aria-expanded` would read "expanded"
+     * for the length of the motion, even though the commit already flipped
+     * the persisted state.
+     */
+    private collapsingMotionRows(before: FlatRecord[], record: ModelRecord): FlatRecord[] {
+        return before.map(entry => entry.record === record ? { ...entry, expanded: false } : entry);
+    }
+
+    /**
      * Constructs a row carrying a {@link TreeCellRenderer} on the tree
      * column.
      *
@@ -561,7 +648,7 @@ class TreeBody extends _Body {
     protected computeRowAria(row: Row, dataIndex: number): void {
         super.computeRowAria(row, dataIndex);
 
-        const flat = this._flatRows[dataIndex];
+        const flat = this.renderedFlatRows()[dataIndex];
 
         if (!flat) {
             return;
@@ -588,7 +675,7 @@ class TreeBody extends _Body {
      */
     protected afterRowBound(row: Row, dataIndex: number, wasRebound: boolean): void {
         const treeCell = row.getTreeCell();
-        const flat     = this._flatRows[dataIndex];
+        const flat     = this.renderedFlatRows()[dataIndex];
 
         if (treeCell && flat) {
             const renderer = treeCell.getRenderer() as TreeCellRenderer<any>;
@@ -928,9 +1015,11 @@ class TreeBody extends _Body {
      * focus + active-descendant indicators. Mirrors the trailing
      * `selectRecord + scrollRecordIntoView + renderWindow +
      * _updateActiveDescendant + _updateFocusStyle` sequence the base
-     * `Body.onKeyDown` runs after row-nav keys.
+     * `Body.onKeyDown` runs after row-nav keys, including its settling of a
+     * running expand when `record` is one of the rows still fading in.
      */
     private moveFocusTo(record: ModelRecord): void {
+        this.settleRowMotionIfEntering(this._flatRows.findIndex(f => f.record === record));
         this.selectRecord(record);
         this.scrollRecordIntoView(record);
         this.renderWindow();
@@ -979,6 +1068,8 @@ class TreeBody extends _Body {
      * absent from the `_expanded` set.
      */
     private flatten(): void {
+        this.stopRowMotion();
+
         const rows: FlatRecord[] = [];
 
         const recurse = (records: ModelRecord[], depth: number): void => {

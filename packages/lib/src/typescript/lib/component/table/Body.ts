@@ -544,6 +544,25 @@ class TableBody extends VirtualRowView<Row> {
     }
 
     /**
+     * Returns the record list the current render pass should bind pool rows
+     * from, given the committed visible list. The default is `visible` itself
+     * — a plain `Table` never calls this a second time, so this is a
+     * zero-cost identity for it.
+     *
+     * @param visible - This pass's committed visible-record list, from {@link getVisibleRecords}.
+     * @returns The list to render this pass.
+     *
+     * @remarks Subclassing seam — `TreeBody` overrides this to substitute its
+     * motion row list's records while a row motion is running, so every
+     * bound-index lookup below (selection, the focus ring, range highlight,
+     * `aria-activedescendant`, the click repaint) reads the same list the
+     * render pass just bound from. Not for consumer use.
+     */
+    protected getRenderedRecords(visible: ModelRecord[]): ModelRecord[] {
+        return visible;
+    }
+
+    /**
      * Returns the model's non-hidden fields, in display order — the same
      * list every pooled `Row.setColumnFields` derives independently.
      *
@@ -604,17 +623,19 @@ class TableBody extends VirtualRowView<Row> {
     /**
      * Updates the ARIA attributes that depend on a row's current data
      * index. Default behaviour writes only `aria-rowindex` (the +2
-     * accounts for the 1-based ARIA spec plus the header band).
+     * accounts for the 1-based ARIA spec plus the header band), from the
+     * row's committed index, so rows below a collapsing block announce
+     * their final position while the block slides away.
      *
      * @param row - The pool row whose ARIA attributes to update.
-     * @param dataIndex - The row's index into the visible-records list.
+     * @param dataIndex - The row's index into the rendered-records list.
      *
      * @remarks Subclassing seam — `TreeBody` overrides this to additionally
      * set `aria-level`, `aria-expanded`, `aria-setsize`, and
      * `aria-posinset` from the flat record entry. Not for consumer use.
      */
     protected computeRowAria(row: Row, dataIndex: number): void {
-        row.getAria().setRowIndex(dataIndex + 2);
+        row.getAria().setRowIndex(this.rowMotionCommittedIndex(dataIndex) + 2);
     }
 
     /**
@@ -1238,7 +1259,8 @@ class TableBody extends VirtualRowView<Row> {
      */
     private renderWindowPass(): void {
         const scroller = this._scroller!;
-        let records   = this.getVisibleRecords();
+        let visible   = this.getVisibleRecords();
+        let records   = this.getRenderedRecords(visible);
         let totalRows = records.length;
 
         // Capture scroll positions before clampToContent / layoutScrollbars
@@ -1252,7 +1274,7 @@ class TableBody extends VirtualRowView<Row> {
 
         // Loose-clamp scroll positions against the new content sizes before
         // reading them for the window calc.
-        let totalHeight         = totalRows * this._rowHeight;
+        let totalHeight         = this.rowMotionContentHeight(totalRows);
         const totalColumnWidth  = this._lastColumnWidths.reduce((s, w) => s + w, 0);
         const totalContentWidth = Math.max(this._lastBodyWidth, totalColumnWidth);
 
@@ -1275,13 +1297,14 @@ class TableBody extends VirtualRowView<Row> {
         // discarding the cell that holds it. A commit can change what a
         // filtered/sorted store returns, so the row count is re-read.
         if (this.commitEditsOutsideWindow(this._colWindow)) {
-            records   = this.getVisibleRecords();
-            totalRows = records.length;
-            totalHeight = totalRows * this._rowHeight;
+            visible     = this.getVisibleRecords();
+            records     = this.getRenderedRecords(visible);
+            totalRows   = records.length;
+            totalHeight = this.rowMotionContentHeight(totalRows);
         }
 
         const visibleHeight = this.getHeight() || 0;
-        const win = this.computeVisibleWindow(scroller.getScrollY(), visibleHeight, totalRows);
+        const win = this.computeVisibleWindow(scroller.getScrollY(), visibleHeight + this.rowMotionOverhang(), totalRows);
 
         const poolTarget = this.computePoolTarget(win.windowSize, visibleHeight, totalRows);
         this.growRowPool(poolTarget);
@@ -1289,9 +1312,9 @@ class TableBody extends VirtualRowView<Row> {
         this.bindAndPositionRows(win.firstRow, win.windowSize, rowWidth, records, this._colWindow, slidePlan);
         this.hideExcessPoolRows(win.windowSize);
 
-        if (totalRows !== this._lastAriaRowCount) {
-            this.getAria().setRowCount(totalRows);
-            this._lastAriaRowCount = totalRows;
+        if (visible.length !== this._lastAriaRowCount) {
+            this.getAria().setRowCount(visible.length);
+            this._lastAriaRowCount = visible.length;
         }
 
         scroller.layoutScrollbars(totalContentWidth, totalHeight);
@@ -1306,6 +1329,39 @@ class TableBody extends VirtualRowView<Row> {
         }
 
         this._updateFocusStyle();
+
+        // A motion pass can move the anchor record's row to another pool
+        // slot, and so to another cell (see noteRowMotionPass); the pointer
+        // follows the same slot the focus ring just did.
+        if (this.noteRowMotionPass()) {
+            if (this._anchorRecord) {
+                this.pointActiveDescendantAt(this.focusRingPoolSlot());
+            } else {
+                this.getAria().setActiveDescendant("");
+            }
+        }
+    }
+
+    /**
+     * The pool slot bound to the anchor record, found by scanning the pool's
+     * bound slots for the record itself — O(pool), where
+     * {@link _updateActiveDescendant}'s index lookup rebuilds and searches the
+     * whole rendered-record list — or `-1` when no bound row shows it. Read
+     * through {@link focusRingPoolSlot} by every render pass, every frame of a
+     * row motion included, which is why it avoids the record list.
+     */
+    private anchorPoolSlot(): number {
+        for (let i = 0; i < this._rowPool.length; i++) {
+            const row = this._rowPool[i];
+
+            // A separator row keeps the record it showed before it became a
+            // separator, so it must not match.
+            if (this._boundIndices[i] >= 0 && !row.isSeparator() && row.getData() === this._anchorRecord) {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     /**
@@ -1459,7 +1515,8 @@ class TableBody extends VirtualRowView<Row> {
                     this.computeRowAria(row, dataIndex);
                 }
 
-                this.positionRow(i, dataIndex * rowHeight, rowWidth);
+                this.positionRow(i, this.rowMotionY(dataIndex), rowWidth);
+                this.applyRowMotionStyle(i, dataIndex);
                 row.getComponents()[0].applyBounds(0, 0, rowWidth, rowHeight);
 
                 continue;
@@ -1485,7 +1542,10 @@ class TableBody extends VirtualRowView<Row> {
                 row.setData(records[dataIndex]);
 
                 this._boundIndices[i] = dataIndex;
-                row.setStripe(dataIndex % 2 === 1);   // odd logical rows carry the zebra stripe; set before the paint below
+                // Odd committed rows carry the zebra stripe, so rows below a
+                // collapsing block show their final stripe at once; set
+                // before the paint below.
+                row.setStripe(this.rowMotionCommittedIndex(dataIndex) % 2 === 1);
                 this.updateRowVisualState(i, records);
                 this.computeRowAria(row, dataIndex);
             }
@@ -1506,7 +1566,8 @@ class TableBody extends VirtualRowView<Row> {
 
             this.applyRequiredEmptyState(row, records[dataIndex]);
 
-            this.positionRow(i, dataIndex * rowHeight, rowWidth);
+            this.positionRow(i, this.rowMotionY(dataIndex), rowWidth);
+            this.applyRowMotionStyle(i, dataIndex);
 
             const cells = row.getComponents();
             let   x     = columns.lefts[columns.firstCol] ?? 0;
@@ -1581,8 +1642,10 @@ class TableBody extends VirtualRowView<Row> {
             { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey },
         );
 
+        const rendered = this.getRenderedRecords(records);
+
         this._boundIndices.forEach((dataIdx, i) => {
-            if (dataIdx !== -1) this.updateRowVisualState(i, records);
+            if (dataIdx !== -1) this.updateRowVisualState(i, rendered);
         });
 
         this.notifySelectionChange(before);
@@ -1735,10 +1798,11 @@ class TableBody extends VirtualRowView<Row> {
      *   helper doesn't re-query.
      */
     private refreshCellRangeHighlight(records: ModelRecord[]): void {
-        const bounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus, records);
+        const rendered = this.getRenderedRecords(records);
+        const bounds   = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus, rendered);
 
         this._boundIndices.forEach((dataIdx, i) => {
-            if (dataIdx !== -1) { this.updateCellRangeVisualState(i, records, bounds); }
+            if (dataIdx !== -1) { this.updateCellRangeVisualState(i, rendered, bounds); }
         });
     }
 
@@ -2290,7 +2354,7 @@ class TableBody extends VirtualRowView<Row> {
             this._selectedRecords.add(record);
         }
 
-        const records = this.getVisibleRecords();
+        const records = this.getRenderedRecords(this.getVisibleRecords());
 
         this._boundIndices.forEach((dataIdx, i) => {
             if (dataIdx !== -1) this.updateRowVisualState(i, records);
@@ -2336,7 +2400,7 @@ class TableBody extends VirtualRowView<Row> {
             this._selectedRecords.add(record);
         }
 
-        const visibleRecords = this.getVisibleRecords();
+        const visibleRecords = this.getRenderedRecords(this.getVisibleRecords());
 
         this._boundIndices.forEach((dataIdx, i) => {
             if (dataIdx !== -1) this.updateRowVisualState(i, visibleRecords);
@@ -2446,7 +2510,7 @@ class TableBody extends VirtualRowView<Row> {
             return;
         }
 
-        this.setScrollY(idx * this._rowHeight);
+        this.scrollToCommittedY(idx * this._rowHeight);
     }
 
     /**
@@ -2684,8 +2748,7 @@ class TableBody extends VirtualRowView<Row> {
             return;
         }
 
-        const anchorIdx = this.getVisibleRecords().indexOf(this._anchorRecord);
-        const poolSlotIdx = this._boundIndices.indexOf(anchorIdx);
+        const poolSlotIdx = this.focusRingPoolSlot();
 
         if (poolSlotIdx < 0) {
             return;
@@ -2703,6 +2766,33 @@ class TableBody extends VirtualRowView<Row> {
     }
 
     /**
+     * The pool slot whose row carries the focus ring — and, on a row-motion
+     * pass, `aria-activedescendant`: the slot bound to the anchor record,
+     * found by scanning the pool ({@link anchorPoolSlot}, O(pool)) rather than
+     * by rebuilding and searching the whole rendered-record list, since
+     * `_updateFocusStyle` runs on every render pass — every frame of a row
+     * motion and every scroll tick. `-1` when no bound row shows it.
+     *
+     * @returns The pool-slot index, or `-1`.
+     *
+     * @remarks A separator row keeps the record it showed before it became
+     * one, so the pool scan cannot see which record a separator row shows.
+     * An anchor that is itself a separator record — only a programmatic
+     * selection can make one — therefore keeps the index lookup, where the
+     * ring (and the pointer with it) lands on the separator row as it always
+     * has.
+     */
+    private focusRingPoolSlot(): number {
+        const anchor = this._anchorRecord;
+
+        if (anchor !== null && this._rowSeparator?.(anchor)) {
+            return this._boundIndices.indexOf(this.getRenderedRecords(this.getVisibleRecords()).indexOf(anchor));
+        }
+
+        return this.anchorPoolSlot();
+    }
+
+    /**
      * Sets `aria-activedescendant` on the body container to point at the focused cell (or row).
      *
      * @remarks Must be called after `renderWindow()` so the pool slot
@@ -2717,10 +2807,22 @@ class TableBody extends VirtualRowView<Row> {
             return;
         }
 
-        const anchorIdx = this.getVisibleRecords().indexOf(this._anchorRecord);
-        const poolSlotIdx = this._boundIndices.indexOf(anchorIdx);
+        const anchorIdx = this.getRenderedRecords(this.getVisibleRecords()).indexOf(this._anchorRecord);
 
-        if (poolSlotIdx < 0) {
+        this.pointActiveDescendantAt(this._boundIndices.indexOf(anchorIdx));
+    }
+
+    /**
+     * Points `aria-activedescendant` at the focused cell of the row in pool
+     * slot `poolSlotIdx` (or at the row itself when that column is outside
+     * the row's column window), or clears it when there is no such row. A
+     * leaving row of a running collapse motion counts as no row: it is
+     * hidden from assistive technology.
+     *
+     * @param poolSlotIdx - The anchor record's pool slot, or `-1` when none is bound.
+     */
+    private pointActiveDescendantAt(poolSlotIdx: number): void {
+        if (poolSlotIdx < 0 || this.isRowMotionLeavingSlot(poolSlotIdx)) {
             this.getAria().setActiveDescendant("");
 
             return;
@@ -2931,6 +3033,7 @@ class TableBody extends VirtualRowView<Row> {
 
         const newAnchor = records[newIdx];
 
+        this.settleRowMotionIfEntering(newIdx);
         this.selectRecord(newAnchor);
         this.scrollRecordIntoView(newAnchor);
         this.renderWindow();
@@ -2950,7 +3053,7 @@ class TableBody extends VirtualRowView<Row> {
             return undefined;
         }
 
-        const anchorIdx = this.getVisibleRecords().indexOf(this._anchorRecord);
+        const anchorIdx = this.getRenderedRecords(this.getVisibleRecords()).indexOf(this._anchorRecord);
         const poolSlotIdx = this._boundIndices.indexOf(anchorIdx);
 
         if (poolSlotIdx < 0) {
@@ -3054,6 +3157,7 @@ class TableBody extends VirtualRowView<Row> {
 
             const newAnchor = records[newIdx];
 
+            this.settleRowMotionIfEntering(newIdx);
             this.selectRecord(newAnchor);
             this.scrollRecordIntoView(newAnchor);
             this.renderWindow();

@@ -187,6 +187,11 @@ class TreeTable extends Table {
      * Expands or collapses the given record. No-op for leaves and for
      * records not present in the current store view.
      *
+     * The change commits at once — `isExpanded` and the flattened rows
+     * reflect it before this method returns — and a single toggle then
+     * animates the affected rows; see `TreeTable.md`'s Animation section
+     * for when it snaps instead.
+     *
      * @param record - The record to expand or collapse.
      * @param expanded - `true` to expand, `false` to collapse.
      *
