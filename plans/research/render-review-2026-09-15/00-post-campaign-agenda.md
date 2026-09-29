@@ -1852,3 +1852,101 @@ Four rail observations stand by decision rather than omission, each argued in
 `rail-handover-follow-ups`' own Architecture Decisions: the collapsed rail's
 hidden handle, `Rail.unmount`'s kept registrations, `setRail` not cancelling
 `_stateAnimHandle`, and `endRailCollapse`'s `transform-origin`.
+
+## What the seven plans found while drafting (2026-09-29)
+
+Every decision above became a plan the same day, each drafted in its own
+worktree off `master` by a fresh-context agent. Four of the seven corrected a
+premise **this file** supplied, which is worth recording as one pattern rather
+than four separate surprises: an agenda entry's numbers and scopes age faster
+than the code they describe.
+
+**Premise corrections.**
+
+- `docs:api` emits **17** warnings, not 14. `typedoc.json`'s three
+  `externalSymbolLinkMappings` `"#"` entries silently swallow three
+  type-reference warnings.
+- `tsc -p packages/lib/tsconfig.json` reports **37** errors, not 30: 25 unused
+  locals and 10 timer casts in tests, plus two `TS2322` in *library* sources.
+  The `include` clears all 37, verified by patching the config rather than
+  predicting — 0 errors, all 3,241 library files still in the program,
+  `@types/node` down from 82 files to 0, both child configs still green, and a
+  mutation probe proving the program really compiles the sources.
+- The transition-clear defect's "eight pairs" is **eleven same-element families
+  across nine classes**: `Dialog` and `Drawer` each animate a backdrop as well
+  as a panel, and `AbstractWindow` holds four handles against its own element.
+- "One `endRailCollapse()` call, plus a row pinning the fade's start state, is
+  the whole fix" is **wrong**. The call writes the resting state in the same
+  task as the fade's own `to`, and a CSS transition starts from the element's
+  state at the *previous* style recalculation, so the fade still animates out of
+  the mid-genie value. The close fade also needs a `from`, conditional on
+  `_railCollapseActive`, because `play`'s two-frame yield is what commits a
+  start state. An unconditional `from` was rejected: two frames on every close,
+  and it would snap a window closed mid-drag back.
+
+**Reachability, now established** for the transition truncation, and worse than
+this file assumed. Gesture-reachable in `AnimatedDropdown`/`PopupPanel`,
+`Menu`, `Popover`, both `Dialog` families, both `Drawer` families and
+`AbstractWindow`'s show-vs-close/minimize. Reachable in `Notification` only
+through the unclamped public `duration` parameter. Programmatic-only in
+`Tooltip` (the 500 ms hover delay) and `Rail` (the single-handle chevron
+toggle). So it is a live defect across most of the overlay surface rather than
+a latent one.
+
+**A fourth vacuity shape, found by drafting rather than by audit: a fix can
+render an *existing* row vacuous.** The central animation fix alone satisfies
+R13/R14's "exactly one clear" assertion, so afterwards deleting
+`animateRailCollapse`'s and `onExitAction`'s expand cancels would leave the
+suite green — a still-needed line pinned by nothing. That plan keeps the lines,
+adds a listener-release assertion to each row, and prescribes an explicit
+delete-and-revert mutation step; it also records that deleting the two cancels
+instead would make R13/R14 sharp pins needing no new assertions, if that trade
+is preferred. `rail-minimize-restore-event-pairing` checked for the same shape
+under its own change and found R9 does **not** go vacuous, nor does any other
+existing row. This shape belongs beside the three in the batch's methodological
+finding: it is the only one an audit of the *new* rows cannot catch.
+
+**New open items, none planned.**
+
+1. **Three types appear in public signatures and are never barrel-exported** —
+   `CellTextResolver`, `ColumnWindowSlidePlan`, `RetargetedCell`. A consumer
+   cannot name a type the API hands them. Hidden until now by the typedoc
+   mappings above; it needs an API change, so `docs-api-warning-clearance`
+   holds them out of scope and forbids a new mapping as a "fix".
+2. **Eleven bare timer arm sites remain across nine files**, eight of which
+   qualify for the `DOMSink` seam (the two `Tooltip` sites most strongly).
+   Three one-at-a-time conversions in — `TableHeader`'s debounce,
+   `Animation`'s fallbacks, and now `Notification`'s dismiss — the proposal is
+   a `local/no-raw-timer` ESLint rule on the existing baseline machinery rather
+   than a fourth conversion. The convention has failed; enforcement is the fix.
+3. **`Notification`'s static stack and counters survive `DOM.reset()`** — real,
+   and a stated Non-Goal of `notification-dismiss-timer-seam`.
+4. **`Tab` is the only layout manager that defers a factory.** `Card` selects by
+   a built child's component id, which an unbuilt child does not have, so the
+   demo app's lazy panel construction cannot move to `Card` without giving it a
+   caller-supplied key — a public API change `demo-app-category-navigation`
+   records in its Non-Goals rather than bundling. Whether that lands first is
+   open.
+
+**Two defects found in passing**, each now in the scope of the plan that found
+it: `Notification.destructor()` never clears `_dismissTimer`, so disposing a
+live toast leaves the timer armed and it fires; and the modelled DOM now throws
+on a dead handle, which makes `tests/core/Favicon.test.ts:44-46`'s comment
+false.
+
+**Suggested phase schedule**, from the plans' own `depends-on` and shared
+files. `docs-api-warning-clearance` goes first so that every plan after it is
+held to a zero-warning bar rather than a baseline, and because its diff is
+doc comments spread across many library sources and wants a quiet tree.
+
+| Phase | Plans |
+|---|---|
+| 1 | `docs-api-warning-clearance` |
+| 2 | `animation-finish-transition-clear` |
+| 3 | `rail-minimize-restore-event-pairing` (depends on phase 2; shares `Rail.ts`, `AbstractWindow.ts`, `changelog/next.md`) |
+| 4 | `document-cache-reset-registry`, `docs-demo-prose-alignment`, `demo-app-category-navigation` — no file overlap between them |
+| 5 | `notification-dismiss-timer-seam`, after the registry's `core/DOM.ts` edits land |
+
+Note that `changelog/next.md` is shared by four of the seven, so it is the file
+the chain rebase will conflict on; keep each plan's diff to it minimal and edit
+it late.
