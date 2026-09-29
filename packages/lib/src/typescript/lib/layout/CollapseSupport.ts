@@ -16,7 +16,7 @@ export const COLLAPSE_STRIP_SIZE = 18;
 // Accordion's 200ms default so the two surfaces share one motion personality;
 // kept as a code constant (not a theme token) for the same reason Accordion's
 // duration is — motion belongs to the layout, not the theme.
-const COLLAPSE_DURATION = 200;
+export const COLLAPSE_DURATION = 200;
 
 // Symmetric easing curve, identical to the Accordion's, so a collapse reads as
 // a time-reverse of a restore. A symmetric curve (`easing(t) + easing(1-t) = 1`)
@@ -280,7 +280,7 @@ function parseCubicBezier(css: string): (progress: number) => number {
 
 // JS twin of COLLAPSE_EASING, so the rAF geometry interpolation and the
 // clip-path CSS transition share one motion curve.
-const COLLAPSE_EASE = parseCubicBezier(COLLAPSE_EASING);
+export const COLLAPSE_EASE = parseCubicBezier(COLLAPSE_EASING);
 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 

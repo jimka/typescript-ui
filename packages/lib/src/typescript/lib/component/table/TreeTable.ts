@@ -45,8 +45,8 @@ export interface RowReparentDetail {
  *
  * One designated column — {@link TreeTableSpec.treeColumn} — renders
  * with an indent + expand/collapse toggle to the left of the value.
- * The toggle is a [`Glyph`](/api/component/display/classes/Glyph)
- * (`caret-down` / `caret-right`); the rest of the cell content is
+ * The toggle is an `angle-right` [`Glyph`](/api/component/display/classes/Glyph),
+ * turned 90° to point down when expanded; the rest of the cell content is
  * drawn by whichever typed renderer the column would normally use,
  * unchanged.
  *

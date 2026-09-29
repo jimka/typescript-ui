@@ -31,6 +31,15 @@ import { NumberCell } from '~/component/table/cell/Number';
 import { StringCell } from '~/component/table/cell/String';
 import { StringRenderer } from '~/component/table/cell/renderer/String';
 import type { ColumnConfig } from '~/component/table/ColumnConfig';
+import { Glyph } from '~/component/display/Glyph';
+import { caret_down } from '~/glyphs/solid/caret_down';
+import { caret_right } from '~/glyphs/solid/caret_right';
+
+// `Tree`/`TreeTable` no longer register `caret-down`/`caret-right` at module
+// load (they use the shared `angle-right` toggle now); this file's own glyph
+// cell fixtures, which use those two names as arbitrary example values, need
+// them registered directly.
+Glyph.register(caret_down, caret_right);
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },

@@ -141,6 +141,15 @@ class TreeBody extends _Body {
     private _reparentValidator: TreeBodyReparentValidator | null = null;
 
     /**
+     * The record each pool row's tree cell was last given via
+     * {@link afterRowBound}, so a toggle turns smoothly only for a row that
+     * kept its record — `Body` forces a full rebind on every toggle
+     * (`invalidateRowBindings`), so a row's own `wasRebound` flag can't tell
+     * it that.
+     */
+    private _treeStateRecords: WeakMap<Row, ModelRecord> = new WeakMap();
+
+    /**
      * Constructs a TreeBody bound to the given store, configured by the
      * tree spec.
      *
@@ -583,8 +592,10 @@ class TreeBody extends _Body {
 
         if (treeCell && flat) {
             const renderer = treeCell.getRenderer() as TreeCellRenderer<any>;
+            const animate  = this._treeStateRecords.get(row) === flat.record;
 
-            renderer.setTreeState(flat.depth, flat.hasChildren, flat.expanded);
+            renderer.setTreeState(flat.depth, flat.hasChildren, flat.expanded, animate);
+            this._treeStateRecords.set(row, flat.record);
         }
 
         if (this._reparentHandler === null) {

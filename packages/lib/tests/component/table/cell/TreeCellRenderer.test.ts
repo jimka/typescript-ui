@@ -1,9 +1,9 @@
 //
 // TreeCellRenderer arithmetic + delegation coverage. The renderer wraps a real
-// delegate renderer and (for branches) builds a caret Glyph through DOM.sink, so
-// the offline harness is installed. TreeCell.ts registers the "caret-down" /
-// "caret-right" glyphs at import time, so branch toggles construct without
-// throwing. getContentX is the load-bearing arithmetic contract; the rest is
+// delegate renderer and (for branches) builds a toggle Glyph through DOM.sink, so
+// the offline harness is installed. TreeToggle.ts registers the "angle-right"
+// glyph at import time, so branch toggles construct without throwing.
+// getContentX is the load-bearing arithmetic contract; the rest is
 // delegation + idempotence.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
@@ -105,7 +105,7 @@ describe('TreeCellRenderer tree state', () => {
         expect(branch.getToggle()).not.toBe(null);
     });
 
-    it('flipping expanded keeps the toggle instance and renames it to caret-down', () => {
+    it('flipping expanded keeps the toggle instance and turns it to point down', () => {
         const r = new TreeCellRenderer(new StringRenderer());
 
         r.setTreeState(0, true, false);
@@ -115,7 +115,35 @@ describe('TreeCellRenderer tree state', () => {
         r.setTreeState(0, true, true);
 
         expect(r.getToggle()).toBe(toggle);
-        expect(r.getToggle()!.getGlyphName()).toBe('caret-down');
+        expect(r.getToggle()!.getGlyphName()).toBe('angle-right');
+        expect(r.getToggle()!.getTransform()).toBe('rotate(90deg)');
+    });
+
+    it('a branch toggle reports angle-right at both rotations; the same holds via setTreeState', () => {
+        const r = new TreeCellRenderer(new StringRenderer());
+
+        r.setTreeState(0, true, false);
+        expect(r.getToggle()!.getGlyphName()).toBe('angle-right');
+        expect(r.getToggle()!.getTransform()).toBe('rotate(0deg)');
+
+        r.setTreeState(0, true, true);
+        expect(r.getToggle()!.getGlyphName()).toBe('angle-right');
+        expect(r.getToggle()!.getTransform()).toBe('rotate(90deg)');
+    });
+
+    it('setTreeState turns the toggle with a transition only when animate is true', () => {
+        const r = new TreeCellRenderer(new StringRenderer());
+
+        r.setTreeState(0, true, false);
+        r.setTreeState(0, true, true, true);
+        expect(r.getToggle()!.getTransition()).toBe('transform 200ms cubic-bezier(0.4, 0, 0.6, 1)');
+
+        r.setTreeState(0, true, false);
+        expect(r.getToggle()!.getTransition()).toBe(null);
+
+        const leaf = new TreeCellRenderer(new StringRenderer());
+        leaf.setTreeState(0, false, false);
+        expect(leaf.getToggle()).toBe(null);
     });
 
     it('a depth-only change on a branch touches neither the toggle instance nor the DOM', () => {
@@ -150,7 +178,8 @@ describe('TreeCellRenderer tree state', () => {
 
         r.setTreeState(0, true, true);
         expect(r.getToggle()).not.toBe(null);
-        expect(r.getToggle()!.getGlyphName()).toBe('caret-down');
+        expect(r.getToggle()!.getGlyphName()).toBe('angle-right');
+        expect(r.getToggle()!.getTransform()).toBe('rotate(90deg)');
     });
 
     it('a tree-cell toggle takes its pointer cursor from the shared tree-toggle trait', () => {

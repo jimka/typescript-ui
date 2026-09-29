@@ -70,9 +70,18 @@ import { List } from '~/component/list/List';
 import { Tree } from '~/component/tree/Tree';
 import { GlyphListItemRenderer } from '~/component/list/renderer/Glyph';
 import { IconLabelTreeNodeRenderer } from '~/component/tree/renderer/IconLabel';
+import { Glyph } from '~/component/display/Glyph';
+import { caret_down } from '~/glyphs/solid/caret_down';
+import { caret_right } from '~/glyphs/solid/caret_right';
 import { _ruleCacheKeys } from '~/core/StyleTarget';
 import { Diagnostics } from '~/core/Diagnostics';
 import { classesDeclaringDestructor } from '../helpers/libraryClassScan.mjs';
+
+// `Tree`/`TreeTable` no longer register `caret-down`/`caret-right` at module
+// load (they use the shared `angle-right` toggle now), but the "List (glyph
+// renderer)" and "Tree (icon renderer)" cases below still exercise those two
+// glyph names directly, so this file registers them itself.
+Glyph.register(caret_down, caret_right);
 
 /**
  * Recursively collects a component's own id plus every registered
@@ -510,8 +519,7 @@ const REGISTRY: Array<{
         },
     },
     {
-        // expandAll() rebinds the root row, so `setRowData` swaps its caret-right
-        // glyph for a caret-down one and the discarded caret is exercised.
+        // expandAll() rebinds the root row, so `setRowData` turns its toggle.
         name: 'Tree',
         covers: ['VirtualRowView', 'TreeRow', 'LabelTreeNodeRenderer'],
         make: () => {

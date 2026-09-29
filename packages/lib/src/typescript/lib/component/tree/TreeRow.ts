@@ -4,17 +4,13 @@ import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
-import { TREE_TOGGLE_TRAIT } from "~/core/StyleTraits.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
 import { TreeNodeRenderer } from "~/component/tree/TreeNodeRenderer.js";
 import { LabelTreeNodeRenderer } from "~/component/tree/renderer/Label.js";
 import { callable } from "~/core/Callable.js";
-import { caret_down } from "~/glyphs/solid/caret_down.js";
-import { caret_right } from "~/glyphs/solid/caret_right.js";
-
-Glyph.register(caret_down, caret_right);
+import { createTreeToggle, rotateTreeToggle } from "~/component/shared/TreeToggle.js";
 
 /** Width in pixels reserved for the expand/collapse toggle icon. Matches
  *  `TreeCell.ts`'s `TOGGLE_WIDTH`; keep the two in lockstep so a `Tree` and a
@@ -39,8 +35,9 @@ const SELECTED_BG = "var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))";
  * renderer are appended directly to the row's DOM element in `init()` rather
  * than via `addComponent`, so their preferred-size change notifications do not
  * propagate up to the Tree and trigger unnecessary layout passes. Leaf rows
- * have no toggle; non-leaf rows rename their caret between `caret-down` and
- * `caret-right` in place on each state change. The row
+ * have no toggle; non-leaf rows turn their toggle between pointing right
+ * (collapsed) and pointing down (expanded) in place on each state change,
+ * animating the turn only when the row keeps the same node. The row
  * content area (everything to the right of the toggle) is owned by a
  * [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer) supplied
  * via the constructor factory.
@@ -204,19 +201,20 @@ class TreeRow extends Component {
      * @param posInSet - 1-based position of this node among its siblings.
      * @param selected - Whether the node is currently selected.
      * @param loading - Whether this node's lazy children are currently loading;
-     *   when true a spinner replaces the toggle caret.
+     *   when true a spinner replaces the toggle.
      *
      * @remarks
      * The toggle/spinner block is skipped when `hasChildren`/`expanded`/`loading`
-     * all match what this row was last bound to — the same compare-then-rename
+     * all match what this row was last bound to — the same compare-then-update
      * pattern `IconLabelTreeNodeRenderer.update` and `GlyphListItemRenderer.update`
      * already use for their own icons. When they do differ, a branch row that
-     * stays an idle branch renames its existing caret rather than rebuilding it.
+     * stays an idle branch turns its existing toggle rather than rebuilding it.
      */
     setRowData(node: TreeNode, depth: number, hasChildren: boolean, expanded: boolean, siblingCount: number, posInSet: number, selected: boolean, loading: boolean): this {
         const toggleUnchanged = hasChildren === this._hasChildren
             && expanded === this._expanded
             && loading === this._loading;
+        const sameNode = node === this._node;
 
         this._node         = node;
         this._depth        = depth;
@@ -228,7 +226,7 @@ class TreeRow extends Component {
         this._loading      = loading;
 
         if (!toggleUnchanged) {
-            this.rebindToggle(hasChildren, expanded, loading);
+            this.rebindToggle(hasChildren, expanded, loading, sameNode);
         }
 
         this._renderer.update({ node, depth, expanded, selected, hasChildren });
@@ -243,8 +241,8 @@ class TreeRow extends Component {
 
     /**
      * Brings the toggle slot in line with a changed hasChildren / expanded /
-     * loading triple. A branch that stays an idle branch keeps its caret and
-     * only renames it — reaching that branch with a non-null toggle means the
+     * loading triple. A branch that stays an idle branch keeps its toggle and
+     * only turns it — reaching that branch with a non-null toggle means the
      * row was last bound as an idle branch too, so only `expanded` can have
      * moved. Any other change disposes what the slot held and builds what the
      * new state needs.
@@ -252,12 +250,13 @@ class TreeRow extends Component {
      * @param hasChildren - Whether the newly bound node has child nodes.
      * @param expanded - Whether the newly bound node is expanded.
      * @param loading - Whether the newly bound node's children are loading.
+     * @param animate - Whether an idle-branch turn should animate with the
+     *   shared transition instead of snapping. Only meaningful on the keep
+     *   path; a rebuilt toggle always starts at rest.
      */
-    private rebindToggle(hasChildren: boolean, expanded: boolean, loading: boolean): void {
-        const caret = expanded ? "caret-down" : "caret-right";
-
+    private rebindToggle(hasChildren: boolean, expanded: boolean, loading: boolean, animate: boolean): void {
         if (this._toggle && hasChildren && !loading) {
-            this._toggle.setGlyphName(caret);
+            rotateTreeToggle(this._toggle, expanded, animate);
 
             return;
         }
@@ -274,7 +273,7 @@ class TreeRow extends Component {
 
         if (loading) {
             // No explicit size: the spinner tracks the theme font-size so it
-            // reads as the same visual weight as the caret glyph it replaces,
+            // reads as the same visual weight as the toggle glyph it replaces,
             // and `layoutChildren` fits it into the TOGGLE_WIDTH box.
             const spinner = new ProgressSpinner();
             this._spinner = spinner;
@@ -284,11 +283,7 @@ class TreeRow extends Component {
                 DOM.sink.appendChild(el, spinner.getElement(true)!);
             }
         } else if (hasChildren) {
-            // The pointer cursor comes from the shared tree-toggle trait, so a
-            // caret built here inserts no stylesheet rule of its own.
-            const toggle = new Glyph(caret, { styleTrait: TREE_TOGGLE_TRAIT });
-            toggle.clearInsets();
-            toggle.getAria().setHidden(true);
+            const toggle = createTreeToggle(expanded);
             this._toggle = toggle;
 
             const el = this.getElement();

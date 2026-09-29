@@ -36,6 +36,13 @@ import { Component } from '~/core/Component';
 import { Insets } from '~/primitive/Insets';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
+import { Glyph } from '~/component/display/Glyph';
+import { caret_down } from '~/glyphs/solid/caret_down';
+
+// `Tree`/`TreeTable` no longer register `caret-down` at module load (they use
+// the shared `angle-right` toggle now); this file's own `icon: 'caret-down'`
+// fixture value needs it registered directly.
+Glyph.register(caret_down);
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
