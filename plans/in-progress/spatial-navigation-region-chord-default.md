@@ -278,3 +278,22 @@ All paths are relative to the worktree root. All `npm` commands run from the wor
 [^no-standdown]: Standing down whenever focus is in a text-entry element was considered and rejected. It would fix word selection, but it would leave no spatial way out of an editor: a user in a `CodeEditor` or a long `TextArea` could only leave by Tab (which `CodeEditor` traps for indentation) or the mouse. A chord that no editor binds gives both: editing keys keep working, and the chord still works from inside the editor.
 
 [^other-tests]: The chord was reported in those three files, but they were read and none asserts it. `Tree.test.ts:474-491` and `Body.test.ts:630-658` mock `SpatialNavigation.claimsKey` to return `true` and send a bare arrow; `FocusTraversal.test.ts` only mentions `SpatialNavigation` in a header comment, as the test-harness precedent. `TreeBody.test.ts:230-254` has the same mock shape. A grep of `packages/lib/tests` for key events carrying both `ctrlKey: true` and `shiftKey: true` finds only `SpatialNavigation.test.ts` lines 287, 298, 316 and 321.
+
+---
+
+## Implementation Notes
+
+**Verification row 4 (`npm run docs:api` "0 errors and 0 link warnings"): the baseline was not clean.** `npm run docs:api` on this branch finishes with 0 errors and 14 warnings, all pre-existing on `master` and unrelated to this change (`outermostTargets`, `leafFocusables`, `ancestorGeometry`, `PRIMARY_GAP_EPSILON`, `Component.replaceComponent`, `MarkdownContentPane`, `$selectEnclosingWordIfCollapsed`, `$classifyContextMenuTarget` — confirmed present in `master`'s `SpatialNavigation.ts` before this branch touched it). This plan's own edits introduce no new warning. Fixing the pre-existing 14 is out of scope for a surgical chord-default change.
+
+**Manual verification (Expected Behaviour table).** M1–M6 were driven live against `npm run dev` (Chromium, via chrome-devtools MCP) on this worktree's built source, not merely asserted by unit test:
+
+- M1 (Split tab, textarea): caret placed mid-word in "gutter"; `Ctrl+Shift+→` extended the selection to `tter` (native word selection) and `document.activeElement` stayed the textarea.
+- M2 (CodeEditor tab): caret placed mid-word in "function"; `Ctrl+Shift+→` grew the status line's selection from 0 to 4 chars and focus stayed on `.cm-content`.
+- M3 (MD Editor tab, Lexical surface): caret placed mid-word; `Ctrl+Shift+→` produced a non-collapsed `window.getSelection()` and focus stayed on the `WysiwygSurface`.
+- M4 (Misc. tab): focused a left-column button, `Ctrl+Alt+Shift+→` moved focus to a right-side control with `data-ts-ui-focus-visible` set, then `Ctrl+Alt+Shift+←` returned focus to the exact same left-column button, ring set again both times.
+- M5 (Misc. tab): `Ctrl+Alt+↓` from that same button moved focus to the nearest control below it (component tier unchanged).
+- M6 (CodeEditor tab): caret in the document, `Ctrl+Alt+↓` moved focus out to a `Button` element; the two `.cm-cursor-primary` nodes found afterward belong one each to the page's two separate `CodeEditor` instances (verified by inspecting their class lists), not a second cursor added within one editor.
+
+M7 (GNOME desktop chord collision) could not be exercised — this environment is WSL2 + Chromium with no GNOME desktop session available. The plan itself frames M7 as conditional ("if one is available"), so this is a documented gap rather than a skipped check.
+
+All other unit-testable behaviour (U1–U6, plus the full existing `SpatialNavigation.test.ts` and `packages/lib` suites) is covered by automated tests, not manual verification.
