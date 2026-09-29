@@ -94,6 +94,22 @@ export function* ancestorsBefore(handle: Handle, bound: Handle): Generator<Handl
     }
 }
 
+// A bare modifier keydown must not expire an Escape release: pressing
+// Shift+Tab fires two keydowns (Shift, then Tab with shiftKey: true), and the
+// Shift keydown alone would otherwise reach the "any other key" branch first
+// and clear the release before the real Tab arrives. Shared by every Escape
+// release — `FocusTraversal`'s and `Dialog`'s.
+export const MODIFIER_KEYS: ReadonlySet<string> = new Set(["Shift", "Control", "Alt", "Meta"]);
+
+/**
+ * Whether `handle` itself carries the Tab-key-owner marker.
+ *
+ * @param handle - The element to test.
+ */
+export function ownsTabKey(handle: Handle): boolean {
+    return DOM.source.hasAttribute(handle, TAB_KEY_OWNER_ATTR);
+}
+
 /**
  * Walks from `handle` up to (and including) `<html>` — see {@link
  * ancestorsToDocument} for why the walk is bounded there — looking for the
@@ -112,7 +128,7 @@ export function findTabKeyOwner(handle: Handle, bound?: Handle): Handle | null {
             return null;
         }
 
-        if (DOM.source.hasAttribute(h, TAB_KEY_OWNER_ATTR)) {
+        if (ownsTabKey(h)) {
             return h;
         }
     }
@@ -177,4 +193,63 @@ export function focusCandidates(root: Handle, recorded: Handle | undefined): Han
     }
 
     return [recorded, ...focusable.filter(handle => handle !== recorded)];
+}
+
+/**
+ * The first stop, in `stops`' order, that lies outside `owner`'s subtree and
+ * follows every stop `owner` contains — the Escape-release target for `Tab`.
+ * `owner`'s own element carries no position of its own to compare against a
+ * sibling (the seam has no document-position primitive), so an owner with no
+ * focusable descendant of its own degrades to the "nothing to continue from"
+ * landing: the first stop outside it.
+ *
+ * @param stops - The ordered tab stops to choose from.
+ * @param owner - The Tab-key owner being stepped past.
+ * @returns The target stop, or `null` when no stop follows `owner`.
+ */
+export function stopAfterOwner(stops: Handle[], owner: Handle): Handle | null {
+    let lastInside = -1;
+
+    for (let i = 0; i < stops.length; i++) {
+        if (DOM.source.contains(owner, stops[i])) {
+            lastInside = i;
+        }
+    }
+
+    for (let i = lastInside + 1; i < stops.length; i++) {
+        if (!DOM.source.contains(owner, stops[i])) {
+            return stops[i];
+        }
+    }
+
+    return null;
+}
+
+/**
+ * {@link stopAfterOwner}'s mirror for `Shift+Tab` — the last stop, in
+ * `stops`' order, before every stop `owner` contains.
+ *
+ * @param stops - The ordered tab stops to choose from.
+ * @param owner - The Tab-key owner being stepped past.
+ * @returns The target stop, or `null` when no stop precedes `owner`.
+ */
+export function stopBeforeOwner(stops: Handle[], owner: Handle): Handle | null {
+    let firstInside = -1;
+
+    for (let i = 0; i < stops.length; i++) {
+        if (DOM.source.contains(owner, stops[i])) {
+            firstInside = i;
+            break;
+        }
+    }
+
+    const upperBound = firstInside === -1 ? stops.length : firstInside;
+
+    for (let i = upperBound - 1; i >= 0; i--) {
+        if (!DOM.source.contains(owner, stops[i])) {
+            return stops[i];
+        }
+    }
+
+    return null;
 }
