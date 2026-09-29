@@ -154,7 +154,7 @@ without testing it, so only a descendant's claim counts.
 [`SpatialNavigation`](/api/core/namespaces/SpatialNavigation) moves keyboard focus by *direction* rather than by document order, ranking every candidate's rectangle against the focused element's and jumping to the nearest one in the pressed direction. Two chords run the same geometric search over different candidate sets:
 
 - **`Ctrl+Alt`+arrow** (the **component** tier) moves to the nearest individual focusable element in that direction — a button, a field, a list row.
-- **`Ctrl+Shift`+arrow** (the **target** tier) moves to the nearest container marked as a navigation target, and hands focus to that container's remembered — or first — focusable descendant.
+- **`Ctrl+Alt+Shift`+arrow** (the **target** tier) moves to the nearest container marked as a navigation target, and hands focus to that container's remembered — or first — focusable descendant.
 
 It's opt-in, matching [`FocusHistory`](#keyboard-navigation-rovingtabindex)'s stance:
 
@@ -169,6 +169,11 @@ Both chords are matched on `KeyboardEvent.code` so they work the same regardless
 ```typescript
 SpatialNavigation.configure({ componentModifiers: { alt: true } });
 ```
+
+Neither default chord touches native text editing, so `Ctrl+Shift+←`/`→` still selects by word in every text field and editor. Two collisions remain, and `configure` is the way around each:
+
+- **`Ctrl+Alt+↑`/`↓`** is [`CodeEditor`](/components/CodeEditor)'s add-cursor-above/below on Windows and Linux. While the service is enabled, the chord moves focus instead. Alt+drag still makes a rectangular selection. macOS is not affected.
+- **GNOME** binds `Ctrl+Alt`+arrow to switching workspace, and older releases bind `Ctrl+Alt+Shift`+arrow to moving the window to another workspace. The desktop takes the chord before the page sees it.
 
 `ToolBar`, `MenuBar`, and `TabBar` are marked as navigation targets by
 default, since each is a self-contained chrome region a user would expect to
@@ -264,7 +269,7 @@ status.getAria().setRole('status');
 
 ## Testing
 
-- **Keyboard-only** — unplug your mouse and verify every interaction works with `Tab`, `Shift+Tab`, arrow keys, and `Space`/`Enter`; if [Tab traversal](#tab-traversal) is enabled, also check `Escape` then `Tab` escapes any Tab-key owner (an embedded editor, a table in edit mode); if [spatial focus navigation](#spatial-focus-navigation) is enabled, also check `Ctrl+Alt`+arrow and `Ctrl+Shift`+arrow move focus without disturbing a focused widget's own arrow-key behaviour.
+- **Keyboard-only** — unplug your mouse and verify every interaction works with `Tab`, `Shift+Tab`, arrow keys, and `Space`/`Enter`; if [Tab traversal](#tab-traversal) is enabled, also check `Escape` then `Tab` escapes any Tab-key owner (an embedded editor, a table in edit mode); if [spatial focus navigation](#spatial-focus-navigation) is enabled, also check `Ctrl+Alt`+arrow and `Ctrl+Alt+Shift`+arrow move focus without disturbing a focused widget's own arrow-key behaviour.
 - **Screen reader** — VoiceOver (macOS) and NVDA (Windows) are the two readers most commonly tested against. Both should announce roles and labels for built-in components correctly.
 - **Browser dev tools** — Chrome's "Accessibility" panel under DevTools shows the computed accessibility tree for each element.
 
