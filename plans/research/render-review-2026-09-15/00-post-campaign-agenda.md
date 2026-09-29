@@ -2126,3 +2126,64 @@ and the sweep has run, but it discharged two of four cells rather than four. So
 the closing decision is now a real one rather than a formality: close on the two
 confirmations plus a recorded list of what the empty cells could not show, or
 hold open for replacement cells. Not decided here.
+
+## The three plans audited: 34 findings, and a fourth vacuity shape confirmed (2026-09-29)
+
+The three highest-risk of the eight residue plans were audited before
+implementation rather than after — `animation-finish-transition-clear` (a central
+change to a mechanism shared by eleven animation families),
+`rail-minimize-restore-event-pairing` (a public event-contract reversal of a
+decision pinned by name) and `card-deferred-child-keys` (a public API addition a
+second plan depends on). Three rounds each, a fresh reviewer every round, then
+one consolidated fix pass with no audit behind it.
+
+**34 BLOCKING findings**: 12, 13 and 9 respectively, across nine reviews. The
+counts did not converge — 5/3/4, 5/4/4, 4/1/4 — and the reason matters. Fixes
+did not fail; each fresh reviewer dug where the last had not. The mechanism in
+all three was verified by measurement, twice by reviewers who applied the
+prescribed change to a local copy and ran it. What kept surfacing was **check
+quality**, which is this campaign's signature defect and now has a fourth shape
+on the record beside the three from the nine-plan batch:
+
+| Shape | Example found here |
+|---|---|
+| Satisfiable when both sides are zero | (the batch's original three) |
+| A case list covering one of two symmetric arms | — |
+| A call count where the contract is a consequence | — |
+| **A fix renders an *existing* row vacuous** | the central animation fix alone satisfies R13/R14's "exactly one clear" |
+| **A row red on correct code** | A6 asserted `getElement() === null`, but `removeElement` keeps `_element`; R16's spy installed after the write it asserts on |
+| **A mutation no case can kill** | A3's `return false` branch is unreachable from `finish`, which the plan's own footnote said outright |
+
+Three process findings worth keeping, all of them about how the loop was run
+rather than what it found:
+
+- **An ADVISORY is not a stable category.** Twice, an item filed advisory in one
+  round was called BLOCKING by the next round's reviewer — R15's wrong predicted
+  values and `Rail.md`'s missing `touches-shared` entry — and both persisted only
+  because the audit skill's rule not to fix advisories was followed. For a
+  factual error (a wrong line, a misattributed quote, a mutation table predicting
+  the wrong value) deferring costs a round.
+- **Naming an instance produces a partial fix.** A brief that cited
+  `[^one-helper]`'s line got that footnote corrected while the body kept the same
+  false claim, leaving the two contradicting each other. Name the claim, not the
+  line.
+- **Parallel fix rounds on plans that share a file collide.** Two plans append
+  rows to `AbstractWindow.railHandoverAnimated.test.ts`; one renumbered to R17-R20
+  while the other was adding R17 and R18, recreating the collision it was fixing.
+  The durable fix is not a number but a step: `rail-minimize-restore-event-pairing`
+  now counts the existing `it('R` rows and reconciles before adding any.
+
+**The plans also corrected their reviewers, and me, three times on evidence.**
+The transition-clear mechanism was disproved as the cause of the rail
+maximize/restore defect by tracing `tweenRect` and `fadeRectSwap` rather than
+accepting the attribution this file had recorded. The twelfth animation family
+was declined with a trace showing `Tab`'s content fade and `materialize`'s fade
+are strictly sequential on their element. And "move the `doLayout` catch-up below
+the `getInnerSize()` guard" was shown unimplementable, because `Card.doLayout`
+returns on `!_currentVisible` above that guard, so the catch-up would be
+unreachable for the case it exists to serve. A fix round that only complies
+produces plans that agree with their reviewer and still do not work.
+
+Final state: eight plans drafted, three audited to the cap and closed by a final
+pass, all untracked in `plans/` for `/implement` to commit. The suggested phase
+schedule above is unchanged.
