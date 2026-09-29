@@ -29,6 +29,10 @@
 // state rather than from the genie, a close arriving at any other time still
 // fades from wherever the window already is, and a reverse genie with a rect
 // animation beside it still clears its own transition.
+//
+// R19-R22 are plans/implemented/rail-minimize-restore-event-pairing.md's rows,
+// which also invert R9 and R11 — a restore that interrupts the collapse pays
+// the deferred `"minimize"` instead of voiding it, so the pair balances.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Window } from '~/overlay/Window';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
@@ -318,7 +322,7 @@ describe('AbstractWindow — changing a window\'s rail mid-collapse', () => {
         expect(win.getRail()).toBe(other);
     });
 
-    it('R9: a restore voids the collapse\'s debt, so a later minimize announces once', () => {
+    it('R9: a restore pays the collapse\'s debt, so the next minimize announces on its own', () => {
         const events: string[] = [];
 
         const { win, rail } = collapsingWindow();
@@ -326,16 +330,17 @@ describe('AbstractWindow — changing a window\'s rail mid-collapse', () => {
         win.on('minimize', () => { events.push('minimize'); });
         win.on('restore',  () => { events.push('restore');  });
 
-        // Restoring mid-collapse ends the debt rather than parking it: the
-        // window is not minimized any more, so there is nothing left to
-        // announce, and carrying it forward would spend it on the *next*
-        // minimize.
+        // Restoring mid-collapse pays the debt rather than voiding it: the
+        // window did enter `"minimized"`, so the event is owed, and it lands
+        // before the `"restore"` that superseded it. The debt is settled by
+        // that payment, so the `minimize()` below announces once on its own
+        // account and the `setRail` after it adds nothing.
         win.restore();
         win.setRail(null);
         win.minimize();
         win.setRail(rail);
 
-        expect(events).toEqual(['restore', 'minimize']);
+        expect(events).toEqual(['minimize', 'restore', 'minimize']);
     });
 
     it('R8: the collapse a case starts is actually armed before it is cancelled', () => {
@@ -380,18 +385,21 @@ describe('AbstractWindow — changing a window\'s rail mid-collapse', () => {
         expect(win.getWindowState()).toBe('normal');
     });
 
-    it('R11: a restore mid-collapse announces no minimize after it', () => {
+    it('R11: a restore mid-collapse announces the minimize it owed, before the restore', () => {
         const events: string[] = [];
 
         const { win } = collapsingWindow(events);
 
         win.restore();
+
+        // Asserted before the drain, and as an ordered sequence: the owed
+        // `"minimize"` lands first, in the same task as the `"restore"`.
+        expect(events).toEqual(['minimize', 'restore']);
+
         runAnimationToCompletion();
 
-        // The cancelled collapse owes nothing: the window is `"normal"` again,
-        // so there is no minimize left to announce, and one arriving after the
-        // restore would leave the pair inverted.
-        expect(events).toEqual(['restore']);
+        // And the collapse the restore cancelled adds nothing behind them.
+        expect(events).toEqual(['minimize', 'restore']);
     });
 
     it('R12: a close mid-collapse announces no minimize after the close', () => {
@@ -607,5 +615,79 @@ describe('AbstractWindow — changing a window\'s rail mid-collapse', () => {
         // before the fade even starts; the fade's own `to` is the only
         // transform that may land.
         expect(styleWritesFor(apply, win, 'transform', element)).toEqual(['scale(0.97)']);
+    });
+
+    it('R19: the owed minimize announces `"minimized"`, the restore `"normal"`', () => {
+        const seen: string[] = [];
+
+        const { win } = collapsingWindow();
+
+        win.on('minimize', () => { seen.push(`minimize:${win.getWindowState()}`); });
+        win.on('restore',  () => { seen.push(`restore:${win.getWindowState()}`);  });
+
+        // A consumer that reads the state in the handler must see the state the
+        // event names. That is what the debt is for: the window's state reads
+        // `"minimized"` for the whole shrink, so an interrupted restore that
+        // announced only `"restore"` left a transition no event ever reported.
+        win.restore();
+
+        expect(seen).toEqual(['minimize:minimized', 'restore:normal']);
+    });
+
+    it('R20: the reverse genie replays from the transform the collapse aimed at', () => {
+        const { win } = collapsingWindow();
+
+        const target = (win as unknown as { railGenieTransform(): string }).railGenieTransform();
+
+        // Guard: the comparison below is a string equality, so a degenerate
+        // target would satisfy it from both sides at once.
+        expect(target).not.toContain('NaN');
+
+        const apply = vi.spyOn(DOM.sink, 'apply');
+
+        // The owed `"minimize"` makes the rail raise a handle, and
+        // `Rail.handleMainAxisOffset` reads that handle's laid-out position
+        // instead of the slot the collapse predicted — but the handle has not
+        // been laid out, so it answers `NaN`. Paying the debt before the
+        // expansion reads its target therefore hands `Animation.play` a
+        // transform the browser drops, and the window expands from nowhere
+        // rather than out of the rail.
+        win.restore();
+
+        expect(styleWritesFor(apply, win, 'transform')).toEqual([target]);
+    });
+
+    it('R21: the handle the owed minimize raises is gone again by the end of the restore', () => {
+        const { win, rail } = collapsingWindow();
+
+        const handles: number[] = [];
+
+        // Registered after `collapsingWindow`, so the rail's own listeners are
+        // ahead of these in the bucket and each reading is post-rail.
+        win.on('minimize', () => { handles.push(rail.getComponents().length); });
+        win.on('restore',  () => { handles.push(rail.getComponents().length); });
+
+        win.restore();
+
+        // The rail treats the owed `"minimize"` as any other: it raises a
+        // handle, and the `"restore"` behind it takes the handle off. An
+        // interrupted restore is therefore indistinguishable from a completed
+        // shrink followed at once by a restore, which is the point.
+        expect(handles).toEqual([1, 0]);
+        expect(rail.getComponents().length).toBe(0);
+    });
+
+    it('R22: a maximize mid-collapse pays the debt the same way a restore does', () => {
+        const events: string[] = [];
+
+        const { win } = collapsingWindow(events);
+
+        // The payment is gated on leaving `"minimized"` with a rail attached,
+        // not on the state being entered — a condition narrowed to
+        // `state === "normal"` would drop this arm silently.
+        win.setWindowState('maximized');
+
+        expect(events).toEqual(['minimize', 'restore']);
+        expect(win.getWindowState()).toBe('maximized');
     });
 });
