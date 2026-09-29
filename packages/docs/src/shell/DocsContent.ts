@@ -22,12 +22,33 @@ import { DocsDemo } from './DocsDemo.js';
 const BASE_URL = import.meta.env.BASE_URL;
 
 /**
- * Left margin kept on each prose block's own content box, so the reading
- * column starts indented from the pane's edge the way text sits on a
- * printed page or in a word processor, rather than flush against it —
- * mirrors `MarkdownViewer`'s own `PROSE_LEFT_MARGIN_PX`.
+ * Left margin kept on each block's own content box, so the reading column
+ * starts indented from the pane's edge the way text sits on a printed page
+ * or in a word processor, rather than flush against it — mirrors
+ * `MarkdownViewer`'s own `PROSE_LEFT_MARGIN_PX`.
+ *
+ * The margin is taken *out of* the reading measure, never added outside it.
+ * A prose `Markdown` caps its own element at `--ts-ui-md-max-measure`, and
+ * every framework component is `box-sizing: border-box`, so this padding
+ * already sits inside that cap: the text is `measure - 32` wide, starting
+ * 32px in. A `DocsDemo` keeps the same relationship — its `maxSize.width`
+ * stays the bare `resolveProseMeasureWidth()` — so both columns are the
+ * same width and start at the same x. Widening a demo's `maxSize` by this
+ * margin would push its right edge 32px past the prose.
  */
 const PROSE_LEFT_MARGIN_PX = 32;
+
+/**
+ * Vertical gap a demo block keeps above and below itself. A `DocsDemo` is a
+ * component tree, not prose, so it carries none of the `1em` block margin a
+ * rendered `<p>` / `<pre>` / `<ul>` contributes inside its own `Markdown`
+ * block's measured height — and the pane stacks blocks with `spacing: 0`
+ * (see the `VBox` in the constructor). Without this the block's separation
+ * from what precedes it is whatever that block's last element happens to
+ * leave. `14` is that same `1em` at the theme's 14px base font size
+ * (`Theme.font.size`'s default), so a demo reads at the prose's rhythm.
+ */
+const DEMO_BLOCK_GAP_PX = 14;
 
 /** String-literal union of the events emitted by {@link DocsContent}. */
 type DocsContentEvent = "outlinechange" | "activeheadingchange";
@@ -425,6 +446,11 @@ class DocsContent extends Panel {
      * no registered module — a mismatch between two independently edited
      * artefacts, not a code bug.
      *
+     * Every block gets the reading column's left margin, so the whole page
+     * shares one left edge; a demo block gets a vertical gap as well,
+     * because it brings none of the block margins rendered prose carries of
+     * its own.
+     *
      * @param block - The block to build.
      * @returns The component to add to the pane.
      */
@@ -437,7 +463,13 @@ class DocsContent extends Panel {
 
         const entry = getDemo(block.id);
 
-        return entry !== null ? new DocsDemo(entry) : new Markdown(missingDemoSource(block.id), { padding: proseMargin });
+        if (entry === null) {
+            return new Markdown(missingDemoSource(block.id), { padding: proseMargin });
+        }
+
+        return new DocsDemo(entry, {
+            padding: new Insets(DEMO_BLOCK_GAP_PX, 0, DEMO_BLOCK_GAP_PX, PROSE_LEFT_MARGIN_PX),
+        });
     }
 
     /**

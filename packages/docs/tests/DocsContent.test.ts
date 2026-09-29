@@ -207,7 +207,7 @@ describe('DocsContent.getTextColumnReference', () => {
     });
 });
 
-describe('DocsContent prose left margin', () => {
+describe('DocsContent block insets', () => {
     it('gives a markdown block a left margin, so prose reads like a page rather than sitting flush against the pane edge', () => {
         mockPage('/prose-margin', '# A\n\ntext\n');
         content = new DocsContent(router);
@@ -215,6 +215,38 @@ describe('DocsContent prose left margin', () => {
         content.showPath('/prose-margin', '');
 
         expect(content.getTextColumnReference()?.getPadding()?.getLeft()).toBe(32);
+        expect(content.getTextColumnReference()?.getPadding()?.getTop()).toBe(0);
+        expect(content.getTextColumnReference()?.getPadding()?.getRight()).toBe(0);
+        expect(content.getTextColumnReference()?.getPadding()?.getBottom()).toBe(0);
+    });
+
+    it('gives a demo block the prose left margin plus a vertical gap of its own, so it reads as part of the column and never butts against the block above', () => {
+        mockPage('/demo-block', '<!-- demo: button-basic -->\n> fallback\n<!-- /demo -->\n');
+        content = new DocsContent(router);
+
+        content.showPath('/demo-block', '');
+
+        const block = content.getTextColumnReference();
+
+        expect(block?.getDataAttribute('docs-demo')).toBe('true');
+        expect(block?.getPadding()?.getLeft()).toBe(32);
+        expect(block?.getPadding()?.getTop()).toBe(14);
+        expect(block?.getPadding()?.getBottom()).toBe(14);
+        expect(block?.getPadding()?.getRight()).toBe(0);
+    });
+
+    it('gives a missing-demo fallback the prose insets, since it is rendered prose and brings its own margins', () => {
+        mockPage('/missing-demo', '<!-- demo: no-such-demo -->\n> fallback\n<!-- /demo -->\n');
+        content = new DocsContent(router);
+
+        content.showPath('/missing-demo', '');
+
+        const block = content.getTextColumnReference();
+
+        expect(block?.getDataAttribute('docs-demo')).toBeUndefined();
+        expect(block?.getPadding()?.getLeft()).toBe(32);
+        expect(block?.getPadding()?.getTop()).toBe(0);
+        expect(block?.getPadding()?.getBottom()).toBe(0);
     });
 });
 
