@@ -25,7 +25,7 @@ import { circle_exclamation } from "~/glyphs/solid/circle_exclamation.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { ThemeManager } from "~/core/Theme.js";
-import { FOCUSABLE_SELECTOR, findTabKeyOwner } from "~/core/Focusable.js";
+import { FOCUSABLE_SELECTOR, findTabKeyOwner, MODIFIER_KEYS, stopAfterOwner, stopBeforeOwner } from "~/core/Focusable.js";
 
 /**
  * Square edge length used for the dialog's title-bar glyph — the theme's
@@ -202,6 +202,42 @@ const TITLE_RIGHT_GAP: number = 4;
  * label so the two surfaces feel consistent.
  */
 const TITLE_GLYPH_TEXT_GAP: number = 8;
+
+/**
+ * The first entry of `stops` that `owner` does not contain — where an Escape
+ * release's `Tab` wraps to when no stop follows the owner.
+ *
+ * @param stops - The dialog's ordered tab stops.
+ * @param owner - The Tab-key owner being stepped past.
+ * @returns The first stop outside `owner`, or `null` when every stop is inside it.
+ */
+function firstStopOutside(stops: Handle[], owner: Handle): Handle | null {
+    for (let i = 0; i < stops.length; i++) {
+        if (!DOM.source.contains(owner, stops[i])) {
+            return stops[i];
+        }
+    }
+
+    return null;
+}
+
+/**
+ * The last entry of `stops` that `owner` does not contain — where an Escape
+ * release's `Shift+Tab` wraps to when no stop precedes the owner.
+ *
+ * @param stops - The dialog's ordered tab stops.
+ * @param owner - The Tab-key owner being stepped past.
+ * @returns The last stop outside `owner`, or `null` when every stop is inside it.
+ */
+function lastStopOutside(stops: Handle[], owner: Handle): Handle | null {
+    for (let i = stops.length - 1; i >= 0; i--) {
+        if (!DOM.source.contains(owner, stops[i])) {
+            return stops[i];
+        }
+    }
+
+    return null;
+}
 
 // ---------------------------------------------------------------------------
 // Private: DialogTitleBar
@@ -659,6 +695,10 @@ class Dialog extends Component implements DismissableLayer {
     private _previousFocus   : Handle | null = null;
     private _boundKeyHandler : (e: KeyboardEvent) => Event.ListenerResult;
     private _boundResizeHandler: () => void;
+    // The descendant Tab-key owner the last Escape released, or null.
+    private _releaseOwner: Handle | null = null;
+    // Expires `_releaseOwner` once focus leaves the owner that armed it.
+    private _boundFocusInHandler: () => void;
 
     // In-flight entrance / dismiss animations for the panel and its backdrop,
     // cancelled on teardown so their fallback timers cannot fire against
@@ -760,6 +800,7 @@ class Dialog extends Component implements DismissableLayer {
 
         this._boundKeyHandler    = (e: KeyboardEvent) => this.onKeyDown(e);
         this._boundResizeHandler = () => this.onViewportResize();
+        this._boundFocusInHandler = () => this.onFocusIn();
     }
 
     /**
@@ -963,6 +1004,7 @@ class Dialog extends Component implements DismissableLayer {
         this._resizeToContentLayout = Component.afterNextLayout(() => this.resizeToContent());
 
         Event.addViewportListener(this, 'keydown', this._boundKeyHandler);
+        Event.addViewportListener(this, 'focusin', this._boundFocusInHandler);
         Event.addViewportListener(this, 'resize', this._boundResizeHandler);
 
         // Deferred past the scheduled layout: focusing synchronously here does
@@ -1110,23 +1152,24 @@ class Dialog extends Component implements DismissableLayer {
     }
 
     /**
-     * Whether keyboard focus currently sits inside a descendant of this dialog
-     * that has claimed the Tab key for itself — a `CodeEditor`, a
-     * `MarkdownEditor`, a `Table`. The walk is bounded at this dialog's own
-     * element, which carries the same marker for the whole subtree, so the
-     * dialog's own claim never answers for one of its children.
+     * The descendant of this dialog that holds keyboard focus and has claimed
+     * the Tab key for itself — a `CodeEditor`, a `MarkdownEditor`, a `Table`.
+     * The walk is bounded at this dialog's own element, which carries the same
+     * marker for the whole subtree, so the dialog's own claim never answers for
+     * one of its children.
      *
-     * @returns `true` when a descendant owns Tab, so the focus trap must stand down.
+     * @returns The nearest owning descendant, or `null` when focus is in none —
+     *   an owner means the focus trap must stand down.
      */
-    private tabOwnedByDescendant(): boolean {
+    private descendantTabKeyOwner(): Handle | null {
         const el     = this.getElement();
         const active = DOM.source.getActiveElement();
 
         if (!el || active === null || !DOM.source.contains(el, active)) {
-            return false;
+            return null;
         }
 
-        return findTabKeyOwner(active, el) !== null;
+        return findTabKeyOwner(active, el);
     }
 
     /**
@@ -1146,16 +1189,17 @@ class Dialog extends Component implements DismissableLayer {
     }
 
     /**
-     * Handles document-level keydown events for Escape and Tab focus trapping.
+     * Handles document-level keydown events: the Tab focus trap and its Escape
+     * release, and Enter-to-confirm.
      *
      * @param e - The keyboard event.
      * @returns A stop-and-prevent disposition when the dialog handles the key (the Tab trap, or Enter); nothing otherwise, so unhandled keys keep propagating.
      */
     private onKeyDown(e: KeyboardEvent): Event.ListenerResult {
-        // Escape is owned by LayerManager's keydown handler, which closes the
-        // topmost non-manual layer (this dialog when it is on top). The dialog
-        // keeps only the Tab focus-trap and the Enter-confirms-the-primary
-        // shortcut here.
+        // Escape is owned by LayerManager's keydown handler, which asks the
+        // topmost non-manual layer to close (this dialog when it is on top) —
+        // see requestClose() for the Escape release. The dialog keeps only the
+        // Tab focus-trap and the Enter-confirms-the-primary shortcut here.
         //
         // Both are scoped to "I am the topmost layer": every open Dialog gets
         // this same keydown broadcast (that's the event dispatcher's policy,
@@ -1168,42 +1212,129 @@ class Dialog extends Component implements DismissableLayer {
             return;
         }
 
+        if (e.key === 'Tab') {
+            return this.onTab(e);
+        }
+
+        // Any key but Tab, Escape or a bare modifier expires a pending release.
+        if (e.key !== 'Escape' && !MODIFIER_KEYS.has(e.key)) {
+            this._releaseOwner = null;
+        }
+
         if (e.key === 'Enter') {
             return this.onEnter(e);
         }
 
-        if (e.key === 'Tab') {
-            // A descendant that owns the Tab key handles it itself — the same
-            // stand-down FocusTraversal performs, reading the same marker.
-            if (this.tabOwnedByDescendant()) {
-                return;
+        return;
+    }
+
+    /**
+     * The Tab focus trap. A descendant that owns the Tab key handles it itself
+     * — the same stand-down `FocusTraversal` performs, reading the same marker
+     * — unless an Escape released that owner, in which case the Tab steps past
+     * it. Otherwise focus wraps at either end of the dialog.
+     *
+     * @param e - The Tab keydown.
+     * @returns A stop-and-prevent disposition when the dialog moves or holds focus; nothing when the owner or the browser handles the Tab.
+     */
+    private onTab(e: KeyboardEvent): Event.ListenerResult {
+        const owner = this.descendantTabKeyOwner();
+
+        if (owner !== null) {
+            if (owner !== this._releaseOwner) {
+                return; // the owner keeps Tab.
             }
 
-            const focusable = this.getFocusable();
+            return this.stepPastOwner(owner, e.shiftKey);
+        }
 
-            if (focusable.length === 0) {
+        const focusable = this.getFocusable();
+
+        if (focusable.length === 0) {
+            return { stop: true, prevent: true };
+        }
+
+        const first = focusable[0];
+        const last  = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+            if (DOM.source.getActiveElement() === first) {
+                DOM.sink.focus(last);
+
                 return { stop: true, prevent: true };
             }
+        } else {
+            if (DOM.source.getActiveElement() === last) {
+                DOM.sink.focus(first);
 
-            const first = focusable[0];
-            const last  = focusable[focusable.length - 1];
-
-            if (e.shiftKey) {
-                if (DOM.source.getActiveElement() === first) {
-                    DOM.sink.focus(last);
-
-                    return { stop: true, prevent: true };
-                }
-            } else {
-                if (DOM.source.getActiveElement() === last) {
-                    DOM.sink.focus(first);
-
-                    return { stop: true, prevent: true };
-                }
+                return { stop: true, prevent: true };
             }
         }
 
         return;
+    }
+
+    /**
+     * Arms the Escape release for the focused descendant Tab-key owner, unless
+     * focus is in no owner or this owner is already released — the second
+     * Escape, which closes the dialog instead.
+     *
+     * @returns `true` when the release was armed.
+     */
+    private armEscapeRelease(): boolean {
+        const owner = this.descendantTabKeyOwner();
+
+        if (owner === null || owner === this._releaseOwner) {
+            return false;
+        }
+
+        this._releaseOwner = owner;
+
+        return true;
+    }
+
+    /**
+     * Consumes the release: focuses the stop past `owner`, wrapping inside the
+     * dialog. The Tab is consumed even when no stop lies outside the owner, so
+     * it never reaches the owner as an indent.
+     *
+     * @param owner - The released Tab-key owner.
+     * @param backward - `true` for `Shift+Tab`.
+     * @returns A stop-and-prevent disposition.
+     */
+    private stepPastOwner(owner: Handle, backward: boolean): Event.ListenerResult {
+        this._releaseOwner = null;
+
+        const stops  = this.getFocusable();
+        const target = backward
+            ? (stopBeforeOwner(stops, owner) ?? lastStopOutside(stops, owner))
+            : (stopAfterOwner(stops, owner) ?? firstStopOutside(stops, owner));
+
+        if (target !== null) {
+            DOM.sink.focus(target);
+        }
+
+        return { stop: true, prevent: true };
+    }
+
+    /**
+     * Document `focusin` handler, mirroring `FocusTraversal`'s: expires a
+     * pending release only once focus moves outside the owner that armed it,
+     * so a focus move inside the same owner (a `Table` cell editor cancelling
+     * back to the body, `CodeEditor`'s search panel closing) keeps it armed.
+     */
+    private onFocusIn(): void {
+        if (this._releaseOwner === null) {
+            return;
+        }
+
+        const active = DOM.source.getActiveElement();
+
+        if (active !== null && DOM.source.contains(this._releaseOwner, active)) {
+            return;
+        }
+
+        this._releaseOwner = null;
     }
 
     /**
@@ -1270,6 +1401,7 @@ class Dialog extends Component implements DismissableLayer {
      */
     hide(result: DialogResult): this {
         Event.removeViewportListener(this, 'keydown', this._boundKeyHandler);
+        Event.removeViewportListener(this, 'focusin', this._boundFocusInHandler);
         Event.removeViewportListener(this, 'resize', this._boundResizeHandler);
 
         const finalize = (): void => {
@@ -1446,13 +1578,32 @@ class Dialog extends Component implements DismissableLayer {
      * closing. `getDismissMode()` deliberately stays `"modal"` here — a
      * `"manual"` layer would be skipped by the Escape loop, letting Escape
      * fall through to close a layer beneath this one.
+     *
+     * When focus is inside a descendant that owns the Tab key (a `CodeEditor`,
+     * a `MarkdownEditor`, a `Table`) and that descendant is not yet released,
+     * the call does not close the dialog: it releases the descendant, so the
+     * next `Tab` or `Shift+Tab` steps past it, and returns `false` so the
+     * Escape also reaches the descendant. A second Escape then closes the
+     * dialog (or is swallowed, for a mandatory modal). Any other key, or focus
+     * leaving the descendant, cancels the release.
+     *
+     * @returns `false` when the call armed the release; `true` otherwise — the
+     *   dialog closed, or a mandatory modal swallowed the request.
      */
-    requestClose(): void {
+    requestClose(): boolean {
+        const released = this.armEscapeRelease();
+
+        if (released) {
+            return false;
+        }
+
         if (this._config.dismissable === false) {
-            return;
+            return true;
         }
 
         this.hide('close');
+
+        return true;
     }
 
     /**
