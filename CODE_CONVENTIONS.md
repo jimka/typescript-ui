@@ -20,7 +20,33 @@ The docs build (`npm run docs:api` → TypeDoc) excludes `private`, `protected`,
 
 The rule: **the JSDoc of an exported symbol may only `{@link}` other symbols that appear in the public API docs** (exported, and not `private`/`protected`/`@internal`). To reference internal mechanics, **describe the behaviour in prose** instead of naming the symbol — e.g. write "derived live from the content row + perimeter" rather than "derived via `{@link computePreferredSize}`". The link inside an internal symbol's own JSDoc is fine; the constraint is only on docs that actually render.
 
-Run `npm run docs:api` after touching public JSDoc — it must finish with zero warnings.
+**The standing bar.** `npm run docs:api` finishes with **zero** warnings, on
+every branch. As of `docs-api-warning-clearance` that is the measured state
+of `master`, so any warning is a regression introduced by the branch that
+shows it. An implementation plan must not restate this bar and must never
+write a weaker one — "no new warnings" and "no warnings against the base
+branch" are both dead phrasings.
+
+**Cross-module member links need the module qualifier.** An unqualified
+`{@link Class.member}` resolves only from inside the class's own TypeDoc
+module — from any other module it renders as dead plain text and warns, even
+though the member is documented. Use the module-qualified form with a
+display alias instead:
+
+| `{@link …}` written in `validation/FieldDecorator.ts` | Rendered result |
+|---|---|
+| `Component.replaceComponent` | `Component.replaceComponent` — plain text, 1 warning |
+| `Component!Component.replaceComponent` | links to the class page, **no member anchor** |
+| `core!Component.replaceComponent` | `[core!Component.replaceComponent](…/Component.md#replacecomponent)` — right target, raw link text |
+| `core!Component.replaceComponent \| Component.replaceComponent` | `[Component.replaceComponent](…/Component.md#replacecomponent)` — **use this** |
+
+**Never silence a warning.** Adding an `externalSymbolLinkMappings` entry, an
+`@internal` tag, or a `private` modifier to clear a docs warning is
+prohibited: it removes the message, not the dead reference the reader lands
+on. `typedoc.json`'s three existing `"#"` mappings predate this rule; they
+hide three *type-reference* warnings of a different kind — a public
+signature exposing a type never re-exported from its module's entry point —
+and are tracked on the post-campaign agenda.
 
 ## Framework rules
 
