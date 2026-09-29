@@ -228,7 +228,7 @@ The diagnostics sampler costs **nothing** when the overlay is closed: `Diagnosti
 - **Where**: `core/Body.ts:198-200` overrides the cached-field accessor with `return DOM.source.getBody();`, which is `_registry.intern(document.body)` (`core/DOM.ts:2645-2647`) — a `document.body` property read plus a `WeakMap.get` per call.
 - **Evidence**: the override's own justification is in `Component.reattachElementBuffers`' JSDoc (`core/Component.ts:7614-7626`): "`Body` is the one component whose element can change underneath it." That is a test-harness concern; production swaps the body once, at `Body.init`.
 - **Proposed change**: cache the handle in a field and re-read it only from `reattachElementBuffers()`, which already exists as the "the DOM changed underneath me" hook.
-- **Risk / blast radius**: `tests/core/Body.test.ts` and any suite calling `installTestDOM` more than once per `Body` singleton; `Favicon._reset()` exists for exactly this class of cross-reset staleness and shows the pattern.
+- **Risk / blast radius**: `tests/core/Body.test.ts` and any suite calling `installTestDOM` more than once per `Body` singleton. `Favicon` once carried a `_reset()` hook for exactly this class of cross-reset staleness; `plans/implemented/document-cache-reset-registry.md` replaced it with `DOM.onSinkChange`, which delivers the same drop without a suite having to ask.
 - **Proof at implement time**: `getBody` call count during one whole-tree layout pass (probe), expected to drop to 0 after the first.
 
 ### F03.16 The event target's id is read twice when a type has both exact-target and subtree registrations
