@@ -1670,8 +1670,14 @@ gain a doc sentence and one a corrected source comment, none a mechanism.
   shrink, on the ground that a window leaving `"minimized"` has nothing left to
   announce. A consumer pairing the two events therefore sees a `"restore"` with
   no `"minimize"` before it. The rule and its rationale predate this branch and
-  are pinned by name on `feature/split-noop-drag-frame-gate` by R9, "a restore
-  voids the collapse's debt". The alternative — fire the owed `"minimize"`
+  are pinned by name by R9, "a restore
+  voids the collapse's debt". **Corrected 2026-09-29: R9 came with
+`rail-minimized-dock-slot` (`1dfde904`), which names it at `:598`, not with
+`split-noop-drag-frame-gate`, whose plan does not mention R9 at all.** This
+entry originally named the branch R9 was observed on rather than the plan that
+wrote it, and the misattribution propagated into
+`rail-minimize-restore-event-pairing`'s own footnote before an audit caught it —
+which is what a wrong pointer in this file costs. The alternative — fire the owed `"minimize"`
   first, as `setRail` does for a window that *stays* minimized, giving
   `['minimize', 'restore']` — is a public event-contract change and wants its
   own plan. Note the asymmetry is deliberate rather than accidental: `setRail`
