@@ -7,6 +7,16 @@ page resets to empty.
 
 ## Breaking changes
 
+### Core
+
+- **`DOM.sink` and `DOM.source` are now read-only.** Swap a seam through
+  `DOM.install({ sink, source })` or restore the production pair with
+  `DOM.reset()`; a direct assignment no longer compiles. The two calls are what
+  tell the library's seam-derived caches that the handles they hold have stopped
+  resolving, so an assignment that went around them left stale handles behind.
+  Code already using `install` / `reset` — which is every documented path —
+  needs no change. See [Migration](/reference/migration/next) for the full note.
+
 ### Overlay
 
 - **A restore that interrupts a rail minimize now announces `['minimize',
@@ -56,6 +66,14 @@ page resets to empty.
   fade, its close fade and the two rail genies, and whose rail pair is the
   instance `rail-handover-follow-ups` had fixed per-site. No consumer action
   is needed.
+
+- **`Favicon` no longer writes the browser-tab icon through a stale element
+  handle after the DOM seams are swapped.** The injected `<link rel="icon">`
+  was remembered in module state that outlived a seam swap, so a later
+  `Favicon.install` swapped the `href` on a handle the new sink had never
+  minted instead of appending a fresh link. The cache is now dropped
+  automatically whenever the installed sink is replaced. No consumer action is
+  needed.
 
 ### Overlay
 

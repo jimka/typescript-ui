@@ -40,3 +40,30 @@ win.restore();      // onRes only
 win.minimize();
 win.restore();      // onMin, then onRes — in that order, in the same task
 ```
+
+## `DOM.sink` and `DOM.source` are read-only
+
+**What changed and why.** The two seam properties are now declared `readonly`,
+so they are swapped through
+[`DOM.install`](/api/core/interfaces/DOMSeams#install) or
+[`DOM.reset`](/api/core/interfaces/DOMSeams#reset) and nowhere else. Those two
+calls are what tell the library's seam-derived caches that the handles they hold
+have stopped resolving — a `Handle` only means anything to the seam that minted
+it, and `reset` rebuilds the shared handle registry outright. A direct
+assignment went around that notification, leaving a cache writing through a
+handle the incoming sink had never minted. Making the properties read-only makes
+the two swap routes the only ones, so the notification cannot be bypassed.
+
+**Who needs to act.** Only code that assigned a seam directly, which no
+documented path ever did. The assignment is now a compile error; install the
+seam instead, which is also what restores the production pair:
+
+```typescript
+// Before
+DOM.sink = myRecordingSink;
+
+// After
+DOM.install({ sink: myRecordingSink });
+// … and to restore the production pair
+DOM.reset();
+```
