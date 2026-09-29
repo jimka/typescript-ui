@@ -132,7 +132,7 @@ function parseDelimiterRow(line: string): { alignments: ElementFormatType[]; wid
  * // -> "| :--- {width=240} | :---: | ---: | --- |"
  * ```
  */
-function formatDelimiterRow(alignments: ElementFormatType[], widths: readonly (number | null)[]): string {
+export function formatDelimiterRow(alignments: ElementFormatType[], widths: readonly (number | null)[]): string {
     const cells = alignments.map((alignment, index) => {
         const dashes = (() => {
             switch (alignment) {
