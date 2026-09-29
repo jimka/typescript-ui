@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { ModelRecord } from '~/data/ModelRecord.js';
+import { formatWireTemporal } from '~/data/temporalValue.js';
 
 /**
  * The proxy operation a {@link Writer} is serializing for. `AjaxProxy` passes
@@ -71,13 +72,21 @@ export interface JsonWriterOptions {
 }
 
 /**
- * Default writer producing `JSON.stringify(record.getData())` for a single
- * record and a JSON array of data objects for a batch.
+ * Default writer producing a JSON object of the record's field data for a
+ * single record and a JSON array of such objects for a batch.
  *
  * @remarks
- * Reproduces the historical inline {@link AjaxProxy} body serialization so
- * existing callers and tests are unaffected. Set `mode: 'dirty'` to send only
- * changed fields (plus the primary key) on updates.
+ * Each `Date` field value is written in the form its field type is read back
+ * in: a `date` as `YYYY-MM-DD`, a `time` as `HH:MM:SS.sss`, and any other type
+ * as local ISO 8601 with its UTC offset (`2026-06-28T12:04:59.123-07:00`), so
+ * the text names the calendar day and wall-clock time the user saw. An Invalid
+ * `Date` is written as `null`; a `Date` nested inside an object or array value
+ * keeps `JSON.stringify`'s own `toISOString()` form. Every other value is
+ * written as `JSON.stringify` writes it.
+ *
+ * Set `mode: 'dirty'` to send only changed fields (plus the primary key) on
+ * updates. A subclass may override the protected `dataFor` method to change
+ * which fields are written; its `Date`s are still written by field type.
  *
  * @category Data
  */
@@ -95,7 +104,9 @@ export class JsonWriter implements Writer {
     }
 
     /**
-     * Serializes a single record as `JSON.stringify(dataFor(record, operation))`.
+     * Serializes a single record's field data — every field, or only the
+     * changed ones in `'dirty'` mode — as a JSON object, each `Date` in its
+     * field type's form.
      *
      * @param record - The record to serialize.
      * @param operation - Optional. The proxy operation this write is for.
@@ -103,7 +114,7 @@ export class JsonWriter implements Writer {
      * @returns The serialized request body.
      */
     writeRecord(record: ModelRecord, operation?: WriteOperation): string {
-        return JSON.stringify(this.dataFor(record, operation));
+        return JSON.stringify(this.toWireValues(record, this.dataFor(record, operation)));
     }
 
     /**
@@ -115,7 +126,7 @@ export class JsonWriter implements Writer {
      * @returns The serialized request body.
      */
     writeRecords(records: ModelRecord[], operation?: WriteOperation): string {
-        return JSON.stringify(records.map(record => this.dataFor(record, operation)));
+        return JSON.stringify(records.map(record => this.toWireValues(record, this.dataFor(record, operation))));
     }
 
     /**
@@ -128,7 +139,29 @@ export class JsonWriter implements Writer {
      * @returns `record.getChangedData()` when `mode` is `'dirty'` and
      *   `operation` is `'update'`; otherwise `record.getData()`.
      */
-    private dataFor(record: ModelRecord, operation?: WriteOperation): Record<string, any> {
+    protected dataFor(record: ModelRecord, operation?: WriteOperation): Record<string, any> {
         return this._mode === 'dirty' && operation === 'update' ? record.getChangedData() : record.getData();
+    }
+
+    /**
+     * Copies `data` with every top-level `Date` replaced by its wire text for
+     * the type of the record's field of that name. Runs on `dataFor`'s result,
+     * so a subclass that overrides `dataFor` still gets this conversion.
+     *
+     * @param record - The record `data` was taken from; its model supplies
+     *   each field's type.
+     * @param data - The field data `dataFor` chose.
+     *
+     * @returns A new object with the same keys, each `Date` replaced.
+     */
+    private toWireValues(record: ModelRecord, data: Record<string, any>): Record<string, any> {
+        const model = record.getModel();
+        const wire: Record<string, any> = {};
+
+        for (const [name, value] of Object.entries(data)) {
+            wire[name] = value instanceof Date ? formatWireTemporal(model.getField(name)?.getType(), value) : value;
+        }
+
+        return wire;
     }
 }
