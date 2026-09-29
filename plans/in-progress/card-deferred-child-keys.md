@@ -791,3 +791,146 @@ The question this plan had to answer first was whether two managers with deferra
 [^keep-ids]: Id-based selection is redundant in principle — `Cell` and `MarkdownEditor` could each attach `key: "editor"` / `key: "renderer"` constraints and switch by key — but "redundant in principle" is not what the pre-1.0 delete rule is about. That rule targets public API with no callers anywhere; this has seven in-library call sites, a documented options field, a doc page section, and rows in four test files. Converting `Cell` would also mean rewriting the table's per-cell editor-pool swap path, which is among the hottest code in the library, for no behavioural gain. The two selectors coexist, and `Card.md` presents the key as the way to name a child that may not exist yet rather than as a replacement.
 
 [^serialization]: Established by reading `layout/LayoutSerialization.ts`. `managerKind` ([`:177`](packages/lib/src/typescript/lib/layout/LayoutSerialization.ts#L177)) classifies a container by its manager's class name, and only `"Split"` and `"Tab"` are recognised: `nodeFor` falls through to the opaque `panel` leaf branch ([`:322`](packages/lib/src/typescript/lib/layout/LayoutSerialization.ts#L322)) for a `Card` container, so the card itself is recorded by its own component id and its children are never walked. `collectLeaves` ([`:426`](packages/lib/src/typescript/lib/layout/LayoutSerialization.ts#L426)) descends into the same two kinds only, so a `Card`'s pages are never parked or re-homed either, and `constraintsFor` ([`:517`](packages/lib/src/typescript/lib/layout/LayoutSerialization.ts#L517)) whitelists six `Tab`-only fields, so it needs no `key` row. A `Card` therefore neither saves nor restores its selection today, and an unbuilt keyed page is doubly invisible to it — it is not a container child, and the container is not descended into. Worth recording for whoever does take that on: `Tab` cannot record a never-built lazy tab either. `nodeFor`'s tab branch reads `manager.getActiveContent()` ([`:302`](packages/lib/src/typescript/lib/layout/LayoutSerialization.ts#L302)), which returns `null` for an entry whose factory has not run ([`Tab.ts:2300`](packages/lib/src/typescript/lib/layout/Tab.ts#L2300)), so `activeIndex` falls back to `0` — and because an unbuilt entry is not in `getComponents()`, it is absent from the saved children as well. The remapping at [`:631`](packages/lib/src/typescript/lib/layout/LayoutSerialization.ts#L631) realigns the active index against the children that actually landed on restore, which is a different problem from an active child that was never captured. Both are `Tab`'s, and neither is touched here.
+
+---
+
+## Implementation Notes
+
+Implemented as written, with the source landing before the test file as
+`## Architecture Decisions` directs. Thirteen deviations, listed below in the
+order they arose. Four came from reading the plan against the code: its
+internal contradiction over case 13's regex, its stale `docs:api` bar, case
+23's missing warn spy, and a piece of public API its prescribed doc edits left
+undocumented. Two came from running the mutation table and the supplementary
+mutations: case 5's strengthening and the added case 25. The remaining seven
+came from the three audit rounds — one code defect (`setVisibleKey` not
+re-resolving when a factory throws, with case 15b added for the arm the plan's
+own case 15 had left uncovered), one comment of the plan's own that was wrong
+about one of its two callers, and five gaps where a shipped line had no
+assertion behind it: cases 26, 27, 28, 29 and the second visit added to case
+21. Every case added to or beyond the plan's own 24 is mutation-proved in the
+tally at the end of this section.
+
+**Case 13's regex was unimplementable as specified.** The plan asks case 13 to
+assert `setVisibleKey` throws `/setVisibleKey/`, but the throw message is
+decided as caller-neutral — pinned by case 23's `not.toMatch(/setVisibleKey/)`
+and by the `Restore the Card.setVisibleKey: prefix` mutation row. The two
+cannot both hold. Case 13 uses `/returned a promise/`, which is what its own
+stated purpose needs ("without the promise check the failure comes out of
+`insertComponent` instead and carries a different message") and what case 23
+already uses. Nothing else changed.
+
+**Case 5 did not go red under its own mutation, so the case was strengthened.**
+Deleting `this._deferred.delete(key)` left case 5 green: the build-time
+collision guard sees the live child the first build added, suppresses the
+rebuild, and keeps `built` at `["a", "b"]`. The registry's once-only role on
+the happy path is therefore redundant with that guard, and the only observable
+trace of the stale entry is the collision it reports on a page the caller
+merely revisited. Case 5 now asserts `console.warn` was not called, which kills
+the mutation. Cases 13 and 15 pinned the failure paths as predicted.
+
+**A 25th case was added, for the element gate's placement.** The gate lives in
+`doLayout`'s catch-up, and cases 11, 12 and 24 pin it there. But relocating it
+into `buildDeferredChild` — where it also suppresses `setVisibleKey`'s
+synchronous build — passes all 24 planned cases, while silently narrowing the
+contract `[^element-gate]` states as unaffected ("`setVisibleKey` builds
+synchronously on the caller's stack"). Case 25 registers a slot on an attached
+but unrendered container, selects it, and asserts the factory ran. It is the
+only case that separates the two placements; the relocation mutation was run
+and turns exactly case 25 red.
+
+**The `docs:api` bar is zero, not 14.** `plans/docs-api-warning-clearance.md`
+has landed, so step 13's "no more than the 14 warnings master reports" and the
+`[^docs-api-bar]` footnote are both stale. Measured on this worktree: 0
+warnings before any edit and 0 after, which is the bar `CODE_CONVENTIONS.md`
+now states.
+
+**Case 23 got the `console.warn` spy the plan's list omits.** The layout pass
+that follows its throw reports the now-slotless key, exactly as in cases 13 and
+15, which the plan does list. Without the spy the case passes but prints a
+warning; nothing is asserted on the spy.
+
+**`Card.md` got a fourth edit.** `CardOptions.visibleKey` is public API that
+the plan's three prescribed edits left undocumented, so the new section states
+it alongside `visibleComponentId`, together with the select-before-register
+rule and the one-selection-two-spellings rule.
+
+**`setVisibleKey` syncs in a `finally`, which the plan's code sketch does not.**
+The plan's `## Internal Structure` calls `buildDeferredChild` and then
+`syncVisible` as two plain statements, so a factory that throws leaves the
+method before the sync — and `doLayout` re-resolves only when nothing is
+currently visible, so no later pass corrects it. The card then goes on showing
+the outgoing page while `getVisibleKey` reports the new key. That contradicts
+case 15's own stated contract, which requires a failed build to fall back "to
+the first live child (or `null` when there is none), exactly as an unresolvable
+id does". The sketch and the contract cannot both hold; `## Expected Behaviour`
+is the authority the implement skill derives tests from, so the code was fixed
+to match it rather than the contract restated. Case 15 covered only the
+empty-card arm, where the old code passes by accident, so **case 15b** was
+added for the non-empty arm — the one the contract is actually about.
+
+**Four cases were added for shipped lines no assertion stood behind.** Each was
+found by mutating the line and watching the suite stay green, and each is now
+red under that same mutation.
+
+*Case 26 — the resolution table's fourth row.* The suppression in
+`syncVisible`'s key branch, `!resolved && !this._deferred.has(...)`, is what
+makes "not built yet" different from "not found"; narrowing it to `!resolved`
+left all 25 earlier cases green. The plan's `## Expected Behaviour` and mutation
+table never covered it, although the fourth row is a settled decision. Case 26
+reaches it the way a consumer does — a size query landing before the first
+layout pass — and pins both sides: a pending key is silent, a key no slot
+carries is still reported.
+
+*Case 27 — the catch-up's own sync.* Cases 11, 12, 23 and 24 all start from an
+empty card, where `doLayout`'s following `if (!this._currentVisible)` re-sync
+stands in for the one inside the catch-up, so deleting the catch-up's
+`syncVisible()` left them all green. With a page already showing, that deletion
+leaves the built page displayed while the old one stays resolved — two pages
+overlapping, unreported. Case 27 selects an unregistered key on a card with a
+live child, so something is resolved before the catch-up runs.
+
+*Case 21's second visit — the collision branch's `_deferred.delete(key)`.* The
+guard table says this branch "drops the pending entry unbuilt", but cases 20
+and 21 each triggered the collision only once, and a single collision passes
+whether or not the entry was dropped. Deleting the line left all 30 cases
+green; without it the discarded factory stays pending, every later visit to the
+key reports the same collision again, and removing the live child brings the
+factory back. Case 21 now switches away and back, asserting the warning count
+stays at one.
+
+*Cases 28 and 29 — the two new `scheduleLayout()` calls.* Neither had an
+assertion; either could be deleted with the suite green. The one in
+`addDeferredComponent` is the load-bearing one: a claimed factory returns from
+`addComponent` before `insertComponent`, and `setVisibleKey`'s same-value early
+return swallows a re-selection, so that call is the only thing that brings the
+pass case 11 drives by hand. Both are spied the way
+[`Card.test.ts:122-127`](packages/lib/tests/component/layout/Card.test.ts#L122)
+already pins `setVisibleComponentId`'s own schedule — the in-repo precedent for
+this assertion, which the plan did not point at. Case 29 selects an
+already-built key so no `addComponent` runs and the setter's own call is the
+only scheduler left to observe.
+
+No demo was added: the plan's `## Non-Goals` excludes the demo app, and
+`demo-app-category-navigation` is the first consumer.
+
+**One comment of the plan's own was wrong about one of its two callers.**
+`buildDeferredChild`'s collision-branch comment, given verbatim in
+`## Internal Structure`, ended "The caller's next `syncVisible` resolves to
+that child, so the card still shows something for the key." That holds for
+`setVisibleKey`, which re-resolves in its `finally`, and is false for a
+`doLayout` catch-up, which syncs only on a successful build while the pass
+re-resolves only when nothing is visible. The behaviour is right — it is the
+rule any live child added after the first sync already follows — so the comment
+was corrected to name both paths rather than the behaviour changed.
+
+**Mutation proof: all 32 rows kill their predicted cases**, with no predicted
+case staying green. That is the plan's own 25 rows, plus seven added here: the
+gate relocation (case 25), `setVisibleKey`'s missing sync (case 15b), the
+narrowed resolver suppression (case 26), the catch-up's deleted sync (case 27),
+the two deleted `scheduleLayout()` calls (cases 28 and 29), and the collision
+branch's deleted registry drop (case 21). Two of the plan's own claims were checked rather than assumed: the
+`?? "page"` mutation is type-clean while deleting the guard outright is not
+(`typecheck:test` exits 2), and the docs suite's anchor checker was
+mutation-tested — a deliberately broken anchor fails it — so the green run on
+the new cross-page links is not vacuous.
