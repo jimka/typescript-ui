@@ -16,7 +16,6 @@ import { Component } from '~/core/Component';
 import { Container } from '~/core/Container';
 import { DOM } from '~/core/DOM';
 import { Event } from '~/core/Event';
-import { Favicon } from '~/core/Favicon';
 import { ResizeDrag, gutterOutline, getAppResizeMode, setAppResizeMode, IN_PAGE_OUTLINE_Z_INDEX } from '~/core/ResizeDrag';
 import type { OutlineRect, ResizeDragHooks } from '~/core/ResizeDrag';
 import { styleRuleEntries } from '~/core/StyleTarget';
@@ -102,9 +101,8 @@ describe('ResizeDrag', () => {
         // outline mode.
         setAppResizeMode('live');
         // Body is a page-level singleton whose own module state outlives
-        // DOM.reset() too; B1 configures both of these, as
-        // BodyContextMenu.test.ts's afterEach does.
-        Favicon._reset();
+        // DOM.reset() too; B1 configures it, as BodyContextMenu.test.ts's
+        // afterEach does.
         Body.getInstance().setNativeContextMenu(true);
         DOM.reset();
     });

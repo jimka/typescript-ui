@@ -3284,43 +3284,94 @@ export class ProductionDOMSource implements DOMSource {
  * @category Core
  */
 export interface DOMSeams {
-    /** The active write seam. Defaults to a {@link ProductionDOMSink}. */
-    sink: DOMSink;
-    /** The active read seam. Defaults to a {@link ProductionDOMSource}. */
-    source: DOMSource;
+    /**
+     * The active write seam. Defaults to a {@link ProductionDOMSink}. Read-only:
+     * swap it through {@link DOMSeams.install} or {@link DOMSeams.reset}, which
+     * are the only two routes that tell the library's seam-derived caches their
+     * handles have stopped resolving.
+     */
+    readonly sink: DOMSink;
+    /**
+     * The active read seam. Defaults to a {@link ProductionDOMSource}.
+     * Read-only, like the write seam: swap it through {@link DOMSeams.install}
+     * or {@link DOMSeams.reset}.
+     */
+    readonly source: DOMSource;
     /**
      * Swaps in test implementations. Omitted seams keep their current value.
+     *
+     * A call that replaces the installed sink — one handed a sink that is not
+     * the object already installed — runs the registered sink-change listeners
+     * afterwards, so every cache holding a handle that sink never minted drops
+     * it. Installing only a source, or re-installing the sink already in place,
+     * notifies nothing: both leave the held handles resolvable.
      *
      * @param impls - The sink and/or source to install.
      */
     install(impls: { sink?: DOMSink; source?: DOMSource }): void;
-    /** Restores the production implementations. */
+    /**
+     * Restores the production implementations, rebuilding the shared handle
+     * registry alongside them.
+     *
+     * Always replaces the installed sink, so it always runs the registered
+     * sink-change listeners afterwards — every handle minted before the call is
+     * dead.
+     */
     reset(): void;
+    /**
+     * Registers a listener run after every swap that replaces the installed
+     * sink.
+     *
+     * @param listener - Called after the swap, so it reads the incoming seam.
+     *
+     * @internal
+     */
+    onSinkChange(listener: () => void): void;
 }
 
 /**
- * Global swap point for the DOM seams, mirroring `ThemeManager`'s active-theme
- * singleton. Production code reads {@link DOM.sink} / {@link DOM.source}; test
- * setup swaps them via {@link DOM.install} and restores via {@link DOM.reset}.
- *
- * @remarks A mutable-property `const` object rather than a `namespace` with
- * `export let`: the latter is not supported by the Oxc transformer the Vite
- * build uses. The binding is stable; the `sink` / `source` properties are the
- * swappable state.
- *
- * @category Core
+ * Listeners run after every swap that replaces the installed sink. Each one
+ * belongs to a module-scoped cache holding state minted through a sink it no
+ * longer has. There is no unregister: every such cache lives as long as the
+ * process does.
  */
-export const DOM: DOMSeams = {
+const _sinkChangeListeners: Array<() => void> = [];
+
+/** Runs every sink-change listener. Called after a swap, never before one. */
+function notifySinkChange(): void {
+    _sinkChangeListeners.forEach(l => l());
+}
+
+/**
+ * The seams as `core/DOM.ts` itself writes them. `DOMSeams` declares `sink` and
+ * `source` `readonly`, so no caller outside this module can swap a seam without
+ * going through `install` or `reset` — the only two places a sink-change
+ * listener runs. This is the module's own mutable view of the very same object
+ * the `DOM` binding below exports.
+ */
+type MutableDOMSeams = { -readonly [K in keyof DOMSeams]: DOMSeams[K] };
+
+const _seams: MutableDOMSeams = {
     sink:   new ProductionDOMSink(),
     source: new ProductionDOMSource(),
 
     install(impls: { sink?: DOMSink; source?: DOMSource }): void {
+        // Computed before the assignment below: the comparison is against the
+        // outgoing sink, so computed after it can never be true.
+        const sinkReplaced = impls.sink !== undefined && impls.sink !== _seams.sink;
+
         if (impls.sink) {
-            DOM.sink = impls.sink;
+            _seams.sink = impls.sink;
         }
 
         if (impls.source) {
-            DOM.source = impls.source;
+            _seams.source = impls.source;
+        }
+
+        // Last, after every assignment: a listener reads `DOM.sink` and must
+        // see the seam that replaced the one it was holding.
+        if (sinkReplaced) {
+            notifySinkChange();
         }
     },
 
@@ -3329,12 +3380,34 @@ export const DOM: DOMSeams = {
         // scheduler and reads the *current* seams when it fires, so one left
         // armed here would run against the fresh registry with a handle minted
         // against the old one — the use-after-free `resolve` throws on.
-        DOM.sink.clearAllTimeouts();
+        _seams.sink.clearAllTimeouts();
 
         // Rebuild the shared registry alongside the seams so a test never
         // resolves a handle minted against the previous DOM.
-        _registry  = new HandleRegistry();
-        DOM.sink   = new ProductionDOMSink();
-        DOM.source = new ProductionDOMSource();
+        _registry     = new HandleRegistry();
+        _seams.sink   = new ProductionDOMSink();
+        _seams.source = new ProductionDOMSource();
+
+        // Last, as in `install`: the fresh production sink is what a listener
+        // must see, not the one just discarded.
+        notifySinkChange();
+    },
+
+    onSinkChange(listener: () => void): void {
+        _sinkChangeListeners.push(listener);
     },
 };
+
+/**
+ * Global swap point for the DOM seams, mirroring `ThemeManager`'s active-theme
+ * singleton. Production code reads {@link DOM.sink} / {@link DOM.source}; test
+ * setup swaps them via {@link DOM.install} and restores via {@link DOM.reset}.
+ *
+ * @remarks A single `const` object rather than a `namespace` with `export let`:
+ * the latter is not supported by the Oxc transformer the Vite build uses. The
+ * binding is stable; the `sink` / `source` properties are the swappable state,
+ * read-only to callers and written only by `install` and `reset`.
+ *
+ * @category Core
+ */
+export const DOM: DOMSeams = _seams;

@@ -17,7 +17,6 @@ import { Body } from '~/core/Body';
 import { Component } from '~/core/Component';
 import { DOM, type Handle } from '~/core/DOM';
 import { Event } from '~/core/Event';
-import { Favicon } from '~/core/Favicon';
 import { installTestDOM, makeEvent, type RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -47,14 +46,6 @@ function contextMenuWrites(sink: RecordingDOMSink, op: 'addListener' | 'removeLi
 
 describe('Body — native context-menu suppression', () => {
     afterEach(() => {
-        // Favicon._reset() is not part of this feature; it is required because
-        // every Body.init({}) call below (favicon left unconfigured) installs
-        // the default favicon as a side effect, and Favicon's own module state
-        // caches the handle it wrote through — a handle that does not resolve
-        // against the fresh table DOM.reset() installs for the next case (see
-        // Favicon._reset()'s doc comment, and tests/core/Favicon.test.ts, which
-        // guards the same way).
-        Favicon._reset();
         Body.getInstance().setNativeContextMenu(true);
         DOM.reset();
     });

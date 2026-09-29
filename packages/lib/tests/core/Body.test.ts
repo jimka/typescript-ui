@@ -3,7 +3,6 @@ import { Body } from '~/core/Body';
 import { Component } from '~/core/Component';
 import { Fit } from '~/layout/Fit';
 import { DOM } from '~/core/DOM';
-import { Favicon } from '~/core/Favicon';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -17,13 +16,6 @@ const CONFIG = {
 
 describe('Body.init', () => {
     afterEach(() => {
-        // Every Body.init(…) call below (favicon left unconfigured) installs
-        // the default favicon as a side effect, and Favicon's own module state
-        // caches the handle it wrote through — a handle that does not resolve
-        // against the fresh table DOM.reset() installs for the next case (see
-        // Favicon._reset()'s doc comment, and tests/core/BodyContextMenu.test.ts,
-        // which guards the same way).
-        Favicon._reset();
         DOM.reset();
     });
 
