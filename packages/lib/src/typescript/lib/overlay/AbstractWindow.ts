@@ -104,7 +104,13 @@ export type WindowState = "normal" | "minimized" | "maximized";
  * fires first on the advisory {@link AbstractWindow.requestClose} path (a
  * listener calling `preventDefault()` on its {@link WindowCloseController}
  * aborts the close), `"close"` when the window is actually closed, and
- * `"activate"` when the window becomes the active layer (a raise / focus). A
+ * `"activate"` when the window becomes the active layer (a raise / focus). On
+ * the rail path the `"minimize"` is held back until the shrink-into-the-rail
+ * animation lands, and a restore or a `setRail` that ends that animation early
+ * emits it first — so a `"minimize"` always precedes the `"restore"` it pairs
+ * with. It fires **at most** once per minimize, whichever route that minimize
+ * takes: a window closed inside the shrink announces `"close"` alone, and one
+ * disposed inside it announces nothing. A
  * [`Rail`](/api/overlay/classes/Rail) subscribes to `"minimize"`/`"restore"`/
  * `"close"` to mirror a window minimized into it as a launcher handle; a
  * [`Dock`](/api/overlay/classes/Dock) subscribes to `"activate"` to track which
@@ -334,7 +340,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private _bodyFadeActive: boolean = false;
     /** True while a rail collapse owns the window's own transform, opacity and transition. See `endRailCollapse`. */
     private _railCollapseActive: boolean = false;
-    /** True while a rail collapse still owes the deferred `"minimize"` its completion emits. See `setRail`. */
+    /** True while a rail collapse still owes the deferred `"minimize"` its completion emits. See `payRailMinimizeDebt`. */
     private _railMinimizeEmitPending: boolean = false;
 
     /** Rail this window minimizes into, or null for the built-in bottom strip. */
@@ -1230,7 +1236,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @remarks Round-trips through `_restoreRect`: leaving `"normal"` caches
      * the current rect; returning to `"normal"` reads it back and clears the
      * cache. While minimized or maximized, drag and resize are suppressed
-     * (see `startMoveFrom` and `onResize` early-returns).
+     * (see `startMoveFrom` and `onResize` early-returns). Leaving `"minimized"`
+     * while a rail's shrink animation is still running emits that shrink's
+     * deferred `"minimize"` before the `"restore"`.
      */
     setWindowState(state: WindowState): this {
         const from = this.getWindowState();
@@ -1242,15 +1250,32 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // the post-drag position instead of the stale start position.
         this._resizeDrag.cancel();
 
-        this._options.windowState = state;
-
         // A rail-minimized window is hidden outright (the rail handle is its
         // minimized representation), so re-show it and play the reverse genie —
-        // scaling/fading back up out of the rail — before the state branch runs.
+        // scaling/fading back up out of the rail — before the state flip and
+        // the state branch below.
         if (from === "minimized" && this._rail !== null) {
             this.setDisplayed(true);
             this.animateRailExpand();
+
+            // Then pay what an interrupted collapse still owes, so the
+            // `"restore"` at the end of this method is not the first thing the
+            // consumer hears about a window that did enter `"minimized"`.
+            //
+            // Placed last in this block, for two reasons. The state has not
+            // flipped yet, so the event announces the state the window is
+            // still in, as every other emit in this class does. And the
+            // reverse genie above has already read its target: this emit makes
+            // the rail raise a handle, `Rail.handleMainAxisOffset` answers from
+            // that handle rather than from the predicted slot the collapse
+            // aimed at, and the handle is not laid out yet — so a payment
+            // ahead of `animateRailExpand` hands it a `NaN` translate. The
+            // `"restore"` below takes the handle straight back off, leaving the
+            // rail as it was.
+            this.payRailMinimizeDebt();
         }
+
+        this._options.windowState = state;
 
         if (state === "normal") {
             // Restore body visibility BEFORE the tween starts so the
@@ -1370,6 +1395,31 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
+     * Emits the `"minimize"` a rail collapse deferred to its completion but
+     * was ended before reaching, so a window that entered `"minimized"`
+     * announces it exactly once however that collapse finished. A no-op unless
+     * a collapse is still holding the debt — a completed one has already
+     * emitted, and a minimize into the built-in dock defers nothing.
+     *
+     * @remarks Called from the two paths that end a collapse on a window that
+     * is still `"minimized"`: `setRail`, whose window stays minimized under a
+     * new owner, and `setWindowState`'s rail re-show, whose window is leaving
+     * `"minimized"` and whose `"restore"` would otherwise be unpaired. The
+     * flag is cleared before the emit, so a listener that calls back into
+     * either path cannot draw on the debt a second time. `onExitAction`
+     * deliberately does not call this: it has already emitted `"close"`, and
+     * the window is being destroyed.
+     */
+    private payRailMinimizeDebt(): void {
+        if (!this._railMinimizeEmitPending) {
+            return;
+        }
+
+        this._railMinimizeEmitPending = false;
+        this.emit("minimize");
+    }
+
+    /**
      * Returns whether the window is currently in the `"maximized"` state.
      *
      * @returns True when the current state is `"maximized"`.
@@ -1455,16 +1505,16 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      *
      * Such a call can also emit `"minimize"` synchronously. On the rail path
      * that event is deferred to the end of the shrink-into-the-rail animation,
-     * so a `setRail` that cancels one part-way fires it here instead — the
-     * window did enter `"minimized"`, and the event would otherwise be lost,
-     * leaving a later `"restore"` unpaired. It fires at most once per
-     * minimize, whichever route it takes. A
-     * detached window is cleared of the shrink-into-the-rail transform and
-     * fade a minimize into the rail leaves behind, and any collapse still
-     * running is cancelled, so it comes back visible and restorable. It comes
-     * back as a dock strip — at its slot's position, at the row's strip
-     * height, with its body hidden — and its own minimum size and body return
-     * when it is restored.
+     * so a `setRail` that cancels one part-way fires it here, as a restore that
+     * cancels one fires it before its own `"restore"` — the window did enter
+     * `"minimized"`, and the event would otherwise be lost, leaving a later
+     * `"restore"` unpaired. It fires at most once per minimize, whichever route
+     * it takes. A detached window is cleared of the shrink-into-the-rail
+     * transform and fade a minimize into the rail leaves behind, and any
+     * collapse still running is cancelled, so it comes back visible and
+     * restorable. It comes back as a dock strip — at its slot's position, at
+     * the row's strip height, with its body hidden — and its own minimum size
+     * and body return when it is restored.
      *
      * @param rail - The rail to minimize into, or `null` to detach.
      *
@@ -1505,19 +1555,18 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             // `"minimize"`, deferred to the end of the collapse — so cancelling
             // it would swallow the event outright, leaving a window that is
             // minimized and docked having never announced it, and a later
-            // restore emitting an unpaired `"restore"`. Fire what the collapse
+            // restore emitting an unpaired `"restore"`. Pay what the collapse
             // owed, as `Accordion.detach` runs the cleanup branch its own
-            // cancelled animations owned. Sitting after the `unregisterWindow`
-            // above is not load-bearing — a rail reached here would raise a
-            // handle and have it removed again inside this same call — but it
-            // keeps the old rail out of an event that no longer concerns it. A
-            // newly attached rail has already raised its handle in
-            // `registerWindow`, and takes this as the no-op its
+            // cancelled animations owned. `setWindowState`'s rail re-show pays
+            // the same debt through the same helper, for a window that is
+            // leaving `"minimized"` rather than staying in it. Sitting after the
+            // `unregisterWindow` above is not load-bearing — a rail reached here
+            // would raise a handle and have it removed again inside this same
+            // call — but it keeps the old rail out of an event that no longer
+            // concerns it. A newly attached rail has already raised its handle
+            // in `registerWindow`, and takes this as the no-op its
             // `showWindowHandle` guard makes it.
-            if (this._railMinimizeEmitPending) {
-                this._railMinimizeEmitPending = false;
-                this.emit("minimize");
-            }
+            this.payRailMinimizeDebt();
 
             // Attaching hands a docked window to the rail, so hide it: the
             // relayout below gives its slot to the next docked window, which
@@ -2974,13 +3023,6 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // ownership over, because the expansion's `from` is the genie itself
         // and needs it left in place to animate out of.
         this._railCollapseActive = false;
-
-        // And the collapse's deferred `"minimize"` is void: expanding means the
-        // window is no longer minimized, so there is nothing left to announce.
-        // A debt kept past the state it describes is a stale debt — the shape
-        // `Card`'s parked scroll restore follows when its own becomes
-        // unreachable.
-        this._railMinimizeEmitPending = false;
 
         // The collapse this expansion supersedes goes with the ownership handed
         // over above. `Animation.cancel` writes no styles, so the genie this

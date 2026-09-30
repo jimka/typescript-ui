@@ -570,3 +570,95 @@ win.restore();      // onMin, then onRes — in that order, in the same task
 [^reentrancy]: Traced: a `"minimize"` listener calling `win.setRail(null)` runs while the state still reads `"minimized"`, so `setRail`'s `isMinimized()` branch is taken. It cancels `_railExpandAnimation` — the expansion `animateRailExpand` armed one line earlier — and then calls `endRailCollapse()`, which no-ops because `animateRailExpand` has already cleared `_railCollapseActive`. `Animation.cancel` writes no styles, so the window is left carrying the genie's transform and opacity. It is still displayed, its state finishes as `"normal"`, and the next write to its transform clears the leftover, so nothing is unrecoverable. The underlying gap — that an interrupted rail *expand* leaves the element mid-genie with nothing to undo it — is already recorded as open in `plans/animation-finish-transition-clear.md`'s `## Non-Goals`, which states that closing it means widening `_railCollapseActive` to mean "either rail genie owns these styles" and thereby reverses a different recorded decision. Reaching it requires a consumer to change a window's rail ownership from inside that window's own minimize event, which no in-tree consumer does.
 
 [^no-row-vacuous]: Checked row by row, because a fix that satisfies an existing assertion by a second route leaves the line that assertion was written for deletable. **R9 and R11** pinned the void and are rewritten, so neither survives as a row whose expectation the new code happens to meet. **R6** asserts `['minimize']` immediately after `setRail(null)` and then `['minimize', 'restore']` after a restore; the first assertion still fails if `setRail`'s call goes, and the tail cannot be rescued by `setWindowState`'s payment because that block is gated on `this._rail !== null` and the rail is gone by then. **R7** is the same for the re-attach direction. **R10** asserts the window is displayed and `"normal"` after the drain and never looked at events. **R12** now pins the close path's deliberate non-payment as well as what it pinned before. **W27** and **W28** in `AbstractWindow.minimizedViewportResize.test.ts` count `"minimize"` emissions under that file's reduced-motion mock, where no debt is ever outstanding, and both still fail if the helper's guard goes. **R13**, **R14** and `animation-finish-transition-clear`'s **R15** are about `transition` writes and listener releases and touch no event. All four of that plan's rows were checked. Its **R16** does drive a restore, but it lets the collapse land first — so the completion has already emitted and cleared the debt, `payRailMinimizeDebt()` is a no-op there, no handle is raised or removed, and the row's `transition` values are untouched. Its **R17** and **R18** close a plain `Window` with no rail attached, so `_rail` is `null`, no collapse ever deferred anything, and the payment is unreachable on both. `Rail.test.ts`'s rail-window cases reach the rail through `minimize()` before `setRail`, which takes the dock path and defers nothing.
+
+---
+
+## Implementation Notes
+
+Implemented as written — the helper, its two call sites, the deleted void and
+the swapped `setWindowState` block all landed exactly as `## Internal
+Structure` quotes them, and step 1's row count was `18` as predicted. The
+notes below record what the plan could not have known and two small
+departures.
+
+**Stale figures in `## Verification`, both from `master` rather than from this
+branch's start point.** Step 6's "no more than the 14 pre-existing warnings"
+is dead: `docs-api-warning-clearance` cleared all fourteen and
+`CODE_CONVENTIONS.md` now records a standing zero-warning bar. `npm run
+docs:api` measured **0 warnings, 0 errors** both before and after this
+branch. Step 3's "521 files, 8763 passed, 2 todo" is likewise master's; the
+branch point `22925f01` measured **521 files, 8773 passed, 2 todo (8775)**,
+and this branch ends at **521 files, 8777 passed, 2 todo (8779)** — the four
+new rows the plan predicts, with the file count unchanged. `npm run lint`,
+`npm run typecheck`, `npm -w packages/lib run typecheck:test` and `npm run
+build:lib` are clean, `docs:llms:check` reports `108 catalogued, 0
+unaccounted for`, and `packages/qa`'s suite is unchanged at 453 passed. Step
+12's second grep reads `5` as prescribed; its first reads **`4`** rather than
+`3`, for the reason the flag-comment departure below gives. The test file ends
+at 22 contiguous rows, R1-R22.
+
+**`plans/in-progress/` did not exist in this tree** and was created by the
+in-progress move; every prior plan here went straight to `plans/implemented/`.
+
+**R20 sits between R19 and R21, not after R22.** Step 10 fixes when R20 is
+added but not where, and the plan's own numbering reads in order this way.
+
+**The debt flag's own comment was repointed, which is why step 12's first
+grep reads `4` and not `3`.** `_railMinimizeEmitPending`'s declaration comment
+read ``See `setRail`.`` — true while `setRail` held the guard/clear/emit
+triple, stale the moment this branch moved that triple into the helper and
+added a second settle point. Its two sibling flags each name the helper that
+settles them (`_bodyFadeActive` → ``endBodyFade``, `_railCollapseActive` →
+``endRailCollapse``), so it now reads ``See `payRailMinimizeDebt`.`` The plan's
+`## Internal Structure` does not quote this line, and step 12's enumeration —
+"the declaration, `setRail`'s call, `setWindowState`'s call" — did not
+anticipate a fourth mention. The second grep is unaffected, because it counts
+the field's declaration line rather than its comment. Raised by the audit, not
+planned.
+
+**`setRail`'s `@remarks` was rewrapped one line beyond the replaced clause.**
+The paragraph carried a pre-existing one-word wrap artifact — `whichever
+route it takes. A` / `detached window is cleared of…` — inside the text the
+prescribed clause replacement rewraps. No wording changed beyond the clause
+`## Documentation Impact` prescribes.
+
+**The whole mutation table was applied, not only step 11's two.** Each
+mutation was applied, run against the row's own file, and reverted; the
+source was byte-compared against its pre-mutation state at the end. One row
+of coverage only shows up suite-wide and was added to the table after the
+audit measured it: dropping the helper's guard turns R9 red as well as W27 and
+W28, because R9's closing `setRail(rail)` then pays a debt that is not owed. Every
+one of the fourteen rows of `### What each assertion catches` goes red under
+the mutation named for it, so none of them is vacuous:
+
+| Mutation | Rows red |
+|---|---|
+| payment moved ahead of `animateRailExpand()` (step 11) | R20 **only** |
+| payment moved below the state flip (step 11) | R19 **only** |
+| the helper's `emit("minimize")` dropped | R6, R7, R9, R11, R19, R21, R22 |
+| the helper's `_railMinimizeEmitPending = false` dropped | R9 **only** |
+| `setWindowState`'s `payRailMinimizeDebt()` dropped | R9, R11, R19, R21, R22 |
+| `animateRailExpand`'s collapse cancel dropped | R10, R11 |
+| `animateRailExpand`'s `from` dropped | R20 **only** |
+| a `state === "normal"` guard added around the payment | R22 **only** |
+| `setRail`'s `payRailMinimizeDebt()` dropped | R6, R7 |
+| a `payRailMinimizeDebt()` call added to `onExitAction` | R12 **only** |
+| the helper's early-return guard dropped | R9, W27, W28 |
+
+Two results are worth keeping. The four-row set the plan predicts for the
+dropped `setWindowState` call is exactly what appeared, and R20 was *not* in
+it — with no payment no handle is raised, so the genie's target is the one
+the collapse aimed at and R20 still passes, which is why R20 needs its
+position mutation rather than its deletion. And dropping the helper's
+flag-clear turns **only** R9 red, confirming that R9's four-step sequence is
+the file's only row proving the debt is settled once rather than carried into
+the next minimize — the property `[^reverses-r9]` gives as the reason for
+rewriting R9 instead of deleting it.
+
+**`## Expected Behaviour`'s in-engine manual list is unrun, and remains the
+user's to run.** It opens a window on the desktop, which this run was not
+permitted to do. Both checks — the window growing back out of the rail
+handle's corner rather than fading in at full size, and no handle left on or
+flashing across the rail afterwards — have offline proxies that pass (R20 for
+the start transform, R21 for the transient handle), but neither observes a
+paint.

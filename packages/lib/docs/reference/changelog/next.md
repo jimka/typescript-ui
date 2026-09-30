@@ -5,6 +5,22 @@ tied to a version number yet. Once this release is tagged, its content moves
 onto its own numbered page (see [Changelog](/reference/changelog)) and this
 page resets to empty.
 
+## Breaking changes
+
+### Overlay
+
+- **A restore that interrupts a rail minimize now announces `['minimize',
+  'restore']` rather than `"restore"` alone.** The `"minimize"` a rail-bound
+  window owes is deferred to the end of the 150 ms shrink-into-the-rail
+  animation, and a restore arriving inside that shrink used to void it — so
+  the pair arrived unbalanced, with a `"restore"` no `"minimize"` preceded.
+  The debt is now paid on that route too, matching what `setRail` already did
+  for a window that stays minimized under a new owner, and matching the two
+  events' documented meaning: the window's state reads `"minimized"` for the
+  whole shrink, so the old behaviour left that transition unannounced. A
+  consumer that counts the two events now sees them balance. See
+  [Migration](/reference/migration/next) for the full note.
+
 ## Added
 
 ### Components

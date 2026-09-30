@@ -4,3 +4,39 @@ Breaking-change notes for the next release, collected here as they land —
 this page is not tied to a version number yet. Once this release is tagged,
 any note here moves onto its own numbered page (see
 [Migration](/reference/migration)) and this page resets to empty.
+
+## A restore that interrupts a rail minimize fires the `minimize` it owed first
+
+**What changed and why.** A window minimizing into a
+[`Rail`](/components/Rail) shrinks into its handle over 150 ms, and its
+`"minimize"` is held back until that shrink lands — so the handle appears
+when the window has finished shrinking into it. A restore arriving inside
+that window used to *void* the held-back event, on the ground that a window
+leaving `"minimized"` has nothing left to announce. But the window's state
+reads `"minimized"` for the whole shrink, so a consumer polling
+`getWindowState()` saw a transition into and out of `"minimized"` that no
+event ever reported, and one pairing the two events saw a `"restore"` with
+no `"minimize"` before it. The debt is now paid instead of voided, which is
+what [`setRail`](/api/overlay/classes/AbstractWindow#setrail) already did
+for a window that stays minimized under a new owner. A restore that lets the
+shrink land is unchanged, and so is a close or a dispose inside it: the first
+still announces `"close"` alone, the second still announces nothing.
+
+**Who needs to act.** Nothing fails to compile, and a consumer that only
+mirrors the window's state — as `Rail` itself does — needs no change. A
+listener that treated `"minimize"` as "the window is now hidden behind a rail
+handle" sees one more call, for a window that is about to be shown again in
+the same task; it should read `getWindowState()` in the handler, or wait for
+the paired `"restore"`, rather than assume.
+
+```typescript
+// Before — a restore inside the 150 ms shrink
+win.on("minimize", onMin);
+win.on("restore",  onRes);
+win.minimize();
+win.restore();      // onRes only
+
+// After
+win.minimize();
+win.restore();      // onMin, then onRes — in that order, in the same task
+```
