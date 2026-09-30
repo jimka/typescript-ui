@@ -2228,3 +2228,123 @@ produces plans that agree with their reviewer and still do not work.
 Final state: eight plans drafted, three audited to the cap and closed by a final
 pass, all untracked in `plans/` for `/implement` to commit. The suggested phase
 schedule above is unchanged.
+
+## All fifteen branches implemented and merged (2026-09-30)
+
+The eight plans above were implemented in eight sequential phases rather than
+the five the schedule proposed, one plan per phase. Sequential was the
+`implement` skill's own default and it dissolved the contention the schedule
+had flagged: three of phase 4's plans all append to `changelog/next.md`, so
+running them side by side would have manufactured exactly the rebase conflicts
+the batch was trying to avoid. Each worker instead appended to a changelog that
+already carried its predecessors' entries. Same topological order, same merge
+sequence, no intra-phase collisions.
+
+Seven more branches were then stacked on top and the whole chain merged: the
+two library defects found by the by-eye pass below, plus five that were already
+in flight (`tree-expand-collapse-animation`,
+`spatial-navigation-region-chord-default`, `store-temporal-local-values`,
+`dialog-escape-releases-tab-owner`, `scrollbar-overflow-epsilon`). Fifteen
+branches, 89 commits, final tip measured at 533 files / 9043 tests, both
+typecheck programs clean, `docs:api` at zero warnings, `build:lib` and
+`docs:llms:check` clean.
+
+**Every conflict in the restack was documentation.** `changelog/next.md` seven
+times, `migration/next.md` twice, and exactly one line of code — a `Favicon`
+import in `ResizeDrag.test.ts` that `document-cache-reset-registry` had removed
+while `modal-layer-band-integrity` was adding `LayerManager` to the same block.
+The `LayerManager.ts` / `Dialog.ts` collision predicted between
+`modal-layer-band-integrity` and `dialog-escape-releases-tab-owner` never
+happened: one touches `bandFor` / `getBand`, the other the Escape and Tab-trap
+paths, so git auto-merged every code commit.
+
+**A note-merging lesson worth keeping.** Resolving these hunk-locally is wrong.
+One side opened with a `### Components` under `## Breaking changes` while the
+other already had one *above* the conflict region, so a hunk-local merge
+produces two identical sub-headings in one section. Reconstruct both whole
+documents — the file with every hunk resolved to each side in turn — then merge
+by `(H2, H3)`. Check afterwards for duplicated sub-headings, blank-line runs, a
+heading not followed by a blank line, and that each branch's distinctive entries
+survived. The canonical order is this repo's own: `Breaking changes`, `Changed`,
+`Added`, `Fixed`, with sub-sections alphabetical.
+
+## The by-eye pass found two library defects the suites could not (2026-09-30)
+
+Four findings, three resolved. In three of the four, the mechanism inferred from
+reading source was wrong and the measurement was right — which is this file's
+recurring lesson arriving a fourth, fifth and sixth time.
+
+**`Split` silently discarded every persisted pane layout, on every load.**
+Reported as a demo-app nav pane opening at the wrong width. `applyPendingSizes`
+cleared `_pendingSizes` *before* discovering whether it could be applied, and
+`applyPaneSizes` then bailed because `units.length === 0`: the array was never
+stale, merely undrainable, and it was already gone. `Body.init` guarantees that
+pane-less pass — `new Body()` arms an rAF via `setSize`, then `init` awaits
+`whenFontActivated()`, whose deadline is itself armed from the first frame. So
+both a constructor seed and a restored `localStorage` capture died on every
+load, which is why a dragged gutter never came back. `_pendingCollapsed` carried
+the identical defect. Fixed in `split-pending-pane-sizes-drain`, with three
+`console.warn` diagnostics on the silent exits — the absence of any signal is
+what made this cost four exchanges to identify instead of one.
+
+**Two wrong mechanisms were proposed for it before the right one.** A unit
+mismatch in `isRestorableSizes` (dead: `effectiveResizeWeight` uses `??`, so an
+explicit `weight: 0` survives and the units really are `["px","ratio"]`), and a
+pane's `preferredSize` as a second route to the startup width (dead in the other
+direction: `panePreferredSize` has one consumer, `Split.getPreferredSize`, but
+`seedFromPreferred` *does* allocate a pane, so the claim written into `main.ts`'s
+comment to justify removing it was itself false and had to be corrected). What
+settled it was an offline reproduction that landed on the wrong number.
+
+**A modal `Dialog` could be drawn beneath, and left clickable under, a
+non-modal overlay.** Reported as a `Drawer` floating over a dialog backdrop.
+`bandFor` made a nested layer inherit its opener's band unconditionally, and
+`Dialog` declares `getBand()` but no `isLayerRoot()` and no anchor — so
+`resolveParent` fell through to the last-registered layer and `Dialog.getBand()`
+was dead code whenever any layer was open. `Drawer` declared no band at all and
+defaulted to Dropdown (10000), above every window. Modality here is enforced
+*solely* by the backdrop being the topmost hit target — no `inert`, no page-wide
+`pointer-events: none`, and a Tab trap that only wraps at the ends — so this was
+an input escape, not a paint bug. The commonest case was broken too: a dialog
+opened with one window open tied with that window. Fixed in
+`modal-layer-band-integrity` via an optional `keepsOwnBand()`, plus
+`Band.Drawer` (8950). A modal drawer takes `Band.Dialog`, because giving every
+drawer the new band would have dropped a modal drawer's scrim below every
+window — the plan caught that and reversed the instruction it was given.
+
+**The Grid flicker: see the section above.** Closed by the merged epsilon
+reaching it, against this file's own prediction that it could not.
+
+**Still open — the docs demo overlap, and it is a `VBox` defect.** Reported as a
+demo block's margin painting over the text above it, with that text clipped. The
+settled state is correct, which is why a post-load measurement finds nothing; the
+defect is a first-paint transient, and it was reproduced by sampling every
+animation frame after a cache-ignoring reload of `/layouts/Absolute`:
+
+| frame | t (ms) | overlap (px) | prose clipped (px) |
+|---|---|---|---|
+| 26 | 969 | 411.8 / 968.8 | 0 / 0 |
+| 27 | 1027 | 186 / 642 | 50 / 176 |
+| 28 | 1059 | 0 / 0 | 50 / 176 |
+| 29 | 1094 | 50 / 176 | 0 / 0 |
+| 31 | 2119 | 0 / 0 | 0 / 1 |
+| 35 | 6184 | 0 / 0 | 0 / 0 |
+
+Frame 29 is the proof: the overlap is *exactly* the amount the prose was
+clipping one frame earlier. `VBox.layoutPreferredMode` freezes every child's
+height in a pre-pass, `commitBounds` then sets width before height, and
+`Markdown.setWidth` re-measures synchronously — so a prose block that reflows
+taller mid-commit is floored back up by `clampHeight` while every later child's
+`y` stays fixed from the stale array. The prose's own `overflow: hidden` clips
+its content in the meantime, which is the "clipped text" half of the report.
+Over six seconds to settle, with a 1px residual clip lasting two of them.
+
+**It is not the demo padding, and `docs-demo-prose-alignment` should not be
+reverted.** An overlap of 968px cannot come from a 14px inset; the magnitudes
+track prose height, and the plan's own investigation had predicted this hazard
+and recommended keeping the padding for reasons that still hold —
+`VBox` `spacing` would make every prose-to-prose gutter 56px, and prose bottom
+padding does nothing for a demo-to-demo seam. The fix belongs in `VBox` /
+`commitBounds`, wants a plan of its own, and its acceptance can be automated:
+the frame-sampling script above is the shape of the regression test, and it
+failed before any fix existed.
