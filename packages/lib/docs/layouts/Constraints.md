@@ -21,7 +21,8 @@ Plus optional metadata:
 | --- | --- |
 | `name` | Label / identifier; consumed by [`Tab`](/layouts/Tab) for tab button text. |
 | `description` | Free-form descriptive string for accessibility / debugging. |
-| `lazy` | Defers a factory passed to `addComponent` until first activation; consumed by [`Tab`](/layouts/Tab), where it defaults to `true`. Ignored for an already-constructed component. |
+| `key` | Names a child's slot, so it can be selected by name rather than by component ID — and, unlike an ID, before it has been built. Consumed by [`Card`](/layouts/Card#lazy-page-construction). |
+| `lazy` | Defers a factory passed to `addComponent` until first activation; consumed by [`Tab`](/layouts/Tab), where it defaults to `true`, and by [`Card`](/layouts/Card#lazy-page-construction), where it is only the opt-out for a factory carrying a `key`. Ignored for an already-constructed component. |
 
 Each manager subclasses this to add its own fields:
 

@@ -176,7 +176,7 @@ layout.on('exception', (error, label) => {
 
 A tab closed while its factory is still in flight is forgotten: when the promise later settles, nothing is attached and nothing is reported.
 
-An async factory is only meaningful where something can host the wait. Passing one to a container whose manager does not defer it — or declining deferral with `lazy: false` — throws, because there is no spinner and no owner for the pending state. See [which loading affordance applies](/components/ProgressSpinner#which-loading-affordance) for choosing between this and overlaying a component that already exists.
+An async factory is only meaningful where something can host the wait, and `Tab` is the only manager that can. A manager that declines the factory throws on the immediate path — which is what `lazy: false` asks for here — and so does a [`Card`](/layouts/Card#lazy-page-construction), which does defer a keyed factory but builds it synchronously, leaving no spinner and no owner for the pending state. See [which loading affordance applies](/components/ProgressSpinner#which-loading-affordance) for choosing between this and overlaying a component that already exists.
 
 ### Busy tabs
 

@@ -66,8 +66,10 @@ export interface PerimeterSize {
 
 /**
  * A zero-argument function producing a child component on demand, either
- * immediately or once its promise resolves. An async factory is only accepted
- * by a layout manager that defers it (today: [`Tab`](/api/layout/classes/Tab)).
+ * immediately or once its promise resolves. An async factory needs a layout
+ * manager that can host the wait, which is [`Tab`](/api/layout/classes/Tab);
+ * [`Card`](/api/layout/classes/Card) defers a keyed child too, but builds it
+ * synchronously and so refuses a promise.
  *
  * @category Core
  */
@@ -7495,11 +7497,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * built yet. A factory is offered to this container's layout manager first: a manager that
      * defers it owns when — and whether — it runs, which is how a
      * [`Tab`](/api/layout/classes/Tab) registers a tab whose content is built on first
-     * activation. Every other manager declines, and the factory runs immediately.
+     * activation. [`Card`](/api/layout/classes/Card) also defers, claiming a factory whose
+     * constraints carry a `key` so the page can be built the first time that key is
+     * selected. Every other manager declines, and the factory runs immediately.
      *
-     * A factory returning a promise is only meaningful to a manager that defers it, because
-     * that manager is the one showing a spinner for the wait. On the immediate path there is
-     * nothing to host the wait, so a promise throws.
+     * A factory returning a promise is only meaningful to a manager that can host the wait,
+     * which is [`Tab`](/api/layout/classes/Tab) — the one showing a spinner for it. A `Card`
+     * builds a keyed factory synchronously and refuses a promise, and on the immediate path
+     * there is nothing to host the wait either, so a promise throws.
      *
      * @param component - The child component to add, or a factory producing it.
      * @param constraints - Optional. Layout constraints to pass to the layout manager.
