@@ -303,6 +303,24 @@ C5 and C6 exist because **the growth-only guard rendered mutation M7 unkillable*
 
 **Final mutation results, all nine against the twelve shipped cases** (each applied alone and reverted): M1 → T1, T2, T3. M2 → T4, T5. M3 → T1-T5 and C1-C4. M4 → T1, T3, T4, T5. M5 → T1-T5. M6 → T1, T4. M7 → C5, C6. M8 → T3, T5. M9 → C1-C4. No mutation survives.
 
-**The plan's `## Expected Behaviour` manual browser confirmation (lines 170-174) is still outstanding, and is the coordinator's to run — not silently skipped.** It prescribes a production-build (`npm run build:docs`, served by `vite preview`) frame-sampling re-run on `/components/Image` and `/layouts/Absolute` with `ignoreCache`. This worker is fenced off from any browser or window-opening tooling, so it could not be taken here. What it should show: **no frame with a demo overlapping its previous sibling** — the frames that showed 1909 / 877 / 730 on Image and 968.8 / 176 on Absolute all reading 0. A **~10px clip** clearing by roughly 2.7s **is still expected and is not a failure of this fix**: it is the deferred fenced-code `CodeEditor` correcting its own guessed height, which the component logs itself, and `## Non-Goals` places it out of scope. A between-passes clip may also still appear, for the same reason.
+**The plan's `## Expected Behaviour` manual browser confirmation (lines 170-174) was run and passes.** This worker is fenced off from browser and window-opening tooling, so the coordinator took it, against a production build of this branch at commit `4afd65b8` — `npm run docs:api`, `npm run build:docs`, served by `vite preview` — with a cache-ignoring reload, sampling every animation frame. Both prescribed pages show **no frame in which a demo overlaps its previous sibling**.
+
+On `/components/Image` (6 demo blocks), maximum overlap per sampled frame, against the pre-fix figure for the same frame:
+
+| t (ms) | pane width | max overlap | pre-fix | max clip |
+|---|---|---|---|---|
+| 415 | 0 | n/a (see below) | n/a | 0 |
+| 520 | 2225 | 0 | 877 | 730 |
+| 554 | 2213 | 0 | 730 | 1 |
+| 610-658 | 2213 | 0 | 0 | 1 → 10 |
+| 1670+ | 2213 | 0 | 0 | 0 |
+
+On `/layouts/Absolute` (2 blocks): one pre-layout frame, then nine laid-out frames from t=429 to t=5617, every one at overlap 0 — including t=429, which is still clipping 176px mid-growth. That page peaked at 968.8px of overlap pre-fix.
+
+**The t=415 frame is not a failure, and a later reader re-running this will hit it too.** At that frame the pane width is 0 and all six demos report `demoY: 0`, with each previous block's `clientHeight` equal to its `scrollHeight` — nothing is clipped and nothing has been positioned. It is the frame before the first layout pass produces any geometry, so an "overlap" computed from those numbers is an unset position rather than a stale one. Capturing the pane width and `demoY` alongside the overlap is what distinguishes the two.
+
+**The frame that demonstrates the fix is t=520.** The previous block reports `clientHeight` 977 against `scrollHeight` 1707 — mid-growth, still 730px short of its final height — while the demo after it is already correctly placed at y=1318 with zero overlap. That same frame carried 877px of overlap pre-fix. A later sibling being placed correctly *while* an earlier one is still short of its final height is the contract this plan adds, observed directly rather than inferred from the unit cases.
+
+**The `CodeEditor` clip remains, as `## Non-Goals` predicted, and this fix does not remove it.** The component logged `Markdown: fenced "javascript" code block's CodeEditor corrected its guessed height by 10px (97px → 106.9375px) on mount.` at t=621, with the 10px clip visible from t=633 to t=658 and gone by t=1670. It is confirmed out of scope, not a residual defect of the drift carry.
 
 **The `BoxJustifyPanel` demo (`packages/lib/src/typescript/BoxJustifyPanel.ts`) was checked by reading, not by running the dev server** — this worker's instructions prohibit `npm run dev`/`docs:dev`. It constructs each of the five `BoxJustify` modes through `HBox({ justify })` with plain preferred-size children, none of which grow mid-commit, so `commitStackedPlacements`' drift stays 0 throughout and its arguments to `commitBounds` are byte-identical to the old `commitPlacements` loop's — the invariant `## Architecture Decisions`' "Render cost" section states. `HBox.test.ts`/`VBox.test.ts`'s existing `justify` coverage passed unchanged in the full suite run, which is the automated evidence for the same claim. A further in-browser check of the demo itself was not taken; flagging per this worker's instructions in case the coordinator wants one.
