@@ -33,12 +33,12 @@ const GHOST_Z         = 10200;
 describe('ReorderIndicator', () => {
     afterEach(() => DOM.reset());
 
-    it('constructs below the Window band, BAR_HEIGHT tall, pointer-events none', () => {
+    it('constructs below the Drawer band, BAR_HEIGHT tall, pointer-events none', () => {
         installTestDOM(CONFIG);
 
         const bar = new ReorderIndicator();
 
-        expect(zIndex(bar)).toBe(LayerManager.Band.Window - 1);
+        expect(zIndex(bar)).toBe(LayerManager.Band.Drawer - 1);
         expect(bar.getHeight()).toBe(BAR_HEIGHT);
         expect(bar.getPointerEvents()).toBe('none');
     });
@@ -74,12 +74,12 @@ describe('ReorderIndicator', () => {
 describe('DragFeedback', () => {
     afterEach(() => DOM.reset());
 
-    it('constructs below the Window band, pointer-events none, valid by default', () => {
+    it('constructs below the Drawer band, pointer-events none, valid by default', () => {
         installTestDOM(CONFIG);
 
         const fb = new DragFeedback();
 
-        expect(zIndex(fb)).toBe(LayerManager.Band.Window - 1);
+        expect(zIndex(fb)).toBe(LayerManager.Band.Drawer - 1);
         expect(fb.getPointerEvents()).toBe('none');
         expect(fb.isValid()).toBe(true);
     });
@@ -154,12 +154,12 @@ describe('DragGhost', () => {
 describe('DropZoneOverlay', () => {
     afterEach(() => DOM.reset());
 
-    it('constructs below the Window band with pointer-events none', () => {
+    it('constructs below the Drawer band with pointer-events none', () => {
         installTestDOM(CONFIG);
 
         const overlay = new DropZoneOverlay();
 
-        expect(zIndex(overlay)).toBe(LayerManager.Band.Window - 1);
+        expect(zIndex(overlay)).toBe(LayerManager.Band.Drawer - 1);
         expect(overlay.getPointerEvents()).toBe('none');
     });
 

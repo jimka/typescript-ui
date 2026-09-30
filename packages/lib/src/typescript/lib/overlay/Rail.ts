@@ -137,12 +137,12 @@ export interface RailOptions extends ComponentOptions {
 const DEFAULT_RAIL_THICKNESS_PX: number = 48;
 
 /**
- * Fixed z-index for the rail, a plain module constant just below the window
- * band (`Z_BAND_WINDOW = 9000` in `LayerManager`) — mirroring how the layer
- * manager's bands are plain constants because z-index is unthemed. The rail is
- * a persistent strip that windows, popovers, and dialogs still stack above, and
- * it is deliberately not a `DismissableLayer`, so it carries this stamp itself
- * rather than drawing a band from the layer manager.
+ * Fixed z-index for the rail, a plain module constant just below the lowest
+ * layer band (`Z_BAND_DRAWER = 8950` in `LayerManager`) — mirroring how the
+ * layer manager's bands are plain constants because z-index is unthemed. The
+ * rail is a persistent strip that drawers, windows, popovers, and dialogs still
+ * stack above, and it is deliberately not a `DismissableLayer`, so it carries
+ * this stamp itself rather than drawing a band from the layer manager.
  */
 const RAIL_Z_INDEX: number = 8900;
 
@@ -244,7 +244,7 @@ interface WindowRegistration {
  *
  * The rail mounts on `document.documentElement` as a `Position.FIXED` overlay
  * (the documented fixed carve-out) and carries a fixed z-index just below the
- * window band; it is deliberately *not* a layer-tree member.
+ * drawer band; it is deliberately *not* a layer-tree member.
  *
  * @example
  * ```typescript

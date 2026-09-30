@@ -1466,6 +1466,18 @@ class Dialog extends Component implements DismissableLayer {
     }
 
     /**
+     * A dialog is modal, so it stacks in the Dialog band whatever it was
+     * opened from — its backdrop must cover every non-modal surface — while
+     * still linking under its opener, so the opener stays active while the
+     * dialog is used.
+     *
+     * @returns Always `true`.
+     */
+    keepsOwnBand(): boolean {
+        return true;
+    }
+
+    /**
      * Displays a modal dialog and returns a promise that resolves on dismissal.
      *
      * @param config - Dialog configuration.

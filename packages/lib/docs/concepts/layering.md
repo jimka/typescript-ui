@@ -61,6 +61,7 @@ bands:
 
 | Band | Base |
 |---|---|
+| Drawer | 8950 |
 | Window | 9000 |
 | PinnedWindow | 9400 |
 | Popover | 9800 |
@@ -74,10 +75,14 @@ two surfaces that portal without registering as layers give themselves.
 
 A surface reports its band from `getBand()`; an unrelated top-level layer uses
 its own band, while a nested layer **inherits its opener's band** (see above)
-and rises above it via the per-register counter. `LayerManager.setBand(layer, band)`
-moves an already-registered layer (and its descendants) into a different band —
-an always-on-top window uses it to move into `PinnedWindow` without
-re-registering. The manager assigns `z = band + counter` at register time from
+and rises above it via the per-register counter — unless it returns `true` from
+`keepsOwnBand()`. A `Dialog` does, so a modal backdrop always stacks above every
+non-modal surface whatever the dialog was opened from. It still links under its
+opener, so activation and containment are unchanged.
+`LayerManager.setBand(layer, band)` moves an already-registered layer (and its
+descendants) into a different band — an always-on-top window uses it to move
+into `PinnedWindow` without re-registering; a descendant that keeps its own
+band stays in it. The manager assigns `z = band + counter` at register time from
 a counter kept **per band**, and compacts a band's live stamps back onto its
 base whenever the next one would reach the band above — so a band's headroom
 bounds how many of its layers may be open at once, not how many a session may
@@ -99,7 +104,8 @@ only on layers whose mode matches:
   Used by blur-dismiss popovers.
 - `"modal"` — never dismissed by an outside interaction (it captures the
   interaction); only Escape, routed through the keydown handler, closes it. Used
-  by dialogs, which keep their own Tab focus-trap.
+  by dialogs, which keep their own Tab focus-trap. Modal surfaces — `Dialog` and
+  a modal `Drawer` — stack in the Dialog band.
 - `"manual"` — never auto-dismissed; the host drives `hide()`. Used by windows
   and manual popovers.
 

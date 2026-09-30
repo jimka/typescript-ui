@@ -130,6 +130,14 @@ describe('Dialog (LayerManager integration getters)', () => {
         expect(dialog.getBand()).toBe(LayerManager.Band.Dialog);
     });
 
+    it('keepsOwnBand() is true', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new Dialog({ title: 'T', message: 'M' });
+
+        expect(dialog.keepsOwnBand()).toBe(true);
+    });
+
     it('getLayerElement() is null before the dialog is shown', () => {
         installTestDOM(CONFIG);
 

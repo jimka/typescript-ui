@@ -16,6 +16,7 @@ import { Component } from '~/core/Component';
 import { Container } from '~/core/Container';
 import { DOM } from '~/core/DOM';
 import { Event } from '~/core/Event';
+import { LayerManager } from '~/core/LayerManager';
 import { ResizeDrag, gutterOutline, getAppResizeMode, setAppResizeMode, IN_PAGE_OUTLINE_Z_INDEX } from '~/core/ResizeDrag';
 import type { OutlineRect, ResizeDragHooks } from '~/core/ResizeDrag';
 import { styleRuleEntries } from '~/core/StyleTarget';
@@ -196,6 +197,15 @@ describe('ResizeDrag', () => {
         flushFrame(1000);
 
         expect(hooks.apply).toHaveBeenCalledTimes(1);
+    });
+
+    it('IN_PAGE_OUTLINE_Z_INDEX sits just below the lowest LayerManager band', () => {
+        // Pinned against the band rather than against itself: R3 below checks
+        // the outline carries the constant, which stays true whatever the
+        // constant is. This is the sibling of the three same-rule assertions in
+        // overlay-primitives.test.ts, so a change of band cannot move only this
+        // one unnoticed.
+        expect(IN_PAGE_OUTLINE_Z_INDEX).toBe(LayerManager.Band.Drawer - 1);
     });
 
     it('R3. an outline drag mounts an outline and moves it instead of applying', () => {

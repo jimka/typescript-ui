@@ -9,14 +9,15 @@ import { DOM } from "~/core/DOM.js";
 /**
  * Z-order for the drop-target validity tint. The tint highlights a drop target,
  * which lives in ordinary app content — so it must sit **below** the lowest
- * {@link LayerManager} band (the {@link Window} band) or it paints over a
- * floating window, while still sitting above the target's own content (app
- * z-indexes top out near 3). The app tree establishes no isolating stacking
- * context, so a higher value escapes to the root context and beats windows —
- * which is exactly the bug `Band.Window - 1` avoids. Shared rationale with
+ * {@link LayerManager} band (the Drawer band) or it paints over a floating
+ * window or an open drawer, while still sitting above the target's own
+ * content (app z-indexes top out near 3). The app tree establishes no
+ * isolating stacking context, so a higher value escapes to the root context
+ * and beats windows — which is exactly the bug `Band.Drawer - 1` avoids.
+ * Shared rationale with
  * {@link ReorderIndicator}; the drag ghost sits above both at the root.
  */
-const Z_INDEX = LayerManager.Band.Window - 1;
+const Z_INDEX = LayerManager.Band.Drawer - 1;
 
 /**
  * A validity tint overlay drawn on top of the row currently being hovered
