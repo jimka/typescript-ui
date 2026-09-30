@@ -14,20 +14,28 @@
  * component triggers a same-commit width growth. T1 and T2 pin the two
  * production-build measurements the plan's frame-by-frame reading took from
  * the docs site: a 2009px block in a 100px default slot, and a 730px
- * mid-commit re-measure after a width change. T6 is a guard: it does not
- * reproduce the defect, and exists only to prove the drift is measured
- * against the child's own resolved extent, never the cell step to its next
- * sibling.
+ * mid-commit re-measure after a width change. T6 does not reproduce the
+ * defect and is killed by none of the mutations this file is graded against;
+ * it stands as a plain equal-mode placement guard for an anchored child,
+ * which is worth keeping but is not evidence about the drift carry. C5 and C6
+ * are what pin the drift being measured against the child's own resolved
+ * extent rather than the cell step to its next sibling.
  *
  * C1-C4 are the other half of that guard, in both arms: a child that commits
  * *smaller* than its resolved extent must leave every later sibling exactly
- * where the calc phase planned it. Equal mode resolves every cell as
- * `FillType.BOTH`, which `LayoutManager.resolveBounds` hands over whole
+ * where the calc phase planned it. Equal mode resolves as `FillType.BOTH`
+ * every cell whose child sets no fill of its own — `resolveBounds` gives the
+ * child's own `constraints.fill` precedence, which is why anchored T6 is
+ * resolved at its own extent instead — and hands that cell over whole
  * without reading the child's maximum, so a child with a ceiling of its own
- * clamps back down inside its cell on every pass — the `Checkbox` committing
+ * clamps back down inside its cell on every pass: the `Checkbox` committing
  * its own 16 pixels against a larger request that `commitBounds`' own
  * comment cites. Carrying that negative difference would pull later siblings
- * up into the slack; these four pin the positions that proves it does not.
+ * up into the slack; these four pin the positions that prove it does not.
+ * C7 and C8 close the ordering half of the same guard, in both arms: with a
+ * clamp-down child *after* a growing one, clamping each child's own
+ * difference and clamping the running total stop being equivalent, and only
+ * the former leaves the earlier growth intact.
  *
  * Follows LayoutManager.commitBounds.test.ts's host-Container idiom and its
  * `getX() + getTranslateX()` true-position reading.
@@ -383,5 +391,56 @@ describe('BoxLayout.commitStackedPlacements drift carry', () => {
         // would carry 190 and leave both 10px short.
         expect(truePosition(b).x).toBe(310);
         expect(truePosition(c).x).toBe(370);
+    });
+
+    // C7/C8 are the only cases where a clamp-down child follows a growing one,
+    // which is what distinguishes clamping each child's own difference from
+    // clamping the running total. Both floor a negative difference to 0, so
+    // every other case here is blind to the choice: C1-C4 put the clamp-down
+    // child first, where the running total is still 0 and the two agree. The
+    // rule these pin is that an earlier child's growth survives a later
+    // child's clamp-down rather than being eaten by its slack.
+    it('C7: a VBox clamp-down child after a growing one does not eat the growth already carried', () => {
+        const host = hostVBox(400, 300, new VBox({ mode: 'equal', spacing: 0, itemAlign: 'stretch' }));
+        const a = md(host, 500);
+        const b = new Checkbox();
+        const c = box(100, 50);
+
+        host.addComponent(b);
+        host.addComponent(c);
+        host.doLayout();
+
+        // Both halves really happened, so the position below cannot pass for
+        // the wrong reason: A grew past its 100px cell, B clamped inside it.
+        expect(a.getHeight()).toBe(500);
+        expect(b.getHeight()).toBe(16);
+
+        // A's growth is 500 - 100 = 400, carried whole. B's -84 floors to 0
+        // and takes nothing back, so C lands at its planned 200 plus 400.
+        // Clamping the running total instead would carry 400 - 84 = 316 and
+        // put C at 516, pulling it 84px into B's slack.
+        expect(truePosition(c).y).toBe(600);
+    });
+
+    it('C8: an HBox clamp-down child after a growing one does not eat the growth already carried', () => {
+        const host = hostHBox(300, 40, new HBox({ mode: 'equal', spacing: 0, itemAlign: 'stretch' }));
+        const a = new WidthOnHeightLeaf({ preferredSize: { width: 100, height: 40 } });
+
+        a.armWidthAfterHeight(300);
+        const b = new Checkbox();
+        const c = box(50, 40);
+
+        host.addComponent(a);
+        host.addComponent(b);
+        host.addComponent(c);
+        host.doLayout();
+
+        expect(a.getWidth()).toBe(300);
+        expect(b.getWidth()).toBe(16);
+
+        // Mirror of C7 on the width axis: 300 - 100 = 200 carried, B's -84
+        // floored to 0, so C lands at its planned 200 plus 200. Clamping the
+        // running total would carry 116 and put C at 316.
+        expect(truePosition(c).x).toBe(400);
     });
 });

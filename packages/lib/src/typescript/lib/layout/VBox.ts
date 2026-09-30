@@ -534,7 +534,7 @@ class VBox extends BoxLayout {
             // measured against the same extent contentHeight summed, so the
             // justify arithmetic above stays exact. A child that clamps taller
             // during its own commit is handled separately: commitStackedPlacements
-            // carries the committed-minus-resolved difference onto every later
+            // carries the committed-minus-resolved growth onto every later
             // sibling's position, in the same pass.
             y += heights[idx];
             y += spacing + gap;

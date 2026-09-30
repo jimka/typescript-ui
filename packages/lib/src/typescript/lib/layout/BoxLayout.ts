@@ -550,10 +550,12 @@ export abstract class BoxLayout extends LayoutManager {
 
             // Growth only. A child that commits *smaller* than its resolved
             // extent is the common case, not an anomaly: equal mode resolves
-            // every cell as FillType.BOTH, which hands over the whole cell
-            // without reading the child's maximum, so any child with a size
-            // ceiling of its own — a Checkbox's 16 pixels, an explicit
-            // maxSize — clamps back down inside its cell on every pass.
+            // as FillType.BOTH every cell whose child sets no fill of its own
+            // (resolveBounds gives the child's own constraints.fill
+            // precedence over the mode's override), and hands that cell over
+            // whole without reading the child's maximum — so any such child
+            // with a size ceiling of its own, a Checkbox's 16 pixels or an
+            // explicit maxSize, clamps back down inside its cell every pass.
             // Carrying that negative difference would pull every later
             // sibling up into the slack the child left, which is the one
             // thing a drift carry must never do.

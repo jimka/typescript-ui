@@ -562,7 +562,7 @@ class HBox extends BoxLayout {
             // against the same extent contentWidth summed, so the justify
             // arithmetic above stays exact. A child that clamps wider during its
             // own commit is handled separately: commitStackedPlacements carries
-            // the committed-minus-resolved difference onto every later sibling's
+            // the committed-minus-resolved growth onto every later sibling's
             // position, in the same pass.
             x += widths[idx];
             x += spacing + gap;
