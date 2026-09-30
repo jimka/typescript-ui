@@ -84,7 +84,6 @@ page resets to empty.
 
 ## Fixed
 
-
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
@@ -113,6 +112,21 @@ page resets to empty.
   minted instead of appending a fresh link. The cache is now dropped
   automatically whenever the installed sink is replaced. No consumer action is
   needed.
+
+### Layouts
+
+- **A `Split`'s `paneSizes` and `collapsedPanes` now survive a layout pass
+  that runs before its panes are added.** Both options were drained on the
+  first layout pass and cleared whether or not that pass had any pane to
+  apply them to, so a split handed to `Body.init` — which lays out once
+  while it waits for the startup font — lost its seeded pane widths and its
+  collapsed panes on every load, falling back to an equal division, or to
+  each pane's own preferred width where it declares one. Each
+  option is now held until the first pass that has panes. A genuinely stale
+  array is still discarded whole, once, and `applyPaneSizes` now says so in
+  the console instead of discarding in silence; it also warns when it is
+  called before the container has panes, which is a no-op. No consumer
+  action is needed.
 
 ### Overlay
 
