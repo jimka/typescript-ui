@@ -5,7 +5,7 @@ import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { LayerManager } from "~/core/LayerManager.js";
-import { focusScopeRoot, visibleFocusable, findTabKeyOwner } from "~/core/Focusable.js";
+import { focusScopeRoot, visibleFocusable, findTabKeyOwner, ownsTabKey, MODIFIER_KEYS, stopAfterOwner, stopBeforeOwner } from "~/core/Focusable.js";
 
 /**
  * Options for {@link FocusTraversal.enable} / {@link FocusTraversal.configure}.
@@ -16,12 +16,6 @@ export interface FocusTraversalOptions {
     /** Wrap from the last stop to the first at the ends of the root. Default: only inside a modal layer. */
     wrap?: boolean;
 }
-
-// A bare modifier keydown must not expire the Escape release: pressing
-// Shift+Tab fires two keydowns (Shift, then Tab with shiftKey: true), and the
-// Shift keydown alone would otherwise reach the "any other key" branch first
-// and clear the flag before the real Tab arrives.
-const MODIFIER_KEYS: ReadonlySet<string> = new Set(["Shift", "Control", "Alt", "Meta"]);
 
 // Sentinel used to register the service's viewport listeners — see
 // FocusHistory's identical `_owner` pattern. `FocusTraversal` has no DOM
@@ -84,56 +78,6 @@ function stepFrom(root: Handle, stops: Handle[], active: Handle | null, directio
     return stops[target];
 }
 
-/**
- * The first stop, in `root`'s DOM order, that lies outside `owner`'s subtree
- * and follows every stop `owner` contains — the Escape-release target for
- * `Tab`. `owner`'s own element carries no position of its own to compare
- * against a sibling (the seam has no document-position primitive), so an
- * owner with no focusable descendant of its own degrades to the same "nothing
- * to continue from" landing {@link stepFrom} uses: the first stop of `root`.
- */
-function stopAfterOwner(root: Handle, owner: Handle): Handle | null {
-    const stops = visibleFocusable(root);
-    let lastInside = -1;
-
-    for (let i = 0; i < stops.length; i++) {
-        if (DOM.source.contains(owner, stops[i])) {
-            lastInside = i;
-        }
-    }
-
-    for (let i = lastInside + 1; i < stops.length; i++) {
-        if (!DOM.source.contains(owner, stops[i])) {
-            return stops[i];
-        }
-    }
-
-    return null;
-}
-
-/** {@link stopAfterOwner}'s mirror for `Shift+Tab` — the last stop before every stop `owner` contains. */
-function stopBeforeOwner(root: Handle, owner: Handle): Handle | null {
-    const stops = visibleFocusable(root);
-    let firstInside = -1;
-
-    for (let i = 0; i < stops.length; i++) {
-        if (DOM.source.contains(owner, stops[i])) {
-            firstInside = i;
-            break;
-        }
-    }
-
-    const upperBound = firstInside === -1 ? stops.length : firstInside;
-
-    for (let i = upperBound - 1; i >= 0; i--) {
-        if (!DOM.source.contains(owner, stops[i])) {
-            return stops[i];
-        }
-    }
-
-    return null;
-}
-
 /** Moves focus to `target` (when non-null) with `preventScroll: true`; reports whether it moved. */
 function focusStop(target: Handle | null): boolean {
     if (target === null) {
@@ -182,6 +126,15 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         return;
     }
 
+    const root = focusScopeRoot();
+
+    // A layer that claims Tab for its whole subtree (an open `Dialog`) runs
+    // its own trap and Escape release; a second release armed here would move
+    // focus a second time on the same Tab.
+    if (ownsTabKey(root)) {
+        return;
+    }
+
     if (e.key !== "Tab") {
         if (e.key === "Escape") {
             const active = DOM.source.getActiveElement();
@@ -205,13 +158,15 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         return; // the owner keeps Tab.
     }
 
-    const root = focusScopeRoot();
     let moved: boolean;
 
     if (owner !== null) {
         // `armed` is true here — the branch above returned otherwise.
         _releaseOwner = null;
-        moved = focusStop(e.shiftKey ? stopBeforeOwner(root, owner) : stopAfterOwner(root, owner));
+
+        moved = focusStop(e.shiftKey
+            ? stopBeforeOwner(visibleFocusable(root), owner)
+            : stopAfterOwner(visibleFocusable(root), owner));
     } else {
         moved = focusStop(stepFrom(root, visibleFocusable(root), active, e.shiftKey ? -1 : 1));
     }
@@ -231,7 +186,9 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
  * (see the plan's `## When To Pick This Up`). Stands down for a component
  * marked via {@link Component.setTabKeyOwner} while focus is inside it, so a
  * third-party editor or `Table`'s own cell-to-cell Tab handling keeps working
- * unmodified; `Escape` then `Tab`/`Shift+Tab` steps past it. Opt-in, matching
+ * unmodified; `Escape` then `Tab`/`Shift+Tab` steps past it. Stands down
+ * entirely while the topmost layer claims the Tab key for its whole subtree —
+ * an open `Dialog`, which runs its own trap and Escape release. Opt-in, matching
  * {@link FocusHistory}'s stance — call {@link enable} to start.
  *
  * @category Core

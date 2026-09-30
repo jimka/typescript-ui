@@ -148,18 +148,24 @@ While a dialog is open, `Tab` and `Shift+Tab` are trapped inside it: tabbing
 past the last control wraps to the first, and shift-tabbing off the first wraps
 to the last, so focus cannot reach the page behind the dialog.
 
-One case is deliberately exempt. An editing surface or a
-[`Table`](/components/Table) hosted in the dialog claims `Tab` for its own
-subtree — the editor indents, the table steps from cell to cell — and the
-dialog's trap stands down for as long as focus is inside it, rather than
-wrapping focus out from under it. The consequence worth planning around: such
-a surface placed first or last in the dialog leaves no `Tab` route past it, so
-give the dialog a plain control at each end when a keyboard user needs one. On
-an ordinary dialog `Escape` remains the way out — it dismisses the dialog and
-restores focus to wherever it was before it opened — but a mandatory modal
-(`dismissable: false`) makes `Escape` inert too, so one built around an editing
-surface at both ends leaves a keyboard user no exit at all. Put a plain control
-at one end of a mandatory modal.
+An editing surface or a [`Table`](/components/Table) hosted in the dialog
+keeps `Tab` while focus is inside it — the editor indents, the table steps from
+cell to cell — and the dialog's trap stands down rather than wrapping focus out
+from under it. To leave an editing surface such as a
+[`CodeEditor`](/components/CodeEditor) or
+[`MarkdownEditor`](/components/MarkdownEditor), press `Escape`. Inside the
+surface, `Escape` does not close the dialog; it releases the surface, so the
+next `Tab` or `Shift+Tab` moves to the dialog's next or previous control,
+wrapping inside the dialog. A second `Escape` closes the dialog and restores
+focus to wherever it was before it opened. Any other key cancels the release.
+A mandatory modal (`dismissable: false`) releases the surface the same way,
+but still ignores the second `Escape`.
+
+A `Table` gets the same first `Escape`, which does not close the dialog, but
+leaving it with `Tab` is not reliable yet: the table's own `Tab` handling can
+move focus back into the table after the dialog moves it out, and an open cell
+editor cancels the release. Give a dialog that hosts a `Table` a plain control
+at each end if a keyboard user needs to reach it with `Tab`.
 
 ### Per-button glyph
 

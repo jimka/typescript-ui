@@ -117,7 +117,9 @@ shields the layers beneath it and `"manual"` layers stay open.
 
 Dismissal is **advisory**: the manager calls `requestClose()` and the surface
 runs its own fade / teardown (and unregisters itself), so each surface keeps its
-bespoke animation and re-entrancy guard.
+bespoke animation and re-entrancy guard. `requestClose()` may return `false` to
+decline, in which case the manager leaves the Escape unhandled so it reaches the
+focused content — `Dialog` does this to release an embedded editor.
 
 ## Implementing a new layer
 

@@ -147,7 +147,13 @@ keeps the key, so a [`CodeEditor`](/components/CodeEditor),
 placed first or last in a dialog still indents or moves between cells instead
 of having focus wrapped out from under it. The dialog's own claim over its
 whole subtree does not trigger this: the search stops at the dialog's element
-without testing it, so only a descendant's claim counts.
+without testing it, so only a descendant's claim counts. `Escape` inside an
+editing surface releases it for one `Tab` instead of closing the dialog, and a
+second `Escape` closes it; inside a `Table` the first `Escape` does not close
+the dialog either, but the table's own `Tab` handling can pull focus back, so
+the `Tab` that follows is not guaranteed to leave it. Tab traversal stands
+down entirely while a dialog is the topmost layer, since the dialog runs this
+release itself.
 
 ## Spatial focus navigation
 
@@ -269,7 +275,7 @@ status.getAria().setRole('status');
 
 ## Testing
 
-- **Keyboard-only** — unplug your mouse and verify every interaction works with `Tab`, `Shift+Tab`, arrow keys, and `Space`/`Enter`; if [Tab traversal](#tab-traversal) is enabled, also check `Escape` then `Tab` escapes any Tab-key owner (an embedded editor, a table in edit mode); if [spatial focus navigation](#spatial-focus-navigation) is enabled, also check `Ctrl+Alt`+arrow and `Ctrl+Alt+Shift`+arrow move focus without disturbing a focused widget's own arrow-key behaviour.
+- **Keyboard-only** — unplug your mouse and verify every interaction works with `Tab`, `Shift+Tab`, arrow keys, and `Space`/`Enter`; if [Tab traversal](#tab-traversal) is enabled, also check `Escape` then `Tab` escapes any Tab-key owner (an embedded editor, a table in edit mode); inside a [`Dialog`](/components/Dialog), check that `Escape` then `Tab` leaves an embedded editor whether or not Tab traversal is enabled; if [spatial focus navigation](#spatial-focus-navigation) is enabled, also check `Ctrl+Alt`+arrow and `Ctrl+Alt+Shift`+arrow move focus without disturbing a focused widget's own arrow-key behaviour.
 - **Screen reader** — VoiceOver (macOS) and NVDA (Windows) are the two readers most commonly tested against. Both should announce roles and labels for built-in components correctly.
 - **Browser dev tools** — Chrome's "Accessibility" panel under DevTools shows the computed accessibility tree for each element.
 

@@ -724,3 +724,87 @@ steps 9-14. No new page, no sidebar or `llms.txt` entry.
     the next cell and the dialog's release then moves focus out: the user ends
     up outside the table. In the other order the table may pull focus back.
     `FocusTraversal`'s release has the same exposure today.
+
+---
+
+## Implementation Notes
+
+### Small deviations
+
+- **`ownerDialog(config)`** in `Dialog.test.ts` takes an optional
+  `Partial<DialogConfig>` that is spread into the dialog's config. Row 4
+  (`dismissable: false`) needs it. The plan said nothing else about the
+  helper would change.
+- **`CodeEditor.md`**: the Escape-then-Tab sentences go before the `Ctrl-m`
+  sentence as planned. That sentence's lead-in changed from "To move focus
+  out" to "To switch Tab to moving focus for longer", because Escape-then-Tab
+  now covers the one-off exit.
+- **Changelog placement**: `### Overlay` goes at the end of `## Breaking
+  changes`. `### Core` goes at the end of `## Added` and at the end of
+  `## Fixed`. The page already had headings from earlier branches, and these
+  follow them.
+- **Docs step 9 (and 10, 13, 14) scoped for `Table`.** The live check
+  below found that `Escape` then `Tab` does not reliably leave a `Table`.
+  So the docs promise the release only for editing surfaces. For a `Table`
+  they say the first `Escape` does not close the dialog but `Tab` may not
+  leave it. `Dialog.md` keeps the "plain control at each end" advice for a
+  dialog hosting a `Table`, though step 9 said to delete it. The first audit
+  round raised this.
+- **`npm run docs:api`** does not finish with zero warnings. It prints 15
+  warnings, all from symbols this branch does not touch (`SpatialNavigation`,
+  `MarkdownViewer`, `MarkdownEditor`, `FieldDecorator`). None come from this
+  branch's JSDoc.
+
+### What was checked live vs by unit tests only
+
+The live checks used the lib demo (`packages/lib`, `vite`), in Chrome driven
+by chrome-devtools, with real key presses. Temporary buttons in
+`MiscPanel.ts` opened the test dialogs, and that edit was reverted. The first
+dialog held only a `CodeEditor`, with Execute (primary) and Cancel buttons.
+It opened with focus in the editor. These all behaved as the plan expects:
+
+- `Tab` indented, as before.
+- `Escape` left the dialog open. After a 2.6 s wait, which is past
+  CodeMirror's own two-second window, `Tab` moved to Execute and did not
+  indent.
+- `Shift+Tab` back into the editor, then `Escape`, `Shift+Tab` moved to the
+  title-bar close button and did not dedent.
+- `Escape`, `ArrowDown`, `Tab` indented, so the release expired.
+- `Ctrl+Space` opened the completion list, and `Escape` closed the list
+  while the dialog stayed open. A second `Escape` closed the dialog with
+  `'close'`, and focus went back to the button that opened it.
+- With `FocusTraversal.enable()`, the dialog was opened from the keyboard.
+  `Escape`, `Tab` moved focus to Execute, one step only (not Cancel). `Enter`
+  on Execute then resolved `'confirm'`.
+- Mandatory modal (`dismissable: false`): two `Escape`s left it open. `Tab`
+  then moved to Execute, `Tab` again to Cancel, and `Space` resolved
+  `'cancel'`.
+
+These were covered by unit tests only, not checked live: the one-shot
+second `Tab` (row 14), the focus-inside-owner keep (row 13), the empty-stops
+case (row 15), the `LayerManager` decline row, and the `FocusTraversal`
+stand-down row as an isolated case. SQLAdmin's review dialog is the plan's
+downstream live check and was not run here.
+
+### `Table` inside a `Dialog`: focus ends back inside the table
+
+This is the manual case from *Needs manual verification*. Focus ended inside
+the table in both of the setups below.
+
+1. **Cell focused, no editor open.** `Escape` armed the release. On `Tab`,
+   the dialog moved focus to OK first. Then `Table`'s own `Tab` handler
+   opened the next cell's editor and pulled focus back into the table. In
+   the lib demo, the viewport listener runs before the target dispatcher.
+   This is the listener-order gap in *Non-Goals*, not a defect of this
+   change.
+2. **Cell editor open.** The release is cleared before `Tab` arrives. The
+   string, number and combo cell editors re-fire each keydown as
+   `Event.fireEvent(this, "keydown", { detail: … })`, a bubbling
+   `CustomEvent` with no `key`, and it reaches every viewport `keydown`
+   listener. `Dialog.onKeyDown` reads `e.key === undefined` as "any other
+   key" and expires the release. `FocusTraversal`'s expiry rule has the
+   same exposure. This expiry path was not in the plan. It is left
+   unfixed: the Table case fails on listener order anyway, and fixing
+   either one needs a change to `Event` or the cell editors, outside this
+   plan's scope. It is a candidate for the same follow-up as the
+   listener-order gap.

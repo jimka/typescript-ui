@@ -19,7 +19,7 @@ const CONFIG = {
 interface FakeLayer extends DismissableLayer {
     onActivate:      Mock<(active: boolean) => void>;
     onZIndexChanged: Mock<(zIndex: number) => void>;
-    requestClose:    Mock<() => void>;
+    requestClose:    Mock<() => boolean | void>;
 }
 
 interface FakeLayerOpts {
@@ -43,7 +43,7 @@ function fakeLayer(opts: FakeLayerOpts = {}): FakeLayer {
     const layer: FakeLayer = {
         getLayerElement: () => el,
         getDismissMode:  () => opts.dismissMode ?? 'click-outside',
-        requestClose:    vi.fn<() => void>(),
+        requestClose:    vi.fn<() => boolean | void>(),
         onActivate:      vi.fn<(active: boolean) => void>(),
         onZIndexChanged: vi.fn<(zIndex: number) => void>(),
     };
@@ -860,6 +860,24 @@ describe('LayerManager', () => {
 
             DOM.sink.dispatchEvent(DOM.source.getWindow(), escape as unknown as Event);
 
+            expect(escape.stopPropagation).not.toHaveBeenCalled();
+        });
+
+        // A layer that returns `false` from requestClose() declines the close
+        // (a Dialog arming its Escape release), and the Escape must keep
+        // propagating so it reaches the focused content.
+        it('does not consume Escape when the topmost layer declines it', () => {
+            installTestDOM(CONFIG);
+
+            const layer = register(fakeLayer({ dismissMode: 'click-outside' })) as FakeLayer;
+            layer.requestClose.mockReturnValue(false);
+
+            const escape = makeEvent(0 as Handle, 'keydown', { key: 'Escape' }) as unknown as { stopPropagation: () => void };
+            vi.spyOn(escape, 'stopPropagation');
+
+            DOM.sink.dispatchEvent(DOM.source.getWindow(), escape as unknown as Event);
+
+            expect(layer.requestClose).toHaveBeenCalledTimes(1);
             expect(escape.stopPropagation).not.toHaveBeenCalled();
         });
     });

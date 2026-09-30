@@ -411,6 +411,39 @@ describe('FocusTraversal keydown arbitration', () => {
         expect(DOM.source.getActiveElement()).toBe(inside); // owner kept it — flag was gone
     });
 
+    // dialog-escape-releases-tab-owner plan: an open Dialog marks its own
+    // layer element a Tab-key owner and runs its own trap and Escape release.
+    // With focus in an editor inside it, the nearest owner is the editor, so
+    // without the stand-down the service would arm a second release on the
+    // same Escape and move focus on the next Tab alongside the dialog.
+    it('stands down entirely while the topmost layer\'s element owns the Tab key', () => {
+        installTestDOM(CONFIG);
+
+        const layerEl = liveHandle();
+        const owner = liveHandle();
+        const inside = liveHandle();
+        const after = liveHandle();
+        markTabKeyOwner(layerEl);
+        markTabKeyOwner(owner);
+        DOM.sink.appendChild(layerEl, owner);
+        DOM.sink.appendChild(owner, inside);
+        DOM.sink.appendChild(layerEl, after);
+        seedStops(layerEl, [inside, after]);
+
+        const modal: DismissableLayer = { getLayerElement: () => layerEl, getDismissMode: () => 'modal', requestClose: () => {} };
+        LayerManager.register(modal);
+        FocusTraversal.enable();
+        DOM.sink.focus(inside);
+
+        dispatchKeyDown({ key: 'Escape' });
+        const tabEvent = dispatchKeyDown({ key: 'Tab' });
+
+        expect(DOM.source.getActiveElement()).toBe(inside);
+        expect(tabEvent.preventDefault).not.toHaveBeenCalled();
+
+        LayerManager.unregister(modal);
+    });
+
     it('disable() leaves a subsequent Tab entirely unhandled', () => {
         installTestDOM(CONFIG);
         FocusTraversal.enable();

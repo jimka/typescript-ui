@@ -83,6 +83,18 @@ page resets to empty.
   consumer that counts the two events now sees them balance. See
   [Migration](/reference/migration/next) for the full note.
 
+- **A `Dialog`'s first `Escape` inside an editing surface or `Table` no
+  longer closes the dialog.** A dialog whose only focusable content was a
+  `CodeEditor` opened with focus in the editor, where `Tab` indented and
+  `Escape` closed the whole dialog, so no key reached its buttons. The first
+  `Escape` inside an editing surface now releases it: the next `Tab` or
+  `Shift+Tab` moves to the dialog's next or previous control, and a second
+  `Escape` closes the dialog. The first `Escape` also reaches the surface,
+  so it can close an open completion list or search panel. A `Table` keeps
+  the first `Escape` too, but its own `Tab` handling can still pull focus
+  back into it. `Dialog.requestClose()` now returns `boolean`. See
+  [Migration](/reference/migration/next) for the full note.
+
 ## Changed
 
 ### Components
@@ -148,6 +160,11 @@ page resets to empty.
   it leaves the element as if the attribute had never been set, where
   `setHidden(false)` writes `aria-hidden="false"`.
 
+- **`DismissableLayer.requestClose()` may return `false` to decline.** The
+  layer stays open and `LayerManager` leaves the `Escape` that triggered the
+  request unhandled, so it reaches the focused content. Any other return,
+  including none, counts as handled, as before.
+
 ### Data
 
 - **`JsonWriter.dataFor` is `protected`.** A subclass can override it to
@@ -210,6 +227,11 @@ page resets to empty.
   minted instead of appending a fresh link. The cache is now dropped
   automatically whenever the installed sink is replaced. No consumer action is
   needed.
+
+- **`FocusTraversal` stands down entirely while an open `Dialog` is the
+  topmost layer.** With focus in an editor inside the dialog, the service
+  armed its own `Escape` release for the editor alongside the dialog's, and
+  moved focus a second time on the next `Tab`.
 
 ### Layouts
 

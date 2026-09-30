@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { _Dialog as Dialog, DialogButtons, DialogTitleBar } from '~/overlay/Dialog';
-import type { DialogButtonConfig } from '~/overlay/Dialog';
+import type { DialogButtonConfig, DialogConfig } from '~/overlay/Dialog';
 import { LayerManager } from '~/core/LayerManager';
 import { DOM, type Handle } from '~/core/DOM';
 import { Component } from '~/core/Component';
@@ -44,6 +44,10 @@ class TestDialog extends Dialog {
 
     public keyDown(e: KeyboardEvent): void {
         applyDisposition(e, (this as any).onKeyDown(e));
+    }
+
+    public focusIn(): void {
+        (this as any).onFocusIn();
     }
 
     public requestFocusEl(): Handle | null {
@@ -406,6 +410,64 @@ describe('Dialog — Tab focus trap', () => {
     });
 });
 
+/** Marks `handle` a Tab-key owner, mirroring `Component.setTabKeyOwner(true)` (copied from tests/core/FocusTraversal.test.ts). */
+function markTabKeyOwner(handle: Handle): void {
+    DOM.sink.edit(handle).attr('data-ts-ui-tab-key-owner', 'true').commit();
+}
+
+/**
+ * A registered dialog holding a marked owner with one inner element, plus
+ * two plain siblings — the three candidate stops each test seeds in its own
+ * order. There is no selector engine offline, so `getFocusable`'s matches
+ * are exactly what `setQuerySelectorAllResult` is handed.
+ *
+ * @param config - Extra dialog config (e.g. `dismissable: false`) layered over the defaults.
+ */
+function ownerDialog(config: Partial<DialogConfig> = {}): {
+    dialog: TestDialog;
+    dialogEl: Handle;
+    owner: Handle;
+    inner: Handle;
+    plainA: Handle;
+    plainB: Handle;
+    seed: (stops: Handle[]) => void;
+} {
+    const dialog   = new TestDialog({ title: 'T', message: 'M', ...config });
+    const dialogEl = dialog.getElement(true)!;
+
+    // What `Dialog.open()` does, and the reason `findTabKeyOwner` takes a
+    // bound at all: an open dialog claims the Tab key for its whole
+    // subtree, so an unbounded walk from anything inside it would find the
+    // dialog itself and stand the trap down unconditionally. Without this,
+    // every assertion below would hold with the bound argument deleted.
+    dialog.setTabKeyOwner(true);
+
+    const owner = DOM.sink.createElement('div');
+    const inner = DOM.sink.createElement('div');
+
+    markTabKeyOwner(owner);
+    DOM.sink.appendChild(dialogEl, owner);
+    DOM.sink.appendChild(owner, inner);
+
+    const plainA = DOM.sink.createElement('button');
+    const plainB = DOM.sink.createElement('button');
+
+    DOM.sink.appendChild(dialogEl, plainA);
+    DOM.sink.appendChild(dialogEl, plainB);
+
+    LayerManager.register(dialog);
+
+    return {
+        dialog,
+        dialogEl,
+        owner,
+        inner,
+        plainA,
+        plainB,
+        seed: (stops: Handle[]) => setQuerySelectorAllResult(dialogEl, FOCUSABLE_SELECTOR, stops),
+    };
+}
+
 // tab-and-dialog-key-routing plan, Expected Behaviour "The dialog's Tab trap":
 // the end-of-list wrap used to fire with no check on who was focused, so a
 // CodeEditor, MarkdownEditor or Table placed first or last in a dialog had its
@@ -414,60 +476,6 @@ describe('Dialog — Tab focus trap', () => {
 // stand-down, FocusTraversal already performs.
 describe('Dialog — the Tab trap stands down inside a Tab-key owner', () => {
     afterEach(() => DOM.reset());
-
-    /** Marks `handle` a Tab-key owner, mirroring `Component.setTabKeyOwner(true)` (copied from tests/core/FocusTraversal.test.ts). */
-    function markTabKeyOwner(handle: Handle): void {
-        DOM.sink.edit(handle).attr('data-ts-ui-tab-key-owner', 'true').commit();
-    }
-
-    /**
-     * A registered dialog holding a marked owner with one inner element, plus
-     * two plain siblings — the three candidate stops each test seeds in its own
-     * order. There is no selector engine offline, so `getFocusable`'s matches
-     * are exactly what `setQuerySelectorAllResult` is handed.
-     */
-    function ownerDialog(): {
-        dialog: TestDialog;
-        dialogEl: Handle;
-        inner: Handle;
-        plainA: Handle;
-        plainB: Handle;
-        seed: (stops: Handle[]) => void;
-    } {
-        const dialog   = new TestDialog({ title: 'T', message: 'M' });
-        const dialogEl = dialog.getElement(true)!;
-
-        // What `Dialog.open()` does, and the reason `findTabKeyOwner` takes a
-        // bound at all: an open dialog claims the Tab key for its whole
-        // subtree, so an unbounded walk from anything inside it would find the
-        // dialog itself and stand the trap down unconditionally. Without this,
-        // every assertion below would hold with the bound argument deleted.
-        dialog.setTabKeyOwner(true);
-
-        const owner = DOM.sink.createElement('div');
-        const inner = DOM.sink.createElement('div');
-
-        markTabKeyOwner(owner);
-        DOM.sink.appendChild(dialogEl, owner);
-        DOM.sink.appendChild(owner, inner);
-
-        const plainA = DOM.sink.createElement('button');
-        const plainB = DOM.sink.createElement('button');
-
-        DOM.sink.appendChild(dialogEl, plainA);
-        DOM.sink.appendChild(dialogEl, plainB);
-
-        LayerManager.register(dialog);
-
-        return {
-            dialog,
-            dialogEl,
-            inner,
-            plainA,
-            plainB,
-            seed: (stops: Handle[]) => setQuerySelectorAllResult(dialogEl, FOCUSABLE_SELECTOR, stops),
-        };
-    }
 
     it('stands down on Shift+Tab from an owner seeded as the first stop', () => {
         installTestDOM(CONFIG);
@@ -628,6 +636,297 @@ describe('Dialog — the Tab trap stands down inside a Tab-key owner', () => {
     });
 });
 
+// dialog-escape-releases-tab-owner plan, Expected Behaviour "Dialog release":
+// a dialog whose only focusable content is a Tab-key owner (a CodeEditor) used
+// to trap a keyboard user — Tab indented, Escape closed the whole dialog. The
+// first Escape inside the owner now arms a one-shot release instead (the path
+// LayerManager drives through requestClose()), the next Tab / Shift+Tab steps
+// past the owner, and a second Escape closes the dialog.
+describe('Dialog — Escape releases a Tab-key owner', () => {
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    it('arms the release instead of closing on the first Escape inside the owner', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog();
+        const hide = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+
+        seed([inner, plainA, plainB]);
+        DOM.sink.focus(inner);
+
+        expect(dialog.requestClose()).toBe(false);
+        expect(hide).not.toHaveBeenCalled();
+        expect(DOM.source.getActiveElement()).toBe(inner);
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('closes on the second Escape inside the owner', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog();
+        const hide = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+
+        seed([inner, plainA, plainB]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+
+        expect(dialog.requestClose()).toBe(true);
+        expect(hide).toHaveBeenCalledTimes(1);
+        expect(hide).toHaveBeenCalledWith('close');
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('closes on the first Escape from a plain control', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog();
+        const hide = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+
+        seed([inner, plainA, plainB]);
+        DOM.sink.focus(plainA);
+
+        expect(dialog.requestClose()).toBe(true);
+        expect(hide).toHaveBeenCalledWith('close');
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('arms the release in a mandatory modal too, and still swallows the second Escape', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog({ dismissable: false });
+        const hide = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+
+        seed([inner, plainA, plainB]);
+        DOM.sink.focus(inner);
+
+        expect(dialog.requestClose()).toBe(false);
+        expect(dialog.requestClose()).toBe(true);
+        expect(hide).not.toHaveBeenCalled();
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('steps to the next stop after the owner on Tab', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog();
+
+        seed([inner, plainA, plainB]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+
+        const { event, prevented, stopped } = keyDownEvent('Tab');
+
+        dialog.keyDown(event);
+
+        expect(DOM.source.getActiveElement()).toBe(plainA);
+        expect(prevented()).toBe(true);
+        expect(stopped()).toBe(true);
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('steps to the last stop before the owner on Shift+Tab', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog();
+
+        seed([plainA, inner, plainB]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+
+        const { event } = keyDownEvent('Tab', true);
+
+        dialog.keyDown(event);
+
+        expect(DOM.source.getActiveElement()).toBe(plainA);
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('wraps to the first stop on Tab from an owner seeded last', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog();
+
+        seed([plainA, plainB, inner]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+
+        const { event } = keyDownEvent('Tab');
+
+        dialog.keyDown(event);
+
+        expect(DOM.source.getActiveElement()).toBe(plainA);
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('wraps to the last stop on Shift+Tab from an owner seeded first', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog();
+
+        seed([inner, plainA, plainB]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+
+        const { event } = keyDownEvent('Tab', true);
+
+        dialog.keyDown(event);
+
+        expect(DOM.source.getActiveElement()).toBe(plainB);
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('expires the release on any other non-modifier key', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog();
+
+        seed([inner, plainA, plainB]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+        dialog.keyDown(keyDownEvent('ArrowDown').event);
+
+        const { event, prevented } = keyDownEvent('Tab');
+
+        dialog.keyDown(event);
+
+        expect(DOM.source.getActiveElement()).toBe(inner);
+        expect(prevented()).toBe(false);
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('keeps the release across a bare modifier keydown', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog();
+
+        seed([inner, plainA, plainB]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+        dialog.keyDown(keyDownEvent('Shift').event);
+
+        const { event } = keyDownEvent('Tab', true);
+
+        dialog.keyDown(event);
+
+        expect(DOM.source.getActiveElement()).toBe(plainB);
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('keeps the release across the Escape keydown itself', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog();
+
+        seed([inner, plainA, plainB]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+        dialog.keyDown(keyDownEvent('Escape').event);
+
+        const { event } = keyDownEvent('Tab');
+
+        dialog.keyDown(event);
+
+        expect(DOM.source.getActiveElement()).toBe(plainA);
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('expires the release when focus leaves the owner', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog();
+
+        seed([inner, plainA, plainB]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+        DOM.sink.focus(plainA);
+        dialog.focusIn();
+        DOM.sink.focus(inner);
+
+        const { event, prevented } = keyDownEvent('Tab');
+
+        dialog.keyDown(event);
+
+        expect(DOM.source.getActiveElement()).toBe(inner);
+        expect(prevented()).toBe(false);
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('keeps the release when focus moves to another element inside the owner', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, owner, inner, plainA, seed } = ownerDialog();
+        const inner2 = DOM.sink.createElement('div');
+
+        DOM.sink.appendChild(owner, inner2);
+        seed([inner, inner2, plainA]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+        DOM.sink.focus(inner2);
+        dialog.focusIn();
+
+        const { event } = keyDownEvent('Tab');
+
+        dialog.keyDown(event);
+
+        expect(DOM.source.getActiveElement()).toBe(plainA);
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('consumes the release with one Tab', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog();
+
+        seed([inner, plainA, plainB]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+        dialog.keyDown(keyDownEvent('Tab').event);
+        DOM.sink.focus(inner);
+
+        const { event, prevented } = keyDownEvent('Tab');
+
+        dialog.keyDown(event);
+
+        expect(DOM.source.getActiveElement()).toBe(inner);
+        expect(prevented()).toBe(false);
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('still consumes the Tab when the owner is the dialog\'s only stop', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, seed } = ownerDialog();
+
+        seed([inner]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+
+        const { event, prevented, stopped } = keyDownEvent('Tab');
+
+        dialog.keyDown(event);
+
+        expect(DOM.source.getActiveElement()).toBe(inner);
+        expect(prevented()).toBe(true);
+        expect(stopped()).toBe(true);
+
+        LayerManager.unregister(dialog);
+    });
+});
+
 describe('Dialog — keydown scoped to the topmost layer', () => {
     afterEach(() => DOM.reset());
 
@@ -733,8 +1032,7 @@ describe('Dialog — dismissable', () => {
         const dialog = new Dialog({ title: 'T', message: 'M' });
         const hide = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
 
-        dialog.requestClose();
-
+        expect(dialog.requestClose()).toBe(true);
         expect(hide).toHaveBeenCalledWith('close');
     });
 
@@ -763,8 +1061,7 @@ describe('Dialog — dismissable', () => {
         const dialog = new Dialog({ title: 'T', message: 'M', dismissable: false });
         const hide = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
 
-        dialog.requestClose();
-
+        expect(dialog.requestClose()).toBe(true);
         expect(hide).not.toHaveBeenCalled();
     });
 

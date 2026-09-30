@@ -45,8 +45,14 @@ export interface DismissableLayer {
     /** Dismiss policy consulted by the document-level interaction handlers. */
     getDismissMode(): LayerDismissMode;
 
-    /** Advisory request to close; the surface runs its own teardown + unregister. */
-    requestClose(): void;
+    /**
+     * Advisory request to close; the surface runs its own teardown + unregister.
+     *
+     * @returns `false` when the surface declines and the keystroke that triggered
+     *   the request should keep propagating to the focused content; anything
+     *   else — including no return value — counts as handled.
+     */
+    requestClose(): boolean | void;
 
     /**
      * Optional anchor element excluded from "outside" tests so the trigger
@@ -860,8 +866,8 @@ export namespace LayerManager {
      * Document `keydown` handler — Escape asks the topmost non-manual layer to close.
      *
      * @param e - The keydown event.
-     * @returns `true` when Escape actually closed a layer; nothing otherwise, so an
-     *   Escape with no dismissible layer open keeps propagating.
+     * @returns `true` when a layer handled Escape; nothing when no dismissible
+     *   layer is open or the layer declined it, so the Escape keeps propagating.
      */
     function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (e.key !== "Escape") {
@@ -874,7 +880,11 @@ export namespace LayerManager {
             return;
         }
 
-        target.requestClose();
+        const handled = target.requestClose();
+
+        if (handled === false) {
+            return;
+        }
 
         return true;
     }
