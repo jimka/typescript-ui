@@ -90,7 +90,8 @@ describe('TreeRow.isBoundTo / toggle memoization', () => {
 
         row.setRowData(branch, 0, true, false, 1, 1, false, false);
 
-        expect(row.getToggle()?.getGlyphName()).toBe('caret-right');
+        expect(row.getToggle()?.getGlyphName()).toBe('angle-right');
+        expect(row.getToggle()?.getTransform()).toBe('rotate(0deg)');
     });
 
     it('rebinding with the same hasChildren/expanded/loading (only selected flips) keeps the same toggle instance', () => {
@@ -103,14 +104,14 @@ describe('TreeRow.isBoundTo / toggle memoization', () => {
         expect(row.getToggle()).toBe(toggle);
     });
 
-    it('rebinding with a different expanded value renames the same toggle instance to caret-down', () => {
+    it('rebinding with a different expanded value turns the same toggle instance to point down', () => {
         const row = makeRow();
         row.setRowData(branch, 0, true, false, 1, 1, false, false);
         const toggle = row.getToggle();
 
-        // One warm-up flip first: the caret-down sprite `<symbol>` is module
-        // state mounted once per process, not once per rename, so measuring
-        // the very first flip would count that mount as the rename's own work.
+        // One warm-up flip first: the glyph's sprite `<symbol>` is module
+        // state mounted once per process, not once per turn, so measuring
+        // the very first flip would count that mount as the turn's own work.
         row.setRowData(branch, 0, true, true, 1, 1, false, false);
         row.setRowData(branch, 0, true, false, 1, 1, false, false);
 
@@ -118,9 +119,37 @@ describe('TreeRow.isBoundTo / toggle memoization', () => {
         row.setRowData(branch, 0, true, true, 1, 1, false, false);
 
         expect(row.getToggle()).toBe(toggle);
-        expect(row.getToggle()?.getGlyphName()).toBe('caret-down');
+        expect(row.getToggle()?.getGlyphName()).toBe('angle-right');
+        expect(row.getToggle()?.getTransform()).toBe('rotate(90deg)');
+        expect(row.getToggle()?.getTransition()).toBe('transform 200ms cubic-bezier(0.4, 0, 0.6, 1)');
         expect(ruleOps(sink)).toHaveLength(0);
         expect(sink.writes.filter(w => w.op === 'createElementNS')).toHaveLength(0);
+    });
+
+    it('rebinding to a different branch node leaves the turn unanimated and sets the new rotation', () => {
+        const row = makeRow();
+        row.setRowData(branch, 0, true, false, 1, 1, false, false);
+
+        row.setRowData(otherBranch, 0, true, true, 1, 1, false, false);
+
+        expect(row.getToggle()?.getGlyphName()).toBe('angle-right');
+        expect(row.getToggle()?.getTransform()).toBe('rotate(90deg)');
+        expect(row.getToggle()?.getTransition()).toBe(null);
+    });
+
+    it('under reduced motion, a same-node flip still turns the glyph but installs no transition', () => {
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({
+            matches:           true,
+            addChangeListener: (): void => {},
+        });
+
+        const row = makeRow();
+        row.setRowData(branch, 0, true, false, 1, 1, false, false);
+
+        row.setRowData(branch, 0, true, true, 1, 1, false, false);
+
+        expect(row.getToggle()?.getTransition()).toBe(null);
+        expect(row.getToggle()?.getTransform()).toBe('rotate(90deg)');
     });
 
     it('a branch toggle takes its pointer cursor from the shared tree-toggle trait', () => {
@@ -1662,7 +1691,7 @@ describe('Tree — rebind gating after a reflatten (isBoundTo)', () => {
         expect(n5Row.getToggle()).toBe(n5ToggleBefore);
     });
 
-    it('after expanding the middle branch, its own row keeps its toggle Glyph and renames it to caret-down', () => {
+    it('after expanding the middle branch, its own row keeps its toggle Glyph and turns it to point down', () => {
         const BRANCH_COUNT = 6;
         const tree = mountBranches(BRANCH_COUNT, (BRANCH_COUNT + 1) * ROW_HEIGHT) as any;
         const nodes: TreeNode[] = tree._nodes;
@@ -1674,7 +1703,8 @@ describe('Tree — rebind gating after a reflatten (isBoundTo)', () => {
         tree._onToggle(middle);
 
         expect(middleRow.getToggle()).toBe(toggleBefore);
-        expect(middleRow.getToggle().getGlyphName()).toBe('caret-down');
+        expect(middleRow.getToggle().getGlyphName()).toBe('angle-right');
+        expect(middleRow.getToggle().getTransform()).toBe('rotate(90deg)');
     });
 
     // The whole point of the rename: a settled tree's expand/collapse stops
@@ -1705,7 +1735,7 @@ describe('Tree — rebind gating after a reflatten (isBoundTo)', () => {
         expect(ruleOps(sink)).toEqual([]);
     });
 
-    it('collapsing the middle branch again rebinds exactly one row and returns its caret to caret-right, without touching the rows after it', () => {
+    it('collapsing the middle branch again rebinds exactly one row and turns its caret back to point right, without touching the rows after it', () => {
         const BRANCH_COUNT = 6;
         const tree = mountBranches(BRANCH_COUNT, (BRANCH_COUNT + 1) * ROW_HEIGHT) as any;
         const nodes: TreeNode[] = tree._nodes;
@@ -1726,7 +1756,8 @@ describe('Tree — rebind gating after a reflatten (isBoundTo)', () => {
 
         const totalRebinds = setRowDataSpies.reduce((n, s) => n + s.mock.calls.length, 0);
         expect(totalRebinds).toBe(1);
-        expect(middleRow.getToggle().getGlyphName()).toBe('caret-right');
+        expect(middleRow.getToggle().getGlyphName()).toBe('angle-right');
+        expect(middleRow.getToggle().getTransform()).toBe('rotate(0deg)');
         expect(n4Row.getToggle()).toBe(n4ToggleBefore);
         expect(n5Row.getToggle()).toBe(n5ToggleBefore);
     });
@@ -1872,7 +1903,8 @@ describe('Tree — rebind gating after a reflatten (isBoundTo)', () => {
         tree.renderWindow();
 
         const row = (tree._rowPool as any[]).find((r) => r.getNode() === lazyNode);
-        expect(row.getToggle()?.getGlyphName()).toBe('caret-right');
+        expect(row.getToggle()?.getGlyphName()).toBe('angle-right');
+        expect(row.getToggle()?.getTransform()).toBe('rotate(0deg)');
 
         const expandPromise = tree.expandNodeAsync(lazyNode);
 
@@ -1885,7 +1917,8 @@ describe('Tree — rebind gating after a reflatten (isBoundTo)', () => {
         await expandPromise;
 
         expect((tree._rowPool as any[]).find((r) => r.getNode() === lazyNode)).toBe(row);
-        expect(row.getToggle()?.getGlyphName()).toBe('caret-down');
+        expect(row.getToggle()?.getGlyphName()).toBe('angle-right');
+        expect(row.getToggle()?.getTransform()).toBe('rotate(90deg)');
     });
 
     it('economy at scale: toggling a branch deep in a large, densely expanded tree rebinds only a handful of rows', () => {
@@ -3118,7 +3151,8 @@ describe('Tree — node-level updates', () => {
         expect(events).toEqual(['expand N']);
         expect(new Set(tree.getExpandedNodes())).toEqual(new Set([N.node, C.node]));
         expect(flatLabels(tree)).toEqual(['N', 'C', 'T']);
-        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('caret-down');
+        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('angle-right');
+        expect(rowFor(tree, N.node).getToggle()?.getTransform()).toBe('rotate(90deg)');
     });
 
     it.each(['expand', 'reveal'] as const)('a shared load that rejects while an expand waits on it, when the %s starts it, fires one "loaderror" and leaves the node collapsed and unloaded until toggled again', async (first) => {
@@ -3142,7 +3176,8 @@ describe('Tree — node-level updates', () => {
         expect(tree.getExpandedNodes()).toEqual([]);
         expect(N.node.children).toBeUndefined();
         expect(priv._loadedNodes.has(N.node)).toBe(false);
-        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('caret-right');
+        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('angle-right');
+        expect(rowFor(tree, N.node).getToggle()?.getTransform()).toBe('rotate(0deg)');
 
         // Toggling again retries with a fresh load.
         const retried = tree.expandNodeAsync(N.node);
@@ -3159,10 +3194,10 @@ describe('Tree — node-level updates', () => {
     it('a rejected load renders its row back to a caret before "loaderror" fires, so a listener that throws cannot strand the spinner', async () => {
         const N = heldLazyCalls('N');
         const tree = mount([N.node]);
-        let glyphSeenByListener: string | null | undefined;
+        let transformSeenByListener: string | null | undefined;
 
         tree.on('loaderror', () => {
-            glyphSeenByListener = rowFor(tree, N.node).getToggle()?.getGlyphName() ?? null;
+            transformSeenByListener = rowFor(tree, N.node).getToggle()?.getTransform() ?? null;
 
             throw new Error('listener failed');
         });
@@ -3174,8 +3209,9 @@ describe('Tree — node-level updates', () => {
         N.calls[0].reject(new Error('listing failed'));
 
         await expect(expanded).rejects.toThrow('listener failed');
-        expect(glyphSeenByListener).toBe('caret-right');
-        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('caret-right');
+        expect(transformSeenByListener).toBe('rotate(0deg)');
+        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('angle-right');
+        expect(rowFor(tree, N.node).getToggle()?.getTransform()).toBe('rotate(0deg)');
     });
 
     it.each([
@@ -3291,7 +3327,8 @@ describe('Tree — node-level updates', () => {
 
         await vi.waitFor(() => expect(N.load).toHaveBeenCalledTimes(1));
 
-        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('caret-right');
+        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('angle-right');
+        expect(rowFor(tree, N.node).getToggle()?.getTransform()).toBe('rotate(0deg)');
 
         N.calls[0].reject(new Error('listing failed'));
 
@@ -3331,7 +3368,8 @@ describe('Tree — node-level updates', () => {
         // thing that can render the caret.
         expect(await revealed).toBeNull();
         expect(renders).toHaveBeenCalledTimes(1);
-        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('caret-right');
+        expect(rowFor(tree, N.node).getToggle()?.getGlyphName()).toBe('angle-right');
+        expect(rowFor(tree, N.node).getToggle()?.getTransform()).toBe('rotate(0deg)');
     });
 
     it('an expand-driven commit still renders exactly once, and its "expand" listener sees the rebuilt rows', async () => {

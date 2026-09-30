@@ -92,6 +92,12 @@ for (const node of loadStoredExpandedNodes()) {
 
 `expandAll()` and `revealByPredicate()` change the expansion without emitting `"expand"` — call `getExpandedNodes()` after either to read what changed. `setNodes()` clears the expanded set (also silently), so a persisted set covers a single dataset instance; `setChildren(null, roots)` replaces the roots without clearing it.
 
+### Animation
+
+A single node's expand or collapse — a caret click, a row-click toggle, `ArrowRight` / `ArrowLeft`, `expandNode(Async)`, or a lazy load settling with an expand waiting on it — animates after its state commits: the toggle turns from pointing right to pointing down (or back), the node's children slide out from under it and fade in as they emerge, and the rows below move to make room, over 200ms. State, `getExpandedNodes()` and the `"expand"` / `"collapse"` events all commit synchronously, before the motion starts — nothing about reading the tree right after a toggle waits on the animation.
+
+The bulk and structural calls — `expandAll()`, `revealByPredicate()`, `setNodes()`, `insertNode()`, `removeNode()`, `setChildren()` — never animate; they can change many nodes at once, which a single reveal value cannot describe. A toggle whose children would not fit in the current viewport, or whose commit moves the scroll offset, also snaps instead of animating. `prefers-reduced-motion: reduce` turns off every animation, caret included. While a collapse plays, the rows sliding away carry `aria-hidden="true"`, so assistive technology reads only the committed rows. A call that has to scroll a row into view — `selectNode()`, a click or a keyboard move — settles a running motion first; one whose row is already in view leaves it playing. A keyboard move onto a child that an expand is still fading in also settles it, so the selection never lands on a row that is not yet fully drawn.
+
 ## Updating nodes
 
 `setNodes()` resets the whole tree. To change part of it, use the node-level methods instead. A `parent` of `null` means the root level.
@@ -132,7 +138,7 @@ Two consequences are worth knowing. After `setNodes()` the walk carries on over 
 | `insertNode(parent, index, node)` / `removeNode(node)` | Add or remove one node, keeping the rest of the tree's state — see [Updating nodes](#updating-nodes). |
 | `setChildren(parent, children)` | Replace one node's children, or the roots, keeping every surviving node's state — see [Updating nodes](#updating-nodes). |
 | `notifyNodeChanged(node)` | Repaint one node changed in place — see [Updating nodes](#updating-nodes). |
-| `expandAll()` / `collapseAll()` | Bulk-toggle expansion. |
+| `expandAll()` | Expand every node whose children are already loaded. There is no bulk collapse; `setNodes()` starts every node collapsed. |
 | `getExpandedNodes()` | Snapshot the currently expanded nodes (see [Expansion state](#expansion-state)). |
 | `expandNodeAsync(node)` | Expand a node and resolve once the expansion has committed, including a lazy load (see [Expansion state](#expansion-state)). |
 | `on("selection", fn)` | Subscribe to user-driven selection changes. |

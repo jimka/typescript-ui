@@ -4,12 +4,8 @@ import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Absolute } from "~/layout/Absolute.js";
 import { Insets } from "~/primitive/Insets.js";
-import { TREE_TOGGLE_TRAIT } from "~/core/StyleTraits.js";
 import { callable } from "~/core/Callable.js";
-import { caret_down }  from "~/glyphs/solid/caret_down.js";
-import { caret_right } from "~/glyphs/solid/caret_right.js";
-
-Glyph.register(caret_down, caret_right);
+import { createTreeToggle, rotateTreeToggle } from "~/component/shared/TreeToggle.js";
 
 /** Width in pixels reserved for the expand/collapse toggle glyph. Matches
  *  `TreeRow.ts`'s `TOGGLE_WIDTH`; keep the two in lockstep so a `Tree` and a
@@ -27,9 +23,9 @@ export const DEFAULT_INDENT_PX = 16;
  * column's field type ({@link StringRenderer},
  * [`NumberRenderer`](/api/component/table/classes/NumberRenderer), …). It is
  * adopted as the tree renderer's only data-bearing child and handles
- * `getValue` / `setValue` unchanged. The toggle is a {@link Glyph} renamed in
+ * `getValue` / `setValue` unchanged. The toggle is a {@link Glyph} turned in
  * place on each {@link setTreeState} call that changes it, mirroring the
- * rename pattern used by
+ * turn pattern used by
  * [`TreeRow.setRowData`](/api/component/tree/classes/TreeRow#setrowdata); only
  * a row that stops being a branch loses its toggle.
  *
@@ -101,7 +97,7 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
      * from its subtree-click listener.
      *
      * Read-only access. A {@link TreeCellRenderer.setTreeState} call that
-     * changes the expansion state renames this toggle in place, so a caller's
+     * changes the expansion state turns this toggle in place, so a caller's
      * reference stays valid across it; only a row turning into a leaf destroys
      * the toggle, and `getToggle` then reports `null`.
      *
@@ -177,11 +173,15 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
      * @param hasChildren - Whether the bound record has children
      *   (controls whether a toggle is rendered).
      * @param expanded - Whether the bound record is currently expanded
-     *   (controls the toggle glyph: `caret-down` vs `caret-right`).
+     *   (controls which way the toggle points).
+     * @param animate - Whether a toggle that stays and only changes
+     *   `expanded` should turn with the shared 200 ms transition instead of
+     *   snapping. Defaults to `false`. Ignored under
+     *   `prefers-reduced-motion: reduce`.
      *
      * @returns This renderer, for method chaining.
      */
-    setTreeState(depth: number, hasChildren: boolean, expanded: boolean): this {
+    setTreeState(depth: number, hasChildren: boolean, expanded: boolean, animate: boolean = false): this {
         if (this._depth       === depth
          && this._hasChildren === hasChildren
          && this._expanded    === expanded) {
@@ -192,7 +192,7 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
         this._hasChildren = hasChildren;
         this._expanded    = expanded;
 
-        this.refreshToggle();
+        this.refreshToggle(animate);
         this.doLayout();
 
         return this;
@@ -222,21 +222,22 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
     /**
      * Brings the toggle glyph in line with `_hasChildren` and `_expanded`.
      * A leaf row has no toggle. A branch row that stays a branch keeps its
-     * caret and only renames it between `caret-down` (expanded) and
-     * `caret-right` (collapsed) —
-     * matches [`TreeRow.setRowData`](/api/component/tree/classes/TreeRow#setrowdata)'s
-     * own rename pattern.
+     * toggle and only turns it — pointing down when expanded, right when
+     * collapsed — matching
+     * [`TreeRow.setRowData`](/api/component/tree/classes/TreeRow#setrowdata)'s
+     * own turn pattern.
      *
      * A row that stops being a branch destroys its toggle rather than merely
      * detaching it: `removeComponent` takes it out of the child list but
      * leaves it holding its element, its per-instance stylesheet rule and its
      * theme subscription, so a row rebound on every scroll would strand one.
+     *
+     * @param animate - Whether a kept toggle should turn with the shared
+     *   transition instead of snapping.
      */
-    private refreshToggle(): void {
-        const caret = this._expanded ? "caret-down" : "caret-right";
-
+    private refreshToggle(animate: boolean): void {
         if (this._toggle && this._hasChildren) {
-            this._toggle.setGlyphName(caret);
+            rotateTreeToggle(this._toggle, this._expanded, animate);
 
             return;
         }
@@ -256,12 +257,7 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
             return;
         }
 
-        // The pointer cursor comes from the shared tree-toggle trait, so a
-        // caret built here inserts no stylesheet rule of its own.
-        const toggle = new Glyph(caret, { styleTrait: TREE_TOGGLE_TRAIT });
-
-        toggle.clearInsets();
-        toggle.getAria().setHidden(true);
+        const toggle = createTreeToggle(this._expanded);
 
         this._toggle = toggle;
         this.addComponent(toggle);

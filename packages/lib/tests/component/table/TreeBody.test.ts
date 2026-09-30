@@ -434,3 +434,48 @@ describe('TreeBody — a warmed-up collapseAll / expandAll touches no stylesheet
             w.op === 'ensureStyleRule' || w.op === 'setRuleStyles' || w.op === 'deleteStyleRule')).toEqual([]);
     });
 });
+
+// Pins plans/implemented/tree-expand-collapse-animation.md's G6: a toggle
+// turns with the shared transition only for a row whose tree cell keeps
+// showing the same record; a row recycled onto a different record (the
+// scroll-driven case `Body`'s row pool exists for) snaps instead.
+describe('TreeBody — a toggle turns smoothly only when its row keeps the same record (G6)', () => {
+    // Twenty root branches (ids 1, 3, 5, …), each with one child (ids 2, 4, 6,
+    // …), all collapsed: every record a scrolled pool row can land on while
+    // the branches stay collapsed is a branch, so its tree cell has a toggle.
+    const DATA = Array.from({ length: 20 }, (_, i) => [
+        { id: 2 * i + 1, parent: null,      name: `branch${i}` },
+        { id: 2 * i + 2, parent: 2 * i + 1, name: `child${i}` },
+    ]).flat();
+
+    it('setExpanded turns the toggle with a transition for the row that kept its record, and a scroll that rebinds the row to a different record snaps it', () => {
+        const tb = tree(DATA);
+        const H  = (tb as any).getRowHeight() as number;
+
+        tb.getElement(true);
+        tb.setWidth(250);
+        tb.setHeight(5 * H);
+        tb.renderWindow(250, [250]);
+
+        const branch0 = tb.getRecordById(1)!;
+        const row     = (tb as any).getRowPool().find((r: any) => r.getData() === branch0);
+
+        tb.setExpanded(branch0, true);
+
+        const toggleOf = (): any => row.getTreeCell().getRenderer().getToggle();
+
+        expect(row.getData()).toBe(branch0);
+        expect(toggleOf().getTransition()).toBe('transform 200ms cubic-bezier(0.4, 0, 0.6, 1)');
+
+        // Scroll ten rows down: branch0's row leaves the window and the pool
+        // recycles it onto a record further down — a different branch.
+        tb.setScrollY(10 * H);
+        tb.renderWindow(250, [250]);
+
+        const rebound = row.getData();
+
+        expect(rebound).not.toBe(branch0);
+        expect(tb.getFlatRecords().find(f => f.record === rebound)!.hasChildren).toBe(true);
+        expect(toggleOf().getTransition()).toBe(null);
+    });
+});

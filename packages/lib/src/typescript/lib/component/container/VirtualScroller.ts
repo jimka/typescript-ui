@@ -206,6 +206,36 @@ export class VirtualScroller {
     }
 
     /**
+     * Returns the last-known total content height in pixels — the value the
+     * owner last passed to {@link clampToContent}, {@link layoutScrollbars} or
+     * {@link setContentHeight}, and the one {@link setScrollY} clamps against.
+     *
+     * @returns The content height in pixels.
+     */
+    getContentHeight(): number {
+        return this._contentHeight;
+    }
+
+    /**
+     * Replaces the last-known content height without clamping the current
+     * scroll position, moving the scrollbars or firing `onScroll`. For an
+     * owner whose content height changed outside a render pass, and which
+     * must scroll against the new height before its next render: a
+     * following {@link setScrollY} then clamps against this height instead
+     * of the stale one. The owner's next render refreshes the scrollbars as
+     * usual.
+     *
+     * @param contentHeight - The total scrollable content height in pixels.
+     *
+     * @returns This scroller, for method chaining.
+     */
+    setContentHeight(contentHeight: number): this {
+        this._contentHeight = contentHeight;
+
+        return this;
+    }
+
+    /**
      * Sets the vertical scroll position. Clamped against the last-known
      * content height and the *effective* viewport height (the owner's
      * content-box height minus the horizontal scrollbar's reservation when

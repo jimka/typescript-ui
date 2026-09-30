@@ -10,6 +10,13 @@ import { Table } from '~/component/table/Table';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ModelRecord } from '~/data/ModelRecord';
+import { Glyph } from '~/component/display/Glyph';
+import { caret_right } from '~/glyphs/solid/caret_right';
+
+// `Tree`/`TreeTable` no longer register `caret-right` at module load (they
+// use the shared `angle-right` toggle now); this file's own `icon:
+// 'caret-right'` fixture value needs it registered directly.
+Glyph.register(caret_right);
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },

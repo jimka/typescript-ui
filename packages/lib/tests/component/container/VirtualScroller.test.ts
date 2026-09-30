@@ -321,3 +321,90 @@ describe('VirtualScroller clampToContent', () => {
         expect(onScroll).not.toHaveBeenCalled();
     });
 });
+
+describe('VirtualScroller content height accessors', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        DOM.reset();
+    });
+
+    it('getContentHeight reports the height last passed to clampToContent or setContentHeight', () => {
+        installTestDOM(CONFIG);
+
+        const { scroller } = makeScroller(200, 400);
+
+        expect(scroller.getContentHeight()).toBe(0);
+
+        scroller.clampToContent(100, 1000);
+
+        expect(scroller.getContentHeight()).toBe(1000);
+
+        scroller.setContentHeight(750);
+
+        expect(scroller.getContentHeight()).toBe(750);
+
+        scroller.clampToContent(100, 1200);
+
+        expect(scroller.getContentHeight()).toBe(1200);
+    });
+
+    it('setContentHeight leaves the scroll position, scrollbars and DOM untouched and does not fire onScroll', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const { scroller, onScroll } = makeScroller(200, 400);
+
+        // Tall, narrow content (no horizontal bar), scrolled to its max of
+        // 1000 - 400 = 600.
+        scroller.layoutScrollbars(100, 1000);
+        scroller.setScrollY(600);
+        onScroll.mockClear();
+
+        const writesBefore = sink.writes.length;
+        const barCalls = (['setMetrics', 'setX', 'setY', 'setWidth', 'setHeight'] as const)
+            .map((name) => vi.spyOn(Scrollbar.prototype, name));
+
+        // Shrinks below the current position: new max 500 - 400 = 100. A
+        // clamping write would pull scrollY back to 100.
+        const returned = scroller.setContentHeight(500);
+
+        expect(returned).toBe(scroller);
+        expect(scroller.getContentHeight()).toBe(500);
+        expect(scroller.getScrollY()).toBe(600);
+        expect(onScroll).not.toHaveBeenCalled();
+
+        for (const spy of barCalls) {
+            expect(spy).not.toHaveBeenCalled();
+        }
+
+        // No transform, clip-box or scrollbar write reached the sink.
+        expect(sink.writes.slice(writesBefore)).toEqual([]);
+    });
+
+    it('a following setScrollY clamps against a shrunk height', () => {
+        installTestDOM(CONFIG);
+
+        const { scroller } = makeScroller(200, 400);
+
+        scroller.layoutScrollbars(100, 1000);
+        scroller.setContentHeight(500);
+
+        scroller.setScrollY(99999);
+
+        // New max = 500 - 400, not the stale 1000 - 400.
+        expect(scroller.getScrollY()).toBe(500 - 400);
+    });
+
+    it('a following setScrollY clamps against a grown height', () => {
+        installTestDOM(CONFIG);
+
+        const { scroller } = makeScroller(200, 400);
+
+        scroller.layoutScrollbars(100, 1000);
+        scroller.setContentHeight(1500);
+
+        scroller.setScrollY(99999);
+
+        // New max = 1500 - 400, past the stale 1000 - 400.
+        expect(scroller.getScrollY()).toBe(1500 - 400);
+    });
+});

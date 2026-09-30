@@ -39,7 +39,7 @@ The `name` string used at runtime (`new Glyph("arrow-right")`) is always the ori
 
 Some library components register their own glyphs at module load. Consumers do not need to re-register these:
 
-- `Tree` — registers `caret-down`, `caret-right` for row-toggle chevrons.
+- `Tree` and `TreeTable` — register `angle-right` for the row toggle.
 - `Notification` — registers `circle-info`, `circle-check`, `triangle-exclamation`, `circle-exclamation`, and `xmark` for severity badges and the close button.
 
 Components that accept a glyph name as a parameter (Button, MenuItem, Window header, Dialog, IconText, IconLabel, etc.) leave registration to the caller.

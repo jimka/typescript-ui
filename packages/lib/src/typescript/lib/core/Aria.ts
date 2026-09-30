@@ -242,10 +242,17 @@ export class Aria {
     /**
      * Sets `aria-hidden`.
      *
-     * @param value - Whether the element is hidden from assistive technology.
+     * @param value - Whether the element is hidden from assistive technology,
+     *   or `null` to remove the attribute, leaving the element exactly as if
+     *   `aria-hidden` had never been set.
      */
-    setHidden(value: boolean): this {
-        this.setAttribute("hidden", String(value));
+    setHidden(value: boolean | null): this {
+        if (value !== null) {
+            this.setAttribute("hidden", String(value));
+        } else {
+            this._attributes.delete("hidden");
+            this._component.applyAriaAttribute("aria-hidden", null);
+        }
 
         return this;
     }

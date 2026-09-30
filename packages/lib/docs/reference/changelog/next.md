@@ -7,6 +7,15 @@ page resets to empty.
 
 ## Breaking changes
 
+### Components
+
+- **`Tree` and `TreeTable` no longer register `caret-down` / `caret-right`
+  at module load.** Their row toggles are now a single `angle-right` glyph,
+  turned to point down instead of swapped for a different one. Code that
+  displays `caret-down` / `caret-right` elsewhere and relied on importing
+  `Tree` or `TreeTable` to have registered them must now register them
+  itself. See [Migration](/reference/migration/next) for the full note.
+
 ### Core
 
 - **`DOM.sink` and `DOM.source` are now read-only.** Swap a seam through
@@ -33,6 +42,26 @@ page resets to empty.
 
 ## Changed
 
+### Components
+
+- **`Tree` and `TreeTable` toggles are a thin angle that turns to point
+  down, and a single expand or collapse animates.** On `Tree`, a caret
+  click, row toggle, `ArrowLeft` / `ArrowRight`, `expandNode(Async)` or a
+  lazy load settling with an expand waiting, and on `TreeTable`,
+  `setExpanded`, a toggle click or `ArrowLeft` / `ArrowRight`, plays a
+  200ms row motion after its state commits — the toggled node's children
+  slide out and fade in, and the rows below move to make room — while
+  bulk/structural calls, a block taller than the viewport, a commit that
+  moves the scroll offset, and `prefers-reduced-motion: reduce` all snap
+  instead. While a collapse plays, the rows sliding away carry
+  `aria-hidden="true"`, so assistive technology reads only the committed
+  rows. A call that has to scroll a row into view settles a running motion
+  first, while one whose row is already in view leaves it playing; a
+  keyboard move onto a child that an expand is still fading in also settles
+  it. `TreeCellRenderer`'s
+  `setTreeState` gains an optional fourth `animate` parameter (default
+  `false`) for a caller that wants the turn animated.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
@@ -57,6 +86,13 @@ page resets to empty.
   for the end event instead of debouncing `"columnresize"`. The existing
   `"columnresizestart"` and `"columnresize"` are unchanged.
 
+
+- **`VirtualScroller` exposes its content height.** `getContentHeight()`
+  reads the height `setScrollY` clamps against, and `setContentHeight(h)`
+  replaces it without clamping the scroll position or moving the
+  scrollbars — for an owner whose content changed between renders and must
+  scroll against the new height before its next one.
+
 ### Core
 
 - **`LayerManager.Band` gains `Drawer`** (8950, between the `Rail`'s fixed
@@ -65,7 +101,12 @@ page resets to empty.
 - **`DismissableLayer` gains an optional `keepsOwnBand()`** for a nested layer
   that must stack in its own band while staying linked under its opener.
 
+- **`Aria.setHidden(null)` removes `aria-hidden`.** Like `setExpanded(null)`,
+  it leaves the element as if the attribute had never been set, where
+  `setHidden(false)` writes `aria-hidden="false"`.
+
 ### Layouts
+
 
 - **A `Card` can now select its visible child by a caller-supplied key.**
   `LayoutConstraints` gained a `key` field, and `Card` gained

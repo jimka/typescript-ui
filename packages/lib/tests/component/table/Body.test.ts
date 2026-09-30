@@ -31,6 +31,15 @@ import { NumberCell } from '~/component/table/cell/Number';
 import { StringCell } from '~/component/table/cell/String';
 import { StringRenderer } from '~/component/table/cell/renderer/String';
 import type { ColumnConfig } from '~/component/table/ColumnConfig';
+import { Glyph } from '~/component/display/Glyph';
+import { caret_down } from '~/glyphs/solid/caret_down';
+import { caret_right } from '~/glyphs/solid/caret_right';
+
+// `Tree`/`TreeTable` no longer register `caret-down`/`caret-right` at module
+// load (they use the shared `angle-right` toggle now); this file's own glyph
+// cell fixtures, which use those two names as arbitrary example values, need
+// them registered directly.
+Glyph.register(caret_down, caret_right);
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -1060,6 +1069,72 @@ describe('Body range selection — behaviour preserved through the query-economy
 
         expect((cellAt(b, 0, 0) as any)._rangeSelected).toBe(true);
         expect((cellAt(b, 3, 2) as any)._rangeSelected).toBe(true);
+    });
+});
+
+describe('Body focus ring — found by scanning the pool', () => {
+    async function scrollBody(): Promise<{ b: Body; store: MemoryStore }> {
+        const store = new MemoryStore(MODEL, Array.from({ length: 40 }, (_, r) => ({
+            a: `a${r}`, b: `b${r}`, c: `c${r}`,
+        })));
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(300);
+        b.setHeight(120);   // a pool much smaller than the 40-row store
+        (b as any).renderWindow(300, [100, 100, 100]);
+
+        return { b, store };
+    }
+
+    /** The pool row the focus ring's cell sits in, or `undefined` when no cell carries it. */
+    function focusedRow(b: Body): any {
+        const cell = (b as any)._previousFocusedCell;
+
+        if (cell === null) {
+            return undefined;
+        }
+
+        expect(cell.isStyleState('.focused')).toBe(true);
+
+        return (b as any).getRowPool().find((r: any) => r.getComponents().includes(cell));
+    }
+
+    it('follows the anchor across scroll passes that rotate the pool, reading the record list once per pass', async () => {
+        const { b, store } = await scrollBody();
+        const target    = store.getAll()[2];
+        const rowHeight = (b as any).getRowHeight();
+
+        b.selectRecord(target);
+        (b as any).renderWindow();
+        expect(focusedRow(b).getData()).toBe(target);
+
+        const lookups = vi.spyOn(b as any, 'getVisibleRecords');
+
+        b.setScrollY(rowHeight);           // the pool rotates; the anchor stays in view
+        expect(focusedRow(b).getData()).toBe(target);
+        expect(lookups).toHaveBeenCalledTimes(1);
+
+        b.setScrollY(rowHeight * 30);      // the anchor scrolls out of the window
+        expect(focusedRow(b)).toBeUndefined();
+
+        b.setScrollY(0);                   // ...and back
+        expect(focusedRow(b).getData()).toBe(target);
+        expect(lookups).toHaveBeenCalledTimes(3);
+    });
+
+    it('an anchor that is itself a separator record keeps the ring on its separator row', async () => {
+        const { b, store } = await scrollBody();
+        const separator = store.getAll()[1];
+
+        b.setRowSeparator(record => record === separator ? { label: 'SEP', color: null } : null);
+        b.selectRecord(separator);
+        (b as any).renderWindow();
+
+        const row = focusedRow(b);
+        expect(row.isSeparator()).toBe(true);
+        expect((b as any)._boundIndices[(b as any).getRowPool().indexOf(row)]).toBe(1);
     });
 });
 

@@ -47,7 +47,7 @@ The following components consume the registry by name:
 - [`WindowHeader`](/api/component/container/classes/WindowHeader) — close button (always `xmark`), and an optional title-icon slot exposed via `setGlyph(name)` and the `glyph` option.
 - [`Button`](/api/component/button/classes/Button) — optional leading glyph via `setGlyph(name)` or the `glyph` option. Inherited by [`ToggleButton`](/api/component/button/classes/ToggleButton) and pre-seeded with `xmark` on [`TabCloseButton`](/api/component/button/classes/TabCloseButton).
 - [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton) — optional leading glyph via `setGlyph(name)` or the `glyph` option.
-- [`Tree`](/api/component/tree/classes/Tree) row toggles — `caret-down` when expanded, `caret-right` when collapsed. The row never sees the raw character; the registry decides the look.
+- [`Tree`](/api/component/tree/classes/Tree) and [`TreeTable`](/api/component/table/classes/TreeTable) row toggles — `angle-right`, turned 90° to point down when expanded.
 - [`Scrollbar`](/api/component/container/classes/Scrollbar) end-cap arrow buttons (on by default; suppress via `arrowsEnabled: false`) — `unicode-arrow-up` / `unicode-arrow-down` on vertical bars; `unicode-arrow-left` / `unicode-arrow-right` on horizontal bars.
 - [`IconText`](/api/component/display/classes/IconText) / [`IconLabel`](/api/component/display/classes/IconLabel) — small composites pairing a glyph with a [`Text`](/api/component/input/classes/Text) or `<label>`.
 - Table cells via the `glyph` field type — see [`GlyphCell`](/api/component/table/classes/GlyphCell) and [`GlyphRenderer`](/api/component/table/classes/GlyphRenderer).
@@ -59,7 +59,7 @@ const g = Glyph('xmark');
 g.setGlyphName('check');
 ```
 
-The instance survives the change, and so does everything set on it — its size, colour, animation, cursor, style trait, class tokens and any `aria-*` you wrote on its root. Only which registry entry is painted changes, and an unregistered name throws exactly as the constructor does (`Error("Unknown glyph: nope")`), leaving the glyph as it was. Every built-in icon swap goes through it: `Button.setGlyph` (and everything built on it), the `Tree` and `TreeTable` expand/collapse carets, the list and tree icon renderers, the table's glyph cells, `WindowHeader.setGlyph`, and `IconText` / `IconLabel.setGlyph`.
+The instance survives the change, and so does everything set on it — its size, colour, animation, cursor, style trait, class tokens and any `aria-*` you wrote on its root. Only which registry entry is painted changes, and an unregistered name throws exactly as the constructor does (`Error("Unknown glyph: nope")`), leaving the glyph as it was. Every built-in icon swap goes through it: `Button.setGlyph` (and everything built on it), the list and tree icon renderers, the table's glyph cells, `WindowHeader.setGlyph`, and `IconText` / `IconLabel.setGlyph`.
 
 ## Animation
 
