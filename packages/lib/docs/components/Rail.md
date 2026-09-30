@@ -2,7 +2,7 @@
 
 [`Rail`](/api/overlay/classes/Rail) is a persistent, edge-anchored launcher strip. It floats along one viewport edge holding a column (WEST/EAST) or row (NORTH/SOUTH) of handle buttons. It is the persistent counterpart to the [`Drawer`](/components/Drawer): unlike a drawer it never slides off-screen and is never auto-dismissed — it is always present.
 
-A rail mounts on `document.documentElement` as a `Position.FIXED` overlay and carries a fixed z-index just below the window band, so windows, popovers, and dialogs still stack above it. It is deliberately **not** a [`DismissableLayer`](/api/core/interfaces/DismissableLayer) — there is no outside-click or Escape dismissal to wire.
+A rail mounts on `document.documentElement` as a `Position.FIXED` overlay and carries a fixed z-index just below the lowest layer band, so drawers, windows, popovers, and dialogs still stack above it. It is deliberately **not** a [`DismissableLayer`](/api/core/interfaces/DismissableLayer) — there is no outside-click or Escape dismissal to wire.
 
 ## Mounting a rail
 

@@ -40,6 +40,7 @@ The `edge` option reuses the compass primitive [`Placement`](/api/primitive/enum
 | Outside click | Captured; clicking the scrim closes the drawer | App stays interactive; outside clicks are ignored |
 | Escape | Closes the drawer | Ignored |
 | Closing | Scrim-click / Escape / public API | Public API only |
+| Stacking | Dialog band — above windows, popovers, menus and toasts | Drawer band — above the Rail, below windows |
 
 A non-modal drawer is deliberately *sticky* — a persistent side panel (navigation, filters) that vanished on the first click into the app behind it would be hostile. Callers who want outside-click-to-close on a non-modal drawer can wire it against the public API themselves.
 

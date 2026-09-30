@@ -31,6 +31,19 @@ page resets to empty.
   consumer that counts the two events now sees them balance. See
   [Migration](/reference/migration/next) for the full note.
 
+## Changed
+
+### Overlay
+
+- **A non-modal `Drawer` now stacks below windows, and a modal one in the
+  Dialog band.** A non-modal drawer used to take the Dropdown band (10000),
+  above every window and popover. It now takes the new `Band.Drawer` (8950),
+  above the `Rail` and below windows. A modal drawer takes `Band.Dialog`, so
+  its scrim now also covers toasts. In-page drag outlines moved from
+  `Band.Window - 1` to `Band.Drawer - 1`, which keeps them under an open
+  drawer as before. No consumer action is needed unless an app relied on a
+  non-modal drawer covering a window.
+
 ## Added
 
 ### Components
@@ -43,6 +56,14 @@ page resets to empty.
   width, or that runs work which should wait for the drag to settle, listens
   for the end event instead of debouncing `"columnresize"`. The existing
   `"columnresizestart"` and `"columnresize"` are unchanged.
+
+### Core
+
+- **`LayerManager.Band` gains `Drawer`** (8950, between the `Rail`'s fixed
+  8900 and `Window`).
+
+- **`DismissableLayer` gains an optional `keepsOwnBand()`** for a nested layer
+  that must stack in its own band while staying linked under its opener.
 
 ### Layouts
 
@@ -62,6 +83,7 @@ page resets to empty.
   therefore now read by two managers rather than one.
 
 ## Fixed
+
 
 ### Core
 
@@ -112,3 +134,11 @@ page resets to empty.
   timer now goes through `DOM.sink`, like `AutoCompleteField`'s and the
   table filter row's, and `Notification`'s destructor clears a timer a
   dispose would otherwise have left armed. No consumer action is needed.
+
+- **A modal `Dialog` is no longer drawn beneath — and left clickable under —
+  another overlay.** A dialog opened while any layer was open inherited that
+  layer's band. Opened from a window, it sat below pinned windows, popovers
+  and toasts, with its backdrop tied with the window. Opened with a drawer
+  open, its backdrop sat under or tied with the drawer, which then took clicks
+  and focus. A dialog now always stacks in the Dialog band. No consumer action
+  is needed.
