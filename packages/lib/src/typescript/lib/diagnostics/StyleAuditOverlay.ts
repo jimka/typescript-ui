@@ -14,7 +14,7 @@ const WINDOW_HEIGHT = 520;
 
 /**
  * A floating window showing the stylesheet-dedup audit — the same view
- * embedded in the demo app's own "Style Audit" tab, opened alongside
+ * embedded in the demo app's own "Style Audit" section, opened alongside
  * {@link DiagnosticsOverlay}. Its `WINDOW_X` sits to the right of
  * `DiagnosticsOverlay`'s own window, so the two do not fully overlap when
  * both are open.

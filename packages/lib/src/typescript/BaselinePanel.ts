@@ -24,7 +24,7 @@ import {
 import { Button, ToggleButton } from '@jimka/typescript-ui/component/button';
 import { Glyph, ProgressBar, ProgressSpinner } from '@jimka/typescript-ui/component/display';
 
-/** Vertical gap from the tab bar to the control row, in pixels. */
+/** Vertical gap from the pane's top edge to the control row, in pixels. */
 const ROW_TOP_OFFSET = 40;
 
 /**
@@ -93,8 +93,8 @@ class BaselinePanel extends Panel {
         this._row.addComponent(new ProgressSpinner(16));
 
         this.addComponent(this._row);
-        // Drop the row clear of the tab bar above so the baseline ruler (which
-        // tracks the row's Y) doesn't hug the tabs. Absolute honours this Y.
+        // Drop the row clear of the pane's top edge so the baseline ruler
+        // (which tracks the row's Y) has room to read. Absolute honours this Y.
         this._row.setY(ROW_TOP_OFFSET);
 
         // Overlay rulers: pinned on top, repositioned in doLayout. The red
