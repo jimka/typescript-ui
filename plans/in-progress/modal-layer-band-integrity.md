@@ -405,3 +405,154 @@ From `packages/lib` (never with a bare `--root`):
 [^defence]: The idea is to make the Tab trap refocus the dialog's first focusable when Tab is pressed with focus outside the dialog, so a future stacking mistake would degrade to a paint bug. It does not belong here, for three reasons. **It would not deliver that degradation:** pointer input still reaches whatever paints above the backdrop, so a stacking mistake would remain an input escape by mouse. The guarantee that really does not depend on stacking is `inert` on everything outside the modal subtree. That is a larger design, because layers opened *from* the dialog are portaled siblings on `documentElement` and must stay live, so it needs `LayerManager` to orchestrate it. **It is a different contract with a different harness:** focus and keyboard routing, not z-order, tested through `setQuerySelectorAllResult` and focus seams rather than `getZIndex()`. **It would collide:** the unmerged `feature/dialog-escape-releases-tab-owner` rewrites the same Tab trap into a new `onTab` method. After this plan, none of the library's own surfaces can paint above a modal backdrop, so the remaining risk is a consumer's hand-set z-index. A focused follow-up plan (an `inert`-based modality guard owned by `LayerManager`) is the right vehicle.
 
 [^mutate-prove]: The library's last campaign shipped twelve prescribed verifications that could not fail. The shapes to avoid here: a `>=` that ties satisfy (INT-2, 4, 5); a case list covering one arm (INT-8 covers the modal arm that the non-modal INT-7 cannot); a call-count assertion standing in for a consequence (LM-2 and INT-9 assert containment and the opener's final active state, not that a hook was called); an existing assertion made vacuous by the fix (the three retargeted tests); and a mutation no case kills (the table in *Verification* maps every mutation to at least one red case). INT-9's harness control (step 2) is there so a dispatch that never reaches the manager cannot pass step 5 vacuously.
+
+---
+
+## Implementation Notes
+
+Implemented as planned. Every band value, hook shape and case is the plan's.
+Recorded below: the baselines measured before any edit, the places the plan's
+detail did not survive contact with the tree, and what the mutation pass
+actually observed.
+
+### Baselines on this tree (branched from `master` `d812b18e`)
+
+| Gate | Before | After |
+|---|---|---|
+| `npm test` | 521 files, 8763 passed, 2 todo | 522 files, 8782 passed, 2 todo |
+| `LayerManager` + `Dialog` + `Drawer` | 101 passed | 108 passed |
+| `npm -w packages/qa run test` | 20 files, 453 passed | unchanged |
+| `npm run typecheck` / `typecheck:test` / `lint` | clean | clean |
+| `npm run docs:api` | **0 errors, 14 warnings** | 0 errors, **the same 14** |
+| `npm run docs:llms:check` | clean | clean |
+
+The plan's *Verification* asks for zero `docs:api` warnings. On `master` there
+are 14 pre-existing ones, none in a file this branch touches; clearing them is
+`docs-api-warning-clearance`'s work, on another branch. The bar honoured here
+is therefore **no new warnings**, and the count is unchanged. `llms.txt` was
+regenerated and came out byte-identical, confirming the plan's expectation that
+no class summary moves.
+
+### Deviations
+
+- **`new Window('w')`, not `new Window({ title: 'w' })`.** Step 3 prescribes
+  the object form, but `Window`'s constructor is `(headerText: string,
+  options?: WindowOptions)` — the object would have become the header text.
+  Used the real signature, as `AbstractWindow.alwaysOnTop.test.ts` does.
+- **INT-9 is two cases, not one.** The plan's sequence ends by asserting
+  `win.onActivate` was last called with `true` after a press inside the
+  dialog. On correct code that press produces *no* call at all (the manager
+  short-circuits `markActive` for the already-active layer), so the assertion
+  passes on the `true` left standing by the preceding `bringToFront` — it
+  distinguishes correct from mutated, but only via a stale value. Kept that
+  case verbatim and added a second one that starts from a *deactivated*
+  opener, so the press has to produce a fresh `onActivate(true)`. Both go red
+  under M-sever (see below).
+- **`tests/core/ResizeDrag.test.ts` gained one assertion**, though footnote
+  `[^outlines]` says it "needs no change". It was right that nothing breaks —
+  but the file's only z assertion is `outline.getZIndex()` against
+  `IN_PAGE_OUTLINE_Z_INDEX` itself, which holds whatever the constant is. The
+  mutation pass confirmed it: reverting that one constant to `Band.Window - 1`
+  turned **no** test red, while its three siblings each had a case. Added
+  `expect(IN_PAGE_OUTLINE_Z_INDEX).toBe(LayerManager.Band.Drawer - 1)` so all
+  four are pinned symmetrically.
+- **INT-8's reverse order is a second `it`** with the same label, per the
+  plan's "also run it in the reverse order".
+- **No demo added.** The docs app ships `dialog-basic` and no Drawer, Rail or
+  Window demo, so there is no existing surface a stacking fix could be shown
+  on, and this is a defect fix rather than a new capability. See the
+  manual-verify step below.
+
+### Mutation pass — 21 mutations applied, reverted, and observed
+
+Every mutation in the plan's *Verification* table was applied to the real
+source, the seven verification files run, and the failing test names recorded.
+Six further mutations were added to probe assertions the plan's table did not
+map. Results, with the plan's prediction in brackets where it differs:
+
+| Mutation | Red |
+|---|---|
+| `bandFor` back to `parent ? parent.band : own` | LM-1, LM-4, LM-5, INT-1, 2, 4, 5 — exactly as predicted |
+| `bandFor` → `parent ? max(parent.band, own) : own` | the retargeted inheritance test, LM-3, **and all three anchor-resolution tests** [predicted 2] |
+| `register` drops the parent when the hook is true | LM-2, **both** INT-9 cases |
+| `bandFor` checks `keepsOwnBand !== undefined` | LM-3 |
+| `restampSubtree` back to `n.band = band` | LM-4 |
+| `restampSubtree` → per-node `keepsOwnBand ? n.band : band` | LM-4 |
+| `bandFor` returns own band when `parent.layer.keepsOwnBand?.()` | LM-5 **and LM-4** [predicted LM-5] |
+| delete `Dialog.keepsOwnBand` | INT-1, 2, 4, 5 **and the Dialog getter** |
+| delete `Drawer.getBand` | INT-7 **and the Drawer getter** |
+| `Drawer.getBand` → always `Band.Drawer` | **both** INT-8 orders **and the Drawer getter** |
+| `Z_BAND_DRAWER = 9000` | INT-7 |
+| `Z_BAND_DRAWER = 8850` | INT-7 |
+| `Z_BAND_DRAWER = 11500` | INT-3 **and seven more** [predicted INT-3] |
+| `Dialog.getBand` → `Band.Dropdown` | INT-6, **INT-5, and the Dialog getBand getter** |
+| *(extra)* dialog backdrop stamped `panelZ + 1` | INT-1, 2, 6 |
+| *(extra)* drawer scrim stamped `panelZ + 1` | both INT-8 orders |
+| *(extra)* `DragFeedback` Z back to `Band.Window - 1` | its `overlay-primitives` case |
+| *(extra)* `ReorderIndicator` Z back to `Band.Window - 1` | its `overlay-primitives` case |
+| *(extra)* `DropZoneOverlay` Z back to `Band.Window - 1` | its `overlay-primitives` case |
+| *(extra)* `IN_PAGE_OUTLINE_Z_INDEX` back to `Band.Window - 1` | **nothing, before the assertion above was added**; its own case after |
+| *(extra)* `restampSubtree` does not move the target either | LM-4 **and four existing `setBand` / parentage tests** |
+
+As in the recent batch, the plan **undercounted** the red rows in six places
+and never overcounted. The two extras that were not merely confirmatory are
+worth keeping in mind:
+
+- The `panelZ + 1` pair exists because `z(panel) > z(backdrop)` is structurally
+  guaranteed by `panelZ - 1` and so cannot fail under any mutation in the
+  plan's table. It does fail under a mutation of the stamping itself, which is
+  the only thing that assertion is really about, so it is not cover.
+- The `restampSubtree` target mutation exists because LM-4's `z(root) >=
+  Band.PinnedWindow` arm is likewise unkilled by the plan's table; it is red
+  under that mutation.
+
+Two arms remain unkilled by anything tried: LM-1's `z(child) < Band.Tooltip`
+and LM-3's / the retargeted test's `z(child) > z(opener)`. Both are band-membership
+and registration-order co-assertions in the idiom this file already uses, and
+each sits beside an arm that does fail; they are recorded here rather than
+removed.
+
+### The ties were real
+
+Before `Dialog.keepsOwnBand` existed, the new integration cases failed with
+`expected 10002 to be greater than 10002` (INT-2), `expected 10005 to be
+greater than 10005` (INT-4) and `expected 9004 to be greater than 9004`
+(INT-5) — the exact ties the plan's measured table predicted, at the same
+stamps. A `toBeGreaterThanOrEqual` would have passed all three on the broken
+code. Every cross-surface assertion in both new files is strict.
+
+### Audit
+
+Two rounds. The first found one BLOCKING item: step 2 lists every comment in
+`LayerManager.ts` to update but misses two the change makes false — the
+`LayerNode` JSDoc calling `band` "inherited from its opener", and the
+band-overview comment's "A nested child inherits its opener's band but always
+lands above it". Both now name the `keepsOwnBand` exception. That fix, plus a
+correction to this file's three-file baseline row (108, not the 107 first
+recorded), is folded into the commits it belongs to. The second round returned
+no BLOCKING findings.
+
+### Manual verification (by eye, not run here)
+
+Nothing in this repo's demo or QA surfaces opens a `Drawer`, a `Rail` or a
+`Window`, so the paint order itself was not observed. The automated cases
+assert the consequence (one surface's z strictly exceeds another's) rather than
+the mechanism, but a real render is still the only way to see modality hold. In
+a consumer app that has a rail and drawers:
+
+1. **Non-modal drawer, then a dialog.** Open a non-modal drawer, then open a
+   dialog from anywhere. *Correct:* the drawer is dimmed beneath the dialog's
+   backdrop and a click on it does nothing — before this change the drawer
+   painted over the backdrop and stayed clickable, and Tab could move into it.
+2. **Window, then a dialog.** Show a floating window, then open a dialog from
+   it. *Correct:* the backdrop covers the window, the window's title bar stays
+   lit (the dialog links under it), and a toast raised while the dialog is up
+   appears *behind* the backdrop.
+3. **Non-modal drawer alone.** *Correct:* the drawer slides out over the rail
+   but a floating window overlaps it — the one intentional behaviour change,
+   and the only thing a consumer might have relied on the old way round.
+4. **Modal drawer, then a window.** *Correct:* the drawer's scrim still covers
+   the window, unchanged from before. This is the case a naive `Band.Drawer`
+   for all drawers would have regressed.
+5. **Drag a `Split` gutter with a non-modal drawer open**, over page content
+   the drawer overlaps. *Correct:* the drag outline stays under the drawer.
