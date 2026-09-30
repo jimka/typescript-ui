@@ -1258,6 +1258,20 @@ class Split extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * Formats a persisted size array for a diagnostic message as `unit:value`
+     * pairs — `"px:420, ratio:1"`.
+     *
+     * @param sizes - The array to describe.
+     * @returns The comma-joined `unit:value` pairs.
+     */
+    private describeSizes(sizes: LayoutSize[]): string {
+        // A persisted array reaches this class straight from `JSON.parse`, so an
+        // entry can be null at runtime however it is typed — `isRestorableSizes`
+        // guards `size != null` for the same reason.
+        return sizes.map(size => `${size?.unit ?? "?"}:${size?.value ?? "?"}`).join(", ");
+    }
+
+    /**
      * Resolves each pane's persisted unit: `"px"` for a resize-pinned pane
      * (explicit `weight: 0`, per {@link isResizePinnedMain}), `"ratio"`
      * otherwise. The unit follows the weight, resolved by the same predicate
@@ -1315,6 +1329,12 @@ class Split extends LayoutManager implements FocusRevealer {
      * {@link LayoutSize}) — a stale array leaves the panes exactly as though
      * no restore were requested.
      *
+     * The container must already hold its panes: this resolves them as it is
+     * called, so a call made before they are added is ignored and warns in the
+     * console. To restore before the panes exist, pass the array as the
+     * `paneSizes` option instead — the first layout that has panes applies it,
+     * however many pane-less passes ran before.
+     *
      * @param sizes - The persisted array to restore.
      * @returns This layout manager, for method chaining.
      */
@@ -1322,13 +1342,23 @@ class Split extends LayoutManager implements FocusRevealer {
         const container = this.getContainer();
 
         if (!container) {
+            console.warn("Split: applyPaneSizes ignored — this layout manager is not attached to a container; pass the array as the `paneSizes` option instead.");
+
             return this;
         }
 
         const components = container.getComponents();
         const units      = this.paneSizeUnits(components);
 
+        if (components.length === 0) {
+            console.warn("Split: applyPaneSizes ignored — the container has no panes yet; add the panes first, or pass the array as the `paneSizes` option.");
+
+            return this;
+        }
+
         if (!isRestorableSizes(sizes, units)) {
+            console.warn(`Split: paneSizes discarded — [${this.describeSizes(sizes)}] is not restorable against the live pane units [${units.join(", ")}]; the lengths must match, every entry's unit must match its pane, and at least one value must be positive.`);
+
             return this;
         }
 

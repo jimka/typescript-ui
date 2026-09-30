@@ -1453,6 +1453,122 @@ describe('Split pane sizes (getPaneSizes / applyPaneSizes)', () => {
     });
 });
 
+describe('Split paneSizes diagnostics', () => {
+    // `restoreAllMocks` rather than a `mockRestore()` at the end of each body:
+    // a body that fails before its last line never reaches one, and the leaked
+    // spy then corrupts the call counts of every case after it — which turns a
+    // single real failure into a cascade of false ones.
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    // Each of `applyPaneSizes`' silent exits names what was supplied and what
+    // the live panes offer, so a restore that vanishes says why. The hosts are
+    // the pending-drain set's geometry: 1280 px, `spacing: 8`, two bare panes
+    // whose live units are ["px", "ratio"].
+
+    it('warns that it is not attached when applyPaneSizes is called with no container', () => {
+        installTestDOM(CONFIG);
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        new Split().applyPaneSizes([{ unit: 'px', value: 420 }, { unit: 'ratio', value: 1 }]);
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toMatch(/^Split:/);
+        expect(warn.mock.calls[0][0]).toContain('not attached');
+    });
+
+    it('warns that the container has no panes yet when applyPaneSizes is called too early', () => {
+        installTestDOM(CONFIG);
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const split = new Split({ orientation: 'horizontal', spacing: 8 });
+        const host  = new Container({ layoutManager: split });
+        host.getElement(true);
+        host.setWidth(1280);
+        host.setHeight(800);
+
+        split.applyPaneSizes([{ unit: 'px', value: 420 }, { unit: 'ratio', value: 1 }]);
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toMatch(/^Split:/);
+        expect(warn.mock.calls[0][0]).toContain('no panes yet');
+    });
+
+    it('warns once, naming the supplied entries and the live units, when a unit no longer matches', () => {
+        installTestDOM(CONFIG);
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const split = new Split({
+            orientation: 'horizontal',
+            spacing:     8,
+            paneSizes:   [{ unit: 'ratio', value: 0.5 }, { unit: 'ratio', value: 0.5 }],
+        });
+        const host = new Container({ layoutManager: split });
+        host.getElement(true);
+        host.setWidth(1280);
+        host.setHeight(800);
+        host.addComponent(new Component({}), { weight: 0 }); // live units are ["px", "ratio"]
+        host.addComponent(new Component({}), { weight: 1 });
+
+        host.doLayout();
+        host.doLayout(); // the drain is once-only, so the warning is too
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toMatch(/^Split:/);
+        expect(warn.mock.calls[0][0]).toContain('[ratio:0.5, ratio:0.5]');
+        expect(warn.mock.calls[0][0]).toContain('[px, ratio]');
+    });
+
+    it('names the supplied values when the units match but no value is positive', () => {
+        installTestDOM(CONFIG);
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const split = new Split({
+            orientation: 'horizontal',
+            spacing:     8,
+            paneSizes:   [{ unit: 'px', value: 0 }, { unit: 'ratio', value: 0 }],
+        });
+        const host = new Container({ layoutManager: split });
+        host.getElement(true);
+        host.setWidth(1280);
+        host.setHeight(800);
+        host.addComponent(new Component({}), { weight: 0 });
+        host.addComponent(new Component({}), { weight: 1 });
+
+        host.doLayout();
+
+        // The units match here, so only the values identify the fault.
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toMatch(/^Split:/);
+        expect(warn.mock.calls[0][0]).toContain('px:0, ratio:0');
+    });
+
+    it('stays silent when a held paneSizes array drains successfully', () => {
+        installTestDOM(CONFIG);
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const split = new Split({
+            orientation: 'horizontal',
+            spacing:     8,
+            paneSizes:   [{ unit: 'px', value: 200 }, { unit: 'ratio', value: 1 }],
+        });
+        const host = new Container({ layoutManager: split });
+        host.getElement(true);
+        host.setWidth(1280);
+        host.setHeight(800);
+
+        host.doLayout(); // the pane-less pass: held, not discarded, so no warning
+
+        const pinned   = new Component({});
+        const flexible = new Component({});
+        host.addComponent(pinned, { weight: 0 });
+        host.addComponent(flexible, { weight: 1 });
+        host.doLayout();
+
+        expect(split.getPaneSize(pinned)!).toBeCloseTo(200, 4);
+        expect(warn).not.toHaveBeenCalled();
+    });
+});
+
 describe('Split events', () => {
     afterEach(() => DOM.reset());
 
