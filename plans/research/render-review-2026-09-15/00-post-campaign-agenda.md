@@ -2318,33 +2318,60 @@ reaching it, against this file's own prediction that it could not.
 **Still open — the docs demo overlap, and it is a `VBox` defect.** Reported as a
 demo block's margin painting over the text above it, with that text clipped. The
 settled state is correct, which is why a post-load measurement finds nothing; the
-defect is a first-paint transient, and it was reproduced by sampling every
-animation frame after a cache-ignoring reload of `/layouts/Absolute`:
+defect is a first-paint transient. Reproduced on a **production build**
+(`build:docs` + `vite preview`), sampling every animation frame after a
+cache-ignoring reload of `/components/Image`, the worst of the docs pages with
+six demo blocks. The dev server gives byte-identical numbers, so this is not a
+dev-server artefact and it ships:
 
-| frame | t (ms) | overlap (px) | prose clipped (px) |
-|---|---|---|---|
-| 26 | 969 | 411.8 / 968.8 | 0 / 0 |
-| 27 | 1027 | 186 / 642 | 50 / 176 |
-| 28 | 1059 | 0 / 0 | 50 / 176 |
-| 29 | 1094 | 50 / 176 | 0 / 0 |
-| 31 | 2119 | 0 / 0 | 0 / 1 |
-| 35 | 6184 | 0 / 0 | 0 / 0 |
+| frame | t (ms) | sidebar | prose widths | max overlap | max clip |
+|---|---|---|---|---|---|
+| 2 | 405 | **1px** | 114, 594, 158, 205, 148, 119, 222 | **1909** | 0 |
+| 3 | 517 | **320px** | 683 ×7 | 877 | **730** |
+| 4 | 551 | 320px | 683 ×7 | **730** | 1 |
+| 5 | 594 | 320px | 683 ×7 | 0 | 1 |
+| 6 | 635 | 320px | 683 ×7 | 0 | 10 |
+| — | ~2671 | 320px | 683 ×7 | 0 | 0 |
 
-Frame 29 is the proof: the overlap is *exactly* the amount the prose was
-clipping one frame earlier. `VBox.layoutPreferredMode` freezes every child's
-height in a pre-pass, `commitBounds` then sets width before height, and
+Frames 3 → 4 are the proof: the overlap is *exactly* the amount the prose was
+clipping one frame earlier (730 → 730). `VBox.layoutPreferredMode` freezes every
+child's height in a pre-pass, `commitBounds` then sets width before height, and
 `Markdown.setWidth` re-measures synchronously — so a prose block that reflows
 taller mid-commit is floored back up by `clampHeight` while every later child's
 `y` stays fixed from the stale array. The prose's own `overflow: hidden` clips
 its content in the meantime, which is the "clipped text" half of the report.
-Over six seconds to settle, with a 1px residual clip lasting two of them.
+
+**The trigger is the sidebar, and it is not the font.** The sidebar resolves from
+1px to 320px between frames 2 and 3, which takes every prose block's width from
+an unresolved per-block value to a uniform 683 — and only a width change can
+provoke that synchronous re-measure. A font-driven explanation is excluded by
+measurement: `fonts.ready` fired at t=22 and `loadingdone` at t=151, both before
+the first overlapping frame.
+
+**Correction to an earlier reading of this same data.** A first pass reported
+"over six seconds to settle". That was an artefact of the measuring script, not
+the page: the sampled tab was opened in the background, so `requestAnimationFrame`
+throttled to ~1Hz once the page went idle and the later samples sat exactly
+1016 ms apart. The overlap in fact clears by **~594 ms**. What remains is a 10px
+clip resolving by ~2.7s, and that 10px is the deferred `CodeEditor` upgrade,
+which reports itself: `Markdown: fenced "javascript" code block's CodeEditor
+corrected its guessed height by 10px (97px → 106.9375px) on mount.` A throttled
+sampler reads as a slow page; check sample spacing before believing a tail.
 
 **It is not the demo padding, and `docs-demo-prose-alignment` should not be
-reverted.** An overlap of 968px cannot come from a 14px inset; the magnitudes
-track prose height, and the plan's own investigation had predicted this hazard
-and recommended keeping the padding for reasons that still hold —
-`VBox` `spacing` would make every prose-to-prose gutter 56px, and prose bottom
-padding does nothing for a demo-to-demo seam. The fix belongs in `VBox` /
-`commitBounds`, wants a plan of its own, and its acceptance can be automated:
-the frame-sampling script above is the shape of the regression test, and it
-failed before any fix existed.
+reverted.** An overlap of 1909px cannot come from a 14px inset, and this was
+measured rather than argued: with that padding removed and a computed
+`padding: "0px"` confirmed in effect at sample time, every frame's numbers were
+byte-identical. The plan's own investigation had predicted this hazard and
+recommended keeping the padding for reasons that still hold — `VBox` `spacing`
+would make every prose-to-prose gutter 56px, and prose bottom padding does
+nothing for a demo-to-demo seam.
+
+**Planned as `vbox-stale-prepass-heights`.** The frozen advance arrived in
+`83dfee04`, whose message claims the change left "today's behaviour
+byte-identical" for the non-justify path; it did not, in exactly this case. It
+advanced by the resolved extent because the justify gap arithmetic had to be
+exact, so the fix cannot simply revert to `getHeight()` — it has to keep that
+arithmetic while absorbing commit-time growth. The acceptance is offline rather
+than by eye: `TestDOM` treats `scrollHeight` as an injected input, which is the
+lever for reproducing a mid-commit re-measure deterministically.
