@@ -2053,27 +2053,39 @@ the hour — the same shape as the four already-fixed items and the over-claimed
 scrollbar fix above. What made it wrong was cheap to find: two file reads,
 by someone who then said so.
 
-**The Grid panel's scrollbar and shadow flicker on a sub-pixel float error, and
-`feature/scrollbar-overflow-epsilon` does not reach it.** That branch put
-`OVERFLOW_EPSILON_PX = 0.5` into `component/container/Scrollbar.ts` and
-`component/container/VirtualScroller.ts`. The Grid demo panel's overlay
-scrollbar and its shadow are decided in `core/Panel.ts`, which the branch does
-not touch and which still compares bare: `:895` and `:896` derive `vVisible` and
-`hVisible` from `scrollHeight > clientHeight` and `scrollWidth > clientWidth`,
-and `:952`/`:953` reserve the gutters the same way. The shadow is conclusive —
-`_shadowEdges` exists only in `core/Panel.ts`, so nothing on that branch can
-affect it.
+**The Grid panel's scrollbar and shadow flickered on a sub-pixel float error,
+and `feature/scrollbar-overflow-epsilon` does reach it after all — CLOSED
+2026-09-30.** With all fifteen branches merged, the user ran the Grid panel and
+reports the flicker **entirely gone**. The claim this section previously made,
+that the branch could not affect it, was wrong. It is corrected here rather than
+deleted, because how it was wrong is the more useful record.
 
-**Deferred deliberately, and test-first.** The obvious move is to extend the
-epsilon to those four sites on that branch now. The user chose instead to wait
-until everything is merged, so the gap can be **proved** rather than argued: run
-the Grid panel against the merged fix, show the flicker survives, and only then
-extend the epsilon. That ordering is right on this file's own evidence — four
-items on the 2026-09-29 inventory turned out to be already fixed, and this very
-case is a fix assumed to cover something it does not. A patch justified by
-reading is how that happens; a patch justified by a failing case is not. When it
-comes, it wants a test on Panel's own path: the branch's two tests cover
-`VirtualScroller` and the Table resize case only.
+**Two true premises, a false conclusion.** The reading was accurate as far as it
+went: `core/Panel.ts` does compare bare at `:895`/`:896`, deriving `vVisible`
+and `hVisible` from `scrollHeight > clientHeight` and `scrollWidth >
+clientWidth`; it does reserve the gutters the same way at `:952`/`:953`; and
+`_shadowEdges` does exist only in that file, which the branch does not touch.
+What followed from none of that is the conclusion drawn — that the Grid's
+flicker therefore originated there. It came through the `VirtualScroller` /
+`Scrollbar` path the branch does patch, so `OVERFLOW_EPSILON_PX = 0.5` was
+sufficient alone. A mechanism that *could* produce the symptom was treated as
+the one that *did*.
+
+**The deferral closed by being satisfied, not by being executed.** The condition
+was that the gap be proved rather than argued — run the Grid against the merged
+fix, show the flicker survives, and only then extend the epsilon to Panel's four
+sites. It did not survive, so there is no failing case and no plan. The four
+comparisons stay bare: the library is pre-1.0 and does not carry defensive code
+for a defect nobody has observed. If a Panel-path flicker ever appears, this
+section is the head start, but it still wants the failing case first, on Panel's
+own path — the branch's two tests cover `VirtualScroller` and the Table resize
+case only.
+
+**Test-first paid out in the unexpected direction.** The ordering was chosen to
+stop a patch being justified by reading. It did exactly that, and what it caught
+was not an under-claimed fix but an over-claimed *gap*. Waiting for a failing
+case guards against building the wrong thing, and that includes building
+something which turns out not to be needed at all.
 
 ## The release sweep: two confirmations, one partial, three empty cells (2026-09-29)
 
