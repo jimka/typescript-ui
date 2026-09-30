@@ -77,7 +77,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:8015`. The demo app renders a tabbed showcase of every layout manager and component.
+Open `http://localhost:8015`. The demo app lists every layout manager and component as a category tree on the left, with the selected demo beside it across a draggable divider.
 
 If instead you are consuming a local checkout of this library from your own app (via a `file:` dependency), see [Linking a local library checkout](/recipes/local-development) for the required Vite configuration.
 

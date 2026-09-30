@@ -33,7 +33,7 @@ Its own `Button`, `Table`, and row components add `#id` rules to the very cache 
 
 - Singleton — there is only ever one style-audit window on screen, mirroring [`DiagnosticsOverlay`](/components/DiagnosticsOverlay)'s own shape.
 - Positioned to the right of `DiagnosticsOverlay`'s own window (at `x: 360`, vs. `DiagnosticsOverlay`'s `x: 24` / `width: 320`), so the two do not fully overlap when both are open.
-- The same audit is also embedded, without the window chrome, in the demo app's own "Style Audit" tab.
+- The same audit is also embedded, without the window chrome, in the demo app's own "Style Audit" section.
 
 ## See also
 
