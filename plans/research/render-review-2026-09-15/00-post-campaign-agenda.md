@@ -1313,6 +1313,17 @@ is now drafted as eight plans, listed here so the index carries them.
   it, so a later sink-keyed cache joins by construction. Planned as
   `document-cache-reset-registry`.
 
+  **Taken 2026-09-29**, by `document-cache-reset-registry`. `DOM.onSinkChange`
+  runs every registered listener after a swap that replaces the installed sink;
+  `Glyphs.ts` and `Favicon.ts` each register one clearing function at import;
+  and `DOM.sink` / `DOM.source` became `readonly`, so `install` and `reset` are
+  the only routes a seam can be swapped through. `Favicon._reset()` and all four
+  of its call sites are gone, which is what turns the seven cases in
+  `tests/core/Body.test.ts` and `tests/core/BodyContextMenu.test.ts` into the
+  mechanism's own regression net — all seven measured red with the registration
+  removed, and no manual hook survives for them to pass on. `Glyphs`' four
+  per-call `_spriteSink` comparisons left the render and startup paths with it.
+
 - **Stage 4 may not close stage 3's residual.** That residual named four
   classes: `PickerButton` 0.2, `PickerInput` 0.1, `ButtonIconGlyph` 0.2 and
   `ButtonLabelText` 0.2. `field-internals-unchanged-commit-opt-in` opts in

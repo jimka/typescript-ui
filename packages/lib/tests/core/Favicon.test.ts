@@ -41,9 +41,10 @@ function iconLink(sink: RecordingDOMSink): Handle | undefined {
  * that link's handle, so it picks up the `href`-only write a re-install makes
  * without matching an `href` written to any other element.
  *
- * Reads `sink.writes` directly: a released handle still accepts writes offline,
- * so an `expect(…).not.toThrow()` assertion would pass whether or not the code
- * under test did anything.
+ * Reads `sink.writes` directly rather than asserting that a call did not
+ * throw: the op log says which link received which `href`, which is the
+ * contract, while a throw-or-not assertion cannot tell a fresh link from an
+ * `href` swapped onto an existing one.
  *
  * @param sink - The recording sink for the current test.
  * @returns The `href` of every write to the icon link, oldest first.
@@ -68,7 +69,6 @@ function seedExistingIconLink(): void {
 
 describe('Favicon', () => {
     afterEach(() => {
-        Favicon._reset();
         DOM.reset();
     });
 
@@ -152,5 +152,40 @@ describe('Favicon', () => {
 
         expect(linkCreations(sink)).toBe(1);
         expect(iconWrites(sink)).toEqual(['/a.svg', '/b.svg']);
+    });
+
+    it('F1. appends a fresh link after the sink is replaced', () => {
+        const first = installTestDOM(CONFIG);
+
+        Favicon.install('/a.svg');
+
+        const second = installTestDOM(CONFIG);
+
+        Favicon.install('/b.svg');
+
+        // One link per sink, and the second sink saw only its own href: the
+        // second install appended rather than swapping the href on a handle the
+        // replacement sink never minted, which is what its table throws on.
+        expect(linkCreations(first)).toBe(1);
+        expect(linkCreations(second)).toBe(1);
+        expect(iconWrites(second)).toEqual(['/b.svg']);
+    });
+
+    it('F2. keeps the injected link when only the source is swapped', () => {
+        const sink = installTestDOM(CONFIG);
+
+        Favicon.install('/a.svg');
+
+        DOM.install({ source: Object.create(DOM.source) as typeof DOM.source });
+
+        Favicon.install('/c.svg');
+
+        // This case does not pin the reset — it is green either side of it. It
+        // pins the symmetric arm: the swap that must *not* drop the cache. Every
+        // handle the installed sink minted stays valid when a source spy goes in
+        // over it, so the second install swaps the href on the link already
+        // there instead of stacking a second one.
+        expect(linkCreations(sink)).toBe(1);
+        expect(iconWrites(sink)).toEqual(['/a.svg', '/c.svg']);
     });
 });

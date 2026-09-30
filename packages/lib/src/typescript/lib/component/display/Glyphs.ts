@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DOM } from "~/core/DOM.js";
-import type { DOMSink, Handle } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 
 /**
  * Tagged union describing how a glyph is rendered.
@@ -65,21 +65,10 @@ let _spriteElement: Handle | null = null;
 const _mountedSymbols: Map<string, { symbol: Handle; path: Handle }> = new Map();
 
 /**
- * The sink the sprite element and every mounted symbol above were minted
- * against. A `Handle` is only meaningful to the seam that minted it, so a
- * different installed sink cannot be trusted to resolve any of them:
- * `DOM.reset()` rebuilds the shared registry outright, and a sink installed
- * over the production one generally keeps a handle table of its own. The
- * comparison below is therefore on object identity, rather than an attempt to
- * work out whether a particular swap invalidated anything.
- */
-let _spriteSink: DOMSink | null = null;
-
-/**
- * Drops the sprite and its mounted-symbol record when `DOM.sink` is no longer
- * the sink they were built against, so the next mount builds a fresh sprite in
- * the live document instead of appending through a handle the live sink never
- * minted. Called first by every exported function that touches sprite state.
+ * Drops the sprite and its mounted-symbol record, so the next mount builds a
+ * fresh sprite in the live document instead of appending through a handle the
+ * installed sink never minted. Registered with `DOM.onSinkChange` at the bottom
+ * of this module and called from nowhere else.
  *
  * The dropped handles are not released: the sink that could release them is no
  * longer installed, and after a `DOM.reset()` the registry that held them is
@@ -88,12 +77,7 @@ let _spriteSink: DOMSink | null = null;
  * lifetime. The glyph *definition* registry is left alone — a `GlyphDef` holds
  * no handle and outlives any seam.
  */
-function _forgetSpriteIfSinkChanged(): void {
-    if (_spriteSink === DOM.sink) {
-        return;
-    }
-
-    _spriteSink    = DOM.sink;
+function _forgetSprite(): void {
     _spriteElement = null;
     _spriteMounted = false;
     _mountedSymbols.clear();
@@ -107,8 +91,6 @@ function _forgetSpriteIfSinkChanged(): void {
  * @internal
  */
 export function registerGlyph(def: NamedGlyphDef): void {
-    _forgetSpriteIfSinkChanged();
-
     _glyphs.set(def.name, def);
 
     if (def.kind === "svg" && _spriteMounted) {
@@ -123,8 +105,6 @@ export function registerGlyph(def: NamedGlyphDef): void {
  * @internal
  */
 export function unregisterGlyph(name: string): void {
-    _forgetSpriteIfSinkChanged();
-
     const def = _glyphs.get(name);
     _glyphs.delete(name);
 
@@ -154,8 +134,6 @@ export function lookupGlyph(name: string): GlyphDef | undefined {
  * @internal
  */
 export function ensureGlyphSprite(): void {
-    _forgetSpriteIfSinkChanged();
-
     if (_spriteMounted) {
         return;
     }
@@ -182,8 +160,6 @@ export function ensureGlyphSprite(): void {
  * @internal
  */
 export function ensureGlyphSymbolMounted(name: string): void {
-    _forgetSpriteIfSinkChanged();
-
     if (!_spriteMounted) {
         return;
     }
@@ -236,3 +212,9 @@ function _removeSymbolFromSprite(name: string): void {
 
     _mountedSymbols.delete(name);
 }
+
+// Registered at import: the sprite element and every `<symbol>` in it are named
+// by handles minted through the sink, so a replaced sink leaves none of them
+// resolvable. Order against any other sink-change listener is irrelevant — each
+// one clears only its own module's state.
+DOM.onSinkChange(_forgetSprite);

@@ -1001,3 +1001,85 @@ in as many words.
     at `tests/core/Favicon.test.ts:44-46` says a released handle still accepts
     writes offline, which the modelled DOM's handle eviction has since made
     false — step 9 corrects it.
+
+---
+
+## Implementation Notes
+
+Implemented as phase 4 of the eight-phase post-campaign batch, branched from
+the phase-3 chain tip `2331fbc5` rather than from `master`. Every one of the
+plan's `file:line` citations into `core/DOM.ts`, `Glyphs.ts`, `Favicon.ts` and
+the four test files landed exactly as written.
+
+**The baseline moved under the plan, in two ways that retire two of its own
+checks.** Step 1 predicts 521 files and 8765 tests and `docs:api` at "0 errors,
+14 warnings". Measured in this worktree before any edit: 521 files and 8777
+tests, 2 `todo`, none failing — phases 1-3 added twelve cases — and `docs:api`
+at **0 errors and 0 warnings**, because phase 1 (`docs-api-warning-clearance`)
+cleared all fourteen and `CODE_CONVENTIONS.md` now records zero as the standing
+bar. Step 13's "still 14 warnings" and the Verification section's "a fifteenth
+means a `{@link}` reached `onSinkChange`" are therefore both dead phrasings; the
+bar is zero, and it held. Final: 522 files, 8785 tests (2 `todo`), none failing
+— the baseline plus the six new cases and F1/F2. `packages/qa` is 20 files and
+453 passing, and `docs:llms:check` still reports 0 unaccounted for.
+
+**Every prescribed mutation was applied and confirmed red**, rather than
+trusted. `notifySinkChange()` deleted from `reset` kills N1 and N6; deleted from
+`install`, N2-N6; `sinkReplaced` weakened to `impls.sink !== undefined` kills N3
+alone; a `notifySinkChange()` added to `install`'s source branch kills N4 alone;
+hoisting the dispatch above the assignments kills N5 alone in `install` and N6
+alone in `reset`; a dispatch that stops after one listener kills all six. The
+`readonly` guard is load-bearing in both directions: the `@ts-expect-error` was
+*unused* — and so a `typecheck:test` error — before the interface declared
+`sink` readonly, and removing `readonly` again reproduces that error. F2 is
+killed only by the source-branch mutation, which is the arm it exists for.
+
+**Three deviations from the plan's prescribed text**, all because the repository
+moved after the plan was drafted or because the plan was silent:
+
+- **The agenda correction records the outcome instead of re-correcting the
+  entry.** Step 12 prescribes a bullet opening "**Taken, and the entry above is
+  imprecise (2026-09-29).**" and then restating that `Favicon._reset()` existed
+  and that four suites had to remember it. That text was drafted against the
+  original five-line bullet at lines 1230-1234; commit `2630116a` afterwards
+  added a paragraph to `master` which already makes exactly that correction, in
+  those terms, and the bullet now sits at line 1298. Appending the prescribed
+  wording verbatim would have had the file correct a claim it no longer makes.
+  The appended note records what was built and deleted instead, and that all
+  seven cases were measured red without the registration.
+- **`03-core-dom-seam-events.md` cites `plans/implemented/`.** The prescribed
+  replacement names `plans/document-cache-reset-registry.md`, a path this branch
+  itself vacates in its last commit; it names the implemented path instead.
+- **`docs/reference/migration/next.md` gained a note, and is not in the plan's
+  file table.** The plan is silent on migration notes rather than deciding
+  against one, and the repository is 1:1 on them: 0.10.0 has twelve
+  breaking-change bullets and thirteen migration sections, one of which
+  (`DOMSource` gains `isRegistered` and `closestWithId`) is the same kind of
+  seam-interface change as this one. The changelog entry links it, as the
+  neighbouring breaking entry links its own.
+
+**Two smaller departures.** The notification file's `counter()` returns
+`{ listener, runs }` rather than the plan's literal `counter(): () => void`,
+because a count nothing can read asserts nothing; `countCellLayouts` in
+`tests/component/table/Body.test.ts` is the in-repo precedent for the shape. And
+two descriptions of `DOM` as a "mutable-property" object — `dom-seams.md`'s
+*Swapping the seams* lead-in and the `@remarks` on the `DOM` binding — were
+reworded, because `readonly` left each contradicting a sentence beside it that
+this change had just written.
+
+**Two of the plan's red-direction predictions undercount.** Deleting `Glyphs`'
+`_spriteSink` comparison without adding the registration turns **five** of the
+six `GlyphSpriteSinkSwap` cases red, not the four predicted: the source-only
+case fails too, as collateral, because with nothing dropping the sprite a
+previous case's dead handle leaks into it. That case is still precisely the arm
+the plan says it is — the source-branch mutation kills it alone. And removing
+`DOM.onSinkChange(_forgetLink)` turns **twelve** cases red across the four
+files, not seven: the five in `BodyContextMenu.test.ts` and two in
+`Body.test.ts` the plan measured, plus F1, F2 and three older
+`Favicon.test.ts` cases which the deleted `afterEach` hook had been covering.
+`ResizeDrag.test.ts` stays 16 of 16 green, confirming the plan's claim that its
+own hook call was never load-bearing.
+
+Nothing needed a browser, a window or `packages/qa`'s harness; production calls
+neither `install` nor `reset`, so there is no rendered behaviour to verify by
+hand.

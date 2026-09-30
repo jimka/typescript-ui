@@ -52,6 +52,24 @@ export const DEFAULT_FAVICON = `data:image/svg+xml,${encodeURIComponent(MARK_SVG
 const ICON_LINK_SELECTOR = 'link[rel~="icon"]';
 
 /**
+ * The link this module injected, or `null` when it has not injected one. Held so
+ * a later install swaps the `href` instead of stacking a second `<link>` — the
+ * browser would honour the last one, but the page would accumulate a link per
+ * call.
+ */
+let _link: Handle | null = null;
+
+/**
+ * Forgets the injected link, so the next `Favicon.install` appends a fresh one
+ * instead of writing through a handle the installed sink never minted.
+ * Registered with `DOM.onSinkChange` at the bottom of this module and called
+ * from nowhere else.
+ */
+function _forgetLink(): void {
+    _link = null;
+}
+
+/**
  * Installs the browser-tab icon by appending a `<link rel="icon">` to `<head>`.
  *
  * Apps do not normally call this: `Body.init` installs {@link DEFAULT_FAVICON}
@@ -64,14 +82,6 @@ const ICON_LINK_SELECTOR = 'link[rel~="icon"]';
  * @category Core
  */
 export class Favicon {
-
-    /**
-     * The link this class injected, or `null` when it has not injected one.
-     * Held so a later install swaps the `href` instead of stacking a second
-     * `<link>` — the browser would honour the last one, but the page would
-     * accumulate a link per call.
-     */
-    private static _link: Handle | null = null;
 
     /**
      * Appends a `<link rel="icon">` to `<head>`, unless the document already
@@ -90,8 +100,8 @@ export class Favicon {
      *   own icon link was left in place.
      */
     static install(href: string = DEFAULT_FAVICON): boolean {
-        if (Favicon._link !== null) {
-            DOM.sink.apply(Favicon._link, { setAttr: { href } });
+        if (_link !== null) {
+            DOM.sink.apply(_link, { setAttr: { href } });
 
             return true;
         }
@@ -107,20 +117,12 @@ export class Favicon {
         DOM.sink.apply(link, { setAttr: { rel: "icon", href } });
         DOM.sink.appendChild(head, link);
 
-        Favicon._link = link;
+        _link = link;
 
         return true;
     }
-
-    /**
-     * Forgets the injected link, so the next {@link Favicon.install} appends a
-     * fresh one instead of writing through the handle it is holding.
-     *
-     * @internal Test-only. A handle minted before `DOM.reset()` does not
-     * resolve against the registry that replaces it, so a suite that resets the
-     * DOM between cases must reset this too.
-     */
-    static _reset(): void {
-        Favicon._link = null;
-    }
 }
+
+// Registered at import: the injected `<link>` is named by a handle minted
+// through the sink, so a replaced sink leaves it unresolvable.
+DOM.onSinkChange(_forgetLink);
