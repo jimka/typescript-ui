@@ -103,3 +103,12 @@ page resets to empty.
   state committed two animation frames before the fade arms, so the close
   fade of a window caught mid-collapse starts that much later than an
   ordinary one, which is unchanged. No consumer action is needed.
+
+- **`DOM.reset()` now cancels a `Notification`'s pending auto-dismiss, and
+  disposing a toast cancels its own.** The toast's auto-dismiss timer used
+  the bare global `setTimeout`, which `DOM.reset()` cannot reach, so a suite
+  that showed a toast and then reset the DOM had the dismiss run afterwards
+  and animate the toast out through handles the reset had discarded. The
+  timer now goes through `DOM.sink`, like `AutoCompleteField`'s and the
+  table filter row's, and `Notification`'s destructor clears a timer a
+  dispose would otherwise have left armed. No consumer action is needed.

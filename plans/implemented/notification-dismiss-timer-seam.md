@@ -415,3 +415,84 @@ That is the finding worth acting on. Three separate bug hunts have now each foun
 [^third-instance]: The survey behind the addendum, and the reason it stops at a recommendation instead of acting: eleven sites is too many to convert blind in a plan whose subject is one toast, and eight of them qualify for the seam on the same rule `Notification` does. Converting them one plan at a time is what produced three separate bug hunts for one defect class, so the follow-up's job is the rule, not the conversions. The addendum names the rule, the baseline file and the rule test, all three modelled on `local/no-raw-dom`'s existing machinery.
 
 [^no-seam-doc]: `test-suite-health` made the same call for `TableHeader` and wrote it down: the rule sentence in `dom-seams.md` already covers any timer whose callback writes to an element, so a new instance of that rule is not a doc change. The alternative — appending `Notification` to the sentence that names `Animation` — would produce a list needing revision every time another site converts, and the addendum above says eight more are candidates.
+
+---
+
+## Implementation Notes
+
+Implemented 2026-09-30 on `feature/notification-dismiss-timer-seam`, cut from
+`b55ca35f` as phase 8 of an eight-phase batch rather than from `master`. The
+five source edits and the ten cases landed as planned; the deviations below are
+all consequences of the seven phases that went in underneath this one, plus one
+figure the plan predicted low.
+
+### The mutation check found a wider red set than the plan predicted
+
+`## Verification` step 4 was run as written — each mutation applied to the
+shipped line, the file run, the red set recorded, the mutation reverted. All
+five mutations were killed. One row is wider than `## Expected Behaviour`
+predicted:
+
+| Mutation | Plan predicted | Observed |
+|---|---|---|
+| M1 `startTimer` → bare `setTimeout` | E1, E5, E8 | **E1, E2, E3, E5, E8** |
+| M2 `restartTimer` → bare `setTimeout` | E2, E3, E6 | E2, E3, E6 |
+| M3 `pauseTimer` → bare `clearTimeout` | E2, E3 | E2, E3 |
+| M4 `dismiss` → bare `clearTimeout` | E4 | E4 |
+| M5 `destructor()` clear deleted | E7 | E7 |
+
+E2 and E3 assert an exact op sequence whose *first* entry is `startTimer`'s
+arm, so M1 removes that entry and both lists mismatch on element 0 — the plan's
+table credited them to M2/M3 only, having attributed each case to the site its
+description emphasises. Nothing was unkillable and no assertion had to be
+retired. The pre-implementation red run matched the plan exactly, though: E1-E6
+and E8 red, E9 and E10 green, so neither guard was pinning nothing.
+
+The 51-of-51 figure quoted in the research record was re-measured here rather
+than carried over from `## Findings` row 6 — under M1, E8 reports 51 of its 51
+spies called.
+
+### `docs:api` is at zero warnings, not fourteen
+
+`## Verification` step 6 asks for "the existing 14 warnings, and no new one".
+That baseline is dead: `docs-api-warning-clearance` cleared all fourteen, and
+`CODE_CONVENTIONS.md` now records a standing zero-warning bar. Measured on this
+worktree at the phase start point and again at the tip: **zero warnings** both
+times.
+
+### `changelog/next.md` already had the headings the plan said to create
+
+Step 10 describes the file as "currently empty apart from its preamble" and has
+the entry create a `## Fixed` heading and an `### Overlay` subheading. Four
+earlier phases in this batch had already grown it to 105 lines, `## Fixed` →
+`### Overlay` among them, so the entry was appended into that existing section
+as a nine-line addition — the minimal diff `touches-shared` asks for, and edited
+last, after the source and tests were committed.
+
+### Two edits the plan did not list
+
+`Notification.destructor()`'s own JSDoc said it "Cancels any in-flight entrance
+/ dismiss animation, then defers to the base class", which the new first block
+makes incomplete; it now names the pending auto-dismiss too. And the research
+record's bullet is dated **2026-09-30**, the day the fix landed, where step 11
+prescribed the plan's own authoring date of 2026-09-29 — the sibling settled
+bullets in that list all carry their fix's date.
+
+### Measurements
+
+Baselines taken on the phase start point before any edit, and again at the tip:
+
+| Check | Start point | Tip |
+|---|---|---|
+| `packages/lib` suite | 527 files / 8842 tests / 2 todo | 528 / 8852 / 2 todo |
+| `packages/qa` suite | 20 files / 453 tests | unchanged, not re-run (no built artefact changed) |
+| `npm run typecheck` | clean | clean |
+| `npm run typecheck:test` | clean | clean |
+| `npm run docs:api` | 0 warnings | 0 warnings |
+| `npm run docs:llms:check` | coverage OK | coverage OK |
+| `npm run lint` | clean | clean |
+
+Nothing in the run opened a window: no `runqa.sh`, no MiniBrowser, no Tauri
+`qa-host`, no dev server. `E11` is the full-suite guard and it holds — three
+consecutive `npm test` runs at the tip, every test passing, no `is not
+registered`, `Unhandled` or `Errors` line in any of them.

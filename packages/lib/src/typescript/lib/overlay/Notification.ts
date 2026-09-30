@@ -17,7 +17,7 @@ import { triangle_exclamation } from "~/glyphs/solid/triangle_exclamation.js";
 import { circle_exclamation } from "~/glyphs/solid/circle_exclamation.js";
 import { xmark } from "~/glyphs/solid/xmark.js";
 import { DOM } from "~/core/DOM.js";
-import type { Handle } from "~/core/DOM.js";
+import type { Handle, TimerId } from "~/core/DOM.js";
 import { ThemeManager } from "~/core/Theme.js";
 
 /**
@@ -142,7 +142,7 @@ export class Notification extends Component {
     private readonly _badge: Glyph;
     private readonly _messageText: Text;
     private readonly _closeButton: Button;
-    private _dismissTimer: ReturnType<typeof setTimeout> | null = null;
+    private _dismissTimer: TimerId | null = null;
     private _remainingDuration: number = 0;
     private _timerStartedAt: number    = 0;
     private _dismissing: boolean       = false;
@@ -463,7 +463,7 @@ export class Notification extends Component {
     private startTimer(ms: number): void {
         this._remainingDuration = ms;
         this._timerStartedAt    = Date.now();
-        this._dismissTimer      = setTimeout(() => this.dismiss(), ms);
+        this._dismissTimer      = DOM.sink.setTimeout(() => this.dismiss(), ms);
     }
 
     /**
@@ -475,7 +475,7 @@ export class Notification extends Component {
             return;
         }
 
-        clearTimeout(this._dismissTimer);
+        DOM.sink.clearTimeout(this._dismissTimer);
         this._dismissTimer      = null;
         this._remainingDuration = Math.max(0, this._remainingDuration - (Date.now() - this._timerStartedAt));
     }
@@ -502,7 +502,7 @@ export class Notification extends Component {
         }
 
         this._timerStartedAt = Date.now();
-        this._dismissTimer   = setTimeout(() => this.dismiss(), this._remainingDuration);
+        this._dismissTimer   = DOM.sink.setTimeout(() => this.dismiss(), this._remainingDuration);
     }
 
     /**
@@ -568,7 +568,7 @@ export class Notification extends Component {
         this._dismissing = true;
 
         if (this._dismissTimer !== null) {
-            clearTimeout(this._dismissTimer);
+            DOM.sink.clearTimeout(this._dismissTimer);
             this._dismissTimer = null;
         }
 
@@ -705,11 +705,20 @@ export class Notification extends Component {
     }
 
     /**
-     * Cancels any in-flight entrance / dismiss animation, then defers to the
-     * base class. Cancelling first keeps their fallback timers from firing
-     * after `super.destructor()` has released the animated element handles.
+     * Cancels a pending auto-dismiss and any in-flight entrance / dismiss
+     * animation, then defers to the base class. Cancelling first keeps every
+     * one of their deferred callbacks from firing after `super.destructor()`
+     * has released the element handles they write through.
      */
     protected destructor(): void {
+        // An auto-dismiss still waiting would fire against the element handles
+        // released below. `dismiss()` clears it on the normal path; this covers a
+        // dispose that arrives from an owner instead.
+        if (this._dismissTimer !== null) {
+            DOM.sink.clearTimeout(this._dismissTimer);
+            this._dismissTimer = null;
+        }
+
         this._showAnimation?.cancel();
         this._showAnimation = null;
         this._dismissAnimation?.cancel();
