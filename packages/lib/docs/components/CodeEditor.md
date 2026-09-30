@@ -226,6 +226,8 @@ Tab then moves focus again, and the same shortcut switches back to indenting.
 | `{` / `(` / `[` (typed) | Insert the matching closing bracket, caret between |
 | `Backspace` (over a bracket pair) | Delete both brackets |
 
+When the app enables [spatial focus navigation](/concepts/accessibility#spatial-focus-navigation), its `Ctrl+Alt`+arrow chord takes `Ctrl-Alt-↑` / `Ctrl-Alt-↓` (add a cursor above / below) on Windows and Linux: the chord moves focus out of the editor instead. Alt+drag still makes a rectangular selection. Word selection (`Ctrl-Shift-←` / `Ctrl-Shift-→`) is not affected.
+
 ## Search and replace
 
 `Ctrl-F` (`Cmd-F` on macOS) opens a rounded, shadowed card pinned to the editor's upper-right corner, overlaying the document instead of docking a strip that reserves space for it. Every match in the document stays tinted while the card is open, with the current match tinted more strongly. `Escape` — in the document or in either of the card's fields — closes it and returns focus to the document.

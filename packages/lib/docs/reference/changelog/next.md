@@ -26,6 +26,15 @@ page resets to empty.
   Code already using `install` / `reset` — which is every documented path —
   needs no change. See [Migration](/reference/migration/next) for the full note.
 
+- **`SpatialNavigation`'s region chord is now `Ctrl+Alt+Shift`+arrow.**
+  The `"target"` tier's default modifiers change from `Ctrl+Shift` to
+  `Ctrl+Alt+Shift`, because `Ctrl+Shift+←`/`→` is word selection in every
+  text input, `MarkdownEditor` and `CodeEditor`, and the service took it
+  away from all of them while enabled. The `Ctrl+Alt`+arrow control chord
+  is unchanged. Restore the old chord with
+  `SpatialNavigation.configure({ targetModifiers: { ctrl: true, shift: true } })`.
+  See [Migration](/reference/migration/next) for the full note.
+
 ### Overlay
 
 - **A restore that interrupts a rail minimize now announces `['minimize',
@@ -106,7 +115,6 @@ page resets to empty.
   `setHidden(false)` writes `aria-hidden="false"`.
 
 ### Layouts
-
 
 - **A `Card` can now select its visible child by a caller-supplied key.**
   `LayoutConstraints` gained a `key` field, and `Card` gained

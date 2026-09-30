@@ -2344,7 +2344,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Marks (or unmarks) this component as a coarse-tier spatial-navigation
-     * target — a container the `Ctrl+Shift`+arrow chord can land focus on,
+     * target — a container the `Ctrl+Alt+Shift`+arrow chord can land focus on,
      * discovered by the framework's opt-in spatial-navigation service through
      * the DOM rather than any Component-level registry. Mirrors the flag onto
      * the element as `data-ts-ui-navigation-target` via

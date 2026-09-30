@@ -94,3 +94,23 @@ Code that read a tree row's toggle via `getToggle().getGlyphName()` to learn
 whether it was expanded should call `Tree.getExpandedNodes()` /
 `TreeTable.isExpanded(record)` instead — the glyph name is now `angle-right`
 in both states, and the rotation (`getTransform()`) carries the state.
+
+## `SpatialNavigation`'s region chord is `Ctrl+Alt+Shift`+arrow
+
+**What changed and why.** The `"target"` tier — the chord that jumps
+between navigation-target containers — defaulted to `Ctrl+Shift`+arrow.
+The service claims its chords at the window before any widget sees them,
+so on Windows and Linux it took `Ctrl+Shift+←`/`→` word selection away
+from every `<input>`, `<textarea>`, `MarkdownEditor` and `CodeEditor`, and
+on macOS it took `CodeEditor`'s `Ctrl-Shift`-arrow bindings. The default is
+now `Ctrl+Alt+Shift`+arrow, which no editor or browser binds. The
+`"component"` tier stays on `Ctrl+Alt`+arrow.
+
+**Who needs to act.** An app that enables `SpatialNavigation` without
+passing `targetModifiers` now answers to `Ctrl+Alt+Shift`+arrow. Update any
+help text or shortcut legend that names the old chord. An app that passes
+its own `targetModifiers` is not affected. To keep the old chord:
+
+```typescript
+SpatialNavigation.configure({ targetModifiers: { ctrl: true, shift: true } });
+```
