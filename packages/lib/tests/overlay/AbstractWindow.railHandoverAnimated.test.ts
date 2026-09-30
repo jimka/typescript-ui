@@ -23,6 +23,12 @@
 //
 // R10-R14 are plans/implemented/rail-handover-follow-ups.md's rows — every path that
 // supersedes or ends the collapse/expand pair cancels both of its handles.
+//
+// R15-R18 are plans/implemented/animation-finish-transition-clear.md's rows — a
+// close arriving inside a rail collapse fades out from the window's resting
+// state rather than from the genie, a close arriving at any other time still
+// fades from wherever the window already is, and a reverse genie with a rect
+// animation beside it still clears its own transition.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Window } from '~/overlay/Window';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
@@ -46,6 +52,14 @@ const CONFIG = {
  * its completion.
  */
 const PAST_FALLBACK_MS = 400;
+
+/**
+ * The duration `Animation.play` writes into the `transition` shorthand for a
+ * window animation, as it appears in the declaration. Spelled out rather than
+ * imported because `WINDOW_ANIM_DURATION_MS` is module-private to
+ * `AbstractWindow`, and what these rows read is the rendered shorthand text.
+ */
+const WINDOW_ANIM_DURATION_DECL = '150ms';
 
 describe('AbstractWindow — changing a window\'s rail mid-collapse', () => {
     let frames:      Map<number, FrameRequestCallback>;
@@ -181,6 +195,24 @@ describe('AbstractWindow — changing a window\'s rail mid-collapse', () => {
         flushFrame();
 
         return { win, rail };
+    }
+
+    /**
+     * A shown window with no rail at all, its entrance fade's own two-frame
+     * yield already drained. `_railCollapseActive` is `false` on one of these,
+     * so `endRailCollapse()` no-ops and the close fade must arm in its own
+     * calling task — the arm R17 and R18 read.
+     *
+     * @returns The shown window.
+     */
+    function plainShownWindow(): Window {
+        const win = new Window('W');
+
+        win.show();
+        flushFrame();
+        flushFrame();
+
+        return win;
     }
 
     it('R1: a detach cancels the collapse, so its completion cannot re-hide the window', () => {
@@ -379,14 +411,34 @@ describe('AbstractWindow — changing a window\'s rail mid-collapse', () => {
     it('R13: a minimize mid-expand runs through a transition the expand cannot clear', () => {
         const { win } = restoringWindow();
 
-        const apply = vi.spyOn(DOM.sink, 'apply');
+        // Captured before the minimize so the filter below reads removals on
+        // this window's own element — one on the body host's cannot satisfy it.
+        const element = win.getElement();
+
+        const apply          = vi.spyOn(DOM.sink, 'apply');
+        const removeListener = vi.spyOn(DOM.sink, 'removeListener');
 
         // The collapse supersedes the armed expansion. Both fallback deadlines
         // now sit at the same virtual time, and the expansion's was registered
-        // first — so left uncancelled it fires first and `finish` clears the
-        // `transition` the live collapse is animating through, cutting the genie
-        // short at whatever frame it had reached.
+        // first, so left uncancelled it fires first — which is what used to
+        // clear the `transition` the live collapse is animating through and cut
+        // the genie short at whatever frame it had reached. `Animation` refuses
+        // that clear for a superseded transition now, so the clear count below
+        // no longer distinguishes the cancel's presence from the fix's.
         win.minimize();
+
+        // Read before any drain or advance: this is `animateRailCollapse`'s
+        // expand cancel releasing the superseded expansion's `transitionend`
+        // handle here, rather than one deadline later. It is what pins those two
+        // lines — the clear count below no longer does, because with the central
+        // fix in `Animation.finish` the cancel and the fix each satisfy it
+        // alone. After the central fix a superseded expansion's `finish` writes
+        // nothing and calls nothing (`animateRailExpand`'s `play` has no
+        // `onComplete`), so the listener release is the only trace left.
+        expect(removeListener.mock.calls.filter(
+            (args: unknown[]) => args[0] === element && args[1] === 'transitionend',
+        )).toHaveLength(1);
+
         flushFrame();
         flushFrame();
         vi.advanceTimersByTime(PAST_FALLBACK_MS);
@@ -414,13 +466,24 @@ describe('AbstractWindow — changing a window\'s rail mid-collapse', () => {
         // handle at the fade's completion, and the writes are read afterwards.
         const element = win.getElement();
 
-        const apply = vi.spyOn(DOM.sink, 'apply');
+        const apply          = vi.spyOn(DOM.sink, 'apply');
+        const removeListener = vi.spyOn(DOM.sink, 'removeListener');
 
         // R12's other arm, and the only row that reaches `onExitAction`'s
         // *expand* cancel: the close fade arms a transition of its own, and the
-        // superseded expansion's deadline — registered first — would clear it
-        // out from under the fade.
+        // superseded expansion's deadline — registered first — used to clear it
+        // out from under the fade, before `Animation` stopped a superseded
+        // transition from clearing at all.
         win.requestClose();
+
+        // Read before any drain or advance, and for the same reason as R13's:
+        // this is `onExitAction`'s expand cancel releasing the superseded
+        // expansion's `transitionend` handle, and it is the only trace that
+        // cancel still leaves once the central fix has shipped.
+        expect(removeListener.mock.calls.filter(
+            (args: unknown[]) => args[0] === element && args[1] === 'transitionend',
+        )).toHaveLength(1);
+
         flushFrame();
         flushFrame();
         vi.advanceTimersByTime(PAST_FALLBACK_MS);
@@ -430,5 +493,119 @@ describe('AbstractWindow — changing a window\'s rail mid-collapse', () => {
 
         expect(transitions[0]).not.toBeNull();
         expect(transitions.filter((value) => value === null)).toEqual([null]);
+    });
+
+    it('R16: a reverse genie with a rect animation beside it still clears its own transition', () => {
+        const { win } = collapsingWindow();
+
+        // The collapse is allowed to land, so the restore below plays a reverse
+        // genie with nothing of the collapse's own left live beside it.
+        runAnimationToCompletion();
+
+        const element = win.getElement();
+
+        // `restoringWindow`'s steps are inlined rather than called, because the
+        // helper drains the two frames that run `applyTransitionAndTo`: the
+        // genie's `transition` shorthand would be written inside it and a spy
+        // installed afterwards would never see it. R8 installs its spy ahead of
+        // `collapsingWindow()` for the same reason.
+        const apply = vi.spyOn(DOM.sink, 'apply');
+
+        win.restore();
+        flushFrame();
+        flushFrame();
+        vi.advanceTimersByTime(PAST_FALLBACK_MS);
+        flushFrame();
+
+        const transitions = styleWritesFor(apply, win, 'transition', element);
+
+        // A guard rather than a pin: it holds with or without the central fix,
+        // because `animateRect`'s `Animation.tween` registers nothing with the
+        // transition registry, so the genie is the only live transition on this
+        // element. What it catches is an over-application of the fix — most
+        // plausibly a later refactor giving `tween` a handle and a
+        // `registerTransition` call. The genie would then read as superseded and
+        // skip its own clear, leaving `transition` declared on a window that is
+        // back on screen and every later write to it animated. A3 does not catch
+        // that: its `play` runs on a bare element with no tween beside it.
+        //
+        // Read at the list's ends rather than by its length, so an unrelated
+        // write appearing between them cannot redden the row.
+        expect(transitions[0]).toContain(WINDOW_ANIM_DURATION_DECL);
+        expect(transitions[transitions.length - 1]).toBeNull();
+    });
+
+    it('R15: a close arriving mid-collapse fades out from the window\'s resting state', () => {
+        const { win } = collapsingWindow();
+
+        // Captured before the close, as R14's is: the fade's completion
+        // releases the handle, and nothing here may read a stale one.
+        const element = win.getElement();
+
+        const apply = vi.spyOn(DOM.sink, 'apply');
+
+        // No timer advance may follow before the first assertions: any advance
+        // lets the fade arm, and every "last value" below reads the fade's own.
+        win.requestClose();
+
+        // `onExitAction` cancels the collapse, which writes no styles, so the
+        // genie's transform and opacity would still be on the element when the
+        // fade starts. `endRailCollapse` takes them and the collapse's own
+        // `transition` back off, and the fade's `from` then re-commits the
+        // resting state — the last word on both properties in this task.
+        expect(styleWritesFor(apply, win, 'transition', element).pop()).toBeNull();
+        expect(styleWritesFor(apply, win, 'transform',  element).pop()).toBe('translate(0, 0) scale(1)');
+        expect(styleWritesFor(apply, win, 'opacity',    element).pop()).toBe('1');
+
+        // The `from` is also what defers the arm: `play` writes it, yields two
+        // animation frames so the browser reaches a style recalculation with
+        // the resting state in place, and only then arms the transition. Phase
+        // one alone would pass for a close that never faded at all, because
+        // `endRailCollapse`'s writes would be the only ones left.
+        flushFrame();
+        flushFrame();
+
+        expect(styleWritesFor(apply, win, 'transition', element).pop()).toContain(WINDOW_ANIM_DURATION_DECL);
+        expect(styleWritesFor(apply, win, 'transform',  element).pop()).toBe('scale(0.97)');
+    });
+
+    it('R17: an ordinary close arms its fade in the same task, with no resting-state write', () => {
+        const win = plainShownWindow();
+
+        const element = win.getElement();
+
+        const apply = vi.spyOn(DOM.sink, 'apply');
+
+        win.requestClose();
+
+        // No rail collapse to undo, so no `from` and no two-frame yield: an
+        // unconditional `from` would defer `applyTransitionAndTo` by two
+        // frames and this list would be empty — roughly 32 ms of dead time on
+        // the commonest overlay gesture in the library.
+        expect(styleWritesFor(apply, win, 'transition', element)).toHaveLength(1);
+        expect(styleWritesFor(apply, win, 'transition', element)[0]).toContain(WINDOW_ANIM_DURATION_DECL);
+
+        // And the window is not moved to a resting transform it is already at.
+        expect(styleWritesFor(apply, win, 'transform', element)).not.toContain('translate(0, 0) scale(1)');
+    });
+
+    it('R18: a close mid-drag fades from where the window is, not from its resting transform', () => {
+        const win = plainShownWindow();
+
+        const element = win.getElement();
+
+        // Before the spy, so the drag's own write is not in the list below.
+        win.setTranslate(20, 20);
+
+        const apply = vi.spyOn(DOM.sink, 'apply');
+
+        win.requestClose();
+
+        // R17's other side. An unconditional `from` would write
+        // `translate(0, 0) scale(1)` synchronously here, snapping the window
+        // back off the drag's position and holding it there for two frames
+        // before the fade even starts; the fade's own `to` is the only
+        // transform that may land.
+        expect(styleWritesFor(apply, win, 'transform', element)).toEqual(['scale(0.97)']);
     });
 });

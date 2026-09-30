@@ -14,6 +14,10 @@
 // same treatment as AfterNextLayout.test.ts: the offline sink discards its rAF
 // callback, so the queue is spied and drained by hand.
 //
+// The superseded block is plans/implemented/animation-finish-transition-clear.md's
+// rows — `transition` is one property on one element, so a finishing animation
+// must not clear the rule a later one is running through.
+//
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Animation } from '~/core/Animation';
 import { Component } from '~/core/Component';
@@ -406,6 +410,233 @@ describe('Animation cancellation', () => {
             expect(listenerOps('addListener',    'transitionstart')).toBe(REPEATED_PLAY_COUNT);
             expect(listenerOps('removeListener', 'transitionend')).toBe(REPEATED_PLAY_COUNT);
             expect(listenerOps('removeListener', 'transitionstart')).toBe(REPEATED_PLAY_COUNT);
+        });
+    });
+
+    // plans/implemented/animation-finish-transition-clear.md's rows:
+    // `transition` is one property on one element, so a finishing animation
+    // must not clear the rule a later one is running through. A1-A5 play exit
+    // shapes, each arming in its own calling task so its fallback deadline
+    // sits at arm time + DURATION_MS + 40 ms; A6 drives a real library pair
+    // and drains the entrance's two frames before the clock moves at all.
+    describe('play — superseded by a later animation on the same element', () => {
+        // The gap between the two plays of `supersededPair`. Wide enough that
+        // the first animation's deadline lands before the second's end — the
+        // truncation only happens past `play`'s own 40 ms fallback buffer —
+        // and narrow enough that the first is still live when the second
+        // starts, which is what makes it superseded rather than replaced.
+        const SUPERSEDE_GAP_MS = 50;
+
+        /**
+         * Plays two exit-shape animations on one element, `SUPERSEDE_GAP_MS`
+         * apart, so the second supersedes the first while both are live.
+         * Neither is cancelled: the first's deadline lands at 140 ms and the
+         * second's at 190 ms, both counted from the first play.
+         *
+         * @param el - The element both animations write to.
+         *
+         * @returns The two completion spies, the superseded animation's first.
+         */
+        function supersededPair(el: Handle): { aDone: ReturnType<typeof vi.fn>; bDone: ReturnType<typeof vi.fn> } {
+            const aDone = vi.fn();
+            const bDone = vi.fn();
+
+            Animation.play(el, {
+                to:         { opacity: '0' },
+                durationMs: DURATION_MS,
+                properties: ['opacity'],
+                onComplete: aDone,
+            });
+
+            vi.advanceTimersByTime(SUPERSEDE_GAP_MS);
+
+            Animation.play(el, {
+                to:         { opacity: '1' },
+                durationMs: DURATION_MS,
+                properties: ['opacity'],
+                onComplete: bDone,
+            });
+
+            return { aDone, bDone };
+        }
+
+        it('A1: the superseded animation completes without clearing the live one\'s transition', () => {
+            const el = makeElement();
+
+            const { aDone, bDone } = supersededPair(el);
+
+            const mark = sink.writes.length;
+
+            // Past A's 140 ms deadline, short of B's 190 ms one.
+            vi.advanceTimersByTime(110);
+
+            // A's deadline really did fire, and B's did not. Without this pair
+            // the case would also pass when nothing ran at all, which is the
+            // shape a mutation of the timer arming would produce.
+            expect(aDone).toHaveBeenCalledTimes(1);
+            expect(bDone).not.toHaveBeenCalled();
+
+            const keys = stylesSince(mark).flatMap((style) => Object.keys(style));
+
+            expect(keys).not.toContain('transition');
+        });
+
+        it('A2: the live animation still clears the transition at its own end', () => {
+            const el = makeElement();
+
+            const { bDone } = supersededPair(el);
+
+            // Past A's 140 ms deadline, short of B's 190 ms one.
+            vi.advanceTimersByTime(110);
+
+            const mark = sink.writes.length;
+
+            // And now past B's. The guard on A1: a `finish` that never cleared
+            // at all would satisfy that row too.
+            vi.advanceTimersByTime(60);
+
+            expect(bDone).toHaveBeenCalledTimes(1);
+            expect(stylesSince(mark)).toContainEqual({ transition: null });
+        });
+
+        it('A3: an animation nothing superseded still clears its own transition', () => {
+            Animation.play(makeElement(), {
+                to:         { opacity: '1' },
+                durationMs: DURATION_MS,
+                properties: ['opacity'],
+            });
+
+            const mark = sink.writes.length;
+
+            vi.advanceTimersByTime(PAST_FALLBACK_MS);
+
+            // The second guard on A1: a predicate that reported every animation
+            // superseded would leave a lone one's rule on the element forever.
+            expect(stylesSince(mark)).toContainEqual({ transition: null });
+        });
+
+        it('A4: an animation that outlives the one that superseded it clears at its own deadline', () => {
+            const el    = makeElement();
+            const aDone = vi.fn();
+            const bDone = vi.fn();
+
+            // Four times DURATION_MS, so A's deadline (440 ms) lands *after*
+            // B's (190 ms) instead of before it — the inverted order the
+            // library's own equal-duration pairs never produce.
+            Animation.play(el, {
+                to:         { opacity: '0' },
+                durationMs: DURATION_MS * 4,
+                properties: ['opacity'],
+                onComplete: aDone,
+            });
+
+            vi.advanceTimersByTime(SUPERSEDE_GAP_MS);
+
+            Animation.play(el, {
+                to:         { opacity: '1' },
+                durationMs: DURATION_MS,
+                properties: ['opacity'],
+                onComplete: bDone,
+            });
+
+            const mark = sink.writes.length;
+
+            // Past both deadlines.
+            vi.advanceTimersByTime(500);
+
+            expect(aDone).toHaveBeenCalledTimes(1);
+            expect(bDone).toHaveBeenCalledTimes(1);
+
+            // Two clears: B's at its own end, and A's at its deadline, by which
+            // point B has finished and left the registry so A is no longer
+            // superseded. A `superseded` flag latched when B *started* would
+            // drop A's clear and leave the declaration on the element.
+            const clears = stylesSince(mark).filter((style) => style.transition === null);
+
+            expect(clears).toEqual([{ transition: null }, { transition: null }]);
+        });
+
+        it('A5: one transitionend reaching both finishes still clears the transition once', () => {
+            const el     = makeElement();
+            const listen = vi.spyOn(DOM.sink, 'addListener');
+
+            const { aDone, bDone } = supersededPair(el);
+
+            const mark = sink.writes.length;
+
+            // `finish`'s other entry point: B's `transitionend` reaches A's
+            // still-armed `once` listener as well as B's own, so both finishes
+            // run off one event. Every recorded handler is invoked, in
+            // registration order — A's first, as the element would deliver it.
+            const handlers = listen.mock.calls
+                .filter((args: unknown[]) => args[1] === 'transitionend')
+                .map((args: unknown[]) => args[2] as (event: unknown) => void);
+
+            expect(handlers).toHaveLength(2);
+
+            for (const handler of handlers) {
+                handler({ propertyName: 'opacity' });
+            }
+
+            expect(aDone).toHaveBeenCalledTimes(1);
+            expect(bDone).toHaveBeenCalledTimes(1);
+
+            const clears = stylesSince(mark).filter((style) => style.transition === null);
+
+            expect(clears).toEqual([{ transition: null }]);
+        });
+
+        it('A6: a dropdown dismissed inside its own entrance fade keeps the rule the dismiss needs', () => {
+            const dropdown = new AnimatedDropdown();
+
+            dropdown.getElement(true);
+            dropdown.showAnimated();
+
+            // The entrance's two-frame yield, drained before the clock moves at
+            // all: the show fade arms here, so its deadline (120 ms duration
+            // plus play's 40 ms buffer = 160 ms) is counted from zero.
+            flushFrame();
+            flushFrame();
+
+            // Well inside the fade and past the 40 ms buffer, so the show's
+            // deadline lands before the dismiss's own 220 ms one.
+            vi.advanceTimersByTime(60);
+
+            // Arms in the same task: an exit shape has no yield to drain.
+            dropdown.hideAnimated();
+
+            // Marked after the call returns, not before it: the dismiss writes
+            // its own `transition` shorthand synchronously inside it, and a mark
+            // taken ahead of that would put the write inside the window phase
+            // one asserts is free of `transition` keys.
+            const mark = sink.writes.length;
+
+            // Phase one, at 170 ms: past the show fade's deadline, short of the
+            // dismiss's. One advance past both could not tell a superseded fade
+            // that completed and skipped its clear from one that never
+            // completed at all.
+            vi.advanceTimersByTime(110);
+
+            const phaseOne = stylesSince(mark);
+
+            // The superseded fade's completion ran. `willChange` is its only
+            // observable effect — `hideAnimated`'s own `setWillChange` dedupes
+            // against the value `showAnimated` already set, so exactly one such
+            // write lands after the mark and it is the show fade's.
+            expect(phaseOne).toContainEqual({ willChange: null });
+
+            // And it cleared nothing: the dismiss is still running through the
+            // rule it armed over the show fade's.
+            expect(phaseOne.flatMap((style) => Object.keys(style))).not.toContain('transition');
+            expect(dropdown.isVisible()).toBe(true);
+
+            // Phase two, at 230 ms: past the dismiss's deadline too.
+            vi.advanceTimersByTime(60);
+
+            const clears = stylesSince(mark).filter((style) => style.transition === null);
+
+            expect(clears).toEqual([{ transition: null }]);
+            expect(dropdown.isVisible()).toBe(false);
         });
     });
 

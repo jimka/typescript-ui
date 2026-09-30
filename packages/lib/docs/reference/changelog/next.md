@@ -17,3 +17,38 @@ page resets to empty.
   width, or that runs work which should wait for the drag to settle, listens
   for the end event instead of debouncing `"columnresize"`. The existing
   `"columnresizestart"` and `"columnresize"` are unchanged.
+
+## Fixed
+
+### Core
+
+- **A completing animation no longer clears a `transition` a later animation
+  on the same element is running through.** `transition` is one CSS property
+  on one element, so two animations playing on the same element share the
+  declaration — and because the one that started first also finishes first,
+  its completion was taking the rule out from under the one that had
+  superseded it. The superseded animation's deadline landed mid-flight and
+  the live animation snapped to its end state instead of travelling to it,
+  losing as much as its whole duration minus the 40 ms fallback grace: a
+  second gesture 108 ms into a 120 ms fade cost that fade 68 of its 120 ms.
+  A completion now leaves the declaration alone while a later animation on
+  the same element is still running through it, and that later one clears it
+  at its own end. The surfaces a plain gesture reaches are `ComboBox` and
+  the other picker dropdowns, `PopupButton` panels, `Menu`, `Popover`,
+  `Dialog` (panel and backdrop), `Drawer` (panel and scrim), and `Window` —
+  whose own element carries four of these animations at once, its entrance
+  fade, its close fade and the two rail genies, and whose rail pair is the
+  instance `rail-handover-follow-ups` had fixed per-site. No consumer action
+  is needed.
+
+### Overlay
+
+- **A window closed while its rail-minimize genie is still running now fades
+  out from its resting state.** Closing a window mid-collapse cancelled the
+  genie, but a cancel writes no styles, so the shrink-into-the-rail
+  `transform` and `opacity` were still on the element and the close fade
+  animated out of the shrunken, half-faded state — reading as the window
+  simply disappearing. The collapse is now undone and the window's resting
+  state committed two animation frames before the fade arms, so the close
+  fade of a window caught mid-collapse starts that much later than an
+  ordinary one, which is unchanged. No consumer action is needed.

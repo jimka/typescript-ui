@@ -516,3 +516,63 @@ Two further things remain unknown, and neither is settleable offline. The harm w
 [^oncomplete-survey]: The enumeration, by animated property list. `OverlayFade`'s two completions and `AnimatedDropdown`'s write `will-change` and then either nothing (the superseded arm returns early on its `_dismissing` guard) or `setVisible(false)` plus `removeElement()`; neither `will-change` nor `visibility` appears in any `properties` list. `Tooltip.hide`'s returns early on the same kind of guard. `Dialog.hide`'s, `Drawer.animateOutAndFinalize`'s and `Notification.dismiss`'s destroy or detach the element. `Rail`'s collapse `finalize` calls `applyRestingGeometry()`, which writes `width`/`height` and sometimes `left`/`top` — the rail's own tween properties, but the only other animations on that element are the two slides, whose list is `["transform"]` alone. `AbstractWindow`'s rail collapse ends in `setDisplayed(false)`, which writes `display`. `Animation.materialize`'s internal fade removes the spinner. `Tab`'s tab-switch fade and `Notification.animateIn` have no completion callback at all.
 
 [^no-mixed-element]: `Animation.afterTransition` has three call sites — `CollapseSupport.primeCollapse` ([`CollapseSupport.ts:163`](packages/lib/src/typescript/lib/layout/CollapseSupport.ts#L163)) and `Accordion`'s shrink and wrapper waits ([`Accordion.ts:1844`](packages/lib/src/typescript/lib/layout/Accordion.ts#L1844), [`:3011`](packages/lib/src/typescript/lib/layout/Accordion.ts#L3011)) — and all three target a laid-out child or an internal wrapper. `Animation.play`'s call sites are the overlay classes, `OverlayFade`, `Tab`'s content fade and `CodeEditor`'s read-only flash. No element appears in both lists.
+
+---
+
+## Implementation Notes
+
+Implemented as planned; the central fix and the close fade's start state ship
+as the two code commits `## Ordered Implementation Steps` calls for, and every
+step's predicted red/green outcome held exactly as written. Deviations and
+findings worth recording:
+
+- **`## Verification` item 6's warning count is stale.** It expects
+  `0 errors and 14 warnings, matching master`. The phase-1 branch
+  `docs-api-warning-clearance` cleared all fourteen, and
+  [`CODE_CONVENTIONS.md`](../../CODE_CONVENTIONS.md)'s standing bar is now
+  **zero** warnings on every branch. Measured on this worktree: 0 warnings
+  before any change and 0 after, so the bar is met on its current terms
+  rather than the plan's.
+- **`plans/in-progress/` did not exist** in this worktree and was created by
+  the in-progress move.
+- **Two test-local names the plan described only in prose.** The `'150ms'`
+  literal R15, R16 and R17 all read is a module constant
+  `WINDOW_ANIM_DURATION_DECL` with a comment saying why it is spelled out
+  rather than imported (`WINDOW_ANIM_DURATION_MS` is module-private to
+  `AbstractWindow`), per the magic-number convention. R17's and R18's
+  "shared setup" is a `plainShownWindow()` helper, matching the file's
+  existing `collapsingWindow` / `restoringWindow` idiom rather than being
+  duplicated across the two rows.
+- **R13's and R14's own pre-existing setup comments were corrected.** Both
+  stated that the superseded expansion's completion clears the `transition`
+  the live animation is running through — which the central fix makes false.
+  They now say that is what *used to* happen, with the surviving reason for
+  the cancel in the new assertion's comment. Not in the plan, but a comment
+  this branch falsified.
+
+All four prescribed mutations were applied and reverted, and each went red
+where the plan said it would: deleting `animateRailCollapse`'s expand cancel
+reddened R13 alone; deleting `onExitAction`'s reddened R14 alone; reducing
+`isSupersededTransition` to `return running.has(handle)` reddened A3 and R16
+(and A2, A4, A5, A6, R13, R14 besides); and making the close fade's `from`
+unconditional reddened R17 and R18 — R17 on the timing (its transition list
+reads empty) and R18 on the state (`translate(0, 0) scale(1)` written over
+the drag's own transform). No assertion this plan added is vacuous.
+
+Measured on this worktree, against its own baselines rather than any figure
+in the plan: library suite 521 files / 8765 (8763 + 2 todo) before, 521 /
+8775 (8773 + 2 todo) after — exactly the ten rows added, A1-A6 and R15-R18.
+QA suite 20 files / 453 tests, unchanged. `npm run typecheck`,
+`npm -w packages/lib run typecheck:test`, `npm run lint`, `npm run build:lib`
+and `npm run docs:llms:check` all clean. The three checkpoint greps report
+`2`, `5` and one match inside the `if (!superseded)` guard. R11, noted in
+step 12 as flaking about once in ten runs, was stable across six runs of its
+file here.
+
+`## Expected Behaviour`'s **in-engine, by-eye list is not run** and remains
+the user's. Every item opens a real window, which this run is fenced off
+from; it is the `implement` standard's documented manual-verify substitute,
+not a skipped check. Item 7 is the control for the separate
+maximize/restore-on-a-railed-window defect `## Non-Goals` fences off, and
+R16 is the offline guard that this branch leaves that path's own clear
+intact.
