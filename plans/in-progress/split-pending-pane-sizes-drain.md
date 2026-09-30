@@ -432,3 +432,91 @@ Two assertions are forbidden; neither can fail.
 [^no-return-value]: A caller can already distinguish the three outcomes without new surface. `getPaneSizes()` returns `[]` when the manager is detached or the container has no panes, the supplied values when a pending seed is still undrained, and the live sizes when an array was discarded — so comparing what it returns against what was supplied answers the question. Against that, a `boolean` return would break the chaining every other `Split` mutator offers and diverge from `applyPaneRatios` and `Accordion.applySectionSizes`, both of which return `this`. With no caller needing it, the project's pre-1.0 rule — surface with no callers is not added — settles it.
 
 [^partial-list]: Reaching the drain with some but not all panes added needs a synchronous layout pass between two `addComponent` calls on the same host. `insertComponent` only schedules an animation-frame flush ([`Component.ts:7579`](packages/lib/src/typescript/lib/core/Component.ts#L7579)) and the child size relay installed by `wireChild` does the same ([`:7421-7430`](packages/lib/src/typescript/lib/core/Component.ts#L7421)), so two adds in one tick collapse into a single pass. The only synchronous `doLayout` the library drives is [`LayoutManager.setOverflowing`](packages/lib/src/typescript/lib/layout/LayoutManager.ts#L272), which lays out its *own* container and is driven from `Panel.setAutoScroll` ([`Panel.ts:450`](packages/lib/src/typescript/lib/core/Panel.ts#L450)) — a call on the split's host, not something a pane's construction triggers. So the case needs app code that calls `host.doLayout()` or flips the host's `autoScroll` mid-build, and the answer it gets is the defensible one: two live panes against a three-entry array is a length mismatch that the manager cannot tell apart from a genuinely stale capture.
+
+---
+
+## Implementation Notes
+
+### Baselines re-measured on this branch's base
+
+Independently re-measured rather than assumed, and all four matched the plan's
+`## Findings`: full suite **521 files / 8763 tests**; `typecheck`,
+`typecheck:test` and `eslint` clean; `docs:api` **0 errors / 14 warnings**.
+After the change: **521 files / 8777 tests** (+14 cases — 9 in commit 1, 5 in
+commit 2) and `docs:api` still 0 / 14, its warning lines byte-identical to the
+baseline set, none naming `Split`.
+
+Finding 5 was reproduced before any code changed: with the whole `paneSizes`
+drain neutered, **1 of the 67** pre-existing `Split.test.ts` cases went red
+(`round trip preserves the weighted panes' ratio`) and 66 stayed green,
+including all three cases Finding 6 identifies as cover.
+
+### Deviation — spy restoration moved to an `afterEach`
+
+Step 8 prescribed `Router.test.ts`'s shape: `vi.spyOn(console, 'warn')` at the
+top of each body and `warn.mockRestore()` at the end. Implemented that way
+first, and the mutation pass exposed it as unsound: a body that fails before
+its last line never reaches its `mockRestore()`, so the spy leaks into every
+later case in the file and corrupts their call counts. Under M4 the full-file
+run reported four red cases, but three of them — E10, E11 and E14 — were
+**green when run in isolation**; only E9 was a real kill. The plan's own
+prescribed shape was manufacturing false mutation kills, which is the exact
+failure mode this plan's `## Verification` exists to rule out.
+
+The five diagnostics cases now share
+`afterEach(() => { vi.restoreAllMocks(); DOM.reset(); })`, which runs whether
+the body passed or failed. The precedent is
+[`tests/component/dirty-state-propagation.test.ts:26`](packages/lib/tests/component/dirty-state-propagation.test.ts#L26),
+which is that line exactly; `LayoutSerialization.test.ts` uses
+`vi.restoreAllMocks()` the same way. Nothing else about the cases changed.
+
+### Mutation pass — full observed red set
+
+Every one of the 16 (case, mutation) pairs the plan grades was confirmed red,
+so no graded pin is vacuous. The plan's predictions were **undercounts**: M1
+and M8 each red more cases than listed. Ids are `## Expected Behaviour`'s; `P`
+is the pre-existing `round trip preserves the weighted panes' ratio`.
+
+| Mutation | Plan predicted | Observed red |
+|---|---|---|
+| M1 guard A's return deleted | E1-E4 | E1, E2, E3, E4, **E14** |
+| M2 guard B's term deleted | E5, E6 | E5, E6 |
+| M3 guard A on the laid-out list | E7 | E7 |
+| M4 pane-less warn arm deleted | E9 | E9 |
+| M5 discard warn deleted | E10, E11 | E10, E11 |
+| M6 detached warn deleted | E8 | E8 |
+| M7 `describeSizes` drops the value | E10, E11 | E10, E11 |
+| M8 whole drain deleted | E15, E16, P | E1, E2, E3, E7, E10, E11, E14, E15, E16, P |
+
+M1 additionally reds E14 because the pane-less pass then discards, and a
+discard now warns — the happy-path-silence guard catches the defect itself.
+M8's ten include E15 and E16 at their step 6 values, which were both green
+under the same mutation before that change: the strengthening works.
+
+### Three extra mutations, for the cases the plan grades against none
+
+E12, E13 and E14 are regression guards whose `Catches` column names no
+mutation, so nothing in the plan proved they can fail. Three further
+mutations were run to close that gap; each killed exactly its target.
+
+| Mutation | Observed red |
+|---|---|
+| M9 retry semantics: clear `_pendingSizes` only when `isRestorableSizes` passes | **E12**, E10, E11 |
+| M10 `getPaneSizes` returns a held array before checking the pane count | **E13** |
+| M11 the hold emits a `console.warn` before returning | **E14** |
+
+M9 is the `tryApplyPaneSizes` design `[^narrow-guard]` rejects, and E12 is
+what forbids it: under retry, the three-entry array survives to the pass where
+a third pane makes its length match and is applied there, moving the pin to
+420. E10 and E11 also go red under M9 because a retry never reaches the
+discard arm, so the diagnostic never fires.
+
+### Still outstanding — the manual check
+
+`## Verification`'s manual step is not done and cannot be done from here: it
+needs a real app's startup frame, and running one opens a window on the user's
+desktop. **For the user to run:** load an app that hands a seeded `Split` to
+`Body.init` and adds its panes after the `await`, confirm the pinned pane
+opens at its seeded width rather than at half the window, then drag the
+gutter, reload, and confirm the dragged width returns. Everything the offline
+harness can reach is covered by E1-E16.
