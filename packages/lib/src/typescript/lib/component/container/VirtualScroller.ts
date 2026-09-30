@@ -6,7 +6,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { SmoothScroller, consumeWheel } from "~/core/SmoothScroller.js";
-import { Scrollbar } from "~/component/container/Scrollbar.js";
+import { Scrollbar, OVERFLOW_EPSILON_PX } from "~/component/container/Scrollbar.js";
 import { appendScrollShadowStrips, scrollShadowEdgeValue, scrollShadowRamp, quantizeShadowEdge, ScrollShadowEdges } from "~/core/ScrollShadow.js";
 
 // VirtualScroller is a plain helper, not a Component: it owns and lays out raw
@@ -346,8 +346,8 @@ export class VirtualScroller {
             const effH: number = outerH - (hVisible ? trackW : 0);
             const effW: number = outerW - (vVisible ? trackW : 0);
 
-            vVisible = contentHeight > effH;
-            hVisible = contentWidth  > effW;
+            vVisible = contentHeight - effH > OVERFLOW_EPSILON_PX;
+            hVisible = contentWidth  - effW > OVERFLOW_EPSILON_PX;
         }
 
         const effH = outerH - (hVisible ? trackW : 0);

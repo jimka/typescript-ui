@@ -49,6 +49,22 @@ type ScrollArrowEvent = "tick";
 // decision from the icon scale, investigated and rejected in
 // plans/glyph-icon-host-box-migration.md.
 export const TRACK_WIDTH = 12;
+
+/**
+ * How far, in pixels, content may exceed the viewport on an axis before that
+ * axis counts as overflowing — shared by the bar's own show/hide decision
+ * ({@link Scrollbar.setMetrics}) and {@link VirtualScroller}'s effective-
+ * viewport resolution, which must agree or a bar shows over a viewport that
+ * reserved no track for it. Owners hand over content sizes summed from
+ * fractional widths — a table's resize rescales its columns proportionally, and
+ * the rescaled widths can sum to a hair over the width they were scaled to fill
+ * (823.0000000000001 against 823). A strict comparison reads that float error
+ * as overflow and flashes the bar on for the frame. Half a pixel is the same
+ * tolerance the column rescale itself treats as "no change", and less than
+ * anything that could paint as clipped content.
+ */
+export const OVERFLOW_EPSILON_PX = 0.5;
+
 const THUMB_INSET    = 2;
 const THUMB_MIN_SIZE = 30;
 
@@ -787,7 +803,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         this._contentSize    = contentSize;
         this._scrollPosition = scrollPosition;
 
-        const overflow = contentSize > viewportSize;
+        const overflow = contentSize - viewportSize > OVERFLOW_EPSILON_PX;
         this.setDisplayed(overflow);
 
         if (!overflow) {

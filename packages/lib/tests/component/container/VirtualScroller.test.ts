@@ -128,6 +128,30 @@ describe('VirtualScroller scroll position', () => {
         // visible; max scroll = contentWidth - that.
         expect(scroller.getScrollX()).toBe(contentWidth - (200 - TRACK_WIDTH));
     });
+
+    it('shows no horizontal bar for fill-width content that overshoots only by float error', () => {
+        installTestDOM(CONFIG);
+
+        const { scroller } = makeScroller(200, 400);
+
+        // A table's resize rescales its column widths proportionally, and the
+        // rescaled widths can sum to a hair over the effective width they were
+        // scaled to fill (e.g. 823.0000000000001 against 823). That is not
+        // overflow: a horizontal bar here flashes on for a frame mid-resize and
+        // shrinks the viewport by a track, dragging the bottom scroll shadow
+        // up with it.
+        const contentWidth  = (200 - TRACK_WIDTH) + 1e-13;
+        const contentHeight = 1000;
+
+        expect(contentWidth).toBeGreaterThan(200 - TRACK_WIDTH);
+
+        scroller.layoutScrollbars(contentWidth, contentHeight);
+
+        scroller.setScrollY(99999);
+
+        // No horizontal bar → the full owner height is the vertical viewport.
+        expect(scroller.getScrollY()).toBe(contentHeight - 400);
+    });
 });
 
 describe('VirtualScroller getViewportWidth', () => {
