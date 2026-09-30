@@ -2,17 +2,19 @@
 // SCOPE: Notification is largely DOM- / timer- / animation-driven. Its only
 // entry point, `Notification.show`, builds Glyph/Button children, appends to
 // the document, plays an entrance Animation, and arms a setTimeout. What the
-// offline harness genuinely cannot exercise is the last two: rAF is a recorded
-// no-op returning 0, so the entrance animation never advances, and there is no
-// wall clock, so auto-dismiss never fires. Those need a real-DOM (jsdom-event
-// or browser) harness. Everything else is reachable: the static pause/resume
-// refcount API is pure counter logic, the queue (`activeNotifications`) is
-// static state the file reaches the way `Notification.styleRuleDisposal.test.ts`
-// does, and a toast's stamp and its committed x/y are ordinary `Component`
-// getters over modelled state. The stack's response to a viewport resize lives
-// in `Notification.resize.test.ts` — `Event`'s viewport listener map is
-// module-level and survives `DOM.reset()`, so a resize dispatch needs a file
-// that registers the type once (see `tests/dom/viewport-consume.test.ts`).
+// offline harness genuinely cannot exercise is the entrance animation: rAF is a
+// recorded no-op returning 0, so its `from` styles never advance into the
+// transition, and that needs a real-DOM (jsdom-event or browser) harness. The
+// auto-dismiss timer needs only a clock, not a real DOM, and runs under a fake
+// one in `Notification.dismissTimer.test.ts`. Everything else is reachable: the
+// static pause/resume refcount API is pure counter logic, the queue
+// (`activeNotifications`) is static state the file reaches the way
+// `Notification.styleRuleDisposal.test.ts` does, and a toast's stamp and its
+// committed x/y are ordinary `Component` getters over modelled state. The
+// stack's response to a viewport resize lives in `Notification.resize.test.ts`
+// — `Event`'s viewport listener map is module-level and survives
+// `DOM.reset()`, so a resize dispatch needs a file that registers the type once
+// (see `tests/dom/viewport-consume.test.ts`).
 import { describe, it, expect, afterEach } from 'vitest';
 import { Notification } from '~/overlay/Notification';
 import { DOM } from '~/core/DOM';
