@@ -7,6 +7,17 @@
 // suite is timezone-stable.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TimeField } from '~/component/input/TimeField';
+import { DOM } from '~/core/DOM';
+import { installTestDOM } from '../../dom/TestDOM';
+import fontMetrics from '../../dom/font-metrics.test-font.json';
+
+const CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
 
 /** Returns TimeField.parseRaw cast to reach the protected method. */
 function parser(showSeconds?: boolean): (raw: string) => Date | null {
@@ -69,7 +80,7 @@ describe('TimeField parseRaw strictness', () => {
 });
 
 describe('TimeField value round-trip', () => {
-    it('round-trips the H/M of a set Date (date portion is today by contract)', () => {
+    it('setValue keeps the Date it is given, displaying only its time', () => {
         const field = new TimeField();
 
         const date = new Date(2025, 5, 15, 9, 30);
@@ -79,6 +90,48 @@ describe('TimeField value round-trip', () => {
         expect(out).not.toBe(null);
         expect(out!.getHours()).toBe(9);
         expect(out!.getMinutes()).toBe(30);
+        expect(out).toEqual(date);
+        expect((field as any)._input.getText()).toBe('09:30');
+    });
+});
+
+describe('TimeField values sit on 1 January 1970', () => {
+    it('parseRaw("09:30") gives 09:30 on 1 January 1970, local', () => {
+        expect(parser()('09:30')).toEqual(new Date(1970, 0, 1, 9, 30));
+    });
+
+    describe('a dropdown pick', () => {
+        let field: TimeField | undefined;
+
+        // The pick re-fires `input` on the inner field, which needs its
+        // element; disposed in afterEach so a failed assertion still
+        // releases the listener registration.
+        beforeEach(() => installTestDOM(CONFIG));
+        afterEach(() => { field?.dispose(); field = undefined; DOM.reset(); });
+
+        it('commits the time on 1 January 1970, local', () => {
+            field = new TimeField();
+            (field as any)._input.getElement(true);
+
+            (field as any).onTimeSelected(14, 45, 0);
+
+            expect(field.getValue()).toEqual(new Date(1970, 0, 1, 14, 45));
+        });
+    });
+
+    describe('a relative shorthand crossing midnight', () => {
+        beforeEach(() => {
+            vi.useFakeTimers({ toFake: ["Date"] });
+            vi.setSystemTime(new Date(2026, 5, 28, 23, 50));
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it('"+30mi" at 23:50 keeps only the resolved time of day', () => {
+            expect(parser()('+30mi')).toEqual(new Date(1970, 0, 1, 0, 20));
+        });
     });
 });
 
@@ -100,9 +153,9 @@ describe('TimeField relative shorthand parseRaw', () => {
     it('20. "+30mi" resolves relative to now, milliseconds zeroed', () => {
         const d = parse('+30mi');
 
-        expect(d!.getFullYear()).toBe(2026);
+        expect(d!.getFullYear()).toBe(1970);
         expect(d!.getMonth()).toBe(0);
-        expect(d!.getDate()).toBe(31);
+        expect(d!.getDate()).toBe(1);
         expect(d!.getHours()).toBe(10);
         expect(d!.getMinutes()).toBe(45);
         expect(d!.getSeconds()).toBe(30);

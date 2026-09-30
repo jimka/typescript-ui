@@ -88,7 +88,9 @@ follows the response's own shape instead of `setPageSize()`.
 By default a store sorts and filters its records client-side. Set
 `remoteSort: true` and/or `remoteFilter: true` on the store to instead send the
 active sorters/filters to the proxy and reload. `AjaxProxy` serializes them as
-`sort=<json>` / `filter=<json>` query parameters.
+`sort=<json>` / `filter=<json>` query parameters. A `Date` in a filter is sent
+as local ISO 8601 with its UTC offset (`2026-06-28T00:00:00.000-07:00`): the
+same instant `toISOString()` names, plus the day and time the user saw.
 
 ```typescript
 const store = new Store({
@@ -171,9 +173,18 @@ legacy alias `WebStorageProxyConfig` remains as a deprecated type re-export.
 and request serialization to a [`Writer`](/api/data/interfaces/Writer). The
 defaults — [`JsonReader`](/api/data/classes/JsonReader) and
 [`JsonWriter`](/api/data/classes/JsonWriter) — reproduce the standard
-`{ data, total }` / top-level-array parsing and `JSON.stringify(record.getData())`
-body. Pass your own to adapt a different envelope or wire format without
-subclassing the proxy.
+`{ data, total }` / top-level-array parsing and a JSON body of the record's
+field data. `JsonWriter` writes each `Date` in the form its field type is read
+back in:
+
+| Field type | Written as |
+| --- | --- |
+| `'date'` | `2026-06-28` |
+| `'time'` | `09:30:15.250` |
+| any other | local ISO 8601 with its offset, `2026-06-28T12:04:59.123-07:00` |
+
+An Invalid `Date` is written as `null`. Pass your own reader or writer to adapt
+a different envelope or wire format without subclassing the proxy.
 
 ```typescript
 const proxy = new AjaxProxy({
@@ -213,8 +224,8 @@ await store.load();
 ### Writer mode: dirty-only updates
 
 [`JsonWriterMode`](/api/data/type-aliases/JsonWriterMode) defaults to `'full'`
-— `JSON.stringify(record.getData())`, the whole record. Set `'dirty'` to send
-only the fields changed since the last commit, plus the primary key, on an
+— the whole record, each `Date` in its field type's form (see above). Set
+`'dirty'` to send only the fields changed since the last commit, plus the primary key, on an
 **update**; a `create` always sends the full record, since a new record has no
 committed baseline to diff against. The primary key is always included so a
 batch update — which PUTs to the collection URL with no id in it — stays
@@ -234,6 +245,22 @@ await store.sync();
 `AjaxProxyOptions.writeMode` forwards to the default `JsonWriter` only; pass a
 `mode` directly to `JsonWriter` when supplying a custom `writer`. The
 underlying value is [`ModelRecord.getChangedData()`](/api/data/classes/ModelRecord#getchangeddata).
+
+To change which fields are written while keeping the mode and the `Date`
+forms, subclass `JsonWriter` and override its protected `dataFor(record,
+operation)` method, which returns the field data to serialize:
+
+```typescript
+class NoGeneratedColumnsWriter extends JsonWriter {
+    protected dataFor(record: ModelRecord, operation?: WriteOperation): Record<string, any> {
+        const { created_at: _created, ...rest } = super.dataFor(record, operation);
+
+        return rest;
+    }
+}
+
+const proxy = new AjaxProxy({ url: '/api/people', writer: new NoGeneratedColumnsWriter({ mode: 'dirty' }) });
+```
 
 ## Custom proxies
 

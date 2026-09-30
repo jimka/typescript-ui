@@ -2,6 +2,7 @@
 
 import type { FieldType } from "~/data/Field.js";
 import type { FilterDescriptor } from "~/data/FilterDescriptor.js";
+import { parseIsoDate } from "~/data/temporalValue.js";
 import { normalizeComboOptions } from "~/component/table/ColumnConfig.js";
 import type { ComboOption } from "~/component/table/ColumnConfig.js";
 import type { CellTextResolver } from "~/component/table/cell/CellText.js";
@@ -318,6 +319,14 @@ function parseOperand(type: FieldType, text: string): string | number | boolean 
 
         case 'date':
         case 'datetime': {
+            // A typed `YYYY-MM-DD` names a local day; `new Date(text)` would
+            // read it as UTC midnight, the previous day west of UTC.
+            const day = parseIsoDate(text);
+
+            if (day) {
+                return day;
+            }
+
             const d = new Date(text);
 
             return Number.isNaN(d.getTime()) ? null : d;

@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { JsonWriter } from '~/data/proxy/Writer';
+import type { WriteOperation } from '~/data/proxy/Writer';
 import { Model } from '~/data/Model';
 import { ModelRecord } from '~/data/ModelRecord';
+import { toLocalIsoString } from '~/data/temporalValue';
 
 const MODEL = new Model([{ name: 'id' }, { name: 'name' }], 'id');
 
@@ -60,6 +62,86 @@ describe('JsonWriter', () => {
             record.set('name', 'Zoe');
             const writer = new JsonWriter();
             expect(writer.writeRecord(record, 'update')).toBe(JSON.stringify(record.getData()));
+        });
+    });
+
+    describe('temporal values', () => {
+        const TEMPORAL = new Model([
+            { name: 'id' },
+            { name: 'd',  type: 'date' },
+            { name: 't',  type: 'time' },
+            { name: 'dt', type: 'datetime' },
+            { name: 'a',  type: 'auto' },
+        ], 'id');
+
+        const D  = new Date(2026, 5, 28);
+        const T  = new Date(1970, 0, 1, 9, 30, 15, 250);
+        const DT = new Date(2026, 5, 28, 12, 4, 59, 123);
+        const A  = new Date(2026, 0, 2, 3, 4, 5, 6);
+
+        /** A record holding one value of each temporal type, plus an auto Date. */
+        function temporalRecord(id: number): ModelRecord {
+            return new ModelRecord(TEMPORAL, { id, d: D, t: T, dt: DT, a: A });
+        }
+
+        it('writeRecord writes each Date in its field type\'s form', () => {
+            expect(JSON.parse(new JsonWriter().writeRecord(temporalRecord(1)))).toEqual({
+                id: 1,
+                d:  '2026-06-28',
+                t:  '09:30:15.250',
+                dt: toLocalIsoString(DT),
+                a:  toLocalIsoString(A),
+            });
+        });
+
+        it('writes an Invalid Date as null', () => {
+            const record = new ModelRecord(TEMPORAL, { id: 1, dt: new Date(NaN) });
+
+            expect(JSON.parse(new JsonWriter().writeRecord(record)).dt).toBe(null);
+        });
+
+        it('leaves a Date inside an object value to JSON.stringify', () => {
+            const record = new ModelRecord(TEMPORAL, { id: 1, a: { when: DT } });
+
+            expect(JSON.parse(new JsonWriter().writeRecord(record)).a).toEqual({ when: DT.toISOString() });
+        });
+
+        it('writeRecords applies the same forms to every record', () => {
+            const parsed = JSON.parse(new JsonWriter().writeRecords([temporalRecord(1), temporalRecord(2)]));
+
+            expect(parsed).toHaveLength(2);
+
+            for (const row of parsed) {
+                expect(row.d).toBe('2026-06-28');
+                expect(row.t).toBe('09:30:15.250');
+                expect(row.dt).toBe(toLocalIsoString(DT));
+            }
+        });
+
+        it("'dirty' mode writes only the changed date, by field type, plus the pk", () => {
+            const record = new ModelRecord(TEMPORAL, { id: 5, d: new Date(2026, 0, 1), t: T });
+            record.commit();
+            record.set('d', D);
+
+            expect(new JsonWriter({ mode: 'dirty' }).writeRecord(record, 'update'))
+                .toBe(JSON.stringify({ d: '2026-06-28', id: 5 }));
+        });
+
+        it('a subclass overriding dataFor still has its Dates written by field type', () => {
+            class DropAutoWriter extends JsonWriter {
+                protected dataFor(record: ModelRecord, operation?: WriteOperation): Record<string, any> {
+                    const { a: _dropped, ...rest } = super.dataFor(record, operation);
+
+                    return rest;
+                }
+            }
+
+            expect(JSON.parse(new DropAutoWriter().writeRecord(temporalRecord(1)))).toEqual({
+                id: 1,
+                d:  '2026-06-28',
+                t:  '09:30:15.250',
+                dt: toLocalIsoString(DT),
+            });
         });
     });
 });

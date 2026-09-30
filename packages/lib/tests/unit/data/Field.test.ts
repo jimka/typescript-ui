@@ -40,14 +40,34 @@ describe('Field', () => {
             expect(f.convertValue('0')).toBe(false);
             expect(f.convertValue('')).toBe(false);
         });
-        it('parses date strings into Date objects', () => {
-            const value = new Field({ name: 'd', type: 'date' }).convertValue('2020-01-01');
+        it('reads a bare date as local midnight for a date field', () => {
+            const value = new Field({ name: 'd', type: 'date' }).convertValue('2026-06-28');
             expect(value).toBeInstanceOf(Date);
-            expect((value as Date).getTime()).toBe(new Date('2020-01-01').getTime());
+            expect(value).toEqual(new Date(2026, 5, 28));
         });
-        it('passes an existing Date through unchanged', () => {
-            const date = new Date('2020-01-01');
+        it('reads a bare date as local midnight for a datetime field', () => {
+            expect(new Field({ name: 'd', type: 'datetime' }).convertValue('2026-06-28')).toEqual(new Date(2026, 5, 28));
+        });
+        it('reads a time of day onto 1 January 1970, local, to the millisecond', () => {
+            const field = new Field({ name: 't', type: 'time' });
+            expect(field.convertValue('09:30:15.250000')).toEqual(new Date(1970, 0, 1, 9, 30, 15, 250));
+            expect(field.convertValue('09:30')).toEqual(new Date(1970, 0, 1, 9, 30));
+        });
+        it('still reads the table paste form of a time through the new Date fallback', () => {
+            expect(new Field({ name: 't', type: 'time' }).convertValue('1/1/1970 02:30 PM')).toEqual(new Date(1970, 0, 1, 14, 30));
+        });
+        it('still reads a date string with an offset as that instant', () => {
+            const value = new Field({ name: 'd', type: 'date' }).convertValue('2026-06-28T12:04:00Z');
+            expect((value as Date).getTime()).toBe(Date.UTC(2026, 5, 28, 12, 4));
+        });
+        it('reads an offset-less date-time as local time, as before', () => {
+            expect(new Field({ name: 'd', type: 'datetime' }).convertValue('2026-06-28T12:04:00')).toEqual(new Date(2026, 5, 28, 12, 4));
+        });
+        it('passes an existing Date through unchanged for every temporal type', () => {
+            const date = new Date(2020, 0, 1);
             expect(new Field({ name: 'd', type: 'date' }).convertValue(date)).toBe(date);
+            expect(new Field({ name: 'd', type: 'datetime' }).convertValue(date)).toBe(date);
+            expect(new Field({ name: 'd', type: 'time' }).convertValue(date)).toBe(date);
         });
         it('maps an invalid date to undefined', () => {
             expect(new Field({ name: 'd', type: 'date' }).convertValue('not-a-date')).toBeUndefined();

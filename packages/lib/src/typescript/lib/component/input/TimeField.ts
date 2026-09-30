@@ -7,6 +7,7 @@ import { clock } from "~/glyphs/solid/clock.js";
 import { TimePickerDropdown } from "~/component/input/TimePickerDropdown.js";
 import { callable } from "~/core/Callable.js";
 import { resolveDateMath, tokenizeDateMath, parseClockTime, DateMathUnit } from "~/component/input/dateMath.js";
+import { timeOfDay } from "~/data/temporalValue.js";
 
 Glyph.register(clock);
 
@@ -40,8 +41,9 @@ export interface TimeFieldOptions extends AbstractPickerFieldOptions {
  * Inherits the [`Bindable`](/api/core/interfaces/Bindable) value contract,
  * change/binding listeners, and enabled/read-only surface from
  * [`AbstractPickerField`](/api/component/input/classes/AbstractPickerField).
- * The Date value uses today's date for its date portion; only hours,
- * minutes (and optionally seconds) are meaningful.
+ * The Date value sits on 1 January 1970, local — the date a store `time`
+ * field and the table's time cells use — so two equal times compare equal;
+ * only hours, minutes (and optionally seconds) are meaningful.
  *
  * @category Components
  */
@@ -114,8 +116,9 @@ class TimeField extends AbstractPickerField<Date, TimePickerDropdown, TimeFieldO
 
     /**
      * Parses a relative shorthand (e.g. "+30mi", "+1h30mi") resolved against
-     * now, or an "HH:MM" / "HH:MM:SS" string into a Date with today's date
-     * portion. Returns null on parse failure.
+     * now, or an "HH:MM" / "HH:MM:SS" string, into that time of day on
+     * 1 January 1970, local. A shorthand keeps only the time of day it
+     * resolves to. Returns null on parse failure.
      *
      * @param raw - The raw text typed into the input.
      * @returns The parsed Date, or null.
@@ -127,7 +130,7 @@ class TimeField extends AbstractPickerField<Date, TimePickerDropdown, TimeFieldO
         const relative = resolveDateMath(raw, TIME_FIELD_UNITS, base);
 
         if (relative !== null) {
-            return relative;
+            return timeOfDay(relative.getHours(), relative.getMinutes(), relative.getSeconds());
         }
 
         const time = parseClockTime(raw);
@@ -136,10 +139,7 @@ class TimeField extends AbstractPickerField<Date, TimePickerDropdown, TimeFieldO
             return null;
         }
 
-        const d = new Date();
-        d.setHours(time.hours, time.minutes, time.seconds, 0);
-
-        return d;
+        return timeOfDay(time.hours, time.minutes, time.seconds);
     }
 
     /**
@@ -165,13 +165,11 @@ class TimeField extends AbstractPickerField<Date, TimePickerDropdown, TimeFieldO
 
     /**
      * Adapter from the inner dropdown's `(h, m, s)` selection callback to
-     * the abstract base's `(value)` shape. Builds a Date with today's date
-     * portion and the selected H:M:S.
+     * the abstract base's `(value)` shape. Builds the selected H:M:S on
+     * 1 January 1970, local.
      */
     private onTimeSelected(hours: number, minutes: number, seconds: number): void {
-        const d = new Date();
-        d.setHours(hours, minutes, seconds, 0);
-        this.onDropdownSelected(d);
+        this.onDropdownSelected(timeOfDay(hours, minutes, seconds));
     }
 
     /**
