@@ -463,14 +463,19 @@ branch; each was left deliberately rather than missed.
   diagnostics instead of 100 in one run of 27: `EditorState.create` parses
   for at most 20 ms, so a busy machine left the tree incomplete. A flake found
   while reproducing the two above, fixed by the same plan.
-- **Open: `Notification.startTimer`** is a bare `setTimeout` whose callback
-  writes to elements, left armed by about 60 tests per run and dormant only
-  because 3 s outlasts every test file. **Still open, and now the only one of
-  these left** — planned 2026-09-29 as `notification-dismiss-timer-seam`, which
-  routes both timer sites through the `DOMSink` seam that
-  `animation-timer-cancellation` established, so `DOM.reset()` cancels them.
-  This is the third instance of the same defect, after `TableHeader`'s
-  filter-row debounce and `Animation`'s fallbacks.
+- **`Notification.startTimer`** was a bare `setTimeout` whose callback writes to
+  elements, left armed by about 60 tests per run and dormant only because 3 s
+  outlasts every test file. **Fixed by
+  `plans/notification-dismiss-timer-seam.md` (2026-09-30):** both of the toast's
+  arm sites and both of its clear sites used the bare global timer, which
+  `DOM.reset()` cannot cancel, so a toast a test abandoned mid-countdown
+  dismissed itself afterwards through handles from a discarded DOM — measured at
+  51 of 51 callbacks firing for the 51 toasts `NotificationHistory.test.ts`'s
+  eviction-cap case leaves live, which is most of the per-run figure above. That
+  was the third instance of this defect, after `TableHeader`'s filter-row
+  debounce and `Animation`'s fallbacks, so that plan's addendum inventories the
+  eleven bare timers still left and recommends a `local/no-raw-timer` lint rule
+  rather than another one-site conversion.
 
 **Unmeasured cost:** `canvas-idle-loops` leaves one `isEffectivelyVisible()`
 ancestor walk per child re-attach, on a path that runs per frame during a
