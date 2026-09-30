@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import type { ResolvedPlacement } from "~/layout/LayoutManager.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
 import type { AxisPosition, AxisSpread } from "~/primitive/Axis.js";
@@ -507,6 +508,57 @@ export abstract class BoxLayout extends LayoutManager {
         }
 
         return extents;
+    }
+
+    /**
+     * Commits a whole placement loop's resolved rects in order, carrying
+     * forward a running main-axis drift so a child that commits *larger* than
+     * its resolved extent pushes every later sibling by the same amount, in
+     * the same pass. Replaces {@link LayoutManager.commitPlacements} as the
+     * commit step for {@link HBox} and {@link VBox}, whose calc phase resolves
+     * every child's placement before any of them commit — a later child
+     * still reads the position that phase assigned it, oblivious to an
+     * earlier child growing during its own commit.
+     *
+     * Only growth is carried. A child that commits smaller than its resolved
+     * extent leaves every later sibling exactly where the calc phase planned
+     * it, so the slack inside a cell is never absorbed.
+     *
+     * @param placements - The resolved rects to commit, in placement order.
+     * @param horizontal - `true` for {@link HBox} (drift moves `x`), `false`
+     *   for {@link VBox} (drift moves `y`).
+     *
+     * @remarks Exists for a child whose own `setWidth` raises its minimum
+     * height, so the `setHeight` clamp that follows grows it past the slot
+     * the calc phase resolved — a width-dependent component re-measuring
+     * mid-commit. The drift is read from the committed extent *after*
+     * {@link LayoutManager.commitBounds} returns, so a change made from
+     * inside the child's own `doLayout` is included.
+     */
+    protected commitStackedPlacements(placements: ResolvedPlacement[], horizontal: boolean): void {
+        let drift = 0;
+
+        for (const placement of placements) {
+            const component = placement.component;
+            const x = horizontal ? placement.x + drift : placement.x;
+            const y = horizontal ? placement.y : placement.y + drift;
+
+            this.commitBounds(component, x, y, placement.width, placement.height);
+
+            const committed = horizontal ? component.getWidth() : component.getHeight();
+            const resolved  = horizontal ? placement.width : placement.height;
+
+            // Growth only. A child that commits *smaller* than its resolved
+            // extent is the common case, not an anomaly: equal mode resolves
+            // every cell as FillType.BOTH, which hands over the whole cell
+            // without reading the child's maximum, so any child with a size
+            // ceiling of its own — a Checkbox's 16 pixels, an explicit
+            // maxSize — clamps back down inside its cell on every pass.
+            // Carrying that negative difference would pull every later
+            // sibling up into the slack the child left, which is the one
+            // thing a drift carry must never do.
+            drift += Math.max(0, committed - resolved);
+        }
     }
 
     /**

@@ -257,6 +257,23 @@ page resets to empty.
   called before the container has panes, which is a no-op. No consumer
   action is needed.
 
+- **A `VBox`/`HBox` child that grows past its resolved slot during its own
+  commit no longer overlaps the siblings placed after it.** Both managers
+  resolve every child's placement before any of them commit, so a child whose
+  own `setWidth` raises its minimum height — `Markdown`'s width-triggered
+  re-measure being the real-world trigger — clamped taller than the slot the
+  calc phase gave it, while every later sibling kept the position that phase
+  had already fixed. The overlap cleared itself one frame later, once the
+  growing child's own scheduled layout caught up, but that frame was
+  visible: a demo block on the docs site landed up to 1909px inside the
+  prose above it. Committing a placement loop now carries a running
+  main-axis drift — how far each child committed *past* the extent resolved
+  for it — onto every later sibling, in the same pass. Only growth is
+  carried, so a child that commits smaller than its resolved extent, as an
+  equal-mode cell's child with a size ceiling of its own does on every pass,
+  leaves its siblings exactly where they were planned. No consumer action is
+  needed.
+
 ### Overlay
 
 - **A window closed while its rail-minimize genie is still running now fades

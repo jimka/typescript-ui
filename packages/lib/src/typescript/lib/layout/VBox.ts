@@ -297,7 +297,7 @@ class VBox extends BoxLayout {
             placements = this.layoutPreferredMode(components, containerSize, containerInsets, spacing);
         }
 
-        this.commitPlacements(placements);
+        this.commitStackedPlacements(placements, false);
 
         this.reserveContentFrame();
     }
@@ -314,7 +314,7 @@ class VBox extends BoxLayout {
      * @param containerSize - The working size, possibly inflated for overflow.
      * @param insets - The container's content insets.
      * @param spacing - Inter-child spacing in pixels.
-     * @returns The resolved placements, ready for {@link LayoutManager.commitPlacements}.
+     * @returns The resolved placements, ready for {@link BoxLayout.commitStackedPlacements}.
      */
     private layoutEqualMode(components: Component[], innerSize: Size, containerSize: Size, insets: Insets, spacing: number): ResolvedPlacement[] {
         const cellHeight = this.computeEqualCellHeight(components, innerSize.height, spacing);
@@ -421,7 +421,7 @@ class VBox extends BoxLayout {
      * @param containerSize - The working size, possibly inflated for overflow.
      * @param insets - The container's content insets.
      * @param spacing - Inter-child spacing in pixels.
-     * @returns The resolved placements, ready for {@link LayoutManager.commitPlacements}.
+     * @returns The resolved placements, ready for {@link BoxLayout.commitStackedPlacements}.
      */
     private layoutPreferredMode(components: Component[], containerSize: Size, insets: Insets, spacing: number): ResolvedPlacement[] {
         const { totalWeight, fixedPreferred, fixedMin } = this.measureFixedHeights(components, spacing);
@@ -531,8 +531,11 @@ class VBox extends BoxLayout {
             }
 
             // Advance by the resolved height, not getHeight(): the gap is
-            // measured against the same extent contentHeight summed, so a
-            // placeComponent clamp must not skew the trailing edge.
+            // measured against the same extent contentHeight summed, so the
+            // justify arithmetic above stays exact. A child that clamps taller
+            // during its own commit is handled separately: commitStackedPlacements
+            // carries the committed-minus-resolved difference onto every later
+            // sibling's position, in the same pass.
             y += heights[idx];
             y += spacing + gap;
         }
