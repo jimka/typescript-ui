@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Drawer } from '~/overlay/Drawer';
 import { Placement } from '~/primitive/Placement';
+import { LayerManager } from '~/core/LayerManager';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -71,6 +72,13 @@ describe('Drawer (option round-trips + layer integration)', () => {
         installTestDOM(CONFIG);
 
         expect(new Drawer().isLayerRoot()).toBe(true);
+    });
+
+    it('getBand() is the Drawer band when non-modal and the Dialog band when modal', () => {
+        installTestDOM(CONFIG);
+
+        expect(new Drawer({ modal: false }).getBand()).toBe(LayerManager.Band.Drawer);
+        expect(new Drawer({ modal: true }).getBand()).toBe(LayerManager.Band.Dialog);
     });
 
     it('getLayerElement() is null before open()', () => {

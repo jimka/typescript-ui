@@ -731,6 +731,18 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
     }
 
     /**
+     * Returns the drawer's z-index band: the Drawer band for a non-modal
+     * drawer — above the Rail, below every window — and the Dialog band for a
+     * modal one, so its scrim covers every non-modal surface like a dialog's
+     * backdrop. Read at `open()`, like `isModal()`.
+     *
+     * @returns The drawer band base, or the dialog band when modal.
+     */
+    getBand(): number {
+        return this.isModal() ? LayerManager.Band.Dialog : LayerManager.Band.Drawer;
+    }
+
+    /**
      * Mirrors a manager-reallocated z-index onto the panel (and the scrim, one
      * below) when the drawer is re-stamped.
      *

@@ -95,12 +95,13 @@ class DropZoneHighlight extends Component {
 /**
  * Z-order shared with [`DragFeedback`](/api/overlay/classes/DragFeedback) and
  * [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator): just **below** the
- * lowest {@link LayerManager} band (the {@link Window} band) so this drop-zone
+ * lowest {@link LayerManager} band (the Drawer band) so this drop-zone
  * affordance — drawn over app content that establishes no isolating stacking
- * context — never paints over a floating window, while still sitting above the
- * target's own content. The drag ghost sits above all three at the root.
+ * context — never paints over a floating window or an open drawer, while still
+ * sitting above the target's own content. The drag ghost sits above all three
+ * at the root.
  */
-const Z_INDEX = LayerManager.Band.Window - 1;
+const Z_INDEX = LayerManager.Band.Drawer - 1;
 
 /**
  * Overlay that marks a region as a dock target during an active drag and

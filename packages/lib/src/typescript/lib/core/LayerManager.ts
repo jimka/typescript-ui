@@ -78,9 +78,10 @@ export interface DismissableLayer {
     /**
      * Optional z-index band hint. Returns one of {@link LayerManager.Band}'s
      * values so an unrelated peer layer stacks in its surface family's band
-     * (Window < Popover < dropdown < Dialog). Omitted surfaces default to the
-     * dropdown band. A nested layer ignores its own band and inherits its
-     * opener's, so this only matters for top-level (unparented) registrations.
+     * (Drawer < Window < Popover < dropdown < Dialog). Omitted surfaces default
+     * to the dropdown band. A nested layer inherits its opener's band unless it
+     * returns `true` from {@link DismissableLayer.keepsOwnBand}, so this
+     * matters for top-level registrations and for such layers.
      */
     getBand?(): number;
 
@@ -94,14 +95,25 @@ export interface DismissableLayer {
      * {@link LayerManager.register}).
      */
     isLayerRoot?(): boolean;
+
+    /**
+     * Optional band-precedence hint. Returns `true` for a nested layer that
+     * must stack in its own getBand() band instead of inheriting its opener's —
+     * a modal dialog, whose backdrop has to cover every non-modal surface
+     * whatever it was opened from. The layer still links under its opener, so
+     * activation and cross-portal containment are unchanged; only its band
+     * differs. Layers opened from it inherit its band as usual. Ignored for a
+     * root layer, which always uses its own band.
+     */
+    keepsOwnBand?(): boolean;
 }
 
 /**
  * Node in the runtime layer tree. Generalizes the per-host `LayerEntry`
  * that `AnimatedDropdown` previously kept module-private: `children` are the
  * layers opened from this one, `band` is the z-index band base the layer was
- * assigned (inherited from its opener), and `zIndex` is the band + counter
- * stamp the manager assigned at register time.
+ * assigned (its opener's, or its own when the layer keeps its own band), and
+ * `zIndex` is the band + counter stamp the manager assigned at register time.
  */
 interface LayerNode {
     layer:    DismissableLayer;
@@ -115,10 +127,13 @@ interface LayerNode {
 // anywhere today (Theme.ts carries no z-index tokens; the values were inline
 // per class). The bands reconcile the four historical bases into one
 // ascending allocator and preserve relative order between unrelated peers:
-//   Window 9000  <  PinnedWindow 9400  <  Popover 9800  <  dropdowns 10000  <
-//   Notification 10500  <  Dialog 11000  <  Tooltip 12000.
+//   Drawer 8950  <  Window 9000  <  PinnedWindow 9400  <  Popover 9800  <
+//   dropdowns 10000  <  Notification 10500  <  Dialog 11000  <  Tooltip 12000.
 // A nested child inherits its opener's band but always lands above it because
-// it registers later and so draws a higher counter. Each band keeps its own
+// it registers later and so draws a higher counter. The exception is a child
+// that keeps its own band (see `keepsOwnBand` on `DismissableLayer`), which
+// stamps in that band instead — a modal dialog, whose backdrop has to cover
+// every non-modal surface whatever it was opened from. Each band keeps its own
 // counter, and a counter that would reach the next base up renormalises its
 // band first — the band's live layers are re-stamped from its base in their
 // current order and the counter restarts from there. So the gap above a band
@@ -126,7 +141,14 @@ interface LayerNode {
 // opened over a session: no run of registrations or raises, however long,
 // climbs into the band above. A band holding more layers at once than its gap
 // allows would still overflow into its neighbour, and no code guards against
-// that — the narrowest gap is the Popover band's 199.
+// that — the narrowest gap is the Drawer band's 49.
+// Non-modal drawers: above the Rail's fixed 8900 (a drawer slides out over the
+// rail that toggles it) and below every window. Sits midway in the 100-pixel
+// Rail→Window gap, which is the whole space there is between the two; a modal
+// drawer takes the Dialog band instead, so its scrim covers windows. Its 49
+// stamps bound how many drawers may be open at once — far more than an app
+// opens, since a drawer is an edge-anchored panel, not a stackable surface.
+const Z_BAND_DRAWER:        number = 8950;
 const Z_BAND_WINDOW:        number = 9000;
 // Always-on-top windows, above ordinary windows and below Popover. Sits
 // midway in the 800-pixel Window→Popover gap, halving the counter headroom
@@ -153,7 +175,7 @@ const Z_BAND_TOOLTIP:  number = 12000;
 // Adding a band narrows its predecessor's headroom automatically, which is why
 // stamps renormalise rather than relying on the size of the gap.
 const _bandBases: readonly number[] = [
-    Z_BAND_WINDOW, Z_BAND_PINNED_WINDOW, Z_BAND_POPOVER,
+    Z_BAND_DRAWER, Z_BAND_WINDOW, Z_BAND_PINNED_WINDOW, Z_BAND_POPOVER,
     Z_BAND_DROPDOWN, Z_BAND_NOTIFICATION, Z_BAND_DIALOG, Z_BAND_TOOLTIP,
 ];
 
@@ -161,8 +183,9 @@ const _bandBases: readonly number[] = [
 // to return any number from `getBand()`, and a base past the top of the list
 // has no next base to bound it. A base falling *between* two listed ones needs
 // no fallback: the next listed base up bounds it like any other. 200 matches
-// the narrowest gap the listed bases leave, so an unlisted band is bounded no
-// more loosely than a listed one.
+// the Popover band's gap, the narrowest among the bands a surface may share
+// with arbitrarily many peers; the Drawer band's narrower gap is sized for the
+// few drawers an app opens at once.
 const FALLBACK_BAND_HEADROOM: number = 200;
 
 /**
@@ -218,6 +241,7 @@ export namespace LayerManager {
      * dropdowns 10050, Dialog 10101) into one ascending allocator.
      */
     export const Band = {
+        Drawer:       Z_BAND_DRAWER,
         Window:       Z_BAND_WINDOW,
         PinnedWindow: Z_BAND_PINNED_WINDOW,
         Popover:      Z_BAND_POPOVER,
@@ -230,11 +254,17 @@ export namespace LayerManager {
     /**
      * Picks the z-index band for a layer. A nested layer inherits its
      * opener's band so it stays in the same stacking neighbourhood (and rises
-     * above the opener because it registers later); an unrelated peer uses its
-     * own surface-type band from {@link DismissableLayer.getBand}.
+     * above the opener because it registers later); an unrelated peer, or a
+     * nested layer that keeps its own band (see
+     * {@link DismissableLayer.keepsOwnBand}), uses its own surface-type band
+     * from {@link DismissableLayer.getBand}.
      */
-    function bandFor(parent: LayerNode | null, ownBand: number): number {
-        return parent ? parent.band : ownBand;
+    function bandFor(parent: LayerNode | null, layer: DismissableLayer): number {
+        if (parent && !layer.keepsOwnBand?.()) {
+            return parent.band;
+        }
+
+        return layer.getBand?.() ?? Z_BAND_DROPDOWN;
     }
 
     /**
@@ -323,7 +353,7 @@ export namespace LayerManager {
         }
 
         const parent = layer.isLayerRoot?.() ? null : resolveParent(layer);
-        const band   = bandFor(parent, layer.getBand?.() ?? Z_BAND_DROPDOWN);
+        const band   = bandFor(parent, layer);
         const zIndex = nextStamp(band);
 
         const node: LayerNode = { layer, parent, children: [], band, zIndex };
@@ -518,9 +548,11 @@ export namespace LayerManager {
 
     /**
      * Moves an already-registered top-level layer (and every layer opened
-     * from it) into `band`, re-stamping each from the ascending counter so
-     * the moved subtree lands on top of its new band. No-op for an
-     * unregistered layer or one already in `band`.
+     * from it that inherits its band — a layer that keeps its own band stays
+     * in it, along with the layers opened from that layer) into `band`,
+     * re-stamping each from the ascending counter so the moved subtree lands
+     * on top of its new band. No-op for an unregistered layer or one already
+     * in `band`.
      *
      * @param layer - The layer to move.
      * @param band - The target band, one of {@link Band}'s values.
@@ -555,14 +587,15 @@ export namespace LayerManager {
      * relative order. Each re-stamped layer is notified via
      * {@link DismissableLayer.onZIndexChanged} so it can mirror the new value
      * through its own typed `setZIndex` (the manager never writes the DOM).
-     * `band`, when given, also moves every node into it — used by
+     * `band`, when given, moves the target node into it and recomputes each
+     * descendant's band from its (already moved) parent — used by
      * {@link setBand} to migrate a layer (and its descendants) into a
      * different band.
      */
     function restampSubtree(node: LayerNode, band?: number): void {
         const walk = (n: LayerNode): void => {
             if (band !== undefined) {
-                n.band = band;
+                n.band = n === node ? band : bandFor(n.parent, n.layer);
             }
 
             n.zIndex = nextStamp(n.band);

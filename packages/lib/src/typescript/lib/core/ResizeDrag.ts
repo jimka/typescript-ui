@@ -88,10 +88,11 @@ const OUTLINE_LINE_PX: number = 2 * OUTLINE_BORDER_PX;
 
 /**
  * `DragFeedback`'s and `ReorderIndicator`'s z-index: just below the lowest
- * {@link LayerManager} band, so an outline drawn in the page paints over page
- * content that forms no stacking context of its own, and under every window.
+ * {@link LayerManager} band (the Drawer band), so an outline drawn in the page
+ * paints over page content that forms no stacking context of its own, and
+ * under every window or open drawer.
  */
-export const IN_PAGE_OUTLINE_Z_INDEX: number = LayerManager.Band.Window - 1;
+export const IN_PAGE_OUTLINE_Z_INDEX: number = LayerManager.Band.Drawer - 1;
 
 /**
  * The outline's class-tier chrome: a hairline box in the bright "it lands

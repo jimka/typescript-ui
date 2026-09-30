@@ -23,11 +23,12 @@ interface FakeLayer extends DismissableLayer {
 }
 
 interface FakeLayerOpts {
-    dismissMode?: LayerDismissMode;
-    band?:        number;
-    isRoot?:      boolean;
-    withElement?: boolean;
-    anchor?:      Handle | null;
+    dismissMode?:   LayerDismissMode;
+    band?:          number;
+    isRoot?:        boolean;
+    keepsOwnBand?:  boolean;
+    withElement?:   boolean;
+    anchor?:        Handle | null;
 }
 
 // Tracks every layer registered so the draining afterEach can unregister them —
@@ -53,6 +54,10 @@ function fakeLayer(opts: FakeLayerOpts = {}): FakeLayer {
 
     if (opts.isRoot !== undefined) {
         layer.isLayerRoot = () => opts.isRoot!;
+    }
+
+    if (opts.keepsOwnBand !== undefined) {
+        layer.keepsOwnBand = () => opts.keepsOwnBand!;
     }
 
     if (opts.anchor !== undefined) {
@@ -235,16 +240,21 @@ describe('LayerManager', () => {
             installTestDOM(CONFIG);
 
             // Topmost is a Window-band root; the child omits isLayerRoot so it
-            // registers under the window and inherits its band base.
+            // registers under the window and inherits its band base. It also
+            // omits keepsOwnBand, which is what makes it inherit — a menu
+            // opened inside the window, not a modal dialog.
             const opener = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true }));
-            const child  = register(fakeLayer({ band: LayerManager.Band.Dialog }));
+            const child  = register(fakeLayer({ band: LayerManager.Band.Dropdown }));
 
             const openerZ = LayerManager.getZIndex(opener);
             const childZ  = LayerManager.getZIndex(child);
 
-            // Inherits the opener's Window band base (ignoring its own Dialog band)
-            // and lands above it because it registered later.
-            expect(Math.floor(openerZ / 1000)).toBe(Math.floor(childZ / 1000));
+            // Inherits the opener's Window band base (ignoring its own Dropdown
+            // band) and lands above it because it registered later. Asserted as
+            // band membership rather than a shared thousands digit, which the
+            // Window and PinnedWindow bases share.
+            expect(childZ).toBeGreaterThanOrEqual(LayerManager.Band.Window);
+            expect(childZ).toBeLessThan(LayerManager.Band.PinnedWindow);
             expect(childZ).toBeGreaterThan(openerZ);
         });
 
@@ -256,6 +266,90 @@ describe('LayerManager', () => {
 
             // Uses its own Dialog band rather than inheriting the Window band.
             expect(LayerManager.getZIndex(rootDialog)).toBeGreaterThanOrEqual(LayerManager.Band.Dialog);
+        });
+    });
+
+    describe('keepsOwnBand', () => {
+        it('LM-1. a nested layer that keeps its own band stamps in that band, not its opener\'s', () => {
+            installTestDOM(CONFIG);
+
+            const opener = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true }));
+            const child  = register(fakeLayer({ band: LayerManager.Band.Dialog, keepsOwnBand: true }));
+
+            const childZ = LayerManager.getZIndex(child);
+
+            // Strictly above the Dialog base and inside the band, so a stamp
+            // inherited from the Window-band opener cannot satisfy it.
+            expect(childZ).toBeGreaterThan(LayerManager.Band.Dialog);
+            expect(childZ).toBeLessThan(LayerManager.Band.Tooltip);
+            expect(childZ).toBeGreaterThan(LayerManager.getZIndex(opener));
+        });
+
+        it('LM-2. still links under its opener, so cross-portal containment holds', () => {
+            installTestDOM(CONFIG);
+
+            const opener = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true }));
+            const child  = register(fakeLayer({ band: LayerManager.Band.Dialog, keepsOwnBand: true }));
+
+            const probe = DOM.sink.createElement('div');
+            DOM.sink.appendChild(child.getLayerElement()!, probe);
+
+            // The consequence of the parent edge surviving, not that a hook was
+            // called: a press inside the child counts as inside the opener.
+            expect(LayerManager.containsAcrossLayers(opener, probe)).toBe(true);
+        });
+
+        it('LM-3. a nested layer that returns false inherits its opener\'s band', () => {
+            installTestDOM(CONFIG);
+
+            const opener = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true }));
+            const child  = register(fakeLayer({ band: LayerManager.Band.Dropdown, keepsOwnBand: false }));
+
+            const childZ = LayerManager.getZIndex(child);
+
+            // The hook is declared but answers false, so reading it by presence
+            // rather than calling it would lift the child into its own Dropdown
+            // band instead of the opener's Window band.
+            expect(childZ).toBeGreaterThanOrEqual(LayerManager.Band.Window);
+            expect(childZ).toBeLessThan(LayerManager.Band.PinnedWindow);
+            expect(childZ).toBeGreaterThan(LayerManager.getZIndex(opener));
+        });
+
+        it('LM-4. setBand migrates the inheriting descendants and leaves a keeper in its own band', () => {
+            installTestDOM(CONFIG);
+
+            const root   = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true }));
+            const keeper = register(fakeLayer({ band: LayerManager.Band.Dialog, keepsOwnBand: true }));
+            // Registered after `keeper` with no anchor, so the last-registered
+            // fallback links it under the keeper — a menu opened in the dialog.
+            const inner  = register(fakeLayer({}));
+
+            LayerManager.setBand(root, LayerManager.Band.PinnedWindow);
+
+            expect(LayerManager.getZIndex(root)).toBeGreaterThanOrEqual(LayerManager.Band.PinnedWindow);
+
+            // The keeper stays in the Dialog band rather than being dragged into
+            // PinnedWindow with the rest of the subtree, and the layer opened
+            // from it follows the keeper rather than keeping a band of its own.
+            expect(LayerManager.getZIndex(keeper)).toBeGreaterThan(LayerManager.Band.Dialog);
+            expect(LayerManager.getZIndex(inner)).toBeGreaterThan(LayerManager.Band.Dialog);
+            expect(LayerManager.getZIndex(inner)).toBeGreaterThan(LayerManager.getZIndex(keeper));
+        });
+
+        it('LM-5. a layer opened from a keeper inherits the keeper\'s band, not its own', () => {
+            installTestDOM(CONFIG);
+
+            register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true }));
+            const keeper = register(fakeLayer({ band: LayerManager.Band.Dialog, keepsOwnBand: true }));
+            const inner  = register(fakeLayer({ band: LayerManager.Band.Dropdown }));
+
+            const innerZ = LayerManager.getZIndex(inner);
+
+            // Only the keeper itself escapes inheritance; a menu opened inside
+            // it must still paint above the keeper, which its own Dropdown band
+            // (10000) sits below.
+            expect(innerZ).toBeGreaterThan(LayerManager.getZIndex(keeper));
+            expect(innerZ).toBeGreaterThan(LayerManager.Band.Dialog);
         });
     });
 
@@ -587,17 +681,16 @@ describe('LayerManager', () => {
             expect(LayerManager.getZIndex(dropdown)).toBe(dropdownZ);
         });
 
-        it('a layer whose anchor lives inside a window links under that window, not an unrelated root (a drawer) that currently paints in front', () => {
+        it('a layer whose anchor lives inside a window links under that window, not an unrelated root (a higher-band root) that currently paints in front', () => {
             installTestDOM(CONFIG);
 
             // The window registers first and is never raised, so a purely
-            // frontmost-by-z rule would misidentify the drawer — which
-            // declares no band of its own and so defaults to the Dropdown
-            // band, above Window — as the dropdown's opener.
-            const win    = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true })) as FakeLayer;
-            const drawer = register(fakeLayer({ isRoot: true })) as FakeLayer;
+            // frontmost-by-z rule would misidentify the other root — an
+            // unrelated root in a band above Window — as the dropdown's opener.
+            const win        = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true })) as FakeLayer;
+            const higherRoot = register(fakeLayer({ band: LayerManager.Band.Dropdown, isRoot: true })) as FakeLayer;
 
-            expect(LayerManager.getZIndex(drawer)).toBeGreaterThan(LayerManager.getZIndex(win));
+            expect(LayerManager.getZIndex(higherRoot)).toBeGreaterThan(LayerManager.getZIndex(win));
 
             const anchor = DOM.sink.createElement('div');
             const winEl  = win.getLayerElement()!;
@@ -607,23 +700,23 @@ describe('LayerManager', () => {
 
             // A Window-band peer registered after the dropdown, so raising the
             // window's subtree genuinely has to move it, and a second
-            // Dropdown-band root beside the drawer, so raising the drawer is a
-            // real raise rather than one the top-of-band guard skips.
-            const winPeer     = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true }));
-            const drawerPeer  = register(fakeLayer({ isRoot: true }));
+            // Dropdown-band root beside the higher root, so raising that root
+            // is a real raise rather than one the top-of-band guard skips.
+            const winPeer    = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true }));
+            const higherPeer = register(fakeLayer({ band: LayerManager.Band.Dropdown, isRoot: true }));
 
             expect(LayerManager.getZIndex(winPeer)).toBeGreaterThan(LayerManager.getZIndex(dropdown));
-            expect(LayerManager.getZIndex(drawerPeer)).toBeGreaterThan(LayerManager.getZIndex(drawer));
+            expect(LayerManager.getZIndex(higherPeer)).toBeGreaterThan(LayerManager.getZIndex(higherRoot));
 
             // Proof of correct parentage: raising the window carries the
             // dropdown over the peer that outranked it, while raising the
-            // drawer leaves the dropdown's stamp exactly where it was.
+            // higher root leaves the dropdown's stamp exactly where it was.
             LayerManager.bringToFront(win);
             expect(LayerManager.getZIndex(dropdown)).toBeGreaterThan(LayerManager.getZIndex(winPeer));
 
             const dropdownZ = LayerManager.getZIndex(dropdown);
 
-            LayerManager.bringToFront(drawer);
+            LayerManager.bringToFront(higherRoot);
             expect(LayerManager.getZIndex(dropdown)).toBe(dropdownZ);
         });
 
@@ -640,10 +733,12 @@ describe('LayerManager', () => {
 
             expect(LayerManager.getZIndex(a)).toBeGreaterThan(LayerManager.getZIndex(b));
 
-            // A nested layer with no anchor to resolve (e.g. a Dialog)
-            // registers next; it falls back to the last-registered layer's
-            // (b's) band, not the frontmost layer's (a's).
-            const nested = register(fakeLayer({})) as FakeLayer;
+            // A nested layer with no anchor to resolve (e.g. a Menu opened with
+            // no anchor element) registers next; it falls back to the
+            // last-registered layer's (b's) band, not the frontmost layer's
+            // (a's). Its own declared band is higher than either, so inheriting
+            // is what puts it in the Window band at all.
+            const nested = register(fakeLayer({ band: LayerManager.Band.Dropdown })) as FakeLayer;
 
             expect(LayerManager.getZIndex(nested)).toBeGreaterThanOrEqual(LayerManager.Band.Window);
             expect(LayerManager.getZIndex(nested)).toBeLessThan(LayerManager.Band.PinnedWindow);
