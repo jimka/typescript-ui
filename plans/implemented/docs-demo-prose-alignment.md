@@ -342,3 +342,35 @@ None. `packages/docs` is a private workspace with no exported API, no `llms.txt`
 [^api-tree]: `packages/lib/docs/api` is generated and gitignored, so a fresh worktree has none, and `packages/docs/vite.config.ts`'s `typedocApi` plugin throws at module-load time when it is missing. This was confirmed in a clean worktree: without the tree, `api.test.ts`, `links.test.ts` and two others fail to load while the remaining eight files pass; with it, all twelve pass and 2612 tests run. `npm run docs:api` writes roughly 190MB. A symlink to the main checkout's tree also works and takes no time, since this plan's tests never read the tree's contents — only its presence is required — but a stale tree would mislead any later work that does read it, so prefer the real command.
 
 [^why-manual]: The docs suite runs under jsdom, which never lays anything out: `getBoundingClientRect` returns zeroes, so `resolveProseMeasureWidth`'s probe measures 0 and no rendered edge, gap or overlap is observable. That is the reason U4 mocks the measure to a non-zero 640 rather than asserting against the real probe — against the real probe, both `resolveProseMeasureWidth()` and `resolveProseMeasureWidth() + 32` would be compared to 0 and 32, which happens to catch that one mutation but reads as nonsense and tells a later reader nothing. Everything that is about appearance — whether the demo reads as part of the column, whether the gap looks like a paragraph break — is in M1–M7 instead.
+
+---
+
+## Implementation Notes
+
+**Every row of the mutation table was executed, not just U4's.** Step 6 and
+`## Verification` prescribed running one mutation (`DocsDemo.ts:57` widened by
+the margin) and left the other nine rows of *Which mutation each assertion
+catches* as claims. Because this plan came out of a campaign whose finding was
+that prescribed verifications can be vacuous, all ten were applied
+mechanically instead — each patched into the source, the affected test file
+run, and the source restored and diffed back to byte-identical. Each one went
+red, and in exactly the assertion the table names: M1 `expected undefined to
+be 32`; the `proseMargin`-for-the-demo, dropped-bottom and dropped-top
+mutations each `expected +0 to be 14`; an added right inset `expected 16 to be
++0`; `PROSE_LEFT_MARGIN_PX` 32→24 reddening U1, U2 *and* U3's `getLeft()`; the
+demo's vertical insets leaked onto the prose blocks reddening U1 and U3's
+`getTop`/`getBottom` with `expected 14 to be +0`; the fallback given the demo
+insets reddening U3; the fallback built as a `DocsDemo` reddening U3's
+`getDataAttribute` with `expected 'true' to be undefined`; and U4's own
+`expected 672 to be 640`. No assertion in this change survives its mutation,
+and none of the three `0` assertions passes by comparing zero against zero —
+every one pins an absolute value, and the non-zero counterpart is pinned in
+the same file.
+
+**Measured in this worktree, not taken from the plan.** Going in: `packages/docs`
+12 files / 2612 tests, `packages/lib` 522 / 8785 (+2 todo), `packages/qa` 20 /
+453, `npm run docs:api` 0 warnings. Coming out: `packages/docs` 13 / 2615 (the
+new file plus U2, U3 and U4 — U1 grew assertions rather than becoming a new
+case), the other two suites unmoved because neither package is touched, and
+`docs:api` still 0 warnings. The plan's step 2 figures matched the baseline
+exactly.
