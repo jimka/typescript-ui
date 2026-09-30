@@ -705,11 +705,20 @@ export class Notification extends Component {
     }
 
     /**
-     * Cancels any in-flight entrance / dismiss animation, then defers to the
-     * base class. Cancelling first keeps their fallback timers from firing
-     * after `super.destructor()` has released the animated element handles.
+     * Cancels a pending auto-dismiss and any in-flight entrance / dismiss
+     * animation, then defers to the base class. Cancelling first keeps every
+     * one of their deferred callbacks from firing after `super.destructor()`
+     * has released the element handles they write through.
      */
     protected destructor(): void {
+        // An auto-dismiss still waiting would fire against the element handles
+        // released below. `dismiss()` clears it on the normal path; this covers a
+        // dispose that arrives from an owner instead.
+        if (this._dismissTimer !== null) {
+            DOM.sink.clearTimeout(this._dismissTimer);
+            this._dismissTimer = null;
+        }
+
         this._showAnimation?.cancel();
         this._showAnimation = null;
         this._dismissAnimation?.cancel();

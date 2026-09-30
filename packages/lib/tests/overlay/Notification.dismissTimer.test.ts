@@ -234,6 +234,21 @@ describe('Notification auto-dismiss timer — cancelled by a teardown', () => {
         expect(dismiss).not.toHaveBeenCalled();
     });
 
+    it('does not dismiss after the toast was disposed by its owner', () => {
+        Notification.show('msg', 'info', DISMISS_MS);
+
+        const toast   = liveToast();
+        const dismiss = spyOnDismiss(toast);
+
+        // No DOM.reset() here: a dispose that arrives on its own leaves the
+        // seam's sweep out of it, so the timer has to be cleared by the
+        // destructor or nothing cancels it.
+        toast.dispose();
+        vi.advanceTimersByTime(DISMISS_MS + 1000);
+
+        expect(dismiss).not.toHaveBeenCalled();
+    });
+
     it('dismisses none of a full stack of toasts after DOM.reset()', () => {
         const dismissals: Array<MockInstance<() => void>> = [];
 
