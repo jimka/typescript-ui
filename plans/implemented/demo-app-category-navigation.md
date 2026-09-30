@@ -770,3 +770,205 @@ Read before starting:
 
 [^no-tab-coupling]: Checked rather than assumed. `grep` across every demo-app file for `getParent`, `activeIndex`, `ActiveTab`, `onActivate`, `"activate"`, `isRendered`, `tab bar`, `tabBar` and `TabBar` returns five hits outside `main.ts`, none of them a dependency. [`LayoutSerializationPanel.ts:35`](packages/lib/src/typescript/LayoutSerializationPanel.ts#L35)'s `activeIndex: 1` belongs to a `LayoutState` literal describing that panel's own three inner content panels, not the app's container — so the `Tab.activeIndex` handling in `layout/LayoutSerialization.ts` is untouched by this change, and no demo serialises the app's own layout. [`ContentBoxPanel.ts:172`](packages/lib/src/typescript/ContentBoxPanel.ts#L172) and `:186` name `TabBar` only as prose analogies in comments. [`BaselinePanel.ts:27`](packages/lib/src/typescript/BaselinePanel.ts#L27) and `:96` are the cosmetic offset handled above. No panel subscribes to a `Tab` event, reads a tab index, or is constructed with an index-keyed argument. Every registered factory is synchronous (`() => new XPanel()`), so `Tab`'s spinner placeholder and async-factory rejection paths were never exercised and nothing is lost by leaving them behind.
 
+
+---
+
+## Implementation Notes
+
+Implemented as planned: the `Split`-hosted category `Tree`, the `Card`-keyed
+deck, the five new modules, and all 32 slugs unchanged. The label set and the
+label→panel mapping were diffed against the pre-change `main.ts` and are
+byte-identical, so every one of the 32 bookmarks resolves to the same panel it
+did before. What follows is what the plan said that turned out not to hold, and
+the places the implementation went beyond it.
+
+### Deviations
+
+**A third test file was added: `packages/lib/tests/unit/demo/demoLayoutStore.test.ts`.**
+The plan's file list names two test files and gives step 6 the verification
+"`npm test` passes (`typecheck:test` covers this file)" — which type-checks the
+store but asserts nothing about it. `loadPaneSizes` is documented as falling
+back "when none is saved, unparseable, or malformed", and none of those three
+branches is reachable by any prescribed test or by any manual step: manual step
+4 drags the gutter and reloads, which exercises only the happy round trip. The
+new file pins the round trip plus the absent, unparseable, non-array and six
+malformed-entry cases, and leaves *fit* to `isRestorableSizes` exactly as the
+plan's validation split intends.
+
+**A fourth test file was added: `packages/lib/tests/component/demo/DemoNavigator.test.ts`.**
+The plan lists only cases 1 to 5 as unit-testable and routes the nav's own
+behaviour to manual steps 1 and 3. That was too pessimistic: three of the
+plan's `## Architecture Decisions` claims about `DemoNavigator` are reachable
+offline, so a manual step was not an acceptable substitute for them.
+
+Two seams make it work, both with precedent in this suite. `vi.mock` on
+`./demoSections.js` supplies stub categories, so the real 32-panel table —
+and CodeMirror, Lexical and elkjs behind it — is never imported; the file runs
+in about a second, and `tests/component/diagram/ElkLayoutEngine.test.ts` mocks
+a dependency the same way. Selection is then driven through `_selectAtIndex`,
+the entry point a real row gesture reaches, borrowed from
+`tests/component/tree/Tree.test.ts`'s own `asPrivate` white-box seam —
+necessary because `selectNode` deliberately does not emit and so cannot stand
+in for a click.
+
+An earlier draft of these notes claimed the handlers were unreachable offline
+because `Tree` emits `"selection"` only on the click path. That was false, and
+it is worth recording as the mistake it was: `Tree`'s own `on` docs say "a
+click or key press", the arrow/Home/End path reaches `_notifySelectionChange`
+through `_selectAtIndex`, and `Tree.test.ts` was already driving a selection
+listener in this harness. Only `selectNode` is exempt, which is what makes
+`select` loop-safe but says nothing about testability. The real obstacle was
+only ever the import graph, and `vi.mock` removes it.
+
+What is still manual is the part that genuinely needs a browser: that the
+right panel appears, that the highlight moves, and that a category click
+leaves the content pane alone. Taking the categories as a constructor
+parameter, the way `DemoSectionDeck` takes its sections, would drop the mock
+entirely; that is a plan-level design change and not one to make
+mid-implementation.
+
+### Corrections to the plan
+
+**`## Internal Structure` gives the wrong mechanism for the deck's
+`getLayoutManager()` cast.** It says the `Card` "is already attached by the time
+the constructor body runs — `Container`'s `applyOptions` dispatches
+`setLayoutManager` during `super()`". That is true for a *caller-supplied*
+`layoutManager` option, but the deck passes the `Card` as a *subclass default*,
+which `Component` stores in `_defaultLayoutManager` and attaches lazily on the
+first `getLayoutManager()` call. So the `this._card = this.getLayoutManager() as
+Card` line is itself what attaches the card. The line order the plan gives is
+correct either way; only the explanation was wrong, and the code comment now
+records the real mechanism.
+
+**`main.ts` departs from the plan's code block in two places, both because the
+block violates a rule document.** The plan prescribes
+`demoNav.setMinSize({ width: NAV_MIN_WIDTH, height: 0 })` as a statement of its
+own; `CODE_CONVENTIONS.md` requires a component to be configured through its
+options bag at instantiation, with `setX` reserved for runtime changes, and
+`minSize` is an ordinary `ComponentOptions` field. It is therefore passed as
+`new DemoNavigator(router, { minSize: … })`. The plan's block also leaves
+`NAV_MIN_WIDTH`, `GUTTER_SPACING` and the `height: 0` without the *why* the
+global magic-number rule requires alongside the *what*; all three now carry it —
+`GUTTER_SPACING` naming `docs/layouts/Split.md`'s worked example as its source,
+and `height: 0` recording that a horizontal `Split` clamps a drag against
+`min.width` only. Neither change alters behaviour.
+
+**The plan's `demoLayoutStore.ts` block carries a redundant cast and a false
+comment explaining it.** It ends `loadPaneSizes` with `return entries as
+LayoutSize[]`, commented "`Array.every` does not narrow the array's element
+type, so the assertion stands in for what it proved". `Array.every` *does*
+narrow it: its type-predicate overload is declared `this is S[]`
+(`lib.es5.d.ts:1438`), so the `if (!entries.every(isLayoutSize))` early return
+narrows `entries` itself. Verified with a strict-mode probe of the same shape,
+which compiles with no cast. The cast and the comment are both gone.
+
+**The plan's case 8 and the `main.ts` comment quoting it overstate parity on an
+unknown slug.** Both say the fallback matches the old tab strip, "where an
+unmatched slug left the `Tab` on index 0". The old `showSection` was a *no-op*
+on a miss, so mid-session the panel already showing stayed put; index 0 was
+merely what happened to be open on a fresh load. The new handler always shows
+the default section. That is the better behaviour — a miss now lands somewhere
+legible instead of depending on what was open — but it is a real change, so the
+comment now states it rather than claiming parity. The behaviour itself is the
+plan's and is unchanged.
+
+**Step 9's orphan sweep expects zero matches from a grep that cannot return
+zero.** `grep -rn "addSection\|slugs\[" packages/lib/src/typescript/` returns
+four hits, all of them the library's own public `AccordionPanel.addSection`,
+present unchanged on the phase start point. Scoped to the demo app
+(`src/typescript/*.ts`) the sweep returns zero, which is what the step meant.
+The `FlowDemoPanel` / `LayoutTestPanel` half of the step is exact: nine files,
+the same nine.
+
+**Step 14's and `## Verification`'s "no more than the 14 pre-existing warnings"
+is stale.** `CODE_CONVENTIONS.md` records a standing zero-warning bar for
+`npm run docs:api`. Measured 0 before this change and 0 after.
+
+**No changelog or migration entry was added.** This change adds no public API
+and alters no library behaviour — the two library edits are JSDoc sentence
+rewords — and the changelog's consumer-facing Breaking/Added/Fixed sections have
+never carried a demo-app-only entry. `changelog/next.md` and `migration/next.md`
+are therefore untouched.
+
+### Mutation proof
+
+Every assertion was proved killable by the mutation it is meant to catch. The
+plan's predictions were the floor, not the ceiling — the deck table undercounted
+every row:
+
+| Mutation | Plan predicted red | Observed red |
+|---|---|---|
+| Drop the `{ key: section.slug }` argument | 2, 3, 4 | 2, 3, 4, **5** |
+| Register under the label (`{ key: section.label }`) | 3, 4 | **2**, 3, 4, **5** |
+| Delete the `hasKey` pre-flight | 5 | **4**, 5 |
+
+Case 1's three named mutations also all go red, two of them wider than the plan
+names: dropping the trailing-`-` strip reds 2 of the 6 rows (the plan names 1),
+dropping `toLowerCase()` reds all 6 (the plan names 1), and dropping the
+leading-`-` strip reds exactly the 1 row the plan names.
+
+The `DemoNavigator` cases were mutation-proved the same way, and every one of
+them can fail:
+
+| Mutation of `DemoNavigator` | Observed red |
+|---|---|
+| Swap `expandNode` / `selectNode` in `select` | expand-before-select, routed-category-only |
+| Drop `expandNode` from `select` entirely | those two, plus the leaf-names-the-URL case |
+| Drop the `typeof node.data !== "string"` payload guard | category-navigates-nowhere |
+| Drop the `if (entry)` guard in `select` | unknown-slug-is-a-no-op |
+
+One mutation there is deliberately *not* killable, and it is not a gap:
+dropping the `"/"` from `navigate("/" + node.data)` leaves all six green,
+because `Router.navigate` runs its argument through `normalizePath`, which
+prepends `"/"` after splitting and filtering empty segments. `navigate("beta")`
+and `navigate("/beta")` are therefore the same call, so no assertion can
+separate them — the mutation preserves behaviour rather than escaping a test.
+The `!node` half of the payload guard is likewise unkillable here, since
+`_selectAtIndex` always selects a row; it is defensive and matches
+`DocsSidebar.onSelection`.
+
+**One honest gap in the store's own suite.** `isLayoutSize`'s two value clauses
+— `typeof size.value === "number"` and `Number.isFinite(size.value)` — are
+individually redundant for anything `JSON.parse` can produce, since
+`Number.isFinite` does not coerce and so rejects `"220"` and `null` on its own,
+as does `typeof`. Dropping either one alone leaves all eleven rows green;
+dropping both reds the two value rows. The rows therefore pin the *pair*, and
+the test says so rather than implying per-clause coverage. A genuinely
+non-finite number cannot reach the guard at all — JSON has no `NaN` or
+`Infinity` literal. Both clauses are kept because the plan prescribes both.
+Separately, the `raw === null` early-out is unkillable and correctly so: without
+it `JSON.parse(null)` yields `null`, which the array guard rejects, so the
+fallback is reached either way. It is an early-out, not a behaviour, and no row
+claims it.
+
+### The gate that would have missed `main.ts`
+
+`npm run typecheck` runs `tsc -p tsconfig.lib.json`, whose `include` is
+`["src/typescript/lib/**/*"]` — `main.ts` is not in that program. Verified
+empirically rather than assumed: a deliberate `const NAV_MIN_WIDTH: string =
+120;` in `main.ts` left `npm run typecheck` green (exit 0) and turned
+`npm run typecheck:test` red (exit 2). Both were run for this change.
+
+### Measured state
+
+`packages/lib` 527 files / 8842 tests (from 523 / 8815 — four new files, 27 new
+tests), `packages/qa` 20 / 453 unchanged, `npm run typecheck`,
+`npm run typecheck:test`, `npm run lint`, `npm -w packages/lib run build` and
+`npm run build:lib` all clean, `npm run docs:api` 0 warnings,
+`npm run docs:llms:check` 0 unaccounted for, and `llms.txt` a one-line diff.
+
+### Still owed: the manual pass
+
+Nothing in this change's visible behaviour was exercised in a browser — the
+implementer was barred from opening a window. All eight of `## Verification`'s
+manual steps are still outstanding.
+
+Two of them are now narrower than the plan wrote them. The nav-state half of
+case 6 (the routed category expanded, the other six collapsed) and the
+navigate / do-not-navigate halves of case 9 are covered by
+`DemoNavigator.test.ts`; what those steps still own is what only a browser
+shows — that the right panel appears, that the selection highlight moves to a
+clicked category, and that the content pane stays put while it does. Cases 7,
+8, 10, 11 and 12 are untouched by any test, and steps 7 (the judgement call on
+`BaselinePanel`'s retained 40px offset) and 8 (the console sweep for `Card:`
+warnings) remain the only check on their subjects.

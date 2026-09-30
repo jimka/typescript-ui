@@ -20,7 +20,7 @@ import { UNBOUNDED } from "../primitive";
  * explicit Refresh click — no periodic auto-refresh, mirroring the source
  * demo panel this view was extracted from.
  *
- * Embedded by both the demo app's own "Style Audit" tab and
+ * Embedded by both the demo app's own "Style Audit" section and
  * {@link StyleAuditOverlay}'s window body; whichever container embeds it owns
  * scrolling, so this view does not set `autoScroll` on itself.
  *
