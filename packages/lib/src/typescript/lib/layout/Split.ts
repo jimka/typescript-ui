@@ -198,7 +198,8 @@ class Split extends LayoutManager implements FocusRevealer {
 
     // Pane indices to collapse on the first connected layout, taken from the
     // `collapsedPanes` option. Drained once because pane components aren't
-    // resolvable from indices until the container has its children.
+    // resolvable from indices until the container has its children, and held
+    // while the laid-out list the drain indexes is empty.
     private _pendingCollapsed: number[] = [];
 
     private _listeners: ListenerBag<SplitEvent> = this.registerListenerBag(new ListenerBag<SplitEvent>());
@@ -211,9 +212,11 @@ class Split extends LayoutManager implements FocusRevealer {
     private _contextMenu: Menu | null = null;
 
     // Sizes to restore on the first connected layout, taken from the
-    // `paneSizes` option (or a direct `applyPaneSizes` call before the
-    // container is attached). Drained once, mirroring `_pendingCollapsed`:
-    // panes aren't resolvable from indices until the container has children.
+    // `paneSizes` option and nothing else — a direct `applyPaneSizes` call
+    // resolves the live panes on the spot instead of landing here. Drained
+    // once, mirroring `_pendingCollapsed`, and held while the container has no
+    // panes: an array can't be validated against per-pane units that don't
+    // exist yet.
     private _pendingSizes: LayoutSize[] | null = null;
 
     private _dragOriginPointer: number = 0;
@@ -1255,6 +1258,20 @@ class Split extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * Formats a persisted size array for a diagnostic message as `unit:value`
+     * pairs — `"px:420, ratio:1"`.
+     *
+     * @param sizes - The array to describe.
+     * @returns The comma-joined `unit:value` pairs.
+     */
+    private describeSizes(sizes: LayoutSize[]): string {
+        // A persisted array reaches this class straight from `JSON.parse`, so an
+        // entry can be null at runtime however it is typed — `isRestorableSizes`
+        // guards `size != null` for the same reason.
+        return sizes.map(size => `${size?.unit ?? "?"}:${size?.value ?? "?"}`).join(", ");
+    }
+
+    /**
      * Resolves each pane's persisted unit: `"px"` for a resize-pinned pane
      * (explicit `weight: 0`, per {@link isResizePinnedMain}), `"ratio"`
      * otherwise. The unit follows the weight, resolved by the same predicate
@@ -1312,6 +1329,12 @@ class Split extends LayoutManager implements FocusRevealer {
      * {@link LayoutSize}) — a stale array leaves the panes exactly as though
      * no restore were requested.
      *
+     * The container must already hold its panes: this resolves them as it is
+     * called, so a call made before they are added is ignored and warns in the
+     * console. To restore before the panes exist, pass the array as the
+     * `paneSizes` option instead — the first layout that has panes applies it,
+     * however many pane-less passes ran before.
+     *
      * @param sizes - The persisted array to restore.
      * @returns This layout manager, for method chaining.
      */
@@ -1319,13 +1342,23 @@ class Split extends LayoutManager implements FocusRevealer {
         const container = this.getContainer();
 
         if (!container) {
+            console.warn("Split: applyPaneSizes ignored — this layout manager is not attached to a container; pass the array as the `paneSizes` option instead.");
+
             return this;
         }
 
         const components = container.getComponents();
         const units      = this.paneSizeUnits(components);
 
+        if (components.length === 0) {
+            console.warn("Split: applyPaneSizes ignored — the container has no panes yet; add the panes first, or pass the array as the `paneSizes` option.");
+
+            return this;
+        }
+
         if (!isRestorableSizes(sizes, units)) {
+            console.warn(`Split: paneSizes discarded — [${this.describeSizes(sizes)}] is not restorable against the live pane units [${units.join(", ")}]; the lengths must match, every entry's unit must match its pane, and at least one value must be positive.`);
+
             return this;
         }
 
@@ -2406,16 +2439,27 @@ class Split extends LayoutManager implements FocusRevealer {
     }
 
     /**
-     * Drains the `paneSizes` option (or a pre-layout {@link applyPaneSizes}
-     * call) into `_sizes` on the first layout, where {@link applyPaneSizes}
-     * can resolve the live panes and the container's main-axis budget. Runs
-     * once: `applyPaneSizes` re-validates against the live units and
-     * discards a stale array whole, so the drain needs no check of its own.
+     * Drains the `paneSizes` option into `_sizes` on the first layout that has
+     * panes, where {@link applyPaneSizes} can resolve the live panes and the
+     * container's main-axis budget. Held rather than drained while the
+     * container has no panes: `applyPaneSizes` validates against the live
+     * per-pane units, and a pane-less container offers none, so draining there
+     * would discard an array that is merely undrainable. Once a pane exists the
+     * drain runs once, and `applyPaneSizes` discards a genuinely stale array
+     * whole.
      */
     private applyPendingSizes(): void {
         const pending = this._pendingSizes;
 
         if (pending === null) {
+            return;
+        }
+
+        // The same list `applyPaneSizes` validates against, so the guard and
+        // that check can never disagree about whether there is a pane. Not the
+        // laid-out list: a persisted array carries one entry per child, so an
+        // undisplayed pane still owns one.
+        if ((this.getContainer()?.getComponents().length ?? 0) === 0) {
             return;
         }
 
@@ -2427,12 +2471,16 @@ class Split extends LayoutManager implements FocusRevealer {
     /**
      * Drains the `collapsedPanes` option into `_collapsed` on the first layout
      * where the panes are resolvable. Runs once: pane components can't be looked
-     * up from indices until the container has its children.
+     * up from indices until the container has its children. Held while the
+     * component list is empty, since no index resolves against it.
      *
      * @param components - The container's current child panes.
      */
     private applyPendingCollapsed(components: Array<Component>): void {
-        if (this._pendingCollapsed.length === 0) {
+        // `components` is the laid-out list this method indexes, so an empty one
+        // resolves no pane at all — hold the indices for a later pass instead of
+        // clearing them below.
+        if (this._pendingCollapsed.length === 0 || components.length === 0) {
             return;
         }
 

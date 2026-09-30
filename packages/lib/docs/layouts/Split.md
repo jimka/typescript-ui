@@ -201,6 +201,13 @@ const split = Split({
 
 A saved array whose length or per-index unit no longer matches the live panes (e.g. a pane's `weight` changed between releases) is **discarded whole**, and the split falls back to its normal first-layout sizing — the same all-or-nothing rule `collapsedPanes` never needed because it carries no unit.
 
+`applyPaneSizes` resolves the live panes as it is called, so the container
+must already hold them; a call made earlier is ignored and warns in the
+console. To restore before the panes exist — the usual case, where the split
+is handed to `Body.init` and the panes are added afterwards — pass the array
+as the `paneSizes` option instead. The first layout that has panes applies
+it, however many pane-less passes ran before.
+
 > **`getPaneRatios` / `applyPaneRatios` are a different surface.** They serve [Layout serialization](/layouts/LayoutSerialization)'s same-session topology switching — a weight-agnostic ratio of the *whole* pane set, with no unit tag. Using them for cross-session persistence would restore a `weight: 0` pane at the wrong px on a differently-sized window; use `getPaneSizes` / `applyPaneSizes` for that instead.
 
 ## Live or outline resizing
@@ -224,7 +231,7 @@ A split with no `resizeMode` of its own follows the app-wide default set through
 | `setPaneCollapsed(index, value)` | Collapse or restore the pane at `index`. |
 | `isPaneCollapsed(index)` | Whether the pane at `index` is collapsed. |
 | `getPaneSizes()` | Weight-aware, mixed-unit sizes for cross-session persistence. See [Saving and restoring layout](#saving-and-restoring-layout). |
-| `applyPaneSizes(sizes)` | Restore sizes captured by `getPaneSizes`. |
+| `applyPaneSizes(sizes)` | Restore sizes captured by `getPaneSizes`, onto panes the container already holds. |
 | `setPaneResizeWeight(pane, weight)` | Pin (`0`) or weight a pane's share of a container resize; `undefined` clears the pin. |
 | `setResizeMode(mode)` | `'live'` or `'outline'`; `null` follows the app-wide default. |
 
