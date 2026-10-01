@@ -138,6 +138,20 @@ describe('Tab modified indicator', () => {
         expect(barEntries(tab)[0].button.isModified()).toBe(true);
     });
 
+    it('a tab marked before its first layout carries aria-description "Modified" once laid out', () => {
+        installTestDOM(CONFIG);
+
+        const { host, tab } = hostTab();
+        const content = new Component({});
+
+        host.addComponent(content); // no doLayout() yet — no strip cell exists
+
+        tab.setTabModified(content, true);
+        host.doLayout();
+
+        expect(barEntries(tab)[0].button.getAria().getDescription()).toBe('Modified');
+    });
+
     it('isTabModified reads the constraint back before the cell exists', () => {
         installTestDOM(CONFIG);
 

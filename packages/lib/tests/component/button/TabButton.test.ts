@@ -376,6 +376,44 @@ describe('TabButton modified indicator', () => {
         expect(() => untouched.positionModifiedBadge()).not.toThrow();
         expect(badgeOf(untouched)).toBe(null);
     });
+
+    it('a fresh tab carries no aria-description', () => {
+        const btn = new TabButton('Home');
+
+        expect(btn.getAria().getDescription()).toBe(null);
+    });
+
+    it('setModified writes aria-description "Modified" while marked and clears it when not', () => {
+        const btn = new TabButton('Home', { glyph: 'xmark' });
+
+        btn.setModified(true);
+
+        expect(btn.getAria().getDescription()).toBe('Modified');
+
+        btn.setModified(false);
+
+        expect(btn.getAria().getDescription()).toBe(null);
+
+        btn.setModified(true);
+
+        expect(btn.getAria().getDescription()).toBe('Modified');
+    });
+
+    it('a glyph-less tab carries the same aria-description cue', () => {
+        const btn = new TabButton('Home'); // no glyph
+
+        btn.setModified(true);
+
+        expect(btn.getAria().getDescription()).toBe('Modified');
+
+        btn.setModified(false);
+
+        expect(btn.getAria().getDescription()).toBe(null);
+
+        btn.setModified(true);
+
+        expect(btn.getAria().getDescription()).toBe('Modified');
+    });
 });
 
 describe('TabButton listeners bag', () => {

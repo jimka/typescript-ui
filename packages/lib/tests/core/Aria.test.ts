@@ -146,6 +146,17 @@ describe('Aria — label', () => {
     });
 });
 
+describe('Aria — description', () => {
+    it('setDescription/getDescription round-trip; clearDescription returns getter to null', () => {
+        const a = aria();
+        expect(a.getDescription()).toBeNull();
+        a.setDescription('Modified');
+        expect(a.getDescription()).toBe('Modified');
+        a.clearDescription();
+        expect(a.getDescription()).toBeNull();
+    });
+});
+
 describe('Aria — unchanged writes are skipped', () => {
     afterEach(() => DOM.reset());
 
@@ -215,6 +226,56 @@ describe('Aria — unchanged writes are skipped', () => {
         c.getAria().clearLabel();
 
         expect(labelRemovals(sink, element)).toBe(1);
+    });
+
+    /** Every recorded `apply` patch on `element` that removes `aria-description`. */
+    function descriptionRemovals(sink: { writes: Array<{ op: string; args: unknown[] }> }, element: unknown): number {
+        return sink.writes
+            .filter(w => w.op === 'apply' && w.args[0] === element)
+            .filter(w => (w.args[1] as { removeAttr?: string[] }).removeAttr?.includes('aria-description'))
+            .length;
+    }
+
+    it('clearDescription writes nothing when no description was ever set, and nothing again once cleared', () => {
+        const sink = installTestDOM(CONFIG);
+        const c = new Component();
+
+        c.getElement(true);
+
+        const element = c.getElement()!;
+
+        c.getAria().clearDescription();
+
+        expect(descriptionRemovals(sink, element)).toBe(0);
+
+        c.getAria().setDescription('Modified');
+        c.getAria().clearDescription();
+
+        expect(descriptionRemovals(sink, element)).toBe(1);
+        expect(c.getAria().getDescription()).toBeNull();
+
+        c.getAria().clearDescription();
+
+        expect(descriptionRemovals(sink, element)).toBe(1);
+    });
+
+    it('a repeated setDescription with the same value writes once', () => {
+        const sink = installTestDOM(CONFIG);
+        const c = new Component();
+
+        c.getElement(true);
+
+        const element = c.getElement()!;
+
+        c.getAria().setDescription('Modified');
+        c.getAria().setDescription('Modified');
+
+        const descriptionWrites = sink.writes
+            .filter(w => w.op === 'apply' && w.args[0] === element)
+            .map(w => (w.args[1] as { setAttr?: Record<string, string> }).setAttr?.['aria-description'])
+            .filter((value): value is string => value !== undefined);
+
+        expect(descriptionWrites).toEqual(['Modified']);
     });
 
     it('a value set again after a removal writes', () => {

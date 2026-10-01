@@ -22,6 +22,13 @@ Glyph.register(circle);
 const MODIFIED_GLYPH = "circle";
 
 /**
+ * The `aria-description` a modified tab carries, so assistive technology
+ * announces the state the dot shows visually. English, like the library's
+ * other built-in accessible strings.
+ */
+const MODIFIED_DESCRIPTION = "Modified";
+
+/**
  * Construction-time options for {@link TabButton}.
  *
  * `text` (the label), `glyph`, and `selected` are inherited from
@@ -462,7 +469,9 @@ class TabButton extends ToggleButton {
      * and the busy wash, rather than added to the content row: a row child
      * would either sit beside the leading glyph (not on its corner) or, sized
      * to overlap it, eat into the label's own space. The overlay never
-     * displaces the label or resizes the tab.
+     * displaces the label or resizes the tab. While shown, the button also
+     * carries `aria-description="Modified"`, so assistive technology announces
+     * the state.
      *
      * @param modified - True to show the badge, false to hide it.
      *
@@ -474,6 +483,12 @@ class TabButton extends ToggleButton {
         }
 
         this._modified = modified;
+
+        if (modified) {
+            this.getAria().setDescription(MODIFIED_DESCRIPTION);
+        } else {
+            this.getAria().clearDescription();
+        }
 
         if (!this._modifiedGlyph) {
             if (!modified) {
