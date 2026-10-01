@@ -447,3 +447,13 @@ All cases below are unit-testable with the offline `TestDOM` unless marked **man
 [^role-menu]: Every rebuild-mode menu (context menus, `MenuButton`, the ToolBar overflow, `SplitButton`) currently renders `menuitem` rows inside an element with no role, which is invalid ARIA. `docs/concepts/accessibility.md` already claims `Menu` has role `menu`; this makes that true for both modes.
 
 [^pointer-focus]: `Menu` runs a row's `action` before `hide()` fires `onClose`. A row whose action opens a `Dialog` (SQLAdmin's "Save as…") hands focus to that dialog; an unconditional `focus()` in `onClose` could take it back. The keyboard path — the one this plan fixes — never moves focus, so no restore is needed there.
+
+---
+
+## Implementation Notes
+
+- **Test harness: "closed" is "not the top layer".** `LayerManager` has no reset hook and earlier tests in the same file leave menus registered, so M6 and the SplitButton cases assert `getTopLayer()` is not the button's menu rather than `null`.
+- **Listener-teardown registry.** `SplitButton` now registers its own `keydown` / `keyup` listeners, so `tests/component/dispose-listener-teardown.test.ts`'s source scan picked it up as an unclaimed class. It got a covering registry row (not a baseline entry), carried in the SplitButton code commit. The plan's file table did not list this test.
+- **Commit split.** The `Menu` change (`handleKey`, both-mode highlight, rebuild-mode `role="menu"`) and the `SplitButton` change are separate code and documentation commits, since the `Menu` API stands on its own.
+- **Manual verification (Chrome, `npm run dev` → ToolBar demo).** MV1, MV3, MV4 and MV5 pass. MV2 passes in Chrome: `Enter` and `Space` on a highlighted row ran "Save As" / "Save All" and the primary "Save" action did not fire. MV2 was **not** checked in Firefox — no Firefox was available in this environment. MV6 (screen reader) was not run; it is optional.
+- **Added: a blur reset for the Space-keyup swallow (audit finding).** The plan wires only `keydown` / `keyup` and lists four private members. When a row's action moves focus (a `Dialog` it opens), the Space keyup lands elsewhere, so `_swallowSpaceUp` stayed set and silently swallowed the next, unrelated Space on the button — its primary `"action"` never fired. `SplitButton` now also registers a `blur` listener, `_onBlurClearSpaceSwallow`, that clears the flag, mirroring `Button`'s own blur reset of its Space-held state. Test S9b pins it.

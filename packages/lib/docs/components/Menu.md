@@ -5,7 +5,7 @@
 - **Rebuild mode** — `Menu()` — a right-click context menu. Items are passed per `show(x, y, items)` call and rebuilt on each invocation. Best for menus whose contents depend on what the user clicked.
 - **Persistent mode** — `Menu(items, onClose)` — a [`MenuBar`](/components/MenuBar) dropdown. Items are built once in the constructor and reused across `open()` / `close()` cycles. Used internally by `MenuBar`.
 
-The two API surfaces are disjoint. `show()` / `hide()` / `setMenuWidth()` are valid only in rebuild mode; `open()` / `close()` and the focus / submenu helpers are valid only in persistent mode. Calling a method outside its mode throws.
+Most of the API belongs to one mode. `show()` / `hide()` / `setMenuWidth()` are valid only in rebuild mode; `open()` / `close()` / `setExcludedElement()` are valid only in persistent mode. Calling a method outside its mode throws. The keyboard-highlight methods — `focusItem`, `focusNext`, `focusPrev`, `activateFocused`, `getFocusedIndex` and `handleKey` — work in both (see [Keyboard](#keyboard)).
 
 ## Rebuild mode (right-click context menu)
 
@@ -62,7 +62,7 @@ Each entry follows [`MenuItemConfig`](/api/component/container/interfaces/MenuIt
 | Field | Purpose |
 | --- | --- |
 | `text` | Display label. |
-| `action` | Called on click or Enter (rebuild mode only auto-calls on click; persistent mode wires it through). |
+| `action` | Called on click, or on Enter / Space when the row is highlighted (`activateFocused` / `handleKey`). |
 | `closeOnActivate` | When `false`, the item runs `action` but the menu stays open; pairs with `checked` for a multi-select menu. Defaults to `true`. |
 | `enabled` | Defaults to `true`. Disabled items are dimmed and non-interactive. |
 | `shortcut` | Hint string displayed on the right (persistent mode renders it). |
@@ -95,6 +95,26 @@ menu.show(0, 0, [
 See [`CheckboxMenuRow`](/components/CheckboxMenuRow) for the full worked example — a menu row hosting a real [`Checkbox`](/components/Checkbox), toggling on click or Enter without closing the panel. [`RadioMenuRow`](/components/RadioMenuRow) is the equivalent for a single-choice group of rows — selecting is one-way, and the caller deselects the siblings.
 
 **Known limitation:** hovering a custom row does not close a sibling item's already-open submenu — only `MenuItem`'s hover wires that signal. A submenu opened from a neighbouring item can stay visible over the panel until a click elsewhere resolves it.
+
+## Keyboard
+
+A menu never takes DOM focus. The control that opened it keeps focus and forwards its keydowns to `handleKey(e)`, which moves a highlight over the rows — the same model as a [`ComboBox`](/components/ComboBox) dropdown. [`SplitButton`](/components/SplitButton) drives its dropdown this way, and [`MenuBar`](/components/MenuBar) drives its panels through the same highlight methods.
+
+| Key | Effect |
+| --- | --- |
+| `↓` | Highlights the next row, wrapping and skipping separators; from no highlight, the first row. |
+| `↑` | Highlights the previous row, wrapping; from no highlight, the last row. |
+| `Enter` / `Space` | Activates the highlighted row, if any. |
+
+`handleKey` returns `true` for those four keys, so the host consumes them — `Enter` and `Space` included when no row is highlighted, so the host's own activation does not run. It returns `false` for every other key. `Escape` is one of them: it closes the topmost layer, which is the open menu, without the host's help. Each rebuild-mode `show()` / `toggleFor()` starts with no row highlighted, and `hide()` clears the highlight.
+
+```typescript
+const handled = menu.handleKey(e);
+
+if (handled) {
+    return { stop: true, prevent: true };
+}
+```
 
 ## Notes
 

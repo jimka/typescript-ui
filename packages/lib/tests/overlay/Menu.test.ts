@@ -73,8 +73,6 @@ describe('Menu mode guards', () => {
 
         expect(() => menu.open(DOM.sink.createElement('div'))).toThrow(/persistent mode/);
         expect(() => menu.close()).toThrow(/persistent mode/);
-        expect(() => menu.focusNext()).toThrow(/persistent mode/);
-        expect(() => menu.getFocusedIndex()).toThrow(/persistent mode/);
     });
 
     it('persistent-mode menu throws on rebuild-only methods', () => {
@@ -2006,5 +2004,151 @@ describe('Menu custom rows', () => {
         closingRow.triggerClose();
 
         expect(LayerManager.getTopLayer()).not.toBe(menu);
+    });
+});
+
+// splitbutton-keyboard-menu-open plan, Expected Behaviour M1-M11: the keyboard
+// highlight methods and `handleKey` work on a rebuild-mode menu, whose host
+// keeps DOM focus and forwards keys into it.
+describe('Menu keyboard highlight and handleKey', () => {
+    afterEach(() => DOM.reset());
+
+    /** Builds a plain keyboard event carrying only `key`, as a host forwards it. */
+    function key(k: string): KeyboardEvent {
+        return { key: k } as KeyboardEvent;
+    }
+
+    /** Opens a fresh rebuild-mode menu of `A`, a separator, `B` under a trigger. */
+    function openMenu(a: () => void = () => {}, b: () => void = () => {}): Menu {
+        const menu = new Menu();
+
+        menu.toggleFor(DOM.sink.createElement('div'), rect(100, 100, 200, 124), [
+            { text: 'A', action: a },
+            { separator: true },
+            { text: 'B', action: b },
+        ]);
+
+        return menu;
+    }
+
+    it('M1: a rebuild-mode menu declares role="menu"', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        expect(menu.getAria().getRole()).toBe('menu');
+    });
+
+    it('M2: the highlight methods do not throw on a rebuild-mode menu that is not shown', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        expect(() => menu.focusNext()).not.toThrow();
+        expect(() => menu.getFocusedIndex()).not.toThrow();
+    });
+
+    it('M3: a freshly shown menu has no highlighted row', () => {
+        installTestDOM(CONFIG);
+
+        const menu = openMenu();
+
+        expect(menu.getFocusedIndex()).toBe(-1);
+    });
+
+    it('M4: ArrowDown highlights the first row, then the next, skipping the separator', () => {
+        installTestDOM(CONFIG);
+
+        const menu = openMenu();
+
+        expect(menu.handleKey(key('ArrowDown'))).toBe(true);
+        expect(menu.getFocusedIndex()).toBe(0);
+        expect(menu.handleKey(key('ArrowDown'))).toBe(true);
+        expect(menu.getFocusedIndex()).toBe(2);
+    });
+
+    it('M5: ArrowUp with nothing highlighted wraps to the last row', () => {
+        installTestDOM(CONFIG);
+
+        const menu = openMenu();
+
+        expect(menu.handleKey(key('ArrowUp'))).toBe(true);
+        expect(menu.getFocusedIndex()).toBe(2);
+    });
+
+    it('M6: Enter activates the highlighted row and closes the menu', () => {
+        installTestDOM(CONFIG);
+
+        const a    = vi.fn();
+        const menu = openMenu(a);
+
+        menu.handleKey(key('ArrowDown'));
+
+        expect(menu.handleKey(key('Enter'))).toBe(true);
+        expect(a).toHaveBeenCalledTimes(1);
+        // LayerManager has no reset hook and earlier tests leave menus open,
+        // so "closed" is "no longer the top layer" rather than a null stack.
+        expect(LayerManager.getTopLayer()).not.toBe(menu);
+    });
+
+    it('M7: Space with nothing highlighted is consumed but activates nothing', () => {
+        installTestDOM(CONFIG);
+
+        const a    = vi.fn();
+        const b    = vi.fn();
+        const menu = openMenu(a, b);
+
+        expect(menu.handleKey(key(' '))).toBe(true);
+        expect(a).not.toHaveBeenCalled();
+        expect(b).not.toHaveBeenCalled();
+        expect(LayerManager.getTopLayer()).toBe(menu);
+    });
+
+    it('M8: Escape, a letter and Tab are not handled and leave the highlight alone', () => {
+        installTestDOM(CONFIG);
+
+        const menu = openMenu();
+
+        menu.handleKey(key('ArrowDown'));
+
+        for (const k of ['Escape', 'a', 'Tab']) {
+            expect(menu.handleKey(key(k))).toBe(false);
+            expect(menu.getFocusedIndex()).toBe(0);
+        }
+    });
+
+    it('M9: showing the menu again for a different opener resets the highlight', () => {
+        installTestDOM(CONFIG);
+
+        const menu = openMenu();
+
+        menu.focusItem(2);
+        menu.toggleFor(DOM.sink.createElement('div'), rect(100, 100, 200, 124), [
+            { text: 'A' },
+            { separator: true },
+            { text: 'B' },
+        ]);
+
+        expect(menu.getFocusedIndex()).toBe(-1);
+    });
+
+    it('M10: hide() resets the highlight', () => {
+        installTestDOM(CONFIG);
+
+        const menu = openMenu();
+
+        menu.focusItem(0);
+        menu.hide();
+
+        expect(menu.getFocusedIndex()).toBe(-1);
+    });
+
+    it('M11: handleKey also drives a persistent-mode menu', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu([{ text: 'A', action: () => {} }], () => {});
+
+        expect(menu.handleKey(key('ArrowDown'))).toBe(true);
+        expect(menu.getFocusedIndex()).toBe(0);
     });
 });

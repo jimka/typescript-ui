@@ -9,6 +9,7 @@ import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { callable } from "~/core/Callable.js";
 import { caret_down } from "~/glyphs/solid/caret_down.js";
 import { ThemeManager } from "~/core/Theme.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 
 // Register the trailing chevron eagerly at module load — same pattern as
 // `TabCloseButton` registering its `xmark` — so `new SplitButton()` always
@@ -67,6 +68,12 @@ export interface SplitButtonOptions extends ButtonOptions {
  * flattens it like any other `Button`; the chevron is part of the content row,
  * so it inherits the flat appearance with no extra wiring.
  *
+ * While the button has focus, `ArrowDown` or `Alt+ArrowDown` opens the
+ * dropdown with its first row highlighted (inside a vertical toolbar, plain
+ * `ArrowDown` is left to the toolbar). `ArrowUp` / `ArrowDown`, `Enter` /
+ * `Space` and `Escape` then drive the menu while focus stays on the button,
+ * which declares `aria-haspopup="menu"` and keeps `aria-expanded` in step.
+ *
  * @example
  * ```typescript
  * import { SplitButton } from '@jimka/typescript-ui/component/button';
@@ -118,6 +125,45 @@ class SplitButton extends Button<SplitButtonOptions> {
      */
     private readonly _onChevronClick: () => void = () => { this._toggleMenu(); };
 
+    /** Whether the dropdown is open; written only by `_setMenuOpen`. */
+    private _menuOpen: boolean = false;
+
+    /** Set when a Space keydown activated a menu row, so its keyup is swallowed. */
+    private _swallowSpaceUp: boolean = false;
+
+    /**
+     * Bound keydown handler, held on the instance as a stable named listener.
+     * Delegates to `_handleKeyDown`.
+     */
+    private readonly _onKeyDown: (e: KeyboardEvent) => Event.ListenerResult = (e) => this._handleKeyDown(e);
+
+    /**
+     * Bound keyup handler. Prevents the default of the one Space keyup that
+     * follows a Space which activated a menu row: a native `<button>` fires
+     * its click on the Space keyup, which would otherwise run the primary
+     * `"action"` after the menu row already ran.
+     */
+    private readonly _onKeyUp: (e: KeyboardEvent) => Event.ListenerResult = (e) => {
+        if (e.key !== " " || !this._swallowSpaceUp) {
+            return;
+        }
+
+        this._swallowSpaceUp = false;
+
+        return { prevent: true };
+    };
+
+    /**
+     * Bound blur handler. Drops a pending Space-keyup swallow when focus
+     * leaves the button first — a row's action that opens a dialog moves
+     * focus, so the matching keyup lands elsewhere and would otherwise leave
+     * the flag set to swallow the next, unrelated Space on this button.
+     * Mirrors `Button`'s blur reset of its Space-held state.
+     */
+    private readonly _onBlurClearSpaceSwallow: () => void = () => {
+        this._swallowSpaceUp = false;
+    };
+
     /**
      * Constructs a SplitButton.
      *
@@ -147,13 +193,20 @@ class SplitButton extends Button<SplitButtonOptions> {
         // `<svg>` with `auto` is hittable across its full box (not just the
         // painted caret pixels) — so the chevron reliably catches the click.
         this._chevron.setPointerEvents("auto");
-        // Fixed transform transition; `_setChevronOpen` toggles the rotation so
+        // Fixed transform transition; `_setMenuOpen` toggles the rotation so
         // the caret spins between its closed (down) and open (up) states.
         this._chevron.setTransition("transform " + CHEVRON_SPIN_MS + "ms ease");
 
         this._content.addComponent(this._chevron);
 
         Event.addSubtreeListener(this._chevron, "click", this._onChevronClick);
+
+        this.getAria().setHasPopup("menu");
+        this.getAria().setExpanded(false);
+
+        Event.addListener(this, "keydown", this._onKeyDown);
+        Event.addListener(this, "keyup",   this._onKeyUp);
+        Event.addListener(this, "blur",    this._onBlurClearSpaceSwallow);
     }
 
     /**
@@ -240,31 +293,140 @@ class SplitButton extends Button<SplitButtonOptions> {
 
         const rect = DOM.source.getViewportRect(this);
 
-        this._menu ??= new Menu();
+        if (this._menu === null) {
+            this._menu = new Menu();
+            this.getAria().setControls(this._menu.getId());
+        }
 
-        // Optimistically spin the caret to its open state. `toggleFor` excludes
-        // the chevron from the menu's outside-click dismissal and remembers it as
-        // the opener, so a second chevron press closes the dropdown; on that
-        // close the menu's onClose spins the caret back down, correcting this
-        // optimistic spin-up when the press toggled shut rather than open.
-        this._setChevronOpen(true);
+        // Optimistically mark the menu open. `toggleFor` excludes the chevron
+        // from the menu's outside-click dismissal and remembers it as the
+        // opener, so a second chevron press closes the dropdown; on that close
+        // the menu's onClose marks it closed again, correcting this optimistic
+        // write when the press toggled shut rather than open.
+        this._setMenuOpen(true);
 
         this._menu.toggleFor(
             this._chevron.getElement(true)!,
             rect,
             this._menuItems,
-            () => { this._setChevronOpen(false); }
+            () => { this._setMenuOpen(false); }
         );
     }
 
     /**
-     * Rotates the chevron between its closed (caret-down) and open (caret-up)
-     * states, animated by the transform transition set at construction.
+     * Records whether the dropdown is open and writes everything that follows
+     * that state: the open flag the keyboard handler reads, the chevron's
+     * rotation (caret up when open, animated by the transform transition set
+     * at construction), and `aria-expanded`.
      *
-     * @param open - `true` to point the caret up (dropdown open), `false` down.
+     * @param open - `true` when the dropdown is open, `false` when closed.
      */
-    private _setChevronOpen(open: boolean): void {
+    private _setMenuOpen(open: boolean): void {
+        this._menuOpen = open;
         this._chevron.setTransform(open ? "rotate(180deg)" : "rotate(0deg)");
+        this.getAria().setExpanded(open);
+    }
+
+    /**
+     * Routes a keydown on the button: to the open menu while it is open,
+     * otherwise to the opening check. Leaves alone any key
+     * `SpatialNavigation` claims for panel navigation.
+     *
+     * @param e - The keydown on the button.
+     *
+     * @returns A stop-and-prevent disposition for a key it handled, or nothing.
+     */
+    private _handleKeyDown(e: KeyboardEvent): Event.ListenerResult {
+        const claimed = SpatialNavigation.claimsKey(e);
+
+        if (claimed) {
+            return;
+        }
+
+        if (this._menuOpen) {
+            return this._handleOpenMenuKey(e);
+        }
+
+        const opens = this._isOpenMenuKey(e);
+
+        if (!opens) {
+            return;
+        }
+
+        this._openMenuFromKeyboard();
+
+        return { stop: true, prevent: true };
+    }
+
+    /**
+     * Handles a keydown while the dropdown is open. `Tab`, `ArrowLeft` and
+     * `ArrowRight` close the menu and continue, so focus moves on as usual;
+     * the menu's own keys are forwarded to it and consumed. `Escape` is left
+     * to the layer manager, which closes the topmost layer.
+     *
+     * @param e - The keydown on the button.
+     *
+     * @returns A stop-and-prevent disposition when the menu consumed the key,
+     *   or nothing.
+     */
+    private _handleOpenMenuKey(e: KeyboardEvent): Event.ListenerResult {
+        const menu = this._menu!;
+
+        if (e.key === "Tab" || e.key === "ArrowLeft" || e.key === "ArrowRight") {
+            menu.hide();
+
+            return;
+        }
+
+        const consumed = menu.handleKey(e);
+
+        if (!consumed) {
+            return;
+        }
+
+        if (e.key === " ") {
+            this._swallowSpaceUp = true;
+        }
+
+        return { stop: true, prevent: true };
+    }
+
+    /**
+     * Whether a keydown opens the dropdown: `ArrowDown` with no modifier, or
+     * with `Alt` alone. Plain `ArrowDown` is left to a vertical parent (one
+     * declaring `aria-orientation="vertical"`, such as a vertical toolbar),
+     * which moves between its children with it; `Alt+ArrowDown` opens there too.
+     *
+     * @param e - The keydown on the button.
+     *
+     * @returns `true` when the key opens the dropdown.
+     */
+    private _isOpenMenuKey(e: KeyboardEvent): boolean {
+        if (e.key !== "ArrowDown" || e.ctrlKey || e.shiftKey || e.metaKey) {
+            return false;
+        }
+
+        if (e.altKey) {
+            return true;
+        }
+
+        const parentOrientation = this.getParentComponent()?.getAria().getOrientation() ?? null;
+
+        return parentOrientation !== "vertical";
+    }
+
+    /**
+     * Opens the dropdown from the keyboard and highlights its first row.
+     */
+    private _openMenuFromKeyboard(): void {
+        this._toggleMenu();
+
+        // `_toggleMenu` leaves `_menuOpen` false when it opened nothing
+        // (unattached button, or no items). A fresh show resets the highlight
+        // to -1, so `focusNext` lands on the first navigable row.
+        if (this._menuOpen) {
+            this._menu!.focusNext();
+        }
     }
 }
 
