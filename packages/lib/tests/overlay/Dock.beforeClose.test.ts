@@ -6,7 +6,7 @@
 // driveBarClose and Tab.doubleClick.test.ts drive Tab's own private handlers.
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Component } from '~/core/Component';
-import { Dock, DockPanelEvent } from '~/overlay/Dock';
+import { Dock, DockPanelEvent, DockCloseController } from '~/overlay/Dock';
 import { Tab, TabCloseController } from '~/layout/Tab';
 import { Window } from '~/overlay/Window';
 import { AbstractWindow, WindowCloseController } from '~/overlay/AbstractWindow';
@@ -84,6 +84,13 @@ function barEntryId(tab: Tab, content: Component): string {
     const contents = (tab as unknown as { _contents: Array<{ id: string; component: Component | null }> })._contents;
 
     return contents.find(e => e.component === content)!.id;
+}
+
+/** Vetoes the close of panel 'b', typed with the Dock-owned controller a float ✕ also delivers. */
+function vetoB(event: DockPanelEvent, controller: DockCloseController): void {
+    if (event.id === 'b') {
+        controller.preventDefault();
+    }
 }
 
 afterEach(() => {
@@ -320,6 +327,39 @@ describe('Dock "beforeclose" — float chrome ✕', () => {
         flush();
 
         expect(log).toEqual(['panel:a', 'panel:b', 'window']);
+    });
+
+    it('delivers a DockCloseController a listener can veto with', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const win = tearOffTwoIntoOneFloat(dock);
+        const windowCloseSpy = vi.fn();
+        const panelCloseSpy = vi.fn();
+
+        win.on('close', windowCloseSpy);
+        dock.on('close', panelCloseSpy);
+        dock.on('beforeclose', vetoB);
+
+        win.requestClose();
+        flush();
+
+        expect(AbstractWindow.getOpenWindows()).toContain(win);
+        expect(windowCloseSpy).not.toHaveBeenCalled();
+        expect(panelCloseSpy).not.toHaveBeenCalled();
+    });
+
+    it('accepts the same DockCloseController listener in the listeners bag', () => {
+        installTestDOM(CONFIG);
+
+        expect(() => new Dock({ listeners: { beforeclose: vetoB } })).not.toThrow();
     });
 });
 
