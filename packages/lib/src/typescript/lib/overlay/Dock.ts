@@ -105,7 +105,7 @@ export interface DockOptions extends ContainerOptions {
         move?:        (event: DockPanelEvent) => void;
         focus?:       (event: DockPanelEvent | null) => void;
         close?:       (event: DockPanelEvent) => void;
-        beforeclose?: (event: DockPanelEvent, controller: TabCloseController) => void;
+        beforeclose?: (event: DockPanelEvent, controller: DockCloseController) => void;
         dblclick?:    (event: DockPanelEvent) => void;
         emptychange?: (event: DockEmptyEvent) => void;
         exception?:   (event: DockExceptionEvent) => void;
@@ -145,8 +145,8 @@ export interface DockOptions extends ContainerOptions {
  * registered, so re-adding the same id rebuilds it and retries.
  *
  * `"beforeclose"` fires for a tab's ✕ (tiled or floated in a `TabWindow`) and a
- * float window's chrome ✕, carrying the same {@link TabCloseController} /
- * {@link WindowCloseController} `Tab`/`AbstractWindow` handed Dock — calling
+ * float window's chrome ✕, carrying a {@link DockCloseController} — the
+ * controller the `Tab` or window handed Dock, passed on unchanged; calling
  * its `preventDefault()` aborts the close. `removePanel(id)` stays the
  * unguarded programmatic path, matching `Tab.closeTab`. `"dblclick"` fires
  * when a tab button is double-clicked (mirrors `Tab`'s own `"tabdblclick"`);
@@ -157,6 +157,18 @@ export interface DockOptions extends ContainerOptions {
  */
 export type DockEvent =
     "attach" | "detach" | "move" | "focus" | "close" | "beforeclose" | "dblclick" | "emptychange" | "exception";
+
+/**
+ * Controller handed to a Dock `"beforeclose"` listener. Calling
+ * `preventDefault()` aborts the close the user just requested — a tab's ✕
+ * (tiled or floated) or a float window's chrome ✕.
+ *
+ * @category Core
+ */
+export interface DockCloseController {
+    /** Aborts the close that is about to run. */
+    preventDefault(): void;
+}
 
 /**
  * Payload for a {@link Dock} lifecycle event, identifying the panel by its
@@ -2366,11 +2378,12 @@ class Dock extends Container<DockOptions> {
      * programmatic path.
      *
      * @param event - The `"beforeclose"` event.
-     * @param listener - Invoked with the affected panel and its close controller.
+     * @param listener - Invoked with the affected panel and its
+     *   {@link DockCloseController}.
      *
      * @returns This dock, for method chaining.
      */
-    on(event: "beforeclose", listener: (event: DockPanelEvent, controller: TabCloseController) => void): this;
+    on(event: "beforeclose", listener: (event: DockPanelEvent, controller: DockCloseController) => void): this;
     /**
      * Registers a listener for the `"dblclick"` event, which fires when a tab
      * button is double-clicked. Mirrors `Tab`'s own `"tabdblclick"`: it does
@@ -2433,7 +2446,7 @@ class Dock extends Container<DockOptions> {
      *
      * @returns This dock, for method chaining.
      */
-    off(event: "beforeclose", listener: (event: DockPanelEvent, controller: TabCloseController) => void): this;
+    off(event: "beforeclose", listener: (event: DockPanelEvent, controller: DockCloseController) => void): this;
     /**
      * Removes a previously registered `"dblclick"` listener.
      *
@@ -2460,7 +2473,7 @@ class Dock extends Container<DockOptions> {
     protected emit(event: "focus", payload: DockPanelEvent | null): void;
     protected emit(event: "emptychange", payload: DockEmptyEvent): void;
     protected emit(event: "exception", payload: DockExceptionEvent): void;
-    protected emit(event: "beforeclose", payload: DockPanelEvent, controller: TabCloseController | WindowCloseController): void;
+    protected emit(event: "beforeclose", payload: DockPanelEvent, controller: DockCloseController): void;
     protected emit(event: "dblclick", payload: DockPanelEvent): void;
     protected emit(event: DockEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
