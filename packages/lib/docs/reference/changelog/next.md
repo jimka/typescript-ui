@@ -153,6 +153,22 @@ page resets to empty.
   button carries `aria-description="Modified"`, so a screen reader
   reports the unsaved state along with the tab's name.
 
+- **`CodeEditor` languages accept options, and SQL can be parsed as
+  PostgreSQL.** `setLanguage(id, options?)` and the new `languageOptions`
+  construction option pass a settings bag to the language, and
+  `getLanguageOptions()` reads it back. Options travel with the language:
+  omitting them, or switching to another language, resets them to `{}`. The
+  built-in `sql` language reads `SqlLanguageOptions`
+  (`{ dialect?: "standard" | "postgresql" }`, default `"standard"`). The
+  dialect sets the grammar used for highlighting, keyword completion and
+  lint, and the engine `format()` uses. Under the default generic dialect,
+  PostgreSQL's `@>` and `<@` operators and dollar-quoted strings
+  (`$$ … $$`) are reported as syntax errors, and `format()` rejects them.
+  With `setLanguage("sql", { dialect: "postgresql" })`, they parse and
+  format cleanly. `LanguageDefinition`'s three loaders now receive the
+  options; definitions that take no argument keep working. No consumer
+  action is needed.
+
 ### Core
 
 - **`LayerManager.Band` gains `Drawer`** (8950, between the `Rail`'s fixed

@@ -6,7 +6,8 @@ import '~/component/editor/languages.js';
 export { CodeEditor } from '~/component/editor/CodeEditor.js';
 export type { CodeEditorOptions, CodeEditorChange, CodeEditorHeightChange, CodeEditorCursorPosition, CodeEditorRevealTarget, CodeEditorRevealOptions, CodeEditorSelection } from '~/component/editor/CodeEditor.js';
 export { registerLanguage, getLanguage, listLanguages } from '~/component/editor/LanguageRegistry.js';
-export type { LanguageDefinition, Formatter, FormatOptions, LintSource } from '~/component/editor/LanguageRegistry.js';
+export type { LanguageDefinition, LanguageOptions, Formatter, FormatOptions, LintSource } from '~/component/editor/LanguageRegistry.js';
+export type { SqlLanguageOptions } from '~/component/editor/languages.js';
 export { collectSyntaxErrors } from '~/component/editor/syntaxDiagnostics.js';
 
 export { MarkdownEditor } from '~/component/editor/MarkdownEditor.js';

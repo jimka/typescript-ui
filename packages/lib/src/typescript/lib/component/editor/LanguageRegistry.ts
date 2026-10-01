@@ -67,6 +67,16 @@ export type Formatter = (
 export type LintSource = (state: EditorState) => Diagnostic[] | Promise<Diagnostic[]>;
 
 /**
+ * Settings for one language, passed with its id to `CodeEditor.setLanguage`
+ * and on to that language's loaders. `CodeEditor` never reads a field;
+ * each language documents the shape it accepts (the built-in `"sql"`
+ * language: `SqlLanguageOptions`).
+ *
+ * @category Components
+ */
+export type LanguageOptions = Record<string, unknown>;
+
+/**
  * Describes one language {@link CodeEditor} can be configured with: its
  * grammar (a lazily-loaded CodeMirror `Extension`) and, optionally, its
  * formatter and lint source.
@@ -78,12 +88,27 @@ export interface LanguageDefinition {
     id: string;
     /** Human-readable name, for a consumer building a language picker. */
     label?: string;
-    /** Dynamically imports and builds the CodeMirror grammar extension. */
-    loadExtension: () => Promise<Extension>;
-    /** Dynamically imports and builds this language's formatter, when one exists. */
-    loadFormatter?: () => Promise<Formatter>;
-    /** Dynamically imports and builds this language's lint source, when one exists. */
-    loadLintSource?: () => Promise<LintSource>;
+    /**
+     * Dynamically imports and builds the CodeMirror grammar extension.
+     * Receives the options passed with the language id to
+     * `CodeEditor.setLanguage` (or the `languageOptions` option); must not
+     * mutate them.
+     */
+    loadExtension: (options?: LanguageOptions) => Promise<Extension>;
+    /**
+     * Dynamically imports and builds this language's formatter, when one
+     * exists. Receives the options passed with the language id to
+     * `CodeEditor.setLanguage` (or the `languageOptions` option); must not
+     * mutate them.
+     */
+    loadFormatter?: (options?: LanguageOptions) => Promise<Formatter>;
+    /**
+     * Dynamically imports and builds this language's lint source, when one
+     * exists. Receives the options passed with the language id to
+     * `CodeEditor.setLanguage` (or the `languageOptions` option); must not
+     * mutate them.
+     */
+    loadLintSource?: (options?: LanguageOptions) => Promise<LintSource>;
 }
 
 /** Module-level registry, keyed by {@link LanguageDefinition.id}. */

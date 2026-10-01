@@ -4,6 +4,7 @@ import { callable, Panel } from '@jimka/typescript-ui/core';
 import { VBox, Fit } from '@jimka/typescript-ui/layout';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { CodeEditor } from '@jimka/typescript-ui/component/editor';
+import type { SqlLanguageOptions } from '@jimka/typescript-ui/component/editor';
 import { Text } from '@jimka/typescript-ui/component/input';
 import { ToolBar, ToolBarSeparator } from '@jimka/typescript-ui/component/menubar';
 
@@ -57,6 +58,15 @@ const SAMPLE_JSON = `{
 }
 `;
 
+// One PostgreSQL-only construct per line (the @> and <@ operators and a
+// dollar-quoted body): the manual-verify handle for the "sql" language's
+// dialect option. Under "Dialect: standard" each line lints as an error and
+// Format rejects; under "Dialect: postgresql" they parse and format cleanly.
+const SAMPLE_SQL = `SELECT * FROM t WHERE c @> '{}'::jsonb;
+SELECT * FROM t WHERE c <@ '{}'::jsonb;
+CREATE OR REPLACE FUNCTION f() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;
+`;
+
 // A foldable block plus a single long line, with autoHeightMaxRows set, so
 // toggling Wrap and folding/unfolding the block below are both manual-verify
 // handles for line wrap and folding driving auto-height growth/shrink — the
@@ -105,6 +115,7 @@ class CodeEditorPanel extends Panel {
     private readonly _upperWrapBtn: Button;
     private readonly _lowerWrapBtn: Button;
     private readonly _lintBtn: Button;
+    private readonly _dialectBtn: Button;
     private readonly _tabSizeBtn: Button;
     private readonly _lineNumbersBtn: Button;
     private readonly _spellcheckBtn: Button;
@@ -143,6 +154,9 @@ class CodeEditorPanel extends Panel {
         this._lintBtn = new Button({ text: 'Lint: off' });
         this._lintBtn.on('action', () => this.toggleLint());
 
+        this._dialectBtn = new Button({ text: 'Dialect: standard' });
+        this._dialectBtn.on('action', () => this.toggleDialect());
+
         this._tabSizeBtn = new Button({ text: 'Tab size: 4' });
         this._tabSizeBtn.on('action', () => this.toggleTabSize());
 
@@ -176,6 +190,7 @@ class CodeEditorPanel extends Panel {
         upperToolbar.addComponent(this._readOnlyBtn);
         upperToolbar.addComponent(this._upperWrapBtn);
         upperToolbar.addComponent(this._lintBtn);
+        upperToolbar.addComponent(this._dialectBtn);
         upperToolbar.addComponent(this._tabSizeBtn);
         upperToolbar.addComponent(this._lineNumbersBtn);
         upperToolbar.addComponent(this._spellcheckBtn);
@@ -187,6 +202,7 @@ class CodeEditorPanel extends Panel {
         upperToolbar.addComponent(this.makeLanguageButton('CSS', 'css', SAMPLE_CSS));
         upperToolbar.addComponent(this.makeLanguageButton('Python', 'python', SAMPLE_PYTHON));
         upperToolbar.addComponent(this.makeLanguageButton('JSON', 'json', SAMPLE_JSON));
+        upperToolbar.addComponent(this.makeLanguageButton('SQL', 'sql', SAMPLE_SQL));
         this.addComponent(upperToolbar);
 
         const editorHost = new Panel({ layoutManager: new Fit() });
@@ -263,6 +279,19 @@ class CodeEditorPanel extends Panel {
         this._lintBtn.setText(lint ? 'Lint: on' : 'Lint: off');
     }
 
+    /**
+     * Flips the "sql" language's dialect between standard and postgresql,
+     * leaving the document alone. Switches the editor to SQL if another
+     * language is active.
+     */
+    private toggleDialect(): void {
+        const current = this._editor.getLanguageOptions().dialect;
+        const next = current === 'postgresql' ? 'standard' : 'postgresql';
+
+        this._editor.setLanguage('sql', { dialect: next } satisfies SqlLanguageOptions);
+        this._dialectBtn.setText(`Dialect: ${next}`);
+    }
+
     private toggleTabSize(): void {
         // Cycles through three presets. The editor is constructed with
         // tabSize: 4, so getTabSize() is never actually null here; the ?? 4
@@ -304,6 +333,8 @@ class CodeEditorPanel extends Panel {
         button.on('action', () => {
             this._editor.setLanguage(language);
             this._editor.setValue(sample);
+            // setLanguage without options resets the dialect to standard.
+            this._dialectBtn.setText('Dialect: standard');
         });
 
         return button;

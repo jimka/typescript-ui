@@ -31,7 +31,7 @@ import {
 import { linter, lintGutter } from "@codemirror/lint";
 import { autocompletion, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { getLanguage } from "~/component/editor/LanguageRegistry.js";
-import type { FormatOptions } from "~/component/editor/LanguageRegistry.js";
+import type { FormatOptions, LanguageOptions } from "~/component/editor/LanguageRegistry.js";
 import { codeEditorTheme, REVEAL_CLASS, REVEAL_FLASH_CLASS } from "~/component/editor/theme.js";
 
 /**
@@ -178,6 +178,12 @@ export interface CodeEditorOptions extends ComponentOptions {
     value?: string;
     /** Registered language id (e.g. `"javascript"`, `"json"`, `"sql"`). Unset renders plain text. */
     language?: string;
+    /**
+     * Options for `language`, passed to its loaders. The editor never reads
+     * them; see the language's own options type (`SqlLanguageOptions` for
+     * `"sql"`). Default `{}`.
+     */
+    languageOptions?: LanguageOptions;
     /** Whether the editor rejects edits. Default `false`. */
     readOnly?: boolean;
     /**
@@ -711,6 +717,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         if (options.value    !== undefined) this._options.value    = options.value;
         if (options.language !== undefined) this._options.language = options.language;
+        if (options.languageOptions !== undefined) this._options.languageOptions = { ...options.languageOptions };
         if (options.readOnly !== undefined) this._options.readOnly = options.readOnly;
         if (options.autoHeightMaxRows !== undefined) this._options.autoHeightMaxRows = options.autoHeightMaxRows;
         if (options.autoHeightMinRows !== undefined) this._options.autoHeightMinRows = options.autoHeightMinRows;
@@ -790,58 +797,99 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
-     * Sets (or clears) the active language. Caches the id; when a view is
-     * mounted and the id names a registered language, kicks off the grammar's
-     * lazy `loadExtension()` and reconfigures the grammar compartment once it
-     * resolves — guarded against a stale resolution by re-checking the active
-     * language id, so a rapid double-swap applies only the latest. Also
-     * refreshes lint, resolving the new language's lint source (if any) and
-     * reconfiguring the lint compartment, so switching language swaps the
-     * diagnostics along with the grammar instead of leaving stale markers
-     * from the previous language.
+     * Returns a shallow copy of the active language's options, so mutating
+     * the result cannot change what the language's loaders see.
+     *
+     * @returns The options set with the language, or `{}` when none are set.
+     */
+    getLanguageOptions(): LanguageOptions {
+        return { ...(this._options.languageOptions ?? {}) };
+    }
+
+    /**
+     * Sets (or clears) the active language and its options. Caches the id and
+     * a shallow copy of `options`; omitted options mean `{}`, so switching
+     * language drops the previous language's options. When a view is
+     * mounted, every call — including a re-call with the same id — reloads
+     * the grammar through the language's lazy `loadExtension(options)` and
+     * refreshes lint, so the diagnostics follow the new grammar instead of
+     * leaving stale markers. In a rapid sequence of calls only the latest is
+     * applied: a load that resolves after a later call is dropped.
      *
      * @param id - A registered language id, or `null` to clear highlighting.
+     * @param options - Options for that language, passed to its loaders.
+     *   The editor never reads them; see the language's own options type
+     *   (`SqlLanguageOptions` for `"sql"`).
      * @returns This component, for method chaining.
      */
-    setLanguage(id: string | null): this {
-        this._options.language = id ?? undefined;
-
-        if (!this._view) {
-            return this;
-        }
-
-        this.refreshLint();
-
-        if (!id) {
-            this._view.dispatch({ effects: this._langCompartment.reconfigure([]) });
-
-            return this;
-        }
-
-        const def = getLanguage(id);
-
-        if (!def) {
-            return this;
-        }
-
-        void def.loadExtension().then((extension) => {
-            if (this._view && this.getLanguage() === id) {
-                this._view.dispatch({ effects: this._langCompartment.reconfigure(extension) });
-            }
-        });
+    setLanguage(id: string | null, options?: LanguageOptions): this {
+        this._options.language        = id ?? undefined;
+        this._options.languageOptions = { ...(options ?? {}) };
+        this.loadActiveLanguage();
 
         return this;
     }
 
     /**
+     * Applies the cached language and options to the mounted view: refreshes
+     * lint, then lazily loads the grammar and reconfigures the grammar
+     * compartment once it resolves, unless a later `setLanguage` call has
+     * made the load stale. A no-op without a view; an unregistered id leaves
+     * the current grammar in place.
+     */
+    private loadActiveLanguage(): void {
+        if (!this._view) {
+            return;
+        }
+
+        this.refreshLint();
+
+        const id = this.getLanguage();
+
+        if (!id) {
+            this._view.dispatch({ effects: this._langCompartment.reconfigure([]) });
+
+            return;
+        }
+
+        const def = getLanguage(id);
+
+        if (!def) {
+            return;
+        }
+
+        const options = this._options.languageOptions;
+
+        void def.loadExtension(options).then((extension) => {
+            if (this._view && this.isCurrentLanguageLoad(id, options)) {
+                this._view.dispatch({ effects: this._langCompartment.reconfigure(extension) });
+            }
+        });
+    }
+
+    /**
+     * Returns whether an async language load started for `id` and `options`
+     * is still current. Every `setLanguage` call stores a fresh options
+     * object, so comparing by identity makes any later call — even one with
+     * the same id and equal content — stale out earlier loads.
+     *
+     * @param id - The language id the load started for.
+     * @param options - The stored options object the load started with.
+     * @returns `true` when neither the id nor the options have been replaced.
+     */
+    private isCurrentLanguageLoad(id: string, options: LanguageOptions | undefined): boolean {
+        return this.getLanguage() === id && this._options.languageOptions === options;
+    }
+
+    /**
      * Resolves the active language's lint source (if any) and reconfigures
      * the lint compartment. Called from {@link CodeEditor.setLint} and
-     * {@link CodeEditor.setLanguage} whenever a view is mounted; a no-op
-     * otherwise (both callers already guard on `this._view`).
+     * {@link CodeEditor.loadActiveLanguage} whenever a view is mounted; a
+     * no-op otherwise (both callers already guard on `this._view`).
      *
-     * Mirrors `setLanguage`'s async stale-guard: the resolved source is only
+     * Mirrors `loadActiveLanguage`'s async stale-guard: the resolved source is only
      * applied if `this._view` still exists, {@link CodeEditor.getLint} is
-     * still `true`, and {@link CodeEditor.getLanguage} still equals the id
+     * still `true`, and the active language is still the id and options object
      * this call started for — so a rapid language or lint toggle applies only
      * the latest.
      */
@@ -859,14 +907,16 @@ class CodeEditor extends Component<CodeEditorOptions> {
         const id  = this.getLanguage();
         const def = id ? getLanguage(id) : undefined;
 
-        if (!def?.loadLintSource) {
+        if (!id || !def?.loadLintSource) {
             this._view.dispatch({ effects: this._lintCompartment.reconfigure([]) });
 
             return;
         }
 
-        void def.loadLintSource().then((source) => {
-            if (this._view && this.getLint() && this.getLanguage() === id) {
+        const options = this._options.languageOptions;
+
+        void def.loadLintSource(options).then((source) => {
+            if (this._view && this.getLint() && this.isCurrentLanguageLoad(id, options)) {
                 this._view.dispatch({
                     effects: this._lintCompartment.reconfigure([linter((view) => source(view.state)), lintGutter()]),
                 });
@@ -1415,7 +1465,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
             return;
         }
 
-        const formatter    = await def.loadFormatter();
+        const formatter    = await def.loadFormatter(this._options.languageOptions);
         const source       = this.getValue();
         const cursorOffset = this._view ? this._view.state.selection.main.head : 0;
 
@@ -2073,7 +2123,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
             this._whitespaceCompartment.of(
                 this.getHighlightWhitespace() ? [highlightWhitespace(), highlightTrailingWhitespace()] : []),
             // Left empty here rather than seeded from getLint(): an editor
-            // mounted with a language runs setLanguage(language) a few lines
+            // mounted with a language runs loadActiveLanguage() a few lines
             // below, which calls refreshLint() itself; one mounted without a
             // language has nothing to lint, so [] is already right.
             this._lintCompartment.of([]),
@@ -2211,7 +2261,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
         const language = this.getLanguage();
 
         if (language) {
-            this.setLanguage(language);
+            this.loadActiveLanguage();
         }
 
         // CM6's constructor-time initial update is not documented to
@@ -2431,7 +2481,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
         // scrollbar's presence depends on rendered content width, which can
         // change WITHOUT the shape tuple above changing — live-confirmed via
         // a block whose language grammar loads asynchronously
-        // (`setLanguage`'s `loadExtension().then(...)`, well after `mount`'s
+        // (`loadActiveLanguage`'s `loadExtension().then(...)`, well after `mount`'s
         // synchronous initial measurement): a real, visible horizontal
         // scrollbar present at that initial measurement resolved on its own
         // once highlighting settled and re-flowed the text, but the shape

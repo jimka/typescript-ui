@@ -33,6 +33,7 @@ Give the editor a sized host (a `Fit` panel, as above, or an explicit `preferred
 | --- | --- | --- | --- |
 | `value` | `string` | `""` | Initial document text. |
 | `language` | `string` | unset | A registered language id (e.g. `"javascript"`, `"sql"`). Unset renders plain text with no grammar. |
+| `languageOptions` | `LanguageOptions` | `{}` | Options for `language`, passed to its loaders — see [Language options](#language-options). |
 | `readOnly` | `boolean` | `false` | Whether the editor rejects edits. |
 | `autoHeightMaxRows` | `number` | unset | Row count the editor grows to fit before its own vertical scrollbar takes over. Unset: today's fixed-height, fill-parent behaviour, controlled via `setHeight`/`preferredSize`. |
 | `lineWrap` | `boolean` | `false` | Whether long lines wrap instead of scrolling horizontally. |
@@ -62,6 +63,40 @@ The library registers seven languages out of the box, each with a grammar and, w
 
 Both the grammar and the formatter load through a dynamic `import()` the first time they're needed — selecting a language fetches only its grammar; calling `format()` additionally fetches that language's formatter (and, for the five Prettier-backed languages, the shared Prettier standalone bundle, fetched once and reused across them). A lint source loads the same way, the first time [`lint`](#construction) is turned on for that language.
 
+### Language options
+
+`setLanguage(id, options?)` and the `languageOptions` construction option pass a settings bag (`LanguageOptions`) to that language's grammar, formatter and lint-source loaders. The editor never reads a field of the bag; each language documents the shape it accepts.
+
+Options travel with the language id. Omitted options mean `{}`, so switching language drops the previous language's options:
+
+| Call sequence | `getLanguage()` | `getLanguageOptions()` |
+| --- | --- | --- |
+| `setLanguage("sql", { dialect: "postgresql" })` | `"sql"` | `{ dialect: "postgresql" }` |
+| …then `setLanguage("json")` | `"json"` | `{}` |
+| …then `setLanguage("sql")` | `"sql"` | `{}` (dialect is `"standard"` again) |
+| `setLanguage(null)` | `null` | `{}` |
+
+On a mounted editor, every `setLanguage` call — including a re-call with the same id and new options — reloads the grammar and refreshes lint, so diagnostics follow the new options without waiting for an edit.
+
+The built-in `sql` language reads `SqlLanguageOptions`:
+
+| `dialect` | Grammar (highlighting, completion, lint) | `format()` engine |
+| --- | --- | --- |
+| `"standard"` (default) | `@codemirror/lang-sql`'s `StandardSQL` | `sql-formatter`'s `"sql"` |
+| `"postgresql"` | `@codemirror/lang-sql`'s `PostgreSQL` | `sql-formatter`'s `"postgresql"` |
+
+An unrecognised `dialect` value falls back to `"standard"`, silently. Under `"standard"`, PostgreSQL's `@>` and `<@` operators and dollar-quoted strings (`$$ … $$`, `$tag$ … $tag$`) are reported as syntax errors and `format()` rejects them; under `"postgresql"` they parse and format cleanly.
+
+```typescript
+import { CodeEditor } from '@jimka/typescript-ui/component/editor';
+import type { SqlLanguageOptions } from '@jimka/typescript-ui/component/editor';
+
+editor.setLanguage('sql', { dialect: 'postgresql' } satisfies SqlLanguageOptions);
+new CodeEditor(text, { language: 'sql', languageOptions: { dialect: 'postgresql' }, lint: true });
+```
+
+Write `satisfies SqlLanguageOptions` at the call site: the bag itself is untyped, so that is what catches a typo such as `'postgres'` at compile time.
+
 ### Registering a language
 
 Register a new language with `registerLanguage` before constructing an editor that uses it:
@@ -82,6 +117,8 @@ registerLanguage({
     loadLintSource: async () => collectSyntaxErrors,
 });
 ```
+
+Each loader is called with the language's [options](#language-options) — the bag passed to `setLanguage` or `languageOptions` — and must not mutate it. A custom language that reads options declares its options type with `type`, not `interface`, so a variable of that type can be passed as `LanguageOptions`, and ignores fields it does not recognise. A loader that takes no argument, as above, keeps working.
 
 `getLanguage(id)` looks up a registration; `listLanguages()` lists every registered definition.
 
@@ -284,7 +321,8 @@ Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / P
 | Method | Purpose |
 | --- | --- |
 | `getValue()` / `setValue(value)` | Read or replace the whole document. |
-| `getLanguage()` / `setLanguage(id)` | Read or swap the active language (grammar loads lazily). |
+| `getLanguage()` / `setLanguage(id, options?)` | Read or swap the active language and its options (grammar loads lazily; omitted options reset to `{}`). |
+| `getLanguageOptions()` | Read a copy of the active language's options. |
 | `getReadOnly()` / `setReadOnly(readOnly)` | Read or toggle whether the editor accepts edits. |
 | `format(options?)` | Format the document (or re-indent, with no formatter). |
 | `on('change', fn)` / `off('change', fn)` | Subscribe to document changes. |
@@ -313,7 +351,7 @@ The editor's chrome (background, gutters, cursor, selection) reads the project's
 
 ## Linting
 
-Turning on [`lint`](#construction) shows diagnostics from the active language's lint source, when it has one (see the [built-in languages table](#built-in-languages) above). The built-in sources are all syntax-only — `collectSyntaxErrors`, exported from `component/editor`, walks the grammar's own parse tree for error nodes and reports each as an `"error"` diagnostic; it knows nothing about names, types, or other files. Switching language while lint is on swaps the diagnostics along with the grammar. A custom language wires this up the same way any other `LanguageDefinition` field does — see [Registering a language](#registering-a-language).
+Turning on [`lint`](#construction) shows diagnostics from the active language's lint source, when it has one (see the [built-in languages table](#built-in-languages) above). The built-in sources are all syntax-only — `collectSyntaxErrors`, exported from `component/editor`, walks the grammar's own parse tree for error nodes and reports each as an `"error"` diagnostic; it knows nothing about names, types, or other files. Switching language while lint is on swaps the diagnostics along with the grammar. SQL diagnostics follow the dialect set in the [language options](#language-options). A custom language wires this up the same way any other `LanguageDefinition` field does — see [Registering a language](#registering-a-language).
 
 ## Spellcheck
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import type { FormatOptionsWithLanguage } from "sql-formatter";
+import type { FormatOptionsWithLanguage, SqlLanguage } from "sql-formatter";
 import { mapFormatOptions } from "~/component/editor/formatters/options.js";
 import type { FormatOptionNames } from "~/component/editor/formatters/options.js";
 import type { FormatOptions, Formatter } from "~/component/editor/LanguageRegistry.js";
@@ -21,20 +21,30 @@ const SQL_OPTION_NAMES: FormatOptionNames = {
 };
 
 /**
- * SQL formatter adapter backed by `sql-formatter`, dynamically imported on
- * first call so it never lands in the base editor chunk.
+ * Builds a SQL {@link Formatter} backed by `sql-formatter` for a given
+ * `sql-formatter` language. `sql-formatter` is dynamically imported on first
+ * call, so it never lands in the base editor chunk.
  *
  * Unlike Prettier's `formatWithCursor`, `sql-formatter` has no cursor-mapping
  * API, so the old cursor offset is clamped to the formatted document's length
  * rather than mapped to its logically-equivalent position.
+ *
+ * @param language - The `sql-formatter` language (e.g. `"sql"`,
+ *   `"postgresql"`).
+ * @returns A {@link Formatter} that formats through `sql-formatter`'s
+ *   `format` with that language.
  */
-export const formatWithSql: Formatter = async (
-    source: string,
-    cursorOffset: number,
-    options?: FormatOptions,
-) => {
-    const { format } = await import("sql-formatter");
-    const formatted = format(source, mapFormatOptions<FormatOptionsWithLanguage>(options, SQL_OPTION_NAMES));
+export function formatWithSql(language: SqlLanguage): Formatter {
+    return async (source: string, cursorOffset: number, options?: FormatOptions) => {
+        const { format } = await import("sql-formatter");
 
-    return { formatted, cursorOffset: Math.min(cursorOffset, formatted.length) };
-};
+        // The mapped style options go first, so `language` — the one the
+        // adapter owns — cannot be displaced.
+        const formatted = format(source, {
+            ...mapFormatOptions<FormatOptionsWithLanguage>(options, SQL_OPTION_NAMES),
+            language,
+        });
+
+        return { formatted, cursorOffset: Math.min(cursorOffset, formatted.length) };
+    };
+}
