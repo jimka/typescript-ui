@@ -25,6 +25,7 @@ import { Link } from '~/component/input/Link';
 import { SelectableText } from '~/component/input/SelectableText';
 import { MenuItem } from '~/component/container/MenuItem';
 import { MenuBarButton } from '~/component/menubar/MenuBarButton';
+import { SplitButton } from '~/component/button/SplitButton';
 import { CollapseButton } from '~/component/container/CollapseButton';
 import { ChartLegend } from '~/component/chart/ChartLegend';
 import { LineChart } from '~/component/chart/LineChart';
@@ -63,6 +64,9 @@ const REGISTRY: Array<{
     { name: 'MenuItem',       covers: ['MenuItem'],       make: () => new MenuItem({ text: 'A' }, () => {}, () => {}) },
     { name: 'MenuBarButton',  covers: ['MenuBarButton'],  make: () => new MenuBarButton('File', () => {}, () => {}) },
     { name: 'CollapseButton', covers: ['CollapseButton'], make: () => new CollapseButton() },
+    // Its own keydown/keyup listeners on the button, plus the chevron's
+    // subtree click listener, which the base-class recursion reaches.
+    { name: 'SplitButton',    covers: ['SplitButton'],    make: () => new SplitButton('Save') },
     { name: 'ChartLegend',    covers: ['ChartLegend'],    make: () => new ChartLegend() },
     { name: 'AbstractChart (via LineChart)', covers: ['AbstractChart'], make: () => new LineChart({}) },
     {
