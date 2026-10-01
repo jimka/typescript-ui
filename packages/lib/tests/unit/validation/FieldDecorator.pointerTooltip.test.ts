@@ -63,10 +63,11 @@ const CURSOR_PX        = 10;
 // The listeners one error attachment registers on the decorator's subtree:
 // `mouseover`, `mouseout` and `mousedown`.
 const HOVER_LISTENERS  = 3;
-// The viewport listeners the shared pointer watch installs: a `mousemove` that
-// records the pointer's position, a `mouseout` that forgets it once the pointer
-// leaves the window, and a `keydown` that lifts a press's arming suppression.
-const WATCH_LISTENERS  = 3;
+// The viewport listeners the shared pointer watch installs: a `mousemove` and a
+// `pointerover` that record the pointer's position, a `mouseout` that forgets it
+// once the pointer leaves the window, and a `keydown` that lifts a press's
+// arming suppression.
+const WATCH_LISTENERS  = 4;
 
 const ERROR         = 'Too long';
 const HINT          = 'What goes here';

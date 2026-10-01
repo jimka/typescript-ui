@@ -17,6 +17,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { Component } from '~/core/Component';
 import { DOM, type Handle } from '~/core/DOM';
+import { Event } from '~/core/Event';
 import { Tooltip } from '~/overlay/Tooltip';
 import { installTestDOM, makeEvent, setConnected } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -357,5 +358,31 @@ describe('Tooltip.attach — arming under a pointer that is already resting', ()
 
         expect((Tooltip as any).dismissing).toBe(true);
         expect((Tooltip as any).activeElement).toBe(null);
+    });
+
+    it('9. a changed attach made from the mouseover of the host just entered does not arm the host just left', () => {
+        const { outer, inner, outerEl, innerEl } = nestedHosts();
+
+        // The `MenuBar` quick-switch: the hover that opens one menu closes the
+        // other, whose button re-attaches its tooltip from inside that same
+        // `mouseover` dispatch. `outer` is then re-attached, as a menu button is
+        // each time its own menu closes, which queues its tooltip listener
+        // behind the switching one.
+        Event.addListener(outer, 'mouseover', () => { Tooltip.attach(inner, INNER_CHANGED); });
+        Tooltip.attach(outer, OUTER_CHANGED);
+
+        move(innerEl, ON_INNER.x, ON_INNER.y);
+
+        // The browser raises `pointerover` ahead of the compatibility
+        // `mouseover` of the same move, with no `mousemove` between them.
+        pointer('pointerout',  innerEl, outerEl);
+        pointer('pointerover', outerEl, innerEl);
+        cross(innerEl, outerEl);
+
+        expect((Tooltip as any).pendingId).toBe(outer.getId());
+
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+
+        expect(shownTexts()).toEqual([OUTER_CHANGED]);
     });
 });

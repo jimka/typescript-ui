@@ -166,7 +166,7 @@ export class Tooltip extends Component {
     // press nobody follows up can never hold back anything else.
     private static pressSuppressedId: string | null = null;
 
-    // Owner of the three viewport listeners that keep the state above honest,
+    // Owner of the four viewport listeners that keep the state above honest,
     // and whether they are installed. Installed with the first attachment and
     // kept for the rest of the session. Distinct from `watching`, the anchor
     // watch installed only while a tooltip is on screen.
@@ -179,8 +179,17 @@ export class Tooltip extends Component {
 
     /**
      * Records the pointer's viewport position. Installed as the viewport
-     * `mousemove` watch, and called by every attachment's own `mouseover` so a
-     * hover that arrives before any move still leaves a position behind.
+     * `mousemove` and `pointerover` watches, and called by every attachment's
+     * own `mouseover` so a hover that arrives before any move still leaves a
+     * position behind.
+     *
+     * The `pointerover` watch is what keeps the target current for the
+     * `mouseover` that follows it: the browser raises the pointer event first,
+     * and no `mousemove` lands between the two. Without it a listener that runs
+     * during that `mouseover` ahead of the attachment's own — a menu bar
+     * switching menus on hover, which re-attaches the tooltip of the button the
+     * pointer just left — would still find the pointer recorded over that
+     * button and arm its tooltip there.
      */
     private static readonly _recordPointer = (e: MouseEvent): void => {
         Tooltip.pointerX      = e.clientX;
@@ -747,10 +756,11 @@ export class Tooltip extends Component {
     }
 
     /**
-     * Installs the three viewport listeners that keep the state above honest —
-     * a `mousemove` that records where the pointer is, a `mouseout` that forgets
-     * it when the pointer leaves the window, and a `keydown` that lifts a
-     * press's arming suppression — unless they are already installed. Called as
+     * Installs the four viewport listeners that keep the state above honest —
+     * a `mousemove` and a `pointerover` that record where the pointer is (see
+     * `_recordPointer` for why both), a `mouseout` that forgets it when the
+     * pointer leaves the window, and a `keydown` that lifts a press's arming
+     * suppression — unless they are already installed. Called as
      * an attachment is recorded, and nothing removes them afterwards: a position
      * recorded before a gap with no attachments and trusted after it would arm a
      * tooltip over a component the pointer had since left, and re-installing the
@@ -762,9 +772,10 @@ export class Tooltip extends Component {
             return;
         }
 
-        Event.addViewportListener(Tooltip.pointerWatchOwner, "mousemove", Tooltip._recordPointer);
-        Event.addViewportListener(Tooltip.pointerWatchOwner, "mouseout",  Tooltip._forgetPointerOnLeave);
-        Event.addViewportListener(Tooltip.pointerWatchOwner, "keydown",   Tooltip._clearPressSuppression);
+        Event.addViewportListener(Tooltip.pointerWatchOwner, "mousemove",   Tooltip._recordPointer);
+        Event.addViewportListener(Tooltip.pointerWatchOwner, "pointerover", Tooltip._recordPointer);
+        Event.addViewportListener(Tooltip.pointerWatchOwner, "mouseout",    Tooltip._forgetPointerOnLeave);
+        Event.addViewportListener(Tooltip.pointerWatchOwner, "keydown",     Tooltip._clearPressSuppression);
 
         Tooltip.pointerWatching = true;
     }
@@ -783,9 +794,10 @@ export class Tooltip extends Component {
             return;
         }
 
-        Event.removeViewportListener(Tooltip.pointerWatchOwner, "mousemove", Tooltip._recordPointer);
-        Event.removeViewportListener(Tooltip.pointerWatchOwner, "mouseout",  Tooltip._forgetPointerOnLeave);
-        Event.removeViewportListener(Tooltip.pointerWatchOwner, "keydown",   Tooltip._clearPressSuppression);
+        Event.removeViewportListener(Tooltip.pointerWatchOwner, "mousemove",   Tooltip._recordPointer);
+        Event.removeViewportListener(Tooltip.pointerWatchOwner, "pointerover", Tooltip._recordPointer);
+        Event.removeViewportListener(Tooltip.pointerWatchOwner, "mouseout",    Tooltip._forgetPointerOnLeave);
+        Event.removeViewportListener(Tooltip.pointerWatchOwner, "keydown",     Tooltip._clearPressSuppression);
 
         Tooltip.pointerWatching   = false;
         Tooltip.pointerTarget     = null;
