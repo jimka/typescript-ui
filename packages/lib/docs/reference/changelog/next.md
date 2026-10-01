@@ -302,3 +302,13 @@ page resets to empty.
   open, its backdrop sat under or tied with the drawer, which then took clicks
   and focus. A dialog now always stacks in the Dialog band. No consumer action
   is needed.
+
+- **A `Dialog` whose opener is disposed while it is open now closes cleanly
+  and resolves `show()`.** On close, a dialog returns focus to the element
+  that had it when the dialog opened. If that element had been disposed in
+  the meantime — a button in a tab the dialog's own action closed, say — the
+  restore threw `DOM handle <n> is not registered`, and the promise `show()`
+  returned never resolved, so code after the `await`, a `finally` included,
+  never ran. The dialog now skips the restore when that element is gone or
+  no longer on the page, leaving focus on the page, and resolves `show()`
+  even if restoring focus fails. No consumer action is needed.

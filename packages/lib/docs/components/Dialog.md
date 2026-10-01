@@ -148,6 +148,10 @@ While a dialog is open, `Tab` and `Shift+Tab` are trapped inside it: tabbing
 past the last control wraps to the first, and shift-tabbing off the first wraps
 to the last, so focus cannot reach the page behind the dialog.
 
+When the dialog closes, focus returns to the element that had it when the
+dialog opened. If that element was disposed or removed from the page while
+the dialog was open, focus stays on the page instead.
+
 An editing surface or a [`Table`](/components/Table) hosted in the dialog
 keeps `Tab` while focus is inside it — the editor indents, the table steps from
 cell to cell — and the dialog's trap stands down rather than wrapping focus out
