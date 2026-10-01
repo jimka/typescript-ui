@@ -27,20 +27,21 @@ The wash colour reads `--ts-ui-tab-busy-color`, falling back to the strip's `--t
 
 ## Modified indicator
 
-[`setModified(true)`](/api/component/button/classes/TabButton#setmodified) shows a small filled dot trailing the label, marking unsaved changes; [`isModified()`](/api/component/button/classes/TabButton#ismodified) reports the current state.
+[`setModified(true)`](/api/component/button/classes/TabButton#setmodified) shows a small filled dot over the upper-left corner of the tab's leading glyph — or of the label, on a tab with no glyph — marking unsaved changes; [`isModified()`](/api/component/button/classes/TabButton#ismodified) reports the current state.
 
 ```typescript
 tab.setModified(true);   // show the dot
 tab.setModified(false);  // hide it
 ```
 
-Unlike the busy wash, the dot is a real content-row child, not an overlay — it rides beside the label the way the leading identity glyph does, so only the label truncates when the tab narrows and the dot is never clipped away. Its colour reads `--ts-ui-tab-indicator-color`, the same accent the strip's active-tab underline and the busy wash's fallback already use.
+Like the busy wash, the dot is an overlay rather than a content-row child, so showing it never moves the label or resizes the tab. Its colour reads `--ts-ui-tab-indicator-color`, the same accent the strip's active-tab underline and the busy wash's fallback use. While shown, the button also carries `aria-description="Modified"`, so screen readers announce the state along with the tab's name.
 
 ## Notes
 
 - Extends `ToggleButton`, so it slots into a `ButtonGroup` and a roving tab index unchanged and exposes the inherited `setSelected` / `isSelected` selection state.
 - `closeable` is construction-time only: the close button is built (or not) when the tab is created. There is no runtime `setCloseable`.
 - The close button is overlaid on the tab button's own element rather than laid out as a sibling; `TabBar` positions and re-pins it on each layout pass via [`getCloseButton`](/api/component/button/classes/TabButton#getclosebutton).
+- The modified badge is overlaid the same way: `TabBar` re-pins it on each layout pass, like the close button, so it follows the leading glyph (or the label) as the tab's insets change.
 - Relocates only the `--ts-ui-tab-button-*` and `--ts-ui-tab-close-hover-bg` token *references* — it defines no new theme tokens.
 
 ## See also

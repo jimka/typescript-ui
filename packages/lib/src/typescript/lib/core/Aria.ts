@@ -772,6 +772,48 @@ export class Aria {
     }
 
     /**
+     * Sets `aria-description`, giving supplementary text that assistive
+     * technology reads after the element's accessible name and role.
+     *
+     * @param value - The description text.
+     */
+    setDescription(value: string): this {
+        this.setAttribute("description", value);
+
+        return this;
+    }
+
+    /**
+     * Returns the current `aria-description` value, or null if not set.
+     *
+     * @returns The description text, or null.
+     */
+    getDescription(): string | null {
+        return this._attributes.get("description") ?? null;
+    }
+
+    /**
+     * Removes `aria-description`, clearing any description previously set with
+     * {@link setDescription}. The null companion to `setDescription` — distinct
+     * from `setDescription("")`, which would leave an empty `aria-description`
+     * on the element rather than remove it.
+     *
+     * @returns This Aria helper, for method chaining.
+     */
+    clearDescription(): this {
+        // The clear-side twin of `setAttribute`'s own guard: with no cached
+        // entry there is no `aria-description` on the element to remove.
+        if (!this._attributes.has("description")) {
+            return this;
+        }
+
+        this._attributes.delete("description");
+        this._component.applyAriaAttribute("aria-description", null);
+
+        return this;
+    }
+
+    /**
      * Sets `aria-orientation`, indicating whether a composite widget (toolbar,
      * separator, scrollbar, slider, tablist) is laid out horizontally or
      * vertically.

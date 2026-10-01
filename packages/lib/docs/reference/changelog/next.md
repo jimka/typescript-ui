@@ -148,6 +148,11 @@ page resets to empty.
   scrollbars — for an owner whose content changed between renders and must
   scroll against the new height before its next one.
 
+- **A modified tab is announced to assistive technology.** While
+  `Tab.setTabModified` (or `TabButton.setModified`) marks a tab, its
+  button carries `aria-description="Modified"`, so a screen reader
+  reports the unsaved state along with the tab's name.
+
 ### Core
 
 - **`LayerManager.Band` gains `Drawer`** (8950, between the `Rail`'s fixed
@@ -164,6 +169,10 @@ page resets to empty.
   layer stays open and `LayerManager` leaves the `Escape` that triggered the
   request unhandled, so it reaches the focused content. Any other return,
   including none, counts as handled, as before.
+
+- **`Aria` gains `setDescription` / `getDescription` / `clearDescription`**
+  for `aria-description`, mirroring the `setLabel` / `getLabel` /
+  `clearLabel` trio.
 
 ### Data
 
@@ -248,6 +257,14 @@ page resets to empty.
   there. The button now declares `aria-haspopup="menu"`, keeps
   `aria-expanded` in step and names the menu in `aria-controls`. No consumer
   action is needed.
+
+- **A modified tab without a glyph now shows its "unsaved changes" dot.**
+  The dot was drawn only as a badge over a tab's leading glyph, so
+  `Tab.setTabModified(content, true)` on a glyph-less tab showed nothing.
+  On such a tab the dot now sits over the label's upper-left corner,
+  still as an overlay that never moves the label. The 0.10.0 notes
+  described this dot as trailing the label; since 0.10.0 it has been a
+  badge on the glyph's corner.
 
 ### Core
 

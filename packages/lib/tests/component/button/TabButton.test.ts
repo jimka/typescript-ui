@@ -191,6 +191,18 @@ describe('TabButton modified indicator', () => {
         return (btn as unknown as { _modifiedGlyph: PositionedComponent | null })._modifiedGlyph;
     }
 
+    /** The content row's leading item — the label on a glyph-less tab. */
+    function leadingItem(btn: TabButton): PositionedComponent {
+        return contentRow(btn).getComponents()[0] as PositionedComponent;
+    }
+
+    /** Whether TabButton's private `_modifiedGlyph` badge is visible; `false` before the first `setModified(true)` builds one. */
+    function badgeVisible(btn: TabButton): boolean {
+        const badge = (btn as unknown as { _modifiedGlyph: { isVisible(): boolean } | null })._modifiedGlyph;
+
+        return badge !== null && badge.isVisible();
+    }
+
     it('defaults to not modified, with no badge appended to its element and the content row untouched', () => {
         const btn = new TabButton('Home');
         const el  = btn.getElement(true)!;
@@ -283,10 +295,124 @@ describe('TabButton modified indicator', () => {
         expect(badge.getY()).toBe(Math.round(4 + 6 - dotSize / 2));
     });
 
-    it('positionModifiedBadge no-ops when the tab is not modified or carries no glyph', () => {
-        const btn = new TabButton('Home'); // no glyph, not modified
+    it("positionModifiedBadge shows the badge on a glyph-less tab, centred on the label's corner", () => {
+        const btn = new TabButton('Home'); // no glyph
 
-        expect(() => btn.positionModifiedBadge()).not.toThrow();
+        btn.setModified(true);
+
+        contentRow(btn).setX(10);
+        contentRow(btn).setY(4);
+
+        // The label sits below the row's origin by the row's optical top inset.
+        leadingItem(btn).setX(0);
+        leadingItem(btn).setY(2);
+
+        btn.positionModifiedBadge();
+
+        const badge = badgeOf(btn)!;
+        const dotSize = badge.getWidth();
+
+        expect(badgeVisible(btn)).toBe(true);
+        expect(badge.getX()).toBe(Math.round(10 - dotSize / 2));
+        expect(badge.getY()).toBe(Math.round(4 + 2 - dotSize / 2));
+    });
+
+    it('positionModifiedBadge moves the badge onto a glyph gained while modified', () => {
+        const btn = new TabButton('Home');
+
+        btn.setModified(true);
+        btn.setGlyph('xmark');
+
+        contentRow(btn).setX(10);
+        contentRow(btn).setY(4);
+
+        const glyph = btn.getGlyph()! as unknown as PositionedComponent;
+
+        glyph.setX(0);
+        glyph.setY(6);
+
+        btn.positionModifiedBadge();
+
+        const badge = badgeOf(btn)!;
+        const dotSize = badge.getWidth();
+
+        expect(badgeVisible(btn)).toBe(true);
+        expect(badge.getX()).toBe(Math.round(10 - dotSize / 2));
+        expect(badge.getY()).toBe(Math.round(10 - dotSize / 2));
+    });
+
+    it("positionModifiedBadge keeps the badge shown at the label's corner once the glyph is cleared", () => {
+        const btn = new TabButton('Home', { glyph: 'xmark' });
+
+        btn.setModified(true);
+        btn.clearGlyph();
+
+        contentRow(btn).setX(10);
+        contentRow(btn).setY(4);
+        leadingItem(btn).setX(0);
+        leadingItem(btn).setY(2);
+
+        btn.positionModifiedBadge();
+
+        const badge = badgeOf(btn)!;
+        const dotSize = badge.getWidth();
+
+        expect(badgeVisible(btn)).toBe(true);
+        expect(badge.getX()).toBe(Math.round(10 - dotSize / 2));
+        expect(badge.getY()).toBe(Math.round(4 + 2 - dotSize / 2));
+    });
+
+    it('positionModifiedBadge hides the badge once the tab is no longer modified, and builds none on a never-modified tab', () => {
+        const btn = new TabButton('Home'); // no glyph
+
+        btn.setModified(true);
+        btn.setModified(false);
+        btn.positionModifiedBadge();
+
+        expect(badgeVisible(btn)).toBe(false);
+
+        const untouched = new TabButton('Home'); // no glyph, never modified
+
+        expect(() => untouched.positionModifiedBadge()).not.toThrow();
+        expect(badgeOf(untouched)).toBe(null);
+    });
+
+    it('a fresh tab carries no aria-description', () => {
+        const btn = new TabButton('Home');
+
+        expect(btn.getAria().getDescription()).toBe(null);
+    });
+
+    it('setModified writes aria-description "Modified" while marked and clears it when not', () => {
+        const btn = new TabButton('Home', { glyph: 'xmark' });
+
+        btn.setModified(true);
+
+        expect(btn.getAria().getDescription()).toBe('Modified');
+
+        btn.setModified(false);
+
+        expect(btn.getAria().getDescription()).toBe(null);
+
+        btn.setModified(true);
+
+        expect(btn.getAria().getDescription()).toBe('Modified');
+    });
+
+    it('a glyph-less tab carries the same aria-description cue', () => {
+        const btn = new TabButton('Home'); // no glyph
+
+        btn.setModified(true);
+
+        expect(btn.getAria().getDescription()).toBe('Modified');
+
+        btn.setModified(false);
+
+        expect(btn.getAria().getDescription()).toBe(null);
+
+        btn.setModified(true);
+
+        expect(btn.getAria().getDescription()).toBe('Modified');
     });
 });
 

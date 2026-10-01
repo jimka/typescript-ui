@@ -322,3 +322,45 @@ From `packages/lib`:
 [^i18n]: Hard-coded English accessible strings the library already ships: `ProgressSpinner` (`"Loading"`), `ToolBar`'s overflow trigger (`"More"`), `MenuBar` (`"Main menu"`), `Notification`'s close button (`"Dismiss notification"`), `NotificationHistoryButton` (`"Notification history"`). `"Modified"` matches the API's own name for the state (`setModified`, `setTabModified`).
 
 [^aria-shape]: `setLabel` / `clearLabel` fit better than `setHidden(value | null)`'s single-setter shape: `aria-description` is free text like `aria-label`, and `clearLabel`'s JSDoc already explains why a null companion is better than `setX("")`. Giving the two free-text attributes the same three-method shape keeps `Aria` consistent.
+
+---
+
+## Implementation Notes
+
+- **Two code commits, not one.** The glyph-less placement fix and the
+  accessible cue are independent (each would make sense on its own branch),
+  so they ship as two code commits with a documentation commit each. The
+  `Aria` description trio rides with the accessible cue, which is the only
+  thing that needs it. `setTabModified`'s JSDoc edit is split the same way:
+  the placement sentence with the fix, the `aria-description` sentence with
+  the cue. The split changes only how the work is committed; the one code
+  deviation is the next note.
+- **Glyph-less anchor reads the label live.** The plan's *Implementation*
+  snippet anchored a glyph-less badge at `_content`'s own origin, on the claim
+  (*Critical Files*, `Button.ts:1626`) that the origin is the label's corner.
+  It is not: `Button._rebuildContentRow` gives a single-line horizontal label
+  an optical-centring top inset (`Util.opticalCenterOffset()`), so the label
+  sits a pixel or two below `_content`'s origin. The audit caught this.
+  `positionModifiedBadge` now reads the leading item live, as the glyph branch
+  already did: the glyph, else `_content`'s first child (the label, or the
+  title column when the tab has a description). T1 and T3 place that child
+  by hand as well, so the stated contract — the dot on the label's corner —
+  is what they pin. The method's JSDoc opening and `@remarks` were rewritten
+  to match, dropping the stale "`_content` sets its own insets to zero".
+- **Manual verification (library dev server, Chromium).** M1: on the
+  glyph-less "Beta" tab, *Toggle Modified* drew the dot centred on the
+  label's upper-left corner (label at (18, 9), badge at (14, 5), 8 px,
+  re-measured after the live-anchor fix above);
+  the tab kept its width and the label did not move; toggling again hid the
+  dot. On "Alpha" the dot stayed centred on the star's corner. M2: in the
+  compact strip the dot stayed inside the tab (badge top at y = 1) with the
+  first letter legible. On a west strip the dot behaved the same with
+  horizontal tabs, and with `vertical-cw` and `vertical-ccw` tabs it stayed
+  inside the tab, centred on the leading item's corner, with the label
+  legible. One thing for review: the anchor is the item's *physical*
+  upper-left corner, as it already was for a glyph. On a `vertical-cw` tab
+  that is the label's reading start, but on a glyph-less `vertical-ccw` tab
+  (text read bottom to top) it is the label's reading end, so the dot sits
+  at the far end of the name rather than beside its first letter. Left as
+  the plan specifies, without an offset or a per-orientation rule. M3: the accessibility tree reported `description="Modified"` on
+  the marked tabs, and the attribute was absent once toggled clean.

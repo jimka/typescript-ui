@@ -2921,9 +2921,10 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Re-pins every modified tab's badge to its leading glyph's current
-     * corner. Cheap to call unconditionally each layout pass — `TabButton`
-     * itself no-ops for a tab that isn't modified or carries no glyph.
+     * Re-pins every modified tab's badge to the upper-left corner of its
+     * leading glyph, or of its label when it has no glyph. Cheap to call
+     * unconditionally each layout pass — `TabButton` itself no-ops for a tab
+     * that isn't modified.
      */
     private positionModifiedBadges(): void {
         for (const entry of this._entries) {
