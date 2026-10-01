@@ -1,13 +1,13 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { _Dialog as Dialog, DialogButtons, DialogTitleBar } from '~/overlay/Dialog';
-import type { DialogButtonConfig, DialogConfig } from '~/overlay/Dialog';
+import type { DialogButtonConfig, DialogConfig, DialogResult } from '~/overlay/Dialog';
 import { LayerManager } from '~/core/LayerManager';
 import { DOM, type Handle } from '~/core/DOM';
 import { Component } from '~/core/Component';
 import { _Button as Button } from '~/component/button/Button';
 import { _DialogBackdrop as DialogBackdrop } from '~/component/container/DialogBackdrop';
 import { FOCUSABLE_SELECTOR } from '~/core/Focusable';
-import { installTestDOM, setQuerySelectorAllResult } from '../dom/TestDOM';
+import { installTestDOM, setConnected, setQuerySelectorAllResult } from '../dom/TestDOM';
 import { Diagnostics } from '~/core/Diagnostics';
 import { _ruleCacheKeys } from '~/core/StyleTarget';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -1227,6 +1227,159 @@ describe('Dialog — hide under reduced motion', () => {
 
         expect(releaseIndex).toBeGreaterThan(-1);
         expect(recorder.writes.slice(releaseIndex).some(w => w.op === 'apply' && w.args[0] === backdropHandle)).toBe(false);
+    });
+});
+
+describe('Dialog — focus restore on close', () => {
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    // Models production's `resolve` failure for a released handle: the
+    // modelled `DOM.sink.focus` just records the handle and never resolves
+    // it, so without this spy the unfixed code would not throw here and case
+    // 2 would pass against the bug it is meant to catch.
+    function installThrowingFocusSpy(): ReturnType<typeof vi.spyOn> {
+        return vi.spyOn(DOM.sink, 'focus').mockImplementation((handle) => {
+            const registered = DOM.source.isRegistered(handle);
+
+            if (!registered) {
+                throw new Error(`DOM handle ${handle} is not registered`);
+            }
+        });
+    }
+
+    it('1. a live opener is refocused and the promise resolves', async () => {
+        installTestDOM(CONFIG);
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
+
+        const opener   = new Button({ text: 'Open' });
+        const openerEl = opener.getElement(true)!;
+        setConnected(openerEl, true);
+        DOM.sink.focus(openerEl);
+
+        const focus = installThrowingFocusSpy();
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+        const promise = dialog.show();
+        let settled: DialogResult | null = null;
+        void promise.then(r => { settled = r; });
+
+        dialog.hide('confirm');
+        await Promise.resolve();
+
+        expect(focus).toHaveBeenCalledTimes(1);
+        expect(focus).toHaveBeenCalledWith(openerEl);
+        expect(settled).toBe('confirm');
+    });
+
+    it('2. a disposed opener (released handle) is not refocused and hide does not strand the promise', async () => {
+        installTestDOM(CONFIG);
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
+
+        const opener   = new Button({ text: 'Open' });
+        const openerEl = opener.getElement(true)!;
+        setConnected(openerEl, true);
+        DOM.sink.focus(openerEl);
+
+        const focus = installThrowingFocusSpy();
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+        const promise = dialog.show();
+        let settled: DialogResult | null = null;
+        void promise.then(r => { settled = r; });
+
+        opener.dispose();
+
+        expect(() => dialog.hide('confirm')).not.toThrow();
+
+        await Promise.resolve();
+
+        expect(focus).not.toHaveBeenCalled();
+        expect(settled).toBe('confirm');
+    });
+
+    it('3. a detached opener (still registered, not connected) is not refocused', async () => {
+        installTestDOM(CONFIG);
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
+
+        const opener   = new Button({ text: 'Open' });
+        const openerEl = opener.getElement(true)!;
+        setConnected(openerEl, true);
+        DOM.sink.focus(openerEl);
+
+        const focus = installThrowingFocusSpy();
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+        const promise = dialog.show();
+        let settled: DialogResult | null = null;
+        void promise.then(r => { settled = r; });
+
+        setConnected(openerEl, false);
+
+        dialog.hide('cancel');
+        await Promise.resolve();
+
+        expect(focus).not.toHaveBeenCalled();
+        expect(settled).toBe('cancel');
+    });
+
+    it('4. nothing focused at open is not refocused', async () => {
+        installTestDOM(CONFIG);
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
+
+        const focus = installThrowingFocusSpy();
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+        const promise = dialog.show();
+        let settled: DialogResult | null = null;
+        void promise.then(r => { settled = r; });
+
+        dialog.hide('confirm');
+        await Promise.resolve();
+
+        expect(focus).not.toHaveBeenCalled();
+        expect(settled).toBe('confirm');
+    });
+
+    it('5. a restore that still throws for another reason stays visible, but the promise still resolves', async () => {
+        installTestDOM(CONFIG);
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
+
+        const opener   = new Button({ text: 'Open' });
+        const openerEl = opener.getElement(true)!;
+        setConnected(openerEl, true);
+        DOM.sink.focus(openerEl);
+
+        vi.spyOn(DOM.sink, 'focus').mockImplementation(() => { throw new Error('boom'); });
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+        const promise = dialog.show();
+        let settled: DialogResult | null = null;
+        void promise.then(r => { settled = r; });
+
+        expect(() => dialog.hide('confirm')).toThrow('boom');
+        await Promise.resolve();
+
+        expect(settled).toBe('confirm');
+    });
+
+    it('6. the stored handle is cleared after hide', async () => {
+        installTestDOM(CONFIG);
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
+
+        const opener   = new Button({ text: 'Open' });
+        const openerEl = opener.getElement(true)!;
+        setConnected(openerEl, true);
+        DOM.sink.focus(openerEl);
+
+        installThrowingFocusSpy();
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+        void dialog.show();
+
+        dialog.hide('confirm');
+        await Promise.resolve();
+
+        expect((dialog as any)._previousFocus).toBeNull();
     });
 });
 

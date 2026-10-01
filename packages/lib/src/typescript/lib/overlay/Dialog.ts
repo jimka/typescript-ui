@@ -1391,8 +1391,10 @@ class Dialog extends Component implements DismissableLayer {
     }
 
     /**
-     * Dismisses the dialog with a brief fade-and-scale animation, restores
-     * focus, and resolves the promise.
+     * Dismisses the dialog with a brief fade-and-scale animation, returns
+     * focus to the element that had it when the dialog opened (unless that
+     * element has since been disposed or removed from the page), and
+     * resolves the promise — even if restoring focus fails.
      *
      * @param result - The result to resolve the promise with.
      *
@@ -1414,13 +1416,13 @@ class Dialog extends Component implements DismissableLayer {
             LayerManager.unregister(this);
             untrapWheel(this);
 
-            if (this._previousFocus !== null) {
-                DOM.sink.focus(this._previousFocus);
-            }
-
-            if (this._resolvePromise) {
-                this._resolvePromise(result);
-                this._resolvePromise = null;
+            try {
+                this.restorePreviousFocus();
+            } finally {
+                if (this._resolvePromise) {
+                    this._resolvePromise(result);
+                    this._resolvePromise = null;
+                }
             }
         };
 
@@ -1456,6 +1458,34 @@ class Dialog extends Component implements DismissableLayer {
         }
 
         return this;
+    }
+
+    /**
+     * Returns focus to the element that held it when the dialog opened. Skipped
+     * when nothing was focused then, or when that element has since been
+     * disposed or removed from the page — focus is then left where the browser
+     * put it. Clears the stored handle either way.
+     */
+    private restorePreviousFocus(): void {
+        const previous = this._previousFocus;
+
+        this._previousFocus = null;
+
+        if (previous === null) {
+            return;
+        }
+
+        // The handle was stored at open() and may have been released since (the
+        // opener disposed while the dialog was open). Ask first: every other read
+        // of a released handle throws. isRegistered must come first, because
+        // isConnected itself throws on a released handle.
+        const live = DOM.source.isRegistered(previous) && DOM.source.isConnected(previous);
+
+        if (!live) {
+            return;
+        }
+
+        DOM.sink.focus(previous);
     }
 
     /**
