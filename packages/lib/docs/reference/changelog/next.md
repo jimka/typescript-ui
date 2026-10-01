@@ -148,6 +148,11 @@ page resets to empty.
   scrollbars — for an owner whose content changed between renders and must
   scroll against the new height before its next one.
 
+- **A modified tab is announced to assistive technology.** While
+  `Tab.setTabModified` (or `TabButton.setModified`) marks a tab, its
+  button carries `aria-description="Modified"`, so a screen reader
+  reports the unsaved state along with the tab's name.
+
 ### Core
 
 - **`LayerManager.Band` gains `Drawer`** (8950, between the `Rail`'s fixed
@@ -164,6 +169,10 @@ page resets to empty.
   layer stays open and `LayerManager` leaves the `Escape` that triggered the
   request unhandled, so it reaches the focused content. Any other return,
   including none, counts as handled, as before.
+
+- **`Aria` gains `setDescription` / `getDescription` / `clearDescription`**
+  for `aria-description`, mirroring the `setLabel` / `getLabel` /
+  `clearLabel` trio.
 
 ### Data
 

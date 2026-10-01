@@ -81,6 +81,11 @@ group rather than a Tab stop of its own, so it is reached with
 by tabbing, and `Delete` closes the tab from the ✕ just as it does from the tab
 button.
 
+A tab marked modified with
+[`setTabModified`](/api/layout/classes/Tab#settabmodified) carries
+`aria-description="Modified"`, so its unsaved state is announced as well as
+drawn.
+
 ## Tab traversal
 
 [`FocusTraversal`](/api/core/namespaces/FocusTraversal) intercepts `Tab` /

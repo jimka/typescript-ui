@@ -34,7 +34,7 @@ tab.setModified(true);   // show the dot
 tab.setModified(false);  // hide it
 ```
 
-Like the busy wash, the dot is an overlay rather than a content-row child, so showing it never moves the label or resizes the tab. Its colour reads `--ts-ui-tab-indicator-color`, the same accent the strip's active-tab underline and the busy wash's fallback use.
+Like the busy wash, the dot is an overlay rather than a content-row child, so showing it never moves the label or resizes the tab. Its colour reads `--ts-ui-tab-indicator-color`, the same accent the strip's active-tab underline and the busy wash's fallback use. While shown, the button also carries `aria-description="Modified"`, so screen readers announce the state along with the tab's name.
 
 ## Notes
 
