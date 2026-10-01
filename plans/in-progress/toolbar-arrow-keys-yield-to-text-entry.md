@@ -403,3 +403,23 @@ From `packages/lib`:
     ([`TestDOM.ts:1571`](packages/lib/tests/dom/TestDOM.ts#L1571)), so the
     predicate could not be unit-tested. `getTagName` and `getAttribute` are
     modelled faithfully.
+
+---
+
+## Implementation Notes
+
+- **Manual cases M1-M5 were not run during implementation.** They need the
+  library symlinked into SQLAdmin, and this branch sits mid-way in a stack
+  (on `feature/dock-close-focus-and-beforeclose-type`), so relinking
+  SQLAdmin at this branch would point it at a partial stack. The handler
+  behaviour they exercise is pinned by T1-T6 and P1-P8 in the modelled DOM;
+  the caret movement, selection, Tab order and `SpatialNavigation` chord
+  (M1-M5) remain to be checked in SQLAdmin once the stack is linked as a
+  whole.
+- **The Tab-exit wording in steps 5-7 was narrowed.** The plan's text said
+  `Tab` / `Shift+Tab` leave every text-entry child. A `CodeEditor` binds
+  `indentWithTab` and is a Tab-key owner, so `Tab` indents there (leave with
+  `Escape` then `Tab`, or `Ctrl-m`), and a `MarkdownEditor` uses `Tab` for
+  table-cell moves while the caret is in a table. The class JSDoc, the inline
+  comment, the `ToolBar` doc page and the changelog entry name those
+  exceptions instead of promising a Tab exit that does not exist.
