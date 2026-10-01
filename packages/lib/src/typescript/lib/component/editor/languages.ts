@@ -7,7 +7,9 @@
 // build — none of them reach the base editor chunk; each loads only when a
 // consumer actually selects that language or calls `format()`.
 
+import type { SqlLanguage } from "sql-formatter";
 import { registerLanguage } from "~/component/editor/LanguageRegistry.js";
+import type { LanguageOptions } from "~/component/editor/LanguageRegistry.js";
 import { formatWithPrettier } from "~/component/editor/formatters/prettier.js";
 import { formatWithSql } from "~/component/editor/formatters/sql.js";
 import { collectSyntaxErrors } from "~/component/editor/syntaxDiagnostics.js";
@@ -66,15 +68,66 @@ registerLanguage({
     loadLintSource: async () => collectSyntaxErrors,
 });
 
+/**
+ * Options the built-in `"sql"` language reads. An unrecognised `dialect`
+ * value falls back to `"standard"`.
+ *
+ * Declared with `type`, not `interface`, so a variable of this type is
+ * assignable to `LanguageOptions` (an object-literal type alias gets an
+ * implicit index signature; an interface does not).
+ *
+ * @category Components
+ */
+export type SqlLanguageOptions = {
+    /** SQL dialect for highlighting, completion, lint and format(). Default `"standard"`. */
+    dialect?: "standard" | "postgresql";
+};
+
+/** What one SQL dialect selects in each of the two engines. */
+type SqlDialectEntry = {
+    /** The `@codemirror/lang-sql` dialect export, by name. */
+    grammar: "StandardSQL" | "PostgreSQL";
+    /** The `sql-formatter` language. */
+    formatter: SqlLanguage;
+};
+
+/**
+ * What each SqlLanguageOptions dialect selects in the two engines: the
+ * `@codemirror/lang-sql` export (a name, so the grammar package stays behind
+ * the dynamic import) and the `sql-formatter` language.
+ */
+const SQL_DIALECTS: Record<NonNullable<SqlLanguageOptions["dialect"]>, SqlDialectEntry> = {
+    standard:   { grammar: "StandardSQL", formatter: "sql" },
+    postgresql: { grammar: "PostgreSQL",  formatter: "postgresql" },
+};
+
+/**
+ * Resolves the "sql" loaders' options to a dialect entry. Anything other than
+ * a recognised `dialect` string falls back to "standard"; `Object.hasOwn`
+ * (not `in`) keeps inherited keys such as `"toString"` from matching.
+ *
+ * @param options - The options the "sql" loader received.
+ * @returns The dialect entry to load.
+ */
+function resolveDialectEntry(options?: LanguageOptions): SqlDialectEntry {
+    const dialect = options?.dialect;
+
+    if (typeof dialect === "string" && Object.hasOwn(SQL_DIALECTS, dialect)) {
+        return SQL_DIALECTS[dialect as keyof typeof SQL_DIALECTS];
+    }
+
+    return SQL_DIALECTS.standard;
+}
+
 registerLanguage({
     id: "sql",
     label: "SQL",
-    loadExtension: async () => {
-        const { sql } = await import("@codemirror/lang-sql");
+    loadExtension: async (options) => {
+        const langSql = await import("@codemirror/lang-sql");
 
-        return sql();
+        return langSql.sql({ dialect: langSql[resolveDialectEntry(options).grammar] });
     },
-    loadFormatter: async () => formatWithSql,
+    loadFormatter: async (options) => formatWithSql(resolveDialectEntry(options).formatter),
     loadLintSource: async () => collectSyntaxErrors,
 });
 

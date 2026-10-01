@@ -17,9 +17,12 @@ import { installTestDOM, setQuerySelectorResult, makeEvent } from '../dom/TestDO
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { EditorState, EditorSelection } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
-import { codeFolding, foldEffect, ensureSyntaxTree } from '@codemirror/language';
+import { codeFolding, foldEffect, ensureSyntaxTree, syntaxTree } from '@codemirror/language';
+import { CompletionContext } from '@codemirror/autocomplete';
+import type { CompletionSource } from '@codemirror/autocomplete';
 import { json } from '@codemirror/lang-json';
 import { collectSyntaxErrors } from '~/component/editor/syntaxDiagnostics';
+import type { SqlLanguageOptions } from '~/component/editor/languages';
 import type { MenuItemConfig } from '~/component/container/MenuItem';
 import { Notification } from '~/overlay/Notification';
 import type { RecordingDOMSink } from '../dom/TestDOM';
@@ -2726,13 +2729,13 @@ describe('CodeEditor format() indentWidth default from tabSize', () => {
 
 describe('sql-formatter cursor clamp', () => {
     it('clamps a cursor offset beyond the formatted length', async () => {
-        const result = await formatWithSql('select 1', 1000);
+        const result = await formatWithSql('sql')('select 1', 1000);
 
         expect(result.cursorOffset).toBe(result.formatted.length);
     });
 
     it('preserves a cursor offset within the formatted length', async () => {
-        const result = await formatWithSql('select 1', 0);
+        const result = await formatWithSql('sql')('select 1', 0);
 
         expect(result.cursorOffset).toBe(0);
     });
@@ -2835,31 +2838,31 @@ describe('formatWithSql options', () => {
     const SOURCE = 'select a from b;';
 
     it('formats with sql-formatter defaults when no options are given', async () => {
-        const result = await formatWithSql(SOURCE, 0);
+        const result = await formatWithSql('sql')(SOURCE, 0);
 
         expect(result.formatted).toBe('select\n  a\nfrom\n  b;');
     });
 
     it('applies keywordCase', async () => {
-        const result = await formatWithSql(SOURCE, 0, { keywordCase: 'upper' });
+        const result = await formatWithSql('sql')(SOURCE, 0, { keywordCase: 'upper' });
 
         expect(result.formatted).toBe('SELECT\n  a\nFROM\n  b;');
     });
 
     it('applies indentWidth', async () => {
-        const result = await formatWithSql(SOURCE, 0, { indentWidth: 4 });
+        const result = await formatWithSql('sql')(SOURCE, 0, { indentWidth: 4 });
 
         expect(result.formatted).toBe('select\n    a\nfrom\n    b;');
     });
 
     it('applies useTabs', async () => {
-        const result = await formatWithSql(SOURCE, 0, { useTabs: true });
+        const result = await formatWithSql('sql')(SOURCE, 0, { useTabs: true });
 
         expect(result.formatted).toBe('select\n\ta\nfrom\n\tb;');
     });
 
     it('ignores Prettier-only fields', async () => {
-        const result = await formatWithSql(SOURCE, 0, {
+        const result = await formatWithSql('sql')(SOURCE, 0, {
             lineWidth:   120,
             singleQuote: true,
             proseWrap:   'always',
@@ -2869,9 +2872,339 @@ describe('formatWithSql options', () => {
     });
 
     it('omits explicitly-undefined fields rather than forwarding them', async () => {
-        const result = await formatWithSql(SOURCE, 0, { indentWidth: undefined, keywordCase: undefined });
+        const result = await formatWithSql('sql')(SOURCE, 0, { indentWidth: undefined, keywordCase: undefined });
 
         expect(result.formatted).toBe('select\n  a\nfrom\n  b;');
+    });
+});
+
+describe('built-in sql language options', () => {
+    const PG_CONTAINS  = "SELECT * FROM t WHERE c @> '{}'::jsonb;";
+    const PG_CONTAINED = "SELECT * FROM t WHERE c <@ '{}'::jsonb;";
+    const PG_DOLLAR    = 'CREATE OR REPLACE FUNCTION f() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;';
+    const PG_TAGGED    = 'CREATE OR REPLACE FUNCTION f() RETURNS int AS $function$ SELECT 1 $function$;';
+    const PLAIN        = 'SELECT a, b FROM t WHERE a = 1;';
+    const PG_SAMPLES   = [PG_CONTAINS, PG_CONTAINED, PG_DOLLAR, PG_TAGGED];
+
+    /**
+     * Builds a state on the built-in `"sql"` grammar loaded with `options`,
+     * with its syntax tree fully parsed (see `buildJsonState`).
+     *
+     * @param doc - The document text.
+     * @param options - The options passed to the `"sql"` `loadExtension`.
+     * @returns A state whose `syntaxTree` covers the whole document.
+     */
+    async function buildSqlState(doc: string, options?: Record<string, unknown>): Promise<EditorState> {
+        const extension = await getLanguage('sql')!.loadExtension(options);
+        const state     = EditorState.create({ doc, extensions: [extension] });
+
+        ensureSyntaxTree(state, state.doc.length, Infinity);
+
+        return state.update({}).state;
+    }
+
+    /**
+     * Collects every completion label the state's `autocomplete` language
+     * data offers at the end of the document.
+     *
+     * @param state - The state to complete in.
+     * @returns The labels from every completion source.
+     */
+    async function completionLabels(state: EditorState): Promise<string[]> {
+        const pos     = state.doc.length;
+        const context = new CompletionContext(state, pos, true);
+        const sources = state.languageDataAt<CompletionSource>('autocomplete', pos);
+        const labels: string[] = [];
+
+        for (const source of sources) {
+            const result = await source(context);
+
+            labels.push(...(result?.options.map((option) => option.label) ?? []));
+        }
+
+        return labels;
+    }
+
+    it('reports no diagnostics for the PostgreSQL constructs under { dialect: "postgresql" }', async () => {
+        for (const doc of PG_SAMPLES) {
+            expect(collectSyntaxErrors(await buildSqlState(doc, { dialect: 'postgresql' }))).toEqual([]);
+        }
+    });
+
+    it('reports diagnostics for the PostgreSQL constructs with no, empty or standard options', async () => {
+        for (const options of [undefined, {}, { dialect: 'standard' }]) {
+            for (const doc of PG_SAMPLES) {
+                expect(collectSyntaxErrors(await buildSqlState(doc, options)).length).toBeGreaterThan(0);
+            }
+        }
+    });
+
+    it('reports no diagnostics for plain SQL under either dialect', async () => {
+        expect(collectSyntaxErrors(await buildSqlState(PLAIN, { dialect: 'standard' }))).toEqual([]);
+        expect(collectSyntaxErrors(await buildSqlState(PLAIN, { dialect: 'postgresql' }))).toEqual([]);
+    });
+
+    it('highlights a dollar-quoted body as a string only under postgresql', async () => {
+        const doc = 'SELECT $$ BEGIN RETURN 1; END; $$;';
+        // Offset 12 sits on "BEGIN", inside the $$ … $$ body.
+        const pos = 12;
+
+        const pg       = await buildSqlState(doc, { dialect: 'postgresql' });
+        const standard = await buildSqlState(doc);
+
+        expect(syntaxTree(pg).resolveInner(pos, 1).name).toBe('String');
+        expect(syntaxTree(standard).resolveInner(pos, 1).name).not.toBe('String');
+    });
+
+    it('completes PostgreSQL type keywords only under postgresql', async () => {
+        const pgLabels       = await completionLabels(await buildSqlState('SELECT jso', { dialect: 'postgresql' }));
+        const standardLabels = await completionLabels(await buildSqlState('SELECT jso'));
+
+        expect(pgLabels).toContain('jsonb');
+        expect(standardLabels).not.toContain('jsonb');
+    });
+
+    it('loads a dialect-aware formatter', async () => {
+        const pgFormatter       = await getLanguage('sql')!.loadFormatter!({ dialect: 'postgresql' });
+        const standardFormatter = await getLanguage('sql')!.loadFormatter!();
+
+        const result = await pgFormatter(PG_CONTAINS, 0);
+
+        expect(result.formatted).toContain('@>');
+        await expect(Promise.resolve().then(() => standardFormatter(PG_CONTAINS, 0))).rejects.toThrow();
+    });
+
+    it('falls back to standard for an unrecognised dialect, and ignores unknown keys', async () => {
+        for (const options of [{ dialect: 'postgres' }, { dialect: 42 }, { dialect: 'toString' }]) {
+            expect(collectSyntaxErrors(await buildSqlState(PG_CONTAINS, options)).length).toBeGreaterThan(0);
+        }
+
+        expect(collectSyntaxErrors(await buildSqlState(PG_CONTAINS, { dialect: 'postgresql', other: 1 }))).toEqual([]);
+    });
+
+    it('formatWithSql takes the sql-formatter language', async () => {
+        await expect(formatWithSql('sql')(PG_CONTAINS, 0)).rejects.toThrow();
+        await expect(formatWithSql('postgresql')(PG_DOLLAR, 0)).resolves.toBeDefined();
+
+        const result = await formatWithSql('sql')('select a from b;', 0);
+
+        expect(result.formatted).toBe('select\n  a\nfrom\n  b;');
+    });
+});
+
+describe('CodeEditor languageOptions', () => {
+    /** One deferred `loadExtension` result, resolved by the test. */
+    type DeferredLoad = { options: unknown; resolve: (extension: unknown) => void };
+
+    /**
+     * Registers a test language whose three loaders record the options they
+     * receive.
+     *
+     * @param id - The language id to register.
+     * @returns The recorded arguments, one array per loader.
+     */
+    function registerRecordingLanguage(id: string): { extension: unknown[]; formatter: unknown[]; lint: unknown[] } {
+        const calls = { extension: [] as unknown[], formatter: [] as unknown[], lint: [] as unknown[] };
+
+        registerLanguage({
+            id,
+            loadExtension: async (options) => {
+                calls.extension.push(options);
+
+                return [] as any;
+            },
+            loadFormatter: async (options) => {
+                calls.formatter.push(options);
+
+                return async (source: string) => ({ formatted: source, cursorOffset: 0 });
+            },
+            loadLintSource: async (options) => {
+                calls.lint.push(options);
+
+                return () => [];
+            },
+        });
+
+        return calls;
+    }
+
+    /**
+     * Returns the extensions the editor's fake `dispatch` installed into its
+     * grammar compartment, in dispatch order.
+     *
+     * @param editor - The editor (accessed through `any`).
+     * @param dispatch - The fake view's `dispatch` mock.
+     * @returns Each grammar reconfigure's extension.
+     */
+    function grammarReconfigures(editor: any, dispatch: ReturnType<typeof vi.fn>): unknown[] {
+        return dispatch.mock.calls
+            .map(([spec]) => spec.effects)
+            .filter((effect) => effect?.value?.compartment === editor._langCompartment)
+            .map((effect) => effect.value.extension);
+    }
+
+    /**
+     * Lets every pending loader `.then` run: a macrotask runs only once the
+     * microtask queue has drained, however many promise hops a load takes.
+     */
+    function flushLoads(): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    it('defaults to {} and round-trips the construction option as a copy', () => {
+        expect(new CodeEditor().getLanguageOptions()).toEqual({});
+
+        const passed = { dialect: 'postgresql' };
+        const editor = new CodeEditor(undefined, { language: 'sql', languageOptions: passed });
+
+        passed.dialect = 'standard';
+
+        expect(editor.getLanguageOptions()).toEqual({ dialect: 'postgresql' });
+
+        const read = editor.getLanguageOptions();
+
+        read.dialect = 'mutated';
+
+        expect(editor.getLanguageOptions()).toEqual({ dialect: 'postgresql' });
+    });
+
+    it('setLanguage replaces both id and options offline; omitted options reset to {}', () => {
+        const editor = new CodeEditor();
+        const passed = { dialect: 'postgresql' };
+
+        editor.setLanguage('sql', passed);
+        passed.dialect = 'standard';
+        expect(editor.getLanguageOptions()).toEqual({ dialect: 'postgresql' });
+
+        editor.setLanguage('json');
+        expect(editor.getLanguage()).toBe('json');
+        expect(editor.getLanguageOptions()).toEqual({});
+
+        editor.setLanguage('sql');
+        expect(editor.getLanguageOptions()).toEqual({});
+
+        editor.setLanguage('sql', { dialect: 'postgresql' });
+        editor.setLanguage(null);
+        expect(editor.getLanguage()).toBeNull();
+        expect(editor.getLanguageOptions()).toEqual({});
+    });
+
+    it('passes a copy of the options to loadExtension when mounted, and {} when omitted', async () => {
+        const calls  = registerRecordingLanguage('test-langopts-extension');
+        const editor = new CodeEditor() as any;
+        editor._view = { dispatch: vi.fn() };
+        const passed = { dialect: 'postgresql' };
+
+        editor.setLanguage('test-langopts-extension', passed);
+        editor.setLanguage('test-langopts-extension');
+
+        expect(calls.extension[0]).toEqual({ dialect: 'postgresql' });
+        expect(calls.extension[0]).not.toBe(passed);
+        expect(calls.extension[1]).toEqual({});
+    });
+
+    it('passes the options to loadLintSource', () => {
+        const calls  = registerRecordingLanguage('test-langopts-lint');
+        const editor = new CodeEditor(undefined, { lint: true }) as any;
+        editor._view = { dispatch: vi.fn() };
+
+        editor.setLanguage('test-langopts-lint', { a: 1 });
+
+        expect(calls.lint).toEqual([{ a: 1 }]);
+    });
+
+    it('passes the options to loadFormatter', async () => {
+        const calls  = registerRecordingLanguage('test-langopts-format');
+        const editor = new CodeEditor('x', { language: 'test-langopts-format', languageOptions: { a: 1 } });
+
+        await editor.format();
+
+        expect(calls.formatter).toEqual([{ a: 1 }]);
+    });
+
+    it('reloads grammar and lint on a same-id re-call, applying only the latest', async () => {
+        const calls    = registerRecordingLanguage('test-langopts-reload');
+        const editor   = new CodeEditor(undefined, { lint: true }) as any;
+        const dispatch = vi.fn();
+        editor._view = { dispatch };
+
+        editor.setLanguage('test-langopts-reload', { a: 1 });
+        editor.setLanguage('test-langopts-reload', { a: 2 });
+        await flushLoads();
+
+        expect(calls.extension).toEqual([{ a: 1 }, { a: 2 }]);
+        expect(calls.lint).toEqual([{ a: 1 }, { a: 2 }]);
+        expect(grammarReconfigures(editor, dispatch)).toHaveLength(1);
+
+        const lintReconfigures = dispatch.mock.calls
+            .filter(([spec]) => spec.effects?.value?.compartment === editor._lintCompartment);
+
+        expect(lintReconfigures).toHaveLength(1);
+    });
+
+    it('drops a stale grammar load that resolves after a newer one', async () => {
+        const loads: DeferredLoad[] = [];
+
+        registerLanguage({
+            id: 'test-langopts-stale',
+            loadExtension: (options) => new Promise((resolve) => loads.push({ options, resolve: resolve as DeferredLoad['resolve'] })),
+        });
+
+        const editor   = new CodeEditor() as any;
+        const dispatch = vi.fn();
+        editor._view = { dispatch };
+        const pgExtension       = ['postgresql'];
+        const standardExtension = ['standard'];
+
+        editor.setLanguage('test-langopts-stale', { dialect: 'postgresql' });
+        editor.setLanguage('test-langopts-stale', { dialect: 'standard' });
+
+        loads[1].resolve(standardExtension);
+        await flushLoads();
+        loads[0].resolve(pgExtension);
+        await flushLoads();
+
+        expect(grammarReconfigures(editor, dispatch)).toEqual([standardExtension]);
+    });
+
+    it('keeps the construction options on the mount path', () => {
+        const calls  = registerRecordingLanguage('test-langopts-mount');
+        const editor = new CodeEditor(undefined, { language: 'test-langopts-mount', languageOptions: { a: 1 } }) as any;
+        editor._view = { dispatch: vi.fn() };
+
+        editor.loadActiveLanguage();
+
+        expect(calls.extension).toEqual([{ a: 1 }]);
+        expect(editor.getLanguageOptions()).toEqual({ a: 1 });
+    });
+
+    it('mount() loads the active language without resetting the construction options', () => {
+        registerRecordingLanguage('test-langopts-mount-real');
+        const editor = new CodeEditor(undefined, {
+            language:        'test-langopts-mount-real',
+            languageOptions: { a: 1 },
+        }) as any;
+        editor.getElement(true);
+
+        const loadSpy        = vi.spyOn(editor, 'loadActiveLanguage');
+        const setLanguageSpy = vi.spyOn(editor, 'setLanguage');
+
+        editor.mount();
+
+        expect(loadSpy).toHaveBeenCalledTimes(1);
+        expect(setLanguageSpy).not.toHaveBeenCalled();
+        expect(editor.getLanguageOptions()).toEqual({ a: 1 });
+    });
+
+    it('accepts SqlLanguageOptions as a typed variable and with satisfies', () => {
+        const editor = new CodeEditor();
+        const sqlOptions: SqlLanguageOptions = { dialect: 'postgresql' };
+
+        editor.setLanguage('sql', sqlOptions);
+        expect(editor.getLanguageOptions()).toEqual({ dialect: 'postgresql' });
+
+        editor.setLanguage('sql', { dialect: 'postgresql' } satisfies SqlLanguageOptions);
+        expect(editor.getLanguageOptions()).toEqual({ dialect: 'postgresql' });
     });
 });
 
