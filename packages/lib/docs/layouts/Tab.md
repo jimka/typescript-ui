@@ -104,7 +104,7 @@ layout.setTabItalic(consolePanel, false);
 
 Like `setTabGlyph`, this writes to the tab's `LayoutConstraints`, so the flag survives a tear-off, a re-dock, or a restored layout — and, the same as `setTabGlyph`, it accepts a tab already added but not yet laid out.
 
-`setTabModified(content, modified)` shows or hides a small filled dot trailing a tab's label — a persistent "unsaved changes" marker that survives label truncation, since it is a real content-row child rather than baked into the label text — and `isTabModified(content)` reads the flag back:
+`setTabModified(content, modified)` shows or hides a small filled dot over the upper-left corner of the tab's leading glyph, or of its label when the tab has no glyph — a persistent "unsaved changes" marker that survives label truncation, since it is drawn over the tab rather than baked into the label text — and `isTabModified(content)` reads the flag back:
 
 ```typescript
 layout.setTabModified(consolePanel, true);

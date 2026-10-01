@@ -249,6 +249,14 @@ page resets to empty.
   `aria-expanded` in step and names the menu in `aria-controls`. No consumer
   action is needed.
 
+- **A modified tab without a glyph now shows its "unsaved changes" dot.**
+  The dot was drawn only as a badge over a tab's leading glyph, so
+  `Tab.setTabModified(content, true)` on a glyph-less tab showed nothing.
+  On such a tab the dot now sits over the label's upper-left corner,
+  still as an overlay that never moves the label. The 0.10.0 notes
+  described this dot as trailing the label; since 0.10.0 it has been a
+  badge on the glyph's corner.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
