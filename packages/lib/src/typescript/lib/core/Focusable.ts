@@ -137,6 +137,43 @@ export function findTabKeyOwner(handle: Handle, bound?: Handle): Handle | null {
 }
 
 /**
+ * `<input>` `type` values that are not typed into — the browser gives them no
+ * caret, so arrow keys are free for the surrounding widget. Any other `type`,
+ * including a missing one (which the browser treats as `"text"`), is text entry.
+ */
+const NON_TEXT_INPUT_TYPES: ReadonlySet<string> = new Set([
+    "button", "checkbox", "color", "file", "hidden",
+    "image", "radio", "range", "reset", "submit",
+]);
+
+/**
+ * Whether `handle` is an element the user types text into: a `<textarea>`, an
+ * `<input>` whose `type` is not in `NON_TEXT_INPUT_TYPES`, or a
+ * `contenteditable` host (a `CodeEditor`'s or `MarkdownEditor`'s editing
+ * surface) that is not `contenteditable="false"`. Arrow-key widgets use it to
+ * leave caret keys to the text control.
+ *
+ * @param handle - The element to test, typically the focused element.
+ */
+export function isTextEntryElement(handle: Handle): boolean {
+    const tag = DOM.source.getTagName(handle).toLowerCase();
+
+    if (tag === "textarea") {
+        return true;
+    }
+
+    if (tag === "input") {
+        const type = (DOM.source.getAttribute(handle, "type") ?? "text").toLowerCase();
+
+        return !NON_TEXT_INPUT_TYPES.has(type);
+    }
+
+    const editable = DOM.source.getAttribute(handle, "contenteditable");
+
+    return editable !== null && editable.toLowerCase() !== "false";
+}
+
+/**
  * The topmost registered layer's element, or `<body>` when no layer is open.
  */
 export function focusScopeRoot(): Handle {

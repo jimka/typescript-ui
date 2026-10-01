@@ -5,6 +5,7 @@ import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { Event } from "~/core/Event.js";
+import { isTextEntryElement } from "~/core/Focusable.js";
 import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { HBox } from "~/layout/HBox.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
@@ -116,6 +117,12 @@ const _defaultToolBarOptions: Partial<ToolBarOptions> = {
  * [`RovingTabIndex`](/api/core/classes/RovingTabIndex) so Arrow keys cycle
  * focus between them, matching the
  * [`ButtonGroup`](/api/overlay/classes/ButtonGroup) keyboard-nav pattern.
+ * Arrow keys pressed while a text-entry child — a `TextField`, `TextArea`,
+ * `AutoCompleteField`, `CodeEditor` or `MarkdownEditor` — has focus move that
+ * child's caret instead. `Tab` and `Shift+Tab` leave the child, except where
+ * it keeps `Tab` for its own editing: a `CodeEditor` indents with it (press
+ * `Escape`, then `Tab`, to leave), and a `MarkdownEditor` moves between table
+ * cells with it while the caret is in a table.
  *
  * @example
  * ```typescript
@@ -197,6 +204,18 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
             // Returning no disposition leaves the arrow to an ancestor or
             // to `SpatialNavigation`, rather than swallowing it.
             if (this._rovingTabIndex === undefined) {
+                return;
+            }
+
+            // A text-entry child (a `TextField`, `CodeEditor`, …) needs the arrow
+            // keys to move its caret. It is its own tab stop, outside the roving
+            // group, so `Tab` / `Shift+Tab` leave it — unless the child keeps
+            // `Tab` for its own editing (a `CodeEditor`'s indent, a
+            // `MarkdownEditor`'s table-cell moves), when its own exit applies.
+            const active      = DOM.source.getActiveElement();
+            const inTextEntry = active !== null && isTextEntryElement(active);
+
+            if (inTextEntry) {
                 return;
             }
 
