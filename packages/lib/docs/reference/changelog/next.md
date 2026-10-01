@@ -217,6 +217,17 @@ page resets to empty.
   scroll shadow up with it. Content now has to exceed the viewport by more
   than half a pixel to count as overflow. No consumer action is needed.
 
+- **A text field inside a `ToolBar` keeps its arrow keys.** The bar's
+  roving-focus handler took `ArrowLeft` / `ArrowRight` (`ArrowUp` /
+  `ArrowDown` on a vertical bar) from every child, so a `TextField`'s caret
+  could not move — focus jumped to a toolbar button instead. While a
+  text-entry child has focus — an `<input>` that takes text, a
+  `<textarea>`, or a `contenteditable` surface such as `CodeEditor` or
+  `MarkdownEditor` — the bar now leaves the arrow keys to it. `Tab` and
+  `Shift+Tab` leave a text field, as before; a `CodeEditor` keeps `Tab` for
+  indenting, so press `Escape` and then `Tab` to leave it. No consumer action
+  is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
