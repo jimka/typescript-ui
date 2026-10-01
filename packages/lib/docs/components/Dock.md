@@ -88,7 +88,7 @@ The model is **host-centric**: a live panel always occupies one Dock-managed **h
 | `detach` | a panel **leaves** a host while staying alive | `{ id, content, window }` |
 | `move` | a panel **relocates within** its current host — a different region in the same tiled tree, or repositioned in the same float | `{ id, content, window }` |
 | `focus` | the dock-wide active panel changes, across tiled tabs **and** floats | `{ id, content, window }` or `null` |
-| `beforeclose` | a tab's ✕ (tiled or floated) or a float window's chrome ✕ is clicked — vetoable via the controller's `preventDefault()` | `{ id, content, window }`, controller |
+| `beforeclose` | a tab's ✕ (tiled or floated) or a float window's chrome ✕ is clicked — vetoable via the controller's `preventDefault()` | `{ id, content, window }`, [`DockCloseController`](/api/overlay/interfaces/DockCloseController) |
 | `close` | a panel is genuinely destroyed — a tab ✕, `removePanel`, or a float window's chrome ✕ | `{ id, content, window: null }` |
 | `dblclick` | a tab button is double-clicked | `{ id, content, window }` |
 

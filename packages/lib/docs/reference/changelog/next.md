@@ -189,6 +189,15 @@ page resets to empty.
   the deferral on a `Card` exactly as it does on a `Tab`, and `lazy` is
   therefore now read by two managers rather than one.
 
+### Overlay
+
+- **`DockCloseController`** types the controller a `Dock` `"beforeclose"`
+  listener receives. `Dock.on("beforeclose")`, `off` and
+  `DockOptions.listeners.beforeclose` used to declare a `TabCloseController`,
+  although a float window's chrome ✕ passes a `WindowCloseController`. All
+  three types have the same `preventDefault()` shape, so a listener annotated
+  with either old type still compiles.
+
 ## Fixed
 
 ### Components
