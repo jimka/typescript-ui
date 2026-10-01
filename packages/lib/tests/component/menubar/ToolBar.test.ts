@@ -3,6 +3,7 @@ import { ToolBar } from '~/component/menubar/ToolBar';
 import { ToolBarSeparator } from '~/component/menubar/ToolBarSeparator';
 import { Button } from '~/component/button/Button';
 import { Text } from '~/component/input/Text';
+import { TextField } from '~/component/input/TextField';
 import { HBox } from '~/layout/HBox';
 import { VBox } from '~/layout/VBox';
 import { Component } from '~/core/Component';
@@ -196,5 +197,89 @@ describe('ToolBar keydown — stands down while SpatialNavigation claims the key
         expect(() => (bar as any)._onKeyDown({ key: 'ArrowUp' } as KeyboardEvent)).not.toThrow();
 
         expect((bar as any)._onKeyDown({ key: 'ArrowDown' } as KeyboardEvent)).toBeUndefined();
+    });
+});
+
+// toolbar-arrow-keys-yield-to-text-entry plan, Expected Behaviour T1-T6: a
+// text-entry child needs the arrow keys for its caret, so the bar's roving
+// step stands down while one has focus. The child is not a roving member,
+// which is what keeps Tab / Shift+Tab as the way out of it.
+describe('ToolBar keydown — leaves arrow keys to a focused text-entry child', () => {
+    /**
+     * Builds a bar holding two buttons followed by a text field.
+     *
+     * @param orientation - The bar's orientation.
+     *
+     * @returns The bar, its first button, and its text field.
+     */
+    function barWithTextField(orientation: 'horizontal' | 'vertical' = 'horizontal'): { bar: ToolBar; cut: Button; field: TextField } {
+        const bar   = new ToolBar({ orientation });
+        const cut   = new Button('Cut');
+        const field = new TextField();
+
+        bar.addComponent(cut);
+        bar.addComponent(new Button('Copy'));
+        bar.addComponent(field);
+
+        return { bar, cut, field };
+    }
+
+    /**
+     * Gives `component` an element and focuses it.
+     *
+     * @param component - The component to focus.
+     */
+    function focus(component: Component): void {
+        component.getElement(true);
+        DOM.sink.focus(component.getElement()!);
+    }
+
+    it('T1: ArrowLeft in a focused text field is left to the field', () => {
+        const { bar, field } = barWithTextField();
+        focus(field);
+
+        expect((bar as any)._onKeyDown({ key: 'ArrowLeft' } as KeyboardEvent)).toBeUndefined();
+        expect((bar as any)._rovingTabIndex.getActiveIndex()).toBe(0);
+    });
+
+    it('T2: ArrowRight in a focused text field is left to the field', () => {
+        const { bar, field } = barWithTextField();
+        focus(field);
+
+        expect((bar as any)._onKeyDown({ key: 'ArrowRight' } as KeyboardEvent)).toBeUndefined();
+        expect((bar as any)._rovingTabIndex.getActiveIndex()).toBe(0);
+    });
+
+    it('T3: ArrowDown and ArrowUp in a vertical bar are left to a focused text field', () => {
+        const { bar, field } = barWithTextField('vertical');
+        focus(field);
+
+        expect((bar as any)._onKeyDown({ key: 'ArrowDown' } as KeyboardEvent)).toBeUndefined();
+        expect((bar as any)._onKeyDown({ key: 'ArrowUp' } as KeyboardEvent)).toBeUndefined();
+        expect((bar as any)._rovingTabIndex.getActiveIndex()).toBe(0);
+    });
+
+    it('T4: ArrowRight on a focused button still moves roving focus', () => {
+        const { bar, cut } = barWithTextField();
+        focus(cut);
+
+        expect((bar as any)._onKeyDown({ key: 'ArrowRight' } as KeyboardEvent)).toEqual({ prevent: true });
+        expect((bar as any)._rovingTabIndex.getActiveIndex()).toBe(1);
+    });
+
+    it('T5: ArrowRight with nothing focused still moves roving focus', () => {
+        const { bar } = barWithTextField();
+
+        expect(DOM.source.getActiveElement()).toBeNull();
+        expect((bar as any)._onKeyDown({ key: 'ArrowRight' } as KeyboardEvent)).toEqual({ prevent: true });
+        expect((bar as any)._rovingTabIndex.getActiveIndex()).toBe(1);
+    });
+
+    it('T6: the text field is not a member of the roving group', () => {
+        const { bar, field } = barWithTextField();
+        const items = (bar as any)._rovingTabIndex.getItems();
+
+        expect(items).toHaveLength(2);
+        expect(items).not.toContain(field);
     });
 });

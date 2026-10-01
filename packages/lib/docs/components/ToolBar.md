@@ -57,6 +57,7 @@ parent.addComponent(bar);
 
 - Tab enters the toolbar at the first focusable child.
 - Arrow Right / Left (horizontal) or Arrow Down / Up (vertical) cycle focus through focusable children.
+- While a text-entry child has focus — a `TextField`, `TextArea`, `AutoCompleteField`, `CodeEditor` or `MarkdownEditor` — the arrow keys move its caret, not toolbar focus. Text inputs are separate tab stops, so Tab and Shift+Tab leave them — except where the child keeps Tab for its own editing: a [`CodeEditor`](/components/CodeEditor) indents with it (press Escape, then Tab, to leave), and a [`MarkdownEditor`](/components/MarkdownEditor) moves between table cells with it while the caret is in a table.
 - Non-focusable children (separators, plain spacers) are skipped.
 
 `RovingTabIndex.add` snapshots focusability at insertion time. A child whose tabindex changes after `addComponent` (e.g. a disabled button later re-enabled) will not be retroactively added to the roving group.
