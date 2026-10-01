@@ -1432,7 +1432,8 @@ class Tab extends LayoutManager implements FocusRevealer {
     /**
      * Shows or hides the "unsaved changes" badge on the tab hosting `content`
      * — a small dot pinned over the upper-left corner of the tab's leading
-     * file-type glyph, half-covering it. Nothing else about the tab changes.
+     * glyph (or of its label, when the tab has no glyph), half-covering it.
+     * Nothing else about the tab changes.
      *
      * @param content - The content component whose tab to mark.
      * @param modified - True to show the badge, false to hide it.

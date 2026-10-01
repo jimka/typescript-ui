@@ -18,7 +18,7 @@ import { circle } from "~/glyphs/solid/circle.js";
 // same glyph for its selection dot.
 Glyph.register(circle);
 
-/** Registry name of the trailing "unsaved changes" dot — a plain filled disc. */
+/** Registry name of the "unsaved changes" badge — a plain filled disc pinned over the upper-left corner of the tab's leading glyph, or of its label when there is no glyph. */
 const MODIFIED_GLYPH = "circle";
 
 /**
@@ -235,7 +235,8 @@ class TabButton extends ToggleButton {
     // and reused thereafter, matching `_busyIndicator`. Raw-appended onto this
     // button's own element (the same overlay technique as `_closeButton` and
     // `_busyIndicator`) rather than added to `_content` — it pins to the
-    // leading glyph's corner via `positionModifiedBadge`, so it must live
+    // upper-left corner of the content row's leading item (the glyph, else the
+    // label) via `positionModifiedBadge`, so it must live
     // outside the content row's own flow to overlap the glyph instead of
     // sitting beside it.
     private _modifiedGlyph: Glyph | null = null;
@@ -456,8 +457,8 @@ class TabButton extends ToggleButton {
 
     /**
      * Shows or hides the "unsaved changes" badge — a small dot pinned over the
-     * upper-left corner of the tab's leading file-type glyph, half-covering
-     * it. Raw-appended onto this button's own element, like the close button
+     * upper-left corner of the tab's leading glyph — or of the label, on a tab
+     * with no glyph — half-covering it. Raw-appended onto this button's own element, like the close button
      * and the busy wash, rather than added to the content row: a row child
      * would either sit beside the leading glyph (not on its corner) or, sized
      * to overlap it, eat into the label's own space. The overlay never
@@ -515,13 +516,13 @@ class TabButton extends ToggleButton {
 
     /**
      * Shows or hides the modified badge and, when shown, re-pins it to the
-     * leading glyph's current upper-left corner (centring the badge on that
-     * corner point so it half-covers the glyph on every side). The badge is
-     * shown only while both {@link isModified} and a leading glyph are true —
-     * a lazy tab can be marked modified before its glyph resolves, or have its
-     * glyph cleared later, and the badge must track that rather than sitting
-     * stranded at a stale position. No-ops (leaves the badge, if any, hidden)
-     * once — or before — {@link setModified} has ever built one.
+     * current upper-left corner of the content row's leading item — the
+     * glyph, or the label on a tab with no glyph — centring the badge on that
+     * corner point so it half-covers the item. The badge is shown exactly
+     * while {@link isModified} is true. A lazy tab can gain its glyph after
+     * being marked modified, or lose it later, and the per-layout re-pin
+     * moves the badge between the two anchors. No-ops (leaves the badge, if
+     * any, hidden) once — or before — {@link setModified} has ever built one.
      *
      * `TabBar` calls this on every entry each layout pass, mirroring how it
      * drives {@link getCloseButton}'s per-layout re-pin — the glyph's own
@@ -534,14 +535,16 @@ class TabButton extends ToggleButton {
      * close button; every setter here no-ops when the value is unchanged, so
      * a same-scale, same-position pass costs nothing.
      *
-     * @remarks The glyph's position is read relative to `_content` (its DOM
-     * parent) and `_content`'s own position is read relative to this button
-     * (its own DOM parent) — the two sum to the glyph's position relative to
-     * this button's element, the coordinate space `setX`/`setY` (CSS `left`/
-     * `top`) resolve against for a raw-appended overlay child. `_content` sets
-     * its own insets to zero, so the leading glyph — its first child — is
-     * flush with `_content`'s own origin, but this reads both positions live
-     * rather than assuming that.
+     * @remarks The leading item's position is read relative to `_content`
+     * (its DOM parent) and `_content`'s own position is read relative to this
+     * button (its own DOM parent) — the two sum to the item's position
+     * relative to this button's element, the coordinate space `setX`/`setY`
+     * (CSS `left`/`top`) resolve against for a raw-appended overlay child.
+     * Both are read live rather than assumed: a single-line label gives
+     * `_content` an optical-centring top inset, so its children do not sit
+     * flush with its origin. On a tab with no glyph the leading item is the
+     * content row's first child — the label, or the title column when the
+     * tab carries a description.
      */
     positionModifiedBadge(): void {
         const badge = this._modifiedGlyph;
@@ -550,12 +553,9 @@ class TabButton extends ToggleButton {
             return;
         }
 
-        const glyph = this.getGlyph();
-        const shown = this._modified && glyph !== null;
+        badge.setVisible(this._modified);
 
-        badge.setVisible(shown);
-
-        if (!shown || !glyph) {
+        if (!this._modified) {
             return;
         }
 
@@ -572,8 +572,11 @@ class TabButton extends ToggleButton {
         badge.setWidth(dotSize);
         badge.setHeight(dotSize);
 
-        const anchorX = this._content.getX() + glyph.getX();
-        const anchorY = this._content.getY() + glyph.getY();
+        // The glyph, when there is one, leads the content row; otherwise the
+        // label does, as the row's first child.
+        const leading = this.getGlyph() ?? this._content.getComponents()[0] ?? null;
+        const anchorX = this._content.getX() + (leading ? leading.getX() : 0);
+        const anchorY = this._content.getY() + (leading ? leading.getY() : 0);
 
         badge.setX(Math.round(anchorX - dotSize / 2));
         badge.setY(Math.round(anchorY - dotSize / 2));
