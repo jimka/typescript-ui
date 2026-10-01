@@ -312,3 +312,12 @@ page resets to empty.
   never ran. The dialog now skips the restore when that element is gone or
   no longer on the page, leaving focus on the page, and resolves `show()`
   even if restoring focus fails. No consumer action is needed.
+
+- **`Dock` no longer emits `focus(null)` while a panel is still open.** When
+  the focused panel closed and its region was left empty — the last tiled tab
+  closing while a float stayed open, or a focused float closed with its
+  chrome ✕ — the Dock reported that nothing was focused. A click into an
+  already-active float did not correct it. Focus now moves to the active
+  panel of the same float, then of the tiled tree, then of the frontmost
+  float. `focus(null)` fires only once no panel remains anywhere. No consumer
+  action is needed.
