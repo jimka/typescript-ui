@@ -71,7 +71,9 @@ const MENU_PERSISTENT_DECLARATIONS: StyleBag = {
  *
  * The two API surfaces are disjoint by mode:
  * `show()` / `hide()` / `setMenuWidth()` are valid only in rebuild mode;
- * `open()` / `close()` / focus and submenu methods are valid only in persistent mode.
+ * `open()` / `close()` / `setExcludedElement()` are valid only in persistent mode.
+ * The keyboard-highlight methods (`focusItem`, `focusNext`, `focusPrev`,
+ * `activateFocused`, `getFocusedIndex`, `handleKey`) work in both.
  *
  * @example
  * ```typescript
@@ -328,6 +330,7 @@ class Menu extends Component implements DismissableLayer {
         this._excludedEl = excludeEl;
 
         this._menuItems = [];
+        this._focusedIndex = -1;
         this._itemPanel.disposeAllComponents();
 
         this.pauseLayout();
@@ -497,6 +500,7 @@ class Menu extends Component implements DismissableLayer {
         this.assertRebuildMode("hide");
 
         this.closeOpenSubmenu();
+        this.setFocusedIndex(-1);
 
         LayerManager.unregister(this);
 
@@ -783,13 +787,10 @@ class Menu extends Component implements DismissableLayer {
 
     /**
      * Moves keyboard focus to the item at the given index. Pass `-1` to clear focus.
-     * **Persistent-mode only.**
      *
      * @param index - Zero-based item index, or `-1` to clear.
      */
     focusItem(index: number): this {
-        this.assertPersistentMode("focusItem");
-
         this.setFocusedIndex(index);
 
         return this;
@@ -797,11 +798,8 @@ class Menu extends Component implements DismissableLayer {
 
     /**
      * Moves focus to the next focusable item, wrapping around and skipping separators.
-     * **Persistent-mode only.**
      */
     focusNext(): this {
-        this.assertPersistentMode("focusNext");
-
         let next = this._focusedIndex + 1;
 
         while (next < this._menuItems.length && this.isItemSkipped(next)) {
@@ -823,11 +821,8 @@ class Menu extends Component implements DismissableLayer {
 
     /**
      * Moves focus to the previous focusable item, wrapping around and skipping separators.
-     * **Persistent-mode only.**
      */
     focusPrev(): this {
-        this.assertPersistentMode("focusPrev");
-
         let prev = this._focusedIndex - 1;
 
         while (prev >= 0 && this.isItemSkipped(prev)) {
@@ -849,11 +844,9 @@ class Menu extends Component implements DismissableLayer {
 
     /**
      * Activates the currently focused item. No-op when no item is focused or the item
-     * is disabled or a separator. **Persistent-mode only.**
+     * is disabled or a separator.
      */
     activateFocused(): void {
-        this.assertPersistentMode("activateFocused");
-
         if (this._focusedIndex < 0 || this._focusedIndex >= this._menuItems.length) {
             return;
         }
@@ -867,14 +860,52 @@ class Menu extends Component implements DismissableLayer {
 
     /**
      * Returns the index of the currently focused item, or `-1` if no item is focused.
-     * **Persistent-mode only.**
      *
      * @returns The focused item index, or -1.
      */
     getFocusedIndex(): number {
-        this.assertPersistentMode("getFocusedIndex");
-
         return this._focusedIndex;
+    }
+
+    /**
+     * Handles one navigation or activation key forwarded by the menu's host.
+     * Valid in both modes.
+     *
+     * The host keeps DOM focus and forwards its keydowns here; the menu only
+     * moves its highlight and never takes focus itself — the same model the
+     * library's dropdown hosts (`ComboBox`, the picker fields) use for their
+     * own dropdown lists. `ArrowDown` / `ArrowUp` move the highlight to the
+     * next / previous row, and `Enter` / `Space` activate the highlighted row.
+     * `Enter` and `Space` are reported as handled even when no row is
+     * highlighted, so the host does not run its own activation for them.
+     * Every other key, `Escape` included, is left alone: `Escape` closes the
+     * topmost layer through the layer manager, which closes this menu.
+     *
+     * @param e - The keydown the host received.
+     *
+     * @returns `true` when the key was one of the four the menu handles, so
+     *   the host should consume it; `false` otherwise.
+     */
+    handleKey(e: KeyboardEvent): boolean {
+        switch (e.key) {
+            case "ArrowDown":
+                this.focusNext();
+
+                return true;
+
+            case "ArrowUp":
+                this.focusPrev();
+
+                return true;
+
+            case "Enter":
+            case " ":
+                this.activateFocused();
+
+                return true;
+        }
+
+        return false;
     }
 
     /**
@@ -921,10 +952,11 @@ class Menu extends Component implements DismissableLayer {
     }
 
     /**
-     * Applies the rebuild-mode chrome (right-click context-menu CSS variables).
+     * Applies the rebuild-mode chrome (right-click context-menu CSS variables, aria role).
      */
     private applyRebuildChrome(): void {
         this.setVisible(false);
+        this.getAria().setRole("menu");
         this.setBackgroundColor("var(--ts-ui-context-menu-bg, rgb(255, 255, 255))");
         this.setBorder({ border: "1px solid var(--ts-ui-context-menu-border, rgb(200, 200, 200))" });
         this.setShadow("var(--ts-ui-context-menu-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))");
