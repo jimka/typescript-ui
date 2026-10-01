@@ -237,6 +237,18 @@ page resets to empty.
   indenting, so press `Escape` and then `Tab` to leave it. No consumer action
   is needed.
 
+- **`SplitButton`'s dropdown opens from the keyboard.** It could only be
+  opened by clicking the chevron. With the button focused, `ArrowDown` or
+  `Alt+ArrowDown` now opens it with the first row highlighted; `ArrowUp` /
+  `ArrowDown` move the highlight, `Enter` / `Space` run the highlighted row
+  without firing the primary action, `Escape` closes it, and `Tab`,
+  `ArrowLeft` and `ArrowRight` close it and move focus as usual. Focus stays
+  on the button throughout. In a vertical `ToolBar` plain `ArrowDown` still
+  moves between the toolbar's buttons, so `Alt+ArrowDown` opens the dropdown
+  there. The button now declares `aria-haspopup="menu"`, keeps
+  `aria-expanded` in step and names the menu in `aria-controls`. No consumer
+  action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
