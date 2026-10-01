@@ -284,6 +284,26 @@ function twoRegionDock(): Dock {
     return dock;
 }
 
+// A dock with one side-by-side tiled region per entry of `regions`, each
+// holding the listed panel ids in order.
+function regionsDock(regions: string[][]): Dock {
+    const dock = new Dock({
+        layout: {
+            split:    'horizontal',
+            children: regions.map(ids => ({
+                tabs: ids.map(id => ({ id, title: id.toUpperCase(), content: new Component({}) })),
+            })),
+        },
+    });
+
+    dock.getElement(true);
+    dock.setWidth(800);
+    dock.setHeight(600);
+    dock.doLayout();
+
+    return dock;
+}
+
 describe('Dock moved', () => {
     it('emits one moved (host null) and no attach/detach on a same-host region-to-region move', () => {
         installTestDOM(CONFIG);
@@ -441,6 +461,60 @@ describe('Dock focus', () => {
     });
 });
 
+// Like flush(), but lays the dock out before each queued callback, standing in
+// for the layout pass a browser frame runs. The sweep that re-shows the
+// empty-state placeholder and the post-close focus recompute are queued
+// together; without a layout between them the root Tab never registers the
+// placeholder, so the recompute would never see it as the re-selected tab.
+function flushLayingOut(dock: Dock): void {
+    for (let i = 0; i < 6 && rafQueue.length > 0; i++) {
+        const batch = rafQueue;
+
+        rafQueue = [];
+        batch.forEach(cb => {
+            dock.doLayout();
+            cb(0);
+        });
+    }
+}
+
+// Moves panel `id` into a fresh, shown bare `Window` and lays the float out so
+// its Tab registers the frame — the same setup as the float-activation focus
+// test. A raw moveComponent leaves the source Tab still naming the moved frame
+// (Tab.doLayout reconciles only added children), so the helper then drops that
+// entry the way a real tear-off's detachTabToWindow does; otherwise the source
+// region would keep "re-selecting" a frame that has left it.
+function floatPanel(dock: Dock, id: string): Window {
+    const frame = frameOf(dock, id);
+    const sourceTab = priv(dock).regionForFrame(frame).getLayoutManager() as Tab;
+    const entryId = sourceTabEntryId(sourceTab, frame);
+    const win = new Window('Float');
+
+    win.show();
+    win.moveComponent(frame);
+    (sourceTab as unknown as { removeEntryKeepingContent(id: string): void }).removeEntryKeepingContent(entryId);
+    priv(dock).scheduleSweep();
+    flush(); // adopt + subscribe the float window
+
+    const content = priv(dock).windowContent(win);
+    const regions: Component[] = [];
+
+    priv(dock).collectTabRegions(content, regions);
+    regions.forEach(r => r.getElement(true));
+    win.getElement(true);
+    win.doLayout();
+    dock.doLayout();
+
+    return win;
+}
+
+// Reaches Tab's private `_contents` for the strip-entry id hosting `content`.
+function sourceTabEntryId(tab: Tab, content: Component): string {
+    const contents = (tab as unknown as { _contents: Array<{ id: string; component: Component | null }> })._contents;
+
+    return contents.find(e => e.component === content)!.id;
+}
+
 describe('Dock close', () => {
     it('emits one close on removePanel and evicts the cached frame', () => {
         installTestDOM(CONFIG);
@@ -562,6 +636,214 @@ describe('Dock close', () => {
         flush();
 
         expect(events.at(-1)?.id).toBe('a');
+    });
+
+    it('falls back to a float\'s panel when the last tiled panel closes', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const win = floatPanel(dock, 'a');
+
+        dock.focusPanel('b');
+        flush();
+
+        const events: Array<DockPanelEvent | null> = [];
+
+        dock.on('focus', e => events.push(e));
+        dock.removePanel('b');
+        flush();
+
+        expect(events.at(-1)?.id).toBe('a');
+        expect(events.at(-1)?.window).toBe(win);
+        expect(events).not.toContainEqual(null);
+    });
+
+    it('never focuses the empty-state placeholder when the last tiled panel closes', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const placeholder = new Component({});
+        const dock = mountDockWithPlaceholder(placeholder);
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        floatPanel(dock, 'a');
+        dock.focusPanel('b');
+        flush();
+
+        const events: Array<DockPanelEvent | null> = [];
+
+        dock.on('focus', e => events.push(e));
+        dock.removePanel('b');
+        flushLayingOut(dock);
+
+        // The root Tab really did re-select the placeholder, so the recompute
+        // had to reject it as an unregistered frame.
+        expect(rootTab(dock).getActiveContent()).toBe(placeholder);
+        expect(events.at(-1)?.id).toBe('a');
+        expect(priv(dock)._focusedPanelId).toBe('a');
+    });
+
+    it('falls back to another tiled region when the focused panel\'s region empties', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = twoRegionDock();
+
+        flush();
+        priv(dock).onPanelFocused(frameOf(dock, 'b'));
+
+        const events: Array<DockPanelEvent | null> = [];
+
+        dock.on('focus', e => events.push(e));
+        dock.removePanel('b');
+        flush();
+
+        expect(events.at(-1)?.id).toBe('a');
+        expect(events.at(-1)?.window).toBeNull();
+    });
+
+    it('falls back to a tiled panel when the focused float closes by its chrome ✕', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const win = floatPanel(dock, 'a');
+
+        win.onActivate(true); // focus 'a'
+
+        const events: Array<DockPanelEvent | null> = [];
+
+        dock.on('focus', e => events.push(e));
+        win.requestClose();
+        flush();
+
+        expect(events.at(-1)?.id).toBe('b');
+        expect(events.at(-1)?.window).toBeNull();
+    });
+
+    it('falls back to the frontmost float, not the oldest, when nothing is tiled', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.addPanel({ id: 'c', title: 'C', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        floatPanel(dock, 'a');
+
+        const wb = floatPanel(dock, 'b');
+        const wc = floatPanel(dock, 'c');
+
+        wb.onActivate(true); // focus 'b'
+
+        const events: Array<DockPanelEvent | null> = [];
+
+        dock.on('focus', e => events.push(e));
+        wb.requestClose();
+        flush();
+
+        expect(events.at(-1)?.id).toBe('c');
+        expect(events.at(-1)?.window).toBe(wc);
+    });
+
+    it('prefers a tiled survivor over another float when the focused float closes', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.addPanel({ id: 'c', title: 'C', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const wa = floatPanel(dock, 'a');
+
+        floatPanel(dock, 'b');
+        wa.onActivate(true); // focus 'a'
+
+        const events: Array<DockPanelEvent | null> = [];
+
+        dock.on('focus', e => events.push(e));
+        wa.requestClose();
+        flush();
+
+        // 'b' in the frontmost float survives too, but the tiled 'c' wins.
+        expect(events.at(-1)?.id).toBe('c');
+        expect(events.at(-1)?.window).toBeNull();
+    });
+
+    it('prefers the last-focused tiled region over the first one depth-first', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = regionsDock([['a'], ['c', 'x']]);
+
+        flush();
+
+        const win = floatPanel(dock, 'x');
+
+        priv(dock).onPanelFocused(frameOf(dock, 'c')); // 'c''s region is now the last-focused one
+        win.onActivate(true); // focus 'x'
+
+        const events: Array<DockPanelEvent | null> = [];
+
+        dock.on('focus', e => events.push(e));
+        win.requestClose();
+        flush();
+
+        expect(events.at(-1)?.id).toBe('c');
+        expect(events.at(-1)?.window).toBeNull();
+    });
+
+    it('skips a tiled Tab entry that still names a frame now in a float', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = regionsDock([['a', 'c'], ['b'], ['d']]);
+
+        flush();
+
+        // A raw move, unlike floatPanel, leaves 'a' as the first region's active
+        // entry although 'a' now lives in the float.
+        const win = new Window('Float');
+
+        win.show();
+        win.moveComponent(frameOf(dock, 'a'));
+        priv(dock).scheduleSweep();
+        flush();
+        priv(dock).onPanelFocused(frameOf(dock, 'b'));
+
+        const events: Array<DockPanelEvent | null> = [];
+
+        dock.on('focus', e => events.push(e));
+        dock.removePanel('b');
+        flush();
+
+        expect(events.at(-1)?.id).toBe('d');
+        expect(events.at(-1)?.window).toBeNull();
     });
 });
 

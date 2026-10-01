@@ -129,8 +129,8 @@ export interface DockOptions extends ContainerOptions {
  * without changing host; it never accompanies a host change (that is
  * `"detach"`+`"attach"`) nor a first appearance (that is `"attach"` alone), and
  * a pure reorder within one strip is silent. `"focus"` fires when the dock-wide
- * active panel changes (across tiled tabs and floats; `null` when nothing is
- * focused), and `"close"` when a panel is destroyed. The
+ * active panel changes (across tiled tabs and floats; `null` only once no
+ * panel remains anywhere), and `"close"` when a panel is destroyed. The
  * {@link DockPanelEvent.window} field names *which* host the panel entered,
  * left, occupies, or moved within. See {@link DockPanelEvent} for the payload.
  *
@@ -1573,7 +1573,8 @@ class Dock extends Container<DockOptions> {
      * panel was genuinely closed. Emits `"close"`, evicts the cached frame so a
      * re-`addPanel` rebuilds it via the lazy factory (keeping the `_panels`
      * registration), and — when the closed panel was the dock-wide focused one —
-     * recomputes focus once the source `Tab` has re-selected a survivor.
+     * recomputes focus once the source `Tab` has re-selected a survivor, falling
+     * back across the dock when that region is left empty.
      *
      * @param content - The closed tab's content (a Dock identity frame).
      */
@@ -1585,6 +1586,7 @@ class Dock extends Container<DockOptions> {
         }
 
         const region = this._frameRegion.get(id) ?? null;
+        const host   = this._panelHost.get(id) ?? null;
 
         this._frames.delete(id);
         this._panelHost.delete(id);
@@ -1599,7 +1601,7 @@ class Dock extends Container<DockOptions> {
         this.scheduleSweep();
 
         if (this._focusedPanelId === id) {
-            this.scheduleFocusRecompute(region);
+            this.scheduleFocusRecompute(region, host);
         }
     };
 
@@ -1797,7 +1799,7 @@ class Dock extends Container<DockOptions> {
         this.scheduleSweep();
 
         if (focusLost) {
-            this.scheduleFocusRecompute(null);
+            this.scheduleFocusRecompute(null, null);
         }
     }
 
@@ -1836,34 +1838,130 @@ class Dock extends Container<DockOptions> {
      * fires, so the new active tab is only readable on the next frame.
      *
      * @param region - The region the closed frame was hosted in, or `null`.
+     * @param host - The closed frame's last host: its float window, or `null`
+     *   when it was tiled or its float closed with it.
      */
-    private scheduleFocusRecompute(region: Component | null): void {
-        DOM.sink.requestAnimationFrame(() => this.recomputeFocusAfterClose(region));
+    private scheduleFocusRecompute(region: Component | null, host: AbstractWindow | null): void {
+        DOM.sink.requestAnimationFrame(() => this.recomputeFocusAfterClose(region, host));
     }
 
     /**
-     * Recomputes the dock-wide focus after the focused panel was closed: when
-     * panels remain in `region`, focus the survivor the region re-selected; when
-     * no panel remains anywhere, emit `focus(null)`.
+     * Recomputes the dock-wide focus after the focused panel was closed, falling
+     * back across the whole dock: the survivor `region` re-selected, else the
+     * active panel of the same still-open float, else of the tiled tree, else of
+     * the frontmost float. Emits `focus(null)` only when no panel remains
+     * anywhere.
      *
      * @param region - The region the closed frame was hosted in, or `null`.
+     * @param host - The closed frame's last host: its float window, or `null`
+     *   when it was tiled or its float closed with it.
      */
-    private recomputeFocusAfterClose(region: Component | null): void {
+    private recomputeFocusAfterClose(region: Component | null, host: AbstractWindow | null): void {
         if (this._frames.size === 0) {
             this.setFocus(null);
 
             return;
         }
 
-        if (!region || !this.isTab(region) || region.getComponents().length === 0) {
-            this.setFocus(null);
+        const survivor = this.registeredActiveFrame(region)
+            ?? this.activeFrameInOpenFloat(host)
+            ?? this.activeTiledFrame()
+            ?? this.frontmostFloatFrame();
 
-            return;
+        this.setFocus(survivor ? survivor.getId() : null);
+    }
+
+    /**
+     * The active tab of `region` when it is a non-empty `Tab` region whose active
+     * content is a registered frame — never the empty-state placeholder, which
+     * the dock does not register.
+     *
+     * @param region - The region to read, or `null`.
+     *
+     * @returns The region's active registered frame, or `null`.
+     */
+    private registeredActiveFrame(region: Component | null): Component | null {
+        if (!region || !this.isTab(region) || region.getComponents().length === 0) {
+            return null;
         }
 
         const frame = (region.getLayoutManager() as Tab).getActiveContent();
 
-        this.setFocus(frame ? frame.getId() : null);
+        return frame && this._frames.get(frame.getId()) === frame ? frame : null;
+    }
+
+    /**
+     * The active panel of the float a closed panel lived in, when that float is
+     * still open. A closed float no longer holds registered frames, so it drops
+     * out of the open floats and yields `null`.
+     *
+     * @param host - The closed panel's float window, or `null` when it was tiled.
+     *
+     * @returns The float's active registered frame, or `null`.
+     */
+    private activeFrameInOpenFloat(host: AbstractWindow | null): Component | null {
+        if (!host || !this.floatWindowsHoldingFrames().includes(host)) {
+            return null;
+        }
+
+        return this.activeFrameInFloat(host);
+    }
+
+    /**
+     * The active panel of the tiled tree, preferring regions the way
+     * {@link activeTabRegion} does: the last-focused region first (when it is
+     * still in the tiled tree), then every tiled `Tab` region depth-first. A
+     * candidate must sit under the root, so a `Tab` entry still naming a frame
+     * that moved into a float is skipped.
+     *
+     * @returns The first tiled region's active registered frame, or `null`.
+     */
+    private activeTiledFrame(): Component | null {
+        const root = this.getRootRegion();
+
+        if (!root) {
+            return null;
+        }
+
+        const regions: Component[] = [];
+        const last = this._lastActiveRegion;
+
+        if (last && this.containsRegion(root, last)) {
+            regions.push(last);
+        }
+
+        this.collectTabRegions(root, regions);
+
+        for (const region of regions) {
+            const frame = this.registeredActiveFrame(region);
+
+            if (frame && this.isUnder(root, frame)) {
+                return frame;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The active panel of the frontmost float holding this dock's panels, by
+     * z-index. `Array.prototype.sort` is stable, so equal z-indexes keep the
+     * open-window order.
+     *
+     * @returns The frontmost float's active registered frame, or `null`.
+     */
+    private frontmostFloatFrame(): Component | null {
+        const floats = this.floatWindowsHoldingFrames().sort((a, b) => b.getZIndex() - a.getZIndex());
+
+        for (const win of floats) {
+            const frame = this.activeFrameInFloat(win);
+
+            if (frame) {
+                return frame;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -2227,8 +2325,8 @@ class Dock extends Container<DockOptions> {
     on(event: "attach" | "detach" | "move" | "close", listener: (event: DockPanelEvent) => void): this;
     /**
      * Registers a listener for the `"focus"` event, which fires when the
-     * dock-wide active panel changes, carrying the now-focused panel or `null`
-     * when nothing is focused (e.g. the last panel closed).
+     * dock-wide active panel changes, carrying the now-focused panel, or `null`
+     * only once no panel remains anywhere.
      *
      * @param event - The `"focus"` event.
      * @param listener - Invoked with the now-focused panel, or `null`.
