@@ -198,6 +198,15 @@ page resets to empty.
   three types have the same `preventDefault()` shape, so a listener annotated
   with either old type still compiles.
 
+- **`Menu.handleKey(e)`, and the keyboard-highlight methods work in rebuild
+  mode.** A control that opens a rebuild-mode menu and keeps DOM focus can
+  forward its keydowns to `handleKey`: `ArrowDown` / `ArrowUp` move the
+  highlight and `Enter` / `Space` activate the highlighted row. `focusItem`,
+  `focusNext`, `focusPrev`, `activateFocused` and `getFocusedIndex` used to
+  throw on a rebuild-mode menu; they now work in both modes. Each
+  rebuild-mode show starts with no row highlighted. No consumer action is
+  needed.
+
 ## Fixed
 
 ### Components
@@ -341,3 +350,9 @@ page resets to empty.
   panel of the same float, then of the tiled tree, then of the frontmost
   float. `focus(null)` fires only once no panel remains anywhere. No consumer
   action is needed.
+
+- **Rebuild-mode `Menu`s declare `role="menu"`.** Context menus, the
+  `MenuButton` and `SplitButton` dropdowns and the `ToolBar` overflow menu
+  rendered `menuitem` rows inside an element with no role. They now carry
+  `role="menu"`, as persistent-mode menus already did. No consumer action is
+  needed.
