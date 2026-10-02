@@ -56,7 +56,7 @@ import { $createMarkdownImageNode } from "~/component/editor/markdownImageNode.j
 import { resolveImageSpec } from "~/component/display/markdownAttributes.js";
 import {
     BOLD_SOURCE, ITALIC_SOURCE, UNDERLINE_SOURCE, STRIKETHROUGH_SOURCE, INLINE_CODE_SOURCE,
-    REMOVE_LINK_SOURCE, CLEAR_FORMAT_SOURCE, linkSource, readSourceSelectionState,
+    REMOVE_LINK_SOURCE, CLEAR_FORMAT_SOURCE, linkSource, spanStyleSource, readSourceSelectionState,
     FENCED_CODE_SOURCE, blockPrefixSource, listSource, paragraphAroundBlockSource, imageSource, tableSource,
 } from "~/component/editor/markdownSourceEdits.js";
 import type { MarkdownSourceTransform } from "~/component/editor/markdownSourceEdits.js";
@@ -1631,12 +1631,29 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * *Colour, font, and size are refused inside a link* in the plan's
      * Architecture Decisions) — a styled span can never nest inside `[text](url)`.
      *
+     * In `"source"` mode this writes the `[text]{…}` styled span into the raw
+     * Markdown instead, merging into an existing span rather than nesting inside
+     * it. Refused there for a selection that crosses a line break, touches a
+     * link or image (an image's `{width=…}` group included), touches a
+     * `[text]{…}` group carrying a newline, sits on a `:::` fence line or a
+     * table delimiter row, would put a bracket straight after an escaping
+     * backslash, or whose **line carries a `*`, `~`, `+` or `` ` `` character
+     * outside the selection** — emphasis or not, so a `*`/`+` list bullet
+     * counts — or that holds such a character together with an existing span.
+     * Those last two refusals are deliberately coarse, since telling emphasis
+     * from a literal marker would need a Markdown parser, and they decline
+     * some selections that would have been safe.
+     *
      * @param patch - Kebab-case CSS property names mapped to their new value,
      *   or `null` to remove that property.
      * @returns This component, for method chaining.
      */
     private patchSelectionStyle(patch: Record<string, string | null>): this {
-        if (this.isSourceMode()) { return this; }
+        const handledBySource = this.editSource(spanStyleSource(patch));
+
+        if (handledBySource) {
+            return this;
+        }
 
         const editor = this.ensureEditor();
 
@@ -1665,7 +1682,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * collapsed caret first expands to its enclosing word. No-op without a
      * range selection, or when the selection sits inside a link.
      *
-     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     * In `"source"` mode this writes the `[text]{…}` styled span into the raw
+     * Markdown instead, merging into an existing span rather than nesting inside
+     * it. Refused there for a selection that crosses a line break, touches a
+     * link or image (an image's `{width=…}` group included), touches a
+     * `[text]{…}` group carrying a newline, sits on a `:::` fence line or a
+     * table delimiter row, would put a bracket straight after an escaping
+     * backslash, or whose **line carries a `*`, `~`, `+` or `` ` `` character
+     * outside the selection** — emphasis or not, so a `*`/`+` list bullet
+     * counts — or that holds such a character together with an existing span.
+     * Those last two refusals are deliberately coarse, since telling emphasis
+     * from a literal marker would need a Markdown parser, and they decline
+     * some selections that would have been safe.
      *
      * @param color - A CSS colour value, or `null` to clear the override.
      * @returns This component, for method chaining.
@@ -1679,7 +1707,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * collapsed caret first expands to its enclosing word. No-op without a
      * range selection, or when the selection sits inside a link.
      *
-     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     * In `"source"` mode this writes the `[text]{…}` styled span into the raw
+     * Markdown instead, merging into an existing span rather than nesting inside
+     * it. Refused there for a selection that crosses a line break, touches a
+     * link or image (an image's `{width=…}` group included), touches a
+     * `[text]{…}` group carrying a newline, sits on a `:::` fence line or a
+     * table delimiter row, would put a bracket straight after an escaping
+     * backslash, or whose **line carries a `*`, `~`, `+` or `` ` `` character
+     * outside the selection** — emphasis or not, so a `*`/`+` list bullet
+     * counts — or that holds such a character together with an existing span.
+     * Those last two refusals are deliberately coarse, since telling emphasis
+     * from a literal marker would need a Markdown parser, and they decline
+     * some selections that would have been safe.
      *
      * @param family - A CSS `font-family` value, or `null` to clear the override.
      * @returns This component, for method chaining.
@@ -1693,7 +1732,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * collapsed caret first expands to its enclosing word. No-op without a
      * range selection, or when the selection sits inside a link.
      *
-     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     * In `"source"` mode this writes the `[text]{…}` styled span into the raw
+     * Markdown instead, merging into an existing span rather than nesting inside
+     * it. Refused there for a selection that crosses a line break, touches a
+     * link or image (an image's `{width=…}` group included), touches a
+     * `[text]{…}` group carrying a newline, sits on a `:::` fence line or a
+     * table delimiter row, would put a bracket straight after an escaping
+     * backslash, or whose **line carries a `*`, `~`, `+` or `` ` `` character
+     * outside the selection** — emphasis or not, so a `*`/`+` list bullet
+     * counts — or that holds such a character together with an existing span.
+     * Those last two refusals are deliberately coarse, since telling emphasis
+     * from a literal marker would need a Markdown parser, and they decline
+     * some selections that would have been safe.
      *
      * @param size - A CSS font-size value (e.g. `"1.2em"`), or `null` to clear
      *   the override.

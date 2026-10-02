@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     BOLD_SOURCE, ITALIC_SOURCE, UNDERLINE_SOURCE, STRIKETHROUGH_SOURCE, INLINE_CODE_SOURCE,
-    REMOVE_LINK_SOURCE, CLEAR_FORMAT_SOURCE, linkSource, readSourceSelectionState,
+    REMOVE_LINK_SOURCE, CLEAR_FORMAT_SOURCE, linkSource, spanStyleSource, readSourceSelectionState,
     FENCED_CODE_SOURCE, blockPrefixSource, listSource, paragraphAroundBlockSource, imageSource, tableSource,
 } from '~/component/editor/markdownSourceEdits';
 import type { MarkdownSourceEdit } from '~/component/editor/markdownSourceEdits';
@@ -318,6 +318,491 @@ describe('link commands', () => {
     it('refuses to wrap a link inside an image\'s alt text', () => {
         expect(linkSource('/e')('![alt](src)', 3, 3)).toBeNull();
         expect(linkSource('/e')('see ![alt](src) here', 6, 9)).toBeNull();
+    });
+});
+
+describe('spanStyleSource', () => {
+    it('wraps the selection in a new styled span', () => {
+        const edit = spanStyleSource({ color: '#cc0000' })('hello world', 0, 5)!;
+
+        expect(edit).toEqual({
+            from: 0, to: 5, insert: '[hello]{color=#cc0000}', selection: { from: 1, to: 6 },
+        });
+    });
+
+    it('acts on the selection itself when there is nothing to trim or extrude', () => {
+        const text = 'a hello b';
+        const edit = spanStyleSource({ color: '#cc0000' })(text, 2, 7)!;
+
+        expect(edit.from).toBe(2);
+        expect(edit.to).toBe(7);
+        expect(apply(text, edit)).toBe('a [hello]{color=#cc0000} b');
+    });
+
+    it('merges a second attribute into an existing span rather than nesting inside it', () => {
+        const text = '[hello]{color=#cc0000} world';
+        const edit = spanStyleSource({ 'font-size': '1.2em' })(text, 1, 6)!;
+
+        expect(apply(text, edit)).toBe('[hello]{color=#cc0000 size=1.2em} world');
+        expect(edit.selection).toEqual({ from: 1, to: 6 });
+    });
+
+    // The dialect's own colour/font/size order, whatever order the group it
+    // merges into was written in — one re-ordering on the first edit, stable
+    // from then on, which is what makes a repeated press idempotent.
+    it('re-emits the attributes in the dialect\'s own order', () => {
+        const text = '[hello]{size=1.2em}';
+        const edit = spanStyleSource({ color: '#cc0000' })(text, 1, 6)!;
+
+        expect(apply(text, edit)).toBe('[hello]{color=#cc0000 size=1.2em}');
+    });
+
+    it('removes the whole group when the patch clears the last attribute', () => {
+        const text = '[hello]{color=#cc0000} world';
+        const edit = spanStyleSource({ color: null })(text, 1, 6)!;
+
+        expect(apply(text, edit)).toBe('hello world');
+        expect(edit.selection).toEqual({ from: 0, to: 5 });
+    });
+
+    it('keeps the group when the patch clears one of two attributes', () => {
+        const text = '[hello]{color=#cc0000 size=1.2em} world';
+        const edit = spanStyleSource({ color: null })(text, 1, 6)!;
+
+        expect(apply(text, edit)).toBe('[hello]{size=1.2em} world');
+    });
+
+    // An attribute the dialect does not model is the author's, not the
+    // patch's: it stays, after the dialect's own keys, and keeps the group.
+    it('keeps an unknown attribute when the patch clears the colour', () => {
+        const text = '[hello]{color=#cc0000 bogus=1} world';
+        const edit = spanStyleSource({ color: null })(text, 1, 6)!;
+
+        expect(apply(text, edit)).toBe('[hello]{bogus=1} world');
+        expect(edit.selection).toEqual({ from: 1, to: 6 });
+    });
+
+    it('declines clearing the colour of a span holding only an unknown attribute', () => {
+        expect(spanStyleSource({ color: null })('[hello]{bogus=1} world', 1, 6)).toBeNull();
+        expect(spanStyleSource({ color: null })('[hello]{bogus=1} world', 3, 3)).toBeNull();
+    });
+
+    it('keeps an unknown attribute on every piece of a split span', () => {
+        const text = '[hello]{color=#cc0000 bogus=1}';
+        const edit = spanStyleSource({ color: null })(text, 2, 5)!;
+
+        expect(apply(text, edit)).toBe('[h]{color=#cc0000 bogus=1}[ell]{bogus=1}[o]{color=#cc0000 bogus=1}');
+    });
+
+    it('keeps an unknown attribute, after the dialect\'s own keys, when the patch sets one', () => {
+        const text = '[hello]{bogus=1 size=1.2em}';
+        const edit = spanStyleSource({ color: '#cc0000' })(text, 1, 6)!;
+
+        expect(apply(text, edit)).toBe('[hello]{color=#cc0000 size=1.2em bogus=1}');
+    });
+
+    it('splits a span the selection only partly covers', () => {
+        const text = '[hello world]{size=1.2em}';
+        const edit = spanStyleSource({ color: '#2563eb' })(text, 7, 12)!;
+
+        expect(apply(text, edit)).toBe('[hello ]{size=1.2em}[world]{color=#2563eb size=1.2em}');
+        expect(edit.selection).toEqual({ from: 21, to: 26 });
+        expect(apply(text, edit).slice(edit.selection.from, edit.selection.to)).toBe('world');
+    });
+
+    it('rewrites a span and the plain text around it in one edit', () => {
+        const text = 'The [warning]{color=#cc0000} is loud.';
+        const edit = spanStyleSource({ 'font-size': '1.2em' })(text, 0, text.length)!;
+
+        expect(apply(text, edit))
+            .toBe('[The ]{size=1.2em}[warning]{color=#cc0000 size=1.2em}[ is loud.]{size=1.2em}');
+    });
+
+    // The brackets must land OUTSIDE the emphasis run: a span written inside
+    // one loses the emphasis on the next mode switch (see the round-trip cases
+    // in `markdown-editor.test.ts`), so this is correctness, not cosmetics.
+    it('extrudes the emphasis markers flanking the selection', () => {
+        const edit = spanStyleSource({ color: '#cc0000' })('a **hello** b', 4, 9)!;
+
+        expect(edit).toEqual({
+            from: 2, to: 11, insert: '[**hello**]{color=#cc0000}', selection: { from: 3, to: 12 },
+        });
+    });
+
+    it('extrudes back out when the selection already included the markers', () => {
+        const text = 'a **hello** b';
+        const edit = spanStyleSource({ color: '#cc0000' })(text, 2, 11)!;
+
+        expect(apply(text, edit)).toBe('a [**hello**]{color=#cc0000} b');
+    });
+
+    it('does not mistake a span\'s own brackets for emphasis markers', () => {
+        const text = '[hello]{color=red}';
+        const edit = spanStyleSource({ 'font-size': '1.2em' })(text, 1, 6)!;
+
+        expect(apply(text, edit)).toBe('[hello]{color=red size=1.2em}');
+    });
+
+    it('expands a collapsed caret to its enclosing word', () => {
+        const text = 'a hello b';
+        const edit = spanStyleSource({ color: '#cc0000' })(text, 4, 4)!;
+
+        expect(apply(text, edit)).toBe('a [hello]{color=#cc0000} b');
+    });
+
+    it('declines a collapsed caret with no word under it', () => {
+        expect(spanStyleSource({ color: '#cc0000' })('a  b', 2, 2)).toBeNull();
+    });
+
+    it('declines a whitespace-only selection', () => {
+        expect(spanStyleSource({ color: '#cc0000' })('a   b', 1, 4)).toBeNull();
+    });
+
+    // The word expansion lands on `red`, which clamps out of the span's text
+    // range, so no piece is patched and the rewrite equals what it replaces.
+    it('declines a caret inside a span\'s attribute text', () => {
+        expect(spanStyleSource({ color: '#cc0000' })('[x]{color=red}', 10, 10)).toBeNull();
+    });
+
+    // The refusal is coarse on purpose: it declines whenever the selection's line
+    // carries an emphasis marker OUTSIDE the selection. Deciding which `*` or
+    // `++` is emphasis needs an inline parser this module deliberately is not, and
+    // three narrower rules reasoning from nearby marker positions each missed a
+    // shape that corrupted the document. The cases below are those shapes.
+    const COLOUR = { color: '#cc0000' };
+
+    it('declines a selection inside a wider emphasis run, for every family', () => {
+        for (const text of ['**hello world**', '*hello world*', '~~hello world~~', '++hello world++', '`hello world`']) {
+            const at = text.indexOf('world');
+
+            expect(spanStyleSource(COLOUR)(text, at, at + 5), text).toBeNull();
+        }
+    });
+
+    // A selection swallowing one side of a run while its partner stays outside.
+    // Reachable with a plain shift+End or shift+Home from inside an emphasised word.
+    it('declines a selection carrying a marker run in its interior', () => {
+        const cases: Array<[string, number, number]> = [
+            ['**hello** world', 4, 15],
+            ['a **bold** c', 5, 12],
+            ['a **bold** c', 0, 7],
+            ['a ~~struck~~ c', 5, 14],
+            ['a *it* c', 4, 8],
+            ['**a** b', 2, 7],
+            ['a ++under++ c', 5, 13],
+            ['a `code` c', 4, 10],
+        ];
+
+        for (const [text, from, to] of cases) {
+            expect(spanStyleSource(COLOUR)(text, from, to), `${text} (${from},${to})`).toBeNull();
+        }
+    });
+
+    // The refusal is what keeps ordinary prose intact: a marker-scanning split
+    // reads these asterisks and plus signs as emphasis and eats them.
+    it('declines rather than damage literal marker characters in prose', () => {
+        expect(spanStyleSource(COLOUR)('2 * 3 and 4 * 5', 6, 9)).toBeNull();
+        expect(spanStyleSource(COLOUR)('C++ and Java++', 4, 7)).toBeNull();
+    });
+
+    it('declines a selection between two separate emphasis runs', () => {
+        expect(spanStyleSource(COLOUR)('a *b* and *c* d', 6, 9)).toBeNull();
+    });
+
+    it('declines a selection inside a nested run', () => {
+        const text = '**hello *world* again**';
+        const at = text.indexOf('again');
+
+        expect(spanStyleSource(COLOUR)(text, at, at + 5)).toBeNull();
+    });
+
+    it('declines a selection covering only part of a flanking marker run', () => {
+        expect(spanStyleSource(COLOUR)('**hello world**', 8, 15)).toBeNull();
+        expect(spanStyleSource(COLOUR)('**hello world**', 0, 7)).toBeNull();
+    });
+
+    // The documented cost of the coarse rule: these would have been safe.
+    it('over-declines a word on a line whose emphasis is elsewhere', () => {
+        expect(spanStyleSource(COLOUR)('*emph* then plain words', 12, 17)).toBeNull();
+        expect(spanStyleSource(COLOUR)('*one* and **two** and *three*', 12, 15)).toBeNull();
+    });
+
+    it('still wraps a run that is the only emphasis on its line', () => {
+        const text = '**world**';
+        const edit = spanStyleSource(COLOUR)(text, 2, 7)!;
+
+        expect(apply(text, edit)).toBe('[**world**]{color=#cc0000}');
+    });
+
+    // The rewrite re-emits each span and each stretch between spans as its own
+    // group, so a marker run wrapping an existing span would be cut in two —
+    // `[**hello ]{…}[world]{…}[**]{…}` reads back as literal asterisks.
+    it('declines a marker run that wraps an existing span', () => {
+        expect(spanStyleSource(COLOUR)('**hello [world]{size=1.2em}**', 0, 29)).toBeNull();
+        expect(spanStyleSource(COLOUR)('`a [b]{size=1em}`', 0, 17)).toBeNull();
+        expect(spanStyleSource(COLOUR)('**[x]{size=1em}**', 3, 4)).toBeNull();
+    });
+
+    it('still styles a word on a line carrying no emphasis at all', () => {
+        const text = 'plain words here';
+        const edit = spanStyleSource(COLOUR)(text, 6, 11)!;
+
+        expect(apply(text, edit)).toBe('plain [words]{color=#cc0000} here');
+    });
+
+    // The rule counts marker CHARACTERS, not emphasis: a `*`/`+` list bullet,
+    // a `~` in a path and arithmetic `+` all refuse, while a `-` bullet does not.
+    it('declines on a line carrying a marker character that is not emphasis', () => {
+        expect(spanStyleSource(COLOUR)('* item here', 2, 6)).toBeNull();
+        expect(spanStyleSource(COLOUR)('+ item here', 2, 6)).toBeNull();
+        expect(spanStyleSource(COLOUR)('see ~/foo and hello', 14, 19)).toBeNull();
+        expect(spanStyleSource(COLOUR)('1 + 1 is two', 9, 12)).toBeNull();
+
+        const edit = spanStyleSource(COLOUR)('- item here', 2, 6)!;
+
+        expect(apply('- item here', edit)).toBe('- [item]{color=#cc0000} here');
+    });
+
+    // A `[…]{…}` group carrying a newline is not a span this module can parse,
+    // but it is still a span: treating it as plain text re-brackets it into
+    // `[[x]{…}]{…}`, which STYLED_TEXT's `[^[\]]+` inner pattern cannot read
+    // back. Refusing is the only safe answer. Reachable by pressing Enter
+    // inside a styled span in source mode, then restyling part of it.
+    it('declines a range inside a span whose group carries a newline', () => {
+        const text = '[hello]{color=red\nfoo=bar}';
+
+        expect(spanStyleSource({ color: '#cc0000' })(text, 1, 6)).toBeNull();
+    });
+
+    it('declines a range inside a span whose text carries a newline', () => {
+        const text = '[hel\nlo]{color=red}';
+
+        expect(spanStyleSource({ 'font-size': '1.2em' })(text, 1, 4)).toBeNull();
+    });
+
+    // Distinguishes the no-piece-patched decline from the equality decline: a
+    // NON-canonical group re-emits re-ordered, so the rewrite does not equal
+    // what it replaces and only the unset-selection guard can refuse it.
+    it('declines a caret inside a non-canonically ordered attribute group', () => {
+        expect(spanStyleSource({ color: '#cc0000' })('[x]{size=1.2em color=red}', 22, 22)).toBeNull();
+    });
+
+    it('declines a selection crossing a line break', () => {
+        expect(spanStyleSource({ color: '#cc0000' })('one\ntwo', 0, 7)).toBeNull();
+        expect(spanStyleSource({ color: '#cc0000' })('one\ntwo', 3, 4)).toBeNull();
+    });
+
+    // A cell's literal `\n\n` is the paragraph break the viewer splits its
+    // text on; a span holding it or cutting into it shows it as literal text.
+    it('declines a selection holding or cutting into a table cell\'s paragraph break', () => {
+        const table = '| a\\n\\nb |\n| - |';
+
+        expect(spanStyleSource({ color: '#cc0000' })(table, 2, 8)).toBeNull();
+        expect(spanStyleSource({ color: '#cc0000' })(table, 5, 8)).toBeNull();
+        expect(apply(table, spanStyleSource({ color: '#cc0000' })(table, 7, 8)!)).toBe('| a\\n\\n[b]{color=#cc0000} |\n| - |');
+    });
+
+    it('declines a selection inside a link', () => {
+        expect(spanStyleSource({ color: '#cc0000' })('see [docs](/d) here', 5, 9)).toBeNull();
+    });
+
+    it('declines a selection straddling a link', () => {
+        expect(spanStyleSource({ color: '#cc0000' })('see [docs](/d) here', 5, 16)).toBeNull();
+    });
+
+    it('declines a selection inside an image\'s alt text', () => {
+        expect(spanStyleSource({ color: '#cc0000' })('a ![alt](/i.png) b', 4, 7)).toBeNull();
+    });
+
+    it('declines a run that would be bracketed while still holding a bracket', () => {
+        expect(spanStyleSource({ color: '#cc0000' })('a [b c', 0, 6)).toBeNull();
+    });
+
+    it('declines a CSS property the dialect has no attribute key for', () => {
+        expect(spanStyleSource({ 'text-decoration': 'underline' })('hello', 0, 5)).toBeNull();
+    });
+
+    it('declines a clear that would change nothing', () => {
+        expect(spanStyleSource({ color: null })('hello', 0, 5)).toBeNull();
+    });
+
+    it('declines an invalid value on plain text', () => {
+        expect(spanStyleSource({ color: 'nope!' })('hello', 0, 5)).toBeNull();
+    });
+
+    // What the WYSIWYG path does with the same unusable value: it reaches
+    // `$patchStyleText` and the export drops it, clearing the old colour.
+    it('clears an existing value when the new one is invalid', () => {
+        const text = '[x]{color=#cc0000}';
+        const edit = spanStyleSource({ color: 'nope!' })(text, 1, 2)!;
+
+        expect(apply(text, edit)).toBe('x');
+    });
+
+    it('keeps an attribute key the dialect does not know on re-emit', () => {
+        const text = '[x]{weight=bold}';
+        const edit = spanStyleSource({ color: '#cc0000' })(text, 1, 2)!;
+
+        expect(apply(text, edit)).toBe('[x]{color=#cc0000 weight=bold}');
+    });
+
+    it('quotes a font family containing a space', () => {
+        const edit = spanStyleSource({ 'font-family': 'Georgia, serif' })('hello', 0, 5)!;
+
+        expect(apply('hello', edit)).toBe('[hello]{font="Georgia, serif"}');
+    });
+
+    it('declines a second identical press', () => {
+        const first = spanStyleSource({ color: '#cc0000' })('hello world', 0, 5)!;
+        const pressed = apply('hello world', first);
+
+        expect(spanStyleSource({ color: '#cc0000' })(pressed, first.selection.from, first.selection.to))
+            .toBeNull();
+    });
+
+    // WYSIWYG keeps one text node per distinct style, so a press that leaves
+    // part of a span styled exactly as the rest must not fragment it.
+    it('declines a redundant press on part of a span', () => {
+        expect(spanStyleSource({ color: '#cc0000' })('[hello world]{color=#cc0000}', 7, 12)).toBeNull();
+        expect(spanStyleSource({ 'font-size': '1.2em' })('[a b c]{size=1.2em}', 3, 4)).toBeNull();
+    });
+
+    it('emits equally styled neighbours as one span', () => {
+        const text = '[warning]{color=#cc0000} text';
+        const edit = spanStyleSource({ color: '#cc0000' })(text, 0, text.length)!;
+
+        expect(apply(text, edit)).toBe('[warning text]{color=#cc0000}');
+        expect(edit.selection).toEqual({ from: 1, to: 13 });
+
+        const abutting = '[a]{color=#cc0000}b';
+        const joined = spanStyleSource({ color: '#cc0000' })(abutting, 18, 19)!;
+
+        expect(apply(abutting, joined)).toBe('[ab]{color=#cc0000}');
+        expect(joined.selection).toEqual({ from: 2, to: 3 });
+    });
+
+    it('rejoins a split span once its parts are styled alike again', () => {
+        const text = '[hello ]{size=1.2em}[world]{color=#2563eb size=1.2em}';
+        const at = text.indexOf('world');
+        const edit = spanStyleSource({ color: null })(text, at, at + 5)!;
+
+        expect(apply(text, edit)).toBe('[hello world]{size=1.2em}');
+        expect(edit.selection).toEqual({ from: 7, to: 12 });
+    });
+});
+
+// Each `{…}` attribute group the dialect writes outside a styled span belongs
+// to a construct a span cannot nest in: bracketing a word inside one turns the
+// group into `{width=[320]{…}}`, which its importer no longer reads, so the
+// construct falls apart (an image loses its size, a fence its alignment, a
+// table its delimiter row and with it the whole table).
+describe('spanStyleSource refuses the dialect\'s other attribute groups', () => {
+    const COLOUR = { color: '#cc0000' };
+
+    it('declines a caret or selection inside an image\'s size group', () => {
+        const text = '![a](/i.png){width=320}';
+        const at = text.indexOf('320');
+
+        expect(spanStyleSource(COLOUR)(text, at + 1, at + 1)).toBeNull();
+        expect(spanStyleSource(COLOUR)(text, at, at + 3)).toBeNull();
+        expect(spanStyleSource(COLOUR)(text, text.indexOf('width'), text.indexOf('width') + 5)).toBeNull();
+    });
+
+    it('declines a selection reaching into an image\'s size group from outside', () => {
+        const text = '![a](/i.png){width=320} tail';
+
+        expect(spanStyleSource(COLOUR)(text, text.indexOf('320'), text.length)).toBeNull();
+    });
+
+    it('declines a caret inside an image\'s alt text or destination', () => {
+        const text = '![alt](/img.png){width=320}';
+
+        expect(spanStyleSource(COLOUR)(text, 3, 3)).toBeNull();
+        expect(spanStyleSource(COLOUR)(text, text.indexOf('img') + 1, text.indexOf('img') + 1)).toBeNull();
+    });
+
+    // A title in parentheses is CommonMark link syntax the link commands
+    // already read; the refusal must recognise the same link.
+    it('declines a selection inside a link carrying a parenthesised title', () => {
+        const text = 'see [docs](/d (Title)) here';
+
+        expect(spanStyleSource(COLOUR)(text, 5, 9)).toBeNull();
+        expect(spanStyleSource(COLOUR)(text, text.indexOf('Title'), text.indexOf('Title') + 5)).toBeNull();
+    });
+
+    it('still styles prose after a sized image', () => {
+        const text = '![a](/i.png){width=320} and more';
+        const at = text.indexOf('more');
+        const edit = spanStyleSource(COLOUR)(text, at, at + 4)!;
+
+        expect(apply(text, edit)).toBe('![a](/i.png){width=320} and [more]{color=#cc0000}');
+    });
+
+    it('declines anywhere on a ::: fence line', () => {
+        const text = '::: {align=center gap=2em}\nhello\n:::';
+        const at = text.indexOf('center');
+
+        expect(spanStyleSource(COLOUR)(text, at + 1, at + 1)).toBeNull();
+        expect(spanStyleSource(COLOUR)(text, at, at + 6)).toBeNull();
+
+        const named = '::: note {align=center}\nhello\n:::';
+
+        expect(spanStyleSource(COLOUR)(named, 4, 8)).toBeNull();
+    });
+
+    it('still styles text inside a ::: fence', () => {
+        const text = '::: {align=center}\nhello\n:::';
+        const at = text.indexOf('hello');
+        const edit = spanStyleSource(COLOUR)(text, at, at + 5)!;
+
+        expect(apply(text, edit)).toBe('::: {align=center}\n[hello]{color=#cc0000}\n:::');
+    });
+
+    it('declines anywhere on a table delimiter row', () => {
+        const text = '| a | b |\n| :--- {width=240} | --- |\n| c | d |';
+        const at = text.indexOf('240');
+
+        expect(spanStyleSource(COLOUR)(text, at + 1, at + 1)).toBeNull();
+        expect(spanStyleSource(COLOUR)(text, text.indexOf('width'), text.indexOf('width') + 5)).toBeNull();
+        expect(spanStyleSource(COLOUR)(text, text.indexOf(':---'), at + 3)).toBeNull();
+    });
+
+    it('still styles a table cell', () => {
+        const text = '| a | b |\n| :--- {width=240} | --- |\n| c | d |';
+        const at = text.indexOf('c');
+        const edit = spanStyleSource(COLOUR)(text, at, at + 1)!;
+
+        expect(apply(text, edit)).toBe('| a | b |\n| :--- {width=240} | --- |\n| [c]{color=#cc0000} | d |');
+    });
+});
+
+// A bracket written straight after an escaping backslash is literal text, as
+// is one written straight after a selection ending in one: either way the span
+// syntax would stay visible, and the backslash would no longer mean what it
+// meant. The inline toggles decline the same shape (`C:\**Users**`).
+describe('spanStyleSource and backslash escapes', () => {
+    const COLOUR = { color: '#cc0000' };
+
+    it('declines a selection straight after an escaping backslash', () => {
+        expect(spanStyleSource(COLOUR)('C:\\Users', 3, 8)).toBeNull();
+        expect(spanStyleSource(COLOUR)('C:\\Users', 5, 5)).toBeNull();
+    });
+
+    it('declines a selection ending in an escaping backslash', () => {
+        expect(spanStyleSource(COLOUR)('a\\ b', 0, 2)).toBeNull();
+    });
+
+    it('declines a split that would end a span\'s text in a backslash', () => {
+        const text = '[a\\b]{size=1em}';
+
+        expect(spanStyleSource(COLOUR)(text, 3, 4)).toBeNull();
+    });
+
+    it('styles a selection after an escaped backslash, which is literal', () => {
+        const text = 'C:\\\\Users';
+        const edit = spanStyleSource(COLOUR)(text, 4, 9)!;
+
+        expect(apply(text, edit)).toBe('C:\\\\[Users]{color=#cc0000}');
     });
 });
 
