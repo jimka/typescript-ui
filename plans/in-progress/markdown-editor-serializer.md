@@ -582,3 +582,427 @@ From `packages/lib` unless noted:
     span (`styledSpanInStrong`). Keeping marks open across a group whose every
     segment carries them is valid CommonMark (`*a [b](u) c*`) and gives the
     shortest output.
+
+---
+
+## Implementation Notes
+
+- **Cell paragraph break is four characters, not two (S28).** The plan names
+  `CELL_PARAGRAPH_BREAK` as the two characters `\n`. In the code it is the
+  viewer's `CELL_PARAGRAPH_BREAK` in `Markdown.ts` — `\n\n`, four characters —
+  which is also what the current exporter writes between a cell's paragraphs
+  and what the harness's `viewModel.ts` mirrors. The viewer splits a cell only
+  on that pair, so a lone `\n` between paragraphs would render as literal
+  text. The serializer joins a cell's paragraphs with the four-character pair
+  (byte-compatible with the current exporter, read back as one `<br>`). A
+  `LineBreakNode` in a cell first wrote the two-character `\n` per the plan;
+  the edit-fuzz fixes below make it write the pair too (the viewer shows a
+  lone `\n` literally).
+  S28's test asserts `x \| y\n\nz` and a lex-back of runs `x | y`, break, `z`.
+  **Plan 2 is affected:** its cell-mode import ("split on the two characters
+  `\n` (`CELL_PARAGRAPH_BREAK`)") must split paragraphs on the four-character
+  pair, or every cell paragraph boundary reads back with an empty paragraph
+  between. A lone `\n` (a `LineBreakNode`) still renders literally in the
+  viewer, as it does today.
+- **S20's expected string contradicts the flatten rule; the rule was kept.**
+  Splitting styled text at `[` / `]` (Implementation, step 1) and grouping by
+  style leaves `x` styled, so `a [x] b` in red is written
+  `[a ]{color=red}\[[x]{color=red}\][ b]{color=red}`, not the row's
+  `…\[x\][ b]…`. Only the brackets lose the colour, as the lossy-construct
+  table says; the test asserts the lex-back.
+- **Escaping additions.** Comparing `viewerModel(output)` with
+  `editorSurfaceModel` over every text × format × context combination showed
+  constructs the table misses. Each now has a test:
+  `www.` autolinks anywhere in a word, so its `.` is escaped wherever it
+  follows `www`; a `!` ending the text before a link is escaped (else an
+  image); `marked` unescapes `\[` / `\]` in link text before lexing it
+  (`outputLinkReplace`), so a `(` or `{` after a `]` is escaped and a
+  backslash before a bracket in a code span inside a link is doubled; a `{`
+  right after an image's `)` is escaped (else its attributes); underline does
+  not stay open across a link whose destination holds `+`; a space-marker
+  break ending an otherwise empty line writes `\` (spaces would blank the
+  line); a code span of spaces only is not padded.
+- **Lossy beyond the plan's table: mark changes inside a word.** The stack
+  rules and the fixed order are implemented as written, and between two
+  letters they can put delimiters against each other: `a`{b}, `b`{b,i},
+  `c`{i} is written `**a*b****c*` (a merged `****` run), `a`, `b`{b,u}, `c`
+  is written `a**++b++**c` (the `**` against `++` no longer flanks), and
+  `~~a*b*~~c` loses its strike the same way. The viewer drops or misreads
+  that emphasis. The current exporter writes the same bytes, so nothing
+  regresses; the lossy table's flanking row only names punctuation in the
+  text. *Resolved by the edit-fuzz fixes below* (the read-back): these are
+  now written `__a*b*__*c*`, `a++**b**++c` and `~~a~~*~~b~~*c`.
+- **Unspecified cases.** A fence with no columns writes its children, as the
+  current exporter does. Empty paragraphs in a table cell were dropped,
+  and a list, heading or quote nested in a cell was written in its own
+  syntax (the old `escapeCellText` treatment); the edit-fuzz fixes below
+  change both. A first list item holding only a nested list writes its marker alone,
+  as the plan says, and counts toward the numbering (`1.`, nested lines,
+  `2. b`) so the markers read in sequence; the current exporter instead
+  writes no marker for it and does not count it (`    1. n\n1. b`). An empty
+  destination before a title is written `<>` (`[t](<> "x")`), since
+  `( "x")` would read `"x"` as the destination.
+- **Bullet markers are always `-`.** The plan writes every bullet list with
+  `- `. The current importer keeps an authored `*` or `+` in
+  `@lexical/markdown`'s own (unexported) `listMarkerState` and the current
+  exporter writes it back, so a document loaded as `* a` saves as `- a` with
+  the serializer — a departure the plan's table does not list, invisible to
+  C1 because `CORPUS` only uses `- `. A test pins it. Keeping the authored
+  marker would need a list-marker state of our own, set by plan 2's importer
+  the way `hardBreakMarkerState` is.
+- **Escape neighbours are the real output characters.** Step 3 and
+  *Potential Challenges* say to pass `""` across a delimiter or group
+  boundary. Text is instead escaped after the whole line is written, against
+  the actual neighbouring character (a delimiter's or bracket's own
+  character, or `\n` at a line edge): with `""`, S25's `+` between `++`
+  delimiters would not be escaped.
+- **No documentation commit:** the module has no public surface and no caller,
+  so nothing user-visible changes (the round-trip harness plan set the same
+  precedent).
+- **Observed, out of scope:** the viewer reads a fenced code block whose first
+  code line is `---` (`` ```\n---\n``` ``) as a one-column table — the
+  dialect's table extension runs ahead of `marked`'s fence rule. It is
+  independent of the serializer; the current exporter writes the same text.
+- The plan's anchors `markdownStyleTransformers.ts#L149` and
+  `markdownImageTransformer.ts#L188` point past the end of those 49-line
+  files; the formats they name were found and kept.
+
+### Whole-stack review fixes
+
+A review of the whole stack (through `markdown-viewer-block-fixes`) found
+these through the editor at the top; each is fixed here in the serializer,
+pinned by a unit test that builds the node shapes directly, and was
+confirmed end to end at the top of the stack after restacking.
+
+- **A newline inside a text node is a hard break (F1).** A code block turned
+  into a paragraph, quote, heading or list keeps its text in one `TextNode`
+  holding `\n`; written raw, its lines became blocks (`x\n# y\n- z` saved as
+  a paragraph, a heading and a list; `x\n-` as a setext heading). The editor's
+  surface is `white-space: pre-wrap` (Lexical sets it on the root), so it
+  shows each such newline as a line break; the serializer now writes each as
+  a hard break with the default marker, exactly as a `LineBreakNode` —
+  escaped line starts in a paragraph, quote or list item, a space in an ATX
+  heading, the cell break in a table cell, and a code span split around it.
+  The importer never puts a newline in plain text (a soft break is a source
+  node showing a space), so loaded paragraphs are unaffected.
+- **An empty nested list item no longer turns its parent into a setext
+  heading (F2).** `- a\n  -` reads as a level 2 heading `a`, and `- a\n  - `
+  too (a setext underline may end in spaces), so no `-` form of an empty
+  first nested item works under text. A bullet list whose first line is a
+  bare marker right under a line of text is written with `*` instead (the
+  whole list, since a bullet change starts a new list): `marked` reads
+  `- a\n  *` as a nested list with one empty item. Later empty items and
+  ordered markers are unaffected.
+- **A list item holding blocks keeps them (F6).** An item is now written as
+  its blocks: each run of inline children, and each block child — a
+  paragraph `insertParagraphAfterBlock` put after a nested list, a nested
+  list, or any other block — on its own, a nested list directly under the
+  block before it, any other block after a blank line (else it would join
+  the text before it as a continuation). An item whose first child is a list
+  continues the item before it, as Lexical numbers and shows it, so
+  `- a\n  1. b` plus a paragraph `X` saves as `- a\n  1. b\n\n  X` (the
+  blank line makes the outer list loose, which is how CommonMark reads an
+  item holding two blocks).
+- **Heading ids survive a save (F9).** The viewer slugs a heading's source
+  text, so every rewrite of it changes the id. Two node states are added
+  beside `hardBreakMarkerState`, for plan 2's importer to set (it does, in
+  `markdown-editor-marked-import`): `bareAutolinkState` marks a link loaded
+  from a GFM bare URL, `www.` or email autolink, which is written back bare
+  when `marked` reads its text alone as the same link and whitespace or a
+  line edge surrounds it (else its `<…>` or `[…](…)` form, decided once the
+  line is assembled); `spanAttributesState` keeps a styled span's authored
+  attribute text, written back while it still resolves to the node's style,
+  so the attributes' order and unknown ones (`[x]{bogus=1}`) survive. Empty
+  links are fixed in `markdown-editor-marked-import`.
+- **Whitespace between differently formatted runs keeps its mark (F10).**
+  Marks open in the fixed order, except that a mark carried on across
+  whitespace at a unit boundary opens outermost, the furthest-reaching
+  first, so it stays open when the shorter mark closes before the space:
+  `++*4* 6++` and `~~**7** 1~~`, not `*++4++* ++6++`. Between letters the
+  fixed order is kept — a differential run against the old writer showed
+  that reordering there only moves where delimiters meet mid-word, breaking
+  as many intraword cases as it fixes. An image after whitespace held inside
+  open marks is written inside them (`~~, ![](g)~~`) when what follows lets
+  the delimiter close after its `)`. A mark on a lone space whose
+  neighbours lack it stays lost: CommonMark emphasis cannot hold whitespace
+  alone (underline can — see the edit-fuzz fixes below).
+- **A bracket pair around an odd-backtick code span in link text is written
+  unescaped (F11).** `marked` finds the end of link text by pairing
+  backticks, which a code span holding an odd number of them (`` ` ``)
+  throws off, so `[\[`` ` ``\]](/u)` read as literal text; inside a bracket
+  pair it scans plain text, so such a pair (holding no other bracket) is now
+  written as brackets: `[[`` ` ``]](/u)`.
+- **An outer emphasis pair `marked` would mis-pair is written with `_`.**
+  The edit fuzz of `markdown-editor-source-preservation` found that typing a
+  word right before an inner bold run (`*foo **bar** baz*` edited to
+  `*foo fuzz**bar** baz*`) lost the bold: a `*` run with a letter (or
+  punctuation) on both sides can open and close, and when only one end of
+  an inner pair is such a run, `marked` pairs it with the outer `*` run,
+  where CommonMark pairs them correctly. Once a line is
+  assembled, the delimiters are paired, and an outer bold or italic pair
+  around such an inner pair is written with `_` (`_foo fuzz**bar** baz_`),
+  which never pairs with `*` — kept only when every delimiter that could
+  open or close before still can, so an outer pair next to a letter stays
+  `*`. The pairs are read across the whole block. Flanking is read as
+  `marked` reads it (Unicode punctuation and
+  symbols, `~` a letter next to `*`). This also fixed the known intraword
+  loss `***a*b*c***` (now `__*a*b*c*__`). A randomized differential run over
+  bold, italic, strikethrough and underline runs (30,000 paragraphs per mark
+  set) fixed about 800–1,600 cases per set and broke none; switching the inner
+  pair instead, where the outer cannot, fixed a few dozen more but broke
+  one, so it was left out. A delimiter between a letter and punctuation —
+  a word typed right before emphasis that opens with punctuation
+  (`foo fuzz*\**`, `A fuzz**[ref]**`), or after emphasis that ends with it —
+  cannot open or close as either `*` or `_`; CommonMark's remedy, writing
+  the letter as a character reference, shows the reference as typed in this
+  viewer, which does not decode them. Those stay pinned as known losses.
+- **The harness's editor surface reads a newline in a text node as a break.**
+  `editorSurfaceModel` collapsed it to a space, but the editor's
+  `white-space: pre-wrap` surface shows it as a line break and F1 saves it
+  as a hard break, so a code block turned into a paragraph projected
+  differently from the viewer's reading of its save. It is fixed here
+  rather than in `markdown-roundtrip-harness`: loading never puts a newline
+  in a text node outside code, and before F1 no save wrote one as a break,
+  so no check on the earlier branches could reach it.
+
+An edit fuzz over the stack (load, edit, save, re-lex with the viewer) then
+found these, fixed the same way:
+
+- **A code block's fence suits its info string.** Every code block was
+  written with a backtick fence and its info string after it, but a
+  backtick fence's info string cannot hold a backtick: a `~~~` block with
+  the info string `` `2 `` saved as ```` ````2 ```` with a shorter closing
+  fence, and the rest of the document became code. A block whose info
+  string holds a backtick is now fenced with `~~~`, and either fence is one
+  longer than the longest run of its own character that starts a line of
+  the code.
+- **A code span takes the shortest fence its content does not hold**
+  (deviation from S24 and *Code spans*, which fence one backtick longer than
+  the longest run: `a``b` is now written `` `a``b` ``, as CommonMark
+  allows). A fence of three or more at a line start is read as a code fence
+  by `marked`'s setext-heading rule, so `` ` ``)` `` on a heading's second
+  line was saved ```` ``` ``)``` ```` and the heading became a paragraph;
+  the shorter fence is also the one the source most likely used. Inside
+  link text the fence stays one longer than the longest run: `marked`'s
+  link-text scan reads from one backtick run to the next as a code span, so
+  a shorter fence there ends the link text early. Content holding runs of
+  both one and two backticks still needs three; `markdown-editor-marked-import`'s
+  setext writer falls back to an ATX heading for that line.
+- **A bare autolink inside emphasis stays bare (F9).** A link loaded bare
+  whose text carries marks (`*http://e*4`) was written `[…](…)` inside the
+  marks, and the closing delimiter, between the `)` and a letter, no longer
+  closed. Such a link is now written bare inside its marks when each side is
+  whitespace, a line edge or one of those marks' delimiters next to a letter
+  or digit of it — the emphasis then bounds the URL — else in its
+  `[…](…)` form as before. A delimiter opening right after it bounds
+  nothing (`marked` reads the URL on across it), nor does underline when the
+  text holds a `+`. The bare-or-fallback choice is now made before the
+  emphasis pairs are read, so the pairing sees the characters written.
+- **An image keeps its authored attributes.** An edited block rewrote an
+  image's attribute group from its size alone, dropping `{width=x}` (an
+  invalid width) and `{bogus=1}` and reordering `{height=2 width=3}`, so a
+  heading holding one changed its id. `imageAttributesState` is added beside
+  `spanAttributesState`, for plan 2's importer to set (it does, in
+  `markdown-editor-marked-import`), and written back while it still resolves
+  to the image's size, as F9 does for a span.
+- **A mark the text after an image carries from its leading space opens
+  before the image (F10).** `~![](g) 2~` saved `![](g) ~~2~~`, the space no
+  longer struck: an image carries no marks, so they closed before it and
+  reopened after the space. When the text after an image starts with
+  whitespace, its marks now stay open, or open before the `!`, where an
+  opening delimiter can stand (after whitespace, punctuation or a line edge;
+  anywhere for underline, which has no flanking rule): `~~![](g) 2~~`.
+  Between a word and the image the space stays unmarked, as before.
+- **Underlined `+` stays lossy, as the lossy-construct table says.** The
+  fuzz flagged `+b`, `b+` and `++b` underlined in full, saved `\+++b++`,
+  `++b++\+` and `\+\+++b++`. The escapes are on the literal `+` and the
+  viewer reads the underline delimiters as written (the same `+` unmarked
+  beside an underlined `b` round-trips); what is lost is the underline on
+  the `+` itself, which the viewer's `++([^+]+)++` grammar cannot hold — S25's
+  case. Nothing changed here.
+
+A whole-stack edit fuzz at `markdown-viewer-block-fixes` (seeds 601 and
+777, 3,000 documents per mode, two edits each), with a node-level fuzz of
+this serializer alone (random inline and block trees, the viewer's reading
+of the output compared with the editor's surface), then found these, fixed
+here under the decision to fix everything a representation can keep:
+
+- **A block's Markdown is read back and rewritten when its emphasis reads
+  differently.** Where delimiters meet each other or punctuation — a
+  merged `***` run between two marks, a `*` against a `~~` (a letter to
+  `marked`) or a `++`, a code span holding a backtick and a `*` (which
+  `marked` cannot mask), an escaped `\~` (punctuation to `marked`) — the
+  stack rules' output reads back wrong. `serializeInlineNodes` now lexes
+  each block's inline Markdown with `lexMarkdown`, in the block it is
+  written for (a paragraph, a heading after `# `, a one-cell table), and
+  compares the reading — every visible character, image and break with its
+  marks, link and style — with the editor's segments. On a mismatch it
+  tries `WRITING_POLICIES` in turn (underline outermost; marks inside a
+  link or span; marks reopened in a fixed rank), each with its bold and
+  italic pairs switched between `*` and `_` greedily, then, for a block
+  holding a `~`, the same with lone tildes unescaped; the first writing
+  that reads back as written is kept, else the first. At most
+  `MAX_READ_BACKS` (64) lexes per block; a block with no mark, bare
+  autolink or `~` is not read back. This is the lexer-probe pattern the
+  later branches use for block joins and HTML block starts. It fixed the
+  three intraword known losses above and the bold link after a word
+  (`A fuzz[**x**](/u)`).
+- **A bare autolink stays bare next to punctuation where the viewer still
+  reads it (F9).** `<https://a.test/1>www.b.test` was re-saved as
+  `[www\.b.test](http://www.b.test)`, changing the heading's id. A bare
+  autolink whose neighbours are not letters or digits is now written bare
+  when the read-back still reads the same link.
+- **A hard break at the start of a block is written** (deviation from B3):
+  `\` on an empty first line, which a paragraph, quote or list item can
+  open with (`- \` + newline + `  a`).
+- **A table cell keeps its breaks.** A `LineBreakNode` (or newline) in a
+  cell writes the four-character pair the viewer splits on (a lone `\n`
+  shows literally), breaks at either edge of a cell are kept, and an empty
+  paragraph keeps its boundaries (`a\n\n` shows `a` and a blank line, as
+  the editor does). A delimiter opening right after a cell break is written
+  after a space — the break ends in the letter `n`, against which a
+  delimiter before punctuation cannot open; the space collapses at the
+  line start.
+- **A block nested in a table cell is written as its inline content** (a
+  heading, quote or code block a command toggled inside a cell; a list as
+  each item's content on its own line of the cell): its own syntax showed
+  as literal text (`## t`) and read back into the cell's text.
+- **Underline keeps the whitespace it covers.** The underline grammar has
+  no flanking rule, so edge whitespace of underlined text stays inside its
+  `++` (`b++ a++`), underlined whitespace alone is written `++ ++`, and
+  underline opens outside the marks that end with such text
+  (`++*a* ++b`).
+- **A break ending a link's text is written after the link**, where it
+  still breaks the line (`marked` reads no break at the end of link text).
+- **An angle-bracket autolink keeps its form inside emphasis.**
+  `*<a@b.test>*` was written `*[a\@b.test](mailto:a@b.test)*`, changing a
+  heading's id; an autolink whose text carries marks is now written
+  `<…>` with the delimiters around it (also the fallback of a bare one).
+- **A body row wider than the header no longer loses its extra cells.**
+  The table was written as wide as its header row, so a cell an edit left
+  beyond it was dropped from the save; the header is now padded with empty
+  cells to the widest row (a pipe table cannot be ragged).
+- **A code span ending in a backslash is padded** (`` ` a \ ` ``):
+  `marked` masks a backslash together with the character after it before
+  pairing backticks, so the closing fence after a `\` was hidden and a
+  later code span's fence paired with this one's, misreading the block.
+
+These cannot be written so the viewer shows what the editor shows, and
+stay lossy (the end-of-block breaks and the flanking cases are pinned by
+tests that assert the viewer reads them differently):
+
+- **A hard break at the end of a block, or a block holding only breaks.**
+  CommonMark (§6.7) reads no hard break at the end of a block — a trailing
+  `\` is a literal backslash, trailing spaces are stripped — and a
+  paragraph needs content. Only an invisible character after the break (an
+  NBSP or a zero-width space the editor does not hold) would keep it, and
+  the viewer does not decode entity references, so `&nbsp;` shows as
+  typed. (A table cell can: the viewer renders its cell break anywhere.)
+- **A line break in an ATX heading.** An ATX heading is one line; levels 1
+  and 2 have the setext form (`markdown-editor-marked-import`'s setext
+  writer), levels 3–6 none, so the break is written as a space. The editor
+  should not offer Shift+Enter (or keep a newline) in a level 3–6 heading —
+  a change for `markdown-editor-marked-import`.
+- **Emphasis or strikethrough whose content starts with punctuation right
+  after a letter, or ends with punctuation (a code span, an escaped
+  character) right before one** (`**(a)**b`, ``a~~`c`~~``). An opening
+  delimiter before punctuation must follow whitespace or punctuation, a
+  closing one after punctuation must precede them (CommonMark's flanking
+  rules, which GFM strikethrough shares); `*` and `_` obey both. The only
+  CommonMark remedy, a character reference for the neighbouring letter,
+  shows as typed in this viewer.
+- **Bold, italic or strikethrough on whitespace at a run's edge or alone**:
+  an opening delimiter cannot be followed by whitespace nor a closing one
+  preceded by it (and GFM strikethrough needs a non-space after its
+  opener). Underline can, and does.
+- **The dialect's grammar limits**, as the lossy-construct table says:
+  underlined `+` (`++([^+]+)++`), styled text holding `[` or `]`
+  (`[^[\]]+`), brackets in image alt text.
+- **A `<` before emphasis is escaped where a later `>` would hide it (stack
+  fuzz round).** `marked` masks every `<…>` stretch before it pairs emphasis
+  delimiters, whether or not the stretch is a tag, so `<+a**b**c d\<e>` read
+  its bold as literal asterisks: a `<` before anything but a letter, `/`,
+  `!` or `?` was written unescaped, and the escaped `\<` later does not stop
+  the stretch (`marked` masks escapes first). A block holding a `<` that does
+  not read back is now tried again with every `<` escaped, as one with a `~`
+  is with its lone tildes unescaped. The fuzz found it through a paste into a
+  setext heading; any paragraph shows it.
+- **The harness's whitespace model changed under one test.** The read-back
+  test of an outer pair opening mid-word expected the plain space between two
+  italic runs as a run of its own; the round-trip harness now projects a
+  space with the bold and italic of the text on both sides of it, which a
+  space cannot show (see `markdown-roundtrip-harness`'s notes), so the
+  expectation is one italic run `a `.
+- **A text split into nodes of one format is written as one node (stack fuzz
+  round).** Adjacent text segments with the same marks, style, link and code
+  are merged before writing, as code segments already were: the writing
+  around an image depended on whether the space after it stood in a node of
+  its own (`![](g)` then an italic ` ` and `!` wrote `![](g) *!*`, one italic
+  ` !` wrote `*![](g) !*`), and Lexical joins such nodes only when it commits
+  an update, after a load has fingerprinted each block — so an unedited
+  block saved in the standard form.
+
+### Stack fuzz round 2
+
+A fifth whole-stack fuzz, run at the stack's top on the rule that the
+editor shows what is saved and what the viewer renders, found these
+writings here that the viewer reads into the block around them, or that
+drop source; each is fixed in the serializer and pinned by a unit test:
+
+- **A nested list follows only the item's own text directly.** After any
+  other block of the item it now follows a blank line, as other blocks do:
+  a table read the list's lines as rows, and a paragraph after the item's
+  text took in an ordered list not starting at 1 (CommonMark lets only a
+  list starting at 1 interrupt a paragraph). The blank line is already
+  there before such a block, so the list's looseness does not change.
+- **A bare autolink before a `\` hard break is written `<…>`.** GFM's
+  extended autolink takes a trailing backslash into the URL, so the break
+  was lost and the URL changed; the line's end no longer bounds a bare URL
+  when a `\` break ends the line.
+- **A fence keeps its authored attributes.** A `:::` fence's attribute
+  text the editor does not model (`{x=1 align=right}`) was dropped once its
+  content was edited; a new `fenceAttributesState`, set by the importer,
+  keeps the authored text, written while it still resolves to the fence's
+  alignment and gap, as `spanAttributesState` does for a styled span.
+- **A link title's line breaks are written where its block holds them.**
+  A blank line in a title ended the paragraph mid-link, and any line break
+  ended a heading or table cell line; a stretch of breaks is now written as
+  one, and in a heading or table cell as a space.
+- **Canonical mark placement around links and spans (round 2's
+  `canonicalIdempotence`, 4 signatures).** A save loaded and saved again
+  moved a mark into or out of a link's or styled span's brackets though it
+  read the same (`[**c d**](…)` then `**[c d](…)**`). Two causes, both
+  settled here so the second save equals the first. (1) Bold and italic do
+  not show on whitespace, and the writer leaves whitespace at a run's edge
+  outside its delimiters, so the read-back carried them otherwise on the
+  whitespace beside a link or span (`[**a b,** ](…)` loads its space
+  unmarked) — and whether a group carries a mark whole decides where the
+  mark is written (`commonMarks`), and which writing policy reads back.
+  `flattenInline` now settles those two marks on the whitespace at a link's
+  or styled span's edge to the ones the characters on both sides share
+  (`canonicalWhitespaceMarks`), so both forms are the same segments.
+  Whitespace away from a group's edge is written as marked (`**a** **b**`
+  stays, so bolding the space between still joins the runs), underline and
+  strikethrough, drawn across whitespace, are left alone, and so is
+  whitespace beside an image, a break or the content's edge. (2) A
+  marked bare autolink kept its marks outside it, bare or in its `[…](…)`
+  fallback, where a link loaded from that fallback (no longer bare) had
+  them written inside under a marks-inside-groups policy; under such a
+  policy a marked bare autolink is now written as that link, marks inside.
+  Pinned by building both node shapes of each finding and requiring the
+  same save.
+
+### Stack fuzz round 4
+
+- **An image's and a fence's authored attributes survive a JSON round
+  trip.** `MarkdownImageNode.importJSON` and `MarkdownBlockNode.importJSON`
+  built a fresh node from the JSON's own fields and dropped its node state
+  (`imageAttributesState`, `fenceAttributesState`, and on the stack above,
+  `keptSourceState`), where Lexical's own nodes restore it through
+  `updateFromJSON`. A paste of copied nodes, or content the editor restores
+  from JSON — `markdown-editor-marked-import`'s declined edit puts the
+  touched blocks back from their JSON, and a selection reaching from a list
+  into the paragraph after it touches the whole list — then lost an
+  image's `{width=x}` and, in a construct kept as written, the image's
+  place in it, so the construct dissolved and a link nested around it lost
+  its destination from the save. Both now call `updateFromJSON`.
