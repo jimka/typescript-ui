@@ -145,6 +145,12 @@ describe('viewer projection', () => {
         ]);
     });
 
+    it('V17. maps a hard line break to a break run', () => {
+        expect(viewerModel('foo  \nbar').blocks).toEqual([
+            { kind: 'paragraph', runs: [textRun('foo'), { kind: 'break' }, textRun('bar')] },
+        ]);
+    });
+
     it('WS1. drops a space that follows a space, across a run boundary, as HTML collapses it', () => {
         expect(viewerModel('++a ++ b').blocks).toEqual([
             { kind: 'paragraph', runs: [textRun('a ', ['underline']), textRun('b')] },

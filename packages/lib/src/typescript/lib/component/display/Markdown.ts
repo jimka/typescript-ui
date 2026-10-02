@@ -579,12 +579,13 @@ const _defaultMarkdownOptions: Partial<MarkdownOptions> = { userSelect: "text", 
  *
  * The v1 token set covers headings, paragraphs, ordered/unordered lists,
  * blockquotes, fenced/inline code, bold, italic, links (inline and
- * reference-style; a reference definition renders nothing), GFM pipe tables
- * (including per-column alignment, widths, and merged cells), underline,
- * coloured/sized/font-styled spans, `:::` alignment/multi-column fences, and
- * sized images validated against a scheme allow-list. Any other token type
- * (raw HTML, the remaining GFM extensions) falls through to a defined
- * fallback that renders the token's plain text — never a crash, never markup.
+ * reference-style; a reference definition renders nothing), hard line breaks,
+ * GFM pipe tables (including per-column alignment, widths, and merged cells),
+ * underline, coloured/sized/font-styled spans, `:::` alignment/multi-column
+ * fences, and sized images validated against a scheme allow-list. Any other
+ * token type (raw HTML, the remaining GFM extensions) falls through to a
+ * defined fallback that renders the token's plain text — never a crash, never
+ * markup.
  *
  * A fenced code block whose info string names a language
  * [`CodeEditor`](/components/CodeEditor) has a registered grammar for
@@ -2056,6 +2057,9 @@ class Markdown extends Component<MarkdownOptions> {
                 break;
             }
 
+            // A hard line break (`\` or two trailing spaces before a newline).
+            case "br": DOM.sink.appendChild(parent, this.create("br")); break;
+
             default: this.appendTextNode(parent, (token as Tokens.Text).text ?? token.raw ?? ""); break;
         }
     }
@@ -2157,8 +2161,9 @@ export interface MarkdownHeading {
  * Flattens a heading's inline token tree to plain text — the same content
  * {@link Markdown.appendInlineTokens} would render, minus the markup: a
  * `strong`/`em` wrapper contributes its inner text with no `**`/`_` marks, a
- * `codespan` contributes its code text with no backticks, and a `link`
- * contributes its label text with no `[]()` syntax. `heading.text` (the raw
+ * `codespan` contributes its code text with no backticks, a `link`
+ * contributes its label text with no `[]()` syntax, and a hard line break
+ * (`br`) contributes a single space. `heading.text` (the raw
  * source substring) is deliberately not used here — it still carries that
  * markup, which is correct for {@link nextHeadingId} (matching `appendHeading`'s
  * own slug input) but wrong for display.
@@ -2174,6 +2179,7 @@ function inlineText(tokens: Token[]): string {
             case "em":       return inlineText((token as Tokens.Em).tokens);
             case "codespan": return (token as Tokens.Codespan).text;
             case "link":     return inlineText((token as Tokens.Link).tokens);
+            case "br":       return " ";
             default:         return (token as Tokens.Text).text ?? token.raw ?? "";
         }
     }).join("");

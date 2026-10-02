@@ -287,6 +287,61 @@ describe('Markdown paragraph', () => {
     });
 });
 
+describe('Markdown hard line breaks', () => {
+    it('HB1: renders two trailing spaces before a newline as a <br> inside the <p>', () => {
+        new Markdown('foo  \nbar').getElement(true);
+
+        expect(childTagsOf('p')).toContain('BR');
+        expect(textWrites()).toEqual(expect.arrayContaining(['foo', 'bar']));
+    });
+
+    it('HB2: renders a backslash before a newline as a <br>, with no stray backslash', () => {
+        new Markdown('foo\\\nbar').getElement(true);
+
+        expect(childTagsOf('p')).toContain('BR');
+        expect(textWrites().some((text) => text.includes('\\'))).toBe(false);
+    });
+
+    it('HB3: places a break inside emphasis in the <em>', () => {
+        new Markdown('*foo  \nbar*').getElement(true);
+
+        expect(childTagsOf('em')).toContain('BR');
+    });
+
+    it('HB4: keeps a backslash at the end of a paragraph as text (CommonMark 644)', () => {
+        new Markdown('foo\\').getElement(true);
+
+        expect(createdTags()).not.toContain('br');
+        expect(textWrites()).toContain('foo\\');
+    });
+
+    it('HB5: flows a soft line break with no <br>', () => {
+        new Markdown('a\nb').getElement(true);
+
+        expect(createdTags()).not.toContain('br');
+    });
+
+    it('HB6: keeps a backslash at the end of an ATX heading as text (CommonMark 646)', () => {
+        new Markdown('### foo\\').getElement(true);
+
+        expect(createdTags()).not.toContain('br');
+        expect(textWrites().some((text) => text.includes('foo\\'))).toBe(true);
+    });
+
+    it('HB7: renders no break inside a code span', () => {
+        new Markdown('`code  \nspan`').getElement(true);
+
+        expect(createdTags()).not.toContain('br');
+    });
+
+    it('HB8: reads a hard break in a setext heading as a space in the extracted heading text', () => {
+        const headings = extractMarkdownHeadings('Foo  \nbar\n===');
+
+        expect(headings).toHaveLength(1);
+        expect(headings[0].text).toBe('Foo bar');
+    });
+});
+
 describe('Markdown emphasis', () => {
     it('builds <strong> for **bold** with the text inside it', () => {
         new Markdown('**b**').getElement(true);
