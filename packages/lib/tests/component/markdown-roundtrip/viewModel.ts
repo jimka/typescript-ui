@@ -745,7 +745,8 @@ function editorInline(runs: Run[], nodes: LexicalNode[], context: RunContext): v
 }
 
 /**
- * Appends the runs of one inline node.
+ * Appends the runs of one inline node. A newline inside a text node is a break run: the editor's surface is
+ * `white-space: pre-wrap`, so it shows the newline as a line break, and the save writes it as a hard break.
  *
  * @param runs - The runs list to append to.
  * @param node - The inline node.
@@ -756,7 +757,13 @@ function editorInlineNode(runs: Run[], node: LexicalNode, context: RunContext): 
         const marks = FORMAT_MARKS.filter(([format]) => node.hasFormat(format)).map(([, mark]) => mark);
         const style = node.getStyle() === '' ? null : spanStyleOf(cssTextToAttributes(node.getStyle()));
 
-        pushText(runs, node.getTextContent(), { ...context, marks, style });
+        node.getTextContent().split('\n').forEach((line, index) => {
+            if (index > 0) {
+                runs.push({ kind: 'break' });
+            }
+
+            pushText(runs, line, { ...context, marks, style });
+        });
     } else if ($isLineBreakNode(node)) {
         runs.push({ kind: 'break' });
     } else if ($isLinkNode(node)) {
