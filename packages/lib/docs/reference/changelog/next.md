@@ -306,6 +306,73 @@ page resets to empty.
   the new fields, or relies on `"selectionchange"` firing only on a count
   change, should account for the wider dedup.
 
+- **`MarkdownEditor` reads Markdown with the viewer's parser.** A document
+  now loads exactly as the `Markdown` viewer renders it: underscore
+  emphasis, setext headings, indented and `~~~` code, two-space nested
+  lists, autolinks and loose lists are read the way the viewer reads them,
+  and a hard-wrapped paragraph shows as one flowing line that saves with its
+  line breaks. Hard line breaks keep the form they were written in, and
+  Shift+Enter saves as `\` at the line end. A list keeps its bullet (`-`,
+  `*` or `+`) or its `.` / `)` number delimiter. Thematic breaks, HTML, and
+  blockquotes or list items holding several blocks are kept as editable raw
+  Markdown blocks instead of being flattened, so saving no longer corrupts
+  them, and so is a table whose rows hold more cells than its header; a link
+  with empty text, or whose whole text is another link, is kept as source
+  too, showing the inner link's text as the viewer does; an image the viewer
+  will not render shows nothing, as in the viewer. An inline construct the
+  editor would write back differently (strikethrough over a space before a
+  linked image, a bare URL in a heading whose id it is part of) is kept as
+  source too, the text around it staying ordinary text, and a raw block edited
+  until it reads as several blocks shows as those blocks. Inside a raw block or a
+  code block the format toggles, text styles, links, images and tables
+  decline, since the block saves its text as written, and content joined or
+  pasted into one becomes its Markdown text; converting a block to a code
+  block keeps its formatting as Markdown. The toggles, styles and links also
+  decline over inline HTML and the other runs kept as source — with whole
+  table cells selected a format toggle leaves a cell holding one as it is and
+  formats the rest, or takes the format off them when all their text already
+  has it — and
+  `setBlockType` and the list toggles decline in a table cell (whole cells
+  selected included), which holds
+  text only, instead of saving `## ` or `- ` into it. Saving writes
+  `*`/`**` emphasis — `_`/`__` around emphasis whose own `*` the viewer
+  would pair with it (`_foo fuzz**bar** baz_`) — and escapes only
+  characters that would change meaning. An image keeps its `{…}` attribute
+  group as written, a code block keeps its whole info string and saves with a
+  `~~~` fence when it holds a backtick, a paragraph line opening with inline
+  HTML that would start an HTML block saves with its `<` escaped, and a list
+  next to a raw list block saves with a marker that keeps it its own list;
+  two raw list blocks an edit brings together save with a `[//]: #` line
+  between them, which shows nothing. No consumer action is needed.
+
+- **`MarkdownEditor` makes nothing a save cannot write as shown.** Shift+Enter
+  does nothing at the end of a block or in a level 3–6 heading, and a break an
+  edit leaves there is removed (or, in such a heading — or a level 1 or 2
+  heading saved on one line, when a line of its setext form would end it —
+  shows as the space it saves as). Bold, italic and strikethrough applied over
+  edge spaces cover the text only — the toolbar, the context menu and the next
+  toggle then read the selection as formatted, so a second press takes the
+  format off — and a format, style or link whose result Markdown could not hold
+  as shown — emphasis opening with punctuation after a letter (`x**(a)**b`),
+  underline over a `+`, a colour over a bracket — is declined, from the
+  toggles, the keyboard and the typing shortcuts alike; after a paste, a
+  deletion or typing such edges lose the format instead, so a space typed
+  after bold text shows plain until the next word joins the bold. Lists of different bullet
+  characters or delimiters stay two lists, as the viewer reads them, and a
+  list's looseness follows its save; a table stays rectangular with every
+  cell aligned by its column, and a heading or list pasted into a cell becomes
+  its lines of text; an HTML block left open before other blocks shows as the
+  paragraph it saves as; `insertImage` declines alt text holding a bracket.
+  No consumer action is needed.
+
+- **`Markdown` merges a table cell only into a whole rectangle.** A `<<`
+  extends only a cell begun in its own row, and a `^^` extends the cell
+  above only when the row continues every column that cell spans; any other
+  `<<` or `^^` now shows as literal text, where it used to leave a hole in
+  the grid or push a cell into an extra column. Grids written with `<<` and
+  `^^` in every covered position render as before. No consumer action is
+  needed.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
@@ -436,7 +503,22 @@ page resets to empty.
   `insertParagraphBeforeBlock`/`insertParagraphAfterBlock`, `insertImage`, and
   `insertTable` all rewrite the raw text in place around the source
   `CodeEditor`'s own selection, emitting only the dialect's own markers so the
-  result round-trips back through `"wysiwyg"` unchanged. The other eleven
+  result round-trips back through `"wysiwyg"` unchanged. They read the raw
+  text with the viewer's own parser, so they see every form it reads —
+  `__bold__` and `_italic_`, reference links, bare-URL, `www.` and email
+  autolinks — and each checks its result, doing nothing when the edited text
+  would not read back as intended (markers left literal by Markdown's flanking
+  rules or a backslash, or cutting another construct). `removeLink` on a link
+  nested in another link's text takes it out of the outer link
+  (`[[a](/in) b](/out)` gives `a[ b](/out)`). The block commands work on
+  whole blocks as the viewer reads them: a block `setBlockType` or a list
+  toggle converts leaves the quotes and list items around it for the top
+  level, and what followed it inside them stays there, re-opened by its own
+  marker, instead of being left behind as indented code or lazy text; a
+  converted paragraph is set apart from its neighbours rather than joining
+  them, so toggling a list off makes each item its own paragraph; and
+  `insertTable` goes above the whole block holding the caret instead of
+  splitting an HTML block or a table. The other eleven
   commands — `setBlockAlignment`, `setColumnCount`, and the nine
   table-structure commands — still no-op in `"source"` mode; each needs its own
   design (a `:::` fence rewrite or a parsed pipe grid) and is left for a
@@ -461,31 +543,21 @@ page resets to empty.
   the `"wysiwyg"` export uses, so a span authored in source mode survives a
   mode switch byte-for-byte — a hand-written group in another order is
   re-ordered once, on its first edit. An attribute the dialect does not model
-  is kept as written, after those three. A run that is the only emphasis on its
-  line and wraps no existing span has the brackets written outside its markers
-  (`[**world**]{color=…}`); otherwise, **a selection whose line carries a `*`,
-  `~`, `+` or `` ` `` character outside it is refused** — emphasis or not, so
-  a `*`/`+` list bullet counts — and so is a selection holding such a
-  character together with an existing span, whose wrapping run the rewrite
-  would cut in two. Both refusals are deliberately coarse and will decline
-  some selections that would have been safe: writing a span across an emphasis
-  boundary loses the emphasis on the next mode switch, and telling emphasis
-  from a literal `*` or `++` needs a Markdown parser the source path
-  deliberately is not. Styling inside or across emphasis is not reliable in
-  `"wysiwyg"` mode either — there a styled span at the edge of an emphasis run
-  is exported straddling its markers and reads back as literal asterisks — so
-  it is best avoided on both surfaces for now. A selection that crosses a line
-  break, or that touches a link or an image (including an image's
-  `{width=…}` group), is refused too, mirroring the `"wysiwyg"` side's own
-  refusal inside a link — and so is one on a `:::` fence line or a table
-  delimiter row, whose own `{…}` groups a span would break, and one that would
-  put a bracket straight after an escaping backslash (`C:\Users`), where the
-  bracket would be literal and the span syntax would show. A selection mixing emphasis
-  with plain text is re-normalised once on the next mode switch — the styling
-  and emphasis are preserved, the byte form settles to one span per run. A
-  format toggle pressed straight after a style command that covered more than
-  one span wraps its markers across the span syntax and does not read back as
-  emphasis; reselect inside one span first. No consumer action is needed.
+  is kept as written, after those three. The span goes inside any emphasis
+  around the selection (`**[world]{color=…}**`, the form `"wysiwyg"` saves),
+  and the source text is read with the viewer's own parser, so only a
+  selection the span would break is refused: one that crosses a line break,
+  touches a link of any form or an image (including an image's `{width=…}`
+  group) — mirroring the `"wysiwyg"` side's own refusal inside a link — lies
+  in a code span, a code block, a `:::` fence line or a table delimiter row,
+  whose own `{…}` groups a span would break, cuts through a run's markers, or
+  would put a bracket straight after an escaping backslash (`C:\Users`), where
+  the bracket would be literal and the span syntax would show. A selection
+  mixing emphasis with plain text keeps its form across a mode switch
+  (`[**a** b]{color=#cc0000}`). A format toggle pressed straight after a
+  style command that covered more than one span does nothing, since its
+  markers would cut the spans; reselect inside one span first. No consumer
+  action is needed.
 
 ### Core
 
