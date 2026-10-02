@@ -772,3 +772,316 @@ Markdown in `"source"` mode, merging into an existing `[text]{…}` span.
     three fields — three changes, none of which the commands need in order to
     work. The honest report for source mode is the one the sibling plan already
     makes: the fields it can compute from raw text, and no others.
+
+---
+
+## Implementation Notes
+
+- **The guard count matched exactly.** Step 8's
+  `grep -c 'if (this.isSourceMode()) { return this; }'` read 12 before the
+  change and 11 after it, against the file as it actually stood — the drop the
+  plan anticipated, with nothing to report as a mismatch.
+
+- **A third refusal was needed: a rewrite that patches no visible text.** The
+  plan enumerates two declines (a piece that declines, and an `insert` equal to
+  the text the edit range holds). A third case exists: when every selection
+  boundary clamps out of every unit's text — a caret inside a span's `{…}`
+  group, the plan's own *"caret inside the attribute text declines"* case —
+  there is no *"first patched, non-empty piece"* for the resulting selection to
+  start at, so the plan's selection rule has no answer. With canonical
+  attributes the equality decline already catches it, but a hand-written group
+  in another order would be re-emitted *re-ordered* while nothing was patched,
+  producing an edit carrying an unset selection. `rewriteStyledSpans` therefore
+  declines when no piece was patched, which is the no-op the plan's own
+  expected behaviour asks for in that case. Pinned by a test over a
+  non-canonically ordered group (`'[x]{size=1.2em color=red}'`), which is the
+  input that separates this decline from the equality one — verified to emit an
+  edit carrying an unset selection without the guard.
+
+- **A newline inside a `[…]{…}` group is refused, not just skipped.** Step 3
+  says to skip a match *"whose text contains a newline"*, while
+  `## Internal Structure` says to collect *"every newline-free match"*. The
+  scanner takes the second, stricter reading and tests `match[0]`, on the
+  grounds that an attribute group split across a line break is no more
+  importable than a text run split across one.
+
+  Skipping alone is not safe, though, and the two readings *are*
+  distinguishable by test. A skipped match is invisible to everything
+  downstream — `overlapsBracketConstruct` matches only `](`, and `emitPiece`'s
+  bracket backstop inspects only a piece's own text — so the group read as
+  plain text and got a second span written around it:
+  `'[hello]{color=red\nfoo=bar}'` with `hello` selected produced
+  `'[[hello]{color=#cc0000}]{color=red\nfoo=bar}'`, exactly the nesting
+  `STYLED_TEXT`'s `[^[\]]+` inner pattern cannot read back, and reachable by
+  pressing Enter inside a styled span in source mode then restyling part of it.
+  `resolveSpanRange` therefore also refuses any range touching such a group
+  (`overlapsUnparseableStyledSpan`), which is the safe answer under either
+  reading. Pinned by two tests, one per newline position, each verified to fail
+  without the refusal.
+
+- **Two count-bearing artefacts outside the plan's Documentation Impact needed
+  the same edit.** `markdown-editor.test.ts` asserts the backlog twice — the
+  `COMMANDS` table in *source-mode command no-ops* (which Step 9 names) and
+  `'the 14 backlog commands still no-op'` in *source-mode block commands*
+  (which it does not) — and the sibling plan's own entry in
+  `next.md` states the counts in prose — in **two** places, not one: the
+  sibling's *Added* entry and its *Fixed* entry, the latter of which also
+  carries the implemented-command count. All four statements now read eleven
+  no-ops (and twenty-one implemented, up from eighteen); leaving any of them
+  would have left the branch self-contradictory, and the second test would have
+  failed outright, since `setTextColor('#c00')` now edits. Cross-checked against
+  the code: `grep -c 'if (this.isSourceMode()) { return this; }'` is 11, and
+  11 + 21 = the 32 commands the sibling plan enumerates.
+
+- **`npm run docs:api` is clean: 0 errors, 0 warnings.** An earlier run on
+  this branch reported 14 pre-existing warnings, none naming a symbol this
+  branch adds; after both branches were rebased onto local master, the run is
+  0 / 0, matching the plan's Verification. The four JSDoc rewrites introduce no
+  `{@link}` at all, per `CODE_CONVENTIONS.md`'s rule against linking
+  module-private symbols from public JSDoc.
+
+- **The manual-verify section needs no demo change.** The dev app's
+  **MarkdownEditor** section already hosts a full `MarkdownDocumentPanel`, so
+  its **Edit Markdown source** toggle and **Text style** dropdown exercise the
+  new path as they stand. The plan's file table lists no demo file, and none
+  was added.
+
+- **Manual verification was run live, in the dev app's MD Editor section with
+  Edit Markdown source on.** Selecting `left` on the sample's blockquote line,
+  Colour › Red wrote `[left]{color=#cc0000}` with `left` still selected inside
+  the brackets and focus back in the source editor. Size › Large then gave
+  `[left]{color=#cc0000 size=1.2em}`, one group. One Ctrl+Z undid exactly one
+  menu choice. Switching to WYSIWYG rendered the word red at 1.2em, and
+  switching back returned the whole document byte-for-byte. Colour › Default
+  then Size › Default restored the bare `left`. With the caret inside the
+  sample's `[Markdown](…)` link, Colour › Red changed nothing and the caret and
+  focus stayed in the source editor. After `setReadOnly(true)`, Colour › Red
+  changed nothing and the editor took the read-only flash's style change. The
+  sample's own lines carrying emphasis were not used for the positive cases,
+  since the emphasis-line refusal recorded below declines them by design.
+
+- **The plan's extrusion mechanism does not achieve the plan's extrusion
+  decision, so styling near emphasis is declined by one coarse rule.** The
+  Architecture Decision titled *"The brackets always land outside the emphasis
+  markers"*, and the `[^extrude]` footnote's *"in every case"*, are not delivered
+  by the mechanism the plan specifies: widening over a marker run that flanks the
+  range **symmetrically** only covers a selection spanning a run's whole content.
+  Writing the span anywhere else near emphasis loses formatting on the next mode
+  switch — `**hello [world**]{…}` re-imports as escaped literal asterisks, and
+  `**hello [world]{…} again**` drops the bold from `world`.
+
+  `resolveSpanRange` therefore declines whenever the selection's **line carries
+  an emphasis marker outside the selection** (`lineCarriesMarkersOutside`). The
+  rule does not ask "is this emphasis?" — that needs an inline parser this module
+  is not — but the question it can answer soundly: is there any marker out there
+  that bracketing this range could orphan? When none is, every marker on the line
+  falls inside the rewritten text. That keeps every run whole only when the
+  rewrite emits one group; see the multi-unit refusal recorded below for the
+  case it did not cover.
+
+  **It over-declines, and the extent is worth stating plainly:** styling any word
+  on a line that carries emphasis anywhere is refused. `plain` in
+  `*emph* then plain words`, and even a whole run in
+  `*one* and **two** and *three*`, are declined although both would be safe. The
+  trade is deliberate — a false decline costs one unavailable action; a false
+  accept costs the user their text irrecoverably. (An earlier wording here, and
+  in the docs, called styling across emphasis a WYSIWYG-mode operation; the
+  WYSIWYG export bug recorded below makes that unsafe too, and the docs now say
+  so.)
+
+  Still accepted: a line with no emphasis at all, a run that is the only emphasis
+  on its line and wraps no existing span (`**world**` → `[**world**]{color=…}`),
+  and merges into an existing `[…]{…}` group on a line with no marker character
+  outside the selection. A selection mixing emphasis with plain text on an
+  otherwise-unemphasised line is accepted and re-normalises once on the next
+  switch (`a [**bold** c]{color=…}` → `a [**bold**]{color=…}[ c]{color=…}`,
+  a fixpoint thereafter, nothing escaped, both the emphasis and the styling
+  preserved) — the plan's own accepted *Potential Challenge*.
+
+- **Three narrower refusals were tried first and each let a corrupting shape
+  through. Recorded so the next attempt does not repeat the sequence.**
+  In order: (1) an enclosing-run **splitter**
+  (`findEnclosingMarkerRun`/`wrapRunPart`/`splitAroundEnclosingRun`), which emitted
+  the stable `**hello** [**world**]{…}` for the cases it handled but, being a
+  marker scan rather than a parser, could not tell emphasis from a literal marker:
+  `C++ and Java++` with `and` selected became `C [++and++]{…} ++Java++`, deleting
+  the `++` the user typed, and `2 * 3 and 4 * 5` gained two invented italic runs.
+  (2) A pair of rules — markers flanking the range on both sides, plus unbalanced
+  marker runs at the range's own **edges** — which missed a run in the range's
+  **interior**: `**hello** world` with `llo** world` selected (a plain shift+End)
+  wrote `**he[llo** world]{…}`, re-importing as escaped literals, in all five
+  marker families. (3) The current line rule, at the cost of the over-declining
+  above. It was first described here as safe by construction; the third audit
+  round showed it is not on its own, which the multi-unit refusal below closes.
+
+  The plan had already ruled out attempt (1): its `## Potential Challenges` says
+  *"Splitting at emphasis-run boundaries would need a parser, which this module
+  deliberately is not."* That work was done inside the audit/fix loop rather than
+  the fresh `/plan` run `worker.md`'s *Deviating from the plan* reserves for a
+  redesign, and it was reverted in full. **Doing the feature properly needs a real
+  inline parser.** The repo already has one: `lexMarkdown` in
+  `component/display/markdownExtensions.ts` is `marked` with this dialect's
+  extensions registered, and it resolves exactly the ambiguities the scans could
+  not — `**hello world**` arrives as one `strong` token with exact bounds, `2 * 3`
+  as plain `text`, `[x]{…}` as `styledspan`. Token offsets are recoverable because
+  `raw` concatenation reproduces the source byte-for-byte, and nesting resolves
+  (`**hello *world* again**` → `strong` containing `text`, `em`, `text`).
+
+  One caveat for that plan: **`marked` and Lexical disagree on some inputs**, so
+  the parser choice is a real decision, not a formality. Measured:
+  `C++ and Java++` lexes as `text:"C"` + `underline:"++ and Java++"` under
+  `marked`, while Lexical's importer builds a single unformatted text node. The
+  contract here is "survives `setMode('wysiwyg')`", and it is Lexical that performs
+  that switch — so a command reasoning with `marked` can be right about the viewer
+  and wrong about the round trip. That divergence is also a pre-existing bug in its
+  own right: the viewer and the editor render that line differently today.
+
+- **The WYSIWYG exporter emits a losing form for this case; a separate,
+  pre-existing bug that likely blocks the proper fix.** Measured by driving
+  `setTextColor` over a real Lexical selection inside a bold run and reading
+  `$convertToMarkdownString`: a selection at the run's end exports
+  `**hello [world**]{color=…}` and at its start `[**hello]{color=…} world**`,
+  both of which re-import as `\*\*`-escaped literals — a one-way corruption of
+  the rich-text surface, independent of source mode. `STYLED_TEXT.export` wraps
+  `exportFormat(node, …)` inside the brackets, but the surrounding format run's
+  markers are emitted around the *piece* rather than closed and reopened, so an
+  edge-adjacent styled node straddles them. Until that is fixed there is no
+  correct form for the two surfaces to agree on, so it is arguably step one of
+  any plan here — and it improves the rich-text surface on its own.
+
+- **Equally styled neighbours are emitted as one span, which departs from the
+  plan's one-emission-per-piece `emitPiece`.** As specified, each before /
+  selected / after piece went out on its own, so a redundant press on part of
+  a span fragmented it: `[hello world]{color=#cc0000}` with `world` recoloured
+  the same red became `[hello ]{color=#cc0000}[world]{color=#cc0000}`, a real
+  edit and an undo step where WYSIWYG does nothing, and one that re-normalises
+  on the next mode switch. That contradicted the plan's own *Re-emit runs
+  through the same pipeline* decision. `emitPiece` is therefore split into
+  `resolvePieceAttributes` (the patch merge plus `resolveSpanStyle` /
+  `spanStyleToAttributes`), `groupPiecesIntoRuns` (joins neighbours whose
+  resolved sets are equal, as Lexical merges equal text nodes) and `emitRun`
+  (bare text or `[text]{formatAttributes(…)}`, with the same bracket check).
+  The rewritten range also grows over any span directly abutting it, so an
+  untouched neighbour can rejoin: clearing the colour from `world` in
+  `[hello ]{size=1.2em}[world]{color=#2563eb size=1.2em}` gives
+  `[hello world]{size=1.2em}`. A side effect is that an abutting neighbour is
+  re-emitted through the export pipeline too, so its attributes are
+  canonicalised exactly as the WYSIWYG export would canonicalise them. Pinned
+  by three tests, each verified to fail without the change.
+
+- **The emphasis-line refusal counts marker characters, not emphasis, and the
+  docs now say so.** `lineCarriesMarkersOutside` refuses on any `*`, `~`, `+`
+  or `` ` `` outside the range, so a `*` or `+` list bullet, a `~` in a path
+  and arithmetic `+` all decline, while a `-` bullet does not. The first
+  wording ("a line carrying no emphasis") was wrong for those lines; the
+  JSDoc, `MarkdownEditor.md` and the changelog now state the character rule,
+  and a test pins it. Skipping the line's block prefix before the scan would
+  stop refusing whole `*`/`+` lists, but was left alone here as a refinement
+  the parser-based follow-up subsumes.
+
+- **A format toggle pressed straight after a multi-span style command
+  corrupts emphasis; recorded as a known limitation, not fixed.** The plan's
+  *Resulting selection* rationale says landing inside the brackets keeps a
+  following Bold press producing `[**hello**]{color=…}`. That holds only when
+  one span is patched. When a style command covers several spans, the
+  selection runs from the first patched text to the last and so includes the
+  `]{…}[` syntax between them; `BOLD_SOURCE` then writes, e.g.,
+  `[**The ]{size=1.2em}[warning]{…}[ is loud.**]{size=1.2em}`, which does not
+  read back as emphasis. The fault is that the sibling plan's inline toggles
+  are not span-aware, and this branch makes it reachable with two consecutive
+  presses. Fixing it means teaching the toggles to see span syntax, which is
+  the inline-parser work recorded above and deferred to the follow-up that
+  replaces the editor's Markdown import/export; until then
+  `MarkdownEditor.md` and the changelog tell the user to reselect inside one
+  span before toggling a format.
+
+- **A marker run wrapping an existing span is refused too
+  (`unitsCouldSplitMarkerRun`).** The line rule only proves every marker lies
+  inside the selection, not inside one emitted group. The rewrite re-emits each
+  span and each stretch between spans as its own group, so selecting the whole
+  of `**hello [world]{size=1.2em}**` and recolouring it wrote
+  `[**hello ]{…}[world]{…}[**]{…}`, which reads back as escaped asterisks; the
+  same held for `` `a [b]{size=1em}` `` and for a lone span selected inside
+  `**[x]{size=1em}**` (the extrusion widens out to the markers). The rewrite now
+  declines when it covers more than one unit and any unit's text carries a
+  marker character — coarse in the same way as the line rule, since telling a
+  run from a literal marker is the parser's job. Pinned by a test over all three
+  shapes, verified to fail without the refusal. The same round split
+  `rewriteStyledSpans` into `growOverStyledSpans`, `unitsCouldSplitMarkerRun` and
+  `emitRuns` under the convention against large multi-step functions.
+
+- **The audit loop reached its three-round cap with this last fix not yet
+  re-audited.** Round three raised the multi-unit corruption and the function
+  size; both were fixed after that round, verified by typecheck, lint, the full
+  suite and the docs build, but no fourth independent review ran on them.
+
+### Whole-stack review fixes
+
+A review of the whole unmerged Markdown stack ran after this branch was
+finished; these are its findings against this branch, fixed here and folded
+into the commits they belong to. Each was pinned by a test written first and
+seen to fail.
+
+- **C4 — styling inside an image's size group corrupted the image.**
+  `BRACKET_CONSTRUCT_PATTERN` stopped at the image's `)`, so the documented
+  "touches a link or image" refusal did not cover the trailing `{…}` group:
+  the caret on `320` in `![a](/i.png){width=320}` wrote
+  `{width=[320]{color=#cc0000}}`, which the image importer no longer reads.
+  The pattern's image branch now takes the optional trailing group exactly as
+  `markdownImageTransformer.ts`'s `importRegExp` does (link branch unchanged),
+  and tests pin the alt text, the destination and the group, from inside and
+  from a selection reaching in from outside. While there, the refusal also
+  scans the link commands' own `LINK_PATTERN`: the sibling branch's C3 fix
+  taught the link commands CommonMark's `(…)` title, but the old pattern's
+  `[^()]*` failed on `[docs](/d (Title))`, so styling `docs` bracketed it
+  inside the link text and broke the link. Both are coarse regex scans; the
+  marked-import branch later in the stack replaces this detection with lexer
+  tokens.
+- **Fence lines and table delimiter rows (advisory).** Colouring inside a
+  `::: {align=center gap=…}` opener or a delimiter row's `{width=240}` cell
+  broke the construct the same way — the fence lost its alignment (its first
+  `{…}` group became the span's), the delimiter row stopped parsing and the
+  table read as a paragraph. `resolveSpanRange` now refuses any range on a
+  `STRUCTURAL_LINE`: a `:::` line, or a line that, once its `{…}` groups are
+  stripped, holds nothing but `|`, `:`, `-` and whitespace. That is coarse on
+  purpose and also covers a `|||` column separator and a `---` thematic break,
+  none of which has text to style; text inside the fence and table cells is
+  still styled (pinned).
+- **A bracket after an escaping backslash (advisory).** Styling `Users` in
+  `C:\Users` wrote `C:\[Users]{…}`, where the `[` is escaped, so the span
+  syntax stays visible prose; the same held for a span whose text would end in
+  a backslash (`[a\]{…}`, which escapes the `]`). Following the sibling
+  branch's rule for the inline toggles (`C:\**Users**` is declined), the
+  transform declines rather than move the escape: `emitRuns` checks each
+  bracketed run on the result — an odd backslash run straight before its `[`
+  (counting the unchanged prefix and what was already emitted), or at the end
+  of its own text — with the sibling's `isEscaped`. An escaped backslash
+  (`C:\\Users`) is literal, so that still styles.
+- **Fuzz #16a — a span wrapped or split a table cell's paragraph break.** A
+  cell writes its paragraph breaks as a literal `\n\n`, which the viewer
+  splits the cell's text on; colouring `\nb` in `| a\n\nb |` wrote
+  `\n[\nb]{color=…}`, leaving two lone `\n`s that show as literal text, and a
+  span holding the whole break showed it literally inside the span. The
+  sibling branch's fix declines an inline toggle or a new link over one;
+  `resolveSpanRange` now refuses such a range through the same
+  `touchesCellParagraphBreak` check (pinned, alongside a span on the text
+  beside the break, which still styles).
+- **Stack fuzz round 2 — clearing a style dropped the author's other
+  attributes.** Every group was re-emitted through `resolveSpanStyle` /
+  `spanStyleToAttributes`, which keep only `color`, `font` and `size`, so
+  `setTextColor(null)` on `[hello]{color=#cc0000 bogus=1}` wrote `hello`, and
+  on `[hello]{bogus=1}` — which has no colour to clear — removed the span
+  anyway. By user decision (consistent with the editor serializer keeping a
+  span's authored attributes), `resolvePieceAttributes` now keeps a key the
+  dialect does not model, as written, after the dialect's own keys: clearing
+  the colour there writes `[hello]{bogus=1}`, the group goes only when nothing
+  remains, and clearing the colour of `[hello]{bogus=1}` declines as a no-op.
+  The existing "drops an attribute key the dialect does not know" test is
+  reversed accordingly (`[x]{weight=bold}` coloured is now
+  `[x]{color=#cc0000 weight=bold}`), and the docs and changelog say the
+  unmodelled attribute is kept.
+
+- **Review fixes.** `patchSelectionStyle`'s source guard names the result
+  first (`const handledBySource = this.editSource(spanStyleSource(patch));`)
+  and tests the name, instead of calling `editSource` inside the `if`
+  condition as the plan's snippet does. Nothing behaves differently.
