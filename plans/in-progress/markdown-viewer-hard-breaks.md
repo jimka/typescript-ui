@@ -235,3 +235,22 @@ Paths are relative to `packages/lib/`. Work test-first.
     adds the token to the viewer rule table with its own V-row and lets the
     flipped entries announce themselves. The editor side already maps a
     `LineBreakNode` to a break run, so no editor-projection change is needed.
+
+## Implementation Notes
+
+- **The harness baseline matched the plan exactly on this base.** Re-measured
+  on `feature/markdown-roundtrip-harness` at `e398c515` (the plan cites
+  `7ca6dd53`): after V17 and the `br` projection case, exactly the `surface`
+  checks of CommonMark 16, 226, 633 and 634 failed with "now holds", and
+  nothing else changed. Those four `known` entries were deleted and the
+  `lineBreaks` reason reworded as specified; CommonMark 638 still fails both
+  checks under `lineSpanningInline`.
+- **Two small JSDoc edits beyond the plan.** Inserting `hard line breaks`
+  into the class `@remarks` construct list pushed its line past 80 columns,
+  so the rest of that paragraph was re-wrapped (no wording change). The
+  `inlineText` JSDoc, which lists what each inline token contributes, gained
+  a clause for `br` so it stays complete.
+- **M1 was run in a browser.** The worktree's dev server, **MD Editor**,
+  source mode: typing `one  ` / `two` and `three\` / `four` rendered
+  `<span>one</span><br><span>two</span>` and
+  `<span>three</span><br><span>four</span>` in the live viewer, with no `\`.
