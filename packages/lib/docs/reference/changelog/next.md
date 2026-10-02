@@ -912,6 +912,11 @@ page resets to empty.
   cell also resolves now when its definition comes after the table; it
   used to render as literal text. No consumer action is needed.
 
+- **`Markdown` renders hard line breaks.** A line ending in `\` or in two or
+  more spaces now breaks the line, as CommonMark specifies. It used to flow
+  into the next line, and the backslash form printed a stray `\`. A plain
+  line end inside a paragraph still flows. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation

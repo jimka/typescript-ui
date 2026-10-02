@@ -47,6 +47,7 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | --- | --- |
 | `#` … `######` | `<h1>` … `<h6>` |
 | paragraph text | `<p>` |
+| `\` or two trailing spaces at a line end | `<br>` — a hard line break; a plain line end inside a paragraph is a soft break and the lines flow together |
 | `**bold**`, `*italic*` | `<strong>`, `<em>` |
 | `~~struck~~` | `<del>` |
 | `++underlined++` | `<u>` |
