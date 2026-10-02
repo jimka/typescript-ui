@@ -55,6 +55,7 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | `` `inline code` `` | `<code>` |
 | fenced ```` ``` ```` block | `<pre>` › `<code>` (literal text, newlines preserved), or a syntax-highlighted `CodeEditor` for a supported language — see [Syntax highlighting](#syntax-highlighting-in-fenced-code-blocks) |
 | `-`/`*` and `1.` lists | `<ul>`/`<ol>` with `<li>` items |
+| `- [ ] task`, `- [x] done` | an `<li>` whose text — in a loose list, whose first paragraph — starts with the literal `[ ]` / `[x]` marker — no checkbox |
 | `> quote` | `<blockquote>` |
 | `[text](url)` | `<a href target="_blank" rel="noopener noreferrer">` |
 | `[text][label]`, `[label][]`, `[label]` | `<a>` whose href is the matching reference definition's URL; labels match case-insensitively, and an undefined label renders as literal text |

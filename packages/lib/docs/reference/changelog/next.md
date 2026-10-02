@@ -1020,6 +1020,15 @@ page resets to empty.
   into the next line, and the backslash form printed a stray `\`. A plain
   line end inside a paragraph still flows. No consumer action is needed.
 
+- **`Markdown` shows a task-list item's marker.** `- [ ] task` rendered
+  only `task`; it now renders `[ ] task`, as it already did when the
+  item's text held an escape or formatting. The marker is still literal
+  text, not a checkbox. In a task item a blank line before its nested list
+  or second paragraph makes loose (`- [x] a` over a blank line and
+  `  - b`), the marker stood on a line of its own above the item's text; it
+  now starts the item's first paragraph, as in GFM and in a list loose from
+  its first item. No consumer action is needed.
+
 - **`Markdown` no longer drops a character after a blockquote.** When a
   list inside a blockquote ran on through a lazy line, the line straight
   after the quote could lose its first character, so `<div>` showed as
