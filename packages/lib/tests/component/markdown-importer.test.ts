@@ -308,19 +308,27 @@ describe('$importMarkdown — blocks and inline (I rows)', () => {
         expect(rootTexts(editor)[1]).toBe('[x]: https://e.com');
     });
 
-    it('I18: a duplicate definition marked drops is kept as its own raw block', () => {
+    it('I18: a duplicate definition marked drops is kept in its run\'s raw block', () => {
+        // A run of definitions on consecutive lines is one raw block, so it saves with its lines as written.
         const editor = load('[a]\n\n[a]: https://one\n[a]: https://two');
 
-        expect(rootTypes(editor)).toEqual(['paragraph', 'markdown-raw-block', 'markdown-raw-block']);
-        expect(rootTexts(editor).slice(1)).toEqual(['[a]: https://one', '[a]: https://two']);
+        expect(rootTypes(editor)).toEqual(['paragraph', 'markdown-raw-block']);
+        expect(rootTexts(editor).slice(1)).toEqual(['[a]: https://one\n[a]: https://two']);
+    });
+
+    it('I18 (definitions apart): definitions a blank line separates stay apart', () => {
+        const source = '[a]: https://one\n\n[b]: https://two';
+
+        expect(rootTypes(load(source))).toEqual(['markdown-raw-block', 'markdown-raw-block']);
+        expect(load(source).getValue()).toBe(source);
     });
 
     it('I18 (a dropped definition before the next block): a token is only found where it starts and ends a line', () => {
         // `b`, `a` and `[x]` also occur inside the dropped definitions; matching there split them and repeated text.
         for (const [source, texts] of [
-            ['[x]: /a\n[x]: /b\n\nb', ['[x]: /a', '[x]: /b', 'b']],
-            ['[a]: https://one\n[a]: https://two\n\na', ['[a]: https://one', '[a]: https://two', 'a']],
-            ['[x]: /u\n[x]: /v\n> - b', ['[x]: /u', '[x]: /v', '> - b']],
+            ['[x]: /a\n[x]: /b\n\nb', ['[x]: /a\n[x]: /b', 'b']],
+            ['[a]: https://one\n[a]: https://two\n\na', ['[a]: https://one\n[a]: https://two', 'a']],
+            ['[x]: /u\n[x]: /v\n> - b', ['[x]: /u\n[x]: /v', '> - b']],
         ] as Array<[string, string[]]>) {
             const editor = load(source);
 
@@ -329,17 +337,18 @@ describe('$importMarkdown — blocks and inline (I rows)', () => {
             expect(load(editor.getValue()).getValue(), source).toBe(editor.getValue());
         }
 
-        // The reference `[x]` saves inline (plan 3 restores the reference form); the dropped line is kept once.
+        // The definitions stay one run, the reference `[x]` keeps its form, and the dropped line is kept once.
         const editor = load('[x]: /v\n[x]: /u\n[x]');
 
-        expect(rootTexts(editor)).toEqual(['[x]: /v', '[x]: /u', 'x']);
-        expect(editor.getValue()).toBe('[x]: /v\n\n[x]: /u\n\n[x](/v)');
+        expect(rootTexts(editor)).toEqual(['[x]: /v\n[x]: /u', 'x']);
+        expect(editor.getValue()).toBe('[x]: /v\n[x]: /u\n\n[x]');
 
-        // A paragraph equal to the dropped definition but for whitespace: only an exact match anchors it.
+        // A paragraph equal to the dropped definition but for whitespace: only an exact match anchors it. Its
+        // shortcut reference starts the paragraph before a `:`, so it is written collapsed (else a definition).
         const spaced = load('[x]: /a\n[x]: </b> "t"\n\n[x]: </b>"t"');
 
-        expect(rootTexts(spaced)).toEqual(['[x]: /a', '[x]: </b> "t"', 'x: </b>"t"']);
-        expect(spaced.getValue()).toBe('[x]: /a\n\n[x]: </b> "t"\n\n[x](/a): </b>"t"');
+        expect(rootTexts(spaced)).toEqual(['[x]: /a\n[x]: </b> "t"', 'x: </b>"t"']);
+        expect(spaced.getValue()).toBe('[x]: /a\n[x]: </b> "t"\n\n[x][]: </b>"t"');
         expect(viewerModel(spaced.getValue())).toEqual(viewerModel('[x]: /a\n[x]: </b> "t"\n\n[x]: </b>"t"'));
     });
 
@@ -589,7 +598,7 @@ describe('$importMarkdown — round trips (R rows)', () => {
         ['R5', 'https://c.d', 'https://c.d'],
         ['R6', '1\\. x', '1\\. x'],
         ['R7', '&#35; x', '&#35; x'],
-        ['R8', '[r][x]\n\n[x]: https://e.com', '[r](https://e.com)\n\n[x]: https://e.com'],
+        ['R8', '[r][x]\n\n[x]: https://e.com', '[r][x]\n\n[x]: https://e.com'],
         ['R9', '- a\n  - b', '- a\n  - b'],
         ['R10', 'a\r\nb', 'a\nb'],
         ['R11', 'foo  \nbar', 'foo  \nbar'],
@@ -3786,14 +3795,14 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         it('a raw block of definitions stays one block (control)', () => {
             const editor = load('[a]: /x\n[a]: /y');
 
-            expect(rootTypes(editor)).toEqual(['markdown-raw-block', 'markdown-raw-block']);
+            expect(rootTypes(editor)).toEqual(['markdown-raw-block']);
             select(editor, ['[a]: /y', 7]);
             edit(editor, () => {
                 ($getSelection() as RangeSelection).insertRawText('\n[b]: /z');
             });
 
-            expect(rootTypes(editor)).toEqual(['markdown-raw-block', 'markdown-raw-block']);
-            expect(editor.getValue()).toBe('[a]: /x\n\n[a]: /y\n[b]: /z');
+            expect(rootTypes(editor)).toEqual(['markdown-raw-block']);
+            expect(editor.getValue()).toBe('[a]: /x\n[a]: /y\n[b]: /z');
         });
     });
 

@@ -6,7 +6,7 @@ import {
 } from "lexical";
 import type { ElementNode, LexicalNode, TextFormatType, TextNode } from "lexical";
 import { Lexer } from "marked";
-import type { Token, Tokens } from "marked";
+import type { Links, Token, Tokens } from "marked";
 import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text";
 import type { HeadingTagType, QuoteNode } from "@lexical/rich-text";
 import { $createListItemNode, $createListNode } from "@lexical/list";
@@ -19,7 +19,8 @@ import {
     $createTableCellNode, $createTableNode, $createTableRowNode, $isTableCellNode, TableCellHeaderStates,
 } from "@lexical/table";
 import type { TableCellNode, TableNode } from "@lexical/table";
-import { lexMarkdown } from "~/component/display/markdownExtensions.js";
+import { $dfs } from "@lexical/utils";
+import { lexMarkdown, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions } from "~/component/display/markdownExtensions.js";
 import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
 import type { MdTableBodyCell, MdTableHeaderCell, MdTableToken } from "~/component/display/markdownTableExtension.js";
 import {
@@ -35,6 +36,9 @@ import {
     KEPT_SOURCE_WRITES_STYLE, keptSourceState, listLooseState, listMarkerState, NESTED_LINK_WRITES_STYLE, nestedLinkGroupState,
     nestedLinkState, spanAttributesState,
 } from "~/component/editor/markdownNodeState.js";
+import { $createReferenceLinkNode, $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
+import type { ReferenceLinkReference } from "~/component/editor/markdownReferenceLinkNode.js";
+import { $definitionsSource, $serializeLinkContent } from "~/component/editor/markdownSerializer.js";
 import { $createMarkdownRawBlockNode, $createMarkdownSourceTextNode, $isMarkdownRawBlockNode } from "~/component/editor/markdownSourceNodes.js";
 import { $readStandardForm, keptImageShown } from "~/component/editor/markdownSerializer.js";
 import type { StandardFormReading } from "~/component/editor/markdownSerializer.js";
@@ -88,6 +92,9 @@ const DEFINITION_LINE = /^ {0,3}\[/;
  */
 const REBUILT_RAW_TYPES: ReadonlySet<string> = new Set(["blockquote", "list"]);
 
+/** A line holding only whitespace between two newlines: a blank line, which ends a run of definitions. */
+const BLANK_LINE = /\n[ \t]*\n/;
+
 /** The indentation CommonMark ignores before a block: up to three spaces (four make indented code). */
 const MAX_IGNORED_INDENT = 3;
 
@@ -107,17 +114,38 @@ const PLAIN_TEXT_TOKENS: ReadonlySet<string> = new Set(["text", "escape"]);
 /** A span style that sets nothing. */
 const NO_STYLE: MarkdownSpanStyle = { color: null, fontFamily: null, fontSize: null };
 
+/**
+ * The link reference definitions of the document a load is building, for
+ * reading each block's standard form as the save will write it; `null`
+ * outside a load (a raw block split while editing reads its blocks with
+ * none, so a reference link there may be kept as written).
+ */
+const IMPORT_DEFINITIONS: { current: Links | null } = { current: null };
+
+/**
+ * `marked`'s own patterns for a full reference (`[text][label]`) and for a
+ * collapsed or shortcut one (`[label][]`, `[label]`) — the patterns that
+ * produced a reference's `link` token, so a label holding an escaped bracket
+ * or a code span is read exactly as the viewer read it.
+ */
+const FULL_REFERENCE = Lexer.rules.inline.gfm.reflink;
+const SHORT_REFERENCE = Lexer.rules.inline.gfm.nolink;
+
 // ---------------------------------------------------------------- types
 
-/** One located block token with its source text, or a stretch of text no token covers. */
-type LocatedBlock = { token: Token; source: string } | { gap: string };
+/** One located block token with its source text, or a stretch of text no token covers, and where it lies. */
+type LocatedBlock = ({ token: Token; source: string } | { gap: string }) & { start: number; end: number };
 
-/** Where a link run points; one object per `link` token, so two links with one URL stay apart. */
+/**
+ * Where a link run points, and how a reference link was written; one object
+ * per `link` token, so two links with one URL stay apart.
+ */
 interface LinkTarget {
-    readonly href:  string;
-    readonly title: string | null;
+    readonly href:      string;
+    readonly title:     string | null;
+    readonly reference: ReferenceLinkReference | null;
     /** Whether the link was written as a GFM bare autolink (a URL, `www.` address or email as plain text). */
-    readonly bare:  boolean;
+    readonly bare:      boolean;
 }
 
 /** The formatting an inline walk carries down to the nodes it appends. */
@@ -196,13 +224,37 @@ export function $importMarkdown(markdown: string): void {
     const root = $getRoot();
 
     $addUpdateTag(MARKDOWN_IMPORT_TAG);
-    const blocks = $buildBlockList(source, lexMarkdown(source));
+    IMPORT_DEFINITIONS.current = lexMarkdownLinkDefinitions(source);
+
+    let blocks: LexicalNode[];
+
+    try {
+        blocks = $buildBlockList(source, lexMarkdown(source));
+    } finally {
+        IMPORT_DEFINITIONS.current = null;
+    }
 
     root.clear();
     root.append(...(blocks.length > 0 ? blocks : [$createParagraphNode()]));
+    $recordReferenceContents();
 
     if ($getSelection() !== null) {
         root.selectStart();
+    }
+}
+
+/**
+ * Records every reference link's text as the serializer writes it, so a save
+ * can tell whether it has been edited or formatted since. Runs once the
+ * document is complete, because the serializer reads the finished tree.
+ *
+ * @param root - The block whose reference links to record; the whole document when omitted.
+ */
+function $recordReferenceContents(root?: LexicalNode): void {
+    for (const { node } of $dfs(root)) {
+        if ($isReferenceLinkNode(node)) {
+            node.setImportedContent($serializeLinkContent(node));
+        }
     }
 }
 
@@ -237,9 +289,9 @@ const HELD_BLOCK_TYPES: ReadonlySet<string> = new Set(["heading", "paragraph", "
  */
 export function $readRawBlockAsBlocks(text: string): RawBlockReading | null {
     const source = text + "\n";
-    const located = locateTokens(source, lexMarkdown(source));
+    const located = joinDefinitionRuns(source, locateTokens(source, lexMarkdown(source)));
 
-    if (located.every((entry) => "gap" in entry || entry.token.type === "def")) {
+    if (located.every(holdsOnlyDefinitions)) {
         return null;
     }
 
@@ -249,17 +301,7 @@ export function $readRawBlockAsBlocks(text: string): RawBlockReading | null {
         return null;
     }
 
-    const spans: Array<readonly [number, number]> = [];
-    let cursor = 0;
-
-    for (const entry of located) {
-        const piece = "gap" in entry ? entry.gap : entry.source;
-        const start = source.indexOf(piece, cursor);
-
-        cursor = start + piece.length;
-        spans.push([start, Math.min(cursor, text.length)]);
-    }
-
+    const spans = located.map((entry): readonly [number, number] => [entry.start, Math.min(entry.end, text.length)]);
     const nodes = located.map((entry) => ("gap" in entry ? $buildRawBlock(entry.gap) : $buildBlock(entry.token, entry.source)));
 
     if (nodes.length === 1 && $isMarkdownRawBlockNode(nodes[0]!)) {
@@ -270,20 +312,59 @@ export function $readRawBlockAsBlocks(text: string): RawBlockReading | null {
 }
 
 /**
+ * Builds the blocks Markdown reads as in a document holding `definitions`,
+ * the way a load builds them — lexed with those definitions in force, each
+ * block's constructs kept as written against them, and each reference
+ * link's text recorded as the load records it. The editor shows a block
+ * anew this way when the document's definitions change how the block's
+ * save reads. Must run inside an `editor.update`.
+ *
+ * @param markdown - The blocks' Markdown, as a save writes them.
+ * @param definitions - The document's link reference definitions.
+ * @returns The blocks, in document order; none for Markdown that reads as nothing.
+ */
+export function $readBlocksWithDefinitions(markdown: string, definitions: Links): LexicalNode[] {
+    IMPORT_DEFINITIONS.current = definitions;
+
+    let blocks: LexicalNode[];
+
+    try {
+        blocks = $buildBlockList(markdown, lexMarkdownWithDefinitions(markdown, definitions));
+    } finally {
+        IMPORT_DEFINITIONS.current = null;
+    }
+
+    for (const block of blocks) {
+        $recordReferenceContents(block);
+    }
+
+    return blocks;
+}
+
+/**
  * Builds a block's inline content from inline tokens the way a load builds
  * it — each construct its standard form could not write back kept as
- * written, a table cell's paragraphs split at its cell paragraph breaks —
- * replacing what the block held. Must run inside an `editor.update`.
+ * written, a table cell's paragraphs split at its cell paragraph breaks, and
+ * each reference link's text recorded as a load records it — replacing what
+ * the block held. Must run inside an `editor.update`.
  *
  * @param block - The paragraph, heading, quote, list item or table cell.
  * @param tokens - The inline tokens.
  */
 export function $buildInlineContent(block: ElementNode, tokens: Token[]): void {
-    if ($isTableCellNode(block)) {
-        $buildCellParagraphs(block, tokens);
-    } else {
-        $appendInlineContent(block, tokens);
+    IMPORT_DEFINITIONS.current = lexMarkdownLinkDefinitions($definitionsSource());
+
+    try {
+        if ($isTableCellNode(block)) {
+            $buildCellParagraphs(block, tokens);
+        } else {
+            $appendInlineContent(block, tokens);
+        }
+    } finally {
+        IMPORT_DEFINITIONS.current = null;
     }
+
+    $recordReferenceContents(block);
 }
 
 /**
@@ -295,8 +376,62 @@ export function $buildInlineContent(block: ElementNode, tokens: Token[]): void {
  * @returns The block nodes, in document order.
  */
 function $buildBlockList(text: string, tokens: Token[]): LexicalNode[] {
-    return locateTokens(text, tokens).map((entry) =>
+    return joinDefinitionRuns(text, locateTokens(text, tokens)).map((entry) =>
         ("gap" in entry ? $buildRawBlock(entry.gap) : $buildBlock(entry.token, entry.source)));
+}
+
+/**
+ * Joins each run of link reference definitions on consecutive lines — `def`
+ * tokens, and the gaps holding a definition `marked` dropped — into one gap
+ * of their source, so the run is one raw block and saves with its lines as
+ * written, not with a blank line between every two.
+ *
+ * Each entry is tested once, as it is met, and a joined run counts as
+ * definitions without being lexed again: two definition-only entries on
+ * consecutive lines stay definitions when joined, because the second opens
+ * with `[`, and only a quote or a parenthesis continues a definition onto
+ * the next line (as its title). So a load lexes each dropped definition
+ * once, and stays linear in the run's length.
+ *
+ * @param text - The text the entries were located in.
+ * @param located - The located tokens and gaps, in document order.
+ * @returns The entries, each run of definitions joined.
+ */
+function joinDefinitionRuns(text: string, located: LocatedBlock[]): LocatedBlock[] {
+    const joined: LocatedBlock[] = [];
+    let lastHoldsOnlyDefinitions = false;
+
+    for (const entry of located) {
+        const last = joined[joined.length - 1];
+        const entryHoldsOnlyDefinitions = holdsOnlyDefinitions(entry);
+        const continuesRun = last !== undefined && lastHoldsOnlyDefinitions && entryHoldsOnlyDefinitions
+            && !BLANK_LINE.test(text.slice(last.end, entry.start));
+
+        if (continuesRun) {
+            joined[joined.length - 1] = { gap: text.slice(last.start, entry.end), start: last.start, end: entry.end };
+        } else {
+            joined.push(entry);
+        }
+
+        lastHoldsOnlyDefinitions = entryHoldsOnlyDefinitions;
+    }
+
+    return joined;
+}
+
+/**
+ * Tells whether a located entry holds link reference definitions and nothing
+ * else: a `def` token, or a gap that lexes to definitions alone.
+ *
+ * @param entry - The located token or gap.
+ * @returns `true` for a definition-only entry.
+ */
+function holdsOnlyDefinitions(entry: LocatedBlock): boolean {
+    if (!("gap" in entry)) {
+        return entry.token.type === "def";
+    }
+
+    return lexMarkdown(entry.gap).every((token) => token.type === "def" || token.type === "space");
 }
 
 /**
@@ -325,27 +460,40 @@ function locateTokens(text: string, tokens: Token[]): LocatedBlock[] {
             continue;
         }
 
-        const gap = withoutBlankEdges(text.slice(cursor, span.start));
-
-        if (gap !== "") {
-            located.push({ gap });
-        }
+        located.push(...gapBetween(text, cursor, span.start));
 
         // The token's text runs to its line's end: whitespace ending its last
         // line can be content (a code line of spaces) and is kept.
         const end = lineEndAt(text, span.end);
 
-        located.push({ token, source: text.slice(span.start, end) });
+        located.push({ token, source: text.slice(span.start, end), start: span.start, end });
         cursor = end;
     }
 
-    const rest = withoutBlankEdges(text.slice(cursor));
-
-    if (rest !== "") {
-        located.push({ gap: rest });
-    }
+    located.push(...gapBetween(text, cursor, text.length));
 
     return located;
+}
+
+/**
+ * The gap entry for the text between two positions, without its blank edges.
+ *
+ * @param text - The text.
+ * @param from - Where the gap starts.
+ * @param to - Where it ends.
+ * @returns The gap, or nothing when the text there is blank.
+ */
+function gapBetween(text: string, from: number, to: number): LocatedBlock[] {
+    const stretch = text.slice(from, to);
+    const gap = withoutBlankEdges(stretch);
+
+    if (gap === "") {
+        return [];
+    }
+
+    const start = from + stretch.indexOf(gap);
+
+    return [{ gap, start, end: start + gap.length }];
 }
 
 /**
@@ -956,7 +1104,7 @@ function $buildKeepingConstructs(
         return;
     }
 
-    const read = (): StandardFormReading => $readStandardForm(container, tokens, headingText);
+    const read = (): StandardFormReading => $readKeepingForm(container, tokens, headingText);
     const tries = { left: MAX_KEEP_TRIES };
     let built = best.keep;
 
@@ -1041,6 +1189,27 @@ function keepTogether(
     }
 
     return { keep, reading: null };
+}
+
+/**
+ * Reads a block's standard form ({@link $readStandardForm}) as a save would
+ * write it once the document is loaded: with the document's definitions
+ * ({@link IMPORT_DEFINITIONS}), and each reference link's loaded text
+ * recorded, as {@link $recordReferenceContents} records it at the end.
+ *
+ * @param container - The block (a table cell for a cell's content).
+ * @param tokens - Its inline tokens.
+ * @param headingText - A heading's source text; `null` for any other block.
+ * @returns How far the standard form reads as the tokens do.
+ */
+function $readKeepingForm(container: ElementNode, tokens: Token[], headingText: string | null): StandardFormReading {
+    for (const { node } of $dfs(container)) {
+        if ($isReferenceLinkNode(node)) {
+            node.setImportedContent($serializeLinkContent(node));
+        }
+    }
+
+    return $readStandardForm(container, tokens, headingText, IMPORT_DEFINITIONS.current);
 }
 
 /**
@@ -1326,16 +1495,54 @@ function appendLink(target: InlineTarget, token: Tokens.Link, context: InlineCon
 }
 
 /**
- * The context a link's content inherits: the link's target added.
+ * The context a link's content inherits: the link's target added, and how
+ * a reference link was written.
  *
  * @param token - The `link` token.
  * @param context - The formatting around the link.
  * @returns The context inside the link.
  */
 function linkContext(token: Tokens.Link, context: InlineContext): InlineContext {
+    const href = token.href;
+    const title = token.title ?? null;
+    const reference = readReference(token.raw, href, title);
     const bare = !token.raw.startsWith("<") && !token.raw.startsWith("[");
 
-    return { ...context, link: { href: token.href, title: token.title ?? null, bare } };
+    return { ...context, link: { href, title, reference, bare } };
+}
+
+/**
+ * Reads how a `link` token was written from its `raw`: an autolink, a bare
+ * URL or an inline link carries no reference; `raw` matched in full by
+ * `marked`'s full-reference pattern is the full form, and by its
+ * collapsed-or-shortcut pattern the collapsed form (ending `[]`) or the
+ * shortcut form.
+ *
+ * @param raw - The token's source.
+ * @param href - The URL its definition gave it.
+ * @param title - The title its definition gave it, or `null`.
+ * @returns The reference, its imported text not yet recorded; `null` for a
+ *   link written with its URL.
+ */
+function readReference(raw: string, href: string, title: string | null): ReferenceLinkReference | null {
+    if (!raw.startsWith("[") || raw.endsWith(")")) {
+        return null;
+    }
+
+    const reference = { definitionUrl: href, definitionTitle: title, importedContent: "" };
+    const full = FULL_REFERENCE.exec(raw);
+
+    if (full !== null && full[0] === raw) {
+        return { ...reference, label: full[2]!, form: "full" };
+    }
+
+    const short = SHORT_REFERENCE.exec(raw);
+
+    if (short !== null && short[0] === raw) {
+        return { ...reference, label: short[1]!, form: raw.endsWith("[]") ? "collapsed" : "shortcut" };
+    }
+
+    return null;
 }
 
 /**
@@ -2026,7 +2233,9 @@ function appendLeaf(target: InlineTarget, node: LexicalNode, context: InlineCont
     }
 
     if (target.openLink?.target !== link) {
-        const linkNode = $createLinkNode(link.href, { title: link.title });
+        const linkNode = link.reference === null
+            ? $createLinkNode(link.href, { title: link.title })
+            : $createReferenceLinkNode(link.href, link.title, link.reference);
 
         if (link.bare) {
             $setState(linkNode, bareAutolinkState, true);

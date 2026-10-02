@@ -879,10 +879,10 @@ describe('$serializeMarkdown — constructs the viewer would read into the text'
         expect(viewerModel(output).blocks).toEqual([para(run('Wow!'), run('t', [], { href: '/u', title: null }))]);
     });
 
-    it('a ( or { after a ] is escaped: marked unescapes brackets in link text before reading it', () => {
+    it('a ( or { after a ] is escaped and a bracket pair is written \\\\[…\\\\]: marked unescapes brackets in link text before reading it', () => {
         const output = serialize(() => [p(fill($createLinkNode('/u'), ['[a](b) [c]{color=red}']))]);
 
-        expect(output).toBe('[\\[a\\]\\(b) \\[c\\]\\{color=red}](/u)');
+        expect(output).toBe('[\\\\[a\\\\]\\(b) \\\\[c\\\\]\\{color=red}](/u)');
         expect(viewerModel(output).blocks).toEqual([para(run('[a](b) [c]{color=red}', [], { href: '/u', title: null }))]);
     });
 
@@ -1238,7 +1238,7 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
         });
 
         it('stays escaped otherwise', () => {
-            expect(serialize(() => [p(fill($createLinkNode('/u'), ['[', text('a', ['code']), ']']))])).toBe('[\\[`a`\\]](/u)');
+            expect(serialize(() => [p(fill($createLinkNode('/u'), ['[', text('a', ['code']), ']']))])).toBe('[\\\\[`a`\\\\]](/u)');
         });
     });
 

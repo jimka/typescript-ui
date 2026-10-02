@@ -16,6 +16,7 @@ import { UNDERLINE } from '~/component/editor/markdownStyleTransformers';
 import { MarkdownBlockNode, MarkdownColumnNode } from '~/component/editor/markdownBlockNode';
 import { MarkdownImageNode } from '~/component/editor/markdownImageNode';
 import { MarkdownRawBlockNode, MarkdownSourceTextNode } from '~/component/editor/markdownSourceNodes';
+import { ReferenceLinkNode } from '~/component/editor/markdownReferenceLinkNode';
 import { TableNode, TableRowNode, TableCellNode, $createTableSelectionFrom, $isTableCellNode } from '@lexical/table';
 import {
     $getRoot, $getSelection, $isRangeSelection, $isParagraphNode, $isTextNode, $selectAll, $setSelection,
@@ -233,6 +234,10 @@ describe('editorNodes table registration', () => {
 
     it('EDITOR_NODES contains MarkdownRawBlockNode', () => {
         expect(EDITOR_NODES).toContain(MarkdownRawBlockNode);
+    });
+
+    it('EDITOR_NODES contains ReferenceLinkNode', () => {
+        expect(EDITOR_NODES).toContain(ReferenceLinkNode);
     });
 });
 

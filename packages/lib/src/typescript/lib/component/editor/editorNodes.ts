@@ -8,6 +8,7 @@ import { TableNode, TableRowNode, TableCellNode } from "@lexical/table";
 import type { Klass, LexicalNode } from "lexical";
 import { MarkdownBlockNode, MarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
+import { ReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 
 /**
@@ -17,7 +18,8 @@ import { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor
  * A Lexical editor can only build or parse a node type whose class it was
  * created with, so this set must cover every construct the Markdown importer
  * produces: headings (`HeadingNode`), blockquotes (`QuoteNode`),
- * ordered/unordered lists (`ListNode` + `ListItemNode`), links (`LinkNode`),
+ * ordered/unordered lists (`ListNode` + `ListItemNode`), links (`LinkNode`,
+ * and `ReferenceLinkNode` for a link written in a reference form),
  * fenced code (`CodeNode` + its `CodeHighlightNode` children), GFM tables
  * (`TableNode` + `TableRowNode` + `TableCellNode`), `:::` alignment /
  * column-region fences (`MarkdownBlockNode` + its `MarkdownColumnNode` column
@@ -34,6 +36,7 @@ export const EDITOR_NODES: ReadonlyArray<Klass<LexicalNode>> = [
     ListNode,
     ListItemNode,
     LinkNode,
+    ReferenceLinkNode,
     CodeNode,
     CodeHighlightNode,
     TableNode,

@@ -10,9 +10,10 @@ import {
     ParagraphNode, RootNode, TextNode,
 } from "lexical";
 import type {
-    ElementNode, LexicalEditor, LexicalNode, PointType, RangeSelection, SerializedElementNode,
+    EditorState, ElementNode, LexicalEditor, LexicalNode, PointType, RangeSelection, SerializedElementNode,
     SerializedLexicalNode, TextFormatType,
 } from "lexical";
+import type { Links, Tokens } from "marked";
 import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { $createListItemNode, $isListItemNode, $isListNode, ListItemNode, ListNode } from "@lexical/list";
 import {
@@ -22,14 +23,18 @@ import {
 import type { TableSelection } from "@lexical/table";
 import { $isLinkNode, LinkNode } from "@lexical/link";
 import { $dfs, mergeRegister } from "@lexical/utils";
+import { lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions } from "~/component/display/markdownExtensions.js";
 import {
-    $headingWritesOneLine, $listReadsLoose, $rawBlockWritesAsParagraph, $readsBackAsShown, $runsReadingOtherwise, $writtenListMarker,
-    keptImageShown,
+    $definitionsSource, $headingWritesOneLine, $listReadsLoose, $rawBlockWritesAsParagraph, $readsBackAsShown, $runsReadingOtherwise,
+    $serializeBlock, $writtenListMarker, keptImageShown,
 } from "~/component/editor/markdownSerializer.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { keptSourceState, listLooseState, nestedLinkState, spanAttributesState } from "~/component/editor/markdownNodeState.js";
 import { MarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
-import { $buildInlineContent, $readRawBlockAsBlocks, MARKDOWN_IMPORT_TAG } from "~/component/editor/markdownImporter.js";
+import { $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
+import {
+    $buildInlineContent, $readBlocksWithDefinitions, $readRawBlockAsBlocks, MARKDOWN_IMPORT_TAG,
+} from "~/component/editor/markdownImporter.js";
 import {
     $isMarkdownRawBlockNode, $isMarkdownSourceTextNode, MarkdownRawBlockNode, MarkdownSourceTextNode,
 } from "~/component/editor/markdownSourceNodes.js";
@@ -49,7 +54,9 @@ const SETEXT_MAX_LEVEL = 2;
  * Markdown has none ({@link registerLineBreakRules}), a table stays
  * rectangular and aligned by column ({@link registerTableRules}), a raw
  * block the save writes as a paragraph, or as several blocks, shows as
- * them ({@link registerRawBlockRules}), no bold, italic or strikethrough is
+ * them ({@link registerRawBlockRules}), a block whose source kept as written
+ * reads differently once the document's link reference definitions change
+ * shows as it now reads ({@link registerDefinitionRules}), no bold, italic or strikethrough is
  * left where its delimiter cannot stand at a run's edge by a deletion, a
  * paste, a split or typing, and a construct kept as written that an edit
  * takes apart shows as the ordinary text it saves as
@@ -63,7 +70,7 @@ const SETEXT_MAX_LEVEL = 2;
 export function registerWritableStateRules(editor: LexicalEditor): () => void {
     return mergeRegister(
         registerMarkdownListTransforms(editor), registerLineBreakRules(editor), registerTableRules(editor), registerRawBlockRules(editor),
-        registerRunEdgeRules(editor), editor.registerNodeTransform(TextNode, $keepUnwritableCharactersPlain),
+        registerDefinitionRules(editor), registerRunEdgeRules(editor), editor.registerNodeTransform(TextNode, $keepUnwritableCharactersPlain),
     );
 }
 
@@ -203,6 +210,13 @@ function $keepLoosenessWritable(list: ListNode): void {
         $setState(list, listLooseState, loose);
     }
 }
+
+/**
+ * A blank line in a link title: a line break, then whitespace alone up to
+ * the next one. Mirrors the serializer's own, which keeps a reference with
+ * such a title in its reference form.
+ */
+const BLANK_LINE_IN_TITLE = /\n[ \t]*\n/;
 
 // ---------------------------------------------------------------- tables
 
@@ -585,6 +599,329 @@ function $showRawBlocksAsWritten(parent: ElementNode): void {
         if ($isMarkdownRawBlockNode(child) && $rawBlockWritesAsParagraph(child)) {
             child.replace($createParagraphNode(), true);
         }
+    }
+}
+
+// ---------------------------------------------------------------- link reference definitions
+
+/** The definitions an update has brought the document's blocks in line with so far. */
+interface DefinitionsShown {
+    /** The committed state the update started from. */
+    readonly from:   EditorState;
+    /** The definitions' source ({@link $definitionsSource}) the blocks now show. */
+    readonly source: string;
+}
+
+/**
+ * Registers the definition rule. What a block shows was read under the
+ * document's link reference definitions, and only source kept as written
+ * reads differently under others: a run whose source holds a `[` — an empty
+ * reference (`[][ref]`), a reference image (`![alt][ref]`), a reference kept
+ * inside a construct — shows what its source read as, while the save writes
+ * that source unchanged. Everything else the editor holds reads alike under
+ * any definitions: text escapes its brackets, so text never becomes a link,
+ * and a reference link keeps its own URL, saved inline once its label no
+ * longer resolves to it.
+ *
+ * So when an update changes the definitions — one typed, edited, pasted or
+ * removed in a raw block, at any depth — each top-level block whose runs
+ * kept as written name a label the change resolves differently, and whose
+ * save shows differently under the new definitions than under the ones it
+ * was shown under, shows anew as a load builds it from that save
+ * ({@link $showBlocksAsDefinitionsRead}): the editor again shows what the
+ * viewer reads, and what a reload of the save would show.
+ *
+ * The check runs in a root transform, so it lands in the update that made
+ * the change and undoes with it. It reads the raw blocks' text, found among
+ * the top-level blocks, and compares it with the text the document held
+ * before the update, which an update listener carries from one committed
+ * state to the next where the transform ran; the definitions are lexed only
+ * when that text changed, and blocks are serialized only when the
+ * definitions did.
+ *
+ * @param editor - The editor.
+ * @returns The unregister function.
+ */
+function registerDefinitionRules(editor: LexicalEditor): () => void {
+    const committedSources = new WeakMap<EditorState, string>();
+    let shown: DefinitionsShown | null = null;
+    // The last source lexed, which the next change compares against: one lex per change.
+    let lexed = { source: "", definitions: lexMarkdownLinkDefinitions("") };
+
+    const definitionsOf = (source: string): Links => {
+        if (lexed.source !== source) {
+            lexed = { source, definitions: lexMarkdownLinkDefinitions(source) };
+        }
+
+        return lexed.definitions;
+    };
+
+    // Read off the state itself only where no transform ran to carry its text: after an update that moved only the
+    // selection, or an undo, a redo or another update that sets a state.
+    const sourceOf = (state: EditorState): string => {
+        let source = committedSources.get(state);
+
+        if (source === undefined) {
+            source = state.read($definitionsSource, { editor });
+            committedSources.set(state, source);
+        }
+
+        return source;
+    };
+
+    return mergeRegister(
+        editor.registerNodeTransform(RootNode, () => {
+            // An undo or a redo brings back a state that showed its own definitions; its text is read off it when needed.
+            const historic = $hasUpdateTag(HISTORIC_TAG);
+
+            if (historic) {
+                shown = null;
+
+                return;
+            }
+
+            const from = editor.getEditorState();
+            const now = $definitionsSource();
+            const loading = $hasUpdateTag(MARKDOWN_IMPORT_TAG);
+            const before = shown?.from === from ? shown.source : loading ? now : sourceOf(from);
+
+            shown = { from, source: now };
+
+            if (now === before) {
+                return;
+            }
+
+            const previous = definitionsOf(before);
+            const current = definitionsOf(now);
+            const changed = changedLabels(previous, current);
+
+            if (changed.length > 0) {
+                $showBlocksAsDefinitionsRead(previous, current, changed);
+            }
+        }),
+        editor.registerUpdateListener(({ editorState, prevEditorState }) => {
+            if (shown?.from === prevEditorState) {
+                committedSources.set(editorState, shown.source);
+            }
+
+            // An undo can bring back the very state an update started from; the next update starts afresh.
+            shown = null;
+        }),
+    );
+}
+
+/**
+ * The labels two sets of definitions resolve differently: defined in one
+ * only, or to another URL or title.
+ *
+ * @param previous - One set.
+ * @param current - The other.
+ * @returns The labels, as `marked` keys them.
+ */
+function changedLabels(previous: Links, current: Links): string[] {
+    const labels = new Set([...Object.keys(previous), ...Object.keys(current)]);
+
+    return [...labels].filter((label) => JSON.stringify(previous[label]) !== JSON.stringify(current[label]));
+}
+
+/**
+ * Shows anew each top-level block whose runs kept as written name a label
+ * the definitions changed ({@link $namesLabel}), when its save shows
+ * differently under the document's new definitions than under the ones it
+ * was shown under ({@link shownReading}). A block holding a reference link
+ * is written anew too — in its written form or inline, as its definition
+ * now resolves — so a reference that keeps its form whatever its title
+ * takes its definition's title ({@link $adoptDefinitionTitles}), and a run
+ * of it whose save then reads differently shows as it saves
+ * ({@link $showRunsAsSaved}).
+ *
+ * @param previous - The definitions the blocks were shown under.
+ * @param current - The document's definitions now.
+ * @param changed - The labels the two resolve differently.
+ */
+function $showBlocksAsDefinitionsRead(previous: Links, current: Links, changed: readonly string[]): void {
+    for (const block of $getRoot().getChildren()) {
+        const named = $namesLabel(block, changed);
+
+        if ($isElementNode(block) && $dfs(block).some(({ node }) => $isReferenceLinkNode(node))) {
+            $adoptDefinitionTitles(block, current);
+            $showRunsAsSaved(block);
+        }
+
+        if (!named) {
+            continue;
+        }
+
+        const markdown = $serializeBlock(block);
+        const readsAlike = shownReading(markdown, previous) === shownReading(markdown, current);
+
+        if (!readsAlike) {
+            $showBlockAnew(block, $readBlocksWithDefinitions(markdown, current));
+        }
+    }
+}
+
+/**
+ * Gives each reference link in a block whose title holds a blank line the
+ * title of its definition, while that definition resolves its label to its
+ * URL: no inline link can write such a title (a blank line ends the block),
+ * so its save keeps the reference form and the viewer shows the definition's
+ * title, whatever the link's own.
+ *
+ * @param block - The block.
+ * @param definitions - The document's definitions now.
+ */
+function $adoptDefinitionTitles(block: ElementNode, definitions: Links): void {
+    for (const { node } of $dfs(block)) {
+        if (!$isReferenceLinkNode(node) || !BLANK_LINE_IN_TITLE.test(node.getTitle() ?? "")) {
+            continue;
+        }
+
+        const definition = definitions[node.getReference().label.replace(/\s+/g, " ").toLowerCase()];
+
+        if (definition !== undefined && definition.href === node.getURL() && (definition.title || null) !== node.getTitle()) {
+            node.setTitle(definition.title || null);
+        }
+    }
+}
+
+/**
+ * What Markdown shows under given definitions, in a form two readings can
+ * compare: its tokens, except that where a reference points is left out
+ * where the viewer shows nothing of it — a link with no content, and an
+ * image `marked` reads from a reference (`![alt][ref]`), which the viewer
+ * shows as its alt text — so a definition whose URL is edited shows such a
+ * block anew only where a link it points shows.
+ *
+ * @param markdown - The Markdown.
+ * @param definitions - The definitions in force.
+ * @returns The reading, as JSON.
+ */
+function shownReading(markdown: string, definitions: Links): string {
+    return JSON.stringify(lexMarkdownWithDefinitions(markdown, definitions), (_key, value: unknown) => {
+        const token = value as Partial<Tokens.Link | Tokens.Image> | null;
+
+        if (token?.type === "image" || (token?.type === "link" && token.tokens?.length === 0)) {
+            return { type: token.type, raw: token.raw, text: token.text };
+        }
+
+        return value;
+    });
+}
+
+/**
+ * Tells whether a block's runs kept as written — the only content whose
+ * reading a definition can change — name one of the labels in brackets, as
+ * `marked` keys them (whitespace runs one space, lowercased). The runs'
+ * sources are read joined, since a construct kept as written spreads its
+ * source over its runs.
+ *
+ * @param block - The block.
+ * @param labels - The labels.
+ * @returns `true` when a run names one.
+ */
+function $namesLabel(block: LexicalNode, labels: readonly string[]): boolean {
+    if (!$isElementNode(block)) {
+        return false;
+    }
+
+    const sources = $dfs(block).map(({ node }) => ($isMarkdownSourceTextNode(node) ? node.getSource() : "")).join("");
+    const keyed = sources.replace(/\s+/g, " ").toLowerCase();
+
+    return sources.includes("[") && labels.some((label) => keyed.includes(`[${label}]`));
+}
+
+/**
+ * Puts the blocks a block's save reads as in its place. A caret in the block
+ * stays at the same offset of its text where that text still reaches, else
+ * goes to the end of the new blocks.
+ *
+ * @param block - The block shown anew.
+ * @param blocks - What it reads as now; nothing is done when empty.
+ */
+function $showBlockAnew(block: LexicalNode, blocks: LexicalNode[]): void {
+    const last = blocks[blocks.length - 1];
+
+    if (last === undefined) {
+        return;
+    }
+
+    const caret = $caretTextOffset(block);
+
+    for (const node of blocks) {
+        block.insertBefore(node);
+    }
+
+    block.remove();
+
+    if (caret !== null) {
+        $placeCaret(blocks, caret, last);
+    }
+}
+
+/**
+ * Where a collapsed selection's caret sits in a block's text: the length of
+ * the text before it, an element point counting from the start of its element.
+ *
+ * @param block - The block.
+ * @returns The offset, or `null` when the caret is not in the block.
+ */
+function $caretTextOffset(block: LexicalNode): number | null {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+        return null;
+    }
+
+    const anchor = selection.anchor;
+    const anchorNode = anchor.getNode();
+    let offset = 0;
+
+    for (const { node } of $dfs(block)) {
+        const reached = node.is(anchorNode);
+
+        if (reached) {
+            return offset + (anchor.type === "text" ? anchor.offset : 0);
+        }
+
+        if ($isTextNode(node)) {
+            offset += node.getTextContentSize();
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Puts a collapsed caret at an offset of the text of a run of blocks.
+ *
+ * @param blocks - The blocks.
+ * @param offset - The offset in their text, joined.
+ * @param last - The last block, whose end takes a caret past the text.
+ */
+function $placeCaret(blocks: readonly LexicalNode[], offset: number, last: LexicalNode): void {
+    let before = 0;
+
+    for (const block of blocks) {
+        for (const { node } of $dfs(block)) {
+            if (!$isTextNode(node)) {
+                continue;
+            }
+
+            const size = node.getTextContentSize();
+
+            if (offset <= before + size) {
+                node.select(offset - before, offset - before);
+
+                return;
+            }
+
+            before += size;
+        }
+    }
+
+    if ($isElementNode(last)) {
+        last.selectEnd();
     }
 }
 

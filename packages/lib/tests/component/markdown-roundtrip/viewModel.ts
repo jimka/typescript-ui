@@ -19,6 +19,7 @@ import type { MarkdownSpanStyle } from '~/component/display/markdownAttributes';
 import { $isMarkdownBlockNode, $isMarkdownColumnNode } from '~/component/editor/markdownBlockNode';
 import { $isMarkdownImageNode } from '~/component/editor/markdownImageNode';
 import { listLooseState } from '~/component/editor/markdownNodeState';
+import { $isMarkdownRawBlockNode } from '~/component/editor/markdownSourceNodes';
 import type { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 
 /** An inline format a text run carries. */
@@ -580,13 +581,25 @@ export function editorSurfaceModel(editor: MarkdownEditor): Block[] {
 }
 
 /**
- * Projects a list of block nodes.
+ * Projects a list of block nodes, dropping the raw blocks that hold only link reference definitions.
  *
  * @param nodes - The block nodes.
  * @returns The visible blocks.
  */
 function editorBlocks(nodes: LexicalNode[]): Block[] {
-    return visibleBlocks(nodes.map((node) => editorBlock(node)));
+    return visibleBlocks(nodes.filter((node) => !holdsOnlyDefinitions(node)).map((node) => editorBlock(node)));
+}
+
+/**
+ * Tells whether a node is a raw block whose text lexes to link reference definitions alone, which the viewer renders
+ * nothing for. Decided from the current text, so a definition rewritten into prose shows, as it does in the viewer.
+ *
+ * @param node - A block node.
+ * @returns `true` for a definitions-only raw block.
+ */
+function holdsOnlyDefinitions(node: LexicalNode): boolean {
+    return $isMarkdownRawBlockNode(node)
+        && lexMarkdown(node.getTextContent()).every((token) => token.type === 'def' || token.type === 'space');
 }
 
 /**
