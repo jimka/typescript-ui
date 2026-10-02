@@ -578,7 +578,8 @@ const _defaultMarkdownOptions: Partial<MarkdownOptions> = { userSelect: "text", 
  * and the render runs against the modelled DOM source in tests.
  *
  * The v1 token set covers headings, paragraphs, ordered/unordered lists,
- * blockquotes, fenced/inline code, bold, italic, links, GFM pipe tables
+ * blockquotes, fenced/inline code, bold, italic, links (inline and
+ * reference-style; a reference definition renders nothing), GFM pipe tables
  * (including per-column alignment, widths, and merged cells), underline,
  * coloured/sized/font-styled spans, `:::` alignment/multi-column fences, and
  * sized images validated against a scheme allow-list. Any other token type
@@ -1646,6 +1647,10 @@ class Markdown extends Component<MarkdownOptions> {
 
             // Blank line between blocks — nothing to render.
             case "space": break;
+
+            // A link reference definition: `marked` has already resolved every
+            // reference to it into a `link` token, so the definition renders nothing.
+            case "def": break;
 
             default: this.appendTextNode(parent, token.raw ?? ""); break;
         }

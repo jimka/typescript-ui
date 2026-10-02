@@ -807,6 +807,83 @@ describe('Markdown links', () => {
     });
 });
 
+describe('Markdown reference links and definitions', () => {
+    /** The `href` of every `<a>` attribute write, in order. */
+    function linkHrefs(): string[] {
+        return attrWrites().filter((a) => a.href !== undefined).map((a) => a.href);
+    }
+
+    it('renders nothing for a trailing definition block (V1)', () => {
+        new Markdown('# H\n\n[x]: https://example.com\n').getElement(true);
+
+        expect(textWrites().some((t) => t.includes('[x]:'))).toBe(false);
+        expect(createdTags()).not.toContain('p');
+    });
+
+    it('resolves the full, shortcut, collapsed and case-folded forms (V2)', () => {
+        new Markdown('See [text][ref] and [ref] and [ref][] and [Ref].\n\n[ref]: https://e.com "T"').getElement(true);
+
+        expect(linkHrefs()).toEqual(['https://e.com', 'https://e.com', 'https://e.com', 'https://e.com']);
+        expect(textWrites().some((t) => t.includes(']:'))).toBe(false);
+    });
+
+    it('renders nothing for a definition inside a blockquote (V3)', () => {
+        new Markdown('> [q]\n>\n> [q]: https://q.com').getElement(true);
+
+        expect(linkHrefs()).toEqual(['https://q.com']);
+        expect(textWrites().some((t) => t.includes('[q]:'))).toBe(false);
+    });
+
+    it('renders nothing for a definition inside a ::: fence (V4)', () => {
+        new Markdown('::: {align=center}\n[x]\n\n[x]: https://blk\n:::').getElement(true);
+
+        expect(linkHrefs()).toEqual(['https://blk']);
+        expect(textWrites().some((t) => t.includes('[x]:'))).toBe(false);
+    });
+
+    it('resolves a reference in a table cell to a definition below the table (V5)', () => {
+        new Markdown('| a |\n| --- |\n| [ref] |\n\n[ref]: https://e.com').getElement(true);
+
+        expect(linkHrefs()).toEqual(['https://e.com']);
+        expect(childTagsOf('td')).toContain('A');
+    });
+
+    it('keeps a definition-shaped line that continues a paragraph as text (V6)', () => {
+        new Markdown('para\n[x]: https://e.com').getElement(true);
+
+        // Joined: GFM autolinks the bare URL, so it is written as its own link text.
+        expect(textWrites().join('')).toContain('[x]: https://e.com');
+    });
+
+    it('lets the first of two duplicate definitions win and renders neither (V7)', () => {
+        new Markdown('[a]\n\n[a]: https://one\n[a]: https://two').getElement(true);
+
+        expect(linkHrefs()).toEqual(['https://one']);
+        expect(textWrites().some((t) => t.includes('[a]:'))).toBe(false);
+    });
+
+    it('renders nothing for a definition inside a list item (V8)', () => {
+        new Markdown('- [l]\n\n  [l]: https://l.com').getElement(true);
+
+        expect(linkHrefs()).toEqual(['https://l.com']);
+        expect(textWrites().some((t) => t.includes('[l]:'))).toBe(false);
+    });
+
+    it('keeps a reference to an undefined label as literal text (V9)', () => {
+        new Markdown('see [nope] here').getElement(true);
+
+        expect(createdTags()).not.toContain('a');
+        expect(textWrites().join('')).toContain('[nope]');
+    });
+
+    it("shows a task item's marker once, and keeps a later cell's marker text", () => {
+        new Markdown('- [ ] foo\n  | a |\n  | - |\n  | [x] baz |').getElement(true);
+
+        expect(textWrites().join('')).not.toContain('[ ] [ ]');
+        expect(textWrites()).toContain('[x] baz');
+    });
+});
+
 describe('Markdown linkResolver accessors', () => {
     it('getLinkResolver returns the default resolver (not null) on a freshly constructed Markdown', () => {
         expect(new Markdown().getLinkResolver()).not.toBeNull();

@@ -76,7 +76,7 @@ const CORPUS: Record<string, string> = {
 
 // The exact token types the read-only `Markdown` viewer renders; anything else
 // falls to its plain-text fallback.
-const VIEWER_TOKENS = new Set(['heading', 'paragraph', 'list', 'blockquote', 'code', 'space', 'mdtable', 'mdblock']);
+const VIEWER_TOKENS = new Set(['heading', 'paragraph', 'list', 'blockquote', 'code', 'space', 'mdtable', 'mdblock', 'def']);
 
 /** Normalises Lexical's markdown export for comparison: strip trailing spaces, collapse blank-line runs, trim. */
 function normalize(md: string): string {

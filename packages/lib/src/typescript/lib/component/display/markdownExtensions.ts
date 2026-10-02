@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Marked, Tokenizer } from "marked";
-import type { Token, TokenizerExtension, TokenizerObject } from "marked";
+import type { Lexer, Token, TokenizerExtension, TokenizerObject, Tokens } from "marked";
 import { lineEndAt, parseAttributes, splitColumnSections } from "~/component/display/markdownAttributes.js";
 import { TABLE_EXTENSION } from "~/component/display/markdownTableExtension.js";
 
@@ -297,6 +297,104 @@ function hasSetextUnderline(src: string): boolean {
     return false;
 }
 
+/** One entry on `marked`'s inline queue: a block's inline source, and the token array its inline pass fills. */
+type InlineQueueEntry = Lexer["inlineQueue"][number];
+
+/** The inline-queue entries one list item's lexing queued, as {@link recordingLexer} found them. */
+interface QueuedItemEntries {
+    /** The entries, in queue order. */
+    entries:  InlineQueueEntry[];
+    /** Each entry's source text, before `marked` searched the queue for a task marker. */
+    sources:  string[];
+    /** The entry holding the item's first token's inline tokens, when that token is a paragraph or text run. */
+    ownEntry: InlineQueueEntry | undefined;
+}
+
+/**
+ * A view of `lexer` whose `blockTokens` also records, under the token array it
+ * returns, the inline-queue entries that call queued. `marked`'s list
+ * tokenizer lexes each item through `this.lexer.blockTokens(item.text, [])`
+ * and keeps the returned array as `item.tokens`, so the record of every item
+ * is found again from the finished list. Every other property — the queue, the
+ * state, the token list — is `lexer`'s own, read through the prototype.
+ *
+ * @param lexer - The lexer the list tokenizer is running in.
+ * @param records - Receives one record per `blockTokens` call, keyed by its result.
+ * @returns The recording view.
+ */
+function recordingLexer(lexer: Lexer, records: Map<Token[], QueuedItemEntries>): Lexer {
+    const blockTokens = (text: string, tokens: Token[]): Token[] => {
+        const firstQueued = lexer.inlineQueue.length;
+        const itemTokens = lexer.blockTokens(text, tokens);
+        const entries = lexer.inlineQueue.slice(firstQueued);
+        const first = itemTokens[0];
+        const ownTokens = first?.type === "paragraph" || first?.type === "text" ? first.tokens : undefined;
+
+        records.set(itemTokens, {
+            entries,
+            sources:  entries.map((entry) => entry.src),
+            ownEntry: entries.find((entry) => entry.tokens === ownTokens),
+        });
+
+        return itemTokens;
+    };
+
+    return Object.create(lexer, { blockTokens: { value: blockTokens } }) as Lexer;
+}
+
+/**
+ * Runs `marked`'s list tokenizer, then takes each task item's `[ ] `/`[x] `
+ * marker off the item's own first text and off nothing else. `marked` 18
+ * strips the marker from the *last* entry on the lexer's inline queue that
+ * starts with one, and that is a later paragraph or table cell of the same
+ * item whenever one of those also starts with a marker: the item's text then
+ * kept its marker and the later block lost its own.
+ *
+ * The original runs against {@link recordingLexer}'s view, which records each
+ * item's queued entries just before `marked` searches the queue. Afterwards
+ * every recorded entry gets its recorded text back — undoing whichever strip
+ * `marked` made — and a task item's own entry loses the marker. A nested list
+ * finishes this inside its parent item's lexing, before the parent records, so
+ * the parent restores the nested entries to their already-fixed text. Only the
+ * queued sources change: the token tree, checkbox included, is `marked`'s own.
+ *
+ * @param src - The remaining source at the current block position.
+ * @returns The list token, or `undefined` when no list starts here.
+ */
+function listWithOwnTaskMarker(this: Tokenizer, src: string): Tokens.List | undefined {
+    const records = new Map<Token[], QueuedItemEntries>();
+    const recordingTokenizer = Object.create(this, { lexer: { value: recordingLexer(this.lexer, records) } }) as Tokenizer;
+    const list = Tokenizer.prototype.list.call(recordingTokenizer, src);
+
+    for (const item of list?.items ?? []) {
+        const record = records.get(item.tokens);
+
+        if (record === undefined) {
+            continue;
+        }
+
+        record.entries.forEach((entry, index) => {
+            entry.src = record.sources[index]!;
+        });
+
+        if (item.task && record.ownEntry !== undefined) {
+            record.ownEntry.src = record.ownEntry.src.replace(this.rules.other.listReplaceTask, "");
+        }
+    }
+
+    return list;
+}
+
+/**
+ * The block tokenizer the dialect owns, installed in `marked`'s `list` slot:
+ * the unbounded test twin installs it as it is, and
+ * {@link BOUNDED_BLOCK_TOKENIZERS} calls the same one behind its guard and
+ * window, so the twin differs from the bounded instance in nothing else.
+ */
+const DIALECT_BLOCK_TOKENIZERS: TokenizerObject = {
+    list: listWithOwnTaskMarker,
+};
+
 /**
  * The six block rules whose anchored regexes JavaScriptCore — the engine
  * WebKitGTK runs — scans from every start position of whatever it is handed,
@@ -304,10 +402,12 @@ function hasSetextUnderline(src: string): boolean {
  * and lexing a long document is quadratic. Each override returns `undefined`,
  * declining the position outright, when a condition its rule's own regex
  * requires does not hold; otherwise it calls `marked`'s original method on
- * {@link blockWindow}'s cut of the source. `html` takes the guard only and
- * returns `false` — `marked` then runs the original on the whole source —
- * because its `<script>`, comment, processing-instruction, declaration and
- * CDATA forms all run to a closing marker no restart line bounds.
+ * {@link blockWindow}'s cut of the source. `list` calls the dialect's
+ * task-marker wrapper on the window instead of the original. `html` takes the
+ * guard only and returns `false` — `marked` then runs the original on the
+ * whole source — because its `<script>`, comment, processing-instruction,
+ * declaration and CDATA forms all run to a closing marker no restart line
+ * bounds.
  *
  * The originals are reached through `Tokenizer.prototype`: `marked` installs
  * these overrides as own properties on the instance's tokenizer object, so the
@@ -323,7 +423,7 @@ const BOUNDED_BLOCK_TOKENIZERS: TokenizerObject = {
         return BLOCKQUOTE_START.test(src) ? Tokenizer.prototype.blockquote.call(this, blockWindow(src)) : undefined;
     },
     list(src) {
-        return LIST_START.test(src) ? Tokenizer.prototype.list.call(this, blockWindow(src)) : undefined;
+        return LIST_START.test(src) ? listWithOwnTaskMarker.call(this, blockWindow(src)) : undefined;
     },
     table(src) {
         return secondLineHasDash(src) ? Tokenizer.prototype.table.call(this, blockWindow(src)) : undefined;
@@ -361,7 +461,9 @@ let _unboundedMarked: Marked | null = null;
 
 /**
  * Lexes Markdown source through the same dialect with no block-rule guards or
- * windows, so a test can assert that bounding them changed no token.
+ * windows, so a test can assert that bounding them changed no token. It shares
+ * the dialect's own `list` tokenizer, so the guards and windows are the only
+ * difference.
  *
  * @internal Test-only reference lexer, not part of the public API surface.
  *
@@ -369,7 +471,7 @@ let _unboundedMarked: Marked | null = null;
  * @returns The top-level token list.
  */
 export function lexMarkdownUnbounded(source: string): Token[] {
-    _unboundedMarked ??= new Marked({ extensions: MARKDOWN_EXTENSIONS });
+    _unboundedMarked ??= new Marked({ extensions: MARKDOWN_EXTENSIONS, tokenizer: DIALECT_BLOCK_TOKENIZERS });
 
     return _unboundedMarked.lexer(source);
 }
