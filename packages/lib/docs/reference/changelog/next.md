@@ -436,11 +436,10 @@ page resets to empty.
   `insertParagraphBeforeBlock`/`insertParagraphAfterBlock`, `insertImage`, and
   `insertTable` all rewrite the raw text in place around the source
   `CodeEditor`'s own selection, emitting only the dialect's own markers so the
-  result round-trips back through `"wysiwyg"` unchanged. The other fourteen
-  commands — `setTextColor`/`setFontFamily`/`setFontSize`,
-  `setBlockAlignment`, `setColumnCount`, and the nine table-structure commands
-  — still no-op in `"source"` mode; each needs its own design (a styled-span
-  merge, a `:::` fence rewrite, or a parsed pipe grid) and is left for a
+  result round-trips back through `"wysiwyg"` unchanged. The other eleven
+  commands — `setBlockAlignment`, `setColumnCount`, and the nine
+  table-structure commands — still no-op in `"source"` mode; each needs its own
+  design (a `:::` fence rewrite or a parsed pipe grid) and is left for a
   follow-up. `getSelectionState()` and `"selectionstate"` are mode-aware too:
   in `"source"` mode the five format flags, `hasSelectedText`, and `linkUrl`
   are derived from the raw text, while `inTable`, `tableColumnAlignment`,
@@ -449,6 +448,44 @@ page resets to empty.
   state never lags a mode switch. `CodeEditor` gains the public
   `replaceRange(from, to, insert, selection?)`, the one-transaction seam this
   all rides on. No consumer action is needed.
+
+- **`MarkdownEditor`'s three style setters edit the raw Markdown in `"source"`
+  mode.** `setTextColor`, `setFontFamily` and `setFontSize` write the
+  dialect's `[text]{color=… font=… size=…}` styled span straight into the
+  source text, instead of no-opping there. A new attribute merges into a span
+  already around the selection rather than nesting a second one inside it, a
+  span the selection only partly covers splits in two, neighbouring text that
+  ends up styled alike is written as one span, and the whole `{…}` group goes
+  away once the last attribute is cleared. Every attribute group is re-emitted
+  in the dialect's own `color`/`font`/`size` order through the same pipeline
+  the `"wysiwyg"` export uses, so a span authored in source mode survives a
+  mode switch byte-for-byte — a hand-written group in another order is
+  re-ordered once, on its first edit. An attribute the dialect does not model
+  is kept as written, after those three. A run that is the only emphasis on its
+  line and wraps no existing span has the brackets written outside its markers
+  (`[**world**]{color=…}`); otherwise, **a selection whose line carries a `*`,
+  `~`, `+` or `` ` `` character outside it is refused** — emphasis or not, so
+  a `*`/`+` list bullet counts — and so is a selection holding such a
+  character together with an existing span, whose wrapping run the rewrite
+  would cut in two. Both refusals are deliberately coarse and will decline
+  some selections that would have been safe: writing a span across an emphasis
+  boundary loses the emphasis on the next mode switch, and telling emphasis
+  from a literal `*` or `++` needs a Markdown parser the source path
+  deliberately is not. Styling inside or across emphasis is not reliable in
+  `"wysiwyg"` mode either — there a styled span at the edge of an emphasis run
+  is exported straddling its markers and reads back as literal asterisks — so
+  it is best avoided on both surfaces for now. A selection that crosses a line
+  break, or that touches a link or an image (including an image's
+  `{width=…}` group), is refused too, mirroring the `"wysiwyg"` side's own
+  refusal inside a link — and so is one on a `:::` fence line or a table
+  delimiter row, whose own `{…}` groups a span would break, and one that would
+  put a bracket straight after an escaping backslash (`C:\Users`), where the
+  bracket would be literal and the span syntax would show. A selection mixing emphasis
+  with plain text is re-normalised once on the next mode switch — the styling
+  and emphasis are preserved, the byte form settles to one span per run. A
+  format toggle pressed straight after a style command that covered more than
+  one span wraps its markers across the span syntax and does not read back as
+  emphasis; reselect inside one span first. No consumer action is needed.
 
 ### Core
 
@@ -863,8 +900,8 @@ page resets to empty.
   content the user never typed (the Lexical round-trip's own normalisation),
   and could desync `getValue()` from what the visible `CodeEditor` showed.
   No command reaches the hidden Lexical document in `"source"` mode any more:
-  the eighteen listed under *Added* rewrite the visible source text instead,
-  and the other fourteen are explicit, documented no-ops. No consumer action
+  the twenty-one listed under *Added* rewrite the visible source text instead,
+  and the other eleven are explicit, documented no-ops. No consumer action
   is needed.
 
 ### Core
