@@ -297,8 +297,7 @@ describe('$serializeMarkdown — blocks', () => {
     });
 
     it('S11 (first item): a first item holding only a nested list writes the nested list on its marker\'s line', () => {
-        // A bare `-` line under a `-` item is a delimiter row to the viewer's pipeless-table extension
-        // (plan markdown-editor-marked-import, audit fix).
+        // CommonMark example 298's own form for an item holding only a nested list.
         const output = serialize(() => [list('bullet', 1, [list('bullet', 1, ['n'])])]);
 
         expect(output).toBe('- - n');

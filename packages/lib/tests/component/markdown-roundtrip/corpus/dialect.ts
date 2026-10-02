@@ -115,4 +115,8 @@ export const DIALECT_CASES: readonly CorpusCase[] = [
     { name: 'raw list whose indented second marker continues the first item', source: '   + __4_\n\n     p\n    + 2', known: { surface: 'listItemBlocks' } },
     { name: 'task item whose nested list follows a blank line', source: '- [x] a\n\n  - b', known: { surface: 'listItemBlocks' } },
     { name: 'dropped definition with its title on the next line', source: '[x]: /a\n[x]: </b>\n"t"\n"t"' },
+    { name: 'code fence holding a dash line', source: '```\n---\n```' },
+    { name: 'thematic break after a quote list with a lazy line', source: '> - a\nb\n\n---', known: { surface: 'quoteBlocks' } },
+    { name: 'html line right after a quote list with lazy lines', source: '> - a\n> - a\nc\n> - a\nc\n<div>', known: { surface: 'quoteBlocks' } },
+    { name: 'ordered item right after a quote list with lazy lines', source: '> - a\n> - a\nc\n> - a\nc\n1. g', known: { surface: 'quoteBlocks' } },
 ];

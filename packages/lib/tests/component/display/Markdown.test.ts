@@ -39,6 +39,11 @@ function textWrites(): string[] {
         .map((w) => (w.args[1] as { text: string }).text);
 }
 
+/** Every text write, trimmed — a fallback's text keeps the newline its token's `raw` ends with. */
+function trimmedTextWrites(): string[] {
+    return textWrites().map((text) => text.trim());
+}
+
 /** Every `{ setAttr }` payload written through `apply`. */
 function attrWrites(): Record<string, string>[] {
     return sink.writes
@@ -1131,6 +1136,90 @@ describe('Markdown blockquote', () => {
 
         expect(createdTags()).toContain('blockquote');
         expect(textWrites()).toContain('quote');
+    });
+});
+
+describe('Markdown block precedence over tables', () => {
+    it('BF1. renders a line over --- as a setext heading, not a table', () => {
+        new Markdown('Foo\n---\nbar').getElement(true);
+
+        expect(createdTags()).toContain('h2');
+        expect(createdTags()).toContain('p');
+        expect(createdTags()).not.toContain('table');
+    });
+
+    it('BF2. renders a fenced code block whose first line is --- as code', () => {
+        new Markdown('```\n---\n```').getElement(true);
+
+        expect(createdTags()).toContain('pre');
+        expect(createdTags()).not.toContain('table');
+        expect(textWrites()).toContain('---');
+    });
+
+    it('BF3. renders a list with a bare - item as a three-item list', () => {
+        new Markdown('- foo\n-\n- bar').getElement(true);
+
+        expect(createdTags()).not.toContain('table');
+        expect(childTagsOf('ul')).toEqual(['LI', 'LI', 'LI']);
+    });
+
+    it('BF4. renders three thematic breaks as their text, not a table', () => {
+        new Markdown('***\n---\n___').getElement(true);
+
+        expect(createdTags()).not.toContain('table');
+        expect(trimmedTextWrites()).toEqual(expect.arrayContaining(['***', '---', '___']));
+    });
+
+    it('BF5. renders --- after a blockquote as a thematic break', () => {
+        new Markdown('> Foo\n---').getElement(true);
+
+        expect(createdTags()).toContain('blockquote');
+        expect(createdTags()).not.toContain('table');
+        expect(trimmedTextWrites()).toContain('---');
+    });
+
+    it('BF6. renders --- after a blank line as a thematic break', () => {
+        new Markdown('> - a\nb\n\n---').getElement(true);
+
+        expect(createdTags()).not.toContain('table');
+        expect(trimmedTextWrites()).toContain('---');
+    });
+
+    it('BF7. still renders a one-column table written with its pipes', () => {
+        new Markdown('| a |\n| - |\n| 1 |').getElement(true);
+
+        expect(createdTags().filter((t) => t === 'th')).toHaveLength(1);
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(1);
+    });
+
+    it('BF8. still renders a table without outer pipes', () => {
+        new Markdown('a | b\n--- | ---\n1 | 2').getElement(true);
+
+        expect(createdTags().filter((t) => t === 'th')).toHaveLength(2);
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(2);
+    });
+
+    it('BF9. still renders a delimiter row holding only a colon as a table', () => {
+        new Markdown('a\n:-:').getElement(true);
+
+        expect(createdTags()).toContain('table');
+    });
+});
+
+describe('Markdown after a blockquote whose list has lazy lines', () => {
+    it('BF10. keeps the first character of the html line after the quote', () => {
+        new Markdown('> - a\n> - a\nc\n> - a\nc\n<div>').getElement(true);
+
+        expect(textWrites()).toContain('<div>');
+        expect(textWrites()).not.toContain('div>');
+    });
+
+    it('BF11. keeps the marker of the ordered item after the quote', () => {
+        new Markdown('> - a\n> - a\nc\n> - a\nc\n1. g').getElement(true);
+
+        expect(createdTags()).toContain('ol');
+        expect(textWrites()).toContain('g');
+        expect(textWrites()).not.toContain('. g');
     });
 });
 

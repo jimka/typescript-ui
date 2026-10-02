@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import type { Token, TokenizerExtension } from "marked";
+import type { Token, TokenizerThis } from "marked";
 import { lineEndAt, resolveColumnWidth } from "~/component/display/markdownAttributes.js";
 
 /** One header cell: never merged — only body cells carry `<<`/`^^` continuations. */
@@ -19,7 +19,7 @@ export interface MdTableBodyCell {
     rowSpan: number;
 }
 
-/** The `mdtable` block token this extension emits. */
+/** The `mdtable` block token `tokenizeTable` emits. */
 export interface MdTableToken {
     type:   "mdtable";
     raw:    string;
@@ -217,123 +217,139 @@ function unescapeCellText(text: string): string {
 }
 
 /**
- * A `marked` block tokenizer extension that parses a whole GFM pipe table —
- * header, delimiter (with an optional trailing `{width=…}` per column), and
- * body rows, resolving `<<`/`^^` merge continuations — in one pass. Replaces
- * `marked`'s own table recognition entirely: its built-in delimiter-row regex
- * rejects a cell carrying `{width=…}`, which would otherwise turn the whole
- * block into paragraphs. The editor reads tables through this same
- * extension and writes them with its serializer (`markdownSerializer.ts`),
- * so there is one table parser.
+ * A delimiter row must hold one of these, as `marked`'s own table rule
+ * requires (its `tableDelimiter` check), so a line over `---` stays a setext
+ * heading rather than a one-column table.
  */
-export const TABLE_EXTENSION: TokenizerExtension = {
-    name:  "mdtable",
-    level: "block",
-    tokenizer(src) {
-        const headerEnd = src.indexOf("\n");
+const DELIMITER_ROW_MARKER = /[:|]/;
 
-        // A single unterminated line cannot carry a delimiter row below it.
-        if (headerEnd === -1) {
-            return undefined;
+/**
+ * The dialect's GFM pipe-table tokenizer: parses a whole table — header,
+ * delimiter (with an optional trailing `{width=…}` per column), and body rows,
+ * resolving `<<`/`^^` merge continuations — in one pass. `markdownExtensions.ts`
+ * installs it in `marked`'s `table` tokenizer slot, so `marked` tries it where
+ * it would try its own table rule: after code, headings, thematic breaks,
+ * blockquotes, lists, HTML blocks and definitions. Like that rule it needs a
+ * delimiter row holding a `|` or `:`; it differs from it only by accepting
+ * `{width=…}` delimiter cells, which `marked`'s delimiter-row regex rejects,
+ * and by resolving `<<` / `^^` merges. The editor reads tables through this same
+ * tokenizer and writes them with its serializer (`markdownSerializer.ts`), so
+ * there is one table parser.
+ *
+ * @param src - The remaining source at the current block position.
+ * @returns The `mdtable` token, or `undefined` when no table starts here.
+ */
+export function tokenizeTable(this: TokenizerThis, src: string): MdTableToken | undefined {
+    const headerEnd = src.indexOf("\n");
+
+    // A single unterminated line cannot carry a delimiter row below it.
+    if (headerEnd === -1) {
+        return undefined;
+    }
+
+    const delimiterEnd = lineEndAt(src, headerEnd + 1);
+    const delimiterLine = src.slice(headerEnd + 1, delimiterEnd);
+    const hasMarker = DELIMITER_ROW_MARKER.test(delimiterLine);
+
+    if (!hasMarker) {
+        return undefined;
+    }
+
+    const delimiter = parseDelimiterRow(delimiterLine);
+
+    if (delimiter === null) {
+        return undefined;
+    }
+
+    const headerCells = splitRow(src.slice(0, headerEnd));
+    const columnCount = headerCells.length;
+
+    if (delimiter.align.length !== columnCount) {
+        return undefined;
+    }
+
+    const bodyLines: string[] = [];
+    let consumedEnd = delimiterEnd;
+
+    while (consumedEnd < src.length) {
+        const lineStart = consumedEnd + 1;
+        const lineEnd = lineEndAt(src, lineStart);
+        const line = src.slice(lineStart, lineEnd);
+
+        if (line.trim() === "") {
+            break;
         }
 
-        const delimiterEnd = lineEndAt(src, headerEnd + 1);
-        const delimiter = parseDelimiterRow(src.slice(headerEnd + 1, delimiterEnd));
+        bodyLines.push(line);
+        consumedEnd = lineEnd;
+    }
 
-        if (delimiter === null) {
-            return undefined;
-        }
+    const raw = src.slice(0, consumedEnd);
 
-        const headerCells = splitRow(src.slice(0, headerEnd));
-        const columnCount = headerCells.length;
+    const header: MdTableHeaderCell[] = headerCells.map((text, column) => ({
+        text,
+        align:  delimiter.align[column] ?? null,
+        tokens: this.lexer.inline(text),
+    }));
 
-        if (delimiter.align.length !== columnCount) {
-            return undefined;
-        }
+    const bodyGrid = bodyLines.map((line) => {
+        const cells = splitRow(line);
 
-        const bodyLines: string[] = [];
-        let consumedEnd = delimiterEnd;
+        return Array.from({ length: columnCount }, (_, column) => cells[column] ?? "");
+    });
 
-        while (consumedEnd < src.length) {
-            const lineStart = consumedEnd + 1;
-            const lineEnd = lineEndAt(src, lineStart);
-            const line = src.slice(lineStart, lineEnd);
+    const anchors = resolveMergeGrid(bodyGrid);
+    const droppedCells = bodyLines.some((line) => splitRow(line).slice(columnCount).some((cell) => cell !== ""));
 
-            if (line.trim() === "") {
-                break;
+    const rows: MdTableBodyCell[][] = bodyGrid.map((cells, row) => {
+        const rowCells: MdTableBodyCell[] = [];
+
+        for (let column = 0; column < cells.length; column += 1) {
+            const anchor = anchors[row]![column]!;
+
+            if (anchor.row !== row || anchor.column !== column) {
+                continue;
             }
 
-            bodyLines.push(line);
-            consumedEnd = lineEnd;
-        }
-
-        const raw = src.slice(0, consumedEnd);
-
-        const header: MdTableHeaderCell[] = headerCells.map((text, column) => ({
-            text,
-            align:  delimiter.align[column] ?? null,
-            tokens: this.lexer.inline(text),
-        }));
-
-        const bodyGrid = bodyLines.map((line) => {
-            const cells = splitRow(line);
-
-            return Array.from({ length: columnCount }, (_, column) => cells[column] ?? "");
-        });
-
-        const anchors = resolveMergeGrid(bodyGrid);
-        const droppedCells = bodyLines.some((line) => splitRow(line).slice(columnCount).some((cell) => cell !== ""));
-
-        const rows: MdTableBodyCell[][] = bodyGrid.map((cells, row) => {
-            const rowCells: MdTableBodyCell[] = [];
-
-            for (let column = 0; column < cells.length; column += 1) {
-                const anchor = anchors[row]![column]!;
-
-                if (anchor.row !== row || anchor.column !== column) {
-                    continue;
-                }
-
-                let colSpan = 1;
-                while (
-                    column + colSpan < cells.length
-                    && anchors[row]![column + colSpan]!.row === row
-                    && anchors[row]![column + colSpan]!.column === column
-                ) {
-                    colSpan += 1;
-                }
-
-                let rowSpan = 1;
-                while (
-                    row + rowSpan < bodyGrid.length
-                    && anchors[row + rowSpan]![column]!.row === row
-                    && anchors[row + rowSpan]![column]!.column === column
-                ) {
-                    rowSpan += 1;
-                }
-
-                const text = unescapeCellText(cells[column]!);
-
-                rowCells.push({
-                    text,
-                    align: delimiter.align[column] ?? null,
-                    colSpan,
-                    rowSpan,
-                    tokens: this.lexer.inline(text),
-                });
+            let colSpan = 1;
+            while (
+                column + colSpan < cells.length
+                && anchors[row]![column + colSpan]!.row === row
+                && anchors[row]![column + colSpan]!.column === column
+            ) {
+                colSpan += 1;
             }
 
-            return rowCells;
-        });
+            let rowSpan = 1;
+            while (
+                row + rowSpan < bodyGrid.length
+                && anchors[row + rowSpan]![column]!.row === row
+                && anchors[row + rowSpan]![column]!.column === column
+            ) {
+                rowSpan += 1;
+            }
 
-        return {
-            type: "mdtable",
-            raw,
-            align: delimiter.align,
-            widths: delimiter.widths,
-            header,
-            rows,
-            droppedCells,
-        } satisfies MdTableToken;
-    },
-};
+            const text = unescapeCellText(cells[column]!);
+
+            rowCells.push({
+                text,
+                align: delimiter.align[column] ?? null,
+                colSpan,
+                rowSpan,
+                tokens: this.lexer.inline(text),
+            });
+        }
+
+        return rowCells;
+    });
+
+    return {
+        type: "mdtable",
+        raw,
+        align: delimiter.align,
+        widths: delimiter.widths,
+        header,
+        rows,
+        droppedCells,
+    } satisfies MdTableToken;
+}

@@ -4296,3 +4296,35 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         });
     });
 });
+
+describe('$importMarkdown — viewer block fixes (VB rows)', () => {
+    it('VB1: a line over --- loads as a heading and a paragraph, not a table', () => {
+        const source = 'Foo\n---\nbar';
+        const editor = load(source);
+
+        expect(rootTypes(editor)).toEqual(['heading', 'paragraph']);
+        expectSurface(editor, source);
+    });
+
+    it('VB2: a fenced code block whose first line is --- loads as code', () => {
+        const editor = load('```\n---\n```');
+
+        expect(rootTypes(editor)).toEqual(['code']);
+        expect(rootTexts(editor)).toEqual(['---']);
+    });
+
+    it('VB3: a list with a bare - item loads as one list', () => {
+        const source = '- foo\n-\n- bar';
+        const editor = load(source);
+
+        expect(rootTypes(editor)).toEqual(['list']);
+        expectSurface(editor, source);
+    });
+
+    it('VB4: the line after a quote list with lazy lines keeps its first character', () => {
+        const editor = load('> - a\n> - a\nc\n> - a\nc\n<div>');
+
+        expect(rootTypes(editor)).toEqual(['markdown-raw-block', 'markdown-raw-block']);
+        expect(rootTexts(editor)).toEqual(['> - a\n> - a\nc\n> - a\nc', '<div>']);
+    });
+});
