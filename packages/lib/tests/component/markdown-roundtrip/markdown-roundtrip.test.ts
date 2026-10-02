@@ -21,7 +21,7 @@ afterEach(() => DOM.reset());
 
 describe('harness assertions', () => {
     const plainCase: CorpusCase = { name: 'plain', source: 'x' };
-    const knownCase: CorpusCase = { name: 'known', source: 'x', known: { parity: 'underscoreEmphasis' } };
+    const knownCase: CorpusCase = { name: 'known', source: 'x', known: { parity: 'quoteBlocks' } };
 
     it('H1. passes an unlisted check whose values are equal', () => {
         expect(() => assertCheck(plainCase, 'parity', { a: 1 }, { a: 1 })).not.toThrow();
@@ -33,12 +33,12 @@ describe('harness assertions', () => {
 
     it('H3. passes a listed check whose values differ, and names the divergence in its title', () => {
         expect(() => assertCheck(knownCase, 'parity', { a: 1 }, { a: 2 })).not.toThrow();
-        expect(checkTitle(knownCase, 'parity')).toBe('parity (known divergence: underscoreEmphasis)');
+        expect(checkTitle(knownCase, 'parity')).toBe('parity (known divergence: quoteBlocks)');
         expect(checkTitle(knownCase, 'surface')).toBe('surface');
     });
 
     it('H4. fails a listed check that now holds, telling the reader to remove the entry', () => {
-        expect(() => assertCheck(knownCase, 'parity', { a: 1 }, { a: 1 })).toThrow(/now holds.*underscoreEmphasis/);
+        expect(() => assertCheck(knownCase, 'parity', { a: 1 }, { a: 1 })).toThrow(/now holds.*quoteBlocks/);
     });
 });
 

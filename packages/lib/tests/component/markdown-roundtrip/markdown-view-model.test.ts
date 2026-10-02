@@ -176,7 +176,8 @@ describe('editor surface projection', () => {
     });
 
     it('S2. maps a line break inside a paragraph to a break run', () => {
-        expect(editorSurfaceModel(loadedEditor('line one\nline two'))).toEqual([
+        // A hard break: a soft one now loads as a source node showing a space (plan markdown-editor-marked-import, I1/I4).
+        expect(editorSurfaceModel(loadedEditor('line one\\\nline two'))).toEqual([
             { kind: 'paragraph', runs: [textRun('line one'), { kind: 'break' }, textRun('line two')] },
         ]);
     });
@@ -277,7 +278,8 @@ describe('editor surface projection', () => {
             {
                 kind:    'list',
                 ordered: false,
-                loose:   false,
+                // An item holding a block after its nested list makes the list loose (the editor's looseness rule).
+                loose:   true,
                 items:   [
                     [
                         { kind: 'paragraph', runs: [textRun('a')] },
@@ -302,5 +304,9 @@ describe('editor surface projection', () => {
             { kind: 'paragraph', runs: [textRun('x'), { kind: 'break' }, textRun('# y')] },
         ]);
         expect(editorSurfaceModel(editor)).toEqual(viewerModel('x\\\n\\# y').blocks);
+    });
+
+    it('S10. lets a run showing nothing (an empty link in emphasis) neither start a run nor split the one around it', () => {
+        expect(editorSurfaceModel(loadedEditor('__[]()_,'))).toEqual([{ kind: 'paragraph', runs: [textRun('_,')] }]);
     });
 });

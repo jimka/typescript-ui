@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import type { Tokens } from "marked";
 import {
-    formatAttributes, parseAttributes, resolveImageSpec, resolveSpanStyle, spanStyleToAttributes,
+    formatAttributes, lineEndAt, resolveImageSpec, resolveSpanStyle, spanStyleToAttributes,
 } from "~/component/display/markdownAttributes.js";
+import { lexMarkdown } from "~/component/display/markdownExtensions.js";
+import {
+    analyzeMarkdownSource, canonicalSpanStyle, entryFormat, entryKey, MARK_LETTERS, withMark,
+} from "~/component/editor/markdownSourceTokens.js";
+import type { EntryFormat, SourceAnalysis, SourceBlockNode, SourceEntry, SourceInline } from "~/component/editor/markdownSourceTokens.js";
 
 /**
  * A source-mode edit: the range of the pre-edit text to replace, the
@@ -33,316 +39,564 @@ export interface MarkdownSourceSelectionState {
     linkUrl:         string | null;
 }
 
+/** A `[from, to)` range of the source. */
+interface SourceRange {
+    from: number;
+    to:   number;
+}
+
 /**
  * Matches one "word" character for the normalised-range collapsed-caret
  * expansion: any Unicode letter or number, plus underscore. Mirrors
  * `MarkdownEditor.ts`'s own `WORD_CHARACTER` (the WYSIWYG side's
  * `$selectEnclosingWordIfCollapsed`) so a caret expands to the same word on
- * either surface. Duplicated rather than imported: this module stays a leaf
- * with no DOM/Lexical/component dependency, and `MarkdownEditor.ts` imports
- * from here, so an import the other way would cycle.
+ * either surface. Duplicated rather than imported: this module stays free of
+ * DOM, Lexical and components, and `MarkdownEditor.ts` imports from here, so
+ * an import the other way would cycle.
  */
 const WORD_CHARACTER = /[\p{L}\p{N}_]/u;
 
-/** The four characters an inline marker run can be made of. */
-const MARKER_CHARACTERS = new Set(["*", "~", "+", "`"]);
+/** The inline token types a normalised range is absorbed into when it covers one exactly. */
+const ABSORBED_TYPES: ReadonlySet<string> = new Set(["strong", "em", "del", "underline", "codespan"]);
 
-/** A blank line — a paragraph break an inline marker pair can never span. */
-const BLANK_LINE = /\n[ \t]*\n/;
+/** The inline token types clear formatting removes: every emphasis-like run and code span. */
+const CLEARED_TYPES: ReadonlySet<string> = ABSORBED_TYPES;
 
-/** CommonMark's whitespace for the flanking rules; a newline counts, as does the document's edge. */
-const WHITESPACE = /\s/;
-
-/** CommonMark's punctuation for the flanking rules: any Unicode punctuation or symbol character. */
-const PUNCTUATION = /[\p{P}\p{S}]/u;
+/** The inline token types that are images: the dialect's own, and `marked`'s for one it does not take (a titled image). */
+const IMAGE_TYPES: ReadonlySet<string> = new Set(["mdimage", "image"]);
 
 /**
- * Normalises a raw `[from, to)` range for an inline transform or
- * {@link readSourceSelectionState}, in four steps: trims whitespace inward;
- * for a selection that started collapsed (a bare caret), expands it to the
- * enclosing run of word characters; absorbs matching edge markers (the same
- * character, on both ends, with more than two characters between); and gives
- * up (`null`) when the result is empty. A real (non-collapsed) selection that
- * trims down to nothing is *not* expanded — only a caret that started
- * collapsed is.
+ * The text before a `:` that makes it the colon of a GFM bare-URL autolink.
+ * Mirrors the serializer's own `BARE_URL_SCHEME` (`markdownSerializer.ts`, a
+ * Lexical module this one must not import).
+ */
+const BARE_URL_SCHEME = /(?:https?|ftp)$/i;
+
+/** The text before a `.` that makes it the dot of a GFM `www.` autolink; mirrors the serializer's `BARE_WWW_PREFIX`. */
+const BARE_WWW_PREFIX = /www$/i;
+
+/** A character of an email autolink's local part; mirrors the serializer's `EMAIL_LOCAL_CHARACTER`. */
+const EMAIL_LOCAL_CHARACTER = /^[A-Za-z0-9._+-]$/;
+
+/** A character of an email autolink's domain; mirrors the serializer's `EMAIL_DOMAIN_CHARACTER`. */
+const EMAIL_DOMAIN_CHARACTER = /^[A-Za-z0-9_-]$/;
+
+// ---------------------------------------------------------------- ranges
+
+/**
+ * Normalises a raw `[from, to)` range for an inline command or
+ * {@link readSourceSelectionState}, reading the document's tokens: trims
+ * whitespace inward; for a selection that started collapsed (a bare caret),
+ * expands it to the enclosing run of word characters, without leaving the
+ * content of the innermost emphasis, styled span or link around the caret (so
+ * a caret in `_hello world_` takes `world`, not `world_`); clamps a range that
+ * reaches into one block's own syntax (a list marker, a heading's `#`) to
+ * that block's text; and absorbs an emphasis run or code span the range
+ * covers exactly, syntax included, into its content. A real (non-collapsed)
+ * selection that trims down to nothing is *not* expanded.
  *
- * @param text - The full document text.
+ * @param analysis - The document's analysis.
  * @param from - 0-based start of the raw selection.
  * @param to - 0-based end (exclusive) of the raw selection.
  * @returns The normalised range, or `null` when nothing is left to act on.
  */
-function normalizeRange(text: string, from: number, to: number): { from: number; to: number } | null {
-    const wasCollapsed = from === to;
+function normalizeRange(analysis: SourceAnalysis, from: number, to: number): SourceRange | null {
+    let range = trimRange(analysis.text, from, to);
+
+    if (from === to) {
+        range = expandToWord(analysis, from);
+    }
+
+    range = trimRange(analysis.text, ...clampToInlineBlock(analysis, range));
+
+    return range.from >= range.to ? null : absorbCoveredTokens(analysis, range);
+}
+
+/**
+ * Trims whitespace inward from both ends of a range.
+ *
+ * @param text - The full document text.
+ * @param from - The range's start.
+ * @param to - The range's end (exclusive).
+ * @returns The trimmed range; empty when it held only whitespace.
+ */
+function trimRange(text: string, from: number, to: number): SourceRange {
     let start = from;
     let end = to;
 
     while (start < end && /\s/.test(text[start]!)) { start += 1; }
     while (end > start && /\s/.test(text[end - 1]!)) { end -= 1; }
 
-    if (wasCollapsed) {
-        while (start > 0 && WORD_CHARACTER.test(text[start - 1]!)) { start -= 1; }
-        while (end < text.length && WORD_CHARACTER.test(text[end]!)) { end += 1; }
-    }
-
-    while (end - start > 2 && text[start] === text[end - 1] && MARKER_CHARACTERS.has(text[start]!)) {
-        start += 1;
-        end -= 1;
-    }
-
-    return start === end ? null : { from: start, to: end };
+    return { from: start, to: end };
 }
 
 /**
- * Whether the character at `index` is backslash-escaped — preceded by an odd
- * run of backslashes, which makes it literal text rather than syntax.
+ * Expands a caret to the run of word characters around it, bounded by the
+ * content of the innermost emphasis, styled span or link that holds the
+ * caret, else by the inline text holding it.
  *
- * @param text - The full document text.
- * @param index - The character's offset.
- * @returns Whether a backslash escapes it.
+ * @param analysis - The document's analysis.
+ * @param caret - The caret's offset.
+ * @returns The word's range; empty when no word character touches the caret.
  */
-function isEscaped(text: string, index: number): boolean {
-    let backslashes = 0;
+function expandToWord(analysis: SourceAnalysis, caret: number): SourceRange {
+    const text = analysis.text;
+    const bounds = innermostContentAround(analysis, caret)
+        ?? analysis.inlineBlocks.find((block) => block.start <= caret && caret <= block.end)
+        ?? { start: 0, end: text.length };
+    let start = caret;
+    let end = caret;
 
-    while (index - backslashes - 1 >= 0 && text[index - backslashes - 1] === "\\") { backslashes += 1; }
+    while (start > bounds.start && WORD_CHARACTER.test(text[start - 1]!)) { start -= 1; }
+    while (end < bounds.end && WORD_CHARACTER.test(text[end]!)) { end += 1; }
 
-    return backslashes % 2 === 1;
+    return { from: start, to: end };
 }
 
 /**
- * CommonMark's flanking test for the delimiter run `[start, end)`. A
- * left-flanking run (one that can open emphasis) is not followed by
- * whitespace, and is followed by a non-punctuation character or preceded by
- * whitespace or punctuation; a right-flanking run (one that can close) is the
- * mirror image. The document's edges count as whitespace. Applied to `*`, `~`
- * and `+` alike, as Lexical's Markdown importer applies it. The viewer flanks
- * `*` and `~` the same way but reads `++` with no flanking test at all, so
- * for `+` this can only decline an edit the viewer would have accepted —
- * never accept one it would read as literal text.
+ * The content of the innermost token with editable content (emphasis, a
+ * styled span, a bracketed link's text) holding `caret`, its edges included.
  *
- * @param text - The full document text.
- * @param start - The run's start.
- * @param end - The run's end (exclusive).
- * @param left - `true` for the left-flanking (opening) test, `false` for the
- *   right-flanking (closing) one.
- * @returns Whether the run is flanking on that side.
+ * @param analysis - The document's analysis.
+ * @param caret - The caret's offset.
+ * @returns The content's bounds, or `null` when no such token holds the caret.
  */
-function isFlanking(text: string, start: number, end: number, left: boolean): boolean {
-    const before = text[start - 1];
-    const after = text[end];
-    const [primary, secondary] = left ? [after, before] : [before, after];
+function innermostContentAround(analysis: SourceAnalysis, caret: number): { start: number; end: number } | null {
+    let innermost: SourceInline | null = null;
 
-    if (primary === undefined || WHITESPACE.test(primary)) {
+    for (const inline of analysis.inlines) {
+        if (inline.hasContent && inline.innerStart <= caret && caret <= inline.innerEnd
+            && (innermost === null || inline.innerStart >= innermost.innerStart)) {
+            innermost = inline;
+        }
+    }
+
+    return innermost === null ? null : { start: innermost.innerStart, end: innermost.innerEnd };
+}
+
+/**
+ * Clamps a range that reaches into the syntax around one block's inline text
+ * — a list marker, a quote's `>`, a heading's `#` run, a table row's pipes —
+ * to that text, when it touches no other block's text and lies within the
+ * block's own lines. Any other range is returned as it is.
+ *
+ * @param analysis - The document's analysis.
+ * @param range - The trimmed range.
+ * @returns The clamped `[from, to)` pair.
+ */
+function clampToInlineBlock(analysis: SourceAnalysis, range: SourceRange): [number, number] {
+    const text = analysis.text;
+    const touched = analysis.inlineBlocks.filter((block) => block.start < range.to && range.from < block.end);
+    const block = touched.length === 1 ? touched[0]! : null;
+
+    if (block === null) {
+        return [range.from, range.to];
+    }
+
+    const lineStart = text.lastIndexOf("\n", block.start - 1) + 1;
+    const lineEnd = lineEndAt(text, block.end);
+
+    if (range.from < lineStart || range.to > lineEnd) {
+        return [range.from, range.to];
+    }
+
+    return [Math.max(range.from, block.start), Math.min(range.to, block.end)];
+}
+
+/**
+ * Absorbs every emphasis run or code span the range covers exactly, syntax
+ * included, into its content — `**hello**` selected whole acts on `hello`.
+ *
+ * @param analysis - The document's analysis.
+ * @param range - The range.
+ * @returns The absorbed range.
+ */
+function absorbCoveredTokens(analysis: SourceAnalysis, range: SourceRange): SourceRange {
+    let current = range;
+    let covered = findCovered(analysis, current);
+
+    while (covered !== undefined) {
+        current = { from: covered.innerStart, to: covered.innerEnd };
+        covered = findCovered(analysis, current);
+    }
+
+    return current;
+}
+
+/**
+ * Finds the absorbable token whose whole construct is exactly `range`.
+ *
+ * @param analysis - The document's analysis.
+ * @param range - The range.
+ * @returns The token, or `undefined`.
+ */
+function findCovered(analysis: SourceAnalysis, range: SourceRange): SourceInline | undefined {
+    return analysis.inlines.find((inline) => ABSORBED_TYPES.has(inline.type) && inline.innerStart !== -1
+        && inline.start === range.from && inline.end === range.to && inline.innerStart < inline.innerEnd);
+}
+
+/**
+ * Whether a range lies inside one block's located inline text — a
+ * paragraph, heading, list item or table cell — and so not in a code block,
+ * a `:::` fence line, a table delimiter row or across a blank line.
+ *
+ * @param analysis - The document's analysis.
+ * @param range - The range.
+ * @returns Whether it does.
+ */
+function insideInlineBlock(analysis: SourceAnalysis, range: SourceRange): boolean {
+    return analysis.inlineBlocks.some((block) => block.start <= range.from && range.to <= block.end);
+}
+
+/**
+ * The escaped paragraph break a table cell's text carries between two of its
+ * paragraphs: backslash-`n` twice, the sequence the viewer splits a cell's
+ * text on (`Markdown.ts`'s `CELL_PARAGRAPH_BREAK`).
+ */
+const CELL_PARAGRAPH_BREAK = "\\n\\n";
+
+/**
+ * Whether a range touches a table cell's paragraph break: holds one, or cuts
+ * into one. Syntax written around or into it would show it as literal text,
+ * or leave a lone `\n` that shows as literal text. Breaks are found the way
+ * the viewer splits on them, leftmost first and never overlapping.
+ *
+ * @param analysis - The document's analysis.
+ * @param range - The range.
+ * @returns Whether it does.
+ */
+function touchesCellParagraphBreak(analysis: SourceAnalysis, range: SourceRange): boolean {
+    const text = analysis.text;
+
+    return analysis.inlineBlocks.some((block) => {
+        if (!block.cell || block.end <= range.from || range.to <= block.start) {
+            return false;
+        }
+
+        for (let at = text.indexOf(CELL_PARAGRAPH_BREAK, block.start); at !== -1 && at < block.end;) {
+            if (at < range.to && range.from < at + CELL_PARAGRAPH_BREAK.length) {
+                return true;
+            }
+
+            at = text.indexOf(CELL_PARAGRAPH_BREAK, at + CELL_PARAGRAPH_BREAK.length);
+        }
+
         return false;
-    }
-
-    if (!PUNCTUATION.test(primary)) {
-        return true;
-    }
-
-    return secondary === undefined || WHITESPACE.test(secondary) || PUNCTUATION.test(secondary);
+    });
 }
 
 /**
- * Measures the run of `char` immediately outside a normalised `[start, end)`
- * range that can actually act as a marker: how many consecutive `char`
- * characters sit right before `start` and right after `end`, counting only
- * what Markdown would read as syntax. A backslash-escaped first character is
- * literal, so it drops out of the left run; a closing run whose first
- * character is escaped cannot close at `end` at all — except for inline code,
- * inside which a backslash is literal. Outside inline code, a left run that
- * is not left-flanking, or a right run that is not right-flanking, is literal
- * text and counts as zero.
+ * Where an inline command writes around a range: the range itself, or the
+ * whole code span or autolink when the range is exactly its text — markers
+ * written inside the backticks would be code, and inside `<…>` part of the
+ * address, not formatting.
  *
- * @param text - The full document text.
- * @param start - The normalised range's start.
- * @param end - The normalised range's end (exclusive).
- * @param char - The marker character to count.
- * @returns The two effective run lengths.
+ * @param analysis - The document's analysis.
+ * @param range - The normalised range.
+ * @returns The placement.
  */
-function markerRunLengths(text: string, start: number, end: number, char: string): { left: number; right: number } {
-    let leftStart = start;
+function placementFor(analysis: SourceAnalysis, range: SourceRange): SourceRange {
+    const atom = analysis.inlines.find((inline) => (inline.type === "codespan" || inline.type === "link")
+        && !inline.hasContent && inline.innerStart === range.from && inline.innerEnd === range.to);
 
-    while (leftStart > 0 && text[leftStart - 1] === char) { leftStart -= 1; }
-
-    if (leftStart < start && isEscaped(text, leftStart)) {
-        leftStart += 1;
-    }
-
-    let rightEnd = end;
-
-    while (text[rightEnd] === char) { rightEnd += 1; }
-
-    if (char !== "`" && rightEnd > end && isEscaped(text, end)) {
-        rightEnd = end;
-    }
-
-    if (char === "`") {
-        return { left: start - leftStart, right: rightEnd - end };
-    }
-
-    return {
-        left:  isFlanking(text, leftStart, start, true) ? start - leftStart : 0,
-        right: isFlanking(text, end, rightEnd, false) ? rightEnd - end : 0,
-    };
+    return atom === undefined ? range : { from: atom.start, to: atom.end };
 }
 
 /**
- * Whether a marker of `count` characters is currently active right around a
- * normalised range — what a wrap checks its own result against, so that the
- * markers it adds read back as that format. A one-character marker (italic,
- * inline code) is active when the smaller of the two surrounding runs is odd,
- * since a run of two in the
- * `*` family means bold, not italic; a two-character marker (bold,
- * strikethrough, underline) is active when that smaller run is at least two.
- * The runs are measured by {@link markerRunLengths}, so an escaped or
- * non-flanking marker — literal text that only looks like one — is inactive.
+ * Whether a range respects every inline token: for each, the range either
+ * misses it, holds all of it, or lies inside the content of one with
+ * editable content. A range cutting a token's syntax — half of an emphasis
+ * run, into a link's destination, inside an autolink, code span, image or
+ * escape — does not.
  *
- * @param text - The full document text.
- * @param start - The normalised range's start.
- * @param end - The normalised range's end (exclusive).
- * @param char - The marker character.
- * @param count - The marker's width (1 or 2).
- * @returns Whether the marker is active.
+ * @param analysis - The document's analysis.
+ * @param range - The range.
+ * @returns Whether it does.
  */
-function isMarkerActive(text: string, start: number, end: number, char: string, count: number): boolean {
-    const { left, right } = markerRunLengths(text, start, end, char);
-    const n = Math.min(left, right);
-
-    return count === 1 ? n % 2 === 1 : n >= 2;
+function respectsTokens(analysis: SourceAnalysis, range: SourceRange): boolean {
+    return analysis.inlines.every((inline) => range.to <= inline.start || inline.end <= range.from
+        || (range.from <= inline.start && inline.end <= range.to)
+        || (inline.hasContent && inline.innerStart <= range.from && range.to <= inline.innerEnd));
 }
 
 /**
- * Builds an inline-toggle transform for a `{ char, count }` marker: bold
- * `{ "*", 2 }`, italic `{ "*", 1 }`, strikethrough `{ "~", 2 }`, underline
- * `{ "+", 2 }`, inline code `` { "`", 1 } ``. When a pair of that format
- * covers the normalised range (see {@link coveringFormats}), the press
- * removes the format from the whole range ({@link removeFormat}); otherwise
- * it wraps the range in the markers. Declines (`null`) when the
- * normalised range contains a blank line, or (inline code only, via
- * `refuse`) still contains a backtick — and when the markers it would add
- * would not read back as that format: a closer after punctuation and before a
- * letter (`**hello.**b`) fails CommonMark's flanking rules, and a marker
- * written straight after a backslash (`C:\**Users**`) is escaped. Either
- * would leave the markers as visible literal text. A wrap also declines when
- * the range holds or cuts into a table cell's paragraph break (see
- * {@link touchesCellParagraphBreak}).
+ * The innermost token of `type` whose content holds the whole range.
  *
- * @param char - The marker character.
- * @param count - The marker's width (1 or 2).
+ * @param analysis - The document's analysis.
+ * @param range - The normalised range.
+ * @param types - The token types to look for.
+ * @returns The token, or `null`.
+ */
+function tokenAround(analysis: SourceAnalysis, range: SourceRange, types: ReadonlySet<string>): SourceInline | null {
+    let innermost: SourceInline | null = null;
+
+    for (const inline of analysis.inlines) {
+        if (types.has(inline.type) && inline.innerStart !== -1
+            && inline.innerStart <= range.from && range.to <= inline.innerEnd
+            && (innermost === null || inline.start >= innermost.start)) {
+            innermost = inline;
+        }
+    }
+
+    return innermost;
+}
+
+// ---------------------------------------------------------------- verification
+
+/**
+ * What a command expects one leaf of the document to show after its edit:
+ * one format, or the formats it may show, any of which is accepted.
+ */
+type ExpectedFormat = (entry: SourceEntry) => EntryFormat | readonly EntryFormat[];
+
+/**
+ * Keeps an edit only when the edited document reads exactly as expected:
+ * re-lexed, its blocks and visible characters are the original's, each
+ * showing the format `expect` gives it. This is what keeps a command from
+ * writing syntax the viewer reads differently than intended — markers that
+ * fail CommonMark's flanking rules, a marker after an escaping backslash, a
+ * wrap that re-pairs other markers, a link that would turn into an image —
+ * since none of those keeps the document's meaning.
+ *
+ * @param analysis - The pre-edit document's analysis.
+ * @param edit - The candidate edit.
+ * @param expect - The format each pre-edit leaf should show afterwards.
+ * @returns `edit`, or `null` when the result reads otherwise.
+ */
+function verified(analysis: SourceAnalysis, edit: MarkdownSourceEdit, expect: ExpectedFormat): MarkdownSourceEdit | null {
+    const before = analysis.entries;
+    const after = analyzeMarkdownSource(analysis.text.slice(0, edit.from) + edit.insert + analysis.text.slice(edit.to)).entries;
+
+    if (before.length !== after.length) {
+        return null;
+    }
+
+    for (let index = 0; index < before.length; index += 1) {
+        const actual = entryKey(after[index]!, entryFormat(after[index]!));
+        const accepted = [expect(before[index]!)].flat().some((format) => entryKey(before[index]!, format) === actual);
+
+        if (!accepted) {
+            return null;
+        }
+    }
+
+    return edit;
+}
+
+/**
+ * Whether a leaf lies inside a range: a character inside it, or an atom
+ * (a code span's or escape's characters, an image) wholly inside it.
+ *
+ * @param entry - The leaf.
+ * @param range - The range.
+ * @returns Whether it does.
+ */
+function inRange(entry: SourceEntry, range: SourceRange): boolean {
+    return entry.start !== -1 && range.from <= entry.start && entry.end <= range.to;
+}
+
+// ---------------------------------------------------------------- inline toggles
+
+/**
+ * Builds an inline-toggle transform for a token type and the marker it
+ * writes: bold `strong` / `**`, italic `em` / `*`, strikethrough `del` /
+ * `~~`, underline `underline` / `++`, inline code `codespan` / `` ` ``. The
+ * document is read through the viewer's own lexer, so a run written in any
+ * form it reads (`__bold__`, `_italic_`, `~struck~`) counts.
+ *
+ * When the normalised range lies inside the content of such a token —
+ * however far out, past other formats between — the format is removed from
+ * the whole range, as the WYSIWYG toggle removes it (see
+ * {@link removeFormat}, and {@link splitCodeSpan} for inline code).
+ * Otherwise the markers are written around the range — around a whole code
+ * span when the range is its code. Declines (`null`) when the range is not inside one block's inline
+ * text (a code block, a fence line, a blank line), cuts any token's syntax
+ * (half of another run, inside an autolink or a link's destination), a wrap
+ * holds or cuts into a table cell's paragraph break, or (inline code only,
+ * via `refuse`) the range still contains a backtick — and when the
+ * result would not read back as that format with nothing else changed:
+ * markers failing CommonMark's flanking rules (`**hello.**b`), a marker
+ * written straight after a backslash (`C:\**Users**`), or a wrap that would
+ * re-pair other markers.
+ *
+ * @param type - The token type the format is read as.
+ * @param marker - The marker written on each side.
  * @param refuse - An extra rejection test over the normalised inner text.
  * @returns The transform.
  */
-function createInlineToggle(char: string, count: number, refuse?: (inner: string) => boolean): MarkdownSourceTransform {
+function createInlineToggle(type: string, marker: string, refuse?: (inner: string) => boolean): MarkdownSourceTransform {
+    const types = new Set([type]);
+
     return (text, from, to) => {
-        const range = normalizeRange(text, from, to);
+        const analysis = analyzeMarkdownSource(text);
+        const range = normalizeRange(analysis, from, to);
 
-        if (range === null) {
+        if (range === null || !insideInlineBlock(analysis, range) || (refuse?.(text.slice(range.from, range.to)) ?? false)) {
             return null;
         }
 
-        const { from: start, to: end } = range;
-        const inner = text.slice(start, end);
+        const active = tokenAround(analysis, range, types);
 
-        if (BLANK_LINE.test(inner) || (refuse?.(inner) ?? false)) {
-            return null;
+        if (active !== null) {
+            return type === "codespan" ? splitCodeSpan(analysis, active, range) : removeFormat(analysis, range, type, marker);
         }
 
-        const format = formatLetter(char, count);
-        const active = coveringFormats(text, range).has(format);
-
-        if (active) {
-            return removeFormat(text, range, format);
-        }
-
-        if (touchesCellParagraphBreak(text, start, end)) {
-            return null;
-        }
-
-        const marker = char.repeat(count);
-        const wrapped = text.slice(0, start) + marker + inner + marker + text.slice(end);
-
-        // Checked on the result, not predicted from the input: the new markers
-        // merge with any same-character run already beside them, and it is the
-        // merged run Markdown reads.
-        if (!isMarkerActive(wrapped, start + count, end + count, char, count)) {
-            return null;
-        }
-
-        return {
-            from:      start,
-            to:        end,
-            insert:    marker + inner + marker,
-            selection: { from: start + count, to: end + count },
-        };
+        return wrapRange(analysis, type === "codespan" ? range : placementFor(analysis, range), MARK_LETTERS[type]!, marker);
     };
 }
 
-/** `**text**` — bold. */
-export const BOLD_SOURCE: MarkdownSourceTransform = createInlineToggle("*", 2);
-/** `*text*` — italic. */
-export const ITALIC_SOURCE: MarkdownSourceTransform = createInlineToggle("*", 1);
-/** `++text++` — underline, this dialect's own marker (see `markdownStyleTransformers.ts`'s `UNDERLINE`). */
-export const UNDERLINE_SOURCE: MarkdownSourceTransform = createInlineToggle("+", 2);
-/** `~~text~~` — strikethrough. */
-export const STRIKETHROUGH_SOURCE: MarkdownSourceTransform = createInlineToggle("~", 2);
-/** `` `text` `` — inline code. Refuses a range that still contains a backtick, which a plain wrap would re-parse differently. */
-export const INLINE_CODE_SOURCE: MarkdownSourceTransform = createInlineToggle("`", 1, (inner) => inner.includes("`"));
+/**
+ * Builds the edit writing `marker` on each side of a placement, with the
+ * selection on the text between them.
+ *
+ * @param analysis - The document's analysis.
+ * @param placement - Where to write.
+ * @param letter - The mark letter the wrapped text should gain.
+ * @param marker - The marker.
+ * @returns The edit, or `null` when the placement cuts a token or a table
+ *   cell's paragraph break, or the result would read otherwise than the
+ *   wrapped text gaining the format.
+ */
+function wrapRange(analysis: SourceAnalysis, placement: SourceRange, letter: string, marker: string): MarkdownSourceEdit | null {
+    if (!respectsTokens(analysis, placement) || touchesCellParagraphBreak(analysis, placement)) {
+        return null;
+    }
+
+    const inner = analysis.text.slice(placement.from, placement.to);
+    const edit = {
+        from:      placement.from,
+        to:        placement.to,
+        insert:    marker + inner + marker,
+        selection: { from: placement.from + marker.length, to: placement.to + marker.length },
+    };
+
+    return verified(analysis, edit, (entry) => {
+        const format = entryFormat(entry);
+
+        return inRange(entry, placement) ? withMark(format, letter) : format;
+    });
+}
+
+// ---------------------------------------------------------------- removing a format
+
+/** CommonMark's whitespace, which a marker run may not sit against on its inner side. */
+const WHITESPACE = /\s/;
+
+/** A character of a container's line prefix after a newline: a list item's indentation, a quote's `>`. */
+const LINE_PREFIX_CHARACTER = /[ \t>]/;
 
 /**
- * One `[text](destination "title")` inline link — or, when a `!` precedes
- * it, an image's `[alt](src)`. Follows CommonMark's inline-link grammar: the
- * destination is `<…>` or a run with no whitespace or parentheses, and an
- * optional title — `"…"`, `'…'` or `(…)` — follows after whitespace. Group 1
- * is the bracketed text, group 2 the destination as written, group 3 the
- * title with its delimiters.
+ * The marker each emphasis type can also be written with, tried when its
+ * own marker and the canonical one do not read back: `_` runs are bound by
+ * different intraword rules than `*` runs.
  */
-const LINK_PATTERN = /\[([^[\]]*)\]\(\s*(<[^<>\n]*>|[^\s()]*)(?:\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\((?:[^()\\]|\\.)*\)))?\s*\)/g;
+const ALTERNATE_MARKERS: Readonly<Record<string, string>> = { strong: "__", em: "_", del: "~", underline: "++" };
 
-/** A located link match: its span in the document, its bracketed text, its URL and title, and whether it is an image. */
-interface LinkMatch {
-    start: number;
-    end:   number;
-    text:  string;
-    /** The destination, without the `<…>` an angle-bracketed one is written in. */
-    url:   string;
-    /** The title exactly as written, delimiters included, or `null` when the link has none. */
-    title: string | null;
-    /** Whether the match is an image's `[alt](src)` — a `!` precedes it — rather than a link. */
-    image: boolean;
+/** A visible whitespace leaf, which can stand inside or outside a format alike. */
+const WHITESPACE_LEAF = /^t\s$/u;
+
+/** An ASCII punctuation character, which CommonMark lets a backslash escape. */
+const ASCII_PUNCTUATION = /[!-/:-@[-`{-~]/g;
+
+/**
+ * Whether a piece of a container's content carries the format in the
+ * result: `marked` when every visible character in it does, `plain` when
+ * none does, `mixed` when some do, `neutral` when it holds only whitespace
+ * or no visible character at all, which may stand inside or outside a run.
+ */
+type ItemStatus = "marked" | "plain" | "mixed" | "neutral";
+
+/** One piece of a container's content: a stretch of its source text, or a child container. */
+type ContentItem =
+    | { readonly kind: "text"; readonly from: number; readonly to: number; readonly status: ItemStatus }
+    | { readonly kind: "node"; readonly inline: SourceInline; readonly status: ItemStatus };
+
+/** What {@link removeFormat} rewrites its region with. */
+interface FormatRemoval {
+    readonly analysis: SourceAnalysis;
+    /** The normalised range losing the format. */
+    readonly range:    SourceRange;
+    /** The format's token type. */
+    readonly type:     string;
+    /** The located containers inside the outermost covering token, in document order. */
+    readonly nodes:    readonly SourceInline[];
+    /** The visible leaves inside the outermost covering token. */
+    readonly leaves:   readonly SourceEntry[];
+    /** The marker each kept run of the format is written with. */
+    readonly marker:   string;
+}
+
+/** The text {@link removeFormat} writes, and where the range's text lands in it. */
+interface Emission {
+    out:           string;
+    selectionFrom: number;
+    selectionTo:   number;
 }
 
 /**
- * Finds the link or image whose span contains the whole raw `[from, to]`
- * selection — one regex pass over the document. An image is reported (with
- * `image` set) rather than skipped, so a caller can refuse to act inside its
- * alt text instead of mistaking that text for plain prose.
+ * Builds the edit removing a format from a whole normalised range that a
+ * token of it covers, the way the WYSIWYG toggle removes it: the outermost
+ * covering token is rewritten with every token of the format inside it
+ * dropped, and the text that keeps the format wrapped again, one run per
+ * stretch, at the shallowest level it can stand — so a selection covered
+ * twice (`__foo, __bar__ az__` → `__foo,__ bar __az__`), only partly
+ * (`**hello world**` → `**hello** world`) or past another container
+ * (`***[**zq0029**[r]](/u) z***` → `*[zq0029**[r]**](/u) **z***`) loses the
+ * format entirely. Each run is written with the outer token's own marker,
+ * else the canonical or the alternate one, whichever first reads back as
+ * intended: the range's text without the format, whitespace at its edges
+ * either way, and everything else as before (see {@link verified}).
  *
- * @param text - The full document text.
- * @param from - 0-based start of the raw selection.
- * @param to - 0-based end (exclusive) of the raw selection.
- * @returns The enclosing match, or `null` when the selection sits outside
- *   every link and image.
+ * @param analysis - The document's analysis.
+ * @param range - The normalised range.
+ * @param type - The format's token type.
+ * @param marker - The format's canonical marker.
+ * @returns The edit, or `null` when the range cuts a token's syntax, holds
+ *   no visible character, or no marker reads back as intended.
  */
-function findEnclosingLink(text: string, from: number, to: number): LinkMatch | null {
-    LINK_PATTERN.lastIndex = 0;
+function removeFormat(analysis: SourceAnalysis, range: SourceRange, type: string, marker: string): MarkdownSourceEdit | null {
+    const outer = outermostAround(analysis, range, type);
+    const inside = analysis.inlines.filter((inline) => outer.start <= inline.start && inline.end <= outer.end);
+    const leaves = analysis.entries.filter((entry) => entry.kind === "leaf" && entry.ancestors.includes(outer));
+    const cuts = cutsSyntax(inside, range.from) || cutsSyntax(inside, range.to);
+    const unlocated = leaves.some((entry) => entry.start === -1);
+    const selected = leaves.some((entry) => inRange(entry, range));
 
-    let match: RegExpExecArray | null;
+    if (cuts || unlocated || !selected) {
+        return null;
+    }
 
-    while ((match = LINK_PATTERN.exec(text)) !== null) {
-        const start = match.index;
-        const end = start + match[0].length;
+    const nodes = inside.filter((inline) => inline.hasContent);
+    const own = analysis.text.slice(outer.start, outer.innerStart);
+    const letter = MARK_LETTERS[type]!;
+    const expect = (entry: SourceEntry): EntryFormat | EntryFormat[] => {
+        const format = entryFormat(entry);
 
-        if (start <= from && to <= end) {
-            const destination = match[2]!;
+        if (!entry.ancestors.includes(outer)) {
+            return format;
+        }
 
-            return {
-                start,
-                end,
-                text:  match[1]!,
-                url:   destination.startsWith("<") ? destination.slice(1, -1) : destination,
-                title: match[3] ?? null,
-                image: start > 0 && text[start - 1] === "!",
-            };
+        if (inRange(entry, range)) {
+            return withoutMark(format, letter);
+        }
+
+        return WHITESPACE_LEAF.test(entry.key) ? [format, withoutMark(format, letter)] : format;
+    };
+
+    for (const candidate of new Set([own, marker, ALTERNATE_MARKERS[type]!])) {
+        const emission: Emission = { out: "", selectionFrom: -1, selectionTo: -1 };
+
+        emitContent({ analysis, range, type, nodes, leaves, marker: candidate }, outer.innerStart, outer.innerEnd, false, emission);
+
+        const edit = verified(analysis, {
+            from:      outer.start,
+            to:        outer.end,
+            insert:    emission.out,
+            selection: { from: outer.start + emission.selectionFrom, to: outer.start + emission.selectionTo },
+        }, expect);
+
+        if (edit !== null) {
+            return edit;
         }
     }
 
@@ -350,71 +604,660 @@ function findEnclosingLink(text: string, from: number, to: number): LinkMatch | 
 }
 
 /**
+ * The outermost token of `type` whose content holds the whole range.
+ *
+ * @param analysis - The document's analysis.
+ * @param range - The normalised range, which such a token holds.
+ * @param type - The token type.
+ * @returns The token.
+ */
+function outermostAround(analysis: SourceAnalysis, range: SourceRange, type: string): SourceInline {
+    return analysis.inlines.find((inline) => inline.type === type && inline.innerStart !== -1
+        && inline.innerStart <= range.from && range.to <= inline.innerEnd)!;
+}
+
+/**
+ * Whether an offset cuts a token's syntax: lies strictly inside an atom (a
+ * code span, an autolink, an image, an escape), or inside the syntax around a
+ * container's content.
+ *
+ * @param inlines - The tokens to test.
+ * @param offset - The offset.
+ * @returns Whether it does.
+ */
+function cutsSyntax(inlines: readonly SourceInline[], offset: number): boolean {
+    return inlines.some((inline) => (inline.hasContent
+        ? (inline.start < offset && offset < inline.innerStart) || (inline.innerEnd < offset && offset < inline.end)
+        : inline.start < offset && offset < inline.end));
+}
+
+/**
+ * Removes one mark letter from a format.
+ *
+ * @param format - The format.
+ * @param letter - The letter to remove, from `MARK_LETTERS`.
+ * @returns The new format.
+ */
+function withoutMark(format: EntryFormat, letter: string): EntryFormat {
+    return { ...format, marks: format.marks.replace(letter, "") };
+}
+
+/**
+ * Writes a container's content with the format moved: outside a run of it
+ * (`inRun` false), each maximal stretch of `marked` pieces — `neutral` ones
+ * between them included, those at its edges left outside — is wrapped in the
+ * marker, and every other piece written as it is, a child container with
+ * its own content written the same way; inside a run, everything is written
+ * as it is.
+ *
+ * @param removal - What the region is rewritten with.
+ * @param from - The content's start.
+ * @param to - The content's end (exclusive).
+ * @param inRun - Whether the content already stands inside a run.
+ * @param emission - The text written so far, appended to.
+ */
+function emitContent(removal: FormatRemoval, from: number, to: number, inRun: boolean, emission: Emission): void {
+    const items = contentItems(removal, from, to);
+    let index = 0;
+
+    while (index < items.length) {
+        if (inRun || items[index]!.status !== "marked") {
+            emitItem(removal, items[index]!, inRun, emission);
+            index += 1;
+            continue;
+        }
+
+        let last = index;
+
+        for (let next = index; next < items.length && ["marked", "neutral"].includes(items[next]!.status); next += 1) {
+            if (items[next]!.status === "marked") {
+                last = next;
+            }
+        }
+
+        emission.out += removal.marker;
+        items.slice(index, last + 1).forEach((item) => emitItem(removal, item, true, emission));
+        emission.out += removal.marker;
+        index = last + 1;
+    }
+}
+
+/**
+ * Writes one piece of content, noting where the range's text starts and
+ * ends in the result: before the first piece starting at or after the
+ * range's start, after the last one ending at or before its end.
+ *
+ * @param removal - What the region is rewritten with.
+ * @param item - The piece.
+ * @param inRun - Whether it stands inside a run.
+ * @param emission - The text written so far, appended to.
+ */
+function emitItem(removal: FormatRemoval, item: ContentItem, inRun: boolean, emission: Emission): void {
+    const text = removal.analysis.text;
+    const [start, end] = item.kind === "text" ? [item.from, item.to] : [item.inline.start, item.inline.end];
+
+    if (emission.selectionFrom === -1 && start >= removal.range.from) {
+        emission.selectionFrom = emission.out.length;
+    }
+
+    if (item.kind === "text") {
+        emission.out += text.slice(item.from, item.to);
+    } else {
+        emission.out += text.slice(item.inline.start, item.inline.innerStart);
+        emitContent(removal, item.inline.innerStart, item.inline.innerEnd, inRun, emission);
+        emission.out += text.slice(item.inline.innerEnd, item.inline.end);
+    }
+
+    if (end <= removal.range.to) {
+        emission.selectionTo = emission.out.length;
+    }
+}
+
+/**
+ * Splits a container's content into pieces: its direct child containers,
+ * and the source text between them, cut at the range's ends and with the
+ * whitespace at each stretch's edges a piece of its own. A child token of the
+ * format being removed is no piece: its syntax is dropped and its content's
+ * pieces stand in its place.
+ *
+ * @param removal - What the region is rewritten with.
+ * @param from - The content's start.
+ * @param to - The content's end (exclusive).
+ * @returns The pieces, in document order.
+ */
+function contentItems(removal: FormatRemoval, from: number, to: number): ContentItem[] {
+    const items: ContentItem[] = [];
+    let at = from;
+
+    for (const child of directChildren(removal.nodes, from, to)) {
+        items.push(...textItems(removal, at, child.start));
+
+        if (child.type === removal.type) {
+            items.push(...contentItems(removal, child.innerStart, child.innerEnd));
+        } else {
+            items.push({ kind: "node", inline: child, status: itemStatus(removal, child.start, child.end) });
+        }
+
+        at = child.end;
+    }
+
+    items.push(...textItems(removal, at, to));
+
+    return items;
+}
+
+/**
+ * The containers directly inside `[from, to)`: those not inside another one
+ * there.
+ *
+ * @param nodes - The located containers, in document order.
+ * @param from - The span's start.
+ * @param to - The span's end (exclusive).
+ * @returns The direct children, in document order.
+ */
+function directChildren(nodes: readonly SourceInline[], from: number, to: number): SourceInline[] {
+    const children: SourceInline[] = [];
+
+    for (const node of nodes) {
+        if (from <= node.start && node.end <= to && node.start >= (children[children.length - 1]?.end ?? from)) {
+            children.push(node);
+        }
+    }
+
+    return children;
+}
+
+/**
+ * Splits a stretch of source text into pieces: cut at the range's ends, and
+ * each part's leading and trailing whitespace a `neutral` piece of its own
+ * (a newline counts along with the container prefix after it).
+ *
+ * @param removal - What the region is rewritten with.
+ * @param from - The stretch's start.
+ * @param to - The stretch's end (exclusive).
+ * @returns The non-empty pieces, in document order.
+ */
+function textItems(removal: FormatRemoval, from: number, to: number): ContentItem[] {
+    const { range } = removal;
+    const cuts = [from, ...[range.from, range.to].filter((cut) => from < cut && cut < to), to];
+    const items: ContentItem[] = [];
+
+    for (let index = 0; index + 1 < cuts.length; index += 1) {
+        const [start, end] = [cuts[index]!, cuts[index + 1]!];
+        const coreStart = leadingSpaceEnd(removal.analysis.text, start, end);
+        const coreEnd = Math.max(coreStart, trailingSpaceStart(removal.analysis.text, start, end));
+        const pieces: Array<[number, number, ItemStatus]> = [
+            [start, coreStart, "neutral"],
+            [coreStart, coreEnd, itemStatus(removal, coreStart, coreEnd)],
+            [coreEnd, end, "neutral"],
+        ];
+
+        items.push(...pieces.filter(([pieceStart, pieceEnd]) => pieceStart < pieceEnd)
+            .map(([pieceStart, pieceEnd, status]) => ({ kind: "text" as const, from: pieceStart, to: pieceEnd, status })));
+    }
+
+    return items;
+}
+
+/**
+ * Where the whitespace opening a stretch of source text ends: past
+ * whitespace, and past a newline together with the container prefix after
+ * it.
+ *
+ * @param text - The full document text.
+ * @param from - The stretch's start.
+ * @param to - The stretch's end (exclusive).
+ * @returns The offset.
+ */
+function leadingSpaceEnd(text: string, from: number, to: number): number {
+    let at = from;
+
+    while (at < to && WHITESPACE.test(text[at]!)) {
+        const newline = text[at] === "\n";
+
+        at += 1;
+
+        while (newline && at < to && LINE_PREFIX_CHARACTER.test(text[at]!)) { at += 1; }
+    }
+
+    return at;
+}
+
+/**
+ * Where the whitespace closing a stretch of source text starts: before
+ * whitespace, and before a newline together with the container prefix after
+ * it.
+ *
+ * @param text - The full document text.
+ * @param from - The stretch's start.
+ * @param to - The stretch's end (exclusive).
+ * @returns The offset.
+ */
+function trailingSpaceStart(text: string, from: number, to: number): number {
+    let at = to;
+
+    while (at > from) {
+        const newline = text.lastIndexOf("\n", at - 1);
+        const prefixOnly = newline >= from && [...text.slice(newline + 1, at)].every((char) => LINE_PREFIX_CHARACTER.test(char));
+
+        if (prefixOnly) {
+            at = newline;
+        } else if (WHITESPACE.test(text[at - 1]!)) {
+            at -= 1;
+        } else {
+            break;
+        }
+    }
+
+    return at;
+}
+
+/**
+ * Whether the visible characters in `[from, to)` carry the format in the
+ * result: those that carry it now, outside the range.
+ *
+ * @param removal - What the region is rewritten with.
+ * @param from - The piece's start.
+ * @param to - The piece's end (exclusive).
+ * @returns The piece's status.
+ */
+function itemStatus(removal: FormatRemoval, from: number, to: number): ItemStatus {
+    const visible = removal.leaves.filter((entry) => from <= entry.start && entry.end <= to && !WHITESPACE_LEAF.test(entry.key));
+    const marked = visible.filter((entry) => !inRange(entry, removal.range)
+        && entry.ancestors.some((ancestor) => ancestor.type === removal.type)).length;
+
+    if (visible.length === 0) {
+        return "neutral";
+    }
+
+    if (marked === visible.length) {
+        return "marked";
+    }
+
+    return marked === 0 ? "plain" : "mixed";
+}
+
+/**
+ * Builds the edit taking a code span's code in the range out of the span:
+ * the code before and after it stays code, each part in the span's own
+ * backtick run, and the range's text is written as plain text — as written,
+ * else with every ASCII punctuation character backslash-escaped, whichever
+ * first reads back as the same characters without the code format and
+ * everything else as before.
+ *
+ * @param analysis - The document's analysis.
+ * @param code - The code span holding the range.
+ * @param range - The normalised range.
+ * @returns The edit, or `null` when neither form reads back as intended.
+ */
+function splitCodeSpan(analysis: SourceAnalysis, code: SourceInline, range: SourceRange): MarkdownSourceEdit | null {
+    const text = analysis.text;
+    const fence = text.slice(code.start, code.innerStart);
+    const left = text.slice(code.innerStart, range.from);
+    const right = text.slice(range.to, code.innerEnd);
+    const before = left === "" ? "" : fence + left + fence;
+    const selected = selectedCodeLeaves(analysis, code, range);
+    const expect = (entry: SourceEntry): EntryFormat => (selected.has(entry) ? withoutMark(entryFormat(entry), "c") : entryFormat(entry));
+    const raw = text.slice(range.from, range.to);
+
+    for (const middle of new Set([raw, raw.replace(ASCII_PUNCTUATION, "\\$&")])) {
+        const edit = verified(analysis, {
+            from:      code.start,
+            to:        code.end,
+            insert:    before + middle + (right === "" ? "" : fence + right + fence),
+            selection: { from: code.start + before.length, to: code.start + before.length + middle.length },
+        }, expect);
+
+        if (edit !== null) {
+            return edit;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * The leaves of a code span whose characters lie in the range. A code
+ * span's leaves all span the whole span, so they are matched to the code by
+ * position: the k-th leaf is the k-th character of the code, past the one
+ * space CommonMark strips from each end when both ends carry one.
+ *
+ * @param analysis - The document's analysis.
+ * @param code - The code span.
+ * @param range - The range.
+ * @returns The selected leaves.
+ */
+function selectedCodeLeaves(analysis: SourceAnalysis, code: SourceInline, range: SourceRange): Set<SourceEntry> {
+    const content = analysis.text.slice(code.innerStart, code.innerEnd);
+    const stripped = content.length > 1 && content.startsWith(" ") && content.endsWith(" ") && content.trim() !== "" ? 1 : 0;
+    const leaves = analysis.entries.filter((entry) => entry.kind === "leaf" && entry.ancestors[entry.ancestors.length - 1] === code);
+
+    return new Set(leaves.filter((_entry, index) => {
+        const offset = code.innerStart + stripped + index;
+
+        return range.from <= offset && offset < range.to;
+    }));
+}
+
+/** `**text**` — bold; a `__text__` run counts as bold too. */
+export const BOLD_SOURCE: MarkdownSourceTransform = createInlineToggle("strong", "**");
+/** `*text*` — italic; a `_text_` run counts as italic too. */
+export const ITALIC_SOURCE: MarkdownSourceTransform = createInlineToggle("em", "*");
+/** `++text++` — underline, this dialect's own marker (see `markdownStyleTransformers.ts`'s `UNDERLINE`). */
+export const UNDERLINE_SOURCE: MarkdownSourceTransform = createInlineToggle("underline", "++");
+/** `~~text~~` — strikethrough; a `~text~` run counts as struck too. */
+export const STRIKETHROUGH_SOURCE: MarkdownSourceTransform = createInlineToggle("del", "~~");
+/** `` `text` `` — inline code. Refuses a range that still contains a backtick, which a plain wrap would re-parse differently. */
+export const INLINE_CODE_SOURCE: MarkdownSourceTransform = createInlineToggle("codespan", "`", (inner) => inner.includes("`"));
+
+// ---------------------------------------------------------------- links
+
+/**
+ * Finds the innermost link or image — any form the viewer reads: inline,
+ * reference (`[docs]`, `[docs][]`, `[docs][d]`), angle-bracket, bare-URL,
+ * `www.` and email autolinks — whose source holds the whole raw `[from, to]`
+ * selection, either end inclusive. An image is reported rather than skipped,
+ * so a caller can refuse to act inside its alt text.
+ *
+ * @param analysis - The document's analysis.
+ * @param from - 0-based start of the raw selection.
+ * @param to - 0-based end (exclusive) of the raw selection.
+ * @param except - A link or image to skip (to find the one enclosing it).
+ * @returns The enclosing link or image, or `null`.
+ */
+function findEnclosingLink(analysis: SourceAnalysis, from: number, to: number, except?: SourceInline): SourceInline | null {
+    let innermost: SourceInline | null = null;
+
+    for (const inline of analysis.inlines) {
+        if ((inline.type === "link" || IMAGE_TYPES.has(inline.type)) && inline !== except && inline.start <= from && to <= inline.end
+            && (innermost === null || inline.start >= innermost.start)) {
+            innermost = inline;
+        }
+    }
+
+    return innermost;
+}
+
+/**
+ * Whether a range overlaps any link or image.
+ *
+ * @param analysis - The document's analysis.
+ * @param range - The range.
+ * @returns Whether it does.
+ */
+function touchesLinkOrImage(analysis: SourceAnalysis, range: SourceRange): boolean {
+    return analysis.inlines.some((inline) => (inline.type === "link" || IMAGE_TYPES.has(inline.type))
+        && inline.start < range.to && range.from < inline.end);
+}
+
+/**
  * Builds the link toggle transform: wraps the selection in a link to `url`,
- * updates the enclosing link's URL in place when the selection already sits
- * inside one — keeping its title — or (`url === null`) unwraps the enclosing
- * link back to plain text. Declines (`null`) when `url` is non-null and there
- * is no enclosing link and nothing to wrap (a collapsed caret with no word
- * under it), when `url` is `null` and there is no enclosing link to remove,
- * when the selection sits inside an image, whose alt text a link cannot be
- * nested in, and when a new link's text would hold or cut into a table
- * cell's paragraph break (see {@link touchesCellParagraphBreak}).
+ * re-points the enclosing link when the selection already sits inside one, or
+ * (`url === null`) unwraps the enclosing link back to plain text. Every link
+ * form the viewer reads counts as enclosing. Re-pointing keeps an inline
+ * link's title as written and writes any other form — a reference link or an
+ * autolink — as an inline link (`[text](url "title")`), so only this link
+ * changes target. Unwrapping keeps the link's text; an autolink's text gets
+ * its `:`, `.` or `@` escaped, as the serializer escapes it in plain text, so
+ * it is not read as a link again. Declines (`null`) when `url` is non-null
+ * and there is no enclosing link and nothing to wrap (a collapsed caret with
+ * no word under it), or the range would hold a link (links do not nest), cut
+ * a token, or hold or cut into a table cell's paragraph break; when `url` is
+ * `null` and there is no enclosing link; when the
+ * selection sits inside an image, whose alt text a link cannot be nested in;
+ * and when the result would not read as intended.
  *
  * @param url - The link target, or `null` to remove the enclosing link.
  * @returns The transform.
  */
 export function linkSource(url: string | null): MarkdownSourceTransform {
     return (text, from, to) => {
-        const link = findEnclosingLink(text, from, to);
-
-        if (link?.image === true) {
-            return null;
-        }
+        const analysis = analyzeMarkdownSource(text);
+        const link = findEnclosingLink(analysis, from, to);
 
         if (link !== null) {
-            if (url === null) {
-                return {
-                    from:      link.start,
-                    to:        link.end,
-                    insert:    link.text,
-                    selection: { from: link.start, to: link.start + link.text.length },
-                };
+            if (link.type !== "link") {
+                return null;
             }
 
-            const wrapped = `[${link.text}](${url}${link.title === null ? "" : " " + link.title})`;
-
-            return {
-                from:      link.start,
-                to:        link.end,
-                insert:    wrapped,
-                selection: { from: link.start + 1, to: link.start + 1 + link.text.length },
-            };
+            return url === null ? unlink(analysis, link) : repointLink(analysis, link, url);
         }
 
-        if (url === null) {
-            return null;
-        }
-
-        const range = normalizeRange(text, from, to);
-
-        if (range === null || touchesCellParagraphBreak(text, range.from, range.to)) {
-            return null;
-        }
-
-        const inner = text.slice(range.from, range.to);
-        const wrapped = `[${inner}](${url})`;
-
-        return {
-            from:      range.from,
-            to:        range.to,
-            insert:    wrapped,
-            selection: { from: range.from + 1, to: range.from + 1 + inner.length },
-        };
+        return url === null ? null : wrapInLink(analysis, from, to, url);
     };
 }
 
 /** Removes the link enclosing the current selection. Equivalent to `linkSource(null)`. */
 export const REMOVE_LINK_SOURCE: MarkdownSourceTransform = linkSource(null);
+
+/**
+ * Builds the edit replacing a link with its text. A link nested in another
+ * link's text (`[[a](/in) b](/out)`) is taken out of the outer link, whose
+ * text before and after it each keep the outer link's target
+ * (`a[ b](/out)`), so its text is unlinked rather than joining the outer
+ * link, as removing the link in WYSIWYG mode does.
+ *
+ * @param analysis - The document's analysis.
+ * @param link - The link.
+ * @returns The edit, or `null` when the result would read otherwise than the
+ *   link's text unlinked and everything else unchanged.
+ */
+function unlink(analysis: SourceAnalysis, link: SourceInline): MarkdownSourceEdit | null {
+    if (link.innerStart === -1) {
+        return null;
+    }
+
+    const inner = analysis.text.slice(link.innerStart, link.innerEnd);
+    const insert = link.hasContent ? inner : escapeAutolinkText(inner);
+    const without = new Set([link]);
+    const outer = findEnclosingLink(analysis, link.start, link.end, link);
+    const edit = outer === null ? {
+        from:      link.start,
+        to:        link.end,
+        insert,
+        selection: { from: link.start, to: link.start + insert.length },
+    } : takeOutOfLink(analysis, outer, link, insert);
+
+    if (edit === null) {
+        return null;
+    }
+
+    return verified(analysis, edit, (entry) =>
+        (entry.ancestors.includes(link) ? { ...entryFormat(entry, without), link: null } : entryFormat(entry)));
+}
+
+/**
+ * Builds the edit replacing a link nested in an outer link's text with
+ * `insert`, outside the outer link: the outer text before it and after it
+ * each become a link with the outer link's destination (or reference).
+ *
+ * @param analysis - The document's analysis.
+ * @param outer - The outer link.
+ * @param link - The nested link.
+ * @param insert - What replaces the nested link.
+ * @returns The edit, or `null` when the outer link is not a bracketed one.
+ */
+function takeOutOfLink(analysis: SourceAnalysis, outer: SourceInline, link: SourceInline, insert: string): MarkdownSourceEdit | null {
+    if (!outer.hasContent || outer.innerStart === -1 || analysis.text[outer.start] !== "[") {
+        return null;
+    }
+
+    const text = analysis.text;
+    const destination = text.slice(outer.innerEnd, outer.end);
+    const before = text.slice(outer.innerStart, link.start);
+    const after = text.slice(link.end, outer.innerEnd);
+    const opening = before === "" ? "" : "[" + before + destination;
+
+    return {
+        from:      outer.start,
+        to:        outer.end,
+        insert:    opening + insert + (after === "" ? "" : "[" + after + destination),
+        selection: { from: outer.start + opening.length, to: outer.start + opening.length + insert.length },
+    };
+}
+
+/**
+ * Escapes the characters that would make an autolink's text a GFM autolink
+ * again as plain text: the `:` of a bare URL's scheme, the `.` after `www`
+ * and the `@` of an email address — the serializer's own rules for these
+ * three characters.
+ *
+ * @param text - The autolink's text.
+ * @returns The text, safe as plain text.
+ */
+function escapeAutolinkText(text: string): string {
+    let escaped = "";
+
+    for (let index = 0; index < text.length; index += 1) {
+        const char = text[index]!;
+        const before = text.slice(0, index);
+        const triggers = (char === ":" && BARE_URL_SCHEME.test(before) && text.startsWith("//", index + 1))
+            || (char === "." && BARE_WWW_PREFIX.test(before))
+            || (char === "@" && EMAIL_LOCAL_CHARACTER.test(text[index - 1] ?? "") && EMAIL_DOMAIN_CHARACTER.test(text[index + 1] ?? ""));
+
+        escaped += triggers ? "\\" + char : char;
+    }
+
+    return escaped;
+}
+
+/**
+ * Builds the edit pointing a link at `url`. An inline link keeps its text
+ * and its title as written; a reference link or an autolink becomes an
+ * inline link holding its text (and a reference link's title).
+ *
+ * @param analysis - The document's analysis.
+ * @param link - The link.
+ * @param url - The new target.
+ * @returns The edit, or `null`.
+ */
+function repointLink(analysis: SourceAnalysis, link: SourceInline, url: string): MarkdownSourceEdit | null {
+    if (link.innerStart === -1) {
+        return null;
+    }
+
+    const text = analysis.text.slice(link.innerStart, link.innerEnd);
+    const raw = analysis.text.slice(link.start, link.end);
+    const title = link.hasContent && raw.endsWith(")")
+        ? writtenTitle(raw.slice(link.innerEnd - link.start + 2, -1))
+        : quotedTitle((link.token as Tokens.Link).title ?? null);
+    const href = hrefOf(url);
+
+    return verified(analysis, {
+        from:      link.start,
+        to:        link.end,
+        insert:    `[${text}](${formatDestination(url)}${title === "" ? "" : " " + title})`,
+        selection: { from: link.start + 1, to: link.start + 1 + text.length },
+    }, (entry) => {
+        const format = entryFormat(entry);
+
+        return entry.ancestors.includes(link) ? { ...format, link: href } : format;
+    });
+}
+
+/**
+ * Reads the title of an inline link as written, delimiters included, from
+ * what its parentheses hold: the text after the destination (`<…>`, or a run
+ * without whitespace whose parentheses balance).
+ *
+ * @param parenthesised - The text between the link's `(` and `)`.
+ * @returns The title as written, or `""` when the link has none.
+ */
+function writtenTitle(parenthesised: string): string {
+    const body = parenthesised.trimStart();
+    let index = 0;
+
+    if (body.startsWith("<")) {
+        index = body.indexOf(">") + 1;
+    } else {
+        let depth = 0;
+
+        while (index < body.length && !/\s/.test(body[index]!) && !(body[index] === ")" && depth === 0)) {
+            depth += body[index] === "(" ? 1 : body[index] === ")" ? -1 : 0;
+            index += 1;
+        }
+    }
+
+    return body.slice(index).trim();
+}
+
+/**
+ * Writes a title in double quotes, its `\` and `"` escaped.
+ *
+ * @param title - The title, or `null`.
+ * @returns The quoted title, or `""` for none.
+ */
+function quotedTitle(title: string | null): string {
+    return title === null || title === "" ? "" : `"${title.replace(/[\\"]/g, "\\$&")}"`;
+}
+
+/**
+ * Writes a link destination: in angle brackets when it holds whitespace or a
+ * parenthesis, which a bare destination cannot hold safely.
+ *
+ * @param url - The destination.
+ * @returns The destination as written.
+ */
+function formatDestination(url: string): string {
+    return /[\s()]/.test(url) ? `<${url}>` : url;
+}
+
+/**
+ * The `href` the viewer gives a link written to `url`, read by lexing one:
+ * `marked` may normalise the destination, and a verified edit compares what
+ * it reads.
+ *
+ * @param url - The destination.
+ * @returns The `href`.
+ */
+function hrefOf(url: string): string {
+    const paragraph = lexMarkdown(`[x](${formatDestination(url)})`)[0] as Tokens.Paragraph | undefined;
+    const link = paragraph?.tokens?.[0];
+
+    return link?.type === "link" ? (link as Tokens.Link).href : url;
+}
+
+/**
+ * Builds the edit wrapping the normalised selection in a link to `url`.
+ *
+ * @param analysis - The document's analysis.
+ * @param from - 0-based start of the raw selection.
+ * @param to - 0-based end (exclusive) of the raw selection.
+ * @param url - The link target.
+ * @returns The edit, or `null` when the range cuts a token or a table cell's
+ *   paragraph break, holds a link or image, or the result would read
+ *   otherwise.
+ */
+function wrapInLink(analysis: SourceAnalysis, from: number, to: number, url: string): MarkdownSourceEdit | null {
+    const range = normalizeRange(analysis, from, to);
+
+    if (range === null || !insideInlineBlock(analysis, range)) {
+        return null;
+    }
+
+    const placement = placementFor(analysis, range);
+
+    if (!respectsTokens(analysis, placement) || touchesLinkOrImage(analysis, placement)
+        || touchesCellParagraphBreak(analysis, placement)) {
+        return null;
+    }
+
+    const inner = analysis.text.slice(placement.from, placement.to);
+    const href = hrefOf(url);
+
+    return verified(analysis, {
+        from:      placement.from,
+        to:        placement.to,
+        insert:    `[${inner}](${formatDestination(url)})`,
+        selection: { from: placement.from + 1, to: placement.from + 1 + inner.length },
+    }, (entry) => {
+        const format = entryFormat(entry);
+
+        return inRange(entry, placement) ? { ...format, link: href } : format;
+    });
+}
+
+// ---------------------------------------------------------------- styled spans
 
 /** The span attribute key for each kebab-case CSS property the three style setters patch. */
 const ATTRIBUTE_KEY_BY_CSS_PROPERTY: Record<string, string | undefined> = {
@@ -422,33 +1265,6 @@ const ATTRIBUTE_KEY_BY_CSS_PROPERTY: Record<string, string | undefined> = {
     "font-family": "font",
     "font-size":   "size",
 };
-
-/**
- * One `[text]{key=value …}` styled span — `markdownStyleTransformers.ts`'s
- * `STYLED_TEXT.importRegExp` itself, made global. Requiring `{` immediately
- * after `]` is what keeps a `[text](url)` link out of the match.
- */
-const STYLED_SPAN_PATTERN = /\[([^[\]]+)\]\{([^{}]*)\}/g;
-
-/**
- * One `![alt](src){…}` image, its optional trailing size group included the
- * way `markdownImageTransformer.ts`'s `importRegExp` reads it, or one
- * `[text](url)` link — a bracket construct a styled span may not overlap.
- */
-const BRACKET_CONSTRUCT_PATTERN = /!\[[^[\]]*\]\([^()]*\)(?:\{[^{}]*\})?|\[[^[\]]*\]\([^()]*\)/g;
-
-/** A `{…}` attribute group, stripped from a line before {@link STRUCTURAL_LINE} tests it. */
-const ATTRIBUTE_GROUP = /\{[^{}]*\}/g;
-
-/**
- * A line whose own syntax a styled span would break, tested once its `{…}`
- * groups are stripped: a `:::` fence line, whose opener carries the region's
- * `{align=… gap=…}` group, or a line of nothing but `|`, `:`, `-` and
- * whitespace — a table delimiter row with its `{width=…}` cells, and coarsely
- * also a `|||` column separator or a `---` thematic break, none of which holds
- * text a span could style.
- */
-const STRUCTURAL_LINE = /^[ \t]*(?::::|[|:\- \t]*$)/;
 
 /** One located styled span: the whole construct's range, its visible text's range, and its attributes. */
 interface StyledSpanMatch {
@@ -460,226 +1276,73 @@ interface StyledSpanMatch {
 }
 
 /**
- * Finds every `[text]{key=value …}` styled span in the document, skipping a
- * match that contains a newline — the importer reads one line at a time, so a
- * construct spanning a line break is never read back as a span.
+ * The document's `[text]{key=value …}` styled spans, read from the viewer's
+ * own `styledspan` tokens — a span whose text could not be located is left
+ * out, and the verification of any rewrite touching it then declines.
  *
- * @param text - The full document text.
+ * @param analysis - The document's analysis.
  * @returns The located spans, in document order.
  */
-function findStyledSpans(text: string): StyledSpanMatch[] {
-    STYLED_SPAN_PATTERN.lastIndex = 0;
-
-    const spans: StyledSpanMatch[] = [];
-    let match: RegExpExecArray | null;
-
-    while ((match = STYLED_SPAN_PATTERN.exec(text)) !== null) {
-        // A match carrying a newline is not a span this module can rewrite.
-        // Skipping it here is only safe because `resolveSpanRange` refuses any
-        // range that touches one (see `overlapsUnparseableStyledSpan`) — without
-        // that gate the group would be treated as plain text and re-bracketed.
-        if (match[0].includes("\n")) {
-            continue;
-        }
-
-        const start = match.index;
-
-        spans.push({
-            start,
-            end:        start + match[0].length,
-            textStart:  start + 1,
-            textEnd:    start + 1 + match[1]!.length,
-            attributes: parseAttributes(match[2]!),
-        });
-    }
-
-    return spans;
+function findStyledSpans(analysis: SourceAnalysis): StyledSpanMatch[] {
+    return analysis.inlines
+        .filter((inline) => inline.type === "styledspan" && inline.innerStart !== -1)
+        .map((inline) => ({
+            start:      inline.start,
+            end:        inline.end,
+            textStart:  inline.innerStart,
+            textEnd:    inline.innerEnd,
+            attributes: spanAttributes(inline),
+        }));
 }
 
 /**
- * Whether the line holding `[from, to)` carries any emphasis marker character
- * **outside** that range.
+ * A styled span token's parsed attributes.
  *
- * This is the refusal that keeps the styled span from damaging a document, and
- * it is deliberately coarse. Deciding which `*` or `++` is emphasis and which is
- * arithmetic or a language name needs the inline structure of the line — a
- * Markdown parser, which this module deliberately is not (see the plan's
- * *Potential Challenges*). Three successive narrower rules, each reasoning from
- * marker positions near the selection, each missed a shape that corrupted the
- * document: a selection inside a wider run, one between two separate runs, and
- * one swallowing a closing run while its partner stayed outside.
- *
- * So the condition is not "is this emphasis?" but the question this module can
- * answer soundly: *is there any marker out there at all that bracketing this
- * range could orphan?* When no marker sits outside the range, every marker on
- * the line falls inside the rewritten text. That alone keeps a run whole only
- * when the rewrite emits one group; a rewrite over several units can still cut
- * a run wrapping an existing span, which {@link unitsCouldSplitMarkerRun}
- * refuses.
- *
- * The cost is heavy over-declining: styling any word on a line that carries a
- * `*`, `~`, `+` or `` ` `` character anywhere outside the range is refused,
- * whether that character is emphasis or not — a `*`/`+` list bullet, a `~` in
- * a path and the `+` of `1 + 1` all count — even where the edit would have
- * been safe. That is the deliberate trade — a false decline costs one
- * unavailable action, a false accept costs the user their text, irrecoverably
- * (the emphasis re-imports as escaped literals and the `]{…}` syntax becomes
- * visible prose).
- *
- * @param text - The full document text.
- * @param from - 0-based start of the extruded range.
- * @param to - 0-based end (exclusive) of the extruded range.
- * @returns Whether a marker character on the range's line falls outside it.
+ * @param inline - The `styledspan` token.
+ * @returns Its attributes.
  */
-function lineCarriesMarkersOutside(text: string, from: number, to: number): boolean {
-    const line = expandToWholeLines(text, from, to);
-
-    for (let index = line.start; index < line.end; index += 1) {
-        if ((index < from || index >= to) && MARKER_CHARACTERS.has(text[index]!)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-/**
- * Whether `[from, to)` overlaps a `[text]{…}` group carrying a newline — a
- * span this module cannot rewrite, and must therefore refuse rather than
- * treat as plain text.
- *
- * {@link findStyledSpans} drops such a match, so without this check nothing
- * downstream knows the brackets are there: the range reads as unstyled text
- * and gets a second span written around it, producing the nested
- * `[[x]{…}]{…}` that `STYLED_TEXT`'s `[^[\]]+` inner pattern cannot read
- * back. Refusing keeps the document parseable; the user can rejoin the line
- * and retry.
- *
- * @param text - The full document text.
- * @param from - 0-based start of the range.
- * @param to - 0-based end (exclusive) of the range.
- * @returns Whether an unrewritable styled span intersects the range.
- */
-function overlapsUnparseableStyledSpan(text: string, from: number, to: number): boolean {
-    STYLED_SPAN_PATTERN.lastIndex = 0;
-
-    let match: RegExpExecArray | null;
-
-    while ((match = STYLED_SPAN_PATTERN.exec(text)) !== null) {
-        if (match[0].includes("\n") && match.index < to && from < match.index + match[0].length) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-/**
- * Whether `[from, to)` overlaps a `[text](url)` link or an `![alt](src){…}`
- * image — alt, destination or trailing size group — the two constructs a
- * styled span may neither nest inside nor clip. Both
- * {@link BRACKET_CONSTRUCT_PATTERN} and the link commands' own
- * {@link LINK_PATTERN} are scanned, so a link the link commands recognise —
- * one with a `(…)` title, say — is refused too.
- *
- * @param text - The full document text.
- * @param from - 0-based start of the range.
- * @param to - 0-based end (exclusive) of the range.
- * @returns Whether a bracket construct intersects the range.
- */
-function overlapsBracketConstruct(text: string, from: number, to: number): boolean {
-    for (const pattern of [BRACKET_CONSTRUCT_PATTERN, LINK_PATTERN]) {
-        pattern.lastIndex = 0;
-
-        let match: RegExpExecArray | null;
-
-        while ((match = pattern.exec(text)) !== null) {
-            if (match.index < to && from < match.index + match[0].length) {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-/**
- * Whether the line holding `[from, to)` is a {@link STRUCTURAL_LINE} — a
- * `:::` fence line or a table delimiter row, whose `{…}` attribute groups a
- * styled span would break (`{width=[240]{…}}` is no longer a width, so the
- * row stops being a delimiter row and the whole table reads as a paragraph).
- *
- * @param text - The full document text.
- * @param from - 0-based start of the range.
- * @param to - 0-based end (exclusive) of the range.
- * @returns Whether the range sits on such a line.
- */
-function onStructuralLine(text: string, from: number, to: number): boolean {
-    const line = expandToWholeLines(text, from, to);
-
-    return STRUCTURAL_LINE.test(text.slice(line.start, line.end).replace(ATTRIBUTE_GROUP, ""));
+function spanAttributes(inline: SourceInline): Record<string, string> {
+    return (inline.token as unknown as { attributes: Record<string, string> }).attributes;
 }
 
 /**
  * Resolves the range {@link spanStyleSource} acts on: refuse a raw range
- * containing a newline (a span cannot cross one in this dialect); normalise with
- * {@link normalizeRange}; extrude any emphasis-marker run flanking the result
- * symmetrically, so the brackets land OUTSIDE it; then refuse an overlap with a
- * link or image ({@link overlapsBracketConstruct}), an overlap with a `[…]{…}`
- * group carrying a newline ({@link overlapsUnparseableStyledSpan}), a range on
- * a fence line or table delimiter row ({@link onStructuralLine}), a range
- * holding or cutting into a table cell's paragraph break
- * ({@link touchesCellParagraphBreak}), and a range whose line carries an
- * emphasis marker outside it ({@link lineCarriesMarkersOutside}).
+ * containing a newline (this module writes a span within one line, though
+ * the viewer and the importer read one across a newline); normalise with
+ * {@link normalizeRange}; take a whole code span when the range is its code;
+ * then refuse a range outside one block's inline text (a code block, a `:::`
+ * fence line, a table delimiter row), one touching a link or image (its
+ * text, destination or an image's `{width=…}` group), one cutting any
+ * other token's syntax, and one holding or cutting into a table cell's
+ * paragraph break ({@link touchesCellParagraphBreak}).
  *
- * The extrusion is a correctness requirement, not a cosmetic one: Lexical's
- * importer applies the outermost match first, so `**[hello]{…}**` builds the
- * span's replacement text node inside the bold node — and that fresh node
- * carries no format, silently dropping the bold on the next mode switch.
- * `[**hello**]{…}` takes the other branch, and is also the form the export
- * writes, since it wraps the formatted text INSIDE the brackets.
+ * The brackets go where the range is, inside any emphasis around it —
+ * `**[hello]{…}**` for a whole bold run, the form the serializer writes.
  *
- * @param text - The full document text.
+ * @param analysis - The document's analysis.
  * @param from - 0-based start of the raw selection.
  * @param to - 0-based end (exclusive) of the raw selection.
  * @returns The range to act on, or `null` when the span syntax cannot be
- *   written around it — a range spanning a line break, one clipping a link or
- *   image, one touching a `[…]{…}` group this module cannot rewrite, one on a
- *   fence line or table delimiter row, one touching a table cell's paragraph
- *   break, or one whose line carries an emphasis marker outside it.
+ *   written around it.
  */
-function resolveSpanRange(text: string, from: number, to: number): { from: number; to: number } | null {
-    if (text.slice(from, to).includes("\n")) {
+function resolveSpanRange(analysis: SourceAnalysis, from: number, to: number): SourceRange | null {
+    if (analysis.text.slice(from, to).includes("\n")) {
         return null;
     }
 
-    const range = normalizeRange(text, from, to);
+    const range = normalizeRange(analysis, from, to);
 
-    if (range === null) {
+    if (range === null || !insideInlineBlock(analysis, range)) {
         return null;
     }
 
-    let start = range.from;
-    let end = range.to;
+    const placement = placementFor(analysis, range);
 
-    while (start > 0 && end < text.length && text[start - 1] === text[end] && MARKER_CHARACTERS.has(text[end]!)) {
-        start -= 1;
-        end += 1;
-    }
-
-    if (overlapsBracketConstruct(text, start, end) || overlapsUnparseableStyledSpan(text, start, end)) {
+    if (touchesLinkOrImage(analysis, placement) || !respectsTokens(analysis, placement)) {
         return null;
     }
 
-    if (onStructuralLine(text, start, end) || touchesCellParagraphBreak(text, start, end)) {
-        return null;
-    }
-
-    if (lineCarriesMarkersOutside(text, start, end)) {
-        return null;
-    }
-
-    return { from: start, to: end };
+    return touchesCellParagraphBreak(analysis, placement) ? null : placement;
 }
 
 /**
@@ -782,30 +1445,41 @@ function splitUnitAtSelection(
 const MODELLED_ATTRIBUTE_KEYS: ReadonlySet<string | undefined> = new Set(Object.values(ATTRIBUTE_KEY_BY_CSS_PROPERTY));
 
 /**
+ * Merges `patch` into a span's attributes: a `null` value removes its key.
+ *
+ * @param attributes - The span's attributes.
+ * @param patch - The attribute patch.
+ * @returns The merged attributes.
+ */
+function mergePatch(attributes: Record<string, string>, patch: Record<string, string | null>): Record<string, string> {
+    const merged = { ...attributes };
+
+    for (const [key, value] of Object.entries(patch)) {
+        if (value === null) {
+            delete merged[key];
+        } else {
+            merged[key] = value;
+        }
+    }
+
+    return merged;
+}
+
+/**
  * Resolves the attribute set one piece is emitted with: its own attributes,
  * with `patch` merged in when the piece is patched. The dialect's own keys go
- * through the `resolveSpanStyle` / `spanStyleToAttributes` pair
- * `markdownStyleTransformers.ts`'s `STYLED_TEXT.export` uses — which drops an
- * invalid value exactly as that export drops it, and orders the keys
- * `color`, `font`, `size`; a key the dialect does not model is the author's,
- * so it is kept as written, after them.
+ * through the `resolveSpanStyle` / `spanStyleToAttributes` pair the
+ * serializer (`markdownSerializer.ts`) writes a span's style with — which
+ * drops an invalid value exactly as that serializer drops it, and orders the
+ * keys `color`, `font`, `size`; a key the dialect does not model is the
+ * author's, so it is kept as written, after them.
  *
  * @param piece - The piece to resolve.
  * @param patch - The attribute patch, applied only when `piece.patched`.
  * @returns The resolved attributes; empty when the piece carries none.
  */
 function resolvePieceAttributes(piece: StyledPiece, patch: Record<string, string | null>): Record<string, string> {
-    const merged = { ...piece.attributes };
-
-    if (piece.patched) {
-        for (const [key, value] of Object.entries(patch)) {
-            if (value === null) {
-                delete merged[key];
-            } else {
-                merged[key] = value;
-            }
-        }
-    }
+    const merged = piece.patched ? mergePatch(piece.attributes, patch) : piece.attributes;
 
     const unmodelled = Object.entries(merged).filter(([key]) => !MODELLED_ATTRIBUTE_KEYS.has(key));
 
@@ -866,8 +1540,8 @@ function groupPiecesIntoRuns(pieces: StyledPiece[], patch: Record<string, string
 
 /**
  * Re-emits one run: bare text when its attribute set is empty, else
- * `[text]{…}`. Every group goes out through the same three calls
- * `STYLED_TEXT.export` makes (the first two in {@link resolvePieceAttributes},
+ * `[text]{…}`. Every group goes out through the same three calls the
+ * serializer's span style makes (the first two in {@link resolvePieceAttributes},
  * `formatAttributes` here), so the bytes written for one group are the bytes
  * WYSIWYG would have written for the same style — which is what makes a span
  * authored in source mode survive a switch to WYSIWYG and back unchanged.
@@ -895,9 +1569,7 @@ function emitRun(run: StyledRun): string | null {
  * @param spans - Every styled span in the document, in document order.
  * @returns The rewritten range's `[start, end)`.
  */
-function growOverStyledSpans(
-    range: { from: number; to: number }, spans: StyledSpanMatch[],
-): { start: number; end: number } {
+function growOverStyledSpans(range: SourceRange, spans: StyledSpanMatch[]): { start: number; end: number } {
     const touched = spans.filter((span) => span.start < range.to && range.from < span.end);
     let start = Math.min(range.from, ...touched.map((span) => span.start));
     let end = Math.max(range.to, ...touched.map((span) => span.end));
@@ -920,36 +1592,47 @@ function growOverStyledSpans(
 }
 
 /**
- * Whether re-emitting `units` could cut an emphasis or code marker run in two.
- * Each unit goes out as its own group, so a run wrapping an existing span —
- * `**hello [world]{…}**` — would have its opening and closing markers land in
- * different brackets and read back as literal characters. Like
- * {@link lineCarriesMarkersOutside} this cannot tell a run from a literal
- * marker, so it answers coarsely: more than one unit, and a marker character
- * in any unit's text.
+ * Whether re-emitting `units` would cut a token in two. Each unit goes out as
+ * its own group, so a token inside the rewritten range must lie inside one
+ * unit: an emphasis run holding plain text and a span — the whole of
+ * `x **a [b]{…} c** y` restyled — would have its markers land in different
+ * brackets and read back as literal characters. A token holding the whole
+ * rewritten range stays outside the brackets and is no concern.
  *
- * @param text - The full document text.
+ * @param analysis - The document's analysis.
  * @param units - The rewritten range's units, from {@link collectStyledUnits}.
+ * @param start - The rewritten range's start.
+ * @param end - The rewritten range's end (exclusive).
  * @returns Whether the rewrite must decline.
  */
-function unitsCouldSplitMarkerRun(text: string, units: StyledUnit[]): boolean {
-    if (units.length < 2) {
-        return false;
-    }
+function unitsCutToken(analysis: SourceAnalysis, units: StyledUnit[], start: number, end: number): boolean {
+    return analysis.inlines.some((inline) => inline.start < end && start < inline.end
+        && !(inline.start <= start && end <= inline.end)
+        && !(inline.type === "styledspan" && start <= inline.start && inline.end <= end)
+        && !units.some((unit) => unit.from <= inline.start && inline.end <= unit.to));
+}
 
-    return units.some((unit) => {
-        const characters = [...text.slice(unit.from, unit.to)];
+/**
+ * Whether the character at `index` is backslash-escaped — preceded by an odd
+ * run of backslashes, which makes it literal text rather than syntax.
+ *
+ * @param text - The full document text.
+ * @param index - The character's offset.
+ * @returns Whether a backslash escapes it.
+ */
+function isEscaped(text: string, index: number): boolean {
+    let backslashes = 0;
 
-        return characters.some((character) => MARKER_CHARACTERS.has(character));
-    });
+    while (index - backslashes - 1 >= 0 && text[index - backslashes - 1] === "\\") { backslashes += 1; }
+
+    return backslashes % 2 === 1;
 }
 
 /**
  * Emits the runs as the replacement for the range starting at `start`, and
  * finds where the patched text lands in the rewritten document.
  *
- * A bracketed run is checked against the backslash escapes around it, the
- * same rule the inline toggles apply to their markers (`C:\**Users**`): a `[`
+ * A bracketed run is checked against the backslash escapes around it: a `[`
  * written straight after an escaping backslash (`C:\[Users]{…}`), or a `]`
  * written straight after a run text ending in one (`[a\]{…}`), is a literal
  * bracket, so the span would not read back and its syntax would show as
@@ -1012,22 +1695,24 @@ function emitRuns(
  * selection left behind lands on the user's own text inside the brackets,
  * from the first patched piece's text to the last one's.
  *
- * @param text - The full document text.
+ * @param analysis - The document's analysis.
  * @param range - The range to patch, from {@link resolveSpanRange}.
  * @param patch - The attribute patch.
- * @returns The edit, or `null` when the rewrite could cut a marker run in two,
+ * @returns The edit, or `null` when the rewrite would cut a token in two,
  *   when a run declines, when a bracket would land escaped, when the rewrite
- *   equals what it replaces, or when the selection patched no visible text at
- *   all.
+ *   equals what it replaces, when the selection patched no visible text at
+ *   all, or when the result would read otherwise than the selected text
+ *   taking the patched style.
  */
 function rewriteStyledSpans(
-    text: string, range: { from: number; to: number }, patch: Record<string, string | null>,
+    analysis: SourceAnalysis, range: SourceRange, patch: Record<string, string | null>,
 ): MarkdownSourceEdit | null {
-    const spans = findStyledSpans(text);
+    const text = analysis.text;
+    const spans = findStyledSpans(analysis);
     const { start, end } = growOverStyledSpans(range, spans);
     const units = collectStyledUnits(start, end, spans);
 
-    if (unitsCouldSplitMarkerRun(text, units)) {
+    if (unitsCutToken(analysis, units, start, end)) {
         return null;
     }
 
@@ -1047,7 +1732,19 @@ function rewriteStyledSpans(
         return null;
     }
 
-    return { from: start, to: end, insert: emitted.insert, selection: emitted.selection };
+    const edit = { from: start, to: end, insert: emitted.insert, selection: emitted.selection };
+
+    return verified(analysis, edit, (entry) => {
+        const format = entryFormat(entry);
+
+        if (!inRange(entry, range)) {
+            return format;
+        }
+
+        const span = [...entry.ancestors].reverse().find((ancestor) => ancestor.type === "styledspan");
+
+        return { ...format, style: canonicalSpanStyle(mergePatch(span === undefined ? {} : spanAttributes(span), patch)) };
+    });
 }
 
 /**
@@ -1065,7 +1762,8 @@ function rewriteStyledSpans(
  */
 export function spanStyleSource(patch: Record<string, string | null>): MarkdownSourceTransform {
     return (text, from, to) => {
-        const range = resolveSpanRange(text, from, to);
+        const analysis = analyzeMarkdownSource(text);
+        const range = resolveSpanRange(analysis, from, to);
 
         if (range === null) {
             return null;
@@ -1077,280 +1775,31 @@ export function spanStyleSource(patch: Record<string, string | null>): MarkdownS
             return null;
         }
 
-        return rewriteStyledSpans(text, range, attributePatch);
+        return rewriteStyledSpans(analysis, range, attributePatch);
     };
 }
 
-/** One matched inline-format pair: the opening and the closing marker characters it consumes. */
-interface MarkerPair {
-    openFrom:  number;
-    openTo:    number;
-    closeFrom: number;
-    closeTo:   number;
-}
-
-/** A `*`, `~` or `+` delimiter run the pairing pass can still draw marker characters from. */
-interface DelimiterRun {
-    char:     string;
-    index:    number;
-    length:   number;
-    canOpen:  boolean;
-    canClose: boolean;
-    active:   boolean;
-}
+// ---------------------------------------------------------------- clear formatting and state
 
 /**
- * Splits the paragraphs the normalised range touches into their own
- * `[start, end)` spans: from the start of the paragraph holding `from` to the
- * end of the one holding `to`, cut at every blank line in between. A marker
- * pair never spans a blank line, so each span is paired on its own.
- *
- * @param text - The full document text.
- * @param from - The normalised range's start.
- * @param to - The normalised range's end (exclusive).
- * @returns The paragraph spans, in document order.
- */
-function paragraphSpansAround(text: string, from: number, to: number): { start: number; end: number }[] {
-    const lines = splitLines(text);
-    const isBlank = (index: number): boolean => lines[index]!.text.trim() === "";
-    let first = lineIndexAt(lines, from);
-    let last = lineIndexAt(lines, to);
-
-    while (first > 0 && !isBlank(first - 1)) { first -= 1; }
-    while (last < lines.length - 1 && !isBlank(last + 1)) { last += 1; }
-
-    const spans: { start: number; end: number }[] = [];
-
-    for (let index = first; index <= last; index += 1) {
-        if (isBlank(index)) {
-            continue;
-        }
-
-        const previous = spans[spans.length - 1];
-
-        if (previous !== undefined && !isBlank(index - 1)) {
-            previous.end = lines[index]!.end;
-        } else {
-            spans.push({ start: lines[index]!.start, end: lines[index]!.end });
-        }
-    }
-
-    return spans;
-}
-
-/**
- * Finds the code spans in `[start, end)`, per CommonMark: a backtick run
- * opens one unless a backslash escapes it, and the next run of the same
- * length closes it; a run with no partner is literal.
- *
- * @param text - The full document text.
- * @param start - The paragraph's start.
- * @param end - The paragraph's end (exclusive).
- * @returns Each code span as a marker pair: its opening and closing runs.
- */
-function findCodeSpans(text: string, start: number, end: number): MarkerPair[] {
-    const runs: { index: number; length: number }[] = [];
-
-    for (let index = start; index < end;) {
-        let length = 0;
-
-        while (index + length < end && text[index + length] === "`") { length += 1; }
-
-        if (length > 0) {
-            runs.push({ index, length });
-        }
-
-        index += Math.max(length, 1);
-    }
-
-    const spans: MarkerPair[] = [];
-
-    for (let open = 0; open < runs.length; open += 1) {
-        const opener = runs[open]!;
-        const close = runs.findIndex((run, index) => index > open && run.length === opener.length);
-
-        if (isEscaped(text, opener.index) || close === -1) {
-            continue;
-        }
-
-        const closer = runs[close]!;
-
-        spans.push({
-            openFrom:  opener.index,
-            openTo:    opener.index + opener.length,
-            closeFrom: closer.index,
-            closeTo:   closer.index + closer.length,
-        });
-
-        open = close;
-    }
-
-    return spans;
-}
-
-/**
- * Collects the `*`, `~` and `+` delimiter runs in `[start, end)` that can
- * open or close emphasis, skipping escaped characters and everything inside
- * a code span, where those characters are literal. A run that is neither
- * left- nor right-flanking — a list bullet, a thematic break's `***`, the `+`
- * of `1 + 1` — is not collected at all.
- *
- * @param text - The full document text.
- * @param start - The paragraph's start.
- * @param end - The paragraph's end (exclusive).
- * @param codeSpans - The paragraph's code spans, from {@link findCodeSpans}.
- * @returns The runs, in document order.
- */
-function scanDelimiterRuns(text: string, start: number, end: number, codeSpans: MarkerPair[]): DelimiterRun[] {
-    const runs: DelimiterRun[] = [];
-
-    for (let index = start; index < end;) {
-        const char = text[index]!;
-        const inCode = codeSpans.some((span) => span.openFrom <= index && index < span.closeTo);
-
-        if (char === "`" || !MARKER_CHARACTERS.has(char) || inCode || isEscaped(text, index)) {
-            index += 1;
-            continue;
-        }
-
-        let length = 1;
-
-        while (index + length < end && text[index + length] === char) { length += 1; }
-
-        const canOpen = isFlanking(text, index, index + length, true);
-        const canClose = isFlanking(text, index, index + length, false);
-
-        if (canOpen || canClose) {
-            runs.push({ char, index, length, canOpen, canClose, active: true });
-        }
-
-        index += length;
-    }
-
-    return runs;
-}
-
-/**
- * Pairs delimiter runs into emphasis the way CommonMark's delimiter-stack
- * algorithm does, simplified to this dialect: each closing run takes the
- * nearest earlier opening run of the same character, consuming two
- * characters from each when both have two (`**`, `~~`, `++`) and one
- * otherwise (`*` only — a lone `~` or `+` is literal); runs between a matched
- * pair are deactivated; and the "rule of three" stops a run that can both
- * open and close from pairing across a length that would split it oddly.
- *
- * @param runs - The paragraph's runs, from {@link scanDelimiterRuns}; consumed.
- * @returns The matched pairs.
- */
-function pairDelimiterRuns(runs: DelimiterRun[]): MarkerPair[] {
-    const pairs: MarkerPair[] = [];
-
-    for (let close = 0; close < runs.length; close += 1) {
-        const closer = runs[close]!;
-
-        while (closer.canClose && closer.active && closer.length > 0) {
-            const open = findOpenerFor(runs, close);
-
-            if (open === -1) {
-                break;
-            }
-
-            const opener = runs[open]!;
-            const width = Math.min(opener.length, closer.length) >= 2 ? 2 : 1;
-
-            pairs.push({
-                openFrom:  opener.index + opener.length - width,
-                openTo:    opener.index + opener.length,
-                closeFrom: closer.index,
-                closeTo:   closer.index + width,
-            });
-
-            opener.length -= width;
-            closer.index += width;
-            closer.length -= width;
-
-            for (let between = open + 1; between < close; between += 1) {
-                runs[between]!.active = false;
-            }
-        }
-    }
-
-    return pairs;
-}
-
-/**
- * Finds the opening run the closing run `runs[close]` pairs with: the
- * nearest earlier active run of the same character that can open, has
- * characters left, is wide enough for that character's marker, and is not
- * ruled out by CommonMark's rule of three.
- *
- * @param runs - The paragraph's runs.
- * @param close - The closing run's index.
- * @returns The opening run's index, or `-1` when none qualifies.
- */
-function findOpenerFor(runs: DelimiterRun[], close: number): number {
-    const closer = runs[close]!;
-
-    for (let open = close - 1; open >= 0; open -= 1) {
-        const opener = runs[open]!;
-
-        if (!opener.active || !opener.canOpen || opener.length === 0 || opener.char !== closer.char) {
-            continue;
-        }
-
-        // `~~` and `++` are this dialect's only `~` / `+` markers.
-        if (opener.char !== "*" && Math.min(opener.length, closer.length) < 2) {
-            continue;
-        }
-
-        const sum = opener.length + closer.length;
-        const ruleOfThree = (opener.canClose || closer.canOpen)
-            && sum % 3 === 0 && opener.length % 3 !== 0 && closer.length % 3 !== 0;
-
-        if (!ruleOfThree) {
-            return open;
-        }
-    }
-
-    return -1;
-}
-
-/**
- * Finds every inline-format pair — emphasis and code spans — in the
- * paragraphs the normalised range touches.
- *
- * @param text - The full document text.
- * @param from - The normalised range's start.
- * @param to - The normalised range's end (exclusive).
- * @returns The matched pairs, in no particular order.
- */
-function findMarkerPairs(text: string, from: number, to: number): MarkerPair[] {
-    return paragraphSpansAround(text, from, to).flatMap(({ start, end }) => {
-        const codeSpans = findCodeSpans(text, start, end);
-
-        return [...codeSpans, ...pairDelimiterRuns(scanDelimiterRuns(text, start, end, codeSpans))];
-    });
-}
-
-/**
- * Builds the edit deleting every marker character of `pairs`: it replaces
- * the span from the earliest of the range and the pairs to the latest, and
+ * Builds the edit deleting the syntax of every token in `tokens`: it replaces
+ * the span from the earliest of the range and the tokens to the latest, and
  * maps the range through the deletions so the selection still covers the
  * same visible text.
  *
  * @param text - The full document text.
  * @param range - The normalised range.
- * @param pairs - The pairs to remove; at least one.
+ * @param tokens - The tokens to unwrap; at least one, each with located content.
  * @returns The edit.
  */
-function removeMarkerPairs(text: string, range: { from: number; to: number }, pairs: MarkerPair[]): MarkdownSourceEdit {
-    const removed = pairs.flatMap((pair) => [[pair.openFrom, pair.openTo], [pair.closeFrom, pair.closeTo]] as const);
+function removeTokenSyntax(text: string, range: SourceRange, tokens: readonly SourceInline[]): MarkdownSourceEdit {
+    const removed = tokens.flatMap((token) => [[token.start, token.innerStart], [token.innerEnd, token.end]] as const);
     const isRemoved = (index: number): boolean => removed.some(([start, end]) => start <= index && index < end);
     const removedBefore = (offset: number): number => removed
         .reduce((count, [start, end]) => count + Math.max(0, Math.min(end, offset) - start), 0);
 
-    const from = Math.min(range.from, ...pairs.map((pair) => pair.openFrom));
-    const to = Math.max(range.to, ...pairs.map((pair) => pair.closeTo));
+    const from = Math.min(range.from, ...tokens.map((token) => token.start));
+    const to = Math.max(range.to, ...tokens.map((token) => token.end));
     let insert = "";
 
     for (let index = from; index < to; index += 1) {
@@ -1365,352 +1814,47 @@ function removeMarkerPairs(text: string, range: { from: number; to: number }, pa
     };
 }
 
-/** A normalised `[from, to)` range of the source. */
-interface SourceRange {
-    from: number;
-    to:   number;
-}
-
 /**
- * The letter naming the format a marker of `char` and `width` applies: `b`old
- * (`**`), `i`talic (`*`), `s`trikethrough (`~~`), `u`nderline (`++`), `c`ode
- * (a backtick run, whatever its length).
- *
- * @param char - The marker character.
- * @param width - The marker's width.
- * @returns The format letter.
- */
-function formatLetter(char: string, width: number): string {
-    switch (char) {
-        case "`": return "c";
-        case "~": return "s";
-        case "+": return "u";
-        default:  return width >= 2 ? "b" : "i";
-    }
-}
-
-/**
- * The format letter of a marker pair (see {@link formatLetter}).
- *
- * @param text - The full document text.
- * @param pair - The pair.
- * @returns Its format letter.
- */
-function pairFormat(text: string, pair: MarkerPair): string {
-    return formatLetter(text[pair.openFrom]!, pair.openTo - pair.openFrom);
-}
-
-/**
- * Whether a marker pair's content holds every character of `[from, to)`.
- *
- * @param pair - The pair.
- * @param from - The range's start.
- * @param to - The range's end (exclusive).
- * @returns Whether it does.
- */
-function pairCovers(pair: MarkerPair, from: number, to: number): boolean {
-    return pair.openTo <= from && to <= pair.closeFrom;
-}
-
-/**
- * The formats whose marker pairs cover a normalised range: every pair
- * Markdown reads around it (see {@link findMarkerPairs}), however far out —
- * `**foo, **bar** az**` is bold over `bar` twice over, and `*a **b** c*` is
- * italic over `b` past the bold between.
- *
- * @param text - The full document text.
- * @param range - The normalised range.
- * @returns The covering formats' letters.
- */
-function coveringFormats(text: string, range: SourceRange): Set<string> {
-    const pairs = findMarkerPairs(text, range.from, range.to);
-
-    return new Set(pairs.filter((pair) => pairCovers(pair, range.from, range.to)).map((pair) => pairFormat(text, pair)));
-}
-
-/**
- * Builds the edit removing a format from a whole normalised range that a
- * pair of it covers, the way the WYSIWYG toggle does: every pair of that
- * format inside the outermost covering one is dropped, and the outermost
- * pair's text before and after the range is wrapped again in its own
- * marker, so a selection covered twice (`**foo, **bar** az**` →
- * `**foo,** bar **az**`) or only partly (`**hello world**` →
- * `**hello** world`) loses the format entirely. The new markers sit at the
- * split points {@link findSplitPoints} finds. The result is re-read (see
- * {@link readsWithoutFormat}): the edit stands only when the selected text —
- * and the whitespace between it and a split point — no longer shows the
- * format and nothing else changed; else `null`, as for a split whose markers
- * would cross a link's brackets.
- *
- * @param text - The full document text.
- * @param range - The normalised range.
- * @param format - The format's letter (see {@link formatLetter}).
- * @returns The edit, or `null` when no split reads back as intended.
- */
-function removeFormat(text: string, range: SourceRange, format: string): MarkdownSourceEdit | null {
-    const pairs = findMarkerPairs(text, range.from, range.to);
-    const own = pairs.filter((pair) => pairFormat(text, pair) === format);
-    const outer = own.filter((pair) => pairCovers(pair, range.from, range.to))
-        .reduce((outermost, pair) => (pair.openFrom < outermost.openFrom ? pair : outermost));
-    const dropped = own.filter((pair) => outer.openFrom <= pair.openFrom && pair.closeTo <= outer.closeTo);
-    const isDropped = (index: number): boolean => dropped.some((pair) => (pair.openFrom <= index && index < pair.openTo)
-        || (pair.closeFrom <= index && index < pair.closeTo));
-    const others = pairs.filter((pair) => !dropped.includes(pair));
-    // A code span's spaces are its code, so its split points never move past one.
-    const cuts = findSplitPoints(text, range, outer, { isDropped, others, overWhitespace: format !== "c" });
-    const edit = buildSplitEdit(text, range, outer, cuts, isDropped);
-
-    // The whitespace between the range and a split point ends up outside the format too.
-    return edit !== null && readsWithoutFormat(text, edit, { from: cuts[0], to: cuts[1] }, format) ? edit : null;
-}
-
-/**
- * Builds the edit {@link removeFormat} makes over its outermost pair: the
- * dropped markers deleted, and the pair's own marker written again around
- * the text before the left split point and after the right one, where any
- * text is left there.
- *
- * @param text - The full document text.
- * @param range - The normalised range.
- * @param outer - The outermost covering pair.
- * @param cuts - The left and right split points.
- * @param isDropped - Whether a character is one of the markers being dropped.
- * @returns The edit, with the selection on the range's text; `null` when a
- *   new pair would cross a link's brackets (see {@link shareLinkContext}).
- */
-function buildSplitEdit(
-    text: string, range: SourceRange, outer: MarkerPair, cuts: [number, number], isDropped: (index: number) => boolean,
-): MarkdownSourceEdit | null {
-    const [cutLeft, cutRight] = cuts;
-    const kept = (start: number, end: number): string => text.slice(start, end).split("")
-        .filter((_char, offset) => !isDropped(start + offset)).join("");
-    const marker = text.slice(outer.openFrom, outer.openTo);
-    const left = kept(outer.openTo, cutLeft);
-    const right = kept(cutRight, outer.closeFrom);
-    const crossesLink = (left !== "" && !shareLinkContext(text, outer.openFrom, cutLeft))
-        || (right !== "" && !shareLinkContext(text, cutRight, outer.closeTo));
-
-    if (crossesLink) {
-        return null;
-    }
-
-    const before = (left === "" ? "" : marker + left + marker) + kept(cutLeft, range.from);
-    const middle = kept(range.from, range.to);
-    const after = kept(range.to, cutRight) + (right === "" ? "" : marker + right + marker);
-    const selectionFrom = outer.openFrom + before.length;
-
-    return {
-        from:      outer.openFrom,
-        to:        outer.closeTo,
-        insert:    before + middle + after,
-        selection: { from: selectionFrom, to: selectionFrom + middle.length },
-    };
-}
-
-/** What {@link findSplitPoints} may step over. */
-interface SplitContext {
-    /** Whether a character is one of the markers being dropped. */
-    isDropped:      (index: number) => boolean;
-    /** The pairs that stay. */
-    others:         readonly MarkerPair[];
-    /** Whether a split point moves over whitespace. */
-    overWhitespace: boolean;
-}
-
-/**
- * Where a format removed from a range splits its outermost pair: the
- * point the text before the range ends and the one the text after it
- * starts. Each moves outward from the range over whitespace (the closer must
- * follow text to close, the opener precede it to open), over the markers
- * being dropped, and out of another format's pair that opens (or closes)
- * right there around the range — `*a **b** c*` splits as `*a* **b** *c*`,
- * not inside the bold.
- *
- * @param text - The full document text.
- * @param range - The normalised range.
- * @param outer - The outermost covering pair, which the points stay inside.
- * @param context - What the points may step over.
- * @returns The left and right split points.
- */
-function findSplitPoints(text: string, range: SourceRange, outer: MarkerPair, context: SplitContext): [number, number] {
-    const { isDropped, others, overWhitespace } = context;
-    const skippable = (index: number): boolean => isDropped(index) || (overWhitespace && WHITESPACE.test(text[index]!));
-    let left = range.from;
-    let right = range.to;
-
-    while (left > outer.openTo) {
-        const opening = others.find((pair) => pair.openTo === left && pair.openFrom >= outer.openTo && pair.closeFrom >= range.to);
-
-        if (opening !== undefined) {
-            left = opening.openFrom;
-        } else if (skippable(left - 1)) {
-            left -= 1;
-        } else {
-            break;
-        }
-    }
-
-    while (right < outer.closeFrom) {
-        const closing = others.find((pair) => pair.closeFrom === right && pair.closeTo <= outer.closeFrom && pair.openTo <= range.from);
-
-        if (closing !== undefined) {
-            right = closing.closeTo;
-        } else if (skippable(right)) {
-            right += 1;
-        } else {
-            break;
-        }
-    }
-
-    return [left, right];
-}
-
-/**
- * Which link's text an offset sits in: `""` outside every link, the link's
- * start offset inside one's bracketed text (either edge included), and
- * `"syntax"` inside a link's syntax beyond its text or anywhere strictly
- * within an image (see {@link insideLinkSyntax}).
- *
- * @param text - The full document text.
- * @param offset - 0-based offset.
- * @returns The context.
- */
-function linkContextAt(text: string, offset: number): string {
-    const syntax = insideLinkSyntax(text, offset);
-
-    if (syntax) {
-        return "syntax";
-    }
-
-    LINK_PATTERN.lastIndex = 0;
-
-    let match: RegExpExecArray | null;
-
-    while ((match = LINK_PATTERN.exec(text)) !== null) {
-        const textStart = match.index + 1;
-
-        if (textStart <= offset && offset <= textStart + match[1]!.length) {
-            return String(match.index);
-        }
-    }
-
-    return "";
-}
-
-/**
- * Whether a new marker pair at `open` and `close` would stay within one
- * context: both outside every link, or both inside one link's text — never
- * across a link's brackets, nor inside its syntax.
- *
- * @param text - The full document text.
- * @param open - The opening marker's offset.
- * @param close - The closing marker's offset.
- * @returns Whether it would.
- */
-function shareLinkContext(text: string, open: number, close: number): boolean {
-    const context = linkContextAt(text, open);
-
-    return context !== "syntax" && context === linkContextAt(text, close);
-}
-
-/** One character of a paragraph that is no marker, with the formats the pairs around it apply. */
-interface FormattedCharacter {
-    char:    string;
-    index:   number;
-    /** The covering pairs' format letters, sorted. */
-    formats: string;
-}
-
-/**
- * Reads every character of the paragraphs around `[from, to)` that is not
- * a marker of any pair, with the formats of the pairs covering it — what
- * the viewer would show there, as far as this module can read it.
- *
- * @param text - The full document text.
- * @param from - The range's start.
- * @param to - The range's end (exclusive).
- * @returns The characters, in document order.
- */
-function readFormattedCharacters(text: string, from: number, to: number): FormattedCharacter[] {
-    return paragraphSpansAround(text, from, to).flatMap(({ start, end }) => {
-        const codeSpans = findCodeSpans(text, start, end);
-        const pairs = [...codeSpans, ...pairDelimiterRuns(scanDelimiterRuns(text, start, end, codeSpans))];
-        const characters: FormattedCharacter[] = [];
-
-        for (let index = start; index < end; index += 1) {
-            const isMarker = pairs.some((pair) => (pair.openFrom <= index && index < pair.openTo)
-                || (pair.closeFrom <= index && index < pair.closeTo));
-
-            if (!isMarker) {
-                const covering = pairs.filter((pair) => pairCovers(pair, index, index + 1));
-                const formats = [...new Set(covering.map((pair) => pairFormat(text, pair)))].sort().join("");
-
-                characters.push({ char: text[index]!, index, formats });
-            }
-        }
-
-        return characters;
-    });
-}
-
-/**
- * Whether an edit removing a format reads back as intended: re-read (see
- * {@link readFormattedCharacters}), the paragraphs it touches hold the same
- * characters, those in `range` with the format gone and every other one
- * formatted as before.
- *
- * @param text - The full document text.
- * @param edit - The candidate edit.
- * @param range - The range the format is removed from.
- * @param format - The format's letter.
- * @returns Whether it does.
- */
-function readsWithoutFormat(text: string, edit: MarkdownSourceEdit, range: SourceRange, format: string): boolean {
-    const result = text.slice(0, edit.from) + edit.insert + text.slice(edit.to);
-    const before = readFormattedCharacters(text, edit.from, edit.to);
-    const after = readFormattedCharacters(result, edit.from, edit.from + edit.insert.length);
-
-    return before.length === after.length && before.every((character, index) => {
-        const selected = range.from <= character.index && character.index < range.to;
-        const expected = selected ? character.formats.replace(format, "") : character.formats;
-
-        return after[index]!.char === character.char && after[index]!.formats === expected;
-    });
-}
-
-/**
- * Clears inline formatting from the current selection by removing every
- * whole marker pair — `**`, `*`, `~~`, `++`, or a code span's backticks —
- * that the normalised selection touches, both of its markers together, so a
- * selection reaching only one marker of a pair never orphans its partner.
- * Markers are paired the way Markdown reads them (see
- * {@link pairDelimiterRuns}), so escaped markers, markers inside a code span,
- * a list bullet and a thematic break's `***` are never treated as
+ * Clears inline formatting from the current selection by removing the
+ * syntax of every emphasis run (`**`, `__`, `*`, `_`, `~~`, `++`, …) and
+ * code span the normalised selection touches, both sides together, so a
+ * selection reaching only one marker of a run never orphans its partner.
+ * Runs are the viewer's own tokens, so escaped markers, markers inside a code
+ * span, a list bullet and a thematic break's `***` are never treated as
  * formatting. Links and `[text]{…}` styled spans are left alone, matching
- * the WYSIWYG command. Declines (`null`) when the selection touches no pair
- * — nothing to clear is no edit, rather than an identical rewrite that would
- * still cost an undo step — and on a collapsed caret that expands to nothing.
+ * the WYSIWYG command. Declines (`null`) when the selection touches no run —
+ * nothing to clear is no edit, rather than an identical rewrite that would
+ * still cost an undo step — on a collapsed caret that expands to nothing,
+ * and when the result would read otherwise than the same text without those
+ * formats (a code span whose code would read as Markdown once unwrapped).
  */
 export const CLEAR_FORMAT_SOURCE: MarkdownSourceTransform = (text, from, to) => {
-    const range = normalizeRange(text, from, to);
+    const analysis = analyzeMarkdownSource(text);
+    const range = normalizeRange(analysis, from, to);
 
     if (range === null) {
         return null;
     }
 
-    const touched = findMarkerPairs(text, range.from, range.to)
-        .filter((pair) => pair.openFrom < range.to && pair.closeTo > range.from);
+    const touched = analysis.inlines.filter((inline) => CLEARED_TYPES.has(inline.type) && inline.innerStart !== -1
+        && inline.start < range.to && range.from < inline.end);
 
-    return touched.length === 0 ? null : removeMarkerPairs(text, range, touched);
+    if (touched.length === 0) {
+        return null;
+    }
+
+    const without = new Set(touched);
+
+    return verified(analysis, removeTokenSyntax(text, range, touched), (entry) => entryFormat(entry, without));
 };
 
 /**
  * Reads what a source-mode selection can answer from raw text alone — the
  * five inline-format flags, whether there's something to act on, and any
- * enclosing link's URL. A flag is set when a marker pair of that format
- * covers the normalised selection, however far out it sits and however many
- * other formats lie between (see {@link coveringFormats}) — exactly when
- * pressing that format's toggle would remove it.
+ * enclosing link's URL — through the viewer's own tokens: a flag is set when
+ * the normalised selection lies inside that format's content (`**…**` or
+ * `__…__` for bold, and so on), and `linkUrl` is the target of the innermost
+ * link of any form holding the selection.
  *
  * @param text - The full document text.
  * @param from - 0-based start of the raw selection.
@@ -1718,9 +1862,10 @@ export const CLEAR_FORMAT_SOURCE: MarkdownSourceTransform = (text, from, to) => 
  * @returns The selection's source-mode state.
  */
 export function readSourceSelectionState(text: string, from: number, to: number): MarkdownSourceSelectionState {
-    const range = normalizeRange(text, from, to);
-    const link = findEnclosingLink(text, from, to);
-    const linkUrl = link !== null && !link.image ? link.url : null;
+    const analysis = analyzeMarkdownSource(text);
+    const range = normalizeRange(analysis, from, to);
+    const link = findEnclosingLink(analysis, from, to);
+    const linkUrl = link?.type === "link" ? (link.token as Tokens.Link).href : null;
 
     if (range === null) {
         return {
@@ -1730,1018 +1875,55 @@ export function readSourceSelectionState(text: string, from: number, to: number)
         };
     }
 
-    const formats = coveringFormats(text, range);
+    const isInside = (type: string): boolean => tokenAround(analysis, range, new Set([type])) !== null;
 
     return {
-        bold:            formats.has("b"),
-        italic:          formats.has("i"),
-        underline:       formats.has("u"),
-        strikethrough:   formats.has("s"),
-        code:            formats.has("c"),
+        bold:            isInside("strong"),
+        italic:          isInside("em"),
+        underline:       isInside("underline"),
+        strikethrough:   isInside("del"),
+        code:            isInside("codespan"),
         hasSelectedText: true,
         linkUrl,
     };
 }
 
-/** A leading heading, quote, bullet or numbered-list marker — what a block-type change replaces. */
-const BLOCK_PREFIX = /^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+\.[ \t]+)/;
-
-/** A ` ``` ` fence line, for {@link findBlockLineRun}'s fence scan. */
-const FENCE_LINE = /^[ \t]*```/;
-
-/** A block line for {@link paragraphAroundBlockSource}'s run-finding scan: a quote, list item, table row, or fence marker. */
-const BLOCK_LINE = /^[ \t]*(?:>|[-*+][ \t]+|\d+\.[ \t]+|\||```)/;
-
-/**
- * The one piece of block syntax a paragraph's continuation line carries: the
- * quote marker its paragraph's own lines share. A list marker, a `#` or a
- * number there is the paragraph's text.
- */
-const CONTINUATION_PREFIX = /^[ \t]*>[ \t]?/;
-
-/**
- * Strips the block syntax a line opens with: {@link BLOCK_PREFIX} from a line
- * that starts a block, {@link CONTINUATION_PREFIX} from one that continues a
- * paragraph.
- *
- * @param line - The line.
- * @param continuation - Whether it continues a paragraph.
- * @returns The line without that syntax.
- */
-function stripBlockSyntax(line: string, continuation: boolean): string {
-    return line.replace(continuation ? CONTINUATION_PREFIX : BLOCK_PREFIX, "");
-}
-
-/** Whether a line is blank — whitespace only. */
-function isBlank(line: string): boolean {
-    return line.trim() === "";
-}
-
-/**
- * Declines an edit that would rewrite its range to the text already there:
- * applying it would change nothing, yet still cost the user an undo step.
- *
- * @param text - The full document text.
- * @param edit - The candidate edit.
- * @returns `edit`, or `null` when it changes nothing.
- */
-function unlessNoOp(text: string, edit: MarkdownSourceEdit): MarkdownSourceEdit | null {
-    return text.slice(edit.from, edit.to) === edit.insert ? null : edit;
-}
-
-/**
- * Expands a raw `[from, to)` range to cover every whole line it touches —
- * back to the start of `from`'s line, forward to the end of `to`'s line
- * (before that line's own trailing newline, if any).
- *
- * @param text - The full document text.
- * @param from - 0-based start of the raw range.
- * @param to - 0-based end (exclusive) of the raw range.
- * @returns The expanded `[start, end)` range.
- */
-function expandToWholeLines(text: string, from: number, to: number): { start: number; end: number } {
-    let start = from;
-
-    while (start > 0 && text[start - 1] !== "\n") { start -= 1; }
-
-    let end = to;
-
-    while (end < text.length && text[end] !== "\n") { end += 1; }
-
-    return { start, end };
-}
-
-/**
- * Builds a block-type transform: expands the selection to whole lines and
- * then to whole paragraphs (see {@link selectWholeLines}), drops the fence
- * lines of a fenced code block selected whole and a setext heading's
- * underline, then rewrites each surviving line (see {@link rewriteBlockLine}). Declines (`null`) when the
- * lines already read that way — a blank line alone included — and when a
- * selected line belongs to any other multi-line construct.
- *
- * @param prefix - The prefix to write onto each line (`""` for a paragraph,
- *   `"> "` for a quote, `"#".repeat(level) + " "` for a heading).
- * @returns The transform.
- */
-export function blockPrefixSource(prefix: string): MarkdownSourceTransform {
-    return (text, from, to) => {
-        const selected = selectWholeLines(text, from, to, true, true);
-
-        if (selected === null) {
-            return null;
-        }
-
-        const { start, end, continuations } = selected;
-        const insert = selected.lines.map((line, index) => rewriteBlockLine(line, continuations[index]!, prefix)).join("\n");
-
-        return unlessNoOp(text, { from: start, to: end, insert, selection: { from: start, to: start + insert.length } });
-    };
-}
-
-/**
- * Rewrites one line for {@link blockPrefixSource}: strips its block syntax
- * (see {@link stripBlockSyntax}) and, when a new prefix replaces it, the
- * indentation left after it, which a continuation line carries and a line
- * opening a block would read as code. A blank line stays blank.
- *
- * @param line - The line.
- * @param continuation - Whether it continues a paragraph.
- * @param prefix - The prefix to write.
- * @returns The rewritten line.
- */
-function rewriteBlockLine(line: string, continuation: boolean, prefix: string): string {
-    if (isBlank(line)) {
-        return line;
-    }
-
-    const stripped = stripBlockSyntax(line, continuation);
-
-    return prefix === "" ? stripped : prefix + stripped.trimStart();
-}
-
-/**
- * Converts the selected whole paragraphs into a fenced code block: strips
- * each line's block syntax (see {@link stripBlockSyntax}; the fence lines of
- * a fenced code block selected whole and a setext heading's underline are
- * dropped, same as {@link blockPrefixSource}), then wraps the whole run in
- * ` ``` ` lines.
- * Declines (`null`) when the lines already are exactly that block, when a
- * selected line belongs to any other multi-line construct, and when the run
- * starts inside a list item's content: fence lines written at column 0 there
- * end the list, and the WYSIWYG editor holds no code block inside an item.
- */
-export const FENCED_CODE_SOURCE: MarkdownSourceTransform = (text, from, to) => {
-    const selected = selectWholeLines(text, from, to, true, true);
-
-    if (selected === null || selected.inListItem) {
-        return null;
-    }
-
-    const { start, end, continuations } = selected;
-    const code = selected.lines.map((line, index) => stripBlockSyntax(line, continuations[index]!));
-    const insert = ["```", ...code, "```"].join("\n");
-
-    return unlessNoOp(text, { from: start, to: end, insert, selection: { from: start, to: start + insert.length } });
-};
-
-/** Whether every selected line already carries `kind`'s own list marker. */
-function lineHasListMarker(kind: "unordered" | "ordered", line: string): boolean {
-    return kind === "unordered" ? /^[ \t]*[-*+][ \t]+/.test(line) : /^[ \t]*\d+\.[ \t]+/.test(line);
-}
-
-/**
- * Builds a list-toggle transform: expands the selection to whole lines, then
- * either strips every non-blank line's marker (when each already carries
- * `kind`'s own marker) or strips its block syntax (see
- * {@link stripBlockSyntax}) and the indentation left after it, and prepends a
- * fresh one — `"- "` for an unordered list,
- * `"1. "`/`"2. "`/… (counting from one) for an ordered one. A blank line
- * stays blank. Each selected line becomes its own item, while the lines of a
- * paragraph below the selection continue the last item.
- *
- * Declines (`null`) when there is no non-blank line to act on, when a selected
- * line belongs to a multi-line construct (see {@link selectWholeLines}), a
- * fenced code block included — its lines are no list items — when the
- * selection touches a setext heading's text, whose underline would then
- * close the last item into a heading, when a line that continued a
- * paragraph would read as something other than text once it opens an item
- * (see {@link opensBlockOnItsOwn}), and when a line below the selection that
- * goes on continuing the last item would start a block inside it instead.
- *
- * @param kind - Which list marker to toggle.
- * @returns The transform.
- */
-export function listSource(kind: "unordered" | "ordered"): MarkdownSourceTransform {
-    return (text, from, to) => {
-        const selected = selectWholeLines(text, from, to, false, false);
-
-        if (selected === null || selected.setext) {
-            return null;
-        }
-
-        const { start, end, lines, continuations } = selected;
-        const allMarked = lines.every((line) => isBlank(line) || lineHasListMarker(kind, line));
-        const opensBlock = (line: string, index: number): boolean => continuations[index]! && opensBlockOnItsOwn(stripBlockSyntax(line, true));
-        // The lines below go on continuing the paragraph, now the last item's,
-        // where a line that only read as text beside a top-level paragraph
-        // would start a sibling or nested block instead.
-        const interruptsItem = (line: string): boolean => interruptsParagraph(stripBlockSyntax(line, true), true);
-
-        if (!allMarked && (lines.some(opensBlock) || selected.continuedBelow.some(interruptsItem))) {
-            return null;
-        }
-
-        let items = 0;
-
-        const rewritten = lines.map((line, index) => {
-            if (isBlank(line)) {
-                return line;
-            }
-
-            const stripped = stripBlockSyntax(line, continuations[index]!);
-
-            if (allMarked) {
-                return stripped;
-            }
-
-            items += 1;
-
-            return (kind === "unordered" ? "- " : `${items}. `) + stripped.trimStart();
-        });
-
-        const insert = rewritten.join("\n");
-
-        return unlessNoOp(text, { from: start, to: end, insert, selection: { from: start, to: start + insert.length } });
-    };
-}
-
-/** One line's `[start, end)` span (excluding its own trailing newline) inside a document. */
-interface LineSpan {
-    text:  string;
-    start: number;
-    end:   number;
-}
-
-/** Splits `text` into its lines, each carrying its own document offsets. */
-function splitLines(text: string): LineSpan[] {
-    const lines: LineSpan[] = [];
-    let start = 0;
-
-    for (let index = 0; index <= text.length; index += 1) {
-        if (index === text.length || text[index] === "\n") {
-            lines.push({ text: text.slice(start, index), start, end: index });
-            start = index + 1;
-        }
-    }
-
-    return lines;
-}
-
-/** The line index whose span contains `offset`. */
-function lineIndexAt(lines: LineSpan[], offset: number): number {
-    return lines.findIndex((line) => offset <= line.end);
-}
-
-/**
- * A run of lines making up one multi-line construct other than paragraph
- * text, which a line command must not rewrite piecemeal: a fenced or indented
- * code block, a table, a link reference definition, an HTML block, or one
- * `:::` fence line.
- */
-interface LineConstruct {
-    /** `codeFence` for a fenced code block, `table` for a table, `other` for the rest. */
-    kind:       "codeFence" | "table" | "other";
-    first:      number;
-    last:       number;
-    /** A fenced code block's fence lines — one when it is never closed; empty for every other construct. */
-    fenceLines: number[];
-}
-
-/** A code fence's opening line: up to three spaces of indentation, then three or more backticks or tildes. */
-const CODE_FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
-
-/** A `:::` fence line of the dialect's column regions; the Markdown between two of them is ordinary text. */
-const COLUMN_FENCE_LINE = /^ {0,3}:{3,}/;
-
-/** A line indented far enough to be indented code: four spaces, or a tab within the first four columns. */
-const INDENTED_CODE_LINE = /^(?: {4}| {0,3}\t)/;
-
-/** A list item's marker, after which an indented line is the item's continuation rather than code. */
-const LIST_ITEM_LINE = /^[ \t]*(?:[-*+]|\d+[.)])(?:[ \t]|$)/;
-
-/**
- * A line that starts a block even straight after paragraph text, so it never
- * continues a paragraph: an ATX heading, a quote, a bullet item or an ordered
- * item numbered 1 with content on its line, a code fence, a `:::` fence line,
- * or a thematic break. An empty item and an item numbered otherwise cannot
- * interrupt a paragraph.
- */
-const PARAGRAPH_INTERRUPTION = /^ {0,3}(?:#{1,6}(?:[ \t]|$)|>|[-*+][ \t]+\S|1[.)][ \t]+\S|`{3,}|~{3,}|:{3,}|([-*_])(?:[ \t]*\1){2,}[ \t]*$)/;
-
-/** A line holding no paragraph text once its container markers are gone: an ATX heading, a fence, a `:::` fence line or a thematic break. */
-const NON_PARAGRAPH_LINE = /^ {0,3}(?:#{1,6}(?:[ \t]|$)|`{3,}|~{3,}|:{3,}|([-*_])(?:[ \t]*\1){2,}[ \t]*$)/;
-
-/** A setext heading's underline: a run of `=` or `-` alone on its line. */
-const SETEXT_UNDERLINE = /^ {0,3}(?:=+|-+)[ \t]*$/;
-
-/** The quote and list markers a line opens with, nested ones included. */
-const CONTAINER_PREFIX = /^(?:[ \t]*(?:>[ \t]?|(?:[-*+]|\d+[.)])(?:[ \t]+|$)))+/;
-
-/** One quote marker opening a line. */
-const QUOTE_MARKER = /^ {0,3}>[ \t]?/;
-
-/** A link reference definition's opening: its bracketed label and the colon. */
-const DEFINITION_LINE = /^ {0,3}\[(?:\\.|[^\\\]])+\]:/;
-
-/**
- * One delimiter-row cell: `-`s optionally bounded by `:`, optionally followed
- * by a `{…}` attribute block. Mirrors `markdownTableExtension.ts`'s
- * `parseDelimiterRow`, whose table grammar this module may not import a
- * parsed document from.
- */
-const DELIMITER_CELL = /^:?-+:?(?:\s*\{[^{}]*\})?$/;
-
-/**
- * The HTML blocks CommonMark ends at an end marker rather than at a blank
- * line — raw-text elements, comments, processing instructions, declarations
- * and CDATA — as `[start, end]` pairs.
- */
-const MARKED_END_HTML_BLOCKS: ReadonlyArray<readonly [RegExp, RegExp]> = [
-    [/^ {0,3}<(?:script|pre|style|textarea)(?:[\s>]|$)/i, /<\/(?:script|pre|style|textarea)>/i],
-    [/^ {0,3}<!--/, /-->/],
-    [/^ {0,3}<\?/, /\?>/],
-    [/^ {0,3}<![A-Za-z]/, />/],
-    [/^ {0,3}<!\[CDATA\[/, /\]\]>/],
-];
-
-/** An HTML block opened by one of CommonMark's block-level tag names; it runs to the next blank line. */
-const BLOCK_TAG_HTML_BLOCK = new RegExp(
-    "^ {0,3}</?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt"
-    + "|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem"
-    + "|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:[\\s/>]|$)",
-    "i",
-);
-
-/**
- * An HTML block made of one complete open or closing tag alone on its line;
- * it runs to the next blank line, and cannot interrupt a paragraph.
- */
-const LONE_TAG_HTML_BLOCK = /^ {0,3}(?:<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][\w.:-]*(?:\s*=\s*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*\s*\/?>|<\/[A-Za-z][A-Za-z0-9-]*\s*>)[ \t]*$/;
-
-/** Whether `lines[index]` is blank — or lies outside the document, which reads as a blank line's edge. */
-function isBlankLine(lines: LineSpan[], index: number): boolean {
-    return index < 0 || index >= lines.length || lines[index]!.text.trim() === "";
-}
-
-/**
- * Finds every multi-line construct other than paragraph text, scanning the
- * document's top-level lines in order. A line-based reading, like the rest of
- * this module: constructs nested inside a quote or list item are not found,
- * and where a line's reading is uncertain it errs toward a construct, which
- * only makes a line command decline.
- *
- * @param lines - The document's lines.
- * @returns The constructs, in document order.
- */
-function findLineConstructs(lines: LineSpan[]): LineConstruct[] {
-    const constructs: LineConstruct[] = [];
-
-    for (let index = 0; index < lines.length; index += 1) {
-        const construct = codeFenceAt(lines, index) ?? columnFenceLineAt(lines, index) ?? htmlBlockAt(lines, index)
-            ?? tableAt(lines, index) ?? definitionAt(lines, index) ?? indentedCodeAt(lines, index);
-
-        if (construct !== null) {
-            constructs.push(construct);
-            index = construct.last;
-        }
-    }
-
-    return constructs;
-}
-
-/**
- * The fenced code block opening at `lines[index]`: through the first closing
- * fence of the same character at least as long, or to the document's end
- * when it is never closed.
- *
- * @param lines - The document's lines.
- * @param index - The candidate opening line.
- * @returns The block, or `null` when the line opens none.
- */
-function codeFenceAt(lines: LineSpan[], index: number): LineConstruct | null {
-    const open = CODE_FENCE_OPEN.exec(lines[index]!.text);
-
-    if (open === null) {
-        return null;
-    }
-
-    const run = open[1]!;
-    const close = new RegExp(`^ {0,3}${run[0]!}{${run.length},}[ \\t]*$`);
-
-    for (let last = index + 1; last < lines.length; last += 1) {
-        if (close.test(lines[last]!.text)) {
-            return { kind: "codeFence", first: index, last, fenceLines: [index, last] };
-        }
-    }
-
-    return { kind: "codeFence", first: index, last: lines.length - 1, fenceLines: [index] };
-}
-
-/**
- * The `:::` fence line at `lines[index]`, a construct of one line.
- *
- * @param lines - The document's lines.
- * @param index - The candidate line.
- * @returns The line, or `null` when it is no `:::` fence line.
- */
-function columnFenceLineAt(lines: LineSpan[], index: number): LineConstruct | null {
-    return COLUMN_FENCE_LINE.test(lines[index]!.text) ? { kind: "other", first: index, last: index, fenceLines: [] } : null;
-}
-
-/**
- * The HTML block starting at `lines[index]`: through the line holding its end
- * marker for the kinds that have one, else to the line before the next blank
- * line.
- *
- * @param lines - The document's lines.
- * @param index - The candidate first line.
- * @returns The block, or `null` when the line starts none.
- */
-function htmlBlockAt(lines: LineSpan[], index: number): LineConstruct | null {
-    const text = lines[index]!.text;
-    const marked = MARKED_END_HTML_BLOCKS.find(([start]) => start.test(text));
-
-    if (marked !== undefined) {
-        let last = index;
-
-        while (last < lines.length - 1 && !marked[1].test(lines[last]!.text)) { last += 1; }
-
-        return { kind: "other", first: index, last, fenceLines: [] };
-    }
-
-    if (!BLOCK_TAG_HTML_BLOCK.test(text) && !(LONE_TAG_HTML_BLOCK.test(text) && isBlankLine(lines, index - 1))) {
-        return null;
-    }
-
-    return { kind: "other", first: index, last: lastBeforeBlankLine(lines, index), fenceLines: [] };
-}
-
-/**
- * The table whose header is `lines[index]`: the header, a delimiter row with
- * as many cells, and every body row up to the next blank line — the shape
- * `markdownTableExtension.ts` reads a table in.
- *
- * @param lines - The document's lines.
- * @param index - The candidate header line.
- * @returns The table, or `null` when the next line is no delimiter row for it.
- */
-function tableAt(lines: LineSpan[], index: number): LineConstruct | null {
-    if (index + 1 >= lines.length || isBlankLine(lines, index)) {
-        return null;
-    }
-
-    const delimiter = tableRowCells(lines[index + 1]!.text);
-
-    if (!delimiter.every((cell) => DELIMITER_CELL.test(cell)) || delimiter.length !== tableRowCells(lines[index]!.text).length) {
-        return null;
-    }
-
-    return { kind: "table", first: index, last: lastBeforeBlankLine(lines, index + 1), fenceLines: [] };
-}
-
-/**
- * Splits a table row into its trimmed cell texts the way
- * `markdownTableExtension.ts`'s `splitRow` does: one optional leading and
- * trailing pipe dropped, then split on every pipe no backslash escapes.
- *
- * @param line - The row.
- * @returns Its cells.
- */
-function tableRowCells(line: string): string[] {
-    let trimmed = line.trim();
-
-    if (trimmed.startsWith("|")) {
-        trimmed = trimmed.slice(1);
-    }
-
-    if (trimmed.endsWith("|") && !trimmed.endsWith("\\|")) {
-        trimmed = trimmed.slice(0, -1);
-    }
-
-    return trimmed.split(/(?<!\\)\|/).map((cell) => cell.trim());
-}
-
-/**
- * The link reference definition opening at `lines[index]`, with the lines it
- * continues onto: a destination on the next line when the label's line has
- * none, and any indented or quoted line after — a title, or the rest of one.
- *
- * @param lines - The document's lines.
- * @param index - The candidate first line.
- * @returns The definition, or `null` when the line opens none.
- */
-function definitionAt(lines: LineSpan[], index: number): LineConstruct | null {
-    if (!DEFINITION_LINE.test(lines[index]!.text)) {
-        return null;
-    }
-
-    let last = index;
-
-    while (!isBlankLine(lines, last + 1)) {
-        const destinationPending = /\]:[ \t]*$/.test(lines[last]!.text);
-        const continues = /^[ \t]|^["'(]/.test(lines[last + 1]!.text);
-
-        if (!destinationPending && !continues) {
-            break;
-        }
-
-        last += 1;
-    }
-
-    return { kind: "other", first: index, last, fenceLines: [] };
-}
-
-/**
- * The indented code block starting at `lines[index]`: an indented line after
- * a blank one, when no list item or indented line above makes it a
- * continuation, through the last indented line before a non-indented one.
- *
- * @param lines - The document's lines.
- * @param index - The candidate first line.
- * @returns The block, or `null` when the line starts none.
- */
-function indentedCodeAt(lines: LineSpan[], index: number): LineConstruct | null {
-    const text = lines[index]!.text;
-
-    if (!INDENTED_CODE_LINE.test(text) || isBlankLine(lines, index) || !isBlankLine(lines, index - 1)) {
-        return null;
-    }
-
-    let above = index - 1;
-
-    while (above >= 0 && isBlankLine(lines, above)) { above -= 1; }
-
-    if (above >= 0 && (LIST_ITEM_LINE.test(lines[above]!.text) || /^[ \t]/.test(lines[above]!.text))) {
-        return null;
-    }
-
-    let last = index;
-
-    for (let next = index + 1; next < lines.length; next += 1) {
-        if (INDENTED_CODE_LINE.test(lines[next]!.text) && !isBlankLine(lines, next)) {
-            last = next;
-        } else if (!isBlankLine(lines, next)) {
-            break;
-        }
-    }
-
-    return { kind: "other", first: index, last, fenceLines: [] };
-}
-
-/**
- * The last line of the run of non-blank lines starting at `lines[index]`.
- *
- * @param lines - The document's lines.
- * @param index - The run's first line.
- * @returns Its last line's index.
- */
-function lastBeforeBlankLine(lines: LineSpan[], index: number): number {
-    let last = index;
-
-    while (!isBlankLine(lines, last + 1)) { last += 1; }
-
-    return last;
-}
-
-/** The whole lines a line command rewrites, with any fence line or setext underline it drops already left out. */
-interface SelectedLines {
-    /** 0-based start of the first selected line. */
-    start:          number;
-    /** 0-based end of the last selected line, before its own newline. */
-    end:            number;
-    /** The selected lines' text, in order. */
-    lines:          string[];
-    /** For each of `lines`, whether it continues the paragraph text of the line above it. */
-    continuations: boolean[];
-    /** The lines below the selection that continue the paragraph its last line belongs to. */
-    continuedBelow: string[];
-    /** Whether the paragraphs around the selection hold a setext heading's underline. */
-    setext:         boolean;
-    /** Whether the first selected line sits inside a list item's content (see {@link insideListItem}). */
-    inListItem:     boolean;
-}
-
-/**
- * Expands a raw `[from, to)` range to the whole lines a line command rewrites
- * — and, when `wholeParagraphs` is set, on to the whole paragraphs those
- * lines belong to (see {@link paragraphLineRange}), so the command never
- * leaves part of a paragraph to be re-read on its own, a setext heading's
- * underline dropped with the rest of its syntax. Declines when any line
- * belongs to a multi-line construct (see {@link findLineConstructs}):
- * rewriting one line of a code block, table, definition, `:::` fence or HTML
- * block would break the construct, and unbalancing a fence would turn the
- * rest of the document into code. The one exception, when `wholeCodeFences`
- * is set, is a fenced code block whose lines are all selected: it converts as
- * one unit, its fence lines dropped.
- *
- * @param text - The full document text.
- * @param from - 0-based start of the raw range.
- * @param to - 0-based end (exclusive) of the raw range.
- * @param wholeCodeFences - Whether a fenced code block covered whole converts.
- * @param wholeParagraphs - Whether to take the selected lines' whole paragraphs.
- * @returns The lines, or `null` when the command must decline.
- */
-function selectWholeLines(
-    text: string, from: number, to: number, wholeCodeFences: boolean, wholeParagraphs: boolean,
-): SelectedLines | null {
-    const lines = splitLines(text);
-    const constructs = findLineConstructs(lines);
-    const reading = readParagraphLines(lines, constructs);
-    const paragraphs = paragraphLineRange(reading, lineIndexAt(lines, from), lineIndexAt(lines, to));
-    const { first, last } = wholeParagraphs ? paragraphs : { first: lineIndexAt(lines, from), last: lineIndexAt(lines, to) };
-    const dropped = new Set<number>();
-
-    for (const construct of constructs) {
-        if (construct.last < first || last < construct.first) {
-            continue;
-        }
-
-        const coveredWhole = first <= construct.first && construct.last <= last;
-
-        if (!wholeCodeFences || construct.kind !== "codeFence" || !coveredWhole) {
-            return null;
-        }
-
-        construct.fenceLines.forEach((line) => dropped.add(line));
-    }
-
-    const kept: string[] = [];
-    const continuations: boolean[] = [];
-
-    for (let index = first; index <= last; index += 1) {
-        if (!dropped.has(index) && !reading.underline[index]!) {
-            kept.push(lines[index]!.text);
-            continuations.push(reading.continues[index]!);
-        }
-    }
-
-    return {
-        start:          lines[first]!.start,
-        end:            lines[last]!.end,
-        lines:          kept,
-        continuations,
-        continuedBelow: lines.slice(last + 1, paragraphs.last + 1).map((line) => line.text),
-        setext:         reading.underline.slice(paragraphs.first, paragraphs.last + 1).includes(true),
-        inListItem:     insideListItem(lines, first),
-    };
-}
-
-/** How each line of a document stands toward the paragraph text around it. */
-interface ParagraphReading {
-    /** Per line: whether it continues the paragraph text of the line above, lazily or indented. */
-    continues: boolean[];
-    /** Per line: whether it is a setext heading's underline, closing the paragraph text above into a heading. */
-    underline: boolean[];
-}
-
-/**
- * Reads, line by line, which lines continue a paragraph and which close one
- * as a setext heading's underline. A line-based reading, like the rest of
- * this module: a line continues the line above when that line holds
- * paragraph text (see {@link holdsParagraphText}) and it is not blank, not
- * part of a construct, and does not start a block that interrupts the
- * paragraph (see {@link interruptsParagraph}), read past the quote markers
- * the two lines share.
- *
- * @param lines - The document's lines.
- * @param constructs - Its multi-line constructs, from {@link findLineConstructs}.
- * @returns The reading.
- */
-function readParagraphLines(lines: LineSpan[], constructs: LineConstruct[]): ParagraphReading {
-    const inConstruct = lines.map((_line, index) => constructs.some((construct) => construct.first <= index && index <= construct.last));
-    const continues: boolean[] = [];
-    const underline: boolean[] = [];
-    // Per line: the first line of the paragraph it belongs to.
-    const starts: number[] = [];
-
-    lines.forEach((line, index) => {
-        const above = lines[index - 1]?.text;
-        const afterText = above !== undefined && !inConstruct[index - 1]! && holdsParagraphText(above);
-        const rest = above === undefined ? "" : stripSharedQuoteMarkers(above, line.text);
-        const candidate = afterText && !inConstruct[index]! && !isBlank(rest);
-        const isUnderline = candidate && SETEXT_UNDERLINE.test(line.text) && (line.text.includes("=") || !CONTAINER_PREFIX.test(above));
-        const inList = candidate && opensListParagraph(lines[starts[index - 1]!]!.text);
-        const isContinuation = candidate && !isUnderline && !SETEXT_UNDERLINE.test(line.text) && !interruptsParagraph(rest, inList);
-
-        underline.push(isUnderline);
-        continues.push(isContinuation);
-        starts.push(isContinuation ? starts[index - 1]! : index);
-    });
-
-    return { continues, underline };
-}
-
-/**
- * Whether a paragraph whose first line is `line` sits in a list item: the
- * line, read past any quote markers, opens with a list marker or is indented
- * as an item's content.
- *
- * @param line - The paragraph's first line.
- * @returns Whether it does.
- */
-function opensListParagraph(line: string): boolean {
-    let rest = line;
-
-    while (QUOTE_MARKER.test(rest)) { rest = rest.replace(QUOTE_MARKER, ""); }
-
-    return LIST_ITEM_LINE.test(rest) || /^[ \t]/.test(rest);
-}
-
-/**
- * Whether `line` starts a block that interrupts the paragraph above it (see
- * {@link PARAGRAPH_INTERRUPTION}). Inside a list item, any list marker with
- * content starts a sibling or nested item, whatever its number and however
- * deep its indentation, and so does a deeper-indented heading, quote or
- * fence, which the item's content indentation brings back within reach.
- *
- * @param line - The line, past the quote markers it shares with the line above.
- * @param inList - Whether the paragraph sits in a list item.
- * @returns Whether it does.
- */
-function interruptsParagraph(line: string, inList: boolean): boolean {
-    if (!inList) {
-        return PARAGRAPH_INTERRUPTION.test(line);
-    }
-
-    const content = line.trimStart();
-
-    return PARAGRAPH_INTERRUPTION.test(content) || /^\d+[.)][ \t]+\S/.test(content);
-}
-
-/**
- * Widens the lines `[first, last]` to the whole paragraphs they belong to:
- * up while the first continues the line above or underlines it, down while
- * the next continues the last or underlines it — never past an underline,
- * which closes its paragraph.
- *
- * @param reading - The document's paragraph reading.
- * @param first - The first line's index.
- * @param last - The last line's index.
- * @returns The widened line range.
- */
-function paragraphLineRange(reading: ParagraphReading, first: number, last: number): { first: number; last: number } {
-    const { continues, underline } = reading;
-    let top = first;
-    let bottom = last;
-
-    while (continues[top]! || underline[top]!) { top -= 1; }
-
-    while (bottom + 1 < continues.length && !underline[bottom]! && (continues[bottom + 1]! || underline[bottom + 1]!)) { bottom += 1; }
-
-    return { first: top, last: bottom };
-}
-
-/**
- * Whether a line holds paragraph text, read past the quote and list markers
- * it opens with: what is left is not blank and is no ATX heading, code fence,
- * `:::` fence line, thematic break or setext underline.
- *
- * @param line - The line.
- * @returns Whether it does.
- */
-function holdsParagraphText(line: string): boolean {
-    const rest = line.replace(CONTAINER_PREFIX, "");
-
-    return rest.trim() !== "" && !NON_PARAGRAPH_LINE.test(rest) && !SETEXT_UNDERLINE.test(rest);
-}
-
-/**
- * Strips from `line` as many leading quote markers as `above` opens with, so
- * a quote's own `>` on each of its lines does not read as a new quote
- * interrupting its paragraph.
- *
- * @param above - The line above.
- * @param line - The line to strip.
- * @returns `line` without the shared markers.
- */
-function stripSharedQuoteMarkers(above: string, line: string): string {
-    let rest = line;
-
-    for (let depth = quoteDepth(above); depth > 0 && QUOTE_MARKER.test(rest); depth -= 1) {
-        rest = rest.replace(QUOTE_MARKER, "");
-    }
-
-    return rest;
-}
-
-/**
- * How many quote markers a line opens with, one after another.
- *
- * @param line - The line.
- * @returns The count.
- */
-function quoteDepth(line: string): number {
-    let depth = 0;
-
-    for (let rest = line; QUOTE_MARKER.test(rest); rest = rest.replace(QUOTE_MARKER, "")) { depth += 1; }
-
-    return depth;
-}
-
-/**
- * Whether `lines[index]` sits inside a list item's content below the item's
- * own marker line: it is indented, and the lines above it, up through blank
- * and indented ones, reach a list item's marker line. A nested item's marker
- * line counts, being indented itself; a top-level item's does not.
- *
- * @param lines - The document's lines.
- * @param index - The line's index.
- * @returns Whether it does.
- */
-function insideListItem(lines: LineSpan[], index: number): boolean {
-    if (!/^[ \t]/.test(lines[index]!.text)) {
-        return false;
-    }
-
-    for (let above = index - 1; above >= 0; above -= 1) {
-        const text = lines[above]!.text;
-
-        if (LIST_ITEM_LINE.test(text)) {
-            return true;
-        }
-
-        if (!isBlankLine(lines, above) && !/^[ \t]/.test(text)) {
-            return false;
-        }
-    }
-
-    return false;
-}
-
-/**
- * Whether a paragraph's continuation line would open a block other than
- * paragraph text once it starts a block of its own — a list item's first
- * line: a link reference definition, a list item (a number other than 1, or
- * an empty item, cannot interrupt a paragraph), or an HTML block of any kind,
- * including the lone-tag kind that cannot interrupt a paragraph either.
- *
- * @param line - The line, its quote marker already stripped.
- * @returns Whether it would.
- */
-function opensBlockOnItsOwn(line: string): boolean {
-    const content = line.trimStart();
-
-    return DEFINITION_LINE.test(content) || LIST_ITEM_LINE.test(content) || BLOCK_TAG_HTML_BLOCK.test(content) || LONE_TAG_HTML_BLOCK.test(content)
-        || MARKED_END_HTML_BLOCKS.some(([start]) => start.test(content));
-}
-
-/**
- * The escaped paragraph break a table cell's text carries between two of its
- * paragraphs: backslash-`n` twice, the sequence the viewer splits a cell's
- * text on (`Markdown.ts`'s `CELL_PARAGRAPH_BREAK`).
- */
-const CELL_PARAGRAPH_BREAK = "\\n\\n";
-
-/**
- * Whether `[from, to)` touches a table cell's paragraph break: holds one, or
- * cuts into one. Markers written around or into it would show it as literal
- * text, or leave a lone `\n` that shows as literal text. Breaks are found the
- * way the viewer splits on them, leftmost first and never overlapping.
- *
- * @param text - The full document text.
- * @param from - 0-based start of the range.
- * @param to - 0-based end (exclusive) of the range.
- * @returns Whether it does.
- */
-function touchesCellParagraphBreak(text: string, from: number, to: number): boolean {
-    const lines = splitLines(text);
-    const first = lineIndexAt(lines, from);
-    const last = lineIndexAt(lines, to);
-    const tables = findLineConstructs(lines).filter((construct) => construct.kind === "table");
-
-    for (let index = first; index <= last; index += 1) {
-        if (!tables.some((table) => table.first <= index && index <= table.last)) {
-            continue;
-        }
-
-        const line = lines[index]!;
-
-        for (let at = text.indexOf(CELL_PARAGRAPH_BREAK, line.start); at !== -1 && at < line.end;) {
-            if (at < to && from < at + CELL_PARAGRAPH_BREAK.length) {
-                return true;
-            }
-
-            at = text.indexOf(CELL_PARAGRAPH_BREAK, at + CELL_PARAGRAPH_BREAK.length);
-        }
-    }
-
-    return false;
-}
-
-/**
- * Finds the run of consecutive lines around `lines[caretLine]` that make up
- * one block — a contiguous run of {@link BLOCK_LINE}-matching lines, or,
- * when the caret's line sits inside an open fence — an odd number of
- * {@link FENCE_LINE} lines precede it, or the line is itself one of the
- * fence's two markers — the whole fence, both markers and the code between
- * them.
- *
- * @param lines - The document's lines.
- * @param caretLine - The index of the caret's line.
- * @returns The block's first and last line indices, or `null` when the
- *   caret's line is neither a block line nor inside a fence.
- */
-function findBlockLineRun(lines: LineSpan[], caretLine: number): { first: number; last: number } | null {
-    let fencesBefore = 0;
-
-    for (let index = 0; index < caretLine; index += 1) {
-        if (FENCE_LINE.test(lines[index]!.text)) { fencesBefore += 1; }
-    }
-
-    const insideFence = fencesBefore % 2 === 1;
-    const caretIsFence = FENCE_LINE.test(lines[caretLine]!.text);
-
-    if (insideFence || caretIsFence) {
-        // Together, the two flags fix which marker the caret is on: inside an
-        // open fence region a marker can only be the CLOSING one, outside it
-        // can only be an OPENING one. Each scan therefore has to start one line
-        // PAST a marker the caret already sits on — starting on it matches that
-        // line as its own partner, collapsing the run to the single marker and
-        // putting the inserted line inside the code block.
-        let open = insideFence && caretIsFence ? caretLine - 1 : caretLine;
-
-        while (open >= 0 && !FENCE_LINE.test(lines[open]!.text)) { open -= 1; }
-
-        let close = insideFence ? caretLine : caretLine + 1;
-
-        while (close < lines.length && !FENCE_LINE.test(lines[close]!.text)) { close += 1; }
-
-        return open >= 0 && close < lines.length ? { first: open, last: close } : null;
-    }
-
-    if (!BLOCK_LINE.test(lines[caretLine]!.text)) {
-        return null;
-    }
-
-    let first = caretLine;
-
-    while (first > 0 && BLOCK_LINE.test(lines[first - 1]!.text)) { first -= 1; }
-
-    let last = caretLine;
-
-    while (last < lines.length - 1 && BLOCK_LINE.test(lines[last + 1]!.text)) { last += 1; }
-
-    return { first, last };
-}
-
-/**
- * Builds the paragraph-around-block transform: finds the run of consecutive
- * lines around the caret that make up one blockquote, list, table, or fenced
- * code block (see {@link findBlockLineRun}), and inserts a new line separated
- * from it by a blank line, leaving the caret on that new line.
- *
- * Two newlines, not one: a single newline leaves the caret on a line directly
- * adjacent to the block, which Markdown reads as a lazy continuation of it —
- * text typed there re-parses back INTO the quote, list or table instead of
- * becoming the paragraph outside it this command exists to make.
- *
- * @param after - Whether to insert after (`true`) or before (`false`) the block.
- * @returns The transform.
- */
-export function paragraphAroundBlockSource(after: boolean): MarkdownSourceTransform {
-    return (text, from) => {
-        const lines = splitLines(text);
-        const caretLine = lineIndexAt(lines, from);
-        const run = findBlockLineRun(lines, caretLine);
-
-        if (run === null) {
-            return null;
-        }
-
-        const at = after ? lines[run.last]!.end : lines[run.first]!.start;
-        // After: past both newlines, onto the new line below the blank one.
-        // Before: at the insert point, which the blank line now separates from the block.
-        const selectionAt = after ? at + 2 : at;
-
-        return { from: at, to: at, insert: "\n\n", selection: { from: selectionAt, to: selectionAt } };
-    };
-}
-
-/** An image's `{…}` size group, written straight after its `)`. */
-const IMAGE_SIZE_GROUP = /^\{[^{}\n]*\}/;
-
 /**
  * Whether an offset sits inside a link's or image's syntax: anywhere strictly
  * within an image (its alt text, its source, its size group), or within a
- * link but outside its bracketed text (its destination and title, and the
- * `](` between). A link's text holds inline content, an image included, so an
- * offset there — or at either outer edge of a link or image — is free.
+ * link but outside its text — an inline link's destination and title and the
+ * `](` before them, a reference link's label, or anywhere in an autolink,
+ * whose text is its destination. A link's text holds inline content, an image
+ * included, so an offset there — or at either outer edge of a link or image —
+ * is free.
  *
- * @param text - The full document text.
+ * @param analysis - The document's analysis.
  * @param offset - 0-based offset.
  * @returns Whether it does.
  */
-function insideLinkSyntax(text: string, offset: number): boolean {
-    LINK_PATTERN.lastIndex = 0;
+function insideLinkSyntax(analysis: SourceAnalysis, offset: number): boolean {
+    return analysis.inlines.some((inline) => {
+        if (!(inline.start < offset && offset < inline.end)) {
+            return false;
+        }
 
-    let match: RegExpExecArray | null;
-
-    while ((match = LINK_PATTERN.exec(text)) !== null) {
-        const start = match.index;
-        let end = start + match[0].length;
-
-        if (start > 0 && text[start - 1] === "!") {
-            end += IMAGE_SIZE_GROUP.exec(text.slice(end))?.[0].length ?? 0;
-
-            if (start - 1 < offset && offset < end) {
-                return true;
-            }
-        } else if (start + 1 + match[1]!.length < offset && offset < end) {
+        if (IMAGE_TYPES.has(inline.type)) {
             return true;
         }
-    }
 
-    return false;
+        return inline.type === "link" && !(inline.hasContent && inline.innerStart <= offset && offset <= inline.innerEnd);
+    });
+}
+
+/**
+ * The located blocks of one type at any depth of the analysis's block tree.
+ *
+ * @param nodes - The blocks to search.
+ * @param type - The block type.
+ * @returns The blocks, in document order.
+ */
+function locatedBlocks(nodes: readonly SourceBlockNode[], type: string): SourceBlockNode[] {
+    return nodes.flatMap((node) => [...(node.type === type && node.start !== -1 ? [node] : []), ...locatedBlocks(node.children, type)]);
 }
 
 /** A `|` that is no escaped `\|`: a table row's cell separator or outer pipe. */
@@ -2755,59 +1937,121 @@ const UNESCAPED_PIPE = /(?<!\\)\|/;
  * has them. Text written there would join two rows, or stand past the row's
  * last pipe as a cell beyond the header, which the viewer drops.
  *
- * @param text - The full document text.
+ * @param analysis - The document's analysis.
  * @param from - 0-based start of the raw selection.
  * @param to - 0-based end (exclusive) of the raw selection.
  * @returns Whether it would.
  */
-function cutsTableStructure(text: string, from: number, to: number): boolean {
-    const lines = splitLines(text);
-    const line = lineIndexAt(lines, from);
+function cutsTableStructure(analysis: SourceAnalysis, from: number, to: number): boolean {
+    const text = analysis.text;
+    const lineStart = (offset: number): number => text.lastIndexOf("\n", offset - 1) + 1;
 
-    return findLineConstructs(lines).some((table) => {
-        if (table.kind !== "table" || to < lines[table.first]!.start || from > lines[table.last]!.end) {
+    return locatedBlocks(analysis.tree, "mdtable").some((table) => {
+        if (to < table.start || from > table.end) {
             return false;
         }
 
-        if (line !== lineIndexAt(lines, to) || line < table.first || line > table.last || line === table.first + 1
-            || UNESCAPED_PIPE.test(text.slice(from, to))) {
+        const line = lineStart(from);
+        const selected = text.slice(from, to);
+        const delimiterRow = text.indexOf("\n", table.start) + 1;
+
+        if (selected.includes("\n") || line < lineStart(table.start) || line === delimiterRow || UNESCAPED_PIPE.test(selected)) {
             return true;
         }
 
-        const row = lines[line]!;
-        const open = row.text.search(/\S/);
-        const close = row.text.trimEnd().length - 1;
-        const opens = row.text[open] === "|";
-        const closes = close > open && row.text[close] === "|" && row.text[close - 1] !== "\\";
+        const lineEnd = text.indexOf("\n", line);
+        const row = text.slice(line, lineEnd === -1 ? text.length : lineEnd);
+        // A row of a table in a list item or a quote opens after the container's indentation and `>`.
+        const open = row.search(/[^ \t>]/);
+        const close = row.trimEnd().length - 1;
+        const opens = row[open] === "|";
+        const closes = close > open && row[close] === "|" && row[close - 1] !== "\\";
 
-        return (opens && from - row.start <= open) || (closes && to - row.start > close);
+        return (opens && from - line <= open) || (closes && to - line > close);
     });
 }
 
-/** A `|||` line separating two columns of a `:::` fence. */
-const COLUMN_SEPARATOR_LINE = /^ {0,3}\|\|\|[ \t]*$/;
+/** A line of a `:::` fence's own syntax, past a container's indentation and `>`: a `:::` line or a `|||` separator. */
+const FENCE_SYNTAX_LINE = /^[ \t>]*(?::{3,}|\|\|\|[ \t]*$)/;
+
+/** A fenced code block's opening run, past its indentation. */
+const CODE_FENCE_RUN = /^[ \t]*(`{3,}|~{3,})/;
+
+/**
+ * The start of each fenced code block's opening line, and of its closing
+ * line when it has one, at any depth: the lines that delimit the code.
+ *
+ * @param analysis - The document's analysis.
+ * @returns The line starts.
+ */
+function codeFenceLineStarts(analysis: SourceAnalysis): Set<number> {
+    const text = analysis.text;
+    const lineStart = (offset: number): number => text.lastIndexOf("\n", offset - 1) + 1;
+    const starts = new Set<number>();
+
+    for (const block of locatedBlocks(analysis.tree, "code")) {
+        const opening = CODE_FENCE_RUN.exec(text.slice(block.start, block.end))?.[1];
+
+        if ((block.token as Tokens.Code).codeBlockStyle === "indented" || opening === undefined) {
+            continue;
+        }
+
+        const first = lineStart(block.start);
+        const last = lineStart(block.end);
+        // The closing fence: the opening run's character, at least as many, past a container's indentation and `>`.
+        const closing = new RegExp(`^[ \\t>]*${opening[0]!}{${opening.length},}[ \\t]*$`);
+
+        starts.add(first);
+
+        if (last !== first && closing.test(text.slice(last, block.end))) {
+            starts.add(last);
+        }
+    }
+
+    return starts;
+}
 
 /**
  * Whether a range touches a fence line — a line of a `:::` fence's own
- * syntax (an opening or closing `:::` line, or a `|||` column separator), or
- * a fenced code block's opening or closing line, its indentation included —
- * which text written on it, or a selection replaced across it, would break:
- * a code block would open or end elsewhere, and the lines around it read
- * anew.
+ * syntax (its opening or closing `:::` line, or a `|||` column separator,
+ * outside a code block in it), or a fenced code block's opening or closing
+ * line, its indentation included — which text written on it, or a selection
+ * replaced across it, would break: a code block would open or end
+ * elsewhere, and the lines around it read anew.
  *
- * @param text - The full document text.
+ * @param analysis - The document's analysis.
  * @param from - 0-based start of the raw selection.
  * @param to - 0-based end (exclusive) of the raw selection.
  * @returns Whether it does.
  */
-function touchesFenceLine(text: string, from: number, to: number): boolean {
-    const lines = splitLines(text);
-    const first = lineIndexAt(lines, from);
-    const last = lineIndexAt(lines, to);
-    const codeFenceLines = findLineConstructs(lines).flatMap((construct) => construct.fenceLines);
+function touchesFenceLine(analysis: SourceAnalysis, from: number, to: number): boolean {
+    const text = analysis.text;
+    const fences = locatedBlocks(analysis.tree, "mdblock");
+    const code = locatedBlocks(analysis.tree, "code");
+    const codeFences = codeFenceLineStarts(analysis);
+    // A block in a list item or quote starts after the line's indentation or `>`, so a line counts when it overlaps it.
+    const holds = (node: SourceBlockNode, start: number, end: number): boolean => node.start <= end && start <= node.end;
+    let line = text.lastIndexOf("\n", from - 1) + 1;
 
-    return lines.slice(first, last + 1).some((line, offset) => COLUMN_FENCE_LINE.test(line.text)
-        || COLUMN_SEPARATOR_LINE.test(line.text) || codeFenceLines.includes(first + offset));
+    while (line <= to) {
+        const lineEnd = text.indexOf("\n", line);
+        const end = lineEnd === -1 ? text.length : lineEnd;
+
+        const fenceSyntax = FENCE_SYNTAX_LINE.test(text.slice(line, end)) && fences.some((fence) => holds(fence, line, end))
+            && !code.some((block) => holds(block, line, end));
+
+        if (fenceSyntax || codeFences.has(line)) {
+            return true;
+        }
+
+        if (lineEnd === -1) {
+            break;
+        }
+
+        line = lineEnd + 1;
+    }
+
+    return false;
 }
 
 /**
@@ -2832,8 +2076,14 @@ export function imageSource(src: string, alt: string, attributes: Record<string,
     return (text, from, to) => {
         const spec = resolveImageSpec(src, alt, attributes);
 
-        if (spec === null || insideLinkSyntax(text, from) || insideLinkSyntax(text, to)
-            || cutsTableStructure(text, from, to) || touchesFenceLine(text, from, to)) {
+        if (spec === null) {
+            return null;
+        }
+
+        const analysis = analyzeMarkdownSource(text);
+
+        if (insideLinkSyntax(analysis, from) || insideLinkSyntax(analysis, to) || cutsTableStructure(analysis, from, to)
+            || touchesFenceLine(analysis, from, to)) {
             return null;
         }
 
@@ -2846,65 +2096,5 @@ export function imageSource(src: string, alt: string, attributes: Record<string,
         const insert = `![${spec.alt}](${spec.src})${attributeBlock}`;
 
         return { from, to, insert, selection: { from: from + insert.length, to: from + insert.length } };
-    };
-}
-
-/**
- * A GFM delimiter cell with no alignment and no width — every column
- * `tableSource` builds. Spelled out here rather than produced by
- * `markdownSerializer.ts`'s `formatDelimiterRow`, which lives in a Lexical
- * module this leaf module must not import; the test suite pins the row built
- * from it byte-for-byte against that helper's output.
- */
-const UNALIGNED_DELIMITER_CELL = "---";
-
-/**
- * Builds the table-insertion transform: at the start of the caret's
- * paragraph — the caret's line, or the first line of the paragraph it
- * continues, since a table splitting a paragraph would leave its lower lines
- * to be re-read on their own — inserts a blank separator line (unless the
- * line above the insertion point is already blank, or the table lands at the
- * document start), the header row, the delimiter row (byte-for-byte what
- * `markdownTableTransformer.ts`'s `formatDelimiterRow` emits for `columns`
- * unaligned, unsized columns), `rows - 1` body rows, and a trailing blank
- * line. The caret lands in the first header cell. Declines (`null`) when the
- * insertion point sits inside a list item's content: a table written at
- * column 0 there ends the list, and the WYSIWYG editor holds no table inside
- * an item.
- *
- * @param rows - The number of rows, including the header row.
- * @param columns - The number of columns.
- * @returns The transform.
- */
-export function tableSource(rows: number, columns: number): MarkdownSourceTransform {
-    return (text, from) => {
-        const lines = splitLines(text);
-        const caretLine = lineIndexAt(lines, from);
-        const { first } = paragraphLineRange(readParagraphLines(lines, findLineConstructs(lines)), caretLine, caretLine);
-
-        if (insideListItem(lines, first)) {
-            return null;
-        }
-
-        const start = lines[first]!.start;
-
-        // The separator goes ABOVE the table, so what decides it is the line
-        // PRECEDING the insertion point — not the caret's own line, which the
-        // insert pushes below the table. `above` ends with a newline unless the
-        // table lands at the document start, where no separator is wanted.
-        const above = text.slice(0, start);
-        const previousLine = above.slice(0, -1).split("\n").pop() ?? "";
-        const separatorNeeded = above !== "" && previousLine.trim() !== "";
-
-        const emptyRow = "| " + Array.from({ length: columns }, () => "").join(" | ") + " |";
-        const delimiterRow = "| " + Array.from({ length: columns }, () => UNALIGNED_DELIMITER_CELL).join(" | ") + " |";
-        const bodyRows = Array.from({ length: rows - 1 }, () => emptyRow);
-        const tableText = [emptyRow, delimiterRow, ...bodyRows].join("\n");
-
-        const prefix = separatorNeeded ? "\n" : "";
-        const insert = prefix + tableText + "\n\n";
-        const caretOffset = prefix.length + 2; // "| " into the first header cell
-
-        return { from: start, to: start, insert, selection: { from: start + caretOffset, to: start + caretOffset } };
     };
 }

@@ -45,22 +45,22 @@ const BLOCK_CLASS         = "ts-ui-md-block";
 const COLUMN_CLASS        = "ts-ui-md-column";
 const IMAGE_CLASS         = "ts-ui-md-image";
 /**
- * The literal two-character sequence (backslash, `n`) `markdownTableTransformer.ts`'s
- * `escapeCellText` writes in place of a real newline in a `MarkdownEditor`
- * table cell's exported Markdown — a GFM table row cannot contain a raw
- * newline, since one terminates the row. `appendTableRow` below is this
- * escape's read-only counterpart: it splits on the same sequence back into
- * `<br>`-joined runs, matching that transformer's own import-side unescaping
- * (`.replace(/\\n/g, "\n")`) so a soft line break typed into a cell renders
- * as one in the viewer too, instead of as visible literal backslash-n text.
+ * The literal two-character sequence (backslash, `n`) a `MarkdownEditor`
+ * table cell's saved Markdown writes twice (see below) in place of a real
+ * newline — a GFM table row cannot contain a raw newline, since one
+ * terminates the row. `appendTableRow` below is this escape's read-only
+ * counterpart: it splits on the pair back into `<br>`-joined runs, as the
+ * editor's importer splits a cell into paragraphs, so a break typed into a
+ * cell renders as one in the viewer too, instead of as visible literal
+ * backslash-n text.
  */
 const CELL_LINE_BREAK = "\\n";
 /**
- * Two consecutive {@link CELL_LINE_BREAK} sequences — the escaped form of the
- * blank-line separator Lexical's `$convertToMarkdownString` always places
- * between a table cell's paragraphs (one raw newline pair per paragraph
- * boundary, empty or not, regardless of the WYSIWYG editor's own cell-only
- * `margin: 0` reset that renders those paragraphs flush against each other).
+ * Two consecutive {@link CELL_LINE_BREAK} sequences — what the editor's
+ * serializer (`markdownSerializer.ts`) writes between a table cell's
+ * paragraphs and for a line break in one (one pair per boundary, regardless
+ * of the WYSIWYG editor's own cell-only `margin: 0` reset that renders those
+ * paragraphs flush against each other).
  * {@link Markdown.appendTextWithBreaks} splits on this pair, not on a lone
  * {@link CELL_LINE_BREAK}, so each paragraph boundary collapses to exactly one
  * `<br>` — matching that flush rendering — while a genuinely empty paragraph

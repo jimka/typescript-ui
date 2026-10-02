@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
     BOLD_SOURCE, ITALIC_SOURCE, UNDERLINE_SOURCE, STRIKETHROUGH_SOURCE, INLINE_CODE_SOURCE,
-    REMOVE_LINK_SOURCE, CLEAR_FORMAT_SOURCE, linkSource, spanStyleSource, readSourceSelectionState,
-    FENCED_CODE_SOURCE, blockPrefixSource, listSource, paragraphAroundBlockSource, imageSource, tableSource,
+    REMOVE_LINK_SOURCE, CLEAR_FORMAT_SOURCE, linkSource, spanStyleSource, readSourceSelectionState, imageSource,
 } from '~/component/editor/markdownSourceEdits';
+import {
+    FENCED_CODE_SOURCE, blockPrefixSource, listSource, paragraphAroundBlockSource, tableSource,
+} from '~/component/editor/markdownSourceLines';
 import type { MarkdownSourceEdit } from '~/component/editor/markdownSourceEdits';
 import { lexMarkdown } from '~/component/display/markdownExtensions';
 import { formatDelimiterRow } from '~/component/editor/markdownSerializer';
+import type { Token } from 'marked';
 import type { ElementFormatType } from 'lexical';
 
 // This module touches no DOM, no Lexical, no component — every transform is a
@@ -128,7 +131,14 @@ describe('inline toggles and CommonMark flanking', () => {
         expect(BOLD_SOURCE('a hello.b', 2, 8)).toBeNull();
         expect(ITALIC_SOURCE('a hello.b', 2, 8)).toBeNull();
         expect(STRIKETHROUGH_SOURCE('a hello.b', 2, 8)).toBeNull();
-        expect(UNDERLINE_SOURCE('a hello.b', 2, 8)).toBeNull();
+    });
+
+    // The viewer's `++` extension has no flanking test, and source mode now
+    // reads the document through it, so the wrap reads back as underline.
+    it('wraps underline regardless of flanking, as the viewer reads `++`', () => {
+        const text = 'a hello.b';
+
+        expect(apply(text, UNDERLINE_SOURCE(text, 2, 8)!)).toBe('a ++hello.++b');
     });
 
     it('declines a wrap whose opener could not open emphasis', () => {
@@ -235,14 +245,16 @@ describe('toggling a format off removes it from the whole selection', () => {
         expect(readSourceSelectionState(result, edit.selection.from, edit.selection.to)).toMatchObject({ bold: true, italic: false });
     });
 
-    it('removes a doubled strikethrough and underline the same way', () => {
+    // The viewer pairs `++` with no flanking test, so an underline cannot
+    // nest in another; a partly covered one splits like any other run.
+    it('removes a doubled strikethrough, and splits an underline, the same way', () => {
         const struck = '~~one ~~two~~ six~~';
 
         expect(apply(struck, STRIKETHROUGH_SOURCE(struck, 8, 11)!)).toBe('~~one~~ two ~~six~~');
 
-        const underlined = '++one ++two++ six++';
+        const underlined = '++one two++';
 
-        expect(apply(underlined, UNDERLINE_SOURCE(underlined, 8, 11)!)).toBe('++one++ two ++six++');
+        expect(apply(underlined, UNDERLINE_SOURCE(underlined, 6, 9)!)).toBe('++one++ two');
     });
 
     it('splits a code span around the selection, keeping its spaces as code', () => {
@@ -253,8 +265,42 @@ describe('toggling a format off removes it from the whole selection', () => {
         expect(apply(text, edit)).toBe('`hello `world');
     });
 
-    it('declines a split whose markers would cross a link\'s brackets', () => {
-        expect(BOLD_SOURCE('**[foo bar](/u)**', 7, 10)).toBeNull();
+    it('writes a split\'s kept run inside a link the selection reaches into', () => {
+        const text = '**[foo bar](/u)**';
+
+        expect(apply(text, BOLD_SOURCE(text, 7, 10)!)).toBe('[**foo** bar](/u)');
+    });
+
+    it('removes underscore and single-tilde runs around the selection too', () => {
+        const bold = '__foo, __bar__ az__';
+        const struck = '~[~zq0001~](https://e.test/zq0005)~';
+
+        expect(apply(bold, BOLD_SOURCE(bold, 9, 12)!)).toBe('__foo,__ bar __az__');
+        expect(apply(struck, STRIKETHROUGH_SOURCE(struck, 3, 9)!)).toBe('[zq0001](https://e.test/zq0005)');
+    });
+
+    it('keeps the format on the rest of a link and the text after it', () => {
+        const text = '***[**zq0029** r](/u) zq0035***';
+        const [from, to] = rangeOf(text, 'zq0029');
+        const edit = BOLD_SOURCE(text, from, to)!;
+        const result = apply(text, edit);
+
+        expect(result).toBe('*[zq0029 **r**](/u) **zq0035***');
+        expect(result.slice(edit.selection.from, edit.selection.to)).toBe('zq0029');
+        expect(readSourceSelectionState(result, edit.selection.from, edit.selection.to)).toMatchObject({ bold: false, italic: true });
+    });
+
+    it('declines when no Markdown reads as the selection without the format', () => {
+        // A bold run cannot open between `9` and `[`: the marker would be no left-flanking run.
+        const text = '***[**zq0029**[r]](/u) zq0035***';
+
+        expect(BOLD_SOURCE(text, ...rangeOf(text, 'zq0029'))).toBeNull();
+    });
+
+    it('escapes the code taken out of a code span when it would read as Markdown', () => {
+        const text = '`a *b* c`';
+
+        expect(apply(text, INLINE_CODE_SOURCE(text, 3, 6)!)).toBe('`a `\\*b\\*` c`');
     });
 });
 
@@ -418,22 +464,22 @@ describe('spanStyleSource', () => {
             .toBe('[The ]{size=1.2em}[warning]{color=#cc0000 size=1.2em}[ is loud.]{size=1.2em}');
     });
 
-    // The brackets must land OUTSIDE the emphasis run: a span written inside
-    // one loses the emphasis on the next mode switch (see the round-trip cases
-    // in `markdown-editor.test.ts`), so this is correctness, not cosmetics.
-    it('extrudes the emphasis markers flanking the selection', () => {
+    // The brackets land INSIDE the emphasis run, `**[hello]{…}**` — the form
+    // the serializer writes for colour on a whole bold run (S19), so a span
+    // written in source mode saves unchanged after a switch to WYSIWYG.
+    it('writes the span inside the emphasis run around the selection', () => {
         const edit = spanStyleSource({ color: '#cc0000' })('a **hello** b', 4, 9)!;
 
         expect(edit).toEqual({
-            from: 2, to: 11, insert: '[**hello**]{color=#cc0000}', selection: { from: 3, to: 12 },
+            from: 4, to: 9, insert: '[hello]{color=#cc0000}', selection: { from: 5, to: 10 },
         });
     });
 
-    it('extrudes back out when the selection already included the markers', () => {
+    it('writes it inside the run when the selection included the markers too', () => {
         const text = 'a **hello** b';
         const edit = spanStyleSource({ color: '#cc0000' })(text, 2, 11)!;
 
-        expect(apply(text, edit)).toBe('a [**hello**]{color=#cc0000} b');
+        expect(apply(text, edit)).toBe('a **[hello]{color=#cc0000}** b');
     });
 
     it('does not mistake a span\'s own brackets for emphasis markers', () => {
@@ -464,19 +510,28 @@ describe('spanStyleSource', () => {
         expect(spanStyleSource({ color: '#cc0000' })('[x]{color=red}', 10, 10)).toBeNull();
     });
 
-    // The refusal is coarse on purpose: it declines whenever the selection's line
-    // carries an emphasis marker OUTSIDE the selection. Deciding which `*` or
-    // `++` is emphasis needs an inline parser this module deliberately is not, and
-    // three narrower rules reasoning from nearby marker positions each missed a
-    // shape that corrupted the document. The cases below are those shapes.
+    // Source mode reads the line through the viewer's own tokens, so it refuses
+    // only a selection that would cut a token's syntax in two, and styles text
+    // anywhere else — inside emphasis of any family, beside other runs, beside
+    // literal marker characters the viewer reads as text.
     const COLOUR = { color: '#cc0000' };
 
-    it('declines a selection inside a wider emphasis run, for every family', () => {
-        for (const text of ['**hello world**', '*hello world*', '~~hello world~~', '++hello world++', '`hello world`']) {
+    it('styles a selection inside a wider emphasis run, for every family', () => {
+        for (const text of ['**hello world**', '*hello world*', '~~hello world~~', '++hello world++']) {
             const at = text.indexOf('world');
+            const marker = text.slice(0, text.indexOf('hello'));
 
-            expect(spanStyleSource(COLOUR)(text, at, at + 5), text).toBeNull();
+            expect(apply(text, spanStyleSource(COLOUR)(text, at, at + 5)!), text)
+                .toBe(`${marker}hello [world]{color=#cc0000}${marker}`);
         }
+    });
+
+    // Code is atomic: a span inside the backticks would be code text.
+    it('declines a selection inside a code span', () => {
+        const text = '`hello world`';
+        const at = text.indexOf('world');
+
+        expect(spanStyleSource(COLOUR)(text, at, at + 5)).toBeNull();
     });
 
     // A selection swallowing one side of a run while its partner stays outside.
@@ -498,22 +553,25 @@ describe('spanStyleSource', () => {
         }
     });
 
-    // The refusal is what keeps ordinary prose intact: a marker-scanning split
-    // reads these asterisks and plus signs as emphasis and eats them.
-    it('declines rather than damage literal marker characters in prose', () => {
-        expect(spanStyleSource(COLOUR)('2 * 3 and 4 * 5', 6, 9)).toBeNull();
-        expect(spanStyleSource(COLOUR)('C++ and Java++', 4, 7)).toBeNull();
+    // The viewer reads these asterisks and plus signs as literal text, or (the
+    // second) as the `++…++` underline it is, and the span keeps them either way.
+    it('styles prose around literal marker characters without touching them', () => {
+        expect(apply('2 * 3 and 4 * 5', spanStyleSource(COLOUR)('2 * 3 and 4 * 5', 6, 9)!))
+            .toBe('2 * 3 [and]{color=#cc0000} 4 * 5');
+        expect(apply('C++ and Java++', spanStyleSource(COLOUR)('C++ and Java++', 4, 7)!))
+            .toBe('C++ [and]{color=#cc0000} Java++');
     });
 
-    it('declines a selection between two separate emphasis runs', () => {
-        expect(spanStyleSource(COLOUR)('a *b* and *c* d', 6, 9)).toBeNull();
+    it('styles a selection between two separate emphasis runs', () => {
+        expect(apply('a *b* and *c* d', spanStyleSource(COLOUR)('a *b* and *c* d', 6, 9)!))
+            .toBe('a *b* [and]{color=#cc0000} *c* d');
     });
 
-    it('declines a selection inside a nested run', () => {
+    it('styles a selection inside a nested run', () => {
         const text = '**hello *world* again**';
         const at = text.indexOf('again');
 
-        expect(spanStyleSource(COLOUR)(text, at, at + 5)).toBeNull();
+        expect(apply(text, spanStyleSource(COLOUR)(text, at, at + 5)!)).toBe('**hello *world* [again]{color=#cc0000}**');
     });
 
     it('declines a selection covering only part of a flanking marker run', () => {
@@ -521,26 +579,29 @@ describe('spanStyleSource', () => {
         expect(spanStyleSource(COLOUR)('**hello world**', 0, 7)).toBeNull();
     });
 
-    // The documented cost of the coarse rule: these would have been safe.
-    it('over-declines a word on a line whose emphasis is elsewhere', () => {
-        expect(spanStyleSource(COLOUR)('*emph* then plain words', 12, 17)).toBeNull();
-        expect(spanStyleSource(COLOUR)('*one* and **two** and *three*', 12, 15)).toBeNull();
+    it('styles a word on a line whose emphasis is elsewhere', () => {
+        expect(apply('*emph* then plain words', spanStyleSource(COLOUR)('*emph* then plain words', 12, 17)!))
+            .toBe('*emph* then [plain]{color=#cc0000} words');
+        expect(apply('*one* and **two** and *three*', spanStyleSource(COLOUR)('*one* and **two** and *three*', 12, 15)!))
+            .toBe('*one* and **[two]{color=#cc0000}** and *three*');
     });
 
-    it('still wraps a run that is the only emphasis on its line', () => {
+    it('wraps the text of a run that is the only emphasis on its line', () => {
         const text = '**world**';
         const edit = spanStyleSource(COLOUR)(text, 2, 7)!;
 
-        expect(apply(text, edit)).toBe('[**world**]{color=#cc0000}');
+        expect(apply(text, edit)).toBe('**[world]{color=#cc0000}**');
     });
 
     // The rewrite re-emits each span and each stretch between spans as its own
-    // group, so a marker run wrapping an existing span would be cut in two —
-    // `[**hello ]{…}[world]{…}[**]{…}` reads back as literal asterisks.
-    it('declines a marker run that wraps an existing span', () => {
-        expect(spanStyleSource(COLOUR)('**hello [world]{size=1.2em}**', 0, 29)).toBeNull();
+    // group, which is safe while the emphasis run around them stays outside the
+    // brackets; a code span cannot hold a span at all.
+    it('restyles spans inside a marker run, leaving the run outside the brackets', () => {
+        expect(apply('**hello [world]{size=1.2em}**', spanStyleSource(COLOUR)('**hello [world]{size=1.2em}**', 0, 29)!))
+            .toBe('**[hello ]{color=#cc0000}[world]{color=#cc0000 size=1.2em}**');
+        expect(apply('**[x]{size=1em}**', spanStyleSource(COLOUR)('**[x]{size=1em}**', 3, 4)!))
+            .toBe('**[x]{color=#cc0000 size=1em}**');
         expect(spanStyleSource(COLOUR)('`a [b]{size=1em}`', 0, 17)).toBeNull();
-        expect(spanStyleSource(COLOUR)('**[x]{size=1em}**', 3, 4)).toBeNull();
     });
 
     it('still styles a word on a line carrying no emphasis at all', () => {
@@ -550,34 +611,35 @@ describe('spanStyleSource', () => {
         expect(apply(text, edit)).toBe('plain [words]{color=#cc0000} here');
     });
 
-    // The rule counts marker CHARACTERS, not emphasis: a `*`/`+` list bullet,
-    // a `~` in a path and arithmetic `+` all refuse, while a `-` bullet does not.
-    it('declines on a line carrying a marker character that is not emphasis', () => {
-        expect(spanStyleSource(COLOUR)('* item here', 2, 6)).toBeNull();
-        expect(spanStyleSource(COLOUR)('+ item here', 2, 6)).toBeNull();
-        expect(spanStyleSource(COLOUR)('see ~/foo and hello', 14, 19)).toBeNull();
-        expect(spanStyleSource(COLOUR)('1 + 1 is two', 9, 12)).toBeNull();
+    // A `*`/`+` list bullet, a `~` in a path and arithmetic `+` are not
+    // emphasis to the viewer, so none of them stands in the way.
+    it('styles a line carrying a marker character that is not emphasis', () => {
+        expect(apply('* item here', spanStyleSource(COLOUR)('* item here', 2, 6)!)).toBe('* [item]{color=#cc0000} here');
+        expect(apply('+ item here', spanStyleSource(COLOUR)('+ item here', 2, 6)!)).toBe('+ [item]{color=#cc0000} here');
+        expect(apply('see ~/foo and hello', spanStyleSource(COLOUR)('see ~/foo and hello', 14, 19)!))
+            .toBe('see ~/foo and [hello]{color=#cc0000}');
+        expect(apply('1 + 1 is two', spanStyleSource(COLOUR)('1 + 1 is two', 9, 12)!)).toBe('1 + 1 is [two]{color=#cc0000}');
 
         const edit = spanStyleSource(COLOUR)('- item here', 2, 6)!;
 
         expect(apply('- item here', edit)).toBe('- [item]{color=#cc0000} here');
     });
 
-    // A `[…]{…}` group carrying a newline is not a span this module can parse,
-    // but it is still a span: treating it as plain text re-brackets it into
-    // `[[x]{…}]{…}`, which STYLED_TEXT's `[^[\]]+` inner pattern cannot read
-    // back. Refusing is the only safe answer. Reachable by pressing Enter
-    // inside a styled span in source mode, then restyling part of it.
-    it('declines a range inside a span whose group carries a newline', () => {
+    // The viewer reads a `[…]{…}` group carrying a newline as a span too, and
+    // source mode now reads it through the same tokens, so it merges into it
+    // (the rewritten group is written on one line, keeping the attribute the
+    // dialect does not model) or splits it like any other.
+    it('merges into a span whose group carries a newline', () => {
         const text = '[hello]{color=red\nfoo=bar}';
 
-        expect(spanStyleSource({ color: '#cc0000' })(text, 1, 6)).toBeNull();
+        expect(apply(text, spanStyleSource({ color: '#cc0000' })(text, 1, 6)!)).toBe('[hello]{color=#cc0000 foo=bar}');
     });
 
-    it('declines a range inside a span whose text carries a newline', () => {
+    it('splits a span whose text carries a newline', () => {
         const text = '[hel\nlo]{color=red}';
 
-        expect(spanStyleSource({ 'font-size': '1.2em' })(text, 1, 4)).toBeNull();
+        expect(apply(text, spanStyleSource({ 'font-size': '1.2em' })(text, 1, 4)!))
+            .toBe('[hel]{color=red size=1.2em}[\nlo]{color=red}');
     });
 
     // Distinguishes the no-piece-patched decline from the equality decline: a
@@ -996,11 +1058,13 @@ describe('listSource', () => {
         expect(apply(text, edit)).toBe('- a\n- b');
     });
 
-    it('turns an unordered list back into plain lines', () => {
+    // Two items become two paragraphs, set apart by a blank line: written
+    // on adjacent lines they would read as one paragraph.
+    it('turns an unordered list back into paragraphs', () => {
         const text = '- a\n- b';
         const edit = listSource('unordered')(text, 0, text.length)!;
 
-        expect(apply(text, edit)).toBe('a\nb');
+        expect(apply(text, edit)).toBe('a\n\nb');
     });
 
     it('adds the marker to every line when only some already carry it', () => {
@@ -1017,11 +1081,11 @@ describe('listSource', () => {
         expect(apply(text, edit)).toBe('1. a\n2. b');
     });
 
-    it('turns an ordered list back into plain lines', () => {
+    it('turns an ordered list back into paragraphs', () => {
         const text = '1. a\n2. b';
         const edit = listSource('ordered')(text, 0, text.length)!;
 
-        expect(apply(text, edit)).toBe('a\nb');
+        expect(apply(text, edit)).toBe('a\n\nb');
     });
 
     it('takes both whole lines for a partial multi-line selection', () => {
@@ -1130,6 +1194,23 @@ describe('line commands leave multi-line constructs whole', () => {
     it('never turns a fenced code block covered whole into list items', () => {
         expect(runAll('```\nx\n```', 0, 9).bullets).toBe('declined');
     });
+
+    // `marked` drops a definition whose label an earlier one already defines,
+    // so no token stands for it — yet it is still a definition, not text.
+    it('declines a repeated link reference definition, which has no token of its own', () => {
+        const text = '[r]: /a\n\n[r]: /b\n\n[s]:\n  /c\n[s]:\n  /d';
+
+        expectAllDecline(text, text.indexOf('/b'), text.indexOf('/b'));
+        expectAllDecline(text, text.indexOf('/d'), text.indexOf('/d'));
+    });
+
+    it('declines a repeated definition inside a `:::` column, which no column token stands for either', () => {
+        const text = '::: {gap=1rem}\n[r]: /a\n[r]: /b "t"\n|||\n[r]: /c\n:::\n\npara';
+
+        expectAllDecline(text, text.indexOf('/b'), text.indexOf('/b'));
+        expectAllDecline(text, text.indexOf('/c'), text.indexOf('/c'));
+        expect(runAll(text, text.length, text.length).heading).toBe(text.replace('para', '## para'));
+    });
 });
 
 // A paragraph's lines read as one block: a line below the first continues it,
@@ -1198,6 +1279,17 @@ describe('line commands keep a paragraph whole', () => {
         expect(listSource('unordered')('foo\n2. bar', 0, 10)).toBeNull();
     });
 
+    // The viewer reads `+ a` inside the quote as an unordered item, so the
+    // toggle takes it off: its text, continued line included, becomes a
+    // paragraph — and the continued line never turns into code.
+    it('toggles off an item inside a quote without turning its continued line into code', () => {
+        const text = '> + a\n>     [](/u)';
+        const result = apply(text, listSource('unordered')(text, 3, 3)!);
+
+        expect(result).toBe('a\n  [](/u)');
+        expect(blockTypes(result)).toEqual(['paragraph']);
+    });
+
     it('declines a list item over a setext heading\'s text', () => {
         expect(listSource('unordered')('foo\n===', 1, 1)).toBeNull();
         expect(listSource('ordered')('foo\nbar\n===', 5, 5)).toBeNull();
@@ -1232,14 +1324,17 @@ describe('line commands leave blank lines blank', () => {
     });
 });
 
-// The WYSIWYG editor holds no code block or table inside a list item, and
-// syntax written at column 0 there ends the list, leaving the rest of the
-// item's content outside it. A list item's own marker line still converts.
+// The WYSIWYG editor holds no code block or table inside a list item. A
+// fence lifts the item's text out to the top level, the list split around it;
+// a table, which converts no block, declines inside an item's content.
 describe('code fences and tables stay out of list items', () => {
-    it('declines a fence or a table on a list item\'s indented content', () => {
-        expect(FENCED_CODE_SOURCE('- a\n\n  b', 7, 7)).toBeNull();
+    it('lifts a fenced block out of a list item\'s content', () => {
+        expect(apply('- a\n\n  b', FENCED_CODE_SOURCE('- a\n\n  b', 7, 7)!)).toBe('- a\n\n```\nb\n```');
+        expect(apply('- x\n  - a', FENCED_CODE_SOURCE('- x\n  - a', 8, 8)!)).toBe('- x\n```\na\n```');
+    });
+
+    it('declines a table on a list item\'s indented content', () => {
         expect(tableSource(2, 2)('- a\n\n  b', 7, 7)).toBeNull();
-        expect(FENCED_CODE_SOURCE('- x\n  - a', 8, 8)).toBeNull();
         expect(tableSource(2, 2)('- x\n  - a', 8, 8)).toBeNull();
     });
 
@@ -1277,6 +1372,65 @@ describe('inline commands keep a table cell\'s paragraph break whole', () => {
         const text = 'use a\\n\\nb here';
 
         expect(apply(text, INLINE_CODE_SOURCE(text, 4, 10)!)).toBe('use `a\\n\\nb` here');
+    });
+});
+
+// Whole-stack review fixes (source-mode fuzz): the line commands find the
+// blocks they convert from the viewer's tokens and check their result by
+// lexing it. A block leaves its quotes and list items for the top level, the
+// containers split around it, so what followed it inside them stays there.
+describe('line commands act on the blocks the viewer reads', () => {
+    const lineCommands = {
+        paragraph: blockPrefixSource(''),
+        heading:   blockPrefixSource('## '),
+        quote:     blockPrefixSource('> '),
+        bullets:   listSource('unordered'),
+        numbers:   listSource('ordered'),
+        code:      FENCED_CODE_SOURCE,
+    };
+
+    it('keeps a list item\'s other content in the item when its text is lifted out', () => {
+        expect(apply('- a\n  - b\n- c', blockPrefixSource('## ')('- a\n  - b\n- c', 2, 2)!)).toBe('## a\n- - b\n- c');
+        expect(apply('10. a\n\n    b', blockPrefixSource('## ')('10. a\n\n    b', 4, 4)!)).toBe('## a\n\n10. b');
+        expect(apply('- a\n\n  b', blockPrefixSource('> ')('- a\n\n  b', 2, 2)!)).toBe('> a\n\n- b');
+        expect(apply('- x\n  - a\n  - b', blockPrefixSource('## ')('- x\n  - a\n  - b', 8, 8)!)).toBe('- x\n## a\n- - b');
+        expect(apply('10. a\n\n    b', FENCED_CODE_SOURCE('10. a\n\n    b', 4, 4)!)).toBe('```\na\n```\n\n10. b');
+        expect(blockTypes('## a\n\n10. b')).toEqual(['heading', 'list']);
+    });
+
+    it('sets a converted paragraph apart rather than joining it to a neighbour', () => {
+        expect(apply('# a\n[r]: /u\n\n[r]', blockPrefixSource('')('# a\n[r]: /u\n\n[r]', 2, 2)!)).toBe('a\n\n[r]: /u\n\n[r]');
+        expect(apply('# a\n    b', blockPrefixSource('')('# a\n    b', 2, 2)!)).toBe('a\n\n    b');
+        expect(apply('- a\n> b', blockPrefixSource('')('- a\n> b', 6, 6)!)).toBe('- a\n\nb');
+        expect(apply('foo\n> b', blockPrefixSource('')('foo\n> b', 6, 6)!)).toBe('foo\n\nb');
+    });
+
+    it('escapes a character the conversion would leave opening another block', () => {
+        const text = '###### ~~~ x';
+        const result = apply(text, blockPrefixSource('> ')(text, 8, 8)!);
+
+        expect(result).toBe('> \\~~~ x');
+        expect(blockTypes(result)).toEqual(['blockquote']);
+    });
+
+    // `marked` reads `b` as part of the outer quote but gives it no token, so
+    // the viewer does not show it: writing block syntax onto it would.
+    it('declines a line the viewer does not show', () => {
+        const text = '> > ```\n> > a\n> > ```\nb';
+
+        for (const command of Object.values(lineCommands)) {
+            expect(command(text, text.length, text.length)).toBeNull();
+        }
+
+        expect(tableSource(2, 2)(text, text.length, text.length)).toBeNull();
+    });
+
+    it('declines a line of a table, whose cells hold text only', () => {
+        const text = '| a |\n| - |\n| b |';
+
+        for (const command of Object.values(lineCommands)) {
+            expect(command(text, 14, 14)).toBeNull();
+        }
     });
 });
 
@@ -1370,6 +1524,9 @@ describe('imageSource', () => {
         ['a link\'s destination', '[docs](/d "Title") x', 9, 9],
         ['a link\'s title', '[docs](/d "Title") x', 13, 13],
         ['a link\'s syntax between its text and destination', '[docs](/d) x', 6, 6],
+        ['a reference link\'s label', '[docs][d] x\n\n[d]: /d', 7, 7],
+        ['an autolink', '<https://a.test/x> y', 5, 5],
+        ['a bare-URL autolink', 'see https://a.test/x y', 10, 10],
     ])('declines with an end inside %s', (_name, text, from, to) => {
         expect(imageSource('/i.png', 'i', {})(text, from, to)).toBeNull();
     });
@@ -1383,6 +1540,7 @@ describe('imageSource', () => {
         ['on the delimiter row', '| a |\n| --- |\n| b |', 9, 9],
         ['over a row break', '| a |\n| --- |\n| b |', 13, 16],
         ['over a pipe between cells', '| a | c |\n| --- | --- |\n| b | d |', 2, 7],
+        ['in a quote, before a row\'s opening pipe', '> | a |\n> | --- |\n> | b |', 20, 20],
     ])('declines in a table %s', (_name, text, from, to) => {
         expect(imageSource('/i.png', 'i', {})(text, from, to)).toBeNull();
     });
@@ -1391,6 +1549,7 @@ describe('imageSource', () => {
         ['inside a cell', '| a |\n| --- |\n| b |', 17, 17, '| a |\n| --- |\n| b![i](/i.png) |'],
         ['inside an empty cell', '| a |\n| --- |\n|  |', 16, 16, '| a |\n| --- |\n| ![i](/i.png) |'],
         ['in a row with no outer pipes', 'a | b\n--- | ---\nc | d', 0, 0, '![i](/i.png)a | b\n--- | ---\nc | d'],
+        ['in a quote, inside a cell', '> | a |\n> | --- |\n> | b |', 23, 23, '> | a |\n> | --- |\n> | b![i](/i.png) |'],
     ])('inserts in a table %s', (_name, text, from, to, expected) => {
         expect(apply(text, imageSource('/i.png', 'i', {})(text, from, to)!)).toBe(expected);
     });
@@ -1402,6 +1561,7 @@ describe('imageSource', () => {
         ['over a fence\'s opening line', '::: columns\na\n:::', 5, 13],
         ['on a column separator', '::: columns\na\n|||\nb\n:::', 15, 15],
         ['on a fence\'s closing line', '::: columns\na\n:::', 15, 15],
+        ['on the opening line of a fence in a quote', '> ::: columns\n> a\n> :::', 5, 5],
     ])('declines %s', (_name, text, from, to) => {
         expect(imageSource('/i.png', 'i', {})(text, from, to)).toBeNull();
     });
@@ -1416,6 +1576,8 @@ describe('imageSource', () => {
         ['on a fence\'s closing line', 'a\n\n```\nx\n```\n', 12, 12],
         ['on a tilde fence\'s closing line', '~~~\nx\n~~~\n', 8, 8],
         ['over a fence line from the paragraph above', 'a\n```\nx\n```\n', 0, 3],
+        ['on a list item\'s fence line', '- a\n\n  ```\n  x\n  ```\n', 6, 6],
+        ['on a quoted fence\'s closing line', '> ```\n> x\n> ```\n', 12, 12],
     ])('declines %s', (_name, text, from, to) => {
         expect(imageSource('/i.png', 'i', {})(text, from, to)).toBeNull();
     });
@@ -1472,6 +1634,16 @@ describe('tableSource', () => {
         expect(apply('# T\n- foo\n  bar', tableSource(2, 2)('# T\n- foo\n  bar', 12, 12)!)).toBe('# T\n\n' + table + '- foo\n  bar');
     });
 
+    // Inserting at the caret's own line would split an HTML block or a table
+    // in two, so the table goes above the whole block.
+    it('goes above an HTML block or a table holding the caret, never into it', () => {
+        const table = '|  |  |\n| --- | --- |\n|  |  |\n\n';
+
+        expect(apply('<div>\nhi\n</div>', tableSource(2, 2)('<div>\nhi\n</div>', 7, 7)!)).toBe(table + '<div>\nhi\n</div>');
+        expect(apply('| a |\n| - |\n| b |', tableSource(2, 2)('| a |\n| - |\n| b |', 14, 14)!)).toBe(table + '| a |\n| - |\n| b |');
+        expect(apply('p\n\n| a |\n| - |\n| b |', tableSource(2, 2)('p\n\n| a |\n| - |\n| b |', 17, 17)!)).toBe('p\n\n' + table + '| a |\n| - |\n| b |');
+    });
+
     it('adds no separator when the table lands at the document start', () => {
         const text = 'hello';
         const edit = tableSource(2, 2)(text, 3, 3)!;
@@ -1493,4 +1665,250 @@ describe('tableSource', () => {
         expect(edit.selection).toEqual({ from: 2, to: 2 });
         expect(headerLine.slice(0, 2)).toBe('| ');
     });
+});
+
+/** The `[from, to)` range of the first occurrence of `word` in `text`, at or after `after`. */
+function rangeOf(text: string, word: string, after: number = 0): [number, number] {
+    const at = text.indexOf(word, after);
+
+    return [at, at + word.length];
+}
+
+/** Whether any token in `tokens` (searched depth-first) is a link. */
+function holdsLink(tokens: Token[]): boolean {
+    return tokens.some((token) => token.type === 'link' || holdsLink(('tokens' in token ? token.tokens : undefined) ?? []));
+}
+
+// Plan markdown-editor-marked-import, whole-stack review C1/C2/F13: source mode
+// reads the document through the viewer's own `lexMarkdown` tokens, so it sees
+// every form the viewer (and so the editor's importer) reads — not only the
+// `*`-family emphasis and `[text](url)` links its old regular expressions knew.
+describe('source mode reads `_` emphasis as the viewer does (C1)', () => {
+    const COLOUR = { color: '#cc0000' };
+
+    it('declines a span that would cut an underscore run in two', () => {
+        const text = '_hello world_ again';
+        const [from] = rangeOf(text, 'world');
+
+        expect(spanStyleSource(COLOUR)(text, from, text.length)).toBeNull();
+    });
+
+    it('reports `__…__` as bold and `_…_` as italic', () => {
+        expect(readSourceSelectionState('__hello__', 2, 7).bold).toBe(true);
+        expect(readSourceSelectionState('_hello_', 1, 6).italic).toBe(true);
+        expect(readSourceSelectionState('__hello__', 4, 4).bold).toBe(true);
+    });
+
+    it('toggles an underscore run off rather than nesting a star run inside it', () => {
+        expect(apply('_hello_', ITALIC_SOURCE('_hello_', 1, 6)!)).toBe('hello');
+        expect(apply('__hello__', BOLD_SOURCE('__hello__', 2, 7)!)).toBe('hello');
+        expect(apply('a _hello_ b', ITALIC_SOURCE('a _hello_ b', 5, 5)!)).toBe('a hello b');
+    });
+
+    it('clears underscore emphasis', () => {
+        expect(apply('__hello__', CLEAR_FORMAT_SOURCE('__hello__', 4, 4)!)).toBe('hello');
+        expect(apply('a _b_ c', CLEAR_FORMAT_SOURCE('a _b_ c', 0, 7)!)).toBe('a b c');
+    });
+
+    it('expands a caret inside an underscore run to the word, not the closing underscore', () => {
+        const text = '_hello world_';
+        const [from] = rangeOf(text, 'world');
+        const edit = BOLD_SOURCE(text, from + 1, from + 1)!;
+
+        expect(apply(text, edit)).toBe('_hello **world**_');
+    });
+});
+
+describe('source mode reads every link form the viewer reads (C2)', () => {
+    const COLOUR = { color: '#cc0000' };
+    const DEFINED = '\n\n[docs]: /d "T"\n[d]: /e';
+
+    it('reports the destination of a reference link in all three forms', () => {
+        for (const link of ['[docs]', '[docs][]', '[docs][d]']) {
+            const text = `see ${link} here${DEFINED}`;
+
+            expect(readSourceSelectionState(text, 6, 6).linkUrl, link).toBe(link === '[docs][d]' ? '/e' : '/d');
+        }
+    });
+
+    it('refuses a span inside a reference link', () => {
+        for (const link of ['[docs]', '[docs][]', '[docs][d]']) {
+            const text = `see ${link} here${DEFINED}`;
+
+            expect(spanStyleSource(COLOUR)(text, 5, 9), link).toBeNull();
+        }
+    });
+
+    it('removes a reference link, keeping its text', () => {
+        for (const link of ['[docs]', '[docs][]', '[docs][d]']) {
+            const text = `see ${link} here${DEFINED}`;
+
+            expect(apply(text, REMOVE_LINK_SOURCE(text, 6, 6)!), link).toBe(`see docs here${DEFINED}`);
+        }
+    });
+
+    it('re-points a reference link as an inline link, keeping its title', () => {
+        const text = `see [docs] here${DEFINED}`;
+
+        expect(apply(text, linkSource('/x')(text, 6, 6)!)).toBe(`see [docs](/x "T") here${DEFINED}`);
+    });
+
+    it('never nests a new link around an existing one', () => {
+        const text = `see [docs] here${DEFINED}`;
+
+        expect(linkSource('/x')(text, 0, 15)).toBeNull();
+        expect(linkSource('/x')('a https://e.com b', 0, 17)).toBeNull();
+    });
+
+    it('reads bare, angle-bracket and email autolinks', () => {
+        expect(readSourceSelectionState('see https://example.com/docs', 26, 26).linkUrl).toBe('https://example.com/docs');
+        expect(readSourceSelectionState('see www.x.test', 6, 6).linkUrl).toBe('http://www.x.test');
+        expect(readSourceSelectionState('mail me@example.com', 8, 8).linkUrl).toBe('mailto:me@example.com');
+        expect(readSourceSelectionState('<https://a.b>', 3, 3).linkUrl).toBe('https://a.b');
+    });
+
+    it('refuses a span inside any autolink', () => {
+        const bare = 'see https://example.com/docs';
+        const email = 'mail me@example.com';
+
+        expect(spanStyleSource(COLOUR)(bare, ...rangeOf(bare, 'docs'))).toBeNull();
+        expect(spanStyleSource(COLOUR)(email, ...rangeOf(email, 'example'))).toBeNull();
+        expect(spanStyleSource(COLOUR)('<m@x.y>', 3, 4)).toBeNull();
+    });
+
+    // Unwrapping alone would leave text GFM links again, so the trigger
+    // character is escaped, as the serializer escapes it in plain text.
+    it('removes an autolink so the text stays unlinked', () => {
+        for (const [text, unlinked] of [
+            ['see https://e.com/x here', 'see https\\://e.com/x here'],
+            ['see <https://e.com> here', 'see https\\://e.com here'],
+            ['see www.e.com here', 'see www\\.e.com here'],
+            ['mail me@e.com now', 'mail me\\@e.com now'],
+        ] as const) {
+            const result = apply(text, REMOVE_LINK_SOURCE(text, 7, 7)!);
+
+            expect(result, text).toBe(unlinked);
+            expect(holdsLink(lexMarkdown(result)), text).toBe(false);
+        }
+    });
+
+    it('reads a destination holding parentheses and link text holding brackets', () => {
+        const parens = 'see [a](https://x.y/(b)) here';
+        const brackets = 'see [a [b] c](/u) here';
+
+        expect(readSourceSelectionState(parens, 5, 5).linkUrl).toBe('https://x.y/(b)');
+        expect(spanStyleSource(COLOUR)(parens, 5, 6)).toBeNull();
+        expect(readSourceSelectionState(brackets, 8, 8).linkUrl).toBe('/u');
+        expect(apply(brackets, REMOVE_LINK_SOURCE(brackets, 8, 8)!)).toBe('see a [b] c here');
+        expect(spanStyleSource(COLOUR)(brackets, 8, 9)).toBeNull();
+    });
+});
+
+describe('source-mode inline toggles keep autolinks whole (F13)', () => {
+    it('declines a marker inside an autolink', () => {
+        expect(BOLD_SOURCE('<m@x.y>', 3, 4)).toBeNull();
+        expect(BOLD_SOURCE('https://x.y/ab', 12, 14)).toBeNull();
+        expect(ITALIC_SOURCE('www.x.test', 6, 10)).toBeNull();
+        expect(INLINE_CODE_SOURCE('see https://x.y/ab', 16, 18)).toBeNull();
+    });
+
+    it('formats a whole autolink from outside it', () => {
+        expect(apply('<m@x.y>', BOLD_SOURCE('<m@x.y>', 1, 6)!)).toBe('**<m@x.y>**');
+        expect(apply('<m@x.y>', BOLD_SOURCE('<m@x.y>', 0, 7)!)).toBe('**<m@x.y>**');
+    });
+
+    it('re-points an autolink instead of nesting a link inside it', () => {
+        const text = '<https://a.b>';
+
+        expect(apply(text, linkSource('https://n')(text, 9, 12)!)).toBe('[https://a.b](https://n)');
+    });
+});
+
+describe('source-mode styling refuses only what it would break (advisory)', () => {
+    const COLOUR = { color: '#cc0000' };
+
+    it('styles a word beside an existing span inside a bold run', () => {
+        const text = '**hello [world]{size=1.2em} again**';
+        const edit = spanStyleSource(COLOUR)(text, ...rangeOf(text, 'again'))!;
+
+        expect(apply(text, edit)).toBe('**hello [world]{size=1.2em} [again]{color=#cc0000}**');
+    });
+
+    it('styles the text of a `*` or `+` list item', () => {
+        expect(apply('* item here', spanStyleSource(COLOUR)('* item here', 2, 6)!)).toBe('* [item]{color=#cc0000} here');
+        expect(apply('+ item here', spanStyleSource(COLOUR)('+ item here', 2, 6)!)).toBe('+ [item]{color=#cc0000} here');
+    });
+
+    // The form the serializer writes for colour on a whole bold run (S19).
+    it('writes the span inside the emphasis around it, as the serializer does', () => {
+        const text = 'a **hello** b';
+
+        expect(apply(text, spanStyleSource(COLOUR)(text, 4, 9)!)).toBe('a **[hello]{color=#cc0000}** b');
+        expect(apply(text, spanStyleSource(COLOUR)(text, 2, 11)!)).toBe('a **[hello]{color=#cc0000}** b');
+    });
+
+    it('formats a list item\'s text when its whole line is selected', () => {
+        expect(apply('- item', BOLD_SOURCE('- item', 0, 6)!)).toBe('- **item**');
+        expect(apply('## Title', ITALIC_SOURCE('## Title', 0, 8)!)).toBe('## *Title*');
+    });
+
+    it('declines inline formatting inside a code block, where markers are literal', () => {
+        const text = '```\ncode\n```';
+
+        expect(BOLD_SOURCE(text, 4, 8)).toBeNull();
+        expect(spanStyleSource(COLOUR)(text, 4, 8)).toBeNull();
+        expect(linkSource('/x')(text, 4, 8)).toBeNull();
+    });
+});
+
+// The tokens of a quote, list item, table cell or `:::` column are lexed from
+// text `marked` has stripped of its container's line prefixes; source mode
+// finds them in the source across those prefixes.
+describe('source mode finds inline text inside containers', () => {
+    const cases: Array<[string, string, string]> = [
+        ['> one two\n> three four', 'three', '> one two\n> **three** four'],
+        ['> > deep text\n> > more', 'more', '> > deep text\n> > **more**'],
+        ['- one\n  two three', 'three', '- one\n  two **three**'],
+        ['1. a\n\n   b c\n2. d', 'c', '1. a\n\n   b **c**\n2. d'],
+        ['| a \\| b | c |\n| --- | --- |\n| d | e |', 'b', '| a \\| **b** | c |\n| --- | --- |\n| d | e |'],
+        ['| a | b |\n| --- | --- |\n| d | b |', 'b', '| a | **b** |\n| --- | --- |\n| d | b |'],
+        ['::: {align=center}\nhello world\n:::', 'world', '::: {align=center}\nhello **world**\n:::'],
+    ];
+
+    for (const [text, word, bolded] of cases) {
+        it(`bolds "${word}" in ${JSON.stringify(text)}`, () => {
+            expect(apply(text, BOLD_SOURCE(text, ...rangeOf(text, word))!)).toBe(bolded);
+        });
+    }
+
+    it('finds a body cell in its own row, not in the header holding the same text', () => {
+        const text = '| a | b |\n| --- | --- |\n| d | b |';
+        const [from, to] = rangeOf(text, 'b', text.lastIndexOf('\n'));
+
+        expect(apply(text, BOLD_SOURCE(text, from, to)!)).toBe('| a | b |\n| --- | --- |\n| d | **b** |');
+    });
+
+    it('does not mistake code for the paragraph after it', () => {
+        const text = '```\nhello\n```\n\nhello';
+        const [from, to] = rangeOf(text, 'hello', 10);
+
+        expect(apply(text, BOLD_SOURCE(text, from, to)!)).toBe('```\nhello\n```\n\n**hello**');
+    });
+});
+
+describe('REMOVE_LINK_SOURCE — a link nested in a link (whole-stack review fix #16b)', () => {
+    const cases: Array<[string, string, string]> = [
+        ['the nested link opens the outer link\'s text', 'x [[a](/in) b](/out) y', 'x a[ b](/out) y'],
+        ['the nested link sits inside the outer link\'s text', 'x [c [a](/in) b](/out) y', 'x [c ](/out)a[ b](/out) y'],
+        ['the nested link ends the outer link\'s text', 'x [c [a](/in)](/out) y', 'x [c ](/out)a y'],
+        ['the outer link is a reference link', 'x [[a](/in) b][r] y\n\n[r]: /out', 'x a[ b][r] y\n\n[r]: /out'],
+    ];
+
+    for (const [name, text, unlinked] of cases) {
+        it(`${name}: its text is unlinked and the outer link's text keeps its target`, () => {
+            const [from, to] = rangeOf(text, 'a');
+
+            expect(apply(text, REMOVE_LINK_SOURCE(text, from, to)!)).toBe(unlinked);
+        });
+    }
 });

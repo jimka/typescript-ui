@@ -4,7 +4,7 @@ import type { MarkdownEditorChange, MarkdownEditorSelectionState, ContextMenuTar
 import type { MenuItemConfig } from '~/component/container/MenuItem';
 import type { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
 import { Component } from '~/core/Component';
-import { TRANSFORMERS } from '~/component/editor/markdownTransformers';
+import { SHORTCUT_TRANSFORMERS } from '~/component/editor/markdownTransformers';
 import { EDITOR_NODES } from '~/component/editor/editorNodes';
 import { ensureMarkdownEditorClassRules } from '~/component/editor/editorTheme';
 import {
@@ -12,9 +12,10 @@ import {
     BOLD_STAR, ITALIC_STAR, INLINE_CODE, LINK,
     STRIKETHROUGH, HIGHLIGHT, CHECK_LIST,
 } from '@lexical/markdown';
-import { UNDERLINE, STYLED_TEXT } from '~/component/editor/markdownStyleTransformers';
+import { UNDERLINE } from '~/component/editor/markdownStyleTransformers';
 import { MarkdownBlockNode, MarkdownColumnNode } from '~/component/editor/markdownBlockNode';
 import { MarkdownImageNode } from '~/component/editor/markdownImageNode';
+import { MarkdownRawBlockNode, MarkdownSourceTextNode } from '~/component/editor/markdownSourceNodes';
 import { TableNode, TableRowNode, TableCellNode, $createTableSelectionFrom, $isTableCellNode } from '@lexical/table';
 import {
     $getRoot, $getSelection, $isRangeSelection, $isParagraphNode, $isTextNode, $selectAll, $setSelection,
@@ -29,6 +30,7 @@ import type { TextField } from '~/component/input/TextField';
 import { installTestDOM, ruleStyleWrites, type RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { EditorState } from '@codemirror/state';
+import { editorSurfaceModel, viewerModel } from './markdown-roundtrip/viewModel';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -191,18 +193,18 @@ function caretIsInAParagraph(editor: MarkdownEditor): boolean {
 }
 
 describe('markdownTransformers curation', () => {
-    it('contains exactly the fifteen dialect transformers', () => {
-        expect(TRANSFORMERS).toHaveLength(15);
-        expect(TRANSFORMERS).toEqual(expect.arrayContaining([
+    it('contains exactly the eleven typing shortcuts', () => {
+        expect(SHORTCUT_TRANSFORMERS).toHaveLength(11);
+        expect(SHORTCUT_TRANSFORMERS).toEqual(expect.arrayContaining([
             HEADING, QUOTE, CODE, UNORDERED_LIST, ORDERED_LIST,
             BOLD_STAR, ITALIC_STAR, INLINE_CODE, STRIKETHROUGH, LINK,
-            UNDERLINE, STYLED_TEXT,
+            UNDERLINE,
         ]));
     });
 
     it('excludes the constructs the viewer drops (highlight, check-list)', () => {
-        expect(TRANSFORMERS).not.toContain(HIGHLIGHT);
-        expect(TRANSFORMERS).not.toContain(CHECK_LIST);
+        expect(SHORTCUT_TRANSFORMERS).not.toContain(HIGHLIGHT);
+        expect(SHORTCUT_TRANSFORMERS).not.toContain(CHECK_LIST);
     });
 });
 
@@ -223,6 +225,14 @@ describe('editorNodes table registration', () => {
 
     it('EDITOR_NODES contains MarkdownImageNode', () => {
         expect(EDITOR_NODES).toContain(MarkdownImageNode);
+    });
+
+    it('EDITOR_NODES contains MarkdownSourceTextNode', () => {
+        expect(EDITOR_NODES).toContain(MarkdownSourceTextNode);
+    });
+
+    it('EDITOR_NODES contains MarkdownRawBlockNode', () => {
+        expect(EDITOR_NODES).toContain(MarkdownRawBlockNode);
     });
 });
 
@@ -1533,7 +1543,10 @@ describe('MarkdownEditor source-mode styled spans', () => {
         expect(focusSpy).toHaveBeenCalledOnce();
     });
 
-    it('setTextColor inside a wider bold run declines, leaving the document untouched', () => {
+    // Plan markdown-editor-marked-import, whole-stack review: source mode reads
+    // the bold run through the viewer's tokens, so it writes the span inside it
+    // rather than declining.
+    it('setTextColor inside a wider bold run writes the span inside the run', () => {
         const text = '**hello world**';
         const editor = new MarkdownEditor(text, { mode: 'source' });
         const dispatch = vi.fn();
@@ -1544,31 +1557,217 @@ describe('MarkdownEditor source-mode styled spans', () => {
 
         editor.setTextColor('#cc0000');
 
-        expect(dispatch).not.toHaveBeenCalled();
-        expect(editor.getValue()).toBe(text);
+        expect(dispatch).toHaveBeenCalledTimes(1);
+        expect(dispatch.mock.calls[0]![0].changes).toEqual({ from: 8, to: 13, insert: '[world]{color=#cc0000}' });
     });
 
-    // The dialect guarantee: what source mode writes survives a switch
-    // byte-for-byte. The emphasis case is why the brackets go OUTSIDE the
-    // markers — `**[hello]{…}**` loses the bold on this very switch — and why a
-    // selection inside a WIDER run is declined outright rather than written in
-    // either position.
+    // The dialect guarantee: what source mode writes survives a switch with
+    // its meaning, and byte-for-byte unless the serializer has a canonical
+    // form for it.
     it('round-trips its own output through a mode switch', () => {
-        const documents = [
-            '[hello]{color=#cc0000} world',
-            '[hello]{color=#cc0000 size=1.2em} world',
-            '[hello]{font="Georgia, serif"} world',
-            'a [**hello**]{color=#cc0000} b',
-            '[hello ]{size=1.2em}[world]{color=#2563eb size=1.2em}',
+        // Source mode writes colour on a whole bold run inside it, the form the serializer writes (S19).
+        const documents: Array<[string, string]> = [
+            ['[hello]{color=#cc0000} world', '[hello]{color=#cc0000} world'],
+            ['[hello]{color=#cc0000 size=1.2em} world', '[hello]{color=#cc0000 size=1.2em} world'],
+            ['[hello]{font="Georgia, serif"} world', '[hello]{font="Georgia, serif"} world'],
+            ['a **[hello]{color=#cc0000}** b', 'a **[hello]{color=#cc0000}** b'],
+            ['**hello [world]{color=#cc0000}**', '**hello [world]{color=#cc0000}**'],
+            ['[hello ]{size=1.2em}[world]{color=#2563eb size=1.2em}', '[hello ]{size=1.2em}[world]{color=#2563eb size=1.2em}'],
         ];
 
-        for (const doc of documents) {
+        for (const [doc, saved] of documents) {
             const editor = new MarkdownEditor(doc, { mode: 'source' });
 
             editor.setMode('wysiwyg');
 
-            expect(normalize(editor.getValue()), doc).toBe(normalize(doc));
+            expect(normalize(editor.getValue()), doc).toBe(normalize(saved));
+            expect(viewerModel(editor.getValue()), doc).toEqual(viewerModel(doc));
         }
+    });
+});
+
+/**
+ * Injects a duck-typed CodeMirror view whose `dispatch` really applies the
+ * transaction, so a source-mode command's edit lands in `getValue()` and a
+ * later `setMode('wysiwyg')` loads the edited text.
+ */
+function injectLiveSourceView(editor: MarkdownEditor, doc: string, anchor: number, head: number): void {
+    const view = {
+        state:    EditorState.create({ doc, selection: { anchor, head } }),
+        focus:    vi.fn(),
+        dispatch: (spec: Parameters<EditorState['update']>[0]): void => {
+            view.state = view.state.update(spec).state;
+        },
+    };
+
+    codeEditorOf(editor)._view = view;
+}
+
+// Plan markdown-editor-marked-import, whole-stack review C1/C2/F13 and the
+// advisory: each repro runs end to end — the command on the source text, then a
+// switch to WYSIWYG, whose surface must be what the viewer shows for the
+// source text the command left (a declined command leaves it unchanged).
+describe('MarkdownEditor source-mode commands read the viewer\'s tokens', () => {
+    const COLOUR = '#cc0000';
+    const CASES: Array<{
+        name:   string;
+        doc:    string;
+        select: string | [number, number];
+        run:    (editor: MarkdownEditor) => unknown;
+        result: string;
+    }> = [
+        {
+            name: 'C1: colour cutting an underscore run declines', doc: '_hello world_ again', select: 'world_ again',
+            run: (editor) => editor.setTextColor(COLOUR), result: '_hello world_ again',
+        },
+        {
+            name: 'C1: italic on an underscore run removes it', doc: 'a _hello_ b', select: 'hello',
+            run: (editor) => editor.toggleItalic(), result: 'a hello b',
+        },
+        {
+            name: 'C1: clear formatting clears `__…__`', doc: 'a __hello__ b', select: [6, 6],
+            run: (editor) => editor.clearFormatting(), result: 'a hello b',
+        },
+        {
+            name: 'C2: colour inside a shortcut reference link declines', doc: 'see [docs] here\n\n[docs]: /d', select: 'docs',
+            run: (editor) => editor.setTextColor(COLOUR), result: 'see [docs] here\n\n[docs]: /d',
+        },
+        {
+            name: 'C2: remove link unwraps a shortcut reference link', doc: 'see [docs] here\n\n[docs]: /d', select: [6, 6],
+            run: (editor) => editor.removeLink(), result: 'see docs here\n\n[docs]: /d',
+        },
+        {
+            name: 'C2: colour inside a bare URL declines', doc: 'see https://example.com/docs', select: 'docs',
+            run: (editor) => editor.setTextColor(COLOUR), result: 'see https://example.com/docs',
+        },
+        {
+            name: 'C2: remove link keeps an email address unlinked', doc: 'mail me@example.com', select: [8, 8],
+            run: (editor) => editor.removeLink(), result: 'mail me\\@example.com',
+        },
+        {
+            name: 'F13: bold inside an email autolink declines', doc: '<m@x.y>', select: [3, 4],
+            run: (editor) => editor.toggleBold(), result: '<m@x.y>',
+        },
+        {
+            name: 'F13: a link inside an autolink re-points it instead of nesting', doc: '<https://a.b>', select: 'a.b',
+            run: (editor) => editor.toggleLink('https://n'), result: '[https://a.b](https://n)',
+        },
+        {
+            name: 'advisory: colour beside a span inside a bold run', doc: '**hello [world]{size=1.2em} again**', select: 'again',
+            run: (editor) => editor.setTextColor(COLOUR), result: '**hello [world]{size=1.2em} [again]{color=#cc0000}**',
+        },
+        {
+            name: 'advisory: colour on a `*` list item', doc: '* item here', select: 'item',
+            run: (editor) => editor.setTextColor(COLOUR), result: '* [item]{color=#cc0000} here',
+        },
+        {
+            name: 'advisory: colour on a whole bold run writes the serializer\'s form', doc: 'a **hello** b', select: 'hello',
+            run: (editor) => editor.setTextColor(COLOUR), result: 'a **[hello]{color=#cc0000}** b',
+        },
+    ];
+
+    for (const testCase of CASES) {
+        it(testCase.name, () => {
+            const editor = new MarkdownEditor(testCase.doc, { mode: 'source' });
+            const [from, to] = typeof testCase.select === 'string'
+                ? [testCase.doc.indexOf(testCase.select), testCase.doc.indexOf(testCase.select) + testCase.select.length]
+                : testCase.select;
+
+            injectLiveSourceView(editor, testCase.doc, from, to);
+            testCase.run(editor);
+
+            expect(editor.getValue()).toBe(testCase.result);
+
+            editor.setMode('wysiwyg');
+
+            // A link reference definition shows as a raw block in the editor, while the viewer shows nothing for it.
+            const surface = editorSurfaceModel(editor).filter((block) => !(block.kind === 'raw' && /^\[[^\]]+\]:/.test(block.text)));
+
+            expect(surface).toEqual(viewerModel(testCase.result).blocks);
+        });
+    }
+});
+
+// Whole-stack review fixes (source-mode fuzz): each line command run in
+// source mode, then a switch to WYSIWYG, shows what the viewer shows.
+describe('MarkdownEditor source-mode line commands read the viewer\'s blocks', () => {
+    const CASES: Array<{
+        name:   string;
+        doc:    string;
+        select: [number, number];
+        run:    (editor: MarkdownEditor) => unknown;
+        result: string;
+    }> = [
+        {
+            name: 'a heading from a list item keeps the item\'s indented content in the item', doc: '10. a\n\n    b', select: [4, 4],
+            run: (editor) => editor.setBlockType('h2'), result: '## a\n\n10. b',
+        },
+        {
+            name: 'a quote from a list item keeps its nested list in the item', doc: '- a\n  - b\n- c', select: [2, 2],
+            run: (editor) => editor.setBlockType('quote'), result: '> a\n- - b\n- c',
+        },
+        {
+            name: 'a code block from a list item keeps the item\'s indented content in the item', doc: '10. a\n\n    b', select: [4, 4],
+            run: (editor) => editor.setBlockType('code'), result: '```\na\n```\n\n10. b',
+        },
+        {
+            name: 'a paragraph from a heading does not swallow the definition below', doc: '# a\n[r]: /u\n\n[r]', select: [2, 2],
+            run: (editor) => editor.setBlockType('paragraph'), result: 'a\n\n[r]: /u\n\n[r]',
+        },
+        {
+            name: 'a paragraph from a quote does not join the list item above', doc: '- a\n> b', select: [6, 6],
+            run: (editor) => editor.setBlockType('paragraph'), result: '- a\n\nb',
+        },
+        {
+            name: 'toggling a list off keeps its items apart', doc: '- a\n- b', select: [0, 7],
+            run: (editor) => editor.toggleUnorderedList(), result: 'a\n\nb',
+        },
+        {
+            name: 'a table goes above the HTML block holding the caret', doc: '<div>\nhi\n</div>', select: [7, 7],
+            run: (editor) => editor.insertTable(2, 2), result: '|  |  |\n| --- | --- |\n|  |  |\n\n<div>\nhi\n</div>',
+        },
+        {
+            name: 'a table goes above the table holding the caret', doc: '| a |\n| - |\n| b |', select: [14, 14],
+            run: (editor) => editor.insertTable(2, 2), result: '|  |  |\n| --- | --- |\n|  |  |\n\n| a |\n| - |\n| b |',
+        },
+        {
+            name: 'a quote from a heading escapes the fence its text would open', doc: '###### ~~~ x', select: [8, 8],
+            run: (editor) => editor.setBlockType('quote'), result: '> \\~~~ x',
+        },
+        {
+            name: 'a heading declines in a table cell', doc: '| a |\n| - |\n| b |', select: [14, 14],
+            run: (editor) => editor.setBlockType('h2'), result: '| a |\n| - |\n| b |',
+        },
+    ];
+
+    for (const testCase of CASES) {
+        it(testCase.name, () => {
+            const editor = new MarkdownEditor(testCase.doc, { mode: 'source' });
+
+            injectLiveSourceView(editor, testCase.doc, testCase.select[0], testCase.select[1]);
+            testCase.run(editor);
+
+            expect(editor.getValue()).toBe(testCase.result);
+
+            editor.setMode('wysiwyg');
+
+            // A link reference definition shows as a raw block in the editor, while the viewer shows nothing for it.
+            const surface = editorSurfaceModel(editor).filter((block) => !(block.kind === 'raw' && /^\[[^\]]+\]:/.test(block.text)));
+
+            expect(surface).toEqual(viewerModel(testCase.result).blocks);
+        });
+    }
+
+    // The editor keeps this document as a raw block, which shows `b`; the
+    // viewer hides it. Only the decline is checked.
+    it('a heading declines on a line the viewer does not show', () => {
+        const doc = '> > ```\n> > a\n> > ```\nb';
+        const editor = new MarkdownEditor(doc, { mode: 'source' });
+
+        injectLiveSourceView(editor, doc, doc.length, doc.length);
+        editor.setBlockType('h2');
+
+        expect(editor.getValue()).toBe(doc);
     });
 });
 
@@ -1881,6 +2080,38 @@ describe('MarkdownEditor table commands', () => {
         }
     });
 
+    // A table cell holds text only: a heading, quote, code block or list
+    // made in one is written into the cell as its literal syntax (`## c`).
+    it('setBlockType and the list toggles leave a table cell alone', () => {
+        const commands: Array<(editor: MarkdownEditor) => unknown> = [
+            (editor) => editor.setBlockType('h2'),
+            (editor) => editor.setBlockType('quote'),
+            (editor) => editor.setBlockType('code'),
+            (editor) => editor.toggleUnorderedList(),
+            (editor) => editor.toggleOrderedList(),
+        ];
+
+        for (const command of commands) {
+            const editor = new MarkdownEditor();
+
+            editor.insertTable(2, 2);
+            lexicalOf(editor).update(() => {
+                const selection = $getSelection();
+
+                if ($isRangeSelection(selection)) {
+                    selection.insertText('c');
+                }
+            }, { discrete: true });
+
+            const before = editor.getValue();
+
+            command(editor);
+
+            expect(editor.getValue()).toBe(before);
+            expect(viewerModel(editor.getValue()).blocks).toEqual(editorSurfaceModel(editor));
+        }
+    });
+
     it('deleteTable removes the table containing the caret, including every row and cell', () => {
         const editor = new MarkdownEditor();
         editor.insertTable(2, 3);   // caret lands in the first header cell
@@ -2135,14 +2366,16 @@ describe('MarkdownEditor block alignment / columns', () => {
         ).not.toThrow();
     });
 
-    it('the old {columns=2} attribute degrades to a plain paragraph that survives a second round-trip unchanged', () => {
+    it('the old {columns=2} attribute keeps its fence, with no style', () => {
+        // Plan markdown-editor-marked-import, I24: the importer never unwraps a fence, as the viewer renders it;
+        // the attribute the editor does not model is saved as written (stack fuzz round 2).
         const editor = new MarkdownEditor();
         editor.setValue('::: {columns=2}\ntext\n:::');
 
-        expect(childTypes(editor)).toEqual(['paragraph']);
+        expect(childTypes(editor)).toEqual(['markdown-block']);
 
         const value = editor.getValue();
-        expect(normalize(value)).toBe('text');
+        expect(normalize(value)).toBe('::: {columns=2}\ntext\n:::');
 
         const reloaded = new MarkdownEditor();
         reloaded.setValue(value);
