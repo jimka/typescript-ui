@@ -904,6 +904,14 @@ page resets to empty.
   and the other eleven are explicit, documented no-ops. No consumer action
   is needed.
 
+- **`Markdown` no longer prints link reference definitions.** A
+  `[label]: url` line — such as the version-link block at the foot of a
+  changelog — rendered as a paragraph of literal text. It now renders
+  nothing, as CommonMark specifies, at the top level or inside a
+  blockquote, list item or `:::` fence. A reference link inside a table
+  cell also resolves now when its definition comes after the table; it
+  used to render as literal text. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
