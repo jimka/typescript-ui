@@ -20,7 +20,9 @@ import {
     blockStyleToAttributes, cssTextToAttributes, formatAttributes, joinColumnSections, parseAttributes, resolveBlockStyle, resolveImageSpec,
     resolveSpanStyle, spanStyleToAttributes,
 } from "~/component/display/markdownAttributes.js";
-import { lexMarkdown, lexMarkdownInline, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions } from "~/component/display/markdownExtensions.js";
+import {
+    lexMarkdown, lexMarkdownInline, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions,
+} from "~/component/display/markdownExtensions.js";
 import type { MdTableToken } from "~/component/display/markdownTableExtension.js";
 import { $isMarkdownBlockNode, $isMarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import type { MarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
@@ -36,6 +38,8 @@ import { $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNo
 import type { ReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 import type { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
+import { EMPTY_SOURCE_MAP } from "~/component/editor/markdownSourceMap.js";
+import type { MarkdownSourceBlock, MarkdownSourceLoad, MarkdownSourceMap } from "~/component/editor/markdownSourceMap.js";
 
 // ---------------------------------------------------------------- constants
 
@@ -52,7 +56,7 @@ const SHORTCUT_REFERENCE_SOURCE = /^!?\[(?:\\.|[^[\]\\])+\]$/;
 const BLOCK_SEPARATOR = "\n\n";
 
 /**
- * The paragraph lexed after a raw block's text to tell whether that text
+ * The paragraph lexed after a block's Markdown to tell whether that block
  * runs on: any plain word, which no block that has ended takes in.
  */
 const RUN_ON_PROBE = "probe";
@@ -80,6 +84,40 @@ const RUNS_ON = new Map<string, RawBlockEnd>();
 
 /** A paragraph line put before a continuation line to lex it where it stands: in a paragraph. */
 const PARAGRAPH_PROBE_LINE = "probe";
+
+/** A block whose first line is indented: a list item before it may take it as its own content. */
+const INDENTED_LINE = /^[ \t]/;
+
+/**
+ * Source that ends inside a link reference definition's label a line of it
+ * opens (`[fo`): `marked` reads a label across blank lines, so text written
+ * after the block that closes it (`o]: /url`) can make the two one
+ * definition.
+ */
+const OPEN_LABEL = /(?:^|\n) {0,3}\[(?:\\[\s\S]|[^[\]\\])*$/;
+
+/**
+ * Source that ends inside the title of a link reference definition a line
+ * of it opens (`[x]: /u "ti`): `marked` reads a title across blank lines, so
+ * text written after the block that closes it (`tle"`) can make the two one
+ * definition.
+ */
+const OPEN_TITLE = /(?:^|\n) {0,3}\[(?:\\[\s\S]|[^[\]\\])+\]:[ \t]*\n?[ \t]*(?:<[^<>\n]*>|[^\s<]\S*)[ \t]*\n?[ \t]*(?:"[^"]*|'[^']*|\([^()]*)$/;
+
+/**
+ * The character every use of a link reference definition opens with (a
+ * reference link or image, or a definition's own label): text without it
+ * reads the same under any definitions.
+ */
+const LABEL_OPEN = "[";
+
+/**
+ * Whether a loaded block's source read the same under its load's definitions
+ * as under a later set, keyed by that set (`definitionsKey`), so a document
+ * whose definitions were edited lexes each block once per new set, not once
+ * per save.
+ */
+const READS_ALIKE = new WeakMap<MarkdownSourceBlock, { readonly definitionsKey: string; readonly alike: boolean }>();
 
 /** The deepest heading level a setext underline can write (CommonMark: `=` is 1, `-` is 2). */
 const SETEXT_MAX_LEVEL = 2;
@@ -490,6 +528,36 @@ interface ReadingScope {
     readonly style: string;
 }
 
+/** The document's link reference definitions, read once per save or import. */
+export interface DocumentDefinitions {
+    /** Every definition the document holds, as the viewer resolves them. */
+    readonly all:       Links;
+    /** `all` in a form two reads can compare. */
+    readonly key:       string;
+    /** What the block serializers take: `all`, or `null` when nothing in the document uses them ({@link $needsDefinitions}). */
+    readonly forBlocks: Links | null;
+}
+
+/** A top-level block with its standard output. */
+export interface StandardBlock {
+    /** The block's node. */
+    readonly node: LexicalNode;
+    /** Its standard output; `""` for a block that writes nothing (an empty paragraph). */
+    readonly text: string;
+}
+
+/** A top-level block as a save writes it. */
+interface WrittenBlock {
+    /** The block's node. */
+    readonly node:     LexicalNode;
+    /** The block's source at load when it is written as that source, else `undefined`. */
+    readonly source:   MarkdownSourceBlock | undefined;
+    /** What is written: the source, or the standard output. */
+    readonly text:     string;
+    /** The block's standard output. */
+    readonly standard: string;
+}
+
 /** The inline writer's state: the output so far, the open marks, and whitespace held back. */
 interface InlineWriter {
     readonly pieces: Piece[];
@@ -515,10 +583,73 @@ interface InlineWriter {
  * dialect. Like `@lexical/markdown`'s `$convertToMarkdownString`, it must
  * run inside an `editor.read` or `editor.update`.
  *
- * @returns The Markdown: blocks joined by one blank line, no trailing newline.
+ * Without a source map every block is written in the standard form, joined
+ * by one blank line, with no trailing newline. With the editor's source map,
+ * a top-level block whose standard output still equals its output at load,
+ * and whose source still reads the same under the document's definitions, is
+ * written as its source, and the text between two such blocks that were
+ * neighbours at load, and around the document, is kept: an unedited document
+ * saves as it was loaded.
+ *
+ * @param sourceMap - The source map of the editor's imports.
+ * @returns The Markdown.
  */
-export function $serializeMarkdown(): string {
-    return serializeBlockList($getRoot().getChildren(), $collectDefinitions());
+export function $serializeMarkdown(sourceMap: MarkdownSourceMap = EMPTY_SOURCE_MAP): string {
+    const definitions = $readDefinitions(sourceMap.blocks.size > 0);
+    const parts = $serializeTopLevelBlocks(definitions.forBlocks);
+    const load = documentLoad(parts, sourceMap);
+    const blocks = writtenBlocks(parts, sourceMap, definitions);
+
+    if (blocks.length === 0) {
+        return load.blockCount === 0 ? load.prefix : "";
+    }
+
+    return assembleDocument(blocks, load);
+}
+
+/**
+ * Serializes each of the root's children in the standard form, under the
+ * document's link reference definitions, a list next to a raw block or right
+ * after another list written so it stays its own list
+ * ({@link serializeListApart}). The import takes a
+ * block's fingerprint and a save its standard output from this one function,
+ * so the two are computed identically.
+ *
+ * @param definitions - The definitions the block serializers take
+ *   ({@link DocumentDefinitions.forBlocks}).
+ * @returns One entry per root child, in document order.
+ */
+export function $serializeTopLevelBlocks(definitions: Links | null): StandardBlock[] {
+    const children = $getRoot().getChildren();
+    let previousJoinable: string | undefined;
+
+    return children.map((node, index) => {
+        const text = $isListNode(node)
+            ? serializeListApart(node, previousJoinable, children.slice(index + 1), definitions)
+            : serializeBlock(node, definitions);
+
+        if (text !== "") {
+            previousJoinable = $isMarkdownRawBlockNode(node) || $isListNode(node) ? text : undefined;
+        }
+
+        return { node, text };
+    });
+}
+
+/**
+ * Reads the document's link reference definitions with one lex of its raw
+ * blocks' text, for both the block serializers and a comparison with the
+ * definitions at load.
+ *
+ * @param compared - Whether the definitions are compared with those at load,
+ *   so they are read even when no reference link needs them.
+ * @returns The definitions; `all` is empty when neither needs them.
+ */
+export function $readDefinitions(compared: boolean): DocumentDefinitions {
+    const needed = $needsDefinitions();
+    const all: Links = needed || compared ? $lexDefinitions() : {};
+
+    return { all, key: JSON.stringify(all), forBlocks: needed ? all : null };
 }
 
 /**
@@ -550,16 +681,32 @@ export function $serializeLinkContent(link: LinkNode): string {
  * the `[` of any other text), and a raw block lexes alone as it does in the
  * document, so their text, joined as blocks, is lexed for `marked`'s own map.
  *
- * @returns The definitions, or `null` when the document holds no reference
- *   link, so none is needed.
+ * @returns The definitions, or `null` when nothing in the document uses
+ *   them, so none is needed.
  */
 function $collectDefinitions(): Links | null {
-    const hasReference = $dfs().some(({ node }) => $isReferenceLinkNode(node));
+    return $needsDefinitions() ? $lexDefinitions() : null;
+}
 
-    if (!hasReference) {
-        return null;
-    }
+/**
+ * Tells whether the document holds something its definitions decide: a
+ * reference link, which needs them to be written in its own form, or a run
+ * kept as source holding a `[`, which may be a reference (`[][label]`) whose
+ * reading needs them.
+ *
+ * @returns `true` when it holds one.
+ */
+function $needsDefinitions(): boolean {
+    return $dfs().some(({ node }) => $isReferenceLinkNode(node) || ($isMarkdownSourceTextNode(node) && node.getSource().includes(LABEL_OPEN)));
+}
 
+/**
+ * Lexes the document's raw blocks' text for its link reference definitions,
+ * as {@link $collectDefinitions} describes.
+ *
+ * @returns `marked`'s map of the definitions.
+ */
+function $lexDefinitions(): Links {
     return lexMarkdownLinkDefinitions(rawBlockTexts($getRoot().getChildren()).join(BLOCK_SEPARATOR));
 }
 
@@ -639,8 +786,10 @@ export function $serializeInlineNodes(nodes: LexicalNode[]): string {
  */
 export function $readsBackAsShown(node: LexicalNode, inTableCell?: boolean): boolean {
     const inCell = inTableCell ?? $findMatchingParent(node, $isTableCellNode) !== null;
+    // A reference link is written, and read back, with the document's definitions, as a save writes it.
+    const definitions = $collectDefinitions();
 
-    return inlineRuns(node, inCell).every(([nodes, context]) => inlineReadsBack(nodes, context));
+    return inlineRuns(node, inCell).every(([nodes, context]) => inlineReadsBack(nodes, { ...context, definitions }));
 }
 
 /**
@@ -968,6 +1117,254 @@ export function formatDelimiterRow(alignments: ElementFormatType[], widths: read
     return "| " + cells.join(" | ") + " |";
 }
 
+// ---------------------------------------------------------------- source preservation
+
+/**
+ * Joins the written blocks, keeping the source's own text between two blocks
+ * written as source that were neighbours at load; any other two blocks are
+ * one blank line apart.
+ *
+ * @param blocks - The blocks to write, at least one.
+ * @param load - The document's import, whose ending the document keeps.
+ * @returns The Markdown.
+ */
+function assembleDocument(blocks: readonly WrittenBlock[], load: MarkdownSourceLoad): string {
+    const body = blocks.map((block, index) => separatorBefore(blocks, index) + block.text).join("");
+
+    return documentStart(blocks[0]!.source) + body + documentEnd(blocks[blocks.length - 1]!.source, load);
+}
+
+/**
+ * The import the document as a whole comes from: the one that loaded its last
+ * top-level block still in the source map, edited or not — an undo can bring
+ * back an earlier import's blocks — else the last import.
+ *
+ * @param parts - Every top-level block, with its standard output.
+ * @param sourceMap - The source map of the editor's imports.
+ * @returns The import whose text around the document a save keeps.
+ */
+function documentLoad(parts: readonly StandardBlock[], sourceMap: MarkdownSourceMap): MarkdownSourceLoad {
+    for (let index = parts.length - 1; index >= 0; index--) {
+        const entry = sourceMap.blocks.get(parts[index]!.node.getKey());
+
+        if (entry !== undefined) {
+            return entry.load;
+        }
+    }
+
+    return sourceMap.latest;
+}
+
+/**
+ * Decides what each top-level block writes: its source when it is unchanged
+ * and its source still reads the same where it now stands, else its standard
+ * output. A block that writes nothing (an empty paragraph) is left out —
+ * unless it is unchanged, since a block the viewer shows as nothing (a link
+ * with empty text) still has source to keep.
+ *
+ * @param parts - Every top-level block, with its standard output.
+ * @param sourceMap - The source map of the editor's imports.
+ * @param definitions - The document's definitions now.
+ * @returns The blocks to write, in document order.
+ */
+function writtenBlocks(
+    parts: readonly StandardBlock[], sourceMap: MarkdownSourceMap, definitions: DocumentDefinitions,
+): WrittenBlock[] {
+    const candidates = parts
+        .map((part) => ({ ...part, entry: unchangedBlock(part, sourceMap, definitions) }))
+        .filter((part) => part.text !== "" || part.entry !== undefined);
+    const written: WrittenBlock[] = [];
+
+    candidates.forEach(({ node, text, entry }, index) => {
+        const runsOn = entry !== undefined && entry.load.endsOpen && entry.index === entry.load.blockCount - 1
+            && index < candidates.length - 1;
+        const keep = entry !== undefined && !runsOn && !joinsPreviousBlock(entry, written[written.length - 1]);
+        const block = keep ? { node, source: entry, text: entry.body, standard: text } : { node, source: undefined, text, standard: text };
+
+        if (block.text !== "") {
+            written.push(block);
+        }
+    });
+
+    // From the end, so each block is checked against what is finally written after it.
+    for (let index = written.length - 1; index >= 0; index--) {
+        const block = written[index]!;
+
+        if (block.source !== undefined && labelClosedAfter(written, index)) {
+            written.splice(index, 1, ...(block.standard === "" ? [] : [{ ...block, source: undefined, text: block.standard }]));
+        }
+    }
+
+    return written;
+}
+
+/**
+ * Tells whether a block written as its source ends inside a definition label
+ * ({@link OPEN_LABEL}) or title ({@link OPEN_TITLE}) that what is written
+ * after it closes, so `marked` reads the block and later text as one
+ * definition: its source no longer reads as loaded, and it must be written
+ * in the standard form, which escapes its `[` (or writes a reference there
+ * as `[label][]`).
+ *
+ * @param blocks - The blocks being written.
+ * @param index - The block's position among them.
+ * @returns `true` when the block's last block-level token reads otherwise
+ *   with what follows it.
+ */
+function labelClosedAfter(blocks: readonly WrittenBlock[], index: number): boolean {
+    const text = blocks[index]!.text;
+
+    if (!(OPEN_LABEL.test(text) || OPEN_TITLE.test(text)) || index === blocks.length - 1) {
+        return false;
+    }
+
+    const following = blocks.slice(index + 1).map((block, offset) => separatorBefore(blocks, index + 1 + offset) + block.text).join("");
+    const lexBlocks = (markdown: string): Token[] => lexMarkdown(markdown).filter((token) => token.type !== "space");
+    const alone = lexBlocks(text);
+    const last = alone.length - 1;
+
+    return last >= 0 && (lexBlocks(text + following)[last]?.raw ?? "").trim() !== (alone[last]!.raw ?? "").trim();
+}
+
+/**
+ * Tells whether a block's source would join the block written before it: its
+ * first line is indented, and the block before it — not its neighbour at
+ * load, whose text before it is kept — may be a list, whose item takes an
+ * indented line after a blank one as its own content.
+ *
+ * @param entry - The unchanged block.
+ * @param previous - The block written before it, or `undefined` at the document's start.
+ * @returns `true` when the block must be written in the standard form, at
+ *   column 0.
+ */
+function joinsPreviousBlock(entry: MarkdownSourceBlock, previous: WrittenBlock | undefined): boolean {
+    if (previous === undefined || !INDENTED_LINE.test(entry.body)) {
+        return false;
+    }
+
+    return !followsAtLoad(previous.source, entry) && ($isListNode(previous.node) || $isMarkdownRawBlockNode(previous.node));
+}
+
+/**
+ * Tells whether two loaded blocks followed each other in the same import.
+ *
+ * @param previous - The earlier block, or `undefined` for one written in the standard form.
+ * @param current - The later block, or `undefined` for one written in the standard form.
+ * @returns `true` when `current` came right after `previous` at load.
+ */
+function followsAtLoad(previous: MarkdownSourceBlock | undefined, current: MarkdownSourceBlock | undefined): boolean {
+    return previous !== undefined && current !== undefined && current.load === previous.load
+        && current.index === previous.index + 1;
+}
+
+/**
+ * The block a part was loaded as, when its standard output still equals its
+ * output at load and its source still reads the same under the document's
+ * definitions — the block is unchanged and can be written as its source.
+ *
+ * @param part - A block and its standard output.
+ * @param sourceMap - The source map of the editor's imports.
+ * @param definitions - The document's definitions now.
+ * @returns The loaded block, or `undefined` for an edited or new block.
+ */
+function unchangedBlock(
+    part: StandardBlock, sourceMap: MarkdownSourceMap, definitions: DocumentDefinitions,
+): MarkdownSourceBlock | undefined {
+    const entry = sourceMap.blocks.get(part.node.getKey());
+
+    return entry !== undefined && entry.fingerprint === part.text && readsAlike(entry, definitions) ? entry : undefined;
+}
+
+/**
+ * Tells whether a block's source reads the same under the document's
+ * definitions now as under those at its load. Once they differ, text the
+ * source wrote as a bracketed label may resolve differently — text becoming a
+ * link, or a link another URL — which its fingerprint cannot show. Only
+ * source holding a `[` can use a definition, and such source reads the same
+ * exactly when it lexes to the same tokens under both sets, so a document
+ * whose definitions were edited still writes every block they do not reach
+ * as loaded.
+ *
+ * @param entry - The loaded block.
+ * @param definitions - The document's definitions now.
+ * @returns `true` when the source means what it meant at load.
+ */
+function readsAlike(entry: MarkdownSourceBlock, definitions: DocumentDefinitions): boolean {
+    if (entry.load.definitionsKey === definitions.key || !entry.body.includes(LABEL_OPEN)) {
+        return true;
+    }
+
+    const known = READS_ALIKE.get(entry);
+
+    if (known?.definitionsKey === definitions.key) {
+        return known.alike;
+    }
+
+    const before = JSON.stringify(lexMarkdownWithDefinitions(entry.body, entry.load.definitions));
+    const alike = before === JSON.stringify(lexMarkdownWithDefinitions(entry.body, definitions.all));
+
+    READS_ALIKE.set(entry, { definitionsKey: definitions.key, alike });
+
+    return alike;
+}
+
+/**
+ * The text written before a block: nothing before the first one, the
+ * source's own text between two blocks written as source that followed each
+ * other at load, and one blank line otherwise — with {@link LIST_SEPARATOR}
+ * between two raw blocks that did not follow each other at load when the
+ * second's list would join the first's ({@link listsJoin}), as the block
+ * list keeps them apart.
+ *
+ * @param blocks - The blocks being written.
+ * @param index - The block's position among them.
+ * @returns The separator.
+ */
+function separatorBefore(blocks: readonly WrittenBlock[], index: number): string {
+    if (index === 0) {
+        return "";
+    }
+
+    const previous = blocks[index - 1]!;
+    const current = blocks[index]!;
+
+    if (followsAtLoad(previous.source, current.source)) {
+        return previous.source!.after;
+    }
+
+    const joins = $isMarkdownRawBlockNode(previous.node) && $isMarkdownRawBlockNode(current.node) && listsJoin(previous.text, current.text);
+
+    return joins ? BLOCK_SEPARATOR + LIST_SEPARATOR + BLOCK_SEPARATOR : BLOCK_SEPARATOR;
+}
+
+/**
+ * The text written before the first block: its import's own leading blank
+ * lines while that block is the import's first, written as source.
+ *
+ * @param first - The first block's source, or `undefined` for one written in the standard form.
+ * @returns The text before the first block.
+ */
+function documentStart(first: MarkdownSourceBlock | undefined): string {
+    return first !== undefined && first.index === 0 ? first.load.prefix : "";
+}
+
+/**
+ * The text written after the last block: its import's own ending while that
+ * block is the import's last, written as source, else a newline when the
+ * document's source ended with one.
+ *
+ * @param last - The last block's source, or `undefined` for one written in the standard form.
+ * @param load - The document's import.
+ * @returns The text after the last block.
+ */
+function documentEnd(last: MarkdownSourceBlock | undefined, load: MarkdownSourceLoad): string {
+    if (last !== undefined && last.index === last.load.blockCount - 1) {
+        return last.after;
+    }
+
+    return load.endsWithNewline ? "\n" : "";
+}
+
 // ---------------------------------------------------------------- blocks
 
 /**
@@ -1187,6 +1584,19 @@ function $writesBlockAfter(node: LexicalNode, definitions: Links | null): boolea
 }
 
 /**
+ * Tells whether a block's Markdown runs on past its own text, so a block
+ * written after it, one blank line between, would join it: its
+ * {@link rawBlockEnd} is not `"apart"`. The importer asks it of a document's
+ * last block too.
+ *
+ * @param markdown - The block's Markdown.
+ * @returns `true` when a following block would be read as part of it.
+ */
+export function runsOn(markdown: string): boolean {
+    return rawBlockEnd(markdown) !== "apart";
+}
+
+/**
  * Tells how a block's Markdown ends ({@link RawBlockEnd}): lexed with a
  * paragraph after it, one blank line between, whether that paragraph stays
  * its own; if not, whether it does with two blank lines between.
@@ -1201,7 +1611,7 @@ function rawBlockEnd(markdown: string): RawBlockEnd {
         return known;
     }
 
-    const result = !runsOn(markdown, BLOCK_SEPARATOR) ? "apart" : !runsOn(markdown, `${BLOCK_SEPARATOR}\n`) ? "wide" : "runsOn";
+    const result = !takesInProbe(markdown, BLOCK_SEPARATOR) ? "apart" : !takesInProbe(markdown, `${BLOCK_SEPARATOR}\n`) ? "wide" : "runsOn";
 
     if (RUNS_ON.size >= RUNS_ON_CACHE_SIZE) {
         RUNS_ON.clear();
@@ -1213,15 +1623,14 @@ function rawBlockEnd(markdown: string): RawBlockEnd {
 }
 
 /**
- * Tells whether a block's Markdown runs on past its own text, so a block
- * written after it would join it: lexed with a paragraph after it, that
- * paragraph does not stay its own.
+ * Tells whether a block's Markdown takes in a paragraph written after it:
+ * lexed with a paragraph after it, that paragraph does not stay its own.
  *
  * @param markdown - The block's Markdown.
  * @param separator - What is written between the block and the paragraph.
  * @returns `true` when a following block would be read as part of it.
  */
-function runsOn(markdown: string, separator: string): boolean {
+function takesInProbe(markdown: string, separator: string): boolean {
     const tokens = lexMarkdown(markdown + separator + RUN_ON_PROBE).filter((token) => token.type !== "space");
     const last = tokens[tokens.length - 1];
 
@@ -3739,10 +4148,6 @@ function segmentReading(segments: readonly Segment[], context: InlineContext): s
 
     for (const segment of segments) {
         const link = linkReading(segment.link?.getURL() ?? "", segment.link?.getTitle() ?? "");
-
-        if ($isReferenceLinkNode(segment.link)) {
-            return null;
-        }
 
         if (segment.kind === "break") {
             if (!context.singleLine || context.inTableCell) {

@@ -32,6 +32,7 @@ import { installTestDOM, ruleStyleWrites, type RecordingDOMSink } from '../dom/T
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { EditorState } from '@codemirror/state';
 import { editorSurfaceModel, viewerModel } from './markdown-roundtrip/viewModel';
+import { canonicalSave } from './markdown-roundtrip/harness';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -1424,12 +1425,16 @@ describe('MarkdownEditor source-mode block commands', () => {
             return codeEditor.trim();
         })();
 
+        // An unedited document saves as loaded (plan markdown-editor-source-preservation, P1), so the
+        // switch's own save cannot fail here: the importer must read what source mode wrote as the viewer
+        // does, and the standard form — what an edited block saves as — must write it back.
         for (const doc of ['**hello** world', '++hello++ world', '## hello', '- a\n- b', tableSkeleton]) {
             const editor = new MarkdownEditor(doc, { mode: 'source' });
 
             editor.setMode('wysiwyg');
 
-            expect(normalize(editor.getValue()), doc).toBe(normalize(doc));
+            expect(editorSurfaceModel(editor), doc).toEqual(viewerModel(doc).blocks);
+            expect(normalize(canonicalSave(editor)), doc).toBe(normalize(doc));
         }
     });
 });
@@ -1570,23 +1575,26 @@ describe('MarkdownEditor source-mode styled spans', () => {
     // its meaning, and byte-for-byte unless the serializer has a canonical
     // form for it.
     it('round-trips its own output through a mode switch', () => {
-        // Source mode writes colour on a whole bold run inside it, the form the serializer writes (S19).
-        const documents: Array<[string, string]> = [
-            ['[hello]{color=#cc0000} world', '[hello]{color=#cc0000} world'],
-            ['[hello]{color=#cc0000 size=1.2em} world', '[hello]{color=#cc0000 size=1.2em} world'],
-            ['[hello]{font="Georgia, serif"} world', '[hello]{font="Georgia, serif"} world'],
-            ['a **[hello]{color=#cc0000}** b', 'a **[hello]{color=#cc0000}** b'],
-            ['**hello [world]{color=#cc0000}**', '**hello [world]{color=#cc0000}**'],
-            ['[hello ]{size=1.2em}[world]{color=#2563eb size=1.2em}', '[hello ]{size=1.2em}[world]{color=#2563eb size=1.2em}'],
+        // An unedited document saves as loaded (plan markdown-editor-source-preservation, P1), so the switch's own
+        // save cannot fail here: the importer must read each document as the viewer does, and the standard form
+        // — what an edited block saves as — must write it byte for byte, since source mode writes colour on a
+        // whole bold run inside it, the form the serializer writes too (plan markdown-editor-serializer, S19).
+        const documents = [
+            '[hello]{color=#cc0000} world',
+            '[hello]{color=#cc0000 size=1.2em} world',
+            '[hello]{font="Georgia, serif"} world',
+            'a **[hello]{color=#cc0000}** b',
+            '**hello [world]{color=#cc0000}**',
+            '[hello ]{size=1.2em}[world]{color=#2563eb size=1.2em}',
         ];
 
-        for (const [doc, saved] of documents) {
+        for (const doc of documents) {
             const editor = new MarkdownEditor(doc, { mode: 'source' });
 
             editor.setMode('wysiwyg');
 
-            expect(normalize(editor.getValue()), doc).toBe(normalize(saved));
-            expect(viewerModel(editor.getValue()), doc).toEqual(viewerModel(doc));
+            expect(editorSurfaceModel(editor), doc).toEqual(viewerModel(doc).blocks);
+            expect(canonicalSave(editor), doc).toBe(doc);
         }
     });
 });
@@ -1972,11 +1980,12 @@ describe('MarkdownEditor table import/export edge cases', () => {
         expect(tokens.some((token) => token.type === 'mdtable')).toBe(false);
     });
 
-    it('normalises a table authored without leading/trailing pipes to the canonical piped form', () => {
+    it('keeps a table authored without leading/trailing pipes as written', () => {
+        // An unedited document saves as loaded (plan markdown-editor-source-preservation, P1).
         const editor = new MarkdownEditor();
         editor.setValue('a | b\n--- | ---\n1 | 2');
 
-        expect(normalize(editor.getValue())).toBe('| a | b |\n| --- | --- |\n| 1 | 2 |');
+        expect(editor.getValue()).toBe('a | b\n--- | ---\n1 | 2');
     });
 
     it('absorbs a following non-blank prose line as an extra row, matching marked', () => {
@@ -1986,7 +1995,8 @@ describe('MarkdownEditor table import/export edge cases', () => {
         const lines = normalize(editor.getValue()).split('\n');
 
         expect(lines).toHaveLength(4);   // header, delimiter, and two body rows
-        expect(lines[3]).toBe('| trailing prose |  |');
+        // An unedited document saves as loaded (plan markdown-editor-source-preservation, P1).
+        expect(lines[3]).toBe('trailing prose');
     });
 
     it('round-trips a column width to a fixpoint, and the reloaded table\'s colWidths is [240, 0]', () => {
@@ -2379,8 +2389,9 @@ describe('MarkdownEditor block alignment / columns', () => {
 
         expect(childTypes(editor)).toEqual(['markdown-block']);
 
+        // An unedited document saves as loaded (plan markdown-editor-source-preservation, P1).
         const value = editor.getValue();
-        expect(normalize(value)).toBe('::: {columns=2}\ntext\n:::');
+        expect(value).toBe('::: {columns=2}\ntext\n:::');
 
         const reloaded = new MarkdownEditor();
         reloaded.setValue(value);

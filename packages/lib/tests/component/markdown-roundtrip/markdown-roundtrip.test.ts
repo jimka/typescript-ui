@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
-import { assertCheck, checkTitle, loadAndSave } from './harness';
+import { assertCheck, canonicalSave, checkTitle, loadAndSave } from './harness';
 import { editorSurfaceModel, linkTargets, viewerModel } from './viewModel';
 import { CORPUS } from './corpus';
 import { DIVERGENCES } from './corpus/divergences';
@@ -71,6 +71,25 @@ for (const testCase of CORPUS) {
             const { editor } = loadAndSave(testCase.source);
 
             assertCheck(testCase, 'surface', editorSurfaceModel(editor), viewerModel(testCase.source).blocks);
+        });
+
+        it(checkTitle(testCase, 'verbatim'), () => {
+            const { saved } = loadAndSave(testCase.source);
+
+            assertCheck(testCase, 'verbatim', saved, testCase.source.replace(/\r\n?/g, '\n'));
+        });
+
+        it(checkTitle(testCase, 'canonical'), () => {
+            const { editor } = loadAndSave(testCase.source);
+
+            assertCheck(testCase, 'canonical', viewerModel(canonicalSave(editor)), viewerModel(testCase.source));
+        });
+
+        it(checkTitle(testCase, 'canonicalIdempotence'), () => {
+            const first = canonicalSave(loadAndSave(testCase.source).editor);
+            const second = loadAndSave(first).editor;
+
+            assertCheck(testCase, 'canonicalIdempotence', canonicalSave(second), first);
         });
     });
 }

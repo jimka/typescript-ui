@@ -26,6 +26,7 @@ import {
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
     CommandListener, LexicalCommand, CommandListenerPriority, UpdateListener, ParagraphNode, RangeSelection, EditorUpdateOptions,
+    NodeKey,
 } from "lexical";
 import { registerMarkdownShortcuts } from "@lexical/markdown";
 import { registerRichText, $createHeadingNode, $createQuoteNode, QuoteNode, $isQuoteNode } from "@lexical/rich-text";
@@ -54,6 +55,8 @@ import { $serializeBlock, $serializeInlineNodes, $serializeMarkdown } from "~/co
 import {
     $editWritably, $findEnclosingBlock, $formatWritably, $orderedPoints, $selectionHasFormat, RUN_EDGE_TAG, registerWritableStateRules,
 } from "~/component/editor/markdownWritable.js";
+import { EMPTY_SOURCE_MAP } from "~/component/editor/markdownSourceMap.js";
+import type { MarkdownSourceBlock, MarkdownSourceMap } from "~/component/editor/markdownSourceMap.js";
 import {
     $createMarkdownRawBlockNode, $isMarkdownRawBlockNode, $isMarkdownSourceTextNode, MarkdownRawBlockNode,
 } from "~/component/editor/markdownSourceNodes.js";
@@ -1884,6 +1887,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      */
     private _editor: LexicalEditor | null = null;
 
+    /** The source map of every import so far; `EMPTY_SOURCE_MAP` before the editor is built. */
+    private _sourceMap: MarkdownSourceMap = EMPTY_SOURCE_MAP;
+
+    /**
+     * The loaded blocks of every import, keyed by node: the map `_sourceMap`
+     * reads. Never pruned, since undo can bring back any earlier import's
+     * nodes while the history holds them; see {@link adoptSourceMap}.
+     */
+    private readonly _sourceBlocks: Map<NodeKey, MarkdownSourceBlock> = new Map();
+
     /** The `mergeRegister` teardown for the rich-text / list / history / shortcut / update registrations. */
     private _unregister: (() => void) | null = null;
 
@@ -2105,8 +2118,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             this._codeEditor.setValue(markdown);
             this._card.setVisibleComponentId(this._codeEditor.getId());
         } else {
-            this.ensureEditor().update(
-                () => $importMarkdown(markdown), { discrete: true });
+            this.ensureEditor().update(() => {
+                this.adoptSourceMap($importMarkdown(markdown));
+            }, { discrete: true });
             this._card.setVisibleComponentId(this._wysiwyg.getId());
         }
 
@@ -2130,7 +2144,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const editor = this._editor;
 
         if (editor) {
-            return editor.read(() => $serializeMarkdown());
+            return editor.read(() => $serializeMarkdown(this._sourceMap));
         }
 
         return this._options.value ?? "";
@@ -2203,7 +2217,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         // Discrete forces a synchronous commit, so the resulting `"change"`
         // fires before this returns rather than on a later flush.
-        this.ensureEditor().update(() => $importMarkdown(value), { discrete: true });
+        this.ensureEditor().update(() => {
+            this.adoptSourceMap($importMarkdown(value));
+        }, { discrete: true });
 
         return this;
     }
@@ -3530,18 +3546,20 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
             // Populate the initial state before registering the update listener,
             // so loading the cached value does not fire a spurious `"change"`.
-            editor.update(() => $importMarkdown(this._options.value ?? ""), { discrete: true });
+            editor.update(() => {
+                this.adoptSourceMap($importMarkdown(this._options.value ?? ""));
+            }, { discrete: true });
             editor.setEditable(!(this._options.readOnly ?? false));
 
-            // The importer and serializer normalize what they round-trip (a trailing newline is
-            // dropped, a table's delimiter row is re-spaced), so from here on `getValue()`
-            // reports the converted form rather than the string this editor was built
-            // with. Re-take the clean Markdown from the converted form so both sides of
-            // `onDocChange`'s comparison come from the same converter — but only while the
-            // document is still clean, since a first build can also happen after a
-            // source-mode edit, and re-taking then would clear a real dirty flag.
+            // An unedited document saves as loaded, except that `\r\n` line endings become
+            // `\n`, so from here on `getValue()` reports the converted form rather than the
+            // string this editor was built with. Re-take the clean Markdown from the
+            // converted form so both sides of `onDocChange`'s comparison come from the same
+            // converter — but only while the document is still clean, since a first build can
+            // also happen after a source-mode edit, and re-taking then would clear a real
+            // dirty flag.
             if (!this.isDirty()) {
-                this._cleanValue = editor.read(() => $serializeMarkdown());
+                this._cleanValue = editor.read(() => $serializeMarkdown(this._sourceMap));
             }
 
             this._unregister = mergeRegister(
@@ -4146,6 +4164,28 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Adds an import's loaded blocks to the source map, keeping every earlier
+     * import's. A `setValue` or a switch back from source mode is one undoable
+     * update, so undo can bring an earlier import's nodes back, and a save
+     * writes them as their source only while their entries remain. Node keys
+     * never repeat within one Lexical editor, so no entry is overwritten.
+     *
+     * The map grows by one small entry per top-level block per import (its
+     * source is a slice of the imported text) and is never pruned: Lexical's
+     * undo history, which this editor keeps unbounded, already holds every
+     * import's nodes, so the map grows no faster than the history does.
+     *
+     * @param imported - The source map the import returned.
+     */
+    private adoptSourceMap(imported: MarkdownSourceMap): void {
+        for (const [key, block] of imported.blocks) {
+            this._sourceBlocks.set(key, block);
+        }
+
+        this._sourceMap = { latest: imported.latest, blocks: this._sourceBlocks };
+    }
+
+    /**
      * Recomputes the Markdown value from the committed editor state after a
      * Lexical update and hands it to the shared change seam.
      */
@@ -4156,7 +4196,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             return;
         }
 
-        this.onDocChange(editor.read(() => $serializeMarkdown()));
+        this.onDocChange(editor.read(() => $serializeMarkdown(this._sourceMap)));
     }
 
     /**

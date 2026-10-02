@@ -4,7 +4,7 @@ import {
     $addUpdateTag, $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $getSelection, $setState,
     TEXT_TYPE_TO_FORMAT,
 } from "lexical";
-import type { ElementNode, LexicalNode, TextFormatType, TextNode } from "lexical";
+import type { ElementNode, LexicalNode, NodeKey, TextFormatType, TextNode } from "lexical";
 import { Lexer } from "marked";
 import type { Links, Token, Tokens } from "marked";
 import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text";
@@ -38,10 +38,13 @@ import {
 } from "~/component/editor/markdownNodeState.js";
 import { $createReferenceLinkNode, $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import type { ReferenceLinkReference } from "~/component/editor/markdownReferenceLinkNode.js";
-import { $definitionsSource, $serializeLinkContent } from "~/component/editor/markdownSerializer.js";
+import {
+    $definitionsSource, $readDefinitions, $serializeLinkContent, $serializeTopLevelBlocks, runsOn,
+} from "~/component/editor/markdownSerializer.js";
 import { $createMarkdownRawBlockNode, $createMarkdownSourceTextNode, $isMarkdownRawBlockNode } from "~/component/editor/markdownSourceNodes.js";
 import { $readStandardForm, keptImageShown } from "~/component/editor/markdownSerializer.js";
 import type { StandardFormReading } from "~/component/editor/markdownSerializer.js";
+import type { MarkdownSourceBlock, MarkdownSourceLoad, MarkdownSourceMap } from "~/component/editor/markdownSourceMap.js";
 
 // ---------------------------------------------------------------- constants
 
@@ -218,18 +221,21 @@ export const MARKDOWN_IMPORT_TAG = "markdown-import";
  * The update is tagged {@link MARKDOWN_IMPORT_TAG}.
  *
  * @param markdown - The Markdown to load.
+ * @returns The document's source map, which a save takes to write the blocks
+ *   left unedited as they were written.
  */
-export function $importMarkdown(markdown: string): void {
+export function $importMarkdown(markdown: string): MarkdownSourceMap {
     const source = markdown.replace(/\r\n?/g, "\n");
     const root = $getRoot();
 
     $addUpdateTag(MARKDOWN_IMPORT_TAG);
     IMPORT_DEFINITIONS.current = lexMarkdownLinkDefinitions(source);
 
+    const located = locateBlocks(source, lexMarkdown(source));
     let blocks: LexicalNode[];
 
     try {
-        blocks = $buildBlockList(source, lexMarkdown(source));
+        blocks = located.map($buildLocatedBlock);
     } finally {
         IMPORT_DEFINITIONS.current = null;
     }
@@ -241,6 +247,8 @@ export function $importMarkdown(markdown: string): void {
     if ($getSelection() !== null) {
         root.selectStart();
     }
+
+    return $recordSourceMap(source, located);
 }
 
 /**
@@ -368,6 +376,63 @@ export function $buildInlineContent(block: ElementNode, tokens: Token[]): void {
 }
 
 /**
+ * Records, for each root block just built, its source, the text after it and
+ * its standard output (its fingerprint). Runs after the document is complete
+ * — reference links' contents recorded — but before Lexical's node transforms
+ * run at commit, so a transform that changes a block's content (the list
+ * merge) makes it differ from its fingerprint and save in the standard form.
+ *
+ * @param source - The loaded source, its line endings normalized.
+ * @param located - The root's located blocks, one per root node.
+ * @returns The source map; it holds no block when the root's nodes do not
+ *   pair one to one with the located blocks.
+ */
+function $recordSourceMap(source: string, located: LocatedBlock[]): MarkdownSourceMap {
+    const definitions = $readDefinitions(true);
+    const rendered = $serializeTopLevelBlocks(definitions.forBlocks);
+    const load: MarkdownSourceLoad = {
+        prefix:          located.length > 0 ? source.slice(0, located[0]!.start) : source,
+        endsWithNewline: source.endsWith("\n"),
+        blockCount:      located.length,
+        endsOpen:        endsOpen(source, located),
+        definitions:     definitions.all,
+        definitionsKey:  definitions.key,
+    };
+    const blocks = new Map<NodeKey, MarkdownSourceBlock>();
+
+    if (located.length === 0 && rendered.length === 1) {
+        const { node, text } = rendered[0]!;
+
+        blocks.set(node.getKey(), { load, index: 0, body: "", after: "", fingerprint: text });
+    } else if (rendered.length === located.length) {
+        located.forEach((entry, index) => {
+            const after = source.slice(entry.end, located[index + 1]?.start ?? source.length);
+            const { node, text } = rendered[index]!;
+
+            blocks.set(node.getKey(), { load, index, body: source.slice(entry.start, entry.end), after, fingerprint: text });
+        });
+    }
+
+    return { latest: load, blocks };
+}
+
+/**
+ * Tells whether the source's last block runs to the end of the document — an
+ * unclosed code fence — as the serializer's {@link runsOn} tells it for a raw
+ * block. Only the last block can run on: every other one ended before the
+ * next began.
+ *
+ * @param source - The loaded source.
+ * @param located - The root's located blocks.
+ * @returns `true` when a block written after the last one would join it.
+ */
+function endsOpen(source: string, located: LocatedBlock[]): boolean {
+    const last = located[located.length - 1];
+
+    return last !== undefined && runsOn(source.slice(last.start, last.end));
+}
+
+/**
  * Builds one node per block token of `text`, and a raw block for any text
  * between them no token covers.
  *
@@ -376,8 +441,30 @@ export function $buildInlineContent(block: ElementNode, tokens: Token[]): void {
  * @returns The block nodes, in document order.
  */
 function $buildBlockList(text: string, tokens: Token[]): LexicalNode[] {
-    return joinDefinitionRuns(text, locateTokens(text, tokens)).map((entry) =>
-        ("gap" in entry ? $buildRawBlock(entry.gap) : $buildBlock(entry.token, entry.source)));
+    return locateBlocks(text, tokens).map($buildLocatedBlock);
+}
+
+/**
+ * Locates the block tokens of `text`, with the gaps between them and each
+ * run of definitions joined: one entry per block node to build.
+ *
+ * @param text - The text the tokens were lexed from.
+ * @param tokens - Its block tokens.
+ * @returns The located blocks, in document order.
+ */
+function locateBlocks(text: string, tokens: Token[]): LocatedBlock[] {
+    return joinDefinitionRuns(text, locateTokens(text, tokens));
+}
+
+/**
+ * Builds the node of one located block: a raw block for a gap, else the
+ * token's node.
+ *
+ * @param entry - The located token or gap.
+ * @returns Its node.
+ */
+function $buildLocatedBlock(entry: LocatedBlock): LexicalNode {
+    return "gap" in entry ? $buildRawBlock(entry.gap) : $buildBlock(entry.token, entry.source);
 }
 
 /**

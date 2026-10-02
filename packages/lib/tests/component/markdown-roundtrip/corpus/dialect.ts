@@ -99,7 +99,7 @@ export const DIALECT_CASES: readonly CorpusCase[] = [
     { name: 'item holding only a nested list, first', source: '- - b\n- a' },
     { name: 'indented inline html after a soft break', source: 'a\n  <div>' },
     { name: 'indented thematic break after an indented list', source: '  - n\n\n  ***' },
-    { name: 'task item text that saves escaped', source: '- [ ] see [docs]', known: { parity: 'taskListMarker', surface: 'taskListMarker' } },
+    { name: 'task item text that saves escaped', source: '- [ ] see [docs]', known: { canonical: 'taskListMarker', surface: 'taskListMarker' } },
     { name: 'dropped definition equal to a later paragraph', source: '[x]: /a\n[x]: </b> "t"\n\n[x]: </b>"t"' },
     { name: 'quote list with a lazy last line', source: '> - a\n> - b\nc\n\nz', known: { surface: 'quoteBlocks' } },
     { name: 'link nested in a link', source: 'x [[a](/in)](/out) y' },

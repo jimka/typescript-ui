@@ -1,5 +1,7 @@
 import { expect } from 'vitest';
+import type { LexicalEditor } from 'lexical';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
+import { $serializeMarkdown } from '~/component/editor/markdownSerializer';
 import type { CorpusCase, HarnessCheck } from './corpus/types';
 
 /**
@@ -14,6 +16,22 @@ export function loadAndSave(source: string): { editor: MarkdownEditor; saved: st
     editor.setValue(source);
 
     return { editor, saved: editor.getValue() };
+}
+
+/**
+ * The editor's standard-form save, ignoring the source map: every block written as the serializer writes it.
+ *
+ * @param editor - A loaded editor.
+ * @returns The Markdown in the standard form.
+ */
+export function canonicalSave(editor: MarkdownEditor): string {
+    const lexicalEditor = (editor as unknown as { _editor: LexicalEditor | null })._editor;
+
+    if (lexicalEditor === null) {
+        throw new Error('The MarkdownEditor has no Lexical editor yet; call setValue first.');
+    }
+
+    return lexicalEditor.read(() => $serializeMarkdown());
 }
 
 /**
