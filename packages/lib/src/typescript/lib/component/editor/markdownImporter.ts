@@ -988,7 +988,7 @@ function authoredMarker(token: Tokens.List): string {
  * @param item - The list-item token.
  * @returns The item nodes, or `null` when the item holds anything but an
  *   optional checkbox, one text or paragraph, and nested lists, or a
- *   checkbox before anything but text.
+ *   checkbox before anything but text or a paragraph.
  */
 function $buildListItem(item: Tokens.ListItem): ListItemNode[] | null {
     const content = withoutSpace(item.tokens);
@@ -1002,10 +1002,10 @@ function $buildListItem(item: Tokens.ListItem): ListItemNode[] | null {
     const text = first !== undefined && (first.type === "text" || first.type === "paragraph") ? first : null;
     const nestedTokens = text === null ? content : content.slice(1);
 
-    // The viewer prints a task marker inline only before a `text` token;
-    // before a paragraph (an item `marked` made loose) it stands on a line of
-    // its own, which an item's one line of text cannot show.
-    if (!nestedTokens.every((token) => token.type === "list") || (checkbox !== null && first?.type !== "text")) {
+    // The viewer prints a task marker inline at the start of the item's text
+    // or first paragraph (an item `marked` made loose); before anything else
+    // it stands on a line of its own, which an item's one line of text cannot show.
+    if (!nestedTokens.every((token) => token.type === "list") || (checkbox !== null && text === null)) {
         return null;
     }
 

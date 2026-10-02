@@ -44,6 +44,13 @@ function trimmedTextWrites(): string[] {
     return textWrites().map((text) => text.trim());
 }
 
+/** The uppercase tag name of the element each `{ text }` write lands on, in write order. */
+function textWriteTags(): string[] {
+    return sink.writes
+        .filter((w) => w.op === 'apply' && (w.args[1] as { text?: string }).text !== undefined)
+        .map((w) => DOM.source.getTagName(w.args[0] as Handle));
+}
+
 /** Every `{ setAttr }` payload written through `apply`. */
 function attrWrites(): Record<string, string>[] {
     return sink.writes
@@ -1220,6 +1227,57 @@ describe('Markdown after a blockquote whose list has lazy lines', () => {
         expect(createdTags()).toContain('ol');
         expect(textWrites()).toContain('g');
         expect(textWrites()).not.toContain('. g');
+    });
+});
+
+describe('Markdown task-list items', () => {
+    it('BF12. shows a task item\'s [ ] marker before its text', () => {
+        new Markdown('- [ ] task').getElement(true);
+
+        expect(childTagsOf('li')).toEqual(['SPAN', 'SPAN']);
+        expect(textWrites()).toEqual(expect.arrayContaining(['[ ] ', 'task']));
+        expect(textWriteTags()).not.toContain('LI');
+    });
+
+    it('BF13. shows the marker of checked and unchecked items', () => {
+        new Markdown('- [x] done\n- [ ] todo').getElement(true);
+
+        expect(childTagsOf('li')).toEqual(['SPAN', 'SPAN', 'SPAN', 'SPAN']);
+        expect(textWrites()).toEqual(expect.arrayContaining(['[x] ', 'done', '[ ] ', 'todo']));
+        expect(textWriteTags()).not.toContain('LI');
+    });
+
+    it('BF14. shows the marker before text holding an escape', () => {
+        new Markdown('- [ ] see \\[docs\\]').getElement(true);
+
+        expect(textWrites()).toEqual(expect.arrayContaining(['[ ] ', 'see ']));
+    });
+
+    it('BF15. still writes an item\'s first text straight onto the <li>', () => {
+        new Markdown('- a\n  - b').getElement(true);
+
+        expect(childTagsOf('li')).toEqual(['UL']);
+        expect(textWriteTags()[textWrites().indexOf('a')]).toBe('LI');
+    });
+
+    // `marked` leaves the checkbox of an item it made loose after lexing it as
+    // a token of its own before the item's paragraphs; GFM, and a list loose
+    // from the start, show it at the start of the first paragraph.
+    it('BF16. shows a task item\'s marker at the start of its first paragraph, and a later paragraph\'s marker text', () => {
+        new Markdown('- [ ] foo\n\n  [x] bar').getElement(true);
+
+        expect(childTagsOf('li')).toEqual(['P', 'P']);
+        expect(childTagsOf('p')).toEqual(['SPAN', 'SPAN']);
+        expect(textWrites()).toEqual(['[ ] ', 'foo', '[x] bar']);
+        expect(textWriteTags()).toEqual(['SPAN', 'SPAN', 'P']);
+    });
+
+    it('BF17. shows the marker in the paragraph of a task item a nested list after a blank line makes loose', () => {
+        new Markdown('- [x] **a** b\n\n  - c').getElement(true);
+
+        expect(childTagsOf('li')).toEqual(['P', 'UL']);
+        expect(childTagsOf('p')).toEqual(['SPAN', 'STRONG', 'SPAN']);
+        expect(textWrites()).toEqual(['[x] ', 'a', ' b', 'c']);
     });
 });
 

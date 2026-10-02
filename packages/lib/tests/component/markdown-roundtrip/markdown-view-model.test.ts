@@ -139,15 +139,72 @@ describe('viewer projection', () => {
         expect(linkTargets(viewerModel('| a |\n| --- |\n| [r] |\n\n[r]: https://e.com'))).toEqual(['https://e.com']);
     });
 
-    it('V16. lets a list item\'s lone plain text replace the task-list marker printed before it', () => {
+    it('V16. shows a task item\'s marker as the first text of its paragraph', () => {
         expect(viewerModel('- [ ] task').blocks).toEqual([
-            { kind: 'list', ordered: false, loose: false, items: [[{ kind: 'paragraph', runs: [textRun('task')] }]] },
+            { kind: 'list', ordered: false, loose: false, items: [[{ kind: 'paragraph', runs: [textRun('[ ] task')] }]] },
         ]);
     });
 
     it('V17. maps a hard line break to a break run', () => {
         expect(viewerModel('foo  \nbar').blocks).toEqual([
             { kind: 'paragraph', runs: [textRun('foo'), { kind: 'break' }, textRun('bar')] },
+        ]);
+    });
+
+    it('V18. shows a task item\'s marker before text holding an escape', () => {
+        expect(viewerModel('- [ ] see \\[docs\\]').blocks).toEqual([
+            { kind: 'list', ordered: false, loose: false, items: [[{ kind: 'paragraph', runs: [textRun('[ ] see [docs]')] }]] },
+        ]);
+    });
+
+    it('V19. shows the markers of a loose task list', () => {
+        expect(viewerModel('- [ ] a\n\n- [x] b').blocks).toEqual([
+            {
+                kind:    'list',
+                ordered: false,
+                loose:   true,
+                items:   [[{ kind: 'paragraph', runs: [textRun('[ ] a')] }], [{ kind: 'paragraph', runs: [textRun('[x] b')] }]],
+            },
+        ]);
+    });
+
+    it('V20. shows a task item\'s marker at the start of its first paragraph when a paragraph, not a text run, follows it', () => {
+        expect(viewerModel('- [ ] foo\n\n  [x] bar').blocks).toEqual([
+            {
+                kind:    'list',
+                ordered: false,
+                loose:   true,
+                items:   [[
+                    { kind: 'paragraph', runs: [textRun('[ ] foo')] },
+                    { kind: 'paragraph', runs: [textRun('[x] bar')] },
+                ]],
+            },
+        ]);
+    });
+
+    it('V22. shows the marker of a task item a nested list after a blank line makes loose as a list loose from the start does', () => {
+        const items = (source: string): unknown => (viewerModel(source).blocks[0] as { items: unknown[] }).items[0];
+
+        expect(items('- [x] **a** b\n\n  - c')).toEqual([
+            { kind: 'paragraph', runs: [textRun('[x] '), textRun('a', ['bold']), textRun(' b')] },
+            { kind: 'list', ordered: false, loose: false, items: [[{ kind: 'paragraph', runs: [textRun('c')] }]] },
+        ]);
+        expect(items('- [x] **a** b\n\n- c')).toEqual([
+            { kind: 'paragraph', runs: [textRun('[x] '), textRun('a', ['bold']), textRun(' b')] },
+        ]);
+    });
+
+    it('V21. keeps a later table cell\'s marker text in a task item', () => {
+        expect(viewerModel('- [ ] foo\n  | a |\n  | - |\n  | [x] baz |').blocks).toEqual([
+            {
+                kind:    'list',
+                ordered: false,
+                loose:   false,
+                items:   [[
+                    { kind: 'paragraph', runs: [textRun('[ ] foo')] },
+                    { kind: 'table', widths: [null], header: [plainCell('a')], rows: [[plainCell('[x] baz')]] },
+                ]],
+            },
         ]);
     });
 

@@ -583,9 +583,9 @@ const _defaultMarkdownOptions: Partial<MarkdownOptions> = { userSelect: "text", 
  * GFM pipe tables (including per-column alignment, widths, and merged cells),
  * underline, coloured/sized/font-styled spans, `:::` alignment/multi-column
  * fences, and sized images validated against a scheme allow-list. Any other
- * token type (raw HTML, the remaining GFM extensions) falls through to a
- * defined fallback that renders the token's plain text — never a crash, never
- * markup.
+ * token type (raw HTML, a thematic break, a task-list item's `[ ]` / `[x]`
+ * marker, the remaining GFM extensions) falls through to a defined fallback
+ * that renders the token's plain text — never a crash, never markup.
  *
  * A fenced code block whose info string names a language
  * [`CodeEditor`](/components/CodeEditor) has a registered grammar for
@@ -1715,7 +1715,12 @@ class Markdown extends Component<MarkdownOptions> {
     /**
      * Builds an `<li>` and walks its children, which are block tokens for a
      * loose list and inline-bearing `text` tokens for a tight one — so both
-     * render.
+     * render. Only the item's first `text` token may write the item's whole
+     * text content; a later one appends, so a task item keeps the `[ ]` /
+     * `[x]` marker printed before it. A task item `marked` made loose after
+     * lexing it keeps its marker as a token of its own before its first
+     * paragraph; the marker is printed at the start of that paragraph, as
+     * GFM shows it and as `marked` puts it in an item loose from the start.
      *
      * @param list - The `<ul>`/`<ol>` element handle to append into.
      * @param item - The list-item token.
@@ -1724,19 +1729,42 @@ class Markdown extends Component<MarkdownOptions> {
     private appendListItem(list: Handle, item: Tokens.ListItem, headingIds: Map<string, number>): void {
         const listItem = this.create("li");
 
-        for (const token of item.tokens) {
-            if (token.type === "text") {
-                const text = token as Tokens.Text;
+        item.tokens.forEach((token, index) => {
+            const previous = item.tokens[index - 1];
 
-                if (text.tokens && text.tokens.length > 0) {
-                    this.appendInlineTokens(listItem, text.tokens);
-                } else {
-                    this.appendInlineToken(listItem, text, item.tokens.length === 1);
+            if (token.type === "checkbox" && item.tokens[index + 1]?.type === "paragraph") {
+                return;
+            }
+
+            if (token.type === "paragraph" && previous?.type === "checkbox") {
+                const paragraph = token as Tokens.Paragraph;
+
+                this.appendParagraph(listItem, { ...paragraph, tokens: [previous, ...paragraph.tokens] });
+
+                return;
+            }
+
+            if (token.type !== "text") {
+                this.appendBlockToken(listItem, token, headingIds);
+
+                return;
+            }
+
+            const text = token as Tokens.Text;
+            const inline = text.tokens ?? [];
+
+            if (inline.length > 0 && index === 0) {
+                this.appendInlineTokens(listItem, inline);
+            } else if (inline.length > 0) {
+                // An earlier token (a task item's `[ ]` marker) already rendered into
+                // the item, so no child may take the sole-text path that replaces it.
+                for (const child of inline) {
+                    this.appendInlineToken(listItem, child, false);
                 }
             } else {
-                this.appendBlockToken(listItem, token, headingIds);
+                this.appendInlineToken(listItem, text, item.tokens.length === 1);
             }
-        }
+        });
 
         DOM.sink.appendChild(list, listItem);
     }
