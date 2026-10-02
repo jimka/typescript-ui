@@ -559,6 +559,14 @@ page resets to empty.
   markers would cut the spans; reselect inside one span first. No consumer
   action is needed.
 
+- **`MarkdownEditor` edits reference-style links.** `[text][label]`,
+  `[label][]` and `[label]` show as links and save in the form they were
+  written, and their definition lines save unchanged. A link whose URL is
+  edited, or whose definition is edited or removed, saves inline with its
+  own URL, so a save never changes where a link points. Bracketed text never
+  turns into a link when a definition for it is added, and a reference kept
+  as written shows what its edited definition now gives it.
+
 ### Core
 
 - **`Body.init({ strings })`, `Body.setStrings`, `Body.getStrings` and the

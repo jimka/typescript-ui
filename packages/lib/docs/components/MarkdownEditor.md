@@ -2,7 +2,7 @@
 
 [`MarkdownEditor`](/api/component/editor/classes/MarkdownEditor) is a **WYSIWYG rich-text editor whose public value is a Markdown string**, built on [Lexical](https://lexical.dev/). You edit a document as rendered rich text — no visible markup — and read or write it as Markdown through `getValue()` / `setValue()`. It is the editing counterpart to the read-only [`Markdown`](/components/Markdown) viewer.
 
-Its dialect is deliberately the **exact subset the viewer renders** — headings, paragraphs, bold, italic, underline, inline code, coloured/sized/font-styled spans, ordered/unordered lists, blockquotes, fenced code, links, GFM pipe tables (with per-column alignment, widths, and merged cells), and `:::` block-alignment / explicit column-region fences. The editor reads Markdown with the viewer's own parser and writes it with its own serializer, so **a document saved by the editor renders in the viewer as the editor showed it**.
+Its dialect is deliberately the **exact subset the viewer renders** — headings, paragraphs, bold, italic, underline, inline code, coloured/sized/font-styled spans, ordered/unordered lists, blockquotes, fenced code, links, reference links, GFM pipe tables (with per-column alignment, widths, and merged cells), and `:::` block-alignment / explicit column-region fences. The editor reads Markdown with the viewer's own parser and writes it with its own serializer, so **a document saved by the editor renders in the viewer as the editor showed it**.
 
 Lexical's editing view is a `contenteditable` element it owns and mutates directly — a *foreign live widget*, like the CodeMirror view behind [`CodeEditor`](/components/CodeEditor) — so the view mounts through the framework's DOM seam once the component is connected and sized. Unlike a code editor, Lexical keeps its editor **state** (a pure, DOM-free tree) separate from that view, so the Markdown value get/set/round-trip runs headless: offline the view never attaches, yet `getValue` / `setValue` and the command API still operate on the state.
 
@@ -55,6 +55,7 @@ The editor edits, and emits, only the constructs the [`Markdown`](/components/Ma
 | Underline | `++underlined++` |
 | Coloured / sized / font-styled span | `[text]{color=... font=... size=...}`; a loaded span keeps its attributes' order and any it does not style with |
 | Link | `[text](url)` |
+| Reference link | `[text][label]`, `[label][]`, `[label]` as written — see [Reference links](#reference-links) |
 | Table | pipe rows plus a `\| --- \|` delimiter row |
 | Table column width | delimiter cell's trailing `{width=240}` |
 | Merged table cell | body cell's `<<` (from the left) / `^^` (from above) |
@@ -67,6 +68,14 @@ The editor edits, and emits, only the constructs the [`Markdown`](/components/Ma
 | Hard line break | `\` + newline (Shift+Enter, except where Markdown has no break — see [What Markdown cannot hold](#what-markdown-cannot-hold)); an imported two-space break keeps its spaces |
 
 Images, sized via the same `{width=… height=…}` grammar as a table column width, **are** part of the dialect, authored through `insertImage` or the empty-line context menu's **Image…** item. A column's alignment (from the delimiter row's `:---` / `:---:` / `---:` markers), its width, and merged cells are all **preserved** across a load/edit/save round-trip and all authorable in the WYSIWYG surface, through `setTableColumnAlignment` / `setTableColumnWidth` / `mergeTableCells` / `unmergeTableCell` and the table-cell context menu's Align column/Column width…/Merge cells/Unmerge cell items.
+
+### Reference links
+
+A reference link — `[text][label]`, `[label][]` or `[label]` — is a link in the WYSIWYG surface, edited like any other, and is saved in the form it was written **while the label's definition in the saved document gives the link's URL and title**, matching labels as the viewer does (case and runs of whitespace aside, the first definition of a label winning). Once the link's text is edited or formatted, a `[label]` or `[label][]` reference is saved as `[text][label]`. Once the link's URL is changed (**Edit link…**), or its definition is edited, removed, or no longer the first for its label, the link is saved inline as `[text](url "title")` with its own URL — so **a save never changes where a link points**. A `[label]` reference is written `[label][]` where the character after it would otherwise join it to another construct (a `(`, `{` or `[`, or a `:` at the start of a block), and where it opens a list item's text as `[ ]`, `[x]` or `[X]`, which would read as a task checkbox. A link whose title holds a blank line, which no inline link can write, keeps its reference form while its definition gives its URL, and takes the definition's title. A definition counts wherever the viewer reads one, a list item included.
+
+Definition lines (`[label]: url "title"`) show as raw Markdown blocks (see below) and are saved exactly as written; a run of definitions on consecutive lines is one block.
+
+Editing the definitions changes what the editor shows only where the viewer would show something else. Text never becomes a link: a `[label]` you type, inside a link's text or not, is saved escaped, so a definition added for it later leaves it text. A reference link keeps its own URL, as above. A reference kept as written — one with empty text (`[][label]`), a reference image (`![alt][label]`, which shows its alt text), a reference inside a construct kept as source — shows what its definition gives it, so when a definition it uses is typed, edited, pasted or removed, its block shows what a save and a reload would show: the reference whose label no longer resolves shows as its text, and from then on is text.
 
 ### Kept as source
 
