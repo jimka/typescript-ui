@@ -24,6 +24,23 @@ page resets to empty.
   against now; only its time of day is kept. See
   [Migration](/reference/migration/next) for the full note.
 
+- **`Markdown` reads a table only where no other block starts.** A line
+  over `---` rendered as a one-column table: a setext heading, a thematic
+  break after a blockquote or a blank line, a fenced code block whose first
+  line is `---`, and a list with a bare `-` item all came out as tables. A
+  table's delimiter row must now hold a `|` or a `:` (`| --- |`,
+  `--- | ---`, `:-:`), and every block that can start on the header line is
+  tried first, as GFM specifies: indented or fenced code, an ATX heading, a
+  thematic break, a blockquote, a list, an HTML block, a link reference
+  definition and a `:::` fence. A line over `---` is now a setext heading,
+  and a `---` that starts no other block is a thematic break, which
+  `Markdown` renders as its literal text, as it renders every thematic
+  break — so a `---` that used to render as a table with an empty header
+  now shows as `---`. `MarkdownEditor` loads these documents the same way.
+  A one-column table whose delimiter row holds only dashes (`a` over `---`)
+  must add a `|` or a `:` to it (`| a |` over `| --- |`, or `a` over
+  `:--`). See [Migration](/reference/migration/next) for the full note.
+
 ### Core
 
 - **`DOM.sink` and `DOM.source` are now read-only.** Swap a seam through
@@ -1002,6 +1019,11 @@ page resets to empty.
   more spaces now breaks the line, as CommonMark specifies. It used to flow
   into the next line, and the backslash form printed a stray `\`. A plain
   line end inside a paragraph still flows. No consumer action is needed.
+
+- **`Markdown` no longer drops a character after a blockquote.** When a
+  list inside a blockquote ran on through a lazy line, the line straight
+  after the quote could lose its first character, so `<div>` showed as
+  `div>` and `1. g` as `. g`. No consumer action is needed.
 
 ### Core
 

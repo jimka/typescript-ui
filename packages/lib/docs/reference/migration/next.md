@@ -287,6 +287,42 @@ own date until the user edits it.
 or compares it with today, should read only its hours, minutes and seconds,
 or combine them with the date it wants.
 
+## `Markdown` reads a table only where no other block starts
+
+**What changed and why.** `Markdown` took a line over a delimiter row of
+dashes alone as a one-column table, ahead of most other blocks: a setext
+heading (`Title` over `---`), a thematic break after a blockquote or a blank
+line, a fenced code block whose first line is `---`, and a list with a bare
+`-` item all rendered as tables. GFM tries every block that can start on the
+header line first, and reads a delimiter row only when a `|` or a `:` marks
+it as one; `Markdown` now does the same. Indented or fenced code, an ATX
+heading, a thematic break, a blockquote, a list, an HTML block, a link
+reference definition and a `:::` fence each win over a table, and a
+delimiter row must hold a `|` or a `:`. `MarkdownEditor` loads these
+documents the same way.
+
+| Source | Before | After |
+|---|---|---|
+| `Title` over `---` | a table, header `Title` | a level-2 heading `Title` |
+| a blank line, then `---` | a table with an empty header | a thematic break, shown as its literal `---` |
+| a delimiter row holding a `\|` or a `:` (`a` over `:--`) | a table | a table (unchanged) |
+
+**Who needs to act.** Content that wrote a one-column table with a delimiter
+row of dashes alone now renders as a heading. Add a `|` or a `:` to the
+delimiter row:
+
+```markdown
+<!-- Before: a one-column table -->
+Name
+---
+Ada
+
+<!-- After -->
+| Name |
+| --- |
+| Ada |
+```
+
 ## A `Dialog`'s first Escape inside an editor releases it
 
 **What changed and why.** A modal `Dialog` whose only focusable content was
