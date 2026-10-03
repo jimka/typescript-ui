@@ -1049,6 +1049,13 @@ page resets to empty.
   one ends, made Lexical's link removal throw. A link with none of its text
   selected is now left as it is. No consumer action is needed.
 
+- **`MarkdownEditor` no longer throws when deleting from the start of a
+  paragraph into a later one.** Deleting, typing over, cutting, pasting over
+  or pressing Enter on a selection that started at the beginning of a block
+  and ended inside a word of a later block could throw inside Lexical. The
+  document was then left partly edited. These edits now apply normally. No
+  consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
