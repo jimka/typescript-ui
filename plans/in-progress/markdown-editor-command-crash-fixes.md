@@ -647,3 +647,255 @@ No public API changes, so no component page changes. Changelog entries for
     table wrapped in an empty `::: {}` fence. A deferred rethrow
     (`queueMicrotask(() => { throw error; })`) would keep errors loud and
     let Lexical roll back.
+
+---
+
+## Implementation Notes
+
+- **No per-step audit loop.** By the user's decision this run skipped
+  `worker.md`'s audit step; the whole stack is checked by fuzzing instead
+  (the stack fuzz harness, seeds 601, 1709, 2207, 3313, 4409, 5521 and a new
+  6607 at n=3000, source mode 6719 at n=4000).
+- **Code drift reconciled.** `$pasteIntoRawBlock` no longer exists; the
+  guards sit after `$pastePlainTextIntoRawBlock`. Branch 7's
+  `$editWritably` wrapper in `toggleLink` is kept; the link-edge move runs
+  before it.
+- **`DELETE_CHARACTER_COMMAND`'s guard is registered at
+  `COMMAND_PRIORITY_HIGH`, directly after `$joinIntoTextOnlyBlock`, not at
+  `COMMAND_PRIORITY_CRITICAL`.** The plan predates that handler, which
+  deletes a range starting in a raw or code block its own way (the rest of
+  the later block joins as Markdown, detached first, so no offset goes
+  stale). A CRITICAL guard ran first and replaced that with Lexical's merge,
+  which lost escapes and link syntax (R14 pins it). Every other guard is
+  CRITICAL as planned.
+- **One more guarded route: `PASTE_COMMAND`** (`$clearStaleFocusRangeBeforeInsert`,
+  CRITICAL). Lexical's plain-text paste importer calls `insertText` directly,
+  not through `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND`, so a plain-text
+  paste over a stale-focus range still threw (R13). The HTML and Lexical
+  importers catch their own throw and fall back to the plain-text one, which
+  then threw on the half-applied state.
+- **Fuzz-found throws outside the plan, fixed here** (each with a test
+  written red first):
+  - `$comparePointCaretNext … no common ancestor` in `$unwrapMarkdownBlock` /
+    `$setBlockColumnCount` (C1–C4): moving a column's children while a
+    selection end is an element point on that column makes Lexical compare
+    it with a point inside the detached child.
+    `$moveSelectionIntoColumnContent` first moves such an end into the
+    column's content. This is a column-structure path, noted for
+    `markdown-columns-fixes`.
+  - `startColumn` / `startRow` of `undefined` in `$alignCellsByColumn` /
+    `$unmergeHeaderCells` (T1, T2): a row short of a cell spanning down into
+    it leaves a hole in the table map; holes are skipped.
+  - `Expected TableRowNode children to be TableCellNode` (new seed 6607, T3):
+    with the table's transforms running before the row's, a paste into a row
+    a `^^` cell covers left a paragraph in the row. `$keepRowsOfCells`
+    unwraps it as the table plugin's own transforms do.
+  - `$getTextNodeOffset` via `$selectedContainers` (W1): `$dropBreaksAtRunEnd`
+    shortened a text node under the selection; `$keepSelectionInText` clamps
+    the selection to the node's new end.
+  These get a fourth changelog entry (W1); the table-map fixes are reachable
+  only through a selection the browser turns into a table selection, so
+  they have none.
+- **Fuzz harness change** (scratch harness, not this repo): its `type` op
+  called `insertText` directly; typing over a range spanning two nodes now
+  dispatches `CONTROLLED_TEXT_INSERTION_COMMAND`, as a browser does. A direct
+  `RangeSelection.insertText` on the private Lexical editor bypasses every
+  command guard, and is not a route `MarkdownEditor` exposes.
+- **T3's expected value** was first written as a re-serialised table; the
+  table holds the same content after the clean-up, so it saves as loaded.
+- **Manual checks M1–M5** were not run (headless session).
+
+### Stack fuzz round 4
+
+A whole-stack fuzz at the stack's top found one more pre-stack editor
+command defect, fixed here (O1–O4, written red first; a fifth changelog
+entry):
+
+- **The ordered-list typing shortcut took ten digits or more.** Lexical's
+  `ORDERED_LIST` matches `\d{1,}`, so `1234567890. ` (typed, or Enter after
+  it) started a list numbered from 1234567890, saved `1234567890.`, which
+  Markdown reads as a paragraph (a list marker holds at most nine digits).
+  `SHORTCUT_TRANSFORMERS` now carries `ORDERED_LIST_SHORTCUT`, Lexical's
+  transformer with its pattern limited to `\d{1,9}`; the curation test
+  checks it is otherwise Lexical's. An item added after `999999999.` (Enter,
+  a paste) would be numbered with ten digits, so `$normalizeList` first
+  lowers the list's start until its last numbered item fits
+  (`$keepNumbersWritable`); the editor shows the new numbers the save
+  writes. A load needs no limit: `marked` reads no longer marker.
+
+### Review fixes
+
+- **A paste that inserts nothing no longer removes a stale-focus range.**
+  The `PASTE_COMMAND` guard removed the range before `@lexical/rich-text`
+  had decided whether anything would be pasted, so a pasted screenshot (a
+  files-only clipboard, which rich-text routes to `DRAG_DROP_PASTE`) or an
+  empty clipboard deleted the selection and inserted nothing, where the same
+  paste over any other range changes nothing. `PASTE_COMMAND` now has its own
+  guard, `$clearStaleFocusRangeBeforePastedText`, which removes the range
+  only when `pasteWillInsertText(event)` holds: the event has a clipboard,
+  its files do not take the paste, and its `text/plain` (or, without one,
+  `text/uri-list`) is not empty — the one insertion that goes straight into
+  the selection. Nodes a paste brings reach
+  `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND`, whose guard
+  (`$clearStaleFocusRangeBeforePaste`) now leaves the range when there are no
+  nodes (pasted HTML holding only an image generates none), as Lexical's
+  `insertNodes([])` leaves any range. Tests: R15 in
+  `markdown-editor-command-crashes.test.ts`, written red first, each empty
+  paste paired with the same paste over an ordinary range.
+- **Refactors, no behaviour change.** The guard family's registrations moved
+  out of `ensureEditor` into `registerStaleFocusRangeGuards`, called after
+  `registerTextOnlyBlockRules` so `$deleteStaleFocusRange` still follows
+  `$joinIntoTextOnlyBlock` at `COMMAND_PRIORITY_HIGH`; every other guard keeps
+  `COMMAND_PRIORITY_CRITICAL`, one row per command listing its guards in
+  running order. `$isStaleFocusRange` and `$moveRangeEdgesOutOfLinks`
+  read a selection's ends through `$orderedPoints`, and the guards find a
+  node's block through `$findEnclosingBlock`, which the marked-import branch
+  now defines in `markdownWritable.ts` (round 2 moved it there from this
+  branch, with the two inline searches it replaced).
+- **A declined Shift+Enter no longer removes a stale-focus range** (combined
+  review of 2026-10-05). The `INSERT_LINE_BREAK_COMMAND` guard removed the
+  range at `COMMAND_PRIORITY_CRITICAL`, and `$declinesLineBreak`
+  (`COMMAND_PRIORITY_HIGH`) then declined the break at the caret the removal
+  left — in a level 3–6 heading, or with only whitespace after it — so
+  Shift+Enter acted as Delete, where a declined Shift+Enter over any other
+  range changes nothing. The command now has its own guard,
+  `$clearStaleFocusRangeBeforeLineBreak`, which decides before removing:
+  `$staleFocusRemovalDeclinesLineBreak` asks `$lineBreakUnwritableAt` (the
+  decline rule, now exported from `markdownWritable.ts` and taking the point
+  whose block's rest will follow the break) about the range's start, followed
+  by the rest of the end's block when Lexical's removal joins it there
+  (`$removalJoinsEndBlockRest`, which mirrors Lexical 0.49.0's choice of the
+  two blocks it joins) and by nothing otherwise. Declined, the command stops
+  there with the range as it was. Tests: R16, written red first. A scratch
+  differential (Shift+Enter over the range against Delete, then Shift+Enter,
+  5395 stale-focus ranges over six seeds) found the prediction wrong only
+  where it cannot be read off the document as it stands, which is left as it
+  is: a range with an end in a raw Markdown block that the removal makes
+  read as another block, and a range starting on a table node itself, which
+  the table-edge plan's guard takes over.
+- **Enter over a stale-focus range with an end in a raw block** (same
+  review). `$handleRawBlockEnter` called `insertLineBreak` on the range
+  itself, which threw as every unguarded removal of the shape does, and the
+  same range gave two documents depending on which way it was dragged (only
+  an anchor in the raw block reached the handler). It now removes the range
+  first, through `$removeStaleFocusRange`, with either end in the raw block,
+  and Enter acts where that leaves the caret: inside the block as before, and
+  at its end or outside it through `INSERT_PARAGRAPH_COMMAND`, which is what
+  `registerRichText`'s Enter dispatches there. Tests: R17, written red first,
+  each range in both directions. (Round 2 below found this still depended on
+  the direction for a range between two raw blocks, and widened it to every
+  range.) Seen while testing and left alone, since it
+  is the same for typing, Tab and `INSERT_PARAGRAPH_COMMAND` over such a
+  range: when the removal empties the raw block and what joins it reads as a
+  paragraph, the joined text's formatting is dropped (Delete keeps it, through
+  `$joinIntoTextOnlyBlock`). (Round 3 below fixes this for Enter and leaves
+  the other three as a known limit.)
+
+### Review fixes, round 2
+
+A second review read the fixes above; these are its findings against this
+branch, each behavioural one pinned by a row written first and seen to fail.
+
+- **Enter over a range with an end in a raw block no longer depends on the
+  drag direction — for any range.** After the removal the handler still
+  asked whether the caret was in the *anchor's* raw block. For a backward
+  range between two raw blocks that is the end's block, which the removal
+  has just joined onto the start's, so the caret — inside the first raw
+  block — counted as outside, and Enter split the block with a paragraph
+  (`<div>…ra` / `w two` / `</section>`) where the same range dragged forward
+  gave one raw block. A range Lexical removes without fault was not removed
+  first at all: with its anchor in the raw block it got `insertLineBreak`
+  called on it (a break left at the block's end, or at its start), and with
+  only its focus there it fell through to Lexical's Enter, which split the
+  block. `$handleRawBlockEnter` now takes any range with either end in a raw
+  block (`$rawBlockAtEitherEnd`), removes it (`$removeRangeBeforeEnter`: a
+  stale-focus range as before, any other through Lexical's own removal), and
+  decides from the raw block the caret is in afterwards — a line break
+  inside it, an empty paragraph before it at its start, and
+  `INSERT_PARAGRAPH_COMMAND` at its end or outside any. So Enter over a
+  selection is the selection's removal, then Enter. Tests: twelve more R17
+  rows (raw block to raw block from inside one and from its end; from inside
+  a raw block to a later block's end and to its own end; from its start;
+  inside one line), each in both directions and each compared with Delete,
+  then Enter. The docs page says so beside what Enter does in a raw block.
+- **What Enter still cannot tell (as Shift+Enter above).** The caret's block
+  is read in the update that removed the range, and the rule that shows a
+  raw block as the blocks it now reads as runs when that update ends. Where
+  the removal makes the block read as something else, Enter still treats it
+  as raw: `"<div>"`@1 to `"after"`@1 in `<div>\nraw text\n</div>\n\nafter`
+  gives one paragraph saving as `<\nfter` (a line break put into the raw
+  block, then shown as the paragraph it reads as), where Delete, then Enter
+  gives two paragraphs, `<\n\nfter`. Both directions agree. Unchanged by
+  either round, and left as it is.
+- **`$removalJoinsEndBlockRest`'s three conditions are pinned.** Dropping
+  the no-fork return, `endBranch.length > 0` or `startBlock.is(joinedBlock)`
+  left every test green. Each matters in a list item holding text and a
+  nested list, which no Markdown loads as but which a removal joining a later
+  block onto such an item leaves (and which the editor keeps): the end's item
+  inside the start's, the start's item inside the end's, and the start's item
+  inside one that takes the end's rest at its own end. R16 has a row for
+  each, built by hand, with Delete, then Shift+Enter as the control; each
+  row fails under its own mutation and no other.
+- **`INTERNAL_$isBlock` stays, with a canary.** The function mirrors which
+  two blocks Lexical's removal joins, and Lexical picks them with that test.
+  The public `$isBlockElementNode` matches any element that is not inline —
+  a list, a list item holding only a nested list — so it would name a block
+  nothing is joined onto. The JSDoc says why the internal export is used,
+  and U3 fails when it is gone or matches something else.
+- **Named call results.** `$isStaleFocusRange` tested
+  `selection.isCollapsed()` inside the `if`; it is named first now. The
+  search for a node's block that `markdownWritable.ts` had as
+  `$enclosingBlockOf` is the marked-import branch's `$findEnclosingBlock`,
+  one helper for both files.
+
+### Review fixes, round 3
+
+A third review read round 2's fixes; these are its findings against this
+branch.
+
+- **Enter over a range from a raw block into rich text removes it as Delete
+  does.** The R17 rows compared Enter with Delete, then Enter by block type
+  and text only, on sources with nothing to escape, so they did not see that
+  the two saved different Markdown. `$removeRangeBeforeEnter` removed the
+  range through Lexical's own removal, which moves the later block's nodes
+  into the raw block; its text then held their bold and link as Markdown
+  but their plain text as bare characters: from `"raw text"`@2 to
+  `"efgh "`@3 in
+  `<div>\nraw text\n</div>\n\nefgh **ij** kl [a](u) \*x\*\n\nafter`
+  Enter saved `…ra\nh **ij** kl [a](u) *x*`, the escape gone, so the
+  literal asterisks re-read as emphasis; and from `"<div>"`@0 to `"ij"`@0,
+  where the removal empties the raw block, it saved `ij kl a *x*`, the bold
+  and the link gone as well. Delete keeps all of it, because a range from
+  inside a raw block or a code block into a later block goes through
+  `$deleteRangeFromTextOnlyBlock`, which joins the later block's rest as its
+  Markdown. `$removeRangeBeforeEnter` now tries that first, then the
+  stale-focus removal, then Lexical's own — the order Delete's listeners
+  run in. Tests, written first and seen to fail: every R17 row now also
+  compares the saved Markdown with Delete, then Enter (the first row's
+  expected caret changed with it: what is left reads as `h **ij** kl`, bold
+  kept, where it used to be one plain text node), and four more rows on the
+  source above — the two ranges, each in both directions — pin the saved
+  Markdown itself and the caret. R17 holds 21 rows.
+- **Known limit: the other commands that replace such a range.** Typing,
+  Tab, Shift+Enter and `INSERT_PARAGRAPH_COMMAND` over a range from inside a
+  raw block into a later rich-text block still remove it through Lexical's
+  own removal (the stale-focus guards, or Lexical's handler for a range that
+  is not stale-focus), so they still differ from Delete followed by the same
+  key: measured on the source above, each loses the escape (`*x*` for
+  `\*x\*`) from `"raw text"`@2 to `"efgh "`@3, and drops the bold and the
+  link as well from `"<div>"`@0 to `"ij"`@0. The first is a break of the
+  writing rule (the save no longer means what was shown) and is left for its
+  own change: it needs a guard on each of those commands for a range that is
+  not stale-focus, which this branch's fix for Enter did not need. Paste and
+  cut over such a range were not measured. What Enter still cannot tell
+  (above) stands as it was.
+- **The count of R17 rows in round 2's note** said fourteen more; it was
+  twelve (5 rows before that round, 17 after).
+- **`INTERNAL_$isBlock` is pinned by behaviour too.** The canary (U3) says
+  what the test matches, but swapping in "an element that is not inline"
+  left every other test green. A row in R16 starts in a list item and ends
+  in a later top-level block's word (`- one\n\nafter word`, `"one"`@1 to
+  `"after word"`@2): the list is the first element on the start's side of
+  the fork and is not inline, but the block the rest joins is the item, so
+  Shift+Enter is kept (`- o\` / `ter word`) and would be declined under the
+  swap.
