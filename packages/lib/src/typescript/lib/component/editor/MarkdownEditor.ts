@@ -22,12 +22,14 @@ import {
     PASTE_COMMAND, DELETE_CHARACTER_COMMAND, $createTextNode, $copyNode, $isLineBreakNode, $getState,
     IS_ALL_FORMATTING, $isTextNode, TEXT_TYPE_TO_FORMAT, $hasUpdateTag, HISTORY_PUSH_TAG,
     $getNearestNodeFromDOMNode, isDOMNode, $findMatchingParent, $isElementNode, $isParagraphNode, $isRootNode,
-    $caretFromPoint, $normalizeCaret, $setPointFromCaret,
+    DELETE_WORD_COMMAND, DELETE_LINE_COMMAND, REMOVE_TEXT_COMMAND, CONTROLLED_TEXT_INSERTION_COMMAND,
+    INSERT_PARAGRAPH_COMMAND, INSERT_LINE_BREAK_COMMAND, INSERT_TAB_COMMAND, CUT_COMMAND, CUT_TAG, COMMAND_PRIORITY_CRITICAL,
+    $caretFromPoint, $normalizeCaret, $setPointFromCaret, $isRootOrShadowRoot, INTERNAL_$isBlock,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
     CommandListener, LexicalCommand, CommandListenerPriority, UpdateListener, ParagraphNode, RangeSelection, EditorUpdateOptions,
-    NodeKey, PointType,
+    NodeKey, PointType, CommandPayloadType,
 } from "lexical";
 import { registerMarkdownShortcuts } from "@lexical/markdown";
 import { registerRichText, $createHeadingNode, $createQuoteNode, QuoteNode, $isQuoteNode } from "@lexical/rich-text";
@@ -37,6 +39,7 @@ import {
 } from "@lexical/list";
 import { $toggleLink, $isLinkNode } from "@lexical/link";
 import type { LinkNode } from "@lexical/link";
+import { copyToClipboard } from "@lexical/clipboard";
 import { CodeNode, $createCodeNode, $isCodeNode } from "@lexical/code";
 import { registerHistory, createEmptyHistoryState } from "@lexical/history";
 import {
@@ -54,7 +57,8 @@ import { SHORTCUT_TRANSFORMERS } from "~/component/editor/markdownTransformers.j
 import { $importMarkdown } from "~/component/editor/markdownImporter.js";
 import { $serializeBlock, $serializeInlineNodes, $serializeMarkdown } from "~/component/editor/markdownSerializer.js";
 import {
-    $editWritably, $findEnclosingBlock, $formatWritably, $orderedPoints, $selectionHasFormat, RUN_EDGE_TAG, registerWritableStateRules,
+    $editWritably, $findEnclosingBlock, $formatWritably, $lineBreakUnwritableAt, $orderedPoints, $selectionHasFormat, RUN_EDGE_TAG,
+    registerWritableStateRules,
 } from "~/component/editor/markdownWritable.js";
 import { EMPTY_SOURCE_MAP } from "~/component/editor/markdownSourceMap.js";
 import type { MarkdownSourceBlock, MarkdownSourceMap } from "~/component/editor/markdownSourceMap.js";
@@ -787,22 +791,37 @@ function $handleSeparatorShortcut(event: KeyboardEvent | null): boolean {
  * places after the block. Registered at {@link COMMAND_PRIORITY_HIGH}, ahead
  * of `registerRichText`'s own handler, as {@link $handleSeparatorShortcut} is.
  *
+ * A range with either end in a raw block is removed first
+ * ({@link $removeRangeBeforeEnter}), and Enter then does what it does at the
+ * caret the removal leaves, whichever way the range was dragged and whichever
+ * block its anchor was in: inside a raw block, as above; at a raw block's
+ * end, or outside any (the range started in an earlier block, which the raw
+ * block's rest joined), a new paragraph through `INSERT_PARAGRAPH_COMMAND`,
+ * which is what `registerRichText`'s Enter dispatches there.
+ *
+ * @remarks
+ * The caret's block is read in the update that removed the range, so a raw
+ * block the removal makes read as another block still counts as raw here:
+ * the rule that shows it as that block runs when the update ends.
+ *
  * @param event - The native keyboard event, or `null` for a programmatic dispatch.
- * @returns Whether Enter inside a raw block was handled.
+ * @param editor - The editor the command was dispatched to.
+ * @returns Whether Enter at a raw block was handled.
  */
-function $handleRawBlockEnter(event: KeyboardEvent | null): boolean {
+function $handleRawBlockEnter(event: KeyboardEvent | null, editor: LexicalEditor): boolean {
     if (event?.shiftKey || event?.altKey) {
         return false;
     }
 
     const selection = $getSelection();
-    const rawBlock = $rawBlockAtAnchor(selection);
+    const touchedBlock = $rawBlockAtEitherEnd(selection);
 
-    if (rawBlock === null || !$isRangeSelection(selection)) {
+    if (touchedBlock === null || !$isRangeSelection(selection)) {
         return false;
     }
 
-    const atEnd = selection.isCollapsed() && rawBlock.isSelectionAtEnd(selection);
+    const isCollapsed = selection.isCollapsed();
+    const atEnd = isCollapsed && touchedBlock.isSelectionAtEnd(selection);
 
     if (atEnd) {
         return false;
@@ -810,15 +829,71 @@ function $handleRawBlockEnter(event: KeyboardEvent | null): boolean {
 
     event?.preventDefault();
 
-    const atStart = selection.isCollapsed() && rawBlock.isSelectionAtStart(selection);
+    // A range is removed first, so Enter acts where its removal leaves the caret.
+    if (!isCollapsed) {
+        $removeRangeBeforeEnter(selection);
+    }
+
+    const caretBlock = $rawBlockAtAnchor(selection);
+    const leftAtEnd = caretBlock !== null && caretBlock.isSelectionAtEnd(selection);
+
+    // Outside a raw block or at one's end, where Enter starts a new paragraph.
+    if (caretBlock === null || leftAtEnd) {
+        return editor.dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
+    }
+
+    const atStart = caretBlock.isSelectionAtStart(selection);
 
     if (atStart) {
-        rawBlock.insertBefore($createParagraphNode());
+        caretBlock.insertBefore($createParagraphNode());
     } else {
         selection.insertLineBreak();
     }
 
     return true;
+}
+
+/**
+ * The raw Markdown block an Enter over `selection` concerns: the one holding
+ * its anchor, else — for a range — the one holding its focus.
+ *
+ * @param selection - The selection.
+ * @returns The `MarkdownRawBlockNode`, or `null` when neither end is in one
+ *   or the selection is not a range.
+ */
+function $rawBlockAtEitherEnd(selection: BaseSelection | null): MarkdownRawBlockNode | null {
+    if (!$isRangeSelection(selection)) {
+        return null;
+    }
+
+    return $rawBlockAtAnchor(selection) ?? $findMatchingParent(selection.focus.getNode(), $isMarkdownRawBlockNode);
+}
+
+/**
+ * Removes the range Enter was pressed over, as Delete removes it, leaving
+ * the selection collapsed where the range started: a range from inside a raw
+ * Markdown block or a code block into a later block through
+ * {@link $deleteRangeFromTextOnlyBlock}, so that block's rest joins as its
+ * Markdown; a stale-focus range through {@link $removeRangeIfStaleFocus},
+ * since Lexical's own removal throws on one; and any other range, which
+ * those leave alone, through Lexical's own.
+ *
+ * @param selection - A range that is not collapsed.
+ */
+function $removeRangeBeforeEnter(selection: RangeSelection): void {
+    const joinedAsMarkdown = $deleteRangeFromTextOnlyBlock(selection);
+
+    if (joinedAsMarkdown) {
+        return;
+    }
+
+    $removeRangeIfStaleFocus(selection);
+
+    const isLeft = !selection.isCollapsed();
+
+    if (isLeft) {
+        selection.removeText();
+    }
 }
 
 /**
@@ -887,6 +962,351 @@ function $pastePlainTextIntoRawBlock(event: ClipboardEvent | InputEvent | Keyboa
 
     event.preventDefault();
     selection.insertRawText(text);
+
+    return true;
+}
+
+/**
+ * Whether `selection` is a *stale-focus range*: a non-collapsed range whose
+ * end, in document order, is a text point strictly inside its text node, and
+ * whose start lies in a different block.
+ *
+ * @remarks
+ * Lexical's `RangeSelection.removeText()` (0.49.0–0.52.0) throws
+ * `$getTextNodeOffset: invalid offset` on such a range when the start block
+ * is emptied: it slices the end text node but leaves the selection's end
+ * offset as it was, then reads that stale offset while moving the end
+ * block's remaining children into the start block. Every route removing a
+ * range in this editor checks for the shape and removes it through
+ * {@link $removeStaleFocusRange}. Remove the guard when the canary in
+ * `markdown-editor-command-crashes.test.ts` fails.
+ *
+ * @param selection - The selection to test.
+ * @returns Whether it is a stale-focus range.
+ */
+function $isStaleFocusRange(selection: BaseSelection | null): selection is RangeSelection {
+    if (!$isRangeSelection(selection)) {
+        return false;
+    }
+
+    const isCollapsed = selection.isCollapsed();
+
+    if (isCollapsed) {
+        return false;
+    }
+
+    const [start, end] = $orderedPoints(selection);
+    const endNode = end.getNode();
+
+    return $isTextNode(endNode)
+        && end.offset > 0 && end.offset < endNode.getTextContentSize()
+        && $findEnclosingBlock(start.getNode()) !== $findEnclosingBlock(endNode);
+}
+
+/**
+ * Removes a stale-focus range (see {@link $isStaleFocusRange}) without
+ * tripping Lexical's fault: splits the end text node at the end offset and
+ * moves the end to the start of the right-hand half, so no offset is left to
+ * go stale, then removes the range. The split changes no content, and the
+ * two halves merge back when the update normalises its text nodes, which is
+ * why the split and the removal have to happen in the same update.
+ *
+ * @param selection - A stale-focus range; collapsed at the removal point afterwards.
+ */
+function $removeStaleFocusRange(selection: RangeSelection): void {
+    const end = selection.isBackward() ? selection.anchor : selection.focus;
+    const [, rest] = (end.getNode() as TextNode).splitText(end.offset);
+
+    end.set(rest!.getKey(), 0, "text");
+    selection.removeText();
+}
+
+/**
+ * Removes `selection` through {@link $removeStaleFocusRange} when it is a
+ * stale-focus range; leaves any other selection alone, for the caller's own
+ * Lexical call to handle.
+ *
+ * @param selection - The range selection about to be removed or replaced.
+ */
+function $removeRangeIfStaleFocus(selection: RangeSelection): void {
+    if ($isStaleFocusRange(selection)) {
+        $removeStaleFocusRange(selection);
+    }
+}
+
+/**
+ * Listener for the commands whose whole effect on a range is removing it
+ * (`DELETE_CHARACTER_COMMAND`, `DELETE_WORD_COMMAND`, `DELETE_LINE_COMMAND`,
+ * `REMOVE_TEXT_COMMAND`): removes a stale-focus range itself.
+ *
+ * @returns Whether the selection was a stale-focus range, now removed.
+ */
+function $deleteStaleFocusRange(): boolean {
+    const selection = $getSelection();
+
+    if (!$isStaleFocusRange(selection)) {
+        return false;
+    }
+
+    $removeStaleFocusRange(selection);
+
+    return true;
+}
+
+/**
+ * Listener for the commands that always insert at the selection after
+ * removing it (`INSERT_PARAGRAPH_COMMAND`, `INSERT_TAB_COMMAND`): removes a
+ * stale-focus range, then lets Lexical insert at the now-collapsed caret.
+ *
+ * @returns Always `false`, so the command's own handler still runs.
+ */
+function $clearStaleFocusRangeBeforeInsert(): boolean {
+    const selection = $getSelection();
+
+    if ($isStaleFocusRange(selection)) {
+        $removeStaleFocusRange(selection);
+    }
+
+    return false;
+}
+
+/**
+ * Whether Lexical's removal of a range from `start` to `end`, each in a
+ * block of its own, joins what the end's block holds after `end` onto the
+ * start's block, so that it follows a caret left at `start`.
+ *
+ * @remarks
+ * Lexical's range removal (0.49.0) joins two blocks at most, one on each
+ * side of where the paths down to the two ends fork: the outermost element
+ * there that holds inline content, or nothing, once the range is gone. On
+ * the end's side that is always the end's own block, since the removal
+ * empties everything before the end out of the elements around it. On the
+ * start's side it can be a block around the start's own — a list item
+ * holding text and then the nested list the start is in — which then takes
+ * the end's rest at its own end, away from the caret. It joins nothing when
+ * a root or shadow root (a table cell, a `:::` column) lies between the fork
+ * and either end.
+ *
+ * Which element "holds inline content" is Lexical's own test,
+ * `INTERNAL_$isBlock`, imported for it: the public `$isBlockElementNode`
+ * (any element that is not inline) also matches a list or a list item
+ * holding only a nested list, which the removal joins nothing onto, so it
+ * would name the wrong block. The export is internal by name, so
+ * `markdown-editor-command-crashes.test.ts` holds a canary (U3) that fails
+ * when it goes or changes what it matches.
+ *
+ * @param start - The range's start.
+ * @param end - The range's end, in another block than `start`.
+ * @returns Whether the end's block's rest joins the start's block.
+ */
+function $removalJoinsEndBlockRest(start: PointType, end: PointType): boolean {
+    const startBlock = $findEnclosingBlock(start.getNode());
+    const endBlock = $findEnclosingBlock(end.getNode());
+
+    if (startBlock === null || endBlock === null) {
+        return false;
+    }
+
+    const startPath = [...startBlock.getParents().reverse(), startBlock];
+    const endPath = [...endBlock.getParents().reverse(), endBlock];
+    const forkDepth = startPath.findIndex((ancestor, depth) => !ancestor.is(endPath[depth]));
+
+    // No fork: the end's block is inside the start's, which then has no side of its own to join from.
+    if (forkDepth < 0) {
+        return false;
+    }
+
+    const startBranch = startPath.slice(forkDepth);
+    const endBranch = endPath.slice(forkDepth);
+    const crossesRoot = [...startBranch, ...endBranch].some($isRootOrShadowRoot);
+    const joinedBlock = startBranch.find(INTERNAL_$isBlock);
+
+    return !crossesRoot && endBranch.length > 0 && startBlock.is(joinedBlock);
+}
+
+/**
+ * Whether Shift+Enter over `selection`, a stale-focus range, would have its
+ * line break declined once the range is removed: whether the caret the
+ * removal leaves — at the range's start, followed by the rest of the end's
+ * block when the removal joins it there ({@link $removalJoinsEndBlockRest})
+ * — is where a save cannot write a break ({@link $lineBreakUnwritableAt}).
+ * Told ahead of the removal, so that a declined Shift+Enter can leave the
+ * range as it is.
+ *
+ * @remarks
+ * Read off the document as it stands, so it cannot tell for a range ending
+ * in a raw Markdown block whose rest the removal makes read as another
+ * block.
+ *
+ * @param selection - A stale-focus range, left as it is.
+ * @returns Whether the break would be declined.
+ */
+function $staleFocusRemovalDeclinesLineBreak(selection: RangeSelection): boolean {
+    const [start, end] = $orderedPoints(selection);
+    const joinsRest = $removalJoinsEndBlockRest(start, end);
+
+    return $lineBreakUnwritableAt(start, joinsRest ? end : null);
+}
+
+/**
+ * `INSERT_LINE_BREAK_COMMAND` listener: removes a stale-focus range, then
+ * lets Lexical insert the break at the now-collapsed caret — unless the
+ * removal would leave the caret where the break is declined
+ * ({@link $staleFocusRemovalDeclinesLineBreak}). Shift+Enter is then
+ * declined here, before anything is removed: a declined Shift+Enter changes
+ * nothing, over this range as over any other.
+ *
+ * @returns Whether the break was declined; otherwise `false`, so the command's own handlers still run.
+ */
+function $clearStaleFocusRangeBeforeLineBreak(): boolean {
+    const selection = $getSelection();
+    const isStaleFocus = $isStaleFocusRange(selection);
+    const declined = isStaleFocus && $staleFocusRemovalDeclinesLineBreak(selection);
+
+    if (isStaleFocus && !declined) {
+        $removeStaleFocusRange(selection);
+    }
+
+    return declined;
+}
+
+/**
+ * Whether a paste will insert text of its own at the selection, read off its
+ * event the way `@lexical/rich-text` routes a paste. It will not when the
+ * event has no clipboard (a key or input event), nor when the clipboard's
+ * files take the paste — files with neither `text/plain` nor `text/html`
+ * beside them go to `DRAG_DROP_PASTE`, which inserts nothing, as a pasted
+ * screenshot does. Otherwise it will when the clipboard's `text/plain`, or
+ * without one its `text/uri-list`, is not empty.
+ *
+ * @remarks
+ * The test for a `PASTE_COMMAND` guard that removes a range to make room for
+ * the paste: that text goes straight into the selection, past every later
+ * guard, so its room has to be made here, and only when there is text. Nodes
+ * a paste brings (a Lexical or HTML clipboard) arrive through
+ * `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` instead, whose guards see the
+ * nodes themselves and make room when there are any. A paste this is `false`
+ * for therefore either inserts nothing, and must leave the range as it
+ * leaves any other, or reaches those guards.
+ *
+ * @param event - The paste command's payload.
+ * @returns `true` when the paste will insert its text at the selection.
+ */
+function pasteWillInsertText(event: CommandPayloadType<typeof PASTE_COMMAND>): boolean {
+    const clipboardData = "clipboardData" in event ? event.clipboardData : null;
+
+    if (clipboardData === null) {
+        return false;
+    }
+
+    const carriesText = clipboardData.types.includes("text/plain") || clipboardData.types.includes("text/html");
+    const takenByFiles = clipboardData.files.length > 0 && !carriesText;
+    const text = clipboardData.getData("text/plain") || clipboardData.getData("text/uri-list");
+
+    return !takenByFiles && text !== "";
+}
+
+/**
+ * `PASTE_COMMAND` listener: removes a stale-focus range when the paste will
+ * insert its text there ({@link pasteWillInsertText}), then lets the paste
+ * run at the now-collapsed caret. A paste that inserts nothing — a pasted
+ * screenshot, an empty clipboard — leaves the range as it leaves any other.
+ *
+ * @param event - The paste event.
+ * @returns Always `false`, so the command's own handler still runs.
+ */
+function $clearStaleFocusRangeBeforePastedText(event: CommandPayloadType<typeof PASTE_COMMAND>): boolean {
+    const selection = $getSelection();
+
+    if (!$isStaleFocusRange(selection)) {
+        return false;
+    }
+
+    const insertsText = pasteWillInsertText(event);
+
+    if (insertsText) {
+        $removeStaleFocusRange(selection);
+    }
+
+    return false;
+}
+
+/**
+ * `CONTROLLED_TEXT_INSERTION_COMMAND` listener: removes a stale-focus range,
+ * then lets Lexical type at the now-collapsed caret, in the format and style
+ * of the range's first text node, as Lexical's own `insertText` does for a
+ * range — typing over a range that starts in bold text types bold.
+ *
+ * @returns Always `false`, so the command's own handler still runs.
+ */
+function $clearStaleFocusRangeBeforeTyping(): boolean {
+    const selection = $getSelection();
+
+    if (!$isStaleFocusRange(selection)) {
+        return false;
+    }
+
+    const startNode = (selection.isBackward() ? selection.focus : selection.anchor).getNode();
+    const format = $isTextNode(startNode) ? startNode.getFormat() : selection.format;
+    const style = $isTextNode(startNode) ? startNode.getStyle() : selection.style;
+
+    $removeStaleFocusRange(selection);
+    selection.format = format;
+    selection.style = style;
+
+    return false;
+}
+
+/**
+ * `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` listener: removes the
+ * stale-focus range the pasted or dropped nodes are about to replace, then
+ * lets the insertion run at the now-collapsed caret. With no nodes to insert
+ * — pasted HTML holding nothing the editor reads, such as an image alone —
+ * the range is left as it is, as Lexical's insertion leaves any other.
+ *
+ * @param payload - The nodes to insert and the selection they go in at.
+ * @returns Always `false`, so the insertion still runs.
+ */
+function $clearStaleFocusRangeBeforePaste(payload: CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>): boolean {
+    if (payload.nodes.length > 0 && $isStaleFocusRange(payload.selection)) {
+        $removeStaleFocusRange(payload.selection);
+    }
+
+    return false;
+}
+
+/**
+ * `CUT_COMMAND` listener for a stale-focus range: mirrors
+ * `@lexical/rich-text`'s own cut — copies the selection to the clipboard,
+ * then removes it in one update tagged `CUT_TAG` (its own undo step) — but
+ * removes the range through {@link $removeStaleFocusRange}. A native cut
+ * removes in a later update than the one the command runs in, so a guard
+ * that only removed the range before Lexical's handler could not reach it.
+ *
+ * @param event - The cut event (Lexical also dispatches a `KeyboardEvent`, or `null`).
+ * @param editor - The editor the command was dispatched to.
+ * @returns Whether the selection was a stale-focus range, now being cut.
+ */
+function $cutStaleFocusRange(event: CommandPayloadType<typeof CUT_COMMAND>, editor: LexicalEditor): boolean {
+    if (!$isStaleFocusRange($getSelection())) {
+        return false;
+    }
+
+    // `copyToClipboard` takes only a ClipboardEvent; Lexical also dispatches
+    // CUT_COMMAND with a KeyboardEvent. `"clipboardData" in event` tells them
+    // apart without naming a DOM global.
+    const clipboardEvent = event !== null && "clipboardData" in event ? event : null;
+
+    void copyToClipboard(editor, clipboardEvent).then(() => {
+        editor.update(() => {
+            const selection = $getSelection();
+
+            if ($isRangeSelection(selection)) {
+                $removeRangeIfStaleFocus(selection);
+                selection.removeText();
+            }
+        }, { tag: CUT_TAG });
+    });
 
     return true;
 }
@@ -1479,6 +1899,46 @@ function registerTextOnlyBlockRules(editor: LexicalEditor): () => void {
  */
 function registerWritableFormatCommand(editor: LexicalEditor): () => void {
     return editor.registerCommand(FORMAT_TEXT_COMMAND, (format) => $formatWritably(format, $declinesFormat, $cellTakesFormat), COMMAND_PRIORITY_HIGH);
+}
+
+/**
+ * Registers the guards that remove a stale-focus range
+ * ({@link $isStaleFocusRange}) before Lexical's own removal can throw on it,
+ * for every command that removes or replaces a range.
+ *
+ * @remarks
+ * A command's listeners of one priority run in the order they were
+ * registered, and a guard that handles its command stops the ones after it.
+ * So each row below names one command and its guards in the order they have
+ * to run: a guard that must see a range before the stale-focus one does goes
+ * ahead of it in that command's row. All rows are at
+ * {@link COMMAND_PRIORITY_CRITICAL}, ahead of every handler that removes the
+ * range. `DELETE_CHARACTER_COMMAND` alone is guarded at
+ * {@link COMMAND_PRIORITY_HIGH} — call this after
+ * {@link registerTextOnlyBlockRules}, whose {@link $joinIntoTextOnlyBlock} at
+ * that priority has to run first: a range from a raw block or a code block
+ * joins its way.
+ *
+ * @param editor - The editor.
+ * @returns The unregister function.
+ */
+function registerStaleFocusRangeGuards(editor: LexicalEditor): () => void {
+    const guard = <P>(command: LexicalCommand<P>, ...guards: Array<CommandListener<P>>): (() => void) =>
+        mergeRegister(...guards.map((listener) => editor.registerCommand(command, listener, COMMAND_PRIORITY_CRITICAL)));
+
+    return mergeRegister(
+        editor.registerCommand(DELETE_CHARACTER_COMMAND, $deleteStaleFocusRange, COMMAND_PRIORITY_HIGH),
+        guard(DELETE_WORD_COMMAND, $deleteStaleFocusRange),
+        guard(DELETE_LINE_COMMAND, $deleteStaleFocusRange),
+        guard(REMOVE_TEXT_COMMAND, $deleteStaleFocusRange),
+        guard(INSERT_PARAGRAPH_COMMAND, $clearStaleFocusRangeBeforeInsert),
+        guard(INSERT_LINE_BREAK_COMMAND, $clearStaleFocusRangeBeforeLineBreak),
+        guard(INSERT_TAB_COMMAND, $clearStaleFocusRangeBeforeInsert),
+        guard(PASTE_COMMAND, $clearStaleFocusRangeBeforePastedText),
+        guard(CONTROLLED_TEXT_INSERTION_COMMAND, $clearStaleFocusRangeBeforeTyping),
+        guard(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, $clearStaleFocusRangeBeforePaste),
+        guard(CUT_COMMAND, $cutStaleFocusRange),
+    );
 }
 
 /**
@@ -3007,6 +3467,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             const selection = $getSelection();
 
             if ($isRangeSelection(selection)) {
+                $removeRangeIfStaleFocus(selection);
                 selection.removeText();   // a no-op on a collapsed selection
             }
         }, { discrete: true });
@@ -3043,6 +3504,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 const selection = $getSelection();
 
                 if ($isRangeSelection(selection)) {
+                    $removeRangeIfStaleFocus(selection);
                     selection.insertRawText(text);
                 }
             }, { discrete: true });
@@ -3324,6 +3786,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             if ($isRangeSelection(selection)) {
+                $removeRangeIfStaleFocus(selection);
                 selection.insertNodes([$createMarkdownImageNode(spec)]);
             }
         }, { discrete: true, tag: RUN_EDGE_TAG });
@@ -3704,6 +4167,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 registerMarkdownShortcutsOutsideRawBlocks(editor),
                 editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
                 registerTextOnlyBlockRules(editor),
+                registerStaleFocusRangeGuards(editor),
                 registerWritableFormatCommand(editor),
                 editor.registerUpdateListener(() => {
                     this.handleChange();

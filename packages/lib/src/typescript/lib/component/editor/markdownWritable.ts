@@ -991,13 +991,34 @@ function $declinesLineBreak(): boolean {
     }
 
     const end = selection.isBackward() ? selection.anchor : selection.focus;
-    const container = $breakRuleContainerOf(end.getNode());
+
+    return $lineBreakUnwritableAt(end);
+}
+
+/**
+ * Whether a line break put at `point` is one a save could not write: the
+ * point is in a level 3–6 heading, or nothing with content would follow the
+ * break in its block. Never in a table cell, a code block or a raw block,
+ * which keep every break.
+ *
+ * @param point - The point the break would go in at.
+ * @param rest - For a break that follows an edit joining another block's
+ *   rest after `point`: the point of the document as it stands whose block
+ *   holds, after it, what will follow the break — or `null` when nothing
+ *   will. `point` itself when omitted, for a break put in as things stand.
+ * @returns `true` when the save could not write the break.
+ */
+export function $lineBreakUnwritableAt(point: PointType, rest: PointType | null = point): boolean {
+    const container = $breakRuleContainerOf(point.getNode());
 
     if (container === null) {
         return false;
     }
 
-    return $isOneLineHeading(container) || !$contentFollows(end, container);
+    const restBlock = rest === null ? null : $findEnclosingBlock(rest.getNode());
+    const isFollowed = rest !== null && restBlock !== null && $contentFollows(rest, restBlock);
+
+    return $isOneLineHeading(container) || !isFollowed;
 }
 
 /**
