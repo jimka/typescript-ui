@@ -1044,6 +1044,11 @@ page resets to empty.
   selection ended in and the fence then unwrapped; it now unwraps the fence.
   No consumer action is needed.
 
+- **`MarkdownEditor.toggleLink(null)` no longer throws at a link's edge.** A
+  selection that ended exactly where a link starts, or started exactly where
+  one ends, made Lexical's link removal throw. A link with none of its text
+  selected is now left as it is. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
