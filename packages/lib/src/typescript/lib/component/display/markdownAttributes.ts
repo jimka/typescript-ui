@@ -3,11 +3,13 @@
 /**
  * The dialect's shared grammar — both the `{key=value …}` attribute grammar
  * (underline/colour/font/size spans, table column widths, block alignment,
- * and sized images) and the line-level `|||` column-separator grammar — kept
- * in exactly one place so both the read-only `Markdown` viewer and the
- * `MarkdownEditor` agree on what is safe to render and where a column region
- * splits. A value that fails attribute validation is dropped rather than
- * rendered; see each `resolve*` function below.
+ * and sized images) and the line-level grammar of a `:::` fence's inner text
+ * (its `:::` closer, nested fences and `|||` column separators, with the
+ * code-fence rule that grammar reads lines by) — kept in exactly one place so
+ * both the read-only `Markdown` viewer and the `MarkdownEditor` agree on what
+ * is safe to render, where a fence ends and where a column region splits. A
+ * value that fails attribute validation is dropped rather than rendered; see
+ * each `resolve*` function below.
  */
 
 /** A span's resolved, validated colour/font/size — one field `null` per unset or invalid key. */
@@ -48,46 +50,172 @@ const ALIGN = /^(left|center|right|justify)$/;
 /** The line-level marker separating one column region from the next inside a `:::` fence. */
 export const COLUMN_SEPARATOR = "|||";
 
+/** An open code fence: its character and the length of its opening run. */
+interface CodeFence {
+    readonly char:   string;
+    readonly length: number;
+}
+
+/** A trimmed code-fence line: three or more backticks or tildes, then the rest of the line. */
+const CODE_FENCE_LINE = /^(`{3,}|~{3,})(.*)$/;
+
+/** What may follow a closing fence's run: more fence characters only, as `marked`'s `fences` rule allows. */
+const CLOSING_FENCE_TAIL = /^[`~]*$/;
+
+/**
+ * The list-item markers a trimmed line can start with before its content —
+ * a bullet, or an ordered marker of one to nine digits (CommonMark's limit)
+ * and `.` or `)`, each followed by whitespace. A code fence or `:::` fence
+ * opened on an item's marker line is closed by a line indented under the
+ * item, which the scan reads, so the opening is read after the markers too.
+ */
+const LEADING_LIST_MARKERS = /^(?:(?:[-+*]|\d{1,9}[.)])[ \t]+)+/;
+
+/** Where a line scan of a `:::` fence's inner text stands: its nested-fence depth and the code block it is in. */
+export interface FenceLineScan {
+    depth: number;
+    code:  CodeFence | null;
+}
+
+/** What one line of a `:::` fence's inner text is at the fence's own level ({@link readFenceLine}). */
+export type FenceLineRole = "closer" | "separator" | "escaped-separator" | "content";
+
+/**
+ * Starts a line scan of a `:::` fence's inner text, at depth 0 outside code.
+ *
+ * @returns The scan state, for {@link readFenceLine}.
+ */
+export function startFenceLineScan(): FenceLineScan {
+    return { depth: 0, code: null };
+}
+
+/**
+ * Reads the code fence a trimmed line opens: a run of three or more
+ * backticks or tildes, as `marked`'s `fences` rule reads it.
+ *
+ * @param trimmed - The line, trimmed.
+ * @returns The fence it opens, or `null` when it opens none.
+ */
+function openedCodeFence(trimmed: string): CodeFence | null {
+    const match = CODE_FENCE_LINE.exec(trimmed);
+
+    if (match === null) {
+        return null;
+    }
+
+    const run = match[1]!;
+
+    // A backtick fence's info string cannot hold a backtick (CommonMark §4.5).
+    return run[0] === "`" && match[2]!.includes("`") ? null : { char: run[0]!, length: run.length };
+}
+
+/**
+ * Tells whether a trimmed line closes an open code fence: the opening run
+ * repeated (same character, at least as long), then fence characters only.
+ *
+ * @param trimmed - The line, trimmed.
+ * @param fence - The open code fence.
+ * @returns `true` when the line closes it.
+ */
+function closesCodeFence(trimmed: string, fence: CodeFence): boolean {
+    return trimmed.startsWith(fence.char.repeat(fence.length)) && CLOSING_FENCE_TAIL.test(trimmed.slice(fence.length));
+}
+
+/**
+ * Reads one line of a `:::` fence's inner text and says what it is at the
+ * fence's own level, advancing `scan` past it. A line inside a fenced code
+ * block or a nested `:::` fence is always `"content"`; at the fence's own
+ * level, outside code, a `:::` line is the `"closer"`, a `|||` line the
+ * `"separator"` and a `\|||` line the `"escaped-separator"`. A code block
+ * opens and closes as `marked` reads it (a run of three or more backticks or
+ * tildes; it closes only on its own character, at least as long, followed
+ * by fence characters only), and every line counts at any indentation, as
+ * the `:::` and `|||` lines always have; a code fence or `:::` fence also
+ * opens after list-item markers (as in `- ~~~`), since the line closing it is
+ * indented under the item. Mutates `scan`.
+ *
+ * @param scan - The scan state, from {@link startFenceLineScan}; advanced past the line.
+ * @param line - The line.
+ * @returns The line's role at the fence's own level.
+ */
+export function readFenceLine(scan: FenceLineScan, line: string): FenceLineRole {
+    const trimmed = line.trim();
+
+    if (scan.code !== null) {
+        const closed = closesCodeFence(trimmed, scan.code);
+
+        scan.code = closed ? null : scan.code;
+
+        return "content";
+    }
+
+    const opening = trimmed.replace(LEADING_LIST_MARKERS, "");
+    const opened = openedCodeFence(opening);
+
+    if (opened !== null) {
+        scan.code = opened;
+
+        return "content";
+    }
+
+    if (trimmed === ":::") {
+        if (scan.depth === 0) {
+            return "closer";
+        }
+
+        scan.depth -= 1;
+
+        return "content";
+    }
+
+    // A `:::` line with anything after it opens a nested fence (3 is ":::".length, as in the tokenizer).
+    const opensFence = opening.startsWith(":::") && opening.slice(3).trim() !== "";
+
+    if (opensFence) {
+        scan.depth += 1;
+
+        return "content";
+    }
+
+    if (scan.depth === 0 && trimmed === COLUMN_SEPARATOR) {
+        return "separator";
+    }
+
+    return scan.depth === 0 && trimmed === `\\${COLUMN_SEPARATOR}` ? "escaped-separator" : "content";
+}
+
 /**
  * Splits a `:::` fence's inner text into one section per column, on any line
  * whose trimmed form is exactly {@link COLUMN_SEPARATOR} — but only at the
- * fence's own nesting level: a separator line inside a fenced code block or a
- * nested `:::` fence is ordinary content. A line that is the separator
- * preceded by a backslash (`\|||`) is unescaped to a literal `|||` and kept
- * as content rather than splitting. Always returns at least one section, so
- * a fence always has at least one column.
+ * fence's own nesting level ({@link readFenceLine}): a separator line inside
+ * a fenced code block or a nested `:::` fence is ordinary content. A line
+ * that is the separator preceded by a backslash (`\|||`) is unescaped to a
+ * literal `|||` and kept as content rather than splitting. Always returns at
+ * least one section, so a fence always has at least one column.
  *
  * @param inner - The fence's inner text (between its opening and closing lines).
  * @returns The column sections, in document order.
  *
  * @example
  * ```
- * splitColumnSections("A\n|||\nB")     // -> ["A", "B"]
- * splitColumnSections("A\n\\|||\nB")   // -> ["A\n|||\nB"]
+ * splitColumnSections("A\n|||\nB")                 // -> ["A", "B"]
+ * splitColumnSections("A\n\\|||\nB")               // -> ["A\n|||\nB"]
+ * splitColumnSections("````\n```\n````\n|||\nB")  // -> ["````\n```\n````", "B"]
  * ```
  */
 export function splitColumnSections(inner: string): string[] {
     const sections: string[] = [];
+    const scan = startFenceLineScan();
     let current: string[] = [];
-    let depth = 0;
-    let inCode = false;
 
     for (const line of inner.split("\n")) {
-        const trimmed = line.trim();
+        const role = readFenceLine(scan, line);
 
-        if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
-            inCode = !inCode;
-        } else if (!inCode) {
-            if (trimmed === ":::") {
-                depth = Math.max(0, depth - 1);
-            } else if (trimmed.startsWith(":::") && trimmed.slice(3).trim() !== "") {
-                depth += 1;
-            } else if (depth === 0 && trimmed === COLUMN_SEPARATOR) {
-                sections.push(current.join("\n"));
-                current = [];
+        if (role === "separator") {
+            sections.push(current.join("\n"));
+            current = [];
 
-                continue;
-            }
+            continue;
         }
 
         // Only unescaped at this fence's own level: a `\|||` line inside a
@@ -95,7 +223,7 @@ export function splitColumnSections(inner: string): string[] {
         // recursive parse of that nested content (which runs this same
         // function again, at its own depth 0) is the one that unescapes it —
         // unescaping it here too would double-consume the backslash.
-        current.push(!inCode && depth === 0 ? line.replace(/^(\s*)\\\|\|\|$/, "$1|||") : line);
+        current.push(role === "escaped-separator" ? line.replace("\\", "") : line);
     }
 
     sections.push(current.join("\n"));
@@ -108,49 +236,54 @@ export function splitColumnSections(inner: string): string[] {
  * fence body, escaping any line whose trimmed form is exactly
  * {@link COLUMN_SEPARATOR} so it re-imports as content rather than a split —
  * but, symmetrically with the split side, only at that line's own nesting
- * level. A section's content can itself contain an already-exported nested
- * `:::` fence or a fenced code block (e.g. one column's content is another
- * whole column-region fence); a `|||` line inside either of those is left
- * untouched, since it is not a threat to *this* join — re-splitting the
- * joined whole only ever looks for a separator at depth 0, outside code.
- * Escaping it anyway would still be undone correctly on the next import (an
- * unescape with nothing to undo is a no-op), but it would mean the exported
- * Markdown no longer matches what a nested import round-trip produces.
+ * level ({@link readFenceLine}). A section's content can itself contain an
+ * already-exported nested `:::` fence or a fenced code block (e.g. one
+ * column's content is another whole column-region fence); a `|||` line
+ * inside either of those is left untouched, since it is not a threat to
+ * *this* join — re-splitting the joined whole only ever looks for a
+ * separator at depth 0, outside code. Escaping it anyway would still be
+ * undone correctly on the next import (an unescape with nothing to undo is a
+ * no-op), but it would mean the exported Markdown no longer matches what a
+ * nested import round-trip produces.
  *
  * @param sections - The column sections, in document order.
  * @returns The joined fence inner text.
  *
  * @example
  * ```
- * joinColumnSections(["A", "B"])   // -> "A\n|||\nB"
- * joinColumnSections(["|||"])      // -> "\\|||"
+ * joinColumnSections(["A", "B"])                  // -> "A\n|||\nB"
+ * joinColumnSections(["|||"])                     // -> "\\|||"
+ * joinColumnSections(["````\n```\n|||\n````"])   // -> "````\n```\n|||\n````"
  * ```
  */
 export function joinColumnSections(sections: string[]): string {
     return sections
         .map((section) => {
-            let depth = 0;
-            let inCode = false;
+            const scan = startFenceLineScan();
 
-            return section.split("\n").map((line) => {
-                const trimmed = line.trim();
-
-                if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
-                    inCode = !inCode;
-                } else if (!inCode) {
-                    if (trimmed === ":::") {
-                        depth = Math.max(0, depth - 1);
-                    } else if (trimmed.startsWith(":::") && trimmed.slice(3).trim() !== "") {
-                        depth += 1;
-                    }
-                }
-
-                return !inCode && depth === 0 && trimmed === COLUMN_SEPARATOR
-                    ? line.replace(COLUMN_SEPARATOR, `\\${COLUMN_SEPARATOR}`)
-                    : line;
-            }).join("\n");
+            return section.split("\n")
+                .map((line) => (readFenceLine(scan, line) === "separator" ? line.replace(COLUMN_SEPARATOR, `\\${COLUMN_SEPARATOR}`) : line))
+                .join("\n");
         })
         .join(`\n${COLUMN_SEPARATOR}\n`);
+}
+
+/**
+ * Tells whether content written as the only column of a `:::` fence would
+ * not read back as that column: a line would close the fence, the fence's
+ * closing line would be swallowed by a nested fence or a code block left
+ * open, or the join and split would change a line.
+ *
+ * @param content - The column's Markdown.
+ * @returns `true` when the content breaks its column.
+ */
+export function breaksColumn(content: string): boolean {
+    const inner = joinColumnSections([content]);
+    const scan = startFenceLineScan();
+    const closesEarly = inner.split("\n").some((line) => readFenceLine(scan, line) === "closer");
+    const sections = splitColumnSections(inner);
+
+    return closesEarly || scan.depth !== 0 || scan.code !== null || sections.length !== 1 || sections[0] !== content;
 }
 
 /**

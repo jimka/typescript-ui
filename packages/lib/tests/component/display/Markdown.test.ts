@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Markdown, mapFenceLangToEditorId, extractMarkdownHeadings, findActiveHeading, headingSelector } from '~/component/display/Markdown';
-import { splitColumnSections, joinColumnSections } from '~/component/display/markdownAttributes';
+import { breaksColumn, splitColumnSections, joinColumnSections } from '~/component/display/markdownAttributes';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { Component } from '~/core/Component';
@@ -634,6 +634,43 @@ describe('splitColumnSections / joinColumnSections', () => {
         const sections = ['```\n\\|||\n```', 'B'];
 
         expect(splitColumnSections(joinColumnSections(sections))).toEqual(sections);
+    });
+
+    it('S1: a shorter backtick run inside a longer code fence does not end the code, so the ||| after it splits', () => {
+        expect(splitColumnSections('````\n```\n````\n|||\nB')).toEqual(['````\n```\n````', 'B']);
+    });
+
+    it('S2: a backtick run inside a tilde code fence does not end the code, so the ||| after it splits', () => {
+        expect(splitColumnSections('~~~\n```\n~~~\n|||\nB')).toEqual(['~~~\n```\n~~~', 'B']);
+    });
+
+    it('S3: a ||| inside a longer code fence that holds a shorter run is not escaped', () => {
+        expect(joinColumnSections(['````\n```\n|||\n````', 'B'])).toBe('````\n```\n|||\n````\n|||\nB');
+    });
+
+    it('S4: a section holding a shorter run inside a longer code fence round-trips through join then split', () => {
+        const sections = ['````\n```\n|||\n````', 'B'];
+
+        expect(splitColumnSections(joinColumnSections(sections))).toEqual(sections);
+    });
+});
+
+describe('breaksColumn', () => {
+    it.each([
+        ['BC1: a ::: line closes the fence early', '<div>\n:::\n</div>', true],
+        ['BC2: a ::: x line leaves a nested fence open', '<div>\n::: x\n</div>', true],
+        ['BC3: a code fence left open swallows the closer', '<div>\n```\n</div>', true],
+        ['BC4: a \\||| line would lose its backslash to the split', '<div>\n\\|||\n</div>', true],
+        ['BC5: an indented ::: line in a list closes the fence early', '- a\n\n  b\n  :::', true],
+        ['BC6: a ||| line is escaped by the join and restored by the split', '<div>\n|||\n</div>', false],
+        ['BC7: a ::: line inside code is code', '```\n:::\n```', false],
+        ['BC8: a balanced nested fence', '::: {align=right}\nx\n:::', false],
+        ['BC9: empty content', '', false],
+        ['BC10: a list item starting with a closed code block', '- ```\n  :::\n  ```', false],
+        ['BC11: a list item starting with a balanced fence', '- ::: {align=right}\n  x\n  :::', false],
+        ['BC12: a list item starting with a code block it leaves open', '- ```\n  x', true],
+    ])('%s', (_name, content, expected) => {
+        expect(breaksColumn(content)).toBe(expected);
     });
 });
 
