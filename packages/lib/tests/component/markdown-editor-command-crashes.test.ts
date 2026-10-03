@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-    $createRangeSelection, $getRoot, $isTextNode, $setSelection,
+    $createParagraphNode, $createRangeSelection, $createTextNode, $getRoot, $isTextNode, $setSelection, createEditor,
 } from 'lexical';
 import type { ElementNode, LexicalEditor, TextNode } from 'lexical';
+import { $createLinkNode, $toggleLink, LinkNode } from '@lexical/link';
 import { $dfs } from '@lexical/utils';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { $isMarkdownBlockNode } from '~/component/editor/markdownBlockNode';
@@ -223,5 +224,100 @@ describe('setColumnCount unwraps a fence a selection spans the columns of (C row
 
         expect(editor.getValue()).toBe('A\n\nB\n\nB2\n\nC');
         expect(() => editor.getSelectionState()).not.toThrow();
+    });
+});
+
+describe('toggleLink(null) leaves a link the selection only touches (L rows)', () => {
+    it('L1: a selection ending at a link\'s start', () => {
+        const editor = load('a [b](u) c');
+
+        selectText(editor, ['a ', 0], ['b', 0]);
+        editor.toggleLink(null);
+
+        expect(editor.getValue()).toBe('a [b](u) c');
+    });
+
+    it('L2: a backward selection starting at a link\'s end', () => {
+        const editor = load('a [b](u) c');
+
+        selectText(editor, [' c', 1], ['b', 1]);
+        editor.toggleLink(null);
+
+        expect(editor.getValue()).toBe('a [b](u) c');
+    });
+
+    it('L3: a selection from an earlier paragraph to a link\'s start', () => {
+        const editor = load('x\n\n[b](u) c');
+
+        selectText(editor, ['x', 0], ['b', 0]);
+        editor.toggleLink(null);
+
+        expect(editor.getValue()).toBe('x\n\n[b](u) c');
+    });
+
+    it('L4: a selection touching two links, at one\'s end and the other\'s start', () => {
+        const editor = load('[a](u) x [b](v)');
+
+        selectText(editor, ['a', 1], ['b', 0]);
+        editor.toggleLink(null);
+
+        expect(editor.getValue()).toBe('[a](u) x [b](v)');
+    });
+
+    it('L5: a selection covering a link\'s text unlinks it, as before', () => {
+        const editor = load('a [b](u) c');
+
+        selectText(editor, ['a ', 0], ['b', 1]);
+        editor.toggleLink(null);
+
+        expect(editor.getValue()).toBe('a b c');
+    });
+
+    it('L6: a selection holding part of two links unlinks only those parts, as before', () => {
+        const editor = load('[ab](u) x [cd](v)');
+
+        selectText(editor, ['ab', 1], ['cd', 1]);
+        editor.toggleLink(null);
+
+        expect(editor.getValue()).toBe('[a](u)b x c[d](v)');
+    });
+});
+
+/**
+ * Builds a plain Lexical editor (no `MarkdownEditor`) whose `onError`
+ * records the error instead of rethrowing it.
+ *
+ * @param nodes - Node classes to register.
+ * @returns The editor and the list its errors are recorded in.
+ */
+function recordingEditor(nodes: Array<typeof LinkNode> = []): { editor: LexicalEditor; errors: Error[] } {
+    const errors: Error[] = [];
+    const editor = createEditor({ nodes, onError: (error) => { errors.push(error); } });
+
+    return { editor, errors };
+}
+
+describe('upstream canaries: the Lexical bugs the guards work around still reproduce (U rows)', () => {
+    // When this fails after a Lexical upgrade, the upstream bug is fixed —
+    // delete the matching guard in `MarkdownEditor.ts` (moving a link-edge
+    // end out of the link before `$toggleLink(null)`) and this canary.
+    it('U2: $toggleLink(null) throws on a selection ending at a link\'s start', () => {
+        const { editor, errors } = recordingEditor([LinkNode]);
+
+        editor.update(() => {
+            const start = $createTextNode('a ');
+            const linked = $createTextNode('b');
+
+            $getRoot().append($createParagraphNode().append(start, $createLinkNode('u').append(linked), $createTextNode(' c')));
+
+            const selection = $createRangeSelection();
+
+            selection.anchor.set(start.getKey(), 0, 'text');
+            selection.focus.set(linked.getKey(), 0, 'text');
+            $setSelection(selection);
+            $toggleLink(null);
+        }, { discrete: true });
+
+        expect(errors.some((error) => error instanceof TypeError)).toBe(true);
     });
 });

@@ -27,7 +27,7 @@ import {
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
     CommandListener, LexicalCommand, CommandListenerPriority, UpdateListener, ParagraphNode, RangeSelection, EditorUpdateOptions,
-    NodeKey,
+    NodeKey, PointType,
 } from "lexical";
 import { registerMarkdownShortcuts } from "@lexical/markdown";
 import { registerRichText, $createHeadingNode, $createQuoteNode, QuoteNode, $isQuoteNode } from "@lexical/rich-text";
@@ -418,6 +418,76 @@ function $findEnclosingSeparatorTarget(node: LexicalNode): TableNode | CodeNode 
  */
 function $findEnclosingLinkNode(node: LexicalNode): LinkNode | null {
     return $findMatchingParent(node, $isLinkNode);
+}
+
+/**
+ * Whether `point` sits at `link`'s start: no text of the link lies before
+ * it. Holds for a text point at offset 0 of the link's first descendant, and
+ * for an element point at offset 0 on the link itself.
+ *
+ * @param point - A selection point inside `link`.
+ * @param link - The link.
+ * @returns Whether the point is at the link's start.
+ */
+function $isAtLinkStart(point: PointType, link: LinkNode): boolean {
+    if (point.type === "element") {
+        return point.key === link.getKey() && point.offset === 0;
+    }
+
+    return point.key === link.getFirstDescendant()?.getKey() && point.offset === 0;
+}
+
+/**
+ * Whether `point` sits at `link`'s end: no text of the link lies after it.
+ * Holds for a text point at the end of the link's last descendant, and for
+ * an element point after the link's last child on the link itself.
+ *
+ * @param point - A selection point inside `link`.
+ * @param link - The link.
+ * @returns Whether the point is at the link's end.
+ */
+function $isAtLinkEnd(point: PointType, link: LinkNode): boolean {
+    if (point.type === "element") {
+        return point.key === link.getKey() && point.offset === link.getChildrenSize();
+    }
+
+    const last = link.getLastDescendant();
+
+    return point.key === last?.getKey() && point.offset === last.getTextContentSize();
+}
+
+/**
+ * Moves a range selection's start off a link's end, and its end off a
+ * link's start, onto the same position just outside that link (an element
+ * point on the link's parent). Such an end selects none of the link's text.
+ * Does nothing to a collapsed selection.
+ *
+ * @remarks
+ * Works around `@lexical/link`'s `$toggleLink(null)` (0.49.0–0.52.0): on a
+ * range whose end only touches a link's edge, `selection.extract()` returns
+ * the link but none of its children, and `$splitLinkAtSelection` then calls
+ * `insertAfter` on `undefined`. An element point on the link's parent does
+ * not trigger it. Remove when the canary in
+ * `markdown-editor-command-crashes.test.ts` fails.
+ *
+ * @param selection - The selection to adjust in place.
+ */
+function $moveRangeEdgesOutOfLinks(selection: RangeSelection): void {
+    if (selection.isCollapsed()) {
+        return;
+    }
+
+    const [start, end] = $orderedPoints(selection);
+    const startLink = $findEnclosingLinkNode(start.getNode());
+    const endLink = $findEnclosingLinkNode(end.getNode());
+
+    if (startLink !== null && $isAtLinkEnd(start, startLink)) {
+        start.set(startLink.getParentOrThrow().getKey(), startLink.getIndexWithinParent() + 1, "element");
+    }
+
+    if (endLink !== null && $isAtLinkStart(end, endLink)) {
+        end.set(endLink.getParentOrThrow().getKey(), endLink.getIndexWithinParent(), "element");
+    }
 }
 
 /**
@@ -2752,6 +2822,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
             if (url !== null) {
                 $selectEnclosingWordIfCollapsed();
+            } else {
+                // `$toggleLink(null)`'s `$splitLinkAtSelection` throws when an end only touches a link's edge.
+                $moveRangeEdgesOutOfLinks(selection);
             }
 
             const declined = $selectionCoversSourceRun() || $selectionInNestedLinkRun();
