@@ -929,6 +929,20 @@ describe('a range from a block start into a later block\'s word is removed witho
     });
 });
 
+describe('a selection keeps inside text a line-break rule shortens (W rows)', () => {
+    it('W1: deleting the last line of a quote converted from a code block', () => {
+        const editor = load('```\na\nb\n```');
+
+        selectText(editor, ['a\nb', 0], ['a\nb', 0]);
+        editor.setBlockType('quote');
+        selectText(editor, ['a\nb', 2], ['a\nb', 3]);
+        lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+
+        expect(editor.getValue()).toBe('> a');
+        expect(() => editor.getSelectionState()).not.toThrow();
+    });
+});
+
 /**
  * Builds a plain Lexical editor (no `MarkdownEditor`) whose `onError`
  * records the error instead of rethrowing it.

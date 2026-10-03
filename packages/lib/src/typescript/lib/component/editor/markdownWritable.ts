@@ -1303,9 +1303,33 @@ function $dropBreaksAtRunEnd(leaf: LexicalNode): boolean {
 
     if (kept !== text) {
         leaf.setTextContent(kept);
+        $keepSelectionInText(leaf);
     }
 
     return contentEnd > 0;
+}
+
+/**
+ * Moves a selection end past the end of a text node whose text just got
+ * shorter back to its end. Lexical's `setTextContent` leaves the selection
+ * as it was, and an offset past the end throws on the next read.
+ *
+ * @param text - The text node.
+ */
+function $keepSelectionInText(text: TextNode): void {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return;
+    }
+
+    const size = text.getTextContentSize();
+
+    for (const point of [selection.anchor, selection.focus]) {
+        if (point.type === "text" && point.key === text.getKey() && point.offset > size) {
+            point.set(point.key, size, "text");
+        }
+    }
 }
 
 // ---------------------------------------------------------------- run edges
