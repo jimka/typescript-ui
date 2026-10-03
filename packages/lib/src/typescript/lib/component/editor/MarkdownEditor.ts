@@ -21,7 +21,8 @@ import {
     $createParagraphNode, KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH, SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
     PASTE_COMMAND, DELETE_CHARACTER_COMMAND, $createTextNode, $copyNode, $isLineBreakNode, $getState,
     IS_ALL_FORMATTING, $isTextNode, TEXT_TYPE_TO_FORMAT, $hasUpdateTag, HISTORY_PUSH_TAG,
-    $getNearestNodeFromDOMNode, isDOMNode, $findMatchingParent, $isElementNode, $isParagraphNode,
+    $getNearestNodeFromDOMNode, isDOMNode, $findMatchingParent, $isElementNode, $isParagraphNode, $isRootNode,
+    $caretFromPoint, $normalizeCaret, $setPointFromCaret,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
@@ -460,10 +461,25 @@ function $findEnclosingInsertableBlock(node: LexicalNode): CodeNode | QuoteNode 
 }
 
 /**
+ * Finds the child of the document root that holds `node` (or is `node`).
+ * Unlike Lexical's `getTopLevelElement()`, it does not stop at a table cell
+ * or a `:::` column, which Lexical treats as roots of their own.
+ *
+ * @param node - The node to search upward from.
+ * @returns The root's child holding `node`, or `null` when `node` is the
+ *   root itself or is not attached to it.
+ */
+function $getRootChild(node: LexicalNode): LexicalNode | null {
+    return $findMatchingParent(node, (candidate) => $isRootNode(candidate.getParent()));
+}
+
+/**
  * Wraps the top-level blocks the current selection spans in a fresh
  * {@link MarkdownBlockNode} holding one {@link MarkdownColumnNode} column,
- * inserted where the first of them sat. Assumes the caller already verified
- * a range selection exists.
+ * inserted where the first of them sat. A selection inside a table cell or
+ * a `:::` column counts as its whole enclosing child of the root: the whole
+ * table, or the whole fence. Assumes the caller already verified a range
+ * selection exists.
  *
  * @returns The new, now-populated block node.
  */
@@ -476,7 +492,13 @@ function $wrapSelectedTopLevelBlocks(): MarkdownBlockNode {
 
     if ($isRangeSelection(selection)) {
         for (const node of selection.getNodes()) {
-            const index = node.getTopLevelElementOrThrow().getIndexWithinParent();
+            const rootChild = $getRootChild(node);
+
+            if (rootChild === null) {
+                continue;
+            }
+
+            const index = rootChild.getIndexWithinParent();
 
             firstIndex = Math.min(firstIndex, index);
             lastIndex = Math.max(lastIndex, index);
@@ -506,6 +528,40 @@ function $wrapSelectedTopLevelBlocks(): MarkdownBlockNode {
 }
 
 /**
+ * Moves each end of the selection that is an element point on `block` or on
+ * one of its columns to the same position inside the column's content — the
+ * deepest point at the end of what precedes it, or at the start of what
+ * follows it — so it moves with that content.
+ *
+ * @remarks
+ * Moving a node (`insertBefore`, `append`) makes Lexical (0.49.0) adjust a
+ * selection end sitting on the node's old parent while the node is
+ * detached; comparing that end with one inside the moved node then throws
+ * `$comparePointCaretNext: … do not have a common ancestor`.
+ *
+ * @param block - The block whose columns' content is about to move.
+ */
+function $moveSelectionIntoColumnContent(block: MarkdownBlockNode): void {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return;
+    }
+
+    for (const point of [selection.anchor, selection.focus]) {
+        const node = point.getNode();
+        const onBlockOrColumn = node.is(block) || node.getParent()?.is(block) === true;
+
+        if (point.type === "element" && onBlockOrColumn) {
+            // Toward the content on the point's side: the end of what precedes it, else the start of what follows.
+            const direction = point.offset > 0 ? "previous" : "next";
+
+            $setPointFromCaret(point, $normalizeCaret($caretFromPoint(point, direction)));
+        }
+    }
+}
+
+/**
  * Moves `block`'s columns' children back to the top level, in column order,
  * then removes `block`. Walks every column rather than assuming exactly one,
  * so a malformed block with more than one column (which `canUnwrap()` never
@@ -514,6 +570,8 @@ function $wrapSelectedTopLevelBlocks(): MarkdownBlockNode {
  * @param block - The block to unwrap and remove.
  */
 function $unwrapMarkdownBlock(block: MarkdownBlockNode): void {
+    $moveSelectionIntoColumnContent(block);
+
     for (const column of block.getColumns()) {
         for (const child of column.getChildren()) {
             block.insertBefore(child);
@@ -539,6 +597,8 @@ const MAX_COLUMN_COUNT = 6;
  */
 function $setBlockColumnCount(block: MarkdownBlockNode, target: number): void {
     const columns = block.getColumns();
+
+    $moveSelectionIntoColumnContent(block);
 
     for (let index = columns.length; index < target; index += 1) {
         const column = $createMarkdownColumnNode();
