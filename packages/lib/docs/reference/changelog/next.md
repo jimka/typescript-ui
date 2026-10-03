@@ -1056,6 +1056,12 @@ page resets to empty.
   document was then left partly edited. These edits now apply normally. No
   consumer action is needed.
 
+- **`MarkdownEditor` keeps the caret inside text a save trims.** Deleting
+  the last line of a block converted from a code block (for example with
+  `setBlockType("quote")`) left the caret past the end of the trimmed text,
+  and the next edit or `getSelectionState()` threw. The caret now stays at
+  the text's end. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
