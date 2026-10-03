@@ -1034,6 +1034,16 @@ page resets to empty.
   after the quote could lose its first character, so `<div>` showed as
   `div>` and `1. g` as `. g`. No consumer action is needed.
 
+- **`MarkdownEditor` aligns and columns a selection that reaches into a table
+  or a `:::` column.** `setBlockAlignment` and `setColumnCount` threw when
+  the selection spanned two table cells, or ran from outside a `:::` fence
+  into one of its columns. With the caret in a table that was not the
+  document's first block, they wrapped an earlier block instead of the table.
+  They now wrap the whole table or fence the selection reaches.
+  `setColumnCount` also threw when it merged or dropped a column the
+  selection ended in and the fence then unwrapped; it now unwraps the fence.
+  No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
