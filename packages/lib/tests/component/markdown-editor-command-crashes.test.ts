@@ -16,6 +16,7 @@ import type { ElementNode, Klass, LexicalEditor, LexicalNode, PointType, RangeSe
 import { $createListItemNode, $createListNode, ListItemNode, ListNode } from '@lexical/list';
 import { $createLinkNode, $toggleLink, LinkNode } from '@lexical/link';
 import { copyToClipboard } from '@lexical/clipboard';
+import type { TableCellNode } from '@lexical/table';
 import { $dfs } from '@lexical/utils';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { $isMarkdownBlockNode } from '~/component/editor/markdownBlockNode';
@@ -940,6 +941,48 @@ describe('a selection keeps inside text a line-break rule shortens (W rows)', ()
 
         expect(editor.getValue()).toBe('> a');
         expect(() => editor.getSelectionState()).not.toThrow();
+    });
+});
+
+describe('a table a row of which is too short keeps its alignment rules (T rows)', () => {
+    it('T1: a row short of a cell spanning down into it from a later column', () => {
+        const editor = load('|a|b|\n|-|-|\n|1|2|\n|3|^^|');
+
+        lexicalOf(editor).update(() => {
+            const row = ($getRoot().getFirstChild() as ElementNode).getChildAtIndex(2) as ElementNode;
+
+            row.getFirstChild()!.remove();
+        }, { discrete: true });
+
+        expect(editor.getValue()).toBe('| a | b |\n| --- | --- |\n| 1 | 2 |\n|  | ^^ |');
+    });
+
+    it('T2: an empty row under a header cell spanning down into it', () => {
+        const editor = load('|a|b|\n|-|-|\n|1|2|');
+
+        lexicalOf(editor).update(() => {
+            const table = $getRoot().getFirstChild() as ElementNode;
+
+            ((table.getFirstChild() as ElementNode).getChildAtIndex(1) as TableCellNode).setRowSpan(2);
+            (table.getChildAtIndex(1) as ElementNode).getChildren().forEach((cell) => cell.remove());
+        }, { discrete: true });
+
+        expect(editor.getValue()).toBe('| a | b |\n| --- | --- |\n|  |  |');
+    });
+
+    it('T3: a paragraph put in a row a cell spans down into', () => {
+        const editor = load('|a|\n|-|\n|1|\n|^^|');
+
+        // The table changes before the row, so its transforms run first, as when a paste lands in the row.
+        lexicalOf(editor).update(() => {
+            const table = $getRoot().getFirstChild() as ElementNode;
+
+            table.markDirty();
+            (table.getChildAtIndex(2) as ElementNode).append($createParagraphNode().append($createTextNode('p')));
+        }, { discrete: true });
+
+        // The row's paragraph is dropped, as the table plugin drops it, so the table saves as loaded.
+        expect(editor.getValue()).toBe('|a|\n|-|\n|1|\n|^^|');
     });
 });
 

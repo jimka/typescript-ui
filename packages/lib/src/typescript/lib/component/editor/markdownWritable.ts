@@ -22,7 +22,7 @@ import {
 } from "@lexical/table";
 import type { TableSelection } from "@lexical/table";
 import { $isLinkNode, LinkNode } from "@lexical/link";
-import { $dfs, mergeRegister } from "@lexical/utils";
+import { $dfs, $unwrapAndFilterDescendants, mergeRegister } from "@lexical/utils";
 import { lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions } from "~/component/display/markdownExtensions.js";
 import {
     $definitionsSource, $headingWritesOneLine, $listReadsLoose, $rawBlockWritesAsParagraph, $readsBackAsShown, $runsReadingOtherwise,
@@ -227,10 +227,12 @@ const BLANK_LINE_IN_TITLE = /\n[ \t]*\n/;
  * cell with an alignment of its own (cells pasted from another table).
  * `registerTablePlugin`'s own `TableNode` transform pads short rows, but only
  * when the table itself changes, so a change to a row or a cell marks its
- * table changed; and {@link $alignCellsByColumn} gives each body cell its
- * column's alignment, the header cell's, as the save writes it, keeps a row
- * span inside the table, and splits a header cell spanning columns or rows
- * (the header row is never merged in Markdown) into the cells it covers.
+ * table changed; and {@link $alignCellsByColumn} keeps the table to rows
+ * of cells (a paste can land in a row a cell spans down into), gives each
+ * body cell its column's alignment, the header cell's, as the save writes
+ * it, keeps a row span inside the table, and splits a header cell spanning
+ * columns or rows (the header row is never merged in Markdown) into the
+ * cells it covers.
  *
  * @param editor - The editor.
  * @returns The unregister function.
@@ -300,7 +302,8 @@ function $listItemLines(list: ListNode): ParagraphNode[] {
 }
 
 /**
- * Gives each body cell of a table the alignment of the column it starts in:
+ * Gives each body cell of a table the alignment of the column it starts in
+ * (once the table holds only rows of cells, {@link $keepRowsOfCells}):
  * the header cell's there, which is what the save's delimiter row writes;
  * keeps a cell from spanning rows past the table's last row, or onto a cell
  * of a lower row ({@link $keepRowSpansClear}); and splits a header cell that
@@ -309,6 +312,8 @@ function $listItemLines(list: ListNode): ParagraphNode[] {
  * @param table - The table.
  */
 function $alignCellsByColumn(table: TableNode): void {
+    $keepRowsOfCells(table);
+
     const rows = table.getChildren().filter($isTableRowNode);
 
     // A cell cannot span past the last row: the save writes no row for it to continue into.
@@ -328,6 +333,11 @@ function $alignCellsByColumn(table: TableNode): void {
 
     for (const row of map.slice(1)) {
         for (const value of row) {
+            // A position a row too short leaves empty under a cell spanning down from above: the table plugin pads it.
+            if (value === undefined) {
+                continue;
+            }
+
             const alignment = header[value.startColumn]?.cell.getFormatType() ?? "";
 
             if (value.startRow > 0 && value.cell.getFormatType() !== alignment) {
@@ -401,6 +411,23 @@ function $endRowSpanAbove(claimed: Array<Array<PlacedCell | undefined>>, placed:
 }
 
 /**
+ * Keeps a table to rows, and its rows to cells — the shape a table map is
+ * computed from — unwrapping anything else, as the table plugin's own row
+ * and table transforms do. An edit can leave something else in a row (a
+ * paste into a row a cell spans down into, which holds no cell), and when
+ * the table's transforms run before the row's, computing the map throws.
+ *
+ * @param table - The table.
+ */
+function $keepRowsOfCells(table: TableNode): void {
+    $unwrapAndFilterDescendants(table, $isTableRowNode);
+
+    for (const row of table.getChildren().filter($isTableRowNode)) {
+        $unwrapAndFilterDescendants(row, $isTableCellNode);
+    }
+}
+
+/**
  * Splits each header cell spanning columns or rows into the cells it
  * covers, its content kept in the first: Markdown merges body cells only
  * (`<<`, `^^`), so the save writes a header cell alone in its column, and an
@@ -421,7 +448,8 @@ function $unmergeHeaderCells(table: TableNode, rows: readonly TableRowNode[]): v
         const colSpan = cell.getColSpan();
 
         for (let row = 1; row < cell.getRowSpan(); row++) {
-            const next = (map[row] ?? []).find((value) => value.startRow === row && value.startColumn >= startColumn + colSpan);
+            const next = (map[row] ?? []).find((value) => value !== undefined && value.startRow === row
+                && value.startColumn >= startColumn + colSpan);
             const covered = Array.from({ length: colSpan }, () => $createTableCellNode().append($createParagraphNode()));
 
             if (next === undefined) {
