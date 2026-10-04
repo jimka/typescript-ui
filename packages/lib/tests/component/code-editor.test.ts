@@ -16,9 +16,11 @@ import { DOM } from '~/core/DOM';
 import { installTestDOM, setQuerySelectorResult, makeEvent } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { EditorState, EditorSelection } from '@codemirror/state';
-import type { EditorView } from '@codemirror/view';
-import { codeFolding, foldEffect, ensureSyntaxTree, syntaxTree } from '@codemirror/language';
-import { CompletionContext } from '@codemirror/autocomplete';
+import type { Extension, Transaction } from '@codemirror/state';
+import { EditorView, keymap } from '@codemirror/view';
+import { codeFolding, foldEffect, ensureSyntaxTree, syntaxTree, indentOnInput, indentUnit } from '@codemirror/language';
+import { CompletionContext, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
+import { defaultKeymap } from '@codemirror/commands';
 import type { CompletionSource } from '@codemirror/autocomplete';
 import { json } from '@codemirror/lang-json';
 import { collectSyntaxErrors } from '~/component/editor/syntaxDiagnostics';
@@ -3020,6 +3022,28 @@ describe('formatWithSql options', () => {
     });
 });
 
+/**
+ * Collects every completion label the state's `autocomplete` language
+ * data offers at the end of the document.
+ *
+ * @param state - The state to complete in.
+ * @returns The labels from every completion source.
+ */
+async function completionLabels(state: EditorState): Promise<string[]> {
+    const pos     = state.doc.length;
+    const context = new CompletionContext(state, pos, true);
+    const sources = state.languageDataAt<CompletionSource>('autocomplete', pos);
+    const labels: string[] = [];
+
+    for (const source of sources) {
+        const result = await source(context);
+
+        labels.push(...(result?.options.map((option) => option.label) ?? []));
+    }
+
+    return labels;
+}
+
 describe('built-in sql language options', () => {
     const PG_CONTAINS  = "SELECT * FROM t WHERE c @> '{}'::jsonb;";
     const PG_CONTAINED = "SELECT * FROM t WHERE c <@ '{}'::jsonb;";
@@ -3043,28 +3067,6 @@ describe('built-in sql language options', () => {
         ensureSyntaxTree(state, state.doc.length, Infinity);
 
         return state.update({}).state;
-    }
-
-    /**
-     * Collects every completion label the state's `autocomplete` language
-     * data offers at the end of the document.
-     *
-     * @param state - The state to complete in.
-     * @returns The labels from every completion source.
-     */
-    async function completionLabels(state: EditorState): Promise<string[]> {
-        const pos     = state.doc.length;
-        const context = new CompletionContext(state, pos, true);
-        const sources = state.languageDataAt<CompletionSource>('autocomplete', pos);
-        const labels: string[] = [];
-
-        for (const source of sources) {
-            const result = await source(context);
-
-            labels.push(...(result?.options.map((option) => option.label) ?? []));
-        }
-
-        return labels;
     }
 
     it('reports no diagnostics for the PostgreSQL constructs under { dialect: "postgresql" }', async () => {
@@ -3131,6 +3133,390 @@ describe('built-in sql language options', () => {
         const result = await formatWithSql('sql')('select a from b;', 0);
 
         expect(result.formatted).toBe('select\n  a\nfrom\n  b;');
+    });
+});
+
+describe('built-in markdown language typing', () => {
+    /**
+     * The extensions from `CodeEditor`'s `mount()` that take part in typing,
+     * in `mount()`'s order: the keymap (Enter, Backspace), `indentOnInput()`
+     * (re-indents a line as it is typed) and `closeBrackets()`. The language's
+     * own extension follows them, as in `mount()`; `buildTypingState` adds it
+     * per state. `autocompletion()` is left out: completion needs a mounted
+     * view, and no row presses Enter while a popup would be open.
+     */
+    const TYPING_EXTENSIONS: Extension[] = [
+        keymap.of([...defaultKeymap, ...closeBracketsKeymap]),
+        indentOnInput(),
+        closeBrackets(),
+    ];
+
+    /**
+     * Builds a state on a built-in language plus the typing extensions.
+     *
+     * @param languageId - The built-in language id to load.
+     * @param doc - The document text. A `|` marks the caret and is not part of the text; with none, the caret is at the end.
+     * @param tabSize - The editor's `tabSize`, set the way `CodeEditor` sets it; CodeMirror's defaults when omitted.
+     * @returns A state ready to be typed into with `typeText`.
+     */
+    async function buildTypingState(languageId: string, doc: string, tabSize?: number): Promise<EditorState> {
+        const extension = await getLanguage(languageId)!.loadExtension();
+        const marker    = doc.indexOf('|');
+        const text      = marker < 0 ? doc : doc.slice(0, marker) + doc.slice(marker + 1);
+        const tabs      = tabSize === undefined ? [] : [EditorState.tabSize.of(tabSize), indentUnit.of(' '.repeat(tabSize))];
+
+        return EditorState.create({
+            doc:        text,
+            selection:  EditorSelection.cursor(marker < 0 ? text.length : marker),
+            extensions: [...TYPING_EXTENSIONS, ...tabs, extension],
+        });
+    }
+
+    /**
+     * Parses the whole document, so the input handlers and indentation rules
+     * that read the syntax tree see a complete one (see `buildSqlState`).
+     *
+     * @param state - The state to parse.
+     * @returns A state whose `syntaxTree` covers the whole document.
+     */
+    function settle(state: EditorState): EditorState {
+        ensureSyntaxTree(state, state.doc.length, Infinity);
+
+        return state.update({}).state;
+    }
+
+    /**
+     * Presses a key the way CodeMirror's keymap handling does: walks the
+     * `keymap` facet's binding groups, highest precedence first, and runs each
+     * binding for the key until one handles it.
+     *
+     * @param state - The state the key is pressed in.
+     * @param key - The key to press.
+     * @returns The state the handling command dispatched, or `state` when no binding handled the key.
+     */
+    function pressKey(state: EditorState, key: 'Enter' | 'Backspace'): EditorState {
+        let next: EditorState = state;
+
+        const view = {
+            state,
+            dispatch: (transaction: Transaction): void => {
+                next = transaction.state;
+            },
+        } as unknown as EditorView;
+
+        for (const bindings of state.facet(keymap)) {
+            for (const binding of bindings) {
+                if (binding.key !== key || !binding.run) {
+                    continue;
+                }
+
+                const handled = binding.run(view);
+
+                if (handled) {
+                    return next;
+                }
+            }
+        }
+
+        return next;
+    }
+
+    /**
+     * Types one character the way CodeMirror's input handling does: offers it
+     * to each `EditorView.inputHandler` in turn, and inserts it plainly when
+     * none takes it. The handlers involved (`autoCloseTags`, `closeBrackets`)
+     * read only the stubbed view fields.
+     *
+     * @param state - The state the character is typed in.
+     * @param char - The character to type.
+     * @returns The state after the character.
+     */
+    function typeCharacter(state: EditorState, char: string): EditorState {
+        const { from, to } = state.selection.main;
+        let next: EditorState = state;
+
+        const insert = (): Transaction => state.update({
+            changes:   { from, to, insert: char },
+            selection: EditorSelection.cursor(from + 1),
+            userEvent: 'input.type',
+        });
+
+        const view = {
+            state,
+            composing:          false,
+            compositionStarted: false,
+            // `autoCloseTags` dispatches its two transactions as one array;
+            // the last one carries the resulting state.
+            dispatch: (...transactions: (Transaction | readonly Transaction[])[]): void => {
+                const flattened = transactions.flat();
+
+                next = flattened[flattened.length - 1].state;
+            },
+        } as unknown as EditorView;
+
+        for (const handler of state.facet(EditorView.inputHandler)) {
+            const handled = handler(view, from, to, char, insert);
+
+            if (handled) {
+                return next;
+            }
+        }
+
+        return insert().state;
+    }
+
+    /**
+     * Types `text` one character at a time, settling the syntax tree before
+     * each. `"\n"` presses Enter and `"\b"` presses Backspace.
+     *
+     * @param state - The state to type in.
+     * @param text - The keys to type.
+     * @returns The state after the last key.
+     */
+    function typeText(state: EditorState, text: string): EditorState {
+        let current = state;
+
+        for (const char of text) {
+            current = settle(current);
+
+            if (char === '\n') {
+                current = pressKey(current, 'Enter');
+            } else if (char === '\b') {
+                current = pressKey(current, 'Backspace');
+            } else {
+                current = typeCharacter(current, char);
+            }
+        }
+
+        return current;
+    }
+
+    /**
+     * Renders a state as its document with `|` at the main caret.
+     *
+     * @param state - The state to render.
+     * @returns The document text with the caret marked.
+     */
+    function show(state: EditorState): string {
+        const caret = state.selection.main.head;
+        const doc   = state.doc.toString();
+
+        return doc.slice(0, caret) + '|' + doc.slice(caret);
+    }
+
+    /**
+     * Types `keys` at the caret of `startDoc` on a built-in language.
+     *
+     * @param languageId - The built-in language id to type in.
+     * @param startDoc - The document before typing, with the caret as `buildTypingState` reads it.
+     * @param keys - The keys to type (see `typeText`).
+     * @param tabSize - The editor's `tabSize` (see `buildTypingState`).
+     * @returns The resulting document with `|` at the caret.
+     */
+    async function typed(languageId: string, startDoc: string, keys: string, tabSize?: number): Promise<string> {
+        const state = await buildTypingState(languageId, startDoc, tabSize);
+
+        return show(typeText(state, keys));
+    }
+
+    it('M1: types an HTML block around a ::: line exactly as written', async () => {
+        expect(await typed('markdown', '', '<div>\n:::\n</div>')).toBe('<div>\n:::\n</div>|');
+    });
+
+    it('M2: types a <details> block with blank lines exactly as written', async () => {
+        const keys = '<details>\n<summary>S</summary>\n\nBody\n\n</details>';
+
+        expect(await typed('markdown', '', keys)).toBe(keys + '|');
+    });
+
+    it('M3: does not complete a close tag when "</" is typed in an open element', async () => {
+        expect(await typed('markdown', '<div>\nfoo\n', '</')).toBe('<div>\nfoo\n</|');
+    });
+
+    it('M4: types a close tag for an open element exactly as written', async () => {
+        expect(await typed('markdown', '<div>\nfoo\n', '</div>')).toBe('<div>\nfoo\n</div>|');
+    });
+
+    it('M5: Enter after an open tag does not indent the next line', async () => {
+        expect(await typed('markdown', '<div>', '\n')).toBe('<div>\n|');
+    });
+
+    it('M6: Enter on an indented line keeps its indentation, and a typed close tag stays there', async () => {
+        expect(await typed('markdown', '<div>\n  foo', '\n</div>')).toBe('<div>\n  foo\n  </div>|');
+    });
+
+    it('M7: types "</" in a paragraph exactly as written', async () => {
+        expect(await typed('markdown', '', 'text </')).toBe('text </|');
+    });
+
+    it('M8: Enter continues a bullet list', async () => {
+        expect(await typed('markdown', '', '- item\n')).toBe('- item\n- |');
+    });
+
+    it('M9: Enter continues an ordered list', async () => {
+        expect(await typed('markdown', '', '1. one\n')).toBe('1. one\n2. |');
+    });
+
+    it('M10: Enter continues a blockquote', async () => {
+        expect(await typed('markdown', '', '> quote\n')).toBe('> quote\n> |');
+    });
+
+    it('M11: Enter in a fenced code block keeps the line indentation', async () => {
+        expect(await typed('markdown', '```\n  code', '\n')).toBe('```\n  code\n  |');
+    });
+
+    it('M12: Enter after an open tag on a list item first line continues the list', async () => {
+        expect(await typed('markdown', '', '- <div>\n')).toBe('- <div>\n- |');
+    });
+
+    it('M13: Enter after an open tag on a list item continuation line keeps the item indentation', async () => {
+        expect(await typed('markdown', '- a\n  <div>', '\n')).toBe('- a\n  <div>\n  |');
+    });
+
+    it('M14: Backspace turns the continued marker into indentation, keeping an HTML block in the item', async () => {
+        expect(await typed('markdown', '', '- <div>\n\b:::\n</div>')).toBe('- <div>\n  :::\n  </div>|');
+    });
+
+    it('M15: still parses HTML inside Markdown, so it is still highlighted', async () => {
+        const state = settle(await buildTypingState('markdown', '<div>\n:::\n</div>'));
+
+        // Offset 2 sits on the "div" of the opening tag.
+        expect(syntaxTree(state).resolveInner(2, 1).name).toBe('TagName');
+    });
+
+    it('M16: still offers HTML tag completion', async () => {
+        const labels = await completionLabels(settle(await buildTypingState('markdown', '<di')));
+
+        expect(labels).toContain('<div');
+    });
+
+    it('M17: Enter after an open tag in a blockquote continues the quote', async () => {
+        expect(await typed('markdown', '> <div>', '\n:::')).toBe('> <div>\n> :::|');
+    });
+
+    it('M18: still offers the HTML language completion inside an HTML block', async () => {
+        const labels = await completionLabels(settle(await buildTypingState('markdown', '<div>\n<sp')));
+
+        expect(labels).toContain('span');
+    });
+
+    it('M19: Enter between an adjacent open and close tag puts the close tag on its own line, unindented', async () => {
+        expect(await typed('markdown', '<div>|</div>', '\n')).toBe('<div>\n|\n</div>');
+    });
+
+    it('M20: Enter after an open tag on a bullet item marker line indents to the item content', async () => {
+        expect(await typed('markdown', '- <div>|\n  x\n  </div>', '\n')).toBe('- <div>\n  |\n  x\n  </div>');
+    });
+
+    it('M21: Enter after an open tag on an ordered item marker line indents to the item content', async () => {
+        expect(await typed('markdown', '1. <div>|\n   x\n   </div>', '\n')).toBe('1. <div>\n   |\n   x\n   </div>');
+    });
+
+    it('M22: Enter after an open tag on a nested item marker line indents to the nested item content', async () => {
+        const start = '- a\n  - <div>|\n    x\n    </div>';
+
+        expect(await typed('markdown', start, '\n')).toBe('- a\n  - <div>\n    |\n    x\n    </div>');
+    });
+
+    it('M23: Enter inside an HTML block on an item continuation line keeps the line indentation', async () => {
+        expect(await typed('markdown', '- a\n  <div>|\n  x\n  </div>', '\n')).toBe('- a\n  <div>\n  |\n  x\n  </div>');
+    });
+
+    it('M24: Enter inside a top-level HTML block does not indent the next line', async () => {
+        expect(await typed('markdown', '<div>|\nx\n</div>', '\n')).toBe('<div>\n|\nx\n</div>');
+    });
+
+    it('M25: a close tag typed on a deeper-indented line in a list item stays there', async () => {
+        const start = '- <div>\n      foo\n      |\n  x';
+
+        expect(await typed('markdown', start, '</div>')).toBe('- <div>\n      foo\n      </div>|\n  x');
+    });
+
+    it('M26: Enter on an item marker line inside a blockquote adds no indentation', async () => {
+        // Spaces cannot continue a quote, and deeper indentation outside it
+        // would read as a code block, so the new line starts at column 0.
+        // Continuing the `>` inside HTML is not something this language does.
+        const start = '> - <div>|\n>   x\n>   </div>';
+
+        expect(await typed('markdown', start, '\n')).toBe('> - <div>\n|\n>   x\n>   </div>');
+    });
+
+    it('M27: JavaScript inside <script> keeps its own indentation', async () => {
+        expect(await typed('markdown', '<script>\nfunction f() {', '\n')).toBe('<script>\nfunction f() {\n  |');
+    });
+
+    it('M28: a close tag with no open tag is still an ordinary close tag, not a mismatched one', async () => {
+        const state = settle(await buildTypingState('markdown', 'foo </span> bar'));
+
+        // Offset 6 sits on the "span" of the close tag. markdown() parses each
+        // inline tag on its own, so tag matching is off (the "noMatch" dialect).
+        expect(syntaxTree(state).resolveInner(6, 1).parent?.name).toBe('CloseTag');
+    });
+
+    // M29–M31 start on an indented line: at column 0 they could not tell
+    // "keep the line's indentation" from "indent to column 0".
+    it('M29: Enter inside an open tag keeps the line indentation', async () => {
+        expect(await typed('markdown', '  <div class="a"', '\n')).toBe('  <div class="a"\n  |');
+    });
+
+    it('M30: Enter inside a close tag keeps the line indentation', async () => {
+        expect(await typed('markdown', '  <div>\n  x\n  </div', '\n')).toBe('  <div>\n  x\n  </div\n  |');
+    });
+
+    it('M31: Enter inside a self-closing tag keeps the line indentation', async () => {
+        expect(await typed('markdown', '  <img src="a"|/>', '\n')).toBe('  <img src="a"\n  |/>');
+    });
+
+    it('M32: Enter between adjacent tags on an item marker line leaves the close tag unindented', async () => {
+        // A documented limit: the middle line gets the item's content column,
+        // but CodeMirror gives the close tag's line the marker line's own
+        // indentation, which is none.
+        expect(await typed('markdown', '- <div>|</div>', '\n')).toBe('- <div>\n  |\n</div>');
+    });
+
+    it('M33: Enter inside an HTML block in a blockquote does not continue the quote marker', async () => {
+        // A documented limit: Markdown's own continuation declines inside
+        // HTML, and indentation can only produce whitespace.
+        expect(await typed('markdown', '> <div>|\n> x', '\n')).toBe('> <div>\n|\n> x');
+    });
+
+    // Markdown reads a tab as a stop at every fourth column, whatever the
+    // editor shows it as: the nested item's content is at column 6 here.
+    for (const tabSize of [2, 4, 8]) {
+        it(`M34: Enter on a tab-indented nested item marker line indents to the item content with tabSize ${tabSize}`, async () => {
+            const start = '- a\n\t- <div>|\n      x\n      </div>';
+
+            expect(await typed('markdown', start, '\n', tabSize)).toBe('- a\n\t- <div>\n      |\n      x\n      </div>');
+        });
+    }
+
+    // A tab reaches the next stop from wherever it starts, so one that starts off a stop is narrower
+    // than four columns: after one space it is three wide, and after a marker at column 0 too. Only
+    // these rows tell that from a tab counted as four columns wherever it stands.
+    for (const tabSize of [2, 4, 8]) {
+        it(`M36: Enter on a marker line indented by a space and a tab indents to the item content with tabSize ${tabSize}`, async () => {
+            // The space is column 0, the tab runs to column 4, the marker and its space to column 6.
+            const start = '- a\n \t- <div>|\n      x\n      </div>';
+
+            expect(await typed('markdown', start, '\n', tabSize)).toBe('- a\n \t- <div>\n      |\n      x\n      </div>');
+        });
+
+        it(`M37: Enter on a marker line whose marker is followed by a tab indents to the item content with tabSize ${tabSize}`, async () => {
+            // The marker is column 0 and the tab runs from column 1 to column 4, where the content starts.
+            expect(await typed('markdown', '-\t<div>|', '\n', tabSize)).toBe('-\t<div>\n    |');
+        });
+    }
+
+    it('M35: Enter between two tags on an item marker line indents the rest of the line to the item content', async () => {
+        expect(await typed('markdown', '- <div>|<p>x</p>', '\n')).toBe('- <div>\n  |<p>x</p>');
+    });
+
+    it('H1: the standalone html language still auto-closes a tag', async () => {
+        expect(await typed('html', '', '<div>')).toBe('<div>|</div>');
+    });
+
+    it('H2: the standalone html language still indents between tags on Enter', async () => {
+        expect(await typed('html', '', '<div>\n')).toBe('<div>\n  |\n</div>');
     });
 });
 
