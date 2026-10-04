@@ -1062,6 +1062,14 @@ page resets to empty.
   and the next edit or `getSelectionState()` threw. The caret now stays at
   the text's end. No consumer action is needed.
 
+- **`MarkdownEditor` keeps ordered list numbers to nine digits.** Typing
+  `1234567890. ` (or pressing Enter after it) started an ordered list that
+  the save wrote as a paragraph, since a Markdown list marker holds at most
+  nine digits; the typing shortcut now starts a list only for one to nine
+  digits. An item added after `999999999.` now lowers the list's first
+  number so every item still has nine digits at most. No consumer action is
+  needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
