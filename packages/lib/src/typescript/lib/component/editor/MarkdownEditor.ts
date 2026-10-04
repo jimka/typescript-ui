@@ -41,7 +41,7 @@ import {
 } from "@lexical/list";
 import { $toggleLink, $isLinkNode } from "@lexical/link";
 import type { LinkNode } from "@lexical/link";
-import { copyToClipboard, $getClipboardDataFromSelection } from "@lexical/clipboard";
+import { $insertGeneratedNodes, copyToClipboard, $getClipboardDataFromSelection } from "@lexical/clipboard";
 import { CodeNode, $createCodeNode, $isCodeNode } from "@lexical/code";
 import { registerHistory, createEmptyHistoryState } from "@lexical/history";
 import {
@@ -71,7 +71,7 @@ import { keptSourceState, nestedLinkState } from "~/component/editor/markdownNod
 import { EDITOR_NODES } from "~/component/editor/editorNodes.js";
 import { EDITOR_THEME, ensureMarkdownEditorClassRules } from "~/component/editor/editorTheme.js";
 import {
-    MarkdownBlockNode, $createMarkdownBlockNode, $isMarkdownBlockNode, $createMarkdownColumnNode,
+    MarkdownBlockNode, $createMarkdownBlockNode, $isMarkdownBlockNode, $createMarkdownColumnNode, $isMarkdownColumnNode,
 } from "~/component/editor/markdownBlockNode.js";
 import { $createMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { cssTextToAttributes, resolveImageSpec } from "~/component/display/markdownAttributes.js";
@@ -932,6 +932,40 @@ function $pasteIntoTextOnlyBlock(payload: { nodes: LexicalNode[]; selection: Bas
     }, "");
 
     selection.insertRawText(text);
+
+    return true;
+}
+
+/**
+ * `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` handler for pasted `:::`
+ * columns. A selection copied across two columns of a fence copies the
+ * columns without their fence, and Lexical's insert joins a pasted paragraph
+ * to the one at the caret but never a column: the caret's paragraph would
+ * stay split around the pasted columns, with an empty paragraph after them
+ * when the caret was at its end. Replaces each pasted column with the blocks
+ * it holds and pastes those instead, through `$insertGeneratedNodes`, so the
+ * other paste handlers and Lexical's insert treat them as any pasted blocks.
+ *
+ * @remarks
+ * `$insertGeneratedNodes` dispatches the command again, so a paste holding
+ * a column runs every listener registered ahead of this one twice. Each must
+ * do nothing on the second pass, as the range guard and the run-edge tag
+ * do: the range is already removed, and a tag added twice is one tag.
+ *
+ * @param payload - The pasted nodes and the selection they are inserted at.
+ * @param editor - The editor the command was dispatched to.
+ * @returns Whether the paste held a column, now pasted as its blocks.
+ */
+function $pasteColumnsAsTheirBlocks(payload: CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>, editor: LexicalEditor): boolean {
+    const holdsColumn = payload.nodes.some($isMarkdownColumnNode);
+
+    if (!holdsColumn) {
+        return false;
+    }
+
+    const blocks = payload.nodes.flatMap((node) => ($isMarkdownColumnNode(node) ? node.getChildren() : [node]));
+
+    $insertGeneratedNodes(editor, blocks, payload.selection);
 
     return true;
 }
@@ -2440,6 +2474,24 @@ function registerMarkdownShortcutsOutsideRawBlocks(editor: LexicalEditor): () =>
     });
 
     return registerMarkdownShortcuts(guarded, SHORTCUT_TRANSFORMERS);
+}
+
+/**
+ * Registers the paste handler that turns pasted `:::` columns into the
+ * blocks they hold ({@link $pasteColumnsAsTheirBlocks}).
+ *
+ * @remarks
+ * A command's listeners of one priority run in the order they were
+ * registered, and this one is at {@link COMMAND_PRIORITY_HIGH}. Call this
+ * before {@link registerTextOnlyBlockRules}, so that
+ * {@link $pasteIntoTextOnlyBlock} and every paste handler after it see a
+ * column's blocks, never the column.
+ *
+ * @param editor - The editor.
+ * @returns The unregister function.
+ */
+function registerColumnPaste(editor: LexicalEditor): () => void {
+    return editor.registerCommand(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, $pasteColumnsAsTheirBlocks, COMMAND_PRIORITY_HIGH);
 }
 
 /**
@@ -4790,6 +4842,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 registerHistory(editor, createEmptyHistoryState(), HISTORY_DELAY_MS),
                 registerMarkdownShortcutsOutsideRawBlocks(editor),
                 editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
+                registerColumnPaste(editor),
                 registerTextOnlyBlockRules(editor),
                 registerRangeGuards(editor),
                 registerWritableFormatCommand(editor),

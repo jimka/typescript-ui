@@ -3,10 +3,14 @@
 // MarkdownEditor keeps `:::` columns as it saves them
 // (plans/markdown-columns-fixes.md): a block wrapped, pasted or typed into a
 // column saves a fence the viewer reads as the editor shows it, and a column
-// pasted outside a fence becomes the blocks it holds.
+// pasted outside a fence becomes the blocks it holds. Those blocks paste as
+// any pasted blocks do, joining the paragraph at the caret
+// (plans/markdown-editor-column-paste.md).
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { $createRangeSelection, $getRoot, $getSelection, $isTextNode, $setSelection } from 'lexical';
+import {
+    $createParagraphNode, $createRangeSelection, $getRoot, $getSelection, $isRangeSelection, $isTextNode, $setSelection, UNDO_COMMAND,
+} from 'lexical';
 import type { ElementNode, LexicalEditor, LexicalNode, TextNode } from 'lexical';
 import { $generateJSONFromSelectedNodes, $generateNodesFromSerializedNodes, $insertGeneratedNodes } from '@lexical/clipboard';
 import { $isTableCellNode } from '@lexical/table';
@@ -224,6 +228,25 @@ function caretAtStart(editor: MarkdownEditor): void {
     });
 }
 
+/**
+ * Where the caret is.
+ *
+ * @param editor - The editor.
+ * @returns The text of the node the caret is in, and the caret's offset in it.
+ * @throws Error - When the selection is not a collapsed range.
+ */
+function caretAt(editor: MarkdownEditor): [string, number] {
+    return lexicalOf(editor).read(() => {
+        const selection = $getSelection();
+
+        if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+            throw new Error('the selection is not a caret');
+        }
+
+        return [selection.anchor.getNode().getTextContent(), selection.anchor.offset];
+    });
+}
+
 describe('wrapping a block in a fence saves the fence the viewer reads', () => {
     it('W1: a code block holding a ::: line', () => {
         const editor = load('```\n:::\n```');
@@ -354,7 +377,7 @@ describe('pasting a selection that spans columns', () => {
 
         copyAndPaste(editor, ['Left', 1], ['Right', 2], ['Right', 5]);
 
-        expect(editor.getValue()).toBe('::: columns\nLeft\n|||\nRight\n\neft\n\nRi\n:::');
+        expect(editor.getValue()).toBe('::: columns\nLeft\n|||\nRighteft\n\nRi\n:::');
         expect(strayColumns(editor)).toBe(0);
         expectParity(editor);
     });
@@ -364,8 +387,8 @@ describe('pasting a selection that spans columns', () => {
 
         copyAndPaste(editor, ['Left', 1], ['Right', 2], ['para', 2]);
 
-        expect(editor.getValue()).toBe('::: columns\nLeft\n|||\nRight\n:::\n\npa\n\neft\n\nRi\n\nra');
-        expect(rootChildTypes(editor)).toEqual(['markdown-block', 'paragraph', 'paragraph', 'paragraph', 'paragraph']);
+        expect(editor.getValue()).toBe('::: columns\nLeft\n|||\nRight\n:::\n\npaeft\n\nRira');
+        expect(rootChildTypes(editor)).toEqual(['markdown-block', 'paragraph', 'paragraph']);
         expectParity(editor);
     });
 
@@ -374,7 +397,7 @@ describe('pasting a selection that spans columns', () => {
 
         copyAndPaste(editor, ['Left', 1], ['Right', 2], ['item', 2]);
 
-        expect(editor.getValue()).toBe('- it\n\neft\n\nRiem\n\n::: columns\nLeft\n|||\nRight\n:::');
+        expect(editor.getValue()).toBe('- iteft\n\nRiem\n\n::: columns\nLeft\n|||\nRight\n:::');
         expect(strayColumns(editor)).toBe(0);
         expectParity(editor);
     });
@@ -403,7 +426,7 @@ describe('pasting a selection that spans columns', () => {
 
         copyAndPaste(editor, ['Left', 1], ['Right', 2], ['c1', 1]);
 
-        expect(editor.getValue()).toBe('::: columns\nLeft\n|||\nRight\n:::\n\n| h1 | h2 |\n| --- | --- |\n| c\\n\\neft\\n\\nRi\\n\\n1 | c2 |');
+        expect(editor.getValue()).toBe('::: columns\nLeft\n|||\nRight\n:::\n\n| h1 | h2 |\n| --- | --- |\n| ceft\\n\\nRi1 | c2 |');
 
         const cellChildren = lexicalOf(editor).read(() => {
             const cell = $dfs($getRoot()).map(({ node }) => node).filter($isTableCellNode)[2]!;
@@ -414,7 +437,235 @@ describe('pasting a selection that spans columns', () => {
             }));
         });
 
-        expect(cellChildren).toEqual(Array.from({ length: 4 }, () => ({ type: 'paragraph', nested: 0 })));
+        expect(cellChildren).toEqual(Array.from({ length: 2 }, () => ({ type: 'paragraph', nested: 0 })));
+        expectParity(editor);
+    });
+});
+
+describe('pasting a selection that spans columns joins the paragraph at the caret', () => {
+    // The two-column fence the rows copy from.
+    const FENCE = '::: columns\nLeft\n|||\nRight\n:::';
+
+    it('C1: at a paragraph\'s end, the first pasted block joins it and no empty paragraph is left', () => {
+        const editor = load(FENCE + '\n\nBelow para');
+
+        copyAndPaste(editor, ['Left', 2], ['Right', 3], ['Below para', 10]);
+
+        expect(editor.getValue()).toBe(FENCE + '\n\nBelow paraft\n\nRig');
+        expect(rootChildTypes(editor)).toEqual(['markdown-block', 'paragraph', 'paragraph']);
+        expect(caretAt(editor)).toEqual(['Rig', 3]);
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('C2: inside a paragraph, each half joins the pasted block next to it', () => {
+        const editor = load(FENCE + '\n\npara');
+
+        copyAndPaste(editor, ['Left', 2], ['Right', 3], ['para', 2]);
+
+        expect(editor.getValue()).toBe(FENCE + '\n\npaft\n\nRigra');
+        expect(rootChildTypes(editor)).toEqual(['markdown-block', 'paragraph', 'paragraph']);
+        expect(caretAt(editor)).toEqual(['Rigra', 3]);
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('C3: at a paragraph\'s start, the last pasted block takes the paragraph in', () => {
+        const editor = load(FENCE + '\n\npara');
+
+        copyAndPaste(editor, ['Left', 2], ['Right', 3], ['para', 0]);
+
+        expect(editor.getValue()).toBe(FENCE + '\n\nft\n\nRigpara');
+        expect(rootChildTypes(editor)).toEqual(['markdown-block', 'paragraph', 'paragraph']);
+        expect(caretAt(editor)).toEqual(['Rigpara', 3]);
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('C4: in a table cell, the cell\'s paragraph joins the pasted blocks', () => {
+        const editor = load(FENCE + '\n\n| h1 | h2 |\n| --- | --- |\n| c1 | c2 |');
+
+        copyAndPaste(editor, ['Left', 2], ['Right', 3], ['c1', 1]);
+
+        expect(editor.getValue()).toBe(FENCE + '\n\n| h1 | h2 |\n| --- | --- |\n| cft\\n\\nRig1 | c2 |');
+
+        const cellChildTypes = lexicalOf(editor).read(() => {
+            const cell = $dfs($getRoot()).map(({ node }) => node).filter($isTableCellNode)[2]!;
+
+            return cell.getChildren().map((child) => child.getType());
+        });
+
+        expect(cellChildTypes).toEqual(['paragraph', 'paragraph']);
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('C5: inside a paragraph of another fence\'s column', () => {
+        const editor = load(FENCE + '\n\n::: columns\nAA\n|||\nBB\n:::');
+
+        copyAndPaste(editor, ['Left', 2], ['Right', 3], ['AA', 1]);
+
+        expect(editor.getValue()).toBe(FENCE + '\n\n::: columns\nAft\n\nRigA\n|||\nBB\n:::');
+        expect(columnChildTypes(editor)).toEqual(Array.from({ length: 5 }, () => 'paragraph'));
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('C6: at the end of a column\'s paragraph, no empty paragraph is left in the column', () => {
+        const editor = load(FENCE + '\n\n::: columns\nAA\n|||\nBB\n:::');
+
+        copyAndPaste(editor, ['Left', 2], ['Right', 3], ['BB', 2]);
+
+        expect(editor.getValue()).toBe(FENCE + '\n\n::: columns\nAA\n|||\nBBft\n\nRig\n:::');
+        expect(columnChildTypes(editor)).toEqual(Array.from({ length: 5 }, () => 'paragraph'));
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('C7: two columns copied whole', () => {
+        const editor = load(FENCE + '\n\npara');
+
+        copyAndPaste(editor, ['Left', 0], ['Right', 5], ['para', 4]);
+
+        expect(editor.getValue()).toBe(FENCE + '\n\nparaLeft\n\nRight');
+        expect(rootChildTypes(editor)).toEqual(['markdown-block', 'paragraph', 'paragraph']);
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('C8: a selection across three columns', () => {
+        const source = '::: columns\nLeft\n|||\nMid\n|||\nRight\n:::';
+        const editor = load(source + '\n\npara');
+
+        copyAndPaste(editor, ['Left', 2], ['Right', 3], ['para', 4]);
+
+        expect(editor.getValue()).toBe(source + '\n\nparaft\n\nMid\n\nRig');
+        expect(rootChildTypes(editor)).toEqual(['markdown-block', 'paragraph', 'paragraph', 'paragraph']);
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('C9: columns holding several paragraphs', () => {
+        const source = '::: columns\nL1\n\nL2\n|||\nR1\n\nR2\n:::';
+        const editor = load(source + '\n\npara');
+
+        copyAndPaste(editor, ['L1', 1], ['R2', 1], ['para', 4]);
+
+        expect(editor.getValue()).toBe(source + '\n\npara1\n\nL2\n\nR1\n\nR');
+        expect(rootChildTypes(editor)).toEqual(['markdown-block', 'paragraph', 'paragraph', 'paragraph', 'paragraph']);
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('C10: the pasted text keeps its formatting', () => {
+        const source = '::: columns\n**Left**\n|||\nRight\n:::';
+        const editor = load(source + '\n\npara');
+
+        copyAndPaste(editor, ['Left', 2], ['Right', 3], ['para', 4]);
+
+        expect(editor.getValue()).toBe(source + '\n\npara**ft**\n\nRig');
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('C11: over a selected range, the pasted blocks replace it and join what is left', () => {
+        const editor = load(FENCE + '\n\nabcdef');
+
+        selectText(editor, ['Left', 2], ['Right', 3]);
+
+        const nodes = copySelection(editor);
+
+        selectText(editor, ['abcdef', 2], ['abcdef', 4]);
+        pasteNodes(editor, nodes);
+
+        expect(editor.getValue()).toBe(FENCE + '\n\nabft\n\nRigef');
+        expect(rootChildTypes(editor)).toEqual(['markdown-block', 'paragraph', 'paragraph']);
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('C12: into a code block, each pasted paragraph is one line', () => {
+        const source = '::: columns\nL1\n\nL2\n|||\nR1\n:::';
+        const editor = load(source + '\n\n```\ncode\n```');
+
+        copyAndPaste(editor, ['L1', 1], ['R1', 1], ['code', 4]);
+
+        expect(editor.getValue()).toBe(source + '\n\n```\ncode1\nL2\nR\n```');
+        expect(rootChildTypes(editor)).toEqual(['markdown-block', 'code']);
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('C13: over a range reaching into a table, the table goes and the pasted blocks join what is left', () => {
+        const editor = load(FENCE + '\n\nbefore\n\n| h |\n| --- |\n| c |\n\nafter');
+
+        selectText(editor, ['Left', 2], ['Right', 3]);
+
+        const nodes = copySelection(editor);
+
+        selectText(editor, ['before', 2], ['c', 1]);
+        pasteNodes(editor, nodes);
+
+        expect(editor.getValue()).toBe(FENCE + '\n\nbeft\n\nRig\n\nafter');
+        expect(rootChildTypes(editor)).toEqual(['markdown-block', 'paragraph', 'paragraph', 'paragraph']);
+        expect(caretAt(editor)).toEqual(['Rig', 3]);
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('U1: plain paragraphs paste the same way', () => {
+        const editor = load('Alpha\n\nBeta\n\nTarget');
+
+        copyAndPaste(editor, ['Alpha', 3], ['Beta', 2], ['Target', 6]);
+
+        expect(editor.getValue()).toBe('Alpha\n\nBeta\n\nTargetha\n\nBe');
+        expect(rootChildTypes(editor)).toEqual(Array.from({ length: 4 }, () => 'paragraph'));
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('U2: into an empty paragraph, the pasted blocks replace it', () => {
+        const editor = load(FENCE);
+
+        selectText(editor, ['Left', 2], ['Right', 3]);
+
+        const nodes = copySelection(editor);
+
+        update(editor, () => {
+            const paragraph = $createParagraphNode();
+
+            $getRoot().append(paragraph);
+            paragraph.select();
+        });
+
+        pasteNodes(editor, nodes);
+
+        expect(editor.getValue()).toBe(FENCE + '\n\nft\n\nRig');
+        expect(rootChildTypes(editor)).toEqual(['markdown-block', 'paragraph', 'paragraph']);
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('U3: one undo takes the paste back', () => {
+        const source = FENCE + '\n\nBelow para';
+        const editor = load(source);
+
+        copyAndPaste(editor, ['Left', 2], ['Right', 3], ['Below para', 10]);
+        lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+
+        expect(editor.getValue()).toBe(source);
+        expect(rootChildTypes(editor)).toEqual(['markdown-block', 'paragraph']);
+        expect(strayColumns(editor)).toBe(0);
+        expectParity(editor);
+    });
+
+    it('U4: a selection reaching outside the fence pastes the fence whole', () => {
+        const editor = load('pre\n\n' + FENCE + '\n\npara');
+
+        copyAndPaste(editor, ['pre', 1], ['Right', 3], ['para', 4]);
+
+        expect(editor.getValue()).toBe('pre\n\n' + FENCE + '\n\nparare\n\n::: columns\nLeft\n|||\nRig\n:::');
+        expect(strayColumns(editor)).toBe(0);
         expectParity(editor);
     });
 });

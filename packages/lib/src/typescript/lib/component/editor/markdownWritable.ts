@@ -498,9 +498,11 @@ function $unmergeHeaderCells(table: TableNode, rows: readonly TableRowNode[]): v
 // ---------------------------------------------------------------- columns
 
 /**
- * Replaces a `:::` column that stands outside a fence — pasted from a
- * selection that spanned columns — with the blocks it holds, which is what
- * the save writes for it.
+ * Replaces a `:::` column that stands outside a fence with the blocks it
+ * holds, which is what the save writes for it. A paste already unwraps the
+ * columns it carries at its top level before inserting them
+ * (`$pasteColumnsAsTheirBlocks` in `MarkdownEditor.ts`); this transform
+ * catches a column nested deeper in pasted content.
  *
  * @param column - The column.
  */
