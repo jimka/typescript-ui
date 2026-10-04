@@ -105,7 +105,7 @@ There is no built-in toolbar in v1. Formatting is invoked four ways, all provide
 - **Markdown-shortcut typing** — `# ` → heading, `**b**` → bold, `- ` → bullet, `1. ` → numbered, `> ` → quote, ` ``` ` → code block, auto-applied as you type.
 - **Keyboard shortcuts** — `Ctrl/Cmd+B` (bold), `Ctrl/Cmd+I` (italic), `Ctrl/Cmd+Z` / `+Y` (undo/redo).
 - **Command API** — thin imperative methods you can wire to your own [`Button`](/components/Button)s to build a toolbar.
-- **Right-click context menu** — a self-wired menu on the WYSIWYG surface whose contents depend on what was clicked: a word or selection gets inline-format and block-style commands, plus an **Alignment** submenu (Left/Center/Right/Justify/Default) applying `setBlockAlignment` and a **Columns** submenu (fixed 2/3/4-column presets and None) applying `setColumnCount` — so the column count can be changed from inside a populated column, not just from an empty line; an empty line gets a **Heading** submenu (h1–h6), an **Insert** submenu bundling **Quote**, **Code block**, **Bulleted list**, **Numbered list**, **Table** (a 2×3 starter table), and an **Image…** item prompting for a source URL and applying it through `insertImage`, and the same **Columns** submenu; a table cell gets the same inline-format commands (no block style — a cell holds inline text only) plus a **Table** submenu bundling an **Insert** submenu (row above/below, column left/right), a **Delete** submenu (row, column, or the whole table), **Merge cells** (over a drag-selected range of cells), **Unmerge cell**, **Column width…** (prompts for a pixel width via a dialog, applying it through `setTableColumnWidth`), and an **Align column** submenu offering Left, Center, Right, and None — the four alignments a GFM delimiter row can express — with a checkmark on the column's current choice; alignment is a whole-column property, so choosing one re-aligns every cell of that column, header included, not just the clicked cell. The inline-format toggles are **Bold**, **Italic**, **Underline**, **Strikethrough**, and **Code**, and a word/selection or a table cell also gets a **Text style** submenu with **Colour** / **Font** / **Size** sub-submenus, each a fixed preset list plus a **Default** item that clears the override. A word/selection or a table cell also offers **Insert link…** (dimmed unless there is a selection or expandable word to wrap) when the click is not inside a link, or **Edit link…** / **Remove link** when it is — Insert/Edit prompt for a URL via a dialog, applying it through `toggleLink`; Remove unwraps the whole link via `removeLink()` regardless of how much of it is selected. Clicking inside a blockquote, a list, a fenced code block, or a table cell additionally shows **Insert line before block** / **Insert line after block**, which add an empty paragraph immediately outside the whole enclosing block (for a list, outside the entire list, not just the clicked item; for a table cell, outside the whole enclosing table, not just the clicked cell) and move the caret into it; a plain paragraph or a heading never show these two items. Every context leads with **Cut / Copy / Paste**; Cut and Copy are dimmed unless there is text to act on — a real selection, or (a collapsed caret) the enclosing word a format toggle, Cut, or Copy would expand into — and Paste is always enabled. Right-clicking never selects anything on its own: a collapsed caret inside a word stays a plain blinking caret while the menu is open. Choosing a format toggle, Cut, or Copy is what expands it to the whole word (visibly selecting it, so a follow-up action in the same still-open menu sees the same wider selection); Paste always acts on whatever is currently selected, so pasting right after opening the menu — before anything else — lands at the original caret, splitting the word rather than replacing it, while pasting after a format toggle (or Cut/Copy) replaces the word that toggle just selected. No consumer wiring needed — right-clicking the surface shows it directly.
+- **Right-click context menu** — a self-wired menu on the WYSIWYG surface whose contents depend on what was clicked: a word or selection gets inline-format and block-style commands, plus an **Alignment** submenu (Left/Center/Right/Justify/Default) applying `setBlockAlignment` and a **Columns** submenu (fixed 2/3/4-column presets and None) applying `setColumnCount` — so the column count can be changed from inside a populated column, not just from an empty line; an empty line gets a **Heading** submenu (h1–h6), an **Insert** submenu bundling **Quote**, **Code block**, **Bulleted list**, **Numbered list**, **Table** (a 2×3 starter table), and an **Image…** item prompting for a source URL and applying it through `insertImage`, and the same **Columns** submenu; a table cell gets the same inline-format commands (no block style — a cell holds inline text only) plus a **Table** submenu bundling an **Insert** submenu (row above/below, column left/right), a **Delete** submenu (row, column, or the whole table), **Merge cells** (over a drag-selected range of cells), **Unmerge cell**, **Column width…** (prompts for a pixel width via a dialog, applying it through `setTableColumnWidth`), and an **Align column** submenu offering Left, Center, Right, and None — the four alignments a GFM delimiter row can express — with a checkmark on the column's current choice; alignment is a whole-column property, so choosing one re-aligns every cell of that column, header included, not just the clicked cell. The inline-format toggles are **Bold**, **Italic**, **Underline**, **Strikethrough**, and **Code**, and a word/selection or a table cell also gets a **Text style** submenu with **Colour** / **Font** / **Size** sub-submenus, each a fixed preset list plus a **Default** item that clears the override. A word/selection or a table cell also offers **Insert link…** (dimmed unless there is a selection or expandable word to wrap) when the click is not inside a link, or **Edit link…** / **Remove link** when it is — Insert/Edit prompt for a URL via a dialog, applying it through `toggleLink`; Remove unwraps the whole link via `removeLink()` regardless of how much of it is selected. Clicking inside a blockquote, a list, a fenced code block, or a table cell additionally shows **Insert line before block** / **Insert line after block**, which add an empty paragraph immediately outside the whole enclosing block (for a list, outside the entire list, not just the clicked item; for a table cell, outside the whole enclosing table, not just the clicked cell) and move the caret into it; a plain paragraph or a heading never show these two items. Every context leads with **Cut / Copy / Paste**; Cut and Copy are dimmed unless there is text to act on — a real selection, or (a collapsed caret) the enclosing word a format toggle, Cut, or Copy would expand into — and Paste is always enabled. Right-clicking never selects anything on its own: a collapsed caret inside a word stays a plain blinking caret while the menu is open. Choosing a format toggle, Cut, or Copy is what expands it to the whole word (visibly selecting it, so a follow-up action in the same still-open menu sees the same wider selection); Paste always acts on whatever is currently selected, so pasting right after opening the menu — before anything else — lands at the original caret, splitting the word rather than replacing it, while pasting after a format toggle (or Cut/Copy) replaces the word that toggle just selected. No consumer wiring needed — right-clicking the surface shows it directly. Shift+F10 or the ContextMenu key opens the same menu for wherever the caret or selection is, positioned there. A right-click that moves the caret (on Linux and macOS the browser moves it before the menu opens) gets the menu for the caret's new place: its checkmarks, its Cut/Copy state and its dimmed items all describe what the items will act on. While table cells are selected a right-click leaves that selection in place, wherever it lands, and the items go on acting on the cells, so the menu is the table-cell one even for a click outside the table. An item whose command would do nothing at the selection is dimmed: the format toggles, Text style and Insert/Edit link in a raw Markdown block, a code block or over text kept as Markdown source; the format toggles and Text style also for a selection that holds no text (from the end of one line to the start of the next, or over an image alone), and Insert link… where there is nothing a link could hold; the Insert submenu's Table and Image… when the selection touches a raw Markdown block or a code block, and Table also when the selection lies inside a table; Text style inside a link; Edit link… and Remove link in a link nested in a link; Block style, Heading and the list and block conversions when the selection reaches into a table cell; **Clear formatting** where the selected text carries no format; and the two **Insert line** items when the selection is anchored outside the block that was clicked. While table cells are selected the format toggles apply to the cells that can take them, and everything else that needs a text selection is dimmed — Text style, the link items, Clear formatting, the Insert line items, and in the **Table** submenu every entry but **Merge cells**, which in turn is dimmed unless more than one cell is selected; **Unmerge cell** is dimmed outside a merged cell. With no selection at all every item that acts on one is dimmed, **Alignment** and **Columns** included. Paste is the one item this does not cover: it stays enabled though it needs a text selection. In a read-only editor the menu offers only Copy.
 
 ### Command API
 
@@ -114,11 +114,11 @@ There is no built-in toolbar in v1. Formatting is invoked four ways, all provide
 | `toggleBold()` / `toggleItalic()` / `toggleInlineCode()` / `toggleStrikethrough()` / `toggleUnderline()` | Toggle the inline format. |
 | `setTextColor(color)` / `setFontFamily(family)` / `setFontSize(size)` | Set (or, with `null`, clear) the selection's text colour / font family / font size. No-op inside a link, in either mode. |
 | `clearFormatting()` | Clear every inline text format (bold, italic, strikethrough, underline, inline code, …), leaving plain text. Does not clear a colour/font/size override — use the matching setter with `null` for that. Block type is untouched. |
-| `toggleUnorderedList()` / `toggleOrderedList()` | Convert the selected blocks into (or out of) a list. |
+| `toggleUnorderedList()` / `toggleOrderedList()` | Convert the selected blocks into a bulleted / numbered list, or out of one: when every selected block is already an item of a list of that kind, those items become paragraphs and the list is split around them. A list of the other kind converts whole. |
 | `toggleLink(url)` | Wrap the selection in a link to `url` (a collapsed caret first expands to its enclosing word), or unwrap it when `url` is `null`. Updates the URL in place, rather than double-wrapping, when the selection already sits inside one existing link. |
 | `removeLink()` | Remove the link enclosing the current selection, unwrapping it back to plain text — the whole link, regardless of how much of it (if any) is selected. |
 | `setBlockType(type)` | Convert the selected blocks to `"paragraph"`, `"h1"`–`"h6"`, `"quote"`, or `"code"`. |
-| `insertTable(rows, columns)` | Insert a table at the caret; the first row is the header row. |
+| `insertTable(rows, columns)` | Insert a table at the caret; the first row is the header row. Without a text selection it goes in at the document's end. No-op where it would land inside another table: with the selection inside one, or, without a text selection, with the document ending in one. A selection that runs from outside a table into one of its cells is removed first, that table included, and the new table goes in where it started. |
 | `insertParagraphBeforeBlock()` / `insertParagraphAfterBlock()` | Insert an empty paragraph immediately before/after the blockquote, list, fenced code block, or table enclosing the caret, and move the caret into it. For a list or a table cell, this is the whole list or table, not just the caret's item or cell. |
 | `insertTableRow(after?)` / `deleteTableRow()` | Insert a row after (default) or before the current row, or delete it. |
 | `insertTableColumn(after?)` / `deleteTableColumn()` | Insert a column after (default) or before the current column, or delete it. |
@@ -129,11 +129,11 @@ There is no built-in toolbar in v1. Formatting is invoked four ways, all provide
 | `setTableColumnWidth(width)` | Set (or, with `null`, clear) the width in pixels of the column the caret sits in. |
 | `setBlockAlignment(align)` | Set (or, with `null`, clear) the block alignment of the top-level blocks the selection spans, wrapping (or unwrapping) a `:::` fence as needed. |
 | `setColumnCount(count, gap?)` | Grow or shrink the number of explicit column regions in the block the selection sits in (or wrap the top-level blocks the selection spans in a new one), and optionally set the column gap. Growing appends empty columns; shrinking merges the surplus columns' content into the last column kept, except a column left exactly as this method created it (a single empty paragraph), which is dropped instead. `count` is clamped to 1–6; `null` means one column. Unwraps the fence when the result carries no alignment and no more than one column. |
-| `insertImage(src, options?)` | Insert a sized, validated image at the caret. `options` may set `alt`, `width`, and `height`. No-op when `src` fails the scheme allow-list, or `alt` holds a `[` or `]`. |
+| `insertImage(src, options?)` | Insert a sized, validated image at the caret. `options` may set `alt`, `width`, and `height`. Without a text selection it goes in at the document's end. No-op when `src` fails the scheme allow-list, or `alt` holds a `[` or `]`. |
 | `cut()` / `copy()` | Write the selected text to the system clipboard; `cut()` also removes it. A selection that runs from outside a table into one of its cells is cut or copied with the whole table (see *Tables* above). |
 | `paste()` | Read the system clipboard and insert it at the caret, replacing any selection. Async: resolves `true` when the clipboard was read, `false` when the browser would not allow the read. |
 
-Each command operates on the current selection and no-ops (without throwing) when there is no selection. The format toggles, the colour/font/size setters and `toggleLink` also no-op when their result could not be saved as it shows — see [What Markdown cannot hold](#what-markdown-cannot-hold). The format toggles, the colour/font/size setters, `toggleLink`, `insertTable` and `insertImage` also no-op when the selection touches a raw Markdown block or a code block, and the toggles, setters and `toggleLink` when it holds an atomic run kept as source (see [Kept as source](#kept-as-source)). With whole table cells selected, a format toggle works cell by cell under the same rules: a cell holding such a run, or whose result could not be saved as it shows, is left as it is, as is a cell with no text (an empty one, or one holding an image alone), and the rest take the format, which comes off when all the text in the cells taking it already has it. `setBlockType` and the two list toggles no-op when the selection touches a table cell — whole cells selected included — which holds text only — a heading or list made there would be saved into the cell as its literal syntax. A list next to a raw list block is saved with another bullet or delimiter when its own would make the viewer join the two lists. The row/column/table commands additionally no-op when the caret is not inside a table cell, and `insertParagraphBeforeBlock`/`insertParagraphAfterBlock` no-op when the caret is not inside a blockquote, list, fenced code block, or table cell.
+Each command operates on the current selection and no-ops (without throwing) when there is no selection, except `insertTable` and `insertImage`, which then insert at the document's end. The format toggles, the colour/font/size setters and `toggleLink` also no-op when their result could not be saved as it shows — see [What Markdown cannot hold](#what-markdown-cannot-hold). The format toggles, the colour/font/size setters, `toggleLink`, `insertTable` and `insertImage` also no-op when the selection touches a raw Markdown block or a code block (for the two inserts without a text selection: when the document ends in one), and the toggles, setters and `toggleLink` when it holds an atomic run kept as source (see [Kept as source](#kept-as-source)). With whole table cells selected, a format toggle works cell by cell under the same rules: a cell holding such a run, or whose result could not be saved as it shows, is left as it is, as is a cell with no text (an empty one, or one holding an image alone), and the rest take the format, which comes off when all the text in the cells taking it already has it. `setBlockType` and the two list toggles no-op when the selection touches a table cell — whole cells selected included — which holds text only — a heading or list made there would be saved into the cell as its literal syntax. A list next to a raw list block is saved with another bullet or delimiter when its own would make the viewer join the two lists. The row/column/table commands additionally no-op when the caret is not inside a table cell, and for a selection that starts in a cell and runs out of its table; `mergeTableCells` needs more than one cell selected instead. `insertParagraphBeforeBlock`/`insertParagraphAfterBlock` no-op when the caret is not inside a blockquote, list, fenced code block, or table cell. A command declined for any of these reasons changes nothing: the document, its selection and the undo history stay as they were, and neither `"change"` nor `"selectionstate"` fires. The one exception is a format, style or link declined because its result could not be saved as it shows: that is found by trying it, so a collapsed caret is left expanded to its word.
 
 `paste()` depends on the browser granting a clipboard-read permission, which some browsers prompt for and some refuse outright for page scripts; a refused or unavailable read resolves `false` rather than throwing. The context menu's own Paste item shows a toast asking the user to press Ctrl/Cmd+V instead when this happens — `paste()` itself stays silent, so a consumer wiring their own Paste button can show their own message.
 
@@ -144,6 +144,7 @@ In `"source"` mode, the following edit the raw Markdown directly instead of the 
 `getSelectionState()` returns a snapshot of what the caret currently sits
 in — the five inline-format flags (`bold`/`italic`/`strikethrough`/`code`/`underline`),
 whether there's a selection to act on, the URL of an enclosing link (if any),
+which commands would apply there (the eleven `can…` fields),
 whether it's inside a table cell and that column's alignment, and the
 enclosing `:::` block's alignment and column count — and `on('selectionstate', fn)`
 fires whenever that snapshot changes, for building a toolbar whose buttons
@@ -154,18 +155,80 @@ does):
 ```typescript
 editor.on('selectionstate', (state) => {
     boldButton.setSelected(state.bold);
-    tableButton.setEnabled(state.inTable);
+    tableButton.setEnabled(state.canEditTable || state.canMergeCells || state.canUnmergeCell);
 });
 ```
 
-The event does not fire for the editor's initial position, so a toolbar
-seeds itself by calling `getSelectionState()` once when it wires the
-listener. It fires on every editor commit whose resulting state differs
+The event does not fire for the editor's initial position, whichever
+surface it starts on, so a toolbar seeds itself by calling
+`getSelectionState()` once when it wires the listener; the one exception is
+the build-time correction of the two insert fields described below. It fires on every editor commit whose resulting state differs
 from the last one reported — including a same-position format toggle
 (clicking a format button doesn't move the caret, but still changes what
 it reports), not just a caret move. Outside a table, `tableColumnAlignment`
-is `null`; outside a `:::` block, `blockAlignment` is `null` and
-`columnCount` is `1`.
+is `null`, as it is, with `inTable` `false`, while whole table cells are
+selected and for a selection that starts in
+a cell and runs out of its table; outside a `:::` block, `blockAlignment` is `null` and
+`columnCount` is `1`. `inTable` says where a caret or a text selection is, not what
+applies there: a control that runs a table command reads the three table
+fields below.
+
+Eleven fields report whether a group of commands would apply at the
+selection, so a toolbar can grey out what would do nothing. Each command
+declines on its own field before it touches anything, so a field that is
+`false` means the command changes neither the document nor the selection:
+
+| Field | Commands | `false` when |
+|---|---|---|
+| `canFormat` | the five format toggles | there is no selection; the selection touches a raw Markdown block or a code block; it holds text kept as Markdown source; it is not collapsed and holds no text (from the end of one block to the start of the next, or over an image alone); table cells are selected and none of them holds text free of such source |
+| `canStyle` | `setTextColor` / `setFontFamily` / `setFontSize` | there is no selection; the selection touches a raw Markdown block or a code block, or holds text kept as Markdown source; it is not collapsed and holds no text; the caret is inside a link; table cells are selected |
+| `canLink` | `toggleLink(url)` | there is no selection; the selection touches a raw Markdown block or a code block, or holds text kept as Markdown source; either end of it is in a link nested in another link; there is nothing a link could hold (a caret in an empty block, or a selection holding neither text nor an image); table cells are selected |
+| `canRemoveLink` | `removeLink()` | the selection is not inside a link, or that link is nested in another link; there is no selection; table cells are selected |
+| `canSetBlockType` | `setBlockType`, `toggleUnorderedList`, `toggleOrderedList` | there is no selection; table cells are selected; the selection reaches into a table cell |
+| `canSetBlockLayout` | `setBlockAlignment`, `setColumnCount` | there is no selection; table cells are selected |
+| `canInsertTable` | `insertTable` | the selection touches a raw Markdown block or a code block; it lies inside one table; without a text selection (none, or table cells selected), the document ends in a raw Markdown block, a code block or a table |
+| `canInsertImage` | `insertImage` | the selection touches a raw Markdown block or a code block; without a text selection (none, or table cells selected), the document ends in one |
+| `canEditTable` | `insertTableRow` / `deleteTableRow`, `insertTableColumn` / `deleteTableColumn`, `setTableColumnAlignment`, `setTableColumnWidth`, `deleteTable` | the caret is not in a table cell; table cells are selected; the selection starts in a cell and runs out of its table |
+| `canMergeCells` | `mergeTableCells` | fewer than two table cells are selected |
+| `canUnmergeCell` | `unmergeTableCell` | `canEditTable` is `false`; the caret's cell spans one row and one column |
+
+`canInsertTable` is `true` for a selection that runs from outside a table
+into one of its cells, whichever way it was made: `insertTable` removes that
+selection first, its table included, so the new table does not land in a
+cell. `canLink` is `true` at a caret anywhere in text, where `toggleLink`
+links the whole run the caret is in, so it does not say whether a word is
+selected: a Link control is enabled on
+`canLink && (hasSelectedText || linkUrl !== null)`, or on `canRemoveLink`
+for its Remove action, as `MarkdownDocumentPanel`'s is. A Table control is
+enabled on `canEditTable || canMergeCells || canUnmergeCell`, so its Merge
+cells entry is reached with cells selected, and dims each entry on its own
+field. A caret takes a format or a style as pending, for the text typed
+next, which is why `canFormat` and `canStyle` are `true` at a caret in an
+empty block. The fields follow the rules a command declines on up front; a
+format, style or link that turns out not to be writable as Markdown is still
+declined when tried (see
+[What Markdown cannot hold](#what-markdown-cannot-hold)). A field covers a
+command, not a call. Where the argument asks for what is already there —
+`setBlockType("paragraph")` in a paragraph, `setTableColumnAlignment` or
+`setTableColumnWidth` with the value the column has, `setBlockAlignment` or
+`setColumnCount` with what the `:::` block has, or with nothing to clear
+outside one — the field is `true` and the call changes nothing, as a
+declined one does: no block is replaced, no undo step is added and no event
+fires.
+
+Before the editor has a selection — a freshly built editor nobody has
+clicked into — every field but the two inserts is `false`: those commands
+act on a selection. The two inserts make a caret of their own
+at the document's end, as they also do while table cells are selected, so
+they follow how the document ends: `false` where the insert would land in a
+block that declines it. Until the Lexical editor is built — on the WYSIWYG
+surface's first layout, or by the first command — both report `true`, and
+`"selectionstate"` fires once when the build finds either one `false`. In
+`"source"` mode, where a command declines depends on the raw text around the
+selection and is not predicted: the fields are `true`, except
+`canRemoveLink`, which is `true` only inside a link, and
+`canSetBlockLayout` and the three table fields, which are `false` because
+the alignment, column and table commands are no-ops there.
 
 In `"source"` mode the five format flags, `hasSelectedText`, and `linkUrl`
 are derived from the raw Markdown around the caret, read with the viewer's
@@ -175,8 +238,10 @@ any form around it; `inTable` is always
 `false`, `tableColumnAlignment` and `blockAlignment` are always `null`, and
 `columnCount` is always `1` — the fields a Lexical-only construct has no
 raw-text equivalent for. `setMode` emits a fresh state for the surface it
-switches to, so a toolbar never keeps the outgoing surface's last-reported
-state after a switch.
+switches to, once that surface is the one showing, so a toolbar never keeps
+the outgoing surface's last-reported state after a switch. `setValue`
+reports the state of the document it loads; the first one on an editor not
+built yet does not report the document it replaces.
 
 A source-mode format flag is set whenever a run of that format encloses the
 selection, however far out it sits — `bar` in `**foo, **bar** az**` reports
@@ -236,7 +301,7 @@ One corner case: a `markClean()` taken in source mode over text the WYSIWYG surf
 
 ## Read-only
 
-`setReadOnly(true)` locks the editor against edits (dropping the caret and editing affordances); `false` restores them. For a purely *display* use case, prefer the leaner [`Markdown`](/components/Markdown) viewer, which needs no Lexical — `MarkdownEditor`'s read-only mode is for temporarily locking an editor, not for replacing the viewer.
+`setReadOnly(true)` locks the editor against edits (dropping the caret and editing affordances); `false` restores them. While read-only, the WYSIWYG surface's context menu offers only Copy. For a purely *display* use case, prefer the leaner [`Markdown`](/components/Markdown) viewer, which needs no Lexical — `MarkdownEditor`'s read-only mode is for temporarily locking an editor, not for replacing the viewer.
 
 A source-mode command refused because the editor is read-only flashes the source `CodeEditor`, the same feedback a rejected keystroke gets. That editor fires its own `"readonlyedit"` event, but it is `MarkdownEditor`'s private child: `MarkdownEditor` neither exposes it nor re-emits the event, so there is currently no public hook for the refusal.
 

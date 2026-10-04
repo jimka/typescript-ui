@@ -162,6 +162,37 @@ scroll along `axis`, or `true` when that is not known without measuring.
 implements only `revealDescendant` needs no change: it is still called,
 before every scrolling panel.
 
+## `DOMSource` gains `readDocumentSelection`
+
+**What changed and why.** `MarkdownEditor` now brings its own selection to
+the browser's before it builds a context menu, because on Linux a right-click
+moves the browser's caret and raises `contextmenu` before the editor has
+followed it. That needs the document's live selection, which Lexical resolves
+against the DOM it owns. The read goes through the read seam, like every
+other DOM read, so `DOMSource` gains one member:
+`readDocumentSelection(reader)`, which hands the live `Selection` (or `null`
+when the document has none) to `reader` for the length of the call and
+returns what `reader` returns. `getDocumentSelection()` could not carry this:
+it reports nothing for a collapsed selection and answers in handles.
+
+**Who needs to act.** Only code that implements `DOMSource` itself — a custom
+source installed through `DOM.install`. `ProductionDOMSource` implements it,
+and code that only calls the seam is unaffected. A source that wraps another
+forwards the call. A source that answers from its own model has no live
+selection to hand over and returns `null` without calling `reader`, which
+callers treat as "no selection":
+
+```typescript
+import type { DOMSource } from '@jimka/typescript-ui/core';
+
+class MySource implements DOMSource {
+    // …
+    readDocumentSelection<T>(_reader: (selection: Selection | null) => T): T | null {
+        return null;
+    }
+}
+```
+
 ## `Tree` and `TreeTable` no longer register `caret-down` / `caret-right`
 
 **What changed and why.** `Tree` and `TreeTable` row toggles are now one

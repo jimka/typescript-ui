@@ -51,6 +51,13 @@ page resets to empty.
   Code already using `install` / `reset` — which is every documented path —
   needs no change. See [Migration](/reference/migration/next) for the full note.
 
+- **`DOMSource` gains one required member: `readDocumentSelection()`.** It
+  hands the document's live selection to a reader callback and returns what
+  the reader makes of it, for a mounted foreign widget that resolves the
+  selection against its own DOM. Only a consumer implementing its own
+  `DOMSource` is affected. See [Migration](/reference/migration/next) for
+  the full note.
+
 - **`SpatialNavigation`'s region chord is now `Ctrl+Alt+Shift`+arrow.**
   The `"target"` tier's default modifiers change from `Ctrl+Shift` to
   `Ctrl+Alt+Shift`, because `Ctrl+Shift+←`/`→` is word selection in every
@@ -150,6 +157,24 @@ page resets to empty.
 ## Changed
 
 ### Components
+
+- **`MarkdownDocumentPanel`'s toolbar starts with its format buttons and
+  its Text style, Alignment and Columns dropdowns disabled.** They act on a
+  selection, and until someone clicks into the editor there is none, so
+  pressing them did nothing. They enable as soon as the editor has a caret,
+  and disable again wherever their commands would do nothing: Alignment and
+  Columns also while table cells are selected and on the source surface,
+  where they were no-ops. The Insert dropdown stays enabled and dims the
+  entries that would do nothing at the selection. The Link button follows
+  the two link commands: it is disabled while table cells are selected and
+  in a link nested in another link, where it used to open a popup whose
+  buttons did nothing, and the popup's own buttons are disabled one by one
+  where only one of the commands applies. The Table button is enabled
+  wherever one of its entries would apply, which now includes table cells
+  being selected: Merge cells could not be reached from the toolbar before,
+  the button being off whenever cells were selected. Its dropdown dims each
+  entry that would do nothing, as the context menu's Table submenu does. No
+  consumer action is needed.
 
 - **`Tree` and `TreeTable` toggles are a thin angle that turns to point
   down, and a single expand or collapse animates.** On `Tree`, a caret
@@ -589,6 +614,25 @@ page resets to empty.
   own URL, so a save never changes where a link points. Bracketed text never
   turns into a link when a definition for it is added, and a reference kept
   as written shows what its edited definition now gives it.
+
+- **`MarkdownEditorSelectionState` reports which commands would apply.**
+  Eleven new fields — `canFormat`, `canStyle`, `canLink`, `canRemoveLink`,
+  `canSetBlockType`, `canSetBlockLayout`, `canInsertTable`,
+  `canInsertImage`, `canEditTable`, `canMergeCells` and `canUnmergeCell` —
+  are `false` where the format toggles, the text-style setters,
+  `toggleLink`, `removeLink`, the block conversions, alignment and columns,
+  `insertTable`, `insertImage`, the commands acting on the caret's table,
+  `mergeTableCells` and `unmergeTableCell` would do nothing at the
+  selection, for greying out a toolbar's controls. Each command declines on
+  its field before it touches anything, so the two cannot disagree. See
+  *Live selection state* in the `MarkdownEditor` docs for when each is
+  `false`. A toolbar's Table control reads the three table fields, not
+  `inTable`, which says where a caret or a text selection is and not what
+  applies: it is `false` while whole table cells are selected, and for a
+  selection that runs out of its table.
+  Building the Lexical editor (on the WYSIWYG surface's first layout, or by
+  the first command) now fires `"selectionstate"` once when the document
+  turns `canInsertTable` or `canInsertImage` off, which is not known before.
 
 ### Core
 
@@ -1116,6 +1160,82 @@ page resets to empty.
   unclosed `::: …` line was saved as loaded even after a block added after
   it held a `:::` line, which turned the two into a fence; that line is now
   saved escaped. No consumer action is needed.
+
+- **`MarkdownEditor`'s keyboard-opened context menu follows the caret.**
+  Shift+F10 and the ContextMenu key built the plain text menu from the
+  editor root, so a caret in a table cell got no Table submenu; the menu is
+  now built for the caret's position and opens there. While table cells are
+  selected the menu is the table-cell one wherever the click lands, since
+  its items act on the cells. The menu and `MarkdownDocumentPanel`'s toolbar
+  also dim commands that would do nothing at the selection (formatting in a
+  raw or code block, Text style inside a link, block conversions reaching
+  into a table, a table inside a table, Clear formatting with no format to
+  clear, the Table submenu's row and column entries while cells are
+  selected, and what needs a text selection while there is none or while
+  table cells are selected), and a read-only editor's menu offers only Copy.
+
+- **`toggleUnorderedList` and `toggleOrderedList` take a list item out of
+  its list.** On the WYSIWYG surface the two only ever made a list: with the
+  caret already in a list of that kind they replaced the list by an equal
+  one, which changed nothing but added an undo step that undid nothing (and
+  made a loose list tight). They now toggle, as documented and as source
+  mode does: when every selected block is an item of a list of that kind,
+  those items become paragraphs and the list is split around them.
+
+- **A command that declines changes nothing at all.** The format toggles,
+  the text-style setters and `toggleLink` expanded a collapsed caret to its
+  word before finding that they decline there (in text kept as Markdown
+  source, in a link nested in a link), so the selection grew though nothing
+  was formatted; `clearFormatting` with no format to clear, and a format
+  toggle over a selection holding no text, ran an edit that changed
+  nothing. Every command now declines on the rule its `can…` field reports
+  before it touches the document or the selection, and fires no event. One
+  case is as it was: a format, style or link whose result could not be
+  saved as it shows is found by trying it, so it is declined after a
+  collapsed caret was expanded to its word.
+
+- **A call that asks for what is already there changes nothing.**
+  `setBlockType` with the type every selected block already has,
+  `setTableColumnAlignment` and `setTableColumnWidth` with the column's own
+  value, and `setBlockAlignment` and `setColumnCount` with the `:::`
+  block's own, each added an undo step that undid nothing. `setBlockType`
+  also replaced the blocks: a heading written with an underline or with
+  closing `#`s, and a code block written with `~~~` or by indentation, were
+  rewritten in the standard form, and a code block lost its language. All
+  five now leave the document untouched, so Block style ▸ Paragraph on a
+  paragraph, or Align column on the entry already checked, leaves Undo on
+  the edit made before.
+
+- **`insertTable`, `insertImage` and the table commands decline cleanly.**
+  With no selection, `insertTable` and `insertImage` insert at the
+  document's end; where that end is inside a code block or a raw Markdown
+  block they now decline, as they do with the caret there, instead of
+  writing the image's Markdown into the block or leaving an empty code block
+  after the table. A declined insert also leaves the selection alone: with
+  no selection, or with table cells selected, in a document ending in a
+  table, `insertTable` used to put a caret in the last cell, dropping the
+  cell selection, and fire `"selectionstate"` though nothing was inserted.
+  The row and column commands no longer throw for a selection that starts
+  in a table cell and runs out of its table; every table command is a no-op
+  there, and `inTable` reports `false`.
+
+- **`"selectionstate"` no longer fires a redundant first event in source
+  mode.** An editor constructed in `"source"` mode compared its first report
+  with the WYSIWYG surface's neutral state, so the first caret move always
+  fired, changed or not. A mode switch could also report while the outgoing
+  surface was still the one showing — the first switch to WYSIWYG of an
+  editor constructed in source mode, and any switch to source once the
+  source view was mounted; both now report once the incoming surface shows.
+  And the first `setValue` on an editor not built yet reported the state of
+  the document it replaced before that of the one it loaded, where the old
+  one ended in a code block, a raw Markdown block or a table; it reports the
+  loaded one's alone.
+
+- **`MarkdownEditor`'s right-click menu describes the caret the click
+  made.** On Linux and macOS a right-click moves the caret and opens the
+  menu before the editor has followed it, so the menu's format checkmarks
+  and its Cut, Copy and Insert link… state were those of the caret's old
+  place. The editor now takes the browser's selection first.
 
 ### Core
 
