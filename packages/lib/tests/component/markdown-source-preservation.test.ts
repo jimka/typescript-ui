@@ -41,6 +41,7 @@ A **WYSIWYG** editor whose value is a *Markdown* string, built on Lexical.
 - Start a line with \`# \` for a heading, \`- \` for a bullet, \`> \` for a quote
 - Use Ctrl/Cmd+B and Ctrl/Cmd+I
 - Right-click a word for [coloured]{color=#cc0000} or [sized]{size=1.3em} text
+- Press Shift+F10 or the menu key for the same menu at the caret
 
 1. It emits only the [Markdown][commonmark] subset the viewer renders
 2. The panel on the right renders \`getValue()\` live

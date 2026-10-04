@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { MarkdownEditor, $classifyContextMenuTarget, $selectEnclosingWordIfCollapsed } from '~/component/editor/MarkdownEditor';
-import type { MarkdownEditorChange, MarkdownEditorSelectionState, ContextMenuTarget } from '~/component/editor/MarkdownEditor';
+import type { MockInstance } from 'vitest';
+import {
+    MarkdownEditor, $adoptDomSelection, $classifyContextMenuTarget, $contextMenuNodeFor, $selectEnclosingWordIfCollapsed,
+} from '~/component/editor/MarkdownEditor';
+import type {
+    MarkdownEditorChange, MarkdownEditorSelectionState, ContextMenuTarget, CommandAvailability,
+} from '~/component/editor/MarkdownEditor';
 import type { MenuItemConfig } from '~/component/container/MenuItem';
 import type { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
 import { Component } from '~/core/Component';
@@ -19,10 +24,10 @@ import { MarkdownRawBlockNode, MarkdownSourceTextNode } from '~/component/editor
 import { ReferenceLinkNode } from '~/component/editor/markdownReferenceLinkNode';
 import { TableNode, TableRowNode, TableCellNode, $createTableSelectionFrom, $isTableCellNode } from '@lexical/table';
 import {
-    $getRoot, $getSelection, $isRangeSelection, $isParagraphNode, $isTextNode, $selectAll, $setSelection,
-    KEY_ENTER_COMMAND,
+    $createRangeSelection, $getRoot, $getSelection, $isElementNode, $isRangeSelection, $isParagraphNode, $isTextNode, $selectAll,
+    $setSelection, KEY_ENTER_COMMAND, UNDO_COMMAND,
 } from 'lexical';
-import type { LexicalEditor, ElementNode, LexicalNode } from 'lexical';
+import type { LexicalEditor, ElementNode, LexicalNode, ParagraphNode, RangeSelection, TextNode } from 'lexical';
 import { lexMarkdown } from '~/component/display/markdownExtensions';
 import { DOM } from '~/core/DOM';
 import { Notification } from '~/overlay/Notification';
@@ -94,6 +99,7 @@ function lexicalOf(editor: MarkdownEditor): LexicalEditor {
 
 /** The private source-surface `CodeEditor`'s shape needed for white-box assertions across this file. */
 interface CodeEditorHandle {
+    getId(): string;
     getReadOnly(): boolean;
     getValue(): string;
     isDirty(): boolean;
@@ -135,6 +141,32 @@ function contextMenuMethodsOf(editor: MarkdownEditor): {
         promptAndApplyLink(title: string, defaultUrl: string): Promise<void>;
     };
 }
+
+/** Every field of the availability record. */
+const AVAILABILITY_FIELDS = [
+    'canFormat', 'canStyle', 'canLink', 'canRemoveLink', 'canClearFormatting',
+    'canSetBlockType', 'canSetBlockLayout', 'canInsertParagraphAroundBlock',
+    'canInsertTable', 'canInsertImage', 'canEditTable', 'canMergeCells', 'canUnmergeCell',
+] as const satisfies ReadonlyArray<keyof CommandAvailability>;
+
+/** The availability record in which exactly `available` are `true`. */
+function availabilityOf(...available: Array<keyof CommandAvailability>): CommandAvailability {
+    return Object.fromEntries(AVAILABILITY_FIELDS.map((field) => [field, available.includes(field)])) as unknown as CommandAvailability;
+}
+
+/** An availability record with every field `true`, for building a menu nothing is dimmed in. No selection gives it. */
+const ALL_AVAILABLE: CommandAvailability = availabilityOf(...AVAILABILITY_FIELDS);
+
+/** The availability with no selection at all: only the commands that make a selection of their own apply. */
+const NO_SELECTION: CommandAvailability = availabilityOf('canInsertTable', 'canInsertImage');
+
+/**
+ * The availability at a caret or a range in ordinary prose: no link to
+ * remove, no format to clear, no block to put a line around, no table.
+ */
+const IN_PROSE: CommandAvailability = availabilityOf(
+    'canFormat', 'canStyle', 'canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage',
+);
 
 /** Folds every apply patch for `handle` into the attribute state it produces. */
 function attrsOf(sink: RecordingDOMSink, handle: unknown): Record<string, string> {
@@ -610,6 +642,151 @@ describe('MarkdownEditor command API', () => {
 
         expect(() => editor.removeLink()).not.toThrow();
         expect(normalize(editor.getValue())).toBe('plain text');
+    });
+});
+
+describe('MarkdownEditor list toggles in a list of their kind', () => {
+    /** Builds an editor showing `markdown`. */
+    function editorOf(markdown: string): MarkdownEditor {
+        const editor = new MarkdownEditor();
+
+        editor.setValue(markdown);
+
+        return editor;
+    }
+
+    /** Selects from offset 1 of the text node showing `from` to offset 1 of the one showing `to`: a caret when they are the same. */
+    function selectFrom(editor: MarkdownEditor, from: string, to: string = from): void {
+        lexicalOf(editor).update(() => {
+            const showing = (text: string): TextNode => $getRoot().getAllTextNodes().find((node) => node.getTextContent() === text)!;
+            const selection = showing(from).select(1, 1);
+
+            selection.focus.set(showing(to).getKey(), 1, 'text');
+        }, { discrete: true });
+    }
+
+    const unordered = (editor: MarkdownEditor): unknown => editor.toggleUnorderedList();
+    const ordered = (editor: MarkdownEditor): unknown => editor.toggleOrderedList();
+
+    /** Each case: the document, the selection's two ends, the toggle, and the document it leaves. */
+    const CASES: Array<{ name: string; doc: string; from: string; to?: string; toggle: (editor: MarkdownEditor) => unknown; result: string }> = [
+        {
+            name: 'a caret in an item of a bulleted list takes that item out, the list split around it',
+            doc: '- one\n- two\n- three', from: 'two', toggle: unordered, result: '- one\n\ntwo\n\n- three',
+        },
+        {
+            name: 'a range over two items of a bulleted list takes both out',
+            doc: '- one\n- two\n- three', from: 'one', to: 'two', toggle: unordered, result: 'one\n\ntwo\n\n- three',
+        },
+        {
+            name: 'a caret in an item of a numbered list takes that item out, the list after it starting from one again',
+            doc: '1. one\n2. two\n3. three', from: 'two', toggle: ordered, result: '1. one\n\ntwo\n\n1. three',
+        },
+        {
+            name: 'a caret in a nested item takes it out to the top level',
+            doc: '- one\n  - inner\n- three', from: 'inner', toggle: unordered, result: '- one\n\ninner\n\n- three',
+        },
+        {
+            name: 'a caret in an item holding a nested list takes the item out and leaves its nested list an item',
+            doc: '- one\n  - inner\n- three', from: 'one', toggle: unordered, result: 'one\n\n- - inner\n- three',
+        },
+        {
+            name: 'a caret in a numbered item nested in a bulleted list takes it out',
+            doc: '- one\n  1. inner\n- three', from: 'inner', toggle: ordered, result: '- one\n\ninner\n\n- three',
+        },
+        {
+            name: 'a caret in a task item takes it out, its marker left as the text it shows',
+            doc: '- [ ] one\n- [x] two', from: 'one', toggle: unordered, result: '\\[ \\] one\n\n- [x] two',
+        },
+        {
+            name: 'a caret in an item of a loose list takes it out',
+            doc: '- one\n\n- two', from: 'one', toggle: unordered, result: 'one\n\n- two',
+        },
+        {
+            name: 'a caret in an item of a list in a ::: column takes it out inside the column',
+            doc: '::: columns\n- one\n- two\n|||\nRight\n:::', from: 'one', toggle: unordered,
+            result: '::: columns\none\n\n- two\n|||\nRight\n:::',
+        },
+        {
+            name: 'in a list of the other kind the toggle converts the list instead',
+            doc: '- one\n- two\n- three', from: 'two', toggle: ordered, result: '1. one\n2. two\n3. three',
+        },
+        {
+            name: 'a range from a bulleted list into a numbered one is not all in a bulleted list, so it makes one list of both',
+            doc: '- one\n- two\n\n1. three\n2. four', from: 'two', to: 'three', toggle: unordered, result: '- one\n- two\n- three\n- four',
+        },
+        {
+            name: 'a range from a bulleted list into a paragraph makes the paragraph an item',
+            doc: '- one\n- two\n\nthree', from: 'two', to: 'three', toggle: unordered, result: '- one\n- two\n- three',
+        },
+    ];
+
+    for (const { name, doc, from, to, toggle, result } of CASES) {
+        it(`${name}, in one undo step, and the result saves as shown`, () => {
+            const editor = editorOf(doc);
+            selectFrom(editor, from, to);
+
+            toggle(editor);
+
+            const value = editor.getValue();
+
+            expect(value).toBe(result);
+            expect(editorOf(value).getValue()).toBe(value);
+            expect(editorSurfaceModel(editor)).toEqual(viewerModel(value).blocks);
+
+            lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+
+            expect(editor.getValue()).toBe(doc);
+        });
+    }
+
+    it('the caret stays in the text of the item taken out', () => {
+        const editor = editorOf('- one\n- two\n- three');
+        selectFrom(editor, 'two');
+
+        editor.toggleUnorderedList();
+
+        const [text, offset, type] = lexicalOf(editor).read(() => {
+            const selection = $getSelection() as RangeSelection;
+
+            return [selection.anchor.getNode().getTextContent(), selection.anchor.offset, selection.anchor.getNode().getParent()?.getType()];
+        });
+
+        expect([text, offset, type]).toEqual(['two', 1, 'paragraph']);
+    });
+
+    it('a second toggle puts the item back into its list', () => {
+        const editor = editorOf('- one\n- two\n- three');
+        selectFrom(editor, 'two');
+
+        editor.toggleUnorderedList();
+        editor.toggleUnorderedList();
+
+        expect(editor.getValue()).toBe('- one\n- two\n- three');
+    });
+
+    it('source mode takes the same items out of the same lists: both results read the same in the viewer', () => {
+        const NESTED = '- one\n  - inner\n- three';
+        const shapes: Array<[doc: string, from: string, to?: string]> = [
+            ['- one\n- two\n- three', 'two'], ['- one\n- two\n- three', 'one'], ['- one\n- two\n- three', 'one', 'two'],
+            [NESTED, 'inner'], [NESTED, 'one'], ['- one\n  1. inner\n- three', 'one'],
+            ['- one\n\n- two', 'one'], ['::: columns\n- one\n- two\n|||\nRight\n:::', 'one'],
+        ];
+
+        for (const [doc, from, to = from] of shapes) {
+            const wysiwyg = editorOf(doc);
+            selectFrom(wysiwyg, from, to);
+            wysiwyg.toggleUnorderedList();
+
+            const source = new MarkdownEditor(doc, { mode: 'source' });
+            const selection = { characterCount: 0, lineCount: 1, from: doc.indexOf(from) + 1, to: doc.indexOf(to) + 1 };
+
+            vi.spyOn(codeEditorOf(source), 'getSelection').mockReturnValue(selection);
+            source.toggleUnorderedList();
+
+            expect(source.getValue(), `${doc} at ${from}`).not.toBe(doc);
+            expect(viewerModel(source.getValue()).blocks, `${doc} at ${from}`).toEqual(viewerModel(wysiwyg.getValue()).blocks);
+        }
     });
 });
 
@@ -1222,6 +1399,9 @@ describe('MarkdownEditor source-mode commands', () => {
         expect(editor.getSelectionState()).toEqual({
             bold: true, italic: false, underline: false, strikethrough: false, code: false,
             hasSelectedText: true, linkUrl: null,
+            canFormat: true, canStyle: true, canLink: true, canRemoveLink: false,
+            canSetBlockType: true, canSetBlockLayout: false, canInsertTable: true, canInsertImage: true,
+            canEditTable: false, canMergeCells: false, canUnmergeCell: false,
             inTable: false, tableColumnAlignment: null, blockAlignment: null, columnCount: 1,
         });
     });
@@ -1240,6 +1420,9 @@ describe('MarkdownEditor source-mode commands', () => {
         expect(payloads).toEqual([{
             bold: false, italic: false, underline: false, strikethrough: false, code: false,
             hasSelectedText: false, linkUrl: null,
+            canFormat: true, canStyle: true, canLink: true, canRemoveLink: false,
+            canSetBlockType: true, canSetBlockLayout: false, canInsertTable: true, canInsertImage: true,
+            canEditTable: false, canMergeCells: false, canUnmergeCell: false,
             inTable: false, tableColumnAlignment: null, blockAlignment: null, columnCount: 1,
         }]);
     });
@@ -1260,6 +1443,77 @@ describe('MarkdownEditor source-mode commands', () => {
         expect(payloads).toHaveLength(1);
         expect(payloads[0]!.bold).toBe(true);
         expect(payloads[0]!.hasSelectedText).toBe(true);
+    });
+
+    it('a caret move that changes nothing tracked reports nothing, from the first one on', () => {
+        // The state the source surface reports from the start is the one compared against. It used
+        // to be the WYSIWYG neutral state, whose `can…` fields the source surface never reports, so
+        // the first caret move in an editor built in source mode always reported, changed or not.
+        const editor = new MarkdownEditor('hi there', { mode: 'source' });
+        const start = EditorState.create({ doc: 'hi there', selection: { anchor: 0 } });
+        const moved = EditorState.create({ doc: 'hi there', selection: { anchor: 2 } });
+        const payloads: MarkdownEditorSelectionState[] = [];
+
+        editor.on('selectionstate', (payload) => payloads.push(payload));
+
+        codeEditorOf(editor)._view = { state: start };
+        codeEditorOf(editor).onSelectionChange(start);
+        codeEditorOf(editor)._view = { state: moved };
+        codeEditorOf(editor).onSelectionChange(moved);
+
+        expect(payloads).toEqual([]);
+    });
+
+    it('the first switch to WYSIWYG of an editor built in source mode reports once, with the WYSIWYG surface already showing', () => {
+        // That switch is what builds the Lexical editor, and the build reports the state itself. The
+        // document ends in a code block, so the build has something to report: both inserts off.
+        const editor = new MarkdownEditor('para\n\n```\ncode\n```', { mode: 'source' });
+        const card = (editor as unknown as { _card: { getVisibleComponentId(): string | null } })._card;
+        const seen: Array<[boolean, boolean, boolean]> = [];
+
+        editor.on('selectionstate', (state) => {
+            seen.push([card.getVisibleComponentId() === wysiwygOf(editor).getId(), state.canFormat, state.canInsertTable]);
+        });
+
+        editor.setMode('wysiwyg');
+
+        expect(seen).toEqual([[true, false, false]]);
+    });
+
+    it('the first switch to WYSIWYG reports the document it loads alone, not the one the editor was constructed with', () => {
+        // A source view not mounted yet takes setValue() without reporting a change, so the value the
+        // Lexical editor would be built from is still the constructor's. That one ends in a code block,
+        // where both inserts are off; the document the switch loads leaves them on.
+        const editor = new MarkdownEditor('para\n\n```\ncode\n```', { mode: 'source' });
+        const seen: Array<[boolean, boolean]> = [];
+
+        editor.setValue('hello');
+        editor.on('selectionstate', (state) => seen.push([state.canInsertTable, state.canInsertImage]));
+        editor.setMode('wysiwyg');
+
+        expect(editor.getValue()).toBe('hello');
+        expect(seen).toEqual([[true, true]]);
+    });
+
+    it('a switch to source of an editor whose source view is mounted reports once, with the source surface already showing', () => {
+        // A mounted source view applies the loaded document at once and reports the change before
+        // setValue returns, as CodeMirror's does, and that report refreshes the selection state.
+        const editor = new MarkdownEditor('**hi** there');
+        editor.setValue('**hi** there');
+        lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true });
+
+        const card = (editor as unknown as { _card: { getVisibleComponentId(): string | null } })._card;
+        const seen: boolean[] = [];
+
+        codeEditorOf(editor)._view = {
+            state:    EditorState.create({ doc: '**hi** there' }),
+            dispatch: () => codeEditorOf(editor).onDocChange('**hi** there'),
+        };
+        editor.on('selectionstate', () => seen.push(card.getVisibleComponentId() === codeEditorOf(editor).getId()));
+
+        editor.setMode('source');
+
+        expect(seen).toEqual([true]);
     });
 
     it('a source edit refreshes the selection state', () => {
@@ -2578,7 +2832,7 @@ describe('$classifyContextMenuTarget', () => {
 
         expect(result).toEqual({
             kind: 'text', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
-            underline: false, hasEnclosingBlock: false, linkUrl: null,
+            underline: false, hasEnclosingBlock: false, linkUrl: null, availability: NO_SELECTION,
         });
     });
 
@@ -2599,6 +2853,8 @@ describe('$classifyContextMenuTarget', () => {
         expect(result).toEqual({
             kind: 'text', hasSelectedText: true, bold: true, italic: false, strikethrough: false, code: false,
             underline: false, hasEnclosingBlock: false, linkUrl: null,
+            // The selected text is bold, so there is a format to clear.
+            availability: { ...IN_PROSE, canClearFormatting: true },
         });
     });
 
@@ -2714,7 +2970,7 @@ describe('$classifyContextMenuTarget', () => {
             return $classifyContextMenuTarget(paragraph);
         });
 
-        expect(result).toEqual({ kind: 'empty-line', hasSelectedText: false });
+        expect(result).toEqual({ kind: 'empty-line', hasSelectedText: false, availability: NO_SELECTION });
     });
 
     it('classifies a node inside a populated table cell as "table-cell", carrying the format state', () => {
@@ -2734,6 +2990,8 @@ describe('$classifyContextMenuTarget', () => {
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
             underline: false, hasEnclosingBlock: true, linkUrl: null, columnAlignment: 'none',
+            // No selection, and the document ends in a cell, where a table inserted at its end would nest.
+            availability: { ...NO_SELECTION, canInsertTable: false },
         });
     });
 
@@ -2751,6 +3009,11 @@ describe('$classifyContextMenuTarget', () => {
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
             underline: false, hasEnclosingBlock: true, linkUrl: null, columnAlignment: 'none',
+            // The caret is in the cell, where the block conversions and a nested table decline, and the
+            // table commands and a line around the table apply. The cell is empty: there is no text to link.
+            availability: availabilityOf(
+                'canFormat', 'canStyle', 'canSetBlockLayout', 'canInsertParagraphAroundBlock', 'canInsertImage', 'canEditTable',
+            ),
         });
     });
 
@@ -2773,6 +3036,12 @@ describe('$classifyContextMenuTarget', () => {
         expect(result).toEqual({
             kind: 'table-cell', hasSelectedText: true, bold: true, italic: false, strikethrough: false, code: false,
             underline: false, hasEnclosingBlock: true, linkUrl: null, columnAlignment: 'none',
+            // The selection covers the table's cells, where the block conversions and a nested table decline;
+            // it is a range anchored in a cell, so the table commands apply, and its text is bold.
+            availability: availabilityOf(
+                'canFormat', 'canStyle', 'canLink', 'canClearFormatting', 'canSetBlockLayout', 'canInsertParagraphAroundBlock',
+                'canInsertImage', 'canEditTable',
+            ),
         });
     });
 
@@ -2840,8 +3109,14 @@ describe('MarkdownEditor.getSelectionState() / "selectionstate"', () => {
     const NEUTRAL: MarkdownEditorSelectionState = {
         bold: false, italic: false, strikethrough: false, code: false, underline: false,
         hasSelectedText: false, linkUrl: null,
+        canFormat: false, canStyle: false, canLink: false, canRemoveLink: false,
+        canSetBlockType: false, canSetBlockLayout: false, canInsertTable: true, canInsertImage: true,
+        canEditTable: false, canMergeCells: false, canUnmergeCell: false,
         inTable: false, tableColumnAlignment: null, blockAlignment: null, columnCount: 1,
     };
+
+    /** What a range selection in ordinary prose adds to `NEUTRAL`: the commands that need one apply. */
+    const IN_PROSE = { canFormat: true, canStyle: true, canLink: true, canSetBlockType: true, canSetBlockLayout: true };
 
     it('a fresh, never-built editor returns the neutral default', () => {
         const editor = new MarkdownEditor();
@@ -2866,10 +3141,10 @@ describe('MarkdownEditor.getSelectionState() / "selectionstate"', () => {
         // caret anywhere inside a formatted run always yields a non-null
         // $computeWordExpansion, per that function's own format !== 0 branch.
         const insideRun = editor.getSelectionState();
-        expect(insideRun).toEqual({ ...NEUTRAL, bold: true, hasSelectedText: true });
+        expect(insideRun).toEqual({ ...NEUTRAL, ...IN_PROSE, bold: true, hasSelectedText: true });
 
         selectStart(editor);   // collapsed at the very start of the bold run
-        expect(editor.getSelectionState()).toEqual({ ...NEUTRAL, bold: true, hasSelectedText: true });
+        expect(editor.getSelectionState()).toEqual({ ...NEUTRAL, ...IN_PROSE, bold: true, hasSelectedText: true });
     });
 
     it('hasSelectedText is true for a collapsed caret mid-word, false with no word to expand into', () => {
@@ -3017,7 +3292,7 @@ describe('MarkdownEditor.getSelectionState() / "selectionstate"', () => {
         expect(state.tableColumnAlignment).toBeNull();
     });
 
-    it('reports every field at its default for a multi-cell TableSelection, which carries no RangeSelection anchor', () => {
+    it('reports the fields read off a range at their defaults for a multi-cell TableSelection, which carries no RangeSelection anchor', () => {
         const editor = new MarkdownEditor();
         editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
 
@@ -3030,7 +3305,121 @@ describe('MarkdownEditor.getSelectionState() / "selectionstate"', () => {
             $setSelection($createTableSelectionFrom(table, cellA, cellB));
         }, { discrete: true });
 
+        // The format toggles apply to the selected cells, which can be merged; the document ends in a cell, where a table would nest.
+        expect(editor.getSelectionState()).toEqual({ ...NEUTRAL, canFormat: true, canInsertTable: false, canMergeCells: true });
+    });
+
+    it('a selection running out of the table it is anchored in is in no table: inTable, the column alignment and the table commands are off', () => {
+        // The table commands act on one table, so a range that leaves its table has none, whichever way
+        // it was made; a range that stays inside the table still has one.
+        const DOC = 'para\n\n| a | b |\n| :---: | --- |\n| c | d |';
+        const showing = (text: string): TextNode => $getRoot().getAllTextNodes().find((node) => node.getTextContent() === text)!;
+        const tableFields = (from: string, to: string): unknown[] => {
+            const editor = new MarkdownEditor();
+
+            editor.setValue(DOC);
+            lexicalOf(editor).update(() => {
+                const selection = showing(from).select(1, 1);
+
+                selection.focus.set(showing(to).getKey(), 1, 'text');
+            }, { discrete: true });
+
+            const state = editor.getSelectionState();
+
+            return [state.inTable, state.tableColumnAlignment, state.canEditTable, state.canMergeCells, state.canUnmergeCell];
+        };
+
+        expect(tableFields('c', 'para')).toEqual([false, null, false, false, false]);
+        expect(tableFields('para', 'c')).toEqual([false, null, false, false, false]);
+        expect(tableFields('c', 'a')).toEqual([true, 'center', true, false, false]);
+    });
+
+    it('the table fields follow the selection: a caret in a cell, a caret in a merged cell, cells selected', () => {
+        const editor = new MarkdownEditor();
+        const tableFields = (): boolean[] => {
+            const state = editor.getSelectionState();
+
+            return [state.canEditTable, state.canMergeCells, state.canUnmergeCell];
+        };
+
+        editor.setValue('| a | b |\n| --- | --- |\n| c | << |\n| e | f |');
+        lexicalOf(editor).update(() => {
+            $getRoot().getAllTextNodes().find((node) => node.getTextContent() === 'e')!.select(1, 1);
+        }, { discrete: true });
+
+        expect(tableFields()).toEqual([true, false, false]);
+
+        lexicalOf(editor).update(() => {
+            $getRoot().getAllTextNodes().find((node) => node.getTextContent() === 'c')!.select(1, 1);
+        }, { discrete: true });
+
+        expect(tableFields()).toEqual([true, false, true]);
+
+        lexicalOf(editor).update(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+            const row = table.getLastChild() as TableRowNode;
+
+            $setSelection($createTableSelectionFrom(table, row.getFirstChild() as TableCellNode, row.getLastChild() as TableCellNode));
+        }, { discrete: true });
+
+        expect(tableFields()).toEqual([false, true, false]);
+    });
+
+    it('fires when a table field alone changes: from two cells selected to one', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| c | d |');
+
+        /** Selects the last row's cells from the first to the one at `lastIndex`. */
+        const selectCells = (lastIndex: number): void => lexicalOf(editor).update(() => {
+            const table = $getRoot().getFirstChild() as TableNode;
+            const cells = (table.getLastChild() as TableRowNode).getChildren() as TableCellNode[];
+
+            $setSelection($createTableSelectionFrom(table, cells[0]!, cells[lastIndex]!));
+        }, { discrete: true });
+
+        selectCells(1);
+
+        const reported: boolean[] = [];
+        editor.on('selectionstate', (state) => reported.push(state.canMergeCells));
+
+        selectCells(0);
+
+        expect(reported).toEqual([false]);
+    });
+
+    it('setValue on an editor not built yet reports the state of the document it loads, never that of the one it replaces', () => {
+        // The first setValue builds the editor with the document it was constructed with, then loads the
+        // new one. Only the loaded document's state is news to a listener.
+        const CODE_AT_END = 'para\n\n```\ncode\n```';
+        const insertsReportedBy = (initial: string, loaded: string): boolean[][] => {
+            const editor = new MarkdownEditor(initial);
+            const reported: boolean[][] = [];
+
+            editor.on('selectionstate', (state) => reported.push([state.canInsertTable, state.canInsertImage]));
+            editor.setValue(loaded);
+
+            return reported;
+        };
+
+        expect(insertsReportedBy(CODE_AT_END, 'hello')).toEqual([]);
+        expect(insertsReportedBy('hello', CODE_AT_END)).toEqual([[false, false]]);
+        expect(insertsReportedBy(CODE_AT_END, `more\n\n${CODE_AT_END}`)).toEqual([[false, false]]);
+    });
+
+    it('building the editor reports the insert fields a document ending in a code block turns off', () => {
+        // Before the editor is built nothing is known of the document's end, so the neutral state
+        // offers both inserts; with no selection they would go in at the end, inside the code block.
+        const editor = new MarkdownEditor('para\n\n```\ncode\n```');
+        const reported: boolean[][] = [];
+
+        editor.on('selectionstate', (state) => reported.push([state.canInsertTable, state.canInsertImage]));
+
         expect(editor.getSelectionState()).toEqual(NEUTRAL);
+
+        (editor as unknown as { ensureEditor(): LexicalEditor }).ensureEditor();
+
+        expect(reported).toEqual([[false, false]]);
+        expect(editor.getSelectionState()).toEqual({ ...NEUTRAL, canInsertTable: false, canInsertImage: false });
     });
 
     it('does not fire for the editor\'s initial load', () => {
@@ -3414,32 +3803,32 @@ describe('MarkdownEditor insertParagraphBeforeBlock / insertParagraphAfterBlock'
     });
 });
 
+/** A representative fully-mixed format state: some formats on, some off. */
+const SOME_FORMATS: { bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean } =
+    { bold: true, italic: false, strikethrough: true, code: false, underline: false };
+
+/** Finds the config for the item with the given `text`, in a possibly-nested submenu list. */
+function findItem(items: MenuItemConfig[], text: string): MenuItemConfig | undefined {
+    return items.find((item) => item.text === text);
+}
+
+/** Resolves a `MenuConfig`'s `items`, which may be a fixed array or a zero-argument provider. */
+function submenuItemsOf(item: MenuItemConfig | undefined): MenuItemConfig[] | undefined {
+    const items = item?.submenu?.items;
+
+    return typeof items === 'function' ? items() : items;
+}
+
+/** Builds the `CheckboxMenuRow` a `row`-based `MenuItemConfig` renders. */
+function rowOf(item: MenuItemConfig | undefined): CheckboxMenuRow {
+    return item?.row?.() as CheckboxMenuRow;
+}
+
 describe('MarkdownEditor context menu', () => {
-    /** A representative fully-mixed format state: some formats on, some off. */
-    const SOME_FORMATS: { bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean } =
-        { bold: true, italic: false, strikethrough: true, code: false, underline: false };
-
-    /** Finds the config for the item with the given `text`, in a possibly-nested submenu list. */
-    function findItem(items: MenuItemConfig[], text: string): MenuItemConfig | undefined {
-        return items.find((item) => item.text === text);
-    }
-
-    /** Resolves a `MenuConfig`'s `items`, which may be a fixed array or a zero-argument provider. */
-    function submenuItemsOf(item: MenuItemConfig | undefined): MenuItemConfig[] | undefined {
-        const items = item?.submenu?.items;
-
-        return typeof items === 'function' ? items() : items;
-    }
-
-    /** Builds the `CheckboxMenuRow` a `row`-based `MenuItemConfig` renders. */
-    function rowOf(item: MenuItemConfig | undefined): CheckboxMenuRow {
-        return item?.row?.() as CheckboxMenuRow;
-    }
-
     it('a "text" context builds a real checkbox row per format, reflecting each active state', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'text', hasSelectedText: true, ...SOME_FORMATS,
+            kind: 'text', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE,
         });
 
         // Order: Cut, Copy, Paste, separator, then buildFormatToggleItems's
@@ -3454,7 +3843,7 @@ describe('MarkdownEditor context menu', () => {
     it('a "text" context with linkUrl: null builds 19 entries: Cut/Copy/Paste, the format rows, Insert link, Block style, Text style, Alignment, Columns, and Clear formatting', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
+            kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, availability: ALL_AVAILABLE,
         });
 
         expect(items).toHaveLength(19);
@@ -3469,7 +3858,7 @@ describe('MarkdownEditor context menu', () => {
     it('a "text" context with a linkUrl builds 20 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'text', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS,
+            kind: 'text', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS, availability: ALL_AVAILABLE,
         });
 
         expect(items).toHaveLength(20);
@@ -3481,7 +3870,7 @@ describe('MarkdownEditor context menu', () => {
     it('a "text" context with hasEnclosingBlock builds 22 entries: the 19 (linkUrl: null) existing plus a separator and the two new items', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, hasEnclosingBlock: true,
+            kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, hasEnclosingBlock: true, availability: ALL_AVAILABLE,
         });
 
         expect(items).toHaveLength(22);
@@ -3495,10 +3884,10 @@ describe('MarkdownEditor context menu', () => {
 
         for (const kind of ['text', 'table-cell'] as const) {
             const enabled = contextMenuMethodsOf(editor).buildContextMenuItems({
-                kind, hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
+                kind, hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, availability: ALL_AVAILABLE,
             });
             const disabled = contextMenuMethodsOf(editor).buildContextMenuItems({
-                kind, hasSelectedText: false, linkUrl: null, ...SOME_FORMATS,
+                kind, hasSelectedText: false, linkUrl: null, ...SOME_FORMATS, availability: ALL_AVAILABLE,
             });
 
             expect(findItem(enabled, 'Insert link…')?.enabled).toBe(true);
@@ -3509,17 +3898,17 @@ describe('MarkdownEditor context menu', () => {
         }
     });
 
-    it('"Edit link…" and "Remove link" are always enabled and replace "Insert link…", in both "text" and "table-cell" contexts', () => {
+    it('"Edit link…" and "Remove link" are enabled while every command is available, and replace "Insert link…", in both "text" and "table-cell" contexts', () => {
         const editor = new MarkdownEditor();
 
         for (const kind of ['text', 'table-cell'] as const) {
             for (const hasSelectedText of [true, false]) {
                 const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-                    kind, hasSelectedText, linkUrl: 'https://x', ...SOME_FORMATS,
+                    kind, hasSelectedText, linkUrl: 'https://x', ...SOME_FORMATS, availability: ALL_AVAILABLE,
                 });
 
-                expect(findItem(items, 'Edit link…')?.enabled).toBeUndefined();
-                expect(findItem(items, 'Remove link')?.enabled).toBeUndefined();
+                expect(findItem(items, 'Edit link…')?.enabled).toBe(true);
+                expect(findItem(items, 'Remove link')?.enabled).toBe(true);
                 expect(findItem(items, 'Insert link…')).toBeUndefined();
             }
         }
@@ -3533,7 +3922,7 @@ describe('MarkdownEditor context menu', () => {
             const spy = vi.spyOn(contextMenuMethodsOf(editor), 'promptAndApplyLink').mockResolvedValue(undefined);
 
             const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-                kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
+                kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, availability: ALL_AVAILABLE,
             });
 
             findItem(items, 'Insert link…')?.action?.();
@@ -3546,7 +3935,7 @@ describe('MarkdownEditor context menu', () => {
             const spy = vi.spyOn(contextMenuMethodsOf(editor), 'promptAndApplyLink').mockResolvedValue(undefined);
 
             const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-                kind: 'text', hasSelectedText: false, linkUrl: 'https://x', ...SOME_FORMATS,
+                kind: 'text', hasSelectedText: false, linkUrl: 'https://x', ...SOME_FORMATS, availability: ALL_AVAILABLE,
             });
 
             findItem(items, 'Edit link…')?.action?.();
@@ -3577,7 +3966,7 @@ describe('MarkdownEditor context menu', () => {
             }, { discrete: true });
 
             const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-                kind: 'text', hasSelectedText: true, linkUrl: 'https://x', ...SOME_FORMATS,
+                kind: 'text', hasSelectedText: true, linkUrl: 'https://x', ...SOME_FORMATS, availability: ALL_AVAILABLE,
             });
 
             findItem(items, 'Remove link')?.action?.();
@@ -3592,7 +3981,7 @@ describe('MarkdownEditor context menu', () => {
         lexicalOf(before).update(() => { $getRoot().selectStart(); }, { discrete: true });
 
         contextMenuMethodsOf(before).buildContextMenuItems({
-            kind: 'text', hasSelectedText: false, ...SOME_FORMATS, hasEnclosingBlock: true,
+            kind: 'text', hasSelectedText: false, ...SOME_FORMATS, hasEnclosingBlock: true, availability: ALL_AVAILABLE,
         }).find((item) => item.text === 'Insert line before block')?.action?.();
 
         expect(lexicalOf(before).read(() => $getRoot().getChildren().map((n) => n.getType())))
@@ -3603,7 +3992,7 @@ describe('MarkdownEditor context menu', () => {
         lexicalOf(after).update(() => { $getRoot().selectStart(); }, { discrete: true });
 
         contextMenuMethodsOf(after).buildContextMenuItems({
-            kind: 'text', hasSelectedText: false, ...SOME_FORMATS, hasEnclosingBlock: true,
+            kind: 'text', hasSelectedText: false, ...SOME_FORMATS, hasEnclosingBlock: true, availability: ALL_AVAILABLE,
         }).find((item) => item.text === 'Insert line after block')?.action?.();
 
         expect(lexicalOf(after).read(() => $getRoot().getChildren().map((n) => n.getType())))
@@ -3613,7 +4002,7 @@ describe('MarkdownEditor context menu', () => {
     it('a "text" context offers an 11-item block-style submenu', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'text', hasSelectedText: true, ...SOME_FORMATS,
+            kind: 'text', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE,
         });
 
         const blockStyleItems = submenuItemsOf(findItem(items, 'Block style'));
@@ -3633,7 +4022,7 @@ describe('MarkdownEditor context menu', () => {
         lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true });
 
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'text', hasSelectedText: true, ...SOME_FORMATS,
+            kind: 'text', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE,
         });
         const blockStyleItems = submenuItemsOf(findItem(items, 'Block style'));
 
@@ -3648,7 +4037,7 @@ describe('MarkdownEditor context menu', () => {
         selectStart(editor);
 
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'text', hasSelectedText: true, ...SOME_FORMATS,
+            kind: 'text', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE,
         });
         const colorItems = submenuItemsOf(findItem(submenuItemsOf(findItem(items, 'Text style')) ?? [], 'Colour'));
 
@@ -3666,7 +4055,7 @@ describe('MarkdownEditor context menu', () => {
 
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'text', hasSelectedText: true, bold: false, italic: false, strikethrough: false, code: false,
-            underline: false,
+            underline: false, availability: ALL_AVAILABLE,
         });
 
         rowOf(items[4]).activate();
@@ -3676,7 +4065,7 @@ describe('MarkdownEditor context menu', () => {
 
     it('an "empty-line" context omits Paragraph and offers a 6-item Heading submenu', () => {
         const editor = new MarkdownEditor();
-        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true });
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true, availability: ALL_AVAILABLE });
 
         expect(findItem(items, 'Paragraph')).toBeUndefined();
         expect(submenuItemsOf(findItem(items, 'Heading'))).toHaveLength(6);
@@ -3684,7 +4073,7 @@ describe('MarkdownEditor context menu', () => {
 
     it('an "empty-line" context builds 7 entries: Cut/Copy/Paste, then Heading, Insert, and Columns', () => {
         const editor = new MarkdownEditor();
-        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true });
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true, availability: ALL_AVAILABLE });
 
         expect(items).toHaveLength(7);
         expect(items.map((item) => item.text ?? '(separator)')).toEqual([
@@ -3695,7 +4084,7 @@ describe('MarkdownEditor context menu', () => {
 
     it('an "empty-line" context\'s Insert submenu offers Quote, Code block, Bulleted list, Numbered list, Table, and Image…, in that order', () => {
         const editor = new MarkdownEditor();
-        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true });
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true, availability: ALL_AVAILABLE });
 
         expect(submenuItemsOf(findItem(items, 'Insert'))?.map((item) => item.text ?? '(separator)')).toEqual([
             'Quote', 'Code block', 'Bulleted list', 'Numbered list', '(separator)', 'Table', 'Image…',
@@ -3705,7 +4094,7 @@ describe('MarkdownEditor context menu', () => {
     it('a "table-cell" context with linkUrl: null returns 17 entries: Cut/Copy/Paste, 5 format rows, Insert link, Text style, Clear formatting, then a Table submenu', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
+            kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, availability: ALL_AVAILABLE,
         });
 
         expect(items).toHaveLength(17);
@@ -3736,7 +4125,7 @@ describe('MarkdownEditor context menu', () => {
     it('a "table-cell" context with hasEnclosingBlock builds 20 entries: the 17 existing (with no link) plus a separator and the two new items', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, hasEnclosingBlock: true,
+            kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, hasEnclosingBlock: true, availability: ALL_AVAILABLE,
         });
 
         expect(items).toHaveLength(20);
@@ -3751,7 +4140,7 @@ describe('MarkdownEditor context menu', () => {
         selectStart(before);   // caret lands in the first cell
 
         contextMenuMethodsOf(before).buildContextMenuItems({
-            kind: 'table-cell', hasSelectedText: false, ...SOME_FORMATS, hasEnclosingBlock: true,
+            kind: 'table-cell', hasSelectedText: false, ...SOME_FORMATS, hasEnclosingBlock: true, availability: ALL_AVAILABLE,
         }).find((item) => item.text === 'Insert line before block')?.action?.();
 
         expect(childTypes(before)).toEqual(['paragraph', 'table']);
@@ -3761,7 +4150,7 @@ describe('MarkdownEditor context menu', () => {
         selectStart(after);
 
         contextMenuMethodsOf(after).buildContextMenuItems({
-            kind: 'table-cell', hasSelectedText: false, ...SOME_FORMATS, hasEnclosingBlock: true,
+            kind: 'table-cell', hasSelectedText: false, ...SOME_FORMATS, hasEnclosingBlock: true, availability: ALL_AVAILABLE,
         }).find((item) => item.text === 'Insert line after block')?.action?.();
 
         expect(childTypes(after)).toEqual(['table', 'paragraph']);
@@ -3770,7 +4159,7 @@ describe('MarkdownEditor context menu', () => {
     it('a "table-cell" context with a linkUrl returns 18 entries: the same shape but Edit link + Remove link instead of Insert link', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'table-cell', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS,
+            kind: 'table-cell', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS, availability: ALL_AVAILABLE,
         });
 
         expect(items).toHaveLength(18);
@@ -3782,7 +4171,7 @@ describe('MarkdownEditor context menu', () => {
     it('a "table-cell" context with both a linkUrl and hasEnclosingBlock combines all groups: link items, Text style, Clear formatting, the Table submenu, and the two block items, in that order', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'table-cell', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS, hasEnclosingBlock: true,
+            kind: 'table-cell', hasSelectedText: true, linkUrl: 'https://example.com', ...SOME_FORMATS, hasEnclosingBlock: true, availability: ALL_AVAILABLE,
         });
 
         expect(items).toHaveLength(21);
@@ -3800,7 +4189,7 @@ describe('MarkdownEditor context menu', () => {
         editor.insertTable(2, 3);   // caret lands in the first header cell
 
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS,
+            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE,
         });
         const tableItems = submenuItemsOf(findItem(items, 'Table'));
 
@@ -3813,7 +4202,7 @@ describe('MarkdownEditor context menu', () => {
     it("the table-cell menu's Table ▸ Align column submenu offers exactly Left, Center, Right, None, in that order", () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS,
+            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE,
         });
         const tableItems = submenuItemsOf(findItem(items, 'Table'));
 
@@ -3826,14 +4215,14 @@ describe('MarkdownEditor context menu', () => {
         const editor = new MarkdownEditor();
 
         const rightChecked = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS, columnAlignment: 'right',
+            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS, columnAlignment: 'right', availability: ALL_AVAILABLE,
         });
         const rightTableItems = submenuItemsOf(findItem(rightChecked, 'Table'));
         const rightItems = submenuItemsOf(findItem(rightTableItems ?? [], 'Align column'));
         expect(rightItems?.map((item) => item.checked)).toEqual([false, false, true, false]);
 
         const omitted = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS,
+            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE,
         });
         const omittedTableItems = submenuItemsOf(findItem(omitted, 'Table'));
         const omittedItems = submenuItemsOf(findItem(omittedTableItems ?? [], 'Align column'));
@@ -3845,7 +4234,7 @@ describe('MarkdownEditor context menu', () => {
         editor.insertTable(2, 3);   // caret lands in the first header cell
 
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS,
+            kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE,
         });
         const tableItems = submenuItemsOf(findItem(items, 'Table'));
 
@@ -3858,10 +4247,10 @@ describe('MarkdownEditor context menu', () => {
         const editor = new MarkdownEditor();
 
         const textItems = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'text', hasSelectedText: true, ...SOME_FORMATS,
+            kind: 'text', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE,
         });
         const emptyLineItems = contextMenuMethodsOf(editor).buildContextMenuItems({
-            kind: 'empty-line', hasSelectedText: true,
+            kind: 'empty-line', hasSelectedText: true, availability: ALL_AVAILABLE,
         });
 
         expect(findItem(textItems, 'Align column')).toBeUndefined();
@@ -3870,7 +4259,7 @@ describe('MarkdownEditor context menu', () => {
 
     it("the empty-line menu's Insert ▸ Table item reaches MarkdownEditor.insertTable(2, 3)", () => {
         const editor = new MarkdownEditor();
-        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true });
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true, availability: ALL_AVAILABLE });
 
         submenuItemsOf(findItem(items, 'Insert'))?.find((item) => item.text === 'Table')?.action?.();
 
@@ -3882,7 +4271,7 @@ describe('MarkdownEditor context menu', () => {
         const bulleted = new MarkdownEditor();
         bulleted.setValue('word');
         selectStart(bulleted);
-        const bulletedItems = contextMenuMethodsOf(bulleted).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: false });
+        const bulletedItems = contextMenuMethodsOf(bulleted).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: false, availability: ALL_AVAILABLE });
 
         submenuItemsOf(findItem(bulletedItems, 'Insert'))?.find((item) => item.text === 'Bulleted list')?.action?.();
 
@@ -3891,7 +4280,7 @@ describe('MarkdownEditor context menu', () => {
         const numbered = new MarkdownEditor();
         numbered.setValue('word');
         selectStart(numbered);
-        const numberedItems = contextMenuMethodsOf(numbered).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: false });
+        const numberedItems = contextMenuMethodsOf(numbered).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: false, availability: ALL_AVAILABLE });
 
         submenuItemsOf(findItem(numberedItems, 'Insert'))?.find((item) => item.text === 'Numbered list')?.action?.();
 
@@ -3901,12 +4290,12 @@ describe('MarkdownEditor context menu', () => {
     it('Cut and Copy carry enabled: hasSelectedText in all three contexts; Paste never sets enabled', () => {
         const editor = new MarkdownEditor();
         const contexts: ContextMenuTarget[] = [
-            { kind: 'text', hasSelectedText: true, ...SOME_FORMATS },
-            { kind: 'text', hasSelectedText: false, ...SOME_FORMATS },
-            { kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS },
-            { kind: 'table-cell', hasSelectedText: false, ...SOME_FORMATS },
-            { kind: 'empty-line', hasSelectedText: true },
-            { kind: 'empty-line', hasSelectedText: false },
+            { kind: 'text', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE },
+            { kind: 'text', hasSelectedText: false, ...SOME_FORMATS, availability: ALL_AVAILABLE },
+            { kind: 'table-cell', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE },
+            { kind: 'table-cell', hasSelectedText: false, ...SOME_FORMATS, availability: ALL_AVAILABLE },
+            { kind: 'empty-line', hasSelectedText: true, availability: ALL_AVAILABLE },
+            { kind: 'empty-line', hasSelectedText: false, availability: ALL_AVAILABLE },
         ];
 
         for (const context of contexts) {
@@ -4000,6 +4389,1464 @@ describe('MarkdownEditor context menu', () => {
     });
 });
 
+describe('MarkdownEditor context menu — caret and availability', () => {
+    const TABLE = '| a | b |\n| - | - |\n| c | d |';
+    const RAW_BLOCK = '[x]: https://one';
+    const CODE_BLOCK = '```\ncode\n```';
+    const LINK_PROSE = 'A [text](https://x) link.';
+    const SOURCE_RUN = 'a <span>x</span> b';
+    const NESTED_LINK = '[[b - c](https://y)](https://x)';
+    const PROSE_AND_TABLE = 'para\n\n| a |\n| - |\n| c |';
+
+    /** Builds an editor showing `markdown`. */
+    function editorOf(markdown: string): MarkdownEditor {
+        const editor = new MarkdownEditor();
+
+        editor.setValue(markdown);
+
+        return editor;
+    }
+
+    /** The first text node showing exactly `text`. Call inside a Lexical read or update. */
+    function $textNodeShowing(text: string): TextNode {
+        const node = $getRoot().getAllTextNodes().find((candidate) => candidate.getTextContent() === text);
+
+        if (node === undefined) {
+            throw new Error(`text node "${text}" not found`);
+        }
+
+        return node;
+    }
+
+    /** Places a collapsed caret at `offset` in the first text node showing exactly `text`. */
+    function caretIn(editor: MarkdownEditor, text: string, offset: number): void {
+        lexicalOf(editor).update(() => { $textNodeShowing(text).select(offset, offset); }, { discrete: true });
+    }
+
+    /** Selects from `offset` 1 of the text node showing `from` to offset 1 of the one showing `to`. */
+    function selectAcross(editor: MarkdownEditor, from: string, to: string): void {
+        lexicalOf(editor).update(() => {
+            const selection = $textNodeShowing(from).select(1, 1);
+
+            selection.focus.set($textNodeShowing(to).getKey(), 1, 'text');
+        }, { discrete: true });
+    }
+
+    /** Selects the two cells of the first table's last row, as a drag across them does. */
+    function selectLastRowCells(editor: MarkdownEditor): void {
+        lexicalOf(editor).update(() => {
+            const table = $getRoot().getChildren().find((node) => node.getType() === 'table') as TableNode;
+            const [first, second] = (table.getLastChild() as TableRowNode).getChildren() as TableCellNode[];
+
+            $setSelection($createTableSelectionFrom(table, first, second));
+        }, { discrete: true });
+    }
+
+    /** Classifies the way a keyboard-opened menu does: its event target resolves to the root. */
+    function classifyAtCaret(editor: MarkdownEditor): ContextMenuTarget {
+        return lexicalOf(editor).read(() => $classifyContextMenuTarget($contextMenuNodeFor($getRoot())));
+    }
+
+    /** A `contextmenu` event whose target Lexical resolves to the node keyed `key` (`"root"` is the editor root). */
+    function contextMenuEventOn(editor: MarkdownEditor, key: string, clientX: number, clientY: number): MouseEvent {
+        const target = { nodeType: 1, [`__lexicalKey_${lexicalOf(editor)._key}`]: key };
+
+        return { target, clientX, clientY } as unknown as MouseEvent;
+    }
+
+    /** A collapsed selection at `offset` in the first text node showing exactly `text`. Call inside a Lexical update. */
+    function $caretAt(text: string, offset: number): RangeSelection {
+        const selection = $createRangeSelection();
+        const key = $textNodeShowing(text).getKey();
+
+        selection.anchor.set(key, offset, 'text');
+        selection.focus.set(key, offset, 'text');
+
+        return selection;
+    }
+
+    /**
+     * Stands in for the browser: makes the seam's selection read give a
+     * caret at `offset` of the text node showing `text` as the selection the
+     * page holds when the menu opens, which a right-click has already moved
+     * to the click point. Offline the modelled source has no selection.
+     */
+    function browserCaretIs(text: string, offset: number): void {
+        vi.spyOn(DOM.source, 'readDocumentSelection').mockImplementation(() => $caretAt(text, offset));
+    }
+
+    /** A right-click on the text node showing `text`, with the browser's caret already at `offset` in it; returns the items shown. */
+    function rightClickIn(editor: MarkdownEditor, text: string, offset: number): MenuItemConfig[] {
+        const key = lexicalOf(editor).read(() => $textNodeShowing(text).getKey());
+        const show = spyOnMenuShow(editor);
+
+        browserCaretIs(text, offset);
+        contextMenuMethodsOf(editor).handleWysiwygContextMenu(contextMenuEventOn(editor, key, 40, 50));
+
+        return show.mock.calls[0][2];
+    }
+
+    /** Where the editor's caret is: the text its node shows and the offset in it, or `null` without a range selection. */
+    function caretOf(editor: MarkdownEditor): [string, number] | null {
+        return lexicalOf(editor).read(() => {
+            const selection = $getSelection();
+
+            return $isRangeSelection(selection) ? [selection.anchor.getNode().getTextContent(), selection.anchor.offset] : null;
+        });
+    }
+
+    /** Replaces the editor's context menu `show` with a spy, so a test reads what would be shown. */
+    function spyOnMenuShow(editor: MarkdownEditor): MockInstance<(x: number, y: number, items: MenuItemConfig[]) => unknown> {
+        const menu = (editor as unknown as { _contextMenu: { show(x: number, y: number, items: MenuItemConfig[]): unknown } })._contextMenu;
+
+        return vi.spyOn(menu, 'show').mockImplementation(() => menu);
+    }
+
+    /** What a menu shows of each item: its text, enabled and checked state, its row's state, and its submenu the same way. */
+    function shapeOf(items: MenuItemConfig[] | undefined): unknown[] {
+        return (items ?? []).map((item) => ({
+            text:      item.text,
+            separator: item.separator,
+            enabled:   item.enabled !== false,
+            checked:   item.checked,
+            row:       item.row ? { enabled: rowOf(item).isEnabled(), checked: rowOf(item).isChecked() } : undefined,
+            submenu:   item.submenu ? shapeOf(submenuItemsOf(item)) : undefined,
+        }));
+    }
+
+    afterEach(() => vi.restoreAllMocks());
+
+    describe('which node the menu is built for', () => {
+        it('R1: with the caret in a table cell, a root target gives the table-cell menu, with its Table submenu', () => {
+            const editor = editorOf(TABLE);
+            caretIn(editor, 'c', 1);
+
+            const context = classifyAtCaret(editor);
+
+            expect(context.kind).toBe('table-cell');
+            expect(findItem(contextMenuMethodsOf(editor).buildContextMenuItems(context), 'Table')).toBeDefined();
+        });
+
+        it('R2: with the caret inside a word, a root target gives the text menu, with text to act on', () => {
+            const editor = editorOf('hello world');
+            caretIn(editor, 'hello world', 'hello wo'.length);
+
+            const context = classifyAtCaret(editor);
+
+            expect(context.kind).toBe('text');
+            expect(context.hasSelectedText).toBe(true);
+        });
+
+        it('R3: with the caret on an empty line, a root target gives the empty-line menu', () => {
+            const editor = new MarkdownEditor();
+
+            (editor as unknown as { ensureEditor(): LexicalEditor }).ensureEditor();
+            selectStart(editor);
+
+            expect(classifyAtCaret(editor).kind).toBe('empty-line');
+        });
+
+        it('R4: with the caret in a raw Markdown block, a root target gives the text menu, formatting unavailable', () => {
+            const editor = editorOf(RAW_BLOCK);
+            caretIn(editor, RAW_BLOCK, 3);
+
+            const context = classifyAtCaret(editor);
+
+            expect(context.kind).toBe('text');
+            expect(context.availability.canFormat).toBe(false);
+        });
+
+        it('R5: with the caret in a code block, a root target gives the text menu for that block, formatting unavailable', () => {
+            const editor = editorOf(CODE_BLOCK);
+            caretIn(editor, 'code', 2);
+
+            const context = classifyAtCaret(editor);
+
+            expect(context.kind).toBe('text');
+            expect((context as { hasEnclosingBlock?: boolean }).hasEnclosingBlock).toBe(true);
+            expect(context.availability.canFormat).toBe(false);
+        });
+
+        it('R6: with the caret inside a link, a root target gives the text menu for that link, text style unavailable', () => {
+            const editor = editorOf(LINK_PROSE);
+            caretIn(editor, 'text', 2);
+
+            const context = classifyAtCaret(editor);
+
+            expect(context.kind).toBe('text');
+            expect((context as { linkUrl?: string | null }).linkUrl).toBe('https://x');
+            expect(context.availability.canStyle).toBe(false);
+        });
+
+        it('R7: with the caret after an image alone in its paragraph, a root target classifies as a right-click on the image does', () => {
+            const editor = editorOf('![](https://x/a.png)');
+
+            lexicalOf(editor).update(() => {
+                ($getRoot().getFirstChild() as ElementNode).select(1, 1);   // an element point after the image
+            }, { discrete: true });
+
+            const onImage = lexicalOf(editor).read(() => {
+                const image = ($getRoot().getFirstChild() as ElementNode).getFirstChild() as LexicalNode;
+
+                return $classifyContextMenuTarget(image);
+            });
+
+            expect(onImage.kind).toBe('empty-line');
+            expect(classifyAtCaret(editor)).toEqual(onImage);
+        });
+
+        it('R8: a target inside the document is used as given, wherever the caret is', () => {
+            const editor = editorOf(`hello\n\n${TABLE}`);
+            caretIn(editor, 'hello', 2);
+
+            const [isTarget, context] = lexicalOf(editor).read(() => {
+                const target = $textNodeShowing('c');
+                const node = $contextMenuNodeFor(target);
+
+                return [node.is(target), $classifyContextMenuTarget(node)] as const;
+            });
+
+            expect(isTarget).toBe(true);
+            expect(context.kind).toBe('table-cell');
+        });
+
+        it('R9: with no selection, a root target stays the root, which classifies as text', () => {
+            const editor = editorOf(TABLE);
+            lexicalOf(editor).update(() => { $setSelection(null); }, { discrete: true });
+
+            const [isRoot, context] = lexicalOf(editor).read(() => {
+                const node = $contextMenuNodeFor($getRoot());
+
+                return [node.is($getRoot()), $classifyContextMenuTarget(node)] as const;
+            });
+
+            expect(isRoot).toBe(true);
+            expect(context.kind).toBe('text');
+        });
+
+        it('a table selection resolves a root target to its anchor cell', () => {
+            const editor = editorOf(TABLE);
+            selectLastRowCells(editor);
+
+            expect(classifyAtCaret(editor).kind).toBe('table-cell');
+        });
+
+        it('while table cells are selected, a target outside the table resolves to the selection\'s anchor cell too', () => {
+            const editor = editorOf(`${TABLE}\n\nafter`);
+            selectLastRowCells(editor);
+
+            const [cellText, context] = lexicalOf(editor).read(() => {
+                const node = $contextMenuNodeFor($textNodeShowing('after'));
+
+                return [$isTableCellNode(node) ? node.getTextContent() : null, $classifyContextMenuTarget(node)] as const;
+            });
+
+            expect(cellText).toBe('c');   // the cell the selection was started in
+            expect(context.kind).toBe('table-cell');
+        });
+
+        it('a contextmenu event on the editor root shows the menu for the caret, at the event\'s point', () => {
+            const editor = editorOf(TABLE);
+            caretIn(editor, 'c', 1);
+
+            const show = spyOnMenuShow(editor);
+
+            contextMenuMethodsOf(editor).handleWysiwygContextMenu(contextMenuEventOn(editor, 'root', 40, 50));
+
+            expect(show).toHaveBeenCalledOnce();
+
+            const [x, y, items] = show.mock.calls[0];
+
+            expect([x, y]).toEqual([40, 50]);
+            expect(findItem(items, 'Table')).toBeDefined();
+        });
+
+        it('a contextmenu event on content shows the menu for that content, not for the caret', () => {
+            const editor = editorOf(`hello\n\n${TABLE}`);
+            caretIn(editor, 'hello', 2);
+
+            const cellTextKey = lexicalOf(editor).read(() => $textNodeShowing('c').getKey());
+            const show = spyOnMenuShow(editor);
+
+            contextMenuMethodsOf(editor).handleWysiwygContextMenu(contextMenuEventOn(editor, cellTextKey, 40, 50));
+
+            expect(findItem(show.mock.calls[0][2], 'Table')).toBeDefined();
+        });
+    });
+
+    describe('a right-click reads the selection the click made', () => {
+        const PROSE_AND_CODE = 'plain **bold** end\n\n```\ncode\n```';
+        const FORMAT_ROWS = [4, 5, 6, 7, 8];   // Cut, Copy, Paste, separator, then the five format rows.
+
+        /** Whether the menu offers formatting, a link and a text style: the five format rows, Insert link… and Text style. */
+        function offered(items: MenuItemConfig[]): boolean[] {
+            return [
+                ...FORMAT_ROWS.map((index) => rowOf(items[index]).isEnabled()),
+                findItem(items, 'Insert link…')?.enabled !== false,
+                findItem(items, 'Text style')?.enabled !== false,
+            ];
+        }
+
+        it('caret in prose, right-click in a code block: the menu dims what a code block declines', () => {
+            const editor = editorOf(PROSE_AND_CODE);
+            caretIn(editor, 'plain ', 2);
+
+            const items = rightClickIn(editor, 'code', 2);
+
+            expect(offered(items)).toEqual([false, false, false, false, false, false, false]);
+            expect(caretOf(editor)).toEqual(['code', 2]);
+        });
+
+        it('caret in a code block, right-click on a prose word: the menu offers what prose accepts', () => {
+            const editor = editorOf(PROSE_AND_CODE);
+            caretIn(editor, 'code', 2);
+
+            const items = rightClickIn(editor, 'plain ', 2);
+
+            expect(offered(items)).toEqual([true, true, true, true, true, true, true]);
+            expect(caretOf(editor)).toEqual(['plain ', 2]);
+        });
+
+        it('the format checkmarks are those of the clicked run, not of the run the caret was in', () => {
+            const editor = editorOf(PROSE_AND_CODE);
+            caretIn(editor, 'plain ', 2);
+
+            const onBold = rightClickIn(editor, 'bold', 2);
+
+            expect(FORMAT_ROWS.map((index) => rowOf(onBold[index]).isChecked())).toEqual([true, false, false, false, false]);
+
+            vi.restoreAllMocks();
+
+            const onPlain = rightClickIn(editor, 'plain ', 2);
+
+            expect(FORMAT_ROWS.map((index) => rowOf(onPlain[index]).isChecked())).toEqual([false, false, false, false, false]);
+        });
+
+        it('Cut, Copy and Insert link… follow the clicked word, not the caret the click moved', () => {
+            const editor = editorOf('a  b word');
+            caretIn(editor, 'a  b word', 2);   // between the two spaces: no word to act on
+
+            const onWord = rightClickIn(editor, 'a  b word', 'a  b wo'.length);
+
+            expect(['Cut', 'Copy', 'Insert link…'].map((text) => findItem(onWord, text)?.enabled)).toEqual([true, true, true]);
+
+            vi.restoreAllMocks();
+
+            const onSpaces = rightClickIn(editor, 'a  b word', 2);
+
+            expect(['Cut', 'Copy', 'Insert link…'].map((text) => findItem(onSpaces, text)?.enabled)).toEqual([false, false, false]);
+        });
+
+        it('a right-click that leaves the caret where it was keeps the format pending at it', () => {
+            const editor = editorOf(PROSE_AND_CODE);
+            caretIn(editor, 'plain ', 6);
+
+            lexicalOf(editor).update(() => {
+                ($getSelection() as RangeSelection).setFormat(1);   // bold pending at the caret, as Ctrl+B on a bare caret leaves it
+            }, { discrete: true });
+
+            rightClickIn(editor, 'plain ', 6);
+
+            const pending = lexicalOf(editor).read(() => ($getSelection() as RangeSelection).hasFormat('bold'));
+
+            expect(pending).toBe(true);
+        });
+
+        it('a held table selection is kept, so a right-click on its cells still acts on all of them', () => {
+            const editor = editorOf(`${TABLE}\n\nafter`);
+            selectLastRowCells(editor);
+
+            rightClickIn(editor, 'c', 1);
+
+            const held = lexicalOf(editor).read(() => $getSelection()?.getNodes().filter($isTableCellNode).length);
+
+            expect(held).toBe(2);
+        });
+
+        it('a right-click on prose while table cells are selected gives the menu for the cells, whose items act on them', () => {
+            const editor = editorOf(`${TABLE}\n\nafter`);
+            selectLastRowCells(editor);
+
+            const items = rightClickIn(editor, 'after', 2);
+            const table = submenuItemsOf(findItem(items, 'Table')) ?? [];
+
+            expect(findItem(items, 'Block style')).toBeUndefined();
+            expect(findItem(table, 'Merge cells')?.enabled).toBe(true);
+            expect(FORMAT_ROWS.map((index) => rowOf(items[index]).isEnabled())).toEqual([true, true, true, true, true]);
+        });
+
+        it('with no selection for the browser to report, the editor\'s own selection stands', () => {
+            const editor = editorOf(PROSE_AND_CODE);
+            caretIn(editor, 'plain ', 2);
+
+            spyOnMenuShow(editor);   // the modelled source reports no selection
+
+            contextMenuMethodsOf(editor).handleWysiwygContextMenu(contextMenuEventOn(editor, 'root', 40, 50));
+
+            expect(caretOf(editor)).toEqual(['plain ', 2]);
+        });
+
+        describe('$adoptDomSelection', () => {
+            /** Runs `$adoptDomSelection` on what `make` builds, inside one update. */
+            function adopt(editor: MarkdownEditor, make: () => RangeSelection | null): void {
+                lexicalOf(editor).update(() => { $adoptDomSelection(make()); }, { discrete: true });
+            }
+
+            it('moves the selection to a caret that differs from the editor\'s, with the format of the text it lands in', () => {
+                // A selection read from the browser carries no format of its own; typing at it must still
+                // continue the run it sits in, so it takes the format of the text at its anchor.
+                const editor = editorOf(PROSE_AND_CODE);
+                caretIn(editor, 'plain ', 2);
+
+                adopt(editor, () => $caretAt('bold', 2));
+
+                expect(caretOf(editor)).toEqual(['bold', 2]);
+                expect(lexicalOf(editor).read(() => ($getSelection() as RangeSelection).hasFormat('bold'))).toBe(true);
+
+                adopt(editor, () => $caretAt('plain ', 2));
+
+                expect(caretOf(editor)).toEqual(['plain ', 2]);
+                expect(lexicalOf(editor).read(() => ($getSelection() as RangeSelection).hasFormat('bold'))).toBe(false);
+            });
+
+            it('a range adopted from the browser carries the formats all its text has, not those of a node it only touches', () => {
+                // The range runs from the very end of "plain " over the whole code span: Code is on for it,
+                // though the node its anchor sits in is plain.
+                const editor = editorOf('plain `code` end');
+                caretIn(editor, ' end', 2);
+
+                adopt(editor, () => {
+                    const selection = $createRangeSelection();
+
+                    selection.anchor.set($textNodeShowing('plain ').getKey(), 'plain '.length, 'text');
+                    selection.focus.set($textNodeShowing('code').getKey(), 'code'.length, 'text');
+
+                    return selection;
+                });
+
+                expect(editor.getSelectionState().code).toBe(true);
+
+                adopt(editor, () => {
+                    const selection = $createRangeSelection();
+
+                    selection.anchor.set($textNodeShowing('plain ').getKey(), 2, 'text');
+                    selection.focus.set($textNodeShowing('code').getKey(), 2, 'text');
+
+                    return selection;
+                });
+
+                expect(editor.getSelectionState().code).toBe(false);
+            });
+
+            it('a caret adopted at an element point takes the block\'s own text format only when the block is empty', () => {
+                // Lexical's rule for a caret that is not in text: an empty block hands over the format
+                // text typed into it would get; a block with content does not.
+                const editor = editorOf('x\n\ny');
+                caretIn(editor, 'y', 1);
+
+                /** Adopts a caret at the start of the first block, as an element point, and reads whether it carries bold. */
+                const adoptAtFirstBlock = (): boolean => {
+                    adopt(editor, () => {
+                        const selection = $createRangeSelection();
+                        const key = ($getRoot().getFirstChild() as ElementNode).getKey();
+
+                        selection.anchor.set(key, 0, 'element');
+                        selection.focus.set(key, 0, 'element');
+
+                        return selection;
+                    });
+
+                    return lexicalOf(editor).read(() => ($getSelection() as RangeSelection).hasFormat('bold'));
+                };
+
+                lexicalOf(editor).update(() => {
+                    ($getRoot().getFirstChild() as ParagraphNode).setTextFormat(1);   // bold
+                }, { discrete: true });
+
+                expect(adoptAtFirstBlock()).toBe(false);
+
+                caretIn(editor, 'y', 1);
+                lexicalOf(editor).update(() => {
+                    ($getRoot().getFirstChild() as ParagraphNode).clear();
+                }, { discrete: true });
+
+                expect(adoptAtFirstBlock()).toBe(true);
+            });
+
+            it('text typed at an adopted caret inside a bold run is bold', () => {
+                const editor = editorOf(PROSE_AND_CODE);
+                caretIn(editor, 'plain ', 2);
+
+                adopt(editor, () => $caretAt('bold', 2));
+                lexicalOf(editor).update(() => { ($getSelection() as RangeSelection).insertText('Q'); }, { discrete: true });
+
+                expect(editor.getValue()).toContain('**boQld**');
+            });
+
+            it('leaves the selection object alone when the browser\'s caret is where the editor\'s is', () => {
+                const editor = editorOf(PROSE_AND_CODE);
+                caretIn(editor, 'plain ', 2);
+
+                let same = false;
+
+                lexicalOf(editor).update(() => {
+                    const before = $getSelection();
+
+                    $adoptDomSelection($caretAt('plain ', 2));
+                    same = $getSelection() === before;
+                }, { discrete: true });
+
+                expect(same).toBe(true);
+            });
+
+            it('does nothing for null, and nothing while a table selection is held', () => {
+                const editor = editorOf(`${TABLE}\n\nafter`);
+                caretIn(editor, 'after', 2);
+
+                adopt(editor, () => null);
+
+                expect(caretOf(editor)).toEqual(['after', 2]);
+
+                selectLastRowCells(editor);
+                adopt(editor, () => $caretAt('after', 2));
+
+                expect(caretOf(editor)).toBeNull();
+            });
+        });
+    });
+
+    describe('availability, read from the live selection', () => {
+        const BARE_CARET = 'a  b word';
+        const BOLD_WORD = 'a **bold** c';
+        const QUOTE_BLOCK = '> quoted';
+        const MERGED_CELL = '| a | b |\n| - | - |\n| c | << |';
+        const SOURCE_CELLS = '| a | b |\n| - | - |\n| <b>c</b> | <i>d</i> |\n\nafter';
+        const EMPTY_CELLS = '| a | b |\n| - | - |\n|  |  |\n\nafter';
+        const IMAGE_AND_BOLD_CELLS = '| a | b |\n| - | - |\n| ![i](/i.png) | **d** |\n\nafter';
+        const IMAGE_CELLS = '| a | b |\n| - | - |\n| ![i](/i.png) | ![j](/j.png) |\n\nafter';
+        const BULLETED_LIST = '- one\n- two\n- three';
+        const NUMBERED_LIST = '1. one\n2. two\n3. three';
+        const TASK_LIST = '- [ ] one\n- [x] two';
+        const TWO_LISTS = '- one\n- two\n\n1. three\n2. four';
+
+        /** What is available at a caret or a range inside the items of a list. */
+        const IN_LIST: Array<keyof CommandAvailability> = [
+            'canFormat', 'canStyle', 'canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertParagraphAroundBlock',
+            'canInsertTable', 'canInsertImage',
+        ];
+
+        /** Selects from `fromOffset` in the text node showing `from` to `toOffset` in the one showing `to`. */
+        function selectBetween(editor: MarkdownEditor, from: string, fromOffset: number, to: string, toOffset: number): void {
+            lexicalOf(editor).update(() => {
+                const selection = $textNodeShowing(from).select(fromOffset, fromOffset);
+
+                selection.focus.set($textNodeShowing(to).getKey(), toOffset, 'text');
+            }, { discrete: true });
+        }
+
+        /** A selection point in the text node showing `text`, or on the top-level block at index `block` itself. */
+        type PointAt = { text: string; offset: number } | { block: number; offset: number };
+
+        /**
+         * Selects from `anchor` to `focus`. A point on a block itself, between its children, is one only a
+         * programmatic selection holds: Lexical turns the browser's into points in text.
+         */
+        function selectPoints(editor: MarkdownEditor, anchor: PointAt, focus: PointAt): void {
+            lexicalOf(editor).update(() => {
+                const selection = $createRangeSelection();
+
+                for (const [point, at] of [[selection.anchor, anchor], [selection.focus, focus]] as const) {
+                    if ('text' in at) {
+                        point.set($textNodeShowing(at.text).getKey(), at.offset, 'text');
+                    } else {
+                        point.set($getRoot().getChildAtIndex(at.block)!.getKey(), at.offset, 'element');
+                    }
+                }
+
+                $setSelection(selection);
+            }, { discrete: true });
+        }
+
+        /** Leaves the editor with no selection at all. */
+        const selectNoneOf = (editor: MarkdownEditor): void => lexicalOf(editor).update(() => { $setSelection(null); }, { discrete: true });
+
+        /** Selects the first cell of the first table's last row alone, as a table selection. */
+        function selectOneCell(editor: MarkdownEditor): void {
+            lexicalOf(editor).update(() => {
+                const table = $getRoot().getChildren().find((node) => node.getType() === 'table') as TableNode;
+                const first = (table.getLastChild() as TableRowNode).getFirstChild() as TableCellNode;
+
+                $setSelection($createTableSelectionFrom(table, first, first));
+            }, { discrete: true });
+        }
+
+        /** Each availability case: its document, how its selection is made, and the fields that are available there, all others not. */
+        const CASES: Array<{
+            name: string;
+            markdown: string;
+            select: (editor: MarkdownEditor) => void;
+            available: Array<keyof CommandAvailability>;
+        }> = [
+            {
+                name: 'A1: a caret inside a plain word', markdown: 'hello world',
+                select: (editor) => caretIn(editor, 'hello world', 'hello wo'.length),
+                available: ['canFormat', 'canStyle', 'canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                // Offset 2 sits between the two spaces: the caret expands to nothing, and a format or style is
+                // left pending at it, while a link takes the whole run.
+                name: 'a bare caret in prose', markdown: BARE_CARET,
+                select: (editor) => caretIn(editor, BARE_CARET, 2),
+                available: ['canFormat', 'canStyle', 'canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                name: 'a caret inside a bold word', markdown: BOLD_WORD,
+                select: (editor) => caretIn(editor, 'bold', 2),
+                available: [
+                    'canFormat', 'canStyle', 'canLink', 'canClearFormatting', 'canSetBlockType', 'canSetBlockLayout',
+                    'canInsertTable', 'canInsertImage',
+                ],
+            },
+            {
+                name: 'A2: a caret in a raw Markdown block', markdown: RAW_BLOCK,
+                select: (editor) => caretIn(editor, RAW_BLOCK, 3),
+                available: ['canSetBlockType', 'canSetBlockLayout'],
+            },
+            {
+                name: 'A3: a caret in a code block', markdown: CODE_BLOCK,
+                select: (editor) => caretIn(editor, 'code', 2),
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertParagraphAroundBlock'],
+            },
+            {
+                name: 'a caret in a blockquote', markdown: QUOTE_BLOCK,
+                select: (editor) => caretIn(editor, 'quoted', 2),
+                available: [
+                    'canFormat', 'canStyle', 'canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertParagraphAroundBlock',
+                    'canInsertTable', 'canInsertImage',
+                ],
+            },
+            {
+                name: 'A4: a caret inside a run kept as Markdown source', markdown: SOURCE_RUN,
+                select: (editor) => caretIn(editor, '<span>', 3),
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                name: 'A5: a range holding a run kept as Markdown source', markdown: SOURCE_RUN,
+                select: (editor) => lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true }),
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                name: 'A6: a caret inside a link\'s text', markdown: LINK_PROSE,
+                select: (editor) => caretIn(editor, 'text', 2),
+                available: ['canFormat', 'canLink', 'canRemoveLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                // Offset 2 of "b - c" has no word character on either side, so the caret expands to nothing.
+                name: 'A7: a bare caret in a link nested in a link', markdown: NESTED_LINK,
+                select: (editor) => caretIn(editor, 'b - c', 2),
+                available: ['canFormat', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                name: 'A7: a caret inside a word of a link nested in a link', markdown: NESTED_LINK,
+                select: (editor) => caretIn(editor, 'b - c', 5),
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                // The range is removed before a table goes in, its table included, so the table does not nest.
+                name: 'A8: a range from a paragraph into a table cell', markdown: PROSE_AND_TABLE,
+                select: (editor) => selectAcross(editor, 'para', 'c'),
+                available: ['canFormat', 'canStyle', 'canLink', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                // The same range made the other way: its anchor is in the cell, so a line goes around the table.
+                name: 'a range from a table cell back into a paragraph', markdown: PROSE_AND_TABLE,
+                select: (editor) => selectAcross(editor, 'c', 'para'),
+                available: [
+                    'canFormat', 'canStyle', 'canLink', 'canSetBlockLayout', 'canInsertParagraphAroundBlock', 'canInsertTable', 'canInsertImage',
+                ],
+            },
+            {
+                name: 'a caret in a table cell', markdown: TABLE,
+                select: (editor) => caretIn(editor, 'c', 1),
+                available: [
+                    'canFormat', 'canStyle', 'canLink', 'canSetBlockLayout', 'canInsertParagraphAroundBlock', 'canInsertImage', 'canEditTable',
+                ],
+            },
+            {
+                name: 'a caret in a merged table cell', markdown: MERGED_CELL,
+                select: (editor) => caretIn(editor, 'c', 1),
+                available: [
+                    'canFormat', 'canStyle', 'canLink', 'canSetBlockLayout', 'canInsertParagraphAroundBlock', 'canInsertImage',
+                    'canEditTable', 'canUnmergeCell',
+                ],
+            },
+            {
+                name: 'a table selection', markdown: `${TABLE}\n\nafter`,
+                select: (editor) => selectLastRowCells(editor),
+                available: ['canFormat', 'canInsertTable', 'canInsertImage', 'canMergeCells'],
+            },
+            {
+                name: 'a table selection of one cell', markdown: `${TABLE}\n\nafter`,
+                select: (editor) => selectOneCell(editor),
+                available: ['canFormat', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                // The format toggles leave out a cell holding a run kept as source, and here both cells hold one.
+                name: 'a table selection whose cells all hold a run kept as Markdown source', markdown: SOURCE_CELLS,
+                select: (editor) => selectLastRowCells(editor),
+                available: ['canInsertTable', 'canInsertImage', 'canMergeCells'],
+            },
+            {
+                name: 'a table selection of empty cells', markdown: EMPTY_CELLS,
+                select: (editor) => selectLastRowCells(editor),
+                available: ['canInsertTable', 'canInsertImage', 'canMergeCells'],
+            },
+            {
+                // The image cell takes no format, so the toggle reads the bold cell alone and takes its bold off.
+                name: 'a table selection of a cell holding an image alone and a bold cell', markdown: IMAGE_AND_BOLD_CELLS,
+                select: (editor) => selectLastRowCells(editor),
+                available: ['canFormat', 'canInsertTable', 'canInsertImage', 'canMergeCells'],
+            },
+            {
+                name: 'a table selection of cells holding an image alone', markdown: IMAGE_CELLS,
+                select: (editor) => selectLastRowCells(editor),
+                available: ['canInsertTable', 'canInsertImage', 'canMergeCells'],
+            },
+            {
+                // What Shift+Right at a line's end selects: the range holds no text for a format, a style or a link.
+                name: 'a range from the end of one block to the start of the next', markdown: 'one\n\ntwo',
+                select: (editor) => selectBetween(editor, 'one', 3, 'two', 0),
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                // A link wraps an image as it wraps text; a format or a style has no text to go on.
+                name: 'a range over an image alone', markdown: 'a ![i](/i.png) b',
+                select: (editor) => selectBetween(editor, 'a ', 2, ' b', 0),
+                available: ['canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                name: 'a range over the line break between two lines of a paragraph', markdown: 'one  \ntwo',
+                select: (editor) => selectBetween(editor, 'one', 3, 'two', 0),
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                // The same place named twice, the first time as a point on the paragraph: an empty range, which
+                // holds no text though the text node before the image is among its nodes.
+                name: 'a range from a point on a paragraph to the same place in its text', markdown: 'a ![i](/i.png) b',
+                select: (editor) => selectPoints(editor, { block: 0, offset: 1 }, { text: 'a ', offset: 2 }),
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                name: 'a range from a place in a paragraph\'s text to the same place as a point on the paragraph', markdown: 'a ![i](/i.png) b',
+                select: (editor) => selectPoints(editor, { text: ' b', offset: 0 }, { block: 0, offset: 2 }),
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                // The range of the case above made of points on the two blocks: the list toggles still take both.
+                name: 'a range from a point at the end of one block to a point at the start of the next', markdown: 'one\n\ntwo',
+                select: (editor) => selectPoints(editor, { block: 0, offset: 1 }, { block: 1, offset: 0 }),
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                name: 'the same range of points on two blocks, made backward', markdown: 'one\n\ntwo',
+                select: (editor) => selectPoints(editor, { block: 1, offset: 0 }, { block: 0, offset: 1 }),
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                // A format or a style is left pending at the caret; there is no text for a link to take.
+                name: 'a caret in an empty paragraph', markdown: '',
+                select: (editor) => selectStart(editor),
+                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                name: 'a caret in an item of a bulleted list', markdown: BULLETED_LIST,
+                select: (editor) => caretIn(editor, 'two', 1),
+                available: IN_LIST,
+            },
+            {
+                name: 'a caret in an item of a numbered list', markdown: NUMBERED_LIST,
+                select: (editor) => caretIn(editor, 'two', 1),
+                available: IN_LIST,
+            },
+            {
+                name: 'a caret in an item of a task list', markdown: TASK_LIST,
+                select: (editor) => caretIn(editor, 'one', 1),
+                available: IN_LIST,
+            },
+            {
+                name: 'a range over two items of a bulleted list', markdown: BULLETED_LIST,
+                select: (editor) => selectAcross(editor, 'one', 'two'),
+                available: IN_LIST,
+            },
+            {
+                name: 'a range over two items of a numbered list', markdown: NUMBERED_LIST,
+                select: (editor) => selectAcross(editor, 'one', 'two'),
+                available: IN_LIST,
+            },
+            {
+                name: 'a range from a bulleted list into a numbered one', markdown: TWO_LISTS,
+                select: (editor) => selectAcross(editor, 'two', 'three'),
+                available: IN_LIST,
+            },
+            {
+                name: 'no selection', markdown: 'hello world',
+                select: selectNoneOf,
+                available: ['canInsertTable', 'canInsertImage'],
+            },
+            {
+                // With no selection the two inserts go in at the document's end, which here is inside the code block.
+                name: 'no selection in a document ending in a code block', markdown: `para\n\n${CODE_BLOCK}`,
+                select: selectNoneOf,
+                available: [],
+            },
+            {
+                name: 'no selection in a document ending in a raw Markdown block', markdown: `para\n\n${RAW_BLOCK}`,
+                select: selectNoneOf,
+                available: [],
+            },
+            {
+                name: 'no selection in a document ending in a table', markdown: TABLE,
+                select: selectNoneOf,
+                available: ['canInsertImage'],
+            },
+        ];
+
+        /** The commands each availability field covers, each one run with arguments that would change a document it applies to. */
+        const COMMANDS: Record<keyof CommandAvailability, Array<[string, (editor: MarkdownEditor) => void]>> = {
+            canFormat: [
+                ['toggleBold', (editor) => editor.toggleBold()],
+                ['toggleItalic', (editor) => editor.toggleItalic()],
+                ['toggleUnderline', (editor) => editor.toggleUnderline()],
+                ['toggleStrikethrough', (editor) => editor.toggleStrikethrough()],
+                ['toggleInlineCode', (editor) => editor.toggleInlineCode()],
+            ],
+            canStyle: [
+                ['setTextColor', (editor) => editor.setTextColor('#f00')],
+                ['setFontFamily', (editor) => editor.setFontFamily('monospace')],
+                ['setFontSize', (editor) => editor.setFontSize('1.2em')],
+            ],
+            canLink:            [['toggleLink', (editor) => editor.toggleLink('https://z')]],
+            canRemoveLink:      [['removeLink', (editor) => editor.removeLink()]],
+            canClearFormatting: [['clearFormatting', (editor) => editor.clearFormatting()]],
+            canSetBlockType:    [
+                ['setBlockType', (editor) => editor.setBlockType('h1')],
+                ['toggleUnorderedList', (editor) => editor.toggleUnorderedList()],
+                ['toggleOrderedList', (editor) => editor.toggleOrderedList()],
+            ],
+            canSetBlockLayout: [
+                ['setBlockAlignment', (editor) => editor.setBlockAlignment('center')],
+                ['setColumnCount', (editor) => editor.setColumnCount(2)],
+            ],
+            canInsertParagraphAroundBlock: [
+                ['insertParagraphBeforeBlock', (editor) => editor.insertParagraphBeforeBlock()],
+                ['insertParagraphAfterBlock', (editor) => editor.insertParagraphAfterBlock()],
+            ],
+            canInsertTable: [['insertTable', (editor) => editor.insertTable(2, 2)]],
+            canInsertImage: [['insertImage', (editor) => editor.insertImage('https://x/a.png')]],
+            canEditTable:   [
+                ['insertTableRow', (editor) => editor.insertTableRow()],
+                ['deleteTableRow', (editor) => editor.deleteTableRow()],
+                ['insertTableColumn', (editor) => editor.insertTableColumn()],
+                ['deleteTableColumn', (editor) => editor.deleteTableColumn()],
+                ['setTableColumnAlignment', (editor) => editor.setTableColumnAlignment('right')],
+                ['setTableColumnWidth', (editor) => editor.setTableColumnWidth(120)],
+                ['deleteTable', (editor) => editor.deleteTable()],
+            ],
+            canMergeCells:  [['mergeTableCells', (editor) => editor.mergeTableCells()]],
+            canUnmergeCell: [['unmergeTableCell', (editor) => editor.unmergeTableCell()]],
+        };
+
+        /** The fields of the availability record the selection state reports. */
+        const REPORTED = [
+            'canFormat', 'canStyle', 'canLink', 'canRemoveLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage',
+            'canEditTable', 'canMergeCells', 'canUnmergeCell',
+        ] as const;
+
+        /**
+         * Where the selection is and what it carries: its kind, its two
+         * points, and for a range the format and style pending at it. A
+         * command that applies without changing the document changes this.
+         */
+        function selectionOf(editor: MarkdownEditor): string {
+            return lexicalOf(editor).read(() => {
+                const selection = $getSelection();
+                const isRange = $isRangeSelection(selection);
+
+                if (isRange) {
+                    const points = [selection.anchor, selection.focus].map((point) => `${point.key}:${point.offset}:${point.type}`);
+
+                    return ['range', ...points, selection.format, selection.style].join('|');
+                }
+
+                return selection === null ? 'none' : `cells|${selection.getNodes().map((node) => node.getKey()).join(',')}`;
+            });
+        }
+
+        /** Every node of the document, by key and type, nested as the tree is: a node replaced by an equal one changes this. */
+        function nodesOf(editor: MarkdownEditor): string {
+            const describeNode = (node: LexicalNode): string => {
+                const children = $isElementNode(node) ? `[${node.getChildren().map(describeNode).join(',')}]` : '';
+
+                return `${node.getKey()}:${node.getType()}${children}`;
+            };
+
+            return lexicalOf(editor).read(() => describeNode($getRoot()));
+        }
+
+        /** What a command that does nothing leaves as it was: the saved Markdown, every node, and the selection. */
+        function stateOf(editor: MarkdownEditor): { value: string; nodes: string; selection: string } {
+            return { value: editor.getValue(), nodes: nodesOf(editor), selection: selectionOf(editor) };
+        }
+
+        /** How many steps Undo can take: it is pressed until a press changes nothing, which leaves the editor undone. */
+        function undoDepthOf(editor: MarkdownEditor): number {
+            const lexical = lexicalOf(editor);
+            let depth = 0;
+            let before = null;
+
+            while (before !== lexical.getEditorState()) {
+                before = lexical.getEditorState();
+                lexical.dispatchCommand(UNDO_COMMAND, undefined);
+                depth += 1;
+            }
+
+            return depth - 1;
+        }
+
+        for (const { name, markdown, select, available } of CASES) {
+            const unavailable = AVAILABILITY_FIELDS.filter((field) => !available.includes(field));
+
+            it(`${name}: the context carries what is available there, and the selection state reports the same`, () => {
+                const editor = editorOf(markdown);
+                select(editor);
+
+                const expected = availabilityOf(...available);
+                const state = editor.getSelectionState();
+
+                expect(classifyAtCaret(editor).availability).toEqual(expected);
+                expect(REPORTED.map((field) => state[field])).toEqual(REPORTED.map((field) => expected[field]));
+            });
+
+            it(`${name}: A9: every command reported unavailable there changes nothing, adds no undo step and reports nothing`, () => {
+                const untouched = editorOf(markdown);
+                select(untouched);
+
+                const undoDepth = undoDepthOf(untouched);
+
+                for (const field of unavailable) {
+                    for (const [command, run] of COMMANDS[field]) {
+                        const editor = editorOf(markdown);
+                        select(editor);
+
+                        const before = stateOf(editor);
+                        const updated = vi.fn();
+                        const reported = vi.fn();
+                        const started = vi.spyOn(lexicalOf(editor), 'update');
+
+                        lexicalOf(editor).registerUpdateListener(updated);
+                        editor.on('selectionstate', reported);
+                        editor.on('change', reported);
+                        run(editor);
+
+                        // The command returns on its field: it does not so much as start an update that then finds nothing to do.
+                        expect(started, command).not.toHaveBeenCalled();
+                        started.mockRestore();
+
+                        expect(stateOf(editor), command).toEqual(before);
+                        expect(updated, command).not.toHaveBeenCalled();
+                        expect(reported, command).not.toHaveBeenCalled();
+                        expect(undoDepthOf(editor), command).toBe(undoDepth);
+                    }
+                }
+            });
+
+            it(`${name}: every command reported available there applies`, () => {
+                for (const field of available) {
+                    for (const [command, run] of COMMANDS[field]) {
+                        const editor = editorOf(markdown);
+                        select(editor);
+
+                        const before = [editor.getValue(), selectionOf(editor)];
+
+                        run(editor);
+
+                        expect([editor.getValue(), selectionOf(editor)], command).not.toEqual(before);
+                    }
+                }
+            });
+        }
+
+        it('every availability field has a case where it is available and one where it is not', () => {
+            for (const field of AVAILABILITY_FIELDS) {
+                const cases = CASES.filter(({ available }) => available.includes(field));
+
+                expect(cases.length, field).toBeGreaterThan(0);
+                expect(cases.length, field).toBeLessThan(CASES.length);
+            }
+        });
+
+        // A field covers a command, not a call: where the argument asks for what is already there, the field is
+        // `true` and the call still changes nothing at all.
+        const ALREADY_SET: Array<{ name: string; markdown: string; select: (editor: MarkdownEditor) => void; run: (editor: MarkdownEditor) => void }> = [
+            {
+                name: 'setBlockType("paragraph") in a paragraph', markdown: 'para',
+                select: (editor) => caretIn(editor, 'para', 2), run: (editor) => editor.setBlockType('paragraph'),
+            },
+            {
+                name: 'setBlockType("paragraph") over two paragraphs', markdown: 'one\n\ntwo',
+                select: (editor) => selectBetween(editor, 'one', 1, 'two', 2), run: (editor) => editor.setBlockType('paragraph'),
+            },
+            {
+                name: 'setBlockType("paragraph") in a paragraph of a ::: column', markdown: '::: columns\nA\n|||\nB\n:::',
+                select: (editor) => caretIn(editor, 'A', 1), run: (editor) => editor.setBlockType('paragraph'),
+            },
+            {
+                name: 'setBlockType("h1") in a level 1 heading', markdown: '# head',
+                select: (editor) => caretIn(editor, 'head', 2), run: (editor) => editor.setBlockType('h1'),
+            },
+            {
+                // The heading keeps the form it was written in: nothing is rewritten as `# head`.
+                name: 'setBlockType("h1") in a level 1 heading written with an underline', markdown: 'head\n====',
+                select: (editor) => caretIn(editor, 'head', 2), run: (editor) => editor.setBlockType('h1'),
+            },
+            {
+                name: 'setBlockType("quote") in a blockquote', markdown: QUOTE_BLOCK,
+                select: (editor) => caretIn(editor, 'quoted', 2), run: (editor) => editor.setBlockType('quote'),
+            },
+            {
+                name: 'setBlockType("code") in a code block', markdown: CODE_BLOCK,
+                select: (editor) => caretIn(editor, 'code', 2), run: (editor) => editor.setBlockType('code'),
+            },
+            {
+                // The code block keeps its language.
+                name: 'setBlockType("code") in a code block with a language', markdown: '```ts\nconst x = 1;\n```',
+                select: (editor) => caretIn(editor, 'const x = 1;', 2), run: (editor) => editor.setBlockType('code'),
+            },
+            {
+                name: 'setTableColumnAlignment() with the alignment the column has', markdown: '| a | b |\n| :-: | - |\n| c | d |',
+                select: (editor) => caretIn(editor, 'c', 1), run: (editor) => editor.setTableColumnAlignment('center'),
+            },
+            {
+                name: 'setTableColumnAlignment("none") in a column with none', markdown: TABLE,
+                select: (editor) => caretIn(editor, 'c', 1), run: (editor) => editor.setTableColumnAlignment('none'),
+            },
+            {
+                name: 'setTableColumnWidth() with the width the column has', markdown: '| a | b |\n| - {width=120} | - |\n| c | d |',
+                select: (editor) => caretIn(editor, 'c', 1), run: (editor) => editor.setTableColumnWidth(120),
+            },
+            {
+                name: 'setTableColumnWidth(null) in a column with no width', markdown: TABLE,
+                select: (editor) => caretIn(editor, 'c', 1), run: (editor) => editor.setTableColumnWidth(null),
+            },
+            {
+                name: 'setTableColumnWidth(null) in a column with no width beside one that has one', markdown: '| a | b |\n| - | - {width=80} |\n| c | d |',
+                select: (editor) => caretIn(editor, 'c', 1), run: (editor) => editor.setTableColumnWidth(null),
+            },
+            {
+                name: 'setBlockAlignment() with the alignment the ::: block has', markdown: '::: {align=center}\ntext\n:::',
+                select: (editor) => caretIn(editor, 'text', 2), run: (editor) => editor.setBlockAlignment('center'),
+            },
+            {
+                name: 'setBlockAlignment(null) in a ::: block of columns with no alignment', markdown: '::: columns\nA\n|||\nB\n:::',
+                select: (editor) => caretIn(editor, 'A', 1), run: (editor) => editor.setBlockAlignment(null),
+            },
+            {
+                name: 'setBlockAlignment(null) outside a ::: block', markdown: 'para',
+                select: (editor) => caretIn(editor, 'para', 2), run: (editor) => editor.setBlockAlignment(null),
+            },
+            {
+                name: 'setColumnCount() with the count the ::: block has', markdown: '::: columns\nA\n|||\nB\n:::',
+                select: (editor) => caretIn(editor, 'A', 1), run: (editor) => editor.setColumnCount(2),
+            },
+            {
+                name: 'setColumnCount() with the count and the gap the ::: block has', markdown: '::: columns {gap=2em}\nA\n|||\nB\n:::',
+                select: (editor) => caretIn(editor, 'A', 1), run: (editor) => editor.setColumnCount(2, '2em'),
+            },
+            {
+                name: 'setColumnCount(2, null) in a ::: block of two columns with no gap', markdown: '::: columns\nA\n|||\nB\n:::',
+                select: (editor) => caretIn(editor, 'A', 1), run: (editor) => editor.setColumnCount(2, null),
+            },
+            {
+                name: 'setColumnCount(1) outside a ::: block', markdown: 'para',
+                select: (editor) => caretIn(editor, 'para', 2), run: (editor) => editor.setColumnCount(1),
+            },
+        ];
+
+        it.each(ALREADY_SET)('$name changes nothing, adds no undo step and reports nothing', ({ markdown, select, run }) => {
+            const untouched = editorOf(markdown);
+            select(untouched);
+
+            const undoDepth = undoDepthOf(untouched);
+            const editor = editorOf(markdown);
+            select(editor);
+
+            const before = stateOf(editor);
+            const updated = vi.fn();
+            const reported = vi.fn();
+
+            lexicalOf(editor).registerUpdateListener(updated);
+            editor.on('selectionstate', reported);
+            editor.on('change', reported);
+            run(editor);
+
+            expect(stateOf(editor)).toEqual(before);
+            expect(before.value).toBe(markdown);
+            expect(updated).not.toHaveBeenCalled();
+            expect(reported).not.toHaveBeenCalled();
+            expect(undoDepthOf(editor)).toBe(undoDepth);
+        });
+
+        it('a call that changes nothing leaves the edit made before it as the one Undo takes back', () => {
+            const editor = editorOf('one\n\n| a | b |\n| :-: | - |\n| c | d |');
+
+            selectBetween(editor, 'one', 0, 'one', 3);
+            editor.toggleBold();
+            editor.setBlockType('paragraph');
+            caretIn(editor, 'c', 1);
+            editor.setTableColumnAlignment('center');
+            editor.setTableColumnWidth(null);
+
+            expect(editor.getValue()).toBe('**one**\n\n| a | b |\n| :-: | - |\n| c | d |');
+
+            lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+
+            expect(editor.getValue()).toBe('one\n\n| a | b |\n| :-: | - |\n| c | d |');
+        });
+
+        it('setBlockType() still converts when one of the blocks the selection touches is of another type', () => {
+            const editor = editorOf('one\n\n# two');
+
+            selectBetween(editor, 'one', 1, 'two', 2);
+            editor.setBlockType('paragraph');
+
+            expect(editor.getValue()).toBe('one\n\ntwo');
+        });
+
+        it('a table goes in for a range between a paragraph and a table cell, whichever way it was made, in place of the range', () => {
+            for (const [from, to] of [['para', 'c'], ['c', 'para']]) {
+                const editor = editorOf(`${PROSE_AND_TABLE}\n\nafter`);
+                selectAcross(editor, from, to);
+
+                expect(editor.getSelectionState().canInsertTable, `${from} to ${to}`).toBe(true);
+
+                editor.insertTable(2, 2);
+
+                expect(editor.getValue(), `${from} to ${to}`).toBe('p\n\n|  |  |\n| --- | --- |\n|  |  |\n\nafter');
+            }
+        });
+
+        it('a table does not go in for a range inside one table, whichever way it was made', () => {
+            for (const [from, to] of [['a', 'c'], ['c', 'a']]) {
+                const editor = editorOf(PROSE_AND_TABLE);
+                selectAcross(editor, from, to);
+
+                expect(editor.getSelectionState().canInsertTable, `${from} to ${to}`).toBe(false);
+
+                editor.insertTable(2, 2);
+
+                expect(editor.getValue(), `${from} to ${to}`).toBe(PROSE_AND_TABLE);
+            }
+        });
+
+        it('A4: the caret of that case sits in a node kept as Markdown source', () => {
+            const editor = editorOf(SOURCE_RUN);
+            caretIn(editor, '<span>', 3);
+
+            const anchorIsSource = lexicalOf(editor).read(() => {
+                const selection = $getSelection();
+
+                return $isRangeSelection(selection) && selection.anchor.getNode() instanceof MarkdownSourceTextNode;
+            });
+
+            expect(anchorIsSource).toBe(true);
+        });
+
+        it('A9: with every command available, the format, style and link commands change the document', () => {
+            for (const field of ['canFormat', 'canStyle', 'canLink'] as const) {
+                for (const [command, run] of COMMANDS[field]) {
+                    const editor = editorOf('hello world');
+                    caretIn(editor, 'hello world', 'hello wo'.length);
+
+                    const before = editor.getValue();
+
+                    run(editor);
+
+                    expect(editor.getValue(), command).not.toBe(before);
+                }
+            }
+        });
+
+        it('in a table cell an image still goes in, and with no selection a table still does, as the context reports', () => {
+            const inCell = editorOf(TABLE);
+            caretIn(inCell, 'c', 1);
+
+            inCell.insertImage('https://x/a.png');
+
+            expect(inCell.getValue()).toContain('![](https://x/a.png)');
+
+            const unselected = editorOf('hello world');
+            lexicalOf(unselected).update(() => { $setSelection(null); }, { discrete: true });
+
+            unselected.insertTable(2, 2);
+
+            expect(childTypes(unselected)).toContain('table');
+        });
+
+        it('A6: inside a link the format toggles still apply, as the context reports', () => {
+            const editor = editorOf(LINK_PROSE);
+            caretIn(editor, 'text', 2);
+
+            editor.toggleBold();
+
+            expect(editor.getValue()).not.toBe(LINK_PROSE);
+            expect(editor.getSelectionState().bold).toBe(true);
+        });
+
+        it('classification reads the availability from the selection, not from the node the menu is built for', () => {
+            const editor = editorOf(`${RAW_BLOCK}\n\ntext`);
+            caretIn(editor, 'text', 2);
+
+            const onRawBlock = lexicalOf(editor).read(() => $classifyContextMenuTarget($textNodeShowing(RAW_BLOCK)));
+
+            expect(onRawBlock.availability).toEqual(IN_PROSE);
+        });
+
+        it('"selectionstate" reports canFormat turning false as the caret enters a raw block, and true as it leaves', () => {
+            const editor = editorOf(`${RAW_BLOCK}\n\ntext`);
+            caretIn(editor, 'text', 2);
+
+            const reported: boolean[] = [];
+            editor.on('selectionstate', (state) => reported.push(state.canFormat));
+
+            caretIn(editor, RAW_BLOCK, 3);
+            caretIn(editor, 'text', 2);
+
+            expect(reported).toEqual([false, true]);
+        });
+    });
+
+    describe('the menu built from a context', () => {
+        const FORMAT_ROWS = [4, 5, 6, 7, 8];   // Cut, Copy, Paste, separator, then the five format rows.
+
+        it('M1: a text context where formatting is unavailable dims the format rows, Text style and Insert link…', () => {
+            const editor = new MarkdownEditor();
+            const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+                kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
+                availability: { ...ALL_AVAILABLE, canFormat: false, canStyle: false, canLink: false },
+            });
+
+            expect(FORMAT_ROWS.map((index) => rowOf(items[index]).isEnabled())).toEqual([false, false, false, false, false]);
+            expect(findItem(items, 'Text style')?.enabled).toBe(false);
+            expect(findItem(items, 'Insert link…')?.enabled).toBe(false);
+        });
+
+        it('M2: with every command available, only what the selection lacks is dimmed', () => {
+            const editor = new MarkdownEditor();
+            const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+                kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, availability: ALL_AVAILABLE,
+            });
+
+            expect(FORMAT_ROWS.map((index) => rowOf(items[index]).isEnabled())).toEqual([true, true, true, true, true]);
+            expect(items.filter((item) => item.enabled === false)).toEqual([]);
+        });
+
+        it('M3: a text context in a link whose link commands are unavailable dims Edit link… and Remove link', () => {
+            const editor = new MarkdownEditor();
+            const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+                kind: 'text', hasSelectedText: true, linkUrl: 'https://x', ...SOME_FORMATS,
+                availability: { ...ALL_AVAILABLE, canLink: false, canRemoveLink: false },
+            });
+
+            expect(findItem(items, 'Edit link…')?.enabled).toBe(false);
+            expect(findItem(items, 'Remove link')?.enabled).toBe(false);
+        });
+
+        it('M3: Edit link… and Remove link dim separately', () => {
+            const editor = new MarkdownEditor();
+            const build = (availability: CommandAvailability): MenuItemConfig[] => contextMenuMethodsOf(editor).buildContextMenuItems({
+                kind: 'text', hasSelectedText: true, linkUrl: 'https://x', ...SOME_FORMATS, availability,
+            });
+
+            const noEdit = build({ ...ALL_AVAILABLE, canLink: false });
+            const noRemove = build({ ...ALL_AVAILABLE, canRemoveLink: false });
+
+            expect([findItem(noEdit, 'Edit link…')?.enabled, findItem(noEdit, 'Remove link')?.enabled]).toEqual([false, true]);
+            expect([findItem(noRemove, 'Edit link…')?.enabled, findItem(noRemove, 'Remove link')?.enabled]).toEqual([true, false]);
+        });
+
+        it('M4: a text context where block conversions are unavailable dims Block style, and leaves Alignment and Columns alone', () => {
+            const editor = new MarkdownEditor();
+            const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+                kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
+                availability: { ...ALL_AVAILABLE, canSetBlockType: false },
+            });
+
+            expect(findItem(items, 'Block style')?.enabled).toBe(false);
+            expect(findItem(items, 'Alignment')?.enabled).not.toBe(false);
+            expect(findItem(items, 'Columns')?.enabled).not.toBe(false);
+        });
+
+        it('a context where alignment and columns are unavailable dims Alignment and Columns, and leaves Block style alone', () => {
+            const editor = new MarkdownEditor();
+            const availability = { ...ALL_AVAILABLE, canSetBlockLayout: false };
+            const text = contextMenuMethodsOf(editor).buildContextMenuItems({
+                kind: 'text', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, availability,
+            });
+            const emptyLine = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: false, availability });
+
+            expect(findItem(text, 'Alignment')?.enabled).toBe(false);
+            expect(findItem(text, 'Columns')?.enabled).toBe(false);
+            expect(findItem(text, 'Block style')?.enabled).not.toBe(false);
+            expect(findItem(emptyLine, 'Columns')?.enabled).toBe(false);
+            expect(findItem(emptyLine, 'Heading')?.enabled).not.toBe(false);
+        });
+
+        it('Clear formatting is dimmed where there is no format to clear, in the text and the table-cell menu', () => {
+            const editor = new MarkdownEditor();
+
+            for (const kind of ['text', 'table-cell'] as const) {
+                const build = (canClearFormatting: boolean): MenuItemConfig[] => contextMenuMethodsOf(editor).buildContextMenuItems({
+                    kind, hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, availability: { ...ALL_AVAILABLE, canClearFormatting },
+                });
+
+                expect(findItem(build(false), 'Clear formatting')?.enabled, kind).toBe(false);
+                expect(findItem(build(true), 'Clear formatting')?.enabled, kind).toBe(true);
+            }
+        });
+
+        it('the two Insert line items are dimmed where there is no block to put a line around, in the text and the table-cell menu', () => {
+            const editor = new MarkdownEditor();
+
+            for (const kind of ['text', 'table-cell'] as const) {
+                const build = (canInsertParagraphAroundBlock: boolean): MenuItemConfig[] => contextMenuMethodsOf(editor).buildContextMenuItems({
+                    kind, hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, hasEnclosingBlock: true,
+                    availability: { ...ALL_AVAILABLE, canInsertParagraphAroundBlock },
+                });
+                const lines = (items: MenuItemConfig[]): Array<boolean | undefined> =>
+                    ['Insert line before block', 'Insert line after block'].map((text) => findItem(items, text)?.enabled);
+
+                expect(lines(build(false)), kind).toEqual([false, false]);
+                expect(lines(build(true)), kind).toEqual([true, true]);
+            }
+        });
+
+        it('the Table submenu dims its entries by three rules: the table the caret is in, cells to merge, a cell to unmerge', () => {
+            const editor = new MarkdownEditor();
+            const tableEntries = (availability: CommandAvailability): Record<string, boolean> => {
+                const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+                    kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, availability,
+                });
+                const entries = (submenuItemsOf(findItem(items, 'Table')) ?? []).filter((item) => item.separator !== true);
+
+                return Object.fromEntries(entries.map((item) => [item.text, item.enabled !== false]));
+            };
+
+            expect(tableEntries(ALL_AVAILABLE)).toEqual({
+                'Insert': true, 'Delete': true, 'Merge cells': true, 'Unmerge cell': true, 'Column width…': true, 'Align column': true,
+            });
+            expect(tableEntries({ ...ALL_AVAILABLE, canEditTable: false })).toEqual({
+                'Insert': false, 'Delete': false, 'Merge cells': true, 'Unmerge cell': true, 'Column width…': false, 'Align column': false,
+            });
+            expect(tableEntries({ ...ALL_AVAILABLE, canMergeCells: false })).toEqual({
+                'Insert': true, 'Delete': true, 'Merge cells': false, 'Unmerge cell': true, 'Column width…': true, 'Align column': true,
+            });
+            expect(tableEntries({ ...ALL_AVAILABLE, canUnmergeCell: false })).toEqual({
+                'Insert': true, 'Delete': true, 'Merge cells': true, 'Unmerge cell': false, 'Column width…': true, 'Align column': true,
+            });
+        });
+
+        it('M5: an empty-line context dims Heading and each Insert entry by its own rule', () => {
+            const editor = new MarkdownEditor();
+            const build = (availability: CommandAvailability): MenuItemConfig[] => contextMenuMethodsOf(editor).buildContextMenuItems({
+                kind: 'empty-line', hasSelectedText: false, availability,
+            });
+            const insertEnabled = (items: MenuItemConfig[]): Record<string, boolean | undefined> => Object.fromEntries(
+                (submenuItemsOf(findItem(items, 'Insert')) ?? [])
+                    .filter((item) => item.separator !== true)
+                    .map((item) => [item.text, item.enabled]),
+            );
+
+            const neither = build({ ...ALL_AVAILABLE, canSetBlockType: false, canInsertTable: false, canInsertImage: false });
+
+            expect(findItem(neither, 'Heading')?.enabled).toBe(false);
+            expect(insertEnabled(neither)).toEqual({
+                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Table': false, 'Image…': false,
+            });
+
+            const noBlockType = build({ ...ALL_AVAILABLE, canSetBlockType: false });
+
+            expect(findItem(noBlockType, 'Heading')?.enabled).toBe(false);
+            expect(insertEnabled(noBlockType)).toEqual({
+                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Table': true, 'Image…': true,
+            });
+
+            const noTable = build({ ...ALL_AVAILABLE, canInsertTable: false });
+
+            expect(findItem(noTable, 'Heading')?.enabled).toBe(true);
+            expect(insertEnabled(noTable)).toEqual({
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': false, 'Image…': true,
+            });
+
+            const noImage = build({ ...ALL_AVAILABLE, canInsertImage: false });
+
+            expect(insertEnabled(noImage)).toEqual({
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': true, 'Image…': false,
+            });
+        });
+
+        it('M6: a table-cell context where formatting is unavailable dims the format rows and keeps the Table submenu', () => {
+            const editor = new MarkdownEditor();
+            const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+                kind: 'table-cell', hasSelectedText: true, linkUrl: null, ...SOME_FORMATS,
+                availability: { ...ALL_AVAILABLE, canFormat: false, canStyle: false, canLink: false },
+            });
+
+            expect(FORMAT_ROWS.map((index) => rowOf(items[index]).isEnabled())).toEqual([false, false, false, false, false]);
+            expect(findItem(items, 'Text style')?.enabled).toBe(false);
+            expect(findItem(items, 'Insert link…')?.enabled).toBe(false);
+            expect(findItem(items, 'Table')).toBeDefined();
+            expect(findItem(items, 'Table')?.enabled).not.toBe(false);
+        });
+
+        it('M7: a read-only editor\'s menu offers only Copy, enabled with text to copy, in every context', () => {
+            const editor = new MarkdownEditor('', { readOnly: true });
+            const copy = vi.spyOn(editor, 'copy').mockReturnValue(editor);
+
+            for (const hasSelectedText of [true, false]) {
+                const contexts: ContextMenuTarget[] = [
+                    { kind: 'text', hasSelectedText, linkUrl: 'https://x', ...SOME_FORMATS, hasEnclosingBlock: true, availability: ALL_AVAILABLE },
+                    { kind: 'table-cell', hasSelectedText, ...SOME_FORMATS, availability: ALL_AVAILABLE },
+                    { kind: 'empty-line', hasSelectedText, availability: ALL_AVAILABLE },
+                ];
+
+                for (const context of contexts) {
+                    const items = contextMenuMethodsOf(editor).buildContextMenuItems(context);
+
+                    expect(items).toEqual([{ text: 'Copy', enabled: hasSelectedText, action: expect.any(Function) }]);
+
+                    copy.mockClear();
+                    items[0].action?.();
+
+                    expect(copy).toHaveBeenCalledOnce();
+                }
+            }
+        });
+
+        it('M7: an editor made read-only later offers only Copy, and the full menu again once editable', () => {
+            const editor = new MarkdownEditor();
+            const context: ContextMenuTarget = { kind: 'text', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE };
+
+            editor.setReadOnly(true);
+
+            expect(contextMenuMethodsOf(editor).buildContextMenuItems(context).map((item) => item.text)).toEqual(['Copy']);
+
+            editor.setReadOnly(false);
+
+            expect(findItem(contextMenuMethodsOf(editor).buildContextMenuItems(context), 'Paste')).toBeDefined();
+        });
+    });
+});
+
 describe('MarkdownEditor context-menu paste target', () => {
     // Notification's history and live-toast queue are private static state that
     // persist across tests; clear both so each case starts clean (a stale toast
@@ -4051,7 +5898,7 @@ describe('MarkdownEditor context-menu paste target', () => {
 
         expect(result).toEqual({
             kind: 'text', hasSelectedText: true, bold: false, italic: false, strikethrough: false, code: false,
-            underline: false, hasEnclosingBlock: false, linkUrl: null,
+            underline: false, hasEnclosingBlock: false, linkUrl: null, availability: IN_PROSE,
         });
 
         const stillCollapsedAtCaret = lexicalOf(editor).read(() => {

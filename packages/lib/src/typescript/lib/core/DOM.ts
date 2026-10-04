@@ -1591,6 +1591,28 @@ export interface DOMSource {
     getDocumentSelectionText(): string;
 
     /**
+     * Hands the document's live selection to `reader` and returns what it
+     * makes of it — the read-side named escape, for a foreign live widget
+     * mounted through `DOM.sink.mountView` that resolves the browser's
+     * selection against the DOM region it owns (Lexical turning it into a
+     * selection of its own document). {@link getDocumentSelection} cannot
+     * carry that: it reports nothing for a collapsed selection, and its
+     * handles name elements the widget keeps no handles for.
+     *
+     * @remarks The live `Selection` exists only for the duration of
+     * `reader`; what `reader` returns must hold no reference to it. A
+     * modelled source has no selection and returns `null` without calling
+     * `reader`, so the caller no-ops offline. `reader`'s parameter is
+     * deliberately left unannotated at call sites outside this seam, for the
+     * same `no-raw-dom`-hold-clause reason `mountView`'s factory is.
+     *
+     * @param reader - Reads the live selection (`null` when the document has
+     *   none) into a value that does not keep it.
+     * @returns Whatever `reader` returns, or `null` offline.
+     */
+    readDocumentSelection<T>(reader: (selection: Selection | null) => T): T | null;
+
+    /**
      * Reads plain text from the system clipboard.
      *
      * @returns The clipboard text; `""` for an empty clipboard; `null` when
@@ -2973,6 +2995,11 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     getDocumentSelectionText(): string {
         return window.getSelection()?.toString() ?? "";
+    }
+
+    /** @inheritDoc */
+    readDocumentSelection<T>(reader: (selection: Selection | null) => T): T | null {
+        return reader(window.getSelection());
     }
 
     /** @inheritDoc */

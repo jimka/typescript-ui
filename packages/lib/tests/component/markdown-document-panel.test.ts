@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { $getRoot, $isTextNode, $selectAll } from 'lexical';
+import { $getRoot, $isTextNode, $selectAll, $setSelection } from 'lexical';
 import type { LexicalEditor, ElementNode } from 'lexical';
+import { $createTableSelectionFrom } from '@lexical/table';
+import type { TableNode, TableRowNode, TableCellNode } from '@lexical/table';
 import { MarkdownDocumentPanel, LinkPopupPanel } from '~/component/editor/MarkdownDocumentPanel';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { ToolBar } from '~/component/menubar/ToolBar';
@@ -367,6 +369,336 @@ describe('MarkdownDocumentPanel live toolbar state', () => {
         expect(findMenuButton(panel, 'Table…').isEnabled()).toBe(false);
     });
 
+    describe('the Table button and its dropdown follow what the table commands accept', () => {
+        const MERGED = '| a | b |\n| --- | --- |\n| c | << |\n| e | f |\n\nafter';
+
+        /** Places a caret in the text node showing exactly `text`. */
+        function caretIn(panel: MarkdownDocumentPanel, text: string): void {
+            lexicalOf(panel.getEditor()).update(() => {
+                $getRoot().getAllTextNodes().find((node) => node.getTextContent() === text)!.select(1, 1);
+            }, { discrete: true });
+        }
+
+        /** Selects the two cells of the first table's last row, as a drag across them does. */
+        function selectLastRowCells(panel: MarkdownDocumentPanel): void {
+            lexicalOf(panel.getEditor()).update(() => {
+                const table = $getRoot().getFirstChild() as TableNode;
+                const [first, second] = (table.getLastChild() as TableRowNode).getChildren() as TableCellNode[];
+
+                $setSelection($createTableSelectionFrom(table, first, second));
+            }, { discrete: true });
+        }
+
+        /** Whether each top-level entry of the Table dropdown is enabled, by its label. */
+        function tableEntries(panel: MarkdownDocumentPanel): Record<string, boolean> {
+            const items = resolveItems(findMenuButton(panel, 'Table…').getMenuItems()).filter((item) => item.separator !== true);
+
+            return Object.fromEntries(items.map((item) => [item.text, item.enabled !== false]));
+        }
+
+        it('with a caret in a cell the button is enabled, and the dropdown dims Merge cells and Unmerge cell alone', () => {
+            const panel = new MarkdownDocumentPanel({ value: MERGED });
+            panel.setValue(MERGED);
+            caretIn(panel, 'e');
+
+            expect(findMenuButton(panel, 'Table…').isEnabled()).toBe(true);
+            expect(tableEntries(panel)).toEqual({
+                'Insert': true, 'Delete': true, 'Merge cells': false, 'Unmerge cell': false, 'Column width…': true, 'Align column': true,
+            });
+        });
+
+        it('with a caret in a merged cell Unmerge cell is enabled too', () => {
+            const panel = new MarkdownDocumentPanel();
+            panel.setValue(MERGED);
+            caretIn(panel, 'c');
+
+            expect(tableEntries(panel)).toEqual({
+                'Insert': true, 'Delete': true, 'Merge cells': false, 'Unmerge cell': true, 'Column width…': true, 'Align column': true,
+            });
+        });
+
+        it('with cells selected the button stays enabled and Merge cells is the one entry not dimmed, and it merges them', () => {
+            const panel = new MarkdownDocumentPanel();
+            panel.setValue(MERGED);
+            selectLastRowCells(panel);
+
+            expect(findMenuButton(panel, 'Table…').isEnabled()).toBe(true);
+            expect(tableEntries(panel)).toEqual({
+                'Insert': false, 'Delete': false, 'Merge cells': true, 'Unmerge cell': false, 'Column width…': false, 'Align column': false,
+            });
+
+            findItem(resolveItems(findMenuButton(panel, 'Table…').getMenuItems()), 'Merge cells').action!();
+
+            // The last row is one cell holding both texts, then its continuation marker.
+            expect(panel.getValue().split('\n')[3]).toMatch(/^\| e.*f \| << \|$/);
+        });
+
+        it('with one cell selected, or the caret outside the table, no table command applies and the button is disabled', () => {
+            const panel = new MarkdownDocumentPanel();
+            panel.setValue(MERGED);
+
+            lexicalOf(panel.getEditor()).update(() => {
+                const table = $getRoot().getFirstChild() as TableNode;
+                const cell = (table.getLastChild() as TableRowNode).getFirstChild() as TableCellNode;
+
+                $setSelection($createTableSelectionFrom(table, cell, cell));
+            }, { discrete: true });
+
+            expect(findMenuButton(panel, 'Table…').isEnabled()).toBe(false);
+
+            caretIn(panel, 'after');
+
+            expect(findMenuButton(panel, 'Table…').isEnabled()).toBe(false);
+            expect(Object.values(tableEntries(panel))).toEqual([false, false, false, false, false, false]);
+        });
+
+        it('for a selection running out of the table it is anchored in the button is disabled, whichever way it was made', () => {
+            for (const [from, to] of [['e', 'after'], ['after', 'e']]) {
+                const panel = new MarkdownDocumentPanel();
+                panel.setValue(MERGED);
+                caretIn(panel, 'e');
+
+                expect(findMenuButton(panel, 'Table…').isEnabled(), `${from} to ${to}`).toBe(true);
+
+                lexicalOf(panel.getEditor()).update(() => {
+                    const showing = (text: string) => $getRoot().getAllTextNodes().find((node) => node.getTextContent() === text)!;
+                    const selection = showing(from).select(1, 1);
+
+                    selection.focus.set(showing(to).getKey(), 1, 'text');
+                }, { discrete: true });
+
+                expect(findMenuButton(panel, 'Table…').isEnabled(), `${from} to ${to}`).toBe(false);
+            }
+        });
+
+        it('on the source surface the button is disabled: the table commands are no-ops there', () => {
+            const panel = new MarkdownDocumentPanel();
+            panel.setValue(MERGED);
+            caretIn(panel, 'e');
+
+            panel.getEditor().setMode('source');
+
+            expect(findMenuButton(panel, 'Table…').isEnabled()).toBe(false);
+        });
+    });
+
+    describe('format buttons and Text style follow what the format commands accept', () => {
+        const FORMAT_LABELS = ['Bold', 'Italic', 'Underline', 'Strikethrough', 'Code'];
+        const RAW_BLOCK = '[x]: https://one';
+
+        /** Places a collapsed caret at `offset` in the first text node showing exactly `text`. */
+        function caretIn(editor: MarkdownEditor, text: string, offset: number): void {
+            lexicalOf(editor).update(() => {
+                const node = $getRoot().getAllTextNodes().find((candidate) => candidate.getTextContent() === text);
+
+                if (node === undefined) {
+                    throw new Error(`text node "${text}" not found`);
+                }
+
+                node.select(offset, offset);
+            }, { discrete: true });
+        }
+
+        /** Whether each of the five format buttons is enabled, in toolbar order. */
+        function formatButtonsEnabled(panel: MarkdownDocumentPanel): boolean[] {
+            return FORMAT_LABELS.map((label) => findToggleButton(panel, label).isEnabled());
+        }
+
+        it('T1: with no selection yet the five format buttons and Text style are disabled, and a caret in text enables them', () => {
+            const panel = new MarkdownDocumentPanel();
+
+            expect(formatButtonsEnabled(panel)).toEqual([false, false, false, false, false]);
+            expect(findMenuButton(panel, 'Text style…').isEnabled()).toBe(false);
+
+            panel.setValue('text');
+            caretIn(panel.getEditor(), 'text', 2);
+
+            expect(formatButtonsEnabled(panel)).toEqual([true, true, true, true, true]);
+            expect(findMenuButton(panel, 'Text style…').isEnabled()).toBe(true);
+        });
+
+        it('T2/T3: they and the Link button disable with the caret in a raw Markdown block, and enable again when it moves into text', () => {
+            const panel = new MarkdownDocumentPanel();
+
+            panel.setValue(`${RAW_BLOCK}\n\ntext`);
+            caretIn(panel.getEditor(), RAW_BLOCK, 3);
+
+            expect(formatButtonsEnabled(panel)).toEqual([false, false, false, false, false]);
+            expect(findMenuButton(panel, 'Text style…').isEnabled()).toBe(false);
+            expect(findPopupButton(panel, 'Link…').isEnabled()).toBe(false);
+
+            caretIn(panel.getEditor(), 'text', 2);
+
+            expect(formatButtonsEnabled(panel)).toEqual([true, true, true, true, true]);
+            expect(findMenuButton(panel, 'Text style…').isEnabled()).toBe(true);
+            expect(findPopupButton(panel, 'Link…').isEnabled()).toBe(true);
+        });
+
+        it('T4: inside a link Text style disables, while the format buttons and the Link button stay enabled', () => {
+            const panel = new MarkdownDocumentPanel();
+
+            panel.setValue('A [text](https://old) link.');
+            caretIn(panel.getEditor(), 'text', 2);
+
+            expect(findMenuButton(panel, 'Text style…').isEnabled()).toBe(false);
+            expect(formatButtonsEnabled(panel)).toEqual([true, true, true, true, true]);
+            expect(findPopupButton(panel, 'Link…').isEnabled()).toBe(true);
+        });
+
+        it('T5: switching to the source surface enables the format buttons a raw block had disabled', () => {
+            const panel = new MarkdownDocumentPanel();
+
+            panel.setValue(`${RAW_BLOCK}\n\ntext`);
+            caretIn(panel.getEditor(), RAW_BLOCK, 3);
+            panel.getEditor().setMode('source');
+
+            expect(formatButtonsEnabled(panel)).toEqual([true, true, true, true, true]);
+            expect(findMenuButton(panel, 'Text style…').isEnabled()).toBe(true);
+        });
+
+        it('with cells selected the format buttons stay enabled and Text style disables', () => {
+            const panel = new MarkdownDocumentPanel();
+
+            panel.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+            lexicalOf(panel.getEditor()).update(() => {
+                const table = $getRoot().getFirstChild() as TableNode;
+                const [first, second] = (table.getLastChild() as TableRowNode).getChildren() as TableCellNode[];
+
+                $setSelection($createTableSelectionFrom(table, first, second));
+            }, { discrete: true });
+
+            expect(formatButtonsEnabled(panel)).toEqual([true, true, true, true, true]);
+            expect(findMenuButton(panel, 'Text style…').isEnabled()).toBe(false);
+        });
+
+        it('with cells selected the Link button disables: neither link command acts on cells', () => {
+            const panel = new MarkdownDocumentPanel();
+
+            panel.setValue('| a | b |\n| --- | --- |\n| [1](https://x) | 2 |');
+            lexicalOf(panel.getEditor()).update(() => {
+                const table = $getRoot().getFirstChild() as TableNode;
+                const [first, second] = (table.getLastChild() as TableRowNode).getChildren() as TableCellNode[];
+
+                $setSelection($createTableSelectionFrom(table, first, second));
+            }, { discrete: true });
+
+            expect(findPopupButton(panel, 'Link…').isEnabled()).toBe(false);
+        });
+
+        it('in a link nested in a link the Link button disables: the link commands decline there', () => {
+            const panel = new MarkdownDocumentPanel();
+
+            panel.setValue('[[b - c](https://y)](https://x)');
+            caretIn(panel.getEditor(), 'b - c', 5);
+
+            expect(panel.getEditor().getSelectionState().linkUrl).not.toBeNull();
+            expect(findPopupButton(panel, 'Link…').isEnabled()).toBe(false);
+        });
+
+        it('with only the far end of a selection in a link nested in a link the Link button disables', () => {
+            const panel = new MarkdownDocumentPanel();
+
+            panel.setValue('plain [[b - c](https://y)](https://x)');
+            lexicalOf(panel.getEditor()).update(() => {
+                const [plain, nested] = ['plain ', 'b - c'].map((text) => {
+                    return $getRoot().getAllTextNodes().find((candidate) => candidate.getTextContent() === text)!;
+                });
+
+                plain.select(1, 1).focus.set(nested.getKey(), 3, 'text');
+            }, { discrete: true });
+
+            expect(panel.getEditor().getSelectionState().hasSelectedText).toBe(true);
+            expect(findPopupButton(panel, 'Link…').isEnabled()).toBe(false);
+        });
+
+        it('where a link can be removed but not re-pointed, the Link button stays enabled for its Remove', () => {
+            // The caret is in the link, in a run kept as Markdown source, which no link is put on or re-pointed over.
+            const panel = new MarkdownDocumentPanel();
+
+            panel.setValue('A [<b>x</b>](https://old) link.');
+            caretIn(panel.getEditor(), '<b>', 2);
+
+            const state = panel.getEditor().getSelectionState();
+
+            expect([state.canLink, state.canRemoveLink]).toEqual([false, true]);
+            expect(findPopupButton(panel, 'Link…').isEnabled()).toBe(true);
+        });
+
+        it('Alignment and Columns disable where neither command applies: no selection, cells selected, the source surface', () => {
+            const layoutEnabled = (panel: MarkdownDocumentPanel): boolean[] =>
+                ['Alignment…', 'Columns…'].map((text) => findMenuButton(panel, text).isEnabled());
+            const panel = new MarkdownDocumentPanel();
+
+            expect(layoutEnabled(panel)).toEqual([false, false]);
+
+            panel.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |');
+            caretIn(panel.getEditor(), '1', 1);
+
+            expect(layoutEnabled(panel)).toEqual([true, true]);
+
+            lexicalOf(panel.getEditor()).update(() => {
+                const table = $getRoot().getFirstChild() as TableNode;
+                const [first, second] = (table.getLastChild() as TableRowNode).getChildren() as TableCellNode[];
+
+                $setSelection($createTableSelectionFrom(table, first, second));
+            }, { discrete: true });
+
+            expect(layoutEnabled(panel)).toEqual([false, false]);
+
+            caretIn(panel.getEditor(), '1', 1);
+            panel.getEditor().setMode('source');
+
+            expect(layoutEnabled(panel)).toEqual([false, false]);
+        });
+
+        /** Which Insert dropdown entries are enabled right now, by label. */
+        function insertEntriesEnabled(panel: MarkdownDocumentPanel): Record<string, boolean> {
+            const items = resolveItems(findMenuButton(panel, 'Insert…').getMenuItems());
+
+            return Object.fromEntries(items.filter((item) => item.separator !== true).map((item) => [item.text, item.enabled !== false]));
+        }
+
+        it('the Insert dropdown dims Table and Image… in a raw Markdown block, and nothing with the caret in text', () => {
+            const panel = new MarkdownDocumentPanel();
+
+            panel.setValue(`${RAW_BLOCK}\n\ntext`);
+            caretIn(panel.getEditor(), RAW_BLOCK, 3);
+
+            expect(insertEntriesEnabled(panel)).toEqual({
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': false, 'Image…': false,
+            });
+
+            caretIn(panel.getEditor(), 'text', 2);
+
+            expect(insertEntriesEnabled(panel)).toEqual({
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': true, 'Image…': true,
+            });
+        });
+
+        it('the Insert dropdown dims the block conversions and Table in a table cell, and leaves Image… enabled', () => {
+            const panel = new MarkdownDocumentPanel();
+
+            panel.setValue('| a |\n| --- |\n| 1 |');
+            caretIn(panel.getEditor(), '1', 1);
+
+            expect(insertEntriesEnabled(panel)).toEqual({
+                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Table': false, 'Image…': true,
+            });
+        });
+
+        it('the Insert dropdown dims nothing on the source surface', () => {
+            const panel = new MarkdownDocumentPanel();
+
+            panel.setValue('| a |\n| --- |\n| 1 |');
+            caretIn(panel.getEditor(), '1', 1);
+            panel.getEditor().setMode('source');
+
+            expect(insertEntriesEnabled(panel)).toEqual({
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': true, 'Image…': true,
+            });
+        });
+    });
+
     it('the Alignment dropdown checks the current block alignment, and only that entry', () => {
         const panel = new MarkdownDocumentPanel();
 
@@ -585,11 +917,14 @@ describe('MarkdownDocumentPanel Link popup', () => {
         created.length = 0;
     });
 
-    /** Builds a LinkPopupPanel with stub callbacks, tracked for disposal. */
-    function stubPopup(getLinkUrl: () => string | null): { popup: LinkPopupPanel; onSubmit: (url: string) => void; onRemove: () => void } {
+    /** Builds a LinkPopupPanel with stub callbacks, tracked for disposal; both link commands apply unless `can` says otherwise. */
+    function stubPopup(
+        getLinkUrl: () => string | null,
+        can: { canLink: boolean; canRemoveLink: boolean } = { canLink: true, canRemoveLink: true },
+    ): { popup: LinkPopupPanel; onSubmit: (url: string) => void; onRemove: () => void } {
         const onSubmit = vi.fn();
         const onRemove = vi.fn();
-        const popup    = new LinkPopupPanel(getLinkUrl, onSubmit, onRemove);
+        const popup    = new LinkPopupPanel(() => ({ linkUrl: getLinkUrl(), ...can }), onSubmit, onRemove);
 
         created.push(popup);
 
@@ -604,7 +939,7 @@ describe('MarkdownDocumentPanel Link popup', () => {
         return { urlField: urlField as TextField, submitBtn: submitBtn as Button, removeBtn: removeBtn as Button };
     }
 
-    it('showAt() with getLinkUrl() returning null prefills an empty field, "Insert link", and hides Remove', () => {
+    it('showAt() outside a link, where the state\'s linkUrl is null, prefills an empty field, "Insert link", and hides Remove', () => {
         const { popup } = stubPopup(() => null);
 
         popup.showAt(rect(0, 0, 200, 30));
@@ -616,7 +951,7 @@ describe('MarkdownDocumentPanel Link popup', () => {
         expect(removeBtn.isVisible()).toBe(false);
     });
 
-    it('showAt() with getLinkUrl() returning a URL prefills the field, "Update link", and shows Remove', () => {
+    it('showAt() inside a link prefills the field with the state\'s linkUrl, "Update link", and shows Remove', () => {
         const { popup } = stubPopup(() => 'https://example.com');
 
         popup.showAt(rect(0, 0, 200, 30));
@@ -626,6 +961,39 @@ describe('MarkdownDocumentPanel Link popup', () => {
         expect(urlField.getValue()).toBe('https://example.com');
         expect(submitBtn.getText()).toBe('Update link');
         expect(removeBtn.isVisible()).toBe(true);
+    });
+
+    it('showAt() enables each action only where its command would apply', () => {
+        for (const can of [
+            { canLink: true, canRemoveLink: true }, { canLink: false, canRemoveLink: true },
+            { canLink: true, canRemoveLink: false }, { canLink: false, canRemoveLink: false },
+        ]) {
+            const { popup } = stubPopup(() => 'https://example.com', can);
+
+            popup.showAt(rect(0, 0, 200, 30));
+
+            const { submitBtn, removeBtn } = popupParts(popup);
+
+            expect({ canLink: submitBtn.isEnabled(), canRemoveLink: removeBtn.isEnabled() }).toEqual(can);
+        }
+    });
+
+    it('the toolbar\'s LinkPopupPanel dims Update link where the link can only be removed', () => {
+        const panel = new MarkdownDocumentPanel();
+        created.push(panel);
+
+        panel.setValue('A [<b>x</b>](https://old) link.');
+        lexicalOf(panel.getEditor()).update(() => {
+            $getRoot().getAllTextNodes().find((candidate) => candidate.getTextContent() === '<b>')!.select(2, 2);
+        }, { discrete: true });
+
+        const popup = (findPopupButton(panel, 'Link…') as unknown as { ensurePanel(): LinkPopupPanel }).ensurePanel();
+
+        popup.showAt(rect(0, 0, 200, 30));
+
+        const { submitBtn, removeBtn } = popupParts(popup);
+
+        expect([submitBtn.isEnabled(), removeBtn.isEnabled()]).toEqual([false, true]);
     });
 
     it('submitting a new, non-empty URL calls onSubmit once with the trimmed value', () => {
