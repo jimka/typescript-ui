@@ -819,3 +819,72 @@ any entry point.
     3,000 documents each) found 31 column-related `editParity` hits on the
     tip and none with the prototype; the three hits left in those runs are
     table and image defects.
+
+## Implementation Notes
+
+- **No per-step audit loop.** By the user's decision this run skipped
+  `worker.md`'s audit step; the whole stack is checked by fuzzing instead
+  (the stack fuzz harness, run/paste seeds 601, 1709, 2207, 3313, 4409,
+  5521, 6607 and a new 7703 at n=3000; source mode 6719 and a new 7841 at
+  n=4000).
+- **Code drift reconciled.** Every site was found by symbol; line numbers
+  had moved (`CODE_LINE_FENCE_RUN` and `$rawBlockWritesAsParagraph` sit
+  further down after `markdown-editor-command-crash-fixes`). The planned
+  code went in unchanged otherwise. The editor test file types the copied
+  nodes as `Parameters<typeof $generateNodesFromSerializedNodes>[0]`:
+  `BaseSerializedNode` is not exported from `@lexical/clipboard`'s entry.
+- **One code commit, one docs commit.** The viewer and editor halves share
+  `readFenceLine` and `breaksColumn` and the editor half needs the viewer
+  half (W1, W2), so they are one functionality; the two changelog entries
+  ride in the one docs commit.
+- **Fuzz-found column defects outside the plan, fixed here** (each with a
+  test written red first):
+  - *An unedited paragraph opening a fence it does not close* (K1). With
+    code fences tracked, `` ::: x … ``` … ::: `` loads as a paragraph and a code
+    block (the open code hides the closer). The paragraph is then kept as
+    source; an edit that removes the open code block, or pastes a raw block
+    holding a `:::` line after it, made the save a fence the editor did not
+    show. `writtenBlocks` now writes such a block in the standard form
+    (`\::: x`) when what follows would close it (`fenceClosedAfter`, beside
+    the existing `labelClosedAfter`; the two share `readsOtherwiseAfter`).
+    The same class existed before (an unclosed `::: x` paragraph followed by
+    a pasted HTML block holding `:::`), so this is not only a consequence of
+    the new code rule.
+  - *A block opened on a list item's marker line* (CF11, CF12, BC10–BC12,
+    W9, W10). `` - ``` `` and `- ::: {…}` were not read as openers by the line
+    scan, but the lines closing them, indented under the item, were: a list
+    item starting with a code block in a column opened code at its closing
+    line and swallowed the fence's closer, and a fence in a list item in a
+    column closed the outer fence early. `readFenceLine` now reads openers
+    after leading list markers (`LEADING_LIST_MARKERS`); closers and
+    separators still need the bare line. An authored list item whose code
+    block is left open (closed only by the item's end) now hides the closer,
+    the same rule as any other open code block in a fence.
+- **Fuzz result.** Column hits per run/paste seed, step-11 tip → this
+  branch: 601 12→0, 1709 22→0, 2207 19→0, 3313 22→0 (the `canonical` and
+  `canonicalIdempotence` hits included), 4409 15→0, 5521 16→0, 6607 28→0,
+  7703 11→0; no throws. Source mode 6719 (81 hits) and 7841 (92) are
+  unchanged and hold no column signature (their hits inside a fence are
+  the empty-link `link|noEffect` seen outside fences too). The hits left
+  (4409 one, 6607 six, 7703 one) reproduce outside any fence and belong to
+  lower branches.
+- **Manual checks M1–M3** were not run (headless session); W3, P2 and CF1
+  pin the same behaviour.
+
+### Stack fuzz round 4
+
+Run at this branch after the round's fixes in lower branches (run and
+paste seeds 601, 1709, 2207, 3313, 4409, 5521, 6607, 7703 and new 8819 and
+9907, 3 000 documents per mode; source mode new seeds 8923 and 9931, 4 000
+per mode): no run or paste signature left, and no column signature; the
+source-mode signatures left are the harness's by-design ones. No case
+belonged here. **Restacked twice onto the lower branches' fixes.**
+`$rawBlockWritesAsParagraph` conflicted between this branch's
+`breaksColumn` test and the importer branch's `rawBlockEnd` /
+`$writesBlockAfter`: resolved as the union (a raw block that breaks its
+column, or one that runs on before a block that writes something). The
+source-preservation branch's new `OPEN_TITLE` filter conflicted with this
+branch's `FENCE_OPENING_START` and its `readsOtherwiseAfter` refactor of
+`labelClosedAfter`: both constants kept, `labelClosedAfter` written on
+`readsOtherwiseAfter` with either filter. The changelog conflicted on the
+crash-fixes branch's new ordered-list entry: both entries kept.
