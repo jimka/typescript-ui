@@ -4,7 +4,7 @@ import type { MarkdownEditorChange, MarkdownEditorSelectionState, ContextMenuTar
 import type { MenuItemConfig } from '~/component/container/MenuItem';
 import type { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
 import { Component } from '~/core/Component';
-import { SHORTCUT_TRANSFORMERS } from '~/component/editor/markdownTransformers';
+import { ORDERED_LIST_SHORTCUT, SHORTCUT_TRANSFORMERS } from '~/component/editor/markdownTransformers';
 import { EDITOR_NODES } from '~/component/editor/editorNodes';
 import { ensureMarkdownEditorClassRules } from '~/component/editor/editorTheme';
 import {
@@ -198,10 +198,16 @@ describe('markdownTransformers curation', () => {
     it('contains exactly the eleven typing shortcuts', () => {
         expect(SHORTCUT_TRANSFORMERS).toHaveLength(11);
         expect(SHORTCUT_TRANSFORMERS).toEqual(expect.arrayContaining([
-            HEADING, QUOTE, CODE, UNORDERED_LIST, ORDERED_LIST,
+            HEADING, QUOTE, CODE, UNORDERED_LIST, ORDERED_LIST_SHORTCUT,
             BOLD_STAR, ITALIC_STAR, INLINE_CODE, STRIKETHROUGH, LINK,
             UNDERLINE,
         ]));
+    });
+
+    it('limits the ordered-list shortcut to the nine digits a list marker allows, otherwise as Lexical\'s', () => {
+        expect(ORDERED_LIST_SHORTCUT).toEqual({ ...ORDERED_LIST, regExp: ORDERED_LIST_SHORTCUT.regExp });
+        expect(ORDERED_LIST_SHORTCUT.regExp.test('123456789. ')).toBe(true);
+        expect(ORDERED_LIST_SHORTCUT.regExp.test('1234567890. ')).toBe(false);
     });
 
     it('excludes the constructs the viewer drops (highlight, check-list)', () => {

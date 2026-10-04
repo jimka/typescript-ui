@@ -46,6 +46,9 @@ import { $isCodeNode } from "@lexical/code";
  */
 const SETEXT_MAX_LEVEL = 2;
 
+/** The highest number a CommonMark ordered list marker can write: nine digits. */
+const MAX_ORDERED_LIST_NUMBER = 999_999_999;
+
 /**
  * Registers the rules that keep the editor from making what a save cannot
  * write, so what the editor shows is what is saved: lists keep apart where
@@ -147,8 +150,30 @@ function $normalizeList(list: ListNode): void {
         $joinLists(list, next);
     }
 
+    $keepNumbersWritable(list);
     $numberListItems(list);
     $keepLoosenessWritable(list);
+}
+
+/**
+ * Lowers an ordered list's start so its last item's number has at most the
+ * nine digits a CommonMark ordered list marker allows: an item Enter or a
+ * paste adds after `999999999.` would otherwise be numbered with ten, which
+ * Markdown reads as text, not as an item.
+ *
+ * @param list - The list.
+ */
+function $keepNumbersWritable(list: ListNode): void {
+    if (list.getListType() !== "number") {
+        return;
+    }
+
+    const numbered = list.getChildren().filter((item) => $isListItemNode(item) && !$isListNode(item.getFirstChild())).length;
+    const highestStart = Math.max(0, MAX_ORDERED_LIST_NUMBER - Math.max(0, numbered - 1));
+
+    if (list.getStart() > highestStart) {
+        list.setStart(highestStart);
+    }
 }
 
 /**

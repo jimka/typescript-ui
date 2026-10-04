@@ -13,7 +13,7 @@ import {
     INSERT_PARAGRAPH_COMMAND, INTERNAL_$isBlock, KEY_ENTER_COMMAND, PASTE_COMMAND, SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, createEditor,
 } from 'lexical';
 import type { ElementNode, Klass, LexicalEditor, LexicalNode, PointType, RangeSelection, TextNode } from 'lexical';
-import { $createListItemNode, $createListNode, ListItemNode, ListNode } from '@lexical/list';
+import { $createListItemNode, $createListNode, $isListNode, ListItemNode, ListNode } from '@lexical/list';
 import { $createLinkNode, $toggleLink, LinkNode } from '@lexical/link';
 import { copyToClipboard } from '@lexical/clipboard';
 import type { TableCellNode } from '@lexical/table';
@@ -23,6 +23,7 @@ import { $isMarkdownBlockNode } from '~/component/editor/markdownBlockNode';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
+import { editorSurfaceModel, viewerModel } from './markdown-roundtrip/viewModel';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -983,6 +984,88 @@ describe('a table a row of which is too short keeps its alignment rules (T rows)
 
         // The row's paragraph is dropped, as the table plugin drops it, so the table saves as loaded.
         expect(editor.getValue()).toBe('|a|\n|-|\n|1|\n|^^|');
+    });
+});
+
+/**
+ * Presses Enter at the selection as the keyboard does: dispatches
+ * `KEY_ENTER_COMMAND`, then inserts a paragraph when nothing handled it.
+ *
+ * @param editor - The editor.
+ */
+function pressEnter(editor: MarkdownEditor): void {
+    lexicalOf(editor).update(() => {
+        const handled = lexicalOf(editor).dispatchCommand(
+            KEY_ENTER_COMMAND, { altKey: false, shiftKey: false, preventDefault: () => {} } as KeyboardEvent);
+        const selection = $getSelection();
+
+        if (!handled && $isRangeSelection(selection)) {
+            selection.insertParagraph();
+        }
+    }, { discrete: true });
+}
+
+/**
+ * Types one character at the selection, in an update of its own as a
+ * keystroke does, so the typing shortcuts see it.
+ *
+ * @param editor - The editor.
+ * @param char - The character.
+ */
+async function typeChar(editor: MarkdownEditor, char: string): Promise<void> {
+    lexicalOf(editor).update(() => {
+        ($getSelection() as RangeSelection).insertText(char);
+    }, { discrete: true });
+    await Promise.resolve();
+}
+
+describe('an ordered list\'s numbers stay at most nine digits, as Markdown reads them (O rows)', () => {
+    it('O1: Enter after ten digits and a period keeps the paragraph a paragraph', () => {
+        const editor = load('1234567890. **not** ok');
+
+        selectText(editor, ['1234567890. ', 12], ['1234567890. ', 12]);
+        pressEnter(editor);
+
+        expect(lexicalOf(editor).read(() => $dfs().some(({ node }) => $isListNode(node)))).toBe(false);
+        expect(editorSurfaceModel(editor)).toEqual(viewerModel(editor.getValue()).blocks);
+    });
+
+    it('O2: typing ten digits, a period and a space keeps the paragraph a paragraph', async () => {
+        const editor = load('x');
+
+        selectText(editor, ['x', 0], ['x', 1]);
+
+        for (const char of '1234567890. ') {
+            await typeChar(editor, char);
+        }
+
+        expect(lexicalOf(editor).read(() => $dfs().some(({ node }) => $isListNode(node)))).toBe(false);
+        expect(editor.getValue()).toBe('1234567890.');
+    });
+
+    it('O3: typing nine digits, a period and a space still starts an ordered list there', async () => {
+        const editor = load('x');
+
+        selectText(editor, ['x', 0], ['x', 1]);
+
+        for (const char of '123456789. a') {
+            await typeChar(editor, char);
+        }
+
+        expect(editor.getValue()).toBe('123456789. a');
+    });
+
+    it('O4: Enter at the end of an item numbered 999999999 renumbers the list so its new item has nine digits', () => {
+        const editor = load('999999999. a');
+
+        selectText(editor, ['a', 1], ['a', 1]);
+        pressEnter(editor);
+        lexicalOf(editor).update(() => {
+            ($getSelection() as RangeSelection).insertText('b');
+        }, { discrete: true });
+
+        expect(editor.getValue()).toBe('999999998. a\n999999999. b');
+        expect(editorSurfaceModel(editor)).toEqual(viewerModel(editor.getValue()).blocks);
     });
 });
 
