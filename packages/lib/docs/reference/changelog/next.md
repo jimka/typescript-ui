@@ -9,6 +9,29 @@ page resets to empty.
 
 ### Components
 
+- **A read-only `MarkdownEditor` refuses its editing commands in WYSIWYG
+  mode too.** `setReadOnly` promised to reject edits on both surfaces, but
+  only the source surface refused a command: in WYSIWYG mode
+  `toggleBold()`, `insertTable()` and the rest still changed the document,
+  so `MarkdownDocumentPanel`'s toolbar edited a read-only editor. Every
+  editing command is now a no-op while read-only, `cut()` and `paste()` on
+  the source surface included, and the selection state's `can…` fields
+  report `false`, which greys the toolbar out. `setValue()` and `copy()`
+  still work. See [Migration](/reference/migration/next) if you edit a
+  read-only editor from code.
+
+- **A read-only `CodeEditor` refuses `cut()`, `paste()` and `format()`.**
+  Called from code, the three edited a read-only editor: only the keyboard,
+  the editor's own menu and `replaceRange()` were guarded. They are now
+  refused the way `replaceRange()` is, with the `"readonlyedit"` event and
+  the rejection flash: `cut()` copies nothing and removes nothing,
+  `paste()` resolves `false` without reading the clipboard, and `format()`
+  resolves without running a formatter or re-indenting. `copy()` is
+  unaffected, and so is `setValue()`, which loads a document rather than
+  editing one. A read-only `MarkdownEditor` in source mode therefore
+  flashes for `cut()` and `paste()` as it does for every other refused
+  command.
+
 - **`Tree` and `TreeTable` no longer register `caret-down` / `caret-right`
   at module load.** Their row toggles are now a single `angle-right` glyph,
   turned to point down instead of swapped for a different one. Code that
@@ -1236,6 +1259,18 @@ page resets to empty.
   menu before the editor has followed it, so the menu's format checkmarks
   and its Cut, Copy and Insert link… state were those of the caret's old
   place. The editor now takes the browser's selection first.
+
+- **A read-only `MarkdownEditor` no longer lets the browser edit its shown
+  text.** `setReadOnly(true)` and the `readOnly` option stopped the editor
+  acting on input but left the WYSIWYG surface `contenteditable`, so typing
+  changed the text on screen while `getValue()` kept the document, and what
+  was shown no longer matched what a save would write. The surface's
+  `contenteditable` now follows the read-only state, so a read-only WYSIWYG
+  surface shows no caret and takes no keyboard focus; its text can still be
+  selected with the mouse and copied. Read-only wins over
+  `setContentEditable(true)`, which no longer makes a read-only surface
+  editable; `setReadOnly(false)` restores what `setContentEditable` last
+  asked for. No consumer action is needed.
 
 ### Core
 

@@ -193,6 +193,38 @@ class MySource implements DOMSource {
 }
 ```
 
+## A read-only `MarkdownEditor` refuses its editing commands
+
+**What changed and why.** `setReadOnly(true)` and the `readOnly` option are
+documented to reject edits on both surfaces, and in `"source"` mode a command
+has always been refused. In WYSIWYG mode only typing was blocked: a command
+called from code — `toggleBold()`, `setBlockType()`, `insertTable()`, the
+table commands, `cut()`, `paste()` — still changed the document, so a toolbar
+wired to those methods edited a read-only editor. Every command that edits
+the document is now a no-op while the editor is read-only, on both surfaces,
+and `getSelectionState()` reports its `can…` fields `false`. `paste()`
+resolves `false` without reading the clipboard. `copy()`, `setValue()`,
+`setMode()` and `markClean()` are unaffected. A read-only `CodeEditor`
+likewise refuses `cut()`, `paste()` and `format()` called from code, as it
+already refused `replaceRange()`.
+
+**Who needs to act.** Only code that used a command to change a read-only
+editor's document. Load the new text with `setValue()`, which a read-only
+editor still accepts, or lift the lock around the command:
+
+```typescript
+editor.setReadOnly(false);
+editor.insertTable(2, 3);
+editor.setReadOnly(true);
+```
+
+A toolbar of your own that enables its Table control on `inTable` stays
+enabled over a read-only editor, though its commands are refused: `inTable`
+says where a caret or a text selection is (it is `false` while whole table
+cells are selected, and for a selection that runs out of its table). Enable
+it on `canEditTable || canMergeCells || canUnmergeCell` instead, which are
+`false` while the editor is read-only.
+
 ## `Tree` and `TreeTable` no longer register `caret-down` / `caret-right`
 
 **What changed and why.** `Tree` and `TreeTable` row toggles are now one
