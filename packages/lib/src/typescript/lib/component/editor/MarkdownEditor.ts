@@ -125,7 +125,9 @@ export interface MarkdownEditorChange {
  * flags, whether there's a selection to act on, the enclosing link's URL (if
  * any), which of the format, style, link, block, insert and table commands
  * would apply, table/column-alignment context, and block alignment/column
- * count at the current selection.
+ * count at the current selection. Every `can…` field is `false` while the
+ * editor is read-only, on either surface: each editing command is then
+ * refused.
  *
  * @category Components
  */
@@ -3591,6 +3593,19 @@ const NEUTRAL_SELECTION_STATE: MarkdownEditorSelectionState = {
 };
 
 /**
+ * The `can…` fields of a {@link MarkdownEditorSelectionState} with none of
+ * them available: what a read-only editor reports, whatever its selection.
+ * Typed by {@link ReportedAvailability}, so a `can…` field added to the
+ * selection state must be given here before this compiles, and cannot stay
+ * `true` on a read-only editor by being forgotten.
+ */
+const NO_COMMAND_APPLIES: ReportedAvailability = {
+    canFormat: false, canStyle: false, canLink: false, canRemoveLink: false,
+    canSetBlockType: false, canSetBlockLayout: false, canInsertTable: false, canInsertImage: false,
+    canEditTable: false, canMergeCells: false, canUnmergeCell: false,
+};
+
+/**
  * Whether two {@link MarkdownEditorSelectionState} values are field-for-field
  * equal — what {@link MarkdownEditor.updateSelectionState} uses to decide
  * whether a commit's resulting state is worth a `"selectionstate"` emit.
@@ -3647,14 +3662,16 @@ class WysiwygSurface extends Component {
      * Constructs the WYSIWYG surface.
      *
      * @param onReady - Called on the surface's first connected + sized layout.
+     * @param contentEditable - Whether the surface starts editable: `false`
+     *   for a read-only editor.
      * @param subclassDefaults - Optional subclass defaults bag.
      */
-    constructor(onReady: () => void, subclassDefaults?: Partial<ComponentOptions>) {
+    constructor(onReady: () => void, contentEditable: boolean, subclassDefaults?: Partial<ComponentOptions>) {
         super(undefined, { ..._defaultWysiwygSurfaceOptions, ...(subclassDefaults ?? {}) });
 
         this._onReady = onReady;
 
-        this.setContentEditable(true);
+        this.setContentEditable(contentEditable);
         // Fills its host box and scrolls internally when the document overflows.
         this.setOverflow("auto");
         // A few pixels of inset off the padding box: without it the caret sits
@@ -3920,6 +3937,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     private _lastSelectionState: MarkdownEditorSelectionState = NEUTRAL_SELECTION_STATE;
 
     /**
+     * Whether the host asked for an editable WYSIWYG surface
+     * ({@link MarkdownEditor.setContentEditable}). The surface is editable
+     * only while this holds and the editor is not read-only.
+     */
+    private _contentEditable: boolean = true;
+
+    /**
      * Constructs a Markdown editor.
      *
      * @param value - Initial Markdown source (optional; defaults to `""`).
@@ -3948,7 +3972,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         this._card = new Card();
         this.setLayoutManager(this._card);
 
-        this._wysiwyg = new WysiwygSurface(() => this.mountWysiwyg());
+        this._wysiwyg = new WysiwygSurface(() => this.mountWysiwyg(), !(this._options.readOnly ?? false));
         // Arrow, not a bare method reference: ListenerBag.fire (which this `on`
         // ultimately dispatches through) calls listeners bare with no `this`
         // rebinding, unlike Event.addListener's `.apply(component, …)`.
@@ -4068,12 +4092,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * touches the document or the selection, and it is the field the context
      * menu and the selection state report ({@link $readCommandAvailability}),
      * so what is dimmed and what a command does cannot come apart: a command
-     * whose field is `false` changes nothing and reports nothing.
+     * whose field is `false` changes nothing and reports nothing. No command
+     * applies on a read-only editor, which is refused here for all of them,
+     * before the Lexical editor is so much as built.
      *
      * @param field - The field covering the command.
-     * @returns `false` where the command would do nothing.
+     * @returns `false` where the command would do nothing, and always while
+     *   the editor is read-only.
      */
     private commandApplies(field: keyof CommandAvailability): boolean {
+        const readOnly = this.getReadOnly();
+
+        if (readOnly) {
+            return false;
+        }
+
         return this.ensureEditor().read(() => $readCommandAvailability($computeWordExpansion())[field]);
     }
 
@@ -4216,7 +4249,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * link) except `canSetBlockLayout` and the three table fields, the
      * alignment, column and table commands being no-ops there; and
      * `inTable`/`tableColumnAlignment`/`blockAlignment`/`columnCount` report
-     * the fields that mode has no notion of.
+     * the fields that mode has no notion of. While the editor is read-only
+     * every `can…` field is `false`, on either surface.
      *
      * @returns The current {@link MarkdownEditorSelectionState}: in
      *   `"source"` mode the state read from the raw Markdown, which is always
@@ -4244,7 +4278,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      *
      * @returns The current {@link MarkdownEditorSelectionState}.
      */
-    private readActiveSelectionState(): MarkdownEditorSelectionState {
+    private readSurfaceSelectionState(): MarkdownEditorSelectionState {
         if (this.isSourceMode()) {
             const selection = this._codeEditor.getSelection();
             const source = readSourceSelectionState(this._codeEditor.getValue(), selection.from, selection.to);
@@ -4272,6 +4306,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const editor = this._editor;
 
         return editor ? editor.read(() => $readSelectionState()) : NEUTRAL_SELECTION_STATE;
+    }
+
+    /**
+     * The tracked selection state of the active surface as the editor
+     * reports it: what {@link readSurfaceSelectionState} reads, with every
+     * `can…` field `false` while the editor is read-only, where each editing
+     * command is refused on both surfaces.
+     *
+     * @returns The current {@link MarkdownEditorSelectionState}.
+     */
+    private readActiveSelectionState(): MarkdownEditorSelectionState {
+        const state = this.readSurfaceSelectionState();
+        const readOnly = this.getReadOnly();
+
+        return readOnly ? { ...state, ...NO_COMMAND_APPLIES } : state;
     }
 
     /**
@@ -4339,9 +4388,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Sets whether the editor rejects edits, on **both** surfaces. Caches the
-     * state; when the Lexical editor exists, toggles its editable flag (which
-     * also drops the caret / editing affordances on the mounted view); and
-     * forwards to the source `CodeEditor`.
+     * state; when the Lexical editor exists, toggles its editable flag, so it
+     * stops acting on input; turns the WYSIWYG surface's `contenteditable`
+     * off, which is what drops the caret and stops the browser from editing
+     * the shown text itself (Lexical leaves that attribute to its host), or
+     * back to what {@link MarkdownEditor.setContentEditable} last asked for;
+     * and forwards to the source `CodeEditor`.
+     *
+     * While read-only, every command that edits the document is refused
+     * and leaves the document and the selection as they are: on the WYSIWYG
+     * surface silently, on the source surface with the source editor's
+     * rejection flash. `cut()` and `paste()` are refused on both; `copy()`
+     * still copies. The `can…` fields of the selection state are then all
+     * `false`, and `"selectionstate"` fires when this call changes them.
+     * Replacing the whole document with `setValue` stays possible, as it
+     * does on a read-only `CodeEditor`: read-only guards against edits, not
+     * against the host loading another document.
      *
      * @param readOnly - Whether the editor should reject edits.
      * @returns This component, for method chaining.
@@ -4349,7 +4411,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     setReadOnly(readOnly: boolean): this {
         this._options.readOnly = readOnly;
         this._editor?.setEditable(!readOnly);
+        this.applyContentEditable();
         this._codeEditor.setReadOnly(readOnly);
+        this.updateSelectionState();
 
         return this;
     }
@@ -4358,7 +4422,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Moves keyboard focus into the active editing surface, placing a caret
      * ready for typing: the Lexical contenteditable in WYSIWYG mode (building
      * and mounting the editor if needed), or the source `CodeEditor` in
-     * `"source"` mode.
+     * `"source"` mode. A read-only editor's WYSIWYG surface is not
+     * `contenteditable`, so there it takes no keyboard focus and shows no
+     * caret; its source surface is focused as usual.
      *
      * Overrides {@link core!Component.focus}, whose default focuses this component's
      * own host element — the `Card` wrapper — which would leave the caret out of
@@ -4764,6 +4830,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
+        const readOnly = this.getReadOnly();
+
+        if (readOnly) { return this; }
+
         // Unlinking has no field of its own: it declines where the selection touches a block holding text only.
         const applies = url === null ? !this.declinesInTextOnlyBlock() : this.commandApplies("canLink");
 
@@ -4959,19 +5029,27 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * throwing) when there is no range selection, or the selection is
      * collapsed with nothing to expand into. A selection that runs from
      * outside a table into one of its cells is cut with the whole table: the
-     * clipboard gets the text that is removed.
+     * clipboard gets the text that is removed. Refused in a read-only
+     * editor, on either surface: nothing is copied and nothing removed.
      *
      * In `"source"` mode, delegates to the source editor's own `cut()`
-     * instead.
+     * instead, which refuses a read-only editor with its rejection flash, as
+     * it refuses every other command there.
      *
      * @returns This component, for method chaining.
      */
     cut(): this {
-        if (this.isSourceMode()) {
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) {
             this._codeEditor.cut();
 
             return this;
         }
+
+        const readOnly = this.getReadOnly();
+
+        if (readOnly) { return this; }
 
         this.copy();
 
@@ -4993,13 +5071,23 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * selection.
      *
      * In `"source"` mode, delegates to the source editor's own `paste()`
-     * instead.
+     * instead, which refuses a read-only editor with its rejection flash.
+     *
+     * Refused in a read-only editor, on either surface: the clipboard is not
+     * read.
      *
      * @returns A promise resolving `true` when the clipboard was read (even if
-     *   it was empty), or `false` when the read was unavailable or denied.
+     *   it was empty), or `false` when the read was unavailable or denied, or
+     *   not made because the editor is read-only.
      */
     async paste(): Promise<boolean> {
-        if (this.isSourceMode()) { return this._codeEditor.paste(); }
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) { return this._codeEditor.paste(); }
+
+        const readOnly = this.getReadOnly();
+
+        if (readOnly) { return false; }
 
         const text = await DOM.source.readClipboardText();
 
@@ -5711,13 +5799,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Sets whether the WYSIWYG surface's element hosts an editable region.
-     * Forwards to the private surface, preserving the public setter.
+     * Read-only wins: a read-only editor's surface stays not
+     * `contenteditable` whatever is asked for here, and takes what was last
+     * asked for once {@link MarkdownEditor.setReadOnly} makes the editor
+     * editable again.
      *
-     * @param contentEditable - Whether the element is contenteditable.
+     * @param contentEditable - Whether the element is contenteditable while
+     *   the editor is not read-only.
      * @returns This component, for method chaining.
      */
     setContentEditable(contentEditable: boolean): this {
-        this._wysiwyg.setContentEditable(contentEditable);
+        this._contentEditable = contentEditable;
+        this.applyContentEditable();
 
         return this;
     }
@@ -5725,10 +5818,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Returns whether the WYSIWYG surface's element hosts an editable region.
      *
-     * @returns The contenteditable state.
+     * @returns The contenteditable state: `false` on a read-only editor,
+     *   whatever {@link MarkdownEditor.setContentEditable} asked for.
      */
     getContentEditable(): boolean {
         return this._wysiwyg.getContentEditable();
+    }
+
+    /**
+     * Writes the WYSIWYG surface's `contenteditable`: on only when the host
+     * asked for an editable surface and the editor is not read-only.
+     */
+    private applyContentEditable(): void {
+        const readOnly = this.getReadOnly();
+
+        this._wysiwyg.setContentEditable(this._contentEditable && !readOnly);
     }
 
     /**
@@ -6530,16 +6634,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * toolbar's live state is observed: the Lexical `registerUpdateListener`
      * callback (typing, a caret move, undo/redo, or a same-position format
      * toggle), the source `CodeEditor`'s own `"selectionchange"`,
-     * `handleCodeChange`, `setMode`, and `ensureEditor` once it has built
-     * the Lexical editor. No-op before either surface has
-     * anything to report (source mode always does; WYSIWYG needs the Lexical
-     * editor built).
+     * `handleCodeChange`, `setMode`, `setReadOnly`, and `ensureEditor` once
+     * it has built the Lexical editor. Before that build the WYSIWYG surface
+     * reports the neutral state, so nothing but a change of the read-only
+     * state emits then.
      */
     private updateSelectionState(): void {
-        if (!this.isSourceMode() && !this._editor) {
-            return;
-        }
-
         const state = this.readActiveSelectionState();
 
         if (selectionStatesEqual(state, this._lastSelectionState)) {

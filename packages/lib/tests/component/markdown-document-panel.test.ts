@@ -471,6 +471,27 @@ describe('MarkdownDocumentPanel live toolbar state', () => {
             }
         });
 
+        it('on a read-only editor the button is disabled and every entry dimmed, with a caret in a cell and with cells selected', () => {
+            // No second rule for read-only: the button and its entries read the same fields, all false then.
+            for (const select of [(panel: MarkdownDocumentPanel) => caretIn(panel, 'c'), selectLastRowCells]) {
+                const panel = new MarkdownDocumentPanel();
+                panel.setValue(MERGED);
+                select(panel);
+
+                expect(findMenuButton(panel, 'Table…').isEnabled()).toBe(true);
+
+                panel.getEditor().setReadOnly(true);
+
+                expect(panel.getEditor().getSelectionState().inTable).toBe(select !== selectLastRowCells);
+                expect(findMenuButton(panel, 'Table…').isEnabled()).toBe(false);
+                expect(Object.values(tableEntries(panel))).toEqual([false, false, false, false, false, false]);
+
+                panel.getEditor().setReadOnly(false);
+
+                expect(findMenuButton(panel, 'Table…').isEnabled()).toBe(true);
+            }
+        });
+
         it('on the source surface the button is disabled: the table commands are no-ops there', () => {
             const panel = new MarkdownDocumentPanel();
             panel.setValue(MERGED);
@@ -649,6 +670,29 @@ describe('MarkdownDocumentPanel live toolbar state', () => {
             panel.getEditor().setMode('source');
 
             expect(layoutEnabled(panel)).toEqual([false, false]);
+        });
+
+        it('a read-only editor disables every control that edits, the Table button included, and enables them again once editable', () => {
+            const panel = new MarkdownDocumentPanel();
+            const controlsEnabled = (): boolean[] => [
+                ...formatButtonsEnabled(panel),
+                findPopupButton(panel, 'Link…').isEnabled(),
+                ...['Table…', 'Text style…', 'Alignment…', 'Columns…'].map((text) => findMenuButton(panel, text).isEnabled()),
+            ];
+
+            panel.setValue('| a |\n| --- |\n| word |');
+            caretIn(panel.getEditor(), 'word', 2);
+
+            expect(controlsEnabled()).toEqual([true, true, true, true, true, true, true, true, true, true]);
+
+            panel.getEditor().setReadOnly(true);
+
+            expect(controlsEnabled()).toEqual([false, false, false, false, false, false, false, false, false, false]);
+            expect(Object.values(insertEntriesEnabled(panel))).toEqual([false, false, false, false, false, false]);
+
+            panel.getEditor().setReadOnly(false);
+
+            expect(controlsEnabled()).toEqual([true, true, true, true, true, true, true, true, true, true]);
         });
 
         /** Which Insert dropdown entries are enabled right now, by label. */

@@ -356,6 +356,74 @@ describe('MarkdownEditor WYSIWYG surface contenteditable', () => {
     });
 });
 
+describe('MarkdownEditor WYSIWYG surface contenteditable follows readOnly', () => {
+    /** The `contenteditable` attribute the surface element ends up with. */
+    function surfaceContentEditable(editor: MarkdownEditor): string {
+        editor.getElement(true);
+
+        return attrsOf(DOM.sink as RecordingDOMSink, wysiwygOf(editor).getElement(true)).contenteditable;
+    }
+
+    it('an editor constructed read-only has a surface that is not contenteditable', () => {
+        const editor = new MarkdownEditor('# Hi', { readOnly: true });
+
+        expect(editor.getContentEditable()).toBe(false);
+        expect(surfaceContentEditable(editor)).toBe('false');
+    });
+
+    it('setReadOnly(true) on a built editor turns the surface\'s contenteditable off, and setReadOnly(false) turns it back on', () => {
+        const editor = new MarkdownEditor('# Hi');
+
+        expect(surfaceContentEditable(editor)).toBe('true');
+
+        editor.setReadOnly(true);
+
+        expect(editor.getContentEditable()).toBe(false);
+        expect(surfaceContentEditable(editor)).toBe('false');
+
+        editor.setReadOnly(false);
+
+        expect(editor.getContentEditable()).toBe(true);
+        expect(surfaceContentEditable(editor)).toBe('true');
+    });
+
+    it('read-only wins over setContentEditable(true): the surface of a read-only editor stays not contenteditable', () => {
+        for (const editor of [new MarkdownEditor('# Hi', { readOnly: true }), new MarkdownEditor('# Hi').setReadOnly(true)]) {
+            editor.setContentEditable(true);
+
+            expect(editor.getContentEditable()).toBe(false);
+            expect(surfaceContentEditable(editor)).toBe('false');
+        }
+    });
+
+    it('setReadOnly(false) gives the surface what setContentEditable last asked for, whenever it was asked', () => {
+        const askedBefore = new MarkdownEditor('# Hi');
+
+        askedBefore.setContentEditable(false);
+        askedBefore.setReadOnly(true);
+        askedBefore.setReadOnly(false);
+
+        expect(askedBefore.getContentEditable()).toBe(false);
+        expect(surfaceContentEditable(askedBefore)).toBe('false');
+
+        const askedWhileReadOnly = new MarkdownEditor('# Hi', { readOnly: true });
+
+        askedWhileReadOnly.setContentEditable(false);
+        askedWhileReadOnly.setContentEditable(true);
+        askedWhileReadOnly.setReadOnly(false);
+
+        expect(askedWhileReadOnly.getContentEditable()).toBe(true);
+        expect(surfaceContentEditable(askedWhileReadOnly)).toBe('true');
+
+        const turnedOffWhileReadOnly = new MarkdownEditor('# Hi', { readOnly: true });
+
+        turnedOffWhileReadOnly.setContentEditable(false);
+        turnedOffWhileReadOnly.setReadOnly(false);
+
+        expect(turnedOffWhileReadOnly.getContentEditable()).toBe(false);
+    });
+});
+
 describe('MarkdownEditor applyOptions', () => {
     it('forwards value and readOnly from the options bag', () => {
         const editor = new MarkdownEditor(undefined, { value: '# From options', readOnly: true });
@@ -866,6 +934,58 @@ describe('MarkdownEditor clipboard commands', () => {
 
         expect(clipboardWrites()).toEqual(['world']);
         expect(editor.getValue()).not.toContain('world');
+    });
+
+    it('cut() in a read-only editor writes nothing to the clipboard and removes nothing; copy() still copies', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectWord(editor, 'world');
+        editor.setReadOnly(true);
+
+        editor.cut();
+
+        expect(clipboardWrites()).toEqual([]);
+        expect(editor.getValue()).toBe('hello world');
+
+        editor.copy();
+
+        expect(clipboardWrites()).toEqual(['world']);
+    });
+
+    it('paste() in a read-only editor resolves false without reading the clipboard, and inserts nothing', async () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('hello world');
+        selectWord(editor, 'world');
+        editor.setReadOnly(true);
+
+        const read = vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+
+        expect(await editor.paste()).toBe(false);
+        expect(read).not.toHaveBeenCalled();
+        expect(editor.getValue()).toBe('hello world');
+    });
+
+    it('cut() and paste() in a read-only editor on the source surface are refused by the source editor, with its rejection signal', async () => {
+        // Every other command refused there is refused by the source editor, which flashes; these two are no different.
+        const editor = new MarkdownEditor('hello world', { mode: 'source', readOnly: true });
+        const dispatch = vi.fn();
+        const rejected = vi.fn();
+        const read = vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+
+        codeEditorOf(editor)._view = {
+            state: EditorState.create({ doc: 'hello world', selection: { anchor: 0, head: 5 } }),
+            dispatch, focus: vi.fn(),
+        };
+        codeEditorOf(editor).on('readonlyedit', rejected);
+
+        editor.cut();
+
+        expect(await editor.paste()).toBe(false);
+        expect(rejected).toHaveBeenCalledTimes(2);
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(read).not.toHaveBeenCalled();
+        expect(clipboardWrites()).toEqual([]);
+        expect(editor.getValue()).toBe('hello world');
     });
 
     it('cut() with a collapsed caret inside a word cuts the enclosing word', () => {
@@ -1514,6 +1634,19 @@ describe('MarkdownEditor source-mode commands', () => {
         editor.setMode('source');
 
         expect(seen).toEqual([true]);
+    });
+
+    it('a read-only editor reports no command available on the source surface either', () => {
+        const editor = new MarkdownEditor('[hi](https://x) there', { mode: 'source', readOnly: true });
+        codeEditorOf(editor)._view = {
+            state: EditorState.create({ doc: '[hi](https://x) there', selection: { anchor: 1, head: 3 } }),
+        };
+
+        const state = editor.getSelectionState();
+        const available = Object.entries(state).filter(([field, value]) => field.startsWith('can') && value !== false);
+
+        expect(state.linkUrl).toBe('https://x');
+        expect(available).toEqual([]);
     });
 
     it('a source edit refreshes the selection state', () => {
@@ -5600,6 +5733,115 @@ describe('MarkdownEditor context menu — caret and availability', () => {
 
             expect(editor.getValue()).not.toBe(LINK_PROSE);
             expect(editor.getSelectionState().bold).toBe(true);
+        });
+
+        describe('in a read-only editor', () => {
+            for (const { name, markdown, select } of CASES) {
+                it(`${name}: no command changes anything, adds an undo step or reports anything, and none is reported available`, () => {
+                    const untouched = editorOf(markdown);
+                    select(untouched);
+
+                    const undoDepth = undoDepthOf(untouched);
+
+                    for (const field of AVAILABILITY_FIELDS) {
+                        for (const [command, run] of COMMANDS[field]) {
+                            const editor = editorOf(markdown);
+                            select(editor);
+                            editor.setReadOnly(true);
+
+                            const before = stateOf(editor);
+                            const updated = vi.fn();
+                            const reported = vi.fn();
+
+                            lexicalOf(editor).registerUpdateListener(updated);
+                            editor.on('selectionstate', reported);
+                            editor.on('change', reported);
+                            run(editor);
+
+                            expect(stateOf(editor), command).toEqual(before);
+                            expect(updated, command).not.toHaveBeenCalled();
+                            expect(reported, command).not.toHaveBeenCalled();
+                            expect(undoDepthOf(editor), command).toBe(undoDepth);
+                        }
+                    }
+
+                    const editor = editorOf(markdown);
+                    select(editor);
+                    editor.setReadOnly(true);
+
+                    const state = editor.getSelectionState();
+
+                    expect(REPORTED.filter((field) => state[field])).toEqual([]);
+                });
+            }
+
+            it('unlinking, which no field covers, is refused too', () => {
+                const editor = editorOf(LINK_PROSE);
+                caretIn(editor, 'text', 2);
+                editor.setReadOnly(true);
+
+                editor.toggleLink(null);
+
+                expect(editor.getValue()).toBe(LINK_PROSE);
+            });
+
+            it('a command on a read-only editor that is not built yet does not build it', () => {
+                const editor = new MarkdownEditor('hello world', { readOnly: true });
+
+                editor.toggleBold();
+                editor.insertTable(2, 2);
+
+                expect(lexicalOf(editor)).toBeNull();
+            });
+
+            it('"selectionstate" reports the fields turning false as the editor becomes read-only, and back as it becomes editable', () => {
+                const editor = editorOf('hello world');
+                caretIn(editor, 'hello world', 2);
+
+                const reported: boolean[][] = [];
+                editor.on('selectionstate', (state) => reported.push([state.canFormat, state.canInsertImage]));
+
+                editor.setReadOnly(true);
+                editor.setReadOnly(false);
+
+                expect(reported).toEqual([[false, false], [true, true]]);
+            });
+
+            it('an editor constructed read-only reports no command available before it is built, and building it reports nothing', () => {
+                const editor = new MarkdownEditor(`para\n\n${CODE_BLOCK}`, { readOnly: true });
+                const reported = vi.fn();
+
+                editor.on('selectionstate', reported);
+
+                expect(REPORTED.filter((field) => editor.getSelectionState()[field])).toEqual([]);
+
+                (editor as unknown as { ensureEditor(): LexicalEditor }).ensureEditor();
+
+                expect(reported).not.toHaveBeenCalled();
+            });
+
+            it('an editor made read-only before it is built reports the inserts turning off at once, and building it reports nothing more', () => {
+                const editor = new MarkdownEditor('hello world');
+                const reported: boolean[][] = [];
+
+                editor.on('selectionstate', (state) => reported.push([state.canInsertTable, state.canInsertImage]));
+                editor.setReadOnly(true);
+
+                expect(reported).toEqual([[false, false]]);
+
+                (editor as unknown as { ensureEditor(): LexicalEditor }).ensureEditor();
+
+                expect(reported).toEqual([[false, false]]);
+            });
+
+            it('setValue() still replaces the document: only editing commands are refused', () => {
+                const editor = editorOf('hello world');
+                editor.setReadOnly(true);
+
+                editor.setValue('replaced');
+
+                expect(editor.getValue()).toBe('replaced');
+            });
         });
 
         it('classification reads the availability from the selection, not from the node the menu is built for', () => {

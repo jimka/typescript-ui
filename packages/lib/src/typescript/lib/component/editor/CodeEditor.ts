@@ -1429,9 +1429,21 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * removes it. No-op before the view is mounted, or when the primary
      * selection is collapsed.
      *
+     * Refused while the editor is read-only: nothing is copied and nothing
+     * removed, and the rejection surfaces through the `"readonlyedit"` event
+     * and the read-only flash, as it does for {@link CodeEditor.replaceRange}.
+     *
      * @returns This component, for method chaining.
      */
     cut(): this {
+        const readOnly = this.getReadOnly();
+
+        if (readOnly) {
+            this.signalReadOnlyEdit();
+
+            return this;
+        }
+
         this.copy();
 
         if (this._view) {
@@ -1449,10 +1461,23 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * Reads the system clipboard and inserts it at the primary selection,
      * replacing any selected text.
      *
+     * Refused while the editor is read-only: the clipboard is not read, and
+     * the rejection surfaces through the `"readonlyedit"` event and the
+     * read-only flash, as it does for {@link CodeEditor.replaceRange}.
+     *
      * @returns `true` when the clipboard was read (even if empty), `false`
-     *   when there is no mounted view or the browser refused the read.
+     *   when there is no mounted view, the browser refused the read, or the
+     *   editor is read-only.
      */
     async paste(): Promise<boolean> {
+        const readOnly = this.getReadOnly();
+
+        if (readOnly) {
+            this.signalReadOnlyEdit();
+
+            return false;
+        }
+
         if (!this._view) {
             return false;
         }
@@ -1513,6 +1538,10 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * always overrides this default, and it has no effect when `tabSize` is
      * unset.
      *
+     * Refused while the editor is read-only: no formatter is run and nothing
+     * changes, and the rejection surfaces through the `"readonlyedit"` event
+     * and the read-only flash, as it does for {@link CodeEditor.replaceRange}.
+     *
      * @param options - Style knobs forwarded to the active language's
      *   formatter. Ignored when the language has no formatter (the
      *   re-indent fallback runs instead). An omitted `indentWidth` is
@@ -1522,6 +1551,14 @@ class CodeEditor extends Component<CodeEditorOptions> {
      *   with the formatter's error.
      */
     async format(options?: FormatOptions): Promise<void> {
+        const readOnly = this.getReadOnly();
+
+        if (readOnly) {
+            this.signalReadOnlyEdit();
+
+            return;
+        }
+
         const id  = this.getLanguage();
         const def = id ? getLanguage(id) : undefined;
 

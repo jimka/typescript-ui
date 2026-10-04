@@ -2584,6 +2584,7 @@ describe('CodeEditor format() dispatch', () => {
     const NOOP_FORMATTER_LANG = 'test-noop-formatter-lang';
     const CHANGE_FORMATTER_LANG = 'test-change-formatter-lang';
     const OPTIONS_FORMATTER_LANG = 'test-options-formatter-lang';
+    const READ_ONLY_FORMATTER_LANG = 'test-read-only-formatter-lang';
 
     it('resolves and applies the result when the formatter succeeds', async () => {
         const formatter: Formatter = async (source) => ({ formatted: source.toUpperCase(), cursorOffset: 0 });
@@ -2628,6 +2629,40 @@ describe('CodeEditor format() dispatch', () => {
 
         expect(spy).toHaveBeenCalledOnce();
         expect(editor.getValue()).toBe('x'); // unchanged offline: fallback no-ops without a view
+    });
+
+    it('format() on a read-only editor runs no formatter, changes nothing, and signals the rejected edit', async () => {
+        const formatter = vi.fn(async (source: string) => ({ formatted: source.toUpperCase(), cursorOffset: 0 }));
+
+        registerLanguage({
+            id: READ_ONLY_FORMATTER_LANG,
+            loadExtension: async () => [] as any,
+            loadFormatter: async () => formatter as Formatter,
+        });
+
+        const editor = new CodeEditor('lower', { language: READ_ONLY_FORMATTER_LANG, readOnly: true });
+        const rejected = vi.fn();
+
+        editor.on('readonlyedit', rejected);
+
+        await editor.format();
+
+        expect(formatter).not.toHaveBeenCalled();
+        expect(editor.getValue()).toBe('lower');
+        expect(rejected).toHaveBeenCalledOnce();
+    });
+
+    it('format() on a read-only editor does not run the re-indent fallback either', async () => {
+        const editor = new CodeEditor('x', { readOnly: true }) as any;
+        const spy = vi.spyOn(editor, 'reindentFallback');
+        const rejected = vi.fn();
+
+        editor.on('readonlyedit', rejected);
+
+        await editor.format();
+
+        expect(spy).not.toHaveBeenCalled();
+        expect(rejected).toHaveBeenCalledOnce();
     });
 
     it('runs the re-indent fallback when no language is registered at all', async () => {
@@ -3810,6 +3845,49 @@ describe('CodeEditor clipboard commands', () => {
 
         expect(() => editor.cut()).not.toThrow();
         expect(clipboardWrites()).toHaveLength(0);
+    });
+
+    it('cut() on a read-only editor copies nothing and removes nothing, and signals the rejected edit', () => {
+        const editor = new CodeEditor('hello world', { readOnly: true }) as any;
+        const dispatchSpy = vi.fn();
+        const rejected = vi.fn();
+
+        editor._view = fakeView('hello world', 0, 5, dispatchSpy);
+        editor.on('readonlyedit', rejected);
+
+        editor.cut();
+
+        expect(clipboardWrites()).toHaveLength(0);
+        expect(dispatchSpy).not.toHaveBeenCalled();
+        expect(rejected).toHaveBeenCalledOnce();
+    });
+
+    it('copy() on a read-only editor still copies, and signals nothing', () => {
+        const editor = new CodeEditor('hello world', { readOnly: true }) as any;
+        const rejected = vi.fn();
+
+        editor._view = fakeView('hello world', 0, 5);
+        editor.on('readonlyedit', rejected);
+
+        editor.copy();
+
+        expect(clipboardWrites()).toEqual(['hello']);
+        expect(rejected).not.toHaveBeenCalled();
+    });
+
+    it('paste() on a read-only editor resolves false without reading the clipboard, inserts nothing, and signals the rejected edit', async () => {
+        const editor = new CodeEditor('hello world', { readOnly: true }) as any;
+        const dispatchSpy = vi.fn();
+        const rejected = vi.fn();
+        const readSpy = vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+
+        editor._view = fakeView('hello world', 3, 3, dispatchSpy);
+        editor.on('readonlyedit', rejected);
+
+        expect(await editor.paste()).toBe(false);
+        expect(readSpy).not.toHaveBeenCalled();
+        expect(dispatchSpy).not.toHaveBeenCalled();
+        expect(rejected).toHaveBeenCalledOnce();
     });
 
     it('paste() resolves false and never calls readClipboardText when _view is null', async () => {
