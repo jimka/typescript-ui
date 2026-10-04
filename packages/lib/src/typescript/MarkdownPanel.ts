@@ -66,8 +66,8 @@ SELECT id, name, email, created_at, updated_at, status, role, last_login_at FROM
 
 ### Sized and merged columns
 
-| Feature {width=200} | Support |
-| --- | --- |
+| Feature | Support |
+| --- {width=200} | --- |
 | Column width | yes |
 | Merged cells | << |
 

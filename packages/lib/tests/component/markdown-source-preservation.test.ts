@@ -9,7 +9,12 @@ import { lexMarkdownLinkDefinitions } from '~/component/display/markdownExtensio
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
+import { canonicalSave } from './markdown-roundtrip/harness';
 import { editorSurfaceModel, viewerModel } from './markdown-roundtrip/viewModel';
+
+// File reading lives in a plain-ESM helper: the test program is deliberately
+// Node-types-free, so `node:fs` cannot be imported here. See the helper for why.
+import { readDemoEditorSample } from '../helpers/readDemoSample.mjs';
 
 // Wraps the definitions lexer in a spy that still lexes, so a test can count
 // how often a save reads the definitions; every other test sees it unchanged.
@@ -30,47 +35,12 @@ const CONFIG = {
 beforeEach(() => installTestDOM(CONFIG));
 afterEach(() => DOM.reset());
 
-/** A copy of the MD Editor demo's `SAMPLE` (`src/typescript/MarkdownEditorPanel.ts`). */
-const SAMPLE = `# MarkdownEditor
-
-A **WYSIWYG** editor whose value is a *Markdown* string, built on Lexical.
-
-## Try it
-
-- Type \`**bold**\`, \`*italic*\`, \`++underline++\`, or \`\` \`code\` \`\`
-- Start a line with \`# \` for a heading, \`- \` for a bullet, \`> \` for a quote
-- Use Ctrl/Cmd+B and Ctrl/Cmd+I
-- Right-click a word for [coloured]{color=#cc0000} or [sized]{size=1.3em} text
-- Press Shift+F10 or the menu key for the same menu at the caret
-
-1. It emits only the [Markdown][commonmark] subset the viewer renders
-2. The panel on the right renders \`getValue()\` live
-
-> Edit on the left; the read-only Markdown viewer on the right stays in sync.
-
-| Column {width=160} | Aligned |
-|:---|:---:|
-| Tables | yes |
-| Merge | << |
-
-::: {align=center}
-A centred paragraph inside a fence.
-:::
-
-::: columns
-Left column.
-|||
-Right column.
-:::
-
-![Diagram](https://placehold.co/240x120){width=240 height=120}
-
-\`\`\`
-const editor = new MarkdownEditor("# Hello");
-\`\`\`
-
-[commonmark]: https://commonmark.org
-`;
+/**
+ * The MD Editor demo's own sample, read out of the demo panel's source
+ * (`src/typescript/MarkdownEditorPanel.ts`): the tests below test the
+ * document the demo shows, not a copy that could drift from it.
+ */
+const SAMPLE = readDemoEditorSample();
 
 /**
  * Reaches the private headless Lexical editor.
@@ -167,6 +137,30 @@ describe('an unedited document saves as loaded', () => {
 
         editor.setMode('wysiwyg');
         expect(editor.getValue()).toBe('* a');
+    });
+});
+
+describe('the MD Editor demo sample', () => {
+    it('P18. reads its table\'s column width from the delimiter row, in the viewer and the editor', () => {
+        const viewerTable = viewerModel(SAMPLE).blocks.find((block) => block.kind === 'table');
+        const editorTable = editorSurfaceModel(load(SAMPLE)).find((block) => block.kind === 'table');
+
+        expect(viewerTable).toMatchObject({
+            widths: [160, null],
+            header: [
+                { align: 'left',   runs: [{ text: 'Column' }] },
+                { align: 'center', runs: [{ text: 'Aligned' }] },
+            ],
+        });
+
+        expect(editorTable).toEqual(viewerTable);
+    });
+
+    it('P19. writes its table in the serializer\'s standard form', () => {
+        const table = '| Column | Aligned |\n| :--- {width=160} | :---: |\n| Tables | yes |\n| Merge | << |';
+
+        expect(SAMPLE).toContain(`\n\n${table}\n\n`);
+        expect(canonicalSave(load(table))).toBe(table);
     });
 });
 

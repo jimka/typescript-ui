@@ -68,6 +68,7 @@ export const DIALECT_CASES: readonly CorpusCase[] = [
     { name: 'table column width', source: '| a | b |\n| :--- {width=240} | ---: |\n| 1 | 2 |' },
     { name: 'table merged cell', source: '| a | b |\n| --- | --- |\n| d | << |' },
     { name: 'table merged rows', source: '| a | b | c |\n| --- | --- | --- |\n| d | << | f |\n| ^^ | ^^ | g |' },
+    { name: 'table width with alignment and merge', source: '| Column | Aligned |\n| :--- {width=160} | :---: |\n| Tables | yes |\n| Merge | << |' },
     { name: 'table cell underscore', source: '| a |\n| --- |\n| x_y |' },
     { name: 'fence with heading and list', source: '::: {align=right}\n# H\n\n- list\n:::' },
     { name: 'three columns with gap', source: '::: columns {gap=2rem}\nA\n|||\nB\n|||\nC\n:::' },
