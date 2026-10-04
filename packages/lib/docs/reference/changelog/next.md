@@ -1109,10 +1109,13 @@ page resets to empty.
   paragraph of the same text, and such a code block is written with a
   longer fence. Pasting a selection that spanned two columns left bare
   columns in the document, shown as raw blocks and saved as their contents;
-  they now become the blocks they hold. An unedited paragraph starting with
-  an unclosed `::: …` line was saved as loaded even after a block added
-  after it held a `:::` line, which turned the two into a fence; that line
-  is now saved escaped. No consumer action is needed.
+  they now become the blocks they hold. Such a paste also kept the paragraph
+  at the caret apart from the pasted text, and left an empty paragraph after
+  it when the caret was at the paragraph's end; it now joins the pasted text
+  as a paste of paragraphs does. An unedited paragraph starting with an
+  unclosed `::: …` line was saved as loaded even after a block added after
+  it held a `:::` line, which turned the two into a fence; that line is now
+  saved escaped. No consumer action is needed.
 
 ### Core
 
