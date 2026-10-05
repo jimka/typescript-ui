@@ -1290,6 +1290,26 @@ page resets to empty.
   Backspace turns a new list marker into indentation. No consumer action is
   needed.
 
+- **`Markdown` reads an HTML block start on a last line.** A block tag name
+  with nothing after it — `<div`, `</div`, `<pre` — was an HTML block before
+  a line end, but a paragraph as the last line of a document that ends
+  without a line end, of a `:::` column, of a list item or of a blockquote's
+  `>` lines. It is now an HTML block there too, as CommonMark specifies;
+  `Markdown` shows its text either way. One reading is unchanged: outside a
+  list item, `<div` on the last line of a paragraph that began above it
+  (`a`, then `<div`) still continues that paragraph where the text ends
+  there. In `MarkdownEditor`, an HTML block edited down to such a line at
+  the end of the document or of a column stayed a raw Markdown block while
+  its save read as a paragraph, so it came back as a paragraph on the next
+  load; the save now reads as the editor shows it. A list or blockquote in
+  which such a line reads as an HTML block now loads as a raw Markdown
+  block, as one holding `<div>` already did. That is the only or the last
+  line of a list item, the only line of a quote, a `>` line that a line
+  without `>` follows, and a last line without `>` after a quote. In
+  `"source"` mode the format toggles and the block commands decline on such
+  a last line, as they do on any line of an HTML block. No consumer action
+  is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
