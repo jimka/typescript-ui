@@ -617,6 +617,181 @@ describe('a blockquote\'s raw is the source it used', () => {
     });
 });
 
+/** Block tag names with nothing after them: each starts an HTML block before a line end (CommonMark's start conditions 1 and 6). */
+const HTML_START_TAILS: readonly string[] = ['</div', '<pre', '<script', '<style', '<textarea', '<DIV', '   <div', '<h1', '<li'];
+
+/** Lines that start no HTML block before a line end either: an inline tag name, a longer name, a lone `<`, a custom element. */
+const NO_HTML_START_TAILS: readonly string[] = ['<span', '<a', '<divx', '<', '<x-y'];
+
+/** A `:::` fence whose first column ends in a block tag name: a column's section reaches the block rules without its last line end. */
+const COLUMN_TAIL_SOURCE = '::: columns\na\n\n<div\n|||\nb\n:::';
+
+/**
+ * Sources whose block tag name ends an input inside a list or a blockquote while the container goes on: `marked` lexes
+ * a list item's content, and each run of a quote's `>` lines, as an input of its own. Each is named by where the tag
+ * name stands.
+ */
+const CONTAINER_TAIL_SOURCES: ReadonlyArray<readonly [string, string]> = [
+    ['a quote line before a lazy line', '> <div\nfoo'],
+    ['a quote line before a lazy line, after a quoted paragraph', '> a\n>\n> <div\nfoo'],
+    ['a list item\'s continuation line', '- a\n  <div'],
+    ['a task item\'s continuation line', '- [x] a\n  <div'],
+    ['an ordered item', '1. <div'],
+    ['an item of a loose list', '- a\n\n- <div'],
+    ['a list item in a column', '::: columns\n- <div\n|||\nb\n:::'],
+];
+
+/** The tag names of CommonMark's start condition 1, which end a paragraph in `marked` whatever follows them. */
+const PARAGRAPH_ENDING_TAILS: readonly string[] = ['<pre', '<script', '<style', '<textarea'];
+
+/** Every source rows LX14–LX22, LX25 and LX29 lex, for the comparison against the unbounded twin. */
+const INPUT_END_SOURCES: readonly string[] = [
+    '<div', ...HTML_START_TAILS, 'a\n\n<div', '<div\n', ...NO_HTML_START_TAILS, '    <div', COLUMN_TAIL_SOURCE, '- <div\n- b', '> <div', 'a\n<div',
+    ...CONTAINER_TAIL_SOURCES.map(([, source]) => source), ...PARAGRAPH_ENDING_TAILS.map((tail) => `a\n${tail}`),
+];
+
+/** One block as its type, or, for a container, its type over what it holds: a fence's columns, a list's items, a quote's or an item's blocks. */
+type BlockTypeNode = string | { [type: string]: BlockTypeNode[] | BlockTypeNode[][] };
+
+/**
+ * Reads a token list as nested block types, `space` tokens dropped, so two
+ * sources can be compared by the blocks they read as, whatever their text.
+ *
+ * @param tokens - The block tokens.
+ * @returns Each token's type, with its child blocks under it when it is a container.
+ */
+function blockTypeTree(tokens: readonly Token[]): BlockTypeNode[] {
+    return tokens.filter((token) => token.type !== 'space').map((token): BlockTypeNode => {
+        if (token.type === 'mdblock') {
+            return { mdblock: (token as MdBlockToken).columns.map(blockTypeTree) };
+        }
+
+        if (token.type === 'list') {
+            return { list: blockTypeTree((token as Tokens.List).items) };
+        }
+
+        if (token.type === 'blockquote' || token.type === 'list_item') {
+            return { [token.type]: blockTypeTree((token as Tokens.Blockquote | Tokens.ListItem).tokens) };
+        }
+
+        return token.type;
+    });
+}
+
+describe('an HTML block start ending its input reads as one before a line end', () => {
+    it('LX14. reads a block tag name alone as one html token holding exactly the source', () => {
+        const tokens = lexMarkdown('<div');
+
+        expect(tokens).toHaveLength(1);
+        expect(tokens[0]).toMatchObject({ type: 'html', raw: '<div', text: '<div' });
+    });
+
+    it.each(HTML_START_TAILS)('LX15. reads %j alone as an html token that used the whole source', (source) => {
+        expect(typesOf(source)).toEqual(['html']);
+        expect(joinedRaws(lexMarkdown(source))).toBe(source);
+    });
+
+    it('LX16. reads a block tag name ending the document, after a paragraph, as an html token', () => {
+        const source = 'a\n\n<div';
+        const tokens = lexMarkdown(source);
+
+        expect(tokens.map((token) => token.type)).toEqual(['paragraph', 'space', 'html']);
+        expect(tokens.at(-1)!.raw).toBe('<div');
+        expect(joinedRaws(tokens)).toBe(source);
+    });
+
+    it('LX17. still reads a block tag name before a line end as one html token (control)', () => {
+        const tokens = lexMarkdown('<div\n');
+
+        expect(tokens).toHaveLength(1);
+        expect(tokens[0]).toMatchObject({ type: 'html', raw: '<div\n' });
+    });
+
+    it.each(NO_HTML_START_TAILS)('LX18. still reads %j alone as a paragraph (control)', (source) => {
+        expect(typesOf(source)).toEqual(['paragraph']);
+    });
+
+    it('LX19. still reads a block tag name indented four spaces as code (control)', () => {
+        expect(typesOf('    <div')).toEqual(['code']);
+    });
+
+    it('LX20. reads a block tag name ending a column as an html token in that column', () => {
+        const tokens = lexMarkdown(COLUMN_TAIL_SOURCE);
+        const [first, second] = (tokens[0] as unknown as MdBlockToken).columns;
+
+        expect(tokens.map((token) => token.type)).toEqual(['mdblock']);
+        expect(first!.map((token) => token.type)).toEqual(['paragraph', 'space', 'html']);
+        expect(first!.at(-1)!.raw).toBe('<div');
+        expect(second!.map((token) => token.type)).toEqual(['paragraph']);
+    });
+
+    it('LX21. reads a block tag name ending a list item or a blockquote as an html token inside it', () => {
+        const [first, second] = listItemsAt('- <div\n- b', 0);
+        const quote = tokenAt<Tokens.Blockquote>('> <div', 0);
+
+        expect(first!.tokens.map((token) => token.type)).toEqual(['html']);
+        expect(first!.tokens[0]!.raw).toBe('<div');
+        expect(second!.tokens.map((token) => token.type)).toEqual(['text']);
+        expect(quote.tokens.map((token) => token.type)).toEqual(['html']);
+    });
+
+    // `marked`'s paragraph rule decides this one, not its HTML rule: it lets a paragraph run on over `<div` unless a
+    // line end follows the tag name.
+    it('LX22. still reads <div on the last line of a paragraph as that paragraph (control)', () => {
+        expect(typesOf('a\n<div')).toEqual(['paragraph']);
+    });
+
+    it.each(INPUT_END_SOURCES)('LX23. lexes %j identically to the unbounded twin', (source) => {
+        expect(lexMarkdown(source)).toEqual(lexMarkdownUnbounded(source));
+    });
+
+    it.each(['<div', ...HTML_START_TAILS, ...NO_HTML_START_TAILS])('LX24. reads %j the same with and without a line end after it', (source) => {
+        expect(typesOf(source)).toEqual(typesOf(source + '\n'));
+    });
+
+    // Inside a list or a blockquote no line end can be put after the tag name without changing the container, so
+    // these rows compare with the same line closed by `>`, which `marked` read as an HTML block start all along.
+    it.each(CONTAINER_TAIL_SOURCES)('LX25. reads a block tag name on %s as the same line closed by > reads', (_where, source) => {
+        const tokens = lexMarkdown(source);
+
+        expect(blockTypeTree(tokens)).toEqual(blockTypeTree(lexMarkdown(source.replace('<div', '<div>'))));
+        expect(joinedRaws(tokens)).toBe(source);
+    });
+
+    it('LX26. reads a quote line holding a block tag name, then a lazy line, as an html block and a paragraph in the quote', () => {
+        const quote = tokenAt<Tokens.Blockquote>('> <div\nfoo', 0);
+
+        expect(quote.tokens.map((token) => token.type)).toEqual(['html', 'paragraph']);
+        expect(quote.tokens[0]!.raw).toBe('<div');
+        expect(quote.tokens[1]).toMatchObject({ text: 'foo' });
+    });
+
+    it('LX27. reads a block tag name on a list item\'s continuation line as an html block after the item\'s text', () => {
+        const [item] = listItemsAt('- a\n  <div', 0);
+
+        expect(item!.tokens.map((token) => token.type)).toEqual(['text', 'html']);
+        expect(item!.tokens[1]!.raw).toBe('<div');
+    });
+
+    it('LX28. still reads an inline tag name on a quote line before a lazy line as one paragraph (control)', () => {
+        const quote = tokenAt<Tokens.Blockquote>('> <span\nfoo', 0);
+
+        expect(quote.tokens.map((token) => token.type)).toEqual(['paragraph']);
+    });
+
+    // Unlike `<div` (LX22), these four names end a paragraph in `marked` with nothing after them, so the tag name
+    // is an input's only line once the paragraph above it is taken.
+    it.each(PARAGRAPH_ENDING_TAILS)('LX29. reads %j on the line after a paragraph as an html block, as before a line end', (tail) => {
+        const source = `a\n${tail}`;
+        const tokens = lexMarkdown(source);
+
+        expect(tokens.map((token) => token.type)).toEqual(['paragraph', 'html']);
+        expect(tokens.at(-1)!.raw).toBe(tail);
+        expect(typesOf(source)).toEqual(typesOf(source + '\n'));
+        expect(joinedRaws(tokens)).toBe(source);
+    });
+});
+
 /** The six block rules whose anchored regexes JavaScriptCore scans from every start position. */
 const SLOW_RULES = ['hr', 'blockquote', 'list', 'html', 'table', 'lheading'] as const;
 

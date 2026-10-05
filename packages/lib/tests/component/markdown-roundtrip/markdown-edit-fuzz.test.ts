@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { $createParagraphNode, $createTextNode, $getRoot, $isRootNode, $isTextNode } from 'lexical';
+import { $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $isRootNode, $isTextNode } from 'lexical';
 import type { LexicalEditor, LexicalNode, TextNode } from 'lexical';
 import { $dfs, $findMatchingParent } from '@lexical/utils';
 import type { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { $isReferenceLinkNode } from '~/component/editor/markdownReferenceLinkNode';
 import { $readDefinitions } from '~/component/editor/markdownSerializer';
 import type { MarkdownSourceMap } from '~/component/editor/markdownSourceMap';
-import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from '~/component/editor/markdownSourceNodes';
+import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode, type MarkdownRawBlockNode } from '~/component/editor/markdownSourceNodes';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -55,8 +55,6 @@ interface EditRecord {
     readonly inserted: Set<string>;
     /** Words of the source the edits may have removed or rewritten: deleted and edited blocks' source and text. */
     readonly released: Set<string>;
-    /** Whether an edit typed into Markdown source (a raw block or a kept-source run), whose reading it may change. */
-    editedSource: boolean;
 }
 
 /**
@@ -198,7 +196,6 @@ function editOnce(editor: MarkdownEditor, random: () => number, record: EditReco
                 release(editor, $rootChildOf(text), record);
                 text.setTextContent(`${text.getTextContent()} ${word}`);
                 record.inserted.add(word);
-                record.editedSource ||= $isMarkdownSourceTextNode(text) || $findMatchingParent(text, $isMarkdownRawBlockNode) !== null;
                 done = `appended '${word}' to '${text.getTextContent()}'`;
             }
         } else if (kind === 'deleteBlock') {
@@ -261,7 +258,7 @@ interface FuzzRun {
  */
 function runSequence(testCase: CorpusCase, random: () => number): FuzzRun {
     const { editor } = loadAndSave(testCase.source);
-    const record: EditRecord = { inserted: new Set(), released: new Set(), editedSource: false };
+    const record: EditRecord = { inserted: new Set(), released: new Set() };
     const edits = 1 + Math.floor(random() * MAX_EDITS_PER_SEQUENCE);
     const definitionsBefore = lexicalOf(editor).read(() => $readDefinitions(true).key);
     const done = Array.from({ length: edits }, (_, step) => editOnce(editor, random, record, step));
@@ -275,11 +272,11 @@ function runSequence(testCase: CorpusCase, random: () => number): FuzzRun {
 }
 
 /**
- * Checks that the save re-lexes to what the editor shows — unless an edit typed into Markdown source, which the
- * editor shows as source until it is loaded again (`***` with a word after it is no longer a thematic break). An
- * edit that changes the definitions is checked like any other: a block holding a kept-source run they change shows
- * anew as its save reads. The check rests on the editor reading the document as the viewer does, so a known
- * `surface` or `parity` divergence skips it, as a known `edits` one does.
+ * Checks that the save re-lexes to what the editor shows, also after an edit typed into Markdown source: a raw block
+ * shows the blocks its text reads as (`***` with a word after it shows as a paragraph). An edit that changes the
+ * definitions is checked like any other: a block holding a kept-source run they change shows anew as its save reads.
+ * The check rests on the editor reading the document as the viewer does, so a known `surface` or `parity` divergence
+ * skips it, as a known `edits` one does.
  *
  * @param testCase - The corpus case.
  * @param run - The run.
@@ -287,7 +284,7 @@ function runSequence(testCase: CorpusCase, random: () => number): FuzzRun {
 function checkRelexes(testCase: CorpusCase, run: FuzzRun): void {
     const known = (['edits', 'surface', 'parity'] as const).some((check) => knownDivergence(testCase, check));
 
-    if (known || run.record.editedSource) {
+    if (known) {
         return;
     }
 
@@ -412,6 +409,76 @@ describe('definition edits over the corpus: removing each raw block keeps the ed
             } finally {
                 editor.dispose();
             }
+        }
+    });
+});
+
+/** Documents holding one raw HTML block, each named by where that block stands. */
+const RAW_BLOCK_POSITIONS: ReadonlyArray<readonly [string, string]> = [
+    ['the last block of the document', 'a\n\n<div>\nw\n</div>'],
+    ['the last block of a document ending in a line end', 'a\n\n<div>\nw\n</div>\n'],
+    ['the only block', '<div>\nw\n</div>'],
+    ['a block mid-document', 'a\n\n<div>\nw\n</div>\n\nb'],
+    ['the last block of a column', '::: columns\na\n\n<div>\nw\n</div>\n|||\nb\n:::'],
+    ['the last block of the last column', '::: columns\na\n|||\nb\n\n<div>\nw\n</div>\n:::'],
+    ['the last block of a one-column fence', '::: {align=center}\na\n\n<div>\nw\n</div>\n:::'],
+    ['a block mid-column', '::: columns\n<div>\nw\n</div>\n\na\n|||\nb\n:::'],
+];
+
+/** What an edit leaves of the raw block's text: HTML block starts first, then every other shape it can read as. */
+const RAW_BLOCK_TEXTS: readonly string[] = [
+    '<div', '<div ', '<div>', '</div', '</div>', '<pre', '<script', '<style', '<textarea', '<DIV', '   <div', '<h1', '<p',
+    '<', '<a', '<a>', 'plain', '# h', '- item', '> q', '```', '[a]: /u', '---', '<!--', '<!-- x', '<?', '<!D', '',
+    '<div\n</div', '<div>\nw\n</div', '<div>\nw\n</di', '<div>\nw\n<',
+];
+
+/**
+ * Replaces a raw block's text as an edit leaves it: one text node per non-empty line, a line break between lines.
+ *
+ * @param block - The raw block.
+ * @param text - Its new text.
+ */
+function $setRawBlockText(block: MarkdownRawBlockNode, text: string): void {
+    block.clear();
+
+    text.split('\n').forEach((line, index) => {
+        if (index > 0) {
+            block.append($createLineBreakNode());
+        }
+
+        if (line !== '') {
+            block.append($createTextNode(line));
+        }
+    });
+}
+
+describe('raw block edits: a raw block shows what its save reads as, wherever it stands', () => {
+    // A deterministic companion to the random fuzz, whose `appendText` only ever lengthens a raw block: the one raw
+    // block of each document is set to each text an edit can leave in it, and the save must read in the viewer, and
+    // after a reload, as the editor shows it, and save again unchanged.
+    const cases = RAW_BLOCK_POSITIONS.flatMap(([position, source]) =>
+        RAW_BLOCK_TEXTS.map((text) => [`${JSON.stringify(text)} as ${position}`, source, text] as const));
+
+    it.each(cases)('RB. %s', (_title, source, text) => {
+        const { editor } = loadAndSave(source);
+
+        lexicalOf(editor).update(() => {
+            const block = $dfs().map(({ node }) => node).filter($isMarkdownRawBlockNode)[0]!;
+
+            $setRawBlockText(block, text);
+        }, { discrete: true });
+
+        const saved = editor.getValue();
+        const context = `${JSON.stringify(text)} in ${JSON.stringify(source)}:\n${saved}`;
+        const reloaded = loadAndSave(saved);
+
+        try {
+            expect(viewerModel(saved).blocks, context).toEqual(editorSurfaceModel(editor));
+            expect(editorSurfaceModel(reloaded.editor), context).toEqual(editorSurfaceModel(editor));
+            expect(reloaded.saved, context).toBe(saved);
+        } finally {
+            editor.dispose();
+            reloaded.editor.dispose();
         }
     });
 });

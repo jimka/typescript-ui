@@ -471,17 +471,63 @@ function blockquoteWithSourceRaw(this: Tokenizer, src: string): Tokens.Blockquot
     return token;
 }
 
+/** The line end `marked`'s HTML rule wants after a tag name that ends its line. */
+const LINE_END = "\n";
+
 /**
- * The three block tokenizers the dialect owns, installed in `marked`'s
- * `blockquote`, `list` and `table` slots: the unbounded test twin installs
- * them as they are, and {@link BOUNDED_BLOCK_TOKENIZERS} calls the same three
- * behind its guards, so the twin differs from the bounded instance in nothing
- * else.
+ * Runs `marked`'s HTML-block tokenizer, reading the end of the input as the
+ * end of a line. `marked` 18's rule takes a block tag name (`<div`, `</div`,
+ * `<pre`) as an HTML block start only when a space, a `>` or a line-end
+ * character follows it, so the same line is an HTML block before a line end
+ * and a paragraph as the last line of an input: a document, a `:::` column,
+ * a list item's content, or a run of a blockquote's `>` lines (`marked` lexes
+ * a quote's `>` lines and the lazy lines after them as inputs of their own).
+ * CommonMark ends a line at the end of the input too. When `marked` declines
+ * a one-line input, it is asked again with a line end after it; a token it
+ * then returns is that line's, so its `raw` and `text` are set back to the
+ * input. An input holding a line end is not asked again: the rule already saw
+ * what follows the tag name there.
+ *
+ * @param src - The remaining source at the current block position.
+ * @returns The HTML token, or `undefined` when no HTML block starts here.
+ */
+function htmlWithInputEndAsLineEnd(this: Tokenizer, src: string): Tokens.HTML | undefined {
+    const token = Tokenizer.prototype.html.call(this, src);
+
+    if (token !== undefined) {
+        return token;
+    }
+
+    const oneLine = !src.includes(LINE_END);
+
+    if (!oneLine) {
+        return undefined;
+    }
+
+    const ended = Tokenizer.prototype.html.call(this, src + LINE_END);
+
+    if (ended === undefined) {
+        return undefined;
+    }
+
+    ended.raw = src;
+    ended.text = src;
+
+    return ended;
+}
+
+/**
+ * The four block tokenizers the dialect owns, installed in `marked`'s
+ * `blockquote`, `list`, `table` and `html` slots: the unbounded test twin
+ * installs them as they are, and {@link BOUNDED_BLOCK_TOKENIZERS} calls the
+ * same four behind its guards, so the twin differs from the bounded instance
+ * in nothing else.
  */
 const DIALECT_BLOCK_TOKENIZERS: TokenizerObject = {
     blockquote: blockquoteWithSourceRaw,
     list:       listWithOwnTaskMarker,
     table:      dialectTable,
+    html:       htmlWithInputEndAsLineEnd,
 };
 
 /**
@@ -489,8 +535,8 @@ const DIALECT_BLOCK_TOKENIZERS: TokenizerObject = {
  * whose anchored regexes JavaScriptCore — the engine WebKitGTK runs — scans
  * from every start position of whatever it is handed, so each failed match
  * costs time in proportion to the rest of the document and lexing a long
- * document is quadratic (`blockquote` and `list` reach theirs through the
- * dialect's wrappers); the sixth, `table`, is the dialect's own tokenizer,
+ * document is quadratic (`blockquote`, `list` and `html` reach theirs through
+ * the dialect's wrappers); the sixth, `table`, is the dialect's own tokenizer,
  * which has no such regex. Each override returns `undefined`,
  * declining the position outright, when a condition its rule's own regex
  * requires does not hold; otherwise it calls `marked`'s original method on
@@ -498,10 +544,10 @@ const DIALECT_BLOCK_TOKENIZERS: TokenizerObject = {
  * dialect's source-`raw` and task-marker wrappers on the window instead of the
  * originals. `table` runs the dialect's table tokenizer behind the guard with
  * no window: that tokenizer reads only up to its first blank line, so it never
- * scans the rest of the document. `html` takes the guard only and returns
- * `false` — `marked` then runs the original on the whole source — because its
- * `<script>`, comment, processing-instruction, declaration and CDATA forms all
- * run to a closing marker no restart line bounds.
+ * scans the rest of the document. `html` takes the guard only and calls the
+ * dialect's input-end wrapper on the whole source, because its `<script>`,
+ * comment, processing-instruction, declaration and CDATA forms all run to a
+ * closing marker no restart line bounds.
  *
  * The originals are reached through `Tokenizer.prototype`: `marked` installs
  * these overrides as own properties on the instance's tokenizer object, so the
@@ -526,7 +572,7 @@ const BOUNDED_BLOCK_TOKENIZERS: TokenizerObject = {
         return hasSetextUnderline(src) ? Tokenizer.prototype.lheading.call(this, blockWindow(src)) : undefined;
     },
     html(src) {
-        return HTML_START.test(src) ? false : undefined;
+        return HTML_START.test(src) ? htmlWithInputEndAsLineEnd.call(this, src) : undefined;
     },
 };
 
@@ -556,8 +602,8 @@ let _unboundedMarked: Marked | null = null;
 /**
  * Lexes Markdown source through the same dialect with no block-rule guards or
  * windows, so a test can assert that bounding them changed no token. It shares
- * the dialect's own `table`, `blockquote` and `list` tokenizers, so the guards
- * and windows are the only difference.
+ * the dialect's own `table`, `blockquote`, `list` and `html` tokenizers, so
+ * the guards and windows are the only difference.
  *
  * @internal Test-only reference lexer, not part of the public API surface.
  *
