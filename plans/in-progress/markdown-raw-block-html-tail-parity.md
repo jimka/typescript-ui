@@ -805,3 +805,406 @@ nothing there is needed to implement the plan.
     on a paragraph. They are in the corpus so the edit fuzz covers them and
     so the new reading is pinned. The lexer, viewer and importer rows are
     what turns red for that reading.
+
+---
+
+## Implementation Notes
+
+### Decided by the user on 2026-10-06: list items and blockquotes
+
+The plan flags one consequence for the user to decide. It is implemented as
+the plan says, under *The change applies to every input, list items and
+blockquotes included*. **Decided by the user on 2026-10-06: accepted as
+implemented.** A bare block tag name at the end of an input is an HTML
+block everywhere: in the document, in a column, in a list item's text and
+in a quote. What follows is the scope the user was shown.
+
+The fix is the HTML rule for every input `marked` lexes, so it also applies
+inside a list item and a blockquote. Where a bare block tag name (`<div`,
+`</div`, `<pre`) now reads as an HTML block there, the list or the quote
+holds an HTML block. The editor has no rich form for that, so the whole
+list or quote loads as one raw block, saved as written.
+
+The scope is wider than the plan's table shows. The first audit found this
+(see *Where the plan's account of an input was too narrow*). These are the
+shapes that changed, each checked at the base and at this branch's tip:
+
+| Where the tag name stands | Examples | Editor before | Editor now |
+|---|---|---|---|
+| the only line of a list item | `- <div`, `1. <div`, `- a\n- <div`, `- a\n\n- <div`, `- a\n  - <div` | an editable list | one raw block |
+| the last line of a list item's text, indented or not | `- a\n  <div`, `- a\n  b\n  <div`, `- [x] a\n  <div`, `- a\n<div` | an editable list | one raw block |
+| the only line of a quote | `> <div`, `> <div\n\nfoo` | an editable quote | one raw block |
+| a `>` line that a line without `>` follows | `> <div\nfoo`, `> <pre\nfoo` | an editable quote | one raw block |
+| a last line without `>` after a quote | `> a\n<div` | an editable quote | one raw block |
+
+Not changed:
+
+| Source | Reads as, before and now |
+|---|---|
+| `- <div>`, `> <div>`, `> <div>\nfoo`, `- a\n  <div>` | one raw block |
+| `> a\n> <div`, `> a\n> <div\nfoo` | an editable quote: the tag name continues the quote's paragraph |
+| `- a\n  <span`, `> <span\nfoo` | an editable list or quote: `<span` starts no HTML block |
+| `- a\n\n  <div`, `> a\n>\n> <div`, `> - <div` | one raw block, for another reason (a second block in the item or quote) |
+
+The same holds for a raw block an edit cuts down to such text, wherever it
+stands. Backspace over the `>` of a raw `- <div>` used to give an editable
+list saved as `- \<div`. It now stays a raw block saved as `- <div` (rows
+HE11 and HE12). The viewer shows a list or a quote for such text, so the
+harness lists the corpus cases under the known `listItemBlocks` and
+`quoteBlocks` divergences.
+
+Each changed shape now reads as `marked` read the same line all along with
+`>` after the tag name (`- a\n  <div` as `- a\n  <div>`), or, for the
+item's last line without indentation, with a line after it (`- a\n<div` as
+`- a\n<div\nfoo`). The exception is the last row, which *Seen along the
+way, not changed* describes. The editor never writes such text itself: a
+typed `<` before a letter is saved as `\<`.
+
+Declining this would not have been a small change. The wrapper cannot tell
+which input it is in, so the list and blockquote wrappers would have had to
+tell it (see the plan's note `[^containers]`).
+
+### Where the plan's account of an input was too narrow
+
+The plan names four kinds of input: the document, a `:::` column's section,
+a list item's content and a blockquote's content. Its first table says a
+tag name "with a line end after it" reads as before. Both are too narrow in
+one respect, and the fix as the plan gives it behaves differently there.
+
+`marked` does not lex a blockquote's content in one call. It lexes each run
+of `>` lines, and each run of lazy lines (lines without `>`) after it, as an
+input of its own. So in `> <div\nfoo` the tag name ends an input although a
+line follows it, and it now reads as an HTML block: the quote holds an HTML
+block `<div` and a paragraph `foo`, where it held one paragraph. A list
+item's text is read one line at a time, so a tag name on the item's last
+line ends an input in the same way.
+
+The reading is the consistent one. `marked` read `> <div>\nfoo` and
+`> <div \nfoo` as a quote holding an HTML block and a paragraph all along.
+The plan's code is unchanged in what it does; what was missing was coverage
+and an honest list for the sign-off. Added for it: rows LX25 to LX28, HT7
+and HT8, four corpus cases, the wider table above, the wrapper's doc
+comment and the changelog's wording.
+
+The second audit found one more place. The plan's Non-Goal *A tag name on
+the last line of a paragraph* holds for `<div` and the other names of
+CommonMark's start condition 6. It does not hold for `<pre`, `<script`,
+`<style` and `<textarea`. `marked`'s paragraph rule ends a paragraph at
+those four with nothing after them, so the tag name is the only line of
+what remains, and the fix applies.
+
+| Source | Base | This branch | With a line end after it (unchanged) |
+|---|---|---|---|
+| `a\n<div` | one paragraph | one paragraph | a paragraph, an HTML block |
+| `a\n<pre` | two paragraphs | a paragraph, an HTML block | a paragraph, an HTML block |
+
+Rows LX29 and HT9 and a corpus case pin the second line. LX22 and HT6, the
+plan's controls for the first, now name `<div` in their titles.
+
+### Deviations in the fix
+
+`markdownExtensions.ts` had not changed since the plan was written. The two
+tokenizer maps, the `LINE_END` constant and three of the four doc comments
+are as the plan gives them. Three details of the wrapper are not, all from
+the first audit's advisory findings. What the wrapper returns is the same.
+
+| Plan | Here | Why |
+|---|---|---|
+| `oneLine` computed before the first `if`, which tests the token and `oneLine` together | two early returns: the token first, then `oneLine` | the source is not searched for a line end when `marked` already returned a token |
+| returns `{ ...ended, raw: src, text: src }` | sets `ended.raw` and `ended.text`, returns `ended` | `blockquoteWithSourceRaw`, the precedent, corrects `marked`'s token in place |
+| doc comment: "the last line of a document, a `:::` column, a list item or a blockquote" | names the inputs: a list item's content, a run of a blockquote's `>` lines | see the section above |
+
+The importer's comment is the plan's text.
+
+### Changelog wording beyond the plan's text
+
+The plan gives the changelog entry word for word. Two of its sentences were
+changed and two added, for the audits' findings:
+
+- "of a list item or of a blockquote" became "of a list item or of a
+  blockquote's `>` lines".
+- The sentence on lists and blockquotes now names the five places a tag
+  name can stand, as the sign-off table does.
+- A sentence says that in `"source"` mode the format toggles and the block
+  commands decline on such a last line. Before the fix they applied there
+  (`**div**`, `## <div`) and declined before a line end.
+- A sentence says what is unchanged: outside a list item, `<div` on the
+  last line of a paragraph still continues that paragraph where the text
+  ends there (the plan's Non-Goal).
+
+### Line numbers that had drifted
+
+Two review-fix rounds landed below this branch after the plan was written.
+They moved lines in two of the files this plan edits. Each site was found by
+its symbol or heading.
+
+| Site | Plan says | Found at |
+|---|---|---|
+| `select`, `edit`, `expectSaveShowsSurface` in `markdown-importer.test.ts` | 1490, 1508, 1529 | 1493, 1511, 1532 |
+| end of `describe('a raw block edited until it reads as one block …')` | 3572 | 3981 |
+| changelog entry "Typing HTML in Markdown source …" | 623 | 734 |
+| changelog `### Core` | 640 | 752 |
+
+The other line numbers in the plan still held.
+
+### Test code that differs from the plan's text
+
+The plan's rows and what each asserts are the plan's. Six details of the
+test code are not. Rows the audit added are listed under *Rows added by the
+audit*.
+
+- **HE rows share a helper.** The plan shows HE1 written out. Twelve of the
+  thirteen rows load a source, select a range and press Backspace, so the
+  `describe` holds a local `backspaceOver(source, from, to)` that does those
+  three steps. HE6 calls it and then types the `>`.
+- **HE11 and HE12 are one `it.each`.** They differ only in the marker.
+- **The lexer rows share four constants.** `HTML_START_TAILS`,
+  `NO_HTML_START_TAILS`, `COLUMN_TAIL_SOURCE` and `INPUT_END_SOURCES` name
+  the sources LX15, LX18, LX20, LX23 and LX24 run over, so LX23 and LX24
+  cannot drift from the rows they repeat.
+- **The RB `describe` has a comment** saying what the random fuzz cannot
+  reach, as the `describe` above it has.
+- **An RB row disposes both editors in `finally`.** The plan's code disposed
+  the reloaded editor after the three `expect`s, so a failing row left it
+  undisposed. The edit and the reload moved out of the `try`.
+- **HT rows are titled `HT1.`**, with a full stop like the LX, BF and HE
+  rows, not with the colon the neighbouring VB rows use.
+
+### Rows added by the audit
+
+None of these is in the plan's *Expected Behaviour*. Each was seen to fail
+with the wrapper's second call switched off, except the controls and the
+last corpus case, which holds at the base too (the viewer and the editor
+agreed on two paragraphs there).
+
+| Row | File | Asserts |
+|---|---|---|
+| LX25 (7 sources) | `markdownLexer.test.ts` | a tag name ending an input inside a list or quote reads as the same source with the tag closed by `>`; the top-level `raw`s join back into the source |
+| LX26 | `markdownLexer.test.ts` | `> <div\nfoo`: the quote holds an `html` token `<div` and a paragraph `foo` |
+| LX27 | `markdownLexer.test.ts` | `- a\n  <div`: the item holds `text`, then an `html` token `<div` |
+| LX28 (control) | `markdownLexer.test.ts` | `> <span\nfoo`: still one paragraph |
+| LX29 (4 names) | `markdownLexer.test.ts` | `<pre`, `<script`, `<style`, `<textarea` on the line after a paragraph: a paragraph and an `html` token, as before a line end |
+| LX23 | `markdownLexer.test.ts` | now also runs LX25's and LX29's sources against the unbounded twin |
+| HT7 (4 sources) | `markdown-importer.test.ts` | each loads as one raw block, as it does with the tag closed, and saves as written |
+| HT8 (control) | `markdown-importer.test.ts` | `> <span\nfoo` still loads as a quote the viewer agrees with |
+| HT9 | `markdown-importer.test.ts` | `a\n<pre` loads as a paragraph and a raw block the viewer agrees with, and saves as written |
+| 4 corpus cases | `corpus/dialect.ts` | `> <div\nfoo`, `- a\n  <div`, `> a\n<div`, `- a\n<div`: every harness check and the edit fuzz, `surface` known |
+| 1 corpus case | `corpus/dialect.ts` | `a\n<pre`: every harness check and the edit fuzz |
+| line commands | `markdown-source-edits.test.ts` | every line command declines on a `<div` that ends the text or a column, as before a line end |
+| inline toggle | `markdown-source-edits.test.ts` | `BOLD_SOURCE` finds no inline text in an HTML block, a `<div` that ends the text included |
+
+`markdown-source-edits.test.ts` is not in the plan's file table.
+
+### Red phase
+
+Steps 1 to 5 were written first and run before step 6. 92 tests failed, and
+they were exactly the rows the plan marks red.
+
+| File | Red rows | Count |
+|---|---|---|
+| `markdownLexer.test.ts` | LX14, LX15 (9), LX16, LX20, LX21, LX24 (10 of 15) | 23 |
+| `Markdown.test.ts` | BF18, BF19 | 2 |
+| `markdown-importer.test.ts` | HT1, HT2, HT3, HT4 (2), HE1 to HE5, HE11, HE12 | 12 |
+| `markdown-roundtrip.test.ts` | "before a line end": `canonical`, `canonicalIdempotence`; list and quote case: `surface` | 4 |
+| `markdown-edit-fuzz.test.ts` | "before a line end" fuzz row; RB: 10 texts × 5 positions | 51 |
+
+After step 6 all 3470 tests of those files passed. Step 7's removal of the
+`editedSource` skip left the round-trip folder's 2679 tests passing.
+
+### The crash-fixes plan's raw-block limits still hold
+
+`plans/implemented/markdown-editor-command-crash-fixes.md` records limits
+for Enter and Shift+Enter over a range with an end in a raw block ("What
+Enter still cannot tell", and the known limit in round 3). Both rest on what
+an edited raw block reads as, so they were checked against this change.
+
+The editor reads a raw block's text with a line end added, before and after
+this change. So a raw block that is HTML at the top level reads the same as
+before, wherever it stands. What changed is the reading of text *inside* a
+list item or blockquote, as the section above describes.
+
+A probe ran every range over nine documents under Enter, Shift+Enter, Delete
+and typing: 11,424 edits, at the base and at this branch's tip. The
+documents hold a raw block as the last block of the document, of a column
+and of the last column, a raw `- <div>` and `> <div>`, and the crash-fixes
+note's own example.
+
+| Result | Edits |
+|---|---|
+| same save and same blocks, parity now holds (the raw block is cut to `<div`, `<pre`, `<p`, `<dir`) | 34 |
+| a raw `- <div` or `> <div` stays raw where it became a list or quote | 32 |
+| identical | 11,358 |
+| threw | 0 |
+
+The 32 are the case the user accepted on 2026-10-06. Each reloads to the same
+raw block and saves unchanged. The note's example, `"<div>"`@1 to `"after"`@1
+in `<div>\nraw text\n</div>\n\nafter`, still saves `<\nfter` under Enter. The
+R16 and R17 rows pass unchanged.
+
+### The plan's own probes, run on the real fix
+
+The plan's Addendum simulated the fix by replacing `Tokenizer.prototype.html`
+in a test setup file. Two of its scratch probes were run again on the real
+wiring, with no setup file. Both gave the simulated result.
+
+| Probe | Simulated | Real fix |
+|---|---|---|
+| 195,336 random sources, bounded lexer against the unbounded twin | identical | identical |
+| the same sources, classes that lex differently with a line end added | 27 | 27 |
+| 5,849 random raw-block texts × 7 positions, failing only where the input ends | 0 | 0 |
+| the same texts, failing for another reason (raw lists and quotes) | 71 | 71 |
+
+### Manual check M1
+
+Run in Chromium against this worktree's dev server on port 8037, through
+the chrome-devtools tools. The server was stopped afterwards.
+
+| Step | Seen |
+|---|---|
+| 1. source mode, text set to `a`, an empty line, `<div>` | three source lines, none after `<div>` |
+| 2. back to WYSIWYG | `<div>` is a monospace raw block |
+| 3. Backspace after the `>` | still a monospace raw block, `<div`; the viewer shows `a` in a `<p>` and `<div` as fallback text |
+| 4. to source mode and back | the source is `a`, an empty line, `<div`; the line is still a monospace raw block |
+| 5. the same with the `::: columns` source | a raw block `<div` in the first column after Backspace and after the round trip; the viewer shows the fallback text in its first column; the source is `<div` before `\|\|\|` |
+
+The console showed no error or warning.
+
+### Checks
+
+Run from `packages/lib` at the branch's tip, after the last audit fix, one
+after another.
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | clean |
+| `npm run typecheck:test` | clean |
+| `npm run lint` | clean |
+| `npm run test` | 551 files, 13,804 tests passed, 2 todo |
+| `npm run docs:api` | no warnings |
+| `npm run docs:llms:check` | 108 catalogued, 121 excluded, 0 unaccounted for |
+| `npm run build:lib` | built |
+| `grep 'false : undefined'` in `markdownExtensions.ts` | no match |
+| `grep 'editedSource'` in `markdown-edit-fuzz.test.ts` | no match |
+
+### Regression fuzz
+
+The two throwaway fuzzes kept from the branches below are not in the
+repository. Each was copied into `tests/component/`, run with `FUZZ_N=3000`
+over seeds 601, 1709, 2207, 3313, 4409, 5521, 6607, 7703, 8819, 9907 and
+11003, and deleted again. The result files are in the user's scratch
+directory, under `impl/raw-block-tail/fuzz/`. They are the baseline for the
+next plan.
+
+The runs below were made before the audits. The first audit's fixes changed
+how the wrapper is written, not what it returns, so all four runs were
+repeated at the final code. Each of the 44 result files came out
+byte-identical. The probes and the manual check M1 above were not repeated.
+
+**Table-edge deletion** (`zz-table-edge-fuzz-lbdeclined`).
+
+| Mode | Base | This branch |
+|---|---|---|
+| default, 33,000 cases | 0 failures | 0 failures, byte-identical for all 11 seeds |
+| strict (`FUZZ_STRICT=1`), 33,000 cases | 27 failures, all `editParity` | 0 failures |
+
+The default mode skips its parity check when a range end is in a raw block.
+Strict mode runs it. The 27 strict failures at the base are this plan's bug.
+
+**Column paste** (`zz-column-paste-fuzz`), default mode, 31,951 pastes.
+
+| Check | Base | This branch |
+|---|---|---|
+| `reload` | 799 | 800 |
+| `editParity` | 74 | 49 |
+| `emptyContainer` | 44 | 44 |
+| `undo` | 3 | 3 |
+| `second:type:reload` | 3 | 3 |
+| `second:enter:reload` | 2 | 2 |
+| total | 925 | 901 |
+
+Every difference from the base, record by record:
+
+- **25 `editParity` records are gone.** Each was a raw block cut to `<div`
+  as the last block of a `:::` column, which
+  `plans/markdown-editor-list-item-block-paste.md` attributes to this plan.
+- **One of the 25 now fails `reload` instead** (seed 3313, case 1558). The
+  fuzz reports the first check a case fails, and `editParity` comes before
+  `reload`. This case also holds a list item with a `:::` fence after its
+  nested list, which reloads as one raw block. That is the next plan's
+  largest class ("a list item holds a block that is not a nested list"),
+  which the parity failure had hidden. So 24 cases pass now and one moved.
+- **One `editParity` record has other text** (seed 4409, case 717). Its save
+  holds a `<div` tail and a `:::` fence in a list item. The viewer now reads
+  the tail as the editor shows it. The fence still differs, which is the
+  next plan's Part C.
+
+The other 899 records are identical to the base's. No case fails that
+passed before.
+
+**Column paste, strict mode** (`FUZZ_STRICT=1`, which also checks parity for
+a paste whose target lies in raw Markdown source). No result was saved for
+this mode at the lower branches, so it was run at the base too.
+
+| Check | Base | This branch |
+|---|---|---|
+| `reload` | 825 | 826 |
+| `editParity` | 89 | 51 |
+| `emptyContainer`, `undo`, `second:type:reload`, `second:enter:reload` | 44, 3, 3, 2 | 44, 3, 3, 2 |
+| total | 966 | 929 |
+
+The 38 `editParity` records that are gone each held a raw block cut to
+`<div` or `</div` as the last block of a column (37) or of the document
+(1). The one new `reload` record and the one record with other text are the
+two cases described above. No case fails that passed before.
+
+### Seen along the way, not changed
+
+**A tag name on a last line without `>` after a quote still reads by
+position.** The first audit raised this as advisory. It is the blockquote
+twin of the plan's Non-Goal *A tag name on the last line of a paragraph*.
+
+| Source | Base | This branch |
+|---|---|---|
+| `> a\n<div` (the input ends) | a quote holding one paragraph, `a` and `<div` | a quote holding a paragraph `a` and an HTML block `<div` |
+| `> a\n<div\n` | a quote holding `a`, then an HTML block outside it | the same |
+
+`marked`'s blockquote rule decides whether the last line belongs to the
+quote, and that rule has the same end-of-input gap: it lets a paragraph run
+on over `<div` unless a line end follows the tag name. This plan fixes the
+HTML rule only, so the line still joins the quote where the input ends
+there. Inside the quote it is now an HTML block, where it was paragraph
+text. The editor loads such a document as one raw block, saved as written.
+A raw block edited to that text shows as a quote and a raw block `<div`,
+which is what its save then reads as. The corpus case "html block start on
+a lazy line after a quote" holds every harness check with `surface` known.
+
+### Audit
+
+Each round was a fresh reviewer given the plan, the branch and its base.
+The user's standing rule for this stack is that advisory findings are fixed
+too. Every fix was folded into the commit it belongs to.
+
+**Round 1** found one blocking and seven advisory findings.
+
+| # | Finding | What was done |
+|---|---|---|
+| B1 | `> <div\nfoo` changes reading although a line follows the tag name; no row pins it, and the sign-off table and the changelog leave it out | rows LX25 to LX28, HT7, HT8 and four corpus cases; the wider sign-off table; the section *Where the plan's account of an input was too narrow*; the wrapper's doc comment; the changelog's wording |
+| A1 | `> a\n<div` still reads by position, in a new shape | recorded under *Seen along the way, not changed*; a corpus case covers its stability |
+| A2 | source-mode commands change on a trailing `<div` line, with no test and no changelog mention | two rows in `markdown-source-edits.test.ts`; a sentence in the changelog |
+| A3 | the list and blockquote consequence is implemented while awaiting sign-off | open at the time, and the sign-off section now lists its full scope; the user accepted it on 2026-10-06 |
+| A4 | a failing RB row left the reloaded editor undisposed | both editors are disposed in `finally` |
+| A5 | `oneLine` was computed even when `marked` returned a token | two early returns |
+| A6 | the wrapper returned a copy where the precedent corrects the token in place | it sets `raw` and `text` on `marked`'s token |
+| A7 | HT rows were titled with a colon, HE rows with a full stop | HT rows use the full stop |
+
+**Round 2** found no blocking finding and five advisory ones. The audit
+loop ended there.
+
+| # | Finding | What was done |
+|---|---|---|
+| A1 | the changelog said a tag name on a last line is now an HTML block, without the one case that still is not | a sentence on `<div` on the last line of a paragraph |
+| A2 | the titles of LX22 and HT6 held for `<div` only; `a\n<pre` changes reading and no row pinned it | the titles name `<div`; rows LX29 and HT9 and a corpus case; the second table under *Where the plan's account of an input was too narrow* |
+| A3 | the notes gave the test count from before the first audit's rows | the count is the tip's |
+| A4 | the code commit's and the notes commit's messages predated the audit | the three commit messages were rewritten |
+| A5 | the list and blockquote sign-off is still open | it was for the user, who accepted it on 2026-10-06 |
+
