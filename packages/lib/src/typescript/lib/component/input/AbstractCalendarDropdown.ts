@@ -1078,17 +1078,22 @@ abstract class AbstractCalendarDropdown<
      * Updates the year scroller's selection highlight after a month-arrow
      * change moved `_monthAnchor` into a different year. Cheaper than a
      * full `buildYearScroller` because the cells themselves are unchanged.
+     * The year the keyboard is on, if any, stays marked beside the
+     * calendar's: the next key still moves from it.
      */
     private refreshYearSelection(): void {
         if (!this._yearColumn) {
             return;
         }
 
-        const activeY = this._monthAnchor.getFullYear();
+        const activeLabel      = String(this._monthAnchor.getFullYear());
+        const highlightedLabel = String(this._highlightedYear);
 
         for (const child of this._yearColumn.getCellList().getComponents()) {
             if (child instanceof PickerCell) {
-                child.setSelected(child.getText().valueOf() === String(activeY));
+                const label = child.getText().valueOf();
+
+                child.setSelected(label === activeLabel || label === highlightedLabel);
             }
         }
     }
@@ -1451,14 +1456,21 @@ abstract class AbstractCalendarDropdown<
     }
 
     /**
-     * Sets the visual highlight on cell `pos` and remembers the year.
-     * Clears the previous highlight where appropriate.
+     * Sets the visual highlight on cell `pos` and remembers the year. When
+     * that moves the highlight, the cell is centred in the list; a key that
+     * leaves the highlight where it was — one at an end of the list, or a
+     * typed digit that matches the same year again — scrolls nothing, so a
+     * view the user scrolled stays put. Clears the previous highlight where
+     * appropriate.
      *
      * @param cells - Snapshot of the scroller's cell list.
      * @param pos - Index of the cell to highlight.
      */
     private applyYearHighlight(cells: PickerCell[], pos: number): void {
         const activeY = this._monthAnchor.getFullYear();
+
+        // Before the first key the highlight is the calendar's own year.
+        const previousYear = this._highlightedYear >= 0 ? this._highlightedYear : activeY;
 
         for (const c of cells) {
             // Only the truly-selected year keeps its highlight; everything
@@ -1469,9 +1481,11 @@ abstract class AbstractCalendarDropdown<
         cells[pos].setSelected(true);
         this._highlightedYear = parseInt(cells[pos].getText().valueOf(), 10);
 
-        // Mirror in the scrollable region so the new highlight is visible.
-        if (this._yearColumn) {
-            this._yearColumn.scrollSelectedIntoView();
+        // Follow the highlight. The calendar's own year stays selected too,
+        // and is the first selected cell whenever the highlight is on a
+        // later year, so the column is told which of the two to centre.
+        if (this._yearColumn && this._highlightedYear !== previousYear) {
+            this._yearColumn.scrollCellIntoView(cells[pos]);
         }
     }
 
