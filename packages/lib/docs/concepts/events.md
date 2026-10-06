@@ -90,6 +90,8 @@ Use this only when you genuinely need global event capture — for everything el
 
 A viewport listener does not swallow the event: every registered component receives it, and it keeps propagating to the page — through to any `document`-level listener, such as your own global keyboard accelerator — unless a handler's returned disposition asks for a stop (see [Consuming an event](#consuming-an-event) below). Consume from your handler only when the component genuinely consumes the event (it acted on it and owns the interaction), not merely because it observed it. Unlike `addListener` / `addSubtreeListener` (below), a viewport listener is **not** button-filtered — it fires for every button on every registration.
 
+A viewport listener registered by another viewport listener, while that one is handling an event of the same type, does not receive that event; it receives the next one. An overlay opened from a viewport `keydown` listener therefore does not also act on the key press that opened it. A viewport listener registered from an *element* listener (`addListener` / `addSubtreeListener`) earlier in the same event is not covered: it receives the event whenever element listeners run before viewport listeners, an order the framework does not fix.
+
 ## Which mouse button fires a listener
 
 `addListener` and `addSubtreeListener` default to firing only for a **primary** (left) button press — a right- or middle-click mousedown/pointerdown on a leaf component's own listeners is silently ignored unless you opt in. Pass a registration object instead of a bare listener to change that:
