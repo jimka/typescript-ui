@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 // The row keys of the widgets that hold DOM focus on their own element and
-// move a current row: `PageUp` / `PageDown` in a `Tree`, and the paging a
-// `TreeTable` inherits from the table body. Cases follow the
-// `## Expected Behaviour` tables of plans/implemented/tree-page-keys.md:
-// P = paging, S = paging with Shift, E = edges, TT = TreeTable.
+// move a current row: `PageUp` / `PageDown` in a `Tree`, the `Shift` range a
+// tree key extends, and the paging a `TreeTable` inherits from the table
+// body. Cases follow the `## Expected Behaviour` tables of
+// plans/implemented/tree-page-keys.md: P = paging, S = paging with Shift,
+// E = edges, A = a Shift move with no anchor, TT = TreeTable.
 //
-// Every case but E9 dispatches real `keydown` events through `Event`'s
-// window-level handlers (`DOM.sink.dispatchEvent`), so a case can count the
-// `preventDefault` calls a press made and show that an ancestor still hears
-// the key. `Event` keeps its registrations in module-level state that
+// Every key press but E9's is a real `keydown` event dispatched through
+// `Event`'s window-level handlers (`DOM.sink.dispatchEvent`), so a case can
+// count the `preventDefault` calls a press made and show that an ancestor
+// still hears the key. E9's tree is never rendered, and the Shift-click
+// cases hand a click event to the tree's click handler, as `Tree.test.ts`
+// does. `Event` keeps its registrations in module-level state that
 // outlives `DOM.reset()`, and attaches a window listener only when a type is
 // first registered, so a registration left behind by one test would make the
 // next test's dispatches silently vanish. The teardown therefore disposes
@@ -29,6 +32,7 @@ import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { SpatialNavigation } from '~/core/SpatialNavigation';
 import { _Tree } from '~/component/tree/Tree';
+import type { TreeOptions } from '~/component/tree/Tree';
 import type { TreeNode } from '~/component/tree/TreeNode';
 import { TreeBody } from '~/component/table/TreeBody';
 import { MemoryStore } from '~/data/MemoryStore';
@@ -44,12 +48,14 @@ const CONFIG = {
     themeVars:       {},
 };
 
-/** Modifier keys held during a press. */
+/** Modifier keys held during a press or a click. */
 interface Modifiers {
     shiftKey?: boolean;
+    ctrlKey?:  boolean;
 }
 
-const SHIFT: Modifiers = { shiftKey: true };
+const SHIFT: Modifiers      = { shiftKey: true };
+const SHIFT_CTRL: Modifiers = { shiftKey: true, ctrlKey: true };
 
 let built: Component[];
 
@@ -115,7 +121,11 @@ afterEach(() => {
 });
 
 describe('Keyboard row navigation — Tree', () => {
+    // Rows in the long fixture: twelve pages, so a page move has room in both
+    // directions and the first and last rows are far apart.
     const NODE_COUNT  = 60;
+    // Wide enough for every short label, so only `WIDE_LABEL` raises the
+    // horizontal scrollbar.
     const TREE_WIDTH  = 200;
     // The tree's row height: `Tree`'s own default, restated here so every
     // expected scroll position is derived from the contract, not read back.
@@ -147,6 +157,11 @@ describe('Keyboard row navigation — Tree', () => {
         selectedLabels(labels: string[]): string[];
         /** Label of the anchor; `null` when there is none. */
         anchorLabel(): string | null;
+        /**
+         * The user clicks the row showing `node`: a click event handed to
+         * the tree's click handler, as `Tree.test.ts` does.
+         */
+        click(node: TreeNode, init?: Modifiers): void;
     }
 
     /**
@@ -158,19 +173,32 @@ describe('Keyboard row navigation — Tree', () => {
         return Array.from({ length: NODE_COUNT }, (_, i) => ({ label: 'Node ' + i }));
     }
 
+    /** How {@link mountTree} builds its tree; every member is optional. */
+    interface TreeSetup {
+        /** The tree's height. Five rows by default. */
+        height?:   number;
+        /** Nodes to expand before the first render. */
+        expanded?: TreeNode[];
+        /**
+         * A container to add the tree to. The caller tracks it, since
+         * disposing the parent disposes the tree.
+         */
+        parent?:   Container;
+        /** Options for the tree's constructor. */
+        options?:  TreeOptions;
+    }
+
     /**
      * Builds a tree, gives it a committed size, renders it and focuses it.
      *
      * @param nodes - The root nodes.
-     * @param height - The tree's height.
-     * @param expanded - Nodes to expand before the first render.
-     * @param parent - A container to add the tree to; the caller tracks it,
-     *   since disposing the parent disposes the tree.
+     * @param setup - How to build the tree.
      * @returns The tree and its readers.
      */
-    function mountTree(nodes: TreeNode[], height: number = TREE_HEIGHT, expanded: TreeNode[] = [], parent?: Container): MountedTree {
+    function mountTree(nodes: TreeNode[], setup: TreeSetup = {}): MountedTree {
+        const { height = TREE_HEIGHT, expanded = [], parent, options } = setup;
         const all  = [...nodes];
-        const tree = parent ? new _Tree() : track(new _Tree());
+        const tree = parent ? new _Tree(options) : track(new _Tree(options));
 
         if (parent) {
             parent.addComponent(tree);
@@ -215,6 +243,11 @@ describe('Keyboard row navigation — Tree', () => {
                 return labels.filter(label => selected.has(label));
             },
             anchorLabel: (): string | null => tree.getSelectedNode()?.label ?? null,
+            click:       (node: TreeNode, init: Modifiers = {}): void => {
+                const row = (tree as any)._rowPool.find((poolRow: any) => poolRow.getNode() === node);
+
+                (tree as any)._handleClick(makeEvent(row.getElement(), 'click', init));
+            },
         };
     }
 
@@ -413,7 +446,7 @@ describe('Keyboard row navigation — Tree', () => {
 
         it('E3: a tree lower than one row pages by one row', () => {
             // Less than one 24 px row.
-            const t = mountTree(sixtyNodes(), 10);
+            const t = mountTree(sixtyNodes(), { height: 10 });
 
             expect((t.tree as any).computePageSize()).toBe(1);
 
@@ -477,7 +510,7 @@ describe('Keyboard row navigation — Tree', () => {
             const children          = Array.from({ length: 4 }, (_, i) => ({ label: 'a' + i }));
             const nodes: TreeNode[] = [{ label: 'A', children }, { label: 'B' }, { label: 'C' }, { label: 'D' }];
             // Eight visible rows: A, a0–a3, B, C, D. Five per page.
-            const t                 = mountTree(nodes, TREE_HEIGHT, [nodes[0]]);
+            const t                 = mountTree(nodes, { expanded: [nodes[0]] });
             const labels            = ['A', 'a0', 'a1', 'a2', 'a3', 'B', 'C', 'D'];
 
             press(t.el, 'ArrowDown');
@@ -495,20 +528,22 @@ describe('Keyboard row navigation — Tree', () => {
 
         it('E8: a handled key is prevented and never stopped — an ancestor still hears it, also at the last row', () => {
             const parent          = track(new Container());
-            const t               = mountTree(sixtyNodes(), TREE_HEIGHT, [], parent);
+            const t               = mountTree(sixtyNodes(), { parent });
             const heard: string[] = [];
             const spy             = (e: KeyboardEvent): void => { heard.push(e.key); };
 
             Event.addSubtreeListener(parent, 'keydown', spy);
 
-            expect(press(t.el, 'PageDown')).toBe(1);
-            expect(press(t.el, 'End')).toBe(1);
-            // On the last row: nothing moves, and the key is still the tree's.
-            expect(press(t.el, 'PageDown')).toBe(1);
+            try {
+                expect(press(t.el, 'PageDown')).toBe(1);
+                expect(press(t.el, 'End')).toBe(1);
+                // On the last row: nothing moves, and the key is still the tree's.
+                expect(press(t.el, 'PageDown')).toBe(1);
 
-            expect(heard).toEqual(['PageDown', 'End', 'PageDown']);
-
-            Event.removeSubtreeListener(parent, 'keydown', spy);
+                expect(heard).toEqual(['PageDown', 'End', 'PageDown']);
+            } finally {
+                Event.removeSubtreeListener(parent, 'keydown', spy);
+            }
         });
 
         it('E9: a tree that was never rendered pages by one row', () => {
@@ -531,24 +566,266 @@ describe('Keyboard row navigation — Tree', () => {
 
         it('an empty tree leaves the page keys for its ancestors: not prevented, and heard', () => {
             const parent          = track(new Container());
-            const t               = mountTree([], TREE_HEIGHT, [], parent);
+            const t               = mountTree([], { parent });
             const heard: string[] = [];
             const spy             = (e: KeyboardEvent): void => { heard.push(e.key); };
 
             Event.addSubtreeListener(parent, 'keydown', spy);
 
-            expect(press(t.el, 'PageDown')).toBe(0);
-            expect(press(t.el, 'PageUp')).toBe(0);
+            try {
+                expect(press(t.el, 'PageDown')).toBe(0);
+                expect(press(t.el, 'PageUp')).toBe(0);
 
-            expect(heard).toEqual(['PageDown', 'PageUp']);
+                expect(heard).toEqual(['PageDown', 'PageUp']);
+            } finally {
+                Event.removeSubtreeListener(parent, 'keydown', spy);
+            }
+        });
+    });
 
-            Event.removeSubtreeListener(parent, 'keydown', spy);
+    describe('a Shift move with no anchor', () => {
+        it('A1: Shift+ArrowDown on a fresh tree starts a range at its first move', () => {
+            const t      = mountTree(sixtyNodes());
+            const events = countSelectionEvents(t.tree);
+
+            press(t.el, 'ArrowDown', SHIFT);
+
+            expect(t.selection()).toEqual([0]);
+            expect(t.anchor()).toBe(0);
+
+            press(t.el, 'ArrowDown', SHIFT);
+
+            expect(t.selection()).toEqual([0, 1]);
+            expect(t.anchor()).toBe(0);
+
+            press(t.el, 'ArrowDown', SHIFT);
+
+            expect(t.selection()).toEqual([0, 1, 2]);
+            expect(t.anchor()).toBe(0);
+
+            expect(events()).toBe(3);
+        });
+
+        it('A2: Shift+PageDown on a fresh tree starts a range at its first move', () => {
+            const t = mountTree(sixtyNodes());
+
+            press(t.el, 'PageDown', SHIFT);
+
+            expect(t.selection()).toEqual([0]);
+            expect(t.anchor()).toBe(0);
+
+            press(t.el, 'PageDown', SHIFT);
+
+            expect(t.selection()).toEqual(range(0, PAGE));
+            expect(t.anchor()).toBe(0);
+        });
+
+        it('A3: Shift+End on a fresh tree is a plain End', () => {
+            const t    = mountTree(sixtyNodes());
+            const last = NODE_COUNT - 1;
+
+            press(t.el, 'End', SHIFT);
+
+            expect(t.selection()).toEqual([last]);
+            expect(t.anchor()).toBe(last);
+        });
+
+        // The rule lives in the one method every Shift key shares, so each
+        // of the six is pinned: the first Shift press on a fresh tree is a
+        // plain move whose row becomes the anchor, and the second extends
+        // from it.
+        const last = NODE_COUNT - 1;
+
+        it.each([
+            // first key, where it lands, second key, the range the two leave
+            { first: 'ArrowDown', landsOn: 0,    second: 'ArrowDown', extended: range(0, 1) },
+            { first: 'ArrowUp',   landsOn: 0,    second: 'ArrowDown', extended: range(0, 1) },
+            { first: 'Home',      landsOn: 0,    second: 'End',       extended: range(0, last) },
+            { first: 'End',       landsOn: last, second: 'ArrowUp',   extended: range(last - 1, last) },
+            { first: 'End',       landsOn: last, second: 'Home',      extended: range(0, last) },
+            { first: 'PageDown',  landsOn: 0,    second: 'PageDown',  extended: range(0, PAGE) },
+            { first: 'PageUp',    landsOn: 0,    second: 'PageDown',  extended: range(0, PAGE) },
+            { first: 'End',       landsOn: last, second: 'PageUp',    extended: range(last - PAGE, last) },
+        ])('Shift+$first then Shift+$second on a fresh tree: the first is a plain move, the second extends from it', ({ first, landsOn, second, extended }) => {
+            const t      = mountTree(sixtyNodes());
+            const events = countSelectionEvents(t.tree);
+
+            expect(t.anchor()).toBeNull();
+
+            expect(press(t.el, first, SHIFT)).toBe(1);
+
+            expect(t.current()).toBe(landsOn);
+            expect(t.selection()).toEqual([landsOn]);
+            expect(t.anchor()).toBe(landsOn);
+
+            expect(press(t.el, second, SHIFT)).toBe(1);
+
+            expect(t.selection()).toEqual(extended);
+            expect(t.anchor()).toBe(landsOn);
+            expect(t.tree.getAria().getActiveDescendant()).toBe(currentRowId(t.tree));
+
+            expect(events()).toBe(2);
+        });
+
+        it('A4: after the anchor\'s node is removed, the next Shift move is a plain move', () => {
+            const t = mountTree(Array.from({ length: 10 }, (_, i) => ({ label: 'n' + i })));
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'ArrowDown', SHIFT);
+            press(t.el, 'ArrowDown', SHIFT);
+
+            expect(t.selection()).toEqual([0, 1, 2]);
+            expect(t.anchor()).toBe(0);
+
+            t.tree.removeNode(t.all[0]);
+
+            expect(t.tree.getSelectedNode()).toBeNull();
+            expect(t.selection()).toEqual([1, 2]);
+
+            // The current row is still `all[2]`, so the move lands on `all[3]`.
+            press(t.el, 'ArrowDown', SHIFT);
+
+            expect(t.selection()).toEqual([3]);
+            expect(t.anchor()).toBe(3);
+
+            press(t.el, 'ArrowDown', SHIFT);
+
+            expect(t.selection()).toEqual([3, 4]);
+            expect(t.anchor()).toBe(3);
+        });
+
+        it('A5: with the anchor hidden under a collapsed node, the next Shift move is a plain move', () => {
+            const nodes: TreeNode[] = [{ label: 'A', children: [{ label: 'a0' }, { label: 'a1' }] }, { label: 'B' }, { label: 'C' }];
+            const t                 = mountTree(nodes, { expanded: [nodes[0]] });
+            const labels            = ['A', 'a0', 'a1', 'B', 'C'];
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'ArrowDown');
+
+            expect(t.selectedLabels(labels)).toEqual(['a0']);
+            expect(t.anchorLabel()).toBe('a0');
+
+            // Collapse `A` from its caret: the anchor and the current row stay
+            // on the hidden `a0`.
+            (t.tree as any)._onToggle(nodes[0]);
+
+            // No current row among the visible ones, so the move lands on the
+            // first row.
+            press(t.el, 'ArrowDown', SHIFT);
+
+            expect(t.selectedLabels(labels)).toEqual(['A']);
+            expect(t.anchorLabel()).toBe('A');
+
+            press(t.el, 'ArrowDown', SHIFT);
+
+            expect(t.selectedLabels(labels)).toEqual(['A', 'B']);
+            expect(t.anchorLabel()).toBe('A');
+        });
+
+        it('a Shift-click with the anchor hidden under a collapsed node is a plain click: the clicked row becomes the anchor', () => {
+            const nodes: TreeNode[] = [{ label: 'A', children: [{ label: 'a0' }, { label: 'a1' }] }, { label: 'B' }, { label: 'C' }];
+            const t                 = mountTree(nodes, { expanded: [nodes[0]] });
+            const labels            = ['A', 'a0', 'a1', 'B', 'C'];
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'ArrowDown');
+
+            expect(t.anchorLabel()).toBe('a0');
+
+            (t.tree as any)._onToggle(nodes[0]);
+
+            t.click(nodes[2], SHIFT);
+
+            expect(t.selectedLabels(labels)).toEqual(['C']);
+            expect(t.anchorLabel()).toBe('C');
+
+            // The next Shift-click extends from it.
+            t.click(nodes[0], SHIFT);
+
+            expect(t.selectedLabels(labels)).toEqual(['A', 'B', 'C']);
+            expect(t.anchorLabel()).toBe('C');
+        });
+
+        it('a Shift+Ctrl-click with the anchor hidden under a collapsed node is a Ctrl-click: it toggles the row in the selection and makes it the anchor', () => {
+            const nodes: TreeNode[] = [{ label: 'A', children: [{ label: 'a0' }, { label: 'a1' }] }, { label: 'B' }, { label: 'C' }];
+            const t                 = mountTree(nodes, { expanded: [nodes[0]] });
+            const labels            = ['A', 'a0', 'a1', 'B', 'C'];
+            const events            = countSelectionEvents(t.tree);
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'ArrowDown');
+
+            expect(t.selectedLabels(labels)).toEqual(['a0']);
+
+            (t.tree as any)._onToggle(nodes[0]);
+
+            // With no anchor to extend from, `Shift` is not there: the click
+            // adds `C` to the selection and leaves the rest of it alone. That
+            // rest is `a0`, still selected under the collapsed `A`; what a
+            // collapse should leave selected is an open question the plan
+            // lists under Non-Goals, and not what this case is about.
+            t.click(nodes[2], SHIFT_CTRL);
+
+            expect(t.selectedLabels(labels)).toEqual(['a0', 'C']);
+            expect(t.anchorLabel()).toBe('C');
+
+            // `C` is now a visible anchor, so `Shift` counts again and the
+            // click replaces the selection with the range from it.
+            t.click(nodes[1], SHIFT_CTRL);
+
+            expect(t.selectedLabels(labels)).toEqual(['B', 'C']);
+            expect(t.anchorLabel()).toBe('C');
+
+            // Two presses, two clicks.
+            expect(events()).toBe(4);
+        });
+
+        it('with expandTrigger "click", a Shift-click with the anchor hidden under a collapsed node toggles the row, as a plain click does', () => {
+            const nodes: TreeNode[] = [
+                { label: 'A', children: [{ label: 'a0' }, { label: 'a1' }] },
+                { label: 'B', children: [{ label: 'b0' }] },
+                { label: 'C' },
+            ];
+
+            const t      = mountTree(nodes, { expanded: [nodes[0]], options: { expandTrigger: 'click' } });
+            const labels = ['A', 'a0', 'a1', 'B', 'b0', 'C'];
+
+            const isExpanded = (node: TreeNode): boolean => t.tree.getExpandedNodes().includes(node);
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'ArrowDown');
+
+            expect(t.anchorLabel()).toBe('a0');
+
+            // Collapse `A` from its caret: the anchor stays on the hidden `a0`.
+            (t.tree as any)._onToggle(nodes[0]);
+
+            expect(isExpanded(nodes[1])).toBe(false);
+
+            t.click(nodes[1], SHIFT);
+
+            expect(t.selectedLabels(labels)).toEqual(['B']);
+            expect(t.anchorLabel()).toBe('B');
+            expect(isExpanded(nodes[1])).toBe(true);
+
+            // `B` is now a visible anchor, so the next Shift-click extends
+            // from it and toggles nothing.
+            t.click(nodes[0], SHIFT);
+
+            expect(t.selectedLabels(labels)).toEqual(['A', 'B']);
+            expect(t.anchorLabel()).toBe('B');
+            expect(isExpanded(nodes[0])).toBe(false);
+            expect(isExpanded(nodes[1])).toBe(true);
         });
     });
 });
 
 describe('Keyboard row navigation — TreeTable', () => {
+    // Rows in the fixture: fifteen pages, so a page move has room in both
+    // directions.
     const RECORD_COUNT  = 60;
+    // The body's size and column widths are those of case TB2 in
+    // `KeyboardContextMenu.test.ts`, whose fixture this one extends.
     const BODY_WIDTH    = 300;
     const BODY_HEIGHT   = 100;
     const COLUMN_WIDTHS = [100, 100, 100];
@@ -585,6 +862,7 @@ describe('Keyboard row navigation — TreeTable', () => {
             { name: 'parent', type: 'number', order: 1 },
             { name: 'name',   type: 'string', order: 2 },
         ], 'id');
+
         const store = new MemoryStore(model, []);
 
         store.loadData(Array.from({ length: RECORD_COUNT }, (_, i) => ({ id: i + 1, parent: null, name: 'r' + i })));
