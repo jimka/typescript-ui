@@ -332,6 +332,8 @@ The library's own title-bar buttons are built this way: a dialog's close button,
 
 A window renames its minimize and maximize buttons to "Restore" as its state changes, but only while a button still carries a name the library gave it. A button you renamed keeps your name in every state.
 
+A tool added to a [`Tab`](/layouts/Tab#tab-tools) strip from a descriptor is named by the descriptor's `label` in the same way.
+
 ### Why no `aria-modal`
 
 A modal `Dialog` or `Drawer` does not carry `aria-modal="true"`. While one is open, the rest of the application is [inert](/concepts/layering#modal-scope), and `inert` takes that content away from a screen reader in every browser that supports it. `aria-modal` would hide more than that. It tells a screen reader to ignore everything that is not inside the dialog's own element, and the library mounts a dialog's dropdowns, menus and popovers beside the dialog, not inside it. On VoiceOver those would go silent, and so would a toast shown while the dialog is open. Do not add the attribute to a modal layer of your own.

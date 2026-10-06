@@ -133,6 +133,11 @@ page resets to empty.
   `setTreeState` gains an optional fourth `animate` parameter (default
   `false`) for a caller that wants the turn animated.
 
+- **A `Tab` strip's descriptor tools have an accessible name.** A tool built
+  from a `TabToolDescriptor` showed its `label` as a tooltip only, so a
+  screen reader announced an unnamed button. The label is now the button's
+  accessible name as well, kept off its face. No consumer action is needed.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
