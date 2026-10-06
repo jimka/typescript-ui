@@ -109,6 +109,18 @@ sidebar.addComponent(prefs, new AccordionConstraints('Preferences', false, 'gear
 
 > **Flat appearance is enforced.** A [`Button`](/api/component/button/classes/Button) tool is forced into `flat` mode when added, so header tools read as flat icons regardless of how the caller configured them. Non-`Button` tools are left untouched.
 
+## Keyboard
+
+Each header's title button is a Tab stop. With a title button focused:
+
+| Key | Behaviour |
+| --- | --- |
+| `Enter` / `Space` | Open or close the section. |
+| `ArrowDown` / `ArrowUp` | Move focus to the next / previous header, wrapping at the ends. |
+| `Home` / `End` | Move focus to the first / last header. |
+
+The arrow keys, `Home` and `End` act only while a title button holds focus. A header tool and the content of an open section keep those keys for themselves.
+
 ## Fill mode
 
 By default every open section sits at its preferred height. With `fillHeight` on, **every open section grows to absorb the container's leftover height**, sharing it in proportion to each section's [`weight`](/api/layout/classes/LayoutConstraints#weight) constraint — unweighted sections count equally, so with no weights set the slack is split into equal slices. Each recipient is capped at its own max height; a section that hits its max has its surplus re-shared among the rest, so the sections always fill the container without any one being padded past its maximum. Fill is useful when the host stretches the accordion taller than its preferred height (e.g. inside a [`VBox`](/api/layout/classes/VBox) with `stretching`), and is the underflow counterpart to the shrink behaviour described under [Sizing](#sizing): when the content already overflows there is no leftover, so fill is a no-op and the two never both apply.

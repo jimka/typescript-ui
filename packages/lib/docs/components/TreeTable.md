@@ -86,7 +86,7 @@ Inherits everything from [`Table`](/components/Table) (`ArrowUp` / `ArrowDown` f
 - **`ArrowRight`** — Expand a collapsed branch. If already expanded, move focus to the first child.
 - **`ArrowLeft`** — Collapse an expanded branch. If already collapsed (or a leaf at depth > 0), move focus to the parent record.
 
-When the focused row has no tree-specific meaning for the key (e.g. `ArrowLeft` on a leaf at depth 0), the inherited column-navigation behaviour runs.
+With a current row, `ArrowLeft` / `ArrowRight` act on the tree only. Where the key has no tree meaning — `ArrowRight` on a leaf, `ArrowLeft` on a top-level leaf or a top-level collapsed branch — it does nothing and the current cell stays in its column; `Tab` / `Shift+Tab` move along the row. With no current row yet, the two keys move the current column as in a `Table`.
 
 ## ARIA
 

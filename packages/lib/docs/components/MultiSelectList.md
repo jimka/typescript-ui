@@ -32,8 +32,10 @@ panel.addComponent(tags);
 | Plain click / `Enter` / `Space` | Replace the selection with the targeted row. |
 | `Ctrl`-click (or `Cmd` on macOS) | Toggle the targeted row's selection without affecting others. |
 | `Shift`-click | Extend the selection from the anchor row to the targeted row. |
-| `Shift`-`ArrowUp` / `Shift`-`ArrowDown` | Extend the selection by one row. |
-| `Ctrl`-`ArrowUp` / `Ctrl`-`ArrowDown` | Move focus without changing selection. |
+| `Shift` with `ArrowUp` / `ArrowDown` / `Home` / `End` / `PageUp` / `PageDown` | Extend the selection from the anchor row to the row the key lands on. |
+| `Ctrl` with the same six keys | Move focus without changing the selection. |
+| `Ctrl`-`Space` / `Ctrl`-`Enter` | Toggle the focused row's selection without affecting others. |
+| `Shift`-`Space` / `Shift`-`Enter` | Extend the selection from the anchor row to the focused row. |
 | `Ctrl`-`A` | Select every row. Disabled rows are skipped. |
 
 The context menu — a right-click, or `Shift+F10` / the ContextMenu key — is for the one row pointed at or focused, and does not change the selection; see [List: Context menu](/components/List#context-menu).
