@@ -18,7 +18,7 @@ export type { NotificationType, NotificationRecord } from '~/overlay/Notificatio
 export { NotificationHistoryButton } from '~/overlay/NotificationHistoryButton.js';
 export type { NotificationHistoryButtonOptions } from '~/overlay/NotificationHistoryButton.js';
 export { Dialog, DialogTitleBar, DialogButtons } from '~/overlay/Dialog.js';
-export type { DialogConfig, DialogButtonConfig, DialogResult, DialogSeverity } from '~/overlay/Dialog.js';
+export type { DialogConfig, DialogButtonConfig, DialogResult, DialogSeverity, DialogRole } from '~/overlay/Dialog.js';
 export { Drawer } from '~/overlay/Drawer.js';
 export type { DrawerOptions, DrawerEdge, DrawerEvent, DrawerCloseController } from '~/overlay/Drawer.js';
 export { Rail } from '~/overlay/Rail.js';

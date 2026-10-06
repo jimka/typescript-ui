@@ -94,6 +94,10 @@ class Window extends AbstractWindow {
         this._header.addHeaderDoubleClickListener((e: MouseEvent) => this.onHeaderDoubleClick(e));
         this._header.addTitleGlyphClickListener(this._boundOnTitleGlyphClick);
 
+        // Named by reference to the header's title text, so the name follows
+        // every later setHeaderText with no further write.
+        this.getAria().setLabelledBy(this._header.getText().getId());
+
         // Late-built state: the glyph field was written pure to `_options` by
         // the super-time cascade. Dispatch it now that `this._header` exists.
         // (The generic contentFactory / state dispatch runs in initChrome.)
@@ -237,7 +241,9 @@ class Window extends AbstractWindow {
      * the minimize button shows `window-restore` when minimized (else
      * `window-minimize`). A minimized window stays docked at header height with
      * both buttons visible, so reflecting the minimized state onto the minimize
-     * button keeps it symmetric with the maximize/restore swap.
+     * button keeps it symmetric with the maximize/restore swap. The header
+     * renames each button along with its glyph: "Restore" beside the restore
+     * glyph.
      *
      * @param state - The window state being entered.
      */

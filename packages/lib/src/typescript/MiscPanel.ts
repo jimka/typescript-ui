@@ -1143,13 +1143,16 @@ class MiscPanel extends Panel {
         // geometries; the last button shows a non-modal drawer that leaves the
         // app interactive. A modal drawer takes focus when it opens — its
         // field — keeps Tab inside itself, and hands focus back to the button
-        // that opened it when it closes; a non-modal one moves no focus.
+        // that opened it when it closes; a non-modal one moves no focus. A
+        // drawer is announced as a dialog but has no title of its own, so
+        // this one is named by the heading it shows.
         const openDemoDrawer = (edge: DrawerEdge, modal: boolean, label: string): void => {
             const drawer = new Drawer({ edge, modal, layoutManager: new VBox({ stretching: true }) });
 
             const heading = new Text((modal ? "Modal" : "Non-modal") + " drawer — " + label);
             heading.setFontWeight("bold");
             heading.setPreferredSize({ width: 0, height: 28 });
+            drawer.getAria().setLabelledBy(heading.getId());
 
             const filterField = new TextField({ placeholder: "Filter", preferredSize: { width: 0, height: 28 } });
 
@@ -1619,6 +1622,27 @@ class MiscPanel extends Panel {
         const buttonDialogError = new Button("Dialog — error");
         buttonDialogError.on("action", () => void Dialog.error('Connection failed', 'Host not allowed.'));
         leftColumn.addComponent(buttonDialogError);
+
+        // Screen-reader semantics demo — `role` and `ariaLabel`, the two
+        // DialogConfig fields a custom dialog uses to say what it is. The
+        // title is short, so `ariaLabel` gives the fuller name a screen reader
+        // announces, and `role: 'alertdialog'` marks it as a prompt that needs
+        // an answer; the message is read as its description. Cancel is
+        // `primary`, so focus opens on the least destructive action.
+        const buttonDialogAria = new Button("Dialog — alert with an accessible name");
+
+        buttonDialogAria.on("action", () => void Dialog.show({
+            title    : 'Delete?',
+            message  : 'Record 42 will be removed. This cannot be undone.',
+            role     : 'alertdialog',
+            ariaLabel: 'Delete record 42',
+            buttons  : [
+                { text: 'Cancel', result: 'cancel', primary: true },
+                { text: 'Delete', result: 'confirm' },
+            ],
+        }));
+
+        leftColumn.addComponent(buttonDialogAria);
 
         const formNameField  = new TextField({ placeholder: 'Name' });
         const formEmailField = new TextField({ placeholder: 'Email' });

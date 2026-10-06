@@ -91,8 +91,11 @@ describe('DiagnosticsOverlay row description tooltips', () => {
         // plans/implemented/diagnostics-overlay-style-audit-window.md) gets
         // its own hover tooltip showing its title — every Button with
         // non-empty text does, unrelated to this file's row-description
-        // mechanism.
-        expect(withTooltip.length).toBe(27);
+        // mechanism. And three more for the same reason: the overlay is a
+        // Window, whose header's minimize, maximize and close buttons are
+        // named (plans/implemented/dialog-aria-semantics.md), and a named
+        // button shows its name as a tooltip.
+        expect(withTooltip.length).toBe(30);
 
         for (const c of withTooltip) {
             expect(tooltipText(c.getId())).toBeTruthy();

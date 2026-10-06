@@ -471,3 +471,59 @@ describe('Drawer — modal focus', () => {
         drawer.dispose();
     });
 });
+
+describe('Drawer — role and name', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        DOM.reset();
+    });
+
+    /** The rendered value of `name` on the drawer's own element, or null when absent. */
+    function attribute(drawer: Drawer, name: string): string | null {
+        return DOM.source.getAttribute(drawer.getElement(true)!, name);
+    }
+
+    it('is a dialog, modal or not', () => {
+        installTestDOM(CONFIG);
+
+        const nonModal = new Drawer();
+        const modal    = new Drawer({ modal: true });
+
+        expect(attribute(nonModal, 'role')).toBe('dialog');
+        expect(attribute(modal, 'role')).toBe('dialog');
+    });
+
+    it('carries no aria-modal while a modal drawer is open', () => {
+        installTestDOM(CONFIG);
+
+        const drawer = new Drawer({ modal: true });
+
+        drawer.open();
+
+        expect(LayerManager.hasModalLayer()).toBe(true);
+        expect(attribute(drawer, 'aria-modal')).toBeNull();
+
+        drawer.dispose();
+    });
+
+    it('has no name of its own, and keeps the one a consumer gives it across open and close', () => {
+        installTestDOM(CONFIG);
+        // Reduced motion: the close animation completes synchronously.
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
+
+        const drawer = new Drawer();
+
+        expect(drawer.getAria().getLabel()).toBeNull();
+        expect(drawer.getAria().getLabelledBy()).toBeNull();
+
+        drawer.getAria().setLabel('Filters');
+        drawer.open();
+        drawer.close();
+
+        expect(drawer.isOpen()).toBe(false);
+        expect(drawer.getAria().getLabel()).toBe('Filters');
+        expect(attribute(drawer, 'aria-label')).toBe('Filters');
+
+        drawer.dispose();
+    });
+});

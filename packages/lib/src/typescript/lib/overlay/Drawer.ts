@@ -230,6 +230,12 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
         // carve-out, applied after super() like every other portaled surface.
         this.setPosition(Position.FIXED);
 
+        // A drawer is a dialog, modal or not. It has no title of its own, so
+        // the consumer names it through getAria(). A modal drawer gets no
+        // ARIA modal flag: the inert attribute LayerManager puts on everything
+        // outside it is what makes it modal (ARCHITECTURE.md, "Modal layers").
+        this.getAria().setRole("dialog");
+
         // Listener dispatch lives in the constructor body, not applyOptions:
         // the ListenerBag field is undefined during the super() cascade.
         this.applyListeners(options?.listeners);

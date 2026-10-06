@@ -189,8 +189,9 @@ export function focusScopeRoot(): Handle {
  * renders as the bare `<textarea>` with no wrapper, so `root` and the
  * candidate are the same element), then its focusable descendants.
  * `querySelectorAll` alone would miss that leaf case, since it searches only
- * descendants — the same reasoning behind `Dialog.requestedFocusElement`'s
- * `matches` check before falling back to `querySelector`.
+ * descendants. `Dialog.requestedFocusElement` relies on the root coming first:
+ * an `initialFocus` component that is itself the control resolves to its own
+ * element.
  *
  * @param root - The element to search inside.
  */

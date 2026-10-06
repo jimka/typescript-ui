@@ -124,7 +124,7 @@ function isPressed(recorder: RecordingDOMSink, handle: Handle): boolean {
 describe('WindowControlButton class-style hoisting', () => {
     it('rows 1/2/3/6: resting+pressed+hover content publishes on first construction, a second instance dedupes onto it, and two instances in different pressed states stay independent', () => {
         const start = sink.writes.length;
-        const first = createWindowControlButton('xmark');
+        const first = createWindowControlButton('xmark', 'Close');
         first.getElement(true);
         const firstWrites = sink.writes.slice(start);
 
@@ -161,7 +161,7 @@ describe('WindowControlButton class-style hoisting', () => {
         // (`:not(.pressed):not(:hover)`-guarded — see `restingGuardSuffix`),
         // `.pressed`, or `:hover:not(.pressed)` rule.
         const secondStart = sink.writes.length;
-        const second = createWindowControlButton('xmark');
+        const second = createWindowControlButton('xmark', 'Close');
         second.getElement(true);
         const secondWrites = sink.writes.slice(secondStart);
 
@@ -195,7 +195,7 @@ describe('WindowControlButton class-style hoisting', () => {
 
     it('row 4: a second lead-glyph button writes no resting declaration to its own rule; .WindowLeadGlyphButton carries the transparent tokens', () => {
         const start = sink.writes.length;
-        const first = createWindowLeadGlyphButton('window-maximize');
+        const first = createWindowLeadGlyphButton('window-maximize', 'Window menu');
 
         // The button lives inside `TabBar._leadGroup`, itself
         // `pointer-events: none` (TabBar.ts) — pointer-events is inherited CSS,
@@ -233,7 +233,7 @@ describe('WindowControlButton class-style hoisting', () => {
         expect(hoverClassDeclarations.backgroundColor).toBe('var(--ts-ui-window-control-hover-bg)');
         expect(hoverClassDeclarations.backgroundImage).toBe('var(--ts-ui-window-control-hover-bg)');
 
-        const second = createWindowLeadGlyphButton('window-maximize');
+        const second = createWindowLeadGlyphButton('window-maximize', 'Window menu');
         const instanceDeclarations = declarationsDuring(sink, idSelector(second) + ':not(.pressed):not(:hover)', () => second.getElement(true));
 
         expect(instanceDeclarations.backgroundColor).toBeUndefined();
@@ -243,7 +243,7 @@ describe('WindowControlButton class-style hoisting', () => {
     });
 
     it('row 5: setWindowControlsActive(false) writes a real per-instance deviation, and setWindowControlsActive(true) reverts to nothing further', () => {
-        const button = createWindowControlButton('xmark');
+        const button = createWindowControlButton('xmark', 'Close');
         button.getElement(true);
 
         // The resting write is isolated onto `#id:not(.pressed):not(:hover)`
