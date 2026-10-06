@@ -58,6 +58,9 @@ describe('TabBar.addTool dispatch', () => {
         // The descriptor's label is attached as the button's tooltip.
         const attachments = (Tooltip as unknown as { attachments: Map<string, { text: string }> }).attachments;
         expect(attachments.get(built.getId())?.text).toBe('New tab');
+        // The label is also the button's accessible name, kept off its face.
+        expect(built.getAria().getLabel()).toBe('New tab');
+        expect((built as Button).isShowText()).toBe(false);
         // The menu row is fed the same descriptor, whose `action` is the exact
         // reference wired to the built button — one source of truth, no divergence.
         expect(state._toolMenuItems.get(built)).toBe(descriptor);
