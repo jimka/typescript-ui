@@ -978,3 +978,194 @@ Finding b6 corrects the earlier, lost diagnosis: those two cases were not a caus
 [^parked]: The five commits are `226d39342` and `a25e5256d` (moving the old plan file between folders), `037a6786e` (notes added to that plan), `0fc45750c` (the four-group ranking and its tests) and `2818e9116` (its changelog entry). The ranking commit edits `rankWithContainerPriority`, which the control chord stops calling, and its changelog entry describes behaviour this plan replaces. Applying it to the region chord alone would change that chord without a report asking for it. Its test geometry for the SQLAdmin editor case is reused as E-13 with the expected value re-derived.
 
 [^geometry-source]: The horizontal positions come from laying out the real `AccordionPanel`, `AccordionHeader`, `Table` and three compact glyph buttons at SQLAdmin's 238 px sidebar width in the offline harness. The tree's rectangle and the dock rectangles come from the live measurements recorded in SQLAdmin's `LIBRARY_NOTES.md` at 1500 × 850. The lower section's vertical positions are derived from those plus the 22 px compact header and the inspector's 220 px height, so they may be a few pixels off. The argument depends on only two facts, both exact: the three-dots button's left edge (262) is right of *Refresh*'s right edge (257), and the button is several hundred pixels lower.
+
+---
+
+## Implementation Notes
+
+### Deviations from the plan
+
+1. **A candidate inside the focused control, or containing it, is dropped by an explicit test.** Rule S1 says such a candidate "is never ahead", and the plan's `collectControls` left that to geometry. Geometry covers it only while the two boxes nest: a focusable child the widget lays out beyond its own box, or a focusable container whose box does not enclose the focused child, measures as ahead. `collectControls` now drops every survivor of `leafFocusables` that `DOM.source.contains` relates to the origin in either direction. It takes `origin: Handle | null` instead of `origin ?? body` so the test is skipped when nothing is focused. Pinned by *"a candidate inside the focused control is never ahead of it, even when it is laid out beyond the control's own box"* and *"a candidate that contains the focused control is never ahead of it…"*.
+
+2. **A scroll-viewport level admits a control only when landing on it would show something.** Rule V1 and the plan's pseudo-code admit every control inside the viewport `S` that nothing *inside* `S` clips away. That also admits a control that sits inside `S`'s own box but is hidden by something else — beyond the browser window, clipped by an ancestor *outside* `S`, or wholly behind a floating window — and revealing such a control scrolls nothing, so focus would land on something nobody can see. `rankViewportLevel` therefore works out where the control would sit once `S` has scrolled it in (`scrolledInto`, the same least-scroll `Panel.revealDescendant` performs), and keeps it only when that rectangle shows inside the part of `S` that is itself on screen and is not wholly behind a layer. A level whose viewport has no part on screen is skipped. A control that is merely scrolled out of `S` is reached exactly as V1 says. Pinned by the four tests under *"scroll viewports, what may be reached"* that name the window, the outer ancestor, the partly shown viewport and the off-screen viewport, and by *"a control in the origin's scroll viewport that is wholly behind a floating window…"*. Found by the second review round.
+
+3. **`ancestorGeometry` is folded into `effectiveRect`.** The plan said to keep both. With the control chord gone from it, `ancestorGeometry`'s `clippedToNothing` output had no reader, so only the clip-frame intersection the region chord uses is left. The region chord's rectangles are unchanged.
+
+4. **Helpers beyond the plan's function table.** `openMoveScope`, `isRectInside`, `showsUncovered`, `isEnabledControl`, `alongAndAcross`, `nearestAncestorView`, `viewCandidates`, `rankGroupLevel`, `rankViewportLevel`, `scrolledInto` and `shiftInto` split `describeControl`, `originAnchor` and `moveComponentFocus` into named steps; `takesFocus` and `landOn` split `tryFocusCandidates`' two orders (focus-then-reveal for the control chord, reveal-then-focus for the region chord). They add no behaviour beyond the plan's pseudo-code, except what deviations 2, 12 and 13 describe.
+
+5. **The measuring functions take one `MoveScope` instead of `(root, cache)`.** The plan's `clipChain` snippet reads `<body>` and `<html>` for every candidate, and `describeControl` would read the browser viewport for every element, while *Potential Challenges* asks for one read per move. `openMoveScope(root)` reads the three once and carries the clip cache; `clipChain`, `describeControl`, `collectControls`, `originAnchor`, `nearestAncestorView` and `rankViewportLevel` take it. `searchRoot` and the dispatcher still read `<body>` themselves, once each.
+
+6. **A fifth named constant, `ORIGIN_EXTENT_BIAS` (0.5).** The plan's `scoreOf` divides the origin's side extent by a literal `2`. That is a scoring number too, so it is named and documented beside the other four in `core/SpatialRanking.ts`. The score is unchanged.
+
+7. **The moved helpers gained JSDoc.** The plan moves `project`, `gapBetween` and `spansOverlap` "unchanged". Their bodies are. Now that they are exported, each carries a JSDoc block, and `project`'s no longer points at "the plan's ranking-rule table" of an older plan.
+
+8. **`Panel.getScrollViewportElement()` returns null for a panel that does not scroll, and otherwise `this.getScrollElement() ?? null`.** The plan's expression returned the element for every rendered panel and repeated a fallback `getScrollElement()` already has. A panel with `autoScroll: "none"` is not a scroll viewport; it was safe only because such a panel does not register as a revealer, which a subclass can do on its own (`ScrollStrip` does).
+
+    **`scrollViewportsOf` no longer tests containment.** The plan keeps a viewport only when it is not the origin and contains it. `searchLevels` matches the set against the origin's own ancestors, which already guarantees both, so the test could not change a result. The `break` at the search root in `clipChain` is kept as the plan wrote it, though layers mount on `<html>` and the walk would end there anyway.
+
+9. **`Body.ts`'s comment gives a different reason for the `tbody` selector.** The plan's `[^landing-ring]` says the class token on the element is the leaf class's. That holds for `Tree`, but `TableBody` declares `ownClassStyleDefaults`, so a `TreeBody` element carries `.TableBody` too. The selector is the plan's; the comment says that every table body renders as a `<tbody>`, and that another `<tbody>` (a `Markdown` table's) never matches because it never carries the landing marker.
+
+10. **Documentation.** Beyond the listed edits, `accessibility.md`'s opening sentence no longer says the two chords "run the same geometric search", the existing navigation-target text sits under a new `### Navigation targets` heading so it does not read as part of the new subsection, and one sentence mentions the landing ring. The search order is described as "each group and each scrolling panel, nearest first", not "group, then scrolling panel": a tab's scrolling strip is searched before the tab bar around it (E-33). The changelog entry's sentence about windows reads "Both chords stay inside the non-modal window focus is in, and neither enters one from the page behind it" — the plan's sentence left out the second half, which is the region chord's one behaviour change — and its sentence about `Tree`, `List` and `Table` says "moves level with", for deviation 12.
+
+11. **One demo edit and one `ARCHITECTURE.md` edit outside the plan's file table.** `TabDemoPanel`'s three rows of controls are plain containers, so each is now built with `navigationGroup: true` — the only place the app-facing option is used rather than a library default. `ARCHITECTURE.md` names `registerNavigationLandingRing` beside the two existing ring helpers in its list of sanctioned module-level registrations.
+
+12. **A widget with a current row or cell starts level with it, but from the widget's own edge.** Rule O1 starts every move from the `aria-activedescendant` element's own rectangle. That is right across the arrow and wrong along it. `↓` from a tree whose current row is in its upper half would measure the control directly below the tree as hundreds of pixels away, and a control beside the row — 1 px sideways, so inside the cone — would win: on the plan's own sidebar fixture, with the E-18 row, `↓` lands on *Record view* in the dock (350) instead of the *Properties* title (413). The plan's manual steps 3 and 9 expect the title after a tree row has been clicked, so the plan contradicts itself here, and its acceptance list decides. `originAnchor` now joins the two rectangles (`alongAndAcross`): the row or cell supplies the extent across the arrow, the widget the extent along it. E-17 and E-18 are unchanged — the cell still decides between the title and the three-dots button, and `→` from a tree still lands level with the row. Pinned by *"a tree with a current row still leaves through its own edge…"*. Found by the third review round.
+
+13. **Focus on the search root itself counts as nothing focused.** A floating window focuses its own element when it is activated. Every control in the window is inside that element, so deviation 1 drops them all and no chord could ever leave it — and since rule R1 stops chords entering a window from the page, a window in that state was reachable only by `Tab` or a click. With the origin equal to the search root the control chord now lands on the root's first in-view control (`↓`/`→`) or its last (`↑`/`←`), as it does with nothing focused. The region chord is not changed. Pinned by *"with focus on a window's own element…"*. Found by the third review round.
+
+### Test changes worth knowing
+
+- **E-31's target moved from `(260, 150, 320, 170)` to `(260, 250, 320, 270)`.** At the plan's position the target is inside the cone of the origin's raw rectangle as well (forward 150, side gap 110), so the test passed whether the move started from the panel's visible box or from the scrolled-out origin. At the new position it is outside that cone and in line with the panel.
+- **No existing control-chord test changed its expected landing.** One fixture moved: in *"reaches the ancestor's remembered leaf rather than a geometrically-closer sibling target…"* the `elsewhere` control sat at `(0, 1000, 50, 1020)`, below the 800 px viewport, and the test's control-chord "move away" step needs an in-view candidate. It is now at `(0, 700, 50, 720)`.
+- The three *no genuine origin* tests place their candidates, first below second, as step 6 asks.
+- The existing collapsed-wrapper test is E-23, relabelled. E-34 adds a second off-screen control at the end of the document order so the backward case is not vacuous.
+- `afterEach` gained `vi.restoreAllMocks()`. A spy on `FocusReveal.reveal` — a module namespace, outside the DOM seam — outlived `DOM.reset()` and carried its mock implementation into every later test.
+- Cases beyond the plan's table: the two deviations above; a state-revealer (accordion-like) container is not a search level; a control clipped away *inside* the scroll viewport is not readmitted; a layer stacked *below* the focused window does not cover; `aria-disabled="false"`; an `aria-activedescendant` naming an element outside the control; a control smaller than `MIN_VISIBLE_PX`; a group whose candidate refuses focus falls through to the search root; the region chord shares the search root; a current row scrolled out of its widget is ignored; a layer that is not rendered, or has no element, covers nothing; a group inside a scroll viewport is searched before the viewport.
+- Added after the second review round, each for a rule that could be broken with every test still green: a group reaches only its in-view members; `<body>` never clips; an origin wheeled out of its panel still reaches the next control in the panel; a scroll viewport is skipped when the origin has no extent in it, or when none of it is on screen; the group line is the *nearest* group's; a control and the origin are measured as content of the viewport, not by what shows; the exact `EDGE_TOLERANCE_PX` boundary; and that importing `Tree` and the table `Body` registers the landing ring.
+- Thirty-nine one-line mutations of `SpatialNavigation.ts` and `SpatialRanking.ts` — the search root, the clip walk, the window test, the cover test, the level order, each acceptance and each constant among them — each fail at least one test. That is a spot check of the rules listed, not a proof that no rule is unpinned.
+
+### Verified in a real browser
+
+Chrome, through the chrome-devtools MCP, against this worktree's demo dev server on a spare port, 1500 × 850, with real key presses. The server was stopped afterwards. SQLAdmin was not driven.
+
+| Check | Result |
+|---|---|
+| Landing ring on a `Tree` | Painted: 2 px inset ring around the whole tree |
+| Landing ring on a `Table` body | Painted around the `<tbody>` (paginated table in a `Window`) |
+| Stay put when nothing qualifies | `↑` from the top button of *Misc.*'s left column, `→` from the last tool of an accordion header, and `←`/`↑` at the edges of a window all leave focus where it is |
+| Group first, tool bar | *ToolBar* section: `→` from the *Save* split button lands on the *50%* combo box 900 px along the same bar. With the bar's group mark removed by hand, the same press lands on *Find* in a bar two rows down. `←` × 7 walks back one control at a time |
+| Group first, accordion header | *Accordion* section, tools revealed: title `→` tool `→` tool `→` stays |
+| Group marked by the app | *Tab* section's three control rows (`navigationGroup: true`): `→` × 5 walks *Add Lazy Tab* to *Toggle Under-border* one button per press; `↓` lands on the combo box directly below |
+| Window, pressed in the page behind it | `↓` skips the eight buttons hidden behind the window and lands on the next one showing; `→` lands on a control in the right-hand panel; focus never enters the window |
+| Window, pressed inside it | Every landing is inside the window |
+| Scrolled out of the origin's panel | *Misc.* left column scrolled with the wheel: `↑` reaches the hidden button and scrolls it into view |
+| Tree moves from its current row | With *Showcase* current (rows 144–168), `→` lands on the button at 132–160, not the top one |
+| Table moves level with its current cell | With the cell in the *name* column, `↓` lands on the pager button under that column and `↑` on the tool bar button above it; never on a checkbox in another row. With the cell in the *id* column, `↓` stays put: the two pager buttons under that column are disabled and the next one is 83 px to the side |
+| Tree leaves through its own edge | With a row current in the demo's full-height tree, `↓` stays on the tree (nothing is below it) instead of jumping to a button beside the row; `→` still lands level with the row |
+| Focus on a window's own element | `↓` lands on the window's first control |
+| Scrolling tab strip | 52 tabs: `→` walks *Tab 34* to *Tab 38* one per press, scrolling each in; never the strip's `+` tool, never a ✕ |
+| Cost | About 3 ms per press with 194 focusable elements on the page |
+
+Six things that are **not** defects under the plan's rules, and are the first places to look if a move feels wrong. The fourth and sixth follow from the rules and were not seen in a browser; the rest were:
+
+- **A diagonal landing just inside the cone.** In the demo window, `→` from the last pager button lands on *Column options* 435 px right and 377 px up. `CONE_SLOPE = 1` accepts it. Lowering `CONE_SLOPE` to about `0.5` rejects it.
+- **A wide row and a far-left control.** `↓` from an accordion header's tool at the far right lands on the next header directly below (712 px) rather than on the section's own checkboxes at the far left (7 px down, 1082 px sideways). `OFF_AXIS_WEIGHT = 2` prices the sideways distance at 2164.
+- **A control peeking out from behind a window is a candidate.** Rule C5 excludes a control only when what shows of it is *wholly* behind a layer, so a button with a 14 px strip showing above a window is reached.
+- **Inside a scrolling panel, in line wins at any distance.** The panel is searched, in-line candidates only, before the search root. So inside an `autoScroll` panel a far control that overlaps the focused one's width or height — even one scrolled out of view — beats a near control that is slightly off line. The same rule is why "in line with the tool bar as a whole" does not help a tool bar inside a scrolling panel: `↓` from one of its buttons prefers any control further down the panel that the button overlaps over a field just below the bar that it does not. Outside a scrolling panel the nearer control wins (E-3, E-19). No constant changes this; it would need the cone and the group line accepted at a scroll-viewport level too.
+- **A narrow start under or over disabled controls stays put.** A table whose current cell is in a narrow column starts `↓` from that column's width at the table's bottom edge. When the controls directly under the column are disabled and the next enabled one is further to the side than it is down, nothing qualifies. Moving the cell one column over, or raising `CONE_SLOPE`, reaches it.
+- **A row of controls that spans only part of the widget next to it can be skipped.** SQLAdmin's result tool bar has its buttons at the far left, above a grid that spans the dock. `↑` from a grid cell that is not under those buttons finds nothing in line in the tool bar, and the tool bar's buttons are far outside the cone, so the move lands on the editor above the tool bar. With no current cell the grid is measured whole and `↑` lands on the tool bar.
+
+One artifact of the test method, not of this branch: setting `scrollTop` on a panel's scroll element directly, bypassing `Panel.setScrollTop` and the wheel handler, leaves `Panel`'s cached scroll offset stale, and the reveal that follows then scrolls from 0. A wheel scroll, a scrollbar drag and every library scroll go through the cache.
+
+### Review record
+
+The branch went through the `audit` skill's three review rounds, its cap. Every BLOCKING and ADVISORY finding of all three was fixed. The third round's one BLOCKING finding (deviation 12) and its advisory findings (deviations 5 and 13 among them) were fixed after that last review, so those changes have been checked by tests, by the mutation run above and in a browser, but not by a further independent review.
+
+### Manual checklist — walk this in SQLAdmin
+
+This is the acceptance test. It replaces the short list under *Manual — SQLAdmin against the symlinked `dist/lib`* with one press per line. **Start** is how to get focus there, **Press** is the chord, **Expect** is what must take focus. A blue ring shows where focus is after every press.
+
+**Setup**
+
+1. Build this branch: `cd /home/jika/typescript/typescript-ui/.worktrees/spatial-navigation-redesign && npm run build:lib`.
+2. Point SQLAdmin at it. `frontend/node_modules/@jimka/typescript-ui` is currently a link to the main tree's `packages/lib`:
+   `cd /home/jika/typescript/sqladmin/frontend && rm node_modules/@jimka/typescript-ui && ln -s /home/jika/typescript/typescript-ui/.worktrees/spatial-navigation-redesign/packages/lib node_modules/@jimka/typescript-ui`
+3. Stop the Vite dev server and start it again with `npx vite --force`. A reload alone can serve the old build.
+4. Size the window to about 1500 × 850, connect, and leave the *Database* and *Properties* sections open.
+5. To go back afterwards: repeat step 2 with `/home/jika/typescript/typescript-ui/packages/lib`, then step 3.
+
+**A. The Database header — the reported jump**
+
+| # | Start | Press | Expect |
+|---|---|---|---|
+| A1 | Click any row in the navigator tree | `Ctrl+Alt+↑` | The *Database* title |
+| A2 | — | `Ctrl+Alt+→` | *Create schema* |
+| A3 | — | `Ctrl+Alt+→` | *Show diagram* |
+| A4 | — | `Ctrl+Alt+→` | *Refresh* |
+| A5 | — | `Ctrl+Alt+→` | With a tab open in the dock: the first dock tab, level with the header. With no control level with the header: the nearest control up-right or down-right of *Refresh* that is at least as far right as it is up or down. On the start page with nothing there: **focus stays on *Refresh***. In every case, **never** the three-dots button of the Properties table |
+| A6 | Put focus back on *Refresh* (`Ctrl+Alt+←` from where A5 landed, or repeat A1–A4) | `Ctrl+Alt+←` three times | *Show diagram*, *Create schema*, the *Database* title |
+| A7 | — | `Ctrl+Alt+←` | Focus stays on the *Database* title |
+
+**B. Down and up the sidebar — the landing ring**
+
+| # | Start | Press | Expect |
+|---|---|---|---|
+| B1 | *Refresh* (A1–A4) | `Ctrl+Alt+↓` | The navigator tree, with a ring around the whole tree |
+| B2 | — | `Ctrl+Alt+↓` | The *Properties* title — whichever tree row is current, and whatever is open in the dock |
+| B3 | — | `Ctrl+Alt+↓` | The Properties table, with a ring around its body. Not the three-dots button |
+| B4 | — | `Ctrl+Alt+↑` | The three-dots button when the table has no current cell or its current cell is in the right-hand column; the *Properties* title when the current cell is in the left-hand column |
+| B5 | — | `Ctrl+Alt+↑` until the top | *Properties* title (if not already there), the tree, the *Database* title, then a menu in the menu bar |
+
+**C. A tree row decides where `→` goes**
+
+| # | Start | Press | Expect |
+|---|---|---|---|
+| C1 | Click a tree row about half-way down the tree | `Ctrl+Alt+→` | A control in the dock level with that row — not one near the top of the dock. If the dock has nothing level with the row or in the cone, focus stays on the tree |
+| C3 | Click a row in the upper half of the tree, with a query tab open | `Ctrl+Alt+↓` | The *Properties* title, directly below the tree. Not a control in the dock |
+| C2 | Click a tree row near the top | `Ctrl+Alt+→` | A control level with *that* row. C1 and C2 land in different places |
+
+**D. A query tab**
+
+| # | Start | Press | Expect |
+|---|---|---|---|
+| D1 | Open a query tab and click in the SQL editor | `Ctrl+Alt+←` | The navigator tree. Not the *Record view* button below-left of the editor |
+| D2 | Click in the SQL editor | `Ctrl+Alt+↑` | A query tool bar button directly above the editor's text — above the text, not above the line-number gutter |
+| D3 | — | `Ctrl+Alt+↑` | The tab above it in the tab strip |
+| D4 | — | `Ctrl+Alt+↓` twice | Back to the tool bar button, then the editor |
+| D5 | — | `Ctrl+Alt+↓` | A control of the result area directly below the editor |
+| D6 | A tool bar button of the query tab | `Ctrl+Alt+→` / `←` | The next button along the tool bar, one per press, none skipped |
+
+**E. The menu bar**
+
+| # | Start | Press | Expect |
+|---|---|---|---|
+| E1 | The *Database* title (A1) | `Ctrl+Alt+↑` | A menu in the menu bar |
+| E2 | — | `Ctrl+Alt+→` until the last left-hand menu | One menu per press |
+| E3 | The last left-hand menu | `Ctrl+Alt+→` | *Shortcuts* at the far right of the bar. Not a control on the row below |
+
+**F. A tab strip that scrolls**
+
+| # | Start | Press | Expect |
+|---|---|---|---|
+| F1 | Open enough tabs that the strip scrolls; click a tab near the right edge | `Ctrl+Alt+→` several times | The next tab each press. A hidden tab scrolls into view as it takes focus. Focus does not leave the strip while a tab remains to the right, and never lands on a tab's ✕ |
+
+**G. A collapsed section**
+
+| # | Start | Press | Expect |
+|---|---|---|---|
+| G1 | Collapse *Properties*; click a tree row | `Ctrl+Alt+↓` | The *Properties* title |
+| G2 | — | `Ctrl+Alt+↓` | Focus stays on the title, or moves to a visible control below it. It does **not** land inside the hidden table and the section does **not** expand |
+
+**H. A floating window**
+
+| # | Start | Press | Expect |
+|---|---|---|---|
+| H1 | Open the *Local Storage* window; click a control inside it | `Ctrl+Alt`+each arrow, several times | Every landing is inside the window. At the window's edges focus stays put |
+| H2 | Click a control in the main window, with the *Local Storage* window still open over part of it | `Ctrl+Alt`+arrow toward the window | Focus never enters the window and never lands on a control wholly hidden behind it. It skips to the next control that shows, or stays put |
+| H3 | Click the *Local Storage* window's title bar, so the window itself has focus | `Ctrl+Alt+↓` | The first control in the window. `Ctrl+Alt+↑` from the same start lands on its last |
+
+**I. What must not have changed**
+
+| # | Start | Press | Expect |
+|---|---|---|---|
+| I1 | Click in the SQL editor on a line of text | `Ctrl+Shift+←` / `→` | Selects by word, as before |
+| I2 | A text field inside a tool bar | plain `←` / `→` | Moves the caret, as before |
+| I3 | Anywhere | `Ctrl+Alt+Shift`+arrow | The region chord moves between sidebar, dock and status bar as before. The one intended difference: pressed in the main window with *Local Storage* open, it no longer jumps into that window |
+
+**Demo app** (`npm run dev` in the library): in *Misc.*, wheel-scroll the left column so a button is partly out of view, click the button below it, press `Ctrl+Alt+↑` — focus reaches the hidden button and scrolls it into view.
+
+**If a move feels wrong**
+
+All five numbers are constants at the top of `packages/lib/src/typescript/lib/core/SpatialRanking.ts`, each with a comment saying what it does. Change one, run `npm run build:lib`, restart Vite with `--force`, retry. Once a value is settled, three places restate it and must follow: the constants test at the top of `packages/lib/tests/unit/core/SpatialRanking.test.ts`, the worked scores in the test comments beside it, and the numbers in `packages/lib/docs/concepts/accessibility.md` under *How the control chord chooses* ("at least 4 pixels", "2 ×", "half", "at least as far forward as it is sideways").
+
+| What it feels like | Constant | Change |
+|---|---|---|
+| An arrow goes too far sideways, or picks a diagonal control over a straight one | `OFF_AXIS_WEIGHT` (2) | Raise |
+| An arrow refuses a control that is only slightly off line | `OFF_AXIS_WEIGHT` (2) | Lower |
+| A wide control (a header title, a wide field) goes to a small control off its corner instead of the one straight ahead | `ORIGIN_EXTENT_BIAS` (0.5) | Raise |
+| `→` lands on something that is more up or down than right | `CONE_SLOPE` (1) | Lower, e.g. `0.5` |
+| An arrow stays put when a control diagonally ahead looks reachable | `CONE_SLOPE` (1) | Raise |
+| Focus lands on a control with only a sliver showing | `MIN_VISIBLE_PX` (4) | Raise |
+| The control right next to the focused one is skipped | `EDGE_TOLERANCE_PX` (1) | Raise |
+
+A move that feels wrong in a way none of these change is a rule finding, not a tuning one: note the control focus was on, the chord, where it landed, and where it should have.
