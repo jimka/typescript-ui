@@ -81,7 +81,7 @@ The bulk and structural calls — `expandToDepth()`, `collapseAll()`, `expandAll
 
 ## Keyboard
 
-Inherits everything from [`Table`](/components/Table) (`ArrowUp` / `ArrowDown` for row nav, `ArrowLeft` / `ArrowRight` for column nav, `Enter` / `Space` to edit, `Home` / `End`, `PageUp` / `PageDown`) and overrides `ArrowLeft` / `ArrowRight` to act on the tree structure when a tree row is focused:
+Inherits everything from [`Table`](/components/Table) (`ArrowUp` / `ArrowDown` for row nav, `ArrowLeft` / `ArrowRight` for column nav, `Enter` / `Space` to edit, `Home` / `End`, `PageUp` / `PageDown`, `Shift+F10` / the ContextMenu key for the current cell's context menu) and overrides `ArrowLeft` / `ArrowRight` to act on the tree structure when a tree row is focused:
 
 - **`ArrowRight`** — Expand a collapsed branch. If already expanded, move focus to the first child.
 - **`ArrowLeft`** — Collapse an expanded branch. If already collapsed (or a leaf at depth > 0), move focus to the parent record.

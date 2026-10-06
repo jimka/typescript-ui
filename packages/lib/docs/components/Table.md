@@ -274,7 +274,7 @@ A column is no longer limited to one operator and one value: open a column's ope
 - **Shift-click** a column header to compose a multi-column sort: each shift-click appends or toggles that column inside the current sort list (asc → desc → removed). When more than one column is active, a small priority badge (`2`, `3`, …) is shown on each non-primary column header.
 - Right-click a column header — or click the menu button in the strip above the vertical scrollbar — to toggle column visibility via a context menu; see [Showing and hiding columns](#showing-and-hiding-columns) below.
 - `table.getSelectedRecord()` / `getSelectedRecords()` return the user's selection.
-- Click-drag across cells selects a rectangular range of cells — a plain click selects just the clicked cell, and Shift-click extends the range from the existing anchor. A drag that stays inside a single cell instead selects that cell's text natively, and Ctrl/Cmd+C copies that text; a drag that crosses into another cell switches to the rectangular range for the rest of the gesture, discarding the partial text selection. Ctrl/Cmd+C, or right-click a cell and choose **Copy** from the context menu, writes the selected range to the clipboard as tab-separated columns and newline-separated rows, so a paste into a spreadsheet lands each cell in its own cell — for `Table` and `TreeTable` alike. A copied range always covers whole cells. Ctrl/Cmd+X, or **Cut** from the context menu, does the same and then clears every cell in the range it can — skipping a read-only cell and a column with no plain typed editor (a custom renderer, a per-record dynamic cell type, or a `glyph` column), each of which keeps its value. Ctrl/Cmd+V, or **Paste** from the context menu, parses the clipboard as tab-separated text and writes it starting at the range's top-left cell, clipped to the table's remaining rows and columns — again skipping any cell it can't write. On a [`TreeTable`](/components/TreeTable), the row-reparent drag is not currently coordinated with the cell-range drag — both arm on mousedown, so dragging a row to reparent it can conflict with dragging across cells to select a range.
+- Click-drag across cells selects a rectangular range of cells — a plain click selects just the clicked cell, and Shift-click extends the range from the existing anchor. A drag that stays inside a single cell instead selects that cell's text natively, and Ctrl/Cmd+C copies that text; a drag that crosses into another cell switches to the rectangular range for the rest of the gesture, discarding the partial text selection. Ctrl/Cmd+C, or right-click a cell (or press Shift+F10 on the current cell — see [Keyboard](#keyboard)) and choose **Copy** from the context menu, writes the selected range to the clipboard as tab-separated columns and newline-separated rows, so a paste into a spreadsheet lands each cell in its own cell — for `Table` and `TreeTable` alike. A copied range always covers whole cells. Ctrl/Cmd+X, or **Cut** from the context menu, does the same and then clears every cell in the range it can — skipping a read-only cell and a column with no plain typed editor (a custom renderer, a per-record dynamic cell type, or a `glyph` column), each of which keeps its value. Ctrl/Cmd+V, or **Paste** from the context menu, parses the clipboard as tab-separated text and writes it starting at the range's top-left cell, clipped to the table's remaining rows and columns — again skipping any cell it can't write. On a [`TreeTable`](/components/TreeTable), the row-reparent drag is not currently coordinated with the cell-range drag — both arm on mousedown, so dragging a row to reparent it can conflict with dragging across cells to select a range.
 
 ### Showing and hiding columns
 
@@ -360,6 +360,38 @@ drag's widths were resolved against the columns as they were at the press, so
 committing them afterwards would undo whatever changed. Release and press again
 to resize against the new columns. A live drag is unaffected: it has already
 applied every move it made.
+
+## Keyboard
+
+The table body is one focus stop: its own element holds focus, and the current cell — the
+cell of the current row in the current column — is marked with `aria-activedescendant`.
+With the body focused:
+
+| Key | Behaviour |
+|---|---|
+| `ArrowUp` / `ArrowDown` | Move the current row up / down and select it. With no current row yet, the first press lands on the first row. |
+| `Home` / `End` | Move to the first / last row. |
+| `PageUp` / `PageDown` | Move by one page of rows. |
+| `ArrowLeft` / `ArrowRight` | Move the current cell along the row. |
+| `Enter` | Edit the current cell. On a cell that commits at once, such as a checkbox, move to the next row instead. |
+| `Space` | Edit the current cell, or toggle a cell that commits at once. |
+| `Tab` / `Shift+Tab` | Move to the next / previous cell in the row and edit it. |
+| `Ctrl/Cmd+C` / `X` / `V` | Copy, cut, paste the selected cell range — see [Sorting and selection](#sorting-and-selection). |
+| `Shift+F10` / ContextMenu key | Open the **Cut** / **Copy** / **Paste** menu for the current cell, under it. |
+
+The menu `Shift+F10` opens is the one a right-click on that cell opens. It acts on the
+selected cell range when the current cell lies inside it, and on the current cell alone
+otherwise; the row is scrolled into view first, and neither the selection nor the cell
+range changes. With no current row — focus arrived with `Tab` and no arrow key was pressed
+yet, or the table is empty — nothing opens. The menu takes focus and is worked with the
+arrow keys, and focus returns to the table when it closes — see
+[Menu: Keyboard](/components/Menu#keyboard).
+
+While a cell editor with a text input is open, `Shift+F10` opens that editor's own
+**Cut** / **Copy** / **Paste** menu and the edit stays open. Header cells are not focus
+stops: the column menu is reached with `Enter` or `Space` on the menu button in the strip
+above the vertical scrollbar, which opens the same menu a right-click on any header cell
+opens.
 
 ## Dirty state
 

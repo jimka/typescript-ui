@@ -130,6 +130,42 @@ A [`revealByPredicate()`](/api/component/tree/classes/Tree#revealbypredicate) th
 
 Two consequences are worth knowing. After `setNodes()` the walk carries on over the new roots, from the first, but a root object it has already tested is still passed over — so a reveal running across a `setNodes()` handed the same node objects back can resolve `null` with a match in the tree. And a level that restarts finishes before the restart reaches its ancestors, so while the tree is changing under it the node returned need not be the depth-first-earliest match.
 
+## Keyboard
+
+The tree is one focus stop: its own element holds focus, and the current row is marked with `aria-activedescendant`.
+
+| Key | Behaviour |
+| --- | --- |
+| `ArrowDown` / `ArrowUp` | Move to the next / previous visible row and select it. With `Shift`, extend the selection instead. With no current row yet, the first press lands on the first row. |
+| `ArrowRight` | Expand a collapsed node, or move to an expanded node's first child. |
+| `ArrowLeft` | Collapse an expanded node, or move to the parent. |
+| `Home` / `End` | Move to the first / last visible row and select it. With `Shift`, extend the selection instead. |
+| `Shift+F10` / ContextMenu key | Fire `"contextmenu"` for the current row — see [Context menu](#context-menu). |
+
+## Context menu
+
+`on("contextmenu", fn)` is the one subscription for a row's context menu. It fires for a right-click on a row and for `Shift+F10` or the ContextMenu key on the current row, so the same listener serves the mouse and the keyboard:
+
+```typescript
+import { Menu } from '@jimka/typescript-ui/overlay';
+
+const menu = Menu();
+
+tree.on('contextmenu', (node, event) => menu.show(event.clientX, event.clientY, [
+    { text: 'Open',   action: () => open(node) },
+    { text: 'Rename', action: () => rename(node) },
+]));
+```
+
+| Opened with | `node` | `event` |
+| --- | --- | --- |
+| a right-click on a row | the node under the pointer | the browser's `contextmenu` event |
+| `Shift+F10` / ContextMenu key | the current row's node, scrolled into view first | a synthetic `contextmenu` event whose `clientX` / `clientY` sit under the row's label; its `target` is `null` |
+
+Either way the browser's own menu is already suppressed — the listener need not call `preventDefault()`, which does nothing on the synthetic event — and the selection is left as it was. The menu is for the one row named, also when several rows are selected: read `getSelectedNodes()` in the listener when an action should cover the whole selection. With no current row — focus arrived with `Tab` and no arrow key was pressed yet, or the tree is empty — the keys fire nothing, as a right-click on the tree's empty area fires nothing.
+
+A menu opened from the keyboard takes focus and is worked with the arrow keys; focus returns to the tree when it closes — see [Menu: Keyboard](/components/Menu#keyboard).
+
 ## Common methods
 
 | Method | Purpose |
@@ -144,6 +180,7 @@ Two consequences are worth knowing. After `setNodes()` the walk carries on over 
 | `on("selection", fn)` | Subscribe to user-driven selection changes. |
 | `on("loaderror", fn)` | Subscribe to lazy-load failures (see [Lazy loading](#lazy-loading)). |
 | `on("expand", fn)` / `on("collapse", fn)` | Subscribe to a single node's expansion changing (see [Expansion state](#expansion-state)). |
+| `on("contextmenu", fn)` | Subscribe to a context-menu request for a row, from the mouse or the keyboard (see [Context menu](#context-menu)). |
 | `setRendererFactory(fn)` | Replace the content renderer used for every row, disposing each row's previous renderer. |
 | `getRowOverflow()` / `setRowOverflow(mode)` | Get/set how a row wider than the viewport is handled — see [Row overflow](#row-overflow). |
 | `getExpandTrigger()` / `setExpandTrigger(mode)` | Get/set which click gesture on a row's body expands it — see [Expand trigger](#expand-trigger). |
