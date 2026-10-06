@@ -128,6 +128,7 @@ A window with no `resizeMode` of its own follows the app-wide default set throug
 - A `Window` is not added to its parent's layout flow. It floats in absolute coordinates and you control its position via `setPosition` / `setSize`.
 - Calling `show()` is what registers it with the active-window tracking. Without `show()`, drag and focus behavior won't activate.
 - Use `setResizeFps(0)` to disable throttling during resize if you need every frame.
+- A window is non-modal and does not hold focus: `Tab` from its last control moves on to the page. While a modal [`Dialog`](/components/Dialog) or modal [`Drawer`](/components/Drawer) is open, every window is inert, and a window shown meanwhile appears behind the backdrop, inert until the modal closes.
 - **Removed:** `setTearOffStripBody` / `isTearOffStripBody` no longer exist. They marked a window as a strip-mode tear-off body so the header re-dock gesture stayed inert over it; that role is now handled structurally by the headerless [`TabWindow`](/components/TabWindow) (it has no header re-dock path at all), so the flag was deleted from the public surface.
 
 ## See also

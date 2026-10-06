@@ -116,7 +116,7 @@ A context menu has no host control to forward keys to it, so what `show()` does 
 | `Enter` / `Space` | Activates the highlighted row; on a row with a submenu, opens the submenu and moves into it. Once per press: a held key does not repeat. |
 | `→` | Opens the highlighted row's submenu and moves into it. |
 | `←` | In a submenu, closes it and returns to its parent row. |
-| `Tab` / `Shift+Tab` | Closes the whole menu and returns focus; the key then moves focus on as usual. |
+| `Tab` / `Shift+Tab` | Closes the whole menu and returns focus; the key then moves focus on as usual. Inside a modal dialog or drawer, focus wraps within it. |
 | `Escape` | Closes the whole menu, submenus included. |
 
 A key pressed with `Alt`, `Control` or `Meta` is left alone, so a browser or application chord such as `Alt+←` keeps working while the menu is open.
@@ -127,7 +127,7 @@ When the menu closes, focus returns to the element that had it when the menu ope
 - **Disabled rows can be highlighted**, so a keyboard user can find them. Activating one does nothing and leaves the menu open.
 - **The element the menu was opened from loses focus while the menu is open.** A text field with typed, uncommitted text therefore commits it when the menu opens. A [`Table`](/components/Table) cell editor is the exception: its edit stays open until the menu closes.
 - **Any `show()` your code makes while the user's last press was a key takes focus**, however long ago that press was — a menu shown from a timer after the user typed, for example. Use `toggleFor()` for a dropdown whose trigger should keep focus.
-- **Inside a modal [`Dialog`](/components/Dialog), `Tab` can leave the dialog.** The dialog's focus trap stands down for a key pressed on the menu, so `Tab` from a menu opened on the dialog's last tab stop moves focus out of the dialog. From a stop that has another one after it, focus stays inside.
+- **Inside a modal [`Dialog`](/components/Dialog) or modal [`Drawer`](/components/Drawer), `Tab` closes the menu and focus stays inside the modal.** From a menu opened on the modal's last control, `Tab` goes to its first control, and `Shift+Tab` from one opened on the first control goes to the last.
 - **A `show()` called from your own `keydown` handler, for the key press being handled, is not guaranteed either way.** The press may not be on record yet when the handler runs, so the menu can open as if from the mouse. Open the menu from `contextmenu`, or from a button's `"action"`, where the press always comes first.
 
 The panel declares `aria-activedescendant` for its highlighted row, so assistive technology follows the highlight.

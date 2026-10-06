@@ -60,7 +60,9 @@ FocusHistory.enable({
 
 ## Modal dialogs
 
-While a modal [`Dialog`](/components/Dialog) is open, the back/forward accelerator is inert — it won't fight the dialog's own focus trap. Non-modal overlays (dropdowns, popovers) don't suppress it.
+While a modal [`Dialog`](/components/Dialog) or modal [`Drawer`](/components/Drawer) is open, the back/forward accelerator is inert, also with a menu or a dropdown open inside the modal: the trail leads to controls the modal has made unreachable. Non-modal overlays (dropdowns, popovers) by themselves don't suppress it.
+
+`back()` and `forward()` still work while a modal is open, between the controls inside it. They skip any trail entry that lies behind the modal, without revealing it.
 
 ## See also
 

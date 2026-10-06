@@ -9,7 +9,7 @@ In production both seams resolve handles against a registry and otherwise behave
 
 ## Opaque handles — no element escapes the seam
 
-The seam does not just funnel DOM *access*; it is the only module that ever *holds* a live `Element`/`Node`. Outside `core/DOM.ts` an element is named only by a [`Handle`](/api/core/type-aliases/Handle) — an opaque, serialisable branded `number`. A module-private registry maps each handle to its node (and, via a reverse `WeakMap`, each node back to its one canonical handle, so handle equality reproduces element equality — the focus-trap and event-target identity checks compare handles).
+The seam does not just funnel DOM *access*; it is the only module that ever *holds* a live `Element`/`Node`. Outside `core/DOM.ts` an element is named only by a [`Handle`](/api/core/type-aliases/Handle) — an opaque, serialisable branded `number`. A module-private registry maps each handle to its node (and, via a reverse `WeakMap`, each node back to its one canonical handle, so handle equality reproduces element equality — the Tab-wrap and event-target identity checks compare handles).
 
 Two minting modes draw the leak-safety line:
 
@@ -52,7 +52,7 @@ Unlike `getViewportRect` (which takes the owning `Component`), the scroll/box-mo
 
 Scroll **writes** stay one-way: `setScrollLeft` posts the requested offset and never returns. The browser clamps it to the scrollable range, so the cache invariant is restored by a *separate* `getScrollLeft` read of the settled value — keeping the write worker-forwardable while the read-back stays a local source call.
 
-Component-level focus rides the seam through the wrappers: `Component.focus()` / `Component.unfocus()` call `DOM.sink.focus` / `DOM.sink.blur`, so every `someComponent.focus()` call site is already routed without touching the element itself. Only a handful of raw-element focus sites (the dialog focus-trap, which focuses descendants found by `querySelectorAll`) call `DOM.sink.focus` directly.
+Component-level focus rides the seam through the wrappers: `Component.focus()` / `Component.unfocus()` call `DOM.sink.focus` / `DOM.sink.blur`, so every `someComponent.focus()` call site is already routed without touching the element itself. Only a handful of raw-element focus sites (the Tab wrap inside a modal layer, which focuses descendants found by `querySelectorAll`) call `DOM.sink.focus` directly.
 
 ## What it enables
 

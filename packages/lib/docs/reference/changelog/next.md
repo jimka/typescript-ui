@@ -135,6 +135,26 @@ page resets to empty.
   drawer as before. No consumer action is needed unless an app relied on a
   non-modal drawer covering a window.
 
+- **A modal `Drawer` takes focus when it opens and returns it when it
+  closes.** A modal drawer used to leave focus on the control that opened it,
+  behind the scrim. It now moves focus to its first control once it has laid
+  out, or to the drawer itself when it holds none, and keeps `Tab` and
+  `Shift+Tab` inside. When the slide-out has finished, focus returns to the
+  element that had it when the drawer opened, unless that element was
+  disposed or removed from the page meanwhile. A non-modal drawer moves no
+  focus, as before. Code that relied on the opener keeping focus while a
+  modal drawer is open — a key handler on that control, say — no longer
+  receives those keys until the drawer has closed.
+
+- **A custom `DismissableLayer` should implement `onInertChanged`.** A layer
+  without it stays focusable and clickable behind a modal dialog or drawer.
+  One line does it: `onInertChanged(inert) { this.setInertAttribute(inert); }`.
+  A surface that is not a layer, mounts itself on `<html>` and holds a
+  control registers with `LayerManager.addBackgroundSurface` instead. A
+  custom `LayoutManager` that mounts a component of its own on its container
+  returns it from `getChromeComponents()`, which matters when it is the
+  body's manager. See [Layering: Modal scope](/concepts/layering#modal-scope).
+
 ## Added
 
 ### Components
@@ -197,6 +217,27 @@ page resets to empty.
   for `aria-description`, mirroring the `setLabel` / `getLabel` /
   `clearLabel` trio.
 
+- **`LayerManager` gains the modal-scope API.** `hasModalLayer()` says
+  whether any registered layer is modal, wherever it sits in the stack.
+  `isBehindModal(node)` says whether an element lies outside the topmost
+  modal layer and the layers opened from it. `containTab(e)` wraps `Tab` and
+  `Shift+Tab` at the edges of that scope; the manager calls it for every
+  `Tab`, and a layer that closes itself on `Tab` calls it again once focus
+  is back on its opener. `addBackgroundSurface(surface)` and
+  `removeBackgroundSurface(surface)` register a `BackgroundSurface`: a
+  surface that is not a layer but must go inert behind a modal one.
+  `DismissableLayer` gains two optional members: the `onInertChanged(inert)`
+  hook, and `isLayerClosing()`, which a layer that stays registered while it
+  fades out returns `true` from, so that its controls are left out of the
+  `Tab` wrap meanwhile. `AnimatedDropdown` implements both. See
+  [Layering: Modal scope](/concepts/layering#modal-scope).
+
+- **`Component.setInertAttribute(value)` / `getInertAttribute()`** write and
+  read the HTML `inert` attribute, buffered until render like every element
+  attribute. `LayerManager` drives it for the surfaces behind a modal layer,
+  and overwrites a value set from elsewhere on a layer or on a component
+  added to `Body`; there is no options-bag field.
+
 ### Data
 
 - **`JsonWriter.dataFor` is `protected`.** A subclass can override it to
@@ -205,6 +246,13 @@ page resets to empty.
   re-implementing the `Writer` interface.
 
 ### Layouts
+
+- **`LayoutManager.getChromeComponents()`** returns the components a manager
+  mounts on its container's element beside the container's children: `Tab`'s
+  tab strip, `Accordion`'s section headers and wrappers, and the gutters of
+  `Split`, `Border` and `Accordion`. They are not in the container's
+  `getComponents()`. `Body` reads it to make them inert behind a modal
+  dialog. The base implementation returns none.
 
 - **A `Card` can now select its visible child by a caller-supplied key.**
   `LayoutConstraints` gained a `key` field, and `Card` gained
@@ -242,6 +290,12 @@ page resets to empty.
 ## Fixed
 
 ### Components
+
+- **An `AutoCompleteField`'s suggestion list is no longer a Tab stop.** The
+  field keeps focus while its suggestions are open and closes them on `Tab`,
+  but the list itself could take that `Tab` when nothing focusable followed
+  the field, and focus was then lost as the list closed. No consumer action
+  is needed.
 
 - **The table's filter row reads a typed `YYYY-MM-DD` as a local day.** A
   `date` or `datetime` operand was parsed with `new Date(text)`, which reads
@@ -403,6 +457,40 @@ page resets to empty.
   timer now goes through `DOM.sink`, like `AutoCompleteField`'s and the
   table filter row's, and `Notification`'s destructor clears a timer a
   dispose would otherwise have left armed. No consumer action is needed.
+
+- **The keyboard can no longer reach the application behind a modal `Dialog`
+  or `Drawer`.** A dialog wrapped `Tab` only while it was the topmost layer
+  and only between the first and last element its selector matched, so focus
+  got out in several ways: `Tab` from a context menu or an open `ComboBox`
+  dropdown on the dialog's last control; `Shift+Tab` after a click on the
+  dialog's text; `Tab` from the last visible control when a hidden one
+  followed it; and `Alt+[` with a menu open, which
+  [`FocusHistory`](/recipes/focus-history) took to a control of the page. A
+  dialog with nothing focusable left focus on the button that opened it,
+  where `Space` opened a second one. A modal drawer did not hold focus at
+  all. Now, while a modal dialog or drawer is open, the rest of the
+  application is `inert` — every component added to `Body`, every layer the
+  modal was not opened from, the `Rail`, and each toast's dismiss button —
+  so it cannot be focused, clicked or read by a screen reader. `Tab` wraps
+  inside the modal and the layers opened from it, and a modal with nothing
+  focusable takes focus itself. The library marks its own containers and
+  never `<body>` or `<html>`, so a browser extension's own menu beside a
+  dialog stays usable. Three things follow for application code.
+  `element.focus()` on something behind a modal does nothing until the modal
+  closes. An element appended by hand to `<body>` or `<html>` is not made
+  inert and can still be reached; build it as a `Popover` or `PopupPanel`,
+  which take part. And the feature needs the `inert` attribute: Chrome 102,
+  Firefox 112, Safari 15.5 (see
+  [Browser support](/reference/browser-support)). See
+  [Dialog: Keyboard](/components/Dialog#keyboard) and
+  [Layering: Modal scope](/concepts/layering#modal-scope).
+
+- **A `Window` disposed while shown leaves the layer tree.** `dispose()` on
+  an open window, or on a `TabWindow`, tore the window down but left it
+  registered with `LayerManager`, so `getTopLayer()` could go on naming a
+  window whose element was gone and the manager's document listeners were
+  never removed. Its destructor now unregisters it, as every other layer's
+  does. A window closed first is unaffected. No consumer action is needed.
 
 - **A modal `Dialog` is no longer drawn beneath — and left clickable under —
   another overlay.** A dialog opened while any layer was open inherited that

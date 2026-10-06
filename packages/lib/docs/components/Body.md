@@ -96,6 +96,7 @@ Every such drag then moves a thin outline to where the edge will land and lays t
 - **Theme bootstrap** — call `ThemeManager.setTheme(ClassicTheme)` (or any theme) before adding components, so style rules pick up the right CSS variables. A theme chosen before the body is first reached is kept — `Body` applies `ModernTheme` only when no theme has been set.
 - **Context menu** — the browser's native right-click menu is suppressed page-wide by default; pass `nativeContextMenu: true` to restore it, including on text inputs.
 - **Resize mode** — gutter, table-column and window-edge drags lay out live by default; pass `resizeMode: 'outline'` for an outline and one layout on release.
+- **Inert behind a modal** — while a modal [`Dialog`](/components/Dialog) or modal [`Drawer`](/components/Drawer) is open, every component added to `Body` carries the HTML `inert` attribute, and so does what the body's layout manager mounts beside them, such as a [`Tab`](/layouts/Tab) manager's tab strip. A component added meanwhile comes up inert. The `<body>` element itself is never marked, so an element that is not one of these — a browser extension's menu, or one your own code appends to `<body>` — stays usable. See [Modal scope](/concepts/layering#modal-scope).
 
 ## See also
 
