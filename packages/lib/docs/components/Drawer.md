@@ -46,6 +46,8 @@ The `edge` option reuses the compass primitive [`Placement`](/api/primitive/enum
 
 A modal drawer is a modal layer like a [`Dialog`](/components/Dialog): see [Dialog: Keyboard](/components/Dialog#keyboard) for what is inert behind it and what is not. Focus returns to the opener once the slide-out has finished; if that element was disposed or removed from the page meanwhile, focus stays where the browser put it.
 
+A drawer, modal or not, is announced by a screen reader as a dialog. It has no title of its own, so it has no name until you give it one: `drawer.getAria().setLabel('Filters')`, or `drawer.getAria().setLabelledBy(heading.getId())` when the drawer shows a heading. The name stays across `open()` and `close()`. A modal drawer carries no `aria-modal`; like a dialog, it is modal because everything outside it is inert.
+
 A non-modal drawer is deliberately *sticky* — a persistent side panel (navigation, filters) that vanished on the first click into the app behind it would be hostile. Callers who want outside-click-to-close on a non-modal drawer can wire it against the public API themselves.
 
 ## Animation

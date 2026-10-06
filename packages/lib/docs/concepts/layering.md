@@ -131,6 +131,11 @@ focused content — `Dialog` does this to release an embedded editor.
 `LayerManager` owns modality. No surface keeps its own idea of "am I the modal
 on top", and no component implements a focus trap.
 
+A modal layer is modal because everything outside its scope is `inert`. It
+carries no `aria-modal`: that attribute would also hide the layers opened from
+the modal, which are mounted beside it and not inside it. See
+[Why no `aria-modal`](/concepts/accessibility#why-no-aria-modal).
+
 The *topmost modal* is the last-registered layer whose dismiss mode is
 `"modal"`, whatever is stacked above it. Its *scope* is that layer plus every
 layer opened from it, directly or through another layer — the same

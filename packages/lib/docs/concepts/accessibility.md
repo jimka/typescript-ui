@@ -46,6 +46,9 @@ The framework sets WAI-ARIA roles automatically for its components. Some highlig
 | [`SplitButton`](/components/SplitButton) | native `<button>` with `aria-haspopup="menu"`, `aria-expanded` and `aria-controls` |
 | [`ComboBox`](/components/ComboBox) | `combobox` (with the underlying `<select>` providing the listbox) |
 | [`BulletedList`](/components/BulletedList) / [`NumberedList`](/components/NumberedList) | `list` with `listitem` rows (each row's bullet or number is `aria-hidden`, since position is already announced) |
+| [`Dialog`](/components/Dialog) | `dialog`, or `alertdialog` for `Dialog.confirm` / `Dialog.warning` / `Dialog.error`; named by its title, described by its message |
+| [`Window`](/components/Window) / [`TabWindow`](/components/TabWindow) | `dialog`, non-modal; named by the header text, or by the active tab's label |
+| [`Drawer`](/components/Drawer) / [`Popover`](/components/Popover) / [`PopupPanel`](/components/PopupPanel) | `dialog`; a `Popover` is named by its title, a `PopupPanel` by the button that opens it, a `Drawer` by you |
 
 You don't need to set these on built-in components; they're applied at construction time.
 
@@ -294,6 +297,45 @@ The pattern: set the role, manage `aria-selected` on items, wire arrow keys via 
 
 A custom overlay that mounts itself outside the component tree — on `<html>`, as the library's own overlays do — needs one more thing to behave around a modal dialog: it has to be a registered layer that implements `onInertChanged`, or a `BackgroundSurface`. Otherwise it stays focusable and clickable while a dialog is open, and when it is opened from a dialog its controls are not part of that dialog's `Tab` order. See [Modal scope](/concepts/layering#modal-scope).
 
+## Dialogs and windows
+
+Every layer that behaves like a dialog has the `dialog` role, so a screen reader announces it when focus enters it. What it is called depends on where its title lives:
+
+| Layer | Named by | Follows a title change |
+| --- | --- | --- |
+| [`Dialog`](/components/Dialog) | `aria-labelledby` → the title bar's text | yes, `getTitleBar().getTitleText().setText(…)` |
+| `Dialog` with `ariaLabel` | `aria-label`, and no `aria-labelledby` | fixed string |
+| [`Window`](/components/Window) | `aria-labelledby` → the header's text | yes, `setHeaderText(…)` |
+| [`TabWindow`](/components/TabWindow) | `aria-label` = the active tab's label | refreshed when the window is shown and each time it is activated |
+| [`Popover`](/components/Popover) with a title | `aria-labelledby` → the title | yes, `setTitle(…)` |
+| `Popover` without a title, [`Drawer`](/components/Drawer) | nothing by default | you call `getAria().setLabel(…)` |
+
+A name given by reference follows the text it points at with no further code. It also outranks `aria-label` in a browser's name computation, so to replace it you remove the reference first: `window.getAria().clearLabelledBy().setLabel(…)`. A `Dialog` built from a `message` also points `aria-describedby` at that message, which a screen reader reads after the name and role. See [Dialog: Screen readers](/components/Dialog#screen-readers).
+
+`Aria` has the accessors these need: `setDescribedBy(id)` / `getDescribedBy()` / `clearDescribedBy()` for `aria-describedby`, `clearLabelledBy()` as the removing companion of `setLabelledBy(id)`, and `'alertdialog'` among the roles.
+
+### Naming an icon-only button
+
+A button that shows only a glyph needs a name. Give it a `text` and hide the text from its face with `showText: false`: the [`Button`](/components/Button#showing-the-title-in-the-tooltip-only) then writes the text into `aria-label` and shows it as a hover tooltip, so a mouse user and a screen-reader user get the same word.
+
+```typescript
+Button({ glyph: 'xmark', text: 'Close', showText: false });
+```
+
+The library's own title-bar buttons are built this way: a dialog's close button, and a window's minimize, maximize, close and window-menu buttons. Their names are English. To change one, reach the button through its owner and call `setText`:
+
+| Button | Reached through |
+| --- | --- |
+| `Dialog` close | `dialog.getTitleBar().getCloseButton()` (`null` on a non-dismissable dialog) |
+| `Window` minimize / maximize / close | `win.getHeader().getMinimizeButton()` / `getMaximizeButton()` / `getCloseButton()` |
+| `TabWindow` minimize / maximize / close / window menu | `tabWindow.getMinimizeButton()` / `getMaximizeButton()` / `getCloseButton()` / `getWindowMenuButton()` |
+
+A window renames its minimize and maximize buttons to "Restore" as its state changes, but only while a button still carries a name the library gave it. A button you renamed keeps your name in every state.
+
+### Why no `aria-modal`
+
+A modal `Dialog` or `Drawer` does not carry `aria-modal="true"`. While one is open, the rest of the application is [inert](/concepts/layering#modal-scope), and `inert` takes that content away from a screen reader in every browser that supports it. `aria-modal` would hide more than that. It tells a screen reader to ignore everything that is not inside the dialog's own element, and the library mounts a dialog's dropdowns, menus and popovers beside the dialog, not inside it. On VoiceOver those would go silent, and so would a toast shown while the dialog is open. Do not add the attribute to a modal layer of your own.
+
 ## Live announcements
 
 For dynamic announcements (toasts, status messages), the framework's [`Notification`](/components/Notification) component is the right tool — it sets an ARIA live role on its container so screen readers announce new toasts as they appear. Error and warning toasts use `role="alert"` / `aria-live="assertive"` (they interrupt); info and success toasts use `role="status"` / `aria-live="polite"` (they wait their turn).
@@ -310,7 +352,7 @@ status.getAria().setRole('status');
 ## Testing
 
 - **Keyboard-only** — unplug your mouse and verify every interaction works with `Tab`, `Shift+Tab`, arrow keys, and `Space`/`Enter`; open a [context menu](/components/Menu#keyboard) with Shift+F10 and work it with the arrow keys, `Enter` and `Escape`, including on a tree row, a list row and a table cell; if [Tab traversal](#tab-traversal) is enabled, also check `Escape` then `Tab` escapes any Tab-key owner (an embedded editor, a table in edit mode); inside a [`Dialog`](/components/Dialog), check that `Escape` then `Tab` leaves an embedded editor whether or not Tab traversal is enabled; with a dialog open, check that `Tab` and `Shift+Tab` never reach the page behind, including after a click on the dialog's text; if [spatial focus navigation](#spatial-focus-navigation) is enabled, also check `Ctrl+Alt`+arrow and `Ctrl+Alt+Shift`+arrow move focus without disturbing a focused widget's own arrow-key behaviour.
-- **Screen reader** — VoiceOver (macOS) and NVDA (Windows) are the two readers most commonly tested against. Both should announce roles and labels for built-in components correctly.
+- **Screen reader** — VoiceOver (macOS) and NVDA (Windows) are the two readers most commonly tested against. Both should announce roles and labels for built-in components correctly. With a [`Dialog`](/components/Dialog), listen for its title, then "dialog" or "alert dialog", then its message, as it opens; for "Close, button" on the title-bar button; and for each option of a dropdown opened inside the dialog, which must still be read.
 - **Browser dev tools** — Chrome's "Accessibility" panel under DevTools shows the computed accessibility tree for each element.
 
 ## See also

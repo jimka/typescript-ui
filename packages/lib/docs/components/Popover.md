@@ -56,12 +56,14 @@ In every mode the anchor element is excluded from the outside-dismiss check, so 
 
 | Method | Purpose |
 | --- | --- |
-| `setTitle(text)` / `clearTitle()` | Title row (bold [`Text`](/api/component/input/classes/Text)) above the body. |
+| `setTitle(text)` / `clearTitle()` | Title row (bold [`Text`](/api/component/input/classes/Text)) above the body. The title is also the popover's accessible name. |
 | `setBody(text)` / `setBody(component)` | String content is wrapped in a [`Text`](/api/component/input/classes/Text); a component is used directly. Replaces the previous body. |
 | `addAction(label, onClick)` / `clearActions()` | Appends a [`Button`](/api/component/button/classes/Button) to a horizontal actions row at the bottom. |
 | `setShowArrow(boolean)` | Hide the arrow tail (bubble keeps its standard radius). |
 
 Power users who need a complex composition skip the conveniences and call `addComponent` directly.
+
+A popover is announced by a screen reader as a dialog, named by its title. Without a title it has no name: give it one with `popover.getAria().setLabel(…)`. To name a titled popover differently, remove the reference to the title first: `popover.getAria().clearLabelledBy().setLabel(…)`. A name you set is kept: the popover points at its title only when a title row is created and no name is set yet, so setting the name before the title needs no `clearLabelledBy()`.
 
 ## Theme tokens
 

@@ -123,6 +123,16 @@ const win = Window('Report', { resizeMode: 'outline' });
 
 A window with no `resizeMode` of its own follows the app-wide default set through [`Body.init`](/components/Body#resize-mode). `setResizeFps` caps live frames only — an outline frame runs no layout, so capping it would just make the frame lag the pointer. Moving a window by its header is unaffected: it already only translates.
 
+## Screen readers
+
+A window is announced as a dialog. It is not modal: the page behind it stays usable, and the window carries no `aria-modal`.
+
+- **Name.** The window is named by its header text. The name is a reference to the header's title, so `setHeaderText` renames the window with no further call. Because the name is a reference, `getAria().setLabel(…)` alone does not change it: a browser prefers the reference. Remove it first with `win.getAria().clearLabelledBy().setLabel('Storage inspector')`.
+- **Header buttons.** The three buttons are named "Minimize", "Maximize" and "Close", and each shows its name as a tooltip. The minimize button reads "Restore" while the window is minimized, and the maximize button reads "Restore" while it is maximized, including on a window constructed in that state. These are the words the [title-icon menu](#title-icon-menu) uses for the same actions.
+- **Other names.** `win.getHeader().getMinimizeButton()`, `getMaximizeButton()` and `getCloseButton()` return the buttons. Call `setText` on one to rename it, for another language for example. A button you rename keeps your one name in every window state: the window replaces only a name it gave, and a renamed button no longer reads "Restore". The minimize button can be kept in step from the window's `"minimize"` and `"restore"` events; no event reports a maximize, so a renamed maximize button has a single name.
+
+The title icon opens the window menu on a click but is not a button, so the keyboard cannot reach it. On a [`TabWindow`](/components/TabWindow) the same icon is a button named "Window menu".
+
 ## Gotchas
 
 - A `Window` is not added to its parent's layout flow. It floats in absolute coordinates and you control its position via `setPosition` / `setSize`.

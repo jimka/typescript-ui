@@ -102,6 +102,15 @@ page resets to empty.
   back into it. `Dialog.requestClose()` now returns `boolean`. See
   [Migration](/reference/migration/next) for the full note.
 
+- **An `aria-label` you set on a `Dialog`, a `Window` or a titled `Popover`
+  is now outranked by its title.** Each of the three now points
+  `aria-labelledby` at the text that shows its title, and a browser prefers
+  that reference over `aria-label`. A name written with
+  `getAria().setLabel(…)` after construction is therefore no longer what a
+  screen reader announces. Call `getAria().clearLabelledBy()` first, or pass
+  `ariaLabel` in a `Dialog`'s config. See
+  [Migration](/reference/migration/next) for the full note.
+
 ## Changed
 
 ### Components
@@ -154,6 +163,30 @@ page resets to empty.
   custom `LayoutManager` that mounts a component of its own on its container
   returns it from `getChromeComponents()`, which matters when it is the
   body's manager. See [Layering: Modal scope](/concepts/layering#modal-scope).
+
+- **`Dialog`, `Window`, `TabWindow` and `Drawer` are announced as dialogs.**
+  Each now has the `dialog` role, and a screen reader announces it when focus
+  enters it. A `Dialog` takes its name from its title and its description
+  from its `message`; `Dialog.confirm`, `Dialog.warning` and `Dialog.error`
+  are alert dialogs (`alertdialog`). A `Window` takes its name from its header
+  text and a `TabWindow` from its active tab's label. A `Drawer` has no title,
+  so you name it with `getAria().setLabel(…)`. No layer carries `aria-modal`:
+  the application behind a modal is already inert. No consumer action is
+  needed unless you already name one of these yourself, which is listed
+  under Breaking changes. See
+  [Accessibility: Dialogs and windows](/concepts/accessibility#dialogs-and-windows).
+
+- **Title-bar buttons have names and tooltips.** A dialog's close button and
+  a window's minimize, maximize, close and window-menu buttons were unnamed
+  glyph buttons. They are now named "Close", "Minimize", "Maximize" and
+  "Window menu", and show the name as a hover tooltip, which is new. The
+  minimize and maximize buttons read "Restore" while the window is minimized
+  or maximized. The names are English; to change one, reach the button
+  through `dialog.getTitleBar().getCloseButton()`, the new
+  `WindowHeader.getMinimizeButton()` / `getMaximizeButton()` /
+  `getCloseButton()`, or the new `TabWindow.getMinimizeButton()` /
+  `getMaximizeButton()` / `getCloseButton()` / `getWindowMenuButton()`, and
+  call `setText`. A button you rename keeps your name in every window state.
 
 ## Added
 
@@ -264,6 +297,13 @@ page resets to empty.
   arithmetic need not measure an element. It leaves alone an axis the panel
   does not scroll, and a hidden panel.
 
+- **`Aria` gains `setDescribedBy` / `getDescribedBy` / `clearDescribedBy`,
+  `clearLabelledBy`, and the `'alertdialog'` role.** The first three read and
+  write `aria-describedby`, the id of the element whose text describes this
+  one. `clearLabelledBy()` removes `aria-labelledby`, which `setLabelledBy`
+  could set but nothing could take away; a browser prefers that reference
+  over `aria-label`, so it has to go before `setLabel` can rename an element.
+
 ### Data
 
 - **`JsonWriter.dataFor` is `protected`.** A subclass can override it to
@@ -312,6 +352,26 @@ page resets to empty.
   throw on a rebuild-mode menu; they now work in both modes. Each
   `toggleFor()` starts with no row highlighted, and so does a `show()`
   opened with the mouse. No consumer action is needed.
+
+- **`DialogConfig.role` and `DialogConfig.ariaLabel`, and the `DialogRole`
+  type.** `role` is `'dialog'` (the default) or `'alertdialog'`, for a message
+  that interrupts the user and needs an answer. `ariaLabel` replaces the
+  title as the dialog's accessible name. Both are config fields because
+  `Dialog.show(config)` never hands out the dialog; on a constructed dialog
+  the same values are reached through `dialog.getAria()`. See
+  [Dialog: Screen readers](/components/Dialog#screen-readers).
+
+- **A `Popover`'s title is its accessible name.** A popover already had the
+  `dialog` role; it now points `aria-labelledby` at its title, and drops the
+  reference when the title is cleared. A popover without a title has no
+  name until you call `getAria().setLabel(…)`, and a popover you named
+  before giving it a title keeps your name.
+
+- **`WindowHeader` and `TabWindow` expose their title-bar buttons.**
+  `WindowHeader.getMinimizeButton()`, `getMaximizeButton()` and
+  `getCloseButton()`, and `TabWindow.getMinimizeButton()`,
+  `getMaximizeButton()`, `getCloseButton()` and `getWindowMenuButton()`,
+  return the buttons, so that an application can rename them with `setText`.
 
 ## Fixed
 
@@ -634,3 +694,19 @@ page resets to empty.
   should keep focus after a key press should call `toggleFor()` instead. A
   custom `CellEditor` that overrides `retainsFocus` should also return `true`
   when `super.retainsFocus(...)` does, or its edit ends when the menu opens.
+
+- **An `initialFocus` component that is hidden or disabled no longer leaves a
+  dialog without focus.** The dialog called `focus()` on it, the browser
+  refused, and focus rested on `<body>` until the first `Tab`. A screen
+  reader announces a dialog when focus enters it, so such a dialog was not
+  announced at all. `initialFocus` now resolves to the component's first
+  visible, enabled stop, and a component that offers none falls back to the
+  default order. No consumer action is needed.
+
+- **A window constructed minimized or maximized shows the restore glyph.** A
+  `Window` built with `windowState: "minimized"` or `"maximized"` kept the
+  minimize and maximize glyphs of the normal state on its header buttons,
+  because the glyph was swapped only on a transition. The header now reflects
+  the state the window starts in, and so do the button names: "Restore" on
+  the matching button of a `Window` or a `TabWindow`. No consumer action is
+  needed.
