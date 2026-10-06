@@ -930,3 +930,168 @@ After the `Tab` case a reveal of row 20 landed at 212 where 365 is right, leavin
 [^nested]: A fix needs to tell revealers that scroll from revealers that open something, then call the first kind innermost-first after the second kind. `FocusRevealer.getScrollViewportElement?()` from `spatial-navigation-redesign` is exactly that test, so the follow-up plan should depend on that branch.
 
 [^prototype]: The prototype diff, the three page scripts, the scratch test files and the raw numbers are kept outside the repository, at `/home/jika/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans2/scroll-reveal/` (`prototype-fix.diff`, `probe*.ts`, `zz*.scratch.test.ts`, `measurements.md`). They are a reference only and may be gone: write the code and tests from this plan. With the change applied, 385 existing test files near the change passed except the two cases of step 8, the dependency's 74 cases passed unchanged, the docs app's `DocsContent.test.ts` passed, and the library typecheck and ESLint on the touched files were clean. Not run, because each follows from the same arithmetic as a case that was: T1, T2, T8, S9, C2, C3, the two listeners of C1, and the second and third key presses of L2.
+
+---
+
+## Implementation Notes
+
+Built on `feature/list-scroll-index-into-view` (`2ff05d2a3`), which sits on `feature/modal-dialog-focus-trap` → `feature/table-tree-keyboard-context-menu` → `feature/context-menu-keyboard-operation` → local `master` (`87c5ff0cc`). The plan was drafted two branches lower, on `feature/table-tree-keyboard-context-menu` at `773854a24`, with the list plan's two-file change applied as a prototype.
+
+### What differed on the base
+
+Nothing the plan reads or writes had changed in a way that altered what had to be done.
+
+| File | What the newer base changed | Effect here |
+|---|---|---|
+| `core/Panel.ts` | nothing in the reveal block | the plan's line numbers for `revealDescendant`, `getInnerSize` and `scrollableAxes` matched |
+| `core/Component.ts` | the `inert` attribute, from `modal-dialog-focus-trap` | the scroll methods sit two lines lower than the plan's numbers; their behaviour is unchanged |
+| `component/list/AbstractSelectableList.ts` | `scrollIndexIntoView` as `list-scroll-index-into-view` left it: an `isEffectivelyVisible()` guard, a `syncScrollOffsets()` call and a two-branch comparison | everything after the index guard became the one `revealSpan` call, as that plan's notes foresaw; `handleNavigationKey`'s page-size line is at 2183 |
+| `component/input/PickerColumn.ts` | `scrollCellIntoView(cell)` added, `scrollSelectedIntoView()` delegates to it, both with their own hidden-column guard | not edited here; the time picker addition below calls `scrollSelectedIntoView()` |
+| `tests/component/input` | a third file from the list plan, `AbstractCalendarDropdown.yearScrollerReveal.test.ts` | the regression net for the list and the picker is three files, and all three pass without an edit |
+| `docs/reference/changelog/next.md`, `docs/concepts/accessibility.md` | entries and sections from the two branches in between | the new entries follow the list plan's; the accessibility sentence is still appended to the page's last paragraph |
+| `plans/dom-only-state-inventory.md` | rows 83, 103 and 131 already carry the list plan's sentences | this plan's two sentences are appended after them, on rows 83 and 131; row 103 is untouched |
+
+### Deviations from the plan
+
+1. **The time picker opens on its selected time: added here, by decision.** The list plan's notes recorded it as found and left: with `09:30` in a `TimeField` the hour column opened at the top and `09` was below the view. It is the plan's defect 5 in another dropdown, which the plan's footnote on other dropdowns does not mention, and no plan owned it. What changed:
+   - `TimeColumns` gained `scrollSelectedIntoView()`, which asks each of its two or three columns to do the same. `TimePickerDropdown.showAt` calls it after the layout pass that places the cells. Neither file is in the plan's file table.
+   - **The rule is the column's own: centring.** The columns are `PickerColumn`s, and `PickerColumn.scrollSelectedIntoView()` is how a calendar's year list opens on its year: the cell in the middle of the view, clamped to the scrollable range. The `ComboBox` dropdown is a `List` and opens by the list's rule, the least scroll. So each dropdown opens through the reveal its own list component already has, and no dropdown does scroll arithmetic of its own. Using `Panel.revealSpan` on the cell list was the alternative. It was rejected because a time column would then open with its hour on the bottom edge while the year list beside it, the same component, opens centred. `PickerColumn.ts` is not edited.
+   - **`showAt` is the one entry point.** `TimeField`, the `TimeField` that a `DateTimePickerDropdown` embeds as its time row, and the table's `TimeEditor` all open the picker through it, and the table's `DateTimeEditor` opens the calendar that embeds that time row. `ComboEditor` wraps a `ComboBox`, so the table's combo cells get the plan's own fix the same way.
+   - **A pick does not scroll.** The reveal runs on open only. A column the user scrolled stays where it is when a cell is clicked, which the class comment of `TimeColumns` already promised.
+   - **A value with no cell leaves its column alone.** The minute and second columns hold multiples of five. `09:33` highlights no minute cell, and that column is not scrolled.
+   - Cases TP1–TP9 below, in `tests/component/input/TimePickerDropdownReveal.test.ts`. Docs: one bullet in `TimeField.md`, one in `DateTimeField.md`, a changelog entry under `Fixed` → `Components`, and the JSDoc of `TimePickerDropdown.showAt`.
+   - **It rides in the plan's one code commit and one documentation commit.** The review pointed out that the addition could stand as a functionality of its own, since it needs only `PickerColumn.scrollSelectedIntoView` from the base. It was kept with the rest because it is the plan's defect 5 in a second dropdown, as the `ComboBox` insertion is in the first, and because the list plan folded its year-list fix into its one code commit on the same grounds.
+2. **`AutoCompleteField` needed nothing.** Its dropdown is sized to exactly its rows, with no cap, and selects nothing when it opens, as the plan's footnote says. Checked in Chromium: ten suggestions, content and viewport both 220 px, no row selected or focused.
+3. **One case beyond the plan's `ComboBox` table: C4.** The same dropdown element is shown again each time the combo opens. It comes back scrolled to the top while the list's panel still remembers the offset it was left at, which the plan measured (506 remembered, 0 real) but did not turn into a case. C4 closes the dropdown, puts the scrolling element at 0 and reopens: the dropdown is at 482 again. It fails when `revealSpan` does not re-read the offset.
+4. **`Body.scrollColumnIntoView` has a blank line after its `for` loop.** The plan's replacement text starts on the line after the loop. The code conventions ask for a blank line after a multi-line statement, and the new `const` would otherwise have touched it.
+5. **Three documentation edits beyond the plan's list.** `docs/components/List.md`: the keyboard table said `PageUp` / `PageDown` "jump by one visible-row count" and now says "by the number of whole rows the list shows". The changelog entry for trees and tables ends by saying what a page now is. The `ComboBox` entry says a table's combo cell editor opens the same dropdown.
+6. **`plans/dom-only-state-inventory.md` is committed with these notes,** not with the documentation. A file under `plans/` is housekeeping, and the branch's one extra bookkeeping commit is where that goes, as the list plan did.
+7. **Assertions beyond the plan's tables.** V5 also asserts the rectangle's `x` and `y`. One case asserts that `revealSpan` returns the panel. L1 states the two row counts, nine from the viewport and ten from the outer height. T4 and T7 state the literal offsets (932, 936) beside the formula. S1–S4 run as one sequence from a helper, each case stopping one step later, since each starts from the state the one before left.
+8. **A `List` measures its viewport for a page size on `PageUp` and `PageDown` only: changed after the review.** The plan's line computes the page size at the top of `handleNavigationKey`, before the key is looked at. With the outer height that cost nothing; with `getScrollViewportRect()` it read the panel's rectangle on every arrow key, `Home` and `End` as well, for a number only the two page keys use. The line became a private `computePageSize()`, named after `VirtualRowView.computePageSize`, which the two page-key branches call. Case L4 pins it: an arrow key, `Home` and `End` measure the viewport once, for the reveal, and a page key twice.
+9. **Not run from the plan's manual list:** MV9, the optional SQLAdmin case. Firefox and WebKit were not run.
+
+Nothing else differs. `core/ScrollReveal.ts`, the `Panel` block, `VirtualScroller.getViewportHeight`, the two `VirtualRowView` methods, `Body.scrollColumnIntoView`, `HeadingScrollTracker.scrollToHeading`, the list's `scrollIndexIntoView` and the `ComboBox` insertion are the plan's text. No demo was added: the plan lists the demo app under `## Non-Goals`.
+
+### Existing tests whose expected value changed
+
+Two, both in `tests/component/table/Body.test.ts`, and both the ones the plan's step 8 names. After step 7 exactly these two failed, as the plan predicted.
+
+| Case | Before | After | Why |
+|---|---|---|---|
+| `body()` fixture, used by `'scrolls a right-edge column fully into view through the scroll model'` | no height committed | `b.setHeight(100)` | The expectation, 200, is unchanged. Without a height the scroller's viewport height was negative once a horizontal bar was reserved, a vertical bar was then reserved as well, and the viewport width dropped from 300 to 288. The old code never read the scroller's width |
+| `'reveals a record below the viewport by scrolling to its bottom edge'` | `51 * rh - 100` | `51 * rh - 88`, and the viewport height asserted as 88 | The old value pinned the defect: 100 rows and three 100 px columns in a 300 × 100 body raise both scrollbars, and the row ended 12 px under the horizontal one |
+
+No other existing case was edited. `VirtualScroller.test.ts`, `Tree.test.ts` and `MarkdownViewer.test.ts` gained the cases the plan's step 2 names and nothing in them changed. The five `Panel.revealDescendant` cases of `FocusReveal.test.ts`, the list plan's three files, `KeyboardContextMenu.test.ts`, `Menu.keyboardSession.test.ts`, `ScrollStrip.test.ts`, `Tab.undisplay.test.ts`, `Card.undisplay.test.ts` and `Split.collapseUndisplay.test.ts` pass as they were.
+
+### The time picker: expected behaviour
+
+Written before the change. A `TimePickerDropdown` opened through `showAt`; the panel is 220 px high, so offline each cell list's viewport is 192 px (220, less 4 px insets top and bottom, the 18 px header and the 2 px gap; the modelled DOM has no box for the panel's 1 px border, and in Chromium the viewport is 190 px). Cells are 22 px: 24 in the hour column (content 528, largest offset 336), 12 in the minute and second columns (content 264, largest offset 72). Centring the cell at index `i` gives `i × 22 − 85`, clamped to the range. "Offset" means the scrolling element's `scrollTop` and the cell list's remembered offset, which must agree; each case that states an offset also asserts that the cell is selected and lies wholly inside the viewport. Every case runs under both scrollbar styles of the cell lists.
+
+| # | Given | Then |
+|---|---|---|
+| TP1 | opened on `09:30` | viewport 192; hour column at 113, minute column at 47 |
+| TP2 | opened on `23:55` | hour column at 336, minute column at 72: clamped at the end |
+| TP3 | opened on `23:55`, closed, opened on `02:05` | both columns at 0: clamped at the start |
+| TP4 | opened on `09:30`, closed; the scrolling elements put at 0 while the cell lists still remember 113 and 47; opened on `09:30` again | 113 and 47 |
+| TP5 | the minute column's scrolling element at 50; opened on `09:33` | hour column at 113; no minute cell selected; the minute column's element still at 50 and its remembered offset still 0 |
+| TP6 | both columns' scrolling elements at 50; opened with no time | no cell selected; both elements still at 50, remembered offsets still 0 |
+| TP7 | `showSeconds`, opened on `09:30:45` | 113, 47, and the second column at 72 |
+| TP8 | opened on `09:30`; the hour column's element put at 336; a click on `17` | `17` selected; 0 scroll writes; hour element at 336, minute element at 47 |
+| TP9 | a `TimeField` on `09:30`: real `ArrowDown` in its input (opens the picker), `Escape`, the elements put at 0, `ArrowDown` again | 113 and 47 |
+
+Before the change TP1, TP2, TP4, TP5, TP7, TP8 and TP9 failed, every column staying at 0. TP3 and TP6 passed, since nothing scrolled at all. TP6 first counted scroll writes and failed for another reason: the first layout pass puts a column's cells in a content frame and writes the offsets it found back around that move. It compares offsets instead.
+
+### Mutations
+
+Each rule was checked by breaking the finished code and running the new and the neighbouring test files. Every mutation was caught. The case ids are those of `## Expected Behaviour` and of the tables above; R and K are the list plan's cases, and where a row says so, C1 is that plan's Shift+F10 case and not the `ComboBox` one.
+
+| Mutation | Cases that fail |
+|---|---|
+| `revealSpan` does not re-read the offset | S3, S4, C4, and the list plan's R5–R7, R9, K7 and C1 |
+| `revealDescendant` does not re-read the offset | D1, D8, D11 |
+| the viewport ignores the border | V5, D2, D3 |
+| the viewport ignores the scrollbar band | V3, V4, S7, L1, L2, K8 |
+| a reveal ignores which axes the panel scrolls | S5, D4, D5 |
+| the viewport has no visibility guard | V6, S6, D10, K9 |
+| the viewport has no `autoScroll: "none"` guard | V8 |
+| a span larger than the viewport is treated like one that fits | N7, N8, N9, D6, D7, D9, D11 |
+| a span that covers the viewport is scrolled anyway | N6, D8 |
+| the rule has no guard for a viewport without extent | N10, N11, N12 |
+| the `ComboBox` dropdown does not reveal on open | C1, C4 |
+| the time picker does not reveal on open | TP1, TP2, TP4, TP5, TP7, TP8, TP9 |
+| a pick scrolls the time columns | TP8 |
+| the minute column is not revealed | TP1, TP2, TP4, TP7, TP8, TP9 |
+| the second column is not revealed | TP7 |
+| the table's page size comes from the outer height | T6 |
+| the list's page size comes from the outer height, or rounds up | L2 |
+| the list computes a page size on every navigation key | L4 |
+| a row is revealed against the outer height | T4, T7, T10, T11, and the updated `Body` case |
+| a column is revealed against the outer width | T5, T7 |
+| `getViewportHeight` ignores the horizontal bar | T1, T3, T4, T6, T7, T10, T11, and the updated `Body` case |
+| a heading scroll starts from the remembered offset | H1 |
+| the list scrolls its row to the top edge every time | the `ComboBox` cases C1, C2 and C4, and 18 of the list plan's R and K cases |
+
+### No layout read was added to scrolling
+
+The table and the tree have had scroll-performance work, so this was checked two ways.
+
+By reading: no `DOM.source` call was added to `VirtualRowView`, `Body` or `VirtualScroller`. `getViewportHeight()` computes from the owner's cached content box and the content size of the last render, as `getViewportWidth()` does. The three changed methods are called from key handlers, the edit-entry handler, Shift+F10 and `scrollToRecord`, never from a scroll tick or `renderWindow`.
+
+By counting: a scratch test counted every `DOM.source` call during 60 vertical scroll ticks, 20 horizontal ones and 10 `renderWindow` passes on a bordered table body, and the same on a bordered tree, once on the base branch's sources and once on this branch's. The counts are identical, method by method, and hold no geometry read on either: only `isConnected` and, for the tree, text metrics. The reveals themselves (`scrollRowIntoView`, `scrollColumnIntoView`, `computePageSize`) differ by four `isConnected` calls, from the border lookup, and read no geometry either.
+
+A `Panel` reveal does read geometry: one rectangle for the viewport, one for the target in `revealDescendant`, and the two offsets. A `List`'s `PageUp` and `PageDown` read the panel's rectangle once more, to size the page; no other key does (deviation 8).
+
+### Verification that was run
+
+Offline: every case of `## Expected Behaviour` is a test, written before the code. Before the change the four new files and the four extended ones failed exactly as the plan's steps 1 and 2 predict: `ScrollReveal.test.ts` did not load; all of `PanelScrollReveal.test.ts` failed; L1, L2 and C1 failed while L3, C2 and C3 passed; T1–T7, T9–T11 and H1 failed while T8 passed. The command of step 11 passes (395 test files). The six greps of step 10 print what the plan says. `typecheck`, `typecheck:test`, `lint`, the whole `vitest` suite (552 files, 9,599 tests), `docs:api` (no warnings), `docs:llms:check`, `build:lib` and the docs app's tests (13 files, 2,615 tests) pass.
+
+Chromium, through chrome-devtools, on this worktree's demo dev server, with real key presses. The demo offers no switch for the scrollbar style and no bordered scroll panel, so most rows were run on rigs built in a `Window` from a script, with the keys pressed for real and the geometry measured against the scrolling element's client box (or, for a tree and a table, the scroller's clip box). Clicks are real where a row says so. MV2, MV3 on the demo's own table and MV7 were run after the review, on the code as it is now. Firefox and WebKit were not run; MV1, MV3, MV5 and MV6 are still to be repeated there by hand.
+
+| Case | Result |
+|---|---|
+| `getScrollViewportRect()` | Eight panels: `"overlay"` and `"native"`, `autoScroll` `"auto"` and `"y"`, without a border and with a 3 px one. The rectangle equalled the scrolling element's client box in all eight, for example 168 × 263 inset by 3 px (overlay, both bars, border) and 165 × 260 (native) |
+| `Panel.revealDescendant` after keyboard scrolling | All eight panels. Focus on the first of thirty 30 px rows, one real `PageDown`: the panel is at 227–245 and remembers 0. Revealing row 25 lands at 499–520, the row flush with the viewport's bottom edge, the horizontal offset still 0, and the remembered offset equal to the real one |
+| `Panel.revealDescendant` after `Tab` focus scrolling | Four panels (overlay and native, with and without a border, `"auto"` and `"y"`). Real `Tab` ×3 from row 7: the browser scrolls the panel to 154–178, remembered 0. Revealing row 20 lands at 367, 370, 349 and 355, flush with the bottom edge |
+| a reveal from an offset the panel never heard of, through `FocusReveal.reveal` | All eight, with the offset written directly: row 5 lands at 150, flush with the top edge. A 700 px row in a panel scrolled 200 px sideways stays at 200, since it covers the viewport. A `"y"` panel never moved sideways |
+| MV1, a bordered `Tree` with a horizontal scrollbar (`#/content-box`, 200 × 120, 2 px border) | pass. Real `ArrowDown` ×7 and `ArrowUp` ×6: the current row is whole after every press, and flush with the clip box's bottom edge and then its top edge when the tree scrolls. The tree was focused from a script, since the tool clicks a row's centre and the wide rows' centre is outside the clip box |
+| a bordered `Tree` with a horizontal scrollbar, 188 × 281 | Real `ArrowDown` ×13 and `End`: the current row never sits under the bar or the border; the tree scrolls to 23, 47, 71 and 695, the row flush each time. The scroller's viewport equalled the clip box in four trees (281, 277, 269 and 265 px high) and two tables |
+| MV2, the large tree (`#/misc`, 350 × 439 with a horizontal scrollbar) | pass. Real `ArrowDown` ×20 and `ArrowUp`: the current row is whole after every press, and flush with the clip box's bottom edge, above the scrollbar, once the tree scrolls |
+| MV3, the 45-column table (`#/misc`, body 880 × 462, both scrollbars) | pass. A real click on a cell, real `ArrowRight` ×6: the cell is whole every time and flush with the vertical scrollbar's left edge when the table scrolls. `PageDown`, `ArrowDown`, `PageDown` ×3: the cell is flush with the bottom edge each time, above the horizontal bar; 22 whole rows are in view and the page is 22, so the row below the previous current one is the first whole row. Shift+F10 opens the menu at the cell's bottom-left corner |
+| `Table` row and column reveal, on a rig table with a 2 px border and both scrollbars | pass. Real `PageDown`, `ArrowDown`, `ArrowRight` ×4, `PageDown` ×2, `PageUp`, `ArrowLeft` ×4: the current cell is whole after every press, left of the vertical bar and above the horizontal one |
+| `PageDown` in a `Table` with a horizontal scrollbar | Body 240 px high, viewport 228: the page is 11 rows where the outer height gives 12. Real `PageDown` ×3 moves `r0` → `r11` → `r22` → `r33`, and after each the first whole row in view is the one below the previous current row. Shift+F10 then opens the menu at the cell's bottom-left corner with focus in the menu |
+| `PageUp` / `PageDown` in a list | Four lists with real keys: 221 px with the 1 px border (overlay), 230 px with a horizontal bar (overlay and native) and a 242 px `MultiSelectList` (native). `ArrowDown`, `PageDown`, `PageDown`, `PageUp` gives 0 → 9 → 18 → 9, and 0 → 10 → 20 → 10 for the last. The rows whole in view after the second page start at the row after the first page's last: no row is skipped. The panel's viewport height equalled the client height in six lists |
+| `ComboBox` | pass, opened with real clicks. 40 options, the 31st selected: opens at 484 with the option flush with the bottom edge. `ArrowDown`, `Escape`, a click: reopens at 506 on the 32nd. With the third option selected it opens at 0 |
+| `AutoCompleteField` | nothing to reveal: see deviation 2 |
+| time picker | pass. `TimeField` on `09:30`, opened with a real click on its button: hour column at 114 with `09` exactly centred, minute column at 48 with `30` centred, viewport 190. Closed and reopened: the same. With the hour column scrolled to its end, a real click on `17` leaves it there and the field reads `17:30`. With seconds, on `21:40:45`: 338, 74 and 74, each column at its largest offset with the cell in view. The time row of a `DateTimeField` on `17:45`: hour column at 290 with `17` centred, minute column at 74. The table's time editor (`#/misc`, "table (column spec)", a real double click on `04:45:50 PM`): 268 with `16` centred, 74 and 74 |
+| a hidden `Tab` page and a hidden `Card` page | pass. Each page holds an overlay panel, a native panel and a `List`. Real `PageDown` ×2 in each panel (404 and 398 on the tab page, 456 and 450 on the card page; the panels remember 0) and `End` in each list (639, 609). With the page hidden, `getScrollViewportRect()` is `null`, the panels remember the offsets captured on hide, and `revealSpan` on both axes, `revealDescendant` and `setFocusedIndex(0)` change none of them. Shown again, all six are where they were left |
+| a reveal into a hidden `Tab` page | `FocusReveal.reveal` of a control on the hidden page selects the tab, which restores the panel's offset, and the panel then scrolls the control into view |
+| MV4, focus history (`#/misc`, 500 px high) | pass. Real `Tab` ×13 from the first button: the column scrolls itself to 336. Real `Alt+[` ×13: every control that takes focus on the way back is whole inside the column, each one flush with the top edge once the column has to move (330, 297, 264, … 4) |
+| MV5, the tall menu | pass for the items pressed: real `ArrowDown` ×12, `End`, `ArrowUp` ×11 of 40 items. The highlighted item is whole after every press. The menu was opened by a `contextmenu` event from a script; the tool has no right click |
+| MV6, heading tracker | pass. `#/markdown`: a real click on the prose, real `PageDown` ×2 (the pane is at 986), a real click on "Ordered list" in the minimap: the pane is at 361 with the heading 0.2 px from the pane's top, and the minimap highlights it |
+| MV8, a hidden section keeps its offset | pass. Real `PageDown` ×2 in the left column of `#/misc` (864), another section chosen, back: 864 |
+| MV7, the list of `#/split` at 420 px | pass, as before this plan. Real `ArrowDown`, `End`, `Home`, `PageDown`, `PageDown`, `PageUp`: `One`, `Thirteen` (82, flush with the bottom edge), `One` (0), `Ten` (16), `Thirteen` (82), `Four` (66, flush with the top edge) |
+| MV9 | not run |
+
+The console showed no library error or warning during the run. The only errors came from the probe's own key logger after a rig had been closed.
+
+### Candidates for a follow-up plan
+
+- **Nested scroll panels: the outer one scrolls before the inner one.** It is the plan's first Non-Goal and stays one. Measured on this branch, with the fix in place: an outer `autoScroll: "y"` panel (viewport 339 px, largest offset 1191) holds an inner one, 250 px high, 600 px down; the target is 1500 px down the inner one. One `FocusReveal.reveal(target)` scrolls the outer panel to 1191, its end, chasing where the target was drawn before the inner panel moved, and then the inner one to 1282. The target is inside the inner viewport, but that viewport is now above the outer one: the target ends 342 px above what the user can see. A second call puts it right (outer 819, target flush with the top edge). The cause is the order of the calls, not their geometry: `FocusReveal.reveal` runs revealers outermost first, which a `Tab` or an `Accordion` needs and two scrollers do not. The plan's footnote says how a fix can tell the two kinds apart, with `FocusRevealer.getScrollViewportElement?()` from `feature/spatial-navigation-redesign`.
+- **A time column whose value has no cell opens at the top.** `09:33` highlights no minute cell. Revealing the nearest cell would be new behaviour.
+- **`Tree` has no `PageUp` / `PageDown`.** The key does nothing there, so the plan's page-size change reaches `Table` and `TreeTable` only, as its table says.
+- **`TimeColumns`' comments still say the grid is shared with `DateTimePickerDropdown`.** That dropdown embeds a `TimeField` now, and `TimePickerDropdown` is the grid's only host. Left as found.
+- What the plan lists under `## Non-Goals` and `## Potential Challenges` is otherwise as it says: a reveal into a pane `Split` or `Border` has just expanded was not measured, and `SpatialNavigation` on its branch still reads the scrolling element's outer rectangle.
+
+### Merging with `feature/spatial-navigation-redesign`
+
+`git merge-tree` of this branch and that one (`2851125b0`) reports three conflicts.
+
+| File | Conflict | Resolution |
+|---|---|---|
+| `core/Panel.ts` | new with this plan. Both sides insert between `getRevealElement()` and `revealDescendant`: that branch its `getScrollViewportElement()`, this one the reveal block, and this one also rewrites the JSDoc of `revealDescendant` that sits between them | keep `getRevealElement()`, then that branch's `getScrollViewportElement()` with its JSDoc, then this plan's block from the JSDoc of `getScrollViewportRect()` to the end of `revealDescendant`. Drop the old JSDoc of `revealDescendant` that the other side still carries |
+| `docs/reference/changelog/next.md`, `Added` → `Core` | the one `feature/modal-dialog-focus-trap` already has with that branch: both append after the `Aria` description entry. This plan's `Panel` entry now sits in the same block | keep both blocks |
+| `docs/concepts/accessibility.md`, "The service stands down while a transient overlay" | from `feature/modal-dialog-focus-trap`; no line of this plan | as that plan's notes say: take that branch's sentence and replace "a dialog's focus trap" with "a modal layer's focus containment" |
+
+Everything else of this plan merges cleanly: the sentence appended to the accessibility page, the changelog's other entries, `Body.ts` (that branch adds an import at the end of the import list and this one beside the `VirtualRowView` import), and the files that branch does not touch. No name is shared: that branch's `getScrollViewportElement()` names the element that scrolls, for an ancestor walk, and measures nothing; `getScrollViewportRect()` measures the visible window, inside the border and clear of the scrollbars, and `revealSpan()` scrolls to it.
+
+The resolution was tried on a copy of the merged tree outside the repository: with the three files resolved as above, the library and its tests type-check, and 231 test files near the change pass (3,837 tests), that branch's own among them. The whole suite was not run on the copy, and it was not opened in a browser.
