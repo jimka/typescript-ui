@@ -82,7 +82,9 @@ let _back:    FocusHistoryKeyCombo = DEFAULT_BACK_COMBO;
 let _forward: FocusHistoryKeyCombo = DEFAULT_FORWARD_COMBO;
 
 /**
- * Drops every stale (no-longer-connected) entry from the trail, keeping
+ * Drops every stale (no-longer-connected) entry from the trail, and merges a
+ * stop that the drop leaves repeated next to itself — two visits to one
+ * control with a since-removed stop between them — into one entry. Keeps
  * `_index` pointed at the nearest surviving entry at or before its old
  * position (or -1 if nothing survived there). Run before every navigation
  * and every `canGo*` query so those never act on a dead entry.
@@ -93,13 +95,18 @@ function pruneStale(): void {
 
     for (let i = 0; i < _entries.length; i++) {
         const handle = _entries[i];
+        const live   = isLiveHandle(handle);
 
-        if (isLiveHandle(handle)) {
+        if (!live) {
+            continue;
+        }
+
+        if (kept[kept.length - 1] !== handle) {
             kept.push(handle);
+        }
 
-            if (i <= _index) {
-                newIndex = kept.length - 1;
-            }
+        if (i <= _index) {
+            newIndex = kept.length - 1;
         }
     }
 
@@ -141,10 +148,9 @@ function record(handle: Handle): void {
  * Reveals `handle`'s ancestry (selecting hiding tabs, expanding collapsed
  * regions, scrolling it into view) then focuses it, the whole operation
  * guarded so any focus side effect the reveal triggers is not recorded as a
- * new trail entry. An entry behind the topmost modal layer is skipped before
- * the reveal: it is inert, so focusing it would fail anyway, and revealing it
- * would rearrange a page nobody can reach.
+ * new trail entry.
  *
+ * @param handle - The stop to reveal and focus.
  * @returns True only when focus actually landed on `handle` — a still-hidden
  *   element silently refuses focus, which is the operational "unrevealable" signal.
  */
@@ -152,12 +158,6 @@ function revealAndFocus(handle: Handle): boolean {
     _navigating = true;
 
     try {
-        const behindModal = LayerManager.isBehindModal(handle);
-
-        if (behindModal) {
-            return false;
-        }
-
         if (!FocusReveal.reveal(handle)) {
             return false;
         }
@@ -173,14 +173,31 @@ function revealAndFocus(handle: Handle): boolean {
 /**
  * Prunes stale entries, then walks `_index` by `direction`, skipping any
  * entry that cannot be revealed and focused, and stops at the first one that
- * actually takes focus.
+ * actually takes focus. Going back starts at the current stop itself when
+ * focus is not on it; going forward always starts at the stop after it.
+ * Moves and reveals nothing while a modal layer is open.
  *
+ * @param direction - `-1` to walk back, `1` to walk forward.
  * @returns True if focus moved.
  */
 function navigate(direction: -1 | 1): boolean {
     pruneStale();
 
-    let target = _index + direction;
+    // The trail is out of reach while a modal layer is open. A stop behind
+    // the modal is inert, and revealing it would rearrange a page nobody can
+    // reach. A stop inside its scope can only be a leftover: one recorded in
+    // a layer that kept its element and is open again as, or from, the modal.
+    const modalOpen = LayerManager.hasModalLayer();
+
+    if (modalOpen) {
+        return false;
+    }
+
+    // Focus can be somewhere that is no stop: in a control inside a table
+    // cell, or on <body> after the focused control was removed. Going back
+    // from there returns to the current stop before it goes any further.
+    const onCurrentStop = _index >= 0 && _entries[_index] === DOM.source.getActiveElement();
+    let target = direction === -1 && !onCurrentStop ? _index : _index + direction;
 
     while (target >= 0 && target < _entries.length) {
         if (revealAndFocus(_entries[target])) {
@@ -214,6 +231,38 @@ function isInTableCell(handle: Handle): boolean {
     return false;
 }
 
+/**
+ * Whether a focus move onto `handle` is a history stop: a place that stays.
+ * `<body>` and `<html>` are what a browser reports when nothing has focus. A
+ * control inside a table cell holds a position inside a widget, not a place.
+ * While a modal layer is open, and inside a transient layer (a menu, a
+ * dropdown, a popover), focus is on a surface that is gone once it closes.
+ *
+ * @param handle - The element focus moved to.
+ * @returns True when the move belongs in the trail.
+ */
+function isHistoryStop(handle: Handle): boolean {
+    const tag = DOM.source.getTagName(handle);
+
+    if (tag === "BODY" || tag === "HTML") {
+        return false;
+    }
+
+    const inCell = isInTableCell(handle);
+
+    if (inCell) {
+        return false;
+    }
+
+    const modalOpen = LayerManager.hasModalLayer();
+
+    if (modalOpen) {
+        return false;
+    }
+
+    return !LayerManager.isInTransientLayer(handle);
+}
+
 /** Whether a `KeyboardEvent` matches a configured combo. */
 function matchesCombo(e: KeyboardEvent, combo: FocusHistoryKeyCombo): boolean {
     return e.code === combo.code &&
@@ -221,7 +270,7 @@ function matchesCombo(e: KeyboardEvent, combo: FocusHistoryKeyCombo): boolean {
         e.shiftKey === !!combo.shift && e.metaKey === !!combo.meta;
 }
 
-/** Document `focusin` handler: records the newly-focused element. */
+/** Document `focusin` handler: records the newly-focused element when it is a stop. */
 function onFocusIn(e: FocusEvent): void {
     if (!_enabled || _navigating) {
         return;
@@ -233,7 +282,9 @@ function onFocusIn(e: FocusEvent): void {
 
     const handle = DOM.source.intern(e.target);
 
-    if (isInTableCell(handle)) {
+    const stop = isHistoryStop(handle);
+
+    if (!stop) {
         return;
     }
 
@@ -242,13 +293,12 @@ function onFocusIn(e: FocusEvent): void {
 
 /**
  * Document `keydown` handler: drives `back()`/`forward()` on the configured
- * combos, suppressed while any modal layer is open — also with a menu or a
- * dropdown open above it — so the accelerator never reaches for the page
- * behind the modal.
+ * combos, suppressed while any modal or transient layer is open, so the
+ * accelerator never pulls focus out of a menu, a dropdown or a dialog.
  *
  * @returns `{ stop: true, prevent: true }` when the key matches a navigation combo
- *   and no modal layer is suppressing it; nothing otherwise, so every other key
- *   keeps propagating.
+ *   and no modal or transient layer is suppressing it; nothing otherwise, so
+ *   every other key keeps propagating.
  */
 function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
     if (!_enabled) {
@@ -261,9 +311,9 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         return;
     }
 
-    const modalOpen = LayerManager.hasModalLayer();
+    const layerOpen = LayerManager.hasActiveInputLayer();
 
-    if (modalOpen) {
+    if (layerOpen) {
         return;
     }
 
@@ -273,19 +323,26 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
 }
 
 /**
- * Global focus-trail navigation service: records the chronological order in
- * which elements receive keyboard focus across the document and drives an
- * accelerator that walks the trail backward and forward, like browser
- * back/forward but for keyboard focus. Opt-in — call {@link enable} to start
- * recording; nothing auto-starts it.
+ * Global focus-trail navigation service: records, in chronological order, the
+ * places keyboard focus has been — controls of the page, of a window, of a
+ * non-modal drawer and of a popover that only its own control closes — and
+ * drives an accelerator that walks the trail backward and forward, like
+ * browser back/forward but for keyboard focus. Nothing inside a menu, a
+ * dropdown, a popover that an outside click or focus move closes, a dialog or
+ * a modal drawer is recorded: those surfaces are gone once closed, and while
+ * one is open the accelerator stands down. A control inside a table cell is
+ * not recorded either. Opt-in — call {@link enable} to start recording;
+ * nothing auto-starts it.
  *
  * @category Core
  */
 export namespace FocusHistory {
     /**
      * Installs the `focusin` + `keydown` listeners, seeds the trail with the
-     * current active element (if any), and begins recording. Idempotent —
-     * calling it again while already enabled only applies `options`.
+     * current active element, and begins recording. The seed is skipped when
+     * nothing has focus or the focused element is not a stop — it is inside a
+     * menu or a dialog, say. Idempotent — calling it again while already
+     * enabled only applies `options`.
      *
      * @param options - Optional `maxSize` / combo overrides, applied via
      * {@link configure} before enabling.
@@ -306,7 +363,13 @@ export namespace FocusHistory {
 
         const active = DOM.source.getActiveElement();
 
-        if (active !== null) {
+        if (active === null) {
+            return;
+        }
+
+        const stop = isHistoryStop(active);
+
+        if (stop) {
             record(active);
         }
     }
@@ -353,10 +416,13 @@ export namespace FocusHistory {
     }
 
     /**
-     * Re-focuses the previous live entry, skipping and dropping any stale
-     * ones encountered along the way.
+     * Returns focus to the current stop when focus has left it — it is in a
+     * control inside a table cell, or the focused control was removed — and
+     * otherwise to the stop before it, skipping and dropping any stale ones
+     * encountered along the way. Moves and reveals nothing while a dialog or
+     * a modal drawer is open.
      *
-     * @returns True if focus moved.
+     * @returns True if focus moved; `false` while a modal layer is open.
      */
     export function back(): boolean {
         return navigate(-1);
@@ -364,9 +430,10 @@ export namespace FocusHistory {
 
     /**
      * Re-focuses the next live entry, skipping and dropping any stale ones
-     * encountered along the way.
+     * encountered along the way. Moves and reveals nothing while a dialog or
+     * a modal drawer is open.
      *
-     * @returns True if focus moved.
+     * @returns True if focus moved; `false` while a modal layer is open.
      */
     export function forward(): boolean {
         return navigate(1);
@@ -375,6 +442,11 @@ export namespace FocusHistory {
     /**
      * Whether a live entry exists before the current position. Prunes stale
      * entries as a side effect, so a stale-only direction never reports true.
+     * It describes the trail, not where focus is: it is not `true` merely
+     * because focus has left the current stop, although {@link back} would
+     * then return to that stop.
+     *
+     * @returns True when the trail holds a stop before the current one.
      */
     export function canGoBack(): boolean {
         pruneStale();
@@ -385,6 +457,8 @@ export namespace FocusHistory {
     /**
      * Whether a live entry exists after the current position. Prunes stale
      * entries as a side effect, so a stale-only direction never reports true.
+     *
+     * @returns True when the trail holds a stop after the current one.
      */
     export function canGoForward(): boolean {
         pruneStale();
