@@ -1884,13 +1884,15 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * - `ArrowRight` — expand a collapsed node, or move into an already-expanded node's first child
      * - `ArrowLeft` — collapse an expanded node, or move to its parent
      * - `Home` / `End` — jump to first/last visible row (plain) or extend range to edge (Shift)
+     * - `PageDown` / `PageUp` — move down/up by one page of rows (plain) or extend range by a
+     *   page (Shift); not part of the ARIA pattern, they follow `List` and the table body
      *
      * @param e - The keyboard event fired on the tree element.
      */
     private _onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (SpatialNavigation.claimsKey(e)) { return; }
 
-        const navigable = new Set(['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End']);
+        const navigable = new Set(['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageDown', 'PageUp']);
         if (!navigable.has(e.key)) {
             return;
         }
@@ -1919,6 +1921,14 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         } else if (e.key === 'End') {
             const last = flatRows.length - 1;
             e.shiftKey ? this._extendSelectionTo(last) : this._selectAtIndex(last);
+
+        } else if (e.key === 'PageDown') {
+            const next = focusIdx < 0 ? 0 : Math.min(focusIdx + this.computePageSize(), flatRows.length - 1);
+            e.shiftKey ? this._extendSelectionTo(next) : this._selectAtIndex(next);
+
+        } else if (e.key === 'PageUp') {
+            const prev = focusIdx < 0 ? 0 : Math.max(focusIdx - this.computePageSize(), 0);
+            e.shiftKey ? this._extendSelectionTo(prev) : this._selectAtIndex(prev);
 
         } else if (e.key === 'ArrowRight') {
             if (focusIdx < 0) {
