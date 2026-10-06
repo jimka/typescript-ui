@@ -750,3 +750,71 @@ The prototype also ran against 52 existing test files (every file that imports `
 
 [^pin]: `Event` attaches its window-level listener for a type only when the type is first registered, and `DOM.reset()` swaps the DOM without clearing that state (see the header of `tests/dom/viewport-consume.test.ts`). A registration that survives a test — an undisposed component's `keydown`, or `Menu`'s static watch — therefore leaves the next test's fresh DOM with no listener for that type. The dependency met this in two suites and fixed both by calling `Menu._stopInputWatch()` in teardown (its Implementation Notes 12 and 13). `Table` already builds a `Menu`, so only files that build a `Tree` or a `List` without any `Menu` are newly exposed; the 52 files run against the prototype showed no case.
 
+
+---
+
+## Implementation Notes
+
+Built on `feature/context-menu-keyboard-operation` (`bc93d64c7`), which sits on local `master` (`4b51ec220`). The plan was drafted on that branch's earlier tip `0bfc35701`; every path and line number it cites still matched, so there was no drift to work around.
+
+### Deviations from the plan
+
+1. **`Tree`'s `watchContextMenuInput()` call sits after the constructor's three `getAria()` calls**, not directly after `setTabIndex(0)` (step 4). Placed literally it would split the ARIA group in two. It has its own comment, as the call in `Body` has.
+2. **Three cases beyond the plan's tables.** `R7b`: with no `Menu` built and no `watchContextMenuInput()` call, a key press is not on record and the event is returned unchanged; it pins why each widget has to start the watch itself. `M1b`: `_stopInputWatch()` resets a recorded key press as `lastInputWasKeyPress()` reads it; the plan's `M1` stops the watch when the record is already "pointer", which passes with or without the reset. `B5b`: see item 6.
+3. **`Table.showCellMenu`'s JSDoc** changed in its first two sentences, not one: the original first sentence ran on into the reuse note, so the new sentence about the keyboard had to end before it.
+4. **The `DOMSink.createMouseEvent` changelog entry is under `## Breaking changes` → `### Core`,** not under `## Added` → `### Core` as `## Documentation Impact` says. Every earlier release files a new required seam member there, with the sentence "Only a consumer implementing its own `DOMSink` is affected" (`changelog/0.7.0.md`, `0.8.0.md`, `0.9.0.md`, `0.10.0.md`); the review found the precedent. `feature/spatial-navigation-redesign` does not touch that subsection. `docs/reference/migration/next.md`, which is not in the plan's file table, gained a short section saying what a custom sink returns, as `migration/0.10.0.md` has for the seam members of that release.
+5. **The `List` wording does not promise that the focused row is scrolled into view.** `## Documentation Impact` asks for the same two sentences as `Tree`'s, including "which is scrolled into view first". For a `List` with overlay scrollbars, the default, that is not what happens (see *Found, and left as it is*). `AbstractSelectableList.on()`'s JSDoc, `List.md`, the accessibility page and the changelog entry say instead that the point is on the list's nearest edge when the row is out of view, and `List.md` carries a "Known limitation" paragraph, the form `Menu.md` already uses. `List.md` also says what a read-only list does: it ignores the arrow keys and row clicks, so its keyboard menu is for a row the host focused with `setFocusedIndex`.
+6. **Small code differences from `## Internal Structure`**, none changing behaviour:
+   - `resolveContextMenuTarget` compares the owner's element with `undefined`, not `null`: `Component.getElement()` returns `Handle | undefined`.
+   - `Tree`: the "pool row showing the focus node" scan is one private method, `_focusPoolRow()`, read by both `_revealFocusRow` and the existing `_updateActiveDescendant`, which the plan's snippet would have duplicated. The row-match condition in `_handleContextMenu` assigns its `DOM.source.contains(...)` result to a const first, per the project rule against a call in an `if` condition; the line was being edited anyway.
+   - `Body.revealFocusedCell` looks the anchor's index up once and calls `scrollRowIntoView(index)`, which is what `scrollRecordIntoView` does with a second lookup, in place of the snippet's `includes` check followed by `scrollRecordIntoView`. It also calls `settleRowMotionIfEntering(index)` first, which the snippet left out: `Tree`'s reveal and `Body`'s own keyboard row moves both do, and without it a `TreeTable` row still fading in from an expand would anchor the menu at a mid-motion box. Case `B5b` pins the call; the motion itself was not run in a browser.
+   - `Body.ts`: five more comments that said "right-click" only (the `BodyEvent` doc, the `_contextMenuCell` field, two `@param` lines and the `on()` remark) now name the keyboard request too.
+   - The demo builds its two menus with `new Menu()`, as `MiscPanel.ts` does, where the plan wrote `Menu()`.
+7. **Documentation additions the plan did not list:** the `Tree` and `List` pages say the listener need not call `preventDefault()`, which does nothing on the synthetic event. Further, the `Tree` and `List` pages' `## Context menu` sections carry a two-row table (what `node` / `index` and `event` are for each way of opening the menu), and the accessibility section a four-row one, in place of the prose the plan sketched. `Tree.md`'s `## Keyboard` table says the arrow keys also select the row, which is what the code does. `Table.md`'s `Tab` row says the next cell is opened for editing, for the same reason.
+
+### Verification that was run
+
+Offline: every case of `## Expected Behaviour` (S1–S2, M1–M2, R1–R7, T1–T8, L1–L6, B1–B7, TB1–TB2) is a test, written before the code it pins; the files the plan lists as unchanged passed without edits, and no other test file needed a `Menu._stopInputWatch()` in its teardown. `typecheck`, `typecheck:test`, `lint`, the whole `vitest` suite, `docs:api` (no warnings), `docs:llms:check` and `build:lib` pass.
+
+Chromium 154, real key presses through chrome-devtools, on the worktree's demo dev server:
+
+| Case | Result |
+|---|---|
+| MV1, MV2 | pass. The key-raised `contextmenu` targets the tree at its centre, `button -1`; the menu opens at the current row's label, takes focus, `Open` highlighted; `ArrowDown`, `Enter` runs `Rename` for the current row and focus is back on the tree. The ContextMenu key gives the same event and result (Linux; Windows not run). |
+| MV3 | pass, with the tree scrolled to the top by a script-dispatched `wheel` event (the tool has no wheel). The tree scrolls back to its last row and the menu opens under it. |
+| MV4 | pass: focus by `Tab`, no arrow key, Shift+F10 opens nothing. |
+| MV5 | pass, with script-dispatched `pointerdown` + `contextmenu` (the tool has no right-click): the menu opens at the pointer, takes no focus, highlights no row, and its action names the row under the pointer, not the current row. On the tree's and the list's empty area nothing opens. |
+| T8 in the browser | pass: three rows selected with Shift+ArrowUp; the menu is for the focus row and the selection is still three rows after the action ran. |
+| MV6 | pass: the menu opens under `Three`, `Enter` reports index 2, the list has focus. |
+| MV7, MV8 | pass. `Copy` wrote the focused cell's value; with a 3 × 2 range around the focused cell it wrote the whole block, tab- and newline-separated. The range was made with script-dispatched mouse events (the tool has no Shift+click); the clipboard write was read by wrapping `navigator.clipboard.writeText`, since reading the clipboard prompts. |
+| MV9 | pass: the editor's own menu opens at the caret, the edit stays open, typing continues after `Escape`. After the edit is cancelled, Shift+F10 opens the table's cell menu under that cell. |
+| MV10, MV11 | pass: nothing opens on an open combo editor or on the header's menu button; `Enter` on the button opens the column menu with its first row highlighted. |
+| MV12 | pass: focused cell in the last row, eleventh column; table scrolled back to the top-left by script-dispatched `wheel` events; Shift+F10 scrolls row and column back and the menu opens under the cell. |
+| MV13 | pass, with the ContextMenu key on the tree table. |
+| MV14 | seen on the list in a 420 px high window: the menu flips above its point. |
+| an empty table | pass: every row filtered away through the filter row, body focused, Shift+F10 opens nothing. |
+
+Not run: Firefox and WebKit (MV1, MV3, MV6, MV7 are still to be repeated there by hand); the ContextMenu key on Windows; MV15. A real right-click, a real wheel and a real Shift+click were replaced by script-dispatched events as noted.
+
+**SQLAdmin (read, not run).** `frontend/src/navigator/NavigatorTree.ts:199` hands the event to `showObjectMenu` (`navigator/objectMenu.ts:270–284`), which reads only `event.clientX` / `event.clientY`; `roles/RolesTree.ts:97` and `shell/QueriesView.ts:313` read the same two fields and the node or index. None reads `event.target`, `button` or a modifier in a context-menu listener. All three menus are built at construction. No file under `frontend/src` registers `"cellcontextmenu"`, so the result grid and the properties tables use the library's own cell menu; none implements `DOMSink`. The remaining `"contextmenu"` listeners are on `DiagramView`, which this plan does not touch. `git status` in SQLAdmin is clean.
+
+### Found, and left as it is
+
+- **A `List`'s focused row is not scrolled into view under overlay scrollbars.** `AbstractSelectableList.scrollIndexIntoView` reads and writes `scrollTop` on its inner `Panel`'s own element. With `scrollbarStyle: "overlay"`, which is `Panel`'s default, that element never scrolls: the panel's inner overlay-scroll element does. Measured in Chromium on `#/split` in a 420 px window: after `End` the focused row `Thirteen` lies below the list's box and the scroller's `scrollTop` is still 0. The arrow keys have had this defect since overlay scrollbars became the default; it is not new here. This plan's `revealFocusedRow` calls that same method, as the plan says, so for such a list the keyboard menu opens for the right row but at the list's edge (the point is clamped to the list's box), and the row stays out of view. `PickerColumn.ts:344–389` documents the same pattern. Two existing routes reach the right element: `Panel.revealDescendant`, which also scrolls sideways (a list with horizontal scrolling must not do that on a row move), and the inherited `getScrollTop()` / `setScrollTop()`, which are vertical-only but still need the inner viewport's height, which the list cannot read today. Choosing between them, and covering `PickerColumn`, is a design decision, so it is a candidate for a plan of its own. Once `scrollIndexIntoView` is fixed the keyboard menu is fixed with it, and the "Known limitation" paragraph in `List.md`, the `List` row of the accessibility table and the sentence in the changelog entry can go.
+- **A bordered `Tree`'s last visible row can stay clipped by a few pixels.** On `#/content-box`'s "Tree (VirtualScroller)" (a 2 px border and a horizontal scrollbar), `ArrowDown` onto the fifth row leaves its bottom edge under the border. `_scrollIntoView` decides; the keyboard menu calls it exactly as the arrow keys do, and the clamp to the tree's box keeps the menu point on the tree's edge.
+- **A mouse-opened menu does not return focus** after a row is clicked (focus is on `<body>` afterwards). That is the dependency's behaviour for a pointer-opened menu and is unchanged.
+
+### Merging with the other unmerged work
+
+- **`feature/spatial-navigation-redesign` (`f698f3d2d`).** `git merge-tree` of the two tips reports no conflict, and the whole suite and the library typecheck pass on the merged tree (run in a throwaway worktree, since removed). If either branch moves before the merge, these are the hunks that sit closest:
+
+  | File | This branch | That branch | Resolution |
+  |---|---|---|---|
+  | `component/tree/Tree.ts` | one import after the `selectionsEqual` import | one import and a module-level `registerNavigationLandingRing(...)` after the `callable` import, five lines below | keep both |
+  | `component/table/Body.ts` | one import after the `selectionsEqual` import; one sentence of the `BodyEvent` doc comment | one import and a module-level `registerNavigationLandingRing(...)` after the `tableRowHeight` import, eight lines below the first and a few lines above the second | keep both |
+  | `docs/reference/changelog/next.md` | last entry of `Breaking changes` → `Core`; last entry of `Fixed` → `Components` | a new `Changed` → `Core` subsection; three entries at the end of `Added` → `Core` | keep all entries |
+  | `docs/reference/migration/next.md` | a new section after "`DOM.sink` and `DOM.source` are read-only" | not touched | — |
+  | `docs/concepts/accessibility.md` | a new section before "Building an accessible custom widget"; one clause in `Testing` | rewrites inside "Tab traversal" and "Spatial focus navigation", which ends just above the new section | keep both; the new section stays between the two |
+
+  The constructor and method hunks in `Tree.ts` and `Body.ts` (in `Tree.ts` these include the rewritten `_updateActiveDescendant`) are far from that branch's edits. The two behaviours agree: its landing ring marks a tree or table body that has focus and no current item, which is the state in which Shift+F10 opens nothing.
+- **`modal-dialog-focus-trap` (not seen).** Files this branch touched that a focus-trap change is likely to touch: `overlay/Menu.ts` (two members only: `_startInputWatch` lost `private`, and `lastInputWasKeyPress` follows `_stopInputWatch`; no key handling changed), `tests/overlay/Menu.keyboardSession.test.ts` (cases `M1`, `M2` appended to the input-watch block), `docs/components/Menu.md` (one sentence in "Context menus (`show()`)"), `docs/concepts/accessibility.md` and `docs/reference/changelog/next.md` as above.
