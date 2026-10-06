@@ -847,6 +847,31 @@ export class RecordingDOMSink implements DOMSink {
         this.dispatchEvent(target, makeEvent(target, type, { detail: init?.detail }));
     }
 
+    /**
+     * Builds a plain object standing in for the mouse event: the test
+     * environment is Node, which has no `MouseEvent`. It carries the fields a
+     * context-menu listener reads and no-op `preventDefault` /
+     * `stopPropagation`, as {@link makeEvent}'s events do, and a `null`
+     * `target`, as an undispatched native event has.
+     */
+    createMouseEvent(type: string, init: MouseEventInit): MouseEvent {
+        this.record('createMouseEvent', type, init);
+
+        return {
+            type,
+            target:   null,
+            clientX:  init.clientX ?? 0,
+            clientY:  init.clientY ?? 0,
+            button:   init.button ?? 0,
+            ctrlKey:  init.ctrlKey ?? false,
+            altKey:   init.altKey ?? false,
+            shiftKey: init.shiftKey ?? false,
+            metaKey:  init.metaKey ?? false,
+            preventDefault():  void {},
+            stopPropagation(): void {},
+        } as unknown as MouseEvent;
+    }
+
     requestAnimationFrame(_callback: FrameRequestCallback): number {
         this.record('requestAnimationFrame');
 

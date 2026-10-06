@@ -392,6 +392,48 @@ describe('Menu keyboard session — input watch', () => {
 
         expect(active()).toBe(openerEl);
     });
+
+    // M1 and M2 follow plans/implemented/table-tree-keyboard-context-menu.md:
+    // a Tree, a List and a table body start the watch themselves and read its
+    // answer, so both statics have to work before any Menu exists.
+    it('M1: a widget can start the watch and read the last input with no Menu constructed', () => {
+        Menu._startInputWatch();
+
+        expect(Menu.lastInputWasKeyPress()).toBe(false);
+
+        keyInput();
+
+        expect(Menu.lastInputWasKeyPress()).toBe(true);
+
+        pointerInput();
+
+        expect(Menu.lastInputWasKeyPress()).toBe(false);
+
+        Menu._stopInputWatch();
+
+        expect(Menu.lastInputWasKeyPress()).toBe(false);
+    });
+
+    it('M1b: _stopInputWatch() resets a recorded key press for the widgets\' read too', () => {
+        Menu._startInputWatch();
+        keyInput();
+
+        expect(Menu.lastInputWasKeyPress()).toBe(true);
+
+        Menu._stopInputWatch();
+
+        expect(Menu.lastInputWasKeyPress()).toBe(false);
+    });
+
+    it('M2: a second _startInputWatch() registers nothing, so one stop removes the watch', () => {
+        Menu._startInputWatch();
+        Menu._startInputWatch();
+        Menu._stopInputWatch();
+
+        keyInput();
+
+        expect(Menu.lastInputWasKeyPress()).toBe(false);
+    });
 });
 
 describe('Menu keyboard session — session start', () => {

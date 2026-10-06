@@ -1041,6 +1041,20 @@ export interface DOMSink {
     dispatchEvent(target: Handle, event: Event): void;
 
     /**
+     * Builds a mouse event of `type` with the given init and returns it
+     * without dispatching it. The library's only construction site for a
+     * synthetic mouse event: the production sink mints a native `MouseEvent`,
+     * while the modelled sink builds a plain object, so library code never
+     * names the global `MouseEvent` constructor. The event's `target` is
+     * `null` until something dispatches it.
+     *
+     * @param type - The event type (e.g. `"contextmenu"`).
+     * @param init - The `MouseEventInit` (coordinates, button, modifier keys).
+     * @returns The undispatched event.
+     */
+    createMouseEvent(type: string, init: MouseEventInit): MouseEvent;
+
+    /**
      * Builds and dispatches a custom event of `type` with the given init on a
      * target. The framework's sole construction site for fired custom events:
      * the production sink mints a native `CustomEvent`, while the modelled sink
@@ -2339,6 +2353,11 @@ export class ProductionDOMSink implements DOMSink {
     /** @inheritDoc */
     dispatchEvent(target: Handle, event: Event): void {
         _registry.resolve(target).dispatchEvent(event);
+    }
+
+    /** @inheritDoc */
+    createMouseEvent(type: string, init: MouseEventInit): MouseEvent {
+        return new MouseEvent(type, init);
     }
 
     /** @inheritDoc */

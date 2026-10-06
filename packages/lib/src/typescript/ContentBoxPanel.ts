@@ -16,7 +16,7 @@ import {
 } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { Glyph } from '@jimka/typescript-ui/component/display';
-import { Notification } from '@jimka/typescript-ui/overlay';
+import { Menu, Notification } from '@jimka/typescript-ui/overlay';
 import {
     IconLabelTreeNodeRenderer,
     LabelTreeNodeRenderer,
@@ -562,6 +562,16 @@ class ContentBoxPanel extends Panel {
         const tree = new Tree({ border: BORDER, preferredSize: { width: 200, height: 120 } });
         tree.setNodes(SCROLL_TREE_NODES);
         tree.expandAll();
+
+        // One menu for a right-click on a row and for Shift+F10 / the
+        // ContextMenu key on the current row: the tree hands both the node
+        // and an event positioned for the menu.
+        const treeMenu = new Menu();
+
+        tree.on("contextmenu", (node, event) => treeMenu.show(event.clientX, event.clientY, [
+            { text: "Open",   action: () => Notification.show("Open " + node.label, "info") },
+            { text: "Rename", action: () => Notification.show("Rename " + node.label, "info") },
+        ]));
 
         row.addComponent(FieldSet("Tree (VirtualScroller)", {
             preferredSize: BOX,

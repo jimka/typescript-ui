@@ -18,6 +18,7 @@ import { Size } from "~/primitive/Size.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { selectionsEqual } from "~/component/shared/selectionsEqual.js";
+import { resolveContextMenuTarget, watchContextMenuInput } from "~/component/shared/resolveContextMenuTarget.js";
 import { ListItemRenderer } from "~/component/list/ListItemRenderer.js";
 import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
 import { type StyleBag } from "~/core/ClassStyleRules.js";
@@ -904,6 +905,11 @@ abstract class AbstractSelectableList<
         this.addComponent(this._innerPanel);
 
         Event.addListener(this, "keydown", this.handleKeyDown);
+        Event.addListener(this, "contextmenu", this.handleRootContextMenu);
+
+        // Shift+F10 opens the menu of the focused row only when the key press
+        // is on record, and a consumer may build its `Menu` later than this.
+        watchContextMenuInput();
 
         // Late-built state: `rendererFactory` / `store` / `items` / `enabled` /
         // `readOnly` were written pure to `_options` by the super-time cascade.
@@ -1537,10 +1543,18 @@ abstract class AbstractSelectableList<
      * {@link AbstractInput} listener-bag events and fire for programmatic
      * writes too.
      *
-     * `"contextmenu"` fires when a row is right-clicked, with the row index and
-     * the raw {@link MouseEvent} (the native menu is suppressed); `"dblclick"`
-     * fires on a row double-click with the same payload. Both carry the row
-     * index directly, so hosts need not walk the row DOM to resolve it.
+     * `"contextmenu"` fires when a row is right-clicked, with the row index
+     * and the browser's {@link MouseEvent}. It also fires when Shift+F10 or
+     * the ContextMenu key is pressed while the list has focus and a focused
+     * row: the listener then receives the focused row's index and a synthetic
+     * `contextmenu` event whose `clientX` / `clientY` sit under that row, or
+     * on the list's nearest edge when the row is scrolled out of view; the
+     * synthetic event's `target` is `null`. Either way `clientX` / `clientY`
+     * position a context menu, the browser's own menu is suppressed, and the
+     * selection is left unchanged.
+     * `"dblclick"` fires on a row double-click with the row index and the
+     * browser's event. Both carry the row index directly, so hosts need not
+     * walk the row DOM to resolve it.
      *
      * @param event - The event name.
      * @param listener - The callback to invoke when the event fires.
@@ -1821,15 +1835,68 @@ abstract class AbstractSelectableList<
     }
 
     /**
-     * Handles a right-click on a pool row: suppresses the browser's native
-     * context menu and fires the `"contextmenu"` event with the row index and
-     * the raw event. Deliberately does not change the selection — a host that
-     * wants the right-clicked row highlighted calls {@link setSelectedIndex}
-     * from its listener (mirrors [`Tree`](/api/component/tree/classes/Tree)'s
+     * Handles a `contextmenu` event that targets the list's own element. A
+     * browser sends a key-raised one (Shift+F10, the ContextMenu key) there,
+     * because the list holds DOM focus itself and only marks its focused row
+     * with `aria-activedescendant`. It is resolved to the focused row and
+     * handed to {@link handleRowContextMenu} with a synthetic event
+     * positioned under that row. A right-click on the list's empty area, or
+     * a key press with no focused row, is left alone. A right-click on a row
+     * never reaches this listener: it targets the row, whose own listener
+     * handles it.
+     *
+     * @param e - The contextmenu event whose target is the list's element.
+     * @returns `{ prevent: true }` when a row's menu was requested, so the
+     *   browser's own menu is suppressed; otherwise nothing.
+     */
+    private handleRootContextMenu(e: MouseEvent): Event.ListenerResult {
+        const at  = resolveContextMenuTarget(this, e, () => this.revealFocusedRow());
+        const idx = this._rowPool.findIndex(row => row.getElement() === at.target);
+
+        if (idx < 0) {
+            return;
+        }
+
+        this.handleRowContextMenu(idx, at.event);
+
+        return { prevent: true };
+    }
+
+    /**
+     * Returns the focused row, as the component a keyboard-opened context
+     * menu is anchored under, after asking for it to be scrolled into view
+     * the way a keyboard move does (see {@link scrollIndexIntoView}). Where
+     * that leaves the row out of view, the menu point is clamped to the
+     * list's own box.
+     *
+     * @returns The pool row at the focused index, or `null` when no row
+     *   holds focus.
+     */
+    private revealFocusedRow(): SelectableListRow | null {
+        const idx = this._focusedIndex;
+
+        if (idx < 0 || idx >= this._rowPool.length) {
+            return null;
+        }
+
+        this.scrollIndexIntoView(idx);
+
+        return this._rowPool[idx];
+    }
+
+    /**
+     * Handles a context-menu request for a pool row — a right-click on it, or
+     * Shift+F10 / the ContextMenu key while it is the focused row: suppresses
+     * the browser's native context menu and fires the `"contextmenu"` event
+     * with the row index and the event, which is the browser's own for a
+     * right-click and a synthetic one positioned under the row for the
+     * keyboard. Deliberately does not change the selection — a host that
+     * wants the row highlighted calls {@link setSelectedIndex} from its
+     * listener (mirrors [`Tree`](/api/component/tree/classes/Tree)'s
      * contextmenu contract). Out-of-range indices are ignored.
      *
-     * @param idx - The row index that was right-clicked.
-     * @param e - The original contextmenu event.
+     * @param idx - The index of the row the menu is for.
+     * @param e - The contextmenu event to hand to listeners.
      */
     protected handleRowContextMenu(idx: number, e: MouseEvent): void {
         if (idx < 0 || idx >= this._items.length) {

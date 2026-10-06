@@ -1282,9 +1282,12 @@ class Menu extends Component implements DismissableLayer {
      * input was a key press or a pointer press, unless they are already
      * installed. Called as each menu is constructed, and nothing removes them
      * afterwards: the answer has to be on record before the `show()` it
-     * decides.
+     * decides. Also called by the widgets that open a menu for their current
+     * row or cell, so the watch is running before a consumer builds its menu.
+     *
+     * @internal
      */
-    private static _startInputWatch(): void {
+    static _startInputWatch(): void {
         if (Menu.inputWatching) {
             return;
         }
@@ -1317,6 +1320,21 @@ class Menu extends Component implements DismissableLayer {
         }
 
         Menu.lastInputWasKey = false;
+    }
+
+    /**
+     * Whether the user's last input was a key press, as the input watch
+     * recorded it: the test `show()` applies to decide whether the menu takes
+     * the keyboard. A widget that opens a menu for its current row or cell
+     * asks the same question, so a menu placed at that item is always the
+     * menu that takes focus. `false` while the watch is not running.
+     *
+     * @returns `true` when a key press was the last recorded input.
+     *
+     * @internal
+     */
+    static lastInputWasKeyPress(): boolean {
+        return Menu.lastInputWasKey;
     }
 
     /**
