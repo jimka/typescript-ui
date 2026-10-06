@@ -1192,6 +1192,16 @@ class Accordion extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * Returns the section headers, the wrapper around each section's content
+     * and the resize gutters this manager has built.
+     *
+     * @returns The headers, wrappers and gutters as they exist now.
+     */
+    getChromeComponents(): readonly Component[] {
+        return [...this._headers, ...this._panelWrappers, ...this._resizeGutters];
+    }
+
+    /**
      * Associates this layout manager with a container component, then
      * registers with {@link FocusReveal} so a hidden target inside a closed
      * section can be revealed before it is focused.

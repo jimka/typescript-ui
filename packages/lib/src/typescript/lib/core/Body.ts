@@ -4,6 +4,10 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Favicon, DEFAULT_FAVICON } from "~/core/Favicon.js";
+import { LayerManager } from "~/core/LayerManager.js";
+import type { BackgroundSurface } from "~/core/LayerManager.js";
+import type { LayoutConstraints } from "~/layout/LayoutConstraints.js";
+import type { LayoutManager } from "~/layout/LayoutManager.js";
 import { getAppResizeMode, setAppResizeMode } from "~/core/ResizeDrag.js";
 import type { ResizeMode } from "~/core/ResizeDrag.js";
 import { ThemeManager } from "~/core/Theme.js";
@@ -58,11 +62,25 @@ export interface BodyOptions extends Omit<ComponentOptions, "components"> {
  * resolved, or where reaching an already-mounted body is genuinely all that is
  * needed.
  *
+ * While a modal dialog or drawer is open, every component added to the body
+ * is inert — it cannot be focused, clicked or read by a screen reader — and a
+ * component added meanwhile comes up inert. So is what the body's layout
+ * manager mounts beside them: a `Tab` manager's tab strip, an `Accordion`'s
+ * headers. The `<body>` element itself is never marked, so anything else in
+ * the document, such as the menu a browser extension injects, stays usable.
+ *
  * @category Core
  */
-export class Body extends Component<BodyOptions> {
+export class Body extends Component<BodyOptions> implements BackgroundSurface {
 
     private static instance: Body | null = null;
+
+    /**
+     * Whether a modal layer is open, as the layer manager last reported it —
+     * the state every child and every component the layout manager mounts
+     * carries, and the one a child added later is given.
+     */
+    private _childrenInert: boolean = false;
 
     /**
      * Returns the singleton Body instance, creating it on first call — the
@@ -259,6 +277,129 @@ export class Body extends Component<BodyOptions> {
         this.setBackgroundColor("var(--ts-ui-body-bg, rgb(241, 241, 241))");
 
         ThemeManager._applyDefaultTheme();
+
+        // The page goes inert behind a modal layer. Told the current state at
+        // once, though a body built this late has no child to mark yet.
+        LayerManager.addBackgroundSurface(this);
+    }
+
+    /**
+     * Mirrors the layer manager's decision onto the application: `true` while
+     * a modal layer is open, `false` when the last one has closed. Each child
+     * component is marked, and each component the layout manager mounts beside
+     * them — not the `<body>` element: marking `<body>` would also disable
+     * whatever a browser extension has put in the document.
+     *
+     * @param inert - Whether the application must be inert now.
+     */
+    onInertChanged(inert: boolean): void {
+        this._childrenInert = inert;
+
+        this.markMountedComponents(this.getComponents(), inert);
+        this.markMountedComponents(this.getLayoutManager().getChromeComponents(), inert);
+    }
+
+    /**
+     * Lays the body out as {@link Component.doLayout} does. While a modal
+     * layer is open, also marks what the layout manager built during the pass
+     * — a gutter for a newly added pane, a header for a new section — so
+     * nothing mounted behind the modal layer stays reachable.
+     *
+     * @returns This component, for method chaining.
+     */
+    doLayout(): this {
+        super.doLayout();
+
+        if (this._childrenInert) {
+            this.markMountedComponents(this.getLayoutManager().getChromeComponents(), true);
+        }
+
+        return this;
+    }
+
+    /**
+     * Sets the layout manager as {@link Component.setLayoutManager} does, and
+     * gives what the new manager mounts on the body — a `Tab` manager's tab
+     * strip is there from the moment it attaches — the page's current inert
+     * state.
+     *
+     * @param layoutManager - The new LayoutManager to use for the body.
+     *
+     * @returns This component, for method chaining.
+     */
+    setLayoutManager(layoutManager: LayoutManager): this {
+        super.setLayoutManager(layoutManager);
+        this.markMountedComponents(this.getLayoutManager().getChromeComponents(), this._childrenInert);
+
+        return this;
+    }
+
+    /**
+     * Writes the inert state to each of `components` that is still alive.
+     *
+     * @param components - Components mounted on the body's element.
+     * @param inert - The state to give them.
+     */
+    private markMountedComponents(components: readonly Component[], inert: boolean): void {
+        for (const component of components) {
+            // dispose() does not unlink a component from its parent, and a
+            // disposed component's element handle is released.
+            const alive = !component.isDestroyed();
+
+            if (alive) {
+                component.setInertAttribute(inert);
+            }
+        }
+    }
+
+    /**
+     * Inserts a child as {@link Component.insertComponent} does, and gives it
+     * the page's current inert state, so a component added while a modal
+     * layer is open cannot be reached behind it.
+     *
+     * @param component - The child component to insert.
+     * @param index - Zero-based insertion index.
+     * @param constraints - Optional. Layout constraints to pass to the layout manager.
+     *
+     * @returns This component, for method chaining.
+     */
+    insertComponent(component: Component, index: number, constraints?: LayoutConstraints): this {
+        super.insertComponent(component, index, constraints);
+        component.setInertAttribute(this._childrenInert);
+
+        return this;
+    }
+
+    /**
+     * Removes a child as {@link Component.removeComponent} does, and makes it
+     * live again: a component that has left the page is no longer behind
+     * anything.
+     *
+     * @param component - The child component to remove.
+     *
+     * @returns The layout constraints that were registered for the removed component, or undefined.
+     */
+    removeComponent(component: Component): LayoutConstraints | undefined {
+        const constraints = super.removeComponent(component);
+
+        this.markMountedComponents([component], false);
+
+        return constraints;
+    }
+
+    /**
+     * Removes every child as {@link Component.removeAllComponents} does, and
+     * makes each one live again.
+     *
+     * @returns This component, for method chaining.
+     */
+    removeAllComponents(): this {
+        const removed = this.getComponents().slice();
+
+        super.removeAllComponents();
+        this.markMountedComponents(removed, false);
+
+        return this;
     }
 
     /**

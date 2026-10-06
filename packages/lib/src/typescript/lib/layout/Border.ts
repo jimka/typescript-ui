@@ -1605,6 +1605,15 @@ class Border extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * Returns the gutters this manager has built, one per collapsible region.
+     *
+     * @returns The gutters as they exist now.
+     */
+    getChromeComponents(): readonly Component[] {
+        return Array.from(this._gutters.values());
+    }
+
+    /**
      * Associates this layout manager with a container component, then
      * registers with {@link FocusReveal} so a hidden target inside a collapsed
      * region can be revealed before it is focused.

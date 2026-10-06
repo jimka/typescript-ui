@@ -48,6 +48,22 @@ function liveToast(): Notification {
 }
 
 /**
+ * Disposes every toast still live and whatever layer is topmost (the detail
+ * dialog a case opened). Either one left behind stays known to the layer
+ * manager across the DOM reset, and the next modal layer would tell it to go
+ * inert through a released handle.
+ */
+function disposeLeftovers(): void {
+    const live = (Notification as unknown as { activeNotifications: Notification[] }).activeNotifications;
+
+    for (const toast of live.slice()) {
+        toast.dispose();
+    }
+
+    (LayerManager.getTopLayer() as { dispose?(): void } | null)?.dispose?.();
+}
+
+/**
  * A minimal registered layer in the Dropdown band, for stamping the band up
  * before a toast is shown. It carries no element and is never dismissed — only
  * its allocated z-index matters here.
@@ -63,7 +79,10 @@ function dropdownLayer(): DismissableLayer {
 }
 
 describe('Notification (pause/resume refcount, idle)', () => {
-    afterEach(() => DOM.reset());
+    afterEach(() => {
+        disposeLeftovers();
+        DOM.reset();
+    });
 
     it('pauseAll / resumeAll are balanced no-ops when no toast is live', () => {
         installTestDOM(CONFIG);
@@ -149,6 +168,7 @@ describe('Notification (stacking band)', () => {
 
         layers.length = 0;
 
+        disposeLeftovers();
         DOM.reset();
     });
 
@@ -186,5 +206,67 @@ describe('Notification (stacking band)', () => {
         for (const layer of layers) {
             expect(toastZ).toBeGreaterThan(LayerManager.getZIndex(layer));
         }
+    });
+});
+
+// modal-dialog-focus-trap plan, cases B3 and B4. A toast is mounted on <html>,
+// outside every layer, and its dismiss button is a Tab stop. Only the button
+// goes inert: the toast's root is a live region, and an inert root would
+// silence the announcement for a screen reader.
+describe('Notification (inert behind a modal layer)', () => {
+    afterEach(() => {
+        disposeLeftovers();
+        DOM.reset();
+    });
+
+    function modalLayer(): DismissableLayer {
+        return { getLayerElement: () => null, getDismissMode: () => 'modal', requestClose: () => {} };
+    }
+
+    /** The private dismiss button of `toast`. */
+    function closeButtonOf(toast: Notification): { getInertAttribute(): boolean } {
+        return (toast as unknown as { _closeButton: { getInertAttribute(): boolean } })._closeButton;
+    }
+
+    it('B3: a modal layer makes a toast\'s dismiss button inert, and not the toast', () => {
+        installTestDOM(CONFIG);
+
+        const modal = modalLayer();
+
+        Notification.show('msg', 'info', 0);
+
+        const toast = liveToast();
+
+        expect(closeButtonOf(toast).getInertAttribute()).toBe(false);
+
+        LayerManager.register(modal);
+
+        expect(closeButtonOf(toast).getInertAttribute()).toBe(true);
+        expect(toast.getInertAttribute()).toBe(false);
+
+        LayerManager.unregister(modal);
+
+        expect(closeButtonOf(toast).getInertAttribute()).toBe(false);
+
+        toast.dispose();
+    });
+
+    it('B4: a toast shown while a modal layer is open comes up with an inert dismiss button', () => {
+        installTestDOM(CONFIG);
+
+        const modal = modalLayer();
+
+        LayerManager.register(modal);
+        Notification.show('msg', 'info', 0);
+
+        const toast = liveToast();
+
+        expect(closeButtonOf(toast).getInertAttribute()).toBe(true);
+
+        // A disposed toast is no longer told, so closing the modal writes
+        // through no released handle.
+        toast.dispose();
+
+        expect(() => LayerManager.unregister(modal)).not.toThrow();
     });
 });

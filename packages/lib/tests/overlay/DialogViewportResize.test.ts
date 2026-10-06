@@ -101,6 +101,10 @@ describe('Dialog re-fits to a viewport resized while open', () => {
         // scrolls, rather than keeping FULL_HEIGHT and overflowing.
         expect(dialog.getHeight()).toBe(CAPPED_HEIGHT);
         expect(dialog.getHeight()).toBeLessThan(FULL_HEIGHT);
+
+        // Leaves the layer tree: a dialog left registered would be told to go
+        // inert, through a released handle, by the next case's dialog.
+        dialog.dispose();
     });
 
     it('grows back toward the content when the viewport regains room', () => {
@@ -119,5 +123,7 @@ describe('Dialog re-fits to a viewport resized while open', () => {
 
         // Regained room: grows back to its full content height.
         expect(dialog.getHeight()).toBe(FULL_HEIGHT);
+
+        dialog.dispose();
     });
 });

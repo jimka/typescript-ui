@@ -4,6 +4,7 @@ import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import { visibleFocusable, findTabKeyOwner } from "~/core/Focusable.js";
 
 /**
  * How a layer responds to an outside interaction.
@@ -16,7 +17,8 @@ import type { Handle } from "~/core/DOM.js";
  *   drives its own teardown.
  * - `"modal"`: never dismissed by an outside `pointerdown` or focus move
  *   (the layer captures the interaction); only Escape, routed through the
- *   keydown handler, asks it to close.
+ *   keydown handler, asks it to close. While such a layer is open the manager
+ *   also makes every surface outside it inert and wraps `Tab` inside it.
  *
  * @category Core
  */
@@ -112,6 +114,49 @@ export interface DismissableLayer {
      * root layer, which always uses its own band.
      */
     keepsOwnBand?(): boolean;
+
+    /**
+     * Optional inert hook. The manager calls it with `true` when the layer
+     * must go inert because a modal layer it does not belong to is open, and
+     * with `false` when it is live again, so the surface can mirror the value
+     * onto its element through its own typed `setInertAttribute`. The call
+     * is made again on every later register and unregister of any layer, also
+     * when the value has not changed, so the hook must be cheap to repeat. A
+     * surface that omits it stays focusable and clickable behind a modal
+     * layer.
+     */
+    onInertChanged?(inert: boolean): void;
+
+    /**
+     * Optional closing hint. Returns `true` from the moment the surface has
+     * begun to close until it unregisters — a dropdown that stays registered
+     * while it fades out. Such a layer keeps its place in the stack and still
+     * counts as inside the layer it was opened from, but its controls are
+     * about to leave the document, so the manager leaves them out of a modal
+     * layer's `Tab` ring. A surface that unregisters as it starts to close
+     * omits the method.
+     */
+    isLayerClosing?(): boolean;
+}
+
+/**
+ * A surface that is not a layer but must go inert while a modal layer is
+ * open: the page itself, and anything portaled beside it that can hold focus.
+ * [`Body`](/api/core/classes/Body) is one (it marks the application's root
+ * components), as are the [`Rail`](/api/overlay/classes/Rail) and each
+ * [`Notification`](/api/overlay/classes/Notification) toast. Registered with
+ * {@link LayerManager.addBackgroundSurface}.
+ *
+ * @category Core
+ */
+export interface BackgroundSurface {
+    /**
+     * Called with `true` while any modal layer is open and `false` when the
+     * last one has closed. The surface writes its own element. The call is
+     * made on every register and unregister of any layer, also when the value
+     * has not changed, so it must be cheap to repeat.
+     */
+    onInertChanged(inert: boolean): void;
 }
 
 /**
@@ -212,6 +257,14 @@ const _listenerOwner: Component = new Component();
  * / `keydown` listeners installed on the first register and removed on the
  * last unregister.
  *
+ * The manager also owns modality. While a layer whose dismiss mode is
+ * `"modal"` is open, every other layer and every registered
+ * {@link BackgroundSurface} is told to go inert — all but the layers opened
+ * from the topmost modal, which belong to it — and `Tab` wraps at the edges of
+ * that modal (see {@link LayerManager.containTab}). The manager never writes
+ * `inert` itself, and nothing is written to `<body>` or `<html>`: each surface
+ * marks its own element, so whatever else lives in the document stays usable.
+ *
  * The relationship the tree captures — the runtime "opened-from" edge (which
  * layer this one was opened from) — is distinct from the static component
  * hierarchy and changes per activation, so it lives here rather than in the
@@ -237,6 +290,10 @@ export namespace LayerManager {
     let _activeLayer: DismissableLayer | null = null;
 
     let _listenersInstalled: boolean = false;
+
+    // Surfaces that are not layers but go inert behind a modal one: the page
+    // (`Body`), the `Rail`, toasts.
+    const _backgroundSurfaces: Set<BackgroundSurface> = new Set();
 
     /**
      * Every z-index band base, exposed so each surface can tag itself without
@@ -375,6 +432,7 @@ export namespace LayerManager {
             installListeners();
         }
 
+        syncModalScope();
         layer.onZIndexChanged?.(zIndex);
     }
 
@@ -427,6 +485,8 @@ export namespace LayerManager {
         if (_activeLayer === layer) {
             _activeLayer = null;
         }
+
+        syncModalScope();
 
         if (_stack.length === 0 && _listenersInstalled) {
             uninstallListeners();
@@ -523,6 +583,60 @@ export namespace LayerManager {
      */
     export function hasActiveInputLayer(): boolean {
         return topmostInputLayer() !== null;
+    }
+
+    /**
+     * Returns whether any registered layer is modal, wherever it sits in the
+     * stack — also when a menu or a dropdown is open above it.
+     *
+     * @returns `true` when at least one registered layer's dismiss mode is
+     *   `"modal"`.
+     */
+    export function hasModalLayer(): boolean {
+        return topModalNode() !== null;
+    }
+
+    /**
+     * Returns whether a modal layer is open and `node` lies outside the
+     * topmost one's scope — outside that layer and every layer opened from
+     * it. Such an element is inert when it belongs to a library surface, so
+     * focusing or revealing it achieves nothing.
+     *
+     * @param node - The element to test.
+     * @returns `true` when `node` is behind the topmost modal layer; `false`
+     *   for `null` and when no modal layer is open.
+     */
+    export function isBehindModal(node: Handle | null): boolean {
+        const modal = topModalNode();
+
+        if (node === null || modal === null) {
+            return false;
+        }
+
+        return !nodeContains(modal, node);
+    }
+
+    /**
+     * Registers a surface that is not a layer but must go inert while a modal
+     * layer is open, and tells it the current state at once — so a surface
+     * that appears while a modal layer is open comes up inert.
+     *
+     * @param surface - The surface to keep informed.
+     */
+    export function addBackgroundSurface(surface: BackgroundSurface): void {
+        _backgroundSurfaces.add(surface);
+        surface.onInertChanged(topModalNode() !== null);
+    }
+
+    /**
+     * Stops informing a surface registered with {@link addBackgroundSurface}.
+     * Makes no call to its hook: a surface removed while inert keeps the
+     * state it has until it is added again.
+     *
+     * @param surface - The surface to forget.
+     */
+    export function removeBackgroundSurface(surface: BackgroundSurface): void {
+        _backgroundSurfaces.delete(surface);
     }
 
     /**
@@ -684,7 +798,15 @@ export namespace LayerManager {
      * A layer with no anchor, or an anchor not (yet) inside any registered
      * layer, falls back to the last-registered layer — the rule the tree
      * used for every nested layer before {@link setBand} introduced a second
-     * root band, and still correct for such a layer today.
+     * root band, and still correct for such a layer today. While a modal
+     * layer is open the fallback skips every layer behind it: those are
+     * inert, so the user cannot have opened anything from one, and a context
+     * menu shown at the pointer inside a dialog must not link under a window
+     * that happened to be shown after the dialog. The fallback cannot tell a
+     * layer that code opens for something behind the modal — a dropdown
+     * anchored to a control of the page, shown from a timer — so that one
+     * links into the modal's scope too, as it did under the old rule whenever
+     * the modal was the last-registered layer.
      *
      * @param layer - The layer being registered.
      * @returns The node to link `layer` under, or `null` when the stack is
@@ -698,7 +820,17 @@ export namespace LayerManager {
             return owner;
         }
 
-        return _stack.length > 0 ? _stack[_stack.length - 1] : null;
+        const modal = topModalNode();
+
+        for (let i = _stack.length - 1; i >= 0; i--) {
+            const reachable = modal === null || isInScope(_stack[i], modal);
+
+            if (reachable) {
+                return _stack[i];
+            }
+        }
+
+        return null;
     }
 
     /** True when `node` (or a descendant layer) contains `target`. */
@@ -716,6 +848,52 @@ export namespace LayerManager {
         }
 
         return false;
+    }
+
+    /**
+     * Finds the topmost modal layer: the last-registered layer whose dismiss
+     * mode is `"modal"`, whatever is stacked above it.
+     *
+     * @returns Its node, or `null` when no modal layer is open.
+     */
+    function topModalNode(): LayerNode | null {
+        for (let i = _stack.length - 1; i >= 0; i--) {
+            const mode = _stack[i].layer.getDismissMode();
+
+            if (mode === "modal") {
+                return _stack[i];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * True when `node` belongs to `modal`'s scope: it is the modal itself or
+     * a layer opened from it, directly or through another layer.
+     */
+    function isInScope(node: LayerNode, modal: LayerNode): boolean {
+        return node === modal || isDescendantOf(node, modal);
+    }
+
+    /**
+     * Tells every registered layer and every background surface whether it is
+     * inert now. A layer is inert when a modal layer is open and the layer is
+     * outside the topmost modal's scope; a background surface is inert
+     * whenever any modal layer is open. Runs on every register and
+     * unregister, and each surface writes its own element, so a hook must
+     * tolerate being told the value it already has.
+     */
+    function syncModalScope(): void {
+        const modal = topModalNode();
+
+        for (const node of _stack) {
+            node.layer.onInertChanged?.(modal !== null && !isInScope(node, modal));
+        }
+
+        for (const surface of _backgroundSurfaces) {
+            surface.onInertChanged(modal !== null);
+        }
     }
 
     /** Marks `layer` active and deactivates the previously-active layer. */
@@ -862,14 +1040,127 @@ export namespace LayerManager {
         handleOutside(e.target === null ? null : DOM.source.intern(e.target), true);
     }
 
+    /** One layer of the topmost modal's scope that holds at least one stop. */
+    interface ScopeLayer {
+        root:  Handle;
+        stops: Handle[];
+    }
+
     /**
-     * Document `keydown` handler — Escape asks the topmost non-manual layer to close.
+     * Collects the layers of `modal`'s scope that hold a stop — a visible,
+     * enabled, focusable element — with the modal first and then the layers
+     * opened from it, each before the layers opened from it in turn. A layer
+     * that has begun closing contributes no stop: its controls are about to
+     * leave the document.
+     *
+     * @param modal - The topmost modal layer's node.
+     * @returns The scope's layers in ring order, without the ones that hold no stop.
+     */
+    function scopeLayers(modal: LayerNode): ScopeLayer[] {
+        const layers: ScopeLayer[] = [];
+
+        const walk = (node: LayerNode): void => {
+            const closing = node.layer.isLayerClosing?.() === true;
+            const root    = closing ? null : node.layer.getLayerElement();
+            const stops   = root === null ? [] : visibleFocusable(root);
+
+            if (root !== null && stops.length > 0) {
+                layers.push({ root, stops });
+            }
+
+            for (const child of node.children) {
+                walk(child);
+            }
+        };
+
+        walk(modal);
+
+        return layers;
+    }
+
+    /**
+     * Wraps `Tab` / `Shift+Tab` at the edges of the topmost modal layer's
+     * scope, so the key cannot carry focus out of it. The stops of the modal
+     * and of every layer opened from it form one ring; the function acts only
+     * when focus is on the first or last stop of one of those layers, and
+     * leaves every other `Tab` to the browser. It also stands down while focus
+     * is inside a descendant that owns the Tab key (a `CodeEditor`, a `Table`),
+     * for a key an earlier listener already handled, and for a `Tab` pressed
+     * with `Control`, `Alt` or `Meta`, which is not focus traversal. A scope
+     * with nothing focusable consumes the key, so focus stays where it is —
+     * unless focus is on an element outside the scope, which can only be one
+     * the library does not own: its `Tab` is left to the browser.
+     *
+     * The manager's own `keydown` listener calls this for every `Tab`. A layer
+     * that closes itself on `Tab` and hands focus back to its opener (a menu's
+     * keyboard session) calls it again afterwards, since only then is focus on
+     * a stop.
+     *
+     * @param e - The `Tab` keydown.
+     * @returns A stop-and-prevent disposition when it moved or held focus;
+     *   nothing otherwise, and always nothing when no modal layer is open.
+     */
+    export function containTab(e: KeyboardEvent): Event.ListenerResult {
+        const modal = topModalNode();
+        // Ctrl+Tab, Alt+Tab and Cmd+Tab switch tabs, windows and applications.
+        const chord = e.ctrlKey || e.altKey || e.metaKey;
+
+        if (e.defaultPrevented || chord || modal === null) {
+            return;
+        }
+
+        const layers = scopeLayers(modal);
+        const stops  = layers.flatMap(layer => layer.stops);
+        const active = DOM.source.getActiveElement();
+
+        if (stops.length === 0) {
+            // With nothing focused a browser reports `<body>`, which holds
+            // nothing the key could usefully reach. Any other element outside
+            // the scope is live, so it is not the library's: an extension's
+            // menu, say. Holding its Tab would strand the keyboard there.
+            const foreign = active !== null && active !== DOM.source.getBody() && !nodeContains(modal, active);
+
+            return foreign ? undefined : { stop: true, prevent: true };
+        }
+
+        const index = active === null ? -1 : stops.indexOf(active);
+
+        if (active === null || index === -1) {
+            return;
+        }
+
+        const own   = layers.find(layer => layer.stops.includes(active))!;
+        // Bounded at the layer's own element, which is not tested: a Dialog
+        // marks itself a Tab-key owner, and that mark must not count here.
+        const owner = findTabKeyOwner(active, own.root);
+        const edge  = e.shiftKey ? own.stops[0] : own.stops[own.stops.length - 1];
+
+        if (owner !== null || active !== edge) {
+            return;
+        }
+
+        const step = e.shiftKey ? -1 : 1;
+
+        DOM.sink.focus(stops[(index + step + stops.length) % stops.length]);
+
+        return { stop: true, prevent: true };
+    }
+
+    /**
+     * Document `keydown` handler — `Tab` is wrapped inside the topmost modal
+     * layer (see {@link containTab}), and Escape asks the topmost non-manual
+     * layer to close.
      *
      * @param e - The keydown event.
-     * @returns `true` when a layer handled Escape; nothing when no dismissible
-     *   layer is open or the layer declined it, so the Escape keeps propagating.
+     * @returns A stop-and-prevent disposition when a `Tab` was wrapped or
+     *   held; `true` when a layer handled Escape; nothing when no dismissible
+     *   layer is open or the layer declined it, so the key keeps propagating.
      */
     function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
+        if (e.key === "Tab") {
+            return containTab(e);
+        }
+
         if (e.key !== "Escape") {
             return;
         }

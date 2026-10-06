@@ -89,3 +89,40 @@ describe('AnimatedDropdown layer z-index', () => {
         expect(elementZ(dropdown)!).toBeGreaterThan(LayerManager.getZIndex(opener));
     });
 });
+
+// modal-dialog-focus-trap plan: a dropdown unregisters only once its fade-out
+// has finished, so that a raise of its host during the fade still re-stamps
+// it. For those 120 ms it is registered and closed, and the layer manager has
+// to be able to tell, to keep it out of a modal layer's Tab ring.
+describe('AnimatedDropdown.isLayerClosing', () => {
+    it('is true from hideAnimated() until the fade has finished and the layer has left the tree', () => {
+        installTestDOM(CONFIG);
+
+        const dropdown = new AnimatedDropdown();
+
+        expect(dropdown.isLayerClosing()).toBe(false);
+
+        dropdown.showAnimated();
+
+        expect(dropdown.isLayerClosing()).toBe(false);
+        expect(LayerManager.getTopLayer()).toBe(dropdown);
+
+        // Offline the fade never completes by itself, which is the state
+        // under test: closed, and still registered.
+        dropdown.hideAnimated();
+
+        expect(dropdown.isOpen()).toBe(false);
+        expect(LayerManager.getTopLayer()).toBe(dropdown);
+        expect(dropdown.isLayerClosing()).toBe(true);
+
+        // A fresh show during the fade keeps the panel: no longer closing.
+        dropdown.showAnimated();
+
+        expect(dropdown.isLayerClosing()).toBe(false);
+
+        dropdown.dispose();
+
+        expect(LayerManager.getTopLayer()).toBeNull();
+    });
+});
+

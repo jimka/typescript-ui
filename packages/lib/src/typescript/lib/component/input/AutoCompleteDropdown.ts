@@ -119,6 +119,11 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
         this._list.setBorderRadius("0");
         this._list.setFocusOnRowClick(false);
         this._list.setSelectFollowsFocus(false);
+        // The host TextField keeps DOM focus, so the list is no Tab stop. As
+        // one it would take the Tab that leaves a field placed last in a
+        // modal dialog, and lose focus as the dropdown closes on that key.
+        // -1: focusable from script, never a Tab stop.
+        this._list.getAria().setTabIndex(-1);
         this.addComponent(this._list);
 
         // Click and keyboard commits both arrive through the list's

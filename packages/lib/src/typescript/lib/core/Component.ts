@@ -596,11 +596,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // Every attribute the component currently intends its element to carry —
     // from setElementAttribute/removeElementAttribute, setDataAttribute/
     // delDataAttribute, the `attributes` options bag, setDisabledAttribute,
-    // and Aria's mutators (which all route through applyAriaAttribute). One
-    // channel, so init() replays it onto a freshly created element with a
-    // single attach() call. Assigned in the constructor body (not a field
-    // initializer) because applyOptions dispatches setters — including the
-    // `attributes` bag itself — that write it from inside super().
+    // setInertAttribute, and Aria's mutators (which all route through
+    // applyAriaAttribute). One channel, so init() replays it onto a freshly
+    // created element with a single attach() call. Assigned in the
+    // constructor body (not a field initializer) because applyOptions
+    // dispatches setters — including the `attributes` bag itself — that write
+    // it from inside super().
     private _elementAttributes    : ElementAttributes;
 
     // Geometry: NaN sentinels mean "never assigned", so equality guards on
@@ -702,6 +703,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _transformOrigin      : string | null           = null;
     private _opacity              : number | null           = null;
     private _disabledAttribute    : boolean                 = false;
+    private _inertAttribute       : boolean                 = false;
     private _border               : BorderOptions | null     = null;
     private _borderWidths         : PerimeterSize | null      = null;
     private _borderThemeSubscribed : boolean                   = false;
@@ -5833,6 +5835,46 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this.setElementAttribute("disabled", "");
         } else {
             this.removeElementAttribute("disabled");
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the cached state of the HTML `inert` attribute on the element.
+     *
+     * @returns True when the `inert` attribute is set, false otherwise.
+     */
+    getInertAttribute(): boolean {
+        return this._inertAttribute;
+    }
+
+    /**
+     * Sets the HTML `inert` attribute on the underlying element, which takes
+     * the element and everything inside it out of focus, pointer input and
+     * the accessibility tree.
+     *
+     * `LayerManager` drives this for every surface outside the topmost modal
+     * layer; it is framework bookkeeping, so it has no options-bag field. On
+     * a component the manager drives — a registered layer, a component added
+     * to `Body` — a value set from elsewhere is overwritten the next time any
+     * layer opens or closes.
+     *
+     * @param value - True to add `inert`, false to remove it.
+     *
+     * @returns This component, for method chaining.
+     */
+    setInertAttribute(value: boolean): this {
+        if (this._inertAttribute === value) {
+            return this;
+        }
+
+        this._inertAttribute = value;
+
+        if (value) {
+            this.setElementAttribute("inert", "");
+        } else {
+            this.removeElementAttribute("inert");
         }
 
         return this;

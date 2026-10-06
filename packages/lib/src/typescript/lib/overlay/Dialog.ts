@@ -25,7 +25,7 @@ import { circle_exclamation } from "~/glyphs/solid/circle_exclamation.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { ThemeManager } from "~/core/Theme.js";
-import { FOCUSABLE_SELECTOR, findTabKeyOwner, MODIFIER_KEYS, stopAfterOwner, stopBeforeOwner } from "~/core/Focusable.js";
+import { FOCUSABLE_SELECTOR, findTabKeyOwner, MODIFIER_KEYS, stopAfterOwner, stopBeforeOwner, visibleFocusable } from "~/core/Focusable.js";
 
 /**
  * Square edge length used for the dialog's title-bar glyph — the theme's
@@ -985,11 +985,13 @@ class Dialog extends Component implements DismissableLayer {
         // dialog stays inert, matching modality.
         trapWheel(this);
 
-        // Claims the Tab key for the whole dialog subtree so the framework's
-        // opt-in FocusTraversal service (if enabled) stands down entirely
-        // while this dialog is open, leaving the trap below in exclusive
-        // control — same mechanism CodeEditor/MarkdownEditor/Table use for
-        // their own Tab handling. See FocusTraversal's Architecture Decisions.
+        // Marks the whole dialog subtree as owning the Tab key — the mechanism
+        // CodeEditor/MarkdownEditor/Table use for their own Tab handling. The
+        // dialog itself contains no focus: registering above made everything
+        // outside it inert, and LayerManager wraps Tab at its edges. The mark
+        // is the bound descendantTabKeyOwner() walks up to, so the dialog can
+        // tell a descendant's claim from its own when it releases an embedded
+        // editor on Escape.
         this.setTabKeyOwner(true);
 
         this.scheduleLayout();
@@ -1064,7 +1066,9 @@ class Dialog extends Component implements DismissableLayer {
      * `initialFocus` component, then the first focusable element in the content
      * region, so a form field — not the title-bar close button, which is first in
      * DOM order — receives focus on open. Falls back to the primary action
-     * button, then to the first focusable element anywhere in the dialog.
+     * button, then to the first focusable element anywhere in the dialog, and
+     * to the dialog's own element when it holds nothing focusable, rather
+     * than leaving it on the opener behind the dialog.
      *
      * @remarks Must run after the dialog's first layout, which re-parents the
      * content into its frame and would blur anything focused before it.
@@ -1079,7 +1083,7 @@ class Dialog extends Component implements DismissableLayer {
         }
 
         const contentEl = this._contentContainer.getElement();
-        const inContent = contentEl ? DOM.source.querySelectorAll(contentEl, FOCUSABLE_SELECTOR) : [];
+        const inContent = contentEl ? visibleFocusable(contentEl) : [];
 
         if (inContent.length > 0) {
             DOM.sink.focus(inContent[0]);
@@ -1096,11 +1100,18 @@ class Dialog extends Component implements DismissableLayer {
         }
 
         const el        = this.getElement();
-        const focusable = el ? DOM.source.querySelectorAll(el, FOCUSABLE_SELECTOR) : [];
+        const focusable = el ? visibleFocusable(el) : [];
 
         if (focusable.length > 0) {
             DOM.sink.focus(focusable[0]);
+
+            return;
         }
+
+        // Nothing in the dialog can take focus, so the dialog itself does.
+        // -1: focusable from script, never a Tab stop.
+        this.getAria().setTabIndex(-1);
+        this.focus(true);
     }
 
     /**
@@ -1158,8 +1169,7 @@ class Dialog extends Component implements DismissableLayer {
      * marker for the whole subtree, so the dialog's own claim never answers for
      * one of its children.
      *
-     * @returns The nearest owning descendant, or `null` when focus is in none —
-     *   an owner means the focus trap must stand down.
+     * @returns The nearest owning descendant, or `null` when focus is in none.
      */
     private descendantTabKeyOwner(): Handle | null {
         const el     = this.getElement();
@@ -1173,33 +1183,32 @@ class Dialog extends Component implements DismissableLayer {
     }
 
     /**
-     * Collects all currently focusable elements inside the dialog.
+     * Collects the dialog's stops: the focusable elements inside it that are
+     * enabled and rendered.
      *
      * @returns An array of focusable elements in DOM order.
      */
     private getFocusable(): Handle[] {
         const el = this.getElement();
 
-        if (!el) {
-            return [];
-        }
-
-        return DOM.source.querySelectorAll(el, FOCUSABLE_SELECTOR)
-            .filter(el => !DOM.source.hasAttribute(el, 'disabled'));
+        return el ? visibleFocusable(el) : [];
     }
 
     /**
-     * Handles document-level keydown events: the Tab focus trap and its Escape
-     * release, and Enter-to-confirm.
+     * Handles document-level keydown events: the Tab that steps past an
+     * embedded editor Escape has released, and Enter-to-confirm. Keeping focus
+     * inside the dialog is not done here — `LayerManager` does that for every
+     * modal layer.
      *
      * @param e - The keyboard event.
-     * @returns A stop-and-prevent disposition when the dialog handles the key (the Tab trap, or Enter); nothing otherwise, so unhandled keys keep propagating.
+     * @returns A stop-and-prevent disposition when the dialog handles the key (the Tab past a released editor, or Enter); nothing otherwise, so unhandled keys keep propagating.
      */
     private onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         // Escape is owned by LayerManager's keydown handler, which asks the
         // topmost non-manual layer to close (this dialog when it is on top) —
-        // see requestClose() for the Escape release. The dialog keeps only the
-        // Tab focus-trap and the Enter-confirms-the-primary shortcut here.
+        // see requestClose() for the Escape release. LayerManager also wraps
+        // Tab at the dialog's edges. The dialog keeps only the Tab that
+        // consumes that release and the Enter-confirms-the-primary shortcut.
         //
         // Both are scoped to "I am the topmost layer": every open Dialog gets
         // this same keydown broadcast (that's the event dispatcher's policy,
@@ -1229,49 +1238,23 @@ class Dialog extends Component implements DismissableLayer {
     }
 
     /**
-     * The Tab focus trap. A descendant that owns the Tab key handles it itself
-     * — the same stand-down `FocusTraversal` performs, reading the same marker
-     * — unless an Escape released that owner, in which case the Tab steps past
-     * it. Otherwise focus wraps at either end of the dialog.
+     * Steps past a descendant that owns the Tab key — a `CodeEditor`, a
+     * `MarkdownEditor`, a `Table` — once an Escape has released it. That is
+     * the method's only job: an owner that has not been released keeps its
+     * Tab, and every other Tab is left alone, since `LayerManager` wraps focus
+     * at the dialog's edges.
      *
      * @param e - The Tab keydown.
-     * @returns A stop-and-prevent disposition when the dialog moves or holds focus; nothing when the owner or the browser handles the Tab.
+     * @returns A stop-and-prevent disposition when the Tab stepped past a released owner; nothing otherwise.
      */
     private onTab(e: KeyboardEvent): Event.ListenerResult {
         const owner = this.descendantTabKeyOwner();
 
-        if (owner !== null) {
-            if (owner !== this._releaseOwner) {
-                return; // the owner keeps Tab.
-            }
-
-            return this.stepPastOwner(owner, e.shiftKey);
+        if (owner === null || owner !== this._releaseOwner) {
+            return; // LayerManager wraps focus at the dialog's edges; an unreleased owner keeps its Tab.
         }
 
-        const focusable = this.getFocusable();
-
-        if (focusable.length === 0) {
-            return { stop: true, prevent: true };
-        }
-
-        const first = focusable[0];
-        const last  = focusable[focusable.length - 1];
-
-        if (e.shiftKey) {
-            if (DOM.source.getActiveElement() === first) {
-                DOM.sink.focus(last);
-
-                return { stop: true, prevent: true };
-            }
-        } else {
-            if (DOM.source.getActiveElement() === last) {
-                DOM.sink.focus(first);
-
-                return { stop: true, prevent: true };
-            }
-        }
-
-        return;
+        return this.stepPastOwner(owner, e.shiftKey);
     }
 
     /**
@@ -1590,7 +1573,9 @@ class Dialog extends Component implements DismissableLayer {
      * Returns the dismiss mode the document-level handlers consult. A dialog
      * is `"modal"`: the manager neither dismisses ancestors on an outside
      * interaction nor lets one fall through, and it owns the Escape-to-close
-     * shortcut. The dialog keeps its own Tab focus-trap.
+     * shortcut. While the dialog is open the manager also makes everything
+     * outside it inert and wraps Tab at its edges; the dialog itself only
+     * releases an embedded editor on Escape.
      *
      * @returns The layer dismiss mode.
      */
@@ -1656,6 +1641,17 @@ class Dialog extends Component implements DismissableLayer {
      */
     keepsOwnBand(): boolean {
         return true;
+    }
+
+    /**
+     * Mirrors the manager's inert decision onto the dialog panel: `true` while a
+     * modal layer this dialog does not belong to is open, `false` when it is live
+     * again.
+     *
+     * @param inert - Whether the dialog panel must be inert now.
+     */
+    onInertChanged(inert: boolean): void {
+        this.setInertAttribute(inert);
     }
 
     /**

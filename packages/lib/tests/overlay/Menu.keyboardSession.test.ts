@@ -40,9 +40,10 @@ import { TimeEditor } from '~/component/table/cell/editor/Time';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import type { Handle, Rect } from '~/core/DOM';
-import { LayerManager } from '~/core/LayerManager';
+import { LayerManager, type DismissableLayer } from '~/core/LayerManager';
+import { FOCUSABLE_SELECTOR } from '~/core/Focusable';
 import { SpatialNavigation } from '~/core/SpatialNavigation';
-import { installTestDOM, makeEvent, setConnected } from '../dom/TestDOM';
+import { installTestDOM, makeEvent, setConnected, setQuerySelectorAllResult } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -650,6 +651,89 @@ describe('Menu keyboard session — keys on a focused menu', () => {
         expect(press(menu, 'Tab', { shiftKey: true })).toEqual(PASSED);
         expect(isTopLayer(menu)).toBe(false);
         expect(active()).toBe(openerEl);
+    });
+
+    // modal-dialog-focus-trap plan, Expected Behaviour "Menu". Tab closes the
+    // menu and returns focus to the element it was opened from; when that
+    // element is the last stop of a modal layer the key would then carry focus
+    // out of it, so the menu asks LayerManager where focus goes instead. N4 is
+    // K7 above: with no modal layer open nothing changes.
+    describe('inside a modal layer', () => {
+        let modal: DismissableLayer;
+        let first: Handle;
+        let middle: Handle;
+        let last: Handle;
+
+        beforeEach(() => {
+            const layerEl = DOM.sink.createElement('div');
+
+            [first, middle, last] = [0, 1, 2].map(() => {
+                const stop = DOM.sink.createElement('input');
+
+                DOM.sink.appendChild(layerEl, stop);
+                setConnected(stop, true);
+
+                return stop;
+            });
+
+            setQuerySelectorAllResult(layerEl, FOCUSABLE_SELECTOR, [first, middle, last]);
+
+            modal = {
+                getLayerElement: () => layerEl,
+                getDismissMode:  () => 'modal',
+                requestClose:    () => undefined,
+            };
+
+            LayerManager.register(modal);
+        });
+
+        afterEach(() => {
+            LayerManager.unregister(modal);
+        });
+
+        /** Opens a menu from the keyboard with focus on `stop`. */
+        function showFrom(stop: Handle): Menu {
+            // Built first: constructing a menu is what starts the input watch.
+            const menu = makeMenu();
+
+            DOM.sink.focus(stop);
+            keyInput(stop);
+
+            return menu.show(AT, AT, standardItems());
+        }
+
+        it('N1: Tab on a menu opened from the modal\'s last stop wraps focus to its first stop', () => {
+            const menu = showFrom(last);
+
+            expect(active()).toBe(menu.getElement());
+            expect(press(menu, 'Tab')).toEqual(CONSUMED);
+            expect(isTopLayer(menu)).toBe(false);
+            expect(active()).toBe(first);
+        });
+
+        it('N2: Shift+Tab on a menu opened from the modal\'s first stop wraps focus to its last stop', () => {
+            const menu = showFrom(first);
+
+            expect(press(menu, 'Tab', { shiftKey: true })).toEqual(CONSUMED);
+            expect(isTopLayer(menu)).toBe(false);
+            expect(active()).toBe(last);
+        });
+
+        it('N3: Tab on a menu opened from a middle stop returns focus and lets the key continue', () => {
+            const menu = showFrom(middle);
+
+            expect(press(menu, 'Tab')).toEqual(PASSED);
+            expect(isTopLayer(menu)).toBe(false);
+            expect(active()).toBe(middle);
+        });
+
+        it('N3b: Tab away from the edge it was opened on is not wrapped', () => {
+            const menu = showFrom(last);
+
+            // Shift+Tab from the last stop moves backwards, inside the modal.
+            expect(press(menu, 'Tab', { shiftKey: true })).toEqual(PASSED);
+            expect(active()).toBe(last);
+        });
     });
 
     it('K8: the layer manager\'s close request (Escape) closes the menu and returns focus', () => {
