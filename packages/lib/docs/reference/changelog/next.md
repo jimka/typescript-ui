@@ -378,10 +378,11 @@ page resets to empty.
   and a hard-wrapped paragraph shows as one flowing line that saves with its
   line breaks. Hard line breaks keep the form they were written in, and
   Shift+Enter saves as `\` at the line end. A list keeps its bullet (`-`,
-  `*` or `+`) or its `.` / `)` number delimiter. Thematic breaks, HTML, and
-  blockquotes or list items holding several blocks are kept as editable raw
-  Markdown blocks instead of being flattened, so saving no longer corrupts
-  them, and so is a table whose rows hold more cells than its header; a link
+  `*` or `+`) or its `.` / `)` number delimiter, and a list item the blocks
+  it holds. Thematic breaks, HTML, and blockquotes holding several blocks
+  are kept as editable raw Markdown blocks instead of being flattened, so
+  saving no longer corrupts them, and so is a table whose rows hold more
+  cells than its header; a link
   with empty text, or whose whole text is another link, is kept as source
   too, showing the inner link's text as the viewer does; an image the viewer
   will not render shows nothing, as in the viewer. An inline construct the
@@ -1301,14 +1302,74 @@ page resets to empty.
   there. In `MarkdownEditor`, an HTML block edited down to such a line at
   the end of the document or of a column stayed a raw Markdown block while
   its save read as a paragraph, so it came back as a paragraph on the next
-  load; the save now reads as the editor shows it. A list or blockquote in
-  which such a line reads as an HTML block now loads as a raw Markdown
-  block, as one holding `<div>` already did. That is the only or the last
-  line of a list item, the only line of a quote, a `>` line that a line
-  without `>` follows, and a last line without `>` after a quote. In
+  load; the save now reads as the editor shows it. A blockquote in which
+  such a line reads as an HTML block now loads as a raw Markdown block, as
+  one holding `<div>` already did. That is the only line of a quote, a `>`
+  line that a line without `>` follows, and a last line without `>` after a
+  quote. In a list item such a line is a raw Markdown block of that item,
+  as `<div>` is there; right under the item's text in a tight list (one
+  with no blank line between its items or between an item's blocks), it
+  keeps the whole list a raw Markdown block. In
   `"source"` mode the format toggles and the block commands decline on such
   a last line, as they do on any line of an HTML block. No consumer action
   is needed.
+
+- **`MarkdownEditor` keeps a list whose item holds a block.** Pasting several
+  blocks into a nested list item, or **Insert line after block** inside a
+  nested list, leaves a paragraph, heading, code block, table, quote or `:::`
+  fence inside the outer list item. The save wrote it and the viewer showed
+  it, but loading that Markdown again — or switching to source mode and back —
+  showed the whole list as a raw Markdown block. A list whose items hold such
+  blocks, written by the editor or by hand, now loads as a list, each block a
+  block of its item; an HTML block or a link reference definition in an item
+  is a raw Markdown block of that item. A task list with a blank line between
+  its items loaded as a raw block for a related reason and now loads as a list
+  too. A list still loads as a raw block when it is tight — no blank line
+  between its items or between an item's blocks — and an item holds a block
+  right under another, other than a nested list under its text; or when an
+  item holds Markdown kept as a raw block that would not read the same
+  wherever it stands in the item: a quote that ends on a line without `>`
+  starting an HTML block (`> q` over `<div`), which reads as part of the quote
+  or as a block after it depending on what follows the item, or text that only
+  reads as it does with spaces before its first line. A nested list that still
+  loads as a raw block is a raw block of its item, and the list around it
+  loads by the same rule as any list. A raw Markdown block in a list item is
+  saved without an empty first or last line and without the spaces before it
+  that mean nothing to Markdown, which would move it out of its item; when an
+  edit leaves raw text that would read otherwise in its item than on its own,
+  the editor reads the whole list again as its save reads. No block stays
+  inside a paragraph, heading, quote, code block or raw block: joining a list
+  item to the block before it joins the item's text and leaves the blocks the
+  item held after that block, where their text used to be written into its
+  line, and a list pasted into a table cell, a code block or a raw block gives
+  each block of an item a line of its own. A copied list is pasted with the
+  paragraphs its items hold, where Lexical's own paste merged them into the
+  item's text, and a format the editor declines leaves them alone. Editing an
+  item's own text leaves its blocks as blocks: Enter moves what follows the
+  caret into the new item with them, and text typed or pasted over all of that
+  text replaces only it. A nested item moved out of its list (Backspace at its
+  start, a block type or the list toggle set on it) takes along the blocks the
+  outer item holds after that list, which Lexical dropped; a code block made
+  of an item takes the item's text and leaves its blocks after it; and
+  deleting everything a list's only item holds leaves an empty item. Blocks
+  pasted into a block that a list item holds (a further paragraph, a heading
+  or a quote) still go in as text on that block's line, as Lexical inserts
+  them. Repeated link reference definitions a blank line apart are now a
+  raw block each, as first definitions are, and a blank line typed between two
+  definition lines splits their block the same way. No consumer action is
+  needed.
+
+- **`Markdown` renders a `:::` fence in a list item as blocks.** The first
+  column of a fence standing in a list item before any nested list printed its
+  paragraphs as literal text: `**bold**` kept its asterisks. Its content is
+  now read as blocks, as in a fence anywhere else. `MarkdownEditor` loads
+  these documents the same way. No consumer action is needed.
+
+- **`MarkdownEditor` saves a thematic break that opens a list item as an
+  item.** A raw `---` block opening an item of a `-` list was saved as
+  `- ---`, which Markdown reads as one thematic break that ends the list.
+  The marker is now written on a line of its own, with the break under it.
+  No consumer action is needed.
 
 ### Core
 
