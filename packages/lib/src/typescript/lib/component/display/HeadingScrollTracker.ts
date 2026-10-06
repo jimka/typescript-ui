@@ -108,6 +108,10 @@ export class HeadingScrollTracker {
      * render but land in the one document-wide id space, and a document-wide
      * lookup would hand the second pane the first pane's element.
      *
+     * The scroll starts from the element's current offset, not from the
+     * host's remembered one: the browser also scrolls the pane on its own,
+     * and the host does not hear of it.
+     *
      * @param scrollElement - The pane's scroll-owning element: both the pane
      *   top the heading is scrolled to, and the subtree the heading is
      *   resolved within.
@@ -121,9 +125,13 @@ export class HeadingScrollTracker {
         }
 
         const headingTop = DOM.source.getElementRect(heading).top;
-        const paneTop     = DOM.source.getElementRect(scrollElement).top;
+        const paneTop    = DOM.source.getElementRect(scrollElement).top;
+        // The host's own offset is the value last written through it. The
+        // browser also scrolls the pane on its own — a key press, a text
+        // selection drag — so the starting offset is read from the element.
+        const current    = DOM.source.getScrollTop(scrollElement);
 
-        this._host.setScrollTop(this._host.getScrollTop() + (headingTop - paneTop));
+        this._host.setScrollTop(current + (headingTop - paneTop));
         this._pendingClickScrollTop = this._host.getScrollTop();
 
         this.setActiveHeading(id);

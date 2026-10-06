@@ -189,6 +189,36 @@ describe('VirtualScroller getViewportWidth', () => {
     });
 });
 
+// Cases T1–T2 of plans/implemented/scroll-reveal-geometry-fixes.md: the
+// vertical twin of the block above. An owner tests a row against this height,
+// not against its own, to tell whether the row is in view.
+describe('VirtualScroller getViewportHeight', () => {
+    afterEach(() => DOM.reset());
+
+    it('T1: reserves the horizontal track width when the horizontal bar is visible', () => {
+        installTestDOM(CONFIG);
+
+        const { scroller } = makeScroller(200, 400);
+
+        // Content wider than the owner (horizontal bar shows) but shorter than
+        // the effective height (100 < 400 - track), so no vertical bar.
+        scroller.layoutScrollbars(1000, 100);
+
+        expect(scroller.getViewportHeight()).toBe(400 - TRACK_WIDTH);
+    });
+
+    it('T2: returns the full owner height when no horizontal bar is needed', () => {
+        installTestDOM(CONFIG);
+
+        const { scroller } = makeScroller(200, 400);
+
+        // Content fits on both axes → no bar → no height reservation.
+        scroller.layoutScrollbars(100, 300);
+
+        expect(scroller.getViewportHeight()).toBe(400);
+    });
+});
+
 /** Reads a shadow edge's cached strength (0–100), as `setShadowEdge` caches it. */
 function shadowEdge(scroller: VirtualScroller, edge: 'top' | 'bottom' | 'left' | 'right'): number {
     return (scroller as unknown as { _shadowEdges: Record<string, number> })._shadowEdges[edge];

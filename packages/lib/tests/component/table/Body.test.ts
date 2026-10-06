@@ -69,6 +69,8 @@ function body(viewportWidth: number, colWidths: number[]): Body {
 
     b.getElement(true);          // materialise → init() builds the scroller
     b.setWidth(viewportWidth);   // committed viewport for getWidth()
+    b.setHeight(100);            // and a height, so the scroller does not reserve
+                                 // a vertical bar for a zero-height viewport
 
     const total = colWidths.reduce((s, w) => s + w, 0);
     (b as any)._lastColumnWidths = colWidths;
@@ -212,6 +214,17 @@ describe('Body.scrollColumnIntoView', () => {
         (b as any)._scroller.setScrollX(0);
 
         (b as any).scrollColumnIntoView(9);
+
+        expect(scrollX(b)).toBe(0);
+    });
+
+    // Case T8 of plans/implemented/scroll-reveal-geometry-fixes.md.
+    it('T8: reveals a column cut by the left edge by scrolling to its left edge', () => {
+        const b = body(300, [100, 100, 100, 100, 100]);
+        (b as any)._scroller.setScrollX(150);
+
+        // Column 0 spans [0, 100]; the viewport starts at 150.
+        (b as any).scrollColumnIntoView(0);
 
         expect(scrollX(b)).toBe(0);
     });
@@ -499,7 +512,10 @@ describe('Body virtual-scroll — scrollRecordIntoView', () => {
 
         (b as any).scrollRecordIntoView(recs[50]);
 
-        expect(p._scroller.getScrollY()).toBe(51 * rh - 100);
+        // 100 rows and three 100 px columns in a 300 × 100 body raise both
+        // scrollbars, so the viewport is 88 px high.
+        expect(p._scroller.getViewportHeight()).toBe(88);
+        expect(p._scroller.getScrollY()).toBe(51 * rh - 88);
     });
 
     it('leaves the scroll position unchanged when the record is already visible', async () => {
@@ -509,6 +525,99 @@ describe('Body virtual-scroll — scrollRecordIntoView', () => {
         (b as any).scrollRecordIntoView(recs[0]);
 
         expect(p._scroller.getScrollY()).toBe(0);
+    });
+});
+
+// Cases T3–T7 of plans/implemented/scroll-reveal-geometry-fixes.md. A body's
+// viewport is the scroller's, not its own outer box: it lies inside the body's
+// border and stops short of a visible scrollbar's 12 px track. A row or a
+// column is revealed against that viewport, and a page is the whole rows it
+// shows.
+//
+// `bodyWith(100, 100)` holds 100 rows of 20 px and three 100 px columns in a
+// 300 × 100 box. The rows overflow, so the vertical bar shows and takes 12 px
+// of width; the three columns then overflow the 288 px left, so the horizontal
+// bar shows too and takes 12 px of height.
+describe('Body reveals against the scroller\'s viewport', () => {
+    /**
+     * `bodyWith(100, 100)` with a 2 px border, set before the element exists.
+     *
+     * @returns The body and its records.
+     */
+    async function borderedBody(): Promise<{ b: Body; recs: ReturnType<MemoryStore['getAll']> }> {
+        const store = new MemoryStore(MODEL, Array.from({ length: 100 }, (_, i) => ({ a: String(i) })));
+        await store.load();
+
+        const b = new Body(store);
+        b.setBorder('2px solid red');
+        b.getElement(true);
+        b.setWidth(300);
+        b.setHeight(100);
+        (b as any).renderWindow(300, [100, 100, 100]);
+
+        return { b, recs: store.getAll() };
+    }
+
+    it('T3: both scrollbars showing leave a 288 × 88 viewport', async () => {
+        const { b } = await bodyWith(100, 100);
+        const p = b as any;
+
+        expect(p._scroller.getViewportHeight()).toBe(88);
+        expect(p._scroller.getViewportWidth()).toBe(288);
+    });
+
+    it('T4: a record below the viewport lands above the horizontal scrollbar', async () => {
+        const { b, recs } = await bodyWith(100, 100);
+        const p = b as any;
+        const rh = p._rowHeight;
+
+        p.scrollRecordIntoView(recs[50]);
+
+        expect(rh).toBe(20);
+        expect(p._scroller.getScrollY()).toBe(51 * rh - 88);
+        expect(p._scroller.getScrollY()).toBe(932);
+    });
+
+    it('T5: a column cut by the vertical scrollbar lands left of it', async () => {
+        const { b } = await bodyWith(100, 100);
+        const p = b as any;
+
+        // Column 2 spans [200, 300] and the viewport is 288 wide.
+        p.scrollColumnIntoView(2);
+
+        expect(p._scroller.getScrollX()).toBe(12);
+    });
+
+    it('T6: a page is the whole rows the viewport shows', async () => {
+        // Viewports of 88, 228 and 240 px over 20 px rows; the outer heights
+        // 100, 240 and 252 would give 5, 12 and 12.
+        const short  = await bodyWith(100, 100);
+        const medium = await bodyWith(100, 240);
+        const tall   = await bodyWith(100, 252);
+
+        expect((short.b  as any).computePageSize()).toBe(4);
+        expect((medium.b as any).computePageSize()).toBe(11);
+        expect((tall.b   as any).computePageSize()).toBe(12);
+    });
+
+    it('T7: a border narrows the viewport by its width on each side', async () => {
+        const { b, recs } = await borderedBody();
+        const p = b as any;
+        const rh = p._rowHeight;
+
+        expect(b.getBorderSize().top).toBe(2);
+        expect(p._scroller.getViewportWidth()).toBe(284);
+        expect(p._scroller.getViewportHeight()).toBe(84);
+
+        p.scrollRecordIntoView(recs[50]);
+
+        expect(p._scroller.getScrollY()).toBe(51 * rh - 84);
+        expect(p._scroller.getScrollY()).toBe(936);
+
+        // Column 2 spans [200, 300] and the viewport is 284 wide.
+        p.scrollColumnIntoView(2);
+
+        expect(p._scroller.getScrollX()).toBe(16);
     });
 });
 

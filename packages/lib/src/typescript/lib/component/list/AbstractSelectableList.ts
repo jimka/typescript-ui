@@ -2140,6 +2140,19 @@ abstract class AbstractSelectableList<
     }
 
     /**
+     * Computes the number of whole rows a page-nav keystroke should move by:
+     * the whole rows the inner panel's scroll viewport shows, and at least
+     * one. The viewport is measured, so only `PageUp` and `PageDown` ask.
+     *
+     * @returns The page size in rows.
+     */
+    private computePageSize(): number {
+        const viewportHeight = this._innerPanel.getScrollViewportRect()?.height || ROW_HEIGHT_PX;
+
+        return Math.max(1, Math.floor(viewportHeight / ROW_HEIGHT_PX));
+    }
+
+    /**
      * Subset of `handleKeyDown` that processes the arrow / Home / End /
      * Page-* navigation keys. Returns `true` when a key was handled so
      * the caller can skip the remaining branches.
@@ -2180,9 +2193,7 @@ abstract class AbstractSelectableList<
             return true;
         }
 
-        const viewportH = this.getHeight() || ROW_HEIGHT_PX;
-        const pageSize  = Math.max(1, Math.floor(viewportH / ROW_HEIGHT_PX));
-        const curr      = this._focusedIndex;
+        const curr = this._focusedIndex;
         let next: number;
 
         if (e.key === "ArrowDown") {
@@ -2190,9 +2201,9 @@ abstract class AbstractSelectableList<
         } else if (e.key === "ArrowUp") {
             next = Math.max(curr - 1, 0);
         } else if (e.key === "PageDown") {
-            next = Math.min(curr + pageSize, this._items.length - 1);
+            next = Math.min(curr + this.computePageSize(), this._items.length - 1);
         } else if (e.key === "PageUp") {
-            next = Math.max(curr - pageSize, 0);
+            next = Math.max(curr - this.computePageSize(), 0);
         } else if (e.key === "Home") {
             next = 0;
         } else {
@@ -2310,10 +2321,10 @@ abstract class AbstractSelectableList<
     /**
      * Scrolls the inner panel vertically, by the least distance, so the row
      * at `idx` is fully visible; writes nothing when it already is. The
-     * horizontal offset is never touched. Reads the viewport height from the
-     * panel's inner size and the offset through the panel's scroll API, so
-     * the same code serves both scrollbar styles. Does nothing while the
-     * panel is unrendered or not effectively visible.
+     * horizontal offset is never touched. Delegates to the inner panel's
+     * `revealSpan`, which measures the viewport, re-reads the scroll offset,
+     * and does nothing while the panel is unrendered or not effectively
+     * visible.
      *
      * @param idx - The row index to scroll into view.
      */
@@ -2322,28 +2333,9 @@ abstract class AbstractSelectableList<
             return;
         }
 
-        const panel    = this._innerPanel;
-        const viewport = panel.getInnerSize();
-        const visible  = panel.isEffectivelyVisible();
+        const top = idx * ROW_HEIGHT_PX;
 
-        if (!viewport || !visible) {
-            return;
-        }
-
-        // The browser also scrolls the panel on its own — a touch pan, a drag of
-        // a native scrollbar — and the panel's remembered offset does not hear
-        // of it. Re-read it, or the comparison below is against a stale value.
-        panel.syncScrollOffsets();
-
-        const top       = idx * ROW_HEIGHT_PX;
-        const bottom    = top + ROW_HEIGHT_PX;
-        const scrollTop = panel.getScrollTop();
-
-        if (top < scrollTop) {
-            panel.setScrollTop(top);
-        } else if (bottom > scrollTop + viewport.height) {
-            panel.setScrollTop(bottom - viewport.height);
-        }
+        this._innerPanel.revealSpan("y", top, top + ROW_HEIGHT_PX);
     }
 }
 

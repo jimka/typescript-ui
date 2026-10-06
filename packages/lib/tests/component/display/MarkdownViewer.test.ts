@@ -316,6 +316,39 @@ describe('MarkdownViewer minimap-select scrolls to the heading', () => {
 
         expect(viewer.getScrollTop()).toBe(500);
     });
+
+    // Case H1 of plans/implemented/scroll-reveal-geometry-fixes.md. The viewer
+    // remembers the offset last written through `setScrollTop`. A scroll the
+    // browser makes on its own — `PageDown` with the prose focused, a text
+    // selection drag — moves the pane without the viewer hearing of it, so the
+    // scroll to a heading must start from the pane's real offset.
+    it('H1: a minimap click lands on the heading after the browser scrolled the pane on its own', () => {
+        installTestDOM(CONFIG);
+
+        const viewer = new MarkdownViewer({ markdown: SOURCE }) as any;
+        viewer.getElement(true);
+
+        DOM.sink.apply(viewer._content.getElement(true), { style: { left: '0px', top: '0px', width: '400px', height: '300px' } });
+
+        const roots = viewer._minimap._tree.getNodes() as TreeNode[];
+        const gettingStartedId = roots[0].children![0].data as string;
+
+        // The heading sits 500 px down the document.
+        stageHeading(gettingStartedId, 500);
+
+        const scrollElement = viewer._content.getContentScrollElement();
+
+        // The browser scrolls the pane by 300: a write straight on the
+        // scrolling element, which goes around the viewer's `setScrollTop`.
+        DOM.sink.apply(scrollElement, { scrollTop: 300 });
+
+        expect(viewer.getScrollTop()).toBe(0);
+
+        viewer._minimap.emit('select', gettingStartedId);
+
+        expect(DOM.source.getScrollTop(scrollElement)).toBe(500);
+        expect(viewer.getScrollTop()).toBe(500);
+    });
 });
 
 // Drives the registered "scroll" handler directly rather than a real DOM

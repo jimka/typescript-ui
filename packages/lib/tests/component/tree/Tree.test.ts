@@ -1238,6 +1238,79 @@ describe('Tree — rows fill the effective viewport width', () => {
     });
 });
 
+// Cases T9–T11 of plans/implemented/scroll-reveal-geometry-fixes.md. A tree's
+// viewport is its scroller's, not its own outer box: it lies inside the tree's
+// border and stops short of a visible horizontal scrollbar's 12 px track. The
+// last of ten 24 px rows ends at 240, so revealing it scrolls to 240 less the
+// viewport's height.
+describe('Tree — a revealed row clears the border and the horizontal scrollbar', () => {
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => DOM.reset());
+
+    // Single chars from the baked font: no row is wider than the tree.
+    const SHORT_LABELS = ['H', 'e', 'l', 'o', 'W', 'r', 'd', 'x', 'X', 'o'];
+
+    // One label wide enough to overflow the 200 px tree and raise the
+    // horizontal scrollbar.
+    const WIDE_LABEL = 'Hello World Hello World Hello World Hello World Hello World';
+
+    type TreeInternals = {
+        _scroller: { getViewportHeight(): number; getScrollY(): number };
+        scrollRowIntoView(index: number): void;
+    };
+
+    /**
+     * Mounts a 200 × 120 tree of ten root rows.
+     *
+     * @param labels - The ten row labels.
+     * @param border - A border to set before the element exists.
+     * @returns The tree, and its protected surface.
+     */
+    function mountTree(labels: string[], border?: string): { tree: _Tree; priv: TreeInternals } {
+        const tree = new _Tree();
+
+        if (border) {
+            tree.setBorder(border);
+        }
+
+        tree.getElement(true);   // wires the VirtualScroller
+        tree.setWidth(200);
+        tree.setHeight(120);
+        tree.setNodes(labels.map(label => ({ label })));
+
+        return { tree, priv: tree as unknown as TreeInternals };
+    }
+
+    it('T9: with no border and no horizontal bar the viewport is the tree\'s height', () => {
+        const { priv } = mountTree(SHORT_LABELS);
+
+        priv.scrollRowIntoView(9);
+
+        expect(priv._scroller.getViewportHeight()).toBe(120);
+        expect(priv._scroller.getScrollY()).toBe(120);
+    });
+
+    it('T10: a horizontal scrollbar takes its track out of the viewport', () => {
+        const { priv } = mountTree([WIDE_LABEL, ...SHORT_LABELS.slice(1)]);
+
+        priv.scrollRowIntoView(9);
+
+        expect(priv._scroller.getViewportHeight()).toBe(108);
+        expect(priv._scroller.getScrollY()).toBe(132);
+    });
+
+    it('T11: a border takes its width out of the viewport as well', () => {
+        const { tree, priv } = mountTree([WIDE_LABEL, ...SHORT_LABELS.slice(1)], '2px solid red');
+
+        expect(tree.getBorderSize().top).toBe(2);
+
+        priv.scrollRowIntoView(9);
+
+        expect(priv._scroller.getViewportHeight()).toBe(104);
+        expect(priv._scroller.getScrollY()).toBe(136);
+    });
+});
+
 describe('Tree rowOverflow', () => {
     afterEach(() => DOM.reset());
 
