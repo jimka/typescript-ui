@@ -588,6 +588,13 @@ describe('Markdown block fence (alignment / columns)', () => {
         expect(styleWrites(divs[0]!)).toEqual({});
         expect(childTagsOfHandle(divs[1]!)).toEqual(['P']);
     });
+
+    it('V1: a fence opening a list item renders its paragraph as a p, with its inline formatting', () => {
+        const md = new Markdown('- ::: {align=center}\n  **bold**\n  :::');
+        md.getElement(true);
+
+        expect(createdTags()).toEqual(['div', 'ul', 'li', 'div', 'div', 'p', 'strong']);
+    });
 });
 
 describe('splitColumnSections / joinColumnSections', () => {

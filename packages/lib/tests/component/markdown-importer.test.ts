@@ -3,7 +3,7 @@ import {
     $createLineBreakNode, $createParagraphNode, $createRangeSelection, $getRoot, $getSelection, $getState, $isElementNode, $isLineBreakNode,
     $isParagraphNode, $isRangeSelection, $isTextNode, $setSelection, $setState, $createTextNode, KEY_ENTER_COMMAND,
     SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, PASTE_COMMAND, DELETE_CHARACTER_COMMAND, FORMAT_TEXT_COMMAND, COMMAND_PRIORITY_LOW,
-    UNDO_COMMAND,
+    UNDO_COMMAND, INDENT_CONTENT_COMMAND,
 } from 'lexical';
 import type { ElementNode, LexicalEditor, LexicalNode, RangeSelection, TextNode } from 'lexical';
 import { $createListItemNode, $createListNode, $isListNode, $isListItemNode } from '@lexical/list';
@@ -159,6 +159,40 @@ function expectSurface(editor: MarkdownEditor, source: string): void {
     expect(editorSurfaceModel(editor)).toEqual(viewerModel(source).blocks);
 }
 
+/**
+ * The Lexical types of each item node's children, for the items of a list.
+ *
+ * @param list - The list.
+ * @returns One list of child types per `ListItemNode`.
+ */
+function $itemChildTypes(list: LexicalNode | null): string[][] {
+    return $isListNode(list) ? list.getChildren().filter($isListItemNode).map((item) => item.getChildren().map((child) => child.getType())) : [];
+}
+
+/**
+ * The Lexical types of each item node's children, for the document's first block (a list).
+ *
+ * @param editor - The editor.
+ * @returns One list of child types per `ListItemNode`.
+ */
+function itemChildTypes(editor: MarkdownEditor): string[][] {
+    return readDocument(editor, () => $itemChildTypes($getRoot().getFirstChild()));
+}
+
+/**
+ * The same as {@link itemChildTypes} for the first list nested in the document's first block.
+ *
+ * @param editor - The editor.
+ * @returns One list of child types per `ListItemNode` of that nested list.
+ */
+function nestedItemChildTypes(editor: MarkdownEditor): string[][] {
+    return readDocument(editor, () => {
+        const nested = $dfs($getRoot().getFirstChild() ?? undefined).map((entry) => entry.node).filter($isListNode)[1] ?? null;
+
+        return $itemChildTypes(nested);
+    });
+}
+
 /** Lexical's bold format bit. */
 const BOLD = 1;
 
@@ -243,11 +277,14 @@ describe('$importMarkdown — blocks and inline (I rows)', () => {
         expectSurface(load('- a\n  - nested\n- c'), '- a\n  - nested\n- c');
     });
 
-    it('I11: a list item holding two paragraphs makes the whole list one raw block', () => {
-        const editor = load('- one\n\n  two');
+    it('I11: a list item holding two paragraphs is a list, the second paragraph a block of the item', () => {
+        const source = '- one\n\n  two';
+        const editor = load(source);
 
-        expect(rootTypes(editor)).toEqual(['markdown-raw-block']);
-        expect(rootTexts(editor)).toEqual(['- one\n\n  two']);
+        expect(rootTypes(editor)).toEqual(['list']);
+        expect(itemChildTypes(editor)).toEqual([['text', 'paragraph']]);
+        expectSurface(editor, source);
+        expect(editor.getValue()).toBe(source);
     });
 
     it('I12: indented code is a code node with no language', () => {
@@ -379,15 +416,31 @@ describe('$importMarkdown — blocks and inline (I rows)', () => {
         }
     });
 
-    it('I7/I11 (a dropped definition in a container): a quote or list holding one is kept as a raw block', () => {
-        // marked emits no token for a repeated definition, so the container looks emptier than it is; building it from
+    it('I7 (a dropped definition in a quote): a quote holding one is kept as a raw block', () => {
+        // marked emits no token for a repeated definition, so the quote looks emptier than it is; building it from
         // its tokens would drop that line on save. No source is ever dropped.
-        for (const source of ['[x]: /a\n\n> [x]: /b', '[x]: /a\n\n- [x]: /b\n- c', '[x]: /a\n\n- item\n\n  [x]: /b']) {
-            const editor = load(source);
+        const source = '[x]: /a\n\n> [x]: /b';
+        const editor = load(source);
 
-            expect(rootTypes(editor), source).toEqual(['markdown-raw-block', 'markdown-raw-block']);
-            expect(editor.getValue(), source).toBe(source);
-        }
+        expect(rootTypes(editor)).toEqual(['markdown-raw-block', 'markdown-raw-block']);
+        expect(editor.getValue()).toBe(source);
+    });
+
+    it.each<[string, string[][]]>([
+        ['[x]: /a\n\n- [x]: /b\n- c', [['markdown-raw-block'], ['text']]],
+        ['[x]: /a\n\n- item\n\n  [x]: /b', [['text', 'markdown-raw-block']]],
+        ['[x]: /a\n\n- a\n  - b\n\n  [x]: /b\n\n- c', [['text'], ['list', 'markdown-raw-block'], ['text']]],
+    ])('I11 (a dropped definition in a list item): %j keeps the line as a raw block of its item', (source, types) => {
+        // marked emits no token for a repeated definition; the item's text it left uncovered is built as a raw block,
+        // as uncovered text is at the top level. No source is ever dropped.
+        const editor = load(source);
+        const listTypes = readDocument(editor, () => $itemChildTypes($getRoot().getChildAtIndex(1)));
+
+        expect(rootTypes(editor)).toEqual(['markdown-raw-block', 'list']);
+        expect(listTypes).toEqual(types);
+        expectSurface(editor, source);
+        expect(editor.getValue()).toBe(source);
+        expect(canonicalSave(load(canonicalSave(editor)))).toBe(canonicalSave(editor));
     });
 
     it('I19: an image with a title is a source node showing its alt text', () => {
@@ -1833,13 +1886,13 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
 
     describe('#12 a list next to a raw list with its marker stays its own list', () => {
         const rows: Array<[string, string, string, (editor: MarkdownEditor) => void, string]> = [
-            ['a bullet list after a raw bullet list', '- a\n\n  b\n\n1) x', 'x', (editor) => editor.toggleUnorderedList(), '- a\n\n  b\n\n* x'],
-            ['a bullet list before a raw bullet list', '1) x\n\n- a\n\n  b', 'x', (editor) => editor.toggleUnorderedList(), '* x\n\n- a\n\n  b'],
-            ['an ordered list after a raw ordered list', '1. a\n\n   b\n\n- x', 'x', (editor) => editor.toggleOrderedList(), '1. a\n\n   b\n\n1) x'],
-            ['a bullet list between raw bullet lists of two markers', '- a\n\n  b\n\n1) x\n\n* c\n\n  d', 'x', (editor) => editor.toggleUnorderedList(),
-                '- a\n\n  b\n\n+ x\n\n* c\n\n  d'],
-            ['an ordered list between raw ordered lists of both delimiters', '1. a\n\n   b\n\n- x\n\n1) c\n\n   d', 'x', (editor) => editor.toggleOrderedList(),
-                '1. a\n\n   b\n\n[//]: #\n\n1. x\n\n1) c\n\n   d'],
+            ['a bullet list after a raw bullet list', '- a\n  > b\n\n1) x', 'x', (editor) => editor.toggleUnorderedList(), '- a\n  > b\n\n* x'],
+            ['a bullet list before a raw bullet list', '1) x\n\n- a\n  > b', 'x', (editor) => editor.toggleUnorderedList(), '* x\n\n- a\n  > b'],
+            ['an ordered list after a raw ordered list', '1. a\n   > b\n\n- x', 'x', (editor) => editor.toggleOrderedList(), '1. a\n   > b\n\n1) x'],
+            ['a bullet list between raw bullet lists of two markers', '- a\n  > b\n\n1) x\n\n* c\n  > d', 'x', (editor) => editor.toggleUnorderedList(),
+                '- a\n  > b\n\n+ x\n\n* c\n  > d'],
+            ['an ordered list between raw ordered lists of both delimiters', '1. a\n   > b\n\n- x\n\n1) c\n   > d', 'x', (editor) => editor.toggleOrderedList(),
+                '1. a\n   > b\n\n[//]: #\n\n1. x\n\n1) c\n   > d'],
         ];
 
         for (const [name, source, needle, run, saved] of rows) {
@@ -1858,7 +1911,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         }
 
         it('two raw lists an edit brings together are kept apart by a separator that shows nothing', () => {
-            const editor = load('- a\n\n  b\n\n<!-- x -->\n\n- c\n\n  d');
+            const editor = load('- a\n  > b\n\n<!-- x -->\n\n- c\n  > d');
 
             edit(editor, () => {
                 $getRoot().getChildAtIndex(1)!.remove();
@@ -1866,17 +1919,17 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
 
             const saved = editor.getValue();
 
-            expect(saved).toBe('- a\n\n  b\n\n[//]: #\n\n- c\n\n  d');
+            expect(saved).toBe('- a\n  > b\n\n[//]: #\n\n- c\n  > d');
             expect(viewerModel(saved).blocks.filter((block) => block.kind === 'list')).toHaveLength(2);
         });
 
         it('a loaded list before an indented raw list it would take in is kept apart by a separator that shows nothing', () => {
-            const source = ' - *\n  * 0\n\n    9\nd';
+            const source = ' - *\n  * 0\n    > 9\nd';
             const editor = load(source);
 
             const standard = readDocument(editor, () => $serializeMarkdown());
 
-            expect(standard).toBe('- *\n\n[//]: #\n\n  * 0\n\n    9\nd');
+            expect(standard).toBe('- *\n\n[//]: #\n\n  * 0\n    > 9\nd');
             expect(viewerModel(standard).blocks).toEqual(viewerModel(source).blocks);
         });
     });
@@ -4083,11 +4136,11 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             expectSaveShowsSurface(editor);
         });
 
-        // HE11–HE13 do not compare with the viewer, which shows a list or a quote there: the editor has no rich form
-        // for a list item or a quote holding an HTML block (the round-trip harness's known `listItemBlocks` and
-        // `quoteBlocks` divergences).
+        // HE11 and HE12 do not compare with the viewer, which shows a list or a quote there: the editor has no rich
+        // form for a quote holding an HTML block, or for a list whose item holds one right under its text (the
+        // round-trip harness's known `quoteBlocks` and `listItemBlocks` divergences).
         it.each([
-            ['HE11', 'a raw list', '- <div>', '- <div'],
+            ['HE11', 'a raw list', '- a\n  <div>', '- a\n  <div'],
             ['HE12', 'a raw quote', '> <div>', '> <div'],
         ])('%s. %s whose HTML block is cut down to its tag name stays a raw block, also after a reload', (_row, _what, source, cut) => {
             const editor = backspaceOver(source, ['<div>', 4], ['<div>', 5]);
@@ -4101,13 +4154,83 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             expect(rootTypes(reloaded)).toEqual(['markdown-raw-block']);
         });
 
-        it('HE13. a raw list whose second paragraph is an HTML block cut down to its tag name stays a raw block (control)', () => {
-            const editor = backspaceOver('- a\n\n  <div>', ['<div>', 4], ['<div>', 5]);
-            const value = editor.getValue();
+        it.each([
+            ['HE13', 'opening a list item', '- <div>', '- <div', [['markdown-raw-block']]],
+            ['HE14', 'under a list item\'s text', '- a\n\n  <div>', '- a\n\n  <div', [['text', 'markdown-raw-block']]],
+        ])('%s. an HTML block %s cut down to its tag name stays a raw block of that item, also after a reload', (_row, _where, source, cut, types) => {
+            const editor = backspaceOver(source, ['<div>', 4], ['<div>', 5]);
+            const reloaded = load(cut);
 
-            expect(rootTypes(editor)).toEqual(['markdown-raw-block']);
-            expect(value).toBe('- a\n\n  <div');
-            expect(load(value).getValue()).toBe(value);
+            expect(rootTypes(editor)).toEqual(['list']);
+            expect(itemChildTypes(editor)).toEqual(types);
+            expect(editor.getValue()).toBe(cut);
+            expectSaveShowsSurface(editor);
+            expect(rootTypes(reloaded)).toEqual(['list']);
+            expect(itemChildTypes(reloaded)).toEqual(types);
+        });
+
+        // A nested list of the same item stands in an item node of its own, after the one holding the raw block.
+        it.each([
+            ['HE15', 'a comment before the item\'s nested list', '- a\n\n  <!-- c -->\n\n  - n\n\n- b', '<!-- c -->'],
+            ['HE16', 'a comment between the item\'s two nested lists', '- a\n  - b\n\n  <!-- c -->\n\n  * d', '<!-- c -->'],
+        ])('%s. %s left open shows as the paragraph it saves as, the nested list after it its own', (_row, _where, source, needle) => {
+            const editor = backspaceOver(source, [needle, needle.length - 3], [needle, needle.length]);
+            const reloaded = load(editor.getValue());
+
+            expect(rootTypes(editor)).toEqual(['list']);
+            expect(itemChildTypes(editor).flat()).not.toContain('markdown-raw-block');
+            expect(itemChildTypes(editor).flat()).toContain('paragraph');
+            expectSaveShowsSurface(editor);
+            expect(editorSurfaceModel(reloaded)).toEqual(editorSurfaceModel(editor));
+        });
+
+        it('HE17. a block tag name before the item\'s nested list keeps its second blank line through an edit elsewhere', () => {
+            const source = '- a\n\n  <div\n\n\n  - n\n\n- b';
+            const editor = load(source);
+
+            expectSurface(editor, source);
+            select(editor, ['b', 1]);
+            edit(editor, () => {
+                ($getSelection() as RangeSelection).insertText('X');
+            });
+
+            expect(editor.getValue()).toBe('- a\n\n  <div\n\n\n  - n\n\n- bX');
+            expectSaveShowsSurface(editor);
+            expect(viewerModel(canonicalSave(editor)).blocks).toEqual(editorSurfaceModel(editor));
+        });
+
+        it('HE18. a raw list set to text holding a definition the document repeats shows as the list its save loads as', () => {
+            const editor = load('[x]: /a\n\n- a\n  > q\n- [x]: /b');
+
+            expect(rootTypes(editor)).toEqual(['markdown-raw-block', 'markdown-raw-block']);
+            // The quote's line is removed, which leaves a list the editor can build.
+            select(editor, ['- a', 3], ['  > q', 5]);
+            edit(editor, () => {
+                lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+            });
+
+            const reloaded = load(editor.getValue());
+
+            expect(editor.getValue()).toBe('[x]: /a\n\n- a\n- [x]: /b');
+            expect(rootTypes(editor)).toEqual(['markdown-raw-block', 'list']);
+            expect(rootTypes(reloaded)).toEqual(['markdown-raw-block', 'list']);
+            expectSaveShowsSurface(editor);
+            expect(editorSurfaceModel(reloaded)).toEqual(editorSurfaceModel(editor));
+        });
+
+        it('HE19. a comment left open in a list item shows as the paragraph it saves as once the next item is nested under it', () => {
+            const editor = load('- a\n\n  <!-- c\n- b');
+
+            expect(itemChildTypes(editor)).toEqual([['text', 'markdown-raw-block'], ['text']]);
+            select(editor, ['b', 1]);
+            lexicalOf(editor).dispatchCommand(INDENT_CONTENT_COMMAND, undefined);
+
+            const reloaded = load(editor.getValue());
+
+            expect(editor.getValue()).toBe('- a\n\n  \\<!-- c\n\n  - b');
+            expect(itemChildTypes(editor)).toEqual([['text', 'paragraph'], ['list']]);
+            expectSaveShowsSurface(editor);
+            expect(editorSurfaceModel(reloaded)).toEqual(editorSurfaceModel(editor));
         });
     });
 
@@ -4191,8 +4314,9 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
                 const nested = $createListNode('number', 3).append($createListItemNode().append($createTextNode('y')));
 
                 $setState(nested, listMarkerState, ')');
-                // A list whose item holds a second paragraph: the editor's list nodes cannot hold it, so it stays raw.
-                item.getLastChildOrThrow().insertAfter($createMarkdownRawBlockNode('1) x\n\n   p'));
+                // A list whose item holds a quote right under its text, with no blank line between: the save
+                // would make that list loose, so it stays raw.
+                item.getLastChildOrThrow().insertAfter($createMarkdownRawBlockNode('1) x\n   > p'));
                 item.getLastChildOrThrow().insertAfter(nested);
             });
 
@@ -4500,11 +4624,23 @@ describe('$importMarkdown — an HTML block start ending its input (HT rows)', (
         expect(firstColumnTypes).toEqual(['paragraph', 'markdown-raw-block']);
     });
 
-    it.each(['- <div', '> <div'])('HT4. %j loads as a raw block, as a list or quote holding <div> does', (source) => {
+    it('HT4. "> <div" loads as a raw block, as a quote holding <div> does', () => {
+        const source = '> <div';
         const editor = load(source);
 
         expect(rootTypes(editor)).toEqual(['markdown-raw-block']);
         expect(rootTexts(editor)).toEqual([source]);
+        expect(editor.getValue()).toBe(source);
+    });
+
+    it('HT4b. "- <div" loads as a list whose item holds a raw block, as a list holding <div> does', () => {
+        const source = '- <div';
+        const editor = load(source);
+
+        expect(rootTypes(editor)).toEqual(['list']);
+        expect(itemChildTypes(editor)).toEqual([['markdown-raw-block']]);
+        expect(itemChildTypes(load('- <div>'))).toEqual([['markdown-raw-block']]);
+        expectSurface(editor, source);
         expect(editor.getValue()).toBe(source);
     });
 
@@ -4521,14 +4657,25 @@ describe('$importMarkdown — an HTML block start ending its input (HT rows)', (
     it.each([
         ['a quote line before a lazy line', '> <div\nfoo'],
         ['a list item\'s continuation line', '- a\n  <div'],
-        ['an ordered item', '1. <div'],
-        ['an item of a loose list', '- a\n\n- <div'],
     ])('HT7. a block tag name on %s loads as a raw block, as the same line closed by > does', (_where, source) => {
         const editor = load(source);
 
         expect(rootTypes(editor)).toEqual(['markdown-raw-block']);
         expect(rootTypes(load(source.replace('<div', '<div>')))).toEqual(['markdown-raw-block']);
         expect(rootTexts(editor)).toEqual([source]);
+        expect(editor.getValue()).toBe(source);
+    });
+
+    it.each([
+        ['an ordered item', '1. <div', [['markdown-raw-block']]],
+        ['an item of a loose list', '- a\n\n- <div', [['text'], ['markdown-raw-block']]],
+    ])('HT7b. a block tag name on %s loads as a raw block of that item, as the same line closed by > does', (_where, source, types) => {
+        const editor = load(source);
+
+        expect(rootTypes(editor)).toEqual(['list']);
+        expect(itemChildTypes(editor)).toEqual(types);
+        expect(itemChildTypes(load(source.replace('<div', '<div>')))).toEqual(types);
+        expectSurface(editor, source);
         expect(editor.getValue()).toBe(source);
     });
 
@@ -4551,3 +4698,111 @@ describe('$importMarkdown — an HTML block start ending its input (HT rows)', (
         expect(editor.getValue()).toBe(source);
     });
 });
+
+describe('$importMarkdown — a list item holding blocks (B rows)', () => {
+    it.each<[string, string, string[][]]>([
+        ['B1: a paragraph after a nested list', '- a\n  - b\n\n  c\n- d', [['text'], ['list', 'paragraph'], ['text']]],
+        ['B2: a paragraph before and after a nested list', '- a\n\n  b\n\n  - c\n\n  d', [['text', 'paragraph'], ['list', 'paragraph']]],
+        ['B3: a paragraph between two nested lists', '- a\n  - b\n\n  c\n\n  * d', [['text'], ['list', 'paragraph'], ['list']]],
+        ['B4: a second paragraph in an ordered item', '1. a\n\n   b\n2. c', [['text', 'paragraph'], ['text']]],
+        ['B5: a code block', '- a\n\n  ```\n  code\n  ```\n\n- b', [['text', 'code'], ['text']]],
+        ['B6: a quote', '- a\n\n  > q\n\n- b', [['text', 'quote'], ['text']]],
+        ['B7: an HTML block', '- a\n\n  <div>\n  x\n  </div>\n\n- b', [['text', 'markdown-raw-block'], ['text']]],
+        ['B8: a table opening an item', '- a\n\n- | h |\n  | --- |\n  | c |\n\n- b', [['text'], ['table'], ['text']]],
+        ['B9: a heading opening an item', '- # Foo\n- bar', [['heading'], ['text']]],
+        ['B10: a fence opening an item', '- a\n\n- ::: {align=center}\n  **f**\n\n  g\n  :::\n\n- b', [['text'], ['markdown-block'], ['text']]],
+        ['B11: a thematic break under a bare marker', '- a\n-\n  ---\n- b', [['text'], ['markdown-raw-block'], ['text']]],
+        ['B12: three paragraphs', '- a\n\n  second\n\n  third', [['text', 'paragraph', 'paragraph']]],
+        ['B13: a link reference definition opening an item', '- [q]: https://q.com\n\nSee [q].', [['markdown-raw-block']]],
+        ['B14: a link reference definition after a nested list', '- a\n  - b\n\n  [x]: /url\n\nsee [x]', [['text'], ['list', 'markdown-raw-block']]],
+        ['B15: a table after a nested list', '- a\n  - b\n\n  | h |\n  | --- |\n  | c |\n\n- d', [['text'], ['list', 'table'], ['text']]],
+        ['B16: a table under an item\'s text', '- a\n\n  | h |\n  | --- |\n  | c |\n\n- d', [['text', 'table'], ['text']]],
+        // A block right under another keeps a list raw only when the list is tight (R1): a loose list stays loose.
+        ['B21: a quote right under an item\'s text in a loose list', '- a\n  > q\n\n- b', [['text', 'quote'], ['text']]],
+        ['B22: a nested list right under an item\'s second paragraph', '- a\n\n  b\n  - c', [['text', 'paragraph'], ['list']]],
+    ])('%s loads as a list', (_name, source, types) => {
+        const editor = load(source);
+
+        expect(rootTypes(editor)[0]).toBe('list');
+        expect(itemChildTypes(editor)).toEqual(types);
+        expectSurface(editor, source);
+        expect(editor.getValue()).toBe(source);
+    });
+
+    it.each<[string, string, string[][], string[][]]>([
+        ['B17: a table under a nested item\'s text', '- a\n  - b\n\n    | h |\n    | --- |\n    | c |\n\n- d',
+            [['text'], ['list'], ['text']], [['text', 'table']]],
+        ['B18: a table opening a nested item', '- a\n  - | h |\n    | --- |\n    | c |\n  - d',
+            [['text'], ['list']], [['table'], ['text']]],
+        ['B19: a table after a list nested in a nested item', '- a\n  - b\n    - c\n\n    | h |\n    | --- |\n    | d |\n\n- e',
+            [['text'], ['list'], ['text']], [['text'], ['list', 'table']]],
+        ['B20: a paragraph and a table after a nested ordered item\'s text', '1. a\n   1. b\n\n      p\n\n      | h |\n      | --- |\n      | c |\n\n2. d',
+            [['text'], ['list'], ['text']], [['text', 'paragraph', 'table']]],
+    ])('%s loads as a list', (_name, source, types, nestedTypes) => {
+        const editor = load(source);
+
+        expect(rootTypes(editor)).toEqual(['list']);
+        expect(itemChildTypes(editor)).toEqual(types);
+        expect(nestedItemChildTypes(editor)).toEqual(nestedTypes);
+        expectSurface(editor, source);
+        expect(editor.getValue()).toBe(source);
+    });
+});
+
+describe('$importMarkdown — a task list loose from its start (T rows)', () => {
+    it.each<[string, string]>([
+        ['T1: a blank line between two task items', '- [ ] a\n\n- [x] b'],
+        ['T2: a nested task item', '- [ ] a\n  - [x] b\n\n- [ ] c'],
+        ['T3: a paragraph after a nested task item', '- [ ] a\n  - [x] b\n\n  c\n\n- [ ] d'],
+        ['T4: a second paragraph in a task item', '- [ ] a\n\n  b\n\n- [x] c'],
+        ['T5: a task item after an item holding two paragraphs', '- a\n\n  b\n- [ ] c'],
+    ])('%s loads as a list', (_name, source) => {
+        const editor = load(source);
+
+        expect(rootTypes(editor)[0]).toBe('list');
+        expectSurface(editor, source);
+        expect(editor.getValue()).toBe(source);
+    });
+});
+
+describe('$importMarkdown — a nested list that cannot be built is a raw block of its item (N rows)', () => {
+    // The viewer shows a list where the editor shows the nested list's source (the harness's known `listItemBlocks`
+    // divergence), so these rows compare the editor with its own reload, not with the viewer.
+    it.each<[string, string, string[][], string]>([
+        ['N1: a tight list holding a block under its text, under an item\'s text', '- a\n\n  1) x\n     > p\n\n- c',
+            [['text', 'markdown-raw-block'], ['text']], '1) x\n   > p'],
+        ['N2: the same list after a nested list', '- a\n  - b\n\n  1) x\n     > p\n\n- c',
+            [['text'], ['list', 'markdown-raw-block'], ['text']], '1) x\n   > p'],
+        ['N3: the same list right under the text of an item of a loose list', '- a\n  - b\n    > q\n\n- c',
+            [['text', 'markdown-raw-block'], ['text']], '- b\n  > q'],
+    ])('%s', (_name, source, types, rawText) => {
+        const editor = load(source);
+        const rawTexts = readDocument(editor, () => $dfs($getRoot().getFirstChild() ?? undefined)
+            .map((entry) => entry.node).filter($isMarkdownRawBlockNode).map((node) => node.getTextContent()));
+        const standard = canonicalSave(editor);
+        const reloaded = load(standard);
+
+        expect(rootTypes(editor)[0]).toBe('list');
+        expect(itemChildTypes(editor)).toEqual(types);
+        expect(rawTexts).toEqual([rawText]);
+        expect(editor.getValue()).toBe(source);
+        expect(editorSurfaceModel(reloaded)).toEqual(editorSurfaceModel(editor));
+        expect(canonicalSave(reloaded)).toBe(standard);
+    });
+});
+
+describe('$importMarkdown — a list a save could not write back stays raw (R rows)', () => {
+    it.each<[string, string]>([
+        // The save writes a blank line before the quote, which would make the tight list loose.
+        ['R1: a block right under an item\'s text in a tight list', '- a\n  > q\n- b'],
+        ['R2: a heading and text with no blank line between', '- # Foo\n- Bar\n  ---\n  baz'],
+        // The nested list is a raw block right under its item's text, and the outer list is tight too.
+        ['R3: a tight list whose nested list cannot be built', '- a\n  - b\n    > q'],
+    ])('%s keeps the list a raw block', (_name, source) => {
+        const editor = load(source);
+
+        expect(rootTypes(editor)).not.toContain('list');
+        expect(editor.getValue()).toBe(source);
+    });
+});
+

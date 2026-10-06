@@ -17,7 +17,7 @@ export interface DivergenceReason {
 export const DIVERGENCES = {
     // unmodelled
     quoteBlocks:    { cause: 'unmodelled', reason: 'A blockquote holding more than one paragraph, or any other block (a link reference definition included, which the viewer renders as an empty quote), is kept as a raw Markdown block: saved unchanged, but shown as source where the viewer renders a quote.' },
-    listItemBlocks: { cause: 'unmodelled', reason: 'A list whose item holds more than one paragraph, or any other block (a link reference definition included, which the viewer renders as an empty item), is kept as a raw Markdown block: saved unchanged, but shown as source where the viewer renders a list.' },
+    listItemBlocks: { cause: 'unmodelled', reason: 'A list one of whose items holds — in a tight list — a block right under another with no blank line between them, other than a nested list under the text of its item (which a save cannot write without making the list loose), or a quote that ends on a line without `>` starting an HTML block (which reads as part of the quote or as a block after it, by what follows the item), is kept as a raw Markdown block (of its item, when it is a nested list): saved unchanged, but shown as source where the viewer renders a list.' },
     // inline-rules
 } as const satisfies Record<string, DivergenceReason>;
 

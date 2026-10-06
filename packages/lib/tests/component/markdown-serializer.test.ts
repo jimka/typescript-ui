@@ -1153,6 +1153,49 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
                 kind: 'list', ordered: true, loose: true, items: [[para(run('a')), para(run('X'))], [para(run('b'))]],
             }]);
         });
+
+        /** A bullet list of the given items. */
+        const bullets = (...items: ListItemNode[]): ListNode => $createListNode('bullet').append(...items);
+
+        /** A bullet list of the given items, written with `*`. */
+        const stars = (...items: ListItemNode[]): ListNode => {
+            const list = bullets(...items);
+
+            $setState(list, listMarkerState, '*');
+
+            return list;
+        };
+
+        /** A raw Markdown block of the given text. */
+        const raw = (source: string): LexicalNode => $createMarkdownRawBlockNode(source);
+
+        it.each<[string, () => ListNode, string]>([
+            ['S1: a raw --- opening a later item of a - list stands under a bare marker',
+                () => bullets(item('a'), item(raw('---')), item('b')), '- a\n-\n  ---\n- b'],
+            ['S2: a raw --- opening the first item of a - list stands under a bare marker',
+                () => bullets(item(raw('---')), item('b')), '-\n  ---\n- b'],
+            ['S3: a raw --- opening a - list nested under text switches that list to *',
+                () => bullets(item('a'), item(bullets(item(raw('---')), item('b')))), '- a\n  * ---\n  * b'],
+            ['S4: a raw *** in a - list stays on the marker\'s line (control)',
+                () => bullets(item('a'), item(raw('***')), item('b')), '- a\n- ***\n- b'],
+            ['S5: a raw - - - opening an item of a - list stands under a bare marker',
+                () => bullets(item('a'), item(raw('- - -')), item('b')), '- a\n-\n  - - -\n- b'],
+            ['S6: a raw --- opening an item that holds a second block stands under a bare marker',
+                () => bullets(item('a'), item(raw('---'), raw('***')), item('b')), '- a\n\n-\n  ---\n\n  ***\n\n- b'],
+            ['S7: a raw --- in an ordered list stays on the marker\'s line (control)',
+                () => $createListNode('number', 1).append(item('a'), item(raw('---'))), '1. a\n2. ---'],
+            ['S8: a raw --- opening a later item of a nested - list stands under a bare marker',
+                () => bullets(item('a'), item(bullets(item('x'), item(raw('---'))))), '- a\n  - x\n  -\n    ---'],
+            ['S9: a raw *** opening an item of a * list stands under a bare marker',
+                () => stars(item('a'), item(raw('***'))), '* a\n*\n  ***'],
+            ['S10: a raw *** opening a * list nested under text stands under a bare *, which underlines nothing',
+                () => bullets(item('a'), item(stars(item(raw('***')), item('b')))), '- a\n  *\n    ***\n  * b'],
+        ])('%s', (_name, build, expected) => {
+            const output = serialize(() => [build()]);
+
+            expect(output).toBe(expected);
+            expect(viewerModel(output).blocks.map((block) => block.kind)).toEqual(['list']);
+        });
     });
 
     describe('F9: a saved heading keeps its source text, so its id does not change', () => {
