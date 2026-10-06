@@ -128,6 +128,7 @@ When the menu closes, focus returns to the element that had it when the menu ope
 - **The element the menu was opened from loses focus while the menu is open.** A text field with typed, uncommitted text therefore commits it when the menu opens. A [`Table`](/components/Table) cell editor is the exception: its edit stays open until the menu closes.
 - **Any `show()` your code makes while the user's last press was a key takes focus**, however long ago that press was — a menu shown from a timer after the user typed, for example. Use `toggleFor()` for a dropdown whose trigger should keep focus.
 - **Inside a modal [`Dialog`](/components/Dialog) or modal [`Drawer`](/components/Drawer), `Tab` closes the menu and focus stays inside the modal.** From a menu opened on the modal's last control, `Tab` goes to its first control, and `Shift+Tab` from one opened on the first control goes to the last.
+- **Focus history does not see the menu.** With [focus history](/recipes/focus-history) enabled, the panel is not a stop, opening and closing the menu leaves the trail as it was, and `Alt+[` / `Alt+]` do nothing while any menu is open.
 - **A `show()` called from your own `keydown` handler, for the key press being handled, is not guaranteed either way.** The press may not be on record yet when the handler runs, so the menu can open as if from the mouse. Open the menu from `contextmenu`, or from a button's `"action"`, where the press always comes first.
 
 The panel declares `aria-activedescendant` for its highlighted row, so assistive technology follows the highlight.

@@ -180,6 +180,10 @@ When the dialog closes, focus returns to the element that had it when the
 dialog opened. If that element was disposed or removed from the page while
 the dialog was open, focus stays on the page instead.
 
+With [focus history](/recipes/focus-history) enabled, a dialog's controls are
+not recorded, `Alt+[` / `Alt+]` do nothing while the dialog is open, and the
+trail is as it was once the dialog has closed.
+
 An editing surface or a [`Table`](/components/Table) hosted in the dialog
 keeps `Tab` while focus is inside it — the editor indents, the table steps from
 cell to cell — and the wrap stands down rather than moving focus out from under
