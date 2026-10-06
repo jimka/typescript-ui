@@ -512,6 +512,20 @@ page resets to empty.
   tree tall enough to show all its rows, inside such a panel, therefore
   moves to its last or first row. No consumer action is needed.
 
+- **A `Tree`'s `Shift`+arrow starts a range when there is no anchor.** With
+  nothing selected — or after the anchor's node was removed, or hidden by a
+  collapse — `Shift` with an arrow key, `Home` or `End` selected one row at
+  a time and never built a range. Unless a collapse had hidden the anchor,
+  `getSelectedNode()` also returned `null` beside a non-empty selection.
+  Such a move is now a plain move whose row becomes the anchor, as a
+  `Shift`-click with no anchor already was. A `Shift`-click whose anchor a
+  collapse has hidden is a plain click too: before, it selected the clicked
+  row and left the hidden node as the anchor; now the clicked row becomes
+  the anchor and, with `expandTrigger: "click"`, toggles. With `Ctrl` or
+  `Cmd` held as well it is a `Ctrl`/`Cmd`-click, which toggles the clicked
+  row in the selection where it used to replace the selection. No consumer
+  action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
