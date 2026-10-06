@@ -168,6 +168,25 @@ page resets to empty.
   starting state. Code that used `"change"` to learn that a focus move was
   recorded can no longer do so.
 
+- **`SpatialNavigation`'s control chord (`Ctrl+Alt`+arrow) chooses its
+  landing by new rules.** It only considers controls that are visible —
+  not ones scrolled out of another panel, clipped away, off screen, behind a
+  floating window, or disabled — and it leaves focus where it is when nothing
+  qualifies. A move searches the focused control's own row first (a
+  `ToolBar`, `MenuBar`, `TabBar` or accordion header), then its scrolling
+  panel, then everything else. Outside its row a control must be in line
+  with the focused one, or at least as far forward as it is sideways. A
+  `Tree`, `List` or `Table` moves level with its current row or cell. Both
+  chords stay inside the non-modal window focus is in, and neither enters
+  one from the page behind it. The container rule that ranked everything in
+  the same collapsible or scrolling container first is gone: `Ctrl+Alt+→`
+  along an accordion header's tool buttons no longer jumps to a button
+  elsewhere in the same accordion. The region chord (`Ctrl+Alt+Shift`+arrow)
+  keeps its ranking. No consumer action is needed.
+
+- **`Tree` and the `Table` body show a focus ring when a spatial-navigation
+  move lands on them.** Neither showed anything before.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
@@ -343,6 +362,17 @@ page resets to empty.
   inside a transient layer: one that an outside click or focus move
   dismisses, such as a menu, a dropdown or a popover. Only the layer the
   element lives in is asked, not the layer it was opened from.
+
+- **`Component` gains `navigationGroup` / `setNavigationGroup` /
+  `isNavigationGroup`.** A group is one row or column of related controls
+  that the control chord searches before looking elsewhere. `ToolBar`,
+  `MenuBar`, `TabBar` and `AccordionHeader` are groups by default.
+
+- **`FocusRevealer` gains an optional `getScrollViewportElement()`,** which
+  a revealer that scrolls implements to name the element its content scrolls
+  inside. `Panel` and `ScrollStrip` implement it.
+
+- **`LayerManager` gains `getLayerContaining(node)` and `getLayers()`.**
 
 ### Data
 
