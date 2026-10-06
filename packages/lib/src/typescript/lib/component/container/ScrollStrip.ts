@@ -971,6 +971,18 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
     }
 
     /**
+     * {@link FocusRevealer.getScrollViewportElement}: the clip element. Overrides
+     * `Panel`'s own inherited implementation, which would name this band
+     * element — the band never scrolls and also holds the two arrow buttons;
+     * the clip is the visible window onto the scrolled items.
+     *
+     * @returns The clip's element, or null before the strip is rendered.
+     */
+    getScrollViewportElement(): Handle | null {
+        return this._clip.getElement() ?? null;
+    }
+
+    /**
      * Nudges the native scroll the minimum amount needed to bring the given item
      * element fully into view, measured from the *laid-out* DOM rects. A
      * fully-visible item produces no scroll. The owner gates when to call this (the

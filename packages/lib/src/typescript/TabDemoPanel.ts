@@ -33,7 +33,11 @@ class TabDemoPanel extends Component {
         this.tabCounter = 3;
 
         // --- Controls toolbar ---
-        const toolbar = new Component();
+        // The three rows of controls below are plain containers, not
+        // `ToolBar`s, so each is marked a navigation group by hand:
+        // `Ctrl+Alt+←`/`→` then walks along a row instead of leaving it for
+        // a nearer control on the row above or below.
+        const toolbar = new Component({ navigationGroup: true });
         toolbar.setLayoutManager(new HBox());
 
         const addNormalBtn = new Button("Add Tab");
@@ -66,7 +70,7 @@ class TabDemoPanel extends Component {
         // `fill` stretches tabs to share the strip; `content` caps each tab's
         // own width at Max; `equal` sizes every tab to the widest (capped at
         // Max); `fixed` pins every tab to Fixed px. Tweak the numbers live.
-        const widthRow = new Component();
+        const widthRow = new Component({ navigationGroup: true });
         widthRow.setLayoutManager(new HBox());
 
         const widthModes: TabWidthMode[] = ["fill", "content", "equal", "fixed"];
@@ -89,7 +93,7 @@ class TabDemoPanel extends Component {
         // leading or trailing edge; `orientation` rotates the text on the
         // vertical sides; `scroll` toggles a long strip between compress and
         // arrow-scrolling. `compact` / `reorder` toggle live.
-        const placeRow = new Component();
+        const placeRow = new Component({ navigationGroup: true });
         placeRow.setLayoutManager(new HBox());
 
         const sideModes: TabSide[] = ["north", "south", "west", "east"];

@@ -816,6 +816,100 @@ describe('LayerManager', () => {
         });
     });
 
+    describe('getLayerContaining', () => {
+        it('returns the layer whose element contains the node — the layer\'s own element included', () => {
+            installTestDOM(CONFIG);
+
+            const a = register(fakeLayer());
+            const b = register(fakeLayer());
+            const insideB = DOM.sink.createElement('span');
+
+            DOM.sink.appendChild(b.getLayerElement()!, insideB);
+
+            expect(LayerManager.getLayerContaining(insideB)).toBe(b);
+            expect(LayerManager.getLayerContaining(a.getLayerElement()!)).toBe(a);
+        });
+
+        it('returns null for a node inside no registered layer', () => {
+            installTestDOM(CONFIG);
+
+            register(fakeLayer());
+            const outside = DOM.sink.createElement('span');
+
+            expect(LayerManager.getLayerContaining(outside)).toBeNull();
+        });
+
+        it('returns null once the containing layer has unregistered', () => {
+            installTestDOM(CONFIG);
+
+            const a = register(fakeLayer());
+            const inside = DOM.sink.createElement('span');
+
+            DOM.sink.appendChild(a.getLayerElement()!, inside);
+            LayerManager.unregister(a);
+
+            expect(LayerManager.getLayerContaining(inside)).toBeNull();
+        });
+
+        it('skips a layer with no element', () => {
+            installTestDOM(CONFIG);
+
+            register(fakeLayer({ withElement: false }));
+            const node = DOM.sink.createElement('span');
+
+            expect(LayerManager.getLayerContaining(node)).toBeNull();
+        });
+    });
+
+    describe('getLayers', () => {
+        it('lists registered layers in registration order', () => {
+            installTestDOM(CONFIG);
+
+            const a = register(fakeLayer());
+            const b = register(fakeLayer());
+            const c = register(fakeLayer());
+
+            expect(LayerManager.getLayers()).toEqual([a, b, c]);
+        });
+
+        it('keeps registration order when a layer is raised — a raise restamps z, not the list', () => {
+            installTestDOM(CONFIG);
+
+            const a = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true }));
+            const b = register(fakeLayer({ band: LayerManager.Band.Window, isRoot: true }));
+
+            LayerManager.bringToFront(a);
+
+            expect(LayerManager.getLayers()).toEqual([a, b]);
+            expect(LayerManager.getZIndex(a)).toBeGreaterThan(LayerManager.getZIndex(b));
+        });
+
+        it('is empty when no layer is open, and again after every layer unregisters', () => {
+            installTestDOM(CONFIG);
+
+            expect(LayerManager.getLayers()).toEqual([]);
+
+            const a = register(fakeLayer());
+            const b = register(fakeLayer());
+
+            LayerManager.unregister(a);
+            LayerManager.unregister(b);
+
+            expect(LayerManager.getLayers()).toEqual([]);
+        });
+
+        it('returns a snapshot — mutating it does not change the manager\'s stack', () => {
+            installTestDOM(CONFIG);
+
+            const a = register(fakeLayer());
+            const snapshot = LayerManager.getLayers() as DismissableLayer[];
+
+            snapshot.length = 0;
+
+            expect(LayerManager.getLayers()).toEqual([a]);
+        });
+    });
+
     describe('Escape (viewport keydown)', () => {
         // LayerManager's private onKeyDown IS reachable offline, driven the same
         // way FocusHistory.test.ts drives its own combo: dispatching a keydown

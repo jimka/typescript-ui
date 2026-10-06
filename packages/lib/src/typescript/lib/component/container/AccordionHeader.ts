@@ -152,6 +152,9 @@ const _defaultAccordionHeaderOptions: Partial<AccordionHeaderOptions> = {
     background:      THEMED_HEADER_BG,
     foregroundColor: THEMED_HEADER_COLOR,
     border:          { border: "none", borderBottom: THEMED_HEADER_BORDER },
+    // A header's title and tool buttons are one row — the control chord
+    // stays in it while it has another button in the arrow's direction.
+    navigationGroup: true,
 };
 
 /**

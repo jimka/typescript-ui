@@ -263,4 +263,16 @@ describe('ScrollStrip as a FocusRevealer (regression)', () => {
 
         expect(strip.getRevealElement()).toBe(element);
     });
+
+    it('getScrollViewportElement returns the clip\'s element, not the strip\'s own', () => {
+        // The band element never scrolls and also holds the two arrow
+        // buttons; the visible window onto the scrolled items is the clip.
+        const strip = new ScrollStrip();
+        const element = strip.getElement(true);
+        const clipElement = strip.getClipElement();
+
+        expect(clipElement).not.toBeNull();
+        expect(strip.getScrollViewportElement()).toBe(clipElement);
+        expect(strip.getScrollViewportElement()).not.toBe(element);
+    });
 });
