@@ -821,3 +821,135 @@ How the library contains or routes focus elsewhere (the precedent search):
 [^spatial]: Its key handler already stands down while any non-manual layer is open. Its `move()` API searches inside `focusScopeRoot()`, the last-registered layer. If that layer is behind the modal it is inert, so the focus call does nothing and the move reports `false`.
 
 [^prototype]: Evidence was gathered without changing source. A script pasted into the running demo wrapped `LayerManager.register` / `unregister`, set `inert` as this plan describes, and added the edge wrap as a window-level listener (kept at `~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans2/dialog-focus-trap/runtime-prototype.js`, beside `probe-install.js`). Confirmed in Chromium with real key presses: MV2; MV3 (focus stayed off the page; the second press was not run); MV4; the forward half of MV5; MV6 (opener not activated, `Tab` consumed, accessibility snapshot reduced to the dialog); the inert state of MV7 (outer dialog inert under the inner one); MV8's return to the opener; MV9's second half with `inert` only (focus did not reach the page, though `FocusHistory` still walked its trail — the reason for the `FocusHistory` change); and for MV11 the inert page and the wrap, but not focus-in or focus return, which the prototype does not implement. Not run: Firefox, WebKit, a real backdrop click (the tool clicks only elements in the accessibility tree), MV10, MV12–MV20, and any assistive technology.
+
+---
+
+## Implementation Notes
+
+Built on the tip of `feature/table-tree-keyboard-context-menu` (`773854a24`), which sits on `feature/context-menu-keyboard-operation`. Notes on what differed from the plan, what was done instead, and what was left.
+
+### Deviations from the plan
+
+1. **`inert` is never written to `<body>` or `<html>`.** The plan puts the attribute on `<body>` and names a fallback it does not adopt: mark the `Body` component's children. The user decided for the fallback before the build started. Reason: a password manager injects its inline menu into `<body>`, and with `<body>` inert that menu is dead over SQLAdmin's login dialog. The library marks its own containers and leaves the rest of the document alone.
+   - `LayerManager.syncModalScope` writes nothing. It tells every layer and every background surface, and each writes its own element.
+   - [`Body`](../../packages/lib/src/typescript/lib/core/Body.ts) is a `BackgroundSurface`. It registers in its constructor and marks each child component through `setInertAttribute`. `insertComponent`, `removeComponent` and `removeAllComponents` are overridden, so a root component added while a modal is open is inert at once and one taken off the page is live again.
+   - Verified in Chromium: with a dialog open, a button appended to `<body>` by a script standing in for an extension took a real click and focus, and `Tab` from it went into the dialog. `<body>` and `<html>` never carried the attribute.
+   - Consequence the plan's documentation had the other way round: an element application code appends to `<body>` or `<html>` by hand is **not** inert while a dialog is open. `Dialog.md`, `layering.md` and the changelog say so.
+   - The plan's cases that read "body is inert" (I1–I9, D6, R1, R3, R5, R7) assert on a spy `BackgroundSurface` or on `LayerManager.hasModalLayer()` instead. The page itself is covered by the new `tests/core/Body.modalInert.test.ts` (P1–P10), which also asserts that no `inert` write targets anything but the root components.
+   - The plan's grep check `'"inert"'` now hits `core/Component.ts` only.
+
+2. **`LayoutManager.getChromeComponents()` is new public API, and four managers implement it.** Not in the plan. Found in the browser: with a dialog open the demo's `<body>` still had a live child, the `SplitGutter` of the body's `Split` manager. `Split`, `Border`, `Accordion` and `Tab` append components of their own straight onto their container's element, outside `getComponents()`. A gutter holds nothing focusable, but a `Tab` manager's tab strip and an `Accordion`'s headers hold buttons, so an application whose body uses either would have kept them reachable behind every dialog.
+   - `getChromeComponents()` returns those components; the base returns none. `Body` marks them in `onInertChanged`, again at the end of each of its layout passes while a modal is open (a `Split` builds its gutters during layout), and in `setLayoutManager` (a `Tab` mounts its strip as it attaches).
+   - A DOM query for the body's element children was considered and rejected: it would write `inert` onto elements owned by other components, around their attribute cache, which the typed-setter rule in `ARCHITECTURE.md` forbids.
+   - `Accordion` reports its headers, its section wrappers and its resize gutters. A wrapper holds only one of the container's own children, which `Body` marks anyway, but it is a component the manager mounts, and the method's contract is all of those.
+   - Cases in the new `tests/component/layout/LayoutManager.chromeComponents.test.ts` and P8, P8b, P9, P10.
+   - Limit: a custom layout manager that mounts a focusable component of its own must implement the method. `layout-system.md` and the changelog say so.
+   - The name follows the word the codebase already uses for these components: `tests/component/layout/ManagerChrome.styleRuleDisposal.test.ts` and its comments call them a manager's chrome components. `Component` also says "chrome" for a component's own border and background (`applyChromeOptions`); the method lives on `LayoutManager`, where it has only the first meaning.
+
+3. **`Body` skips a disposed child.** `dispose()` does not unlink a component from its parent, and a disposed component's element handle is released, so writing to it throws. Case P5.
+
+4. **Six existing suites needed a teardown.** The plan foresaw this for "a suite not listed". A modal layer now tells every registered layer and background surface to go inert, so a dialog, toast or mounted rail left behind by an earlier case is written through a handle the DOM reset released. Disposals were added in `Dialog.test.ts` (three cases), `DialogViewportResize.test.ts`, `DialogCappedScroll.test.ts`, `Notification.test.ts`, `NotificationHistory.test.ts` and `Rail.test.ts`. No expectation changed.
+
+5. **Case D3 is two cases**, one per listener order, and D1's "the dialog itself no longer consumes it" is asserted in each of the four wrap cases.
+
+6. **Extra cases** beyond `## Expected Behaviour`: the manager writes no `inert` itself; the unregistered layer's hook is not called; a dropdown anchored in a modal that is not the last-registered layer is in scope; Escape still reaches the topmost layer; a dialog that holds a stop keeps its own element unfocusable; initial focus skips a hidden content control; a reopened drawer records its new opener; a drawer disposed before its first layout withdraws the pending focus; B1b, B2b, N3b; `FocusHistory.back()` between entries inside the modal; `FocusTraversal` with a menu open above the modal.
+
+7. **Case R7 does not assert a cancel.** The plan's row has the layout callback run before the dispose, and the callback clears its own handle, so there is nothing left to cancel. The cancel on dispose has its own case.
+
+8. **Demo** (`MiscPanel.ts`, not in the file table): a "Dialog — form (focus stays inside)" button, whose dialog ends in a `ComboBox` and can open a second dialog, and a text field in the drawer demo so a modal drawer has two stops.
+
+9. **More documentation than listed.** `components/Body.md`, `concepts/layout-system.md` (the new manager method), `concepts/dom-seams.md` (two mentions of the dialog's focus trap) and `components/Popover.md`, which the plan lists as not edited: its "See also" line still described a `Dialog` as a "modal with focus trap". `browser-support.md` also says what a browser without `inert` still does. The `ARCHITECTURE.md` section names the three routes by which a focusable surface reaches the manager, since without `<body>` as a catch-all a new portaled surface is otherwise a hole.
+
+10. **No DOM seam member was added.** The attribute goes through `Component.setElementAttribute`, so there is no entry under Breaking changes → Core.
+
+11. **The plan's grep counts moved with the above.** `onInertChanged(inert: boolean)` matches ten times (six layers, `BackgroundSurface`, `Body`, `Rail`, `Notification`), and `addBackgroundSurface` has one more caller, `Body`.
+
+12. **`AbstractWindow`'s destructor unregisters the window.** Found by the review. A `Window` or `TabWindow` disposed while shown stayed in the layer tree with its element released; every other layer's destructor unregisters. Until now the manager called a layer's hooks only on a raise, so nothing wrote to the corpse. With this plan the next modal to open told it to go inert, the write threw, the dialog never appeared and stayed registered, and a dialog already open could not close. The destructor now calls `LayerManager.unregister` and `untrapWheel`. Two cases in `LayerManager.modalFocus.test.ts`, and a changelog entry, since `getTopLayer()` naming a dead window is older than this plan.
+
+13. **A layer with no anchor never links under a layer behind the modal.** Found by the review. `resolveParent` falls back to the last-registered layer. A context menu shown at the pointer names no anchor, so with a window shown after a dialog (case MV16) a menu opened inside the dialog linked under that window and came up inert. While a modal is open the fallback now skips every layer outside its scope. With no modal open nothing changes. Two cases in the same file.
+
+14. **An open `Drawer` keeps the modality it opened with, and gives up its own focusability when it closes.** Found by the review. `getDismissMode()` read the `modal` option live, while `setModal` documents that it takes effect on the next `open()` and the scrim works that way. The manager now reads the mode on every register, so flipping the option on an open drawer would have made the page live under a scrim, or inert under none. And the `tabindex="-1"` a drawer with no control gives itself stayed on a drawer that is reused. Two cases in `Drawer.test.ts`.
+
+15. **A layer that is closing is left out of the Tab ring.** Found by the second review. The plan's `scopeLayers` treats every registered layer of the scope as open, but an `AnimatedDropdown` unregisters only when its fade-out has finished. `Tab` within those 120 ms — after `Enter` or `Escape` closed a `ComboBox` dropdown, say — moved focus onto the fading list, and focus fell to `<body>` when the list left the document. `DismissableLayer` gains an optional `isLayerClosing()`, as `isLayerRoot()` and `keepsOwnBand()` are optional hints; `AnimatedDropdown` returns `true` from it while it fades out, and `scopeLayers` gives such a layer no stop. Unregistering at the start of the fade was not an option: the dropdown stays registered so that a raise of its host window re-stamps it. Case T10b, and one in `AnimatedDropdown.test.ts`.
+
+16. **An `AutoCompleteField`'s suggestion list is not a Tab stop** (`AutoCompleteDropdown.ts`, not in the file table). Found by the second review. The field hides its suggestions on `Tab` from an element listener, and the manager wraps from a viewport listener, in an order that is not fixed. When the manager ran first the dropdown was still open and its list, a Tab stop like any `List`, took the key; the field then closed it and focus was lost. The host keeps focus for as long as the suggestions are open, so the list gets `tabindex="-1"`. A `ComboBox` dropdown's list stays a stop, as the plan's MV4 has it. One case in `AutoCompleteField.test.ts`, and a changelog entry.
+
+17. **A modal with no stop leaves a `Tab` pressed outside its scope alone.** Found by the second review. The plan's table consumes every `Tab` when the scope has no stop. With `<body>` not inert (deviation 1) focus can be on an element that is not the library's, and consuming its `Tab` would strand the keyboard there. The key is still consumed when focus is inside the scope or on `<body>`. Case T5b.
+
+18. **`containTab` leaves a `Tab` pressed with `Control`, `Alt` or `Meta` alone.** Found by the third review. The plan's table has no row for a chord. `Ctrl+Tab` and its kin switch tabs, windows and applications; where one reaches the page, as in a webview shell, it is not focus traversal. `Menu`'s key handler already leaves chords alone. Case T12b.
+
+19. **Two orderings have a case of their own.** Found by the third review: the plan protects "read the focused element before registering" and "restore focus after unregistering" with comments only. Offline an inert element does not refuse focus, so the cases model what a browser does: a background surface that moves focus to `<body>` when told to go inert. Case 1b in `Dialog.test.ts`, R3 and R3b in `Drawer.test.ts`.
+
+20. **Files changed beyond the plan's file table and `touches-shared`.** Source: `core/Body.ts`, `layout/LayoutManager.ts`, `layout/Split.ts`, `layout/Border.ts`, `layout/Accordion.ts`, `layout/Tab.ts` (deviations 1 and 2), `component/input/AutoCompleteDropdown.ts` (16), `MiscPanel.ts` (8). In files the plan does list: `overlay/AbstractWindow.ts` gained the destructor change (12) and `core/AnimatedDropdown.ts` the closing hint (15). Tests: `tests/core/Body.modalInert.test.ts`, `tests/component/layout/LayoutManager.chromeComponents.test.ts`, `tests/overlay/AnimatedDropdown.test.ts`, `tests/component/input/AutoCompleteField.test.ts`, and the teardown edits of deviation 4. Docs: the pages of deviation 9. The merge dry-run below was made against `feature/spatial-navigation-redesign` only; the unmerged Markdown stack was not checked, and none of these files is a Markdown component.
+
+### What differed on the base
+
+The plan was drafted on `feature/context-menu-keyboard-operation`. `feature/table-tree-keyboard-context-menu` then changed files this plan touches. None of it changed what had to be done:
+
+- `overlay/Menu.ts`: `_startInputWatch` lost `private` and `lastInputWasKeyPress()` was added. No key handling changed. The `Tab` case and `onZIndexChanged` are some twenty lines further down than the plan's line numbers.
+- `tests/overlay/Menu.keyboardSession.test.ts`: rows M1, M1b and M2 were appended to the input-watch group. Cases N1–N3b went into the "keys on a focused menu" group, beside K7.
+- `docs/components/Menu.md`, `docs/concepts/accessibility.md` (a new section before "Building an accessible custom widget") and the changelog gained text. The edits here were placed around it.
+
+### Verification that was run
+
+Whole check set from `packages/lib`: `typecheck`, `typecheck:test`, `lint`, the whole vitest suite, `docs:api` (no warnings), `docs:llms:check`, `build:lib`.
+
+Chromium, real key presses and real clicks through chrome-devtools, on the worktree's demo dev server:
+
+| Case | Result |
+|---|---|
+| MV1 | focus cycles `Cancel → Confirm → ✕ → Cancel` and back |
+| MV2, the report | Shift+F10 on a dialog's last field, `Tab`: the menu closes, focus is on the dialog's first control |
+| MV3 | click on the title, `Shift+Tab`: focus leaves to the browser's own toolbar, the next `Shift+Tab` lands on the dialog's last control; never on the page |
+| MV4 | `ComboBox` last, dropdown open: `Tab` goes to the list, then to the dialog's first control; `Shift+Tab` walks back the same way |
+| MV5 | hidden last control: wraps in both directions |
+| MV6 | nothing focusable: the dialog's element has focus; `Space`, `Enter`, `Tab`, `Shift+Tab` and `Escape` do nothing; the opener is not activated; the accessibility snapshot lists only the dialog |
+| MV7 | inner dialog cycles; the outer one is inert meanwhile; closing returns focus to the button in the outer dialog, which cycles again |
+| MV8 | focus returns to the opener |
+| MV9 | `Alt+[` does nothing in a dialog, nor with a menu open over it |
+| MV10 | with `FocusTraversal` enabled, each `Tab` moves one stop, in MV1 and MV2 |
+| MV11 | modal drawer: focus on its first control on open, cycles inside, back on the opener after `Escape` |
+| MV12 | non-modal window: `Tab` from its last control leaves it; the page stays focusable |
+| MV13 | toast shown under a dialog: its ✕ is inert and refuses `focus()`, the toast is not inert; reachable again once the dialog has closed |
+| MV14 | `CodeEditor` in a dialog: `Tab` indents; `Escape` then `Tab` moves to the next control |
+| MV15, click half | a real click on the backdrop of a `closeOnBackdrop` dialog closes it. The dialog was moved off centre first, since the tool clicks an element's centre |
+| MV16 | a window shown while a dialog is open comes up inert, under the backdrop; focus stays in the dialog |
+| a `Dialog.confirm` raised from a window | the window is inert meanwhile; focus returns to its button |
+| a window disposed while shown, then a dialog (deviation 12) | the dialog opens and takes focus |
+| Shift+F10 in a dialog with a window shown after it (deviation 13) | the menu is live, stamped above the dialog, and `Tab` goes to the dialog's first control |
+| a modal drawer with no control, `setModal(false)` while open (deviation 14) | the drawer has focus itself; `Escape` still closes it, focus returns, nothing stays inert |
+| `AutoCompleteField` last in a dialog, suggestions open, `Tab` (deviation 16) | focus goes to the dialog's first control and stays there; the suggestions close |
+
+Not run: Firefox and WebKit; the wheel half of MV15 (the tool sends no wheel); MV17 with the real address bar (approximated: after a click on the dialog's title, `Tab` lands inside the dialog); MV18 with a real extension (a scripted stand-in was used, see deviation 1); MV19, since the user's SQLAdmin instance was not to be driven; MV20 and any other assistive technology. A `Body` with a `Tab` or `Accordion` manager is covered by tests only: the demo's body uses a `Split`.
+
+### SQLAdmin
+
+Read, not run (`frontend/src`, library `^0.10.0`). No pattern the application uses breaks:
+
+- **Login.** `Body` has no child during the login loop, so nothing is behind the dialog. The non-dismissable dialog, built anew for each attempt, holds fields, so it takes focus as today. The preset `ComboBox`'s dropdown is anchored in the dialog and is in its scope. "Save preset" opens a second dialog over it: the login dialog is inert meanwhile, and focus returns to the "Save preset" button, which the application relies on. The spinner overlay and the success toast appear with no dialog open. With `<body>` never inert, a password manager's menu over the login fields keeps working.
+- **`Dialog.confirm` / `Dialog.error` / `Dialog.show`, `promptQueryName`, the two subclasses** (`DismissDialog`, `SqlPreviewModal`) and `ImportRowsDialog`: each open and close is one `register` / `unregister`, and the save flow awaits one dialog before opening the next. `SqlPreviewModal` overrides `hide` and calls `super.hide`, which is untouched. No dialog has `buttons: []`, and none is without a focusable control.
+- **Dialogs raised from a Dock float window or the Local Storage window.** The window is inert while the dialog is open and focus returns to its button. Verified in the demo with a plain window.
+- **An opener destroyed before the dialog closes** ("Review SQL…" on a draft tab, the dirty-tab close guard): the restore is skipped, as before.
+- **Better than before.** A background `editor.focus()` queued from a query run, and `ErrorBanner`'s Dismiss button removing itself while focused, used to put focus on, or let `Tab` reach, the page behind a dialog. Both now stay inside.
+- **Left for the application.** The document-level accelerators in `shell/SqlAdminShell.ts` are not gated on an open modal: `?` stacks the shortcuts dialog, `Alt+N` opens a query tab behind the dialog, `Alt+R` reloads a store. That is today's behaviour and the library does not change it, except that the `focus()` those handlers call is now refused. Gating them on `LayerManager.hasModalLayer()` is a candidate for a SQLAdmin plan.
+
+### Merging with `feature/spatial-navigation-redesign`
+
+A dry-run merge (`git merge-tree`) of this branch with that one conflicts in two documentation files and in no source file:
+
+- `docs/concepts/accessibility.md`, the sentence that starts "The service stands down while a transient overlay". Take that branch's sentence and replace "a dialog's focus trap" in it with "a modal layer's focus containment".
+- `docs/reference/changelog/next.md`, `## Added` → `### Core`: both branches append entries after the `Aria` description entry. Keep both blocks.
+
+`core/LayerManager.ts` merges cleanly: that branch adds `getLayerContaining()` and `getLayers()` after `getTopLayer()`, and the additions here sit after `hasActiveInputLayer()`, after `nodeContains()` and before `onKeyDown()`. No name is shared. `ARCHITECTURE.md` and `core/Component.ts` are touched in different places. The merged tree was not type-checked or tested.
+
+### Left as they are
+
+- **`role="dialog"`, `aria-modal`, `aria-labelledby` and a name for the title-bar ✕** are out of scope, as the plan says. With the application inert the page is already out of the accessibility tree, but a `Dialog` still announces as a plain group and its ✕ as an unnamed button. A candidate for a follow-up plan.
+- **An application root mounted by hand** on `<body>`, not through `Body.addComponent`, is not made inert. Every documented path goes through `Body`.
+- **A `ComboBox` dropdown stays open** after `Tab` has wrapped from it back into the dialog, as the plan says.
+- **A layer that code opens for something behind the modal** — a dropdown anchored to a control of the page, shown from a timer while a dialog is open — links into the modal's scope, is live, and joins its Tab ring. The user cannot cause it, since the control is inert, and it was so before whenever the modal was the last-registered layer. Telling it apart needs a way to know that an anchor lies in the page and is not merely unmounted yet.
+- **A layer whose opener has unregistered while it stays registered** is still live but no longer in the Tab ring: the ring is walked down from the modal, and `unregister` does not re-parent. Today only a layer that is itself closing is in that state.
+- **`initialFocus` pointing at a hidden or disabled component** makes the focus call do nothing, and with the opener inert focus then rests on `<body>` until the first `Tab`, which enters the dialog. The `initialFocus` and primary-button lookups are as the plan left them.
+- **The suggestion list's `tabindex="-1"`** (deviation 16) would be written back to `0` by `setEnabled(true)` on that list. Nothing enables or disables it.
+- **`containTab` collects the scope's stops again on every `Tab`** while a modal is open, one selector query per layer and a visibility check per match. Not measured as a cost; a dialog holding hundreds of controls would be the case to look at.
+- **A layer left registered after its element is released** is written through that handle when the next modal opens, and throws. The library's own layers all unregister in their destructor, `AbstractWindow` since deviation 12; a custom layer has to do the same, which `layering.md` and `ARCHITECTURE.md` now say. The test suites that left one behind are listed in deviation 4. The manager does not catch a throwing hook: it has no way to tell a dead layer from a broken one.
