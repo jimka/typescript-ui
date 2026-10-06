@@ -656,3 +656,123 @@ Method: each widget's key handler was read at `27c9b7157`, and the entries marke
 [^fixed-not-added]: The changelog files a keyboard key that should have worked under `## Fixed`: the entry "Shift+F10 opens the context menu of the current tree row, list row or table cell" is there, not under `## Added`. No API is added here, so both entries follow that precedent.
 
 [^prototype]: The two edits were applied to a scratch copy of `Tree.ts` in the planning worktree and every number in `## Expected Behaviour` was read from a run of the cases against it, then checked against the arithmetic (when the landed row was out of view, `scrollY` after a downward page is `(row + 1) × 24 − 120`, and after an upward one `row × 24`). The test file itself was then written out and run three times: against the base it failed and passed exactly as step 1 says, after the `_onKeyDown` edit alone only A1–A5 failed, and after both edits all of it passed. With both edits in place the command of step 4 passed unedited (38 files, 1008 tests), and `tsc` and `eslint` were clean on `Tree.ts`. The copy was discarded. The probe files, the test file and the diff are kept in `~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans2/tree-page-keys/`.
+
+---
+
+## Implementation Notes
+
+Built on `feature/dialog-aria-semantics` (`7669472c7`), the tip of the chain `feature/context-menu-keyboard-operation` → `feature/table-tree-keyboard-context-menu` → `feature/modal-dialog-focus-trap` → `feature/list-scroll-index-into-view` → `feature/scroll-reveal-geometry-fixes` → `feature/dialog-aria-semantics`, off local `master` (`e23c8f0c3`). The plan was drafted one branch lower, at `27c9b7157`.
+
+### What differed on the base
+
+`feature/dialog-aria-semantics` did not touch `Tree.ts`, `Body.ts`, `TreeBody.ts`, `VirtualRowView.ts`, `AbstractSelectableList.ts` or `KeyboardContextMenu.test.ts`. Every `Tree.ts` line number in the plan matched.
+
+| File | What the newer base changed | Effect here |
+|---|---|---|
+| `docs/concepts/accessibility.md` | a "Dialogs and windows" section and three more lines above the insertion point | `## Building an accessible custom widget` is at line 248, not 245; the new section was placed by heading |
+| `docs/reference/changelog/next.md` | 81 lines of entries | the `MarkdownViewer` minimap entry that ends `## Fixed` → `### Components` is at line 499, not 434; the two entries were appended after it, before `### Core` |
+| `plans/in-progress/` | the directory did not exist on the base | created for the move |
+
+### Deviations from the plan
+
+1. **Two code commits and three documentation commits, not one of each.** The plan's overview lists three changes, and each stands on its own: the page keys, the `Shift`-anchor fix (which also changes the arrow keys, `Home`, `End` and the `Shift`-click), and docs for keys of other widgets that no code here touches. The commits follow that split. The test file is shared: its `a Shift move with no anchor` block and the header line that names it ride in the second code commit. Each code commit was checked alone — at the first, the file's 17 cases pass and typecheck is clean.
+2. **Cases beyond the plan's tables**, all in `KeyboardRowNavigation.test.ts`:
+   - *Every `Shift` key, pinned as a pair.* One table-driven case per row: `Shift+ArrowDown`, `Shift+ArrowUp`, `Shift+Home`, `Shift+End`, `Shift+PageDown` and `Shift+PageUp` as the first press on a fresh tree, each followed by a second `Shift` key. The first press is a plain move whose row becomes the anchor; the second extends from it; two `"selection"` events. Eight rows, so that `End` is followed by each of `ArrowUp`, `Home` and `PageUp`.
+   - *A `Shift`-click with the anchor hidden under a collapsed node*, in three cases: the default `expandTrigger`, `"click"`, and with `Ctrl` held as well. Without `Ctrl` the click is a plain one: the clicked row is selected, becomes the anchor and, in `"click"` mode, toggles; the next `Shift`-click extends from it and toggles nothing. With `Ctrl` it is a `Ctrl`-click. See deviation 9 for the code behind the last two.
+   - *An empty tree inside a container.* `PageDown` and `PageUp` are not prevented and the container's subtree listener hears both. E1 covers the first half; this adds the second.
+   - S1–S3 also assert `aria-activedescendant` and the `preventDefault` count, which the plan asks of P1–P4 only.
+3. **Expected scroll positions are written as arithmetic, not as the plan's literals.** `(row + 1) × 24 − viewport height` after a downward move onto a row below the view, `row × 24` after an upward one. The values are the plan's. E6 writes its scroll position as `25 × 24`, which is the plan's 600.
+4. **E9 tracks its tree for disposal.** The plan's case builds a `Tree` it never renders and does not say to track it. A `Tree` starts `Menu`'s input watch when it is built, so it is disposed like every other.
+5. **`getSelectedNode`'s JSDoc and `Tree.md`'s anchor paragraph say more than the plan's text.** The plan defines the anchor as the row last selected by a plain click or a plain key. A `Ctrl`/`Cmd`-click and `selectNode()` set it too, and so does a `Shift`-click with no anchor; and the JSDoc's "or null if there is no selection" is untrue once the anchor's node is removed, which case A4 pins. Both texts now list every way the anchor is set, and the JSDoc's `@returns` says when it is `null`. The review found the omissions; the code they describe predates this plan.
+6. **The changelog entries differ from the plan's text in three places.** The plan says `getSelectedNode()` returned `null` beside a non-empty selection in all three states; with the anchor hidden by a collapse it returned the hidden node, so the entry says "Unless a collapse had hidden the anchor". The `Shift` entry also records what deviation 9 changes for a `Shift`-click. The page-keys entry adds that a tree tall enough to show all its rows, inside a scrolling panel, now moves to its last or first row: its page is every row, where the browser used to scroll the panel by a page.
+7. **`Tree` has no single-select mode.** It always writes `aria-multiselectable="true"` and has no option to turn range selection off, so the `Shift` cases cannot be repeated for a single-select tree. `Table` and `TreeTable`, where `Shift` does not extend, are pinned by TT4.
+8. **No demo was added.** `#/misc` → "Show large tree (variable-width rows)" and `#/content-box` → "Tree (VirtualScroller)" already show a long tree and a bordered one with a horizontal scrollbar, and the plan lists the demo app under Non-Goals.
+
+9. **`_handleClick` is edited, and a private helper is added — a third and fourth site in `Tree.ts`.** The plan left `_handleClick` alone: it tests `this._anchorNode` before it calls `_extendSelectionTo`, so a `Shift`-click whose anchor a collapse has hidden reached the new early return and was selected like a plain click. But it never reached the toggle that a plain click makes when `expandTrigger` is `"click"`, and that a `Shift`-click with no anchor set does make (`Tree.md`, *Expand trigger*; `Tree.test.ts`, "a Shift-click … with no anchor set behaves like a plain click"). The review called it half a plain click. `_handleClick` now asks the same question `_extendSelectionTo` asks — is the anchor among the visible rows — through `_visibleAnchorIndex()`, which both methods call, and takes its plain-click branch when the answer is no. Consequences:
+   - With `expandTrigger: "click"`, a `Shift`-click on an expandable row whose anchor is hidden or removed toggles it. In the default mode nothing changes beyond what the plan already changed.
+   - A `Shift`+`Ctrl`-click with a hidden anchor takes the `Ctrl` branch, as one with no anchor set always has: it toggles the clicked row in the selection and makes it the anchor. On the base it replaced the selection with the clicked row. This is the rule of the shared ladder in `component/shared/reduceModifierSelection.ts` ("shift with no anchor + ctrl" toggles). One case pins it, and `Tree.md` and the changelog entry say so.
+   - `_handleClick`'s JSDoc and `Tree.md`'s *Expand trigger* paragraph say "no anchor among the visible rows".
+   - Step 5's grep checks still give three lines, two lines, no output and one file.
+   - The edit is far from the lines `feature/spatial-navigation-redesign` adds below the imports; the dry run below was repeated with it in place and came out the same.
+
+   **Decided by the user on 2026-10-10:** the behaviour change is accepted. A `Shift`-click whose anchor is hidden is a plain click, and a `Shift`+`Ctrl`-click with a hidden anchor is a `Ctrl`-click.
+
+10. **Two sentences the plan gave verbatim are scoped to the keys that move the row.** The plan's "A key in the table is the widget's own even when the current row cannot move" (`accessibility.md`) and its twin in `Tree.md` cover every row of the table above them, and two of those rows do not fit: a `List` does not prevent a type-ahead key, and `Shift+F10` with no current row is left to the browser. Both now begin "A key that moves the current row". Three more of the plan's sentences were tightened for the same kind of reason: the table's lead-in in `accessibility.md` says the widget "takes these keys", not that they all move the current row; its last sentence adds that a disabled or read-only `List` or `MultiSelectList` leaves the keys alone, as an empty widget does; and `TreeTable.md` says "a top-level leaf or a top-level collapsed branch", since a collapsed branch deeper down moves to its parent.
+
+No existing test was edited, and none changed its expected value.
+
+### Verification
+
+Run at the branch tip, one suite at a time.
+
+| Check | Result |
+|---|---|
+| `npm run typecheck`, `typecheck:test` | clean |
+| `npm run lint` | clean |
+| `vitest run` in `packages/lib` | 555 files, 9701 passed, 2 todo |
+| step 4's neighbouring folders | 38 files, 1020 passed, no existing file edited |
+| `npm run docs:api` | no warnings |
+| `npm run docs:llms:check` | 108 catalogued, 121 excluded, 0 unaccounted for |
+| `npm run build:lib` | built |
+| `vitest run` in `packages/docs`, after the two builds | 13 files, 2615 passed |
+| step 5's four grep checks | three lines, two lines, no output, one file |
+
+The new file against the base, before any code: 25 of its 31 cases failed. The six that passed are E1, E5, the empty tree in a container and the three `TreeTable` cases, as step 1 predicts. After the `_onKeyDown` edit alone, the 14 anchor cases failed and nothing else. Two more cases came out of the review. The `Shift`-click in `"click"` mode failed on its toggle assertion until `_handleClick` was edited. The `Shift`+`Ctrl`-click case was written after that edit and passed at once; against the base it would give [`C`] where it expects `a0` and `C`. The file ends with 33 cases.
+
+**In a browser.** Chromium, driven through the chrome-devtools MCP against this worktree's dev server on port 8047, with real key presses. Firefox and WebKit were not run. The table is from the run before the review. After the review's edits the large tree was driven again: a fresh tree focused by `Tab`, `Shift+ArrowDown` ×2 → 0–1, `Shift+PageDown` → 0–18, a plain click on row 5 → [5], `PageDown` → 22, `Shift+PageDown` → 22–39. The browser tool cannot hold `Shift` during a click, so the three `Shift`-click cases are covered offline only.
+
+| Plan case | Where | Seen |
+|---|---|---|
+| MV1 | `#/misc`, the large tree: 628 rows, a 427 px viewport above the horizontal scrollbar, 17 whole rows | click row 5; `PageDown` ×4 → rows 22, 39, 56, 73, each flush above the horizontal scrollbar; the views were rows 6–22, 23–39, 40–56 and 57–73, so no row was skipped. `PageUp` ×4 → 56, 39, 22, 5, each at the top of the view. Every press prevented; nothing else scrolled |
+| MV2 | same | `End` → row 627; `PageDown` stays, prevented, nothing scrolls; `PageUp` → 610; `ArrowDown`, `PageDown` → clamps to 627. At the top, `PageUp` from row 5 → 0, and again → stays |
+| — | same, a branch collapsed | `ArrowLeft` on "Section 0", `PageDown` → row 17 is "Item 2.5"; expanded again, `PageDown` from row 0 → row 17 is "Item 1.3" |
+| MV3 | same | anchor on row 2; `Shift+PageDown` ×2 → 2–19, then to 36; `Shift+PageUp` → the current row is 19, at the top of the view, and rows 20–35, the rest of the view, are no longer selected |
+| MV5 | same, window reopened, focus by `Tab`, no row clicked | `Shift+ArrowDown` ×3 → [0], 0–1, 0–2. In a second fresh window: `Shift+PageDown` ×2 → [0], 0–17 |
+| MV4 | `#/content-box`, "Tree (VirtualScroller)": a 2 px border, both scrollbars, a 104 px viewport, 4 whole rows, 12 rows | click `src`; `PageDown` → rows 4, 8, 11, then stays; `PageUp` → 7 and on to 0. A row landed on from above is flush above the horizontal scrollbar; one landed on from below starts 2 px inside the border. The demo page's own scroller stayed at 0 of 382 px, with the tree itself partly below the fold |
+| MV6 | `#/misc`, the tree table | click `lib`; `PageDown` → the last row, `PageUp` → the first; both prevented. The demo's seven rows fit one page, so this shows the clamp only; a move of a whole page is pinned offline by TT2 |
+| MV7 | SQLAdmin | not driven. Read at `main`: no file under `frontend/src` mentions `PageUp` or `PageDown`; `NavigatorTree` and `ExplorerTreeBase` register no `keydown` listener; the rail's one subtree `keydown` listener (`shell/refreshTool.ts`) acts on `Alt+R` only, and the document-level accelerator prevents only its own chords; nothing calls `getSelectedNode()`. No SQLAdmin change is needed |
+
+### Merge dry run against `feature/spatial-navigation-redesign`
+
+`git merge-tree --write-tree` of this branch with `feature/spatial-navigation-redesign` (`28eb38020`); merge base `e23c8f0c3`.
+
+- `component/tree/Tree.ts` merges without a conflict. The merged file has that branch's import and `registerNavigationLandingRing('[role="tree"]')` call below the imports and this plan's three edits, which sit 8 lines lower.
+- The new `## Keys in trees, lists and tables` section and the two changelog entries merge without a conflict.
+- Three files conflict: `docs/concepts/accessibility.md` (one hunk), `docs/reference/changelog/next.md` (two hunks) and `core/Panel.ts` (one hunk). The same four hunks, at the same lines, come out of a dry run of the base `feature/dialog-aria-semantics` against that branch. None is in a line this plan wrote.
+
+| Conflict | Sides | Resolution |
+|---|---|---|
+| `accessibility.md`, "Spatial focus navigation": the paragraph that begins "The service stands down while a transient overlay" | the chain changed "a dialog's focus trap" to "a modal layer's focus containment" in its first sentence; that branch replaced its second sentence with "Inside a non-modal window the chords stay inside that window, and chords pressed in the page behind it never enter it." | the chain's first sentence, then that branch's second |
+| `changelog/next.md`, end of `## Changed` → `### Components` | the chain appended the entry "A `Tab` strip's descriptor tools have an accessible name"; that branch added a `### Core` block of two entries at the same spot | keep both: the entry, a blank line, then the `### Core` block |
+| `changelog/next.md`, `## Added` → `### Core` | the chain appended four entries (`LayerManager`'s modal-scope API, `setInertAttribute`, `Panel`'s `getScrollViewportRect` / `revealSpan`, `Aria`'s `describedby` trio); that branch appended three (`navigationGroup`, `FocusRevealer.getScrollViewportElement`, `LayerManager.getLayerContaining`) | keep all seven; no two describe the same symbol |
+| `core/Panel.ts`, above `revealDescendant` | the chain inserted `getScrollViewportRect`, `revealSpan` and `revealSpanWithin` and rewrote the opening of `revealDescendant`'s JSDoc; that branch inserted `getScrollViewportElement` at the same spot and left the JSDoc as it was | keep all four methods. The JSDoc must describe the body that survives the merge, and `scroll-reveal-geometry-fixes` rewrote that body; this belongs to the merge of that plan with the spatial branch and was not taken further here |
+
+### Candidates for one follow-up plan
+
+Every gap the survey recorded and this plan left. The evidence is in `## Non-Goals` and the addendum; each line names the decision that is open.
+
+| Gap | Evidence | Decision needed |
+|---|---|---|
+| `Enter` does not activate a tree node | `"dblclick"` is the tree's one activation signal and only a double-click fires it; SQLAdmin's navigator opens a table from it alone, so the keyboard reaches "open" only through the Shift+F10 menu | fire `"dblclick"` from the key, or add an `"action"` event |
+| No way to move a tree's current row without selecting it: `Ctrl`+arrow, `Space` / `Ctrl+Space`, `Ctrl+A` | `Ctrl+ArrowDown` is a plain `ArrowDown` today (probed) | adopting `MultiSelectList`'s model changes an existing key |
+| No type-ahead in a `Tree` | `List`'s type-ahead moves the focus mark and never the selection; a tree key cannot move the current row without selecting it | waits on the row above |
+| No `*` to expand a tree node's siblings | optional in the pattern; on lazy nodes it starts one `loadChildren` per sibling | whether to add it, and what it does for lazy nodes |
+| `Alt`, `Ctrl` and `Meta` chords are taken as plain keys | `Alt+ArrowDown` in a `Tree` moves the row and is prevented (probed); `List` and the table body do the same; only `Menu` stands down | one rule for all widgets. The new page keys follow the tree's arrow keys |
+| A current row hidden by a collapse | collapsing from the caret leaves the current row, the anchor and the selection on a hidden child (probed); the next key starts from the first row | the pattern moves focus to the collapsed parent. This plan fixes only what a `Shift` move does from that state |
+| `ArrowLeft` / `ArrowRight` never move the current cell in a `TreeTable` with a current row | consumed where the tree has no use for the key (probed); `TreeTable.md` claimed a fallback `TreeBody` never had, and now says what happens | the treegrid pattern ties the two meanings to which cell is current |
+| `Table`: `Home` / `End` within the row, `Ctrl+Home` / `Ctrl+End`, `Shift`+arrow, `Ctrl+A` | `Home` / `End` go to the first and last row, as documented; `Shift` is ignored by the row keys (probed on the tree-table body, pinned by TT4) | a table has two selections, rows and a cell range; which one `Shift` extends |
+| No `Home` / `End` on a tab strip; no `ArrowUp` / `ArrowDown` on a vertical one | `TabBar.onToolbarKeyDown` hears keys from the whole strip, strip tools included; a west or east strip writes no `aria-orientation` | `Home` / `End` there would take the caret keys from a text-entry tool, the fault `ToolBar` was fixed for |
+| No `Home` / `End` in a `ToolBar` | `RovingTabIndex` has `moveTo`, `moveNext`, `movePrev` and does not skip a disabled member | what `Home` does when the first button is disabled |
+| No type-ahead in a `Menu`; no `Home` / `End` in a host-driven dropdown | `Menu.handleKey` is documented as handling four keys | both are optional in the pattern |
+| The time picker's columns take no key | `TimePickerDropdown` does not override `AnimatedDropdown.handleKey`, and a `PickerCell` takes no focus; the field's text input is the keyboard path | whether the columns become a keyboard target at all |
+| `MenuBar`, `ComboBox` and the calendar day grid were not surveyed key by key | `MenuBar.md` and `ComboBox.md` have no Keyboard table | survey them first |
+| Paging the view without moving the current row | `List`, the table body and now `Tree` all move the current row | whether any widget wants the other model |
+| `Tree._onKeyDown` is an eight-branch ladder of about 60 lines | past the code conventions' 30-line guide; the shape predates this plan, which added two branches the plan gave verbatim | split it when the tree's next keys land. Left here: the pending `directional-panel-navigation` plan and this one both edit the method, and a restructure would make every one of those merges a hand edit |
+| The shared ladder trusts an anchor that is not in view | read, not run: `reduceModifierSelection` tests only `anchor !== null`; with an anchor record that is not among the visible records `indexOf` gives -1 and the range loop would add `at(-1)` to the selection. `Tree`'s visible-anchor test is the stricter rule | whether a `Table` or `MultiSelectList` can reach that state, and the same guard there if so |
+| An anchored `Shift`-click looks its anchor up twice | `_handleClick` asks `_visibleAnchorIndex()` and `_extendSelectionTo` asks again: two scans of the visible rows per click | pass the index along when the ladder is next restructured; not worth a signature change here |
+| `Tree` keeps its own selection ladder beside the shared one | `component/shared/reduceModifierSelection.ts` is the ladder `MultiSelectList` and the table body share; its header states the rule this plan gave `Tree`: `Shift` with no anchor is a plain select whose target becomes the anchor, and with `Ctrl` as well a toggle | move `Tree` onto it in the plan that gives a tree `Ctrl`+arrow and `Space` |
+
+Two things seen while verifying, neither caused by this plan and neither changed:
+
+- Before any key was pressed, the large-tree demo's rows container held three empty `treeitem` elements at the top, displayed, beside its 22 bound rows; the bordered demo tree showed three unnamed `treeitem`s in the accessibility snapshot too. Rows a later scroll left unbound were `display: none`. A click on row 0 still reached it. Seen, not investigated.
+- A `Tree` row is as wide as the widest label, so in a tree with a horizontal scrollbar a row's centre can lie outside the viewport. It affects only tools that click an element's centre.
