@@ -501,6 +501,17 @@ page resets to empty.
   browser makes on its own, a click on a minimap heading stopped short of
   it by the distance scrolled. No consumer action is needed.
 
+- **A `Tree` pages with `PageUp` / `PageDown`.** The two keys did nothing in
+  a tree and left the browser to scroll whatever was behind it. They now
+  move the current row by one page — the number of whole rows the tree
+  shows — select it and scroll it into view. With `Shift` they extend the
+  selection, like the arrow keys and `Home` / `End`. `Table`, `TreeTable`,
+  `List` and `MultiSelectList` already paged. One behaviour changes: a
+  focused tree now takes the two keys, so they no longer scroll a panel
+  around it; a `keydown` listener on an ancestor still receives them. A
+  tree tall enough to show all its rows, inside such a panel, therefore
+  moves to its last or first row. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation

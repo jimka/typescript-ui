@@ -140,7 +140,10 @@ The tree is one focus stop: its own element holds focus, and the current row is 
 | `ArrowRight` | Expand a collapsed node, or move to an expanded node's first child. |
 | `ArrowLeft` | Collapse an expanded node, or move to the parent. |
 | `Home` / `End` | Move to the first / last visible row and select it. With `Shift`, extend the selection instead. |
+| `PageUp` / `PageDown` | Move up / down by one page — the number of whole rows the tree shows — and select that row. With `Shift`, extend the selection instead. With no current row yet, the first press lands on the first row. |
 | `Shift+F10` / ContextMenu key | Fire `"contextmenu"` for the current row — see [Context menu](#context-menu). |
+
+A key that moves the current row is the tree's own even when the row cannot move: `PageDown` on the last row changes nothing, and the browser does not scroll what is behind the tree. See [Keys in trees, lists and tables](/concepts/accessibility#keys-in-trees-lists-and-tables).
 
 ## Context menu
 

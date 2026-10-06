@@ -245,6 +245,24 @@ A tree, a list and a table body each hold focus on their own element and mark th
 
 The menu takes focus, is worked with the arrow keys, `Enter` and `Escape`, and returns focus to where it was when it closes — see [Menu: Keyboard](/components/Menu#keyboard).
 
+## Keys in trees, lists and tables
+
+A [`Tree`](/components/Tree#keyboard), a [`List`](/components/List#keyboard) or [`MultiSelectList`](/components/MultiSelectList#selection-model), and the body of a [`Table`](/components/Table#keyboard) or [`TreeTable`](/components/TreeTable#keyboard) are each one Tab stop. The widget's own element holds focus and takes these keys:
+
+| Key | `Tree` | `List`, `MultiSelectList` | `Table` | `TreeTable` |
+| --- | --- | --- | --- | --- |
+| `ArrowUp` / `ArrowDown` | previous / next row | previous / next row | previous / next row | previous / next row |
+| `Home` / `End` | first / last row | first / last row | first / last row | first / last row |
+| `PageUp` / `PageDown` | up / down one page | up / down one page | up / down one page | up / down one page |
+| `ArrowLeft` / `ArrowRight` | collapse / expand, or to the parent / first child | — | previous / next cell | collapse / expand, or to the parent / first child |
+| `Enter` / `Space` | — | select the focused row | edit the current cell | edit the current cell |
+| Printable character | — | type-ahead | — | — |
+| `Shift+F10` / ContextMenu key | menu for the current row | menu for the focused row | menu for the current cell | menu for the current cell |
+
+A page is the number of whole rows the widget shows, and at least one. The key moves the current row that far and scrolls it into view by the least distance. `Shift` with a row key extends the selection in a `Tree` and a `MultiSelectList`.
+
+A key that moves the current row is the widget's own even when the row cannot move: `PageDown` on the last row changes nothing, and the browser does not scroll the page behind the widget. The key is not stopped, so a `keydown` listener on an ancestor still receives it. An empty widget leaves these keys alone, and so does a disabled or read-only `List` or `MultiSelectList`.
+
 ## Building an accessible custom widget
 
 A custom selectable list is the simplest non-trivial case:
