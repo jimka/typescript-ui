@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { TextInputCellEditor } from "~/component/table/cell/editor/TextInputCellEditor.js";
+import { blurRelatedTargetHandle } from "~/component/table/cell/editor/CellEditor.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import { TimePickerDropdown } from "~/component/input/TimePickerDropdown.js";
@@ -48,7 +49,7 @@ class TimeEditor extends TextInputCellEditor<Date | null> {
         this.setOutline('none');
 
         Event.addListener(this, "focus", () => this.openDropdown());
-        Event.addListener(this, "blur",  () => this.closeDropdown());
+        Event.addListener(this, "blur",  (e: FocusEvent) => this.onEditorBlur(e));
         Event.addListener(this, "input", () => this.onInput());
 
         this.setType("text");
@@ -185,6 +186,25 @@ class TimeEditor extends TextInputCellEditor<Date | null> {
         }
 
         dropdown.showAt(el, this._value);
+    }
+
+    /**
+     * Closes the dropdown when the editor input blurs — unless the edit is
+     * being kept alive, which the base class does while a context menu opened
+     * from the keyboard inside this editor holds the keyboard. The picker
+     * then stays open under the menu, as it does under one opened with the
+     * mouse, instead of closing and reopening as focus goes and comes back.
+     *
+     * @param e - The blur event.
+     */
+    private onEditorBlur(e: FocusEvent): void {
+        const editKept = this.retainsFocus(blurRelatedTargetHandle(e));
+
+        if (editKept) {
+            return;
+        }
+
+        this.closeDropdown();
     }
 
     /**

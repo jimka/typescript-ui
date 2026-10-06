@@ -24,6 +24,7 @@ import { Component } from '~/core/Component';
 import { Link } from '~/component/input/Link';
 import { SelectableText } from '~/component/input/SelectableText';
 import { MenuItem } from '~/component/container/MenuItem';
+import { Menu } from '~/overlay/Menu';
 import { MenuBarButton } from '~/component/menubar/MenuBarButton';
 import { SplitButton } from '~/component/button/SplitButton';
 import { CollapseButton } from '~/component/container/CollapseButton';
@@ -62,6 +63,22 @@ const REGISTRY: Array<{
     // already registers it.
     { name: 'SelectableText', covers: ['SelectableText'], make: () => new SelectableText('x') },
     { name: 'MenuItem',       covers: ['MenuItem'],       make: () => new MenuItem({ text: 'A' }, () => {}, () => {}) },
+    {
+        name:   'Menu (live keyboard session)',
+        covers: ['Menu'],
+        // A menu registers nothing at construction: its two viewport listeners
+        // exist only while a keyboard session is live, so the row starts one —
+        // through the private entry point, since this file dispatches no input
+        // for `show()` to read.
+        make: () => {
+            const menu = new Menu();
+
+            menu.show(0, 0, [{ text: 'A' }]);
+            (menu as any).takeKeyboardFocus();
+
+            return menu;
+        },
+    },
     { name: 'MenuBarButton',  covers: ['MenuBarButton'],  make: () => new MenuBarButton('File', () => {}, () => {}) },
     { name: 'CollapseButton', covers: ['CollapseButton'], make: () => new CollapseButton() },
     // Its own keydown/keyup listeners on the button, plus the chevron's

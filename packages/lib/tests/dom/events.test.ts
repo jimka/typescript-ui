@@ -224,6 +224,90 @@ describe('Modelled event delivery — exact-target routing', () => {
         expect(runs).toBe(1);
     });
 
+    // Case 8b: a viewport listener registered while an event is being
+    // dispatched does not receive that event — a native listener added during
+    // a dispatch does not either — and receives the next one.
+    it('does not hand an in-flight event to a viewport listener registered during its dispatch', () => {
+        installTestDOM(CONFIG);
+
+        const early = new Component({});
+        const late  = new Component({});
+        const type  = uniqueType();
+
+        early.getElement(true);
+
+        let lateRuns   = 0;
+        let secondRuns = 0;
+        const onLate   = (): void => { lateRuns += 1; };
+        const onSecond = (): void => { secondRuns += 1; };
+
+        // Registers another component's listener, and a second one of its own.
+        Event.addViewportListener(early, type, () => {
+            Event.addViewportListener(late, type, onLate);
+            Event.addViewportListener(early, type, onSecond);
+        });
+
+        DOM.sink.dispatchEvent(early.getElement()!, makeEvent(early.getElement()!, type));
+
+        expect(lateRuns).toBe(0);
+        expect(secondRuns).toBe(0);
+
+        DOM.sink.dispatchEvent(early.getElement()!, makeEvent(early.getElement()!, type));
+
+        expect(lateRuns).toBe(1);
+        expect(secondRuns).toBe(1);
+    });
+
+    // Case 8b-2: the rule covers the viewport pass only. A viewport listener
+    // registered by an element listener earlier in the same event still
+    // receives it when element listeners run before viewport ones — the
+    // order here, where the element listener is installed first.
+    it('still hands the event to a viewport listener an element listener registered earlier in the same event', () => {
+        installTestDOM(CONFIG);
+
+        const target = new Component({});
+        const other  = new Component({});
+        const late   = new Component({});
+        const type   = uniqueType();
+
+        target.getElement(true);
+
+        const order: string[] = [];
+        const onLate = (): void => { order.push('late'); };
+
+        Event.addListener(target, type, () => {
+            order.push('element');
+            Event.addViewportListener(late, type, onLate);
+        });
+        Event.addViewportListener(other, type, () => { order.push('viewport'); });
+
+        DOM.sink.dispatchEvent(target.getElement()!, makeEvent(target.getElement()!, type));
+
+        expect(order).toEqual(['element', 'viewport', 'late']);
+    });
+
+    // Case 8c: a viewport listener removed while an event is being dispatched
+    // is not called for it.
+    it('does not call a viewport listener removed during the dispatch', () => {
+        installTestDOM(CONFIG);
+
+        const first  = new Component({});
+        const second = new Component({});
+        const type   = uniqueType();
+
+        first.getElement(true);
+
+        let secondRuns = 0;
+        const onSecond = (): void => { secondRuns += 1; };
+
+        Event.addViewportListener(first, type, () => { Event.removeViewportListener(second, type, onSecond); });
+        Event.addViewportListener(second, type, onSecond);
+
+        DOM.sink.dispatchEvent(first.getElement()!, makeEvent(first.getElement()!, type));
+
+        expect(secondRuns).toBe(0);
+    });
+
     // Case 9: dispatching a type with no listeners is a no-op (still records).
     it('is a no-op when no listener is registered for the type', () => {
         const sink = installTestDOM(CONFIG);

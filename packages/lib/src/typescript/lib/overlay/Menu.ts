@@ -4,6 +4,9 @@ import { Component } from "~/core/Component.js";
 import { Panel } from "~/core/Panel.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle, Rect } from "~/core/DOM.js";
+import { Event } from "~/core/Event.js";
+import { SpatialNavigation } from "~/core/SpatialNavigation.js";
+import { MODIFIER_KEYS } from "~/core/Focusable.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { positionAdjacent, positionAnchoredFlexible, positionFlexibleAnchored } from "~/core/OverlayPosition.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/OverlayFade.js";
@@ -75,6 +78,15 @@ const MENU_PERSISTENT_DECLARATIONS: StyleBag = {
  * The keyboard-highlight methods (`focusItem`, `focusNext`, `focusPrev`,
  * `activateFocused`, `getFocusedIndex`, `handleKey`) work in both.
  *
+ * A menu is worked from the keyboard in one of two ways. A dropdown has a
+ * host — the control that opened it — which keeps DOM focus and forwards its
+ * keydowns to `handleKey`; the menu only moves its highlight. A context menu
+ * has no host, so a `show()` that follows a key press (Shift+F10, the
+ * ContextMenu key, `Enter` on a button whose action calls `show()`) takes DOM
+ * focus on the menu panel instead: it highlights the first enabled row,
+ * handles its own keys, and returns focus to the element that had it when
+ * the menu closes. A `show()` that follows a pointer press takes no focus.
+ *
  * @example
  * ```typescript
  * // Rebuild mode — right-click context menu
@@ -113,6 +125,45 @@ class Menu extends Component implements DismissableLayer {
             extract: (): StyleBag => MENU_PERSISTENT_DECLARATIONS,
         },
     ];
+
+    // The input watch. A keyboard session starts when the user's last input
+    // was a key press, so two viewport listeners record which came last: a
+    // `keydown` or a `pointerdown`. A bare modifier and a key's auto-repeat
+    // are not presses (see `_recordKeyInput`). `Event.addViewportListener`
+    // binds a listener to a `Component` while these handlers are static —
+    // one pair for the whole class — so a single stable sentinel owns them,
+    // as `Tooltip`'s pointer watch does. Installed with the first `Menu` and
+    // kept for the rest of the session.
+    private static readonly inputWatchOwner: Component = new Component();
+    private static inputWatching: boolean = false;
+    private static lastInputWasKey: boolean = false;
+
+    // Every menu with a live keyboard session: a rebuild-mode menu that took
+    // DOM focus in `show()` and has not yet closed.
+    private static readonly keyboardSessions: Set<Menu> = new Set();
+
+    /**
+     * Records a key press as the user's last input. Installed as the viewport
+     * `keydown` watch. A bare modifier and an auto-repeat are left out: a
+     * held Shift or Control keeps raising `keydown`s, and where the browser
+     * raises `contextmenu` on the mouse button's release, one of those lands
+     * between the `pointerdown` and the `show()` it leads to — a
+     * Control-held right-click would then open as if from the keyboard.
+     *
+     * @param e - The keydown.
+     */
+    private static readonly _recordKeyInput = (e: KeyboardEvent): void => {
+        const press = !e.repeat && !MODIFIER_KEYS.has(e.key);
+
+        if (press) {
+            Menu.lastInputWasKey = true;
+        }
+    };
+
+    /** Records a pointer press as the user's last input. Installed as the viewport `pointerdown` watch. */
+    private static readonly _recordPointerInput = (): void => {
+        Menu.lastInputWasKey = false;
+    };
 
     private readonly _persistent: boolean;
     // A persistent menu's items provider, kept so each open() re-resolves it —
@@ -155,6 +206,14 @@ class Menu extends Component implements DismissableLayer {
     // dropdown, its close() should dispose it once its fade completes rather
     // than just fading-and-detaching it for reuse.
     private _disposeOnClose: boolean = false;
+    // The element that had DOM focus when this menu's keyboard session
+    // started, and gets it back when the menu closes; null outside a session,
+    // and for a session that started with nothing focused (see
+    // takeKeyboardFocus for what "nothing" is in a browser).
+    private _invoker: Handle | null = null;
+    // A submenu panel's parent menu (set by handleItemOpenSubmenu right after
+    // construction); null for a top-level menu.
+    private _parentMenu: Menu | null = null;
 
     // Assigned in the constructor body, after super() returns. Menu overrides no
     // applyOptions, so no `declare` is needed (CODE_CONVENTIONS.md, super() cascade).
@@ -200,6 +259,8 @@ class Menu extends Component implements DismissableLayer {
         });
 
         this.addComponent(this._itemPanel);
+
+        Menu._startInputWatch();
 
         if (this._persistent) {
             this.applyPersistentChrome();
@@ -283,6 +344,20 @@ class Menu extends Component implements DismissableLayer {
      * so its bottom / right edge ends at the cursor, never covering it. A menu
      * taller than the room on the side it lands on is capped there and scrolls.
      *
+     * When the user's last press was a key and not a pointer button —
+     * Shift+F10, the ContextMenu key, or `Enter` on a button whose action
+     * calls this; a bare modifier and a key's auto-repeat do not count, and
+     * nothing bounds how long ago the press was — the menu also
+     * takes DOM focus: it highlights its first enabled row (the first row when
+     * none is enabled), handles the arrow keys, `Home` / `End`, `Enter` /
+     * `Space`, `ArrowRight` / `ArrowLeft` for submenus and `Tab` itself, and
+     * returns focus to the element that had it when the menu closes. Focus is
+     * returned before a closing row's `action` runs, and only while it is still
+     * inside the menu. When the last press was a pointer button the menu takes
+     * no focus and handles no key. A call made from a `keydown` handler, for
+     * the key press being handled, is not guaranteed either outcome: the
+     * press may not be on record yet when the handler runs.
+     *
      * @param x - Horizontal viewport coordinate (e.g. `MouseEvent.clientX`).
      * @param y - Vertical viewport coordinate (e.g. `MouseEvent.clientY`).
      * @param configs - Ordered list of item descriptors to render.
@@ -305,10 +380,16 @@ class Menu extends Component implements DismissableLayer {
         // rects that may legitimately extend past a viewport edge.
         const vp = DOM.source.getViewportSize();
 
-        return this.showAnchored(
+        this.showAnchored(
             pointRect(Util.clamp(x, 0, vp.width), Util.clamp(y, 0, vp.height)),
             configs, onClose ?? null, excludeEl ?? null,
         );
+
+        if (Menu.lastInputWasKey) {
+            this.takeKeyboardFocus();
+        }
+
+        return this;
     }
 
     /**
@@ -331,6 +412,8 @@ class Menu extends Component implements DismissableLayer {
 
         this._menuItems = [];
         this._focusedIndex = -1;
+        // The row the panel named, if any, is about to be disposed.
+        this.getAria().setActiveDescendant("");
         this._itemPanel.disposeAllComponents();
 
         this.pauseLayout();
@@ -348,6 +431,10 @@ class Menu extends Component implements DismissableLayer {
                 row = new MenuItem(
                     config,
                     () => {
+                        if (config.closeOnActivate !== false) {
+                            this.rootMenu().returnFocusToInvoker();
+                        }
+
                         config.action?.();
 
                         if (config.closeOnActivate === false) {
@@ -495,10 +582,13 @@ class Menu extends Component implements DismissableLayer {
      * Hides the menu and detaches it from the DOM. **Rebuild-mode only.**
      *
      * The instance remains alive and can be shown again by calling `show()`.
+     * A menu that took DOM focus when it opened returns it to the element that
+     * had it, unless focus has since moved out of the menu.
      */
     hide(): this {
         this.assertRebuildMode("hide");
 
+        this.returnFocusToInvoker();
         this.closeOpenSubmenu();
         this.setFocusedIndex(-1);
 
@@ -782,6 +872,10 @@ class Menu extends Component implements DismissableLayer {
         // already-closed menu costs nothing.
         LayerManager.unregister(this);
 
+        // Ends a keyboard session that is still live, without moving focus: a
+        // menu disposed while open has no say over where focus goes next.
+        this.endKeyboardSession();
+
         super.destructor();
     }
 
@@ -871,10 +965,13 @@ class Menu extends Component implements DismissableLayer {
      * Handles one navigation or activation key forwarded by the menu's host.
      * Valid in both modes.
      *
-     * The host keeps DOM focus and forwards its keydowns here; the menu only
-     * moves its highlight and never takes focus itself — the same model the
-     * library's dropdown hosts (`ComboBox`, the picker fields) use for their
-     * own dropdown lists. `ArrowDown` / `ArrowUp` move the highlight to the
+     * This is the host-forwarded path: the host keeps DOM focus and forwards
+     * its keydowns here, and the menu only moves its highlight — the same
+     * model the library's dropdown hosts (`ComboBox`, the picker fields) use
+     * for their own dropdown lists. A context menu that `show()` opened from
+     * the keyboard has no host; it takes DOM focus and handles its own keys,
+     * a wider set than the four handled here, so nothing needs forwarding to
+     * it. `ArrowDown` / `ArrowUp` move the highlight to the
      * next / previous row, and `Enter` / `Space` activate the highlighted row.
      * `Enter` and `Space` are reported as handled even when no row is
      * highlighted, so the host does not run its own activation for them.
@@ -1036,6 +1133,8 @@ class Menu extends Component implements DismissableLayer {
 
         this._menuItems = [];
         this._focusedIndex = -1;
+        // The row the panel named, if any, is about to be disposed.
+        this.getAria().setActiveDescendant("");
         this._itemPanel.disposeAllComponents();
 
         this.buildPersistentItems(configs);
@@ -1066,6 +1165,10 @@ class Menu extends Component implements DismissableLayer {
                 row = new MenuItem(
                     config,
                     () => {
+                        if (config.closeOnActivate !== false) {
+                            this.rootMenu().returnFocusToInvoker();
+                        }
+
                         config.action?.();
 
                         if (config.closeOnActivate === false) {
@@ -1090,7 +1193,9 @@ class Menu extends Component implements DismissableLayer {
     }
 
     /**
-     * Updates the focused-item highlight, clearing the previous item and setting the new one.
+     * Updates the focused-item highlight, clearing the previous item and setting the new one,
+     * and names the highlighted row in the panel's `aria-activedescendant` (cleared when no
+     * row takes the highlight).
      *
      * @param index - The new focused index, or -1 to clear.
      */
@@ -1105,13 +1210,19 @@ class Menu extends Component implements DismissableLayer {
 
         this._focusedIndex = index;
 
+        // "" clears the attribute: no row takes the highlight.
+        let activeId = "";
+
         if (index >= 0 && index < this._menuItems.length) {
             const next = this._menuItems[index];
 
             if (next.isNavigable()) {
                 next.setFocused(true);
+                activeId = next.getActiveDescendantId();
             }
         }
+
+        this.getAria().setActiveDescendant(activeId);
     }
 
     /**
@@ -1130,10 +1241,18 @@ class Menu extends Component implements DismissableLayer {
     /**
      * Closes and forgets this menu's open child submenu, if any. Shared by the
      * teardown paths (`hide` / `close`) and by the submenu switch in
-     * `handleItemOpenSubmenu` when a different item takes the child slot.
+     * `handleItemOpenSubmenu` when a different item takes the child slot. A
+     * submenu that holds DOM focus hands it to this panel first, whatever is
+     * closing it, so focus never sits in a panel that has gone.
      */
     private closeOpenSubmenu(): void {
         if (this._openSubmenuPanel) {
+            const heldFocus = LayerManager.containsAcrossLayers(this._openSubmenuPanel, DOM.source.getActiveElement());
+
+            if (heldFocus) {
+                this.focus(true);
+            }
+
             this._openSubmenuPanel.close();
             this._openSubmenuItem?.getAria().setExpanded(false);
             this._openSubmenuPanel = null;
@@ -1153,6 +1272,413 @@ class Menu extends Component implements DismissableLayer {
             this._onClose!();
         } else {
             this.hide();
+        }
+    }
+
+    // ----- Keyboard session -----
+
+    /**
+     * Installs the viewport listeners that record whether the user's last
+     * input was a key press or a pointer press, unless they are already
+     * installed. Called as each menu is constructed, and nothing removes them
+     * afterwards: the answer has to be on record before the `show()` it
+     * decides.
+     */
+    private static _startInputWatch(): void {
+        if (Menu.inputWatching) {
+            return;
+        }
+
+        Event.addViewportListener(Menu.inputWatchOwner, "keydown",     Menu._recordKeyInput);
+        Event.addViewportListener(Menu.inputWatchOwner, "pointerdown", Menu._recordPointerInput);
+
+        Menu.inputWatching = true;
+    }
+
+    /**
+     * Removes the input watch and resets the recorded input to "pointer".
+     * Nothing removes the watch during a session — see `_startInputWatch` —
+     * so this exists for a test suite that replaces the DOM the registrations
+     * were made against, which would otherwise leave them pointing at a
+     * discarded window; for tests only. The next menu constructed starts the
+     * watch again.
+     *
+     * @internal
+     */
+    static _stopInputWatch(): void {
+        // Nothing to remove when the watch was never started, or was already
+        // stopped: the removal reads the window, which a caller that has
+        // already reset the DOM no longer has.
+        if (Menu.inputWatching) {
+            Event.removeViewportListener(Menu.inputWatchOwner, "keydown",     Menu._recordKeyInput);
+            Event.removeViewportListener(Menu.inputWatchOwner, "pointerdown", Menu._recordPointerInput);
+
+            Menu.inputWatching = false;
+        }
+
+        Menu.lastInputWasKey = false;
+    }
+
+    /**
+     * Whether a live keyboard session's invoker is `container` or lies inside
+     * it — that is, whether a menu opened from the keyboard is holding the
+     * focus it took from an element in `container`. A table cell editor asks
+     * this to keep its edit open while such a menu is up.
+     *
+     * @internal
+     * @param container - The element to test, or `null`.
+     * @returns `true` while such a session is live; `false` for `null`.
+     */
+    static hasKeyboardSessionFrom(container: Handle | null): boolean {
+        if (container === null) {
+            return false;
+        }
+
+        for (const menu of Menu.keyboardSessions) {
+            const invoker = menu._invoker;
+            // isRegistered first: every other read of a released handle throws.
+            const inside  = invoker !== null && DOM.source.isRegistered(invoker) && DOM.source.contains(container, invoker);
+
+            if (inside) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Starts this menu's keyboard session, unless one is already live, and
+     * moves DOM focus to the panel. The session records the invoker — the
+     * element that has focus now — and listens for the keys pressed on the
+     * menu's panels and for the invoker taking focus back.
+     */
+    private takeKeyboardFocus(): void {
+        const live = Menu.keyboardSessions.has(this);
+
+        // The session is recorded before focus moves: the invoker's blur runs
+        // inside focusPanel(), and CellEditor.retainsFocus reads the session there.
+        if (!live) {
+            const active = DOM.source.getActiveElement();
+            const body   = DOM.source.getBody();
+
+            // With nothing focused a browser reports `<body>`. It is no
+            // invoker: every element of the page lies inside it, so any focus
+            // move would read as the invoker taking focus back.
+            this._invoker = active === body ? null : active;
+            Menu.keyboardSessions.add(this);
+            Event.addViewportListener(this, "keydown", this.onSessionKeyDown);
+            Event.addViewportListener(this, "focusin", this.onSessionFocusIn);
+        }
+
+        this.focusPanel();
+    }
+
+    /**
+     * Makes the panel focusable from script, focuses it, and highlights its
+     * first enabled row, scrolling it into view. Used for the top-level menu
+     * when a session starts and for a submenu panel when the keyboard moves
+     * into it.
+     */
+    private focusPanel(): void {
+        // -1: focusable from script, never a Tab stop.
+        this.getAria().setTabIndex(-1);
+        this.focus(true);
+        this.highlightFirstEnabled();
+        // A no-op unless the list opened scrolled away from its first rows.
+        this.revealHighlightedRow();
+    }
+
+    /**
+     * Highlights the first row that is navigable and enabled. When no row is
+     * enabled, highlights the first navigable row instead, so a menu of
+     * disabled rows still shows where the keyboard is; when no row is
+     * navigable, clears the highlight.
+     */
+    private highlightFirstEnabled(): void {
+        const enabled = this._menuItems.findIndex(row => row.isNavigable() && row.isEnabled());
+
+        if (enabled >= 0) {
+            this.setFocusedIndex(enabled);
+
+            return;
+        }
+
+        this.setFocusedIndex(this._menuItems.findIndex(row => row.isNavigable()));
+    }
+
+    /**
+     * Ends this menu's keyboard session and forgets its invoker. Moves no
+     * focus. A no-op in effect when no session is live.
+     *
+     * @returns The invoker the session recorded, or `null`.
+     */
+    private endKeyboardSession(): Handle | null {
+        const invoker = this._invoker;
+
+        this._invoker = null;
+        Menu.keyboardSessions.delete(this);
+        Event.removeViewportListener(this, "keydown", this.onSessionKeyDown);
+        Event.removeViewportListener(this, "focusin", this.onSessionFocusIn);
+
+        return invoker;
+    }
+
+    /**
+     * Ends this menu's keyboard session and returns DOM focus to its invoker.
+     * Focus moves only when it is still inside this menu's chain — a row
+     * action that opened a dialog, or an outside press about to focus what
+     * was pressed, keeps the focus it has — and only to an invoker that has
+     * not been disposed or removed from the page. A no-op when no session is
+     * live, which is every menu opened with the pointer or driven by a host.
+     */
+    private returnFocusToInvoker(): void {
+        const live = Menu.keyboardSessions.has(this);
+
+        if (!live) {
+            return;
+        }
+
+        // Read before the session ends and before any layer is unregistered.
+        const heldFocus = LayerManager.containsAcrossLayers(this, DOM.source.getActiveElement());
+        const invoker   = this.endKeyboardSession();
+        // isRegistered first: isConnected throws on a released handle.
+        const reachable = invoker !== null && DOM.source.isRegistered(invoker) && DOM.source.isConnected(invoker);
+
+        if (heldFocus && reachable) {
+            DOM.sink.focus(invoker, { preventScroll: true });
+        }
+
+        // After focus has moved: removing tabindex from the focused element would blur it.
+        this.getAria().setTabIndex(null);
+    }
+
+    /**
+     * The top-level menu of this menu's chain: this menu, or the root of the
+     * parent it is a submenu of.
+     *
+     * @returns The top-level menu.
+     */
+    private rootMenu(): Menu {
+        return this._parentMenu === null ? this : this._parentMenu.rootMenu();
+    }
+
+    /**
+     * The panel of this menu's chain the keyboard is working: the deepest
+     * open submenu that carries a highlight, or this menu.
+     *
+     * @returns The panel that holds the highlight.
+     */
+    private keyboardPanel(): Menu {
+        const child = this._openSubmenuPanel;
+
+        return child !== null && child._focusedIndex >= 0 ? child.keyboardPanel() : this;
+    }
+
+    /**
+     * The panel of this menu's chain whose own element is `el`: this menu,
+     * or one of its open submenus.
+     *
+     * @param el - The element to look for.
+     * @returns The panel, or `null` when `el` is no panel of this chain.
+     */
+    private panelAt(el: Handle): Menu | null {
+        const own = this.getElement() ?? null;
+
+        if (own === el) {
+            return this;
+        }
+
+        return this._openSubmenuPanel?.panelAt(el) ?? null;
+    }
+
+    /**
+     * Viewport `keydown` handler, installed on the top-level menu while its
+     * keyboard session is live. Hands a key pressed on one of the chain's
+     * panels — the panel holding DOM focus — to that panel, and leaves alone
+     * a key pressed anywhere else, such as on a focusable control inside a
+     * custom row.
+     *
+     * @remarks A viewport listener, not one on the panel's own element. The
+     * dispatcher runs element listeners and viewport listeners from two
+     * separate window-level listeners whose order is not fixed, and a layer
+     * beneath the menu decides whether a key is its own by asking whether it
+     * is the topmost layer: a modal `Dialog` confirms on `Enter` that way.
+     * Handled on the element, `Enter` could close the menu first and the
+     * dialog would then take the same key for itself. Viewport listeners run
+     * in the order their owning components first registered one for the
+     * type, and a menu owns no other viewport `keydown` listener: this one is
+     * registered when the session starts — after every layer that was
+     * already open — so those layers always see the menu still open. A
+     * second viewport `keydown` listener owned by a menu, registered earlier,
+     * would move this one ahead of them and undo that.
+     *
+     * @param e - The keydown.
+     *
+     * @returns The panel's disposition for a key pressed on it, or nothing.
+     */
+    private onSessionKeyDown(e: KeyboardEvent): Event.ListenerResult {
+        const target = e.target === null ? null : DOM.source.intern(e.target);
+        const panel  = target === null ? null : this.panelAt(target);
+
+        if (panel === null) {
+            return;
+        }
+
+        return panel.onPanelKeyDown(e);
+    }
+
+    /**
+     * Handles a keydown pressed on this panel while it holds DOM focus, which
+     * only a keyboard session gives it. The arrow keys, `Home` and `End` move
+     * the highlight; `Enter` and `Space` activate the highlighted row or
+     * enter its submenu, once per press — their auto-repeat is consumed and
+     * does nothing; `ArrowRight` enters a submenu and `ArrowLeft` leaves one;
+     * `Tab` closes the whole chain and lets the key continue, so focus moves
+     * on from the invoker. `Escape` is left to the layer manager, which
+     * closes the topmost layer. Leaves alone any key `SpatialNavigation`
+     * claims, and any key pressed with `Alt`, `Control` or `Meta`: those
+     * chords belong to the browser or the application (`Alt+ArrowLeft` is
+     * Back), not to the menu.
+     *
+     * @param e - The keydown on the panel.
+     *
+     * @returns A stop-and-prevent disposition for a key it consumed, or nothing.
+     */
+    private onPanelKeyDown(e: KeyboardEvent): Event.ListenerResult {
+        const claimed = SpatialNavigation.claimsKey(e);
+        const chord   = e.altKey || e.ctrlKey || e.metaKey;
+
+        if (claimed || chord) {
+            return;
+        }
+
+        switch (e.key) {
+            case "ArrowDown":
+            case "ArrowUp":
+                this.handleKey(e);
+                this.afterHighlightMove();
+
+                return { stop: true, prevent: true };
+
+            case "Home":
+                this.setFocusedIndex(this._menuItems.findIndex(row => row.isNavigable()));
+                this.afterHighlightMove();
+
+                return { stop: true, prevent: true };
+
+            case "End":
+                // focusPrev from no highlight wraps to the last navigable row.
+                this.focusItem(-1).focusPrev();
+                this.afterHighlightMove();
+
+                return { stop: true, prevent: true };
+
+            case "ArrowRight":
+                this.enterFocusedSubmenu();
+
+                return { stop: true, prevent: true };
+
+            case "ArrowLeft":
+                this._parentMenu?.closeOpenSubmenu();
+
+                return { stop: true, prevent: true };
+
+            case "Enter":
+            case " ":
+                // A held key's auto-repeat is consumed and ignored. Enter on
+                // a button whose action opens the menu is still down when the
+                // panel takes focus, and its repeat would activate the first
+                // row unasked.
+                if (!e.repeat) {
+                    this.activateOrEnterSubmenu();
+                }
+
+                return { stop: true, prevent: true };
+
+            case "Tab":
+                this.rootMenu().dismissAll();
+
+                return;
+        }
+
+        return;
+    }
+
+    /**
+     * Follows a keyboard move of the highlight: closes an open submenu, which
+     * belonged to the row the highlight left, and scrolls the newly
+     * highlighted row into view.
+     */
+    private afterHighlightMove(): void {
+        this.closeOpenSubmenu();
+        this.revealHighlightedRow();
+    }
+
+    /**
+     * Scrolls the highlighted row into view. A no-op when no row is
+     * highlighted, or the row is already visible.
+     */
+    private revealHighlightedRow(): void {
+        const el = this._menuItems[this._focusedIndex]?.getElement();
+
+        if (el) {
+            this._itemPanel.revealDescendant(el);
+        }
+    }
+
+    /**
+     * Opens the highlighted row's submenu and moves the keyboard into it:
+     * the submenu panel takes DOM focus and highlights its first enabled row.
+     *
+     * @returns `true` when a submenu was entered; `false` when the highlighted
+     *   row has no submenu, is disabled, or no row is highlighted.
+     */
+    private enterFocusedSubmenu(): boolean {
+        const row       = this._menuItems[this._focusedIndex];
+        const enterable = row instanceof MenuItem && row.hasSubmenu() && row.isEnabled();
+
+        if (!enterable) {
+            return false;
+        }
+
+        this.handleItemOpenSubmenu(row);
+        this._openSubmenuPanel?.focusPanel();
+
+        return true;
+    }
+
+    /**
+     * `Enter` / `Space` on the highlighted row: enters its submenu when it
+     * has an enabled one, and activates the row otherwise.
+     */
+    private activateOrEnterSubmenu(): void {
+        const entered = this.enterFocusedSubmenu();
+
+        if (!entered) {
+            this.activateFocused();
+        }
+    }
+
+    /**
+     * Viewport `focusin` handler, installed while a keyboard session is live.
+     * When focus lands on the invoker, or inside it, while the menu is still
+     * open, the panel holding the highlight takes it back. That keeps the
+     * menu operable after a row that leaves the menu open runs a command that
+     * refocuses the invoker — some do so asynchronously, after the row's
+     * action has returned. Focus that moves anywhere else is left alone.
+     */
+    private onSessionFocusIn(): void {
+        const active  = DOM.source.getActiveElement();
+        const invoker = this._invoker;
+
+        // isRegistered first: the invoker may have been disposed while the
+        // menu was open, and every other read of a released handle throws.
+        const backOnInvoker = active !== null && invoker !== null
+            && DOM.source.isRegistered(invoker) && DOM.source.contains(invoker, active);
+
+        if (backOnInvoker) {
+            this.keyboardPanel().focus(true);
         }
     }
 
@@ -1261,10 +1787,22 @@ class Menu extends Component implements DismissableLayer {
         // instead of fading-and-detaching it for reuse like a persistent
         // top-level dropdown.
         submenuPanel._disposeOnClose = true;
+        submenuPanel._parentMenu = this;
 
         this._openSubmenuPanel = submenuPanel;
         this._openSubmenuItem = item;
         item.getAria().setExpanded(true);
+
+        // In a keyboard session every panel of the chain is focusable, however
+        // it was opened: a press on a row of a submenu the pointer opened then
+        // keeps focus inside the chain, where the session can find it, instead
+        // of dropping it on the page.
+        const sessionLive = Menu.keyboardSessions.has(this.rootMenu());
+
+        if (sessionLive) {
+            // -1: focusable from script and by a press, never a Tab stop.
+            submenuPanel.getAria().setTabIndex(-1);
+        }
 
         submenuPanel.setExcludedElement(this.getElement(true)!);
         submenuPanel.open(item.getElement(true)!, this);

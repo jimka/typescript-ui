@@ -27,6 +27,7 @@ import { Component } from '~/core/Component';
 import { DOM, type Handle } from '~/core/DOM';
 import { Event } from '~/core/Event';
 import { Tooltip } from '~/overlay/Tooltip';
+import { Menu } from '~/overlay/Menu';
 import { TextField } from '~/component/input/TextField';
 import { DateField } from '~/component/input/DateField';
 import { FieldDecorator } from '~/validation/FieldDecorator';
@@ -292,6 +293,11 @@ afterEach(() => {
     // removed during a session, so its viewport registration would outlive the
     // DOM it was made against and silently swallow the next test's moves.
     Tooltip._stopPointerWatch();
+
+    // A text field builds a context `Menu`, which installs `Menu`'s own
+    // session-long input watch — it listens for `keydown` too, so it would
+    // swallow the next test's key presses the same way.
+    Menu._stopInputWatch();
 
     DOM.reset();
 });

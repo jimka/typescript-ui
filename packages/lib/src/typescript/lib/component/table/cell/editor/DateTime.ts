@@ -74,15 +74,22 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
      * picker dropdown — including the embedded time field and its own popped
      * time-picker layer. Without this, focusing the embedded field would blur
      * the editor and the {@link CellEditorPool} would commit + tear down the
-     * dropdown mid-interaction.
+     * dropdown mid-interaction. Also keeps the base class's answer: the edit
+     * stays alive while a context menu opened from the keyboard inside this
+     * editor holds the keyboard.
      *
      * @param relatedTarget - The node handle receiving focus, or null.
-     * @returns True when focus landed inside the dropdown's layer tree.
+     * @returns True when focus landed inside the dropdown's layer tree, or
+     *   such a menu is open.
      */
     retainsFocus(relatedTarget: Handle | null): boolean {
-        return this._dropdown !== null
+        const sessionHeld = super.retainsFocus(relatedTarget);
+
+        return sessionHeld || (
+            this._dropdown !== null
             && this._dropdown.isOpen()
-            && LayerManager.containsAcrossLayers(this._dropdown, relatedTarget);
+            && LayerManager.containsAcrossLayers(this._dropdown, relatedTarget)
+        );
     }
 
     /**
