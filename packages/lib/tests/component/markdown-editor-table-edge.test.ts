@@ -178,10 +178,10 @@ function select(editor: MarkdownEditor, anchor: End, focus: End): void {
 }
 
 /**
- * Loads `source` and puts an empty 2×2 table in the list item holding the
- * text `tail`, before that text. The importer never puts a table in a list
- * item, but the serializer writes one (`- |...`), so the editor's node tree
- * can hold the shape.
+ * Loads `source` and makes the list item whose text is `tail` open with an
+ * empty 2×2 table, the text `tail` a paragraph after it: the shape a load
+ * builds for an item that opens with a table. Built on the node tree, so
+ * the table is the empty one the rows select the edges of.
  *
  * @param source - The Markdown to load, holding a list item whose text is `tail`.
  * @returns The editor.
@@ -190,16 +190,20 @@ function loadWithTableOpeningTail(source: string): MarkdownEditor {
     const editor = load(source);
 
     lexicalOf(editor).update(() => {
-        $textNode('tail').insertBefore($createTableNodeWithDimensions(2, 2, true));
+        const tail = $textNode('tail');
+        const item = tail.getParentOrThrow().getParentOrThrow();
+
+        // The item's text node gives way to the table and a paragraph holding the text.
+        item.splice(0, 1, [$createTableNodeWithDimensions(2, 2, true), $createParagraphNode().append(tail)]);
     }, { discrete: true });
 
     return editor;
 }
 
 /**
- * Loads `source` and puts the text `head` and an empty 2×2 table in the list
- * item holding the text `tail`, before that text: the table then stands
- * between two texts of one list item. Built on the node tree, as
+ * Loads `source` and gives the list item whose text is `tail` the text
+ * `head`, then an empty 2×2 table, then `tail` as a paragraph: the table
+ * then stands between two texts of one list item. Built on the node tree, as
  * {@link loadWithTableOpeningTail} builds its shape.
  *
  * @param source - The Markdown to load, holding a list item whose text is `tail`.
@@ -210,9 +214,11 @@ function loadWithTableBetweenHeadAndTail(source: string): MarkdownEditor {
 
     lexicalOf(editor).update(() => {
         const tail = $textNode('tail');
+        const itemText = tail.getParentOrThrow();
+        const item = itemText.getParentOrThrow();
 
-        tail.insertBefore($createTextNode('head'));
-        tail.insertBefore($createTableNodeWithDimensions(2, 2, true));
+        item.splice(1, 0, [$createTableNodeWithDimensions(2, 2, true), $createParagraphNode().append(tail)]);
+        itemText.append($createTextNode('head'));
     }, { discrete: true });
 
     return editor;
@@ -535,7 +541,7 @@ describe('deleting a range across a table\'s edge takes the whole table and stop
 
         expect(editor.getValue()).toBe('-');
         expect(rootChildren(editor)).toEqual(['list:']);
-        expect(caretOf(editor)).toBe('listitem@0');
+        expect(caretOf(editor)).toBe('markdown-list-item-text@0');
         expect(editorSurfaceModel(editor)).toEqual(viewerModel(editor.getValue()).blocks);
     });
 
@@ -622,17 +628,17 @@ describe('deleting a range across a table\'s edge takes the whole table and stop
         expect(caretOf(editor)).toBe('"u"@1');
     });
 
-    // The range starts and ends in the one list item holding the table: one removal, which joins the item's
-    // own two texts and keeps the item.
+    // The range starts and ends in the one list item holding the table. The text after the table is a paragraph
+    // of the item, and a table-edge removal joins nothing, as at the top level (D4): the paragraph stays one.
     it('D27: from a table between two texts of a list item into the text after it keeps the item and the text before', () => {
         const editor = loadWithTableBetweenHeadAndTail('- item\n- tail');
 
         select(editor, 'first-cell-start', ['tail', 2]);
         lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
 
-        expect(editor.getValue()).toBe('- item\n\n- headil');
+        expect(editor.getValue()).toBe('- item\n\n- head\n\n  il');
         expect(holdsTable(editor)).toBe(false);
-        expect(caretOf(editor)).toBe('"headil"@4');
+        expect(caretOf(editor)).toBe('"il"@0');
     });
 
     it('D28: from a table that opens a list\'s only item to the end of the item\'s text keeps the item, emptied', () => {
@@ -643,7 +649,7 @@ describe('deleting a range across a table\'s edge takes the whole table and stop
 
         expect(editor.getValue()).toBe('-');
         expect(rootChildren(editor)).toEqual(['list:']);
-        expect(caretOf(editor)).toBe('listitem@0');
+        expect(caretOf(editor)).toBe('markdown-list-item-text@0');
     });
 
     it('D29: from the text before a table in a list item into the table keeps the text after it in the item', () => {
@@ -652,19 +658,53 @@ describe('deleting a range across a table\'s edge takes the whole table and stop
         select(editor, ['head', 2], 'last-cell-end');
         lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
 
-        expect(editor.getValue()).toBe('- item\n\n- hetail');
+        // As at the top level (D1): the paragraph after the table is not joined to the text before it.
+        expect(editor.getValue()).toBe('- item\n\n- he\n\n  tail');
         expect(holdsTable(editor)).toBe(false);
-        expect(caretOf(editor)).toBe('"hetail"@2');
+        expect(caretOf(editor)).toBe('"he"@2');
     });
 
-    it('D30: typing over the range of D29 types between the item\'s two texts', () => {
+    it('D30: typing over the range of D29 types at the end of the item\'s text, before its paragraph', () => {
         const editor = loadWithTableBetweenHeadAndTail('- item\n- tail');
 
         select(editor, ['head', 2], 'last-cell-end');
         lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, 'x');
 
-        expect(editor.getValue()).toBe('- item\n\n- hextail');
+        expect(editor.getValue()).toBe('- item\n\n- hex\n\n  tail');
         expect(holdsTable(editor)).toBe(false);
+    });
+
+    // A list item cannot be empty, and Lexical's removal takes an element that says so once it has emptied it. A
+    // range that covers every block of the item at whose table it starts or ends leaves that item, emptied, as a
+    // range into the end of an item's text does (D18).
+    it.each<[string, string, End, End, string, string]>([
+        // Two documents the list-edit fuzz threw on (`Expected node … to have a parent`): the range ends in a table
+        // that is the last block of a list item.
+        ['D31: into a table that is all a list item holds, from a block of the item before',
+            '| t9 |\n| --- |\n| u10 |\n\n+ w0\n\n\n  ::: {align=center}\n  f1\n  :::\n  ***\n+ | h2 |\n  | --- |\n  | c3 |\n\n```\nk5\n```',
+            ['f1', 1], ['c3', 1], '| t9 |\n| --- |\n| u10 |\n\n+ w0\n\n  ::: {align=center}\n  f\n  :::\n\n+\n\n```\nk5\n```', '"f"@1'],
+        ['D32: into a table that ends a list item, from the text of the item before: the item\'s text goes with its table',
+            '[d]: /first\n\n- w0\n\n\n  [d]: /u1 "t\n\n  u2"\n- w3\n\n  | h4 |\n  | --- |\n  | c5 |\n- * n6\n\n    p7\n\n# g12',
+            ['w0', 1], ['c5', 1], '[d]: /first\n\n- w\n\n-\n\n- * n6\n\n    p7\n\n# g12', '"w"@1'],
+        ['D33: from a paragraph into a table that is all the list\'s last item holds, over the item before it',
+            `p\n\n- x\n- ${T.replace(/\n/g, '\n  ')}`, ['p', 1], ['c1', 1], 'p\n\n-', '"p"@1'],
+        ['D34: from a table that is all a list\'s first item holds to the end of the next item\'s text',
+            `- ${T.replace(/\n/g, '\n  ')}\n- z`, 'first-cell-start', ['z', 1], '-\n-', 'markdown-list-item-text@0'],
+        ['D36: from one table of a list item into another table of the same item takes both and what stands between them',
+            '- a\n\n  | h |\n  | --- |\n  | c1 |\n\n  mid\n\n  | x |\n  | --- |\n  | y |\n\n  tail\n- z', ['c1', 1], ['y', 1], '- a\n\n  tail\n\n- z',
+            // The caret enters the block after the removed tables, as at the top level (D4).
+            '"tail"@0'],
+        ['D35: into a table that is all a nested item holds',
+            `- k\n  - ${T.replace(/\n/g, '\n    ')}\n- z`, ['k', 1], ['c1', 1], '- k\n  *\n- z', '"k"@1'],
+    ])('%s', (_name, source, anchor, focus, saved, caret) => {
+        for (const isBackward of [true, false]) {
+            const editor = deleteRange(source, anchor, focus, isBackward);
+
+            expect(editor.getValue()).toBe(saved);
+            expect(holdsTable(editor)).toBe(source.startsWith('| t9'));
+            expect(caretOf(editor)).toBe(caret);
+            expect(editorSurfaceModel(editor)).toEqual(viewerModel(saved).blocks);
+        }
     });
 });
 

@@ -5,7 +5,8 @@ import { ListNode, ListItemNode } from "@lexical/list";
 import { LinkNode } from "@lexical/link";
 import { CodeNode, CodeHighlightNode } from "@lexical/code";
 import { TableNode, TableRowNode, TableCellNode } from "@lexical/table";
-import type { Klass, LexicalNode } from "lexical";
+import type { Klass, LexicalNode, LexicalNodeReplacement } from "lexical";
+import { MarkdownListItemNode, MarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
 import { MarkdownBlockNode, MarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { ReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
@@ -18,7 +19,10 @@ import { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor
  * A Lexical editor can only build or parse a node type whose class it was
  * created with, so this set must cover every construct the Markdown importer
  * produces: headings (`HeadingNode`), blockquotes (`QuoteNode`),
- * ordered/unordered lists (`ListNode` + `ListItemNode`), links (`LinkNode`,
+ * ordered/unordered lists (`ListNode` + `MarkdownListItemNode`, which
+ * replaces Lexical's `ListItemNode` wherever one is created, so a list never
+ * holds an item of another class, + `MarkdownListItemTextNode` for an item's
+ * text), links (`LinkNode`,
  * and `ReferenceLinkNode` for a link written in a reference form),
  * fenced code (`CodeNode` + its `CodeHighlightNode` children), GFM tables
  * (`TableNode` + `TableRowNode` + `TableCellNode`), `:::` alignment /
@@ -30,11 +34,13 @@ import { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor
  * on the always-present built-in text/paragraph nodes and need no
  * registration.
  */
-export const EDITOR_NODES: ReadonlyArray<Klass<LexicalNode>> = [
+export const EDITOR_NODES: ReadonlyArray<Klass<LexicalNode> | LexicalNodeReplacement> = [
     HeadingNode,
     QuoteNode,
     ListNode,
-    ListItemNode,
+    MarkdownListItemNode,
+    { replace: ListItemNode, with: (): MarkdownListItemNode => new MarkdownListItemNode(), withKlass: MarkdownListItemNode },
+    MarkdownListItemTextNode,
     LinkNode,
     ReferenceLinkNode,
     CodeNode,

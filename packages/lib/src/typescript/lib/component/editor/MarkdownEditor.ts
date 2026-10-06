@@ -18,7 +18,7 @@ import type { CodeEditorChange } from "~/component/editor/CodeEditor.js";
 import { TextField } from "~/component/input/TextField.js";
 import {
     createEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $getRoot,
-    $createParagraphNode, KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH, SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
+    $createParagraphNode, $isDecoratorNode, KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH, SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
     PASTE_COMMAND, DELETE_CHARACTER_COMMAND, $createTextNode, $copyNode, $isLineBreakNode, $getState,
     IS_ALL_FORMATTING, $isTextNode, TEXT_TYPE_TO_FORMAT, $hasUpdateTag, HISTORY_PUSH_TAG,
     $getNearestNodeFromDOMNode, isDOMNode, $findMatchingParent, $isElementNode, $isParagraphNode, $isRootNode,
@@ -26,20 +26,20 @@ import {
     INSERT_PARAGRAPH_COMMAND, INSERT_LINE_BREAK_COMMAND, INSERT_TAB_COMMAND, COPY_COMMAND, CUT_COMMAND, CUT_TAG,
     COMMAND_PRIORITY_CRITICAL,
     $caretFromPoint, $normalizeCaret, $setPointFromCaret, KEY_BACKSPACE_COMMAND, KEY_DELETE_COMMAND, $isRootOrShadowRoot,
-    $getChildCaret, INTERNAL_$isBlock, $createRangeSelectionFromDom, $setSelection, $onUpdate, DROP_COMMAND, ParagraphNode,
-    OUTDENT_CONTENT_COMMAND,
+    $getChildCaret, INTERNAL_$isBlock, $createRangeSelectionFromDom, $setSelection, COMMAND_PRIORITY_LOW,
+    INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND, $getNodeByKey,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
-    CommandListener, LexicalCommand, CommandListenerPriority, UpdateListener, RangeSelection, EditorUpdateOptions,
-    NodeKey, PointType, CommandPayloadType, PointCaret, CaretDirection, SerializedElementNode, SerializedLexicalNode,
+    CommandListener, LexicalCommand, CommandListenerPriority, UpdateListener, ParagraphNode, RangeSelection, EditorUpdateOptions,
+    NodeKey, PointType, CommandPayloadType, PointCaret, CaretDirection,
 } from "lexical";
 import { registerMarkdownShortcuts } from "@lexical/markdown";
 import { registerRichText, $createHeadingNode, $createQuoteNode, QuoteNode, $isQuoteNode, $isHeadingNode } from "@lexical/rich-text";
 import type { HeadingTagType } from "@lexical/rich-text";
 import {
-    registerList, INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, ListNode, ListItemNode, $isListNode, $isListItemNode,
-    $createListItemNode,
+    registerList, INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, ListNode, $isListNode, $isListItemNode,
+    $createListItemNode, $createListNode,
 } from "@lexical/list";
 import type { ListType } from "@lexical/list";
 import { $toggleLink, $isLinkNode } from "@lexical/link";
@@ -57,14 +57,14 @@ import {
     INSERT_TABLE_COMMAND,
 } from "@lexical/table";
 import type { TableSelection } from "@lexical/table";
-import { mergeRegister, $getNearestNodeOfType } from "@lexical/utils";
+import { mergeRegister, $getNearestNodeOfType, $handleIndentAndOutdent } from "@lexical/utils";
 import { $setBlocksType, $patchStyleText, $copyBlockFormatIndent } from "@lexical/selection";
 import { SHORTCUT_TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { $importMarkdown } from "~/component/editor/markdownImporter.js";
 import { $serializeBlock, $serializeInlineNodes, $serializeMarkdown } from "~/component/editor/markdownSerializer.js";
 import {
     $breakRuleContainerOf, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $lineBreakUnwritableAt, $moveBlocksOutAfter,
-    $orderedPoints, $outdentItemKeepingBlocks, $parseKeepingItemParagraphs, $selectedSlices, $selectionHasFormat, $takeBlocksOutOf, RUN_EDGE_TAG,
+    $orderedPoints, $selectedSlices, $selectionHasFormat, $takeBlocksOutOf, RUN_EDGE_TAG,
     registerWritableStateRules,
 } from "~/component/editor/markdownWritable.js";
 import { EMPTY_SOURCE_MAP } from "~/component/editor/markdownSourceMap.js";
@@ -74,6 +74,9 @@ import {
 } from "~/component/editor/markdownSourceNodes.js";
 import { keptSourceState, nestedLinkState } from "~/component/editor/markdownNodeState.js";
 import { EDITOR_NODES } from "~/component/editor/editorNodes.js";
+import {
+    $createMarkdownListItemTextNode, $isMarkdownListItemNode, $isMarkdownListItemTextNode, $liftItemOut, $outdentItem, $splitItemAfterText,
+} from "~/component/editor/markdownListItemNode.js";
 import { EDITOR_THEME, ensureMarkdownEditorClassRules } from "~/component/editor/editorTheme.js";
 import {
     MarkdownBlockNode, $createMarkdownBlockNode, $isMarkdownBlockNode, $createMarkdownColumnNode, $isMarkdownColumnNode,
@@ -353,10 +356,7 @@ function createBlockNode(type: MarkdownBlockType): ElementNode {
  * replaces its inline content with that content's Markdown, so the code
  * block shows — and saves — the source of the formatting, links and images
  * it cannot hold, and nothing is lost. A raw block or a code block already
- * holds only its text and is left as it is. The blocks a list item holds
- * are none of its inline content: they are left in it, move into the code
- * block with it, and follow the code block from there
- * ({@link $moveBlocksOutAfter}).
+ * holds only its text and is left as it is.
  *
  * @param block - The block being converted; its children move into `code`.
  * @param code - The new code block.
@@ -368,119 +368,13 @@ function $copyBlockAsCodeSource(block: ElementNode, code: ElementNode): void {
         return;
     }
 
-    // A list item's blocks stay in it: they move into the code block with its text, and follow it from there.
-    const children = block.getChildren();
-    const firstBlock = children.findIndex($isBlock);
-    const inline = firstBlock === -1 ? children : children.slice(0, firstBlock);
-    const markdown = $serializeInlineNodes(inline);
-    const source = markdown === "" ? [] : [$createTextNode(markdown)];
+    const markdown = $serializeInlineNodes(block.getChildren());
 
-    block.splice(0, inline.length, source);
-}
+    block.clear();
 
-/**
- * Builds `$setBlocksType`'s after-create hook for a conversion to `type`.
- * A nested list item is first moved out of every list it is nested in with
- * the blocks that follow it there ({@link $outdentItemKeepingBlocks}):
- * Lexical's own replacement of a list item moves it out too, and drops what
- * the outer items hold after their nested lists. Then the block's format and
- * indent are copied, as the default hook does, and for a code block its
- * inline content becomes its Markdown ({@link $copyBlockAsCodeSource}).
- *
- * @param type - The requested block type.
- * @returns The hook, called with each block about to be replaced and its replacement.
- */
-function $prepareBlockForType(type: MarkdownBlockType): (block: ElementNode, replacement: ElementNode) => void {
-    return (block, replacement) => {
-        while ($isListItemNode(block) && block.getIndent() > 0) {
-            $outdentItemKeepingBlocks(block);
-        }
-
-        if (type === "code") {
-            $copyBlockAsCodeSource(block, replacement);
-        } else {
-            $copyBlockFormatIndent(block, replacement);
-        }
-    };
-}
-
-/**
- * `KEY_BACKSPACE_COMMAND` handler for a caret at the start of a nested list
- * item — in its text, or in the first block it opens with: moves the item
- * one level out through {@link $outdentItemKeepingBlocks}. The list plugin's
- * own handler does the same outdent without keeping the outer item's blocks
- * (`ListItemNode.collapseAtStart`), and finds the item the same way.
- * Registered ahead of it.
- *
- * @param event - The key event.
- * @returns Whether the caret was at the start of a nested list item, now moved out.
- */
-function $backspaceOutdentsNestedItem(event: CommandPayloadType<typeof KEY_BACKSPACE_COMMAND>): boolean {
-    const selection = $getSelection();
-    const isCaretAtStart = $isRangeSelection(selection) && selection.isCollapsed() && selection.anchor.offset === 0;
-
-    if (!isCaretAtStart) {
-        return false;
+    if (markdown !== "") {
+        block.append($createTextNode(markdown));
     }
-
-    let current: LexicalNode | null = selection.anchor.getNode();
-
-    // Up through first children only: the caret is at the start of everything the item holds.
-    while (current !== null && !$isListItemNode(current)) {
-        current = current.getPreviousSibling() === null ? current.getParent() : null;
-    }
-
-    const item = $isListItemNode(current) ? current : null;
-    const isNested = item !== null && item.getIndent() > 0 && !$isListNode(item.getFirstChild());
-
-    if (item === null || !isNested) {
-        return false;
-    }
-
-    event.preventDefault();
-    $outdentItemKeepingBlocks(item);
-
-    return true;
-}
-
-/**
- * `OUTDENT_CONTENT_COMMAND` handler, in place of Lexical's own: moves each
- * selected block one level out as Lexical does, a list item through
- * {@link $outdentItemKeepingBlocks}, so that the blocks an outer item holds
- * after the nested list stay in the document. Backspace at the start of a
- * nested list item dispatches this command.
- *
- * @returns Whether the selection held a block that can be indented, as Lexical's handler reports.
- */
-function $outdentKeepingItemBlocks(): boolean {
-    const selection = $getSelection();
-
-    if (!$isRangeSelection(selection)) {
-        return false;
-    }
-
-    const blocks = new Set<ElementNode>();
-
-    for (const node of selection.getNodes()) {
-        const block = $findMatchingParent(node, $isBlock);
-        const canIndent = block !== null && block.canIndent();
-
-        if (canIndent) {
-            blocks.add(block);
-        }
-    }
-
-    for (const block of blocks) {
-        const indent = block.getIndent();
-
-        if ($isListItemNode(block) && indent > 0) {
-            $outdentItemKeepingBlocks(block);
-        } else if (indent > 0) {
-            block.setIndent(indent - 1);
-        }
-    }
-
-    return blocks.size > 0;
 }
 
 /**
@@ -1206,8 +1100,11 @@ function $pasteIntoTextOnlyBlock(payload: { nodes: LexicalNode[]; selection: Bas
  * The text a pasted node goes into a raw Markdown block or a code block as:
  * its own text, except that each block a list item holds stands apart from
  * what the item holds before it as two items of the list do. Lexical's text
- * of an item puts nothing between the item's text and the block after it,
- * which would write that block into the text's line.
+ * of an item does that between the item's blocks, but puts nothing between
+ * text that stands straight in the item and the block after it, which would
+ * write that block into the text's line. Pasted nodes are as they were
+ * built: an item built from HTML holds its text so, where one copied in this
+ * editor holds it in its text node.
  *
  * @param node - The pasted node, or a node it holds.
  * @returns Its text.
@@ -1264,50 +1161,223 @@ function $pasteColumnsAsTheirBlocks(payload: CommandPayloadType<typeof SELECTION
 }
 
 /**
- * Reads the copied nodes a data transfer holds for `editor`, as Lexical's
- * copy serialized them, when a list item among them holds a paragraph — the
- * nodes Lexical's own parse may not build as they were copied
- * ({@link $parseKeepingItemParagraphs}).
+ * Tells whether a node is a paragraph, heading or quote that a list item
+ * holds after its text: a block Lexical pastes blocks into as one line of
+ * text.
  *
- * @param transfer - The data transfer of a paste, a drop or an input event.
- * @param editor - The editor the data transfer is inserted into.
- * @returns The serialized nodes, or `null` when the data transfer holds none
- *   for this editor or Lexical's parse builds them as copied.
+ * @param node - The node.
+ * @returns `true` for such a block.
  */
-function copiedNodesHoldingItemParagraphs(transfer: DataTransfer, editor: LexicalEditor): SerializedLexicalNode[] | null {
-    const data = transfer.getData(LEXICAL_CLIPBOARD_TYPE);
+function $isItemBlockTakingText(node: LexicalNode | null): node is ElementNode {
+    const isTextBlock = !$isMarkdownListItemTextNode(node) && ($isParagraphNode(node) || $isHeadingNode(node) || $isQuoteNode(node));
 
-    if (data === "") {
-        return null;
-    }
-
-    try {
-        const payload = JSON.parse(data) as { namespace?: unknown; nodes?: unknown } | null;
-        // Lexical's own paste inserts copied nodes of the editor's namespace only, and reads the namespace off `_config`
-        // too: the editor has no public accessor for it.
-        const isOwn = payload !== null && payload.namespace === editor._config.namespace && Array.isArray(payload.nodes);
-        const nodes = isOwn ? payload.nodes as SerializedLexicalNode[] : [];
-
-        return nodes.some(holdsItemParagraph) ? nodes : null;
-    } catch {
-        // Not JSON: Lexical's own paste reports it and falls back to the clipboard's other types.
-        return null;
-    }
+    return isTextBlock && $isMarkdownListItemNode(node.getParent());
 }
 
 /**
- * Tells whether a serialized node is, or holds, a list item holding a
- * paragraph.
+ * Tells whether a node is a list item's text that holds nothing while its
+ * item holds more: the empty line left above a nested list, a heading or a
+ * table once the item's text is deleted.
  *
- * @param node - The serialized node.
- * @returns `true` when it holds one.
+ * @param node - The node.
+ * @returns `true` for such a text.
  */
-function holdsItemParagraph(node: SerializedLexicalNode): boolean {
-    const children = (node as Partial<SerializedElementNode>).children ?? [];
-    const isItem = node.type === ListItemNode.getType();
-    const holdsParagraph = isItem && children.some((child) => child.type === ParagraphNode.getType());
+function $isEmptiedItemTextOverBlocks(node: LexicalNode | null): boolean {
+    return $isMarkdownListItemTextNode(node) && node.isEmpty() && node.getNextSibling() !== null;
+}
 
-    return holdsParagraph || children.some(holdsItemParagraph);
+/**
+ * Tells whether a pasted node is a block: an element or a decorator that is
+ * not inline, which is how Lexical's insert tells one.
+ *
+ * @param node - The pasted node.
+ * @returns `true` for a block.
+ */
+function $isPastedBlock(node: LexicalNode): boolean {
+    return $isBlock(node) || ($isDecoratorNode(node) && !node.isInline());
+}
+
+/**
+ * The pasted nodes as blocks: each block as it is, and each run of inline
+ * nodes between blocks in a paragraph, or of nodes that need a parent of
+ * their kind in that parent, as Lexical's insert wraps them.
+ *
+ * @param nodes - The pasted nodes.
+ * @returns The blocks, in order.
+ */
+function $pastedBlocks(nodes: readonly LexicalNode[]): LexicalNode[] {
+    const blocks: LexicalNode[] = [];
+    let run: ElementNode | null = null;
+
+    for (const node of nodes) {
+        // A node that needs a parent of its kind, as a list item pasted without its list, is wrapped as a run is.
+        const standsAlone = $isPastedBlock(node) && !node.isParentRequired();
+
+        if (standsAlone) {
+            blocks.push(node);
+            run = null;
+
+            continue;
+        }
+
+        if (run === null) {
+            run = node.createParentElementNode();
+            blocks.push(run);
+        }
+
+        run.append(node);
+    }
+
+    return blocks;
+}
+
+/**
+ * Splits the block blocks are pasted into, at the caret, as Lexical's insert
+ * does: a block that holds something through `insertParagraph`, and an
+ * emptied text of a list item ({@link $isEmptiedItemTextOverBlocks}) from
+ * what its item holds after it. (Enter in an empty text would take the item
+ * out of its list instead.) An empty block that stands alone is not split.
+ *
+ * @param selection - The collapsed selection in the block.
+ * @param caretBlock - The block.
+ * @returns The second half, or `null` when the block was not split.
+ */
+function $splitCaretBlockForPaste(selection: RangeSelection, caretBlock: ElementNode): ElementNode | null {
+    const item = caretBlock.getParent();
+    const isEmptiedText = $isEmptiedItemTextOverBlocks(caretBlock);
+
+    if (isEmptiedText && $isMarkdownListItemTextNode(caretBlock) && $isMarkdownListItemNode(item)) {
+        return $splitItemAfterText(item, caretBlock);
+    }
+
+    const holdsNothing = caretBlock.isEmpty();
+
+    return holdsNothing ? null : selection.insertParagraph();
+}
+
+/**
+ * `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` handler for blocks pasted into
+ * a paragraph, heading or quote that a list item holds after its text. The
+ * block is split at the caret and the pasted blocks become blocks of the
+ * item between the halves, as Lexical's insert puts them at the top level:
+ * the first pasted block's text joins the first half when it is a block of
+ * text, the other blocks follow it, and the second half joins the last
+ * pasted block when that one is a block of text — after a pasted list or
+ * table it stays a block of its own.
+ *
+ * It also takes a paste at a list item's text that holds nothing while the
+ * item holds more ({@link $isEmptiedItemTextOverBlocks}), whether it was
+ * empty or the pasted-over range emptied it. There the item is
+ * split after its text first, so what it holds goes after the pasted
+ * blocks: they leave the list as blocks pasted at any item's text do, and
+ * the item's blocks follow the last pasted block as they follow the second
+ * half of a text that held something.
+ *
+ * @remarks
+ * Lexical's own insert splits the caret's block only when it holds
+ * something. At an emptied text it puts the pasted blocks after the item,
+ * and so after the blocks the item holds, and removes the text, which sends
+ * those blocks to the item before.
+ *
+ * Lexical's own insert does this only for a block that stands in the root
+ * or a shadow root, or that says it needs a parent of its kind, as a list
+ * item's text does. Any other block inside a block gets the pasted blocks'
+ * inline content on its one line (`RangeSelection.insertNodes`, its case
+ * 3c), which wrote the texts of several pasted blocks, a table's cells or a
+ * list's items into one paragraph. The paragraph, heading and quote classes
+ * are Lexical's, so no node of the editor's can answer for them: hence a
+ * handler.
+ *
+ * @param payload - The pasted nodes and the selection they are inserted at.
+ * @returns Whether the paste went into such a block of a list item.
+ */
+function $pasteBlocksIntoItemBlock(payload: CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>): boolean {
+    const selection = payload.selection;
+    const holdsBlock = payload.nodes.some($isPastedBlock);
+
+    if (!$isRangeSelection(selection) || !holdsBlock) {
+        return false;
+    }
+
+    const startBlock = $findEnclosingBlock($orderedPoints(selection)[0].getNode());
+    const coversRange = !selection.isCollapsed();
+    // A range that starts in an item's text can empty it: whether it does is known once the range is removed,
+    // which Lexical's insert would do first as well.
+    const startsInTextOverBlocks = $isMarkdownListItemTextNode(startBlock) && startBlock.getNextSibling() !== null;
+    const mayEmptyText = startsInTextOverBlocks && (coversRange || $isEmptiedItemTextOverBlocks(startBlock));
+
+    if (!$isItemBlockTakingText(startBlock) && !mayEmptyText) {
+        return false;
+    }
+
+    if (coversRange) {
+        selection.removeText();
+    }
+
+    const caretBlock = $findEnclosingBlock(selection.anchor.getNode());
+    const isEmptiedText = $isEmptiedItemTextOverBlocks(caretBlock);
+
+    // The removal of a range that ended elsewhere can leave the caret in another kind of block: Lexical's insert takes it.
+    if (caretBlock === null || (!$isItemBlockTakingText(caretBlock) && !isEmptiedText)) {
+        return false;
+    }
+
+    $insertPastedBlocksAt(selection, caretBlock, $pastedBlocks(payload.nodes));
+
+    return true;
+}
+
+/**
+ * Puts pasted blocks in at a collapsed caret, as Lexical's insert does at
+ * the top level: the caret's block is split ({@link $splitCaretBlockForPaste}),
+ * the first pasted block's text joins the first half when it is a block of
+ * text, the other blocks follow it, and the second half joins the last
+ * pasted block when that one is a block of text. After an item's text the
+ * blocks go after the item, the list split there; after any other block
+ * they stay in its parent.
+ *
+ * @param selection - The collapsed selection.
+ * @param caretBlock - The block the caret is in.
+ * @param blocks - The pasted blocks, at least one.
+ */
+function $insertPastedBlocksAt(selection: RangeSelection, caretBlock: ElementNode, blocks: LexicalNode[]): void {
+    const last = blocks[blocks.length - 1]!;
+    const lastLeaf = $isElementNode(last) ? last.getLastDescendant() ?? last : last;
+    // The second half of the split block; the first half is then the block before it, which a heading split at
+    // its start replaces by an empty paragraph.
+    const tail = $splitCaretBlockForPaste(selection, caretBlock);
+    const before = tail === null ? caretBlock : tail.getPreviousSibling();
+    const head = $isElementNode(before) ? before : caretBlock;
+    const first = blocks[0]!;
+    const joinsHead = $isElementNode(first) && INTERNAL_$isBlock(first) && !first.isEmpty() && (!head.isEmpty() || head.canMergeWhenEmpty());
+    const rest = joinsHead ? blocks.slice(1) : blocks;
+
+    if (joinsHead) {
+        head.append(...first.getChildren());
+    }
+
+    if ($isMarkdownListItemTextNode(head)) {
+        // After an item's text a block goes after the item, the list split there (`insertAfter` of the text).
+        rest.reduce<LexicalNode>((previous, block) => previous.insertAfter(block), head);
+    } else {
+        head.getParentOrThrow().splice(head.getIndexWithinParent() + 1, 0, rest);
+    }
+
+    const lastBlock = rest.length === 0 ? head : $findEnclosingBlock(lastLeaf);
+    const joinsTail = tail !== null && lastBlock !== null && (tail.canMergeWhenEmpty() || INTERNAL_$isBlock(last));
+
+    lastLeaf.selectEnd();
+
+    if (joinsTail) {
+        lastBlock.append(...tail.getChildren());
+        tail.remove();
+    }
+
+    const headIsLeftEmpty = head.isEmpty();
+
+    if (headIsLeftEmpty) {
+        head.remove();
+    }
 }
 
 /**
@@ -1428,17 +1498,17 @@ function $deleteStaleFocusRange(): boolean {
  * there that holds inline content, or nothing, once the range is gone. On
  * the end's side that is always the end's own block, since the removal
  * empties everything before the end out of the elements around it. On the
- * start's side it can be a block around the start's own — a list item
- * holding text and then the nested list the start is in — which then takes
- * the end's rest at its own end, away from the caret. It joins nothing when
+ * start's side it is the start's own block wherever the editor's own rules
+ * hold: no block that holds inline content stands around another (a list
+ * item holds blocks only, its text one of them). It joins nothing when
  * a root or shadow root (a table cell, a `:::` column) lies between the fork
- * and either end.
+ * and either end, nor when the start is a point on an element that holds no
+ * inline content (a list item, between two of its blocks).
  *
  * Which element "holds inline content" is Lexical's own test,
  * `INTERNAL_$isBlock`, imported for it: the public `$isBlockElementNode`
- * (any element that is not inline) also matches a list or a list item
- * holding only a nested list, which the removal joins nothing onto, so it
- * would name the wrong block. The export is internal by name, so
+ * (any element that is not inline) also matches a list or a list item,
+ * which the removal joins nothing onto, so it would name the wrong block. The export is internal by name, so
  * `markdown-editor-command-crashes.test.ts` holds a canary (U3) that fails
  * when it goes or changes what it matches.
  *
@@ -1648,8 +1718,8 @@ function $grownTableEdgeRange(selection: RangeSelection): RangeSelection {
 }
 
 /**
- * Moves a caret left between two blocks — an element point on the root or a
- * `:::` column, where a removed table was — into a block: the start of the
+ * Moves a caret left between two blocks — an element point on the root, a
+ * `:::` column or a list item, where a removed table was — into a block: the start of the
  * block after it, else the end of the block before it, else a new empty
  * paragraph when the parent holds no block any more. Leaves any other
  * selection alone.
@@ -1672,7 +1742,8 @@ function $grownTableEdgeRange(selection: RangeSelection): RangeSelection {
  */
 function $settleCaretIntoBlock(selection: RangeSelection, staysOutOf: ((node: LexicalNode) => boolean) | null): void {
     const parent = selection.anchor.getNode();
-    const isBetweenBlocks = selection.isCollapsed() && selection.anchor.type === "element" && $isElementNode(parent) && $isRootOrShadowRoot(parent);
+    const holdsBlocks = $isElementNode(parent) && ($isRootOrShadowRoot(parent) || $isMarkdownListItemNode(parent));
+    const isBetweenBlocks = selection.isCollapsed() && selection.anchor.type === "element" && $isElementNode(parent) && holdsBlocks;
 
     if (!isBetweenBlocks) {
         return;
@@ -1705,9 +1776,122 @@ function $settleCaretIntoBlock(selection: RangeSelection, staysOutOf: ((node: Le
 }
 
 /**
+ * The list item or list a collapsed caret stands on: an element point
+ * between the blocks of an item, or between the items of a list.
+ *
+ * @param selection - The selection.
+ * @returns The item or list, or `null` for any other selection.
+ */
+function $listContainerAtCaret(selection: BaseSelection | null): ElementNode | null {
+    const isCaretBetweenBlocks = $isRangeSelection(selection) && selection.isCollapsed() && selection.anchor.type === "element";
+    const container = isCaretBetweenBlocks ? selection.anchor.getNode() : null;
+
+    return $isMarkdownListItemNode(container) || $isListNode(container) ? container : null;
+}
+
+/**
+ * Tells whether a selection is a range with an end between the blocks of a
+ * list item or between the items of a list: an element point on the item or
+ * the list. Lexical's removal of such a range can leave the caret there.
+ *
+ * @param selection - The selection.
+ * @returns `true` for such a range.
+ */
+function $isListContainerRange(selection: BaseSelection | null): selection is RangeSelection {
+    const isRange = $isRangeSelection(selection) && !selection.isCollapsed();
+
+    if (!$isRangeSelection(selection) || !isRange) {
+        return false;
+    }
+
+    return [selection.anchor, selection.focus].some((point) => {
+        const node = point.getNode();
+
+        return point.type === "element" && ($isMarkdownListItemNode(node) || $isListNode(node));
+    });
+}
+
+/**
+ * Tells whether an insert at the selection would go in between the blocks
+ * of a list item or between the items of a list: the selection is a caret
+ * there, or a range that starts there, whose removal leaves the caret where
+ * it starts.
+ *
+ * @param selection - The selection, left as it is.
+ * @returns `true` when the selection starts at an element point on a list item or a list.
+ */
+function $startsOnListContainer(selection: BaseSelection | null): boolean {
+    if (!$isRangeSelection(selection)) {
+        return false;
+    }
+
+    const [start] = $orderedPoints(selection);
+    const node = start.getNode();
+
+    return start.type === "element" && ($isMarkdownListItemNode(node) || $isListNode(node));
+}
+
+/**
+ * Gives a caret that stands between the blocks of a list item an empty
+ * paragraph of that item to stand in, and one that stands between the items
+ * of a list an empty item. Such a caret is an element point on the item or
+ * the list: Lexical leaves one on an item at the edge of a table that opens
+ * or ends it, as it leaves one on the root beside a table there, and a
+ * selection made in code can hold one on a list. Lexical's own inserts take
+ * a point on the root; on a list item or a list, which is no block of text
+ * and no root, an inserted line break or image has no block to go into, and
+ * they throw. A paragraph put first in an item is then the item's text.
+ *
+ * @param selection - The selection an insert is about to go in at.
+ * @returns Whether the caret stood on a list item or a list, and now stands in a new block of it.
+ */
+function $openBlockAtItemCaret(selection: BaseSelection | null): boolean {
+    const container = $listContainerAtCaret(selection);
+
+    if (!$isRangeSelection(selection) || container === null) {
+        return false;
+    }
+
+    const block = $isListNode(container) ? $createMarkdownListItemTextNode() : $createParagraphNode();
+    const caret = $getChildCaret(block, "next");
+
+    container.splice(selection.anchor.offset, 0, [$isListNode(container) ? $createListItemNode().append(block) : block]);
+    $setPointFromCaret(selection.anchor, caret);
+    $setPointFromCaret(selection.focus, caret);
+
+    return true;
+}
+
+/**
+ * Makes the selection ready for a command that inserts at it, in the one
+ * place every such command goes through: removes a table-edge or stale-focus
+ * range ({@link $removeGuardedRange}); removes a range with an end on a list
+ * item or a list ({@link $isListContainerRange}) as well, since where its
+ * removal leaves the caret is known only afterwards; and gives the caret as
+ * it then stands a block when it is left between the blocks of a list item
+ * or the items of a list ({@link $openBlockAtItemCaret}). Lexical's insert
+ * would remove the range first too, and then throw for a caret left there,
+ * with the range already gone.
+ *
+ * @param selection - The selection the insert goes in at.
+ * @param caretStaysOutOf - Passed to {@link $removeGuardedRange}. `null` when omitted.
+ * @returns Whether the caret was given a new block to stand in.
+ */
+function $removeGuardedRangeForInsert(selection: BaseSelection | null, caretStaysOutOf: ((node: LexicalNode) => boolean) | null = null): boolean {
+    const removed = $removeGuardedRange(selection, caretStaysOutOf);
+    const endsOnListContainer = !removed && $isListContainerRange(selection);
+
+    if (endsOnListContainer) {
+        selection.removeText();
+    }
+
+    return $openBlockAtItemCaret(selection);
+}
+
+/**
  * Removes a range {@link $coverWholeTables} covered whose end lies inside
  * `endBlock`, a block after the range's start — a block past the start's
- * table, a list item just past a table it holds, or the `:::` column whose
+ * table, a list item at the far edge of a table it holds, or the `:::` column whose
  * table the range ends at the far edge of — in two removals that keep
  * `endBlock`: first its content up to the end, then everything from the
  * start to `endBlock`'s own position.
@@ -1761,10 +1945,11 @@ function $refillEmptiedColumn(parent: ElementNode | null): void {
  * ({@link $settleCaretIntoBlock}). A range whose covered end lies apart from
  * its start — in a later block, having run from a table into that block or
  * into a table a list item holds, or in a `:::` column the start is outside
- * of — is removed through {@link $removeRangeKeepingEndBlock}, so that block
- * or column stays, emptied or not, with nothing of it joined onto the
- * start's block, and a column the end's table was the only block of keeps
- * an empty paragraph.
+ * of — is removed through {@link $removeRangeKeepingEndBlock}, so that block,
+ * item or column stays, emptied or not, with nothing of it joined onto the
+ * start's block: a column the end's table was the only block of keeps an
+ * empty paragraph, and a list item whose every block the range covers stays
+ * an empty item, which the list rules give an empty text.
  *
  * @param selection - A table-edge range; collapsed at the removal point afterwards.
  * @param caretStaysOutOf - For a caller about to insert a node at the caret:
@@ -1932,15 +2117,17 @@ function $removeRangeBeforeImage(selection: RangeSelection): void {
         selection.removeText();
         $replaceEmptiedContainerAtCaret(selection);
     }
+
+    // The caret as the removal left it: on a list item or a list it gets a block of its own.
+    $openBlockAtItemCaret(selection);
 }
 
 /**
  * Replaces the element a collapsed caret is on — or, for a caret between two
  * blocks, the block right after it — with an empty paragraph holding the
  * caret, when it is a container a removal emptied: a list with no item, or a
- * `:::` block with no column. A caret left on a list between its items —
- * the removal took a whole item, from its text to the end of a block it
- * held — goes into an empty item put there. Leaves any other caret alone.
+ * `:::` block with no column. Leaves any other caret alone: one left on a
+ * list between its items is given an item by {@link $openBlockAtItemCaret}.
  *
  * @param selection - The selection, collapsed after a removal.
  */
@@ -1949,17 +2136,6 @@ function $replaceEmptiedContainerAtCaret(selection: RangeSelection): void {
     // Between two blocks, the removal of a range ending on the container itself leaves the caret before it.
     const container = $isRootOrShadowRoot(anchorNode) ? anchorNode.getChildAtIndex(selection.anchor.offset) : anchorNode;
     const isEmptied = ($isListNode(container) || $isMarkdownBlockNode(container)) && container.isEmpty();
-    const isBetweenItems = !isEmptied && $isListNode(anchorNode);
-
-    if (isBetweenItems) {
-        // The removal took a whole item, with the blocks it held: an empty item stands where it stood.
-        const item = $createListItemNode();
-        const caret = $getChildCaret(item, "next");
-
-        anchorNode.splice(selection.anchor.offset, 0, [item]);
-        $setPointFromCaret(selection.anchor, caret);
-        $setPointFromCaret(selection.focus, caret);
-    }
 
     if (!isEmptied) {
         return;
@@ -1987,17 +2163,32 @@ function $deleteGuardedRange(): boolean {
 }
 
 /**
- * Listener for the commands that always insert at the selection after
- * removing it (`INSERT_PARAGRAPH_COMMAND`, `INSERT_TAB_COMMAND`): removes a
- * table-edge or stale-focus range, then lets Lexical insert at the
- * now-collapsed caret.
+ * `INSERT_TAB_COMMAND` listener: makes the selection ready for the tab
+ * ({@link $removeGuardedRangeForInsert}), then lets Lexical insert it at the
+ * now-collapsed caret — in a paragraph of its own when that caret stands
+ * between the blocks of a list item, as a tab goes into an empty paragraph
+ * anywhere.
  *
  * @returns Always `false`, so the command's own handler still runs.
  */
 function $clearGuardedRangeBeforeInsert(): boolean {
-    $removeGuardedRange($getSelection());
+    $removeGuardedRangeForInsert($getSelection());
 
     return false;
+}
+
+/**
+ * `INSERT_PARAGRAPH_COMMAND` listener: makes the selection ready for the
+ * paragraph ({@link $removeGuardedRangeForInsert}), then lets Lexical insert
+ * it at the now-collapsed caret. A caret left between the blocks of a list
+ * item gets its paragraph here, as Lexical gives one to a caret between two
+ * blocks of the root: its own insert finds no block around a point on a
+ * list item to split.
+ *
+ * @returns Whether the paragraph was put in here; otherwise `false`, so the command's own handler still runs.
+ */
+function $clearGuardedRangeBeforeParagraph(): boolean {
+    return $removeGuardedRangeForInsert($getSelection());
 }
 
 /**
@@ -2112,7 +2303,9 @@ function $guardedRemovalDeclinesLineBreak(selection: BaseSelection | null): bool
  */
 function $clearGuardedRangeBeforeLineBreak(): boolean {
     const selection = $getSelection();
-    const declined = $guardedRemovalDeclinesLineBreak(selection);
+    // Between the blocks of a list item, or the items of a list, there is no line to break, and Lexical's insert
+    // throws there: for a caret, and for a range that starts there, before anything of it is removed.
+    const declined = $guardedRemovalDeclinesLineBreak(selection) || $startsOnListContainer(selection);
 
     if (!declined) {
         $removeGuardedRange(selection);
@@ -2122,24 +2315,25 @@ function $clearGuardedRangeBeforeLineBreak(): boolean {
 }
 
 /**
- * `PASTE_COMMAND` listener: removes a table-edge or stale-focus range when
- * the paste will insert its text there ({@link pasteWillInsertText}), then
- * lets the paste run at the now-collapsed caret. A paste that inserts
- * nothing — a pasted screenshot, an empty clipboard — leaves the range as it
- * leaves any other.
+ * `PASTE_COMMAND` listener: makes the selection ready for the pasted text
+ * ({@link $removeGuardedRangeForInsert}) when the paste will insert its text
+ * there ({@link pasteWillInsertText}), then lets the paste run at the
+ * now-collapsed caret. A paste that inserts nothing — a pasted screenshot,
+ * an empty clipboard — leaves the selection as it is.
  *
  * @param event - The paste event.
  * @returns Always `false`, so the command's own handler still runs.
  */
 function $clearGuardedRangeBeforePastedText(event: CommandPayloadType<typeof PASTE_COMMAND>): boolean {
     const selection = $getSelection();
-    const isGuarded = $isTableEdgeRange(selection) || $isStaleFocusRange(selection);
+    const isGuarded = $isTableEdgeRange(selection) || $isStaleFocusRange(selection) || $isListContainerRange(selection)
+        || $listContainerAtCaret(selection) !== null;
 
-    // The shape first: the event is read only for a range this guard would remove.
+    // The shape first: the event is read only for a selection this guard would change.
     const insertsText = isGuarded && pasteWillInsertText(event);
 
     if (insertsText) {
-        $removeGuardedRange(selection);
+        $removeGuardedRangeForInsert(selection);
     }
 
     return false;
@@ -2197,7 +2391,7 @@ function $clearGuardedRangeBeforeTyping(): boolean {
  */
 function $clearGuardedRangeBeforePaste(payload: CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>): boolean {
     if (payload.nodes.length > 0) {
-        $removeGuardedRange(payload.selection);
+        $removeGuardedRangeForInsert(payload.selection);
     }
 
     return false;
@@ -2328,8 +2522,9 @@ function $joinIntoTextOnlyBlock(isBackward: boolean): boolean {
  * and ends in a later block: the rest of that later block after the range
  * joins as its Markdown (as its text, when it is a raw block or code block
  * too), so nothing it holds is dropped and its escapes keep its text as it
- * was shown. The blocks a list item holds after that rest follow the block
- * as blocks of their own.
+ * was shown. A range that ends on a list item itself, between two of its
+ * blocks, has the item's later blocks follow the block as blocks of their
+ * own.
  *
  * @param selection - A non-collapsed range selection.
  * @returns Whether the range started in a raw block or code block and ended
@@ -2347,7 +2542,7 @@ function $deleteRangeFromTextOnlyBlock(selection: RangeSelection): boolean {
 
     const startPoint: [string, number, "text" | "element"] = [start.key, start.offset, start.type];
     const rest = $detachRestOfBlock(tailBlock, end);
-    // The rest of a list item holds the item's blocks after its text: they follow the block, they are no text of it.
+    // The rest of a list item, for an end between its blocks, is blocks: they follow the block, they are no text of it.
     const following = $takeBlocksOutOf(rest);
     const tail = $isTextOnlyBlock(tailBlock) ? rest.getTextContent() : $inlineMarkdown(rest.getChildren());
     const range = tailBlock.selectEnd();
@@ -2468,8 +2663,8 @@ function $textOnlyChildren(text: string): LexicalNode[] {
  * into the next block) — is replaced by its Markdown, so the save, which
  * writes the block's text, drops none of it. The commands that format, link
  * or insert decline in these blocks, so only such a merge gets here. A block
- * such a merge brings in (a list item's table, joined with the item) is no
- * text of this block: it is moved out to follow it first.
+ * that has come to stand in this block (no key puts one there) is no text of
+ * it: it is moved out to follow it first.
  *
  * @param block - The raw block or code block.
  */
@@ -2674,23 +2869,53 @@ function $selectionLiesInListOfType(type: ListType): boolean {
     }
 
     return $blocksTouchedBy(selection).every((block) => {
-        const list = $isListItemNode(block) ? block.getParent() : null;
+        // An item's text stands for its item; a further block of an item is no item.
+        const item = $isMarkdownListItemTextNode(block) ? block.getParent() : block;
+        const list = $isListItemNode(item) ? item.getParent() : null;
 
         return $isListNode(list) && list.getListType() === type;
     });
 }
 
 /**
+ * Converts the list of an empty list item the caret is in to a list of
+ * `type`, its items kept as they are. Lexical's own list insert reads the
+ * item's empty text as an empty block to make a list of, and would nest a
+ * new list in the item.
+ *
+ * @param type - The kind of list to convert to.
+ * @returns Whether the caret was in an empty list item, its list now converted.
+ */
+function $convertListOfEmptyItem(type: ListType): boolean {
+    const selection = $getSelection();
+    const block = $isRangeSelection(selection) && selection.isCollapsed() ? $findEnclosingBlock(selection.anchor.getNode()) : null;
+    const item = $isMarkdownListItemTextNode(block) && block.isEmpty() ? block.getParent() : null;
+    const list = item === null ? null : item.getParent();
+
+    if (!$isListNode(list)) {
+        return false;
+    }
+
+    const converted = $createListNode(type);
+
+    list.insertBefore(converted);
+    converted.splice(0, 0, list.getChildren());
+    list.remove();
+
+    return true;
+}
+
+/**
  * The blocks a range selection touches: those holding its two ends and
- * every selected leaf, and an empty block it covers. An item holding only a
- * nested list is no block of its own, its nested items are.
+ * every selected leaf, and an empty block it covers. A list item is no block
+ * of its own: its text and the other blocks it holds are.
  *
  * @param selection - The selection.
  * @returns The blocks, one entry per end and leaf, so a block can repeat;
  *   `null` for a node in no block.
  */
 function $blocksTouchedBy(selection: RangeSelection): Array<ElementNode | null> {
-    // A selected element that holds blocks (a list, an item holding a nested list) is no block itself.
+    // A selected element that holds blocks (a list, a list item) is no block itself.
     const leaves = selection.getNodes().filter((node) => !$isElementNode(node) || node.isInline() || node.isEmpty());
 
     return [selection.anchor.getNode(), selection.focus.getNode(), ...leaves].map($findEnclosingBlock);
@@ -2900,255 +3125,6 @@ function registerMarkdownShortcutsOutsideRawBlocks(editor: LexicalEditor): () =>
 }
 
 /**
- * The list item whose own text holds `point`, when the item holds blocks
- * after that text. An item's own text is what it holds before its first
- * block: text after a block is a paragraph of the save.
- *
- * @param point - A selection point.
- * @returns The list item, or `null` when the point is in no such text.
- */
-function $itemWhoseTextHolds(point: PointType): ListItemNode | null {
-    const node = point.getNode();
-    const item = $findMatchingParent(node, $isBlock);
-
-    if (!$isListItemNode(item)) {
-        return null;
-    }
-
-    const firstBlock = item.getChildren().findIndex($isBlock);
-    const child = node.is(item) ? null : $findMatchingParent(node, (ancestor) => item.is(ancestor.getParent()));
-    const isInText = child === null ? point.offset <= firstBlock : child.getIndexWithinParent() < firstBlock;
-
-    return firstBlock !== -1 && isInText ? item : null;
-}
-
-/**
- * The list item whose own text holds all of `selection`, when the item
- * holds blocks after that text: the item an edit of the selection would
- * take those blocks into ({@link registerItemTextEdits}).
- *
- * @param selection - The selection about to be edited.
- * @returns The list item, or `null` when the selection is no such one.
- */
-function $itemWhoseTextIsSelected(selection: BaseSelection | null): ListItemNode | null {
-    if (!$isRangeSelection(selection)) {
-        return null;
-    }
-
-    const [start, end] = $orderedPoints(selection);
-    const item = $itemWhoseTextHolds(start);
-
-    return item !== null && item.is($itemWhoseTextHolds(end)) ? item : null;
-}
-
-/**
- * Removes a range that ends in the own text of a list item holding blocks
- * and starts outside that item, as the command about to split at it would
- * — a table-edge or stale-focus range through {@link $removeGuardedRange},
- * any other through Lexical's removal — so that the caret it leaves, in
- * what is left of that item's text, tells whose blocks to set aside
- * ({@link registerItemTextEdits}). Leaves any other selection alone.
- *
- * @param selection - The selection about to be split or pasted over.
- */
-function $removeRangeEndingInItemText(selection: BaseSelection | null): void {
-    if (!$isRangeSelection(selection) || selection.isCollapsed()) {
-        return;
-    }
-
-    const [, end] = $orderedPoints(selection);
-    const endsInItemText = $itemWhoseTextHolds(end) !== null;
-    const removed = endsInItemText && $removeGuardedRange(selection);
-    const isLeft = endsInItemText && !removed;
-
-    if (isLeft) {
-        selection.removeText();
-    }
-}
-
-/** How one command edits a list item's text, for {@link registerItemTextEdits}. */
-interface ItemTextEdit<P> {
-    /** Whether the command edits at a collapsed caret too; `false` for one that only replaces a range there. */
-    readonly editsCaret: boolean;
-    /** Whether the command removes its range and then splits the block at the caret: Enter, and a paste of nodes. */
-    readonly splits:     boolean;
-    /** Whether the command does its work in an update of its own, queued behind the listener. */
-    readonly isQueued:   boolean;
-    /** Runs the command again; dispatches it when omitted. */
-    readonly run?:       (payload: P) => void;
-}
-
-/**
- * Registers what keeps a list item's blocks as blocks while its own text is
- * edited. Lexical splits a list item at the caret by appending what follows
- * the caret to a new item, and a list item's `append` merges a paragraph
- * into the item's text: Enter in `wx` of an item holding the paragraph `p`
- * gave the items `w` and `xp`, and so did the split a paste of several
- * blocks makes. A range that takes all of the item's text leaves the caret
- * in the item's next block, where what is typed or pasted over the range
- * then goes. So for each command that splits or replaces at the selection,
- * the blocks the item holds after its text are set aside, the command runs
- * on an item of text alone, and the blocks follow the block the caret is in
- * afterwards: as blocks of a list item, or after any other block.
- *
- * @remarks
- * The command is dispatched again from its own listener, so its other
- * listeners run on the item without its blocks, and this one does nothing
- * on that second pass, or for a command another of these dispatches while
- * it runs. Lexical's paste handler does its work in an update of its own,
- * which runs once this listener has returned: for a paste the blocks are
- * put back in an update queued behind that one. Each listener is at
- * {@link COMMAND_PRIORITY_CRITICAL}: call this before registering any
- * other listener of these commands at that priority.
- *
- * @param editor - The editor.
- * @returns The unregister function.
- */
-function registerItemTextEdits(editor: LexicalEditor): () => void {
-    let isRunning = false;
-
-    const keepingBlocks = <P>(command: LexicalCommand<P>, how: ItemTextEdit<P>): (() => void) => {
-        return editor.registerCommand(command, (payload) => {
-            if (isRunning) {
-                return false;
-            }
-
-            if (how.splits) {
-                // The split comes after the range is removed, in what the removal leaves of the item's text.
-                $removeRangeEndingInItemText($getSelection());
-            }
-
-            const selection = $getSelection();
-            const isEdited = how.editsCaret || (selection !== null && !selection.isCollapsed());
-            const item = isEdited ? $itemWhoseTextIsSelected(selection) : null;
-
-            if (item === null) {
-                return false;
-            }
-
-            const blocks = $takeBlocksOutOf(item);
-            const run = how.run ?? ((again: P): void => { editor.dispatchCommand(command, again); });
-
-            isRunning = true;
-
-            try {
-                run(payload);
-            } finally {
-                isRunning = false;
-            }
-
-            if (how.isQueued) {
-                editor.update(() => $putBlocksAfterCaret(blocks, item));
-            } else {
-                $putBlocksAfterCaret(blocks, item);
-            }
-
-            return true;
-        }, COMMAND_PRIORITY_CRITICAL);
-    };
-
-    return mergeRegister(
-        keepingBlocks(INSERT_PARAGRAPH_COMMAND, { editsCaret: true, splits: true, isQueued: false }),
-        keepingBlocks(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, {
-            editsCaret: true,
-            splits:     true,
-            isQueued:   false,
-            // Lexical inserts the nodes itself when no listener of this command does.
-            run:        ({ nodes, selection }) => $insertGeneratedNodes(editor, nodes, selection),
-        }),
-        keepingBlocks(PASTE_COMMAND, { editsCaret: true, splits: false, isQueued: true }),
-        // Typing at a caret takes nothing out of the item.
-        keepingBlocks(CONTROLLED_TEXT_INSERTION_COMMAND, { editsCaret: false, splits: false, isQueued: false }),
-    );
-}
-
-/**
- * Puts the blocks {@link registerItemTextEdits} set aside back, after the
- * content of the block the caret is in: at the end of a list item, as its
- * blocks, or after any other block, as blocks of what holds that one.
- *
- * @param blocks - The blocks, detached, in order.
- * @param item - The list item they were taken from, which takes them back when no caret is left.
- */
-function $putBlocksAfterCaret(blocks: LexicalNode[], item: ListItemNode): void {
-    const selection = $getSelection();
-    const caretBlock = $isRangeSelection(selection) ? $findMatchingParent(selection.focus.getNode(), $isBlock) : null;
-    const target = caretBlock ?? item;
-
-    if ($isListItemNode(target)) {
-        target.splice(target.getChildrenSize(), 0, blocks);
-    } else {
-        blocks.reduce<LexicalNode>((previous, block) => previous.insertAfter(block), target);
-    }
-}
-
-/**
- * Registers what keeps the paragraphs a copied list item holds through a
- * paste or a drop of the copy. Lexical builds the copied nodes itself, with
- * a parse that merges an item's paragraphs into its text
- * ({@link $parseKeepingItemParagraphs}), before any paste handler sees them.
- * So a listener of each command that carries a data transfer remembers its
- * copied nodes as serialized, for as long as that command's update runs,
- * and the `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` that update leads to
- * pastes those nodes built with their paragraphs instead, through
- * `$insertGeneratedNodes`.
- *
- * @remarks
- * `$insertGeneratedNodes` dispatches the command again, so such a paste runs
- * every listener registered ahead of this one twice, as a paste holding a
- * column does ({@link $pasteColumnsAsTheirBlocks}). A command's listeners of
- * one priority run in the order they were registered, and the insert is at
- * {@link COMMAND_PRIORITY_HIGH}: call this before {@link registerColumnPaste},
- * so that every paste handler sees the items' paragraphs.
- *
- * @param editor - The editor.
- * @returns The unregister function.
- */
-function registerCopiedItemParagraphs(editor: LexicalEditor): () => void {
-    // The copied nodes of the data transfer the running update inserts; `null` outside such an update.
-    let copied: SerializedLexicalNode[] | null = null;
-
-    const remember = (transfer: DataTransfer | null): boolean => {
-        copied = transfer === null ? null : copiedNodesHoldingItemParagraphs(transfer, editor);
-
-        if (copied !== null) {
-            // Only the insert this command leads to takes them: an insert of a later update is another paste.
-            $onUpdate(() => {
-                copied = null;
-            });
-        }
-
-        return false;
-    };
-
-    const $insert = (payload: CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>): boolean => {
-        const serialized = copied;
-
-        // Forgotten before the insert dispatches this command again.
-        copied = null;
-
-        if (serialized === null) {
-            return false;
-        }
-
-        $insertGeneratedNodes(editor, serialized.map($parseKeepingItemParagraphs), payload.selection);
-
-        return true;
-    };
-
-    return mergeRegister(
-        editor.registerCommand(PASTE_COMMAND, (event) => remember("clipboardData" in event ? event.clipboardData : null), COMMAND_PRIORITY_CRITICAL),
-        editor.registerCommand(DROP_COMMAND, (event) => remember(event.dataTransfer), COMMAND_PRIORITY_CRITICAL),
-        editor.registerCommand(
-            CONTROLLED_TEXT_INSERTION_COMMAND,
-            (payload) => remember(typeof payload === "string" ? null : payload.dataTransfer),
-            COMMAND_PRIORITY_CRITICAL,
-        ),
-        editor.registerCommand(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, $insert, COMMAND_PRIORITY_HIGH),
-    );
-}
-
-/**
  * Registers the paste handler that turns pasted `:::` columns into the
  * blocks they hold ({@link $pasteColumnsAsTheirBlocks}).
  *
@@ -3164,6 +3140,296 @@ function registerCopiedItemParagraphs(editor: LexicalEditor): () => void {
  */
 function registerColumnPaste(editor: LexicalEditor): () => void {
     return editor.registerCommand(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, $pasteColumnsAsTheirBlocks, COMMAND_PRIORITY_HIGH);
+}
+
+/**
+ * Listener of the three backward deletions (`DELETE_CHARACTER_COMMAND`,
+ * `DELETE_WORD_COMMAND`, `DELETE_LINE_COMMAND`) for a caret at the start of
+ * a block that stands after a container ending in a block with no line of
+ * text of its own. That is one of three places: right after a `:::` block;
+ * right after a list whose last item ends in a table or a `:::` block; and,
+ * inside a list item, after a `:::` block of that item. It does what the
+ * key does right after a table: a block that holds something stays where it
+ * is and nothing is joined; an empty block is removed, and the caret goes
+ * to the end of what stands before it — the table's last cell, or the last
+ * block of the `:::` block's last column — where what is typed next is
+ * shown and saved.
+ *
+ * @remarks
+ * Lexical (0.49.0) looks for the block before the caret's by walking back
+ * into the elements it meets. It walks into a list, a list item or a `:::`
+ * block, which are no blocks of text, takes that as a block to join, and
+ * stops at the table or the column. Its removal then joins nothing and
+ * leaves the caret on the list item or the `:::` block, where what is typed
+ * next is shown and not saved.
+ *
+ * @param isBackward - Whether the deletion goes backward.
+ * @returns Whether the caret stood at such a place.
+ */
+function $backspaceAfterContainer(isBackward: boolean): boolean {
+    const selection = $getSelection();
+    const isCaret = isBackward && $isRangeSelection(selection) && selection.isCollapsed() && selection.anchor.offset === 0;
+    const anchorNode = isCaret ? selection.anchor.getNode() : null;
+    const block = anchorNode === null ? null : $findEnclosingBlock(anchorNode);
+    const first = block?.getFirstDescendant() ?? null;
+    const isAtBlockStart = block !== null && anchorNode !== null && (anchorNode.is(block) || anchorNode.is(first));
+
+    if (!$isRangeSelection(selection) || block === null || !isAtBlockStart) {
+        return false;
+    }
+
+    const ending = $containerEndingBefore(block);
+
+    if (ending === null) {
+        return false;
+    }
+
+    const isEmptyBlock = block.isEmpty();
+
+    if (isEmptyBlock) {
+        const caret = $normalizeCaret($getChildCaret(ending, "previous"));
+
+        $setPointFromCaret(selection.anchor, caret);
+        $setPointFromCaret(selection.focus, caret);
+        block.remove();
+    }
+
+    return true;
+}
+
+/**
+ * The table or `:::` column that ends the container standing before a
+ * block: the block before it, or before the nearest container it opens, is
+ * a `:::` block, or a list whose last item ends in a table or a `:::`
+ * block.
+ *
+ * @param block - The block.
+ * @returns That table or column, or `null` when no such container stands before the block.
+ */
+function $containerEndingBefore(block: ElementNode): ElementNode | null {
+    // What stands before the block: the block before it, or before the nearest container it opens.
+    let opened: ElementNode = block;
+    let before = opened.getPreviousSibling();
+
+    while (before === null) {
+        const container = opened.getParent();
+        const isOutermost = container === null || $isRootOrShadowRoot(container);
+
+        if (container === null || isOutermost) {
+            return null;
+        }
+
+        opened = container;
+        before = opened.getPreviousSibling();
+    }
+
+    let entersContainer = false;
+
+    while ($isListNode(before) || $isMarkdownListItemNode(before) || $isMarkdownBlockNode(before)) {
+        entersContainer = true;
+        before = before.getLastChild();
+    }
+
+    const endsWithoutTextLine = entersContainer && $isElementNode(before) && !INTERNAL_$isBlock(before);
+
+    return endsWithoutTextLine && $isElementNode(before) ? before : null;
+}
+
+/**
+ * `INSERT_PARAGRAPH_COMMAND` listener for Enter on an empty line of a list:
+ * a list item's text that holds nothing, or blanks alone. The item leaves
+ * the list, whatever else it holds: a nested item moves out one level, with
+ * what it holds; a top-level one is taken out of its list
+ * ({@link $liftItemOut}), its text an empty paragraph. Enter over a range
+ * that starts in an item's text is taken here too when blocks are in play
+ * — the item held some, or the removal brings some under the text — since
+ * the range can empty the text: it is removed first, as Lexical's own
+ * insert removes it. A range over items of text alone is left to Lexical,
+ * which leaves the emptied item and adds one, as in any list.
+ * One emptied text is no empty line: over a paragraph, which is the item's
+ * text once the edit is done. The caret goes to that paragraph's start and
+ * nothing else changes.
+ *
+ * @remarks
+ * `@lexical/list` keeps its rule for Enter in an empty item in a listener
+ * of this command as well, and for the same reason: the hook Lexical calls
+ * to split a block (`insertNewAfter`) is also what every newline of pasted
+ * plain text and the split before pasted blocks go through, and those must
+ * split the item, not end the list.
+ *
+ * @returns Whether the caret stood on such a line; otherwise `false`, so Lexical splits the item at the caret.
+ */
+function $enterLeavesListAtBlankItemText(): boolean {
+    const selection = $getSelection();
+    const startBlock = $isRangeSelection(selection) ? $findEnclosingBlock($orderedPoints(selection)[0].getNode()) : null;
+
+    if (!$isRangeSelection(selection) || !$isMarkdownListItemTextNode(startBlock)) {
+        return false;
+    }
+
+    const coversRange = !selection.isCollapsed();
+    const heldBlocks = startBlock.getNextSibling() !== null;
+
+    if (coversRange) {
+        selection.removeText();
+    }
+
+    const text = $findEnclosingBlock(selection.anchor.getNode());
+    const item = text?.getParent();
+
+    if (!$isMarkdownListItemTextNode(text) || !$isMarkdownListItemNode(item)) {
+        return false;
+    }
+
+    // A range over items of text alone is Lexical's to split: it leaves the emptied item and adds one, as in any list.
+    const isPlainRange = coversRange && !heldBlocks && text.getNextSibling() === null;
+
+    if (isPlainRange) {
+        return false;
+    }
+
+    const following = text.getNextSibling();
+    const opensOverParagraph = text.isEmpty() && !$isMarkdownListItemTextNode(following) && $isParagraphNode(following);
+
+    if (opensOverParagraph) {
+        following.selectStart();
+
+        return true;
+    }
+
+    // Blank text counts as none, as in Lexical's own rule for an empty item.
+    const isBlank = text.getChildren().every((child) => $isTextNode(child) && child.getTextContent().trim() === "");
+    const outdented = isBlank && $outdentItem(item);
+
+    if (isBlank && !outdented) {
+        $liftItemOut(item);
+    }
+
+    return isBlank;
+}
+
+/**
+ * `INDENT_CONTENT_COMMAND` and `OUTDENT_CONTENT_COMMAND` listener for a
+ * range that holds the text of a list item and the text of an item nested
+ * in it. The outer item is moved, and what it holds goes with it; the
+ * nested item is not moved a second time for itself. Any other selection is
+ * left to Lexical's own handler.
+ *
+ * @remarks
+ * Lexical moves every selected block one level, in document order, reading
+ * each block's depth when its turn comes. An item's nested list is a child
+ * of the item here, so a nested item has already moved with the outer one by
+ * then, and would end a level too deep, or too shallow, under it. An outer
+ * item that cannot move — a top-level item, on an outdent — carries nothing,
+ * so the items nested in it move for themselves.
+ *
+ * @param isIndent - Whether the items move a level in; `false` for a level out.
+ * @returns Whether the selection held such a pair, now moved.
+ */
+function $moveSelectedItemsOnce(isIndent: boolean): boolean {
+    const carried = $itemBlocksCarriedAlong(isIndent);
+
+    if (carried.size === 0) {
+        return false;
+    }
+
+    return $handleIndentAndOutdent((block) => {
+        const indent = block.getIndent();
+        const movesItself = !carried.has(block.getKey());
+
+        if (movesItself && isIndent) {
+            block.setIndent(indent + 1);
+        } else if (movesItself && indent > 0) {
+            block.setIndent(indent - 1);
+        }
+    });
+}
+
+/**
+ * The selected list items that an indent or outdent must not move for
+ * themselves, because a selected item around them moves and takes them
+ * along. Each is given as the block Lexical moves it through: its text, or
+ * the item itself when it opens with a block.
+ *
+ * @param isIndent - Whether the items move a level in; `false` for a level out, which a top-level item cannot.
+ * @returns The keys of those blocks.
+ */
+function $itemBlocksCarriedAlong(isIndent: boolean): Set<NodeKey> {
+    const selection = $getSelection();
+    const selected = $isRangeSelection(selection) ? selection.getNodes() : [];
+    const blockOfItem = new Map<NodeKey, NodeKey>();
+
+    for (const node of selected) {
+        const text = $findMatchingParent(node, $isMarkdownListItemTextNode);
+        const item = text === null ? node : text.getParent();
+        // An item that opens with a block is among the selected nodes itself, and is the block Lexical moves.
+        const isMoved = $isMarkdownListItemNode(item) && (text !== null || item.canIndent());
+
+        if (isMoved) {
+            blockOfItem.set(item.getKey(), (text ?? item).getKey());
+        }
+    }
+
+    const carried = new Set<NodeKey>();
+
+    for (const [itemKey, blockKey] of blockOfItem) {
+        let outer: LexicalNode | null = $getNodeByKey(itemKey)?.getParent()?.getParent() ?? null;
+
+        while ($isMarkdownListItemNode(outer)) {
+            const carries = blockOfItem.has(outer.getKey()) && (isIndent || outer.getIndent() > 0);
+
+            if (carries) {
+                carried.add(blockKey);
+            }
+
+            outer = outer.getParent()?.getParent() ?? null;
+        }
+    }
+
+    return carried;
+}
+
+/**
+ * Registers the rules for what a method of the list item's nodes cannot
+ * decide, because Lexical's own handler does: a backward deletion at the
+ * start of a block after a `:::` block, after a list whose last item ends
+ * in a table or a `:::` block, or after a `:::` block of a list item
+ * ({@link $backspaceAfterContainer}), at {@link COMMAND_PRIORITY_LOW} so
+ * every other listener of those commands runs first; Enter on an empty line
+ * of a list
+ * ({@link $enterLeavesListAtBlankItemText}); and an indent or outdent of a
+ * range over an item and an item nested in it
+ * ({@link $moveSelectedItemsOnce}).
+ *
+ * @param editor - The editor.
+ * @returns The unregister function.
+ */
+function registerListItemRules(editor: LexicalEditor): () => void {
+    return mergeRegister(
+        ...[DELETE_CHARACTER_COMMAND, DELETE_WORD_COMMAND, DELETE_LINE_COMMAND]
+            .map((command) => editor.registerCommand(command, $backspaceAfterContainer, COMMAND_PRIORITY_LOW)),
+        editor.registerCommand(INSERT_PARAGRAPH_COMMAND, $enterLeavesListAtBlankItemText, COMMAND_PRIORITY_HIGH),
+        editor.registerCommand(INDENT_CONTENT_COMMAND, () => $moveSelectedItemsOnce(true), COMMAND_PRIORITY_HIGH),
+        editor.registerCommand(OUTDENT_CONTENT_COMMAND, () => $moveSelectedItemsOnce(false), COMMAND_PRIORITY_HIGH),
+    );
+}
+
+/**
+ * Registers the paste handler that puts blocks pasted into a paragraph,
+ * heading or quote of a list item into that item
+ * ({@link $pasteBlocksIntoItemBlock}).
+ *
+ * @remarks
+ * A command's listeners of one priority run in the order they were
+ * registered, and this one is at {@link COMMAND_PRIORITY_HIGH}. Call this
+ * after {@link registerColumnPaste}, so that a pasted column is already the
+ * blocks it holds.
+ *
+ * @param editor - The editor.
+ * @returns The unregister function.
+ */
+function registerItemBlockPaste(editor: LexicalEditor): () => void {
+    return editor.registerCommand(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, $pasteBlocksIntoItemBlock, COMMAND_PRIORITY_HIGH);
 }
 
 /**
@@ -3251,7 +3517,7 @@ function registerRangeGuards(editor: LexicalEditor): () => void {
         guard(DELETE_WORD_COMMAND, $deleteGuardedRange),
         guard(DELETE_LINE_COMMAND, $deleteGuardedRange),
         guard(REMOVE_TEXT_COMMAND, $deleteGuardedRange),
-        guard(INSERT_PARAGRAPH_COMMAND, $clearGuardedRangeBeforeInsert),
+        guard(INSERT_PARAGRAPH_COMMAND, $clearGuardedRangeBeforeParagraph),
         guard(INSERT_LINE_BREAK_COMMAND, $clearGuardedRangeBeforeLineBreak),
         guard(INSERT_TAB_COMMAND, $clearGuardedRangeBeforeInsert),
         guard(PASTE_COMMAND, $clearGuardedRangeBeforePastedText),
@@ -3960,7 +4226,10 @@ export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget
 
     const block = $findEnclosingBlock(node);
 
-    if ($isParagraphNode(block) && block.getTextContent() === "") {
+    const isEmptyLine = !$isMarkdownListItemTextNode(block) && $isParagraphNode(block) && block.getTextContent() === "";
+
+    // An empty list item is no empty line: its menu is the one for text, as a list item's is.
+    if (isEmptyLine) {
         return { kind: "empty-line", hasSelectedText, availability };
     }
 
@@ -4603,7 +4872,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * the selected leaves, so a selection point on a block itself is first
      * moved into the text beside it ({@link $moveBlockPointsIntoText}): a
      * range from one block's end to the next one's start then takes both
-     * blocks however its points are held.
+     * blocks however its points are held. A caret in an empty list item has
+     * no leaf, and that item's list is converted here
+     * ({@link $convertListOfEmptyItem}).
      *
      * @param type - The kind of list toggled.
      * @param insert - Lexical's command inserting a list of that kind.
@@ -4618,14 +4889,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             return;
         }
 
+        let converted = false;
+
         editor.update(() => {
             const selection = $getSelection();
 
             if ($isRangeSelection(selection)) {
                 $moveBlockPointsIntoText(selection);
             }
+
+            converted = $convertListOfEmptyItem(type);
         }, { discrete: true });
-        editor.dispatchCommand(insert, undefined);
+
+        if (!converted) {
+            editor.dispatchCommand(insert, undefined);
+        }
     }
 
     /**
@@ -5566,7 +5844,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 const selection = $getSelection();
 
                 if ($isRangeSelection(selection)) {
-                    $removeGuardedRange(selection);
+                    $removeGuardedRangeForInsert(selection);
                     selection.insertRawText(text);
                 }
             }, { discrete: true });
@@ -5612,7 +5890,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             const selection = $getSelection();
 
             if ($isRangeSelection(selection)) {
-                $setBlocksType(selection, () => createBlockNode(type), $prepareBlockForType(type));
+                $setBlocksType(selection, () => createBlockNode(type), type === "code" ? $copyBlockAsCodeSource : undefined);
             }
         }, { discrete: true });
 
@@ -6387,11 +6665,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             registerHistory(editor, createEmptyHistoryState(), HISTORY_DELAY_MS),
             registerMarkdownShortcutsOutsideRawBlocks(editor),
             editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
-            registerItemTextEdits(editor),
-            editor.registerCommand(OUTDENT_CONTENT_COMMAND, $outdentKeepingItemBlocks, COMMAND_PRIORITY_HIGH),
-            editor.registerCommand(KEY_BACKSPACE_COMMAND, $backspaceOutdentsNestedItem, COMMAND_PRIORITY_HIGH),
-            registerCopiedItemParagraphs(editor),
             registerColumnPaste(editor),
+            registerItemBlockPaste(editor),
+            registerListItemRules(editor),
             registerTextOnlyBlockRules(editor),
             registerRangeGuards(editor),
             registerWritableFormatCommand(editor),

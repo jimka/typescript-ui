@@ -9,8 +9,9 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-    $createRangeSelection, $getRoot, $getSelection, $isElementNode, $isTextNode, $setSelection, CONTROLLED_TEXT_INSERTION_COMMAND, DROP_COMMAND,
-    PASTE_COMMAND, UNDO_COMMAND,
+    $createParagraphNode, $createRangeSelection, $createTextNode, $getRoot, $getSelection, $isElementNode, $isTextNode, $setSelection,
+    CONTROLLED_TEXT_INSERTION_COMMAND, DELETE_CHARACTER_COMMAND, DROP_COMMAND, PASTE_COMMAND, SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
+    UNDO_COMMAND,
 } from 'lexical';
 import type { LexicalEditor, LexicalNode, TextNode } from 'lexical';
 import { $generateJSONFromSelectedNodes, $generateNodesFromSerializedNodes, $insertGeneratedNodes } from '@lexical/clipboard';
@@ -313,7 +314,7 @@ describe('a paste into a list item saves each block where the editor shows it', 
         ['P8: a table and a paragraph', NESTED, TABLE, 1, '- a\n  - b\n\n  | h |\n  | --- |\n  | c |\n\n  P2cd\n\n  - e\n\n- f'],
         ['P9: a quote and a paragraph', NESTED, QUOTE, 1, '- a\n  - bq\n\n  P2cd\n\n  - e\n\n- f'],
         ['P10: a fence and a paragraph at a nested item\'s start', NESTED, FENCE, 0,
-            '- a\n\n- ::: {align=center}\n  **f**\n  :::\n\n  P2bcd\n\n  - e\n\n- f'],
+            '- a\n\n  ::: {align=center}\n  **f**\n  :::\n\n  P2bcd\n\n  - e\n\n- f'],
         ['P11: paragraphs inside an ordered nested item', ORDERED, PARAGRAPHS, 1, '1. a\n   1. bP1\n\n   P2cd\n\n   1. e\n\n2. f'],
         ['P12: paragraphs inside a task nested item', TASK, PARAGRAPHS, 1, '- [ ] a\n  - [x] bP1\n\n  P2cd\n\n- [ ] f'],
         ['P13: paragraphs inside a loose nested item', LOOSE, PARAGRAPHS, 1, '- a\n  - bP1\n\n  P2cd\n\n- f'],
@@ -511,26 +512,27 @@ describe('a copied list keeps the paragraphs its items hold', () => {
 
     it.each<[string, Target, Clipboard, string, string]>([
         ['into a paragraph', PARAGRAPH, ITEM_PARAGRAPHS,
-            'paragraph("b") | list(listitem("a", paragraph("p"), paragraph("r")), listitem("k")) | paragraph("cd")',
+            'paragraph("b") | list(markdown-list-item(markdown-list-item-text("a"), paragraph("p"), paragraph("r")), markdown-list-item(markdown-list-item-text("k"))) | paragraph("cd")',
             'b\n\n- a\n\n  p\n\n  r\n\n- k\n\ncd'],
         ['into a quote', QUOTED, ITEM_PARAGRAPHS,
-            'quote("b") | list(listitem("a", paragraph("p"), paragraph("r")), listitem("k")) | paragraph("cd")',
+            'quote("b") | list(markdown-list-item(markdown-list-item-text("a"), paragraph("p"), paragraph("r")), markdown-list-item(markdown-list-item-text("k"))) | paragraph("cd")',
             '> b\n\n- a\n\n  p\n\n  r\n\n- k\n\ncd'],
         ['into a top-level item', TOP_LEVEL, ITEM_PARAGRAPHS,
-            'list(listitem("b"), listitem("a", paragraph("p"), paragraph("r")), listitem("kcd"), listitem("z"))',
+            'list(markdown-list-item(markdown-list-item-text("b")), markdown-list-item(markdown-list-item-text("a"), paragraph("p"), paragraph("r")), markdown-list-item(markdown-list-item-text("kcd")), markdown-list-item(markdown-list-item-text("z")))',
             '- b\n\n- a\n\n  p\n\n  r\n\n- kcd\n\n- z'],
         ['into a nested item', NESTED, ITEM_PARAGRAPHS,
-            'list(listitem("a"), listitem(list(listitem("b"), listitem("a", paragraph("p"), paragraph("r")), listitem("kcd"), listitem("e"))), '
-            + 'listitem("f"))',
+            'list(markdown-list-item(markdown-list-item-text("a"), list(markdown-list-item(markdown-list-item-text("b")), '
+            + 'markdown-list-item(markdown-list-item-text("a"), paragraph("p"), paragraph("r")), markdown-list-item(markdown-list-item-text("kcd")), '
+            + 'markdown-list-item(markdown-list-item-text("e")))), markdown-list-item(markdown-list-item-text("f")))',
             '- a\n  - b\n\n  - a\n\n    p\n\n    r\n\n  - kcd\n\n  - e\n- f'],
         ['a task item\'s paragraph', PARAGRAPH, TASK_PARAGRAPH,
-            'paragraph("b") | list(listitem("[ ] ", "a", paragraph("p")), listitem("[x] ", "k")) | paragraph("cd")',
+            'paragraph("b") | list(markdown-list-item(markdown-list-item-text("[ ] ", "a"), paragraph("p")), markdown-list-item(markdown-list-item-text("[x] ", "k"))) | paragraph("cd")',
             'b\n\n- [ ] a\n\n  p\n\n- [x] k\n\ncd'],
         ['a paragraph after an item\'s quote', PARAGRAPH, QUOTE_PARAGRAPH,
-            'paragraph("b") | list(listitem(quote("q"), paragraph("p")), listitem("k")) | paragraph("cd")',
+            'paragraph("b") | list(markdown-list-item(quote("q"), paragraph("p")), markdown-list-item(markdown-list-item-text("k"))) | paragraph("cd")',
             'b\n\n- > q\n\n  p\n\n- k\n\ncd'],
         ['a nested item\'s paragraph', PARAGRAPH, NESTED_PARAGRAPH,
-            'paragraph("b") | list(listitem("a"), listitem(list(listitem("n", paragraph("p")))), listitem("k")) | paragraph("cd")',
+            'paragraph("b") | list(markdown-list-item(markdown-list-item-text("a"), list(markdown-list-item(markdown-list-item-text("n"), paragraph("p")))), markdown-list-item(markdown-list-item-text("k"))) | paragraph("cd")',
             'b\n\n- a\n  - n\n\n    p\n- k\n\ncd'],
     ])('%s', (_name, target, clipboard, shape, saved) => {
         expect(copyOf(clipboard).map((node) => node.type)).toEqual(clipboard.types);
@@ -547,7 +549,7 @@ describe('a copied list keeps the paragraphs its items hold', () => {
         const clipboard: Clipboard = { name: 'list', source: '- a\n\n  p\n\n  r\n- k', from: ['p', 0], to: ['k', 1], types: ['list'] };
         const editor = pasteInto(PARAGRAPH, clipboard, 1);
 
-        expect(shapeOf(editor)).toBe('paragraph("b") | list(listitem("p", paragraph("r")), listitem("k")) | paragraph("cd")');
+        expect(shapeOf(editor)).toBe('paragraph("b") | list(markdown-list-item(markdown-list-item-text("p"), paragraph("r")), markdown-list-item(markdown-list-item-text("k"))) | paragraph("cd")');
         expect(expectSaveKeepsDocument(editor)).toBe('b\n\n- p\n\n  r\n\n- k\n\ncd');
     });
 
@@ -656,8 +658,8 @@ describe('a copied list keeps the paragraphs its items hold', () => {
 });
 
 describe('a paste into the text of a list item that holds blocks leaves them as blocks', () => {
-    // Lexical splits the item at the caret for a paste of several blocks or lines, appending what follows the
-    // caret to a new item, and a list item's `append` merges a paragraph into the item's text.
+    // Lexical splits the item at the caret for a paste of several blocks or lines: what follows the caret, the
+    // item's blocks with it, goes to a new item, and follows the pasted blocks out of the list from there.
     const ITEM: Target = { name: 'item holding a paragraph', source: '- bcd\n\n  p2\n- z' };
     const QUOTE_ITEM: Target = { name: 'item holding a quote and a paragraph', source: '- bcd\n\n  > q\n\n  p2\n- z' };
 
@@ -720,6 +722,171 @@ describe('a paste into the text of a list item that holds blocks leaves them as 
         expect(expectSaveKeepsDocument(editor)).toBe('- Q\n\n  p2\n\n- z');
         expectUndoRestores(editor, ITEM.source);
     });
+
+    // Each newline of pasted text splits the item, as Enter in a text that holds something does. A blank line
+    // between two pasted paragraphs is a split in an empty text: it must not end the list, as the Enter key does.
+    it.each<[string, string, TextPoint, TextPoint, string, string]>([
+        ['T1: two paragraphs of text at the end of a text above a paragraph', '- ab\n\n  pq\n- z', ['ab', 2], ['ab', 2], 'T1\n\nT2',
+            '- abT1\n\n-\n\n- T2\n\n  pq\n\n- z'],
+        ['T2: the same above a nested list', '- ab\n  - n\n- z', ['ab', 2], ['ab', 2], 'T1\n\nT2', '- abT1\n-\n- T2\n  - n\n- z'],
+        ['T3: three paragraphs of text in an item of text', '- ab\n- z', ['ab', 2], ['ab', 2], 'T1\n\nT2\n\nT3', '- abT1\n-\n- T2\n-\n- T3\n- z'],
+        ['T4: two paragraphs of text over all of a text above a paragraph', '- ab\n\n  pq\n- z', ['ab', 0], ['ab', 2], 'T1\n\nT2',
+            '- T1\n\n-\n\n- T2\n\n  pq\n\n- z'],
+    ])('%s', (_name, source, from, to, text, saved) => {
+        const editor = load(source);
+
+        selectText(editor, from, to);
+        pasteText(editor, text);
+
+        expect(expectSaveKeepsDocument(editor)).toBe(saved);
+        expectUndoRestores(editor, load(source).getValue());
+    });
+
+    it('T5: blocks pasted at a text that holds only a space go in as at any text', () => {
+        const editor = load('- a\n- b\n- z');
+
+        selectText(editor, ['b', 0], ['b', 1]);
+        lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, ' ');
+        pasteNodes(editor, copyOf(PARAGRAPHS));
+
+        expect(expectSaveKeepsDocument(editor)).toBe('- a\n- P1\n\nP2\n\n- z');
+    });
+
+    it('T6: the paste command with the caret between the blocks of an item puts the text in a paragraph of the item', async () => {
+        const editor = load('- a\n\n  | h |\n  | --- |\n  | c |\n- z');
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('zz');
+        update(editor, () => {
+            const item = $textNode('a').getParentOrThrow().getParentOrThrow();
+            const selection = $createRangeSelection();
+
+            selection.anchor.set(item.getKey(), 2, 'element');
+            selection.focus.set(item.getKey(), 2, 'element');
+            $setSelection(selection);
+        });
+        await editor.paste();
+
+        expect(expectSaveKeepsDocument(editor)).toBe('- a\n\n  | h |\n  | --- |\n  | c |\n\n  zz\n\n- z');
+    });
+
+    /**
+     * Selects a range that starts between the blocks of the list item whose text is `text`.
+     *
+     * @param editor - The editor.
+     * @param text - The item's text.
+     * @param from - The index of the block the range starts before.
+     * @param to - Where it ends: the index of a block of the same item, or a point in a text.
+     */
+    const selectFromItem = (editor: MarkdownEditor, text: string, from: number, to: number | TextPoint): void => {
+        update(editor, () => {
+            const item = $textNode(text).getParentOrThrow().getParentOrThrow();
+            const selection = $createRangeSelection();
+
+            selection.anchor.set(item.getKey(), from, 'element');
+
+            if (typeof to === 'number') {
+                selection.focus.set(item.getKey(), to, 'element');
+            } else {
+                selection.focus.set($textNode(to[0]).getKey(), to[1], 'text');
+            }
+
+            $setSelection(selection);
+        });
+    };
+
+    const TABLE_ITEM = '| h |\n  | --- |\n  | c |';
+    const AFTER_TABLE = `- a\n\n  ${TABLE_ITEM}\n- m\n- z\n\ntail`;
+
+    // A range whose removal leaves the caret between the blocks of an item: what is pasted goes into a paragraph
+    // of the item there, as at a caret that stood there, and nothing is left half done.
+    it.each<[string, string, number, number | TextPoint, string]>([
+        ['T8: the paste command over a range between the blocks of an item', `- a\n\n  ${TABLE_ITEM}\n- z`, 1, 2, '- a\n\n  zz\n\n- z'],
+        ['T9: the paste command over a range from after an item\'s table into the next item\'s text', AFTER_TABLE, 2, ['m', 1],
+            `- a\n\n  ${TABLE_ITEM}\n\n  zz\n\n- z\n\ntail`],
+    ])('%s', async (_name, source, from, to, saved) => {
+        const editor = load(source);
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('zz');
+        selectFromItem(editor, 'a', from, to);
+        await editor.paste();
+
+        expect(expectSaveKeepsDocument(editor)).toBe(saved);
+        expectUndoRestores(editor, load(source).getValue());
+    });
+
+    it('T13: plain text pasted with Ctrl/Cmd+V over such a range goes into a paragraph of the item', () => {
+        const source = `- a\n\n  ${TABLE_ITEM}\n- z`;
+        const editor = load(source);
+
+        selectFromItem(editor, 'a', 1, 2);
+        pasteText(editor, 'y1\ny2');
+
+        expect(expectSaveKeepsDocument(editor)).toBe('- a\n\n  y1\n\n  y2\n\n- z');
+        expectUndoRestores(editor, load(source).getValue());
+    });
+
+    it('T10: inline nodes pasted over such a range go into a paragraph of the item', () => {
+        const editor = load(AFTER_TABLE);
+        const nodes = copyOf({ name: 'inline', source: 'some **bold** text', from: ['some ', 1], to: [' text', 2], types: [] });
+
+        selectFromItem(editor, 'a', 2, ['m', 1]);
+        pasteNodes(editor, nodes);
+
+        expect(expectSaveKeepsDocument(editor)).toBe(`- a\n\n  ${TABLE_ITEM}\n\n  ome **bold** t\n\n- z\n\ntail`);
+    });
+
+    /**
+     * Pastes plain text with the caret after the table of the first item of `- a`, a table, `- z`.
+     *
+     * @param text - The text.
+     * @returns The editor after the paste.
+     */
+    const pasteTextAfterItemTable = (text: string): MarkdownEditor => {
+        const editor = load(`- a\n\n  ${TABLE_ITEM}\n- z`);
+
+        update(editor, () => {
+            const item = $textNode('a').getParentOrThrow().getParentOrThrow();
+            const selection = $createRangeSelection();
+
+            selection.anchor.set(item.getKey(), 2, 'element');
+            selection.focus.set(item.getKey(), 2, 'element');
+            $setSelection(selection);
+        });
+        pasteText(editor, text);
+
+        return editor;
+    };
+
+    it('T11: lines of plain text pasted with the caret between the blocks of an item are paragraphs of the item', () => {
+        const editor = pasteTextAfterItemTable('y1\ny2');
+
+        expect(expectSaveKeepsDocument(editor)).toBe(`- a\n\n  ${TABLE_ITEM}\n\n  y1\n\n  y2\n\n- z`);
+    });
+
+    it('T12: a pasted line that opens with a tab keeps the tab in the item\'s new paragraph', () => {
+        const editor = pasteTextAfterItemTable('\ty1');
+        const texts = lexicalOf(editor).read(() => $textNode('a').getParentOrThrow().getParentOrThrow().getChildren()
+            .map((block) => `${block.getType()}:${block.getTextContent()}`));
+
+        // The save writes no space before a paragraph's text, so the tab is read off the tree.
+        expect(texts.slice(2)).toEqual(['paragraph:\ty1']);
+        expectSaveKeepsDocument(editor);
+    });
+
+    it('T7: list items pasted without their list, into a paragraph of an item, are a list of that item', () => {
+        const source = '- a\n\n  pqrs\n- z';
+        const editor = load(source);
+
+        selectText(editor, ['pqrs', 2], ['pqrs', 2]);
+        update(editor, () => {
+            const items = ['one', 'two'].map((text) => $createListItemNode().append($createTextNode(text)));
+
+            $insertGeneratedNodes(lexicalOf(editor), items, $getSelection()!);
+        });
+
+        expect(expectSaveKeepsDocument(editor)).toBe('- a\n\n  pq\n\n  - one\n  - two\n\n  rs\n\n- z');
+        expectUndoRestores(editor, load(source).getValue());
+    });
 });
 
 describe('other routes to a block in a list item', () => {
@@ -746,5 +913,222 @@ describe('other routes to a block in a list item', () => {
 
         expect(expectSaveKeepsDocument(editor)).toBe('- a\n\n  - bP1\n\n  P2\n\nP1\n\nP2');
         expectUndoRestores(editor, source);
+    });
+});
+
+describe('blocks pasted into a block that a list item holds become blocks of the item (Y rows)', () => {
+    // Lexical inserts blocks pasted into a block that stands inside another block as one line of text; a paragraph,
+    // heading or quote of a list item is such a block. The editor's own handler splits the block at the caret
+    // instead, as a paste at the top level splits a paragraph: the second half joins the last pasted block when
+    // that is a block of text, and stays a block of its own after a pasted list or table.
+    const ITEMS: Clipboard = { name: 'list', source: '- k\n- m\n\nzz', from: ['k', 0], to: ['m', 1], types: ['list'] };
+    const TEXT: Clipboard = { name: 'text', source: 'P1 zz', from: ['P1 zz', 0], to: ['P1 zz', 2], types: ['text'] };
+
+    const PARAGRAPH_TABLE: Clipboard = {
+        name: 'paragraph, table', source: 'P1\n\n| h |\n| --- |\n| c |', from: ['P1', 0], to: ['c', 1], types: ['paragraph', 'table'],
+    };
+
+    it.each<[string, string, Clipboard, TextPoint, string]>([
+        ['Y1: paragraphs into an item\'s paragraph', '- x\n\n  cd\n- z', PARAGRAPHS, ['cd', 1], '- x\n\n  cP1\n\n  P2d\n\n- z'],
+        ['Y2: paragraphs into an item\'s heading', '- x\n\n  ## cd\n- z', PARAGRAPHS, ['cd', 1], '- x\n\n  ## cP1\n\n  P2d\n\n- z'],
+        ['Y3: paragraphs into an item\'s quote', '- x\n\n  > cd\n- z', PARAGRAPHS, ['cd', 1], '- x\n\n  > cP1\n\n  P2d\n\n- z'],
+        ['Y4: a list into an item\'s paragraph', '- x\n\n  cd\n- z', ITEMS, ['cd', 1], '- x\n\n  c\n\n  - k\n  - m\n\n  d\n\n- z'],
+        ['Y5: a table and a paragraph into an item\'s paragraph', '- x\n\n  cd\n- z', TABLE, ['cd', 1],
+            '- x\n\n  c\n\n  | h |\n  | --- |\n  | c |\n\n  P2d\n\n- z'],
+        ['Y6: a heading and a paragraph at the end of a paragraph after an item\'s nested list', '- a\n  - b\n\n  cd\n- z', HEADING, ['cd', 2],
+            '- a\n  - b\n\n  cdH\n\n  P2\n\n- z'],
+        ['Y7: paragraphs at the start of an item\'s paragraph', '- x\n\n  cd\n- z', PARAGRAPHS, ['cd', 0], '- x\n\n  P1\n\n  P2cd\n\n- z'],
+        ['Y8: text alone goes in as text, as before (control)', '- x\n\n  cd\n- z', TEXT, ['cd', 1], '- x\n\n  cP1d\n\n- z'],
+        ['Y9: a paragraph and a table: the second half stays a paragraph after the table, out of its last cell', '- x\n\n  cd\n- z', PARAGRAPH_TABLE,
+            ['cd', 1], '- x\n\n  cP1\n\n  | h |\n  | --- |\n  | c |\n\n  d\n\n- z'],
+        ['Y10: the list of Y4 into a top-level paragraph leaves the second half a paragraph after the list too (control)', 'cd', ITEMS, ['cd', 1],
+            'c\n\n- k\n- m\n\nd'],
+        ['Y11: the table of Y9 into a top-level paragraph (control)', 'cd', PARAGRAPH_TABLE, ['cd', 1], 'cP1\n\n| h |\n| --- |\n| c |\n\nd'],
+        ['Y12: a heading and a paragraph at the start of an item\'s paragraph: the heading stays a heading', '- x\n\n  cd\n- z', HEADING, ['cd', 0],
+            '- x\n\n  ## H\n\n  P2cd\n\n- z'],
+        ['Y13: paragraphs at the start of an item\'s heading, which Lexical\'s split there replaces by an empty paragraph', '- x\n\n  ## cd\n- z', PARAGRAPHS,
+            ['cd', 0], '- x\n\n  P1\n\n  P2cd\n\n- z'],
+    ])('%s', (_name, source, clipboard, at, saved) => {
+        const nodes = copyOf(clipboard);
+        const editor = load(source);
+
+        expect(nodes.map((node) => node.type)).toEqual(clipboard.types);
+
+        selectText(editor, at, at);
+        pasteNodes(editor, nodes);
+
+        expect(expectSaveKeepsDocument(editor)).toBe(saved);
+        // The half of the split block that the paste left empty is gone.
+        expect(lexicalOf(editor).read(() => $dfs($getRoot()).filter(({ node }) => $isElementNode(node) && node.getType() === 'paragraph' && node.isEmpty()))).toEqual([]);
+        expectUndoRestores(editor, source);
+    });
+});
+
+describe('a list pasted at the text of an item leaves what the item holds with the text it followed (Q rows)', () => {
+    // A pasted list stands as a list of its own after the caret's item until the lists are joined, and the second
+    // half of the item's text joins its last item. What the item held after its text goes to that item with it,
+    // a nested list included: left behind, the nested list would be saved as an item of its own (`- - n`).
+    const ITEMS: Clipboard = { name: 'list', source: '- k\n- m\n\nzz', from: ['k', 0], to: ['m', 1], types: ['list'] };
+
+    it.each<[string, string, Clipboard, TextPoint, string]>([
+        ['Q1: a paragraph of the item', '- w1\n\n  p2\n- z', ITEMS, ['w1', 1], '- w\n\n- k\n\n- m1\n\n  p2\n\n- z'],
+        ['Q2: a nested list of the item', '- w1\n  - n\n- z', ITEMS, ['w1', 1], '- w\n- k\n- m1\n  - n\n- z'],
+        ['Q3: a paragraph and a quote, the caret at the start of the text', '- a\n- w1\n\n  p2\n\n  > q\n- z', ITEMS, ['w1', 0],
+            '- a\n\n- k\n\n- mw1\n\n  p2\n\n  > q\n\n- z'],
+        ['Q4: in a nested item', '- a\n  - w1\n\n    p2\n- z', ITEMS, ['w1', 1], '- a\n  - w\n\n  - k\n\n  - m1\n\n    p2\n- z'],
+        ['Q5: a list and a paragraph split the list, and the item\'s paragraph follows the text it followed (control)', '- w1\n\n  p2\n- z', LIST,
+            ['w1', 1], '- w\n- x\n- y\n\nP21\n\np2\n\n- z'],
+        // Known result: the text after the caret joins the deepest of the pasted items, where Lexical puts the caret,
+        // while what the item held follows the last top-level pasted item. The order is kept and nothing is lost.
+        ['Q10: a list of nested items in the text of an item holding a paragraph', '- xy\n\n  r\n- z',
+            { name: 'list', source: '- a\n  - b\n    - c', from: ['a', 0], to: ['c', 1], types: ['list'] }, ['xy', 1],
+            '- x\n\n- a\n  - b\n    - cy\n\n  r\n\n- z'],
+        // The caret's list is left with one item of one block, which no save can write loose, before it takes the pasted items.
+        ['Q6: a list and a paragraph at the end of the text of a list\'s only item leave a tight list', '- w1\n\n  p2', LIST, ['w1', 2],
+            '- w1\n- x\n- y\n\nP2\n\np2'],
+        // The same rule in a loose list of two items: its first item is one item of one block once the list is split
+        // after it, so the joined list is tight wherever in that item's text the caret was.
+        ['Q7: a list at the end of the text of a loose list\'s first item leaves a tight list, as inside that text', '- w1\n\n- z', ITEMS, ['w1', 2],
+            '- w1\n- k\n- m\n- z'],
+        ['Q8: a list inside the text of a loose list\'s first item (control)', '- w1\n\n- z', ITEMS, ['w1', 1], '- w\n- k\n- m1\n- z'],
+        ['Q9: a list in the text of a later item of a loose list leaves it loose', '- a\n\n- w1\n\n- z', ITEMS, ['w1', 1],
+            '- a\n\n- w\n\n- k\n\n- m1\n\n- z'],
+    ])('%s', (_name, source, clipboard, at, saved) => {
+        const nodes = copyOf(clipboard);
+        const editor = load(source);
+
+        selectText(editor, at, at);
+        pasteNodes(editor, nodes);
+
+        expect(expectSaveKeepsDocument(editor)).toBe(saved);
+        expectUndoRestores(editor, load(source).getValue());
+    });
+});
+
+describe('a paste where an item has no line of text goes in order, and stays in what the save writes (E rows)', () => {
+    // Lexical splits the caret's block for pasted blocks only when the block holds something. An item's text that
+    // was emptied over a nested list is no such block: its item is split after it all the same, so what the item
+    // holds follows the pasted blocks as it follows the second half of a text that held something.
+    const EMPTIED = '- a\n- bc\n  - n\n\n  e\n- z';
+    const ITEMS: Clipboard = { name: 'list', source: '- k\n- m\n\nzz', from: ['k', 0], to: ['m', 1], types: ['list'] };
+
+    it.each<[string, Clipboard, string]>([
+        ['E1: a table and a paragraph: the item\'s nested list follows them, in an item', TABLE,
+            '- a\n\n| h |\n| --- |\n| c |\n\nP2\n\n- - n\n\n  e\n\n- z'],
+        ['E2: a list: what the item held follows the last pasted item', ITEMS, '- a\n\n- k\n\n- m\n  - n\n\n  e\n\n- z'],
+        ['E3: paragraphs: the first is the item\'s text', PARAGRAPHS, '- a\n\n- P1\n\nP2\n\n- - n\n\n  e\n\n- z'],
+    ])('%s', (_name, clipboard, saved) => {
+        const nodes = copyOf(clipboard);
+        const editor = load(EMPTIED);
+
+        selectText(editor, ['bc', 0], ['bc', 2]);
+        lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+        expect(editor.getValue(), 'the emptied text').toBe('- a\n\n- - n\n\n  e\n\n- z');
+
+        pasteNodes(editor, nodes);
+
+        expect(expectSaveKeepsDocument(editor)).toBe(saved);
+    });
+
+    it.each<[string, string, TextPoint, TextPoint, Clipboard, string]>([
+        ['E5: paragraphs over all of a text above a paragraph', '- ab\n\n  p\n- z', ['ab', 0], ['ab', 2], PARAGRAPHS, '- P1\n\nP2\n\np\n\n- z'],
+        ['E6: a list over all of it: the paragraph follows the last pasted item', '- ab\n\n  p\n- z', ['ab', 0], ['ab', 2], ITEMS,
+            '- k\n\n- m\n\n  p\n\n- z'],
+        ['E7: a table and a paragraph over all of it', '- ab\n\n  p\n- z', ['ab', 0], ['ab', 2], TABLE, '| h |\n| --- |\n| c |\n\nP2\n\np\n\n- z'],
+        ['E8: a list over all of the text of a later item: its paragraph does not go to the item before', '- j\n- ab\n\n  p\n- z', ['ab', 0], ['ab', 2], ITEMS,
+            '- j\n\n- k\n\n- m\n\n  p\n\n- z'],
+        ['E9: a table over all of a text above a nested list', '- ab\n  - n\n- z', ['ab', 0], ['ab', 2], TABLE,
+            '| h |\n| --- |\n| c |\n\nP2\n\n- - n\n- z'],
+        ['E10: paragraphs over a range from the start of the text to the end of the item\'s first paragraph', '- ab\n\n  pq\n\n  r\n- z', ['ab', 0],
+            ['pq', 2], PARAGRAPHS, '- P1\n\nP2\n\nr\n\n- z'],
+    ])('%s (the range is emptied first)', (_name, source, from, to, clipboard, saved) => {
+        // Blocks pasted over a range that empties the text go in as they do at a text that was empty already.
+        const nodes = copyOf(clipboard);
+        const editor = load(source);
+
+        selectText(editor, from, to);
+        pasteNodes(editor, nodes);
+
+        expect(expectSaveKeepsDocument(editor)).toBe(saved);
+        expectUndoRestores(editor, load(source).getValue());
+    });
+
+    it('E4: paragraphs pasted with the caret between the blocks of an item become blocks of the item there', () => {
+        const nodes = copyOf(PARAGRAPHS);
+        const source = '- a\n- bc\n\n  pq\n  - n\n\n  e\n- z';
+        const editor = load(source);
+
+        update(editor, () => {
+            const item = $textNode('bc').getParentOrThrow().getParentOrThrow();
+            const selection = $createRangeSelection();
+
+            selection.anchor.set(item.getKey(), 1, 'element');
+            selection.focus.set(item.getKey(), 1, 'element');
+            $setSelection(selection);
+        });
+        pasteNodes(editor, nodes);
+
+        expect(expectSaveKeepsDocument(editor)).toBe('- a\n\n- bc\n\n  P1\n\n  P2\n\n  pq\n\n  - n\n\n  e\n\n- z');
+        expectUndoRestores(editor, load(source).getValue());
+    });
+});
+
+describe('a copy takes a list item with its text', () => {
+    /**
+     * Copied nodes as nested node types, a text node as its text.
+     *
+     * @param nodes - The copied nodes.
+     * @returns One string per top-level node, joined by ` | `.
+     */
+    const copiedShape = (nodes: CopiedNodes): string => {
+        const shape = (node: { type: string; text?: string; children?: unknown[] }): string => (node.text !== undefined
+            ? JSON.stringify(node.text)
+            : `${node.type}(${(node.children ?? []).map((child) => shape(child as never)).join(', ')})`);
+
+        return nodes.map((node) => shape(node as never)).join(' | ');
+    };
+
+    it.each<[string, string, TextPoint, TextPoint, string]>([
+        ['C1: from an item\'s text into its paragraph: the item, holding both', '- abc\n\n  pqr\n- z', ['abc', 1], ['pqr', 2],
+            'list(markdown-list-item(markdown-list-item-text("bc"), paragraph("pq")))'],
+        ['C2: from an item\'s text into its nested list: the item, holding both', '- abc\n  - n\n- z', ['abc', 1], ['n', 1],
+            'list(markdown-list-item(markdown-list-item-text("bc"), list(markdown-list-item(markdown-list-item-text("n")))))'],
+        ['C3: all of an item\'s text, the item holding nothing else: the item', '- abc\n- z', ['abc', 0], ['abc', 3], 'list(markdown-list-item(markdown-list-item-text("abc")))'],
+        ['C4: part of an item\'s text: the text alone', '- abc\n- z', ['abc', 1], ['abc', 2], '"b"'],
+        ['C5: all of an item\'s text, the item holding a paragraph too: the text alone', '- abc\n\n  pqr\n- z', ['abc', 0], ['abc', 3], '"abc"'],
+        ['C6: from one paragraph of an item into the next: the paragraphs, without the item', '- abc\n\n  pqr\n\n  stu\n- z', ['pqr', 1], ['stu', 2],
+            'paragraph("qr") | paragraph("st")'],
+        ['C7: from one item into the next: both items', '- abc\n- xyz', ['abc', 1], ['xyz', 2], 'list(markdown-list-item(markdown-list-item-text("bc")), markdown-list-item(markdown-list-item-text("xy")))'],
+    ])('%s', (_name, source, from, to, shape) => {
+        expect(copiedShape(copyOf({ name: 'copy', source, from, to, types: [] }))).toBe(shape);
+    });
+
+    it('C8: the item copied from its text into its paragraph is pasted as an item holding both', () => {
+        const nodes = copyOf({ name: 'copy', source: '- abc\n\n  pqr\n- z', from: ['abc', 1], to: ['pqr', 2], types: [] });
+        const editor = load('bcd');
+
+        selectText(editor, ['bcd', 1], ['bcd', 1]);
+        pasteNodes(editor, nodes);
+
+        expect(expectSaveKeepsDocument(editor)).toBe('b\n\n- bc\n\n  pq\n\ncd');
+        expectUndoRestores(editor, 'bcd');
+    });
+});
+
+describe('a list item whose text stands straight in it, as one built from pasted HTML, is pasted into a code block as its blocks', () => {
+    it('the text and the paragraph after it are set apart, as two blocks of an item are', () => {
+        const editor = load('```\nbcd\n```');
+
+        selectText(editor, ['bcd', 1], ['bcd', 1]);
+        update(editor, () => {
+            // Built as Lexical's HTML import builds an item: inline nodes straight in it, which only the editor's
+            // rules, run after the insert, give a text node.
+            const item = $createListItemNode().append($createTextNode('a'), $createParagraphNode().append($createTextNode('p')));
+            const list = $createListNode('bullet').append(item, $createListItemNode().append($createTextNode('k')));
+
+            lexicalOf(editor).dispatchCommand(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, { nodes: [list], selection: $getSelection()! });
+        });
+
+        expect(editor.getValue()).toBe('```\nba\n\np\n\nkcd\n```');
     });
 });

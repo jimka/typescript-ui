@@ -122,6 +122,17 @@ export function ensureMarkdownEditorClassRules(): void {
     });
 
     new StyleRule({
+        scope: "selector",
+        name:  `.${LIST_CLASS} > li > p:first-child`,
+        // A list item's text is a paragraph of its own (`MarkdownListItemTextNode`),
+        // which would carry the browser's default 1em block margin and set the
+        // items of a tight list a blank line apart. Reset, the text stands where
+        // an item's bare text stands in the read-only viewer; a further paragraph
+        // of the item keeps its margin, as it does there.
+        styles: { margin: "0" },
+    });
+
+    new StyleRule({
         scope:  "class",
         name:   LINK_CLASS,
         // The framework's single accent hue (shared with focus/selection).
