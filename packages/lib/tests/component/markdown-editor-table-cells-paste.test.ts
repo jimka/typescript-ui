@@ -9,12 +9,12 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-    $createParagraphNode, $createRangeSelection, $findMatchingParent, $getRoot, $getSelection, $isElementNode, $isParagraphNode,
+    $createParagraphNode, $createRangeSelection, $createTextNode, $findMatchingParent, $getRoot, $getSelection, $isElementNode, $isParagraphNode,
     $isRangeSelection, $isTextNode, $setSelection, UNDO_COMMAND,
 } from 'lexical';
-import type { LexicalEditor, LexicalNode, TextNode } from 'lexical';
+import type { ElementNode, LexicalEditor, LexicalNode, TextNode } from 'lexical';
 import { $generateJSONFromSelectedNodes, $generateNodesFromSerializedNodes, $insertGeneratedNodes } from '@lexical/clipboard';
-import { $createTableRowNode, $createTableSelectionFrom, $isTableCellNode, $isTableNode } from '@lexical/table';
+import { $createTableCellNode, $createTableNode, $createTableRowNode, $createTableSelectionFrom, $isTableCellNode, $isTableNode } from '@lexical/table';
 import type { TableCellNode, TableNode } from '@lexical/table';
 import { $dfs } from '@lexical/utils';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
@@ -346,6 +346,48 @@ function pasteBuiltAt(editor: MarkdownEditor, $build: () => LexicalNode[], at: P
     update(editor, () => {
         $insertGeneratedNodes(lexical, $build(), $getSelection()!);
     });
+}
+
+/**
+ * Pastes copied nodes at a caret held as an element point: a point on an
+ * element, between two of its children, which is how Lexical holds a caret
+ * that no text node can take (after an image, or at the edge of a link).
+ *
+ * @param editor - The editor.
+ * @param nodes - The copied nodes.
+ * @param $element - Finds the element the point is on; runs inside the paste's update.
+ * @param offset - The index among the element's children, or `'end'` for the point after its last child.
+ */
+function pasteAtPointOn(editor: MarkdownEditor, nodes: CopiedNodes, $element: () => ElementNode, offset: number | 'end'): void {
+    const lexical = lexicalOf(editor);
+
+    update(editor, () => {
+        const element = $element();
+        const index = offset === 'end' ? element.getChildrenSize() : offset;
+        const selection = $createRangeSelection();
+
+        selection.anchor.set(element.getKey(), index, 'element');
+        selection.focus.set(element.getKey(), index, 'element');
+        $setSelection(selection);
+        $insertGeneratedNodes(lexical, $generateNodesFromSerializedNodes(nodes), selection);
+    });
+}
+
+/**
+ * The link that follows the text node `text` in its block.
+ *
+ * @param text - The text before the link.
+ * @returns The link.
+ * @throws Error - When no element follows the text.
+ */
+function $linkAfter(text: string): ElementNode {
+    const link = $textNode(text).getNextSibling();
+
+    if (!$isElementNode(link)) {
+        throw new Error(`no link after "${text}"`);
+    }
+
+    return link;
 }
 
 /**
@@ -835,6 +877,34 @@ describe('bare rows and cells paste as the table that holds them', () => {
 });
 
 describe('bare rows and cells pasted at a list item', () => {
+    it('L1: two rows in the middle of an item\'s text split the list, and the text after the caret stays an item', () => {
+        const source = T + '\n\n- abcd\n- two';
+        const editor = load(source);
+        const nodes = copyRows(editor);
+
+        pasteAt(editor, nodes, ['abcd', 2]);
+
+        expect(typesOf(nodes)).toEqual(['tablerow', 'tablerow']);
+        expect(editor.getValue()).toBe(T + '\n\n- ab\n\n' + T + '\n\n- cd\n- two');
+        expect(rootChildTypes(editor)).toEqual(['table', 'list', 'table', 'list']);
+        expect(caretAt(editor)).toEqual(['c2', 2]);
+        expectSoundDocument(editor);
+
+        undo(editor);
+
+        expect(editor.getValue()).toBe(source);
+    });
+
+    it('L2: at the start of an item\'s text the table goes before the item', () => {
+        const editor = load(T + '\n\n- one\n- abcd\n- two');
+
+        pasteAt(editor, copyRows(editor), ['abcd', 0]);
+
+        expect(editor.getValue()).toBe(T + '\n\n- one\n\n' + T + '\n\n- abcd\n- two');
+        expect(rootChildTypes(editor)).toEqual(['table', 'list', 'table', 'list']);
+        expectSoundDocument(editor);
+    });
+
     it('L3: at the end of an item\'s text the table goes after the item, and no empty item is left', () => {
         const editor = load(T + '\n\n- abcd\n- two');
 
@@ -842,6 +912,35 @@ describe('bare rows and cells pasted at a list item', () => {
 
         expect(editor.getValue()).toBe(T + '\n\n- abcd\n\n' + T + '\n\n- two');
         expect(rootChildTypes(editor)).toEqual(['table', 'list', 'table', 'list']);
+        expectSoundDocument(editor);
+    });
+
+    it('L4: the blocks an item holds stay with the text after the caret', () => {
+        const editor = load(T + '\n\n- abcd\n\n  para\n  - sub\n- two');
+
+        pasteAt(editor, copyRows(editor), ['abcd', 2]);
+
+        expect(editor.getValue()).toBe(T + '\n\n- ab\n\n' + T + '\n\n- cd\n\n  para\n\n  - sub\n\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it('L5: in a nested item the table becomes a block of the outer item, between the two halves of the nested list', () => {
+        const editor = load(T + '\n\n- one\n  - abcd\n  - e\n- two');
+
+        pasteAt(editor, copyRows(editor), ['abcd', 2]);
+
+        expect(editor.getValue()).toBe(T + '\n\n- one\n  - ab\n\n  ' + inItem(T) + '\n\n  - cd\n  - e\n\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it('L6: the cells of one row in the middle of an item\'s text', () => {
+        const editor = load(T + '\n\n- abcd\n- two');
+        const nodes = copyBodyCells(editor);
+
+        pasteAt(editor, nodes, ['abcd', 2]);
+
+        expect(typesOf(nodes)).toEqual(['tablecell', 'tablecell']);
+        expect(editor.getValue()).toBe(T + '\n\n- ab\n\n' + CELLS_T + '\n\n- cd\n- two');
         expectSoundDocument(editor);
     });
 
@@ -863,6 +962,15 @@ describe('bare rows and cells pasted at a list item', () => {
         expectSoundDocument(editor);
     });
 
+    it('L9: over a range from one item\'s text into the next, the rest of the second text stays an item', () => {
+        const editor = load(T + '\n\n- one\n- abcd\n- two');
+
+        pasteAt(editor, copyRows(editor), ['one', 2], ['abcd', 2]);
+
+        expect(editor.getValue()).toBe(T + '\n\n- on\n\n' + T + '\n\n- cd\n- two');
+        expectSoundDocument(editor);
+    });
+
     it('L10: at an item\'s text emptied over a heading, the table and then the heading leave the list', () => {
         const editor = load(T + '\n\n- abcd\n\n  ## head\n- two');
 
@@ -880,6 +988,290 @@ describe('bare rows and cells pasted at a list item', () => {
         pasteNodes(editor, nodes);
 
         expect(editor.getValue()).toBe(T + '\n\n' + T + '\n\n## head\n\n- two');
+        expectSoundDocument(editor);
+    });
+});
+
+describe('the text after the caret of an item\'s text stays out of a pasted table or ::: block', () => {
+    /** A document holding one list, to paste into at `abcd`. */
+    const LIST = '- abcd\n- two';
+
+    it('X1: a whole table, as a table selection copies it', () => {
+        const source = load(T);
+        const editor = load(LIST);
+
+        pasteAt(editor, copyCells(source, 'h1', 'c2'), ['abcd', 2]);
+
+        expect(editor.getValue()).toBe('- ab\n\n' + T + '\n\n- cd\n- two');
+        expect(caretAt(editor)).toEqual(['c2', 2]);
+        expectSoundDocument(editor);
+
+        undo(editor);
+
+        expect(editor.getValue()).toBe(LIST);
+    });
+
+    it('X2: a paragraph and a table: the paragraph joins the text before the caret', () => {
+        const source = load('pre\n\n' + T);
+        const editor = load(LIST);
+        const nodes = copyRange(source, ['pre', 1], ['c2', 2]);
+
+        pasteAt(editor, nodes, ['abcd', 2]);
+
+        expect(typesOf(nodes)).toEqual(['paragraph', 'table']);
+        expect(editor.getValue()).toBe('- abre\n\n' + T + '\n\n- cd\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it('X3: a paragraph and a ::: block', () => {
+        const source = load('pre\n\n::: {align=center}\nff\n:::');
+        const editor = load(LIST);
+        const nodes = copyRange(source, ['pre', 1], ['ff', 2]);
+
+        pasteAt(editor, nodes, ['abcd', 2]);
+
+        expect(typesOf(nodes)).toEqual(['paragraph', 'markdown-block']);
+        expect(editor.getValue()).toBe('- abre\n\n::: {align=center}\nff\n:::\n\n- cd\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it('X4: a list whose last item ends in a table: the text after the caret is the next item', () => {
+        const source = load('pre\n\n- k\n\n  ' + inItem(T));
+        const editor = load(LIST);
+        const nodes = copyRange(source, ['pre', 1], ['c2', 2]);
+
+        pasteAt(editor, nodes, ['abcd', 2]);
+
+        expect(typesOf(nodes)).toEqual(['paragraph', 'list']);
+        expect(editor.getValue()).toBe('- abre\n\n- k\n\n  ' + inItem(T) + '\n\n- cd\n\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it('X5: a text that ends in a link, the caret before the link', () => {
+        const source = load(T);
+        const editor = load('- ab[cd](u)\n- two');
+
+        pasteAt(editor, copyCells(source, 'h1', 'c2'), ['ab', 2]);
+
+        expect(editor.getValue()).toBe('- ab\n\n' + T + '\n\n- [cd](u)\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it('X6: a table and a paragraph end in text, which the text after the caret joins as before (control)', () => {
+        const source = load(T + '\n\npost');
+        const editor = load(LIST);
+        const nodes = copyRange(source, ['h1', 0], ['post', 2]);
+
+        pasteAt(editor, nodes, ['abcd', 2]);
+
+        expect(typesOf(nodes)).toEqual(['table', 'paragraph']);
+        expect(editor.getValue()).toBe('- ab\n\n' + T + '\n\npocd\n\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it('X7: a table at the end of a text that ends in a link leaves no empty item (control)', () => {
+        const source = load(T);
+        const editor = load('- ab[cd](u)\n- two');
+
+        pasteAt(editor, copyCells(source, 'h1', 'c2'), ['cd', 2]);
+
+        expect(editor.getValue()).toBe('- ab[cd](u)\n\n' + T + '\n\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it('X8: a table whose last cell holds no paragraph, which no copy makes, takes no text and leaves no empty item', () => {
+        const editor = load(LIST);
+
+        pasteBuiltAt(editor, () => {
+            const filled = $createTableCellNode().append($createParagraphNode().append($createTextNode('g1')));
+
+            return [$createTableNode().append($createTableRowNode().append(filled, $createTableCellNode()))];
+        }, ['abcd', 2]);
+
+        expect(editor.getValue()).toBe('- ab\n\n| g1 |  |\n| --- | --- |\n\n- cd\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it('X9: over a range that leaves nothing after the caret, the range is removed first and no item is split off', () => {
+        const source = load(T);
+        const editor = load('- abcd\n- mid\n\n  para\n- two');
+
+        pasteAt(editor, copyCells(source, 'h1', 'c2'), ['abcd', 2], ['mid', 3]);
+
+        expect(editor.getValue()).toBe('- ab\n\n' + T + '\n\npara\n\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it('X10: a caret after the image a text ends in, a point on the text itself, has nothing after it', () => {
+        const source = load(T);
+        const editor = load('- ab![alt](i.png)\n- two');
+
+        pasteAtPointOn(editor, copyCells(source, 'h1', 'c2'), () => $textNode('ab').getParentOrThrow(), 'end');
+
+        expect(editor.getValue()).toBe('- ab![alt](i.png)\n\n' + T + '\n\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it('X11: an image after the caret is something after it, and stays in the next item', () => {
+        const source = load(T);
+        const editor = load('- ab![alt](i.png)\n- two');
+
+        pasteAt(editor, copyCells(source, 'h1', 'c2'), ['ab', 2]);
+
+        expect(editor.getValue()).toBe('- ab\n\n' + T + '\n\n- ![alt](i.png)\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it('X12: blank text after the caret counts as none: no blank item is left', () => {
+        const source = load(T);
+        const editor = load(LIST);
+
+        update(editor, () => {
+            $textNode('abcd').setTextContent('abcd  ');
+        });
+        pasteAt(editor, copyCells(source, 'h1', 'c2'), ['abcd  ', 4]);
+
+        expect(editor.getValue()).toBe('- abcd\n\n' + T + '\n\n- two');
+        expect(rootChildTypes(editor)).toEqual(['list', 'table', 'list']);
+        expectSoundDocument(editor);
+    });
+
+    it('X13: a range selected backwards from the start of a paragraph into an item\'s text is removed first as well', () => {
+        const source = load(T);
+        const editor = load('- abcd\n- two\n\nOmega');
+
+        pasteAt(editor, copyCells(source, 'h1', 'c2'), ['Omega', 0], ['abcd', 2]);
+
+        expect(editor.getValue()).toBe('- ab\n\n' + T + '\n\n- Omega');
+        expectSoundDocument(editor);
+    });
+
+    it('X14: a range selected backwards from the start of a code block stays the code block handler\'s, which pastes text', () => {
+        const source = load(T);
+        const editor = load('- abcd\n\n```\nkode\n```');
+
+        pasteAt(editor, copyCells(source, 'h1', 'c2'), ['kode', 0], ['abcd', 2]);
+
+        // A paste that starts in a code block goes in as lines of text, and the handler reads "starts in" by the
+        // selection's anchor, though the caret then stands in the item's text. What is pinned here is that the listener
+        // leaves that paste to the handler; a fix of the anchor rule will rewrite this literal.
+        expect(editor.getValue()).toBe('- abh1\\\n  \\\n  h2\\\n  \\\n  c1\\\n  \\\n  c2kode');
+        expect(rootChildTypes(editor)).toEqual(['list']);
+        expectSoundDocument(editor);
+    });
+
+    it('X15: a range that starts outside an item\'s text is not removed: a paste a table declines there leaves it selected', () => {
+        const source = load('pre\n\n' + T);
+        const editor = load(X);
+        const nodes = copyRange(source, ['pre', 1], ['c2', 2]);
+
+        pasteAt(editor, nodes, ['y1', 0], ['y1', 2]);
+
+        // A table together with another block cannot go into a cell: `@lexical/table` pastes nothing.
+        expect(typesOf(nodes)).toEqual(['paragraph', 'table']);
+        expect(editor.getValue()).toBe(X);
+        expect(lexicalOf(editor).read(() => $getSelection()?.getTextContent())).toBe('y1');
+    });
+
+    it.each([
+        { name: 'a linked image',                     source: '- ab [![alt](i.png)](u)\n- two', before: 'ab ', saved: '- ab [![alt](i.png)](u)\n\n' + T + '\n\n- two' },
+        { name: 'a link',                             source: '- ab[cd](u)\n- two',             before: 'ab',  saved: '- ab[cd](u)\n\n' + T + '\n\n- two' },
+        { name: 'a reference link',                   source: '- ab[cd][r]\n- two\n\n[r]: /u',  before: 'ab',  saved: '- ab[cd][r]\n\n' + T + '\n\n- two\n\n[r]: /u' },
+        { name: 'a linked image and a block under it', source: '- ab [![alt](i.png)](u)\n\n  para\n- two', before: 'ab ',
+            saved: '- ab [![alt](i.png)](u)\n\n' + T + '\n\npara\n\n- two' },
+    ])('X16: a caret after $name that ends the text, a point on the link, has nothing after it', ({ source, before, saved }) => {
+        const origin = load(T);
+        const editor = load(source);
+
+        pasteAtPointOn(editor, copyCells(origin, 'h1', 'c2'), () => $linkAfter(before), 'end');
+
+        expect(editor.getValue()).toBe(saved);
+        expectSoundDocument(editor);
+    });
+
+    it('X17: a linked image that is all the text, the caret a point on the link after it', () => {
+        const origin = load(T);
+        const editor = load('- [![alt](i.png)](u)\n- two');
+
+        pasteAtPointOn(editor, copyCells(origin, 'h1', 'c2'), () => {
+            const link = $dfs($getRoot()).find(({ node }) => node.getType() === 'link');
+
+            return link!.node as ElementNode;
+        }, 'end');
+
+        expect(editor.getValue()).toBe('- [![alt](i.png)](u)\n\n' + T + '\n\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it('X18: a point on a link at its end, with text after the link: that text stays the next item', () => {
+        const origin = load(T);
+        const editor = load('- ab[cd](u)ef\n- two');
+
+        pasteAtPointOn(editor, copyCells(origin, 'h1', 'c2'), () => $linkAfter('ab'), 'end');
+
+        expect(editor.getValue()).toBe('- ab[cd](u)\n\n' + T + '\n\n- ef\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it('X19: a point on a link before what it holds: the link stays in the next item', () => {
+        const origin = load(T);
+        const editor = load('- ab[cd](u)\n- two');
+
+        pasteAtPointOn(editor, copyCells(origin, 'h1', 'c2'), () => $linkAfter('ab'), 0);
+
+        expect(editor.getValue()).toBe('- ab\n\n' + T + '\n\n- [cd](u)\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it.each([
+        { name: 'a point on the link at its end',       $paste: (editor: MarkdownEditor, nodes: CopiedNodes): void => pasteAtPointOn(editor, nodes, () => $linkAfter('ab'), 'end') },
+        { name: 'a point in the link\'s text at its end', $paste: (editor: MarkdownEditor, nodes: CopiedNodes): void => pasteAt(editor, nodes, ['cd', 2]) },
+    ])('X20: blank text alone after a link, the caret $name: no blank item is left', ({ $paste }) => {
+        const origin = load(T);
+        const editor = load('- ab[cd](u)\n- two');
+
+        update(editor, () => {
+            $linkAfter('ab').insertAfter($createTextNode('  '));
+        });
+        $paste(editor, copyCells(origin, 'h1', 'c2'));
+
+        expect(editor.getValue()).toBe('- ab[cd](u)\n\n' + T + '\n\n- two');
+        expect(rootChildTypes(editor)).toEqual(['list', 'table', 'list']);
+        expectSoundDocument(editor);
+    });
+
+    it('X21: a caret in a link\'s text at its end, with text after the link: that text stays the next item', () => {
+        const origin = load(T);
+        const editor = load('- ab[cd](u)ef\n- two');
+
+        pasteAt(editor, copyCells(origin, 'h1', 'c2'), ['cd', 2]);
+
+        expect(editor.getValue()).toBe('- ab[cd](u)\n\n' + T + '\n\n- ef\n- two');
+        expectSoundDocument(editor);
+    });
+
+    it.each([
+        { name: 'forwards',  backward: false },
+        { name: 'backwards', backward: true },
+    ])('X22: over a range selected $name from the text to the end of the link that ends it, nothing is left after the caret', ({ backward }) => {
+        const origin = load(T);
+        const editor = load('- ab[cd](u)\n- two');
+        const lexical = lexicalOf(editor);
+        const nodes = copyCells(origin, 'h1', 'c2');
+
+        update(editor, () => {
+            const link = $linkAfter('ab');
+            const selection = $createRangeSelection();
+            const [inText, onLink] = backward ? [selection.focus, selection.anchor] : [selection.anchor, selection.focus];
+
+            inText.set($textNode('ab').getKey(), 1, 'text');
+            onLink.set(link.getKey(), link.getChildrenSize(), 'element');
+            $setSelection(selection);
+            $insertGeneratedNodes(lexical, $generateNodesFromSerializedNodes(nodes), selection);
+        });
+
+        expect(editor.getValue()).toBe('- a\n\n' + T + '\n\n- two');
+        expect(rootChildTypes(editor)).toEqual(['list', 'table', 'list']);
         expectSoundDocument(editor);
     });
 });
