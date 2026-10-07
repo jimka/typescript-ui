@@ -55,8 +55,12 @@ no `change` event fires.
 
 A keyboard move, type-ahead and `setFocusedIndex` scroll the focused row into view. The list
 moves the least distance that shows the whole row, and never sideways, so a list with
-[horizontal scrolling](#horizontal-scrolling) keeps its horizontal position. `setSelectedIndex`
-and `setValue` do not scroll.
+[horizontal scrolling](#horizontal-scrolling) keeps its horizontal position. After a
+keyboard move or type-ahead, a scrolling panel around the list then scrolls as well, up or down
+only, so the row is also in view of the page. A key pressed while a pane or section around the
+list is still opening scrolls the list alone. `setFocusedIndex` is a state setter and scrolls
+the list alone; call `FocusReveal.reveal(list.getElement())` after it to bring the list into view
+of the panels around it. `setSelectedIndex` and `setValue` do not scroll.
 
 Navigation and type-ahead skip disabled rows entirely — see [Disabled rows](#disabled-rows) below.
 

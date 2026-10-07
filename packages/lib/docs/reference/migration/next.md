@@ -85,6 +85,43 @@ object carrying `type`, the `init` fields a listener reads (`clientX`,
 `false`), a `null` `target`, and no-op `preventDefault()` /
 `stopPropagation()`.
 
+## A `Panel` subclass that scrolls something of its own overrides `revealRect`
+
+**What changed and why.** `FocusReveal.reveal` no longer calls
+`revealDescendant(target)` on a scrolling panel. With panels inside one
+another that call made each panel measure the control for itself, the
+outermost first, and the control could end out of view. The broker now
+measures the control once and hands the rectangle from panel to panel, the
+innermost first, through `revealRect(rect, axis?)`: each panel scrolls to show
+the rectangle it is handed and returns what it then shows of it.
+`revealDescendant` stays, for a caller that reveals in one panel directly.
+
+**Who needs to act.** Only a `Panel` subclass that overrides
+`revealDescendant` to scroll something other than the panel itself. It
+inherits `Panel.revealRect`, which the broker now calls, so its override is
+skipped without an error and focus history and spatial navigation no longer
+scroll its content into view. Override `revealRect` as well:
+
+```typescript
+revealRect(rect: Rect, axis?: ScrollAxis): Rect {
+    // Scroll your own inner element the least distance that shows `rect`
+    // (browser-viewport coordinates), along `axis` when one is given, and
+    // return the part of `rect` that element shows afterwards. Return
+    // `rect` unchanged when there is nothing to scroll.
+}
+```
+
+Override `hasScrollRange(axis?)` too. The inherited one answers for the panel
+itself, from its own overflow, and a panel whose own box never scrolls
+answers `false`; a list, tree or table inside the subclass would then never
+ask it to scroll for a keyboard move. Return whether your inner element can
+scroll along `axis`, or `true` when that is not known without measuring.
+
+`ScrollStrip` is the library's own case; its `revealRect` and
+`hasScrollRange` are the model. A revealer that is not a `Panel` and
+implements only `revealDescendant` needs no change: it is still called,
+before every scrolling panel.
+
 ## `Tree` and `TreeTable` no longer register `caret-down` / `caret-right`
 
 **What changed and why.** `Tree` and `TreeTable` row toggles are now one

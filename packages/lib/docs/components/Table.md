@@ -379,6 +379,12 @@ With the body focused:
 | `Ctrl/Cmd+C` / `X` / `V` | Copy, cut, paste the selected cell range — see [Sorting and selection](#sorting-and-selection). |
 | `Shift+F10` / ContextMenu key | Open the **Cut** / **Copy** / **Paste** menu for the current cell, under it. |
 
+A key that scrolls the current row or column into view, and entering an edit, also scroll a
+scrolling `Panel` around the table: up or down for a row, sideways for a column. A key pressed
+while a pane or section around the table is still opening scrolls the table alone. `selectRecord()`
+and `addRow()` scroll the table alone; call `FocusReveal.reveal(table.getElement())` after them
+to bring the table into view of the panels around it.
+
 The menu `Shift+F10` opens is the one a right-click on that cell opens. It acts on the
 selected cell range when the current cell lies inside it, and on the current cell alone
 otherwise; the row is scrolled into view first, and neither the selection nor the cell
