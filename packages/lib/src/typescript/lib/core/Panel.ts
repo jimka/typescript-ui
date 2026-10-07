@@ -11,7 +11,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle, Rect, ScrollMetrics } from "~/core/DOM.js";
 import { FocusReveal } from "~/core/FocusReveal.js";
 import type { FocusRevealer } from "~/core/FocusReveal.js";
-import { nearestRevealOffset } from "~/core/ScrollReveal.js";
+import { nearestRevealOffset, revealedRect, spanRect } from "~/core/ScrollReveal.js";
 import type { ScrollAxis } from "~/core/SmoothScroller.js";
 import { appendScrollShadowStrips, scrollShadowEdgeValue, scrollShadowRamp, quantizeShadowEdge, ScrollShadowEdges } from "~/core/ScrollShadow.js";
 import { Scrollbar } from "~/component/container/Scrollbar.js";
@@ -233,6 +233,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     // `declare`d + seeded in `applyOptions` for the same super-cascade reason.
     declare private _lastContentExtent: { width: number; height: number };
 
+    // Whether the content overflowed the scroll viewport along each axis this
+    // panel scrolls, as the last post-layout measurement found it. Kept so
+    // that `hasScrollRange` can answer without a layout read. `declare`d +
+    // seeded in `applyOptions` for the same super-cascade reason.
+    declare private _scrollRange: { x: boolean; y: boolean };
+
     // Overlay-scrollbar state. `_scrollbarStyle` is written by
     // `setScrollbarStyle` during the super-time options cascade, and
     // `_overlayScrollElement` / `_scrollbarV` / `_scrollbarH`
@@ -324,6 +330,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // would otherwise be undefined during this super-time cascade.
         this._shadowEdges       = { top: 0, bottom: 0, left: 0, right: 0 };
         this._lastContentExtent = { width: 0, height: 0 };
+        this._scrollRange       = { x: false, y: false };
 
         // Seed the last-committed-box baseline for the same reason:
         // `setAutoScroll` below can itself trigger a `doLayout()` call from
@@ -690,16 +697,59 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * `0` is the content's leading edge. An axis this panel does not scroll
      * is left alone, and so is a panel that is not effectively visible.
      *
+     * Every scrolling panel around this one then scrolls along the same axis
+     * to show the part of the span this panel shows, so the span ends up
+     * where the user can see it. That happens inside the call. A layout pass
+     * queued around this panel is run first, so that what is measured is
+     * final. While a pane, region or section around this panel is still
+     * opening, the panels around it are left alone. Pass `around` as `false`
+     * to scroll this panel and nothing else.
+     *
      * @param axis - The axis to scroll along.
      * @param start - Where the span begins.
      * @param end - Where the span ends.
+     * @param around - Whether the scrolling panels around this one follow.
      * @returns This panel, for method chaining.
      */
-    revealSpan(axis: ScrollAxis, start: number, end: number): this {
+    revealSpan(axis: ScrollAxis, start: number, end: number, around: boolean = true): this {
+        const view = this.revealSpanHere(axis, start, end);
+
+        if (!view || !around) {
+            return this;
+        }
+
+        FocusReveal.revealRectAround(this, relaidOut => {
+            // A layout pass that has just run can have resized this panel
+            // or given it its offsets back: reveal the span here again.
+            const current = relaidOut ? this.revealSpanHere(axis, start, end) : view;
+
+            if (!current) {
+                return null;
+            }
+
+            // Where the content's leading edge is drawn now, after the scroll.
+            const origin = axis === "y" ? current.top - this.getScrollTop() : current.left - this.getScrollLeft();
+
+            return spanRect(current, axis, origin + start, origin + end);
+        }, axis);
+
+        return this;
+    }
+
+    /**
+     * The part of {@link revealSpan} that concerns this panel alone: measures
+     * the scroll viewport, re-reads the offsets and scrolls the span into it.
+     *
+     * @param axis - The axis to scroll along.
+     * @param start - Where the span begins, in content coordinates.
+     * @param end - Where the span ends, in content coordinates.
+     * @returns The scroll viewport it measured, or null when the panel has none.
+     */
+    private revealSpanHere(axis: ScrollAxis, start: number, end: number): Rect | null {
         const view = this.getScrollViewportRect();
 
         if (!view) {
-            return this;
+            return null;
         }
 
         // The browser also scrolls the panel on its own — a key press, a move
@@ -709,7 +759,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         this.syncScrollOffsets();
         this.revealSpanWithin(view, axis, start, end);
 
-        return this;
+        return view;
     }
 
     /**
@@ -746,26 +796,91 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     /**
      * {@link FocusRevealer.revealDescendant}: scrolls `target` into the scroll
      * viewport by the least distance, along each axis this panel scrolls.
+     * This panel only: a scrolling panel around it is not touched.
      *
      * @param target - The element to scroll into view.
      */
     revealDescendant(target: Handle): void {
         const view = this.getScrollViewportRect();
 
-        if (!view) {
-            return;
+        if (view) {
+            this.revealRectWithin(view, DOM.source.getElementRect(target));
+        }
+    }
+
+    /**
+     * {@link FocusRevealer.revealRect}: scrolls the least distance that brings
+     * `rect` into the scroll viewport, and returns what the viewport then
+     * shows of it. This panel only: a scrolling panel around it is not
+     * touched. A panel that does not scroll, is not rendered or is not
+     * effectively visible moves nothing and returns `rect` as given.
+     *
+     * @param rect - The rectangle to show, in browser-viewport coordinates.
+     * @param axis - Reveal along this axis only; along both when omitted.
+     * @returns The part of `rect` the scroll viewport shows after the scroll.
+     */
+    revealRect(rect: Rect, axis?: ScrollAxis): Rect {
+        const view = this.getScrollViewportRect();
+
+        return view ? this.revealRectWithin(view, rect, axis) : rect;
+    }
+
+    /**
+     * {@link FocusRevealer.hasScrollRange}: whether the content overflowed
+     * the scroll viewport along `axis` when the panel was last laid out. It
+     * reads a value the layout pass kept, so it costs no measurement; a
+     * panel that has never been laid out, or does not scroll along `axis`,
+     * answers `false`. The value is renewed by the same pass that decides
+     * whether a scrollbar shows, so it is as current as the scrollbar is.
+     *
+     * @param axis - The axis asked about; either axis when omitted.
+     * @returns Whether there is anything to scroll along `axis`.
+     */
+    hasScrollRange(axis?: ScrollAxis): boolean {
+        const axes = this.scrollableAxes();
+        const x    = axes.x && this._scrollRange.x;
+        const y    = axes.y && this._scrollRange.y;
+
+        if (axis === "x") {
+            return x;
         }
 
+        if (axis === "y") {
+            return y;
+        }
+
+        return x || y;
+    }
+
+    /**
+     * {@link revealRect} against a viewport already measured.
+     *
+     * @param view - The scroll viewport, from {@link getScrollViewportRect}.
+     * @param rect - The rectangle to show, in browser-viewport coordinates.
+     * @param axis - Reveal along this axis only; along both when omitted.
+     * @returns The part of `rect` the viewport shows after the scroll.
+     */
+    private revealRectWithin(view: Rect, rect: Rect, axis?: ScrollAxis): Rect {
         this.syncScrollOffsets();
 
-        // The target's rectangle is where it is drawn now. Adding the current
-        // offset turns it into a position in the scrolled content.
-        const rect = DOM.source.getElementRect(target);
-        const dx   = this.getScrollLeft() - view.left;
-        const dy   = this.getScrollTop()  - view.top;
+        // The rectangle is where it is drawn now. Adding the current offset
+        // turns it into a position in the scrolled content.
+        const left = this.getScrollLeft();
+        const top  = this.getScrollTop();
+        const dx   = left - view.left;
+        const dy   = top  - view.top;
 
-        this.revealSpanWithin(view, "x", rect.left + dx, rect.right  + dx);
-        this.revealSpanWithin(view, "y", rect.top  + dy, rect.bottom + dy);
+        if (axis !== "y") {
+            this.revealSpanWithin(view, "x", rect.left + dx, rect.right + dx);
+        }
+
+        if (axis !== "x") {
+            this.revealSpanWithin(view, "y", rect.top + dy, rect.bottom + dy);
+        }
+
+        // The setters read the offset back after writing it, so the two
+        // differences are how far the browser really moved the content.
+        return revealedRect(rect, left - this.getScrollLeft(), top - this.getScrollTop(), view);
     }
 
     /**
@@ -1199,6 +1314,15 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         if (edges) {
             this.applyShadowEdges(edges);
         }
+
+        // Kept for `hasScrollRange`: the same already-read metrics say
+        // whether there is anything to scroll along each axis.
+        const axes = this.scrollableAxes();
+
+        this._scrollRange = {
+            x: axes.x && shadowMetrics.scrollWidth  > shadowMetrics.clientWidth,
+            y: axes.y && shadowMetrics.scrollHeight > shadowMetrics.clientHeight,
+        };
     }
 
     /**

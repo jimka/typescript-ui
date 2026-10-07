@@ -1634,24 +1634,62 @@ class Border extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * {@link FocusRevealer.isRevealSettled}: whether no region is animating
+     * open or shut. While one is, the other regions are still moving, and an
+     * expanded region has not yet been given back the scroll offsets it was
+     * collapsed with.
+     *
+     * @returns `false` from a collapse or an expand until its animation settles.
+     */
+    isRevealSettled(): boolean {
+        return !this._collapsing;
+    }
+
+    /**
      * {@link FocusRevealer.revealDescendant}: expands whichever region is on
      * the DOM path to `target`, if it is currently collapsed.
      *
      * @param target - The element to reveal.
      */
     revealDescendant(target: Handle): void {
+        const placement = this.regionAround(target);
+        const collapsed = placement !== null && this.isRegionCollapsed(placement);
+
+        if (placement !== null && collapsed) {
+            this.setRegionCollapsed(placement, false);
+        }
+    }
+
+    /**
+     * {@link FocusRevealer.hidesDescendant}: whether `target` is in a region
+     * that is collapsed.
+     *
+     * @param target - The element to test.
+     * @returns `true` when the region holding `target` would have to expand.
+     */
+    hidesDescendant(target: Handle): boolean {
+        const placement = this.regionAround(target);
+
+        return placement !== null && this.isRegionCollapsed(placement);
+    }
+
+    /**
+     * The collapsible-side region whose component is on the DOM path to `target`.
+     *
+     * @param target - The element to look around.
+     * @returns The region's placement, or `null` when `target` is in none of the four.
+     */
+    private regionAround(target: Handle): Placement | null {
         for (const placement of [Placement.NORTH, Placement.SOUTH, Placement.WEST, Placement.EAST]) {
             const comp = this.getRegionComponent(placement);
             const el   = comp?.getElement();
 
             if (el && DOM.source.contains(el, target)) {
-                if (this.isRegionCollapsed(placement)) {
-                    this.setRegionCollapsed(placement, false);
-                }
-
-                return;
+                return placement;
             }
         }
+
+        return null;
     }
 
     /**

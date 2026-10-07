@@ -203,6 +203,14 @@ let rafHandle: number | null = null;
 let layoutPassDepth: number = 0;
 let layoutPassToken: number = 0;
 
+// How many times `Component.flushLayoutQueuedAround` looks for passes owed
+// around its target. One round runs everything queued when it was called. A
+// panel whose scrollbar appears or goes in that pass queues exactly one
+// follow-up pass for itself (see `Panel.commitScrollbarGutterIfChanged`),
+// which the second round runs. A third would only chase a component that
+// queues itself on every pass, and that one is left to the frame.
+const MAX_SETTLING_ROUNDS = 2;
+
 /**
  * Ends the layout pass's current number, so anything keyed on it is recomputed
  * rather than re-served across whatever just ran.
@@ -265,21 +273,14 @@ function reportFlushFailure(stage: string, componentId: string | null, error: un
     console.error(`Layout flush: ${subject} threw; the rest of the frame continued.`, error);
 }
 
-function flushPendingLayouts() {
-    rafHandle = null;
-
-    const timed   = Diagnostics.isTimingEnabled();
-    const started = timed ? performance.now() : 0;
-
-    // Snapshot and clear both queues so re-entrant scheduleLayout / afterNextLayout
-    // calls (from a doLayout side effect or a post-layout callback) queue into the
-    // next frame instead of mutating these during iteration.
-    const dirty = Array.from(pendingLayouts);
-    pendingLayouts.clear();
-
-    const callbacks = afterLayoutCallbacks;
-    afterLayoutCallbacks = [];
-
+/**
+ * Lays out every component of `dirty` that no other entry of `dirty` will
+ * reach by recursion: the layout half of a flush, over a set that has
+ * already been taken off the queue.
+ *
+ * @param dirty - The queued components to lay out, taken off `pendingLayouts`.
+ */
+function runLayoutPasses(dirty: readonly Component[]): void {
     for (const c of dirty) {
         let hasDirtyAncestor = false;
         let p = c.getParentComponent();
@@ -318,6 +319,57 @@ function flushPendingLayouts() {
             }
         }
     }
+}
+
+/**
+ * Takes `root`, if it is queued, and every queued component under it off the
+ * layout queue, and runs their passes as the frame's flush would.
+ *
+ * @param root - The component whose subtree to flush.
+ */
+function flushQueuedSubtree(root: Component): void {
+    const subtree = Array.from(pendingLayouts).filter(queued => queued === root || isBelowInTree(queued, root));
+
+    for (const queued of subtree) {
+        pendingLayouts.delete(queued);
+    }
+
+    runLayoutPasses(subtree);
+}
+
+/**
+ * Whether `ancestor` is above `component` in the component tree.
+ *
+ * @param component - The component to start from.
+ * @param ancestor - The component to look for above it.
+ * @returns `true` when `ancestor` is a parent of `component`, at any depth.
+ */
+function isBelowInTree(component: Component, ancestor: Component): boolean {
+    for (let parent = component.getParentComponent(); parent; parent = parent.getParentComponent()) {
+        if (parent === ancestor) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function flushPendingLayouts() {
+    rafHandle = null;
+
+    const timed   = Diagnostics.isTimingEnabled();
+    const started = timed ? performance.now() : 0;
+
+    // Snapshot and clear both queues so re-entrant scheduleLayout / afterNextLayout
+    // calls (from a doLayout side effect or a post-layout callback) queue into the
+    // next frame instead of mutating these during iteration.
+    const dirty = Array.from(pendingLayouts);
+    pendingLayouts.clear();
+
+    const callbacks = afterLayoutCallbacks;
+    afterLayoutCallbacks = [];
+
+    runLayoutPasses(dirty);
 
     // Post-layout callbacks run after every dirty component has settled, so a
     // consumer that scheduled layout work (revealing a view, opening a section)
@@ -8355,6 +8407,105 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
                 cancelled = true;
             },
         };
+    }
+
+    /**
+     * Whether the next layout flush lays out a component around `target`.
+     * While one is queued, the geometry around `target` is not final: the
+     * flush may move or resize it. A queued component that has been laid out
+     * directly since it was queued no longer owes its pass, and does not
+     * count.
+     *
+     * An element is tested by DOM containment. A component is tested through
+     * the component tree instead — itself and its ancestors — which asks the
+     * DOM nothing, and also sees a parent that has not placed the
+     * component's element yet.
+     *
+     * @param target - The element or the component to test.
+     * @returns `true` when a layout pass is queued, and still owed, around `target`.
+     *
+     * @internal
+     */
+    static isLayoutQueuedAround(target: Handle | Component): boolean {
+        return Component.layoutsOwedAround(target).length > 0;
+    }
+
+    /**
+     * Runs, now, what the next layout flush would run around `target`, so
+     * that the geometry around it is final before something measures it. The
+     * synchronous counterpart of waiting for that flush, for a caller that
+     * has to act inside the current call.
+     *
+     * It is the frame's flush, restricted to the subtree of the outermost
+     * component around `target` that owes a pass: every queued component of
+     * that subtree is taken off the queue, and those that no other one
+     * reaches by recursion are laid out, under the frame's own rules. So the
+     * frame that was requested finds none of them left, and a pass that
+     * throws is reported as the frame reports it. Callbacks registered with
+     * {@link afterNextLayout} are left for the frame.
+     *
+     * Nothing runs from inside a layout pass, where the passes around
+     * `target` are the ones in progress.
+     *
+     * @param target - The component or the element whose surroundings to
+     *   lay out, looked up as {@link isLayoutQueuedAround} does.
+     *
+     * @internal
+     */
+    static flushLayoutQueuedAround(target: Handle | Component): void {
+        const inLayoutPass = Component.currentLayoutPass() !== 0;
+
+        if (inLayoutPass) {
+            return;
+        }
+
+        for (let round = 0; round < MAX_SETTLING_ROUNDS; round++) {
+            const owed = Component.layoutsOwedAround(target);
+
+            if (owed.length === 0) {
+                break;
+            }
+
+            flushQueuedSubtree(owed[0]);
+        }
+    }
+
+    /**
+     * The components around `target` for which a layout pass is queued and
+     * still owed, outermost first.
+     *
+     * @param target - The component or the element to look around.
+     * @returns The queued components at or around `target`.
+     */
+    private static layoutsOwedAround(target: Handle | Component): Component[] {
+        const owed: Component[] = [];
+
+        if (target instanceof Component) {
+            for (let component: Component | null = target; component; component = component.getParentComponent()) {
+                // A component that has not rendered answers `null` here.
+                const rendered = Boolean(component.getElement());
+                const queued   = rendered && pendingLayouts.has(component) && component.isLayoutDirty();
+
+                if (queued) {
+                    owed.unshift(component);
+                }
+            }
+
+            return owed;
+        }
+
+        for (const component of pendingLayouts) {
+            const element = component.getElement();
+            const around  = Boolean(element) && component.isLayoutDirty() && DOM.source.contains(element!, target);
+
+            if (around) {
+                owed.push(component);
+            }
+        }
+
+        // Every entry holds `target`, so the entries are nested, and one
+        // that holds another is the outer of the two.
+        return owed.sort((a, b) => DOM.source.contains(a.getElement()!, b.getElement()!) ? -1 : 1);
     }
 
     /**

@@ -1876,7 +1876,7 @@ abstract class AbstractSelectableList<
             return null;
         }
 
-        this.scrollIndexIntoView(idx);
+        this.scrollIndexIntoView(idx, true);
 
         return this._rowPool[idx];
     }
@@ -1978,9 +1978,14 @@ abstract class AbstractSelectableList<
      * or `action` event fires. An index outside the item array clears
      * the focus mark instead of throwing.
      *
-     * The focused row is scrolled into view, vertically and by the least
-     * distance. A list that is hidden or not yet rendered moves the mark
-     * without scrolling, and does not scroll later when it is shown.
+     * The focused row is scrolled into view in the list, vertically and by
+     * the least distance. A list that is hidden or not yet rendered moves the
+     * mark without scrolling, and does not scroll later when it is shown.
+     * A scrolling panel around the list is not touched: this is a state
+     * setter, and a page must not move because code set the mark. To bring
+     * the list itself into view of the panels around it, call
+     * [`FocusReveal.reveal`](/api/core/namespaces/FocusReveal/functions/reveal)
+     * with the list's element.
      *
      * @param idx - The zero-based index to focus, or an out-of-range
      *   value to clear the focus mark.
@@ -1988,13 +1993,26 @@ abstract class AbstractSelectableList<
      * @returns This component, for method chaining.
      */
     setFocusedIndex(idx: number): this {
+        this.focusIndex(idx, false);
+
+        return this;
+    }
+
+    /**
+     * Moves the keyboard-focus mark to `idx` and scrolls its row into view.
+     *
+     * @param idx - The zero-based index to focus, or an out-of-range value
+     *   to clear the focus mark.
+     * @param around - Whether the scrolling panels around the list follow the
+     *   row: `true` for a move the user makes with the keyboard, `false` for
+     *   a call from code.
+     */
+    private focusIndex(idx: number, around: boolean): void {
         this._focusedIndex = idx >= 0 && idx < this._items.length ? idx : -1;
 
         this.refreshRowVisualState();
         this.updateActiveDescendant();
-        this.scrollIndexIntoView(this._focusedIndex);
-
-        return this;
+        this.scrollIndexIntoView(this._focusedIndex, around);
     }
 
     /**
@@ -2259,7 +2277,7 @@ abstract class AbstractSelectableList<
 
         this.refreshRowVisualState();
         this.updateActiveDescendant();
-        this.scrollIndexIntoView(idx);
+        this.scrollIndexIntoView(idx, true);
 
         if (before !== null && !selectionsEqual(before, this._selectedSet)) {
             this.notifyUserChange();
@@ -2314,8 +2332,8 @@ abstract class AbstractSelectableList<
         // Type-ahead moves only the focus highlight; selection is
         // unaffected (same behaviour as the native `<select>` it
         // replaces — typing a letter previews the row without
-        // committing).
-        this.setFocusedIndex(idx);
+        // committing). A key press: the page follows the row.
+        this.focusIndex(idx, true);
     }
 
     /**
@@ -2326,16 +2344,22 @@ abstract class AbstractSelectableList<
      * and does nothing while the panel is unrendered or not effectively
      * visible.
      *
+     * With `around`, the scrolling panels around the list then scroll to
+     * show the row as well. That is for a move the user makes with the
+     * keyboard. Without it — the default, and what a state setter called
+     * from code wants — the list's own panel moves and nothing around it.
+     *
      * @param idx - The row index to scroll into view.
+     * @param around - Whether the scrolling panels around the list follow.
      */
-    protected scrollIndexIntoView(idx: number): void {
+    protected scrollIndexIntoView(idx: number, around: boolean = false): void {
         if (idx < 0 || idx >= this._items.length) {
             return;
         }
 
         const top = idx * ROW_HEIGHT_PX;
 
-        this._innerPanel.revealSpan("y", top, top + ROW_HEIGHT_PX);
+        this._innerPanel.revealSpan("y", top, top + ROW_HEIGHT_PX, around);
     }
 }
 

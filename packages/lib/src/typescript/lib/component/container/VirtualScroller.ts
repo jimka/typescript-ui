@@ -3,7 +3,7 @@
 import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { DOM } from "~/core/DOM.js";
-import type { Handle } from "~/core/DOM.js";
+import type { Handle, Rect } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { SmoothScroller, consumeWheel } from "~/core/SmoothScroller.js";
 import { Scrollbar, OVERFLOW_EPSILON_PX } from "~/component/container/Scrollbar.js";
@@ -402,6 +402,22 @@ export class VirtualScroller {
      */
     getViewportHeight(): number {
         return this.effectiveViewportH();
+    }
+
+    /**
+     * The scroll viewport as a rectangle in browser-viewport coordinates: the
+     * box the rows are clipped to, {@link getViewportWidth} wide and
+     * {@link getViewportHeight} high, inside the owner's border. An owner
+     * turns a row's position into a rectangle with it, for a scrolling panel
+     * around the owner to show.
+     *
+     * Unlike the two size getters, this one measures the DOM. It is for a
+     * reveal, not for a scroll or a render pass.
+     *
+     * @returns The viewport's rectangle.
+     */
+    getViewportRect(): Rect {
+        return DOM.source.getElementRect(this._clipBox);
     }
 
     /**

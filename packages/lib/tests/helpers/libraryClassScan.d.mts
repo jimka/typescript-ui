@@ -15,3 +15,6 @@ export function classesRegisteringDragTargets(): string[];
 
 /** Class names calling `beginPointerDrag(` / `beginViewportDrag(` — the pointer-drag registry's source of truth. */
 export function classesBeginningPointerDrags(): string[];
+
+/** The text of one library source file, given relative to the library source root. */
+export function librarySourceText(relativePath: string): string;

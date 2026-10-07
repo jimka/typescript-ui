@@ -3,7 +3,9 @@
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
-import type { Handle } from "~/core/DOM.js";
+import type { Handle, Rect } from "~/core/DOM.js";
+import type { ScrollAxis } from "~/core/SmoothScroller.js";
+import { revealedRect } from "~/core/ScrollReveal.js";
 import { FocusReveal } from "~/core/FocusReveal.js";
 import type { FocusRevealer } from "~/core/FocusReveal.js";
 import { Button, ButtonOptions } from "~/component/button/Button.js";
@@ -249,7 +251,7 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
         // Panel's own `setAutoScroll`, so Panel's mode-switch registration
         // never runs for it — register explicitly so a keyboard focus move
         // onto a clipped-out item (e.g. `SpatialNavigation`'s direct
-        // `.focus()`) scrolls it into view via `revealDescendant`, below.
+        // `.focus()`) scrolls it into view via `revealRect`, below.
         // `super.destructor()` unregisters `this` unconditionally, so no
         // matching unregister call is needed here.
         FocusReveal.register(this);
@@ -997,9 +999,72 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
             return;
         }
 
-        const vertical = this.isVertical();
         const clip = DOM.source.getElementRect(clipElement);
         const item = DOM.source.getElementRect(itemElement);
+
+        this.revealRectInClip(clip, item);
+    }
+
+    /**
+     * {@link FocusRevealer.revealRect}: scrolls the clip the least distance
+     * along the strip's main axis that brings `rect` into it, and returns
+     * what the clip then shows of it. Overrides `Panel`'s own inherited
+     * implementation, which does nothing for a strip: the band is a panel
+     * that never scrolls, and the clip inside it does. A strip that is not
+     * rendered or not effectively visible moves nothing and returns `rect` as
+     * given.
+     *
+     * @param rect - The rectangle to show, in browser-viewport coordinates.
+     * @param axis - Reveal along this axis only; along both when omitted. A
+     *   strip scrolls along its main axis alone, so the other one moves nothing.
+     * @returns The part of `rect` the clip shows after the scroll.
+     */
+    revealRect(rect: Rect, axis?: ScrollAxis): Rect {
+        const clipElement = this._clip.getElement();
+        const visible     = this.isEffectivelyVisible();
+
+        // A hidden clip measures as an empty rectangle at the window's
+        // origin, and its scroll offset reads 0.
+        if (!clipElement || !visible) {
+            return rect;
+        }
+
+        const clip     = DOM.source.getElementRect(clipElement);
+        const mainAxis = this.isVertical() ? "y" : "x";
+
+        if (axis !== undefined && axis !== mainAxis) {
+            return revealedRect(rect, 0, 0, clip);
+        }
+
+        return this.revealRectInClip(clip, rect);
+    }
+
+    /**
+     * {@link FocusRevealer.hasScrollRange}: a scrollable strip is taken to
+     * have a range along its main axis, and none along the other. Overrides
+     * `Panel`'s own inherited implementation, which answers for the band, a
+     * panel that never scrolls. Whether the items overflow the clip right
+     * now is not kept, so the answer errs towards "yes".
+     *
+     * @param axis - The axis asked about; either axis when omitted.
+     * @returns Whether the clip can scroll along `axis`.
+     */
+    hasScrollRange(axis?: ScrollAxis): boolean {
+        const mainAxis = this.isVertical() ? "y" : "x";
+
+        return this._scrollable && (axis === undefined || axis === mainAxis);
+    }
+
+    /**
+     * Scrolls the clip along the main axis by the least distance that brings
+     * `item` into it, from rectangles already measured.
+     *
+     * @param clip - The clip's rectangle, in browser-viewport coordinates.
+     * @param item - The rectangle to show, in browser-viewport coordinates.
+     * @returns The part of `item` the clip shows after the scroll.
+     */
+    private revealRectInClip(clip: Rect, item: Rect): Rect {
+        const vertical = this.isVertical();
 
         const clipStart = vertical ? clip.top : clip.left;
         const clipEnd = vertical ? clip.bottom : clip.right;
@@ -1014,6 +1079,10 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
             delta = itemEnd - clipEnd;
         }
 
+        // How far the content really moved along the main axis: positive is
+        // towards the end. The browser clamps the write, so read it back.
+        let scrolled = 0;
+
         // getBoundingClientRect already reflects the current scroll, so `delta` is
         // the screen-space correction; apply it to the native offset, then refresh
         // the arrows. Like scrollBy, a reveal that moves the scroll must re-derive
@@ -1021,9 +1090,14 @@ class ScrollStrip extends Panel<ScrollStripOptions> implements FocusRevealer {
         // the end (e.g. selecting the last tab while scrolled fully to the start),
         // which flips both arrows' limits.
         if (delta !== 0) {
-            this.setMainScroll(this.mainScroll() + delta);
+            const before = this.mainScroll();
+
+            this.setMainScroll(before + delta);
             this.refreshArrows();
+            scrolled = this.mainScroll() - before;
         }
+
+        return revealedRect(item, vertical ? 0 : -scrolled, vertical ? -scrolled : 0, clip);
     }
 
     /**
