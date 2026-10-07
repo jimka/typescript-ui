@@ -1409,6 +1409,13 @@ page resets to empty.
   document, whose only block was the empty paragraph at the caret was left
   with no block at all. They now paste as a table holding them, as a
   copied table does. No consumer action is needed.
+- **`MarkdownEditor` keeps the text after the caret out of a table pasted
+  at a list item's text.** A paste at a list item's text that ended in a
+  table or a `:::` block put the text after the caret into the table's
+  last cell, or the block's last paragraph, and took the blocks the item
+  held out of the list. That text is now an item of its own after the
+  pasted blocks and keeps those blocks, as it does when a table is
+  inserted at the same caret. No consumer action is needed.
 
 ### Core
 
