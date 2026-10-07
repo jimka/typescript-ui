@@ -989,3 +989,629 @@ No public API changes. The handler and its helpers are module-private.
     uses, was chosen over a rule that is right only some of the time. A
     table selection, which is what a browser makes, always copies a full
     rectangle and never meets this.
+
+---
+
+## Implementation Notes
+
+Implemented on `feature/markdown-editor-table-cells-paste-empty-column`, on
+top of `feature/markdown-editor-list-item-node` at `b154a9b3a`, which these
+notes call "the parent". The plan was written against `4f68f3556`; three
+branches landed in between. Scratch files named below are under
+`~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/impl/table-cells-paste/`
+("the scratch folder"). They are not in the repository.
+
+### Decisions that await the user's sign-off
+
+The user was not available while this plan was implemented. Each decision
+below was made by the agent that ran the work and stands until the user
+confirms or reverses it.
+
+**1. The branch has two code commits, and the second is outside the
+plan.** The plan's handler is one. The other fixes this defect: at a list
+item's text, the text after the caret went into the last cell of a pasted
+table. The plan lists "what a pasted table does in a list item" as a
+non-goal. The parent's notes hand this plan only the bare rows pasted at an
+item's text; they record the defect itself under *Seen along the way*
+without naming an owner. The instruction this work was run under named both
+as this plan's to fix, so it was fixed here. The defect is in Lexical's
+insert and is the same for a whole copied table, so it is a fix of its own,
+with its own code commit, docs commit and changelog entry. If the user
+wants it elsewhere, the second code commit and the second docs commit come
+off the branch whole; rows L1, L2, L4 to L6, L9 and the X rows go with
+them.
+
+**2. The text after the caret stays an item.** `- ab|cd` with a table
+pasted at the caret gives `- ab`, the table, `- cd`. The blocks the item
+held stay with `cd`. This is what `insertTable()` gives at the same caret
+(the parent's rows Z1 and Z2). The other choice was to take `cd` out of the
+list as a paragraph after the table, which is where the text after the
+caret ends when paragraphs are pasted (it joins the last one). The item
+was chosen because a split of an item's text makes two items everywhere
+else, and because the parent's own rule for an item's block reads "the
+second half stays a block of its own after a pasted list or table" (Y4,
+Y9).
+
+**3. With nothing after the caret, nothing changes.** `- abcd|` with a
+table pasted gives `- abcd`, the table, and the rest of the list, with no
+empty item, as on the parent. Blank text alone after the caret counts as
+nothing, as it does for Enter in an item's text ("blank text counts as
+none", `$enterLeavesListAtBlankItemText`): no blank item is left (row
+X12). Lexical puts the blanks at the end of the table's last cell, as on
+the parent, and the save writes nothing for them. One thing now shows that did not before: with the caret one
+character before the end, the blocks the item holds stay in the list with
+the split-off item; at the end they leave it. Splitting at the end as
+well would keep them in the list, at the price of results that differ
+from the parent's for every paste at the end of an item's text. The blocks such an item holds leave the list
+and follow the table, as on the parent, and as they do after an emptied
+text (the parent's rows E1 to E10). `insertTable()` at that caret leaves an
+empty item instead; the paste does not copy that.
+
+**4. The rule covers every paste that ends in a table or a `:::` block.**
+A pasted `:::` block took the text after the caret into its last
+paragraph the same way, and so did a pasted list whose last item ends in a
+table. One rule decides all three: the last node of the paste lies in a
+table cell or a column. A paste that ends in a code block still takes the
+text after the caret into the code block, at an item's text and at the top
+level alike; that is Lexical's rule for a pasted block of text and is not
+changed here.
+
+### Deviations from the plan
+
+Each entry says what the plan called for, what was done, and why.
+
+**The registration is a function, in `buildEditor`.** The plan puts one
+`registerCommand` line in `ensureEditor`'s list, below the
+`$pasteColumnsAsTheirBlocks` line. Since then each paste handler has a
+register function of its own, called from `buildEditor`. The handler is
+registered by `registerTablePartPaste`, called right after
+`registerColumnPaste` and before `registerItemBlockPaste`, as the parent's
+notes ask.
+
+**`TableRowNode` is imported on the existing type line.** The plan adds a
+type import line of its own. `import type { TableSelection }` from the same
+module was already there, so the name went onto it.
+
+**A second paste listener, which the plan does not have.**
+`$splitItemBeforePasteEndingInTableOrFence`, registered by
+`registerItemTextPaste` after `registerTextOnlyBlockRules`, with the helpers
+`$pasteEndsInTableOrFence`, `$holdsSomethingAfterCaret`,
+`$holdsBlankTextAlone`, `$nodesAfterPoint` and `$lastLeafOf` (the last is
+an expression `$insertPastedBlocksAt` already had, now shared by the two).
+`$isSelectionAtBlockEnd`, a function that was there, is rewritten on
+`$nodesAfterPoint` (see *The end of a block*, below). It is the fix of the
+second defect the parent's notes name for this plan. Decisions 2 to 4 above
+say what it does. How: for a paste that ends in a table or a `:::` block,
+at a list item's text, with something after the caret that is not blank
+text, it removes a selected range, as Lexical's insert would do first
+(rows L9, X9), splits the item at the caret, as Enter does, puts the caret back at the
+end of the first half and returns `false`. Lexical's own insert then runs
+there: the half it splits off is empty and is dropped, as at the end of
+any item's text. Why a listener: Lexical decides the join by asking the
+split-off text `canMergeWhenEmpty()`, a question that does not name the
+pasted block, and an item's text must answer `true` so that a pasted
+paragraph joins an empty item. `$pasteBlocksIntoItemBlock` is there for the
+same reason. Why a split before the insert and not an insert of the
+editor's own: every other step is then Lexical's, the one that has pasted
+at an item's text all along. The listener acts exactly where Lexical would
+join: `$pasteEndsInTableOrFence` finds the block Lexical joins to (the
+block of the paste's last node) and asks whether a table cell or a column
+stands between it and the pasted node. A paste that ends in a cell holding
+no paragraph has no such block, Lexical joins nothing there, and the
+listener leaves it alone (row X8; a split there left an empty item).
+
+**The test file has more helpers and more rows than the plan lists.**
+Helpers `copyRows`, `copyBodyCells`, `expectSoundDocument`, `undo` and
+`inItem` fold lines the rows repeat; `pasteBuiltAt` pastes nodes built by
+hand, for the payloads no copy makes. `CONTAINER_TYPES` has seven names, not
+six: `markdown-list-item` did not exist when the plan was written, and an
+item must hold a block as well. Three row groups are new. L1 to L10 pin
+what the plan's K rows left open ("what a pasted table does in a list item
+is another plan's subject"): a table pasted at a list item's text, in a
+nested item, in a paragraph, a table cell and an emptied text of an item.
+X1 to X22 pin the second listener: a whole copied table, a `:::` block
+and a list that ends in a table; a link and an image after the caret; a
+caret held as a point on the text itself, or on a link at its end or its
+start; a range, forwards and backwards, also one that ends on a link;
+blank text after the caret; a range from a code block, which stays the
+text-only handler's; a range outside an item's text, which is left
+alone; two controls and one hand-built table. `pasteAtPointOn` and
+`$linkAfter` set a caret as a point on an element. G3 and G4 are hand-built
+rows. A7 and E5 paste rows a range copy cut short behind a cell that spans
+down into them. R is a grid of 18
+list item shapes by three carets by rows and cells: each paste must leave
+a sound document and one undo must restore the source.
+
+**A row is brought to cells alone before it is measured.** The plan
+measures the built table as the rows come. `@lexical/table` throws there
+on a row with a child that is no cell. No copy makes one; a hand-built or
+foreign payload can. `$tableHoldingRows` first calls `$keepRowsOfCells`,
+the function the table rules already use for a table in the document: the
+cells stay, anything else goes, as in `@lexical/table`'s own row
+transform. It is exported from `markdownWritable.ts` for that, the one
+change to a file the plan's table does not list. Row G4.
+
+**A row that holds no cell gets one.** The plan's `$tableHoldingRows` fills
+each row up to the widest. Rows that all hold nothing gave a table of rows
+without cells, which nothing repairs in the document: an empty container,
+the thing this plan removes. No copy makes such a row; a hand-built or
+foreign payload can. The width is now one at least. Row G3.
+
+**The K rows' raw block target** is the text node `raw` at offset 2, as
+the plan says. A raw block holds one text node per line.
+
+**Docs.** The sentence the plan's new sentence follows has grown since
+(it now ends "on a line of its own."); the new sentence goes after it. Its
+wording differs from the plan's in two places. "Paste as a new table
+holding them" is not what happens in a cell of another table, where the
+rows are written over that table's cells (rows E1 to E4), so the sentence
+names both. And "a selection that stays inside one table copies them that
+way" is true only of a range selection set by code: the plan wrote it
+before the browser check, which showed that cells selected with the mouse
+or the keys are copied as a table. The docs sentence and the changelog
+entry say so. The
+**Lists** bullet gets a sentence for the second listener, and the
+changelog a second entry.
+
+**The paste fuzz** was run from the parent's mapped copy of the harness
+(`impl/list-item-node/harness/`), not from the path the plan gives: the
+plan's copy still names `listitem`.
+
+### Which clipboards hold bare rows or cells
+
+Read again after the user's decision 7 of the parent's stack (a copy
+across a table edge copies whole tables, as a cut does).
+
+| Selection | What reaches the paste | Bare? |
+|---|---|---|
+| a range inside one table, across rows, in an editor that is not mounted or set by code | `tablerow, …` | yes |
+| the same inside one row | `tablecell, …` | yes |
+| the same range in a mounted editor (a drag, Shift+arrow, or a DOM range across cells) | `@lexical/table` makes it a table selection; the copy is one `table` | no |
+| a range across a table's edge, native copy or cut | whole tables and what lies between (`$copyTableEdgeRange`) | no |
+| a range across a table's edge, read with `$generateJSONFromSelectedNodes` (the fuzz's copy) | a `table` holding the rows and cells the range covers | no |
+| a range inside one cell | text or paragraphs | no |
+| `copy()`, `cut()`, `paste()` and the context menu | plain text; they never reach the command | — |
+
+The third row was checked in Chromium: a drag from one cell to the next and
+a DOM range set by script across four cells both gave a table selection,
+and Ctrl+C put one `table` on the clipboard. So a browser user does not
+make a bare copy today; a host that sets a selection by code, a drop, and
+a clipboard written before this fix can.
+
+### Where the handlers sit
+
+`SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` listeners, in the order they
+run:
+
+| Priority | Listener | Registered by |
+|---|---|---|
+| critical | the run-edge tag | `registerWritableStateRules` |
+| critical | `$clearGuardedRangeBeforePaste` (removes a table-edge, stale-focus or list-container range; gives a caret on an item a block) | `registerRangeGuards` |
+| high | `$pasteColumnsAsTheirBlocks` | `registerColumnPaste` |
+| high | **`$pasteTableRowsAndCellsAsTables`** | `registerTablePartPaste` |
+| high | `$pasteBlocksIntoItemBlock` | `registerItemBlockPaste` |
+| high | `$pasteIntoTextOnlyBlock` | `registerTextOnlyBlockRules` |
+| high | **`$splitItemBeforePasteEndingInTableOrFence`** | `registerItemTextPaste` |
+| editor | `@lexical/table`'s own (a table into a table's cells) | `registerTablePlugin` |
+
+`$pasteTableRowsAndCellsAsTables` stands after the column handler, as
+that handler's register function asks of every paste handler; no result
+depends on the order of those two, since no copy holds a column together
+with a bare row or cell. It stands before every handler that decides
+where pasted blocks go, and that order is pinned (rows L7 and L10, the K
+rows for a code block, the R grid): the
+two list item listeners, the text-only handler and `@lexical/table`'s own
+then see a table and never a row or cell without one. It pastes through
+`$insertGeneratedNodes`, which dispatches the command again inside the
+same update. On that second pass the two critical listeners do nothing
+(the range is gone, the caret has its block, the tag is set), the column
+handler finds no column, and this handler finds no bare row or cell and
+returns `false`. A paste stays one update and one undo step (rows U1 to
+U3, the R grid, and the undo check of every scenario).
+
+`$splitItemBeforePasteEndingInTableOrFence` stands last of its priority,
+after the two handlers that take a paste whole
+(`$pasteBlocksIntoItemBlock` at an emptied text, `$pasteIntoTextOnlyBlock`
+in a code block or raw block): it runs only for a paste Lexical's own
+insert is about to make, and returns `false` always. Its place after
+`$pasteIntoTextOnlyBlock` decides a result, which the third review found.
+That handler reads the selection's anchor. A range selected backwards from
+the start of a code block into an item's text has its anchor in the code
+block. Where the item's text has no block after it, the paste goes in as
+lines of text, on the parent and here (row X14). The listener removes a
+range that starts in an item's text; run first, it took that paste away
+from the handler for the clipboards it acts on, and only for those. Where
+the item's text has a block after it (a nested list, a paragraph), that
+row does not apply: `$pasteBlocksIntoItemBlock` removes such a range
+before the text-only handler runs, on the parent too, blocks are pasted on
+both, and the listener then splits the item as for any caret in the text.
+Its order against `$pasteBlocksIntoItemBlock` changes no result.
+
+### The end of a block
+
+The fourth review found that a caret held as an element point on a link,
+at the end of an item's text, was read as having something after it: the
+listener split the item with nothing to split off, and an empty item was
+left after the pasted table. Lexical holds a caret that way after an image
+that ends a link (End, in Chromium, at the end of an item whose text ends
+in a linked image gives `element on link@1`).
+
+Two things were wrong, and both are fixed where they were, not in the
+listener.
+
+1. `$isSelectionAtBlockEnd` says in its JSDoc that it tells whether the
+   anchor "sits at the very end of a block". For an element point it
+   accepted a point on the block itself only, so a point on an inline
+   element that ends the block was not the end. It now asks one question
+   for every kind of point: does any node of the block follow it
+   (`$nodesAfterPoint`, a walk from the point's node up to the block)?
+2. The listener's own test for what follows the caret read the nodes of a
+   range from the caret to the block's end. That range holds the node the
+   caret is on or in, and an inline element a removed range has emptied,
+   so both counted as something after the caret. `$holdsSomethingAfterCaret`
+   now reads the nodes after the point from the same walk, and an element
+   that holds nothing but blank text counts as blank text
+   (`$holdsBlankTextAlone`).
+
+The callers of `$isSelectionAtBlockEnd`:
+
+| Caller | Block it passes | Affected? |
+|---|---|---|
+| `$paragraphAfterTextOnlyBlockEnd` (Delete at the end of a raw block or code block, before a paragraph) | a raw Markdown block or a code block | No. Those blocks hold text and line breaks only (`$keepTextOnly`), so no point on an inline element exists there. For a point on the block and for a text point the old and the new test agree: the fifteen earlier scenario files give the same result at every step, and all rows pass. |
+| `$holdsSomethingAfterCaret` (this branch, since the first review) | a list item's text | Yes, as above. It no longer calls the function: the walk answers its question directly, and a second answer to "is this the end" beside it would be one more thing to keep in step. |
+
+So the function's changed arm has no caller that reaches it today, and no
+row of its own; the walk it shares is pinned through the listener (rows
+X16 to X22). It was changed all the same because it answered wrongly by
+its own description, and the next caller with a block that holds links
+would have met what this branch met.
+
+### Results
+
+**Checks**, all from `packages/lib` at the final code: `npm run typecheck`,
+`npm run typecheck:test` and `npm run lint` report nothing; `npx vitest
+run` passes 556 files, 16,082 tests (2 todo); `npm run docs:api` gives zero
+warnings; `npm run docs:llms:check` reports 0 unaccounted; `npm run
+build:lib` builds. The new file holds 189 tests. Without the
+handler's registration, 33 of the plan's 40 rows fail, the ones the plan
+names (the U and N rows and the two raw-block K rows pass). Without the
+second listener's, 16 rows fail (L1, L2, L4 to L6, L9, X1 to X5, X11,
+X13, X18, X19, X21). Fourteen single-line mutants of the two listeners
+were run on the final code and each fails at least one row
+(`mutants-final.out` in the scratch folder): twelve fail one row each
+(G3, G4, E5, X8, X12 to X15, X19 to X22), the mutant without the
+listener's own range removal fails X9, X13 and X22, and the one that
+ignores the rest of the caret's text fails nine rows.
+
+**Fuzz**, the parent's mapped harnesses, node keys masked, against the
+parent's baselines (`impl/list-item-node/{fuzz,lif,r7}`). The runs below
+were made at the final code, after the fourth review's fix (the tree of
+`b211c2b7e`, which the folded branch keeps); the runs before the reviews
+and after the second and the third one (`fuzz-1/` to `fuzz-3/` and their
+`lif` and `r7` folders) gave the same records. The scenario files were
+run at that code too. The results
+are in the scratch folder's `fuzz/`, `lif/` and `r7/`, which are the
+baselines for the next plan (`README.txt` there).
+
+| Fuzz | Baseline | This branch |
+|---|---|---|
+| paste, 11 × 3,000 | 47 (44 `emptyContainer`, 3 `undo`) | 3 `undo` |
+| paste, strict | 47 | 3 `undo` |
+| table edge, and strict | 0 | 0 |
+| list-edit, 11 × 1,500 | 14 failing documents | 14, the same records |
+| the seventh reviewer's, 5 × 3,000 | 117 | 120 |
+
+- Paste: all 44 `emptyContainer` records are gone. The three `undo`
+  records are the baseline's own (seed 2207 index 2377, seed 5521 index
+  2137, seed 7703 index 2014) and belong to
+  `markdown-editor-paste-undo-merge`. No record was added, and `ran`,
+  `skipped`, `withColumn` and `nothingCopied` are the same in every seed.
+  The 17 `reload` failures the plan's prototype saw (a table pasted into a
+  nested list item) do not appear: the two list item plans made that shape
+  load as a list.
+- The seventh reviewer's fuzz: 115 records are the baseline's. Five are
+  new, all `pasteSelf:lettersLost`: rows copied from a table by a range
+  and pasted into a cell of that same table. They are now written over the
+  table's cells from the caret's cell on, as a copied table is (rows E1 to
+  E4), so the text those cells held is replaced; the harness counts that
+  as lost letters. On the parent the five pasted nothing and passed. Two
+  baseline records were not drawn (the documents a seed draws shift once
+  an edit goes differently); replayed here, both fail as before
+  (`r7/replay-on-branch.json`; the five on the parent are in
+  `r7/replay-on-parent.json`).
+
+**Scenarios.** `scenarios/` of the scratch folder holds a runner that
+plays a scenario file on an archive of this branch and of the parent and
+compares them (`README.txt` there). Each scenario pastes one clipboard at
+one place and checks: no throw; the save loads as the document shown and
+saves as itself; the viewer reads it as shown; the standard form agrees; no
+container without a child; no row or cell outside its table; the list
+item normal form; the letters of the document are those a plain removal
+of the range leaves plus the clipboard's, the clipboard's words in order;
+one undo restores the document and one redo the paste.
+
+- `t1`: 13 clipboards (bare rows and cells, table selections, whole
+  tables, table-edge copies as the editor's own copy writes them and as
+  the fuzz reads them) at 176 places: the start, middle and end of a
+  paragraph, heading, quote, code block, raw block, table cell, column and
+  21 list item shapes; empty and emptied blocks; carets between blocks;
+  and 64 ranges, among them table-edge, stale-focus and item-crossing
+  ones. 2,288 scenarios.
+- `t2`: 19 clipboards that mix bare rows and cells with paragraphs and
+  text, or end in a table, a `:::` block, a list or a code block, at the
+  same places. 3,344 scenarios.
+- `t3`: 14 hand-built payloads no copy makes (rows and cells holding
+  nothing, rows of unequal length, cells spanning rows or columns, 40
+  rows) at 18 places; the same paste twice with two undos and two redos;
+  typing and Enter after a paste; rows pasted back into their own table.
+  1,324 scenarios.
+
+All three files were run again at the final code. Of the 5,632 scenarios
+of `t1` and `t2`, 3,054 give the parent's result.
+2,238 differ because bare rows or cells are pasted where the parent dropped
+them, and 340 because the text after the caret stays an item (34 places in
+an item's text, by the ten clipboards that end in a table or a `:::`
+block). None is left over (`RESULTS-classify.txt`). At all 176 places a
+bare copy gives the same save, caret and tree as the table selection's
+copy of the same cells. The parent leaves a container empty in 136 of
+these scenarios and this branch in none.
+
+The checks this branch still fails there are of two kinds, both the same
+for a whole copied table on the parent. A paste into a table's cells
+replaces what those cells held, which the letter check counts as a loss.
+And a paste that holds a table together with other blocks is declined by
+`@lexical/table` inside a table (see *Seen along the way*). In `t3` the
+only failures left are a pasted table with no row, which is the parent's
+too, and the harness's own (`selection.modify` needs a browser).
+
+**Browser**, Chromium against the worktree's dev server, real mouse and
+keys and the real clipboard:
+
+- M1: a drag from `c1` to `c2` gives a table selection; Ctrl+C puts one
+  `table` of one row on the clipboard; Ctrl+V at the end of `after` adds
+  the one-row table below it. M2: Ctrl+V in the empty second column puts
+  the table in the column, both columns keep their frame. M3: Ctrl+Z
+  empties the column again. M4: Ctrl+V in `h1` writes `c1` and `c2` over
+  the header cells; no cell holds two lines.
+- Ctrl+V of the same copy in the middle of a list item's text: the item
+  before the caret, the table, the rest of the text as the next item.
+  Ctrl+V in a body cell of a second table writes the cells over it. One
+  Ctrl+Z takes each back.
+- A range set across cells through the DOM selection also becomes a table
+  selection, so no key or mouse route to a bare copy was found. Bare rows
+  and cells were pasted through a paste event carrying a Lexical clipboard
+  cut from the real copy: into the empty column, the middle of a list
+  item's text, a cell of the second table and the middle of a paragraph.
+  Each gave the table the unit rows give, and one Ctrl+Z took each back.
+- No console message.
+- After the third review's fixes: M1 to M4, the paste in the middle of a
+  list item's text and in a cell of the second table with the real
+  clipboard, and bare cells and rows through a paste event into the empty
+  column, the list item's text and the cell. The same results, one Ctrl+Z
+  each, no console message.
+- For the fourth review: with the caret set in the text of an item that
+  ends in a linked image, End leaves the selection as an element point on
+  the link (`element on link@1`). Before the fix, Ctrl+V of a copied table
+  there left an empty item after the table. After it, none is left, and
+  under an item that also holds a paragraph, the paragraph follows the
+  table out of the list, as on the parent. One Ctrl+Z each, no console
+  message.
+
+**Demo.** No demo change: the plan adds no command or option.
+
+### Seen along the way
+
+Not changed here; each is the same on the parent.
+
+- A paste that holds a table together with other blocks (a paragraph and
+  a table, as a copy across a table's edge gives) pastes nothing into a
+  table cell: `@lexical/table` declines it, since a table cannot stand in
+  a cell. When the pasted-over selection was a table-edge or stale-focus
+  range, the range guard has removed it by then, so the paste removes and
+  inserts nothing. Bare rows mixed with other blocks now take this route
+  as well; no copy makes that mix.
+- A pasted table that holds no row (hand-built, or HTML `<table></table>`)
+  stays in the document as an empty table, which the save writes nothing
+  for.
+- A paste at an item's text that ends in a code block puts the text after
+  the caret into the code block, as it does at the top level.
+- A paste at the very start of a task item's text leaves the marker alone
+  in the first item (`- \[ \]`), as `insertTable()` there does, and the
+  second half of a split task item has no marker.
+- `insertTable()` at the end of an item's text leaves an empty item after
+  the table. A paste there does not.
+- A table built from body cells shows its first row as body cells until
+  the document is loaded again (the plan's non-goal).
+- A paste into a code block or a raw block is taken by the selection's
+  anchor (`$pasteIntoTextOnlyBlock`), so a range selected backwards from
+  the start of such a block into an earlier block pastes lines of text
+  where the caret then stands, outside the block. The same range selected
+  forwards pastes blocks. One exception, on the parent too: when the range
+  reaches back into an item's text that has a block after it,
+  `$pasteBlocksIntoItemBlock` removes the range first, the anchor leaves
+  the code block, and blocks are pasted in both directions.
+- Short rows are filled before the paste is routed, so in a code block or
+  a raw block the empty cells a short bare row was given arrive as blank
+  lines. A table selection's copy is always a rectangle and has no such
+  rows.
+- A caret held as an element point on a `:::` block after its columns,
+  which only a selection set by code makes, leaves an empty `:::` block
+  after any insert there (a pasted table, paragraphs, `insertTable()`).
+- The plan's non-goal "the column a partly copied first row started in"
+  is wider than it says: any row of a range copy that sits behind a cell
+  spanning down from a row above loses that column too, so its cells move
+  one column left in the built table. The clipboard does not record where
+  a row started. Only a range set by code reaches this.
+
+### For the plans that follow
+
+- **`markdown-editor-paste-undo-merge`** (next). The paste fuzz has
+  exactly its three `undo` records left; `fuzz/` in the scratch folder is
+  the baseline. A paste of bare rows or cells dispatches
+  `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` twice inside one update (as a
+  paste of bare columns does), and a paste at an item's text that ends in
+  a table splits the item inside the same update; neither adds an update
+  or a history entry.
+- **A new paste handler** that decides where pasted blocks go must be
+  registered after `registerTablePartPaste`, so it sees a table and never
+  a bare row or cell. `registerItemTextPaste` changes the selection (it
+  removes a range and may split the item) and returns `false`, so it must
+  stay the last listener of its priority: a handler that reads the
+  selection as it was pasted over must run before it (row X14 is the one
+  that showed it).
+- **`markdown-editor-readonly-keyboard-selection`.** Two more listeners of
+  `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` at `COMMAND_PRIORITY_HIGH`
+  must stay behind its read-only guard: `registerTablePartPaste` and
+  `registerItemTextPaste`.
+- **`markdown-editor-table-command-fixes`.** `$tableHoldingRows` builds a
+  table from rows outside the document; it is the place to give a built
+  table header cells if that plan makes the first row's header state a
+  rule.
+- **The scenario runner** in `scenarios/` can be pointed at a later branch
+  (`setup.sh <ref>`); `places.ts` is the list of 176 paste positions.
+- **The end of a block.** `$isSelectionAtBlockEnd` and `$nodesAfterPoint`
+  answer for a point of any kind: on the block, on an inline element in
+  it, or in a text. A caret after an image that ends a link is a point on
+  the link. A test that reads "the end" from a point on the block or from
+  the block's last text alone misses it.
+
+### Reviews
+
+**First review.** One blocking finding: two branches of the second
+listener had no row. Removing the listener's own removal of a selected
+range, or the element-point arm of its end-of-block test, failed nothing.
+Rows X9 and X10 pin them (X11 the other side of X10). No defect of
+behaviour was found: the reviewer ran 2,564 scenarios of its own against
+the parent (`scenarios/rv1-*.ts`: inline nodes, element points and ranges
+at an item's text; cells holding links, images, code, breaks, escaped
+pipes, alignment and merges; hand-built payloads and undo chains), and
+every difference was one of the two intended ones.
+
+Its advisory findings, all acted on:
+
+- The second listener is outside the plan: decision 1 now says so and
+  names the non-goal it sets aside.
+- A blank rest after the caret left a blank item. Blank text now counts
+  as none (decision 3, row X12).
+- A hand-built row holding something other than cells threw. It was
+  left out of the paste then; since the second review it is brought to
+  its cells (row G4).
+- `$pointEndsBlock` asked what `$isSelectionAtBlockEnd` already answers.
+  It is gone; `$holdsSomethingAfterCaret` uses the existing function. The
+  expression for a pasted node's last leaf, written twice, is
+  `$lastLeafOf`.
+- Rows behind a row-span shift left: recorded under *Seen along the way*.
+- `registerItemBlockPaste`'s remark names `registerTablePartPaste` too.
+- The **Tables** sentence says what happens in a cell of another table.
+
+The fixes changed 109 steps of the reviewer's scenarios and none of the
+5,632 of `t1` and `t2` (`scenarios/delta.py`): 64 where a blank rest no
+longer leaves a blank item, 45 where the malformed row no longer throws.
+
+**Second review.** No defect of behaviour: 1,543 more scenarios
+(`scenarios/rv2-*`: ranges with ends on an item or a list, ranges that
+take in the item's own blocks, payloads the handler regroups, range
+copies from tables with a spanning cell, and 360 HTML clipboards holding
+tables under jsdom) with no violation on the branch and no difference
+from the parent beyond the two intended ones. Three blocking findings:
+
+- The count of the cells a row holds, in `$tableHoldingRows`, had no row:
+  counting the map row's length instead failed nothing, and broke rows
+  copied from behind a spanning cell (a throw over a table selection).
+  Row E5 fails under that mutant; A7 pins the same copy outside a table.
+- The docs and the changelog said a selection inside one table copies
+  bare rows or cells, which the browser check had shown to be true of a
+  range set by code only. Both are corrected (*Deviations*, Docs).
+- These notes named fuzz folders that were still empty and gave a test
+  count from before the first review's rows. The fuzz families and the
+  whole check set were run again at the final code; the *Results* section
+  gives those runs.
+
+Its advisory findings: the two ordering remarks that read as musts while
+no result depends on them now say so, in the code and in these notes; a
+row with a child that is no cell is no longer dropped whole but brought
+to its cells, as `@lexical/table` does (*Deviations*; row G4); the
+visible difference between a paste at the end of an item's text and one
+character before it is stated under decision 3; the scope of decision 1
+and the dev server left running were housekeeping.
+
+**Third review, the last the audit allows.** No paste that empties a
+container, drops or reorders rows or cells, or breaks the one undo step,
+in 1,708 more scenarios (`scenarios/rv3-*`) and 18 mutants. Two blocking
+findings, both in the second listener's handling of a range:
+
+- Its place ahead of `$pasteIntoTextOnlyBlock` decided a result, while
+  the code and these notes said no result depended on it: for a range
+  selected backwards from the start of a code block or raw block into an
+  item's text, the listener's removal took the paste away from that
+  handler, for the clipboards that end in a table or a `:::` block only.
+  The listener is now registered after `registerTextOnlyBlockRules`, the
+  twelve scenarios that showed it give the parent's result again, the
+  remark and the notes say what the order decides, and row X14 pins it.
+- No row selected a range backwards: reading the range's start from its
+  anchor failed nothing. Row X13.
+
+Its advisory findings: the fold of the docs fixups needed resolving by
+hand, which was done with the tree unchanged (`fold/` in the scratch
+folder); the listener's JSDoc said a blank rest is dropped, where
+Lexical puts it at the end of the last cell (corrected, and under
+decision 3); the guard after the removal describes a case no scenario
+produced (its comment says so now), and the guard before it had no row
+(X15; without it a paste that a table declines removed the selected
+range); three counts in these notes were off (corrected);
+`$tableHoldingRows` repeated `$keepRowsOfCells`, which it now calls; two
+rows lacked a blank line before them; three observations are recorded
+under *Seen along the way*.
+
+**The audit's limit of three rounds was reached with blocking findings in
+the third.** They were fixed once, as above, and verified against the
+reviewer's own scenarios (`scenarios/delta.py`: of all fifteen scenario
+files, only those twelve steps changed) and against a mutant for each
+finding. The plan was left open then, and a fourth review was run from
+outside the audit.
+
+**Fourth review.** It confirmed the third review's fixes by mutants (the
+listener's order, rows X13 and X14) and ran a grid of 6,512 pastes of its
+own against the parent (`review4/` in the scratch folder). One blocking
+finding: the caret held as a point on a link at the end of an item's text
+(*The end of a block*, above). Rows X16 to X22 were written first and seen
+to fail (X16, X17, X20 and X22; X18, X19 and X21 are the other side: a
+point on a link with something really after it, a point before what the
+link holds, and a text point in a link with text after the link). The
+defect was reproduced in Chromium with real keys before the fix (End at
+the end of an item whose text ends in a linked image, then Ctrl+V of a
+copied table: an empty item after the table) and is gone after it; with a
+paragraph under the item, the paragraph follows the table out of the list,
+as on the parent.
+
+Its advisory findings:
+
+- The notes overstated row X14's scope. The sentence under *Where the
+  handlers sit* now says where it holds, and the other case is recorded
+  there and under *Seen along the way*.
+- X14 skipped the soundness checks though its result is sound. It makes
+  them now, and its comment says that a fix of the anchor rule will
+  rewrite its literal.
+- "Each fail exactly one row" was no longer true: the mutant without the
+  listener's own range removal fails X9 and X13. The count under *Results*
+  is restated.
+- The guard after the listener's range removal is still reached by no
+  scenario. It was searched for again with the guard made to throw:
+  16,600 pastes (the fourth reviewer's grid, `t1`, `t2`, `t4` and the
+  three earlier reviewers' files of ranges at an item's text) and no hit.
+  It stays for the type (the caret's block may be `null`), and its comment
+  says that no removal was found that reaches it.
+- Decisions 1 to 4 stay marked as awaiting the user's sign-off.
+
+The fix changed no step of the fifteen earlier scenario files. The fourth
+reviewer's grid, rebuilt from its output (`scenarios/rv4-grid.ts`), shows
+no violation on the branch in 6,512 pastes; 3,654 give the parent's
+result, 1,574 differ because bare rows or cells are pasted, and 1,284
+because what followed the caret in an item's text stays an item (36 of
+them a line break and the rest of a raw block that the pasted-over range
+had joined to the text); none is left over
+(`RESULTS-classify-grid.txt`). `scenarios/t4.ts` adds 1,197 pastes at
+carets and ranges held as points on a link (19 documents, 7 points, 9
+clipboards): 771 give the parent's result, 266 are bare rows or cells, and
+160 are a closed clipboard with something after the caret in an item's
+text; none is left over (`RESULTS-classify4.txt`).
