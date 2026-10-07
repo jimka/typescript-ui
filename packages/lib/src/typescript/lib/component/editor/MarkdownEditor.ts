@@ -54,17 +54,17 @@ import {
     $insertTableColumnAtSelection, $deleteTableColumnAtSelection,
     $getTableColumnIndexFromTableCellNode, $isTableCellNode, $isTableRowNode,
     $isTableSelection, $mergeCells, $unmergeCell, $isTableNode,
-    INSERT_TABLE_COMMAND,
+    INSERT_TABLE_COMMAND, $computeTableMapSkipCellCheck, $createTableCellNode, $createTableNode, $createTableRowNode,
 } from "@lexical/table";
-import type { TableSelection } from "@lexical/table";
+import type { TableRowNode, TableSelection } from "@lexical/table";
 import { mergeRegister, $getNearestNodeOfType, $handleIndentAndOutdent } from "@lexical/utils";
 import { $setBlocksType, $patchStyleText, $copyBlockFormatIndent } from "@lexical/selection";
 import { SHORTCUT_TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { $importMarkdown } from "~/component/editor/markdownImporter.js";
 import { $serializeBlock, $serializeInlineNodes, $serializeMarkdown } from "~/component/editor/markdownSerializer.js";
 import {
-    $breakRuleContainerOf, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $lineBreakUnwritableAt, $moveBlocksOutAfter,
-    $orderedPoints, $selectedSlices, $selectionHasFormat, $takeBlocksOutOf, RUN_EDGE_TAG,
+    $breakRuleContainerOf, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
+    $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $selectionHasFormat, $takeBlocksOutOf, RUN_EDGE_TAG,
     registerWritableStateRules,
 } from "~/component/editor/markdownWritable.js";
 import { EMPTY_SOURCE_MAP } from "~/component/editor/markdownSourceMap.js";
@@ -1154,6 +1154,119 @@ function $pasteColumnsAsTheirBlocks(payload: CommandPayloadType<typeof SELECTION
     }
 
     const blocks = payload.nodes.flatMap((node) => ($isMarkdownColumnNode(node) ? node.getChildren() : [node]));
+
+    $insertGeneratedNodes(editor, blocks, payload.selection);
+
+    return true;
+}
+
+/**
+ * Replaces each run of consecutive nodes that `isPart` accepts with the one
+ * node `$wrap` builds from the run, and keeps every other node in its place.
+ *
+ * @param nodes - The nodes, in order.
+ * @param isPart - Whether a node belongs in a run.
+ * @param $wrap - Builds the node that holds one run.
+ * @returns The nodes, each run replaced by its wrapper.
+ */
+function $wrapRuns<T extends LexicalNode>(
+    nodes: LexicalNode[], isPart: (node: LexicalNode) => node is T, $wrap: (run: T[]) => LexicalNode,
+): LexicalNode[] {
+    const wrapped: LexicalNode[] = [];
+    let run: T[] = [];
+
+    for (const node of nodes) {
+        const inRun = isPart(node);
+
+        if (inRun) {
+            run.push(node);
+
+            continue;
+        }
+
+        if (run.length > 0) {
+            wrapped.push($wrap(run));
+            run = [];
+        }
+
+        wrapped.push(node);
+    }
+
+    if (run.length > 0) {
+        wrapped.push($wrap(run));
+    }
+
+    return wrapped;
+}
+
+/**
+ * Builds the table that holds `rows`, each row brought to cells alone
+ * ({@link $keepRowsOfCells}) and filled at its end with empty cells up to
+ * the widest row, as `@lexical/table`'s own row and table transforms do for
+ * a table in the document. The table is still outside the document here,
+ * where no transform reaches it, and `@lexical/table`'s paste of a table
+ * into another table's cells reads it as a rectangle of cells: a short row
+ * throws there, or loses the cells past the first row's width, and a child
+ * that is no cell throws as soon as the table is measured. Rows that hold
+ * no cell at all get one, since nothing gives a row its first cell once it
+ * is in the document.
+ *
+ * @param rows - The rows, in order.
+ * @returns The table.
+ */
+function $tableHoldingRows(rows: TableRowNode[]): TableNode {
+    const table = $createTableNode().append(...rows);
+
+    $keepRowsOfCells(table);
+
+    const [map] = $computeTableMapSkipCellCheck(table, null, null);
+    // 1: a table row holds a cell at least.
+    const width = Math.max(1, ...map.map((row) => row.length));
+
+    rows.forEach((row, index) => {
+        const filled = (map[index] ?? []).filter((value) => value !== undefined).length;
+        const missing = Array.from({ length: width - filled }, () => $createTableCellNode().append($createParagraphNode()));
+
+        row.append(...missing);
+    });
+
+    return table;
+}
+
+/**
+ * `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` handler for table rows and
+ * cells pasted without their table. A range selection that stays inside one
+ * table copies the rows it covers without the table, and one that stays
+ * inside one row copies the cells without the row. Lexical's insert puts
+ * them in as blocks, and `@lexical/table` then removes a row outside a table
+ * and a cell outside a row with everything in them: the pasted content is
+ * lost, the block at the caret stays split in two, and a `:::` column or the
+ * document whose only block was the empty paragraph at the caret is left
+ * with no block. Wraps each run of pasted cells in a row and each run of
+ * rows in a table, and pastes the result instead, through
+ * `$insertGeneratedNodes`, so the other paste handlers and Lexical's insert
+ * treat it as any pasted table.
+ *
+ * @remarks
+ * `$insertGeneratedNodes` dispatches the command again, so a paste holding a
+ * bare row or cell runs every listener registered ahead of this one twice,
+ * as a paste holding a column does (see {@link $pasteColumnsAsTheirBlocks}).
+ *
+ * @param payload - The pasted nodes and the selection they are inserted at.
+ * @param editor - The editor the command was dispatched to.
+ * @returns Whether the paste held a bare row or cell, now pasted in a table.
+ */
+function $pasteTableRowsAndCellsAsTables(
+    payload: CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>, editor: LexicalEditor,
+): boolean {
+    const holdsBarePart = payload.nodes.some((node) => $isTableRowNode(node) || $isTableCellNode(node));
+
+    if (!holdsBarePart) {
+        return false;
+    }
+
+    const rows = $wrapRuns(payload.nodes, $isTableCellNode, (cells) => $createTableRowNode().append(...cells));
+    const blocks = $wrapRuns(rows, $isTableRowNode, $tableHoldingRows);
 
     $insertGeneratedNodes(editor, blocks, payload.selection);
 
@@ -3143,6 +3256,27 @@ function registerColumnPaste(editor: LexicalEditor): () => void {
 }
 
 /**
+ * Registers the paste handler that wraps table rows and cells pasted
+ * without their table in a table ({@link $pasteTableRowsAndCellsAsTables}).
+ *
+ * @remarks
+ * A command's listeners of one priority run in the order they were
+ * registered, and this one is at {@link COMMAND_PRIORITY_HIGH}. Call this
+ * before {@link registerItemBlockPaste} and
+ * {@link registerTextOnlyBlockRules}, so that every paste handler that
+ * decides where pasted blocks go sees a table, never a row or cell without
+ * one. It is called after {@link registerColumnPaste}, as that function
+ * asks of every paste handler; no result depends on the order of those
+ * two, since no copy holds a column together with a row or cell.
+ *
+ * @param editor - The editor.
+ * @returns The unregister function.
+ */
+function registerTablePartPaste(editor: LexicalEditor): () => void {
+    return editor.registerCommand(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, $pasteTableRowsAndCellsAsTables, COMMAND_PRIORITY_HIGH);
+}
+
+/**
  * Listener of the three backward deletions (`DELETE_CHARACTER_COMMAND`,
  * `DELETE_WORD_COMMAND`, `DELETE_LINE_COMMAND`) for a caret at the start of
  * a block that stands after a container ending in a block with no line of
@@ -3423,7 +3557,8 @@ function registerListItemRules(editor: LexicalEditor): () => void {
  * A command's listeners of one priority run in the order they were
  * registered, and this one is at {@link COMMAND_PRIORITY_HIGH}. Call this
  * after {@link registerColumnPaste}, so that a pasted column is already the
- * blocks it holds.
+ * blocks it holds, and after {@link registerTablePartPaste}, so that pasted
+ * table rows and cells are already a table.
  *
  * @param editor - The editor.
  * @returns The unregister function.
@@ -6666,6 +6801,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             registerMarkdownShortcutsOutsideRawBlocks(editor),
             editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
             registerColumnPaste(editor),
+            registerTablePartPaste(editor),
             registerItemBlockPaste(editor),
             registerListItemRules(editor),
             registerTextOnlyBlockRules(editor),
