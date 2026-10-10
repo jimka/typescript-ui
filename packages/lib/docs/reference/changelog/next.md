@@ -1284,7 +1284,9 @@ page resets to empty.
   selection is now one undo step, and undoing it restores the document and
   the selection as they were. A character typed right after `paste()` put
   a single character into an empty block is no longer undone together with
-  it. No consumer action is needed.
+  it, and neither is one typed right after Ctrl/Cmd+V put a single
+  character on an empty line of a raw Markdown block. No consumer action is
+  needed.
 
 - **Typing HTML in Markdown source no longer adds or re-indents text.** In
   `MarkdownEditor`'s `"source"` mode, and in any `CodeEditor` with
