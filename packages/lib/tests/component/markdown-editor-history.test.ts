@@ -35,6 +35,7 @@ const CONFIG = {
 const TWO = 'alpha beta\n\nomega';
 const COLUMNS = '::: columns\nw0 w1\n|||\nw2 w3\n:::\n\nomega';
 const BETAS = 'beta one\n\nbeta two\n\nomega';
+const RAW = 'alpha\n\n<!--\nabcd\n\nefgh\n-->\n\nomega';
 
 beforeEach(() => {
     installTestDOM(CONFIG);
@@ -245,6 +246,24 @@ function clipboardHolds(text: string): void {
 }
 
 /**
+ * Places the caret on the empty line of {@link RAW}'s raw Markdown block,
+ * between the line breaks after `abcd`.
+ *
+ * @param editor - The editor, holding {@link RAW}.
+ */
+function selectEmptyRawLine(editor: MarkdownEditor): void {
+    update(editor, () => {
+        const text = $textNode('abcd');
+        const selection = $createRangeSelection();
+        const offset = text.getIndexWithinParent() + 2;
+
+        selection.anchor.set(text.getParentOrThrow().getKey(), offset, 'element');
+        selection.focus.set(text.getParentOrThrow().getKey(), offset, 'element');
+        $setSelection(selection);
+    });
+}
+
+/**
  * A bare Lexical editor after three updates: `abc` is written, edited to
  * `abcd`, then an update only marks that text node dirty and adds an empty
  * paragraph — one dirty leaf, text as before, document changed.
@@ -444,6 +463,32 @@ describe('a paste and the typing around it are separate steps (T rows)', () => {
         expect(snapshot(editor).value).toBe('alpha beta\n\nZq\n\nomega');
         expect(undo(editor).value).toBe('alpha beta\n\nZ\n\nomega');
         expect(undo(editor).value).toBe(TWO);
+    });
+
+    it('T4: a character typed right after a native paste put one character on an empty line of a raw block is a step of its own', () => {
+        const editor = load(RAW);
+
+        selectEmptyRawLine(editor);
+        nativePaste(editor, 'Z');
+        editor.getValue();   // commits the paste, so the history has recorded it
+        lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, 'q');
+
+        expect(snapshot(editor).value).toBe('alpha\n\n<!--\nabcd\nZq\nefgh\n-->\n\nomega');
+        expect(undo(editor).value).toBe('alpha\n\n<!--\nabcd\nZ\nefgh\n-->\n\nomega');
+        expect(undo(editor).value).toBe(RAW);
+    });
+
+    it('T5: a native paste of one character right after a character typed on an empty line of a raw block is a step of its own', () => {
+        const editor = load(RAW);
+
+        selectEmptyRawLine(editor);
+        lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, 'q');
+        editor.getValue();   // commits the typing, so the history has recorded it
+        nativePaste(editor, 'Z');
+
+        expect(snapshot(editor).value).toBe('alpha\n\n<!--\nabcd\nqZ\nefgh\n-->\n\nomega');
+        expect(undo(editor).value).toBe('alpha\n\n<!--\nabcd\nq\nefgh\n-->\n\nomega');
+        expect(undo(editor).value).toBe(RAW);
     });
 });
 

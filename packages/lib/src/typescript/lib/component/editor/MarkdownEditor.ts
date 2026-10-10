@@ -27,7 +27,7 @@ import {
     COMMAND_PRIORITY_CRITICAL,
     $caretFromPoint, $normalizeCaret, $setPointFromCaret, KEY_BACKSPACE_COMMAND, KEY_DELETE_COMMAND, $isRootOrShadowRoot,
     $getChildCaret, INTERNAL_$isBlock, $createRangeSelectionFromDom, $setSelection, COMMAND_PRIORITY_LOW,
-    INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND, $getNodeByKey,
+    INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND, $getNodeByKey, $addUpdateTag,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
@@ -1638,7 +1638,9 @@ function $splitItemBeforePasteEndingInTableOrFence(payload: CommandPayloadType<t
  * a paragraph per newline, which splits the block in two. A paste carrying
  * Lexical nodes is left to Lexical, whose insert reaches
  * {@link $pasteIntoTextOnlyBlock}. Registered at {@link COMMAND_PRIORITY_HIGH},
- * ahead of `registerRichText`'s own handler.
+ * ahead of `registerRichText`'s own handler, which therefore does not run:
+ * the update is tagged `PASTE_TAG` here, as that handler tags its own, so
+ * the undo history never takes the pasted text for typed text.
  *
  * @param event - The paste event (a `ClipboardEvent` from the browser).
  * @returns Whether the paste landed in a raw block.
@@ -1659,6 +1661,7 @@ function $pastePlainTextIntoRawBlock(event: ClipboardEvent | InputEvent | Keyboa
     }
 
     event.preventDefault();
+    $addUpdateTag(PASTE_TAG);
     selection.insertRawText(text);
 
     return true;
