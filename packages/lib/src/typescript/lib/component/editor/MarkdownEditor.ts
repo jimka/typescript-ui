@@ -19,7 +19,7 @@ import { TextField } from "~/component/input/TextField.js";
 import {
     createEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $getRoot,
     $createParagraphNode, $isDecoratorNode, KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH, SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
-    PASTE_COMMAND, DELETE_CHARACTER_COMMAND, $createTextNode, $copyNode, $isLineBreakNode, $getState,
+    PASTE_COMMAND, PASTE_TAG, DELETE_CHARACTER_COMMAND, $createTextNode, $copyNode, $isLineBreakNode, $getState,
     IS_ALL_FORMATTING, $isTextNode, TEXT_TYPE_TO_FORMAT, $hasUpdateTag, HISTORY_PUSH_TAG,
     $getNearestNodeFromDOMNode, isDOMNode, $findMatchingParent, $isElementNode, $isParagraphNode, $isRootNode,
     DELETE_WORD_COMMAND, DELETE_LINE_COMMAND, REMOVE_TEXT_COMMAND, CONTROLLED_TEXT_INSERTION_COMMAND,
@@ -46,7 +46,6 @@ import { $toggleLink, $isLinkNode } from "@lexical/link";
 import type { LinkNode } from "@lexical/link";
 import { $insertGeneratedNodes, copyToClipboard, $getClipboardDataFromSelection } from "@lexical/clipboard";
 import { CodeNode, $createCodeNode, $isCodeNode } from "@lexical/code";
-import { registerHistory, createEmptyHistoryState } from "@lexical/history";
 import {
     TableNode, TableCellNode, registerTablePlugin, registerTableSelectionObserver,
     $getTableCellNodeFromLexicalNode, $getTableNodeFromLexicalNodeOrThrow, $computeTableMap,
@@ -67,6 +66,7 @@ import {
     $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $selectionHasFormat, $takeBlocksOutOf, RUN_EDGE_TAG,
     registerWritableStateRules,
 } from "~/component/editor/markdownWritable.js";
+import { registerMarkdownHistory } from "~/component/editor/markdownHistory.js";
 import { EMPTY_SOURCE_MAP } from "~/component/editor/markdownSourceMap.js";
 import type { MarkdownSourceBlock, MarkdownSourceMap } from "~/component/editor/markdownSourceMap.js";
 import {
@@ -91,12 +91,6 @@ import type { MarkdownSourceTransform } from "~/component/editor/markdownSourceE
 import {
     FENCED_CODE_SOURCE, blockPrefixSource, listSource, paragraphAroundBlockSource, tableSource,
 } from "~/component/editor/markdownSourceLines.js";
-
-/**
- * The coalescing window (ms) for the undo/redo history: edits within this gap
- * merge into a single undo step, matching Lexical's own recommended default.
- */
-const HISTORY_DELAY_MS = 300;
 
 /**
  * The clipboard type Lexical writes its own copied nodes under (the
@@ -6177,7 +6171,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                     $removeGuardedRangeForInsert(selection);
                     selection.insertRawText(text);
                 }
-            }, { discrete: true });
+            }, { discrete: true, tag: PASTE_TAG });
         }
 
         // See copy()'s comment: restores focus after the context-menu row's
@@ -6992,7 +6986,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             registerRichText(editor),
             registerList(editor),
             registerTablePlugin(editor),
-            registerHistory(editor, createEmptyHistoryState(), HISTORY_DELAY_MS),
+            registerMarkdownHistory(editor),
             registerMarkdownShortcutsOutsideRawBlocks(editor),
             editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
             registerColumnPaste(editor),
