@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CodeEditor, setRevealHighlight, revealHighlightField } from '~/component/editor/CodeEditor';
+import { CodeEditor, setRevealHighlight, revealHighlightField, codeEditorKeymap } from '~/component/editor/CodeEditor';
 import type { CodeEditorChange, CodeEditorCursorPosition, CodeEditorSelection } from '~/component/editor/CodeEditor';
 import { registerLanguage, getLanguage, listLanguages } from '~/component/editor/LanguageRegistry';
 import type { Formatter } from '~/component/editor/LanguageRegistry';
@@ -15,12 +15,14 @@ import { Anchor } from '~/layout/Anchor';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, setQuerySelectorResult, makeEvent } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
-import { EditorState, EditorSelection } from '@codemirror/state';
+import { EditorState, EditorSelection, Prec } from '@codemirror/state';
 import type { Extension, Transaction } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { codeFolding, foldEffect, ensureSyntaxTree, syntaxTree, indentOnInput, indentUnit } from '@codemirror/language';
-import { CompletionContext, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
-import { defaultKeymap } from '@codemirror/commands';
+import { CompletionContext, closeBrackets, completionKeymap, deleteBracketPair } from '@codemirror/autocomplete';
+import { deleteCharBackward, indentWithTab } from '@codemirror/commands';
+import { lintKeymap } from '@codemirror/lint';
+import { basicSetup } from 'codemirror';
 import type { CompletionSource } from '@codemirror/autocomplete';
 import { json } from '@codemirror/lang-json';
 import { collectSyntaxErrors } from '~/component/editor/syntaxDiagnostics';
@@ -3136,17 +3138,101 @@ describe('built-in sql language options', () => {
     });
 });
 
+describe('CodeEditor keymap order', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    /**
+     * Calls `mount()` offline and captures the state it builds. No view is
+     * mounted there, so the state is read off a spy on `EditorState.create`,
+     * which the `afterEach` above restores even when `mount()` throws.
+     *
+     * @returns The editor and the state its `mount()` built.
+     */
+    function mountOffline(): { editor: any; state: EditorState } {
+        const editor = new CodeEditor() as any;
+
+        editor.getElement(true);
+
+        const createSpy = vi.spyOn(EditorState, 'create');
+
+        editor.mount();
+
+        return { editor, state: createSpy.mock.results[0].value as EditorState };
+    }
+
+    /**
+     * Lists the commands bound to `key` in the order CodeMirror tries them,
+     * with `language` loaded the way `CodeEditor` loads a language's
+     * extension: into its language compartment.
+     *
+     * @param mounted - What `mountOffline` returned.
+     * @param language - The stand-in language extension.
+     * @param key - The key whose bindings are listed.
+     * @returns The commands, first tried first.
+     */
+    function commandsFor(mounted: { editor: any; state: EditorState }, language: Extension, key: string): unknown[] {
+        const loaded = mounted.state.update({ effects: mounted.editor._langCompartment.reconfigure(language) }).state;
+
+        return loaded.facet(keymap).flat().filter((binding) => binding.key === key).map((binding) => binding.run);
+    }
+
+    it('K1: mount() installs codeEditorKeymap, and Backspace reaches deleteBracketPair first', () => {
+        const { state } = mountOffline();
+        const groups    = state.facet(keymap);
+        const backspace = groups.flat().filter((binding) => binding.key === 'Backspace').map((binding) => binding.run);
+
+        expect(groups).toContain(codeEditorKeymap);
+        expect(backspace).toEqual([deleteBracketPair, deleteCharBackward]);
+    });
+
+    it('K2: every binding but indentWithTab comes from CodeMirror basicSetup, in its order', () => {
+        const reference = EditorState.create({ extensions: basicSetup }).facet(keymap).flat();
+        const shared    = codeEditorKeymap.filter((binding) => reference.includes(binding));
+
+        expect(codeEditorKeymap.filter((binding) => !reference.includes(binding))).toEqual([indentWithTab]);
+        expect(shared).toEqual(reference.filter((binding) => codeEditorKeymap.includes(binding)));
+    });
+
+    it('K3: the only basicSetup bindings the list leaves out are the completion and lint ones', () => {
+        const reference = EditorState.create({ extensions: basicSetup }).facet(keymap).flat();
+        const leftOut   = reference.filter((binding) => !codeEditorKeymap.includes(binding));
+
+        expect(new Set(leftOut)).toEqual(new Set([...completionKeymap, ...lintKeymap]));
+    });
+
+    it('K4: a language keymap is tried after the editor\'s, ahead of it at Prec.high, and never ahead of the editor\'s own Mod-f and Escape', () => {
+        const mounted     = mountOffline();
+        const languageRun = (): boolean => false;
+
+        const languageKeymap = keymap.of([
+            { key: 'Backspace', run: languageRun },
+            { key: 'Mod-f',     run: languageRun },
+            { key: 'Escape',    run: languageRun },
+        ]);
+
+        expect(commandsFor(mounted, languageKeymap, 'Backspace')).toEqual([deleteBracketPair, deleteCharBackward, languageRun]);
+        expect(commandsFor(mounted, Prec.high(languageKeymap), 'Backspace')).toEqual([languageRun, deleteBracketPair, deleteCharBackward]);
+
+        // One command stays ahead: the editor's own Mod-f, itself at Prec.high.
+        expect(commandsFor(mounted, Prec.high(languageKeymap), 'Mod-f').indexOf(languageRun)).toBe(1);
+        // Two stay ahead: the completion list's Escape (Prec.highest), then the editor's own.
+        expect(commandsFor(mounted, Prec.high(languageKeymap), 'Escape').indexOf(languageRun)).toBe(2);
+    });
+});
+
 describe('built-in markdown language typing', () => {
     /**
      * The extensions from `CodeEditor`'s `mount()` that take part in typing,
      * in `mount()`'s order: the keymap (Enter, Backspace), `indentOnInput()`
-     * (re-indents a line as it is typed) and `closeBrackets()`. The language's
-     * own extension follows them, as in `mount()`; `buildTypingState` adds it
-     * per state. `autocompletion()` is left out: completion needs a mounted
-     * view, and no row presses Enter while a popup would be open.
+     * (re-indents a line as it is typed) and `closeBrackets()`. The keymap is
+     * `codeEditorKeymap`, the list `mount()` itself installs, so a change to
+     * its order shows up in these rows. The language's own extension follows
+     * them, as in `mount()`; `buildTypingState` adds it per state.
+     * `autocompletion()` is left out: completion needs a mounted view, and no
+     * row presses Enter while a popup would be open.
      */
     const TYPING_EXTENSIONS: Extension[] = [
-        keymap.of([...defaultKeymap, ...closeBracketsKeymap]),
+        keymap.of(codeEditorKeymap),
         indentOnInput(),
         closeBrackets(),
     ];
@@ -3517,6 +3603,148 @@ describe('built-in markdown language typing', () => {
 
     it('H2: the standalone html language still indents between tags on Enter', async () => {
         expect(await typed('html', '', '<div>\n')).toBe('<div>\n  |\n</div>');
+    });
+
+    it('B1: Backspace right after a typed ( deletes the pair', async () => {
+        expect(await typed('javascript', '', '(\b')).toBe('|');
+    });
+
+    it('B2: Backspace right after a typed [ deletes the pair', async () => {
+        expect(await typed('javascript', '', '[\b')).toBe('|');
+    });
+
+    it('B3: Backspace right after a typed { deletes the pair', async () => {
+        expect(await typed('javascript', '', '{\b')).toBe('|');
+    });
+
+    it('B4: Backspace right after a typed " deletes the pair', async () => {
+        expect(await typed('javascript', '', '"\b')).toBe('|');
+    });
+
+    it("B5: Backspace right after a typed ' deletes the pair", async () => {
+        expect(await typed('javascript', '', "'\b")).toBe('|');
+    });
+
+    it('B6: Backspace right after a typed backtick deletes the pair', async () => {
+        expect(await typed('javascript', '', '`\b')).toBe('|');
+    });
+
+    it('B7: json: Backspace right after a typed { deletes the pair', async () => {
+        expect(await typed('json', '', '{\b')).toBe('|');
+    });
+
+    it('B8: json does not close (, and Backspace deletes it alone', async () => {
+        expect(await typed('json', '', '(')).toBe('(|');
+        expect(await typed('json', '', '(\b')).toBe('|');
+    });
+
+    it('B9: with no language, Backspace right after a typed ( deletes the pair', () => {
+        const state = EditorState.create({ doc: '', extensions: TYPING_EXTENSIONS });
+
+        expect(show(typeText(state, '(\b'))).toBe('|');
+    });
+
+    it('B10: Backspace with text between the pair deletes one character', async () => {
+        expect(await typed('javascript', '', '(a\b')).toBe('(|)');
+    });
+
+    it('B11: a second Backspace, once the pair is empty, deletes the pair', async () => {
+        expect(await typed('javascript', '', '(a\b\b')).toBe('|');
+    });
+
+    it('B12: Backspace between a pair already in the document deletes the pair', async () => {
+        expect(await typed('javascript', 'f(|);', '\b')).toBe('f|;');
+    });
+
+    it('B13: Backspace between mismatched brackets deletes one character', async () => {
+        expect(await typed('javascript', '(|]', '\b')).toBe('|]');
+    });
+
+    it('B14: Backspace in a nested pair deletes the inner pair only', async () => {
+        expect(await typed('javascript', '', '([\b')).toBe('(|)');
+    });
+
+    it('B15: Backspace away from any pair deletes one character', async () => {
+        expect(await typed('javascript', 'ab|c', '\b')).toBe('a|c');
+    });
+
+    it('B16: markdown: Backspace right after a typed ( in a list item deletes the pair', async () => {
+        expect(await typed('markdown', '- |', '(\b')).toBe('- |');
+    });
+
+    it('B17: markdown: Backspace after a fresh list marker still turns it into indentation', async () => {
+        expect(await typed('markdown', '- a\n- |', '\b')).toBe('- a\n  |');
+    });
+
+    // B1-B17 name three languages. This row runs the same key on every
+    // built-in one; `[` is the one bracket all seven close.
+    for (const languageId of ['javascript', 'json', 'html', 'sql', 'markdown', 'css', 'python']) {
+        it(`B18: ${languageId}: Backspace right after a typed [ deletes the pair`, async () => {
+            expect(await typed(languageId, '', '[\b')).toBe('|');
+        });
+    }
+
+    it('B19: Backspace between a pair changes nothing in a read-only editor', () => {
+        const state = EditorState.create({
+            doc:        '()',
+            selection:  EditorSelection.cursor(1),
+            extensions: [...TYPING_EXTENSIONS, EditorState.readOnly.of(true)],
+        });
+
+        expect(show(typeText(state, '\b'))).toBe('(|)');
+    });
+
+    it('B20: with a caret in each of two empty pairs, Backspace deletes both pairs', () => {
+        const state = EditorState.create({
+            doc:        'a()b[]c',
+            selection:  EditorSelection.create([EditorSelection.cursor(2), EditorSelection.cursor(5)]),
+            extensions: [...TYPING_EXTENSIONS, EditorState.allowMultipleSelections.of(true)],
+        });
+
+        const after = typeText(state, '\b');
+
+        expect(after.doc.toString()).toBe('abc');
+        expect(after.selection.ranges.map((range) => range.head)).toEqual([1, 2]);
+    });
+
+    it('B21: with one caret in an empty pair and one outside any, Backspace deletes one character at each', () => {
+        // CodeMirror's command deletes pairs only when every caret is in
+        // one; otherwise the plain Backspace runs at all of them, as before.
+        // Its docs do not promise this. If a CodeMirror upgrade fails this
+        // row, read `deleteBracketPair` again, then bring the row and the
+        // "several carets" sentences of CodeEditor.md and the changelog in
+        // line with what it does.
+        const state = EditorState.create({
+            doc:        '()ab',
+            selection:  EditorSelection.create([EditorSelection.cursor(1), EditorSelection.cursor(4)]),
+            extensions: [...TYPING_EXTENSIONS, EditorState.allowMultipleSelections.of(true)],
+        });
+
+        const after = typeText(state, '\b');
+
+        expect(after.doc.toString()).toBe(')a');
+        expect(after.selection.ranges.map((range) => range.head)).toEqual([0, 2]);
+    });
+
+    it('B22: Backspace with text selected inside a pair deletes the selection only', () => {
+        const state = EditorState.create({
+            doc:        '(a)',
+            selection:  EditorSelection.range(1, 2),
+            extensions: TYPING_EXTENSIONS,
+        });
+
+        expect(show(typeText(state, '\b'))).toBe('(|)');
+    });
+
+    it('B23: json: Backspace between a pair json does not close deletes one character', async () => {
+        expect(await typed('json', '(|)', '\b')).toBe('|)');
+        expect(await typed('json', "'|'", '\b')).toBe("|'");
+    });
+
+    it('B24: python: each Backspace inside a typed triple-quoted pair deletes one quote on each side', async () => {
+        expect(await typed('python', '', '"""')).toBe('"""|"""');
+        expect(await typed('python', '', '"""\b')).toBe('""|""');
+        expect(await typed('python', '', '"""\b\b\b')).toBe('|');
     });
 });
 

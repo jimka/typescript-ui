@@ -19,7 +19,7 @@ import {
     placeholder, highlightWhitespace, highlightTrailingWhitespace, highlightSpecialChars,
     dropCursor, rectangularSelection, crosshairCursor, Decoration,
 } from "@codemirror/view";
-import type { DecorationSet } from "@codemirror/view";
+import type { DecorationSet, KeyBinding } from "@codemirror/view";
 import { EditorState, EditorSelection, Compartment, Prec, StateEffect, StateField } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -383,6 +383,40 @@ const CLIPBOARD_HINT_DURATION_MS = 6000;
 function buildReadOnlyExtension(readOnly: boolean): Extension {
     return EditorState.readOnly.of(readOnly);
 }
+
+/**
+ * The editor's own key bindings, as one list for `keymap.of`. CodeMirror tries
+ * the bindings for a key in list order, and a later one runs only when every
+ * earlier one returned `false`. The order is that of CodeMirror's reference
+ * `basicSetup`, so `closeBracketsKeymap` comes first: its Backspace binding
+ * has to be offered the key before `defaultKeymap`'s, which deletes a
+ * character whenever there is one and so never passes the key on.
+ *
+ * Two `basicSetup` entries are absent. `autocompletion()` installs
+ * `completionKeymap` itself, at `Prec.highest`, so listing it here would bind
+ * the same keys again at a lower precedence. `lintKeymap` is not installed.
+ *
+ * `indentWithTab` is the one addition. It is deliberately absent from
+ * `defaultKeymap`, because binding Tab traps it inside the editor and a
+ * keyboard user can no longer Tab out. A code editor that does not indent on
+ * Tab is the worse trade, and `defaultKeymap` already carries the escape
+ * hatch: Ctrl-m (Alt-Shift-m on macOS) toggles CodeMirror's tab-focus mode,
+ * after which Tab moves focus again. No other binding in the list uses Tab,
+ * so its position does not change what Tab does.
+ *
+ * Exported for the offline tests, which type into a state built on this same
+ * list because `CodeEditor` mounts no view there.
+ *
+ * @internal
+ */
+export const codeEditorKeymap: readonly KeyBinding[] = [
+    ...closeBracketsKeymap,
+    ...defaultKeymap,
+    ...searchKeymap,
+    ...historyKeymap,
+    ...foldKeymap,
+    indentWithTab,
+];
 
 /** The reveal highlight's mark, without the entrance flash (reduced motion). */
 const REVEAL_MARK = Decoration.mark({ class: REVEAL_CLASS });
@@ -2189,14 +2223,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         const extensions: Extension[] = [
             history(),
-            // `indentWithTab` is deliberately absent from `defaultKeymap`,
-            // because binding Tab traps it inside the editor and a keyboard
-            // user can no longer Tab out. A code editor that does not indent
-            // on Tab is the worse trade, and `defaultKeymap` already carries
-            // the escape hatch: Ctrl-m (Alt-Shift-m on macOS) toggles
-            // CodeMirror's tab-focus mode, after which Tab moves focus again.
-            // Listed last so its Tab / Shift-Tab bindings take precedence.
-            keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap, ...closeBracketsKeymap, indentWithTab]),
+            keymap.of(codeEditorKeymap),
             // Prec.high, so these two win over the search extension's own
             // Mod-f / Escape entries without disturbing the rest of them —
             // relying on those bindings almost works, but Mod-f while the
@@ -2226,11 +2253,11 @@ class CodeEditor extends Component<CodeEditorOptions> {
             // The programmatic counterpart to the two above: the highlight
             // revealRange() paints over a range the host supplied.
             revealHighlightField,
-            // completionKeymap is deliberately not added to the keymap array
-            // above: autocompletion() installs it itself, at Prec.highest, so
-            // adding it again here would bind the same keys at a lower
+            // completionKeymap is deliberately not in codeEditorKeymap:
+            // autocompletion() installs it itself, at Prec.highest, so
+            // listing it there would bind the same keys again at a lower
             // precedence. closeBrackets() is not self-installing, so its
-            // Backspace binding (closeBracketsKeymap) is added explicitly.
+            // Backspace binding (closeBracketsKeymap) is listed there.
             autocompletion(),
             closeBrackets(),
             this._readOnlyCompartment.of(buildReadOnlyExtension(this.getReadOnly())),
