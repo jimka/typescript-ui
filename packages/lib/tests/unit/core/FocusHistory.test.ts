@@ -96,6 +96,51 @@ function focusSilently(handle: Handle): void {
     DOM.sink.focus(handle);
 }
 
+/**
+ * Models focus leaving `handle` for nowhere with the `focusout` a browser
+ * fires for it: a click on the empty page, or a blur from code.
+ */
+function focusOut(handle: Handle): void {
+    DOM.sink.blur(handle);
+    DOM.sink.dispatchEvent(DOM.source.getWindow(), makeEvent(handle, 'focusout'));
+}
+
+/**
+ * Leaves nothing focused and fires no event: models a focused control that
+ * left the document in a browser that fires nothing for that.
+ */
+function dropFocus(handle: Handle): void {
+    DOM.sink.blur(handle);
+}
+
+/** Mints a control inside a connected table cell, which is never a stop. */
+function cellEditor(): Handle {
+    const td = DOM.sink.createElement('td');
+
+    setConnected(td, true);
+
+    return controlIn(td);
+}
+
+/** Both flags, as the two functions return them now. */
+function flags(): FocusHistoryChange {
+    return { canGoBack: FocusHistory.canGoBack(), canGoForward: FocusHistory.canGoForward() };
+}
+
+// The payloads `collect` has received since the last `listen()`.
+let changes: FocusHistoryChange[] = [];
+
+/** The shared `"change"` listener; the afterEach unsubscribes it. */
+function collect(change: FocusHistoryChange): void {
+    changes.push(change);
+}
+
+/** Starts collecting `"change"` payloads from now on. */
+function listen(): void {
+    changes = [];
+    FocusHistory.on('change', collect);
+}
+
 /** Dispatches the default back chord, `Alt+[`. */
 function altBracketLeft(): { preventDefault: () => void; stopPropagation: () => void } {
     return keyDown({ code: 'BracketLeft', altKey: true });
@@ -103,6 +148,8 @@ function altBracketLeft(): { preventDefault: () => void; stopPropagation: () => 
 
 describe('FocusHistory', () => {
     afterEach(() => {
+        FocusHistory.off('change', collect);
+
         // Drain in reverse registration order; unregister is idempotent.
         for (let i = registered.length - 1; i >= 0; i--) {
             LayerManager.unregister(registered[i]);
@@ -743,7 +790,7 @@ describe('FocusHistory', () => {
 
         focusIn(cellInput); // lands inside a <td> — must not be recorded
 
-        expect(FocusHistory.canGoBack()).toBe(false); // trail still just [a]
+        expect(FocusHistory.canGoBack()).toBe(true); // focus has left the only stop
 
         const b = liveHandle();
         focusIn(b); // a plain element — still records
@@ -753,7 +800,7 @@ describe('FocusHistory', () => {
         expect(DOM.source.getActiveElement()).toBe(a);
     });
 
-    it('fires "change" on record and on navigate with correct flags', () => {
+    it('fires "change" on a record or a navigation that changes a flag', () => {
         installTestDOM(CONFIG);
         FocusHistory.enable(); // no active element yet, so nothing is seeded
 
@@ -764,7 +811,7 @@ describe('FocusHistory', () => {
         const a = liveHandle();
         focusIn(a); // entry #1 — nothing before it yet
 
-        expect(changes.at(-1)).toEqual({ canGoBack: false, canGoForward: false });
+        expect(changes).toEqual([]);
 
         const b = liveHandle();
         focusIn(b); // entry #2 — now `a` is reachable via back()
@@ -797,7 +844,7 @@ describe('FocusHistory', () => {
             register(transient.layer);
             focusIn(controlIn(transient.element));
 
-            expect(FocusHistory.canGoBack()).toBe(false);
+            expect(FocusHistory.canGoBack()).toBe(true);
 
             LayerManager.unregister(transient.layer);
 
@@ -844,6 +891,16 @@ describe('FocusHistory', () => {
             focusIn(liveHandle());
 
             expect(FocusHistory.canGoBack()).toBe(false);
+
+            // Both flags are false under a modal layer whatever the trail
+            // holds. With the layer closed, a single stop to return to and
+            // nothing beyond it shows that neither move was recorded.
+            LayerManager.unregister(modal.layer);
+
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(a);
+            expect(FocusHistory.canGoBack()).toBe(false);
+            expect(FocusHistory.canGoForward()).toBe(false);
         });
 
         it('S6: a control of a "manual" layer opened from a modal layer is not a stop', () => {
@@ -861,6 +918,15 @@ describe('FocusHistory', () => {
             focusIn(controlIn(manual.element));
 
             expect(FocusHistory.canGoBack()).toBe(false);
+
+            // As in S4: only the trail with both layers closed shows that
+            // the control was not recorded.
+            LayerManager.unregister(manual.layer);
+            LayerManager.unregister(modal.layer);
+
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(a);
+            expect(FocusHistory.canGoForward()).toBe(false);
         });
 
         it('S7: opening and closing a transient layer keeps the forward part of the trail', () => {
@@ -975,7 +1041,7 @@ describe('FocusHistory', () => {
             expect(FocusHistory.canGoBack()).toBe(false);
         });
 
-        it('S12: a focus move into a transient layer fires no "change"', () => {
+        it('S12: a focus move into a transient layer fires "change" once, for leaving the current stop', () => {
             installTestDOM(CONFIG);
             FocusHistory.enable();
 
@@ -991,7 +1057,7 @@ describe('FocusHistory', () => {
             register(transient.layer);
             focusIn(controlIn(transient.element));
 
-            expect(changes).toEqual([{ canGoBack: false, canGoForward: false }]);
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
 
             FocusHistory.off('change', listener);
         });
@@ -1207,9 +1273,10 @@ describe('FocusHistory', () => {
             expect(DOM.source.getActiveElement()).toBe(b);
         });
 
-        // "change" fires after every navigation, also one that returns to the
-        // current stop. The position did not move, so the flags are the same.
-        it('back() to the current stop fires "change" with the flags unchanged', () => {
+        // "change" fires only when a flag changes value. Returning to the
+        // current stop moves no position, and a stop lies before it both
+        // before and after, so both flags stay as they were.
+        it('back() to the current stop fires no "change" when both flags stay as they were', () => {
             installTestDOM(CONFIG);
             FocusHistory.enable();
 
@@ -1226,12 +1293,12 @@ describe('FocusHistory', () => {
 
             expect(FocusHistory.back()).toBe(true);
             expect(DOM.source.getActiveElement()).toBe(b);
-            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+            expect(changes).toEqual([]);
 
             FocusHistory.off('change', listener);
         });
 
-        it('W4: back() returns to a single stop, though canGoBack() describes the trail and is false', () => {
+        it('W4: canGoBack() is true for a single stop that focus has left, and back() returns to it', () => {
             installTestDOM(CONFIG);
             FocusHistory.enable();
 
@@ -1240,9 +1307,10 @@ describe('FocusHistory', () => {
 
             focusSilently(liveHandle());
 
-            expect(FocusHistory.canGoBack()).toBe(false);
+            expect(FocusHistory.canGoBack()).toBe(true);
             expect(FocusHistory.back()).toBe(true);
             expect(DOM.source.getActiveElement()).toBe(a);
+            expect(FocusHistory.canGoBack()).toBe(false);
         });
 
         it('W8: back() is not held back by an open transient layer', () => {
@@ -1319,6 +1387,641 @@ describe('FocusHistory', () => {
             expect(DOM.source.getActiveElement()).toBe(b);
             expect(FocusHistory.back()).toBe(true);
             expect(DOM.source.getActiveElement()).toBe(a);
+        });
+    });
+
+    // focus-history-can-go-back-follows-focus plan, cases F1–F8. The two
+    // flags say what back() and forward() would do from where focus is now:
+    // a flag is true when the walk in that direction has a stop to try.
+    describe('the flags, from where focus is', () => {
+        it('F1: canGoBack() is true for a single stop that focus has left, until back() has returned to it', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+
+            focusSilently(liveHandle());
+
+            expect(flags()).toEqual({ canGoBack: true, canGoForward: false });
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(a);
+            expect(flags()).toEqual({ canGoBack: false, canGoForward: false });
+            expect(FocusHistory.back()).toBe(false);
+        });
+
+        it('F2: canGoBack() is true for a single stop when nothing has focus', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+
+            dropFocus(a);
+
+            expect(flags()).toEqual({ canGoBack: true, canGoForward: false });
+            expect(FocusHistory.back()).toBe(true);
+        });
+
+        it('F3: both flags are true when focus has left a first stop that has one after it', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            FocusHistory.back(); // [a*, b]
+
+            expect(flags()).toEqual({ canGoBack: false, canGoForward: true });
+
+            focusSilently(liveHandle());
+
+            expect(flags()).toEqual({ canGoBack: true, canGoForward: true });
+        });
+
+        it('F4: both flags are false for an empty trail, wherever focus is', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable(); // nothing has focus, so nothing is seeded
+
+            focusSilently(liveHandle());
+
+            expect(flags()).toEqual({ canGoBack: false, canGoForward: false });
+            expect(FocusHistory.back()).toBe(false);
+            expect(FocusHistory.forward()).toBe(false);
+        });
+
+        it('F5: both flags are false once the only stop has left the document', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const d = liveHandle();
+            focusIn(d);
+
+            setConnected(d, false);
+            dropFocus(d);
+
+            expect(flags()).toEqual({ canGoBack: false, canGoForward: false });
+            expect(FocusHistory.back()).toBe(false);
+        });
+
+        it('F6: the focused stop leaving the document changes neither flag when a stop lies before it', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const d = liveHandle();
+            focusIn(d);
+
+            expect(flags()).toEqual({ canGoBack: true, canGoForward: false });
+
+            setConnected(d, false);
+            dropFocus(d); // [a*], focus on nothing
+
+            expect(flags()).toEqual({ canGoBack: true, canGoForward: false });
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(a);
+            expect(flags()).toEqual({ canGoBack: false, canGoForward: false });
+        });
+
+        it('F7: the focused stop leaving the document changes neither flag when a stop lies only after it', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const d = liveHandle();
+            focusIn(d);
+            const c = liveHandle();
+            focusIn(c);
+
+            FocusHistory.back(); // [d*, c]
+
+            expect(flags()).toEqual({ canGoBack: false, canGoForward: true });
+
+            setConnected(d, false);
+            dropFocus(d); // [c], with no current stop
+
+            expect(flags()).toEqual({ canGoBack: false, canGoForward: true });
+            expect(FocusHistory.back()).toBe(false);
+            expect(FocusHistory.forward()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(c);
+            expect(flags()).toEqual({ canGoBack: false, canGoForward: false });
+        });
+
+        it('F8: canGoBack() counts a stop that is still in the document but refuses focus', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+
+            dropFocus(a);
+
+            // `a` refuses focus while it stays connected: the offline stand-in
+            // for a stop that is hidden or disabled.
+            const realFocus = DOM.sink.focus.bind(DOM.sink);
+
+            vi.spyOn(DOM.sink, 'focus').mockImplementation((handle: Handle, options?: { preventScroll?: boolean }) => {
+                if (handle === a) {
+                    return;
+                }
+
+                realFocus(handle, options);
+            });
+
+            expect(FocusHistory.canGoBack()).toBe(true);
+            expect(FocusHistory.back()).toBe(false);
+            expect(FocusHistory.canGoBack()).toBe(true);
+        });
+    });
+
+    // Cases M1–M2. No walk starts while a modal layer is open, so both flags
+    // are false there. A transient layer and a "manual" layer hold back
+    // neither function, so the flags are what they would be with it closed.
+    describe('the flags while a layer is open', () => {
+        it('M1: both flags are false for as long as a modal layer is open', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+            const c = liveHandle();
+            focusIn(c);
+
+            FocusHistory.back(); // [a, b*, c]
+
+            expect(flags()).toEqual({ canGoBack: true, canGoForward: true });
+
+            const modal = layerWith('modal');
+
+            register(modal.layer);
+
+            expect(flags()).toEqual({ canGoBack: false, canGoForward: false });
+
+            focusIn(controlIn(modal.element));
+
+            expect(flags()).toEqual({ canGoBack: false, canGoForward: false });
+
+            // A dropdown opened from the dialog.
+            const transient = layerWith('click-outside');
+
+            register(transient.layer);
+
+            expect(flags()).toEqual({ canGoBack: false, canGoForward: false });
+
+            LayerManager.unregister(transient.layer);
+            LayerManager.unregister(modal.layer);
+
+            expect(flags()).toEqual({ canGoBack: true, canGoForward: true });
+        });
+
+        const nonModalModes: LayerDismissMode[] = ['click-outside', 'blur', 'manual'];
+
+        it.each(nonModalModes)('M2: a "%s" layer changes neither flag and fires no "change"', (mode) => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+            const c = liveHandle();
+            focusIn(c);
+
+            FocusHistory.back(); // [a, b*, c]
+            listen();
+
+            const open = layerWith(mode);
+
+            register(open.layer);
+
+            expect(flags()).toEqual({ canGoBack: true, canGoForward: true });
+
+            LayerManager.unregister(open.layer);
+
+            expect(changes).toEqual([]);
+
+            register(open.layer);
+
+            expect(FocusHistory.back()).toBe(true);
+        });
+    });
+
+    // Cases E1–E11, and two from the plan's review. "change" fires when
+    // either flag changes value, and only then: after a focus move, recorded
+    // or not, after a walk, after clear(), and when a modal layer opens or
+    // closes.
+    describe('the "change" event', () => {
+        it('E1: fires for a record or a walk that changes a flag, and for no other', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+            listen();
+
+            const a = liveHandle();
+            focusIn(a); // [a*]: recording the first stop changes no flag
+
+            expect(changes).toEqual([]);
+
+            const b = liveHandle();
+            focusIn(b); // [a, b*]
+
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+
+            const c = liveHandle();
+            focusIn(c); // [a, b, c*]: the flags are as they were
+
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+
+            FocusHistory.back(); // [a, b*, c]
+
+            expect(changes).toEqual([
+                { canGoBack: true, canGoForward: false },
+                { canGoBack: true, canGoForward: true },
+            ]);
+
+            FocusHistory.back(); // [a*, b, c]
+
+            expect(changes).toEqual([
+                { canGoBack: true,  canGoForward: false },
+                { canGoBack: true,  canGoForward: true },
+                { canGoBack: false, canGoForward: true },
+            ]);
+        });
+
+        it('E2: fires when focus leaves the first stop for a place that is no stop, and when it returns', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            listen();
+
+            focusIn(cellEditor());
+
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+
+            // Between two places that are no stop: nothing changes.
+            focusIn(cellEditor());
+
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+
+            focusIn(a);
+
+            expect(changes).toEqual([
+                { canGoBack: true,  canGoForward: false },
+                { canGoBack: false, canGoForward: false },
+            ]);
+        });
+
+        it('E3: fires when focus leaves the first stop for nowhere, and when it returns', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            listen();
+
+            focusOut(a);
+
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+
+            focusIn(a);
+
+            expect(changes).toEqual([
+                { canGoBack: true,  canGoForward: false },
+                { canGoBack: false, canGoForward: false },
+            ]);
+        });
+
+        it('E4: fires once for a focus move from one element to another, when the move is complete', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            FocusHistory.back(); // [a*, b]
+
+            expect(flags()).toEqual({ canGoBack: false, canGoForward: true });
+
+            listen();
+
+            // The `focusout` of a move to `x` names `x` as its related target,
+            // and nothing has focus while it is handled.
+            const x = liveHandle();
+
+            DOM.sink.blur(a);
+            DOM.sink.dispatchEvent(DOM.source.getWindow(), makeEvent(a, 'focusout', { relatedTarget: x }));
+
+            expect(changes).toEqual([]);
+
+            focusIn(x); // [a, x*]
+
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+        });
+
+        it('E5: fires once for a walk, at its end', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            FocusHistory.back(); // [a*, b]
+            listen();
+
+            // The walk's own focus move fires what a browser fires for it: a
+            // `focusout` on `a` with nothing focused, then a `focusin`.
+            const realFocus = DOM.sink.focus.bind(DOM.sink);
+
+            vi.spyOn(DOM.sink, 'focus').mockImplementation((handle: Handle, options?: { preventScroll?: boolean }) => {
+                DOM.sink.blur(a);
+                DOM.sink.dispatchEvent(DOM.source.getWindow(), makeEvent(a, 'focusout'));
+                realFocus(handle, options);
+                DOM.sink.dispatchEvent(DOM.source.getWindow(), makeEvent(handle, 'focusin'));
+            });
+
+            expect(FocusHistory.forward()).toBe(true);
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+        });
+
+        it('E6: a walk that finds nothing fires for a flag a stop took with it when it left the document', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const x = liveHandle();
+            focusIn(x);
+            const b = liveHandle();
+            focusIn(b);
+            listen();
+
+            // Nothing tells the service that a stop other than the focused
+            // one has left.
+            setConnected(x, false);
+
+            expect(changes).toEqual([]);
+            expect(FocusHistory.back()).toBe(false);
+            expect(changes).toEqual([{ canGoBack: false, canGoForward: false }]);
+        });
+
+        it('E7: fires when a modal layer registers and when it unregisters, with no focus event', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+            const c = liveHandle();
+            focusIn(c);
+
+            FocusHistory.back(); // [a, b*, c]
+            listen();
+
+            const modal = layerWith('modal');
+
+            register(modal.layer);
+
+            expect(changes).toEqual([{ canGoBack: false, canGoForward: false }]);
+
+            LayerManager.unregister(modal.layer);
+
+            expect(changes).toEqual([
+                { canGoBack: false, canGoForward: false },
+                { canGoBack: true,  canGoForward: true },
+            ]);
+        });
+
+        it('E8: fires when a modal layer closes with focus left on nothing', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            listen();
+
+            const modal   = layerWith('modal');
+            const control = controlIn(modal.element);
+
+            register(modal.layer);
+            focusIn(control);
+
+            // A dialog removes its element before it unregisters.
+            setConnected(control, false);
+            dropFocus(control);
+
+            expect(changes).toEqual([]);
+
+            LayerManager.unregister(modal.layer);
+
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(a);
+
+            expect(changes).toEqual([
+                { canGoBack: true,  canGoForward: false },
+                { canGoBack: false, canGoForward: false },
+            ]);
+        });
+
+        it('E9: clear() fires when a flag was true, and not for a trail that was already empty', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+            listen();
+
+            FocusHistory.clear();
+
+            expect(changes).toEqual([]);
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+
+            FocusHistory.clear();
+
+            expect(changes).toEqual([
+                { canGoBack: true,  canGoForward: false },
+                { canGoBack: false, canGoForward: false },
+            ]);
+        });
+
+        it('E10: a listener reads from the two functions the flags it was handed', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const read:   FocusHistoryChange[] = [];
+            const handed: FocusHistoryChange[] = [];
+
+            const listener = (change: FocusHistoryChange): void => {
+                read.push(flags());
+                handed.push(change);
+            };
+
+            FocusHistory.on('change', listener);
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            FocusHistory.off('change', listener);
+
+            expect(read).toEqual(handed);
+            expect(handed).toEqual([{ canGoBack: true, canGoForward: false }]);
+        });
+
+        it('E11: fires nothing for a trail bounded at one stop', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable({ maxSize: 1 });
+            listen();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b); // [b*]: `a` was dropped off the front
+
+            expect(changes).toEqual([]);
+            expect(flags()).toEqual({ canGoBack: false, canGoForward: false });
+        });
+
+        // Two cases beyond the plan's, found by its review. `LayerManager`
+        // closes a "blur" layer from its own `focusin` handler, so the layer
+        // unregisters in the middle of the focus move that closes it. No
+        // modal layer opened or closed, and the move reports itself.
+        it('a transient layer that unregisters during a walk fires no "change" of its own', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            FocusHistory.back(); // [a*, b]
+
+            const transient = layerWith('blur');
+
+            register(transient.layer);
+            listen();
+
+            const realFocus = DOM.sink.focus.bind(DOM.sink);
+
+            vi.spyOn(DOM.sink, 'focus').mockImplementation((handle: Handle, options?: { preventScroll?: boolean }) => {
+                realFocus(handle, options);
+                LayerManager.unregister(transient.layer);
+            });
+
+            expect(FocusHistory.forward()).toBe(true);
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+        });
+
+        it('a transient layer that unregisters during a focus move, before the service has seen the move, fires no "change" of its own', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            FocusHistory.back(); // [a*, b]
+
+            const transient = layerWith('blur');
+
+            register(transient.layer);
+            listen();
+
+            // Focus is on `x` already, and the viewport listener that closes
+            // the layer runs ahead of the service's own.
+            const x = liveHandle();
+
+            DOM.sink.focus(x);
+            LayerManager.unregister(transient.layer);
+
+            expect(changes).toEqual([]);
+
+            DOM.sink.dispatchEvent(DOM.source.getWindow(), makeEvent(x, 'focusin')); // [a, x*]
+
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+        });
+    });
+
+    // Cases D1–D3. While the service is disabled the two functions keep
+    // answering and a walk still fires, but a focus move and a layer fire
+    // nothing; enable() reports what changed in between.
+    describe('disable() and enable()', () => {
+        it('D1: a focus move and a layer fire nothing while disabled, and enable() reports the change', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+
+            FocusHistory.disable();
+            listen();
+
+            const editor = cellEditor();
+
+            focusIn(editor);
+            focusOut(editor);
+
+            const modal = layerWith('modal');
+
+            register(modal.layer);
+            LayerManager.unregister(modal.layer);
+
+            expect(changes).toEqual([]);
+            expect(flags()).toEqual({ canGoBack: true, canGoForward: false });
+
+            FocusHistory.enable();
+
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+        });
+
+        it('D2: enable() seeds the focused stop and fires for the flag that changes', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+
+            FocusHistory.disable();
+            listen();
+
+            const b = liveHandle();
+            focusIn(b); // not recorded: the service is disabled
+
+            FocusHistory.enable(); // [a, b*]
+
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(a);
+        });
+
+        it('D3: a walk fires "change" while the service is disabled', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            FocusHistory.disable();
+            listen();
+
+            expect(FocusHistory.back()).toBe(true);
+            expect(changes).toEqual([{ canGoBack: false, canGoForward: true }]);
         });
     });
 });
