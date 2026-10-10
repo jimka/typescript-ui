@@ -177,6 +177,9 @@ each surface writes its own element:
 The last three are *background surfaces*: they are not layers, and register
 with `LayerManager.addBackgroundSurface(surface)`, which calls the surface's
 `onInertChanged` with the current state at once.
+[`FocusHistory`](/recipes/focus-history) registers one too while it is
+enabled. It writes no element; the call tells it that a modal layer opened or
+closed.
 
 Both hooks are called again on every later register and unregister of any
 layer, also when the value has not changed for that surface, so keep them cheap
@@ -258,9 +261,10 @@ Four queries read the same state:
 
 `FocusTraversal` stands down on the first.
 [`FocusHistory`](/recipes/focus-history) also uses the first: while a modal is
-open it records nothing, and its `back()` and `forward()` move nothing. It
-records nothing inside a transient layer either, and its accelerators stand
-down on `hasActiveInputLayer()`, as `SpatialNavigation` does.
+open it records nothing, its `back()` and `forward()` move nothing, and its
+`canGoBack()` and `canGoForward()` are `false`. It records nothing inside a
+transient layer either, and its accelerators stand down on
+`hasActiveInputLayer()`, as `SpatialNavigation` does.
 
 ## Implementing a new layer
 
