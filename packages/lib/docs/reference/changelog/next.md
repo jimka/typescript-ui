@@ -1273,6 +1273,19 @@ page resets to empty.
   editable; `setReadOnly(false)` restores what `setContentEditable` last
   asked for. No consumer action is needed.
 
+- **`MarkdownEditor` undoes a paste as one step.** A paste over a selection
+  could leave no undo step of its own: when it put back the text of the
+  one text node it touched — a selection copied and pasted over itself, or
+  the selected word pasted over itself — the editor merged it into the edit
+  before. One Ctrl/Cmd+Z then took back that earlier edit together with
+  the paste, or did nothing when there was none, even where the paste had
+  added or removed a block. A selection dropped at its own edge did the
+  same. A paste, cut or drop that changes the document or replaces a
+  selection is now one undo step, and undoing it restores the document and
+  the selection as they were. A character typed right after `paste()` put
+  a single character into an empty block is no longer undone together with
+  it. No consumer action is needed.
+
 - **Typing HTML in Markdown source no longer adds or re-indents text.** In
   `MarkdownEditor`'s `"source"` mode, and in any `CodeEditor` with
   `language: "markdown"`, typing `<div>` inserted a `</div>` after the
