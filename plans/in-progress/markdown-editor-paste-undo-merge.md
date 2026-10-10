@@ -893,3 +893,455 @@ release) and in `0.52.1-nightly.20261005.0`.
     drop point lies inside the dragged range, `$doDrop` stops right after
     the split; D2 is that update. Lexical's own Ctrl/Cmd+X handler needs a
     browser clipboard, so C1 uses `cut()` and M6 covers the key.
+
+---
+
+## Implementation Notes
+
+Implemented on `feature/markdown-editor-paste-undo-merge`, on top of
+`feature/markdown-editor-table-cells-paste-empty-column` at `79903dbc1`,
+which these notes call "the parent". The plan was written against
+`4f68f3556`; four branches landed in between
+(`markdown-raw-block-html-tail-parity`,
+`markdown-editor-list-item-block-paste`, `markdown-editor-list-item-node`
+and `markdown-editor-table-cells-paste-empty-column`). Scratch files named
+below are under
+`~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/impl/paste-undo-merge/`
+("the scratch folder"). They are not in the repository.
+
+### Decisions that await the user's sign-off
+
+The user was not available while this plan was implemented. Each decision
+below was made by the agent that ran the work and stands until the user
+confirms or reverses it.
+
+**1. A plain-text Ctrl/Cmd+V into a raw Markdown block is tagged as a
+paste, which the plan does not have.** The plan tags `paste()` and takes
+every native paste to carry `PASTE_TAG` already. One does not: the
+editor's own handler for a plain-text paste into a raw Markdown block
+(`$pastePlainTextIntoRawBlock`) takes the paste before Lexical's handler,
+which is the only place that sets the tag. One character pasted on an
+empty line of such a block was therefore undone together with a character
+typed right after it, on the parent and on this branch as first
+implemented: the defect of row T3 on another route. The first review
+found it. The handler now tags its update. This is behaviour beyond the
+plan, so it has a code commit and a documentation commit of its own
+("Keep a plain-text paste into a raw Markdown block apart from typing in
+undo", "Document the undo step of a paste into a raw Markdown block") and
+rows T4 and T5. If the user wants it elsewhere, those two commits come off
+the branch whole.
+
+**2. The guard compares two range selections by their points, where the
+plan's module compares them with Lexical's `is`.** `is` also compares the
+text format and style a range carries for the text typed next. With it, a
+command that left the document and the selected range as they were but
+changed that format (the first review found `toggleInlineCode()` over a
+whole code span, selected by code) got a step that undoes nothing, and
+lost the redo stack. That contradicts the plan's own table ("same
+document, a range before, the same range after: no step"), so the code
+was changed to do what the table says: `selectsTheSame` in
+`markdownHistory.ts`, row N3. It is part of the plan's fix and is in its
+code commit.
+
+### The plan against the code as it is now
+
+The four branches changed the paste paths a great deal, so every claim of
+the plan was checked again before a test was written.
+
+**The cause is the same.** `probes/zz-cause.test.ts` in the scratch folder
+replays the three failing fuzz records on the parent and logs each update
+as the history's listener receives it (`probes/cause.parent.out`). In all
+three the paste is one update with exactly one dirty leaf, a text node
+that reads as before; five to nine dirty elements; and a changed document.
+Rule 5 of the plan's table merges that update. Nothing else is involved:
+the undo stack is empty after the paste.
+
+| Fuzz record | Dirty leaves | Dirty elements | Tags | Document |
+|---|---|---|---|---|
+| seed 2207, paste 2377 | 1, text as before | 9 | `markdown-run-edges` | changed |
+| seed 5521, paste 2137 | 1, text as before | 5 | `markdown-run-edges` | changed |
+| seed 7703, paste 2014 | 1, text as before | 5 | `markdown-run-edges` | changed |
+
+**What the four branches changed, and what that means here.**
+
+- A paste that goes through `PASTE_COMMAND` or
+  `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` now carries the tag
+  `markdown-run-edges`, which a listener of `registerRunEdgeRules` sets on
+  those commands. `paste()` dispatches neither and carries no such tag.
+  The history does not read that tag. A native paste that Lexical's own
+  handler makes carries `paste` as well. Neither stops rule 5, as the plan
+  measured for `paste`.
+- The paste listeners those branches added (`registerTablePartPaste`,
+  `registerItemBlockPaste`, `registerItemTextPaste`, and the list item
+  node's own hooks) all act inside the paste's own update. None adds an
+  update or a history entry, as their notes say. Of the 63,668 single
+  pastes, cuts and drops of the differential check below, none commits
+  more than one update that touches a node.
+- `registerItemTextEdits`, which queued a second update behind a paste
+  into a list item's text, is gone.
+- The fuzz has no other failure left. The plan's addendum counts 85 to 97
+  other failures per seed; they were fixed by the plans in between.
+
+**The plan's red phase holds as written.** With the test file in place and
+no source change, P1 to P5, T3 and D1 failed and the other nine rows
+passed. With the module wired in, T3 alone failed. With the tag, all
+passed.
+
+**`@lexical/history` upstream.** Rule 5 reads the same in the installed
+0.49.0, in 0.52.0 (the latest release) and in
+`0.52.1-nightly.20261009.0`, read from the published packages on
+2026-10-10.
+
+### Deviations from the plan
+
+Each entry says what the plan called for, what was done, and why.
+
+**The registration is in `buildEditor`.** The plan names `ensureEditor`.
+The registrations moved to `buildEditor` since; `registerMarkdownHistory`
+stands where `registerHistory` stood, between `registerTablePlugin` and
+`registerMarkdownShortcutsOutsideRawBlocks`.
+
+**Line numbers.** Every line number of the plan has moved. Where the
+things are now, in `MarkdownEditor.ts` unless another file is named:
+
+| Plan | Now |
+|---|---|
+| `registerHistory` call, L4595 | L6992, in `buildEditor` (L6963) |
+| `paste()`'s update options, L3941 | L6177 |
+| `@lexical/history` import, L45 | was L49; removed |
+| `HISTORY_DELAY_MS`, L83–87 | was L95–99; now in `markdownHistory.ts` |
+| the new import, "after L60" | L69, after the `markdownWritable.js` import, which was the plan's L60 |
+| `registerMarkdownShortcutsOutsideRawBlocks`, L2054–2100 | L3361; its proxy now replaces `update` and `registerCommand` too |
+| `$cutGuardedRange`'s `CUT_TAG`, L1176 | L2691 |
+| `insertImage`'s update options, L4217 | L6533 |
+| `registerWritableStateRules`, `markdownWritable.ts:73` | `markdownWritable.ts:79` |
+| the canaries, `markdown-editor-command-crashes.test.ts:611–660` | L1040 of that file, and `markdown-editor-table-edge-mounted.test.ts:323` |
+
+**The module differs from the plan's text in one place.** The plan gives
+`markdownHistory.ts` whole. It was first taken character for character.
+After the first review, `isOwnUndoStep` asks `selectsTheSame(before,
+after)` where the plan has `before.is(after)`, and the module has that
+function and two more imports (decision 2). Everything else is the plan's
+text.
+
+**A second edit to a paste handler.** `$pastePlainTextIntoRawBlock`
+(`MarkdownEditor.ts` L1664) calls `$addUpdateTag(PASTE_TAG)` (decision 1).
+The plan's grep for `tag: PASTE_TAG` still gives one match; the handler
+runs inside the command's update and has no options to pass, so it adds
+the tag as `$editWritably` adds `HISTORIC_TAG`.
+
+**Five rows were added.** Each pins something the plan states and no row
+of the plan fails without.
+
+| Row | Pins | Why it was added |
+|---|---|---|
+| N2 | the plan's table, "same document, a caret before: no step" | N1 and D2 start from a range that stays; a mutant that counted a caret as a replaced selection passed every row. Written after the code, against that mutant, and seen to fail under it |
+| N3 | the plan's table, "a range before, the same range after: no step", for a range whose carried format and style alone change | the first review's finding; written first and seen to fail |
+| P8 | P4 with the word selected backwards | a mutant that compared the anchors alone passed every row: in P4 the anchor moves and the focus stays, in P8 the other way round. Written after the code, against that mutant, and seen to fail under it |
+| T4 | decision 1: a character typed after a native paste of one character on an empty line of a raw block | the first review's finding; written first and seen to fail |
+| T5 | the same two the other way round | passes on the parent too; a guard |
+
+**Test helpers.** The helpers copied from the columns test carry the doc
+comments they have there. `clipboardHolds(text)` folds the
+`vi.spyOn(DOM.source, 'readClipboardText')` line that P5, T2 and T3
+repeat, and `selectEmptyRawLine` places the caret for T4 and T5. D1 and
+N3 name the result of `$isRangeSelection` before they test it.
+
+**One code commit for the guard and for `paste()`'s tag.** The plan's step
+5 calls the paste tag "a second change, separate from the guard". Both
+serve one fix with one changelog entry (a paste is one undo step), so
+they are one code commit and one documentation commit. The tag of
+decision 1 is apart, as said there.
+
+**The fuzz** was run from the mapped copy of the harness
+(`impl/list-item-node/harness/`), not from the path the plan gives; that
+copy still names `listitem`. All eleven seeds were run, in all four
+variants, and the two other fuzz families with them.
+
+### Results
+
+**Checks**, at the final code: `npm run typecheck`,
+`npm -w packages/lib run typecheck:test` and `npm run lint` report
+nothing; `npm test` passes 557 files, 16,104 tests (2 todo); `npm run
+docs:api` gives zero warnings; `npm run docs:llms:check` reports 0
+unaccounted; `npm run build:lib` builds. The new file holds 22 tests. The
+two greps of the plan's *Verification* give one match and none.
+
+**Mutants.** Sixteen single-change mutants of the module and of the edits
+to `MarkdownEditor.ts` were run against the new file (`mutants.py`,
+`mutants.out`). Thirteen fail at least one row. Three pass every row, and
+no row can tell them from the code:
+
+- The extra key replaces the dirty leaf, or the set is emptied, instead of
+  the key joining it. An update the guard changes has one dirty leaf whose
+  text is as before, and such an update is never typing to rule 4, with
+  the leaf in the set or without it. Keeping the leaf is the plan's
+  choice: the history then reads the same set plus one key.
+- The proxy hands out the editor's methods unbound. They then run with
+  the proxy as `this`, and every read and write still reaches the editor.
+  The binding is kept as the plan asks, as the other proxy has it.
+
+The document half of `isOwnUndoStep` is pinned by K2 alone: in the editor
+no update was found that changes the document through one unchanged dirty
+leaf from a caret (every paste of that kind starts from a range, which
+the selection half also catches).
+
+**Fuzz**, the mapped harnesses, node keys masked, run on an archive of
+`1690c61d9` (a commit from before the review fixes were folded in; the
+folded branch has the same source tree), against the parent's
+baselines (`impl/table-cells-paste/{fuzz,lif,r7}`). Results are in
+`fuzz-2/`, `lif-2/` and `r7-2/` of the scratch folder; the run before the
+first review's fixes (`fuzz-1/`, `lif-1/`, `r7-1/`) gave the same.
+
+| Fuzz | Baseline | This branch |
+|---|---|---|
+| paste, 11 × 3,000 | 3 `undo` | 0 |
+| paste, strict | 3 `undo` | 0 |
+| table edge, and strict | 0 | 0 |
+| list-edit, 11 × 1,500 | 14 failing documents | 14, the same records |
+| the seventh reviewer's, 5 × 3,000 | 120 | 120, the same records |
+
+The three `undo` records (seed 2207 paste 2377, seed 5521 paste 2137,
+seed 7703 paste 2014) are gone in both paste variants. No record was
+added and none changed, and `ran`, `skipped`, `withColumn` and
+`nothingCopied` are the same in every seed. All 44 paste and table-edge
+runs now end green.
+
+**Differential check.** `diff/` in the scratch folder holds a runner that
+plays a scenario file on an archive of this branch and of the parent and
+writes an undo trace for each scenario: the document, the whole state and
+the selection before and after the operation, every update as the
+history's listener receives it, then the state after each undo until the
+stack is empty, and after each redo. `cmp.py` compares the two sides.
+Half of the scenarios type a character first, in a paragraph of its own,
+so that a merged step has something to take back. `u5` runs twice, the
+second time with the history's clock moved a second forward between
+steps; `u4` and `u8` hold both kinds of scenario. The numbers are those
+of the run at the final code, at 188 places: the 176 of the parent's
+`places.ts` and twelve added after the first review (an empty line of a
+raw block and of a code block; a whole code span, bold run, underlined
+run, emphasis and link text as a range; a caret in a code span, a bold
+run and a link's text).
+
+| File | What it runs | Scenarios | Differ |
+|---|---|---|---|
+| `u1` | 36 clipboards (table parts, mixes, pastes that end in a table, a `:::` block, a list or a code block, plain words) pasted as Ctrl/Cmd+V does, at every place | 13,536 | 10 |
+| `u2` | 9 clipboards by the fuzz's two untagged routes, at every place | 6,768 | 20 |
+| `u3` | a range copied and pasted over itself, over itself selected the other way, and at its own start and end; every pair of text points of 12 documents; three routes | 23,424 | 720 |
+| `u4` | plain text pasted natively and through `paste()`: the selected text, one character, two words, two lines, nothing; alone, twice, and before and after typing | 11,904 | 83 |
+| `u5` | 58 keys and commands at every place, inside and outside the merge window | 43,488 | 0 |
+| `u6` | the updates a drop inside the editor runs, at every range place | 244 | 10 |
+| `u7` | the grid of the parent's fourth review, 6,512 pastes | 13,024 | 0 |
+| `u8` | every ordered pair of 12 operations at 22 places | 12,672 | 11 |
+
+**What the check did not run.** 3,184 of the 125,060 scenarios threw on
+both sides, in the same way, and compared nothing:
+
+- 2,492 in `u5` (1,246 in each of its two runs) and 668 in `u8`, all
+  `window object not found`: the Backspace and Delete keys, the
+  delete-word and delete-line commands and, at 42 places (a caret at an
+  edge of a block or between blocks), the harness's own Backspace and
+  Delete steps: wherever Lexical moves the selection through the browser
+  to find what to delete. That is at a caret; over a range those keys and
+  commands ran. They change text or join blocks,
+  which rule 5 does not merge, but the check does not show it for a
+  caret.
+- 24 in `u3`: a range copied inside a table by the untagged routes
+  (`Cannot read properties of undefined (reading 'cell')`, in
+  `@lexical/table`'s insert).
+
+Of the 121,876 scenarios that ran, 854 differ. In none does the operation
+itself give another document or selection; only the undo steps differ.
+Every one falls into one of four classes, and none is left over:
+
+| Class | Count | What differs |
+|---|---|---|
+| The same text put back over a selection inside one text node (a word pasted or dropped over itself) | 740 | the parent has no step for it; this branch has one, and its undo re-selects the text |
+| A paste over the copied range that adds a block | 60 | the same. All 60 are in a `:::` block: a range across two columns, or across the paragraphs of one `:::` block |
+| `paste()` of one character that becomes a text node of its own, next to a typed character | 50 | the parent undoes both at once; this branch one at a time. 48 are the paste first and the character typed after it: at a caret that stands in no text (an empty block, a caret between blocks), on an empty line of a raw block, in a link's text, which `paste()` splits, and at a caret set by code in a code span or a bold run (such a caret carries no format, so the character goes between the two halves of the run). 2 are the other order, in a link's text |
+| A plain-text Ctrl/Cmd+V of one character on an empty line of a raw block, then a typed character | 4 | the same (decision 1) |
+
+In each of the 854 the parent's undo chain is this branch's with the new
+step left out. The first two classes are exactly the scenarios in which
+`isOwnUndoStep` answers yes for an update that rule 5 would merge. It
+also answers yes for a format toggle that changes a whole text node's
+format, where the history pushed already; those scenarios do not differ.
+A toggle that changes neither the document nor the selected range is no
+step on either side (row N3; the first reviewer's sweep of 18 commands
+over every whole text node of 31 documents, 2,592 scenarios, run again at
+the final code, gives the parent's result in every one:
+`rv1-sweep/` in the scratch folder).
+
+`cmp.py` also checks each side against the contract, without the other,
+for the 63,668 scenarios of `u1` to `u4`, `u6` and `u7` that make one
+paste, cut or drop. When the operation changed the document or replaced a
+selected range, there must be exactly one new step, one undo must give
+back the document, the state and the selection as they were, and the
+redos the result; when it changed neither, there must be no new step. The
+parent fails that in 828 scenarios and this branch in 28. Those 28 fail
+on the parent as well and are not rule 5's doing: a step is left although
+the document is the same (the first and the third entry under *Seen along
+the way*). In `u4` and `u8`, wherever the second of two operations
+changed the document, one undo returns to the state after the first,
+except a typed character after a typed character inside the merge window,
+which is one step by design (16,136 pairs; the parent fails 54 more).
+
+**Browser**, Chromium against the worktree's demo (`MD Editor`), on its
+sample document, which holds a two-column `:::` block. Selections were set
+through the page's own selection, keys were real key presses with the
+real clipboard, and the editor's updates were logged. All seven rows
+were run before the first review's fixes; M1, M4, M5 and M6 were run
+again at the final code, with the same results.
+
+| Row | Result |
+|---|---|
+| M1 | `!` typed at the end of a heading; a range from the middle of `Left column.` to the start of `Right column.`; Ctrl+C, Ctrl+V. The paste is one update with one dirty leaf, tagged `paste` and `markdown-run-edges`, and adds an empty paragraph to the first column. One Ctrl+Z: the document and the selection are as before the paste, the `!` is there. A second Ctrl+Z removes the `!`. Passes |
+| M2 | `!` typed again, a word selected, Ctrl+C, Ctrl+V, Ctrl+Z: the word is selected again, the `!` is there. Passes |
+| M3 | The same with the context menu's Paste. The browser's permission prompt for a clipboard read cannot be answered from the tools used, so `navigator.clipboard.readText` was replaced by a function returning the word; the menu, `paste()` and the focus handling were the real ones. Ctrl+Z: the word is selected again, the `!` is there. Passes, with that limit |
+| M4 | `Left` dragged from its column onto the end of the heading, as drag events carrying a real `DataTransfer` that Lexical's own drag-start handler filled. One update. Ctrl+Z: `Left` is back in its column and selected, nothing else changed. Passes |
+| M5 | `?` typed, a word selected and dropped inside itself: one update, document and selection unchanged. Ctrl+Z removes the `?`. Passes |
+| M6 | A word selected, Ctrl+X, Ctrl+Z: the word is back and selected. Passes |
+| M7 | Source mode: a character typed, a word selected, Ctrl+C, Ctrl+V, Ctrl+Z. The paste alone is undone, the typed character stays. The source editor's history is its own and no code of this branch runs there |
+
+Moving the selection in the mounted editor (six ranges and carets set one
+after another) commits updates with no dirty node only, so no step can
+come from a click or an arrow key. No console message.
+
+Rows T3 and T4 have no browser run: a paste and a typed character must
+fall within 300 ms of each other, and the tools used put more than that
+between two key presses. They are pinned offline (T3, T4, T5, and the 54
+scenarios of `u4` and `u8`).
+
+**Demo.** No demo change: the plan adds no command or option.
+
+### Seen along the way
+
+Not changed here; each is the same on the parent. Most are steps the
+history pushes although nothing changed, or selections an undo restores,
+which the plan lists as non-goals.
+
+- A drop released inside its own selection leaves a step that undoes
+  nothing when the selection lies in a raw Markdown block or in a code
+  span, a bold, underlined or emphasised run. The split touches two or
+  three text nodes there, so rule 5 is not what decides (16 scenarios of
+  `u6`).
+- `toggleLink(null)` over a range that holds no link leaves a step that
+  undoes nothing (56 scenarios of each run of `u5`), and so does
+  `setBlockType("paragraph")` at a caret held as a point on the root after
+  a table (1).
+- Table cells copied by a range and pasted at the caret they were copied
+  from are written over themselves. The document is the same and the
+  caret has moved; the step's undo moves it back (12 scenarios of `u3`).
+- The format toggles and `cut()` on a caret select the word first, and an
+  undo restores that selection.
+- The paste in M1 and in P1 to P3 still adds an empty paragraph to the
+  first column, and the paste of fuzz record 2207 leaves a `:::` block
+  holding an empty quote. What a paste leaves behind is the plan's first
+  non-goal; each such paste is now one undo step.
+- `paste()` at a caret inside a link's text splits the link and puts the
+  pasted text between its halves, unlinked
+  (`say [ab](http://x.y)Z[cd](http://x.y) here`). A typed character and a
+  native paste stay inside the link.
+- `toggleInlineCode()` over a whole code span leaves the span as it is
+  when the range was set by code and carries no format of its own; only
+  the format the range carries changes. This is the first reviewer's
+  reproduction of decision 2's defect; the reviewer found no key or mouse
+  route to such a range.
+- Text composition (an IME) was not run. At a composition's end the
+  history compares with the state the composition started from, while the
+  guard reads the update's own previous state, so a composition that puts
+  the selected text back may still be merged. The first review raised
+  this from the source.
+
+### For the plans that follow
+
+- **A new workaround of a Lexical merge rule** goes into
+  `markdownHistory.ts`, which owns the history's registration. The update
+  listener the history gets is wrapped there; every other listener of the
+  editor still receives the update as Lexical made it.
+- **A handler that takes `PASTE_COMMAND` whole** (returns `true` ahead of
+  `registerRichText`'s handler) must tag its update `PASTE_TAG` itself, as
+  `$pastePlainTextIntoRawBlock` now does: Lexical's handler is the only
+  other place that sets it. That handler and `paste()` are the two routes
+  found that insert pasted text without the tag; the search was the
+  differential check's `u4` and `u8` at 188 places, and a read of every
+  `PASTE_COMMAND` listener (`$clearGuardedRangeBeforePastedText` and the
+  run-edge tag return `false`).
+- **When Lexical is upgraded**, row K1 tells whether rule 5 still merges
+  an update that added a block. When it fails, the proxy goes and
+  `registerHistory` gets the editor itself; rows P1 to P5, P8, D1 and K2
+  then say whether the upgrade is enough.
+- **Comparing two selections.** `RangeSelection.is` also compares the
+  format and style the range carries. Code that asks whether a selection
+  still selects the same text compares the points (`selectsTheSame`).
+- **The differential runner** in `diff/` can be pointed at a later branch
+  (`setup.sh <ref>`, then `runall-diff.sh`); `cmp.py <file>` sorts the
+  differences, counts the scenarios that threw, and counts the contract
+  checks on each side.
+- **Fuzz baselines** for the next plan are `fuzz-2/`, `lif-2/` and `r7-2/`
+  of the scratch folder: paste 0, paste strict 0, table edge 0 and 0,
+  list-edit 14, the seventh reviewer's 120.
+
+### Reviews
+
+**First review.** Three blocking findings.
+
+- A range whose points stay but whose carried text format changes counted
+  as a replaced selection, because the plan's module compares selections
+  with Lexical's `is`. A command that changed nothing else then left a
+  step that undoes nothing and emptied the redo stack, where the parent
+  left none. Fixed in the guard (decision 2, row N3). The reviewer's own
+  sweep, run again, shows no difference from the parent.
+- A plain-text Ctrl/Cmd+V into a raw Markdown block was never tagged as a
+  paste, so the defect of row T3 was still there on that route. Not a
+  regression: the parent has it. Fixed, as a change of its own (decision
+  1, rows T4 and T5).
+- Three statements of these notes did not hold: that `paste()` was the
+  only route found that looks like typing; that every paste carries
+  `markdown-run-edges`; and the differential check's totals, which left
+  out the scenarios that threw on both sides. All three are corrected
+  above, the last under *What the check did not run*.
+
+Its advisory findings, none acted on in the code:
+
+- T1 to T5 rely on the real 300 ms window: on a run stalled for longer
+  between two steps they would pass without the fix. They fail without it
+  on every run made here (the mutants, and the red phase).
+- The guard and `paste()`'s tag are one code commit (see *Deviations*).
+- Four multi-line statements of the test file have no blank line around
+  them; the linter does not read test files.
+- Text composition: recorded under *Seen along the way*.
+
+**Second review**, by a fresh reviewer at `b00e64a6e` (before the fold;
+the branch's tree but for this paragraph), after the fixes above. No blocking finding, which ends the audit after two rounds. It ran
+the checks again on an archive of the branch, recounted the differential
+check's numbers from the raw traces, ran seven mutants of its own (each
+fails the rows named above), repeated M1 in Chromium, and folded the
+fixups in a scratch clone with the tree unchanged. Its advisory findings,
+none acted on in the code:
+
+- The whole-document comparison in `isOwnUndoStep` runs for more than the
+  plan's note says: also for Enter at the start of a block,
+  `setBlockType("h1")` at a caret and a format toggle over a whole text
+  node, each of which has one dirty leaf whose text is as before. Lexical
+  pushes all three itself, so no step changes. The reviewer measured one
+  serialisation of a 3,000-paragraph document at about 16 ms, so about
+  32 ms for such an operation there. A test of what rule 5 itself reads
+  (the leaf's parent and its own JSON) ahead of the comparison would skip
+  them.
+- A selected character typed over itself is a step of its own now, as a
+  word pasted over itself is: on the parent one undo took back the edit
+  before it. This follows from the plan's table. No row, no scenario of
+  the differential check and no line of the changelog names it, since no
+  scenario types the text it has selected.
+- Backspace and Delete at a caret, which the differential check could not
+  run, were run by the reviewer in Chromium on the branch: Enter at a
+  paragraph's end, Backspace in the empty paragraph, Delete from the
+  paragraph before it and Backspace inside text are one undo step each,
+  with no console message. The three that join or split blocks have no
+  dirty leaf, and Backspace inside text has one whose text changed, so the
+  guard passes all four on.
+- T1 to T5 and the wall clock, and the blank lines in the test file, as in
+  the first review.
+- `selectsTheSame` compares two ranges point by point as
+  `MarkdownEditor.ts` L4471 already does; these notes did not cite it.
