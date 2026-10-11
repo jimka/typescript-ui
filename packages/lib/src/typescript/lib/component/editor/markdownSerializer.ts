@@ -105,6 +105,13 @@ const BLANK_FIRST_LINES = /^(?:[ \t]*\n)+/;
 /** The lines holding nothing but whitespace that end a text, each with the line end before it. */
 const BLANK_LAST_LINES = /(?:\n[ \t]*)+$/;
 
+/**
+ * The line end a raw block only a second blank line ends is written with
+ * while a block follows it: no written form of a raw block ends in one of
+ * its own.
+ */
+const SECOND_BLANK_LINE_END = /\n$/;
+
 /** The bullet the probes of {@link rawBlockStandsInItem} are written with: the one a list made in the editor writes. */
 const PROBE_MARKER = "-";
 
@@ -604,7 +611,10 @@ interface WrittenBlock {
     readonly node:     LexicalNode;
     /** The block's source at load when it is written as that source, else `undefined`. */
     readonly source:   MarkdownSourceBlock | undefined;
-    /** What is written: the source, or the standard output. */
+    /**
+     * What is written: the source, with one more line end where a raw block needs its second blank line
+     * (`takesInBlockAfter`), or the standard output.
+     */
     readonly text:     string;
     /** The block's standard output. */
     readonly standard: string;
@@ -1294,11 +1304,15 @@ function documentLoad(parts: readonly StandardBlock[], sourceMap: MarkdownSource
  * output. A source stops reading the same when what is now written after it
  * closes a definition label or title it leaves open
  * ({@link labelClosedAfter}) or a `:::` fence it opens
- * ({@link fenceClosedAfter}), or when it is a raw block only a second blank
- * line ends and the block after it is no longer the one it was loaded
- * before ({@link takesInBlockAfter}). A block that writes nothing (an empty
- * paragraph) is left out — unless it is unchanged, since a block the viewer
- * shows as nothing (a link with empty text) still has source to keep.
+ * ({@link fenceClosedAfter}), or when it ran on to the end of its document
+ * (an unclosed code fence) and a block now follows it. A raw block only a
+ * second blank line ends, when the block after it is not one it was loaded
+ * before ({@link takesInBlockAfter}) — it was loaded before another, or as
+ * its document's last block — stays its source and is given one more line
+ * end, so every byte of the unedited block is kept. A block that writes
+ * nothing (an empty paragraph) is left out — unless it is unchanged, since a
+ * block the viewer shows as nothing (a link with empty text) still has
+ * source to keep.
  *
  * @param parts - Every top-level block, with its standard output.
  * @param sourceMap - The source map of the editor's imports.
@@ -1314,8 +1328,11 @@ function writtenBlocks(
     const written: WrittenBlock[] = [];
 
     candidates.forEach(({ node, text, entry }, index) => {
-        const runsOn = entry !== undefined && entry.load.endsOpen && entry.index === entry.load.blockCount - 1
-            && index < candidates.length - 1;
+        const endedOpenLoad = entry !== undefined && entry.load.endsOpen && entry.index === entry.load.blockCount - 1;
+        // A raw block only a second blank line ends stays its source and is given that line below; any other block
+        // that ran on to the document's end (an unclosed code fence) is closed by its standard form.
+        const lacksOnlyLineEnd = endedOpenLoad && $isMarkdownRawBlockNode(node) && rawBlockEnd(entry.body) === "wide";
+        const runsOn = endedOpenLoad && !lacksOnlyLineEnd && index < candidates.length - 1;
         const keep = entry !== undefined && !runsOn && !joinsPreviousBlock(entry, written[written.length - 1]);
         const block = keep ? { node, source: entry, text: entry.body, standard: text } : { node, source: undefined, text, standard: text };
 
@@ -1327,11 +1344,14 @@ function writtenBlocks(
     // From the end, so each block is checked against what is finally written after it.
     for (let index = written.length - 1; index >= 0; index--) {
         const block = written[index]!;
-        const readsOtherwise = block.source !== undefined
-            && (labelClosedAfter(written, index) || fenceClosedAfter(written, index) || takesInBlockAfter(written, index));
+        const readsOtherwise = block.source !== undefined && (labelClosedAfter(written, index) || fenceClosedAfter(written, index));
+        const lacksLineEnd = !readsOtherwise && block.source !== undefined && takesInBlockAfter(written, index);
 
         if (readsOtherwise) {
             written.splice(index, 1, ...(block.standard === "" ? [] : [{ ...block, source: undefined, text: block.standard }]));
+        } else if (lacksLineEnd) {
+            // Still its source, byte for byte, with the line end that makes the blank line after it the second.
+            written[index] = { ...block, text: `${block.text}\n` };
         }
     }
 
@@ -1374,11 +1394,12 @@ function fenceClosedAfter(blocks: readonly WrittenBlock[], index: number): boole
 
 /**
  * Tells whether a raw block written as its source takes in the block now
- * written after it: its text does not end at one blank line ({@link runsOn}:
- * `<div`, which only a second blank line ends), and the block after it is
- * not the one that followed it at load, so the source's own text between the
- * two is not what is written there. It must be written in the standard form,
- * which writes that second blank line itself.
+ * written after it: only a second blank line ends its text (`<div`), and the
+ * block after it is not the one that followed it at load, so the source's
+ * own text between the two is not what is written there. One more line end
+ * must follow its text, as the standard form of such a block writes. A raw
+ * block no blank line ends is not asked about: with a block after it the
+ * editor holds it as a paragraph.
  *
  * @param blocks - The blocks being written.
  * @param index - The block's position among them.
@@ -1389,7 +1410,7 @@ function takesInBlockAfter(blocks: readonly WrittenBlock[], index: number): bool
     const next = blocks[index + 1];
     const followedAsLoaded = next === undefined || followsAtLoad(block.source, next.source);
 
-    return !followedAsLoaded && $isMarkdownRawBlockNode(block.node) && runsOn(block.text);
+    return !followedAsLoaded && $isMarkdownRawBlockNode(block.node) && rawBlockEnd(block.text) === "wide";
 }
 
 /**
@@ -1461,7 +1482,26 @@ function unchangedBlock(
 ): MarkdownSourceBlock | undefined {
     const entry = sourceMap.blocks.get(part.node.getKey());
 
-    return entry !== undefined && entry.fingerprint === part.text && readsAlike(entry, definitions) ? entry : undefined;
+    return entry !== undefined && writesAsAtLoad(part, entry) && readsAlike(entry, definitions) ? entry : undefined;
+}
+
+/**
+ * Tells whether a block's standard output is its output at load. A raw block
+ * only a second blank line ends writes one more line end while a block
+ * follows it ({@link serializeRawBlock}), which tells of its neighbour and
+ * not of the block: that line end is left out, so a block added after such a
+ * raw block, or the removal of every block after it, does not make it an
+ * edited one.
+ *
+ * @param part - A block and its standard output.
+ * @param entry - The block it was loaded as.
+ * @returns `true` when the block itself writes what it wrote at load.
+ */
+function writesAsAtLoad(part: StandardBlock, entry: MarkdownSourceBlock): boolean {
+    const isRaw = $isMarkdownRawBlockNode(part.node);
+    const own = (text: string): string => (isRaw ? text.replace(SECOND_BLANK_LINE_END, "") : text);
+
+    return own(entry.fingerprint) === own(part.text);
 }
 
 /**

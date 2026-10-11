@@ -3505,6 +3505,56 @@ describe('a raw block outside a list item is written so that it reads where it s
             steps:  [typeX(['b', 1])],
             saved:  '<div>\n\nbX',
         },
+        // The block itself was not edited, so every byte of its source stays: the spaces before it, the line end
+        // between it and the block it was loaded right after, and the document's own first lines.
+        {
+            name:   'RW10: an indented HTML block start keeps its indentation when it is given its second blank line',
+            source: '  <div\n\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  '  <div\n\n\nbX',
+        },
+        {
+            name:   'RW11: an HTML block start right under a quote stays right under it',
+            source: '> q\n<div\n\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  '> q\n<div\n\n\nbX',
+        },
+        {
+            name:   'RW12: the blank lines that open the document stay before an HTML block start',
+            source: '\n\n<div\n\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  '\n\n<div\n\n\nbX',
+        },
+        {
+            name:   'RW13: an indented closing tag name keeps its indentation when the block after it is removed',
+            source: 'a\n\n   </details\n\n\nb\n\nc',
+            steps:  [{ key: 'removeBlock', index: 2 }],
+            saved:  'a\n\n   </details\n\n\nc',
+        },
+        {
+            name:   'RW14: the document\'s last block, an indented HTML block start, keeps its indentation before a new block',
+            source: 'p\n\n  <div',
+            steps:  [{ key: 'Enter', at: ['<div', 4] }, { key: 'type', text: 'z' }],
+            saved:  'p\n\n  <div\n\n\nz',
+        },
+        {
+            name:   'RW15: the same in a document that ends with a line end',
+            source: '   </details\n',
+            steps:  [{ key: 'Enter', at: ['</details', 9] }, { key: 'type', text: 'z' }],
+            saved:  '   </details\n\n\nz\n',
+        },
+        {
+            name:   'RW16: an indented HTML block start keeps its indentation when every block after it is removed',
+            source: '  <div\n\n\nb',
+            steps:  [{ key: 'removeBlock', index: 1 }],
+            saved:  '  <div',
+        },
+        {
+            name:   'RW17: a code fence left open as the last block is still closed before a new block (control)',
+            source: 'p\n\n```\nk',
+            steps:  [{ key: 'command', run: (editor) => editor.insertParagraphAfterBlock(), at: ['k', 1] }, { key: 'type', text: 'z' }],
+            saved:  'p\n\n```\nk\n```\n\nz',
+        },
         // RD — the document's definitions are read raw block by raw block: an HTML block left open ends with its
         // column or list item, or at its second blank line, and the definition after it counts.
         {
