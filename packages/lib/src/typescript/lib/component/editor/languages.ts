@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-// Registers the five built-in language definitions as a side effect of
+// Registers the seven built-in language definitions as a side effect of
 // importing this module (from the barrel `index.ts`). Every grammar and
 // formatter loader is a dynamic `import()`, so — because the CodeMirror
 // language packages and Prettier/sql-formatter are `external` in the lib

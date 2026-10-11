@@ -8,7 +8,7 @@ import { formatWithPrettier } from '~/component/editor/formatters/prettier';
 import { mapFormatOptions } from '~/component/editor/formatters/options';
 import type { FormatOptionNames } from '~/component/editor/formatters/options';
 import type { FormatOptions } from '~/component/editor/LanguageRegistry';
-// Barrel import triggers the five-built-in registration side effect.
+// Barrel import triggers the seven-built-in registration side effect.
 import '~/component/editor/index';
 import { Component } from '~/core/Component';
 import { Anchor } from '~/layout/Anchor';

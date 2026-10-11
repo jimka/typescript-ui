@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-// Registers the five built-in language definitions as a side effect.
+// Registers the seven built-in language definitions as a side effect.
 import '~/component/editor/languages.js';
 
 export { CodeEditor } from '~/component/editor/CodeEditor.js';
