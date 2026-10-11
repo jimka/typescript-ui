@@ -445,6 +445,28 @@ page resets to empty.
   document, and switching to source mode and back leaves the text as it
   was. No consumer action is needed.
 
+- **`MarkdownEditor`'s list toggles change the selected blocks only.** On
+  the WYSIWYG surface `toggleOrderedList()` in a bulleted list (and
+  `toggleUnorderedList()` in a numbered one) converted the whole list
+  whatever was selected, a nested list in place, and made a loose list
+  tight. It now changes the selected items alone: each becomes
+  an item of the other kind at the top level, with the blocks it holds up
+  to its first nested list, and its list is split around it. Select a
+  whole list to convert it whole. A toggle on a block a list item holds
+  after its text — a further paragraph, a quote — makes that block an item
+  of its own; before, it changed nothing in a list of that kind. In source
+  mode the two toggles and `setBlockType` now convert a task item with its
+  `[ ]` / `[x]` marker — kept as a marker while the item stays an item
+  (`1. [ ] todo`), written as the text it shows when the text leaves its
+  list (`\[ \] todo`) — and items made from neighbouring blocks stand line
+  after line as one tight list that joins a list of their kind next to
+  them. One difference between the surfaces stays for now: in source mode
+  the blocks an item holds after its text stay in the list, in an item of
+  their own, and where they would not read the same there — in a task
+  item, or before a thematic break written with the list's marker — the
+  source-mode command does nothing. No consumer action is needed unless
+  code relied on a caret converting a whole list.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
@@ -1461,6 +1483,23 @@ page resets to empty.
   bracket no longer moves to a line of its own, as it does not in other text
   of a quote or item. Markdown's own continuation at the end of an HTML
   block is unchanged. No consumer action is needed.
+
+- **`MarkdownEditor`'s block type and list commands act where a deleted
+  table leaves the caret.** After `deleteTable()` the caret stands
+  between two blocks, or in a `:::` column or a document the table left
+  empty. `setBlockType()` did nothing there, and a list toggle over a
+  column the table left empty wrote the list straight into the `:::`
+  block, dropping the column. Each command now acts on the block of
+  text beside the caret, or on a new empty paragraph where there is
+  none, and a range that covers an emptied column leaves the column in
+  place. `canSetBlockType` is now `false` for a caret that code sets on
+  a table between two rows, where these commands change nothing. No
+  consumer action is needed.
+
+- **A code block made from a task-list item holds the marker as it was
+  written.** `setBlockType("code")` on `- [ ] todo` wrote `\[ \] todo`
+  into the code block on the WYSIWYG surface. It now writes `[ ] todo`,
+  on both surfaces. No consumer action is needed.
 
 ### Core
 
