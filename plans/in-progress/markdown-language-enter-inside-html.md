@@ -869,3 +869,174 @@ Listing the new binding ahead of `markdown()`'s support in the returned array ch
     `- item` still gives `- item` over `- `, because lang-markdown's two commands never read
     `state.readOnly`. Whether a live read-only editor delivers the key to them was not checked. It is
     outside this plan and is reported in the hand-back.
+
+---
+
+## Implementation Notes
+
+Implemented on `feature/markdown-language-enter-inside-html`, branched from `feature/codeeditor-bracket-pair-backspace` at `c0b7ab18f`. That base is six branches above the tip the plan was written against (`4f68f3556`), so every path, line number and claim of the plan was checked against the code before a test was written. The command itself is the plan's, character for character. The differences are around it, and are listed here.
+
+### Differences from the plan
+
+1. **Line numbers.** Each edit was placed by the text the plan quotes. The numbers have moved:
+
+   | Place | Plan | At the base (`c0b7ab18f`) | After this branch |
+   |---|---|---|---|
+   | the `TreeIndentContext` import in `languages.ts` | 10 | 14 | 14–18 (the five import lines) |
+   | the `SyntaxNode` alias | 140 | 144 | 148 |
+   | `indentInsideMarkdownHtml` | 157 | 169 | 178 |
+   | the four new functions, JSDoc included | — | — | 210–372 (the functions at 223, 262, 302, 330) |
+   | the `"markdown"` loader | 185 | 201 | 374; its last statement 401–406 |
+   | `describe('built-in markdown language typing', …)` | 3104 | 3223 | 3223 |
+   | rows M26 / M32 / M33 | 3397 / 3430 / 3437 | 3521 / 3556 / 3563 | 3521 / 3551 / 3555 |
+   | row H1 | 3443 | 3600 | 3810 |
+   | the bullets in `CodeEditor.md` | 68–71 | 68–72 | 68–73 |
+
+2. **`languages.ts` already imported from `@codemirror/state`.** A branch of the stack added `import { countColumn } from "@codemirror/state";` for the tab fix in `indentInsideMarkdownHtml`. The plan's value import became `import { countColumn, EditorSelection, Prec } from "@codemirror/state";`. The other four import lines are the plan's.
+
+3. **The file's header comment was corrected.** It said `@codemirror/state` is the one external package imported statically for its code. With this branch there are three (`@codemirror/language`, `@codemirror/state`, `@codemirror/view`), all of which `CodeEditor.ts` imports statically too. The comment now says so. The plan did not name this edit.
+
+4. **Row ids: nothing was renumbered.** Since the plan was written the harness gained rows M34, M36 and M37 (each run at `tabSize` 2, 4 and 8) and M35, between M33 and H1, and rows B1–B24 after H2. The plan numbers its new rows C1–C41 so they cannot collide with later M rows, and no C id exists in `code-editor.test.ts`. The ids were kept as the plan has them, because `plans/markdown-language-readonly-and-fences.md` refers to C21, C23, C24, C25, C35, C36 and C38 by id. The C rows went in after M35 and before H1.
+
+5. **Rows M34 and M36 changed their expected text.** The plan could not name them; it says "M1–M25, M27–M31, H1 and H2 keep their results", and those do. M34 and M36 press Enter on a tab-indented item marker line with HTML below the caret, which is now the new command's case. The new line used to get six spaces, counted in Markdown's columns by `indentInsideMarkdownHtml`. It now gets the marker line's own start: the tab, and two spaces for the marker.
+
+   | Row | Start (`→` is a tab, `·` a space) | Before | After |
+   |---|---|---|---|
+   | M34 | `→- <div>▮` over `······x` | `······▮` | `→··▮` |
+   | M36 | `·→- <div>▮` over `······x` | `······▮` | `·→··▮` |
+
+   Both are column 6 as Markdown counts, at every `tabSize`, so each row's title still holds and was kept. Their comments say what is now copied. M37 (`-→<div>▮` at the end of the document) and M35 keep their results. M37 is now the one row that reaches the rule's column arithmetic with a tab: with `MARKDOWN_TAB_STOP` swapped for the editor's `tabSize`, M37 fails at sizes 2 and 8 and no other row does.
+
+   At step 1 the red set was exactly the plan's 32 rows. After step 2 the six tests of M34 and M36 failed, and were then given the text above. Their new text follows from the plan's own rule (row C14 has the same marker line), but it was confirmed against the implementation, not written before it.
+
+6. **No `typedWith` helper.** The harness's `typed` and `buildTypingState` gained a `tabSize` parameter after the plan was written, which sets `tabSize` and `indentUnit` the way `CodeEditor` does. Rows C15 and C17 pass 8 and 2 through it. That left the helper with one caller, row C38, which builds its read-only state inline, as C36 and C37 build theirs.
+
+7. **`CodeEditor.md`: the list had five bullets and other wording.** The plan replaces "the four bullets on lines 68–71". The base has five, reworded by the stack's review fixes, and one of them (the tab bullet) is not in the plan at all. The list now has six: the plan's five, and the tab bullet narrowed to what is still true.
+
+   | Bullet at the base | Now |
+   |---|---|
+   | A list item's marker line: indented to the item's content, counted in Markdown's columns | replaced by the plan's "In a blockquote or a list item" bullet. Its clause on what "HTML follows the caret" means — more of the block below, or another tag on the same line (`- <div>\|<p>x</p>`, row M35) — was kept in the new bullet. The Markdown-column sentence moved to the two places where the rule still answers on a marker line: "With text selected", and the end of a block after a bullet followed by a tab (`-→<div>▮`, row M37), which the "At the end of an HTML block" bullet now names |
+   | In a blockquote: neither `>` nor the item's indentation | gone: this is the limit the plan removes |
+   | Between an adjacent open and close tag: the close tag lands outside the item | the plan's bullet: both new lines get the prefix |
+   | Inside `<script>` and `<style>` | the plan's bullet |
+   | On a line indented with a tab: counted with `tabSize`, written as spaces | kept, narrowed to "outside every blockquote and list item", plus one sentence: the same holds in a list item when Enter replaces a selection off the marker line. Both were probed at `tabSize` 2 and 8 |
+   | — | the plan's "At the end of an HTML block" bullet |
+   | — | the plan's "With text selected" bullet |
+
+8. **Changelog.** The last bullet under `## Fixed` → `### Components` is now the bracket-pair one. The new bullet follows it, hard-wrapped at 76 columns with a two-space hanging indent like its neighbours. Its text is the plan's, plus one sentence on bracket pairs added after the review (A2 under "Changes made after the review").
+
+9. **Three test files outside the plan's table.** The run's briefing asked for a round-trip corpus case for each shape Enter can now produce, so that the viewer (`Markdown`) and the WYSIWYG importer are shown to read them alike.
+
+   - `tests/component/markdown-roundtrip/corpus/enterInsideHtml.ts` (new, registered in `corpus/index.ts`): 36 cases. 31 are the documents the rows end with (M26, M32–M34, M36, C1–C14, C16–C18, C21, C23, C24, C28, C29, C31–C33, C37), named by row. Four have text typed on a new line that starts with a tab, and one is M36's document with every line on the marker line's prefix. `referenceLinks.ts` is the precedent for a corpus file per feature.
+   - Every case passes `parity`, `idempotence`, `verbatim`, `canonical`, `canonicalIdempotence` and the edit fuzz, so the editor reads each document as the viewer does. 23 cases list a known `surface` divergence, all existing ones: 21 `quoteBlocks` (a quote holding an HTML block loads as a raw block) and 2 `listItemBlocks`. No new divergence was needed.
+   - `markdown-roundtrip.test.ts` gained one `describe` of 36 tests and a helper, `leavesWithContainer`. Each test reads a case's document with the viewer and checks two things: the document is one blockquote or one list, and every block from the HTML's first line on sits in the same quote or list item, at any depth. The documents Enter gave before this branch fail it (`> <div>`, an empty line, `> x`: two quotes; `- <div>`, a line of two spaces, `</div>`: a list and a raw block), and so do documents in which a line leaves a nested container only (a close tag one level out of a nested item; a line in the outer of two quotes).
+   - **One case is listed as failing that check, and it shows a defect of the viewer, not of Enter.** In M36's document the two lines the row starts with, `······x` and `······</div>`, are read as a code block of the outer item. The viewer counts the tab of the marker line `·→- <div>` as four columns wherever it starts, so it puts the nested item's content at column 7; CommonMark, and the editor's parser, put it at 6. It shows only after an empty line, since before one the lines continue the block lazily. The line Enter adds is not affected: it carries the marker line's own prefix, and the case with all lines on that prefix passes. The document Enter gave before this branch, with six spaces on the new line, is read the same way. The test holds the case in a list of its own, `READ_OUT_OF_ITS_ITEM`, and expects the check to fail for it, so a fix of the viewer turns it red until the entry is removed, as a corpus case's known divergence does.
+
+   So `git diff --stat` against the base touches nine files, not the four of `## Verification`: the plan's four, these three, `component/editor/index.ts` (see 11) and the plan file. `CodeEditor.ts` and `MarkdownEditor.ts` are unchanged.
+
+10. **The addendum's table was re-run** on the final code, one mutant at a time, and again after row C42 was added in the review (see "Changes made after the review"); the table holds the second run. Every part is still pinned. The rows that fail differ from the plan's table only by rows added since:
+
+    | Part removed or changed | Rows that fail now |
+    |---|---|
+    | the `state.readOnly` check | C38 |
+    | the `!range.empty` check | C36 |
+    | the two `isActiveAt` checks | C35, M37 |
+    | the `Blockquote` / `ListItem` ancestor check | C34, C42 (its top-level line) |
+    | list markers copied as written | 20 rows: the plan's 17, and M34, M35, M36 |
+    | the `null` for a caret in front of a marker | C22 |
+    | the prefix taken only from the text before the caret | C20, C21 |
+    | the dropped spaces after the caret | C2, C20, C21, C28 |
+    | the second line between adjacent tags | M32, C11, C12, C13 |
+    | a second line added on every Enter | 41 rows |
+    | the binding itself, or its `Prec.high` | the 32 `R` rows, and M34, M36 and C42 |
+    | `indentInsideMarkdownHtml`'s marker-line answer | C36, M37 |
+    | the binding listed ahead of `markdown()`'s support | none, as the plan says |
+
+    One part is pinned by no row: the two position tests at the end of `isBetweenAdjacentTags` (`open.to === pos && close.from === pos`). With both removed, every row passes, and so did eleven probes written to separate them (a close tag on the next quoted or indented line, a space or a tab between the tags, a comment or a `<br>` between them, a caret inside the open tag). The HTML grammar puts a `Text` node between two tags that do not touch, so the name test alone already fails there. The tests were kept as the plan has them: they state the function's contract, and the following plan carries the same expression into `isBetweenPair`.
+
+11. **The comment fix asked for with this run** is its own commit. `component/editor/index.ts:3` said "five built-in language definitions"; seven are registered (`javascript`, `json`, `html`, `sql`, `markdown`, `css`, `python`). The same stale count stood in `languages.ts:3` and in the comment on `code-editor.test.ts:11`, and all three were corrected.
+
+12. **No demo was added** (worker step 7). The demo's "MD Editor" tab already holds a source-mode editor in which the fix shows, and V1–V4 were run in it.
+
+13. **Shared files** (`code-editor.test.ts`, `CodeEditor.md`, `next.md`) were edited in the one code commit and the one documentation commit, not in commits of their own, as the commit rules require.
+
+### Checks beyond the plan's own
+
+- **Reach.** `MarkdownEditor` builds its source editor as a `CodeEditor` with `language: "markdown"` ([MarkdownEditor.ts:5038](packages/lib/src/typescript/lib/component/editor/MarkdownEditor.ts#L5038)); nothing else in the library names the language. Both get the command from the one loader. `CodeEditor.ts` has no Markdown- or HTML-named code.
+- **Read-only.** Row C38, and on a mounted view: with `EditorState.readOnly` set on the demo's source editor, a real Enter key at `> <div>▮` changes nothing. Markdown's own Enter still edits a read-only editor (`- item▮` gains a `- ` line), as the plan's note says; that is defect 2 of the following plan and was not touched.
+- **A tab, mounted.** `→- <div>▮` over `→··x` in the demo, a real Enter: the new line is `→··`.
+- **Carets the plan has no row for**, probed on the harness. All give what the plan's rules say: an ordered marker of two digits (`10. <div>▮` gives four spaces); an indented list and an indented quote (`··- <div>▮`, `···> <div>▮`: the indentation is copied); an inline tag on an item's marker line (`- text <a href="x"▮ title="y">` gives two spaces); an inline tag on a lazy line of a list item (no prefix); a `style` attribute and a `<style>` block in a quote (the `>` is kept); Enter, typed text, Enter again in a quoted block (both new lines have the `>`); a caret right after a `>` on a line inside the block (`>▮ x`: Markdown is active there, so Markdown's own command answers, as before).
+- **A task marker.** `- [ ] <div>▮` over `··x` is not this command's: the `<div>` is an inline tag at the end of the item's paragraph, Markdown is active after the caret, and Markdown's own command continues the task list, as before this branch.
+- **Line separator.** `CodeEditor` never sets `EditorState.lineSeparator`, so `state.lineBreak` is always one character there. The caret is placed with `pos + 1 + prefix.length`, which is right for any separator, as the plan's comment says; no row sets another separator, since the editor cannot.
+- **IME composition**, read from the source only: CodeMirror drops key events during a composition, so no Enter binding runs then, before or after this branch.
+- **The editor's parser against the viewer's.** After Enter on `> <div>▮` over `> x`, the editor's parser still reads one HTML block across the new empty `> ` line, and the viewer ends the block there, as CommonMark does. Both keep every line in the quote, which is what the corpus cases and the test over them pin. The same difference exists at the top level (row M24) and is not new.
+
+### Changes made after the review
+
+The first review round had one blocking finding, a wrong line number in these notes (the five import lines are at 14–18, not 13–17; corrected in difference 1). Its advisory findings were fixed in the same pass, under the user's standing rule for this stack that advisories are fixed, not left, so that the second round read the fixes. Each fix was folded into the commit it belongs to.
+
+| # | Advisory | What was done |
+|---|---|---|
+| A1 | `CodeEditor.md` said "Enter never removes the prefix while the HTML continues after the caret", while row C26 shows a second Enter removing the indentation under `- <div>` with `</div>` still below | The bullet now explains the case: in a list item outside a blockquote, the new line holds only spaces, which is a blank line to Markdown, and a blank line ends a block such as `<div>` (not `<pre>`, `<script>`, `<style>` or a comment). The second Enter is then on a Markdown line. Probed for each of those five blocks, and in a blockquote, where the prefix is kept for all of them |
+| A2 | Inside `<script>` or `<style>` in a list item, Enter between a bracket pair (`f(▮)`) used to move the closing bracket to its own line and no longer does. The plan decides this (notes `[^tag-pair]` and `[^nested-languages]`), but no row pinned it and neither the docs nor the changelog said it | Row **C42** pins it in a blockquote and in a list item, for `<script>` and `<style>`, with the top-level result beside them, which is unchanged. The `<script>` bullet of `CodeEditor.md` and the changelog bullet each gained a sentence |
+| A3 | The two position tests in `isBetweenAdjacentTags` are pinned by no row | Nothing changed: see difference 10 |
+| A4 | The comment-fix commit and the corpus cases rest on the run's briefing, which the reviewer could not see | Nothing changed. Both are listed under "Decisions that await the user's sign-off" |
+| A5 | M34 and M36 were given their new text after they went red | Nothing changed: see difference 5 |
+
+The second round had one blocking finding, again in these notes: the table in difference 10 had not been re-run after row C42 was added, and three of its cells lacked C42. It was re-run and corrected. Its one advisory was fixed in the same pass:
+
+| # | Advisory | What was done |
+|---|---|---|
+| A6 | The test "what Enter leaves inside HTML stays in its blockquote or list" checked only that the document is one top-level block, so a line that left a nested container but stayed in the outermost one passed | The test now also checks that every block from the HTML's first line on sits in the same quote or list item (difference 9). Tried on ten documents with a line moved out of a container, it fails for the eight the viewer reads that way. It also failed for one real case, M36, which is how the viewer's column count for a tab after a space was found (difference 9, and "Found on the way") |
+
+The third round was the loop's last: its cap is three. It had one blocking finding, once more in these notes, and its fix and the fixes of its advisories were made after the loop ended. **No reviewer has read them.** They touch only `CodeEditor.md` and these notes. The session that ran the work compared the two documentation sentences with row M37 on 2026-10-11, found them to agree, and closed the plan on that.
+
+| # | Finding | What was done |
+|---|---|---|
+| B | Difference 7 called "With text selected" the one place the rule still answers on a marker line. Row M37 is a second: a bare caret at `-→<div>▮`, a bullet followed by a tab with the block ending at the caret. Markdown's own command accepts only spaces after a bullet, passes the key on, and the rule answers. `CodeEditor.md` had the same gap, as it had at the base | Difference 7 corrected. The "At the end of an HTML block" bullet of `CodeEditor.md` gained a sentence for that marker line. Probed: `-→<div>▮` gives four spaces, also with `- next` below; an ordered marker followed by a tab (`1.→<div>▮`) is continued by Markdown's own command with `2.` |
+| A7 | `CodeEditor.md` said that with text selected "on a list item's marker line the new line is still indented to the item's content", which does not hold in a blockquote: `> - <div>` with text selected gives a new line at column 0 | The sentence now says "outside a blockquote". The sentence before it already says a selection gets no `>` |
+| A8 | Inside `<script>` or `<style>` in a list item, JavaScript's or CSS's own indentation and the bracket-pair split are gone (rows C33 and C42), and the entry is filed under "Fixed" | Nothing changed: the plan decides both, and the docs and the changelog say both. It is listed for the user's eye under "Decisions that await the user's sign-off" |
+| A9 | A new line of only spaces can still change what follows it: in `- <table>` over a deeper-indented `<tr>▮` and `<td>` lines, Enter adds a blank line that ends the HTML block, and the deeper lines below become an indented code block | Nothing changed: the result is the same before this branch, and the same at the top level (row M24's kind). Recorded under "Found on the way" |
+| — | The two position tests in `isBetweenAdjacentTags`; the additions that rest on the run's briefing; V1–V4 not re-run by the reviewer | Carried forward from the earlier rounds; nothing changed |
+
+These fixes add to what differs from the plan: row C42 is not in the plan, four docs sentences and one changelog sentence go beyond the plan's wording, and the corpus has one more case.
+
+### Found on the way
+
+- **The viewer counts a tab that follows a space as four columns.** A nested list item whose marker line is indented by a space and a tab (`·→- b`) has its content at column 6 in CommonMark and at column 7 in `Markdown`. After a blank line, a line indented by six spaces is then an indented code block of the outer item in the viewer, and a paragraph of the nested item in CommonMark; a line indented by seven spaces, or by the marker line's own `·→··`, is in the nested item in both. `MarkdownEditor` reads it as the viewer does, so the two agree with each other. A tab with nothing in front of it (`→- b`) and a tab after the marker (`-→b`) are read as CommonMark reads them. This is not Enter's doing and was not changed here; it is a defect of the viewer's list reading, for a plan of its own. It also means the copied prefix is the one prefix both readers agree on for such a line: the six spaces Enter wrote there before this branch are the column CommonMark counts, which the viewer does not.
+- **A blank new line can end the HTML block it is in.** Enter inside an HTML block that a blank line ends (`<div>`, `<table>`; not `<pre>`, `<script>`, `<style>` or a comment) leaves a line that is blank until something is typed on it, and in a list item, where the prefix is spaces only, the block ends there for the editor's parser too. Lines below that are indented deeper than the item's content then read as an indented code block. This is the same before this branch and at the top level, and typing on the new line undoes it. The plan's "leaves every line below meaning what it meant" holds for which container a line is in, not for this.
+- **Markdown's own Enter and Backspace still edit a read-only editor**, as the plan's note `[^readonly]` says and as "Checks beyond the plan's own" confirms. It is defect 2 of the following plan.
+
+### Verification
+
+- `npm run typecheck`, `npm run typecheck:test`, `npm run lint`: clean. `npm run test`: green (the count is in the run's report). `npm run docs:api`: no warnings. `npm run docs:llms:check`: OK.
+- `grep -c 'run: continueContainersInsideHtml(support.language)' …/languages.ts` prints `1`.
+- `npm run build:lib` succeeds, and `grep -c 'from"@codemirror/lang-' dist/lib/languages-*.js` prints `0`. The chunk's static CodeMirror imports are `@codemirror/language`, `@codemirror/state` and `@codemirror/view`; the seven `@codemirror/lang-*` packages are dynamic imports.
+- V1–V4 were run on 2026-10-11 against the worktree's own demo server (`127.0.0.1:5397`, not 8015), in the "MD Editor" tab's source mode, with real key events sent through Chrome DevTools. All four gave the expected result: `> :::` on a new line 2; `- <div>`, a line of two spaces with the caret, `··</div>`; Enter accepted the `span` completion and added no line; one `Ctrl-Z` removed the new line and its `> ` and left `abc`. The console showed no error or warning.
+
+### Decisions that await the user's sign-off
+
+No non-goal was reversed and the command does nothing the plan does not describe. Five things were written that the user has not seen, and a sixth is listed for the user's eye:
+
+- **Rows M34 and M36 now expect the copied tab** (difference 5). It follows from the plan's "Tabs are copied, never measured", and the following plan already assumes it, but these two rows were accepted with six spaces. It cannot be separated from the command: it is in the code commit.
+- **The corpus cases and the test over them** (difference 9). Tests only; the cases were asked for by the run's briefing, the test over them was not. They are in the code commit, in three files of their own under `tests/component/markdown-roundtrip/`. The test lists M36's document as one the viewer reads out of its item, which is the viewer's defect under "Found on the way"; whether to fix that is the user's call.
+- **The `CodeEditor.md` list** (difference 7): six bullets where the plan wrote five, with the tab bullet kept in a narrower form. It is in the documentation commit, with the sentences added after the review (A1, A2, B and A7 above), one of them in the changelog.
+- **Row C42** (A2 above) pins a result the plan decides in a footnote but has no row for. It is in the code commit.
+- **For the user's eye, though the plan decides it:** inside `<script>` or `<style>` in a list item, Enter used to apply JavaScript's or CSS's own indentation and to split a bracket pair over three lines, and no longer does (rows C33 and C42). It worked there before; in a blockquote it never did, since the `>` was lost. The changelog files the whole entry under "Fixed" and says so in its text. The following plan brings the bracket-pair split back.
+- **The comment fix reaches three files** (difference 11), where the briefing named one. It is its own commit.
+
+### For the plan that follows
+
+**`markdown-language-readonly-and-fences`**
+
+- The four functions it replaces are in `languages.ts` exactly as this plan's `## Internal Structure` gives them, at 210–372, JSDoc included, and the loader's last statement is at 401–406. Its replacement block applies as written.
+- The value import from `@codemirror/state` is `import { countColumn, EditorSelection, Prec } from "@codemirror/state";`: keep `countColumn` when adding `ChangeSpec` to the type import.
+- The header comment of `languages.ts` now names the three CodeMirror packages imported statically. A type-only import does not change it.
+- `CodeEditor.ts` is untouched: `buildReadOnlyExtension` is still at 372–385 and unexported, and `codeEditorKeymap` at 412.
+- `code-editor.test.ts`: the value import from `@codemirror/state` already names `StateEffect`. There is no `typedWith` helper (difference 6). Rows C1–C42 are at 3598–3808, between M35 and H1; C24 is at 3700, C35 at 3754, C36 at 3759, C38 at 3779, C42 at 3800. Row ids taken in the file: M1–M37, C1–C42, H1, H2, B1–B24, K1–K4.
+- M34 and M36 are as its note `[^m34]` expects: they hold the copied tab.
+- **Row C42 is a third row that plan changes**, beside C24 and C35, which it names. C42 pins that Enter between a bracket pair inside `<script>` or `<style>` in a container adds one line. That plan's "Between an empty pair, both new lines get the prefix" (its row F27) splits the pair there, so C42's three contained results change with it; its fourth, at the top level, does not. The sentences on bracket pairs in the `<script>` bullet of `CodeEditor.md` and in this branch's changelog bullet change with it too.
+- **The corpus follows its changed rows.** `corpus/enterInsideHtml.ts` holds the document row C24 ends with (`'Enter twice in a pre block in a list item (C24)'`). When that plan empties C24's middle line, change the case's `source` with the row. C35 has no case, since its result leaves the quote; once Enter keeps the `>` there, a fenced-code case belongs in the corpus too (`'code fence in blockquote'` in `dialect.ts` is the nearest existing one), and so do the new shapes its F and S rows end with. The test over them in `markdown-roundtrip.test.ts` runs over every case of that file. It expects one quote or one list, by the document's first character, and every block from the first HTML block on in one quote or list item; a case the viewer reads otherwise has to be listed in `READ_OUT_OF_ITS_ITEM` with its reason.
+- `CodeEditor.md`'s list has six bullets (difference 7). The tab bullet says a tab is measured "outside every blockquote and list item", and in a list item when Enter replaces a selection off the marker line; that plan's F16–F18, F32, F34 and its selection rows change parts of it.
+- The read-only check in the command is pinned by C38 on a state that sets only `EditorState.readOnly`. On a mounted view the same was seen by appending `Prec.highest(EditorState.readOnly.of(true))` to the demo's source editor: the "MD Editor" tab has no read-only switch, as that plan notes.
+- No row can tell `isBetweenAdjacentTags`'s two position tests from their absence (difference 10). `isBetweenPair` carries the same expression, so the same will hold there unless a row is found.
