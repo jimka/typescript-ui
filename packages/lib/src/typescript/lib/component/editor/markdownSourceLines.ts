@@ -10,11 +10,12 @@ import type { SourceAnalysis, SourceBlockNode } from "~/component/editor/markdow
 // table and paragraph-around-block — read the document's blocks from the
 // viewer's own tokens (see `markdownSourceTokens.ts`) and check every edit by
 // lexing its result. A command acts on whole blocks: the paragraphs,
-// headings, list item texts and code blocks its selection's lines touch. It
-// lifts each out of the quotes and list items around it to the top level (or
-// to its `:::` column), the level the WYSIWYG editor holds a heading, quote,
-// list or code block at, and splits those containers around it: what follows
-// the block inside them stays in them, each container re-opened by its own
+// headings, list item texts and code blocks its selection's lines touch. A
+// task item's marker goes with its item's text. A command lifts each block
+// out of the quotes and list items around it to the top level (or to its
+// `:::` column), the level the WYSIWYG editor holds a heading, quote, list or
+// code block at, and splits those containers around it: what follows the
+// block inside them stays in them, each container re-opened by its own
 // marker on its first line after the block. The result must then read, to
 // the viewer, as the same visible text in the same blocks — every leaf with
 // its format, its quotes, list items and columns, and its block boundaries —
@@ -39,9 +40,10 @@ const TEXT_NODE_TYPES: ReadonlySet<string> = new Set(["paragraph", "heading", "t
 const LIFTED_NODE_TYPES: ReadonlySet<string> = new Set(["blockquote", "list_item"]);
 
 /**
- * The leaf block types a line command leaves where they are when its
+ * The leaf block types that are no target of their own when a line command's
  * selection touches them: a thematic break, which holds no text, and a task
- * item's checkbox, which goes with its item.
+ * item's checkbox, which goes with its item's text: a command that converts
+ * the text carries the marker.
  */
 const SKIPPED_NODE_TYPES: ReadonlySet<string> = new Set(["hr", "checkbox"]);
 
@@ -162,7 +164,14 @@ function readLeaves(analysis: SourceAnalysis): LeafView[] {
 
     analysis.entries.forEach((entry, index) => {
         if (entry.kind === "leaf") {
-            if (entry.key !== "br" && !/^t\s$/.test(entry.key)) {
+            const isTaskMarker = entry.key.startsWith("checkbox:");
+
+            if (isTaskMarker) {
+                // A loose item's marker is an inline leaf of its paragraph, a tight item's a block of its own: both read
+                // as that block. Blocks are counted in whole numbers, so half a block back is a number no other leaf
+                // has: the marker shares its block with nothing, as the tight shape reads.
+                leaves.push({ key: entry.key, path: [...stack], block: block - 0.5, entry: index, offset: entry.start });
+            } else if (entry.key !== "br" && !/^t\s$/.test(entry.key)) {
                 leaves.push({ key: entryKey(entry, entryFormat(entry)), path: [...stack, textBlock], block, entry: index, offset: entry.start });
             }
 
@@ -274,10 +283,10 @@ function columnPath(path: readonly string[]): string[] {
  * own block, unless `change` says what it becomes.
  *
  * @param leaves - The document's leaves.
- * @param change - What a leaf becomes, `null` to keep it, `undefined` to drop it.
+ * @param change - What a leaf becomes (one leaf or several), `null` to keep it, `undefined` to drop it.
  * @returns The expected leaves.
  */
-function expectLeaves(leaves: readonly LeafView[], change: (leaf: LeafView) => ExpectedLeaf | null | undefined): ExpectedLeaf[] {
+function expectLeaves(leaves: readonly LeafView[], change: (leaf: LeafView) => ExpectedLeaf | readonly ExpectedLeaf[] | null | undefined): ExpectedLeaf[] {
     const expected: ExpectedLeaf[] = [];
 
     for (const leaf of leaves) {
@@ -286,7 +295,7 @@ function expectLeaves(leaves: readonly LeafView[], change: (leaf: LeafView) => E
         if (changed === null) {
             expected.push({ key: leaf.key, path: leaf.path, group: `o${leaf.block}` });
         } else if (changed !== undefined) {
-            expected.push(changed);
+            expected.push(...(Array.isArray(changed) ? changed as readonly ExpectedLeaf[] : [changed as ExpectedLeaf]));
         }
     }
 
@@ -419,8 +428,8 @@ interface LineTargets {
  * list item, which it could not leave) or source no block holds — a `:::`
  * fence or `|||` line, or text the viewer does not show, such as a repeated
  * definition or a line after a fence closed inside a nested quote — and when
- * nothing is left to convert. A thematic break and a task checkbox are left
- * alone.
+ * nothing is left to convert. A thematic break is left alone; a task
+ * checkbox is no target of its own and goes with its item's text.
  *
  * @param analysis - The document's analysis.
  * @param from - 0-based start of the raw selection.
@@ -518,6 +527,101 @@ function blockTextLines(node: SourceBlockNode): string[] {
     const text = (node.token as { text: string }).text;
 
     return (node.type === "code" ? text : text.replace(/\n+$/, "")).split("\n");
+}
+
+/** A task item's marker, as the item's text block carries it. */
+interface TaskMarker {
+    /** The marker as written, with the space after it: `[ ] `, `[x] ` or `[X] `. */
+    readonly raw:   string;
+    /** The index of the marker's entry in the analysis. */
+    readonly entry: number;
+    /** Whether the marker is a block of its own before the text (a tight item), not the start of the text (a loose one). */
+    readonly own:   boolean;
+}
+
+/** A task marker opening a loose item's first paragraph. */
+const TASK_MARKER_START = /^\[[ xX]\] /;
+
+/** A leaf that is a task marker; the group is the character between its brackets. */
+const TASK_MARKER_LEAF = /^checkbox:\[([ xX])\]/;
+
+/**
+ * The marker of the task item a block is the text of.
+ *
+ * @param node - The block.
+ * @returns The marker, or `null` for a block that is no task item's text.
+ */
+function taskMarkerOf(node: SourceBlockNode): TaskMarker | null {
+    const item = node.parent;
+
+    if (item?.type !== "list_item" || (item.token as Tokens.ListItem).task !== true) {
+        return null;
+    }
+
+    const first = item.children[0]!;
+
+    if (first.type === "checkbox") {
+        return item.children[1] === node ? { raw: first.token!.raw, entry: first.entryStart, own: true } : null;
+    }
+
+    const start = TASK_MARKER_START.exec((node.token as { text: string }).text);
+
+    return first === node && start !== null ? { raw: start[0], entry: node.entryStart + 1, own: false } : null;
+}
+
+/**
+ * The first entry a target block owns: its task marker's, when the marker is
+ * a block of its own before it.
+ *
+ * @param node - The block.
+ * @returns The entry's index in the analysis.
+ */
+function firstEntryOf(node: SourceBlockNode): number {
+    const marker = taskMarkerOf(node);
+
+    return marker === null ? node.entryStart : Math.min(marker.entry, node.entryStart);
+}
+
+/**
+ * A block's text lines ({@link blockTextLines}) with its task marker on the
+ * first: as the text it shows (`\[ \] `), for a block that stops being an
+ * item's text, or as it was written (`[ ] `), for an item or a code block.
+ *
+ * @param node - The block.
+ * @param markerAs - How the marker is written.
+ * @returns The lines.
+ */
+function textLinesOf(node: SourceBlockNode, markerAs: "text" | "written"): string[] {
+    const lines = blockTextLines(node);
+    const marker = node.type === "code" ? null : taskMarkerOf(node);
+
+    if (marker === null) {
+        return lines;
+    }
+
+    const rest = marker.own ? lines[0]! : lines[0]!.slice(marker.raw.length);
+    const shown = markerAs === "written" ? marker.raw : marker.raw.replace("[", "\\[").replace("]", "\\]");
+
+    return [shown + rest, ...lines.slice(1)];
+}
+
+/**
+ * The text leaves a task marker reads as once it is the text it shows: its
+ * brackets and, when checked, its letter. Whitespace is no leaf.
+ *
+ * @param leaf - The leaf.
+ * @param path - The path the text leaves have.
+ * @param group - The group the text leaves have.
+ * @returns The leaves, or `null` for a leaf that is no task marker.
+ */
+function markerTextLeaves(leaf: LeafView, path: readonly string[], group: string): ExpectedLeaf[] | null {
+    const marker = TASK_MARKER_LEAF.exec(leaf.key);
+
+    if (marker === null) {
+        return null;
+    }
+
+    return ["[", marker[1]!, "]"].filter((char) => char !== " ").map((char) => ({ key: `t${char}|||`, path, group }));
 }
 
 // ---------------------------------------------------------------- lifting
@@ -724,6 +828,16 @@ function reopenContainers(
 }
 
 /**
+ * The list items a block is lifted out of, outermost first.
+ *
+ * @param node - The block.
+ * @returns The items; none for a block in no list item, or one that cannot be lifted.
+ */
+function liftedItems(node: SourceBlockNode): SourceBlockNode[] {
+    return (liftedContainers(node) ?? []).filter((container) => container.type === "list_item");
+}
+
+/**
  * The prefix one container gives a line that continues it.
  *
  * @param analysis - The document's analysis.
@@ -890,13 +1004,14 @@ function firstReadingEdit(
 }
 
 /**
- * Maps each leaf of a document to the target block holding it.
+ * Maps each leaf of a document to the target block holding it. A task
+ * item's marker belongs to the item's text ({@link firstEntryOf}).
  *
  * @param targets - The target blocks.
  * @returns A lookup from a leaf's entry index to its target's index, `-1` for none.
  */
 function targetOfEntry(targets: readonly SourceBlockNode[]): (entry: number) => number {
-    return (entry) => targets.findIndex((target) => target.entryStart <= entry && entry < target.entryEnd);
+    return (entry) => targets.findIndex((target) => firstEntryOf(target) <= entry && entry < target.entryEnd);
 }
 
 // ---------------------------------------------------------------- block types
@@ -906,7 +1021,8 @@ function targetOfEntry(targets: readonly SourceBlockNode[]): (entry: number) => 
  * block `prefix` writes — a paragraph for `""`, a quote for `"> "`, a heading
  * for `"#".repeat(level) + " "` — lifting each out of its quotes and list
  * items (see {@link liftLines}). A block already of that kind at the top
- * level is left alone; a heading is written one line per line of text.
+ * level is left alone; a heading is written one line per line of text. A
+ * task item's marker is carried as the text it shows (`\[x\] `).
  *
  * @param text - The full document text.
  * @param from - 0-based start of the raw selection.
@@ -939,14 +1055,15 @@ function convertBlocks(text: string, from: number, to: number, prefix: string): 
         }
 
         const line = prefix.startsWith("#") ? `:${lineStartAt(text, leaf.offset)}` : "";
+        const path = [...columnPath(leaf.path), ...kind];
 
-        return { key: leaf.key, path: [...columnPath(leaf.path), ...kind], group: `t${index}${line}` };
+        return markerTextLeaves(leaf, path, `t${index}${line}`) ?? { key: leaf.key, path, group: `t${index}${line}` };
     });
 
     const build = (escape: boolean): LineReplacement[] => targets.map((target, index) => ({
         first: lineStartAt(text, target.start),
         last:  lineEndAt(text, target.end - 1),
-        lines: blockTextLines(target).map((line) => {
+        lines: textLinesOf(target, "text").map((line) => {
             const written = isBlank(line) || prefix === "" ? line : prefix + line.trimStart();
 
             return escape && !code[index]! && !isBlank(line) ? escapeBlockStart(written, prefix) : written;
@@ -998,16 +1115,17 @@ function alreadyBlock(node: SourceBlockNode, prefix: string): boolean {
  * of the quotes and list items around it to the top level (or its `:::`
  * column), those containers split around it: what follows it inside them
  * stays in them, re-opened by their own marker (`- x\n  - a\n  - b`, `a` to a
- * heading, gives `- x\n## a\n- - b`). A heading is written one line per line
- * of text. The result is checked by lexing it: it must show the same text in
- * the same blocks, with only the converted blocks changed; when the plain
- * edit does not, the command sets the converted blocks apart by blank lines
- * (so a paragraph does not join the text around it) and escapes a character
- * that would open another block at a converted line's start (`######` left
- * `~~~` there), and declines when no form reads back as intended. Declines
- * too when the blocks already read that way — a blank line alone included —
- * and when a selected line holds part of any other block or source the
- * viewer does not show.
+ * heading, gives `- x\n## a\n- - b`). A task item's marker is carried as the
+ * text it shows (`- [x] a` gives `## \[x\] a`). A heading is written one
+ * line per line of text. The result is checked by lexing it: it must show
+ * the same text in the same blocks, with only the converted blocks changed;
+ * when the plain edit does not, the command sets the converted blocks apart
+ * by blank lines (so a paragraph does not join the text around it) and
+ * escapes a character that would open another block at a converted line's
+ * start (`######` left `~~~` there), and declines when no form reads back as
+ * intended. Declines too when the blocks already read that way — a blank
+ * line alone included — and when a selected line holds part of any other
+ * block or source the viewer does not show.
  *
  * @param prefix - The prefix of the block to convert to (`""` for a
  *   paragraph, `"> "` for a quote, `"#".repeat(level) + " "` for a heading).
@@ -1021,8 +1139,9 @@ export function blockPrefixSource(prefix: string): MarkdownSourceTransform {
  * Converts the blocks the selection's lines touch into one fenced code block:
  * from the first block's first line to the last block's last line, every line
  * a converted block's or blank, each block's text taken as written (a code
- * block's code, its fences dropped), the blocks lifted out of their quotes and
- * list items as {@link blockPrefixSource} lifts them. The fence is three
+ * block's code, its fences dropped, a task item's marker as it was written),
+ * the blocks lifted out of their quotes and list items as
+ * {@link blockPrefixSource} lifts them. The fence is three
  * backticks, or one more than the longest run opening a code line. The result
  * must read as that code block with nothing else changed, the block set apart
  * by blank lines when it does not otherwise. Declines when the lines already
@@ -1095,7 +1214,7 @@ function fencedContent(text: string, targets: readonly SourceBlockNode[]): strin
             }
         }
 
-        code.push(...blockTextLines(target));
+        code.push(...textLinesOf(target, "written"));
         previousEnd = lines[lines.length - 1]!.end;
     }
 
@@ -1172,7 +1291,8 @@ function toggleList(text: string, from: number, to: number, kind: "unordered" | 
 }
 
 /**
- * Lifts list item texts out of their items as paragraphs.
+ * Lifts list item texts out of their items as paragraphs, a task item's
+ * marker as the text it shows.
  *
  * @param analysis - The document's analysis.
  * @param targets - The item texts.
@@ -1184,12 +1304,18 @@ function listOff(analysis: SourceAnalysis, targets: readonly SourceBlockNode[]):
     const expected = expectLeaves(readLeaves(analysis), (leaf) => {
         const index = targetOf(leaf.entry);
 
-        return index === -1 ? null : { key: leaf.key, path: [...columnPath(leaf.path), "p"], group: `t${index}` };
+        if (index === -1) {
+            return null;
+        }
+
+        const path = [...columnPath(leaf.path), "p"];
+
+        return markerTextLeaves(leaf, path, `t${index}`) ?? { key: leaf.key, path, group: `t${index}` };
     });
     const build = (escape: boolean): LineReplacement[] => targets.map((target) => ({
         first: lineStartAt(text, target.start),
         last:  lineEndAt(text, target.end - 1),
-        lines: blockTextLines(target).map((line) => (escape && !isBlank(line) ? escapeBlockStart(line, "") : line)),
+        lines: textLinesOf(target, "text").map((line) => (escape && !isBlank(line) ? escapeBlockStart(line, "") : line)),
         nodes: [target],
     }));
 
@@ -1199,9 +1325,14 @@ function listOff(analysis: SourceAnalysis, targets: readonly SourceBlockNode[]):
 /**
  * Turns selected lines into list items of `kind`: in each block, every
  * selected line that is not already the marker line of a `kind` item becomes
- * a new top-level item (`- ` or `1. `, `2. `, … counting from one across the
- * selection); the block's lines below the selection continue the last new
- * item, and its lines above the first new item stay where they are.
+ * a new top-level item; the block's lines below the selection continue the
+ * last new item, and its lines above the first new item stay where they are.
+ * The new items of blocks with only blank lines between them are one run
+ * ({@link adjoiningRuns}), written line after line and joined to the list of
+ * `kind` next to them ({@link readListJoin}). When no form of that edit
+ * reads as intended, the items are written as a list of their own, each
+ * block's where it stands ({@link itemsApart}), and that edit is checked the
+ * same way.
  *
  * @param analysis - The document's analysis.
  * @param targets - The blocks the selection touches.
@@ -1211,7 +1342,7 @@ function listOff(analysis: SourceAnalysis, targets: readonly SourceBlockNode[]):
  */
 function listOn(analysis: SourceAnalysis, targets: readonly SourceBlockNode[], selected: ReadonlySet<number>, kind: "unordered" | "ordered"): MarkdownSourceEdit | null {
     const text = analysis.text;
-    const plans = targets.map((target) => {
+    const plans: ListPlan[] = targets.map((target) => {
         const lines = nodeLines(text, target);
         const converted = lines.map((line) => selected.has(line.start) && !isMarkerLine(text, target, line.start, kind));
 
@@ -1222,37 +1353,388 @@ function listOn(analysis: SourceAnalysis, targets: readonly SourceBlockNode[], s
         return null;
     }
 
-    const item = [`list:${String(kind === "ordered")}`, "item:false:false", "p"];
-    const expected = expectLeaves(readLeaves(analysis), (leaf) => {
-        const index = plans.findIndex((plan) => plan.target.entryStart <= leaf.entry && leaf.entry < plan.target.entryEnd);
+    const expected = expectedItemLeaves(analysis, plans, kind);
+    const joined = adjoiningRuns(text, plans).map((run) => itemReplacement(text, run, kind, readListJoin(analysis, run, kind)));
+    const joinedEdit = firstReadingEdit(analysis, () => joined, expected, joined.map(() => null), false);
+
+    if (joinedEdit !== null) {
+        return joinedEdit;
+    }
+
+    // A list that gains an item below it no longer ends where it did, and what its last line read as can change
+    // with that (trailing whitespace there, an indented code block, a fence left open). The items then stand apart.
+    const apart = itemsApart(text, plans, kind);
+
+    return firstReadingEdit(analysis, () => apart, expected, apart.map(() => null), false);
+}
+
+/** One block a list-on edit touches, with the lines of it that become items. */
+interface ListPlan {
+    readonly target:    SourceBlockNode;
+    readonly lines:     SourceLine[];
+    /** Per line of the block, whether it becomes a new item. */
+    readonly converted: boolean[];
+    /** The index of the first line that does. */
+    readonly first:     number;
+}
+
+/** The lists of the kind that the new items of one run of a list-on edit join, and how the items are written. */
+interface ListJoin {
+    /** The list around the run's first block at the level the items land on, when part of it stands above the run; `null` for none. */
+    readonly around:    SourceBlockNode | null;
+    /** The list ending right above the run, blank lines aside; `null` for none. */
+    readonly above:     SourceBlockNode | null;
+    /**
+     * The list the items join below, when it is written with their marker:
+     * the list around the run's last block when it goes on below the run,
+     * else the list starting right below the run; `null` for none.
+     */
+    readonly below:     SourceBlockNode | null;
+    readonly bullet:    string;
+    readonly delimiter: string;
+    /** The number the first new item of a numbered list takes. */
+    readonly start:     number;
+}
+
+/**
+ * The leaves a list-on edit's result must read as: every leaf of a converted
+ * line in a new item of `kind` at its column's top level, one item per
+ * converted line, the item made from a task item's marker line still a task
+ * item.
+ *
+ * @param analysis - The document's analysis.
+ * @param plans - The touched blocks.
+ * @param kind - The list kind.
+ * @returns The expected leaves.
+ */
+function expectedItemLeaves(analysis: SourceAnalysis, plans: readonly ListPlan[], kind: "unordered" | "ordered"): ExpectedLeaf[] {
+    const list = `list:${String(kind === "ordered")}`;
+    /** The signature of the item made from a block's converted line: only the one from its first line carries the marker that line opens with. */
+    const itemOf = (plan: ListPlan, line: number): string => (line === 0 && taskMarkerOf(plan.target) !== null ? itemSignature(plan.target.parent!) : "item:false:false");
+
+    return expectLeaves(readLeaves(analysis), (leaf) => {
+        const index = plans.findIndex((plan) => firstEntryOf(plan.target) <= leaf.entry && leaf.entry < plan.target.entryEnd);
 
         if (index === -1) {
             return null;
         }
 
-        const { lines, converted, first } = plans[index]!;
-        const line = lines.findIndex((candidate) => candidate.start <= leaf.offset && leaf.offset <= candidate.end);
-        const group = converted.lastIndexOf(true, line);
+        const plan = plans[index]!;
+        const line = plan.lines.findIndex((candidate) => candidate.start <= leaf.offset && leaf.offset <= candidate.end);
+        const group = plan.converted.lastIndexOf(true, line);
 
-        return line < first ? null : { key: leaf.key, path: [...columnPath(leaf.path), ...item], group: `t${index}:${group}` };
+        if (line < plan.first) {
+            return null;
+        }
+
+        const path = [...columnPath(leaf.path), list, itemOf(plan, group)];
+
+        return TASK_MARKER_LEAF.test(leaf.key)
+            ? { key: leaf.key, path, group: `t${index}:${group}:marker` }
+            : { key: leaf.key, path: [...path, "p"], group: `t${index}:${group}` };
     });
-    let number = 0;
-    const replacements = plans.map(({ target, lines, converted, first }) => ({
-        first: lines[first]!.start,
-        last:  lines[lines.length - 1]!.end,
-        lines: blockTextLines(target).slice(first).map((line, offset) => {
-            if (!converted[first + offset]!) {
-                return line;
-            }
+}
 
-            number += 1;
+/**
+ * Groups the touched blocks into runs with only blank lines between them.
+ * The items of one run stand line after line, as one tight list; two runs
+ * have something between them that is no block to convert: items of the list
+ * kind already, or a thematic break.
+ *
+ * @param text - The full document text.
+ * @param plans - The touched blocks, in document order.
+ * @returns The runs, in document order.
+ */
+function adjoiningRuns(text: string, plans: readonly ListPlan[]): ListPlan[][] {
+    const runs: ListPlan[][] = [];
 
-            return (kind === "unordered" ? "- " : `${number}. `) + line.trimStart();
-        }),
-        nodes: [target],
+    for (const plan of plans) {
+        const run = runs[runs.length - 1];
+        const previous = run?.[run.length - 1];
+        const from = previous === undefined ? 0 : previous.lines[previous.lines.length - 1]!.end + 1;
+        const adjoins = previous !== undefined && isBlank(text.slice(from, Math.max(from, plan.lines[plan.first]!.start - 1)));
+
+        if (run !== undefined && adjoins) {
+            run.push(plan);
+        } else {
+            runs.push([plan]);
+        }
+    }
+
+    return runs;
+}
+
+/**
+ * Reads the lists of `kind` the new items of one run join, and the marker to
+ * write them with: the marker of the list around the run's first block at
+ * the level it lands on, else of the list right above the run, else of the
+ * one below, else `-` or `1.`. The list around a block counts on a side only
+ * when part of it stands there: above a block its list item opens with
+ * (`1. - a`, lifting `a`) there is none of it, and below the last block of
+ * its last item there is none either. The list below is the list around the
+ * run's last block when it goes on below the run, else the one starting
+ * right below. A list below that is written with another marker stays a
+ * list of its own and is not joined. A numbered item continues the list
+ * above it, or follows the number of the item it leaves in the list around
+ * it, or takes the number of the item it opened when it stays that list's
+ * first.
+ *
+ * @param analysis - The document's analysis.
+ * @param run - The run's blocks, in document order.
+ * @param kind - The list kind.
+ * @returns The join.
+ */
+function readListJoin(analysis: SourceAnalysis, run: readonly ListPlan[], kind: "unordered" | "ordered"): ListJoin {
+    const text = analysis.text;
+    const first = run[0]!;
+    const last = run[run.length - 1]!;
+    const firstLine = first.lines[first.first]!.start;
+    const lastLine = last.lines[last.lines.length - 1]!.start;
+    const listOfFirst = containingList(first.target, kind);
+    const listOfLast = containingList(last.target, kind);
+    const around = listOfFirst !== null && lineStartAt(text, listOfFirst.start) < firstLine ? listOfFirst : null;
+    const continued = listOfLast !== null && lineStartAt(text, listOfLast.end - 1) > lastLine ? listOfLast : null;
+    const above = neighbourList(analysis, first.target, firstLine, -1, kind);
+    const listBelow = continued ?? neighbourList(analysis, last.target, lastLine, 1, kind);
+    const styled = around ?? above ?? listBelow;
+    const marker = styled === null ? { bullet: "-", delimiter: "." } : listMarkerOf(styled);
+
+    const sameMarker = listBelow !== null && (kind === "unordered"
+        ? listMarkerOf(listBelow).bullet === marker.bullet
+        : listMarkerOf(listBelow).delimiter === marker.delimiter);
+
+    const opensListBelow = listOfFirst !== null && listOfFirst === continued;
+    const start = above !== null ? nextNumberOf(above) : around !== null ? numberOfItemOf(first.target) + 1 : opensListBelow ? numberOfItemOf(first.target) : 1;
+
+    return { around, above, below: sameMarker ? listBelow : null, ...marker, start };
+}
+
+/**
+ * The number of a block's outermost list item: the number a new item takes
+ * that stands in its place, and one less than an item written right after
+ * it takes.
+ *
+ * @param target - The block.
+ * @returns The number, `0` when the item's marker holds none.
+ */
+function numberOfItemOf(target: SourceBlockNode): number {
+    const marker = ITEM_MARKER.exec(liftedItems(target)[0]?.token?.raw ?? "")?.[2] ?? "";
+    const number = Number.parseInt(marker, 10);
+
+    return Number.isNaN(number) ? 0 : number;
+}
+
+/**
+ * The lines one run's replacement covers: the run's own, and the blank lines
+ * between them and a list they join, so the items stand right against it —
+ * left in, those lines would make a tight list loose. The blank lines stay
+ * when a joined list is loose, since the result is loose either way, and
+ * below the run unless the list joined there, or the next item of a list
+ * around the run, comes right after them.
+ *
+ * @param text - The full document text.
+ * @param run - The run's blocks, in document order.
+ * @param join - The lists joined.
+ * @returns The first replaced line's start and the last one's end.
+ */
+function replacedLines(text: string, run: readonly ListPlan[], join: ListJoin): { first: number; last: number } {
+    const first = run[0]!;
+    const last = run[run.length - 1]!;
+    const firstLine = first.lines[first.first]!.start;
+    const lastLine = last.lines[last.lines.length - 1]!;
+    const tight = [join.around, join.above, join.below].every((list) => list === null || !(list.token as Tokens.List).loose);
+    const textAbove = nearestTextLine(text, firstLine, -1);
+    const textBelow = nearestTextLine(text, lastLine.start, 1);
+    const joinsAbove = join.above !== null || join.around !== null;
+
+    const itemFollows = [join.around, join.below].some((list) => list !== null && allNodes(list.children)
+        .some((node) => node.type === "list_item" && node.start !== -1 && lineStartAt(text, node.start) === textBelow));
+
+    const listFollows = join.below !== null && lineStartAt(text, join.below.start) === textBelow;
+    const joinsBelow = listFollows || itemFollows;
+
+    return {
+        first: tight && joinsAbove && textAbove !== -1 ? lineEndAt(text, textAbove) + 1 : firstLine,
+        last:  tight && joinsBelow && textBelow !== -1 ? textBelow - 1 : lastLine.end,
+    };
+}
+
+/**
+ * Writes one run's converted lines as items, in one replacement.
+ *
+ * @param text - The full document text.
+ * @param run - The run's blocks, in document order.
+ * @param kind - The list kind.
+ * @param join - The lists the items join, and the marker they are written with.
+ * @returns The replacement.
+ */
+function itemReplacement(text: string, run: readonly ListPlan[], kind: "unordered" | "ordered", join: ListJoin): LineReplacement {
+    let number = join.start;
+
+    const lines = run.flatMap(({ target, converted, first }) => textLinesOf(target, "written").slice(first).map((line, offset) => {
+        if (!converted[first + offset]!) {
+            return line;
+        }
+
+        const marker = kind === "unordered" ? join.bullet : `${number}${join.delimiter}`;
+
+        number += 1;
+
+        return `${marker} ${line.trimStart()}`;
     }));
 
-    return firstReadingEdit(analysis, () => replacements, expected, replacements.map(() => null), false);
+    return { ...replacedLines(text, run, join), lines, nodes: run.map((plan) => plan.target) };
+}
+
+/**
+ * Writes each block's converted lines as items that join no list: `-` or
+ * `1.`, `2.`, … counting from one across the blocks, each block's lines
+ * replaced where they stand and the blank lines around them left as they
+ * are. This is the form a list-on edit falls back to when the joined form
+ * does not read as intended ({@link listOn}): it changes no line of a list
+ * next to the items.
+ *
+ * @param text - The full document text.
+ * @param plans - The touched blocks, in document order.
+ * @param kind - The list kind.
+ * @returns One replacement per block.
+ */
+function itemsApart(text: string, plans: readonly ListPlan[], kind: "unordered" | "ordered"): LineReplacement[] {
+    let start = 1;
+
+    return plans.map((plan) => {
+        const replacement = itemReplacement(text, [plan], kind, { around: null, above: null, below: null, bullet: "-", delimiter: ".", start });
+
+        start += plan.converted.filter((isConverted) => isConverted).length;
+
+        return replacement;
+    });
+}
+
+/**
+ * The signature of a list item, as the analysis writes it.
+ *
+ * @param item - The list item.
+ * @returns The signature.
+ */
+function itemSignature(item: SourceBlockNode): string {
+    const token = item.token as Tokens.ListItem;
+
+    return `item:${String(token.task)}:${String(token.checked ?? false)}`;
+}
+
+/**
+ * The nearest `:::` column around a block.
+ *
+ * @param node - The block.
+ * @returns The column, `null` at the top level.
+ */
+function columnOf(node: SourceBlockNode): SourceBlockNode | null {
+    for (let parent = node.parent; parent !== null; parent = parent.parent) {
+        if (parent.type === "column") {
+            return parent;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * The list of `kind` a new item joins on one side: the list standing at the
+ * level the item lands on (the top level, or the block's column) whose last
+ * line (above) or first line (below) is the nearest line that is not blank.
+ * A list holding the block is not a neighbour: the lift splits it.
+ *
+ * @param analysis - The document's analysis.
+ * @param target - The block becoming an item.
+ * @param lineStart - The start of the block's first (above) or last (below) written line.
+ * @param direction - `-1` to look above, `1` below.
+ * @param kind - The list kind.
+ * @returns The list, or `null`.
+ */
+function neighbourList(
+    analysis: SourceAnalysis, target: SourceBlockNode, lineStart: number, direction: -1 | 1, kind: "unordered" | "ordered",
+): SourceBlockNode | null {
+    const text = analysis.text;
+    const at = nearestTextLine(text, lineStart, direction);
+    const column = columnOf(target);
+
+    const found = at === -1 ? undefined : allNodes(analysis.tree).find((node) => node.type === "list" && node.start !== -1
+        && (node.parent === null || node.parent.type === "column") && columnOf(node) === column
+        && lineStartAt(text, direction === -1 ? node.end - 1 : node.start) === at);
+
+    if (found === undefined) {
+        return null;
+    }
+
+    const isOfKind = (found.token as Tokens.List).ordered === (kind === "ordered");
+    const holdsTarget = isAncestor(found, target);
+
+    return isOfKind && !holdsTarget ? found : null;
+}
+
+/**
+ * The start of the nearest line above or below a line that is not blank.
+ *
+ * @param text - The full document text.
+ * @param lineStart - The line's start.
+ * @param direction - `-1` to look above, `1` below.
+ * @returns The line's start, `-1` when every line that way is blank.
+ */
+function nearestTextLine(text: string, lineStart: number, direction: -1 | 1): number {
+    let at = lineStart;
+    let isBlankLine = true;
+
+    while (at !== -1 && isBlankLine) {
+        const end = lineEndAt(text, at);
+
+        at = direction === -1 ? (at === 0 ? -1 : lineStartAt(text, at - 1)) : (end >= text.length ? -1 : end + 1);
+        isBlankLine = at !== -1 && isBlank(text.slice(at, lineEndAt(text, at)));
+    }
+
+    return at;
+}
+
+/**
+ * The list of `kind` holding a block at the level the block lands on when
+ * lifted: its outermost list, when that list is of `kind`.
+ *
+ * @param target - The block.
+ * @param kind - The list kind.
+ * @returns The list, or `null`.
+ */
+function containingList(target: SourceBlockNode, kind: "unordered" | "ordered"): SourceBlockNode | null {
+    for (let parent = target.parent; parent !== null; parent = parent.parent) {
+        if (parent.type === "list" && (parent.parent === null || parent.parent.type === "column")) {
+            return (parent.token as Tokens.List).ordered === (kind === "ordered") ? parent : null;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * A list's bullet character and numbered delimiter, read from its first item.
+ *
+ * @param list - The list.
+ * @returns The bullet (`-` for a numbered list) and the delimiter (`.` for a bulleted one).
+ */
+function listMarkerOf(list: SourceBlockNode): { bullet: string; delimiter: string } {
+    const marker = ITEM_MARKER.exec((list.token as Tokens.List).items[0]!.raw)?.[2] ?? "-";
+
+    return { bullet: /^[-+*]$/.test(marker) ? marker : "-", delimiter: marker.endsWith(")") ? ")" : "." };
+}
+
+/**
+ * The number the item after a numbered list's last takes.
+ *
+ * @param list - The numbered list.
+ * @returns The number.
+ */
+function nextNumberOf(list: SourceBlockNode): number {
+    const token = list.token as Tokens.List;
+
+    return Number(token.start) + token.items.length;
 }
 
 /**
@@ -1262,15 +1744,21 @@ function listOn(analysis: SourceAnalysis, targets: readonly SourceBlockNode[], s
  * off and each of those items' text is lifted out as a paragraph, the list
  * split around it as {@link blockPrefixSource} splits it; otherwise each
  * selected line that is not yet such a marker line becomes a new top-level
- * item — `- ` for an unordered list, `1. `/`2. `/… (counting from one) for an
- * ordered one — a block's lines below the selection continuing the last new
- * item. A blank line stays blank. The result is checked by lexing it, as
- * the block-type transforms' are; a converted line that would read as a
- * definition, an HTML block, code, a nested item, or a line below that
- * would start a block rather than continue the item, makes the command
- * decline. Declines too for a selection touching a setext heading's text,
- * whose underline would close the last item into a heading, a code block,
- * and anything {@link blockPrefixSource} declines.
+ * item, a block's lines below the selection continuing the last new item.
+ * Items made from neighbouring blocks stand line after line, as one tight
+ * list. A new item is written with the marker
+ * of the list of `kind` it joins — the one around its block at the top
+ * level, else the one right above it, else the one right below — and `- ` or
+ * `1. ` with none; a numbered item continues the list above it. The blank
+ * lines between new items and a tight list they join are removed, since they
+ * would make it loose. A task item that stays an item keeps its marker; one
+ * whose text is lifted out keeps it as the text it shows (`\[x\]`). The
+ * result is checked by lexing it, as the block-type transforms' are; a
+ * converted line that would read as a definition, an HTML block, code, a
+ * nested item, or a line below that would start a block rather than continue
+ * the item, makes the command decline. Declines too for a selection touching
+ * a setext heading's text, whose underline would close the last item into a
+ * heading, a code block, and anything {@link blockPrefixSource} declines.
  *
  * @param kind - Which list to toggle.
  * @returns The transform.

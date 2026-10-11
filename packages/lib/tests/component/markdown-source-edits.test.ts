@@ -1316,11 +1316,11 @@ describe('line commands leave blank lines blank', () => {
         }
     });
 
-    it('marks only the non-blank lines of a selection spanning several blocks', () => {
+    it('makes the blocks of a selection items of one tight list, and keeps the blank line between headings', () => {
         const text = 'foo\n\nbar';
 
-        expect(apply(text, listSource('unordered')(text, 0, text.length)!)).toBe('- foo\n\n- bar');
-        expect(apply(text, listSource('ordered')(text, 0, text.length)!)).toBe('1. foo\n\n2. bar');
+        expect(apply(text, listSource('unordered')(text, 0, text.length)!)).toBe('- foo\n- bar');
+        expect(apply(text, listSource('ordered')(text, 0, text.length)!)).toBe('1. foo\n2. bar');
         expect(apply(text, blockPrefixSource('## ')(text, 0, text.length)!)).toBe('## foo\n\n## bar');
     });
 
@@ -1403,6 +1403,49 @@ describe('line commands act on the blocks the viewer reads', () => {
         expect(apply('- x\n  - a\n  - b', blockPrefixSource('## ')('- x\n  - a\n  - b', 8, 8)!)).toBe('- x\n## a\n- - b');
         expect(apply('10. a\n\n    b', FENCED_CODE_SOURCE('10. a\n\n    b', 4, 4)!)).toBe('```\na\n```\n\n10. b');
         expect(blockTypes('## a\n\n10. b')).toEqual(['heading', 'list']);
+    });
+
+    // The shapes with a tab that decline are on the line an item's marker stands on, where `marked` counts a tab as
+    // three spaces: the item's content column cannot be read from `-\t`, and its text is not found past a tab.
+    it('declines when a tab on an item\'s marker line stands where the command has to read', () => {
+        expect(blockPrefixSource('## ')('-\tone\n\n\tsecond\n- two', 2, 2)).toBeNull();
+        expect(listSource('unordered')('-\tone\n\n\tsecond\n- two', 2, 2)).toBeNull();
+        expect(blockPrefixSource('## ')('- one\ttab\n- z', 2, 2)).toBeNull();
+        expect(listSource('ordered')('- one\ttab\n- z', 2, 2)).toBeNull();
+
+        // An item of one line needs neither: the tab after its marker goes with the marker.
+        expect(apply('-\tone\n- two', blockPrefixSource('## ')('-\tone\n- two', 2, 2)!)).toBe('## one\n- two');
+    });
+
+    it('lifts a block out of a quote that a list item holds, and re-opens the item on the quote\'s next line', () => {
+        const other = '- outer\n\n  > - one\n  >\n  >   held\n  >\n  > 1. other list\n- z';
+
+        expect(apply(other, listSource('unordered')(other, other.indexOf('held'), other.indexOf('held'))!))
+            .toBe('- outer\n\n  > - one\n  >\n- held\n- >\n  > 1. other list\n- z');
+
+        const para = '- outer\n\n  > para\n  >\n  > - two\n- z';
+
+        expect(apply(para, listSource('unordered')(para, para.indexOf('para'), para.indexOf('para'))!))
+            .toBe('- outer\n\n- para\n- >\n  > - two\n- z');
+    });
+
+    it('re-opens the item around a quote on the next item of the quote\'s list', () => {
+        const quoted = '- outer\n\n  > - one\n  >\n  >   held\n  > - two';
+        const lifted = apply(quoted, listSource('ordered')(quoted, quoted.indexOf('held'), quoted.indexOf('held'))!);
+
+        expect(lifted).toBe('- outer\n\n  > - one\n  >\n1. held\n- > - two');
+    });
+
+    // A list that gains an item below it no longer ends where it did. What its last line read as can change with
+    // that, and then the new item is written as a list of its own, as it was before the items joined.
+    it('writes a new item as a list of its own where joining the list above would change how that list reads', () => {
+        const joins = '2) a\n\n       x\n- b';
+        const trailing = '2) a\n\n       x \n- b';
+        const open = '2) [x] a\n\n   ~~~js\n   > q \n- b\n\n  c';
+
+        expect(apply(joins, listSource('ordered')(joins, joins.indexOf('b'), joins.indexOf('b'))!)).toBe('2) a\n\n       x\n3) b');
+        expect(apply(trailing, listSource('ordered')(trailing, trailing.indexOf('b'), trailing.indexOf('b'))!)).toBe('2) a\n\n       x \n1. b');
+        expect(apply(open, listSource('ordered')(open, open.indexOf('b'), open.indexOf('b'))!)).toBe('2) [x] a\n\n   ~~~js\n   > q \n1. b\n\n- c');
     });
 
     it('sets a converted paragraph apart rather than joining it to a neighbour', () => {

@@ -776,12 +776,12 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
             result: '::: columns\none\n\n- two\n|||\nRight\n:::',
         },
         {
-            name: 'in a list of the other kind the toggle converts the list instead',
-            doc: '- one\n- two\n- three', from: 'two', toggle: ordered, result: '1. one\n2. two\n3. three',
+            name: 'in a list of the other kind the toggle changes the caret\'s item alone, its list split around it',
+            doc: '- one\n- two\n- three', from: 'two', toggle: ordered, result: '- one\n\n1. two\n\n- three',
         },
         {
-            name: 'a range from a bulleted list into a numbered one is not all in a bulleted list, so it makes one list of both',
-            doc: '- one\n- two\n\n1. three\n2. four', from: 'two', to: 'three', toggle: unordered, result: '- one\n- two\n- three\n- four',
+            name: 'a range from a bulleted list into a numbered one makes the numbered item it touches a bulleted item, joining the list before it',
+            doc: '- one\n- two\n\n1. three\n2. four', from: 'two', to: 'three', toggle: unordered, result: '- one\n- two\n- three\n\n1. four',
         },
         {
             name: 'a range from a bulleted list into a paragraph makes the paragraph an item',
@@ -855,6 +855,417 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
             expect(source.getValue(), `${doc} at ${from}`).not.toBe(doc);
             expect(viewerModel(source.getValue()).blocks, `${doc} at ${from}`).toEqual(viewerModel(wysiwyg.getValue()).blocks);
         }
+    });
+
+    /** A command a parity row runs, on either surface. */
+    type ParityCommand = 'UL' | 'OL' | 'paragraph' | 'h2' | 'quote' | 'code';
+
+    const PARITY_COMMANDS: Record<ParityCommand, (editor: MarkdownEditor) => unknown> = {
+        UL:        unordered,
+        OL:        ordered,
+        paragraph: (editor) => editor.setBlockType('paragraph'),
+        h2:        (editor) => editor.setBlockType('h2'),
+        quote:     (editor) => editor.setBlockType('quote'),
+        code:      (editor) => editor.setBlockType('code'),
+    };
+
+    /** [id, document, word the selection starts in, word it ends in (null: a caret), command, what the WYSIWYG surface saves, what source mode leaves] */
+    type ParityRow = [id: string, doc: string, from: string, to: string | null, command: ParityCommand, wysiwyg: string, source: string];
+
+    /** Selects from one character into the word `from` to one character into the word `to`, each in the first text node holding it. */
+    function selectWords(editor: MarkdownEditor, from: string, to: string): void {
+        lexicalOf(editor).update(() => {
+            const holding = (word: string): TextNode => $getRoot().getAllTextNodes().find((node) => node.getTextContent().includes(word))!;
+            const offsetIn = (word: string): number => holding(word).getTextContent().indexOf(word) + 1;
+            const selection = holding(from).select(offsetIn(from), offsetIn(from));
+
+            selection.focus.set(holding(to).getKey(), offsetIn(to), 'text');
+        }, { discrete: true });
+    }
+
+    /** Runs a row's command on the WYSIWYG surface, on the row's selection. */
+    function wysiwygAfter([, doc, from, to, command]: ParityRow): MarkdownEditor {
+        const editor = editorOf(doc);
+
+        selectWords(editor, from, to ?? from);
+        PARITY_COMMANDS[command](editor);
+
+        return editor;
+    }
+
+    /** Runs a row's command in source mode, on the same selection, and returns the text it leaves. */
+    function sourceAfter([, doc, from, to, command]: ParityRow): string {
+        const editor = new MarkdownEditor(doc, { mode: 'source' });
+        const ends = [doc.indexOf(from) + 1, doc.indexOf(to ?? from) + 1];
+        const selection = { characterCount: 0, lineCount: 1, from: Math.min(...ends), to: Math.max(...ends) };
+
+        vi.spyOn(codeEditorOf(editor), 'getSelection').mockReturnValue(selection);
+        PARITY_COMMANDS[command](editor);
+
+        return editor.getValue();
+    }
+
+    const SAME: ParityRow[] = [
+        ['B1', '- one\n- two\n- three', 'two', null, 'UL', '- one\n\ntwo\n\n- three', '- one\n\ntwo\n\n- three'],
+        ['B1', '- one\n- two\n- three', 'two', null, 'OL', '- one\n\n1. two\n\n- three', '- one\n1. two\n- three'],
+        ['B2', '- one\n- two\n- three', 'one', 'two', 'UL', 'one\n\ntwo\n\n- three', 'one\n\ntwo\n\n- three'],
+        ['B2', '- one\n- two\n- three', 'one', 'two', 'OL', '1. one\n2. two\n\n- three', '1. one\n2. two\n- three'],
+        ['B3', '- one\n- two\n- three', 'one', 'three', 'UL', 'one\n\ntwo\n\nthree', 'one\n\ntwo\n\nthree'],
+        ['B3', '- one\n- two\n- three', 'one', 'three', 'OL', '1. one\n2. two\n3. three', '1. one\n2. two\n3. three'],
+        ['N1', '1. one\n2. two\n3. three', 'two', null, 'UL', '1. one\n\n- two\n\n1. three', '1. one\n- two\n3. three'],
+        ['N1', '1. one\n2. two\n3. three', 'two', null, 'OL', '1. one\n\ntwo\n\n1. three', '1. one\n\ntwo\n\n3. three'],
+        ['T1', '- [ ] one\n- [x] two', 'one', null, 'UL', '\\[ \\] one\n\n- [x] two', '\\[ \\] one\n- [x] two'],
+        ['T1', '- [ ] one\n- [x] two', 'one', null, 'OL', '1. [ ] one\n\n- [x] two', '1. [ ] one\n- [x] two'],
+        ['T1', '- [ ] one\n- [x] two', 'one', null, 'paragraph', '\\[ \\] one\n\n- [x] two', '\\[ \\] one\n- [x] two'],
+        ['T1', '- [ ] one\n- [x] two', 'one', null, 'h2', '## \\[ \\] one\n\n- [x] two', '## \\[ \\] one\n- [x] two'],
+        ['T1', '- [ ] one\n- [x] two', 'one', null, 'quote', '> \\[ \\] one\n\n- [x] two', '> \\[ \\] one\n- [x] two'],
+        ['T1', '- [ ] one\n- [x] two', 'one', null, 'code', '```\n[ ] one\n```\n\n- [x] two', '```\n[ ] one\n```\n- [x] two'],
+        ['T2', '- [ ] one\n- [x] two', 'two', null, 'UL', '- [ ] one\n\n\\[x\\] two', '- [ ] one\n\n\\[x\\] two'],
+        ['T2', '- [ ] one\n- [x] two', 'two', null, 'OL', '- [ ] one\n\n1. [x] two', '- [ ] one\n1. [x] two'],
+        ['T3', '- [ ] one\n- [x] two', 'one', 'two', 'UL', '\\[ \\] one\n\n\\[x\\] two', '\\[ \\] one\n\n\\[x\\] two'],
+        ['T3', '- [ ] one\n- [x] two', 'one', 'two', 'OL', '1. [ ] one\n2. [x] two', '1. [ ] one\n2. [x] two'],
+        ['T3', '- [ ] one\n- [x] two', 'one', 'two', 'paragraph', '\\[ \\] one\n\n\\[x\\] two', '\\[ \\] one\n\n\\[x\\] two'],
+        ['T3', '- [ ] one\n- [x] two', 'one', 'two', 'h2', '## \\[ \\] one\n\n## \\[x\\] two', '## \\[ \\] one\n## \\[x\\] two'],
+        ['T3', '- [ ] one\n- [x] two', 'one', 'two', 'quote', '> \\[ \\] one\n\n> \\[x\\] two', '> \\[ \\] one\n\n> \\[x\\] two'],
+        ['T4', '1. [ ] one\n2. [x] two', 'one', null, 'UL', '- [ ] one\n\n1. [x] two', '- [ ] one\n2. [x] two'],
+        ['T4', '1. [ ] one\n2. [x] two', 'one', null, 'OL', '\\[ \\] one\n\n1. [x] two', '\\[ \\] one\n\n2. [x] two'],
+        ['T5', '- [ ] one\n- two\n- three', 'one', 'two', 'UL', '\\[ \\] one\n\ntwo\n\n- three', '\\[ \\] one\n\ntwo\n\n- three'],
+        ['T5', '- [ ] one\n- two\n- three', 'one', 'two', 'OL', '1. [ ] one\n2. two\n\n- three', '1. [ ] one\n2. two\n- three'],
+        ['T6', '- [ ] one\n- two\n- three', 'two', null, 'UL', '- [ ] one\n\ntwo\n\n- three', '- [ ] one\n\ntwo\n\n- three'],
+        ['T6', '- [ ] one\n- two\n- three', 'two', null, 'OL', '- [ ] one\n\n1. two\n\n- three', '- [ ] one\n1. two\n- three'],
+        ['T7', '- [ ] one\n\n- [x] two\n\n- three', 'two', null, 'UL', '- [ ] one\n\n\\[x\\] two\n\n- three', '- [ ] one\n\n\\[x\\] two\n\n- three'],
+        ['T7', '- [ ] one\n\n- [x] two\n\n- three', 'two', null, 'OL', '- [ ] one\n\n1. [x] two\n\n- three', '- [ ] one\n\n1. [x] two\n\n- three'],
+        ['T7', '- [ ] one\n\n- [x] two\n\n- three', 'two', null, 'paragraph', '- [ ] one\n\n\\[x\\] two\n\n- three', '- [ ] one\n\n\\[x\\] two\n\n- three'],
+        ['T8', '- one\n  - [ ] inner\n- three', 'inner', null, 'UL', '- one\n\n\\[ \\] inner\n\n- three', '- one\n\n\\[ \\] inner\n\n- three'],
+        ['T8', '- one\n  - [ ] inner\n- three', 'inner', null, 'OL', '- one\n\n1. [ ] inner\n\n- three', '- one\n1. [ ] inner\n- three'],
+        ['T10', '- [x] one\n- two\n\n[x]: /url', 'one', null, 'UL', '\\[x\\] one\n\n- two\n\n[x]: /url', '\\[x\\] one\n- two\n\n[x]: /url'],
+        ['T10', '- [x] one\n- two\n\n[x]: /url', 'one', null, 'OL', '1. \\[x\\] one\n\n- two\n\n[x]: /url', '1. [x] one\n- two\n\n[x]: /url'],
+        ['T10', '- [x] one\n- two\n\n[x]: /url', 'one', null, 'paragraph', '\\[x\\] one\n\n- two\n\n[x]: /url', '\\[x\\] one\n- two\n\n[x]: /url'],
+        ['T11', '- [ ] **one** two\n- three', 'one', null, 'UL', '\\[ \\] **one** two\n\n- three', '\\[ \\] **one** two\n- three'],
+        ['T11', '- [ ] **one** two\n- three', 'one', null, 'OL', '1. [ ] **one** two\n\n- three', '1. [ ] **one** two\n- three'],
+        ['T12', '::: columns\n- [ ] one\n- two\n|||\nRight\n:::', 'one', null, 'UL', '::: columns\n\\[ \\] one\n\n- two\n|||\nRight\n:::', '::: columns\n\\[ \\] one\n- two\n|||\nRight\n:::'],
+        ['T12', '::: columns\n- [ ] one\n- two\n|||\nRight\n:::', 'one', null, 'OL', '::: columns\n1. [ ] one\n\n- two\n|||\nRight\n:::', '::: columns\n1. [ ] one\n- two\n|||\nRight\n:::'],
+        ['T13', 'zero\n\n- [ ] one\n- two', 'zero', 'one', 'UL', '- zero\n- [ ] one\n- two', '- zero\n- [ ] one\n- two'],
+        ['T13', 'zero\n\n- [ ] one\n- two', 'zero', 'one', 'OL', '1. zero\n2. [ ] one\n\n- two', '1. zero\n2. [ ] one\n- two'],
+        ['T15', '- [ ] one\n\n  second\n\n- [x] two', 'second', null, 'UL', '- [ ] one\n\n- second\n\n- [x] two', '- [ ] one\n\n- second\n\n- [x] two'],
+        ['T15', '- [ ] one\n\n  second\n\n- [x] two', 'second', null, 'OL', '- [ ] one\n\n1. second\n\n- [x] two', '- [ ] one\n\n1. second\n\n- [x] two'],
+        ['T17', '1. [ ] one\n2. [x] two\n3. three', 'two', null, 'UL', '1. [ ] one\n\n- [x] two\n\n1. three', '1. [ ] one\n- [x] two\n3. three'],
+        ['T17', '1. [ ] one\n2. [x] two\n3. three', 'two', null, 'OL', '1. [ ] one\n\n\\[x\\] two\n\n1. three', '1. [ ] one\n\n\\[x\\] two\n\n3. three'],
+        ['T18', '- one\n- [ ] two\n\n1. three\n2. [x] four', 'two', 'four', 'UL', '- one\n- [ ] two\n- three\n- [x] four', '- one\n- [ ] two\n- three\n- [x] four'],
+        ['T18', '- one\n- [ ] two\n\n1. three\n2. [x] four', 'two', 'four', 'OL', '- one\n\n1. [ ] two\n2. three\n3. [x] four', '- one\n1. [ ] two\n1. three\n2. [x] four'],
+        ['X1', '- one\n- two\n\n1. three\n2. four', 'two', 'three', 'UL', '- one\n- two\n- three\n\n1. four', '- one\n- two\n- three\n2. four'],
+        ['X1', '- one\n- two\n\n1. three\n2. four', 'two', 'three', 'OL', '- one\n\n1. two\n2. three\n3. four', '- one\n1. two\n1. three\n2. four'],
+        ['X2', '- one\n- two\n\nthree', 'two', 'three', 'UL', '- one\n- two\n- three', '- one\n- two\n- three'],
+        ['X2', '- one\n- two\n\nthree', 'two', 'three', 'OL', '- one\n\n1. two\n2. three', '- one\n1. two\n2. three'],
+        ['X3', '- one\n- two\n\nthree', 'three', null, 'UL', '- one\n- two\n- three', '- one\n- two\n- three'],
+        ['X3', '- one\n- two\n\nthree', 'three', null, 'OL', '- one\n- two\n\n1. three', '- one\n- two\n\n1. three'],
+        ['X4', 'zero\n\n- one\n- two', 'zero', null, 'UL', '- zero\n- one\n- two', '- zero\n- one\n- two'],
+        ['X4', 'zero\n\n- one\n- two', 'zero', null, 'OL', '1. zero\n\n- one\n- two', '1. zero\n\n- one\n- two'],
+        ['X5', '- one\n\nmid\n\n- two', 'mid', null, 'UL', '- one\n- mid\n- two', '- one\n- mid\n- two'],
+        ['X5', '- one\n\nmid\n\n- two', 'mid', null, 'OL', '- one\n\n1. mid\n\n- two', '- one\n\n1. mid\n\n- two'],
+        ['X6', '* one\n* two\n\nthree', 'three', null, 'UL', '* one\n* two\n* three', '* one\n* two\n* three'],
+        ['X6', '* one\n* two\n\nthree', 'three', null, 'OL', '* one\n* two\n\n1. three', '* one\n* two\n\n1. three'],
+        ['X7', 'one\n\ntwo', 'one', 'two', 'UL', '- one\n- two', '- one\n- two'],
+        ['X7', 'one\n\ntwo', 'one', 'two', 'OL', '1. one\n2. two', '1. one\n2. two'],
+        ['X8', '1. one\n2. two\n\nthree', 'three', null, 'UL', '1. one\n2. two\n\n- three', '1. one\n2. two\n\n- three'],
+        ['X8', '1. one\n2. two\n\nthree', 'three', null, 'OL', '1. one\n2. two\n3. three', '1. one\n2. two\n3. three'],
+        ['X9', 'zero\n\n* one\n* two\n\nthree', 'zero', 'three', 'UL', '* zero\n* one\n* two\n* three', '* zero\n* one\n* two\n* three'],
+        ['X9', 'zero\n\n* one\n* two\n\nthree', 'zero', 'three', 'OL', '1. zero\n2. one\n3. two\n4. three', '1. zero\n2. one\n3. two\n4. three'],
+        ['X10', '- one\n\npara\n\n1. three', 'one', 'three', 'UL', '- one\n- para\n- three', '- one\n- para\n- three'],
+        ['X10', '- one\n\npara\n\n1. three', 'one', 'three', 'OL', '1. one\n2. para\n3. three', '1. one\n2. para\n1. three'],
+        ['X11', '- one\n  - inner\n\n    para\n\n  - last\n- two', 'para', null, 'UL', '- one\n  - inner\n- para\n- - last\n- two', '- one\n  - inner\n- para\n- - last\n- two'],
+        ['X11', '- one\n  - inner\n\n    para\n\n  - last\n- two', 'para', null, 'OL', '- one\n  - inner\n\n1. para\n\n- - last\n- two', '- one\n  - inner\n\n1. para\n\n- - last\n- two'],
+        ['X12', '# head\n\n> quoted\n\npara', 'head', 'para', 'UL', '- head\n- quoted\n- para', '- head\n- quoted\n- para'],
+        ['X12', '# head\n\n> quoted\n\npara', 'head', 'para', 'OL', '1. head\n2. quoted\n3. para', '1. head\n2. quoted\n3. para'],
+        ['X13', '1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h\n9. i\n\nten', 'ten', null, 'OL', '1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h\n9. i\n10. ten', '1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h\n9. i\n10. ten'],
+        ['X14', '1) a\n2) b\n\nmid', 'mid', null, 'OL', '1) a\n2) b\n3) mid', '1) a\n2) b\n3) mid'],
+        ['X15', '* a\n* b\n\nmid\n\n- c\n\n- d', 'mid', null, 'UL', '* a\n* b\n* mid\n\n- c\n\n- d', '* a\n* b\n* mid\n\n- c\n\n- d'],
+        ['X16', '- a\n- b\n\nmid\n\n- c\n\n- d', 'mid', null, 'UL', '- a\n\n- b\n\n- mid\n\n- c\n\n- d', '- a\n- b\n\n- mid\n\n- c\n\n- d'],
+        ['X17', '* one\n\n1. two\n2. three\n3. four', 'one', 'three', 'UL', '* one\n* two\n* three\n\n1. four', '* one\n* two\n* three\n3. four'],
+        ['X18', 'one\n\ntwo\n\n* three', 'one', 'two', 'UL', '* one\n* two\n* three', '* one\n* two\n* three'],
+        ['X19', 'zero\n\n- one\n\n- two', 'zero', null, 'UL', '- zero\n\n- one\n\n- two', '- zero\n\n- one\n\n- two'],
+        ['X20', '1. one\n\ntwo\n\nthree\n\n1) four', 'two', 'three', 'OL', '1. one\n2. two\n3. three\n\n1) four', '1. one\n2. two\n3. three\n\n1) four'],
+        ['X21', '- zero\n\none\n\ntwo\n\n1) three', 'zero', 'two', 'OL', '1) zero\n2) one\n3) two\n4) three', '1) zero\n2) one\n3) two\n1) three'],
+        ['X22', '1. zero\n\none\n\ntwo\n\n* three', 'zero', 'two', 'UL', '* zero\n* one\n* two\n* three', '* zero\n* one\n* two\n* three'],
+        ['X26', 'one\n\n1. - aa\n2. bb', 'aa', null, 'OL', 'one\n\n1. aa\n2. bb', 'one\n\n1. aa\n2. bb'],
+        ['X27', 'one\n\n1. > qq\n2. bb', 'qq', null, 'OL', 'one\n\n1. qq\n2. bb', 'one\n\n1. qq\n2. bb'],
+        ['X28', '# head\n\n3. - aa\n4. bb', 'aa', null, 'OL', '# head\n\n3. aa\n4. bb', '# head\n\n3. aa\n4. bb'],
+        ['X29', 'one\n\n- 1. aa\n- bb', 'aa', null, 'UL', 'one\n\n- aa\n- bb', 'one\n\n- aa\n- bb'],
+        ['X30', 'para\n\n* > qq\n* bb', 'para', 'qq', 'UL', '* para\n* qq\n* bb', '* para\n* qq\n* bb'],
+        ['X31', 'one\n\n1) - aa\n2) bb', 'one', 'aa', 'OL', '1) one\n2) aa\n3) bb', '1) one\n2) aa\n2) bb'],
+        ['X32', '+ > qq\n\n- bb', 'qq', null, 'UL', '- qq\n- bb', '- qq\n- bb'],
+        ['X33', '* one\n* two\n\n+ 1. aa\n+ bb', 'aa', null, 'UL', '* one\n* two\n* aa\n\n+ bb', '* one\n* two\n* aa\n+ bb'],
+        ['S1', '- one\n  - inner\n- three', 'inner', null, 'UL', '- one\n\ninner\n\n- three', '- one\n\ninner\n\n- three'],
+        ['S1', '- one\n  - inner\n- three', 'inner', null, 'OL', '- one\n\n1. inner\n\n- three', '- one\n1. inner\n- three'],
+        ['S2', '- one\n  - inner\n- three', 'one', null, 'UL', 'one\n\n- - inner\n- three', 'one\n- - inner\n- three'],
+        ['S2', '- one\n  - inner\n- three', 'one', null, 'OL', '1. one\n\n- - inner\n- three', '1. one\n- - inner\n- three'],
+        ['S3', '- one\n  - inner\n- three', 'one', 'inner', 'UL', 'one\n\ninner\n\n- three', 'one\n\ninner\n\n- three'],
+        ['S3', '- one\n  - inner\n- three', 'one', 'inner', 'OL', '1. one\n2. inner\n\n- three', '1. one\n2. inner\n- three'],
+        ['S4', '- one\n  1. inner\n- three', 'inner', null, 'UL', '- one\n- inner\n- three', '- one\n- inner\n- three'],
+        ['S4', '- one\n  1. inner\n- three', 'inner', null, 'OL', '- one\n\ninner\n\n- three', '- one\n\ninner\n\n- three'],
+        ['S5', '- one\n  - a\n  - b\n- three', 'a', null, 'UL', '- one\n\na\n\n- - b\n- three', '- one\n\na\n\n- - b\n- three'],
+        ['S5', '- one\n  - a\n  - b\n- three', 'a', null, 'OL', '- one\n\n1. a\n\n- - b\n- three', '- one\n1. a\n- - b\n- three'],
+        ['L1', '- one\n\n- two\n\n- three', 'two', null, 'UL', '- one\n\ntwo\n\n- three', '- one\n\ntwo\n\n- three'],
+        ['L1', '- one\n\n- two\n\n- three', 'two', null, 'OL', '- one\n\n1. two\n\n- three', '- one\n\n1. two\n\n- three'],
+        ['L2', '- one\n\n- two', 'one', 'two', 'UL', 'one\n\ntwo', 'one\n\ntwo'],
+        ['L2', '- one\n\n- two', 'one', 'two', 'OL', '1. one\n2. two', '1. one\n2. two'],
+        ['M2', '- one\n\n  second\n\n- two', 'second', null, 'UL', '- one\n\n- second\n\n- two', '- one\n\n- second\n\n- two'],
+        ['M2', '- one\n\n  second\n\n- two', 'second', null, 'OL', '- one\n\n1. second\n\n- two', '- one\n\n1. second\n\n- two'],
+        ['M3', '- one\n\n  second\n\n- two', 'one', 'second', 'UL', '- one\n\n- second\n\n- two', '- one\n\n- second\n\n- two'],
+        ['M3', '- one\n\n  second\n\n- two', 'one', 'second', 'OL', '1. one\n2. second\n\n- two', '1. one\n2. second\n\n- two'],
+        ['M3', '- one\n\n  second\n\n- two', 'one', 'second', 'h2', '## one\n\n## second\n\n- two', '## one\n\n## second\n\n- two'],
+        ['M4', '- one\n\n  second\n\n- two', 'second', 'two', 'UL', '- one\n\n- second\n\n- two', '- one\n\n- second\n\n- two'],
+        ['M4', '- one\n\n  second\n\n- two', 'second', 'two', 'OL', '- one\n\n1. second\n2. two', '- one\n\n1. second\n2. two'],
+        ['M5', '- one\n\n  second\n\n- two', 'one', 'two', 'UL', '- one\n\n- second\n\n- two', '- one\n\n- second\n\n- two'],
+        ['M5', '- one\n\n  second\n\n- two', 'one', 'two', 'OL', '1. one\n2. second\n3. two', '1. one\n2. second\n3. two'],
+        ['M9', '1. one\n\n   second\n\n2. two', 'second', null, 'UL', '1. one\n\n- second\n\n1. two', '1. one\n\n- second\n\n2. two'],
+        ['M9', '1. one\n\n   second\n\n2. two', 'second', null, 'OL', '1. one\n\n2. second\n\n3. two', '1. one\n\n2. second\n\n2. two'],
+        ['M11', '- one\n\n  > quoted\n\n- two', 'quoted', null, 'UL', '- one\n\n- quoted\n\n- two', '- one\n\n- quoted\n\n- two'],
+        ['M11', '- one\n\n  > quoted\n\n- two', 'quoted', null, 'OL', '- one\n\n1. quoted\n\n- two', '- one\n\n1. quoted\n\n- two'],
+        ['M16', '- # Foo\n- bar', 'Foo', null, 'UL', 'Foo\n\n- bar', 'Foo\n- bar'],
+        ['M16', '- # Foo\n- bar', 'Foo', null, 'OL', '1. Foo\n\n- bar', '1. Foo\n- bar'],
+        ['M19', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'second', null, 'UL', '- one\n\n- second\n\n- - inner\n\n  after\n\n- two', '- one\n\n- second\n\n- - inner\n\n  after\n\n- two'],
+        ['M19', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'second', null, 'OL', '- one\n\n1. second\n\n- - inner\n\n  after\n\n- two', '- one\n\n1. second\n\n- - inner\n\n  after\n\n- two'],
+        ['M21', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'after', null, 'UL', '- one\n\n  second\n\n  - inner\n\n- after\n\n- two', '- one\n\n  second\n\n  - inner\n\n- after\n\n- two'],
+        ['M21', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'after', null, 'OL', '- one\n\n  second\n\n  - inner\n\n1. after\n\n- two', '- one\n\n  second\n\n  - inner\n\n1. after\n\n- two'],
+        ['M23', '- a\n  - b\n\n  c\n\n- d', 'c', null, 'UL', '- a\n  - b\n\n- c\n\n- d', '- a\n  - b\n\n- c\n\n- d'],
+        ['M29', '9. one\n\n   second', 'second', null, 'OL', '9. one\n\n10. second', '9. one\n\n10. second'],
+        ['C1', '::: columns\n- one\n- two\n|||\nRight\n:::', 'one', null, 'UL', '::: columns\none\n\n- two\n|||\nRight\n:::', '::: columns\none\n- two\n|||\nRight\n:::'],
+        ['C1', '::: columns\n- one\n- two\n|||\nRight\n:::', 'one', null, 'OL', '::: columns\n1. one\n\n- two\n|||\nRight\n:::', '::: columns\n1. one\n- two\n|||\nRight\n:::'],
+        ['C2', '::: columns\n- one\n- two\n|||\nRight\n:::', 'two', null, 'UL', '::: columns\n- one\n\ntwo\n|||\nRight\n:::', '::: columns\n- one\n\ntwo\n\n|||\nRight\n:::'],
+        ['C2', '::: columns\n- one\n- two\n|||\nRight\n:::', 'two', null, 'OL', '::: columns\n- one\n\n1. two\n|||\nRight\n:::', '::: columns\n- one\n1. two\n|||\nRight\n:::'],
+        ['C4', '::: columns\none\n|||\nRight\n:::', 'one', null, 'UL', '::: columns\n- one\n|||\nRight\n:::', '::: columns\n- one\n|||\nRight\n:::'],
+        ['C4', '::: columns\none\n|||\nRight\n:::', 'one', null, 'OL', '::: columns\n1. one\n|||\nRight\n:::', '::: columns\n1. one\n|||\nRight\n:::'],
+        ['Z1', '- one\n-\n- three', 'one', null, 'UL', 'one\n\n-\n- three', 'one\n\n-\n- three'],
+        ['Z1', '- one\n-\n- three', 'one', null, 'OL', '1. one\n\n-\n- three', '1. one\n-\n- three'],
+    ];
+
+    const DIFFERS: ParityRow[] = [
+        ['Q1', '> - one\n> - two', 'one', null, 'UL', '- \\> - one\\\n  \\> - two', 'one\n> - two'],
+        ['Q1', '> - one\n> - two', 'one', null, 'OL', '1. \\> - one\\\n   \\> - two', '1. one\n> - two'],
+        ['Q2', '> - [ ] one\n> - [x] two', 'one', null, 'UL', '- \\> - \\[ \\] one\\\n  \\> - \\[x\\] two', '\\[ \\] one\n> - [x] two'],
+        ['Q2', '> - [ ] one\n> - [x] two', 'one', null, 'OL', '1. \\> - \\[ \\] one\\\n   \\> - \\[x\\] two', '1. [ ] one\n> - [x] two'],
+        ['E1', '- one\n  two\n- three', 'two', null, 'UL', 'one\ntwo\n\n- three', '- one\n- two\n- three'],
+        ['E1', '- one\n  two\n- three', 'two', null, 'OL', '1. one\n   two\n\n- three', '- one\n1. two\n- three'],
+        ['E2', 'one\ntwo', 'one', 'two', 'UL', '- one\n  two', '- one\n- two'],
+        ['E2', 'one\ntwo', 'one', 'two', 'OL', '1. one\n   two', '1. one\n2. two'],
+        ['E3', '```\none\n```\n\ntwo', 'one', null, 'UL', '- one\n\ntwo', '```\none\n```\n\ntwo'],
+        ['E3', '```\none\n```\n\ntwo', 'one', null, 'OL', '1. one\n\ntwo', '```\none\n```\n\ntwo'],
+        ['E4', '- one\n\n  second\n\n- two', 'second', null, 'paragraph', '- one\n\n  second\n\n- two', '- one\n\nsecond\n\n- two'],
+        ['E4', '- one\n\n  second\n\n- two', 'second', null, 'h2', '- one\n\n  ## second\n\n- two', '- one\n\n## second\n\n- two'],
+        ['E5', '- [ ] one\n- [x] two', 'one', 'two', 'code', '```\n[ ] one\n```\n\n```\n[x] two\n```', '```\n[ ] one\n[x] two\n```'],
+        ['E6', '- one\n  - inner\n\n- three', 'three', null, 'UL', '- one\n\n  - inner\n\nthree', '- one\n  - inner\n\nthree'],
+        ['E7', '- one\n  - inner\n\n  after\n\n- two', 'after', null, 'OL', '- one\n\n  - inner\n\n1. after\n\n- two', '- one\n  - inner\n\n1. after\n\n- two'],
+        ['E8', '<div>x</div>\n\ntwo', 'x', null, 'UL', '- \\<div>x\\</div>\n\ntwo', '<div>x</div>\n\ntwo'],
+        ['E9', 'one\n\n---\n\ntwo', 'one', 'two', 'UL', '- one\n- \\---\n- two', '- one\n\n---\n\n- two'],
+        ['E10', '- one\n\n  ```\n  code\n  ```\n\n- two', 'code', null, 'UL', '- one\n\n- code\n\n- two', '- one\n\n  ```\n  code\n  ```\n\n- two'],
+        ['E11', '- one\n\n  <div>x</div>\n\n- two', 'x', null, 'UL', '- one\n\n- \\<div>x\\</div>\n\n- two', '- one\n\n  <div>x</div>\n\n- two'],
+        ['E12', '- # Foo\n- bar', 'Foo', null, 'paragraph', '- Foo\n- bar', 'Foo\n- bar'],
+        ['E12', '- # Foo\n- bar', 'Foo', null, 'h2', '- ## Foo\n- bar', '## Foo\n- bar'],
+        ['E13', '- one\n\n  ::: {align=center}\n  fenced\n  :::\n\n- two', 'fenced', null, 'UL', '- one\n\n  ::: {align=center}\n  - fenced\n  :::\n\n- two', '- one\n\n  ::: {align=center}\n  fenced\n  :::\n\n- two'],
+        ['E13', '- one\n\n  ::: {align=center}\n  fenced\n  :::\n\n- two', 'fenced', null, 'OL', '- one\n\n  ::: {align=center}\n  1. fenced\n  :::\n\n- two', '- one\n\n  ::: {align=center}\n  fenced\n  :::\n\n- two'],
+        ['E14', '::: columns\n- one\n- two\n|||\nRight\n:::', 'two', 'Right', 'UL', '::: columns\n- one\n- two\n|||\n- Right\n:::', '::: columns\n- one\n- two\n|||\nRight\n:::'],
+        ['E15', '- one\n-\n- three', 'one', 'three', 'UL', 'one\n\nthree', 'one\n\n-\n\nthree'],
+        ['E15', '- one\n-\n- three', 'one', 'three', 'OL', '1. one\n2.\n3. three', '1. one\n-\n1. three'],
+        ['E16', 'one\\\ntwo', 'two', null, 'UL', '- one\\\n  two', 'one\\\ntwo'],
+        ['E16', 'one\\\ntwo', 'one', 'two', 'OL', '1. one\\\n   two', 'one\\\ntwo'],
+        ['E16', 'one\\\ntwo', 'one', 'two', 'h2', 'one\\\ntwo\n---', 'one\\\ntwo'],
+        ['E17', '- one\\\n  two\n- three', 'one', 'three', 'UL', 'one\\\ntwo\n\nthree', '- one\\\n  two\n- three'],
+        ['E19', '-\tone\n\n\tsecond\n- two', 'one', null, 'UL', 'one\n\nsecond\n\n- two', '-\tone\n\n\tsecond\n- two'],
+        ['E19', '- one\ttab\n- z', 'one', null, 'h2', '## one   tab\n\n- z', '- one\ttab\n- z'],
+        // The source-mode lift rule is deferred: what a list item holds after its text leaves the list with the
+        // text on the WYSIWYG surface, and stays in the list in source mode, in an item its marker re-opens. A
+        // task item that holds such blocks, or a nested list, is left alone there. Each row below is a row the
+        // two surfaces are to read alike once source mode lifts as the WYSIWYG surface does.
+        ['T9', '- [ ] one\n  - inner\n- three', 'one', null, 'UL', '\\[ \\] one\n\n- - inner\n- three', '- [ ] one\n  - inner\n- three'],
+        ['T9', '- [ ] one\n  - inner\n- three', 'one', null, 'OL', '1. [ ] one\n\n- - inner\n- three', '- [ ] one\n  - inner\n- three'],
+        ['T14', '- [ ] one\n\n  second\n\n- [x] two', 'one', null, 'UL', '\\[ \\] one\n\nsecond\n\n- [x] two', '- [ ] one\n\n  second\n\n- [x] two'],
+        ['T14', '- [ ] one\n\n  second\n\n- [x] two', 'one', null, 'OL', '1. [ ] one\n\n   second\n\n- [x] two', '- [ ] one\n\n  second\n\n- [x] two'],
+        ['T14', '- [ ] one\n\n  second\n\n- [x] two', 'one', null, 'h2', '## \\[ \\] one\n\nsecond\n\n- [x] two', '- [ ] one\n\n  second\n\n- [x] two'],
+        ['T14', '- [ ] one\n\n  second\n\n- [x] two', 'one', null, 'code', '```\n[ ] one\n```\n\nsecond\n\n- [x] two', '- [ ] one\n\n  second\n\n- [x] two'],
+        ['T16', '- [x] one\n  - [ ] inner\n- two', 'one', null, 'UL', '\\[x\\] one\n\n- - [ ] inner\n- two', '- [x] one\n  - [ ] inner\n- two'],
+        ['T16', '- [x] one\n  - [ ] inner\n- two', 'one', null, 'OL', '1. [x] one\n\n- - [ ] inner\n- two', '- [x] one\n  - [ ] inner\n- two'],
+        ['X23', '* one\n\n* two\n\n  held\n\n1) three\n\nlast', 'two', null, 'OL', '* one\n\n1) two\n\n   held\n\n2) three\n\nlast', '* one\n\n1. two\n\n* held\n\n1) three\n\nlast'],
+        ['X24', '1. one\n\n   held\n\n* two\n* three', 'one', null, 'UL', '* one\n\n  held\n\n* two\n\n* three', '- one\n\n1. held\n\n* two\n* three'],
+        ['X25', 'zero\n\n1. one\n\n   held\n\n* two', 'zero', 'one', 'UL', '* zero\n\n* one\n\n  held\n\n* two', '- zero\n- one\n\n1. held\n\n* two'],
+        ['S6', '- o\n  - m\n    - x\n      - n\n    - y\n  - k', 'x', null, 'UL', '- o\n  - m\n\nx\n\n- - n\n  - y\n  - k', '- o\n  - m\n\nx\n\n- - - - n\n    - y\n  - k'],
+        ['S6', '- o\n  - m\n    - x\n      - n\n    - y\n  - k', 'x', null, 'OL', '- o\n  - m\n\n1. x\n\n- - n\n  - y\n  - k', '- o\n  - m\n1. x\n- - - - n\n    - y\n  - k'],
+        ['M1', '- one\n\n  second\n\n- two', 'one', null, 'UL', 'one\n\nsecond\n\n- two', 'one\n\n- second\n\n- two'],
+        ['M1', '- one\n\n  second\n\n- two', 'one', null, 'OL', '1. one\n\n   second\n\n- two', '1. one\n\n- second\n\n- two'],
+        ['M1', '- one\n\n  second\n\n- two', 'one', null, 'paragraph', 'one\n\nsecond\n\n- two', 'one\n\n- second\n\n- two'],
+        ['M1', '- one\n\n  second\n\n- two', 'one', null, 'h2', '## one\n\nsecond\n\n- two', '## one\n\n- second\n\n- two'],
+        ['M1', '- one\n\n  second\n\n- two', 'one', null, 'quote', '> one\n\nsecond\n\n- two', '> one\n\n- second\n\n- two'],
+        ['M1', '- one\n\n  second\n\n- two', 'one', null, 'code', '```\none\n```\n\nsecond\n\n- two', '```\none\n```\n\n- second\n\n- two'],
+        ['M6', '- one\n\n  second\n\n  third\n\n- two', 'second', null, 'UL', '- one\n\n- second\n\n  third\n\n- two', '- one\n\n- second\n\n- third\n\n- two'],
+        ['M6', '- one\n\n  second\n\n  third\n\n- two', 'second', null, 'OL', '- one\n\n1. second\n\n   third\n\n- two', '- one\n\n1. second\n\n- third\n\n- two'],
+        ['M7', '- one\n\n  second\n\n  third\n\n- two', 'one', null, 'UL', 'one\n\nsecond\n\nthird\n\n- two', 'one\n\n- second\n\n  third\n\n- two'],
+        ['M7', '- one\n\n  second\n\n  third\n\n- two', 'one', null, 'OL', '1. one\n\n   second\n\n   third\n\n- two', '1. one\n\n- second\n\n  third\n\n- two'],
+        ['M8', '1. one\n\n   second\n\n2. two', 'one', null, 'UL', '- one\n\n  second\n\n1. two', '- one\n\n1. second\n\n2. two'],
+        ['M8', '1. one\n\n   second\n\n2. two', 'one', null, 'OL', 'one\n\nsecond\n\n1. two', 'one\n\n1. second\n\n2. two'],
+        ['M10', '- one\n\n  > quoted\n\n- two', 'one', null, 'UL', 'one\n\n> quoted\n\n- two', 'one\n\n- > quoted\n\n- two'],
+        ['M10', '- one\n\n  > quoted\n\n- two', 'one', null, 'OL', '1. one\n\n   > quoted\n\n- two', '1. one\n\n- > quoted\n\n- two'],
+        ['M10', '- one\n\n  > quoted\n\n- two', 'one', null, 'h2', '## one\n\n> quoted\n\n- two', '## one\n\n- > quoted\n\n- two'],
+        ['M12', '- one\n\n  | h |\n  | --- |\n  | c |\n\n- two', 'one', null, 'UL', 'one\n\n| h |\n| --- |\n| c |\n\n- two', 'one\n\n- | h |\n  | --- |\n  | c |\n\n- two'],
+        ['M12', '- one\n\n  | h |\n  | --- |\n  | c |\n\n- two', 'one', null, 'OL', '1. one\n\n   | h |\n   | --- |\n   | c |\n\n- two', '1. one\n\n- | h |\n  | --- |\n  | c |\n\n- two'],
+        ['M12', '- one\n\n  | h |\n  | --- |\n  | c |\n\n- two', 'one', null, 'h2', '## one\n\n| h |\n| --- |\n| c |\n\n- two', '## one\n\n- | h |\n  | --- |\n  | c |\n\n- two'],
+        ['M13', '- one\n\n  ::: {align=center}\n  fenced\n  :::\n\n- two', 'one', null, 'UL', 'one\n\n::: {align=center}\nfenced\n:::\n\n- two', 'one\n\n- ::: {align=center}\n  fenced\n  :::\n\n- two'],
+        ['M13', '- one\n\n  ::: {align=center}\n  fenced\n  :::\n\n- two', 'one', null, 'OL', '1. one\n\n   ::: {align=center}\n   fenced\n   :::\n\n- two', '1. one\n\n- ::: {align=center}\n  fenced\n  :::\n\n- two'],
+        ['M13', '- one\n\n  ::: {align=center}\n  fenced\n  :::\n\n- two', 'one', null, 'h2', '## one\n\n::: {align=center}\nfenced\n:::\n\n- two', '## one\n\n- ::: {align=center}\n  fenced\n  :::\n\n- two'],
+        ['M14', '- one\n\n  <div>x</div>\n\n- two', 'one', null, 'UL', 'one\n\n<div>x</div>\n\n- two', 'one\n\n- <div>x</div>\n\n- two'],
+        ['M14', '- one\n\n  <div>x</div>\n\n- two', 'one', null, 'OL', '1. one\n\n   <div>x</div>\n\n- two', '1. one\n\n- <div>x</div>\n\n- two'],
+        ['M14', '- one\n\n  <div>x</div>\n\n- two', 'one', null, 'h2', '## one\n\n<div>x</div>\n\n- two', '## one\n\n- <div>x</div>\n\n- two'],
+        ['M15', '- one\n\n  ```\n  code\n  ```\n\n- two', 'one', null, 'UL', 'one\n\n```\ncode\n```\n\n- two', 'one\n\n- ```\n  code\n  ```\n\n- two'],
+        ['M15', '- one\n\n  ```\n  code\n  ```\n\n- two', 'one', null, 'OL', '1. one\n\n   ```\n   code\n   ```\n\n- two', '1. one\n\n- ```\n  code\n  ```\n\n- two'],
+        ['M15', '- one\n\n  ```\n  code\n  ```\n\n- two', 'one', null, 'h2', '## one\n\n```\ncode\n```\n\n- two', '## one\n\n- ```\n  code\n  ```\n\n- two'],
+        ['M17', '- # Foo\n\n  para\n\n- bar', 'Foo', null, 'UL', 'Foo\n\npara\n\n- bar', 'Foo\n\n- para\n\n- bar'],
+        ['M17', '- # Foo\n\n  para\n\n- bar', 'Foo', null, 'OL', '1. Foo\n\n   para\n\n- bar', '1. Foo\n\n- para\n\n- bar'],
+        ['M18', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'one', null, 'UL', 'one\n\nsecond\n\n- - inner\n\n  after\n\n- two', 'one\n\n- second\n\n  - inner\n\n  after\n\n- two'],
+        ['M18', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'one', null, 'OL', '1. one\n\n   second\n\n- - inner\n\n  after\n\n- two', '1. one\n\n- second\n\n  - inner\n\n  after\n\n- two'],
+        ['M18', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'one', null, 'h2', '## one\n\nsecond\n\n- - inner\n\n  after\n\n- two', '## one\n\n- second\n\n  - inner\n\n  after\n\n- two'],
+        ['M20', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'inner', null, 'UL', '- one\n\n  second\n\ninner\n\nafter\n\n- two', '- one\n\n  second\n\ninner\n\n- after\n\n- two'],
+        ['M20', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'inner', null, 'OL', '- one\n\n  second\n\n1. inner\n\n   after\n\n- two', '- one\n\n  second\n\n1. inner\n\n- after\n\n- two'],
+        ['M22', '- a\n  - b\n\n  c\n\n- d', 'b', null, 'UL', '- a\n\nb\n\nc\n\n- d', '- a\n\nb\n\n- c\n\n- d'],
+        ['M22', '- a\n  - b\n\n  c\n\n- d', 'b', null, 'OL', '- a\n\n1. b\n\n   c\n\n- d', '- a\n1. b\n\n- c\n\n- d'],
+        ['M22', '- a\n  - b\n\n  c\n\n- d', 'b', null, 'h2', '- a\n\n## b\n\nc\n\n- d', '- a\n## b\n\n- c\n\n- d'],
+        ['M24', '- o\n  - x\n    - n\n  - y\n\n  t\n\n- z', 'x', null, 'UL', '- o\n\nx\n\n- - n\n  - y\n\n  t\n\n- z', '- o\n\nx\n\n- - - n\n  - y\n\n  t\n\n- z'],
+        ['M24', '- o\n  - x\n    - n\n  - y\n\n  t\n\n- z', 'x', null, 'OL', '- o\n\n1. x\n\n- - n\n  - y\n\n  t\n\n- z', '- o\n1. x\n- - - n\n  - y\n\n  t\n\n- z'],
+        ['M24', '- o\n  - x\n    - n\n  - y\n\n  t\n\n- z', 'x', null, 'h2', '- o\n\n## x\n\n- - n\n  - y\n\n  t\n\n- z', '- o\n## x\n- - - n\n  - y\n\n  t\n\n- z'],
+        ['M25', '- o\n  - x\n\n    p\n\n  - y\n- z', 'x', null, 'UL', '- o\n\nx\n\np\n\n- - y\n- z', '- o\n\nx\n\n- - p\n\n  - y\n- z'],
+        ['M25', '- o\n  - x\n\n    p\n\n  - y\n- z', 'x', null, 'OL', '- o\n\n1. x\n\n   p\n\n- - y\n- z', '- o\n1. x\n\n- - p\n\n  - y\n- z'],
+        ['M26', '- one\n\n  > q\n\n  | h |\n  | --- |\n  | c |\n\n  ::: {align=center}\n  f\n  :::\n\n- two', 'one', null, 'UL', 'one\n\n> q\n\n| h |\n| --- |\n| c |\n\n::: {align=center}\nf\n:::\n\n- two', 'one\n\n- > q\n\n  | h |\n  | --- |\n  | c |\n\n  ::: {align=center}\n  f\n  :::\n\n- two'],
+        ['M26', '- one\n\n  > q\n\n  | h |\n  | --- |\n  | c |\n\n  ::: {align=center}\n  f\n  :::\n\n- two', 'one', null, 'OL', '1. one\n\n   > q\n\n   | h |\n   | --- |\n   | c |\n\n   ::: {align=center}\n   f\n   :::\n\n- two', '1. one\n\n- > q\n\n  | h |\n  | --- |\n  | c |\n\n  ::: {align=center}\n  f\n  :::\n\n- two'],
+        ['M27', '- one\n\n  ---\n\n- two', 'one', null, 'UL', 'one\n\n---\n\n- two', '- one\n\n  ---\n\n- two'],
+        ['M27', '- one\n\n  ---\n\n- two', 'one', null, 'OL', '1. one\n\n   ---\n\n- two', '- one\n\n  ---\n\n- two'],
+        ['M28', '10. one\n\n    second\n\n11. two', 'one', null, 'UL', '- one\n\n  second\n\n10. two', '- one\n\n10. second\n\n11. two'],
+        ['M28', '10. one\n\n    second\n\n11. two', 'one', null, 'OL', 'one\n\nsecond\n\n10. two', 'one\n\n10. second\n\n11. two'],
+        ['M30', '1. one\n   - two\n\n     held\n2. three', 'two', null, 'UL', '1. one\n\ntwo\n\nheld\n\n1. three', '1. one\n\ntwo\n\n1. - held\n2. three'],
+        ['M30', '1. one\n   - two\n\n     held\n2. three', 'two', null, 'h2', '1. one\n\n## two\n\nheld\n\n1. three', '1. one\n## two\n\n1. - held\n2. three'],
+        ['M31', '- one\n\n  ```\n  aa\n    \n  bb\n  ```\n\n- two', 'one', null, 'UL', 'one\n\n```\naa\n  \nbb\n```\n\n- two', 'one\n\n- ```\n  aa\n    \n  bb\n  ```\n\n- two'],
+        ['M31', '- one\n\n  ```\n  aa\n    \n  bb\n  ```\n\n- two', 'one', null, 'OL', '1. one\n\n   ```\n   aa\n     \n   bb\n   ```\n\n- two', '1. one\n\n- ```\n  aa\n    \n  bb\n  ```\n\n- two'],
+        ['M32', '- one\n\n  ::: {align=center}\n  - x\n  :::\n\n- two', 'one', null, 'UL', 'one\n\n::: {align=center}\n- x\n:::\n\n- two', 'one\n\n- ::: {align=center}\n  - x\n  :::\n\n- two'],
+        ['M32', '- one\n\n  ::: {align=center}\n  - x\n  :::\n\n- two', 'one', null, 'OL', '1. one\n\n   ::: {align=center}\n   - x\n   :::\n\n- two', '1. one\n\n- ::: {align=center}\n  - x\n  :::\n\n- two'],
+        ['M32', '- one\n\n  ::: {align=center}\n  - x\n  :::\n\n- two', 'one', null, 'h2', '## one\n\n::: {align=center}\n- x\n:::\n\n- two', '## one\n\n- ::: {align=center}\n  - x\n  :::\n\n- two'],
+        ['C3', '::: columns\n- one\n\n  second\n\n- two\n|||\nRight\n:::', 'one', null, 'UL', '::: columns\none\n\nsecond\n\n- two\n|||\nRight\n:::', '::: columns\none\n\n- second\n\n- two\n|||\nRight\n:::'],
+        ['C3', '::: columns\n- one\n\n  second\n\n- two\n|||\nRight\n:::', 'one', null, 'OL', '::: columns\n1. one\n\n   second\n\n- two\n|||\nRight\n:::', '::: columns\n1. one\n\n- second\n\n- two\n|||\nRight\n:::'],
+        // The deferral also leaves source mode doing nothing where what stays behind would not read as it did under
+        // the re-opened marker. A task item's marker re-opens a plain item, so a block or nested item inside a task
+        // item is left alone when more of that task item follows it — the item's own text is rows T9, T14 and T16.
+        ['T19', '- [x] alpha\n  - beta\n  - gamma\n- delta', 'beta', null, 'UL', '- [x] alpha\n\nbeta\n\n- - gamma\n- delta', '- [x] alpha\n  - beta\n  - gamma\n- delta'],
+        ['T19', '- [x] alpha\n  - beta\n  - gamma\n- delta', 'beta', null, 'OL', '- [x] alpha\n\n1. beta\n\n- - gamma\n- delta', '- [x] alpha\n  - beta\n  - gamma\n- delta'],
+        ['T19', '- [x] alpha\n  - beta\n  - gamma\n- delta', 'beta', null, 'h2', '- [x] alpha\n\n## beta\n\n- - gamma\n- delta', '- [x] alpha\n  - beta\n  - gamma\n- delta'],
+        ['T20', '- [x] alpha\n\n  beta\n\n  gamma\n- delta', 'beta', null, 'UL', '- [x] alpha\n\n- beta\n\n  gamma\n\n- delta', '- [x] alpha\n\n  beta\n\n  gamma\n- delta'],
+        ['T20', '- [x] alpha\n\n  beta\n\n  gamma\n- delta', 'beta', null, 'OL', '- [x] alpha\n\n1. beta\n\n   gamma\n\n- delta', '- [x] alpha\n\n  beta\n\n  gamma\n- delta'],
+        ['T20', '- [x] alpha\n\n  beta\n\n  gamma\n- delta', 'beta', null, 'h2', '- [x] alpha\n\n  ## beta\n\n  gamma\n\n- delta', '- [x] alpha\n\n  beta\n\n  gamma\n- delta'],
+        ['T21', '- [ ] a\n  - b\n\n    held\n- c', 'b', null, 'UL', '- [ ] a\n\nb\n\nheld\n\n- c', '- [ ] a\n  - b\n\n    held\n- c'],
+        ['T21', '- [ ] a\n  - b\n\n    held\n- c', 'b', null, 'h2', '- [ ] a\n\n## b\n\nheld\n\n- c', '- [ ] a\n  - b\n\n    held\n- c'],
+        // `- ---` is a thematic break of its own, so a block right before a break written with the list's marker
+        // character is left alone too (M27 is the item's own text). A break in another character, or a block between
+        // the two, and source mode acts as in the rows above: M36, M37.
+        ['M33', '- one\n\n  para\n\n  ---\n\n- two', 'para', null, 'UL', '- one\n\n- para\n\n  ---\n\n- two', '- one\n\n  para\n\n  ---\n\n- two'],
+        ['M33', '- one\n\n  para\n\n  ---\n\n- two', 'para', null, 'OL', '- one\n\n1. para\n\n   ---\n\n- two', '- one\n\n  para\n\n  ---\n\n- two'],
+        ['M33', '- one\n\n  para\n\n  ---\n\n- two', 'para', null, 'h2', '- one\n\n  ## para\n\n  ---\n\n- two', '- one\n\n  para\n\n  ---\n\n- two'],
+        ['M34', '- one\n  - inner\n\n  ---\n\n- two', 'inner', null, 'UL', '- one\n\ninner\n\n---\n\n- two', '- one\n  - inner\n\n  ---\n\n- two'],
+        ['M34', '- one\n  - inner\n\n  ---\n\n- two', 'inner', null, 'OL', '- one\n\n1. inner\n\n   ---\n\n- two', '- one\n  - inner\n\n  ---\n\n- two'],
+        ['M34', '- one\n  - inner\n\n  ---\n\n- two', 'inner', null, 'h2', '- one\n\n## inner\n\n---\n\n- two', '- one\n  - inner\n\n  ---\n\n- two'],
+        ['M35', '* one\n\n  ***\n\n* two', 'one', null, 'UL', 'one\n\n***\n\n* two', '* one\n\n  ***\n\n* two'],
+        ['M35', '* one\n\n  ***\n\n* two', 'one', null, 'h2', '## one\n\n***\n\n* two', '* one\n\n  ***\n\n* two'],
+        ['M36', '- one\n\n  ***\n\n- two', 'one', null, 'UL', 'one\n\n***\n\n- two', 'one\n\n- ***\n\n- two'],
+        ['M37', '- one\n\n  mid\n\n  ---\n\n- two', 'one', null, 'UL', 'one\n\nmid\n\n---\n\n- two', 'one\n\n- mid\n\n  ---\n\n- two'],
+        // The differences that stay. A heading type makes each line of a block a heading in source mode, and one
+        // heading of several lines on the WYSIWYG surface.
+        ['E20', 'one\nmore', 'one', 'more', 'h2', 'one\nmore\n---', '## one\n## more'],
+        ['E21', 'one  \nmore\n\n- two', 'one', null, 'h2', 'one  \nmore\n---\n\n- two', '## one  \n## more\n\n- two'],
+        // A list toggle on a heading written with a setext underline, the form a heading of several lines is saved in.
+        ['E31', 'one\nmore\n---\n\npara', 'one', null, 'UL', '- one\n  more\n\npara', 'one\nmore\n---\n\npara'],
+        ['E31', 'one\nmore\n---\n\npara', 'one', null, 'OL', '1. one\n   more\n\npara', 'one\nmore\n---\n\npara'],
+        ['E36', 'Title\n=====\n\n- one', 'Title', null, 'UL', '- Title\n- one', 'Title\n=====\n\n- one'],
+        // A list the WYSIWYG surface keeps as a raw Markdown block is one block there, and lines to source mode.
+        ['E22', '* # alpha\n  1. beta\n* gamma', 'beta', null, 'UL', '- \\* # alpha\\\n  1\\. beta\\\n  \\* gamma', '* # alpha\n* beta\n* gamma'],
+        ['E22', '* # alpha\n  1. beta\n* gamma', 'beta', null, 'OL', '1. \\* # alpha\\\n   1\\. beta\\\n   \\* gamma', '* # alpha\nbeta\n* gamma'],
+        ['E23', '* # alpha\n  1. beta\n* gamma', 'gamma', null, 'UL', '- \\* # alpha\\\n  1\\. beta\\\n  \\* gamma', '* # alpha\n  1. beta\n\ngamma'],
+        // Text the editor does not write itself, where source mode finds no form that reads back and does nothing.
+        // A block or a nested list indented with a tab: the block itself, and a block before it in the item.
+        ['E24', '- one\n\n\tsecond\n- two', 'one', null, 'UL', 'one\n\nsecond\n\n- two', '- one\n\n\tsecond\n- two'],
+        ['E24', '- one\n\n\tsecond\n- two', 'one', null, 'h2', '## one\n\nsecond\n\n- two', '- one\n\n\tsecond\n- two'],
+        ['E25', '- one\n\n\tsecond\n- two', 'second', null, 'UL', '- one\n\n- second\n\n- two', '- one\n\n\tsecond\n- two'],
+        ['E26', '- one\n\t- nested\n- two', 'nested', null, 'UL', '- one\n\nnested\n\n- two', '- one\n\t- nested\n- two'],
+        ['E27', '- one\n\t- nested\n- two', 'one', null, 'UL', 'one\n\n- - nested\n- two', '- one\n\t- nested\n- two'],
+        // Text opening with an unescaped `[ ] `, which a new item would read as a task marker (the editor writes
+        // `\\[ \\]`), and the block before such text in a list item, which the item's marker would re-open as one.
+        ['E28', '- aa\n- bb\n\n[ ] mid', 'mid', null, 'UL', '- aa\n- bb\n- \\[ \\] mid', '- aa\n- bb\n\n[ ] mid'],
+        ['E28', '- aa\n- bb\n\n[ ] mid', 'mid', null, 'OL', '- aa\n- bb\n\n1. \\[ \\] mid', '- aa\n- bb\n\n[ ] mid'],
+        ['E29', '> [ ] aa', 'aa', null, 'UL', '- \\[ \\] aa', '> [ ] aa'],
+        ['E30', '- one\n\n  [ ] para\n- two', 'one', null, 'UL', 'one\n\n\\[ \\] para\n\n- two', '- one\n\n  [ ] para\n- two'],
+        ['E30', '- one\n\n  [ ] para\n- two', 'one', null, 'h2', '## one\n\n\\[ \\] para\n\n- two', '- one\n\n  [ ] para\n- two'],
+        // Lines that would read otherwise beside the result: a block indented below an empty item, a list whose
+        // markers are indented, a raw block indented deeper than its item's content.
+        ['E32', '2.\n\n   vebe\n\n   > lage', 'vebe', null, 'UL', '2.\n\n- vebe\n\n> lage', '2.\n\n   vebe\n\n   > lage'],
+        ['E33', '  1. one\n\n     held\n\n  2. two', 'one', null, 'UL', '- one\n\n  held\n\n1. two', '  1. one\n\n     held\n\n  2. two'],
+        ['E34', '- one\n\n    <div>x</div>\n\n- two', 'one', null, 'UL', 'one\n\n<div>x</div>\n\n- two', '- one\n\n    <div>x</div>\n\n- two'],
+        // An item whose marker stands on a line of its own: source mode leaves the emptied marker as an empty item.
+        ['E35', '-\n  one\n- two', 'one', null, 'UL', 'one\n\n- two', '-\none\n- two'],
+    ];
+
+    for (const row of SAME) {
+        const [id, doc, from, to, command, wysiwyg, source] = row;
+
+        it(`${id} ${command}: both surfaces leave a document the viewer reads the same`, () => {
+            const loaded = editorOf(doc);
+
+            expect(canonicalSave(loaded), 'the document is in the form the editor saves').toBe(doc);
+
+            selectWords(loaded, from, to ?? from);
+
+            expect(loaded.getSelectionState().canSetBlockType).toBe(true);
+
+            const editor = wysiwygAfter(row);
+            const value = editor.getValue();
+
+            expect(value).toBe(wysiwyg);
+            expect(value).not.toBe(doc);
+            expect(editorOf(value).getValue()).toBe(value);
+            expect(editorSurfaceModel(editor)).toEqual(viewerModel(value).blocks);
+
+            lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+
+            expect(editor.getValue()).toBe(doc);
+            expect(sourceAfter(row)).toBe(source);
+            expect(viewerModel(source).blocks).toEqual(viewerModel(wysiwyg).blocks);
+        });
+    }
+
+    for (const row of DIFFERS) {
+        const [id, , , , command, wysiwyg, source] = row;
+
+        it(`${id} ${command}: the surfaces differ here on purpose, each as pinned`, () => {
+            const editor = wysiwygAfter(row);
+            const value = editor.getValue();
+
+            expect(value).toBe(wysiwyg);
+            expect(editorOf(value).getValue()).toBe(value);
+            expect(editorSurfaceModel(editor)).toEqual(viewerModel(value).blocks);
+            expect(sourceAfter(row)).toBe(source);
+            // A row whose two results start reading alike is no difference any more: move it to SAME.
+            expect(viewerModel(source).blocks).not.toEqual(viewerModel(wysiwyg).blocks);
+        });
+    }
+
+    // A list the WYSIWYG surface keeps as a raw Markdown block is no list there. These two documents still hold that
+    // block after the command, which the editor shows as text and the viewer as a list, so they are no `DIFFERS` rows.
+    it('a new item beside a list kept as a raw block joins that list in source mode alone', () => {
+        const row: ParityRow = ['raw', '- ## Foo\n  - inner\n\npara', 'para', null, 'UL', '', ''];
+
+        // On the WYSIWYG surface the item starts a list of its own, in the other bullet so that the two stay apart.
+        expect(wysiwygAfter(row).getValue()).toBe('- ## Foo\n  - inner\n\n* para');
+        expect(sourceAfter(row)).toBe('- ## Foo\n  - inner\n- para');
+    });
+
+    it('a list kept as a raw block leaves its item with the item\'s text on the WYSIWYG surface alone', () => {
+        const row: ParityRow = ['raw', '1. one\n\n   - ## Foo\n     - inner\n\n2. two', 'one', null, 'OL', '', ''];
+
+        expect(wysiwygAfter(row).getValue()).toBe('one\n\n- ## Foo\n  - inner\n\n1. two');
+        // Source mode reads a nested list, which stays in the list, in an item the marker re-opens.
+        expect(sourceAfter(row)).toBe('one\n\n1. - ## Foo\n     - inner\n\n2. two');
     });
 });
 
@@ -2115,6 +2526,18 @@ describe('MarkdownEditor source-mode line commands read the viewer\'s blocks', (
         {
             name: 'a code block from a list item keeps the item\'s indented content in the item', doc: '10. a\n\n    b', select: [4, 4],
             run: (editor) => editor.setBlockType('code'), result: '```\na\n```\n\n10. b',
+        },
+        {
+            name: 'a new item written against a tight list takes every blank line between them', doc: '- one\n- two\n\n\n\nthree', select: [16, 16],
+            run: (editor) => editor.toggleUnorderedList(), result: '- one\n- two\n- three',
+        },
+        {
+            name: 'a list toggle declines over a tab-indented block of the item', doc: '- one\n\n\tsecond\n- two', select: [3, 3],
+            run: (editor) => editor.toggleUnorderedList(), result: '- one\n\n\tsecond\n- two',
+        },
+        {
+            name: 'a task marker stays with the first line of its item\'s text', doc: '- [ ] one\n  more\n- two', select: [13, 13],
+            run: (editor) => editor.toggleOrderedList(), result: '- [ ] one\n1. more\n- two',
         },
         {
             name: 'a paragraph from a heading does not swallow the definition below', doc: '# a\n[r]: /u\n\n[r]', select: [2, 2],
@@ -5077,6 +5500,7 @@ describe('MarkdownEditor context menu — caret and availability', () => {
         const NUMBERED_LIST = '1. one\n2. two\n3. three';
         const TASK_LIST = '- [ ] one\n- [x] two';
         const TWO_LISTS = '- one\n- two\n\n1. three\n2. four';
+        const ITEM_PARAGRAPH = '- one\n\n  second\n\n- two';
 
         /** What is available at a caret or a range inside the items of a list. */
         const IN_LIST: Array<keyof CommandAvailability> = [
@@ -5336,6 +5760,38 @@ describe('MarkdownEditor context menu — caret and availability', () => {
                 name: 'a range from a bulleted list into a numbered one', markdown: TWO_LISTS,
                 select: (editor) => selectAcross(editor, 'two', 'three'),
                 available: IN_LIST,
+            },
+            {
+                name: 'a caret in a paragraph a list item holds after its text', markdown: ITEM_PARAGRAPH,
+                select: (editor) => caretIn(editor, 'second', 1),
+                available: IN_LIST,
+            },
+            {
+                name: 'a range from a list item\'s text into the paragraph it holds', markdown: ITEM_PARAGRAPH,
+                select: (editor) => selectAcross(editor, 'one', 'second'),
+                available: IN_LIST,
+            },
+            {
+                name: 'a caret in a heading a list item opens with', markdown: '- ## Foo\n- bar',
+                select: (editor) => caretIn(editor, 'Foo', 1),
+                available: IN_LIST,
+            },
+            {
+                name: 'a caret in a quote a list item holds', markdown: '- one\n\n  > quoted\n\n- two',
+                select: (editor) => caretIn(editor, 'quoted', 1),
+                available: IN_LIST,
+            },
+            {
+                name: 'a caret in a table cell of a list item', markdown: '- one\n\n  | h |\n  | --- |\n  | c |\n\n- two',
+                select: (editor) => caretIn(editor, 'c', 1),
+                available: [
+                    'canFormat', 'canStyle', 'canLink', 'canSetBlockLayout', 'canInsertParagraphAroundBlock', 'canInsertImage', 'canEditTable',
+                ],
+            },
+            {
+                name: 'a caret in a code block a list item holds', markdown: '- one\n\n  ```\n  code\n  ```\n\n- two',
+                select: (editor) => caretIn(editor, 'code', 2),
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertParagraphAroundBlock'],
             },
             {
                 name: 'no selection', markdown: 'hello world',

@@ -666,6 +666,24 @@ export function $splitItemAfterText(item: MarkdownListItemNode, text: MarkdownLi
 }
 
 /**
+ * Splits an item before one of the blocks it holds after its first: a new
+ * item, put after it, takes that block and every block after it, so the
+ * block opens an item of its own.
+ *
+ * @param item - The item.
+ * @param block - A child of the item that is not its first.
+ * @returns The new item.
+ */
+export function $splitItemBefore(item: MarkdownListItemNode, block: LexicalNode): MarkdownListItemNode {
+    const next = new MarkdownListItemNode();
+
+    item.insertAfter(next);
+    next.splice(0, 0, [block, ...block.getNextSiblings()]);
+
+    return next;
+}
+
+/**
  * Moves a nested item one level out, to follow the item that held its list.
  * What followed it inside that outer item moves into it, so the document
  * reads in the same order: the later items of its list as a nested list of
