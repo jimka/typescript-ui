@@ -15,7 +15,7 @@ import { Anchor } from '~/layout/Anchor';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, setQuerySelectorResult, makeEvent } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
-import { EditorState, EditorSelection, Prec } from '@codemirror/state';
+import { EditorState, EditorSelection, Prec, StateEffect } from '@codemirror/state';
 import type { Extension, Transaction } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { codeFolding, foldEffect, ensureSyntaxTree, syntaxTree, indentOnInput, indentUnit } from '@codemirror/language';
@@ -3518,13 +3518,8 @@ describe('built-in markdown language typing', () => {
         expect(await typed('markdown', start, '</div>')).toBe('- <div>\n      foo\n      </div>|\n  x');
     });
 
-    it('M26: Enter on an item marker line inside a blockquote adds no indentation', async () => {
-        // Spaces cannot continue a quote, and deeper indentation outside it
-        // would read as a code block, so the new line starts at column 0.
-        // Continuing the `>` inside HTML is not something this language does.
-        const start = '> - <div>|\n>   x\n>   </div>';
-
-        expect(await typed('markdown', start, '\n')).toBe('> - <div>\n|\n>   x\n>   </div>');
+    it('M26: Enter on an item marker line inside a blockquote keeps the quote and indents to the item content', async () => {
+        expect(await typed('markdown', '> - <div>|\n>   x\n>   </div>', '\n')).toBe('> - <div>\n>   |\n>   x\n>   </div>');
     });
 
     it('M27: JavaScript inside <script> keeps its own indentation', async () => {
@@ -3553,38 +3548,37 @@ describe('built-in markdown language typing', () => {
         expect(await typed('markdown', '  <img src="a"|/>', '\n')).toBe('  <img src="a"\n  |/>');
     });
 
-    it('M32: Enter between adjacent tags on an item marker line leaves the close tag unindented', async () => {
-        // A documented limit: the middle line gets the item's content column,
-        // but CodeMirror gives the close tag's line the marker line's own
-        // indentation, which is none.
-        expect(await typed('markdown', '- <div>|</div>', '\n')).toBe('- <div>\n  |\n</div>');
+    it('M32: Enter between adjacent tags on an item marker line keeps the close tag in the item', async () => {
+        expect(await typed('markdown', '- <div>|</div>', '\n')).toBe('- <div>\n  |\n  </div>');
     });
 
-    it('M33: Enter inside an HTML block in a blockquote does not continue the quote marker', async () => {
-        // A documented limit: Markdown's own continuation declines inside
-        // HTML, and indentation can only produce whitespace.
-        expect(await typed('markdown', '> <div>|\n> x', '\n')).toBe('> <div>\n|\n> x');
+    it('M33: Enter inside an HTML block in a blockquote continues the quote marker', async () => {
+        expect(await typed('markdown', '> <div>|\n> x', '\n')).toBe('> <div>\n> |\n> x');
     });
 
     // Markdown reads a tab as a stop at every fourth column, whatever the
-    // editor shows it as: the nested item's content is at column 6 here.
+    // editor shows it as: the nested item's content is at column 6 here. With
+    // HTML below the caret the new line copies the marker line's own start,
+    // the tab and two spaces for the marker, which is that column at any
+    // tabSize.
     for (const tabSize of [2, 4, 8]) {
         it(`M34: Enter on a tab-indented nested item marker line indents to the item content with tabSize ${tabSize}`, async () => {
             const start = '- a\n\t- <div>|\n      x\n      </div>';
 
-            expect(await typed('markdown', start, '\n', tabSize)).toBe('- a\n\t- <div>\n      |\n      x\n      </div>');
+            expect(await typed('markdown', start, '\n', tabSize)).toBe('- a\n\t- <div>\n\t  |\n      x\n      </div>');
         });
     }
 
     // A tab reaches the next stop from wherever it starts, so one that starts off a stop is narrower
-    // than four columns: after one space it is three wide, and after a marker at column 0 too. Only
-    // these rows tell that from a tab counted as four columns wherever it stands.
+    // than four columns: after one space it is three wide, and after a marker at column 0 too. M36
+    // copies its tab with the rest of the line's start. M37 has no HTML below the caret, so its column
+    // is counted, and it alone tells that from a tab counted as four columns wherever it stands.
     for (const tabSize of [2, 4, 8]) {
         it(`M36: Enter on a marker line indented by a space and a tab indents to the item content with tabSize ${tabSize}`, async () => {
             // The space is column 0, the tab runs to column 4, the marker and its space to column 6.
             const start = '- a\n \t- <div>|\n      x\n      </div>';
 
-            expect(await typed('markdown', start, '\n', tabSize)).toBe('- a\n \t- <div>\n      |\n      x\n      </div>');
+            expect(await typed('markdown', start, '\n', tabSize)).toBe('- a\n \t- <div>\n \t  |\n      x\n      </div>');
         });
 
         it(`M37: Enter on a marker line whose marker is followed by a tab indents to the item content with tabSize ${tabSize}`, async () => {
@@ -3595,6 +3589,222 @@ describe('built-in markdown language typing', () => {
 
     it('M35: Enter between two tags on an item marker line indents the rest of the line to the item content', async () => {
         expect(await typed('markdown', '- <div>|<p>x</p>', '\n')).toBe('- <div>\n  |<p>x</p>');
+    });
+
+    // Rows C1–C42: Enter inside HTML that sits in a blockquote or list item.
+    // The new line starts with the caret line's own prefix (its `>` markers
+    // and its indentation, a list marker replaced by spaces), so it stays in
+    // the same containers. M26, M32 and M33 above belong to the same set.
+    it('C1: text typed after Enter inside an HTML block in a blockquote lands in the quote', async () => {
+        expect(await typed('markdown', '> <div>|\n> x', '\n:::')).toBe('> <div>\n> :::|\n> x');
+    });
+
+    it('C2: Enter in the middle of a quoted HTML line drops the spaces after the caret', async () => {
+        expect(await typed('markdown', '> <div>foo| bar\n> x', '\n')).toBe('> <div>foo\n> |bar\n> x');
+    });
+
+    it('C3: Enter on a deeper-indented quoted HTML line keeps that indentation after the marker', async () => {
+        const start = '>   <div>\n>     foo|\n>   </div>';
+
+        expect(await typed('markdown', start, '\n')).toBe('>   <div>\n>     foo\n>     |\n>   </div>');
+    });
+
+    it('C4: Enter copies a quote marker with no space after it as written', async () => {
+        expect(await typed('markdown', '><div>|\n>x', '\n')).toBe('><div>\n>|\n>x');
+    });
+
+    it('C5: Enter inside an HTML block in a nested blockquote keeps both markers', async () => {
+        expect(await typed('markdown', '> > <div>|\n> > x', '\n')).toBe('> > <div>\n> > |\n> > x');
+    });
+
+    it('C6: Enter after a close tag keeps the quote while the block continues below', async () => {
+        const start = '> <div>\n> x\n> </div>|\n> after';
+
+        expect(await typed('markdown', start, '\n')).toBe('> <div>\n> x\n> </div>\n> |\n> after');
+    });
+
+    it('C7: Enter on the marker line of an item holding a blockquote blanks the list marker and keeps the quote marker', async () => {
+        expect(await typed('markdown', '- > <div>|\n  > x', '\n')).toBe('- > <div>\n  > |\n  > x');
+    });
+
+    it('C8: Enter on a continuation line of an item inside a blockquote copies the line prefix', async () => {
+        const start = '> - <div>\n>   x|\n>   </div>';
+
+        expect(await typed('markdown', start, '\n')).toBe('> - <div>\n>   x\n>   |\n>   </div>');
+    });
+
+    it('C9: Enter on an ordered item marker line inside a blockquote blanks the whole marker', async () => {
+        expect(await typed('markdown', '> 1. <div>|\n>    x', '\n')).toBe('> 1. <div>\n>    |\n>    x');
+    });
+
+    it('C10: Enter keeps three levels of containers', async () => {
+        expect(await typed('markdown', '> - > <div>|\n>   > x', '\n')).toBe('> - > <div>\n>   > |\n>   > x');
+    });
+
+    it('C11: Enter between adjacent tags in a blockquote gives both new lines the quote marker', async () => {
+        expect(await typed('markdown', '> <div>|</div>', '\n')).toBe('> <div>\n> |\n> </div>');
+    });
+
+    it('C12: Enter between adjacent tags on an item marker line inside a blockquote keeps both new lines in the item', async () => {
+        expect(await typed('markdown', '> - <div>|</div>', '\n')).toBe('> - <div>\n>   |\n>   </div>');
+    });
+
+    it('C13: Enter between adjacent tags on a nested item marker line keeps the close tag in the nested item', async () => {
+        expect(await typed('markdown', '- a\n  - <div>|</div>', '\n')).toBe('- a\n  - <div>\n    |\n    </div>');
+    });
+
+    it('C14: Enter on a tab-indented nested item marker line copies the tab', async () => {
+        expect(await typed('markdown', '- a\n\t- <div>|\n\t  x', '\n')).toBe('- a\n\t- <div>\n\t  |\n\t  x');
+    });
+
+    it('C15: Enter on a tab-indented nested item marker line gives the same text at tab size 8', async () => {
+        expect(await typed('markdown', '- a\n\t- <div>|\n\t  x', '\n', 8)).toBe('- a\n\t- <div>\n\t  |\n\t  x');
+    });
+
+    it('C16: Enter on an item marker line with a tab after the marker keeps the tab', async () => {
+        expect(await typed('markdown', '-\t<div>|\n\tx', '\n')).toBe('-\t<div>\n \t|\n\tx');
+    });
+
+    it('C17: Enter on a tab-indented item continuation line copies the tab at tab size 2', async () => {
+        const start = '1. a\n\t<div>|\n\tx\n\t</div>';
+
+        expect(await typed('markdown', start, '\n', 2)).toBe('1. a\n\t<div>\n\t|\n\tx\n\t</div>');
+    });
+
+    it('C18: Enter inside an HTML block in a blockquote copies a tab after the quote marker', async () => {
+        expect(await typed('markdown', '>\t<div>|\n>\tx', '\n')).toBe('>\t<div>\n>\t|\n>\tx');
+    });
+
+    it('C19: text that only looks like a marker inside an HTML block is not copied', async () => {
+        const start = '- <pre>\n  > not a quote|\n  - not a list\n  </pre>';
+
+        expect(await typed('markdown', start, '\n')).toBe('- <pre>\n  > not a quote\n  |\n  - not a list\n  </pre>');
+    });
+
+    it('C20: Enter in the indentation of an item continuation line keeps the line indented', async () => {
+        expect(await typed('markdown', '- <div>\n|  x\n  </div>', '\n')).toBe('- <div>\n\n  |x\n  </div>');
+    });
+
+    it('C21: Enter between a quote marker and deeper-indented HTML keeps the indentation on the new line', async () => {
+        expect(await typed('markdown', '> <div>\n> |  x', '\n')).toBe('> <div>\n> \n>   |x');
+    });
+
+    it('C22: Enter in front of a quote marker on its line leaves the line as it is', async () => {
+        expect(await typed('markdown', '- > <div>\n|  > x\n  > </div>', '\n')).toBe('- > <div>\n\n  |> x\n  > </div>');
+    });
+
+    it('C23: repeated Enter inside an open HTML block in a blockquote never drops the quote marker', async () => {
+        expect(await typed('markdown', '> <pre>|\n> x\n> </pre>', '\n\n\n')).toBe('> <pre>\n> \n> \n> |\n> x\n> </pre>');
+    });
+
+    it('C24: repeated Enter inside an open HTML block in a list item never drops the indentation', async () => {
+        expect(await typed('markdown', '- <pre>|\n  x\n  </pre>', '\n\n')).toBe('- <pre>\n  \n  |\n  x\n  </pre>');
+    });
+
+    it('C25: at the end of an HTML block, repeated Enter leaves the blockquote as after plain quoted text', async () => {
+        expect(await typed('markdown', '> <div>', '\n\n\n')).toBe('> <div>\n\n|');
+        expect(await typed('markdown', '> quote', '\n\n\n')).toBe('> quote\n\n|');
+    });
+
+    it('C26: Enter on the blank line that ended an HTML block in a list item behaves as in a plain item', async () => {
+        expect(await typed('markdown', '- <div>|\n  x\n  </div>', '\n\n')).toBe('- <div>\n|\n  x\n  </div>');
+        expect(await typed('markdown', '- a\n  b|\n  c', '\n\n')).toBe('- a\n  b\n|\n  c');
+    });
+
+    it('C27: Enter on the last line of an HTML block at the end of the document continues the quote', async () => {
+        expect(await typed('markdown', '> <div>\n> x', '\n')).toBe('> <div>\n> x\n> |');
+    });
+
+    it('C28: Enter inside an inline tag in a blockquote keeps the quote marker', async () => {
+        const start = '> text <a href="x"| title="y"> more\n> next';
+
+        expect(await typed('markdown', start, '\n')).toBe('> text <a href="x"\n> |title="y"> more\n> next');
+    });
+
+    it('C29: Enter between two inline tags in a blockquote keeps the quote marker and adds one line', async () => {
+        expect(await typed('markdown', '> a <b>|</b> c\n> d', '\n')).toBe('> a <b>\n> |</b> c\n> d');
+    });
+
+    it('C30: Enter inside an inline tag on a line with no quote marker adds none', async () => {
+        expect(await typed('markdown', '> text\n<a hr|ef="x"> more', '\n')).toBe('> text\n<a hr\n|ef="x"> more');
+    });
+
+    it('C31: Enter inside an HTML comment in a blockquote keeps the quote marker', async () => {
+        expect(await typed('markdown', '> <!-- a|\n> b -->', '\n')).toBe('> <!-- a\n> |\n> b -->');
+    });
+
+    it('C32: Enter inside <script> in a blockquote keeps the quote marker', async () => {
+        const start = '> <script>\n> function f() {|\n> }\n> </script>';
+
+        expect(await typed('markdown', start, '\n')).toBe('> <script>\n> function f() {\n> |\n> }\n> </script>');
+    });
+
+    it('C33: Enter inside <script> in a list item copies the line indentation', async () => {
+        const start = '- a\n  <script>\n  if (x) {|\n  }\n  </script>';
+
+        expect(await typed('markdown', start, '\n')).toBe('- a\n  <script>\n  if (x) {\n  |\n  }\n  </script>');
+    });
+
+    it('C34: JavaScript inside a top-level <script> that continues below keeps its own indentation', async () => {
+        const start = '<script>\nfunction f() {|\n}\n</script>';
+
+        expect(await typed('markdown', start, '\n')).toBe('<script>\nfunction f() {\n  |\n}\n</script>');
+    });
+
+    it('C35: Enter in a fenced code block in a blockquote is not continued (a known limit)', async () => {
+        // Not HTML, so not this command's: Markdown's own Enter command declines inside fenced code, and plain Enter cannot write a ">".
+        expect(await typed('markdown', '> ```\n> code|\n> ```', '\n')).toBe('> ```\n> code\n|\n> ```');
+    });
+
+    it('C36: Enter over a selection on an item marker line still indents to the item content', async () => {
+        const state = settle(await buildTypingState('markdown', '- <div>x\n  y\n  </div>'));
+
+        // Offsets 7 to 8 select the "x" after the open tag.
+        const selected = state.update({ selection: EditorSelection.range(7, 8) }).state;
+
+        expect(show(typeText(selected, '\n'))).toBe('- <div>\n  |\n  y\n  </div>');
+    });
+
+    it('C37: Enter with two carets inside an HTML block in a blockquote continues the quote at both', async () => {
+        const start = await buildTypingState('markdown', '> <div>\n> x\n> </div>');
+        const state = start.update({ effects: StateEffect.appendConfig.of(EditorState.allowMultipleSelections.of(true)) }).state;
+
+        // Offset 7 is the end of the first line, 11 the end of the second.
+        const carets = EditorSelection.create([EditorSelection.cursor(7), EditorSelection.cursor(11)]);
+        const after  = typeText(state.update({ selection: carets }).state, '\n');
+
+        expect(after.doc.toString()).toBe('> <div>\n> \n> x\n> \n> </div>');
+    });
+
+    it('C38: Enter inside an HTML block in a blockquote does nothing in a read-only editor', async () => {
+        const start = await buildTypingState('markdown', '> <div>|\n> x');
+        const state = start.update({ effects: StateEffect.appendConfig.of(EditorState.readOnly.of(true)) }).state;
+
+        expect(show(typeText(state, '\n'))).toBe('> <div>|\n> x');
+    });
+
+    it('C39: Backspace deletes the continued quote prefix one character at a time', async () => {
+        expect(await typed('markdown', '> <div>|\n> x', '\n\b')).toBe('> <div>\n>|\n> x');
+        expect(await typed('markdown', '> <div>|\n> x', '\n\b\b')).toBe('> <div>\n|\n> x');
+    });
+
+    it('C40: Backspace deletes the continued item indentation in one press', async () => {
+        expect(await typed('markdown', '- <div>|\n  x\n  </div>', '\n\b')).toBe('- <div>\n|\n  x\n  </div>');
+        expect(await typed('markdown', '1. <div>|\n   x', '\n\b')).toBe('1. <div>\n|\n   x');
+    });
+
+    it('C41: Backspace on the continued prefix of an item in a blockquote deletes the indentation first', async () => {
+        expect(await typed('markdown', '> - <div>|\n>   x', '\n\b\b')).toBe('> - <div>\n> |\n>   x');
+    });
+
+    it('C42: Enter between a bracket pair inside <script> or <style> in a blockquote or list item adds one line', async () => {
+        // The pair is not split over three lines, as it is not in other
+        // quoted or item text (`> (|)` gives `> (` over `> |)`). At the top
+        // level JavaScript still splits it.
+        expect(await typed('markdown', '> <script>\n> f(|)\n> </script>', '\n')).toBe('> <script>\n> f(\n> |)\n> </script>');
+        expect(await typed('markdown', '- a\n  <script>\n  f(|)\n  </script>', '\n')).toBe('- a\n  <script>\n  f(\n  |)\n  </script>');
+        expect(await typed('markdown', '- a\n  <style>\n  a {|}\n  </style>', '\n')).toBe('- a\n  <style>\n  a {\n  |}\n  </style>');
+        expect(await typed('markdown', '<script>\nf(|)\n</script>', '\n')).toBe('<script>\nf(\n  |\n)\n</script>');
     });
 
     it('H1: the standalone html language still auto-closes a tag', async () => {
