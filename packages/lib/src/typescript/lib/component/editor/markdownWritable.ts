@@ -23,10 +23,10 @@ import {
 import type { TableSelection } from "@lexical/table";
 import { $isLinkNode, LinkNode } from "@lexical/link";
 import { $dfs, $unwrapAndFilterDescendants, $unwrapNode, mergeRegister } from "@lexical/utils";
-import { lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions } from "~/component/display/markdownExtensions.js";
+import { lexMarkdownWithDefinitions } from "~/component/display/markdownExtensions.js";
 import {
-    $definitionsSource, $headingWritesOneLine, $itemReadsLoose, $listReadsLoose, $rawBlockWritesAsParagraph, $readsBackAsShown, $runsReadingOtherwise,
-    $serializeBlock, $writtenListMarker, keptImageShown, rawBlockStandsInItem,
+    $definitionsSource, $documentDefinitions, $headingWritesOneLine, $itemReadsLoose, $listReadsLoose, $rawBlockWritesAsParagraph, $readsBackAsShown,
+    $runsReadingOtherwise, $serializeBlock, $writtenListMarker, definitionsOfSource, keptImageShown, NO_DEFINITIONS_SOURCE, rawBlockStandsInItem,
 } from "~/component/editor/markdownSerializer.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import {
@@ -975,7 +975,7 @@ function $readListAgainAroundRawBlock(node: MarkdownRawBlockNode): void {
         list = parent;
     }
 
-    $showBlockAnew(list, $readBlocksWithDefinitions($serializeBlock(list), lexMarkdownLinkDefinitions($definitionsSource())));
+    $showBlockAnew(list, $readBlocksWithDefinitions($serializeBlock(list), $documentDefinitions()));
 }
 
 /**
@@ -1033,7 +1033,10 @@ function $showRawBlockAsItsBlocks(node: MarkdownRawBlockNode): void {
 
 /**
  * Puts a collapsed caret at an offset in a block's text, a line break
- * counting as the one character it shows as.
+ * counting as the one character it shows as: inside the text node the offset
+ * falls in, or, where it falls on a line that holds no text, at the element
+ * point before that line's line break, which is how Lexical addresses an
+ * empty line of a block.
  *
  * @param block - The block.
  * @param offset - The offset in the block's text content.
@@ -1042,13 +1045,28 @@ function $selectTextOffset(block: ElementNode, offset: number): void {
     let remaining = offset;
 
     for (const { node } of $dfs(block)) {
-        if ($isTextNode(node) && remaining <= node.getTextContentSize()) {
-            node.select(remaining, remaining);
+        if ($isTextNode(node)) {
+            const size = node.getTextContentSize();
 
-            return;
+            if (remaining <= size) {
+                node.select(remaining, remaining);
+
+                return;
+            }
+
+            remaining -= size;
+        } else if ($isLineBreakNode(node)) {
+            if (remaining === 0) {
+                // The offset stands on a line that holds no text: the point before this line break.
+                const index = node.getIndexWithinParent();
+
+                node.getParentOrThrow().select(index, index);
+
+                return;
+            }
+
+            remaining -= node.getTextContentSize();
         }
-
-        remaining -= $isTextNode(node) || $isLineBreakNode(node) ? node.getTextContentSize() : 0;
     }
 
     block.selectEnd();
@@ -1146,12 +1164,13 @@ interface DefinitionsShown {
  * viewer reads, and what a reload of the save would show.
  *
  * The check runs in a root transform, so it lands in the update that made
- * the change and undoes with it. It reads the raw blocks' text, found among
- * the top-level blocks, and compares it with the text the document held
- * before the update, which an update listener carries from one committed
- * state to the next where the transform ran; the definitions are lexed only
- * when that text changed, and blocks are serialized only when the
- * definitions did.
+ * the change and undoes with it. It reads the definitions' source — the
+ * written forms of the raw blocks, found among the top-level blocks — and
+ * compares it with the source the document held before the update, which an
+ * update listener carries from one committed state to the next where the
+ * transform ran. The definitions are read off a source, raw block by raw
+ * block, only when it changed (a raw block's text is lexed once and
+ * remembered), and blocks are serialized only when the definitions did.
  *
  * @param editor - The editor.
  * @returns The unregister function.
@@ -1159,18 +1178,18 @@ interface DefinitionsShown {
 function registerDefinitionRules(editor: LexicalEditor): () => void {
     const committedSources = new WeakMap<EditorState, string>();
     let shown: DefinitionsShown | null = null;
-    // The last source lexed, which the next change compares against: one lex per change.
-    let lexed = { source: "", definitions: lexMarkdownLinkDefinitions("") };
+    // The last source read for its definitions, which the next change compares against: one reading per change.
+    let lastRead = { source: NO_DEFINITIONS_SOURCE, definitions: definitionsOfSource(NO_DEFINITIONS_SOURCE) };
 
     const definitionsOf = (source: string): Links => {
-        if (lexed.source !== source) {
-            lexed = { source, definitions: lexMarkdownLinkDefinitions(source) };
+        if (lastRead.source !== source) {
+            lastRead = { source, definitions: definitionsOfSource(source) };
         }
 
-        return lexed.definitions;
+        return lastRead.definitions;
     };
 
-    // Read off the state itself only where no transform ran to carry its text: after an update that moved only the
+    // Read off the state itself only where no transform ran to carry its source: after an update that moved only the
     // selection, or an undo, a redo or another update that sets a state.
     const sourceOf = (state: EditorState): string => {
         let source = committedSources.get(state);
@@ -1185,7 +1204,7 @@ function registerDefinitionRules(editor: LexicalEditor): () => void {
 
     return mergeRegister(
         editor.registerNodeTransform(RootNode, () => {
-            // An undo or a redo brings back a state that showed its own definitions; its text is read off it when needed.
+            // An undo or a redo brings back a state that showed its own definitions; its source is read off it when needed.
             const historic = $hasUpdateTag(HISTORIC_TAG);
 
             if (historic) {

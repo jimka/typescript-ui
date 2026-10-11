@@ -3525,7 +3525,7 @@ function $declinesFormat(): boolean {
 
 /**
  * Registers the Markdown typing shortcuts everywhere except inside a raw
- * Markdown block, whose text is saved as typed: a shortcut there would turn
+ * Markdown block, whose text is saved as Markdown: a shortcut there would turn
  * typed syntax into formatting the block does not save.
  *
  * @remarks

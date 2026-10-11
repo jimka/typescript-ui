@@ -198,4 +198,12 @@ export const DIALECT_CASES: readonly CorpusCase[] = [
     { name: 'repeated definition with a blank line in its title under a list item text', source: '[d]: /a\n\n- t\n\n  [d]: /b "ti\n\n  tle"\n\n- z' },
     { name: 'repeated definition with a blank line in its title opening a tight list item', source: '[d]: /a\n\n- [d]: /b "ti\n\n  tle"\n- z' },
     { name: 'two raw lists a definition line apart in a list item', source: '- a\n\n  - x\n    > q\n\n  [//]: #\n\n  - n\n    > r\n\n- z', known: { surface: 'listItemBlocks' } },
+    { name: 'indented quote before an indented lazy html start', source: 'p\n\n  > q\n  <div\n\nz', known: { surface: 'quoteBlocks' } },
+    { name: 'indented quote before an indented lazy html start in a column', source: '::: columns\n  > q\n  <div\n\nw\n|||\nv\n:::', known: { surface: 'quoteBlocks' } },
+    { name: 'indented quote before an indented lazy closing tag ending the document', source: '  > q\n  </div', known: { surface: 'quoteBlocks' } },
+    { name: 'quote before a deeper lazy html start', source: '> q\n  <div\n\nz', known: { surface: 'quoteBlocks' } },
+    { name: 'quote before a deeper lazy html start in a list item', source: '- a\n\n   > q\n   <div\n- z', known: { surface: 'quoteBlocks' } },
+    { name: 'html block start two blank lines before a paragraph', source: '<div\n\n\nb' },
+    { name: 'raw list before an html block', source: '- a\n  > x\n\n<div>\ny\n</div>', known: { surface: 'listItemBlocks' } },
+    { name: 'list, definition line and an indented raw list', source: '- a\n\n[//]: #\n\n  - x\n  - y\n- z\n  > q', known: { surface: 'listItemBlocks' } },
 ];

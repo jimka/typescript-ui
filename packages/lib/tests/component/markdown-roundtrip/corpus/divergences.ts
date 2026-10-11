@@ -17,7 +17,9 @@ export interface DivergenceReason {
 export const DIVERGENCES = {
     // unmodelled
     quoteBlocks:    { cause: 'unmodelled', reason: 'A blockquote holding more than one paragraph, or any other block (a link reference definition included, which the viewer renders as an empty quote), is kept as a raw Markdown block: saved unchanged, but shown as source where the viewer renders a quote.' },
-    listItemBlocks: { cause: 'unmodelled', reason: 'A list one of whose items holds — in a tight list — a block right under another with no blank line between them, other than a nested list under the text of its item (which a save cannot write without making the list loose), or a quote that ends on a line without `>` starting an HTML block (which reads as part of the quote or as a block after it, by what follows the item), is kept as a raw Markdown block (of its item, when it is a nested list): saved unchanged, but shown as source where the viewer renders a list.' },
+    listItemBlocks: { cause: 'unmodelled', reason: 'A list one of whose items holds — in a tight list — a block right under another with no blank line between them, other than a nested list under the text of its item (which a save cannot write without making the list loose), or a quote that ends on a line without `>`, indented no deeper than the quote, starting an HTML block (which reads as part of the quote or as a block after it, by what follows the item), is kept as a raw Markdown block (of its item, when it is a nested list): saved unchanged, but shown as source where the viewer renders a list.' },
+    // block-rules
+    definitionTitleIndent: { cause: 'block-rules', reason: 'A link reference definition that is indented in the source — by spaces, by a tab in a list item, or deeper than its list item — and whose title has a second line loads without that indentation on any line, where the viewer keeps it on the title\'s later lines: the editor reads another title than the viewer. A reference link to the definition is then saved inline once its paragraph is edited, unless the title holds a blank line.' },
     // inline-rules
 } as const satisfies Record<string, DivergenceReason>;
 

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
-import { assertCheck, canonicalSave, checkTitle, loadAndSave } from './harness';
+import { assertCheck, canonicalSave, checkTitle, editorDefinitions, loadAndSave, viewerDefinitions } from './harness';
 import { editorSurfaceModel, linkTargets, viewerModel } from './viewModel';
 import { CORPUS } from './corpus';
 import { DIVERGENCES } from './corpus/divergences';
@@ -92,6 +92,13 @@ for (const testCase of CORPUS) {
             const second = loadAndSave(first).editor;
 
             assertCheck(testCase, 'canonicalIdempotence', canonicalSave(second), first);
+        });
+
+        it(checkTitle(testCase, 'definitions'), () => {
+            const { editor, saved } = loadAndSave(testCase.source);
+            const own = editorDefinitions(editor);
+
+            assertCheck(testCase, 'definitions', own, viewerDefinitions(saved, own));
         });
     });
 }

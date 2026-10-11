@@ -46,4 +46,12 @@ export const REFERENCE_LINK_CASES: readonly CorpusCase[] = [
     { name: 'backslash-bang label', source: '[bar][foo\\!]\n\n[foo!]: /url', links: [] },
     { name: 'definition with trailing junk', source: '[a]\n\n[a]: https://a "t" junk', links: ['https://a'] },
     { name: 'reference in a heading', source: '# [Foo]\n\n[foo]: /url', links: ['/url'] },
+    { name: 'definition after an html block start ending a column', source: '::: columns\n<div\n|||\n[x]: /u\n:::\n\nb [x] c', links: ['/u'] },
+    { name: 'definition after an open comment ending a list item', source: '- a\n\n  <!-- c\n- b [x] z\n\n  [x]: /u', links: ['/u'] },
+    { name: 'definition two blank lines after an html block start', source: '<div\n\n\n[x]: /u\n\nb [x] c', links: ['/u'] },
+    { name: 'first definition after an html block start ending a column', source: '::: columns\n<div\n|||\n[x]: /u\n:::\n\n[x]: /v\n\nb [x] c', links: ['/u'] },
+    { name: 'definition with a blank line in its title after an html block start ending a column', source: '::: columns\n<div\n|||\n[x]: /u "t\n\nu8"\n:::\n\nb [x] c', links: ['/u'] },
+    { name: 'definition with a blank line in its title after an html block start ending a list item', source: '- a\n\n  <div\n- b [x] z\n\n  [x]: /u "t\n\n  u8"', links: ['/u'] },
+    { name: 'indented definition with a two-line title', source: '  [x]: /u "t\n  u"\n\nb [x] c', links: ['/u'], known: { definitions: 'definitionTitleIndent', edits: 'definitionTitleIndent' } },
+    { name: 'tab-indented definition in a list item with a blank line in its title', source: '- a\n\n\t[x]: /u "t\n\n\tu"\n\nb [x] c', links: ['/u'], known: { canonical: 'definitionTitleIndent', definitions: 'definitionTitleIndent', edits: 'definitionTitleIndent' } },
 ];

@@ -93,14 +93,36 @@ const INDENTED_LINE = /^[ \t]/;
 /** The indentation CommonMark ignores before a block: up to three spaces (four make indented code). */
 const MAX_IGNORED_INDENT = 3;
 
+/** The indentation before a block's first line that CommonMark ignores ({@link MAX_IGNORED_INDENT} spaces at most). */
+const INDENT_BEFORE_BLOCK = /^ {1,3}/;
+
+/** The whitespace before each line of a paragraph, which `marked` keeps in its text and the viewer does not show. */
+const INDENT_BEFORE_LINE = /^[ \t]+/gm;
+
 /** The lines holding nothing but whitespace that open a text, each with its line end. */
 const BLANK_FIRST_LINES = /^(?:[ \t]*\n)+/;
+
+/** The lines holding nothing but whitespace that end a text, each with the line end before it. */
+const BLANK_LAST_LINES = /(?:\n[ \t]*)+$/;
 
 /** The bullet the probes of {@link rawBlockStandsInItem} are written with: the one a list made in the editor writes. */
 const PROBE_MARKER = "-";
 
 /** What {@link rawBlockStandsInItem} found, by item form; cleared when it holds {@link RUNS_ON_CACHE_SIZE} entries. */
 const STANDS_IN_ITEM = new Map<string, boolean>();
+
+/** The definitions source ({@link $definitionsSource}) of a document holding no raw block. */
+export const NO_DEFINITIONS_SOURCE = "[]";
+
+/** The definitions each raw-block text holds, read alone; cleared when it holds {@link RUNS_ON_CACHE_SIZE} entries. */
+const DEFINITIONS_READ = new Map<string, Links>();
+
+/**
+ * What {@link rawBlockAtMargin} answered for each text it had to lex, by
+ * kind and text; cleared when it holds {@link RUNS_ON_CACHE_SIZE} entries.
+ * Every keystroke and every save ask for each raw block's written form.
+ */
+const AT_MARGIN = new Map<string, string>();
 
 /**
  * Source that ends inside a link reference definition's label a line of it
@@ -667,9 +689,9 @@ export function $serializeTopLevelBlocks(definitions: Links | null): StandardBlo
 }
 
 /**
- * Reads the document's link reference definitions with one lex of its raw
- * blocks' text, for both the block serializers and a comparison with the
- * definitions at load.
+ * Reads the document's link reference definitions off its raw blocks
+ * ({@link $documentDefinitions}), once for both the block serializers and a
+ * comparison with the definitions at load.
  *
  * @param compared - Whether the definitions are compared with those at load,
  *   so they are read even when no reference link needs them.
@@ -677,7 +699,7 @@ export function $serializeTopLevelBlocks(definitions: Links | null): StandardBlo
  */
 export function $readDefinitions(compared: boolean): DocumentDefinitions {
     const needed = $needsDefinitions();
-    const all: Links = needed || compared ? $lexDefinitions() : {};
+    const all: Links = needed || compared ? $documentDefinitions() : {};
 
     return { all, key: JSON.stringify(all), forBlocks: needed ? all : null };
 }
@@ -707,15 +729,14 @@ export function $serializeLinkContent(link: LinkNode): string {
 
 /**
  * Reads the link reference definitions the saved document will hold, as the
- * viewer resolves them: only raw blocks can hold one (the serializer escapes
- * the `[` of any other text), and a raw block lexes alone as it does in the
- * document, so their text, joined as blocks, is lexed for `marked`'s own map.
+ * viewer resolves them ({@link $documentDefinitions}), when something in the
+ * document uses them.
  *
  * @returns The definitions, or `null` when nothing in the document uses
  *   them, so none is needed.
  */
 function $collectDefinitions(): Links | null {
-    return $needsDefinitions() ? $lexDefinitions() : null;
+    return $needsDefinitions() ? $documentDefinitions() : null;
 }
 
 /**
@@ -731,27 +752,109 @@ function $needsDefinitions(): boolean {
 }
 
 /**
- * Lexes the document's raw blocks' text for its link reference definitions,
- * as {@link $collectDefinitions} describes.
+ * The document's link reference definitions, as the viewer resolves them in
+ * its save. Only raw blocks can hold one (the serializer escapes the `[` of
+ * any other text), and each raw block is written so that it reads where it
+ * stands as it reads alone, so each one's written form is read alone for its
+ * own definitions, in document order, the first definition of a label
+ * counting as in `marked`. The raw blocks' text is not read joined: an HTML
+ * block left open (`<div`, `<!-- c`) ends with its column or list item in the
+ * document, but would take in the definition after it in a joined text.
+ * Must run inside an `editor.read` or `editor.update`.
  *
- * @returns `marked`'s map of the definitions.
+ * @returns The definitions by label, in a map without a prototype.
  */
-function $lexDefinitions(): Links {
-    return lexMarkdownLinkDefinitions(rawBlockTexts($getRoot().getChildren()).join(BLOCK_SEPARATOR));
+export function $documentDefinitions(): Links {
+    return definitionsOfTexts(rawBlockTexts($getRoot().getChildren()));
 }
 
 /**
- * The text of every raw block among `nodes`, in their `:::` fences' columns
- * and in their lists' items — every place a block is written as a block of
- * the saved document, where `marked` reads a definition it holds.
+ * The definitions a definitions source ({@link $definitionsSource}) holds.
+ *
+ * @param source - The source.
+ * @returns The definitions by label, as {@link $documentDefinitions} reads
+ *   them off the document the source was taken from.
+ */
+export function definitionsOfSource(source: string): Links {
+    return definitionsOfTexts(JSON.parse(source) as string[]);
+}
+
+/**
+ * Merges the definitions of raw-block texts, each read alone: the first
+ * definition of a label is the one that counts. The map has no prototype, as
+ * `marked`'s own has none, so a label naming a member of `Object.prototype`
+ * (`constructor`) is a label like any other.
+ *
+ * @param texts - The raw blocks' written forms, in document order.
+ * @returns The definitions by label.
+ */
+function definitionsOfTexts(texts: readonly string[]): Links {
+    const all = Object.create(null) as Links;
+
+    for (const text of texts) {
+        for (const [label, definition] of Object.entries(definitionsOfText(text))) {
+            const isFirst = !Object.hasOwn(all, label);
+
+            if (isFirst) {
+                all[label] = definition;
+            }
+        }
+    }
+
+    return all;
+}
+
+/**
+ * The definitions one raw-block text holds, read alone and remembered
+ * ({@link DEFINITIONS_READ}): a document whose raw blocks did not change
+ * since they were last read lexes none again.
+ *
+ * @param text - A raw block's written form.
+ * @returns `marked`'s map of its definitions.
+ */
+function definitionsOfText(text: string): Links {
+    const known = DEFINITIONS_READ.get(text);
+
+    if (known !== undefined) {
+        return known;
+    }
+
+    const read = definitionsIn(text);
+
+    if (DEFINITIONS_READ.size >= RUNS_ON_CACHE_SIZE) {
+        DEFINITIONS_READ.clear();
+    }
+
+    DEFINITIONS_READ.set(text, read);
+
+    return read;
+}
+
+/**
+ * The definitions a text holds, read alone and not remembered: the margin
+ * rule asks it of the forms it tries, which are no raw block's text.
+ *
+ * @param text - Markdown.
+ * @returns `marked`'s map of its definitions.
+ */
+function definitionsIn(text: string): Links {
+    // Every definition opens with a `[`: text without one is not lexed.
+    return text.includes(LABEL_OPEN) ? lexMarkdownLinkDefinitions(text) : (Object.create(null) as Links);
+}
+
+/**
+ * The written form ({@link $rawBlockSource}) of every raw block among
+ * `nodes`, in their `:::` fences' columns and in their lists' items — every
+ * place a block is written as a block of the saved document, where `marked`
+ * reads a definition it holds.
  *
  * @param nodes - Blocks, in document order.
- * @returns The raw blocks' text, in document order.
+ * @returns The raw blocks' written forms, in document order.
  */
 function rawBlockTexts(nodes: LexicalNode[]): string[] {
     return nodes.flatMap((node): string[] => {
         if ($isMarkdownRawBlockNode(node)) {
-            return [node.getTextContent()];
+            return [$rawBlockSource(node)];
         }
 
         const holdsBlocks = $isMarkdownBlockNode(node) || $isMarkdownColumnNode(node) || $isListNode(node) || $isListItemNode(node);
@@ -761,15 +864,18 @@ function rawBlockTexts(nodes: LexicalNode[]): string[] {
 }
 
 /**
- * The Markdown the document's link reference definitions are read from: its
- * raw blocks' text, joined as blocks, as {@link $collectDefinitions} lexes it.
- * Two documents whose texts are equal hold the same definitions. Must run
- * inside an `editor.read` or `editor.update`.
+ * What the document's link reference definitions are read from
+ * ({@link $documentDefinitions}): the written forms of its raw blocks, in
+ * document order, as the JSON of that list — so two raw blocks never compare
+ * equal to one raw block holding both texts, which holds other definitions.
+ * Two documents whose sources are equal hold the same definitions
+ * ({@link definitionsOfSource}). Must run inside an `editor.read` or
+ * `editor.update`.
  *
- * @returns The raw blocks' text.
+ * @returns The raw blocks' written forms, as JSON.
  */
 export function $definitionsSource(): string {
-    return rawBlockTexts($getRoot().getChildren()).join(BLOCK_SEPARATOR);
+    return JSON.stringify(rawBlockTexts($getRoot().getChildren()));
 }
 
 /**
@@ -839,7 +945,7 @@ export function $readsBackAsShown(node: LexicalNode, inTableCell?: boolean): boo
 export function $runsReadingOtherwise(node: LexicalNode, inTableCell?: boolean): Array<{ nodes: LexicalNode[]; tokens: Token[] }> {
     const inCell = inTableCell ?? $findMatchingParent(node, $isTableCellNode) !== null;
     // A reference — a reference link, or one kept as source — reads back with the document's definitions, as saved.
-    const definitions = lexMarkdownLinkDefinitions($definitionsSource());
+    const definitions = $documentDefinitions();
 
     return inlineRuns(node, inCell).flatMap(([nodes, base]) => {
         const context: InlineContext = { ...base, definitions };
@@ -1185,9 +1291,14 @@ function documentLoad(parts: readonly StandardBlock[], sourceMap: MarkdownSource
 /**
  * Decides what each top-level block writes: its source when it is unchanged
  * and its source still reads the same where it now stands, else its standard
- * output. A block that writes nothing (an empty paragraph) is left out —
- * unless it is unchanged, since a block the viewer shows as nothing (a link
- * with empty text) still has source to keep.
+ * output. A source stops reading the same when what is now written after it
+ * closes a definition label or title it leaves open
+ * ({@link labelClosedAfter}) or a `:::` fence it opens
+ * ({@link fenceClosedAfter}), or when it is a raw block only a second blank
+ * line ends and the block after it is no longer the one it was loaded
+ * before ({@link takesInBlockAfter}). A block that writes nothing (an empty
+ * paragraph) is left out — unless it is unchanged, since a block the viewer
+ * shows as nothing (a link with empty text) still has source to keep.
  *
  * @param parts - Every top-level block, with its standard output.
  * @param sourceMap - The source map of the editor's imports.
@@ -1216,8 +1327,10 @@ function writtenBlocks(
     // From the end, so each block is checked against what is finally written after it.
     for (let index = written.length - 1; index >= 0; index--) {
         const block = written[index]!;
+        const readsOtherwise = block.source !== undefined
+            && (labelClosedAfter(written, index) || fenceClosedAfter(written, index) || takesInBlockAfter(written, index));
 
-        if (block.source !== undefined && (labelClosedAfter(written, index) || fenceClosedAfter(written, index))) {
+        if (readsOtherwise) {
             written.splice(index, 1, ...(block.standard === "" ? [] : [{ ...block, source: undefined, text: block.standard }]));
         }
     }
@@ -1257,6 +1370,26 @@ function labelClosedAfter(blocks: readonly WrittenBlock[], index: number): boole
  */
 function fenceClosedAfter(blocks: readonly WrittenBlock[], index: number): boolean {
     return FENCE_OPENING_START.test(blocks[index]!.text) && readsOtherwiseAfter(blocks, index, () => 0);
+}
+
+/**
+ * Tells whether a raw block written as its source takes in the block now
+ * written after it: its text does not end at one blank line ({@link runsOn}:
+ * `<div`, which only a second blank line ends), and the block after it is
+ * not the one that followed it at load, so the source's own text between the
+ * two is not what is written there. It must be written in the standard form,
+ * which writes that second blank line itself.
+ *
+ * @param blocks - The blocks being written.
+ * @param index - The block's position among them.
+ * @returns `true` when the block written after it would be read as part of it.
+ */
+function takesInBlockAfter(blocks: readonly WrittenBlock[], index: number): boolean {
+    const block = blocks[index]!;
+    const next = blocks[index + 1];
+    const followedAsLoaded = next === undefined || followsAtLoad(block.source, next.source);
+
+    return !followedAsLoaded && $isMarkdownRawBlockNode(block.node) && runsOn(block.text);
 }
 
 /**
@@ -1472,7 +1605,10 @@ function serializeBlockList(nodes: LexicalNode[], definitions: Links | null): st
  * indented raw list), with its own marker and {@link LIST_SEPARATOR} on
  * each side it would join, which shows nothing. The editor joins adjacent lists that
  * write one marker, but only when the first changes, so two such lists can
- * stand next to each other; lists of two types do not join.
+ * stand next to each other; lists of two types do not join. A paragraph or
+ * raw block after the list that writes nothing (an empty paragraph, a raw
+ * block an edit emptied) stands between it and nothing: the block after
+ * that one is the list's neighbour.
  *
  * @param list - The list.
  * @param before - The Markdown of the raw block or list written right
@@ -1483,7 +1619,12 @@ function serializeBlockList(nodes: LexicalNode[], definitions: Links | null): st
  */
 function serializeListApart(list: ListNode, before: string | undefined, following: LexicalNode[], definitions: Links | null): string {
     const markdown = serializeList(list, definitions);
-    const nextNode = following.find((node) => !$isParagraphNode(node) || serializeBlock(node, definitions) !== "");
+
+    // A paragraph or raw block that writes nothing keeps the list from nothing: the block after it is the neighbour.
+    const writesNothing = (node: LexicalNode): boolean => ($isParagraphNode(node) || $isMarkdownRawBlockNode(node))
+        && serializeBlock(node, definitions) === "";
+
+    const nextNode = following.find((node) => !writesNothing(node));
     const after = $isMarkdownRawBlockNode(nextNode) ? serializeBlock(nextNode, definitions) : undefined;
 
     if (before === undefined && after === undefined) {
@@ -1590,15 +1731,16 @@ function serializeBlock(node: LexicalNode, definitions: Links | null): string {
 }
 
 /**
- * Serializes a raw block: its text as written — unless that text runs on
- * (an HTML block its own text does not close, `<!--` without `-->`, `<pre>`
- * without `</pre>`) and a block that writes something follows it, which the
- * text would take in, or it stands in a `:::` column and its text would
- * break the column (`breaksColumn`): end the fence, swallow its closing
- * line, or lose a backslash to the separator unescape. It is then written as
- * a paragraph holding its text, escaped, its lines kept by hard breaks, so
- * it shows the same text and the blocks after it stay their own, as the
- * editor shows them.
+ * Serializes a raw block: its written form ({@link $rawBlockSource}), the
+ * form of its text that reads where it is written as it reads alone — unless
+ * that text runs on (an HTML block its own text does not close, `<!--`
+ * without `-->`, `<pre>` without `</pre>`) and a block that writes something
+ * follows it, which the text would take in, or it stands in a `:::` column
+ * and its text would break the column (`breaksColumn`): end the fence,
+ * swallow its closing line, or lose a backslash to the separator unescape.
+ * It is then written as a paragraph holding its text, escaped, its lines
+ * kept by hard breaks, so it shows the same text and the blocks after it
+ * stay their own, as the editor shows them.
  *
  * @param node - The raw block.
  * @param definitions - The saved document's link reference definitions, or `null`.
@@ -1616,9 +1758,10 @@ function serializeRawBlock(node: MarkdownRawBlockNode, definitions: Links | null
 }
 
 /**
- * A raw block's text as a save writes it: as it is — except in a list item,
- * where it is written in its item form ({@link rawBlockInItem}). Must run
- * inside an `editor.read` or `editor.update`.
+ * A raw block's text as a save writes it, its written form: in a list item
+ * its item form ({@link rawBlockInItem}), and anywhere else — in the document
+ * or in a `:::` column — its block-list form ({@link rawBlockInBlockList}).
+ * Must run inside an `editor.read` or `editor.update`.
  *
  * @param node - The raw block.
  * @returns The text a save writes for it.
@@ -1627,7 +1770,29 @@ export function $rawBlockSource(node: MarkdownRawBlockNode): string {
     const text = node.getTextContent();
     const parent = node.getParent();
 
-    return $isListItemNode(parent) ? rawBlockInItem(text) : text;
+    return $isListItemNode(parent) ? rawBlockInItem(text) : rawBlockInBlockList(text);
+}
+
+/**
+ * The form a raw block's text is written in as a block of the document or of
+ * a `:::` column: from the first line that holds something to the last, and
+ * without the indentation before it that means nothing to Markdown
+ * ({@link rawBlockAtMargin}). A blank edge line is only space between blocks,
+ * and spaces before the block would move it into a list written above it.
+ * The form changes nothing the block holds: indentation goes only where the
+ * text then reads as the same blocks with the same content and the same
+ * definitions, so the lines of a list item keep their place under its
+ * marker, and the lines after an HTML block's first, or a title's second
+ * line, keep theirs. The spaces that end its last line stay, unlike in the
+ * item form: they can be content (the one line of a code block inside a
+ * quote, `>` and two spaces under `` >``` ``), and a load keeps them here.
+ * Text holding whitespace alone writes nothing.
+ *
+ * @param text - The raw block's text.
+ * @returns Its block-list form.
+ */
+export function rawBlockInBlockList(text: string): string {
+    return text.trim() === "" ? "" : rawBlockAtMargin(text.replace(BLANK_FIRST_LINES, "").replace(BLANK_LAST_LINES, ""), false, true);
 }
 
 /**
@@ -1638,14 +1803,17 @@ export function $rawBlockSource(node: MarkdownRawBlockNode): string {
  * elsewhere: an empty first line leaves the item's marker bare (an empty
  * item, or a setext underline under a line of text), an empty last line
  * reads as a blank line between items, which makes a list loose, and spaces
- * before the block put it under the nested list above it. Text holding
- * whitespace alone writes nothing.
+ * before the block put it under the nested list above it. Like the
+ * block-list form ({@link rawBlockInBlockList}) it takes indentation off
+ * only where the text then says what it said: the same blocks, the same
+ * content and the same definitions. Text holding whitespace alone writes
+ * nothing.
  *
  * @param text - The raw block's text.
  * @returns Its item form.
  */
 export function rawBlockInItem(text: string): string {
-    return text.trim() === "" ? "" : rawBlockAtMargin(withoutBlankEdges(text), false);
+    return text.trim() === "" ? "" : rawBlockAtMargin(withoutBlankEdges(text), false, true);
 }
 
 /**
@@ -1773,34 +1941,154 @@ export function withoutBlankEdges(text: string): string {
  *
  * `marked` does measure some lines against the margin, though (a quote's
  * lazy line, a list's next marker), so a dedent is kept only when the text
- * still lexes to the same blocks; else the block loses less of its indent,
- * or none.
+ * still lexes to the same blocks, at both places a block of a block list can
+ * stand ({@link readingInBlockList}): `> q` over `<div` is one quote where
+ * its input ends, and a quote and an HTML block before a line end, while
+ * over an indented `<div` it is one quote at both. Else the block loses less
+ * of its indent: what all its lines share, then its first line's alone, every
+ * other line as written — which keeps a quote's last line in it, at the
+ * margin where a list above cannot take the block in — or none.
+ *
+ * In every use the dedent must also leave each list item of the text holding
+ * what it held. An item's lines are measured from its marker, so a marker
+ * moved alone changes them, and a line indented less than its item's content
+ * (the last line of an item's HTML block, say) is read as written: with the
+ * whole list further left it would hold fewer spaces.
+ *
+ * A load asks for no more: the text it gives the raw block is what the
+ * editor shows from then on. A save's form of that text must say what the
+ * text says, so it asks for the content of every other block as well
+ * (`keepsContent`): an indentation `marked` reads as part of a block — of an
+ * HTML block's later lines, of a definition's title — stays.
  *
  * @param source - The block's Markdown.
- * @param isList - Whether the block is a list. `false` also tries a list's
- *   first line at the margin, which is kept when the list reads the same.
+ * @param isList - Whether the block is a list. `false` also tries the first
+ *   line at the margin, which is kept when the block reads the same.
+ * @param keepsContent - Whether a form must also hold the content of every
+ *   block and the definitions the source holds, not only its blocks and what
+ *   its list items hold.
  * @returns The Markdown at the margin.
  */
-export function rawBlockAtMargin(source: string, isList: boolean): string {
-    const lines = source.split("\n");
-    const indentOf = (line: string): number => /^ */.exec(line)![0].length;
-    const shared = Math.min(MAX_IGNORED_INDENT, ...lines.filter((line) => line.trim() !== "").map(indentOf));
-    const dedented = lines.map((line) => line.slice(Math.min(shared, indentOf(line))));
-    const firstDedented = [...dedented];
-
-    if (!isList && firstDedented.length > 0) {
-        firstDedented[0] = firstDedented[0]!.slice(Math.min(MAX_IGNORED_INDENT, indentOf(firstDedented[0]!)));
-    }
-
-    const candidates = [firstDedented.join("\n"), dedented.join("\n")];
+export function rawBlockAtMargin(source: string, isList: boolean, keepsContent: boolean = false): string {
+    const candidates = marginCandidates(source, isList);
 
     if (candidates[0] === source) {
         return source;
     }
 
-    const reading = blockShape(lexMarkdown(source));
+    const key = `${isList}${keepsContent}${READING_KEY_SEPARATOR}${source}`;
+    const known = AT_MARGIN.get(key);
 
-    return candidates.find((candidate) => candidate === source || blockShape(lexMarkdown(candidate)) === reading) ?? source;
+    if (known !== undefined) {
+        return known;
+    }
+
+    const reading = readingInBlockList(source, keepsContent);
+    const atMargin = candidates.find((candidate) => candidate === source || readingInBlockList(candidate, keepsContent) === reading) ?? source;
+
+    if (AT_MARGIN.size >= RUNS_ON_CACHE_SIZE) {
+        AT_MARGIN.clear();
+    }
+
+    AT_MARGIN.set(key, atMargin);
+
+    return atMargin;
+}
+
+/**
+ * The forms {@link rawBlockAtMargin} tries for a block's Markdown, the one
+ * that loses most indentation first: without the indentation all its lines
+ * share and what is left of its first line's; without the shared indentation
+ * alone; and with its first line alone at the margin, every other line as
+ * written. For a list the first form is the second and the third is the
+ * text as written: a list loses only the indentation all its lines share.
+ *
+ * @param source - The block's Markdown.
+ * @param isList - Whether the block is a list.
+ * @returns The three forms, in the order they are tried.
+ */
+function marginCandidates(source: string, isList: boolean): string[] {
+    const lines = source.split("\n");
+    const indentOf = (line: string): number => /^ */.exec(line)![0].length;
+    const shared = Math.min(MAX_IGNORED_INDENT, ...lines.filter((line) => line.trim() !== "").map(indentOf));
+    const dedented = lines.map((line) => line.slice(Math.min(shared, indentOf(line))));
+    const firstDedented = [...dedented];
+    const firstOnly = [...lines];
+
+    if (!isList && lines.length > 0) {
+        firstDedented[0] = firstDedented[0]!.slice(Math.min(MAX_IGNORED_INDENT, indentOf(firstDedented[0]!)));
+        firstOnly[0] = firstOnly[0]!.slice(Math.min(MAX_IGNORED_INDENT, indentOf(firstOnly[0]!)));
+    }
+
+    return [firstDedented.join("\n"), dedented.join("\n"), firstOnly.join("\n")];
+}
+
+/**
+ * What a text reads as at the two places a block of a block list is
+ * written: where its input ends (the last block of the document or of a
+ * `:::` column), and before a line end (any other block). Two texts with the
+ * same reading are the same blocks wherever a block list holds them, and
+ * their list items hold the same: an item's lines are measured from its
+ * marker, so a marker moved alone changes what they are. With the content,
+ * every block says the same and the texts give the same definitions.
+ *
+ * @param text - A block's Markdown.
+ * @param withContent - Whether the reading also tells what the blocks
+ *   outside list items hold, and which definitions the text gives.
+ * @returns The two block structures ({@link blockShape}) and what the
+ *   blocks hold ({@link blockContent}), with the definitions when asked
+ *   for, as one key.
+ */
+function readingInBlockList(text: string, withContent: boolean): string {
+    const whereInputEnds = lexMarkdown(text);
+    const beforeLineEnd = lexMarkdown(`${text}\n`);
+    const reading = [blockShape(whereInputEnds), blockShape(beforeLineEnd), blockContent(whereInputEnds, withContent)];
+
+    return (withContent ? [...reading, JSON.stringify(definitionsIn(text))] : reading).join(READING_KEY_SEPARATOR);
+}
+
+/**
+ * What block tokens hold: a quote's and a `:::` fence's blocks, a list's
+ * items' blocks, and the text of each block of a list item. In a list item
+ * `marked` has already measured every line from the item's marker, so each
+ * space left is content: the indentation inside an indented code block, or
+ * before an HTML block's lines. A block outside list items gives its text
+ * only when asked (`ofEveryBlock`), and then without the indentation before
+ * its first line, which is no part of it.
+ *
+ * @param tokens - Block tokens.
+ * @param ofEveryBlock - Whether a block outside list items gives its text
+ *   too, not only its type.
+ * @returns A string that two token lists share only when they hold the same.
+ */
+function blockContent(tokens: Token[], ofEveryBlock: boolean): string {
+    return blockStructure(tokens, (token, inListItem) => (inListItem || ofEveryBlock ? JSON.stringify(ownText(token, inListItem)) : token.type));
+}
+
+/**
+ * The text of a block token that holds no blocks, as {@link blockContent}
+ * compares it: what the block says, without indentation that is no part of
+ * it.
+ *
+ * @param token - The token.
+ * @param inListItem - Whether it is a list item's.
+ * @returns Its text. A paragraph's lines are taken without the whitespace
+ *   before them, which shows as nothing. Any other block is taken without
+ *   the indentation before its first line — unless it stands in a list item,
+ *   or is a code block, whose text `marked` gives without the indentation
+ *   that makes it one: what is left is code.
+ */
+function ownText(token: Token, inListItem: boolean): string {
+    const text = (token as { text?: string }).text ?? token.raw;
+    const isParagraph = token.type === "paragraph" || token.type === "text";
+
+    if (isParagraph) {
+        return text.replace(INDENT_BEFORE_LINE, "");
+    }
+
+    const startsWithContent = inListItem || token.type === "code";
+
+    return startsWithContent ? text : text.replace(INDENT_BEFORE_BLOCK, "");
 }
 
 /**
@@ -1812,12 +2100,27 @@ export function rawBlockAtMargin(source: string, isList: boolean): string {
  * @returns A string naming the structure.
  */
 function blockShape(tokens: Token[]): string {
+    return blockStructure(tokens, (token) => token.type);
+}
+
+/**
+ * Writes block tokens as one string that follows their structure: a list's
+ * items' blocks, a quote's and a `:::` fence's blocks, and for each block
+ * that holds none what `ofBlock` gives for it.
+ *
+ * @param tokens - Block tokens.
+ * @param ofBlock - What a block that holds no blocks is written as; it is
+ *   told whether the block is a list item's.
+ * @param inListItem - Whether the tokens are a list item's.
+ * @returns The string.
+ */
+function blockStructure(tokens: Token[], ofBlock: (token: Token, inListItem: boolean) => string, inListItem: boolean = false): string {
     return tokens.filter((token) => token.type !== "space").map((token) => {
         switch (token.type) {
-            case "list":       return `list[${(token as Tokens.List).items.map((item) => blockShape(item.tokens)).join("|")}]`;
-            case "blockquote": return `quote(${blockShape((token as Tokens.Blockquote).tokens)})`;
-            case "mdblock":    return `fence(${(token as unknown as MdBlockToken).columns.map(blockShape).join("|")})`;
-            default:           return token.type;
+            case "list":       return `list[${(token as Tokens.List).items.map((item) => blockStructure(item.tokens, ofBlock, true)).join("|")}]`;
+            case "blockquote": return `quote(${blockStructure((token as Tokens.Blockquote).tokens, ofBlock, inListItem)})`;
+            case "mdblock":    return `fence(${(token as unknown as MdBlockToken).columns.map((column) => blockStructure(column, ofBlock, inListItem)).join("|")})`;
+            default:           return ofBlock(token, inListItem);
         }
     }).join(",");
 }
@@ -3269,7 +3572,7 @@ function formsWholeLinks(source: string): boolean {
         return tokens.length > 0 && tokens.every((token) => token.type === "link") && tokens.map((token) => token.raw).join("") === source;
     };
 
-    return whole(lexMarkdown(source)) || whole(lexMarkdownWithDefinitions(source, lexMarkdownLinkDefinitions($definitionsSource())));
+    return whole(lexMarkdown(source)) || whole(lexMarkdownWithDefinitions(source, $documentDefinitions()));
 }
 
 /**

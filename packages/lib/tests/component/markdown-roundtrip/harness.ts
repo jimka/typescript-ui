@@ -1,8 +1,13 @@
 import { expect } from 'vitest';
 import type { LexicalEditor } from 'lexical';
+import type { Links } from 'marked';
+import { lexMarkdownLinkDefinitions } from '~/component/display/markdownExtensions';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
-import { $serializeMarkdown } from '~/component/editor/markdownSerializer';
+import { $readDefinitions, $serializeMarkdown } from '~/component/editor/markdownSerializer';
 import type { CorpusCase, HarnessCheck } from './corpus/types';
+
+/** The label of the line a save writes between two lists it keeps apart (`[//]: #`). */
+const SEPARATOR_LABEL = '//';
 
 /**
  * Loads `source` into a headless `MarkdownEditor` and saves it again. Does not catch: a throw fails the check.
@@ -32,6 +37,33 @@ export function canonicalSave(editor: MarkdownEditor): string {
     }
 
     return lexicalEditor.read(() => $serializeMarkdown());
+}
+
+/**
+ * The link reference definitions the editor reads off its document.
+ *
+ * @param editor - A loaded editor.
+ * @returns The definitions, by label.
+ */
+export function editorDefinitions(editor: MarkdownEditor): Links {
+    const lexicalEditor = (editor as unknown as { _editor: LexicalEditor })._editor;
+
+    return lexicalEditor.read(() => $readDefinitions(true).all);
+}
+
+/**
+ * The link reference definitions the viewer reads off a save, without the label of the line a save writes between
+ * two lists it keeps apart when that line alone defines it: the line is no part of the editor's document.
+ *
+ * @param saved - The Markdown a save wrote.
+ * @param own - The definitions the editor reads off its document ({@link editorDefinitions}).
+ * @returns The definitions, by label.
+ */
+export function viewerDefinitions(saved: string, own: Links): Links {
+    const read = lexMarkdownLinkDefinitions(saved);
+    const entries = Object.entries(read).filter(([label]) => label !== SEPARATOR_LABEL || Object.hasOwn(own, SEPARATOR_LABEL));
+
+    return Object.assign(Object.create(null) as Links, Object.fromEntries(entries));
 }
 
 /**
