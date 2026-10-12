@@ -69,7 +69,9 @@ import {
     registerWritableStateRules,
 } from "~/component/editor/markdownWritable.js";
 import { registerMarkdownHistory } from "~/component/editor/markdownHistory.js";
-import { isUndoOrRedoKey, registerReadOnlyGuard } from "~/component/editor/markdownReadOnly.js";
+import {
+    $selectionMark, $takeLinkClick, addressToFollow, isUndoOrRedoKey, registerReadOnlyGuard,
+} from "~/component/editor/markdownReadOnly.js";
 import { ReadOnlyFlash } from "~/component/editor/ReadOnlyFlash.js";
 import { EMPTY_SOURCE_MAP } from "~/component/editor/markdownSourceMap.js";
 import type { MarkdownSourceBlock, MarkdownSourceMap } from "~/component/editor/markdownSourceMap.js";
@@ -5259,6 +5261,27 @@ function selectionStatesEqual(a: MarkdownEditorSelectionState, b: MarkdownEditor
  */
 const VIEW_RESTORE_DELAY_MS = 0;
 
+/** `MouseEvent.button` of the middle button, by the DOM's own numbering of a mouse's buttons. */
+const MIDDLE_BUTTON = 1;
+
+/**
+ * The address of the link a read-only editor follows on Enter: the link the
+ * selection state reports for the caret, which is `linkUrl` as
+ * {@link $readSelectionState} computes it, so that Enter follows a link
+ * exactly where a host is told the caret is in one. A selection of text
+ * stands in no link: Enter follows a link from a caret.
+ *
+ * @returns The address, or `null` where there is no caret, the caret is in
+ *   no link, or the link's address is not one to open.
+ */
+function $linkUrlToFollowAtCaret(): string | null {
+    const selection = $getSelection();
+    const isCaret = $isRangeSelection(selection) && selection.isCollapsed();
+    const linkUrl = isCaret ? $readSelectionState().linkUrl : null;
+
+    return addressToFollow(linkUrl);
+}
+
 /**
  * Stacking order of the read-only rejection wash within the editor's own
  * element: above the WYSIWYG surface's content, which sets no z-index of its
@@ -5277,7 +5300,8 @@ const WYSIWYG_FLASH_Z_INDEX = 1;
 const _defaultWysiwygSurfaceOptions: Partial<ComponentOptions> = { userSelect: "text", cursor: "text" };
 
 /** The events {@link WysiwygSurface} exposes through its custom `on` / `off` surface. */
-type WysiwygSurfaceEvent = "contextmenu" | "readonlyedit" | "unpreventableedit" | "uncancelledinput";
+type WysiwygSurfaceEvent =
+    "contextmenu" | "readonlyedit" | "unpreventableedit" | "uncancelledinput" | "readonlyenter" | "readonlypress" | "readonlyclick";
 
 /**
  * The private WYSIWYG editing surface: the element Lexical's `contenteditable`
@@ -5374,8 +5398,13 @@ class WysiwygSurface extends Component {
         Event.addSubtreeListener(this, "cut", this.handleEditIntent);
         Event.addSubtreeListener(this, "drop", this.handleEditIntent);
         Event.addSubtreeListener(this, "input", this.handleInput);
-        // One kind of key is taken, and only while read-only: undo and redo.
+        // Two kinds of key are taken, and only while read-only: undo and redo, and Enter where it follows a link.
         Event.addSubtreeListener(this, "keydown", this.handleKeyDown);
+        // A press of the pointer, then a click with the main button or one with any other, for the links of a
+        // read-only surface. The press is heard for every button: a middle click has one too.
+        Event.addSubtreeListener(this, "mousedown", { button: "any", handler: this.handlePress });
+        Event.addSubtreeListener(this, "click", this.handleClick);
+        Event.addSubtreeListener(this, "auxclick", this.handleAuxClick);
 
         this.onFirstLayout(() => this._onReady());
     }
@@ -5458,26 +5487,39 @@ class WysiwygSurface extends Component {
 
     /**
      * Registers a listener for the `"contextmenu"` event, fired on a native
-     * right-click over this surface's element.
+     * right-click over this surface's element, or for `"readonlyclick"`,
+     * fired on a click or a middle click over it while it is read-only.
      *
-     * @param event - Must be `"contextmenu"`.
+     * @param event - `"contextmenu"` or `"readonlyclick"`.
      * @param listener - Invoked with the native `MouseEvent`.
      * @returns This surface, for method chaining.
      */
-    on(event: "contextmenu", listener: (event: MouseEvent) => void): this;
+    on(event: "contextmenu" | "readonlyclick", listener: (event: MouseEvent) => void): this;
+    /**
+     * Registers a listener for `"readonlyenter"`, fired when the Enter key
+     * is pressed, with no modifier key, on the read-only surface while it
+     * is the editing host. A listener that acts on the key cancels it.
+     *
+     * @param event - Must be `"readonlyenter"`.
+     * @param listener - Invoked with the native `KeyboardEvent`.
+     * @returns This surface, for method chaining.
+     */
+    on(event: "readonlyenter", listener: (event: KeyboardEvent) => void): this;
     /**
      * Registers a listener for `"readonlyedit"`, fired when the read-only
      * surface refuses an edit the browser announced; for
      * `"unpreventableedit"`, fired when the browser announces an edit of the
-     * read-only surface that cannot be cancelled, before it makes it; or for
+     * read-only surface that cannot be cancelled, before it makes it; for
      * `"uncancelledinput"`, fired when the browser has changed the shown
-     * text of the read-only surface all the same.
+     * text of the read-only surface all the same; or for `"readonlypress"`,
+     * fired when the pointer is pressed over the read-only surface, before
+     * the browser changes the selection for it.
      *
-     * @param event - `"readonlyedit"`, `"unpreventableedit"` or `"uncancelledinput"`.
+     * @param event - `"readonlyedit"`, `"unpreventableedit"`, `"uncancelledinput"` or `"readonlypress"`.
      * @param listener - Invoked with no payload.
      * @returns This surface, for method chaining.
      */
-    on(event: "readonlyedit" | "unpreventableedit" | "uncancelledinput", listener: () => void): this;
+    on(event: "readonlyedit" | "unpreventableedit" | "uncancelledinput" | "readonlypress", listener: () => void): this;
     on(event: WysiwygSurfaceEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -5485,22 +5527,32 @@ class WysiwygSurface extends Component {
     }
 
     /**
-     * Removes a previously registered `"contextmenu"` listener.
+     * Removes a previously registered `"contextmenu"` or `"readonlyclick"`
+     * listener.
      *
-     * @param event - Must be `"contextmenu"`.
+     * @param event - `"contextmenu"` or `"readonlyclick"`.
      * @param listener - The exact callback reference to remove.
      * @returns This surface, for method chaining.
      */
-    off(event: "contextmenu", listener: (event: MouseEvent) => void): this;
+    off(event: "contextmenu" | "readonlyclick", listener: (event: MouseEvent) => void): this;
+    /**
+     * Removes a previously registered `"readonlyenter"` listener.
+     *
+     * @param event - Must be `"readonlyenter"`.
+     * @param listener - The exact callback reference to remove.
+     * @returns This surface, for method chaining.
+     */
+    off(event: "readonlyenter", listener: (event: KeyboardEvent) => void): this;
     /**
      * Removes a previously registered `"readonlyedit"`,
-     * `"unpreventableedit"` or `"uncancelledinput"` listener.
+     * `"unpreventableedit"`, `"uncancelledinput"` or `"readonlypress"`
+     * listener.
      *
-     * @param event - `"readonlyedit"`, `"unpreventableedit"` or `"uncancelledinput"`.
+     * @param event - `"readonlyedit"`, `"unpreventableedit"`, `"uncancelledinput"` or `"readonlypress"`.
      * @param listener - The exact callback reference to remove.
      * @returns This surface, for method chaining.
      */
-    off(event: "readonlyedit" | "unpreventableedit" | "uncancelledinput", listener: () => void): this;
+    off(event: "readonlyedit" | "unpreventableedit" | "uncancelledinput" | "readonlypress", listener: () => void): this;
     off(event: WysiwygSurfaceEvent, listener: Function): this {
         this._listeners.remove(event, listener);
 
@@ -5511,13 +5563,15 @@ class WysiwygSurface extends Component {
      * Fans an event out to its registered listeners.
      *
      * @param event - The event name.
-     * @param payload - The native `MouseEvent` of `"contextmenu"`; the other
-     *   events have none.
+     * @param payload - The native `MouseEvent` of `"contextmenu"` and
+     *   `"readonlyclick"`, or the native `KeyboardEvent` of
+     *   `"readonlyenter"`; the other events have none.
      */
-    protected emit(event: "contextmenu", payload: MouseEvent): void;
-    protected emit(event: "readonlyedit" | "unpreventableedit" | "uncancelledinput"): void;
-    protected emit(event: WysiwygSurfaceEvent, payload?: MouseEvent): void {
-        this._listeners.fire(event, ...(payload ? [payload] : []));
+    protected emit(event: "contextmenu" | "readonlyclick", payload: MouseEvent): void;
+    protected emit(event: "readonlyenter", payload: KeyboardEvent): void;
+    protected emit(event: "readonlyedit" | "unpreventableedit" | "uncancelledinput" | "readonlypress"): void;
+    protected emit(event: WysiwygSurfaceEvent, payload?: MouseEvent | KeyboardEvent): void {
+        this._listeners.fire(event, ...(payload === undefined ? [] : [payload]));
     }
 
     /**
@@ -5591,8 +5645,10 @@ class WysiwygSurface extends Component {
 
     /**
      * `Event`-registered handler for `keydown`: stops the undo and redo
-     * keys of a read-only surface. Every other key is left to the browser,
-     * which moves the caret with it or announces the edit it would make.
+     * keys of a read-only surface, and hands Enter to the editor, which
+     * follows a link the caret is in. Every other key is left to the
+     * browser, which moves the caret with it or announces the edit it would
+     * make.
      *
      * The browser's own undo is the page's, not the editing host's: with
      * nothing of the surface's to undo, the key takes back the last edit
@@ -5601,13 +5657,82 @@ class WysiwygSurface extends Component {
      * history. The key is stopped without a report, as a read-only
      * `CodeEditor` stops it.
      *
+     * Enter is decided here, by the key, and not by the edit the browser
+     * would announce for it: that is a paragraph break at most places and a
+     * line break at some (beside an image inside a link), so the kind of
+     * edit does not say that Enter was pressed. The key counts where it is
+     * pressed alone, on the surface as the editing host, which is where the
+     * editor has a caret: it is reported through `"readonlyenter"`, and the
+     * editor cancels it where it follows a link. Left alone, it becomes the
+     * refused edit Enter is anywhere else. With Shift, Ctrl, Alt or Meta
+     * held it is not this key and is left to the browser. The repeats a held
+     * Enter sends are stopped, so that holding the key down neither opens a
+     * link again nor flashes for as long as it is held.
+     *
      * @param event - The native `keydown` event.
      * @returns The disposition that stops the key's default, or nothing.
      */
     private handleKeyDown(event: KeyboardEvent): Event.ListenerResult {
-        const stopped = this._readOnly && isUndoOrRedoKey(event);
+        if (!this._readOnly) {
+            return;
+        }
 
-        return stopped ? { prevent: true } : undefined;
+        const isEnter = event.key === "Enter";
+        const heldEnter = isEnter && event.repeat;
+        const stopped = heldEnter || isUndoOrRedoKey(event);
+
+        if (stopped) {
+            return { prevent: true };
+        }
+
+        const withModifier = event.shiftKey || event.ctrlKey || event.altKey || event.metaKey;
+        const asksToFollow = isEnter && !withModifier && !event.isComposing && this._contentEditable;
+
+        if (asksToFollow) {
+            this.emit("readonlyenter", event);
+        }
+    }
+
+    /**
+     * `Event`-registered handler for `mousedown`, a press of the pointer
+     * with any button: on a read-only surface it is reported through
+     * `"readonlypress"`. The browser changes the selection for a press after
+     * this event, so the editor can note here what was selected before it,
+     * and tell at the click that follows whether the click selected text.
+     */
+    private handlePress(): void {
+        if (this._readOnly) {
+            this.emit("readonlypress");
+        }
+    }
+
+    /**
+     * `Event`-registered handler for a `click` with the main button: on a
+     * read-only surface it is passed on through `"readonlyclick"`, for the
+     * editor to follow a link the click was on. An editable surface passes
+     * nothing on: a click there places the caret.
+     *
+     * @param event - The native `click` event.
+     */
+    private handleClick(event: MouseEvent): void {
+        if (this._readOnly) {
+            this.emit("readonlyclick", event);
+        }
+    }
+
+    /**
+     * `Event`-registered handler for `auxclick`, a click with any other
+     * button: a middle click, with which a browser opens a link in a new
+     * tab, is passed on as {@link WysiwygSurface.handleClick} passes a click
+     * on. A click with the secondary button opens the context menu and is
+     * left alone.
+     *
+     * @param event - The native `auxclick` event.
+     */
+    private handleAuxClick(event: MouseEvent): void {
+        if (event.button === MIDDLE_BUTTON) {
+            this.handleClick(event);
+        }
     }
 
     /**
@@ -5878,6 +6003,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     private _viewRestore: { task: TimerId; frame: number } | null = null;
 
     /**
+     * What the browser had selected when the pointer was last pressed over
+     * the read-only surface, as {@link $selectionMark} marks it, for the
+     * click that follows to be judged by ({@link handleReadOnlyClick});
+     * `null` once a click has used it, and before any press.
+     */
+    private _selectionBeforePress: string | null = null;
+
+    /**
      * The rejection wash played over the editor when an edit is refused on
      * the WYSIWYG surface; mounted with the view. The source surface plays
      * its `CodeEditor`'s own.
@@ -5919,8 +6052,11 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         // rebinding, unlike Event.addListener's `.apply(component, …)`.
         this._wysiwyg.on("contextmenu", (event) => this.handleWysiwygContextMenu(event));
         this._wysiwyg.on("readonlyedit", () => this.signalReadOnlyEdit());
+        this._wysiwyg.on("readonlyenter", (event) => this.handleReadOnlyEnter(event));
+        this._wysiwyg.on("readonlypress", () => this.handleReadOnlyPress());
         this._wysiwyg.on("unpreventableedit", () => this.takeOutView());
         this._wysiwyg.on("uncancelledinput", () => this.restoreView());
+        this._wysiwyg.on("readonlyclick", (event) => this.handleReadOnlyClick(event));
         this._codeEditor = new CodeEditor(this._options.value ?? "", {
             language:  "markdown",
             readOnly:  this._options.readOnly ?? false,
@@ -6068,6 +6204,94 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     private signalReadOnlyEdit(): void {
         this.emit("readonlyedit");
         this._flash.play();
+    }
+
+    /**
+     * `WysiwygSurface`'s `"readonlyenter"` handler: follows the link the
+     * editor's caret is in ({@link followLink}) and cancels the key, so
+     * that the browser announces no edit for it. With the caret in no link,
+     * text selected, or a link whose address is not opened, the key is left
+     * alone, and is the refused edit Enter is anywhere else. No-op before
+     * the editor is built.
+     *
+     * The caret is the editor's own, which follows the browser's, and the
+     * link is the one the selection state reports for it
+     * ({@link $linkUrlToFollowAtCaret}). The editor hears of a caret the
+     * browser has moved a moment later, so a key pressed with no gap after
+     * an arrow key is decided on the caret from before the arrow: the same
+     * link `getSelectionState().linkUrl` reports at that instant.
+     *
+     * @param event - The native `keydown` event of the Enter key.
+     */
+    private handleReadOnlyEnter(event: KeyboardEvent): void {
+        const editor = this._editor;
+        const address = editor ? editor.read($linkUrlToFollowAtCaret) : null;
+
+        if (address !== null) {
+            event.preventDefault();
+            this.followLink(address);
+        }
+    }
+
+    /**
+     * `WysiwygSurface`'s `"readonlypress"` handler: notes what the browser
+     * has selected as the pointer is pressed over the read-only surface,
+     * for the click that follows ({@link handleReadOnlyClick}). No-op before
+     * the editor is built.
+     */
+    private handleReadOnlyPress(): void {
+        const editor = this._editor;
+
+        this._selectionBeforePress = editor ? editor.read(() => $selectionMark(editor)) : null;
+    }
+
+    /**
+     * `WysiwygSurface`'s `"readonlyclick"` handler: follows the link a click
+     * or a middle click on the read-only surface was on ({@link followLink}).
+     * In a read-only editor a click on a link is the editor's alone: the
+     * click's default is cancelled whether the link is then followed or not,
+     * so the browser never follows it by itself. No-op before the editor is
+     * built.
+     *
+     * The click uses up the selection noted at its press: a click that
+     * comes with no press of its own finds none.
+     *
+     * @param event - The native `click` or `auxclick` event.
+     */
+    private handleReadOnlyClick(event: MouseEvent): void {
+        const editor = this._editor;
+        const markBeforePress = this._selectionBeforePress;
+
+        this._selectionBeforePress = null;
+
+        const address = editor ? editor.read(() => $takeLinkClick(editor, event, markBeforePress)) : null;
+
+        if (address !== null) {
+            this.followLink(address);
+        }
+    }
+
+    /**
+     * Opens a link of a read-only editor in a new tab, as the
+     * [`Markdown`](/api/component/display/classes/Markdown) viewer opens
+     * its links by default: through a temporary anchor with
+     * `target="_blank"` and `rel="noopener noreferrer"`, clicked and removed
+     * again, which is how `Table`'s export starts its download. The
+     * surface's own `<a>` cannot be used: inside an editing host a browser
+     * follows no link, and its `href` is not the address as written.
+     *
+     * @param address - The address to open: the link's own, already found
+     *   to be one that is opened from a document.
+     */
+    private followLink(address: string): void {
+        const anchor = DOM.sink.createElement("a");
+        const body = DOM.source.getBody();
+
+        DOM.sink.apply(anchor, { setAttr: { href: address, target: "_blank", rel: "noopener noreferrer" } });
+        DOM.sink.appendChild(body, anchor);
+        DOM.sink.click(anchor);
+        DOM.sink.removeChild(body, anchor);
+        DOM.sink.release(anchor);
     }
 
     /**

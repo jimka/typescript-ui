@@ -355,10 +355,10 @@ const ROUTES: Record<string, RouteVariant[]> = {
         ['a', { ctrlKey: true }], ['c', { ctrlKey: true }], ['ArrowRight'], ['z', { ctrlKey: true, altKey: true }],
         ['ArrowLeft', { shiftKey: true }], ['Home'], ['End'], ['Escape'], ['Tab', { shiftKey: true }], ['PageDown'],
         ['Backspace', { ctrlKey: true }], ['Enter', { shiftKey: true }], ['Enter', { ctrlKey: true }],
-        // The undo and redo keys are stopped, quietly: see row R16.
+        // The undo and redo keys are stopped, quietly: see row R16. So is a held Enter: row L16.
         ['z', { ctrlKey: true }, true], ['y', { ctrlKey: true }, true], ['z', { ctrlKey: true, shiftKey: true }, true],
         ['Backspace', { altKey: true }, true], ['Backspace', { altKey: true, shiftKey: true }, true],
-        ['Enter', { repeat: true }], ['a', { repeat: true }],
+        ['Enter', { repeat: true }, true], ['a', { repeat: true }],
     ].map(([key, modifiers, prevented]) => ({
         name:      `${modifiers ? Object.keys(modifiers).join('+') + '+' : ''}${JSON.stringify(key)}`,
         build:     (): Event => keydown(key as string, modifiers as KeyModifiers | undefined),
@@ -380,7 +380,12 @@ const ROUTES: Record<string, RouteVariant[]> = {
     dragstart:        [{ name: 'dragstart', build: (): Event => dragEvent('dragstart') }],
     dragover:         [{ name: 'dragover', build: (): Event => dragEvent('dragover') }],
     dragend:          [{ name: 'dragend', build: (): Event => dragEvent('dragend') }],
-    click:            [{ name: 'click', build: (): Event => new MouseEvent('click', { bubbles: true, cancelable: true }) }],
+    click:            [
+        { name: 'click', build: (): Event => new MouseEvent('click', { bubbles: true, cancelable: true }) },
+        // Lexical listens for no auxclick; the surface does, for a link: rows L15.
+        { name: 'auxclick, middle', build: (): Event => new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 }) },
+        { name: 'auxclick, secondary', build: (): Event => new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 2 }) },
+    ],
     pointerdown:      [{ name: 'pointerdown', build: (): Event => new MouseEvent('pointerdown', { bubbles: true, cancelable: true }) }],
     focus:            [{ name: 'focus', build: (): Event => new FocusEvent('focus'), target: 'root' }],
     blur:             [{ name: 'blur', build: (): Event => new FocusEvent('blur'), target: 'root' }],
@@ -1607,5 +1612,783 @@ describe('MarkdownEditor read-only, mounted: switching read-only', () => {
         expect(document.activeElement).toBe(m.root);
         expect(lexicalFocus).not.toHaveBeenCalled();
         expect(selectionOf(m)).toBe(selection);
+    });
+});
+
+describe('MarkdownEditor read-only, mounted: following a link', () => {
+    const LINKED = 'see [the docs](https://example.com/docs) now\n\nplain';
+
+    /** Records each link the editor opens: the attributes of the anchor it clicks. Nothing is navigated. */
+    function followed(): Array<Record<string, string | null>> {
+        const opened: Array<Record<string, string | null>> = [];
+
+        vi.spyOn(DOM.sink as ProductionDOMSink, 'click').mockImplementation((handle) => {
+            opened.push(Object.fromEntries(['href', 'target', 'rel'].map((name) => [name, DOM.source.getAttribute(handle, name)])));
+        });
+
+        return opened;
+    }
+
+    /** A read-only editor holding `source`, the browser's caret (or selection) in the text node showing `text`. */
+    async function readOnlyAt(source: string, text: string, from: number, to: number = from): Promise<Mounted> {
+        const m = mounted('', true);
+
+        m.editor.setValue(source);
+        await browserSelects(m, text, from, to);
+
+        return m;
+    }
+
+    /**
+     * What a browser sends for a press of Enter with the surface as the editing host: the key's `keydown` on
+     * the surface and, unless that is cancelled, the `beforeinput` of the edit the key asks for.
+     *
+     * @param text - The text whose element the `beforeinput` goes to, or `null` for the surface itself.
+     * @param inputType - The edit a browser announces for the key: a paragraph break at most places, a line
+     *   break at some (beside an image inside a link, in Chromium).
+     * @returns The `keydown`, and the `beforeinput`, or `null` where the key was cancelled.
+     */
+    function pressEnter(
+        m: Mounted, text: string | null, inputType: string = 'insertParagraph', modifiers: KeyModifiers = {},
+    ): { key: Event; edit: Event | null } {
+        const key = keydown('Enter', modifiers);
+
+        m.root.dispatchEvent(key);
+
+        const edit = key.defaultPrevented ? null : beforeInput(inputType, true);
+
+        if (edit !== null) {
+            (text === null ? m.root : elementOf(m, text)).dispatchEvent(edit);
+        }
+
+        return { key, edit };
+    }
+
+    /**
+     * Sends a click to the element showing `text` (or to the surface itself), and returns it.
+     *
+     * @param detail - The click's place in its run, as a browser counts it: 1 for a click and for the first click
+     *   of a double or triple click, 2 and 3 for the ones that follow, 0 for a click no pointer made.
+     * @param type - `click`, or `auxclick` for a middle click.
+     */
+    function clickOn(m: Mounted, text: string | null, detail: number = 1, type: 'click' | 'auxclick' = 'click'): Event {
+        const event = new MouseEvent(type, { bubbles: true, cancelable: true, detail, button: type === 'click' ? 0 : 1 });
+
+        (text === null ? m.root : elementOf(m, text)).dispatchEvent(event);
+
+        return event;
+    }
+
+    /**
+     * Sends the `mousedown` a press of the pointer gives, to the element showing `text`. A browser changes the
+     * selection for the press after this event.
+     *
+     * @param type - The kind of click the press belongs to: `auxclick` for the middle button.
+     */
+    function pressOn(m: Mounted, text: string, type: 'click' | 'auxclick' = 'click'): void {
+        elementOf(m, text).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: type === 'click' ? 0 : 1 }));
+    }
+
+    const OPENED = { href: 'https://example.com/docs', target: '_blank', rel: 'noopener noreferrer' };
+
+    it('L1: Enter with the caret in a link opens it in a new tab, changes nothing, and is not reported as a refused edit', async () => {
+        const m = await readOnlyAt(LINKED, 'the docs', 3);
+        const opened = followed();
+        const before = snapshotOf(m);
+        const seen = watch(m);
+        const { key, edit } = pressEnter(m, 'the docs');
+
+        await settle();
+
+        expect(opened).toEqual([OPENED]);
+        // The key is taken, so the browser announces no edit for it.
+        expect(key.defaultPrevented).toBe(true);
+        expect(edit).toBeNull();
+        expect(seen.refusals()).toBe(0);
+        expect(seen.flashes()).toBe(0);
+        expect(seen.changes()).toBe(0);
+        expect(snapshotOf(m)).toEqual(before);
+        // The anchor the link is opened through does not stay in the document.
+        expect(document.querySelectorAll('body > a')).toHaveLength(0);
+    });
+
+    it('L2: Enter with the caret outside a link is the refused edit it always is', async () => {
+        const m = await readOnlyAt(LINKED, 'see ', 2);
+        const opened = followed();
+        const seen = watch(m);
+        const { key, edit } = pressEnter(m, 'see ');
+
+        expect(opened).toEqual([]);
+        // The key is left alone, and the edit the browser then announces is refused.
+        expect(key.defaultPrevented).toBe(false);
+        expect(edit!.defaultPrevented).toBe(true);
+        expect(seen.refusals()).toBe(1);
+        expect(seen.flashes()).toBe(1);
+    });
+
+    it('L3: Enter over a selection inside a link opens nothing: a link is followed from a caret', async () => {
+        const m = await readOnlyAt(LINKED, 'the docs', 1, 5);
+        const opened = followed();
+        const seen = watch(m);
+
+        pressEnter(m, 'the docs');
+
+        expect(opened).toEqual([]);
+        expect(seen.refusals()).toBe(1);
+    });
+
+    it('L4: every edit the browser announces at a caret in a link is a refused edit, a paragraph break among them: only the Enter key follows', async () => {
+        // A paragraph break or a line break that reaches `beforeinput` did not come from an Enter the editor took:
+        // whatever produced it (a script, an input method, a key with a modifier), it opens nothing.
+        const m = await readOnlyAt(LINKED, 'the docs', 3);
+        const opened = followed();
+        const seen = watch(m);
+        const events = [
+            beforeInput('insertParagraph', true), beforeInput('insertLineBreak', true), beforeInput('insertText', true),
+            beforeInput('deleteContentBackward', true), clipboardEvent('paste'), clipboardEvent('cut'), dragEvent('drop'),
+        ];
+
+        for (const event of events) {
+            elementOf(m, 'the docs').dispatchEvent(event);
+        }
+
+        expect(opened).toEqual([]);
+        expect(seen.refusals()).toBe(events.length);
+    });
+
+    it('L5: a click on a link, which leaves the caret in it, opens it, and the click is the editor\'s alone', async () => {
+        const m = await readOnlyAt(LINKED, 'the docs', 3);
+        const opened = followed();
+        const before = snapshotOf(m);
+        const seen = watch(m);
+        const event = clickOn(m, 'the docs');
+
+        await settle();
+
+        expect(opened).toEqual([OPENED]);
+        // Cancelled, so that a browser which would follow the link itself does not follow it a second time.
+        expect(event.defaultPrevented).toBe(true);
+        expect(seen.refusals()).toBe(0);
+        expect(seen.changes()).toBe(0);
+        expect(snapshotOf(m)).toEqual(before);
+    });
+
+    /**
+     * Every shape the browser's selection can have before a press on the
+     * link and at the click that follows: an anchor and a focus by text node
+     * and offset, the whole surface, or none. `holdsText` says whether it is
+     * a selection of text.
+     */
+    type SelectionShape = { name: string; ends?: [string, number, string, number]; all?: boolean; holdsText: boolean };
+
+    const SELECTION_SHAPES: SelectionShape[] = [
+        { name: 'no selection',                                    holdsText: false },
+        { name: 'a caret in the link',                             ends: ['the docs', 3, 'the docs', 3], holdsText: false },
+        { name: 'a caret at the link\'s start',                    ends: ['the docs', 0, 'the docs', 0], holdsText: false },
+        { name: 'a caret elsewhere',                               ends: ['plain', 2, 'plain', 2],       holdsText: false },
+        { name: 'text inside the link',                            ends: ['the docs', 1, 'the docs', 5], holdsText: true },
+        { name: 'text inside the link, backward',                  ends: ['the docs', 5, 'the docs', 1], holdsText: true },
+        { name: 'a word of the link',                              ends: ['the docs', 4, 'the docs', 8], holdsText: true },
+        { name: 'the link\'s whole text',                          ends: ['the docs', 0, 'the docs', 8], holdsText: true },
+        { name: 'text from before the link into it',               ends: ['see ', 2, 'the docs', 4],     holdsText: true },
+        { name: 'text from inside the link to after it',           ends: ['the docs', 4, ' now', 2],     holdsText: true },
+        { name: 'text from after the link back into it',           ends: [' now', 2, 'the docs', 4],     holdsText: true },
+        { name: 'text around the link, an end on each side',       ends: ['see ', 2, ' now', 2],         holdsText: true },
+        { name: 'text around the link, backward',                  ends: [' now', 2, 'see ', 2],         holdsText: true },
+        { name: 'the link\'s block',                               ends: ['see ', 0, ' now', 4],         holdsText: true },
+        { name: 'the link\'s block and the next',                  ends: ['see ', 0, 'plain', 3],        holdsText: true },
+        { name: 'the whole surface',                               all: true,                            holdsText: true },
+        { name: 'text elsewhere',                                  ends: ['plain', 1, 'plain', 4],       holdsText: true },
+    ];
+
+    /** Gives the browser the selection of `shape`, with neither Lexical nor the document told. */
+    function browserHolds(m: Mounted, { ends, all }: SelectionShape): void {
+        const selection = window.getSelection()!;
+
+        selection.removeAllRanges();
+
+        if (all) {
+            selection.selectAllChildren(m.root);
+        } else if (ends !== undefined) {
+            const [anchorText, anchorOffset, focusText, focusOffset] = ends;
+
+            selection.setBaseAndExtent(domTextOf(m, anchorText), anchorOffset, domTextOf(m, focusText), focusOffset);
+        }
+    }
+
+    it('L6: a run of clicks follows its link at most once, on its first click: every selection before the press, every one after, clicks 1 to 8 of a run, both buttons, two addresses', async () => {
+        // One rule. A later click of a run (detail 2 and up) never follows, whatever is selected. The first click
+        // follows unless it selected text itself: unless it left text selected that was not selected before the
+        // press (the end of a drag, a Shift+click). A click no pointer made (detail 0) follows. With no press
+        // seen, any text selected counts as the first click's.
+        for (const [source, href] of [[LINKED, OPENED.href], [LINKED.replace(OPENED.href, 'mailto:someone@example.com'), 'mailto:someone@example.com']]) {
+            const m = await readOnlyAt(source, 'plain', 1);
+            const opened = followed();
+            const followedAt: string[] = [];
+            const expected: string[] = [];
+            const unseen = null;
+            let cases = 0;
+
+            for (const before of [unseen, ...SELECTION_SHAPES]) {
+                for (const after of SELECTION_SHAPES) {
+                    for (const type of ['click', 'auxclick'] as const) {
+                        for (const detail of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
+                            const label = `${before === unseen ? 'no press seen' : before.name} -> ${after.name}; ${type} ${detail}`;
+                            const count = opened.length;
+
+                            if (before !== unseen) {
+                                browserHolds(m, before);
+                                pressOn(m, 'the docs', type);
+                            }
+
+                            browserHolds(m, after);
+
+                            const event = clickOn(m, 'the docs', detail, type);
+                            const follows = detail === 0 || (detail === 1 && (!after.holdsText || after === before));
+
+                            // On the link, so the editor's alone, followed or not.
+                            expect(event.defaultPrevented, label).toBe(true);
+
+                            if (opened.length > count) {
+                                followedAt.push(label);
+                            }
+
+                            if (follows) {
+                                expected.push(label);
+                            }
+
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+
+            expect(followedAt, href).toEqual(expected);
+            expect(opened.every((anchor) => anchor.href === href), href).toBe(true);
+            // Both outcomes occur.
+            expect(expected.length).toBeGreaterThan(cases / 9);
+            expect(expected.length).toBeLessThan(cases / 4);
+            vi.restoreAllMocks();
+        }
+    });
+
+    it('L19: a run of one to eight clicks on a link opens it once, on the first click', async () => {
+        // What a browser sends: a press and a click for each, the clicks counted from 1. The selection is a caret
+        // after the first, the word after the second, and from the third on the block, which encloses the link
+        // with neither of its ends in it: the fourth click finds the block selected before its press and after.
+        const [caret, word, block] = ['a caret in the link', 'a word of the link', 'the link\'s block'].map(
+            (name) => SELECTION_SHAPES.find((shape) => shape.name === name)!,
+        );
+        const mail = 'mailto:someone@example.com';
+
+        for (const [source, href] of [[LINKED, OPENED.href], [LINKED.replace(OPENED.href, mail), mail]]) {
+            for (const clicks of [1, 2, 3, 4, 5, 6, 7, 8]) {
+                for (const type of ['click', 'auxclick'] as const) {
+                    const m = await readOnlyAt(source, 'plain', 1);
+                    const opened = followed();
+
+                    for (let count = 1; count <= clicks; count++) {
+                        pressOn(m, 'the docs', type);
+                        browserHolds(m, [caret, word, block][Math.min(count, 3) - 1]);
+                        clickOn(m, 'the docs', count, type);
+                    }
+
+                    expect(opened, `${clicks} ${type}s, ${href}`).toEqual([{ ...OPENED, href }]);
+                    vi.restoreAllMocks();
+                }
+            }
+        }
+    });
+
+    it('L20: text of a link that is selected already does not stand in the way of a click on it', async () => {
+        // A browser leaves a selection standing until a click inside it is over: the click finds the text selected
+        // before the press still selected, and did not select it.
+        const m = await readOnlyAt(LINKED, 'plain', 1);
+        const opened = followed();
+        const selected = ['a word of the link', 'the link\'s whole text', 'the link\'s block', 'the whole surface'];
+
+        for (const name of selected) {
+            browserHolds(m, SELECTION_SHAPES.find((shape) => shape.name === name)!);
+            pressOn(m, 'the docs');
+            clickOn(m, 'the docs');
+        }
+
+        expect(opened).toHaveLength(selected.length);
+
+        // A press is used by the one click that follows it: a second click with no press of its own finds no
+        // selection noted, and the text selected counts as its own.
+        clickOn(m, 'the docs');
+
+        expect(opened).toHaveLength(selected.length);
+    });
+
+    it('L18: a link with an empty address leads nowhere: neither Enter nor a click opens the page the editor is on', async () => {
+        for (const source of ['see [here]() now', 'see [here](<>) now', 'see [here][r] now\n\n[r]: <>']) {
+            const m = await readOnlyAt(source, 'here', 2);
+            const opened = followed();
+            const seen = watch(m);
+
+            // A link all the same, with an address of nothing.
+            expect(m.editor.getSelectionState().linkUrl, source).toBe('');
+
+            pressEnter(m, 'here');
+
+            const click = clickOn(m, 'here');
+
+            expect(opened, source).toEqual([]);
+            expect(seen.refusals(), source).toBe(1);
+            expect(click.defaultPrevented, source).toBe(true);
+            vi.restoreAllMocks();
+        }
+
+        // And one of white space alone, which only `toggleLink` can give a link.
+        const m = mounted('', false);
+
+        m.editor.setValue('a bad b');
+        selectIn(m, 'a bad b', 2, 5);
+        m.editor.toggleLink(' \t');
+        m.editor.setReadOnly(true);
+        await browserSelects(m, 'bad', 1);
+
+        const opened = followed();
+
+        expect(m.editor.getSelectionState().linkUrl).toBe(' \t');
+
+        pressEnter(m, 'bad');
+        clickOn(m, 'bad');
+
+        expect(opened).toEqual([]);
+    });
+
+    it('L7: a click beside a link opens nothing and is left alone, wherever the caret is', async () => {
+        // A click that does not move the caret out of the link: on the surface's own padding, say, or on an image.
+        const m = await readOnlyAt(LINKED, 'the docs', 3);
+        const opened = followed();
+        const events = [clickOn(m, ' now'), clickOn(m, 'plain'), clickOn(m, null)];
+
+        await settle();
+
+        expect(opened).toEqual([]);
+        expect(events.map((event) => event.defaultPrevented)).toEqual([false, false, false]);
+    });
+
+    it('L8: an editable editor follows no link: Enter in one splits the paragraph, and a click places the caret', async () => {
+        const m = mounted('', false);
+
+        m.editor.setValue(LINKED);
+        selectIn(m, 'the docs', 3);
+
+        const opened = followed();
+        const blocks = m.lexical.read(() => $getRoot().getChildrenSize());
+
+        clickOn(m, 'the docs');
+        elementOf(m, 'the docs').dispatchEvent(beforeInput('insertParagraph', true));
+        elementOf(m, 'the docs').dispatchEvent(keydown('Enter'));
+        await settle();
+
+        expect(opened).toEqual([]);
+        expect(m.lexical.read(() => $getRoot().getChildrenSize())).toBe(blocks + 1);
+    });
+
+    it('L9: a link whose address is not a relative, web, mail or phone one is not followed, by Enter or by a click', async () => {
+        // Addresses a Markdown link can be written with, and ones only `toggleLink` can give a link:
+        // a browser drops a tab from an address before it reads the scheme, so the last three are script addresses to it.
+        const written = ['javascript:alert(1)', 'JavaScript:alert(1)', 'data:text/html,x', 'vbscript:x', 'file:///etc/passwd', 'blob:x', 'a:b.md'];
+        const set = ['java\tscript:alert(1)', 'javascript\t:1/-alert(1)', ' javascript:alert(1)'];
+
+        for (const url of [...written, ...set]) {
+            const m = mounted('', false);
+
+            m.editor.setValue('a bad b');
+            selectIn(m, 'a bad b', 2, 5);
+            m.editor.toggleLink(url);
+            m.editor.setReadOnly(true);
+            await browserSelects(m, 'bad', 1);
+
+            const opened = followed();
+            const seen = watch(m);
+
+            expect(m.editor.getSelectionState().linkUrl, url).toBe(url);
+
+            pressEnter(m, 'bad');
+
+            const click = clickOn(m, 'bad');
+
+            await settle();
+
+            expect(opened, url).toEqual([]);
+            // Enter there is then the refused edit it is anywhere else; the click is cancelled all the same.
+            expect(seen.refusals(), url).toBe(1);
+            expect(click.defaultPrevented, url).toBe(true);
+            vi.restoreAllMocks();
+        }
+    });
+
+    it('L10: every form of link is followed to the address it was written with', async () => {
+        const forms: [string, string, string][] = [
+            ['see [ref][r] here\n\n[r]: https://example.com/ref', 'ref', 'https://example.com/ref'],
+            ['see <https://auto.example/x> here', 'https://auto.example/x', 'https://auto.example/x'],
+            ['write [me](mailto:me@example.com) now', 'me', 'mailto:me@example.com'],
+            ['call [us](tel:+4612345) or [text](sms:+4612345)', 'us', 'tel:+4612345'],
+            ['call [us](tel:+4612345) or [text](sms:+4612345)', 'text', 'sms:+4612345'],
+            ['an [upper](HTTPS://EXAMPLE.COM/Up) case scheme', 'upper', 'HTTPS://EXAMPLE.COM/Up'],
+            ['plain [http](http://example.com/) too', 'http', 'http://example.com/'],
+            ['- item [in a list](https://example.com/list)\n\n| a |\n| - |\n| [cell](https://example.com/cell) |', 'cell', 'https://example.com/cell'],
+            // Relative addresses, opened as written: the link's own element holds `https://other.md` for the second.
+            ['see [here](../other.md#part) now', 'here', '../other.md#part'],
+            ['see [here](other.md) now', 'here', 'other.md'],
+            ['see [here](docs/page.html) now', 'here', 'docs/page.html'],
+            ['see [here](page?x=1) now', 'here', 'page?x=1'],
+            ['see [here](/abs/path) now', 'here', '/abs/path'],
+            ['see [here](#part) now', 'here', '#part'],
+        ];
+
+        for (const [source, text, href] of forms) {
+            const m = await readOnlyAt(source, text, 1);
+            const opened = followed();
+
+            expect(m.editor.getSelectionState().linkUrl, source).toBe(href);
+
+            pressEnter(m, text);
+            clickOn(m, text);
+
+            expect(opened, source).toEqual([{ ...OPENED, href }, { ...OPENED, href }]);
+            vi.restoreAllMocks();
+        }
+    });
+
+    it('L12: a click reads the browser\'s selection: one that comes before Lexical has heard of the caret it placed still follows the link', async () => {
+        // A click places the caret and arrives ahead of the selectionchange that tells Lexical about it.
+        const m = await readOnlyAt(LINKED, 'plain', 2);
+        const opened = followed();
+        const domText = domTextOf(m, 'the docs');
+        const lexicalCaret = selectionOf(m);
+
+        window.getSelection()?.setBaseAndExtent(domText, 3, domText, 3);
+        clickOn(m, 'the docs');
+
+        expect(opened).toEqual([OPENED]);
+        // Lexical's own selection was still elsewhere, and following a link moved nothing.
+        expect(selectionOf(m)).toBe(lexicalCaret);
+
+        // And the drag Lexical has not heard of either: text of the link selected, so the click that ends it follows nothing.
+        pressOn(m, 'the docs');
+        window.getSelection()?.setBaseAndExtent(domText, 1, domText, 5);
+        clickOn(m, 'the docs');
+
+        expect(opened).toEqual([OPENED]);
+    });
+
+    it('L17: Enter follows a link exactly where the selection state reports one for a caret, the link\'s edges included', async () => {
+        const m = await readOnlyAt(LINKED, 'plain', 2);
+        const opened = followed();
+        const places: [string, number][] = [
+            ['see ', 0], ['see ', 4], ['the docs', 0], ['the docs', 1], ['the docs', 7], ['the docs', 8], [' now', 0], [' now', 1], ['plain', 0],
+        ];
+        const inLink: boolean[] = [];
+
+        for (const [text, offset] of places) {
+            await browserSelects(m, text, offset);
+
+            const reported = m.editor.getSelectionState().linkUrl;
+            const before = opened.length;
+
+            pressEnter(m, text);
+            inLink.push(reported !== null);
+
+            expect(opened.length - before, `${text}:${offset}`).toBe(reported === null ? 0 : 1);
+        }
+
+        // The caret is in the link somewhere, and out of it somewhere: the row compares two things that both vary.
+        expect(new Set(inLink)).toEqual(new Set([true, false]));
+
+        // It is the editor's caret that counts, the one the state is read from: with the browser's moved into the
+        // link and the editor not yet told, the state reports no link, and Enter is a refused edit.
+        const domText = domTextOf(m, 'the docs');
+        const seen = watch(m);
+        const before = opened.length;
+
+        await browserSelects(m, 'plain', 2);
+        window.getSelection()?.setBaseAndExtent(domText, 3, domText, 3);
+        pressEnter(m, 'the docs');
+
+        expect(m.editor.getSelectionState().linkUrl).toBeNull();
+        expect(opened.length).toBe(before);
+        expect(seen.refusals()).toBe(1);
+    });
+
+    it('L13: with the surface not an editing host, the editor alone follows the link: once, and the browser\'s own following is cancelled', async () => {
+        // setContentEditable(false) on a read-only editor: a browser follows an <a> there by itself, in the same tab,
+        // from a click and from Enter on the focused link, which arrives as a click too.
+        const m = await readOnlyAt(LINKED, 'plain', 2);
+
+        m.editor.setContentEditable(false);
+
+        const opened = followed();
+        const seen = watch(m);
+        const byMouse = clickOn(m, 'the docs');
+
+        expect(opened).toEqual([OPENED]);
+        expect(byMouse.defaultPrevented).toBe(true);
+
+        // The click the browser makes of Enter on a focused link, which no pointer made: the selection is wherever
+        // it was, text selected or not, text of the link itself included.
+        await browserSelects(m, 'plain', 1, 4);
+
+        const byKey = clickOn(m, 'the docs', 0);
+
+        expect(opened).toEqual([OPENED, OPENED]);
+        expect(byKey.defaultPrevented).toBe(true);
+
+        await browserSelects(m, 'the docs', 1, 5);
+
+        const byKeyOverItsOwnText = clickOn(m, 'the docs', 0);
+
+        expect(opened).toEqual([OPENED, OPENED, OPENED]);
+        expect(byKeyOverItsOwnText.defaultPrevented).toBe(true);
+
+        window.getSelection()?.removeAllRanges();
+
+        const withNoSelection = clickOn(m, 'the docs', 0);
+
+        expect(opened).toEqual([OPENED, OPENED, OPENED, OPENED]);
+        expect(withNoSelection.defaultPrevented).toBe(true);
+        expect(seen.refusals()).toBe(0);
+        expect(seen.changes()).toBe(0);
+    });
+
+    it('L14: an editable editor cancels no click on a link, whatever its surface is', async () => {
+        for (const contentEditable of [true, false]) {
+            const m = mounted('', false);
+
+            m.editor.setValue(LINKED);
+            m.editor.setContentEditable(contentEditable);
+
+            const opened = followed();
+            const event = clickOn(m, 'the docs');
+
+            expect(opened).toEqual([]);
+            expect(event.defaultPrevented).toBe(false);
+            vi.restoreAllMocks();
+        }
+    });
+
+    it('L15: a middle click on a link is the editor\'s too: followed once and cancelled; a click with the secondary button is left alone', async () => {
+        // With the surface not an editing host a browser opens a middle-clicked link itself, at the address on the element.
+        for (const contentEditable of [true, false]) {
+            const m = await readOnlyAt('see [here](other.md) now', 'here', 1);
+
+            m.editor.setContentEditable(contentEditable);
+
+            const opened = followed();
+            const middle = new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 });
+            const secondary = new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 2 });
+            const beside = new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 });
+
+            elementOf(m, 'here').dispatchEvent(middle);
+            elementOf(m, 'here').dispatchEvent(secondary);
+            elementOf(m, 'see ').dispatchEvent(beside);
+
+            expect(opened, String(contentEditable)).toEqual([{ ...OPENED, href: 'other.md' }]);
+            expect([middle, secondary, beside].map((event) => event.defaultPrevented), String(contentEditable)).toEqual([true, false, false]);
+            vi.restoreAllMocks();
+        }
+
+        const editable = mounted('', false);
+
+        editable.editor.setValue('see [here](other.md) now');
+
+        const opened = followed();
+        const middle = new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 });
+
+        elementOf(editable, 'here').dispatchEvent(middle);
+
+        expect(opened).toEqual([]);
+        expect(middle.defaultPrevented).toBe(false);
+    });
+
+    it('L16: Enter is acted on once for each press: a held key\'s repeats are stopped, in a link and out of one', async () => {
+        // What a browser sends for a held Enter: a keydown, then keydowns marked as repeats, each with a
+        // beforeinput of its own unless the keydown is cancelled.
+        const inLink = await readOnlyAt(LINKED, 'the docs', 3);
+        const opened = followed();
+        const seenInLink = watch(inLink);
+        const press = pressEnter(inLink, 'the docs');
+        const repeats = [pressEnter(inLink, 'the docs', 'insertParagraph', { repeat: true }), pressEnter(inLink, 'the docs', 'insertParagraph', { repeat: true })];
+
+        expect(press.key.defaultPrevented).toBe(true);
+        expect(repeats.map((repeat) => [repeat.key.defaultPrevented, repeat.edit])).toEqual([[true, null], [true, null]]);
+        expect(opened).toEqual([OPENED]);
+        expect(seenInLink.refusals()).toBe(0);
+
+        // Out of a link the press is the refused edit, once, and the repeats neither flash nor open anything.
+        const outside = await readOnlyAt(LINKED, 'plain', 2);
+        const seenOutside = watch(outside);
+        const first = pressEnter(outside, 'plain');
+        const held = [pressEnter(outside, 'plain', 'insertParagraph', { repeat: true }), pressEnter(outside, 'plain', 'insertParagraph', { repeat: true })];
+
+        expect(first.key.defaultPrevented).toBe(false);
+        expect(held.map((repeat) => [repeat.key.defaultPrevented, repeat.edit])).toEqual([[true, null], [true, null]]);
+        expect(opened).toEqual([OPENED]);
+        expect(seenOutside.refusals()).toBe(1);
+        expect(seenOutside.flashes()).toBe(1);
+    });
+
+    /**
+     * Every place a browser can put a caret in the surface: each offset of each text node, and each child offset
+     * of each element, the surface's own among them.
+     */
+    function caretPlaces(m: Mounted): [Node, number][] {
+        const places: [Node, number][] = [];
+        const walker = document.createTreeWalker(m.root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+
+        for (let node: Node | null = m.root; node !== null; node = walker.nextNode()) {
+            const count = node.nodeType === Node.TEXT_NODE ? (node as Text).length : node.childNodes.length;
+
+            for (let offset = 0; offset <= count; offset++) {
+                places.push([node, offset]);
+            }
+        }
+
+        return places;
+    }
+
+    /** Documents with a link at every kind of place, and the addresses a caret can reach in each. */
+    const LINK_PLACES: [string, string, string[]][] = [
+        ['a row of image links', '[![build](a.svg)](https://example.com/build) [![docs](b.svg)](https://example.com/docs)', ['https://example.com/build', 'https://example.com/docs']],
+        ['an image link in prose', 'picture: [![alt text](a.svg)](https://example.com/img) after', ['https://example.com/img']],
+        ['an image link alone', '[![alt2](b.svg)](https://example.com/img2)', ['https://example.com/img2']],
+        ['a link of text around an image', 'text [word ![alt3](c.svg) more](https://example.com/mixed) end', ['https://example.com/mixed']],
+        ['links at a paragraph\'s start and end', '[start](https://example.com/s) middle [end](https://example.com/e)', ['https://example.com/s', 'https://example.com/e']],
+        ['a link in a table cell', '| a |\n| - |\n| x [cell](https://example.com/cell) y |', ['https://example.com/cell']],
+        ['a link in a list item', '- item [in a list](https://example.com/list) end', ['https://example.com/list']],
+        ['a link in a heading', '# Head [link](https://example.com/h) tail', ['https://example.com/h']],
+    ];
+
+    for (const [kind, source, addresses] of LINK_PLACES) {
+        it(`L21: Enter follows a link at every caret place where the selection state reports one, and nowhere else: ${kind}`, async () => {
+            // Whatever edit a browser would announce for the key there: Chromium announces a line break, not a
+            // paragraph break, beside an image inside a link.
+            for (const inputType of ['insertParagraph', 'insertLineBreak']) {
+                const m = mounted('', true);
+
+                m.editor.setValue(source);
+
+                const opened = followed();
+                const reached = new Set<string>();
+                let outside = 0;
+
+                for (const [node, offset] of caretPlaces(m)) {
+                    const label = `${node.nodeName}${node.nodeType === Node.TEXT_NODE ? ` ${JSON.stringify((node as Text).data)}` : ''}:${offset}`;
+
+                    window.getSelection()!.collapse(node, offset);
+                    document.dispatchEvent(new Event('selectionchange'));
+                    await microtasks();
+
+                    const reported = m.editor.getSelectionState().linkUrl;
+                    const count = opened.length;
+                    const seen = watch(m);
+                    const { key, edit } = pressEnter(m, null, inputType);
+
+                    expect(opened.slice(count).map((anchor) => anchor.href), label).toEqual(reported === null ? [] : [reported]);
+                    expect(key.defaultPrevented, label).toBe(reported !== null);
+                    expect(edit === null, label).toBe(reported !== null);
+                    expect(seen.refusals(), label).toBe(reported === null ? 1 : 0);
+
+                    if (reported === null) {
+                        outside += 1;
+                    } else {
+                        reached.add(reported);
+                    }
+                }
+
+                // Every link of the document is reached from a caret, and there are places in no link.
+                expect([...reached].sort(), inputType).toEqual([...addresses].sort());
+                expect(outside, inputType).toBeGreaterThan(0);
+                vi.restoreAllMocks();
+            }
+        });
+    }
+
+    it('L22: Enter with a modifier key, Enter while composing, and Enter where the surface is no editing host are not the key that follows', async () => {
+        const m = await readOnlyAt(LINKED, 'the docs', 3);
+        const opened = followed();
+        const seen = watch(m);
+        const variants: [string, KeyModifiers, string][] = [
+            ['Shift', { shiftKey: true }, 'insertLineBreak'], ['Ctrl', { ctrlKey: true }, 'insertParagraph'], ['Alt', { altKey: true }, 'insertParagraph'],
+            ['Meta', { metaKey: true }, 'insertParagraph'], ['Ctrl+Shift', { ctrlKey: true, shiftKey: true }, 'insertLineBreak'],
+            ['composing', { isComposing: true }, 'insertParagraph'],
+        ];
+
+        for (const [name, modifiers, inputType] of variants) {
+            const { key, edit } = pressEnter(m, 'the docs', inputType, modifiers);
+
+            // Left to the browser; the edit it then announces is refused like any other.
+            expect(key.defaultPrevented, name).toBe(false);
+            expect(edit!.defaultPrevented, name).toBe(true);
+        }
+
+        expect(opened).toEqual([]);
+        expect(seen.refusals()).toBe(variants.length);
+
+        // No other key is the key that follows, pressed alone at the same caret.
+        for (const other of ['a', ' ', 'Tab', 'ArrowRight', 'Backspace', 'Delete', 'Escape', 'F2']) {
+            const event = keydown(other);
+
+            m.root.dispatchEvent(event);
+
+            expect(event.defaultPrevented, other).toBe(false);
+        }
+
+        expect(opened).toEqual([]);
+
+        // The Enter of the number pad is the same key, by another name of its place on the keyboard.
+        const numpad = new KeyboardEvent('keydown', { key: 'Enter', code: 'NumpadEnter', bubbles: true, cancelable: true });
+
+        m.root.dispatchEvent(numpad);
+
+        expect(numpad.defaultPrevented).toBe(true);
+        expect(opened).toEqual([OPENED]);
+        opened.length = 0;
+
+        // With contenteditable off there is no caret: the key goes to a focused link, and the browser makes a
+        // click of it, which the editor follows (row L13). The editor's own selection, wherever it was left, is
+        // not asked.
+        m.editor.setContentEditable(false);
+
+        const onLink = keydown('Enter');
+
+        elementOf(m, 'the docs').dispatchEvent(onLink);
+
+        expect(onLink.defaultPrevented).toBe(false);
+        expect(opened).toEqual([]);
+
+        // An editable editor's Enter is never taken.
+        const editable = mounted('', false);
+
+        editable.editor.setValue(LINKED);
+        selectIn(editable, 'the docs', 3);
+
+        const onEditable = keydown('Enter');
+
+        editable.root.dispatchEvent(onEditable);
+
+        expect(opened).toEqual([]);
+    });
+
+    it('L11: read-only switched off and on again: links are followed only while it is on', async () => {
+        const m = await readOnlyAt(LINKED, 'the docs', 3);
+        const opened = followed();
+
+        m.editor.setReadOnly(false);
+        clickOn(m, 'the docs');
+
+        expect(opened).toEqual([]);
+
+        m.editor.setReadOnly(true);
+        await browserSelects(m, 'the docs', 3);
+        clickOn(m, 'the docs');
+
+        expect(opened).toEqual([OPENED]);
     });
 });
