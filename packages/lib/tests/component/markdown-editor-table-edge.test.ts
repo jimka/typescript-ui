@@ -527,8 +527,8 @@ describe('deleting a range across a table\'s edge takes the whole table and stop
         expect(caretOf(editor)).toBe('paragraph@0');
     });
 
-    // Fails when the table-edge delete listener runs after $joinIntoTextOnlyBlock:
-    // that handler would join the cell's rest into the code block and leave part of the table.
+    // Fails when the removal of a guarded range tries the join from a text-only block ahead of the table-edge
+    // removal: the join would take the cell's rest into the code block and leave part of the table.
     it('D17: from a code block above the table into a cell\'s word joins nothing into the code block', () => {
         const editor = deleteRange(CODE_ABOVE, ['code', 2], ['c1', 1], false);
 

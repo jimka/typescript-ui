@@ -66,7 +66,7 @@ import { $importMarkdown } from "~/component/editor/markdownImporter.js";
 import { $serializeBlockContent, $serializeInlineNodes, $serializeMarkdown, $writtenListMarker } from "~/component/editor/markdownSerializer.js";
 import {
     $breakRuleContainerOf, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
-    $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $selectionHasFormat, $takeBlocksOutOf, RUN_EDGE_TAG,
+    $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $selectionHasFormat, $showRawBlockAsSaved, $takeBlocksOutOf, RUN_EDGE_TAG,
     registerWritableStateRules,
 } from "~/component/editor/markdownWritable.js";
 import { registerMarkdownHistory } from "~/component/editor/markdownHistory.js";
@@ -1076,12 +1076,9 @@ function $handleSeparatorShortcut(event: KeyboardEvent | null): boolean {
  * end, or outside any (the range started in an earlier block, which the raw
  * block's rest joined, or it reached into a table that closed a `:::` column
  * before the block), a new paragraph through `INSERT_PARAGRAPH_COMMAND`,
- * which is what `registerRichText`'s Enter dispatches there.
- *
- * @remarks
- * The caret's block is read in the update that removed the range, so a raw
- * block the removal makes read as another block still counts as raw here:
- * the rule that shows it as that block runs when the update ends.
+ * which is what `registerRichText`'s Enter dispatches there. The caret's
+ * block is read after the removal, which shows a raw block it makes read as
+ * other blocks as those blocks ({@link $removeGuardedRange}).
  *
  * @param event - The native keyboard event, or `null` for a programmatic dispatch.
  * @param editor - The editor the command was dispatched to.
@@ -1113,20 +1110,28 @@ function $handleRawBlockEnter(event: KeyboardEvent | null, editor: LexicalEditor
         $removeRangeBeforeEnter(selection);
     }
 
-    const caretBlock = $rawBlockAtAnchor(selection);
-    const leftAtEnd = caretBlock !== null && caretBlock.isSelectionAtEnd(selection);
+    // Read anew: a raw block the removal makes read as other blocks shows as them by now.
+    const caret = $getSelection();
+    const isRange = $isRangeSelection(caret);
+
+    if (!isRange) {
+        return true;
+    }
+
+    const caretBlock = $rawBlockAtAnchor(caret);
+    const leftAtEnd = caretBlock !== null && caretBlock.isSelectionAtEnd(caret);
 
     // Outside a raw block or at one's end, where Enter starts a new paragraph.
     if (caretBlock === null || leftAtEnd) {
         return editor.dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
     }
 
-    const atStart = caretBlock.isSelectionAtStart(selection);
+    const atStart = caretBlock.isSelectionAtStart(caret);
 
     if (atStart) {
         caretBlock.insertBefore($createParagraphNode());
     } else {
-        selection.insertLineBreak();
+        caret.insertLineBreak();
     }
 
     return true;
@@ -1150,24 +1155,14 @@ function $rawBlockAtEitherEnd(selection: BaseSelection | null): MarkdownRawBlock
 
 /**
  * Removes the range Enter was pressed over, as Delete removes it, leaving
- * the selection collapsed where the removal leaves the caret: a table-edge
- * range through {@link $removeGuardedRange}, ahead of anything else, since
- * it loses its whole table; a range from inside a raw Markdown block or a
- * code block into a later block through {@link $deleteRangeFromTextOnlyBlock},
- * so that block's rest joins as its Markdown; a stale-focus range through
- * {@link $removeGuardedRange} too, since Lexical's own removal throws on
- * one; and any other range, which those leave alone, through Lexical's own.
+ * the selection collapsed where the removal leaves the caret: a guarded
+ * range through {@link $removeGuardedRange}, the one removal every route
+ * shares, and any other range — one inside a single raw Markdown block —
+ * through Lexical's own.
  *
  * @param selection - A range that is not collapsed.
  */
 function $removeRangeBeforeEnter(selection: RangeSelection): void {
-    const isTableEdge = $isTableEdgeRange(selection);
-    const joinedAsMarkdown = !isTableEdge && $deleteRangeFromTextOnlyBlock(selection);
-
-    if (joinedAsMarkdown) {
-        return;
-    }
-
     const removed = $removeGuardedRange(selection);
 
     if (!removed) {
@@ -1799,8 +1794,12 @@ function $pastePlainTextIntoRawBlock(event: ClipboardEvent | InputEvent | Keyboa
  * is emptied: it slices the end text node but leaves the selection's end
  * offset as it was, then reads that stale offset while moving the end
  * block's remaining children into the start block. Every route removing a
- * range in this editor checks for the shape and removes it through
- * {@link $removeStaleFocusRange}. Remove the guard when the canary in
+ * range in this editor removes a guarded range through
+ * {@link $removeGuardedRange}, which takes this shape through
+ * {@link $removeStaleFocusRange} unless the range is a table-edge range or
+ * starts in a raw Markdown block or a code block, each of which has a
+ * removal of its own that does not trip the fault
+ * ({@link $removeJoiningRange}). Remove the guard when the canary in
  * `markdown-editor-command-crashes.test.ts` fails.
  *
  * @param selection - The selection to test.
@@ -1841,25 +1840,6 @@ function $removeStaleFocusRange(selection: RangeSelection): void {
 
     end.set(rest!.getKey(), 0, "text");
     selection.removeText();
-}
-
-/**
- * `DELETE_CHARACTER_COMMAND` listener: removes a stale-focus range itself.
- * That command alone has its own stale-focus listener, apart from the
- * table-edge one ({@link $deleteTableEdgeRange}): see
- * {@link registerRangeGuards}.
- *
- * @returns Whether the selection was a stale-focus range, now removed.
- */
-function $deleteStaleFocusRange(): boolean {
-    const selection = $getSelection();
-    const isStaleFocus = $isStaleFocusRange(selection);
-
-    if (isStaleFocus) {
-        $removeStaleFocusRange(selection);
-    }
-
-    return isStaleFocus;
 }
 
 /**
@@ -1917,23 +1897,27 @@ function $removalJoinsEndBlockRest(start: PointType, end: PointType): boolean {
 }
 
 /**
- * Whether Shift+Enter over `selection`, a stale-focus range, would have its
- * line break declined once the range is removed: whether the caret the
- * removal leaves — at the range's start, followed by the rest of the end's
- * block when the removal joins it there ({@link $removalJoinsEndBlockRest})
- * — is where a save cannot write a break ({@link $lineBreakUnwritableAt}).
- * Told ahead of the removal, so that a declined Shift+Enter can leave the
- * range as it is.
+ * Whether Shift+Enter over `selection`, a range {@link $removeJoiningRange}
+ * removes — a text-only-edge range or a stale-focus range that is no
+ * table-edge range —, would have its line break declined once the range is
+ * removed: whether the caret the removal leaves — at the range's start,
+ * followed by the rest of the end's block when the removal joins it there
+ * ({@link $removalJoinsEndBlockRest}) — is where a save cannot write a break
+ * ({@link $lineBreakUnwritableAt}). Told ahead of the removal, so that a
+ * declined Shift+Enter can leave the range as it is. A range that starts in
+ * a raw Markdown block or a code block is never declined: its caret stays
+ * in that block, which keeps every break.
  *
  * @remarks
- * Read off the document as it stands, so it cannot tell for a range ending
- * in a raw Markdown block whose rest the removal makes read as another
- * block.
+ * Read off the document as it stands, so it cannot tell for a range with an
+ * end in a raw Markdown block that the removal makes read as another block:
+ * where the break has no place in that block, the range is removed and no
+ * break is added.
  *
- * @param selection - A stale-focus range, left as it is.
+ * @param selection - A range of one of those shapes, left as it is.
  * @returns Whether the break would be declined.
  */
-function $staleFocusRemovalDeclinesLineBreak(selection: RangeSelection): boolean {
+function $joiningRemovalDeclinesLineBreak(selection: RangeSelection): boolean {
     const [start, end] = $orderedPoints(selection);
     const joinsRest = $removalJoinsEndBlockRest(start, end);
 
@@ -2194,13 +2178,16 @@ function $standsBeforeList(point: PointType): boolean {
  *
  * @param point - An element point of a range.
  * @param isStart - Whether it is the range's start rather than its end.
- * @returns `true` for the root and a column, `false` for a table cell and
- *   for a start just before a list.
+ * @returns `true` for the root and a column, `false` for a table, a table
+ *   row and a table cell (each a shadow root in `@lexical/table`) and for a
+ *   start just before a list.
  */
 function $liesBetweenBlocks(point: PointType, isStart: boolean): boolean {
     const node = point.getNode();
     const isElement = $isElementNode(node);
-    const holdsBlocks = isElement && $isRootOrShadowRoot(node) && !$isTableCellNode(node);
+    // A table, its rows and its cells are shadow roots too, and are left to the table rules.
+    const isTablePart = $isTableNode(node) || $isTableRowNode(node) || $isTableCellNode(node);
+    const holdsBlocks = isElement && $isRootOrShadowRoot(node) && !isTablePart;
 
     return holdsBlocks && !(isStart && $standsBeforeList(point));
 }
@@ -2295,22 +2282,53 @@ function $settlePoint(point: PointType, prefers: CaretDirection): void {
 }
 
 /**
+ * Moves a range's end that stands at the very start of its container to the
+ * place right before that container, in the container's parent, and on
+ * outward while that is a start too: an end with nothing before it in its
+ * container is read in document order, at what stands before the
+ * container. Stops at the document's start.
+ *
+ * @param point - A range's end, an element point; moved in place.
+ */
+function $readEndPastContainerStart(point: PointType): void {
+    let node = point.getNode();
+    let parent = node.getParent();
+
+    while (point.offset === 0 && parent !== null) {
+        point.set(parent.getKey(), node.getIndexWithinParent(), "element");
+        node = parent;
+        parent = node.getParent();
+    }
+}
+
+/**
  * Moves the points of a selection that lie where no caret can be to the
  * caret positions they name, so a command acts as it does for the same
- * selection made with the mouse. Such a point can only be set in code: on a
- * `:::` block, or, for a range, on the root or a column between two blocks.
- * A caret goes to the start of the block after it (the end of the block
- * before it at the container's end); a range's start likewise, and its end to
- * the end of the block before it (the start of the block after it at the
- * container's start). Lists and list items are not settled, and neither is a
- * range's start just before a list ({@link $liesBetweenBlocks}).
+ * selection made with the mouse. It is the one place a selection's points
+ * are settled before a range is removed or something is inserted: every
+ * range guard calls it ({@link registerRangeGuards}), and so do
+ * {@link $removeGuardedRange}, Enter's own listener
+ * ({@link $settleSelectionBeforeEnter}), `insertTable` and `insertImage`.
+ *
+ * Such a point can only be set in code: on a `:::` block, or, for a range,
+ * on the root or a column between two blocks. A caret goes to the start of
+ * the block after it (the end of the block before it at the container's
+ * end); a range's start likewise; a range's end to the end of the block
+ * before it, read past the start of its container when nothing stands
+ * before it there ({@link $readEndPastContainerStart}). Lists and list items
+ * are not settled, and neither is a range's start just before a list
+ * ({@link $liesBetweenBlocks}): but for a range the raw-block removal takes,
+ * whose ends on lists, list items and before a list are then read inward
+ * ({@link $settleTextOnlyEdgeEnds}).
  *
  * @remarks
  * Lexical's insert needs a block holding inline content around the caret,
  * and its removal of a range that starts between blocks removes every block
  * but the root's last child, which it leaves empty. A point on a table, a
  * table row or a cell is left to `@lexical/table`, and a caret between two
- * blocks to Lexical, which make and handle them themselves.
+ * blocks to Lexical, which make and handle them themselves. The function
+ * moves nothing a second time: once settled, every point it moves is in text
+ * or on a block of text.
  *
  * @param selection - The selection, moved in place.
  * @returns Whether a point moved.
@@ -2334,10 +2352,13 @@ function $settleSelectionOffContainers(selection: BaseSelection | null): boolean
     if (isCollapsed && startMoves) {
         end.set(start.key, start.offset, start.type);
     } else if (endMoves) {
+        $readEndPastContainerStart(end);
         $settlePoint(end, "previous");
     }
 
-    return startMoves || endMoves;
+    const movedInward = $settleTextOnlyEdgeEnds(selection);
+
+    return startMoves || endMoves || movedInward;
 }
 
 /**
@@ -2429,8 +2450,8 @@ function $openBlockAtItemCaret(selection: BaseSelection | null): boolean {
 
 /**
  * Makes the selection ready for a command that inserts at it, in the one
- * place every such command goes through: removes a table-edge or stale-focus
- * range ({@link $removeGuardedRange}); removes a range with an end on a list
+ * place every such command goes through: removes a guarded range
+ * ({@link $removeGuardedRange}); removes a range with an end on a list
  * item or a list ({@link $isListContainerRange}) as well, since where its
  * removal leaves the caret is known only afterwards, and a range that
  * starts just before a list ({@link $isRangeStartingBeforeList}), which
@@ -2556,25 +2577,6 @@ function $removeTableEdgeRange(selection: RangeSelection, caretStaysOutOf: ((nod
 }
 
 /**
- * `DELETE_CHARACTER_COMMAND` listener: removes a table-edge range itself.
- * That command alone has its own table-edge listener, apart from the
- * stale-focus one ({@link $deleteStaleFocusRange}): see
- * {@link registerRangeGuards}.
- *
- * @returns Whether the selection was a table-edge range, now removed.
- */
-function $deleteTableEdgeRange(): boolean {
-    const selection = $getSelection();
-    const isTableEdge = $isTableEdgeRange(selection);
-
-    if (isTableEdge) {
-        $removeTableEdgeRange(selection);
-    }
-
-    return isTableEdge;
-}
-
-/**
  * Backspace or Delete over a table-edge range: does what
  * `@lexical/rich-text`'s own key handler does — prevents the native edit and
  * dispatches `DELETE_CHARACTER_COMMAND` — ahead of `@lexical/table`'s key
@@ -2623,14 +2625,132 @@ function $deleteKeyOverTableEdgeRange(event: CommandPayloadType<typeof KEY_DELET
 }
 
 /**
- * Removes `selection` when it is one of the two range shapes Lexical's own
- * removal mishandles, through that shape's removal: a table-edge range
- * ({@link $removeTableEdgeRange}), else a stale-focus range
- * ({@link $removeStaleFocusRange}). In that order: a table-edge range ending
- * inside a later block's word is a stale-focus range too, and must lose the
- * whole table. A point where no caret can be is settled first
- * ({@link $settleSelectionOffContainers}). Leaves any other selection alone,
- * for the caller's own Lexical call to handle.
+ * Whether `selection` is a *text-only-edge range*: a non-collapsed range
+ * with one end inside a raw Markdown block or a code block
+ * ({@link $isTextOnlyBlock}) and the other end outside that block. A range
+ * with both ends in one such block is none: it is an edit of that block's
+ * text, which Lexical replaces in place.
+ *
+ * @remarks
+ * Lexical's own removal of such a range merges the two blocks' nodes. Where
+ * the range starts in the text-only block, the other block's rest then
+ * joins as its text, not as its Markdown, and its escapes, formatting and
+ * links change meaning or are dropped. Where it ends in one, nothing is
+ * lost, but a handler that acts after the removal reads the selection as it
+ * was dragged. So every route removes the range first, through
+ * {@link $removeGuardedRange}; the delete commands alone leave one to
+ * Lexical where its removal is all there is to do
+ * ({@link $isPlainlyRemovedRange}).
+ *
+ * @param selection - The selection to test.
+ * @returns Whether it is a text-only-edge range.
+ */
+function $isTextOnlyEdgeRange(selection: BaseSelection | null): selection is RangeSelection {
+    const isRange = $isRangeSelection(selection) && !selection.isCollapsed();
+
+    if (!isRange) {
+        return false;
+    }
+
+    const anchorBlock = $findMatchingParent(selection.anchor.getNode(), $isTextOnlyBlock);
+    const focusBlock = $findMatchingParent(selection.focus.getNode(), $isTextOnlyBlock);
+
+    if (anchorBlock === null || focusBlock === null) {
+        return anchorBlock !== focusBlock;
+    }
+
+    return !anchorBlock.is(focusBlock);
+}
+
+/**
+ * Whether `selection` is a *guarded range*: one of the shapes
+ * {@link $removeGuardedRange} removes itself — a table-edge range
+ * ({@link $isTableEdgeRange}), a text-only-edge range
+ * ({@link $isTextOnlyEdgeRange}) or a stale-focus range
+ * ({@link $isStaleFocusRange}). Every listener that asks whether a range is
+ * guarded asks here, so none misses a shape.
+ *
+ * @param selection - The selection to test.
+ * @returns Whether it is a guarded range.
+ */
+function $isGuardedRange(selection: BaseSelection | null): selection is RangeSelection {
+    return $isTableEdgeRange(selection) || $isTextOnlyEdgeRange(selection) || $isStaleFocusRange(selection);
+}
+
+/**
+ * Removes a guarded range that is no table-edge range, by the first of
+ * three removals that applies: a range that starts in a raw Markdown block
+ * or a code block and ends outside it has the rest of the end's block
+ * joined as its Markdown ({@link $deleteRangeFromTextOnlyBlock}); a
+ * stale-focus range is removed without tripping Lexical's fault
+ * ({@link $removeStaleFocusRange}); any other — a range that ends in a
+ * text-only block where no text node is cut: at the start or the end of a
+ * line of a raw Markdown block, or of a code block's text — is removed by
+ * Lexical's own removal.
+ *
+ * @remarks
+ * The join is ahead of the stale-focus removal: a range from a raw block
+ * into a later block's word is both shapes, and the stale-focus removal is
+ * Lexical's merge, which joins that block's rest as its text.
+ *
+ * @param selection - A guarded range that is no table-edge range; collapsed at the removal point afterwards.
+ */
+function $removeJoiningRange(selection: RangeSelection): void {
+    const joinedAsMarkdown = $deleteRangeFromTextOnlyBlock(selection);
+
+    if (joinedAsMarkdown) {
+        return;
+    }
+
+    // Typed `boolean`: left as a type guard's result it would narrow `selection` to `never` in the other branch.
+    const isStaleFocus: boolean = $isStaleFocusRange(selection);
+
+    if (isStaleFocus) {
+        $removeStaleFocusRange(selection);
+    } else {
+        selection.removeText();
+    }
+}
+
+/**
+ * Removes `selection` when it is a guarded range ({@link $isGuardedRange}),
+ * the one way a route removes one (the delete commands leave a plainly
+ * removed range to Lexical, {@link $isPlainlyRemovedRange}): a table-edge
+ * range through
+ * {@link $removeTableEdgeRange}, any other through
+ * {@link $removeJoiningRange}. In that order: a table-edge range that
+ * starts in a raw Markdown block or ends inside a later block's word is one
+ * of the other shapes too, and must lose the whole table. Leaves any other
+ * selection alone, for the caller's own Lexical call to handle.
+ *
+ * Each raw Markdown block that held an end of the range and is still in the
+ * document is then shown as its text now reads ({@link $showRawBlockAsSaved},
+ * the rule a node transform applies when the update ends), so what the
+ * caller inserts next meets the blocks the save will read, not a raw block
+ * about to become them.
+ *
+ * @remarks
+ * The update is not tagged {@link RUN_EDGE_TAG} here: a route carries that
+ * tag exactly when it carried it at the parent. The delete commands, the
+ * paste commands, the drop, the paragraph break Enter dispatches when it
+ * starts a paragraph and the line break Shift+Enter dispatches tag their
+ * command's update (`registerRunEdgeRules`), and `insertImage` tags its
+ * own. Neither cut tags the update that removes the range: `cut()` carries
+ * no tag, and the native cut's tag marks the command's own update, while
+ * the removal follows in an update of its own. Typing, the start of a
+ * composition and Tab carry none.
+ * Each route without the tag is tidied where the caret is, as over any
+ * range. A tag set here would send every route over the range, typing and
+ * Tab among them, through the rule that tidies each changed block whole.
+ *
+ * Pass the editor's own selection, never a clone: the removals and the
+ * re-read move the editor's selection, and the caller goes on with it. It
+ * is the editor's selection again when this returns
+ * ({@link $keepAsEditorSelection}).
+ *
+ * A point where no caret can be is settled first
+ * ({@link $settleSelectionOffContainers}), for a route that is no command;
+ * a command's guard settles it before its listener runs.
  *
  * @param selection - The selection about to be removed or replaced.
  * @param caretStaysOutOf - Passed to {@link $removeTableEdgeRange}, for a
@@ -2640,27 +2760,113 @@ function $deleteKeyOverTableEdgeRange(event: CommandPayloadType<typeof KEY_DELET
 function $removeGuardedRange(selection: BaseSelection | null, caretStaysOutOf: ((node: LexicalNode) => boolean) | null = null): boolean {
     $settleSelectionOffContainers(selection);
 
+    const isGuarded = $isGuardedRange(selection);
+
+    if (!isGuarded) {
+        return false;
+    }
+
+    // Read before the removal: afterwards the two ends are one caret.
+    const rawBlocks = [selection.anchor, selection.focus].map((point) => $findMatchingParent(point.getNode(), $isMarkdownRawBlockNode));
     const isTableEdge = $isTableEdgeRange(selection);
 
     if (isTableEdge) {
         $removeTableEdgeRange(selection, caretStaysOutOf);
-
-        return true;
+    } else {
+        $removeJoiningRange(selection);
     }
 
-    const isStaleFocus = $isStaleFocusRange(selection);
+    for (const block of rawBlocks) {
+        const isLeft = block !== null && block.isAttached();
 
-    if (isStaleFocus) {
-        $removeStaleFocusRange(selection);
+        if (isLeft) {
+            $showRawBlockAsSaved(block);
+        }
     }
 
-    return isStaleFocus;
+    $keepAsEditorSelection(selection);
+
+    return true;
+}
+
+/**
+ * The second step of {@link $settleSelectionOffContainers}: moves the ends
+ * of a range the raw-block removal takes — one with an end in a raw
+ * Markdown block or a code block — that still stand on a node that holds
+ * blocks, between its children, into the range: its start to the start of
+ * the first block of text at or after it, its end to the end of the last
+ * block of text at or before it ({@link $settleRangeEndsInward}), each named
+ * as a point in text where its block has text. After the first step such an
+ * end is on a list, a list item, or the root or a column just before a
+ * list. The range then takes in no block its points did not: an end before
+ * a list's first item is the end of the block before the list, as the block
+ * commands read it.
+ *
+ * @remarks
+ * The first step leaves those points to the list item rules and to the
+ * removal that runs first for a range starting before a list, which read
+ * them for a range Lexical removes ({@link $isRangeStartingBeforeList},
+ * {@link $isListContainerRange}). A range with an end in a raw block or a
+ * code block is removed by {@link $removeGuardedRange} before any of those
+ * rules sees it, and its removal reads both ends as places in a block's
+ * text: left on a list, the start would leave the caret on that list and
+ * the end would move the list's children out. A range that is a table-edge
+ * range too is left to that shape's own removal, which reads such a point
+ * beside a table.
+ *
+ * @param selection - The selection; its points are moved.
+ * @returns Whether a point moved.
+ */
+function $settleTextOnlyEdgeEnds(selection: BaseSelection | null): boolean {
+    const isRange = $isRangeSelection(selection) && !selection.isCollapsed();
+
+    if (!isRange) {
+        return false;
+    }
+
+    const points = [selection.anchor, selection.focus];
+    const leavesTextOnlyBlock = points.some((point) => $findMatchingParent(point.getNode(), $isTextOnlyBlock) !== null);
+    const standsOnHolder = points.some($standsOnHolder);
+    const isTableEdge = $isTableEdgeRange(selection);
+    const moves = leavesTextOnlyBlock && standsOnHolder && !isTableEdge;
+
+    if (moves) {
+        $settleRangeEndsInward(selection);
+        $moveBlockPointsIntoText(selection);
+    }
+
+    return moves;
+}
+
+/**
+ * Makes `selection` the editor's selection again, at the caret the editor
+ * now holds, when the editor has come to hold another selection object. A
+ * caller that passed the editor's selection to a removal goes on to insert
+ * through that object, and so does Lexical for a paste's payload.
+ *
+ * @remarks
+ * Lexical's `LexicalNode.replace` (0.49.0) installs a clone of the selection
+ * as the editor's and leaves the object it cloned pointing at the node it
+ * removed. The rule that shows a raw Markdown block as the paragraph it is
+ * written as replaces the block that way.
+ *
+ * @param selection - The selection object the caller holds.
+ */
+function $keepAsEditorSelection(selection: RangeSelection): void {
+    const current = $getSelection();
+    const isSwapped = $isRangeSelection(current) && current !== selection;
+
+    if (isSwapped) {
+        selection.anchor.set(current.anchor.key, current.anchor.offset, current.anchor.type);
+        selection.focus.set(current.focus.key, current.focus.offset, current.focus.type);
+        $setSelection(selection);
+    }
 }
 
 /**
  * Removes the range `insertImage` is about to put an image in place of, and
- * leaves the caret where an inline node can go in: a table-edge or
- * stale-focus range through {@link $removeGuardedRange}, the caret kept out
+ * leaves the caret where an inline node can go in: a guarded range through
+ * {@link $removeGuardedRange}, the caret kept out
  * of a raw Markdown block or a code block beside a removed table, and any
  * other range through Lexical's own removal, which the insertion would
  * otherwise run first itself.
@@ -2684,14 +2890,56 @@ function $removeRangeBeforeImage(selection: RangeSelection): void {
 }
 
 /**
- * Listener for the commands whose whole effect on a range is removing it
- * (`DELETE_WORD_COMMAND`, `DELETE_LINE_COMMAND`, `REMOVE_TEXT_COMMAND`):
- * removes a table-edge or stale-focus range itself.
+ * Whether `selection` is a *plainly removed range*: a guarded range whose
+ * removal is Lexical's own and nothing more — a text-only-edge range that is
+ * neither a table-edge nor a stale-focus range and does not start in the
+ * raw Markdown block or code block, so it ends in one where no text node is
+ * cut: at the start or the end of a line of a raw block, or of a code
+ * block's text. The delete commands leave such a range to their own handler
+ * ({@link $deleteGuardedRange}).
  *
- * @returns Whether the selection was such a range, now removed.
+ * @remarks
+ * A guarded shape with a removal of its own must be ruled out here, or the
+ * delete commands skip that removal.
+ *
+ * @param selection - The selection to test.
+ * @returns Whether it is a plainly removed range.
+ */
+function $isPlainlyRemovedRange(selection: BaseSelection | null): boolean {
+    const isTextOnlyEdgeAlone = $isTextOnlyEdgeRange(selection) && !$isTableEdgeRange(selection) && !$isStaleFocusRange(selection);
+
+    if (!isTextOnlyEdgeAlone) {
+        return false;
+    }
+
+    const [start] = $orderedPoints(selection);
+    const startsInTextOnlyBlock = $findMatchingParent(start.getNode(), $isTextOnlyBlock) !== null;
+
+    return !startsInTextOnlyBlock;
+}
+
+/**
+ * Listener for the commands whose whole effect on a range is removing it
+ * (`DELETE_CHARACTER_COMMAND`, `DELETE_WORD_COMMAND`, `DELETE_LINE_COMMAND`,
+ * `REMOVE_TEXT_COMMAND`): removes a guarded range itself
+ * ({@link $removeGuardedRange}), except a plainly removed one
+ * ({@link $isPlainlyRemovedRange}), which it leaves alone.
+ *
+ * @remarks
+ * Lexical removes a plainly removed range as the guard would, and its
+ * Backspace does one thing more that no other route does: it settles a
+ * first block of the document the removal empties (an emptied heading or
+ * quote becomes a paragraph). A guard that took the range would leave that
+ * step out.
+ *
+ * @returns Whether the selection was a guarded range this listener takes, now removed.
  */
 function $deleteGuardedRange(): boolean {
-    return $removeGuardedRange($getSelection());
+    const selection = $getSelection();
+    const isPlain = $isPlainlyRemovedRange(selection);
+
+    // Left to the command's own handler, which removes it the same way; its Backspace also settles a first block the removal empties.
+    return !isPlain && $removeGuardedRange(selection);
 }
 
 /**
@@ -2834,11 +3082,12 @@ function $tableEdgeRemovalDeclinesLineBreak(selection: RangeSelection): boolean 
  * Whether Shift+Enter over `selection` would have its line break declined
  * once the range is removed as {@link $removeGuardedRange} removes it: told
  * for a table-edge range by {@link $tableEdgeRemovalDeclinesLineBreak}, else
- * for a stale-focus range by {@link $staleFocusRemovalDeclinesLineBreak} —
- * in the order the removal itself takes the two shapes in.
+ * for a text-only-edge range or a stale-focus range by
+ * {@link $joiningRemovalDeclinesLineBreak} — in the order the removal itself
+ * takes the three shapes in.
  *
  * @param selection - The selection, left as it is.
- * @returns Whether it is such a range and the break would be declined.
+ * @returns Whether it is a guarded range and the break would be declined.
  */
 function $guardedRemovalDeclinesLineBreak(selection: BaseSelection | null): boolean {
     const isTableEdge = $isTableEdgeRange(selection);
@@ -2847,21 +3096,21 @@ function $guardedRemovalDeclinesLineBreak(selection: BaseSelection | null): bool
         return $tableEdgeRemovalDeclinesLineBreak(selection);
     }
 
-    const isStaleFocus = $isStaleFocusRange(selection);
+    const isJoining = $isTextOnlyEdgeRange(selection) || $isStaleFocusRange(selection);
 
-    return isStaleFocus && $staleFocusRemovalDeclinesLineBreak(selection);
+    return isJoining && $joiningRemovalDeclinesLineBreak(selection);
 }
 
 /**
- * `INSERT_LINE_BREAK_COMMAND` listener: removes a table-edge or stale-focus
- * range, then lets Lexical insert the break at the now-collapsed caret —
- * unless the removal would leave the caret where the break is declined
- * ({@link $guardedRemovalDeclinesLineBreak}). Shift+Enter is then declined
- * here, before anything is removed: a declined Shift+Enter changes nothing,
- * over these ranges as over any other. A range that starts just before a list
- * is removed first, as Enter removes it, unless the break would be declined
- * where that leaves the caret ({@link $beforeListRemovalDeclinesLineBreak});
- * then nothing is removed.
+ * `INSERT_LINE_BREAK_COMMAND` listener: removes a guarded range
+ * ({@link $removeGuardedRange}), then lets Lexical insert the break at the
+ * now-collapsed caret — unless the removal would leave the caret where the
+ * break is declined ({@link $guardedRemovalDeclinesLineBreak}). Shift+Enter
+ * is then declined here, before anything is removed: a declined Shift+Enter
+ * changes nothing, over these ranges as over any other. A range that starts
+ * just before a list is removed first, as Enter removes it, unless the break
+ * would be declined where that leaves the caret
+ * ({@link $beforeListRemovalDeclinesLineBreak}); then nothing is removed.
  *
  * @returns Whether the break was declined; otherwise `false`, so the command's own handlers still run.
  */
@@ -2906,74 +3155,101 @@ function $beforeListRemovalDeclinesLineBreak(selection: RangeSelection): boolean
 }
 
 /**
+ * Removes a guarded range ({@link $removeGuardedRange}) that text is about
+ * to be inserted over through Lexical's `insertText`, and gives the caret
+ * the format and style `insertText` types over a range in — those of the
+ * range's first text node, so text over a range that starts in bold text
+ * goes in bold. A range that starts in a table, or in a raw Markdown block
+ * or a code block, leaves no such node: the text goes in with the format
+ * and style of the text the caret lands in, and plain where the caret lands
+ * on no text, as in a block the range emptied. Leaves any other selection
+ * alone.
+ *
+ * @param selection - The selection the text is about to replace.
+ */
+function $removeGuardedRangeBeforeText(selection: BaseSelection | null): void {
+    const isGuarded = $isGuardedRange(selection);
+
+    if (!isGuarded) {
+        return;
+    }
+
+    const [start] = $orderedPoints(selection);
+    const startNode = start.getNode();
+    const isTableEdge = $isTableEdgeRange(selection);
+    const startsInTable = isTableEdge && $findTableHolding(startNode) !== null;
+    const startsInTextOnlyBlock = $findMatchingParent(startNode, $isTextOnlyBlock) !== null;
+    const takesCaretFormat = startsInTable || startsInTextOnlyBlock;
+    const startFormat = $isTextNode(startNode) ? startNode.getFormat() : selection.format;
+    const startStyle = $isTextNode(startNode) ? startNode.getStyle() : selection.style;
+
+    $removeGuardedRange(selection);
+
+    // Read anew: a raw block the removal makes read as other blocks shows as them by now.
+    const caret = $getSelection();
+    const isRange = $isRangeSelection(caret);
+
+    if (!isRange) {
+        return;
+    }
+
+    const caretNode = caret.anchor.getNode();
+    const caretText = $isTextNode(caretNode) ? caretNode : null;
+
+    // 0 is Lexical's format bitmask with no format set, and "" its style with no declaration.
+    caret.format = takesCaretFormat ? caretText?.getFormat() ?? 0 : startFormat;
+    caret.style = takesCaretFormat ? caretText?.getStyle() ?? "" : startStyle;
+}
+
+/**
  * `PASTE_COMMAND` listener: makes the selection ready for the pasted text
- * ({@link $removeGuardedRangeForInsert}) when the paste will insert its text
- * there ({@link pasteWillInsertText}), then lets the paste run at the
- * now-collapsed caret. A paste that inserts nothing — a pasted screenshot,
- * an empty clipboard — leaves the selection as it is.
+ * when the paste will insert its text there ({@link pasteWillInsertText}),
+ * then lets the paste run at the now-collapsed caret: a guarded range is
+ * removed and the caret given the format the text goes in with
+ * ({@link $removeGuardedRangeBeforeText}), and a range with an end on a list
+ * item or a list, or a caret left on one, is made ready as for any insert
+ * ({@link $removeGuardedRangeForInsert}). A paste that inserts nothing — a
+ * pasted screenshot, an empty clipboard — leaves the selection as it is.
  *
  * @param event - The paste event.
  * @returns Always `false`, so the command's own handler still runs.
  */
 function $clearGuardedRangeBeforePastedText(event: CommandPayloadType<typeof PASTE_COMMAND>): boolean {
     const selection = $getSelection();
-    const isGuarded = $isTableEdgeRange(selection) || $isStaleFocusRange(selection) || $isListContainerRange(selection)
-        || $listContainerAtCaret(selection) !== null;
+    const isChanged = $isGuardedRange(selection) || $isListContainerRange(selection) || $listContainerAtCaret(selection) !== null;
 
     // The shape first: the event is read only for a selection this guard would change.
-    const insertsText = isGuarded && pasteWillInsertText(event);
+    const insertsText = isChanged && pasteWillInsertText(event);
 
     if (insertsText) {
-        $removeGuardedRangeForInsert(selection);
+        $removeGuardedRangeBeforeText(selection);
+        // What is left to make ready: a range with an end on a list item or a list, and a caret left on one.
+        $removeGuardedRangeForInsert($getSelection());
     }
 
     return false;
 }
 
 /**
- * `CONTROLLED_TEXT_INSERTION_COMMAND` listener: removes a table-edge or
- * stale-focus range, then lets Lexical type at the now-collapsed caret, in
- * the format and style Lexical's own `insertText` types over a range in —
- * those of the range's first text node, so typing over a range that starts
- * in bold text types bold. A table-edge range that starts in the table
- * leaves no such node: it types in the format and style of the text the
- * caret lands in, and plain where the caret lands on no text, as in a block
- * the range emptied.
+ * `CONTROLLED_TEXT_INSERTION_COMMAND` listener: removes a guarded range and
+ * gives the caret the format the typed text goes in with
+ * ({@link $removeGuardedRangeBeforeText}), then lets Lexical type at the
+ * now-collapsed caret.
  *
  * @returns Always `false`, so the command's own handler still runs.
  */
 function $clearGuardedRangeBeforeTyping(): boolean {
-    const selection = $getSelection();
-    const isTableEdge = $isTableEdgeRange(selection);
-    const isGuarded = isTableEdge || $isStaleFocusRange(selection);
-
-    if (!isGuarded) {
-        return false;
-    }
-
-    const [start] = $orderedPoints(selection);
-    const startNode = start.getNode();
-    const startsInTable = isTableEdge && $findTableHolding(startNode) !== null;
-    const startFormat = $isTextNode(startNode) ? startNode.getFormat() : selection.format;
-    const startStyle = $isTextNode(startNode) ? startNode.getStyle() : selection.style;
-
-    $removeGuardedRange(selection);
-
-    const caretNode = selection.anchor.getNode();
-    const caretText = $isTextNode(caretNode) ? caretNode : null;
-
-    // 0 is Lexical's format bitmask with no format set, and "" its style with no declaration.
-    selection.format = startsInTable ? caretText?.getFormat() ?? 0 : startFormat;
-    selection.style = startsInTable ? caretText?.getStyle() ?? "" : startStyle;
+    $removeGuardedRangeBeforeText($getSelection());
 
     return false;
 }
 
 /**
  * `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` listener: removes the
- * table-edge or stale-focus range the pasted or dropped nodes are about to
- * replace, a range that ends on a list or item, and a range that starts
- * just before a list ({@link $removeGuardedRangeForInsert}), then lets the insertion run at the now-collapsed caret. With no
+ * guarded range the pasted or dropped nodes are about to replace, a range
+ * that ends on a list or item, and a range that starts just before a list
+ * ({@link $removeGuardedRangeForInsert}), then lets the insertion run at the
+ * now-collapsed caret. With no
  * nodes to insert — pasted HTML holding nothing the editor reads, such as an
  * image alone — the range is left as it is, as Lexical's insertion leaves
  * any other.
@@ -2990,7 +3266,7 @@ function $clearGuardedRangeBeforePaste(payload: CommandPayloadType<typeof SELECT
 }
 
 /**
- * `CUT_COMMAND` listener for a table-edge or stale-focus range: mirrors
+ * `CUT_COMMAND` listener for a guarded range: mirrors
  * `@lexical/rich-text`'s own cut — copies the selection to the clipboard,
  * then removes it in one update tagged `CUT_TAG` (its own undo step) — but
  * removes the range through {@link $removeGuardedRange}. A table-edge range
@@ -3001,12 +3277,12 @@ function $clearGuardedRangeBeforePaste(payload: CommandPayloadType<typeof SELECT
  *
  * @param event - The cut event (Lexical also dispatches a `KeyboardEvent`, or `null`).
  * @param editor - The editor the command was dispatched to.
- * @returns Whether the selection was a table-edge or stale-focus range, now being cut.
+ * @returns Whether the selection was a guarded range, now being cut.
  */
 function $cutGuardedRange(event: CommandPayloadType<typeof CUT_COMMAND>, editor: LexicalEditor): boolean {
     const selection = $getSelection();
     const isTableEdge = $isTableEdgeRange(selection);
-    const isGuarded = isTableEdge || $isStaleFocusRange(selection);
+    const isGuarded = $isGuardedRange(selection);
 
     if (!isGuarded) {
         return false;
@@ -3061,15 +3337,16 @@ function $copyTableEdgeRange(event: CommandPayloadType<typeof COPY_COMMAND>, edi
 
 /**
  * `DELETE_CHARACTER_COMMAND` handler keeping a raw Markdown block or a code
- * block text-only when a delete joins another block to it, as that block's
- * Markdown: its formatting, links, images and escapes become text of the
- * block, which saves its text as written, instead of Lexical's merge moving
- * the block's nodes in, which the save would drop. Handles Backspace at a
- * paragraph's start after such a block, Delete at such a block's end before
- * a paragraph, and a range deleted from inside such a block into a later
- * block, whose rest after the range joins. The caret lands where the two
- * met. Registered at {@link COMMAND_PRIORITY_HIGH}, ahead of
- * `registerRichText`'s own handler.
+ * block text-only when a delete at a collapsed caret joins another block to
+ * it, as that block's Markdown: its formatting, links, images and escapes
+ * become text of the block, which saves its text as written, instead of
+ * Lexical's merge moving the block's nodes in, which the save would drop.
+ * Handles Backspace at a paragraph's start after such a block and Delete at
+ * such a block's end before a paragraph. The caret lands where the two met.
+ * A range is not this handler's: the command's range guard removes one
+ * ahead of it ({@link $deleteGuardedRange}), joining the same way.
+ * Registered at {@link COMMAND_PRIORITY_HIGH}, ahead of `registerRichText`'s
+ * own handler.
  *
  * @param isBackward - `true` for Backspace, `false` for Delete.
  * @returns Whether a block was joined to a raw block or code block.
@@ -3081,8 +3358,11 @@ function $joinIntoTextOnlyBlock(isBackward: boolean): boolean {
         return false;
     }
 
-    if (!selection.isCollapsed()) {
-        return $deleteRangeFromTextOnlyBlock(selection);
+    const isCollapsed = selection.isCollapsed();
+
+    // A range is removed by the guard of this command, ahead of this listener.
+    if (!isCollapsed) {
+        return false;
     }
 
     const pair = isBackward ? $textOnlyBlockBeforeParagraphStart(selection) : $paragraphAfterTextOnlyBlockEnd(selection);
@@ -3250,11 +3530,12 @@ function $textOnlyChildren(text: string): LexicalNode[] {
  * Node transform keeping a raw Markdown block or code block text-only: any
  * run of children that is not plain text or a line break — a link, an
  * image, text with a mark or a colour, font or size, a run kept as source
- * (inline code, and CSS no span writes, show nothing the text lacks), which a merge from
- * another block can bring in (typing or pasting over a range that reaches
- * into the next block) — is replaced by its Markdown, so the save, which
- * writes the block's text, drops none of it. The commands that format, link
- * or insert decline in these blocks, so only such a merge gets here. A block
+ * (inline code, and CSS no span writes, show nothing the text lacks) — is
+ * replaced by its Markdown, so the save, which writes the block's text,
+ * drops none of it. The commands that format, link or insert decline in
+ * these blocks, and a range that leaves one is removed so that another
+ * block's rest joins as its Markdown ({@link $removeGuardedRange}); this
+ * catches whatever still reaches the block. A block
  * that has come to stand in this block (no key puts one there) is no text of
  * it: it is moved out to follow it first.
  *
@@ -4439,9 +4720,13 @@ function registerItemTextPaste(editor: LexicalEditor): () => void {
 
 /**
  * Registers what keeps a raw Markdown block and a code block holding text
- * only: Enter inside a raw block, a paste into either, a delete joining
- * another block to either, and the transform turning anything else that
- * reaches them into its Markdown.
+ * only: Enter inside a raw block, a paste into either, a delete at a
+ * collapsed caret joining another block to either, and the transform
+ * turning anything else that reaches them into its Markdown. A range that
+ * leaves either is removed by the range guards
+ * ({@link registerRangeGuards}), ahead of the paste and delete listeners
+ * here; Enter, a key no guard listens to, removes one itself through the
+ * same removal ({@link $removeRangeBeforeEnter}).
  *
  * @remarks
  * A command's listeners of one priority run in the order they were
@@ -4465,32 +4750,47 @@ function registerTextOnlyBlockRules(editor: LexicalEditor): () => void {
 }
 
 /**
- * Registers the guards for the two range shapes Lexical's own removal
- * mishandles — a table-edge range ({@link $isTableEdgeRange}) and a
- * stale-focus range ({@link $isStaleFocusRange}) — on every command that
- * removes or replaces a range: each removes such a range itself, ahead of
- * the command's own handler. `COPY_COMMAND`, which removes nothing, has one
- * for a table-edge range too, so a copy copies what a cut removes.
+ * `KEY_ENTER_COMMAND` listener that settles the selection's points
+ * ({@link $settleSelectionOffContainers}) before Enter's own handlers read
+ * them: Enter in a raw block ({@link $handleRawBlockEnter}) reads the range
+ * before any guard of the paragraph command does.
+ *
+ * @returns Always `false`, so Enter's own handlers run.
+ */
+function $settleSelectionBeforeEnter(): boolean {
+    $settleSelectionOffContainers($getSelection());
+
+    return false;
+}
+
+/**
+ * Registers the guards for the three range shapes Lexical's own removal
+ * mishandles — a table-edge range ({@link $isTableEdgeRange}), a
+ * text-only-edge range ({@link $isTextOnlyEdgeRange}) and a stale-focus
+ * range ({@link $isStaleFocusRange}) — on every command that removes or
+ * replaces a range: each removes such a range itself, ahead of the
+ * command's own handler. `COPY_COMMAND`, which removes nothing, has one for
+ * a table-edge range too, so a copy copies what a cut removes.
  *
  * @remarks
- * One listener per command, and each takes a table-edge range ahead of a
- * stale-focus one ({@link $removeGuardedRange}). All are at
- * {@link COMMAND_PRIORITY_CRITICAL}, ahead of every handler that removes
- * the range and of `@lexical/table`'s own Backspace and Delete handlers.
- * Each guard first settles a point where no caret can be
- * ({@link $settleSelectionOffContainers}). The paragraph-break, Tab,
+ * Each command has one listener that removes, and each removes the range
+ * through {@link $removeGuardedRange}, which takes the shapes in one order.
+ * The `guard` wrapper settles the selection's points
+ * ({@link $settleSelectionOffContainers}) before each listener runs, and
+ * `KEY_ENTER_COMMAND`, whose handler for a raw block reads the range too,
+ * has a listener of its own that does the same
+ * ({@link $settleSelectionBeforeEnter}): every listener after it reads a
+ * range whose ends are in text where they can be. The paragraph-break, Tab,
  * clipboard-insert and line-break guards also remove a range that starts
  * just before a list ahead of Lexical's insert, so the insert comes where
  * the range was ({@link $clearGuardedRangeBeforeParagraph},
  * {@link $removeGuardedRangeForInsert}, {@link $clearGuardedRangeBeforeLineBreak}).
- * `DELETE_CHARACTER_COMMAND` alone has its two guards apart, either side of
- * {@link $joinIntoTextOnlyBlock} at {@link COMMAND_PRIORITY_HIGH}. The
- * table-edge guard runs ahead of it, at CRITICAL: that handler would join a
- * cell's rest into a code block and leave part of the table. The
- * stale-focus guard runs behind it, at HIGH — call this after
- * {@link registerTextOnlyBlockRules} — since a range from a raw block or a
- * code block joins that handler's way. The copy guard is at HIGH as well,
- * ahead of Lexical's own copy but behind the CRITICAL listener
+ * The listeners that remove are at {@link COMMAND_PRIORITY_CRITICAL}, ahead of
+ * every handler that removes the range and of `@lexical/table`'s own
+ * Backspace and Delete handlers, so none depends on the order this is
+ * called in with {@link registerTextOnlyBlockRules}, whose listeners are at
+ * {@link COMMAND_PRIORITY_HIGH} and meet a caret. The copy guard alone is
+ * at HIGH, ahead of Lexical's own copy but behind the CRITICAL listener
  * `copyToClipboard` registers for the copy event it has the browser fire
  * when it is given none: that event is the same copy, already under way.
  *
@@ -4506,10 +4806,10 @@ function registerRangeGuards(editor: LexicalEditor): () => void {
         }, COMMAND_PRIORITY_CRITICAL);
 
     return mergeRegister(
+        editor.registerCommand(KEY_ENTER_COMMAND, $settleSelectionBeforeEnter, COMMAND_PRIORITY_CRITICAL),
         guard(KEY_BACKSPACE_COMMAND, $backspaceOverTableEdgeRange),
         guard(KEY_DELETE_COMMAND, $deleteKeyOverTableEdgeRange),
-        guard(DELETE_CHARACTER_COMMAND, $deleteTableEdgeRange),
-        editor.registerCommand(DELETE_CHARACTER_COMMAND, $deleteStaleFocusRange, COMMAND_PRIORITY_HIGH),
+        guard(DELETE_CHARACTER_COMMAND, $deleteGuardedRange),
         guard(DELETE_WORD_COMMAND, $deleteGuardedRange),
         guard(DELETE_LINE_COMMAND, $deleteGuardedRange),
         guard(REMOVE_TEXT_COMMAND, $deleteGuardedRange),

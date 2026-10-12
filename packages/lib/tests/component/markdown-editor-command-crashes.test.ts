@@ -9,14 +9,15 @@ vi.mock('@lexical/clipboard', async (importOriginal) => ({
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     $createParagraphNode, $createRangeSelection, $createTextNode, $getRoot, $getSelection, $isRangeSelection, $isTextNode,
-    $setSelection, CONTROLLED_TEXT_INSERTION_COMMAND, CUT_COMMAND, DELETE_CHARACTER_COMMAND, INSERT_LINE_BREAK_COMMAND,
-    INSERT_PARAGRAPH_COMMAND, INTERNAL_$isBlock, KEY_ENTER_COMMAND, PASTE_COMMAND, SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, createEditor,
-    COMPOSITION_START_COMMAND, COMPOSITION_END_TAG, $setCompositionKey, $findMatchingParent, UNDO_COMMAND, CAN_UNDO_COMMAND, COMMAND_PRIORITY_LOW,
+    $setSelection, CONTROLLED_TEXT_INSERTION_COMMAND, CUT_COMMAND, DELETE_CHARACTER_COMMAND, DELETE_WORD_COMMAND, INSERT_LINE_BREAK_COMMAND,
+    INSERT_PARAGRAPH_COMMAND, INSERT_TAB_COMMAND, INTERNAL_$isBlock, KEY_ENTER_COMMAND, PASTE_COMMAND, REMOVE_TEXT_COMMAND,
+    SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, UNDO_COMMAND, createEditor,
+    COMPOSITION_START_COMMAND, COMPOSITION_END_TAG, $setCompositionKey, $findMatchingParent, CAN_UNDO_COMMAND, COMMAND_PRIORITY_LOW,
 } from 'lexical';
-import type { ElementNode, Klass, LexicalEditor, LexicalNode, PointType, RangeSelection, TextNode } from 'lexical';
+import type { ElementNode, Klass, LexicalCommand, LexicalEditor, LexicalNode, PointType, RangeSelection, TextNode } from 'lexical';
 import { $createListItemNode, $createListNode, $isListNode, ListItemNode, ListNode } from '@lexical/list';
 import { $createLinkNode, $isLinkNode, $toggleLink, LinkNode } from '@lexical/link';
-import { copyToClipboard } from '@lexical/clipboard';
+import { $insertGeneratedNodes, copyToClipboard } from '@lexical/clipboard';
 import type { TableCellNode } from '@lexical/table';
 import { $dfs } from '@lexical/utils';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
@@ -1221,6 +1222,779 @@ describe('a composition start at a link\'s edge: guard limits (I rows)', () => {
 
         expect(editor.getValue()).toBe('see `ab`[the docs](u)');
         editor.dispose();
+    });
+});
+
+describe('a range that leaves a raw Markdown block or a code block is removed the same way on every route (TE rows)', () => {
+    const FENCE = '```';
+    const RAW = '<div>\nraw text\n</div>';
+    const RICH = 'efgh **ij** kl [a](u) \\*x\\*';
+    const CODE = `${FENCE}\ncode *a*\nline2\n${FENCE}`;
+    /** A code block loads as one text node holding its lines. */
+    const CODE_TEXT = 'code *a*\nline2';
+    const TABLE = '| a | b |\n| --- | --- |\n| c1 | d1 |';
+    const TWO_RAW = '<div>\nraw one\n</div>\n\n<section>\nraw two\n</section>\n\nafter';
+
+    /** One way of removing or replacing a selection. */
+    type Route =
+        | 'Delete' | 'Backspace' | 'word delete' | 'REMOVE_TEXT_COMMAND' | 'cut()' | 'CUT_COMMAND' | 'type' | 'IME start' | 'drop insert'
+        | 'Enter' | 'INSERT_PARAGRAPH_COMMAND' | 'Shift+Enter' | 'Tab' | 'PASTE_COMMAND' | 'paste()' | 'paste nodes' | 'paste blocks'
+        | 'insertImage' | 'insertTable';
+
+    /** A selection shape: a document, the range's two ends in document order, and what typing `x` over it and Delete give. */
+    interface Shape {
+        readonly id:      string;
+        readonly name:    string;
+        readonly source:  string;
+        readonly start:   TextPoint;
+        readonly end:     TextPoint;
+        readonly typed:   string;
+        readonly deleted: string;
+    }
+
+    const SHAPES: readonly Shape[] = [
+        { id: 'TE1', name: 'raw → rich word', source: RAW_THEN_RICH, start: ['raw text', 2], end: ['efgh ', 3], typed: '<div>\nraxh **ij** kl [a](u) \\*x\\*\n\nafter', deleted: '<div>\nrah **ij** kl [a](u) \\*x\\*\n\nafter' },
+        { id: 'TE2', name: 'raw start → bold start', source: RAW_THEN_RICH, start: ['<div>', 0], end: ['ij', 0], typed: '**xij** kl [a](u) \\*x\\*\n\nafter', deleted: '**ij** kl [a](u) \\*x\\*\n\nafter' },
+        { id: 'TE3', name: 'raw start → rich word', source: RAW_THEN_RICH, start: ['<div>', 0], end: ['efgh ', 3], typed: 'xh **ij** kl [a](u) \\*x\\*\n\nafter', deleted: 'h **ij** kl [a](u) \\*x\\*\n\nafter' },
+        { id: 'TE4', name: 'raw end → rich word', source: RAW_THEN_RICH, start: ['</div>', 6], end: ['efgh ', 3], typed: '<div>\nraw text\n</div>xh **ij** kl [a](u) \\*x\\*\n\nafter', deleted: '<div>\nraw text\n</div>h **ij** kl [a](u) \\*x\\*\n\nafter' },
+        { id: 'TE5', name: 'raw → rich block\'s end', source: RAW_THEN_RICH, start: ['raw text', 2], end: [' *x*', 4], typed: '<div>\nrax\n\nafter', deleted: '<div>\nra\n\nafter' },
+        { id: 'TE6', name: 'raw → rich block\'s start', source: RAW_THEN_RICH, start: ['raw text', 2], end: ['efgh ', 0], typed: '<div>\nraxefgh **ij** kl [a](u) \\*x\\*\n\nafter', deleted: '<div>\nraefgh **ij** kl [a](u) \\*x\\*\n\nafter' },
+        { id: 'TE7', name: 'raw tag → later word (re-read)', source: `${RAW}\n\nafter`, start: ['<div>', 1], end: ['after', 1], typed: '\\<xfter', deleted: '\\<fter' },
+        { id: 'TE8', name: 'raw tag → later block\'s end (re-read)', source: `${RAW}\n\nafter`, start: ['<div>', 1], end: ['after', 5], typed: '\\<x', deleted: '<' },
+        { id: 'TE9', name: 'raw → raw', source: TWO_RAW, start: ['raw one', 2], end: ['raw two', 2], typed: '<div>\nraxw two\n</section>\n\nafter', deleted: '<div>\nraw two\n</section>\n\nafter' },
+        { id: 'TE10', name: 'raw tag → raw tag', source: TWO_RAW, start: ['<div>', 1], end: ['<section>', 3], typed: '<xction>\nraw two\n</section>\n\nafter', deleted: '<ction>\nraw two\n</section>\n\nafter' },
+        { id: 'TE11', name: 'rich word → raw', source: `${RICH}\n\n${RAW}\n\nafter`, start: ['efgh ', 3], end: ['raw text', 2], typed: 'efgxw text\\\n\\</div>\n\nafter', deleted: 'efgw text\\\n\\</div>\n\nafter' },
+        { id: 'TE12', name: 'rich start → raw', source: `${RICH}\n\n${RAW}\n\nafter`, start: ['efgh ', 0], end: ['raw text', 2], typed: 'xw text\\\n\\</div>\n\nafter', deleted: 'w text\\\n\\</div>\n\nafter' },
+        { id: 'TE13', name: 'bold → raw end', source: `${RICH}\n\n${RAW}\n\nafter`, start: ['ij', 1], end: ['</div>', 6], typed: 'efgh **ix**\n\nafter', deleted: 'efgh **i**\n\nafter' },
+        { id: 'TE14', name: 'rich word → raw start', source: `${RICH}\n\n${RAW}\n\nafter`, start: ['efgh ', 3], end: ['<div>', 0], typed: 'efgx\\<div>\\\nraw text\\\n\\</div>\n\nafter', deleted: 'efg\\<div>\\\nraw text\\\n\\</div>\n\nafter' },
+        { id: 'TE15', name: 'code → rich word', source: `${CODE}\n\n${RICH}\n\nafter`, start: [CODE_TEXT, 2], end: ['efgh ', 3], typed: '```\ncoxh **ij** kl [a](u) \\*x\\*\n```\n\nafter', deleted: '```\ncoh **ij** kl [a](u) \\*x\\*\n```\n\nafter' },
+        { id: 'TE16', name: 'code start → bold start', source: `${CODE}\n\n${RICH}\n\nafter`, start: [CODE_TEXT, 0], end: ['ij', 0], typed: '```\nx**ij** kl [a](u) \\*x\\*\n```\n\nafter', deleted: '```\n**ij** kl [a](u) \\*x\\*\n```\n\nafter' },
+        { id: 'TE17', name: 'rich word → code', source: `${RICH}\n\n${CODE}\n\nafter`, start: ['efgh ', 3], end: [CODE_TEXT, 11], typed: 'efgxne2\n\nafter', deleted: 'efgne2\n\nafter' },
+        { id: 'TE18', name: 'raw → code', source: `${RAW}\n\n${CODE}\n\nafter`, start: ['raw text', 2], end: [CODE_TEXT, 11], typed: '<div>\nraxne2\n\nafter', deleted: '<div>\nrane2\n\nafter' },
+        { id: 'TE19', name: 'code → raw', source: `${CODE}\n\n${RAW}\n\nafter`, start: [CODE_TEXT, 2], end: ['raw text', 2], typed: '```\ncoxw text\n</div>\n```\n\nafter', deleted: '```\ncow text\n</div>\n```\n\nafter' },
+        { id: 'TE20', name: 'raw → list item text', source: `${RAW}\n\n- one **b**\n- two \\*x\\* [a](u)\n\nafter`, start: ['raw text', 2], end: ['two *x* ', 2], typed: '<div>\nraxo \\*x\\* [a](u)\n\nafter', deleted: '<div>\nrao \\*x\\* [a](u)\n\nafter' },
+        { id: 'TE21', name: 'list item text → raw', source: `- one **b**\n- two \\*x\\*\n\n${RAW}\n\nafter`, start: ['two *x*', 2], end: ['raw text', 2], typed: '- one **b**\n- twxw text\\\n  \\</div>\n\nafter', deleted: '- one **b**\n- tww text\\\n  \\</div>\n\nafter' },
+        { id: 'TE22', name: 'raw → quote', source: `${RAW}\n\n> quote **b** \\*x\\*\n\nafter`, start: ['raw text', 2], end: ['quote ', 3], typed: '<div>\nraxte **b** \\*x\\*\n\nafter', deleted: '<div>\nrate **b** \\*x\\*\n\nafter' },
+        { id: 'TE23', name: 'quote → raw', source: `> quote **b**\n\n${RAW}\n\nafter`, start: ['quote ', 3], end: ['raw text', 2], typed: '> quoxw text\\\n> \\</div>\n\nafter', deleted: '> quow text\\\n> \\</div>\n\nafter' },
+        { id: 'TE24', name: 'raw → level 3 heading', source: `${RAW}\n\n### head **b** \\*x\\*\n\nafter`, start: ['raw text', 2], end: ['head ', 2], typed: '<div>\nraxad **b** \\*x\\*\n\nafter', deleted: '<div>\nraad **b** \\*x\\*\n\nafter' },
+        { id: 'TE25', name: 'level 3 heading → raw', source: `### head **b**\n\n${RAW}\n\nafter`, start: ['head ', 2], end: ['raw text', 2], typed: '### hexw text \\</div>\n\nafter', deleted: '### hew text \\</div>\n\nafter' },
+        { id: 'TE26', name: 'raw → a column\'s word', source: `${RAW}\n\n::: columns\ncol **b** \\*x\\*\n|||\nB\n:::\n\nafter`, start: ['raw text', 2], end: ['col ', 2], typed: '<div>\nraxl **b** \\*x\\*\n\n::: {}\nB\n:::\n\nafter', deleted: '<div>\nral **b** \\*x\\*\n\n::: {}\nB\n:::\n\nafter' },
+        { id: 'TE27', name: 'raw in a column → the next column', source: `::: columns\n${RAW}\n|||\ncol **b** \\*x\\*\n:::\n\nafter`, start: ['raw text', 2], end: ['col ', 2], typed: '::: {}\n<div>\nraxl **b** \\*x\\*\n:::\n\nafter', deleted: '::: {}\n<div>\nral **b** \\*x\\*\n:::\n\nafter' },
+        { id: 'TE28', name: 'raw → rich, both in one column', source: `::: columns\n${RAW}\n\ncol **b** \\*x\\*\n|||\nB\n:::\n\nafter`, start: ['raw text', 2], end: ['col ', 2], typed: '::: columns\n<div>\nraxl **b** \\*x\\*\n|||\nB\n:::\n\nafter', deleted: '::: columns\n<div>\nral **b** \\*x\\*\n|||\nB\n:::\n\nafter' },
+        { id: 'TE29', name: 'a column\'s word → raw after the fence', source: `::: columns\nA\n|||\ncol **b**\n:::\n\n${RAW}\n\nafter`, start: ['col ', 2], end: ['raw text', 2], typed: '::: columns\nA\n|||\ncox\n:::\n\nw text\n\n</div>\n\nafter', deleted: '::: columns\nA\n|||\nco\n:::\n\nw text\n\n</div>\n\nafter' },
+        { id: 'TE30', name: 'raw → table cell', source: `${RAW}\n\n${TABLE}\n\nafter`, start: ['raw text', 2], end: ['c1', 1], typed: '<div>\nrax\n\nafter', deleted: '<div>\nra\n\nafter' },
+        { id: 'TE31', name: 'table cell → raw', source: `${TABLE}\n\n${RAW}\n\nafter`, start: ['c1', 1], end: ['raw text', 2], typed: 'xw text\n\n</div>\n\nafter', deleted: 'w text\n\n</div>\n\nafter' },
+        { id: 'TE32', name: 'raw tag → table cell (re-read)', source: `${RAW}\n\n${TABLE}\n\nafter`, start: ['<div>', 2], end: ['c1', 1], typed: '\\<dx\n\nafter', deleted: '\\<d\n\nafter' },
+        { id: 'TE33', name: 'raw → a paragraph of a list item', source: `${RAW}\n\n- one\n\n  para **b** \\*x\\*\n- z\n\nafter`, start: ['raw text', 2], end: ['para ', 2], typed: '<div>\nraxra **b** \\*x\\*\n\n- z\n\nafter', deleted: '<div>\nrara **b** \\*x\\*\n\n- z\n\nafter' },
+        { id: 'TE34', name: 'raw of a list item → the next item\'s text', source: '- one\n\n  <div>\n  raw text\n  </div>\n- two **b** \\*x\\*\n\nafter', start: ['raw text', 2], end: ['two ', 2], typed: '- one\n\n  <div>\n  raxo **b** \\*x\\*\n\nafter', deleted: '- one\n\n  <div>\n  rao **b** \\*x\\*\n\nafter' },
+        { id: 'TE35', name: 'list item text → a raw block of that item', source: '- one **b**\n\n  <div>\n  raw text\n  </div>\n- z\n\nafter', start: ['one ', 2], end: ['raw text', 2], typed: '- onxw text\\\n  \\</div>\n\n- z\n\nafter', deleted: '- onw text\\\n  \\</div>\n\n- z\n\nafter' },
+        { id: 'TE36', name: 'list item text\'s start → raw end', source: `- ab\n- cd\n\n${RAW}\n\nafter`, start: ['cd', 0], end: ['</div>', 6], typed: '- ab\n- x\n\nafter', deleted: '- ab\n-\n\nafter' },
+        { id: 'TE37', name: 'raw → a nested item\'s text', source: `${RAW}\n\n- one\n  - two \\*x\\* **b**\n- z\n\nafter`, start: ['raw text', 2], end: ['two *x* ', 2], typed: '<div>\nraxo \\*x\\* **b**\n\n- z\n\nafter', deleted: '<div>\nrao \\*x\\* **b**\n\n- z\n\nafter' },
+        { id: 'TE38', name: 'raw → the text of an item that holds blocks', source: `${RAW}\n\n- two \\*x\\*\n\n  pq\n  - nn\n- z\n\nafter`, start: ['raw text', 2], end: ['two *x*', 2], typed: '<div>\nraxo \\*x\\*\n\npq\n\n- - nn\n\n- z\n\nafter', deleted: '<div>\nrao \\*x\\*\n\npq\n\n- - nn\n\n- z\n\nafter' },
+        { id: 'TE39', name: 'code of a list item → a paragraph of that item', source: `- one\n\n  ${FENCE}\n  code\n  ${FENCE}\n\n  para \\*x\\*\n- z\n\nafter`, start: ['code', 2], end: ['para *x*', 2], typed: '- one\n\n  ```\n  coxra \\*x\\*\n  ```\n\n- z\n\nafter', deleted: '- one\n\n  ```\n  cora \\*x\\*\n  ```\n\n- z\n\nafter' },
+        { id: 'TE40', name: 'list item text → raw start', source: `- ab\n- cd\n\n${RAW}\n\nafter`, start: ['cd', 1], end: ['<div>', 0], typed: '- ab\n- cx\\<div>\\\n  raw text\\\n  \\</div>\n\nafter', deleted: '- ab\n- c\\<div>\\\n  raw text\\\n  \\</div>\n\nafter' },
+        { id: 'TE41', name: 'the start of the document\'s first block → raw end', source: `# ab\n\n${RAW}\n\nafter`, start: ['ab', 0], end: ['</div>', 6], typed: '# x\n\nafter', deleted: '#\n\nafter' },
+        { id: 'TE42', name: 'raw comment → later word, left open before a block', source: '<!-- c1\nc2 -->\n\nafter\n\nmore', start: ['<!-- c1', 6], end: ['after', 1], typed: '\\<!-- cxfter\n\nmore', deleted: '\\<!-- cfter\n\nmore' },
+        { id: 'TE43', name: 'raw comment of a list item → a later paragraph of that item, left open before a block', source: '- one\n\n  <!-- c1\n  c2 -->\n\n  para\n\n  more\n- z\n\nafter', start: ['<!-- c1', 6], end: ['para', 1], typed: '- one\n\n  \\<!-- cxara\n\n  more\n\n- z\n\nafter', deleted: '- one\n\n  \\<!-- cara\n\n  more\n\n- z\n\nafter' },
+        { id: 'TE44', name: 'raw comment → the text of an item that holds blocks, left open before them', source: '<!-- c1\nc2 -->\n\n- two\n\n  pq\n- z\n\nafter', start: ['<!-- c1', 6], end: ['two', 1], typed: '\\<!-- cxwo\n\npq\n\n- z\n\nafter', deleted: '\\<!-- cwo\n\npq\n\n- z\n\nafter' },
+        { id: 'TE50', name: 'level 3 heading → raw start', source: `### head **b**\n\n${RAW}\n\nafter`, start: ['head ', 2], end: ['<div>', 0], typed: '### hex\\<div> raw text \\</div>\n\nafter', deleted: '### he\\<div> raw text \\</div>\n\nafter' },
+        { id: 'TE52', name: 'a bold run after its space → raw', source: `ab **cd ef** gh\n\n${RAW}\n\nafter`, start: ['cd ef', 3], end: ['raw text', 2], typed: 'ab **cd x**w text\\\n\\</div>\n\nafter', deleted: 'ab **cd** w text\\\n\\</div>\n\nafter' },
+        { id: 'TE82', name: 'a word of a paragraph → a later paragraph (bold link text elsewhere in the block, nothing raw)', source: 'x [**b**](/u)yz and more\n\nQZ 7Y', start: ['yz and more', 8], end: ['QZ 7Y', 2], typed: 'x [**b**](/u)yz and mx 7Y', deleted: 'x [b](/u)yz and m 7Y' },
+    ];
+
+    /** The routes that are a method of the editor: they start their own update. */
+    const METHOD_ROUTES: readonly Route[] = ['cut()', 'paste()', 'paste nodes', 'paste blocks', 'insertImage', 'insertTable'];
+
+    /** Every way a row is run: the range dragged forward and backward, the command dispatched outside an update and inside one. */
+    const VARIANTS: ReadonlyArray<readonly [backward: boolean, inUpdate: boolean]> = [[false, false], [false, true], [true, false], [true, true]];
+
+    /**
+     * The shape with the given id.
+     *
+     * @param id - The shape's id.
+     * @returns The shape.
+     */
+    function shapeOfId(id: string): Shape {
+        return SHAPES.find((shape) => shape.id === id)!;
+    }
+
+    /**
+     * Loads a shape's document and selects its range.
+     *
+     * @param shape - The shape.
+     * @param backward - Whether the range is dragged from its end to its start.
+     * @returns The editor.
+     */
+    function select(shape: Shape, backward: boolean): MarkdownEditor {
+        const editor = load(shape.source);
+
+        selectText(editor, backward ? shape.end : shape.start, backward ? shape.start : shape.end);
+
+        return editor;
+    }
+
+    /**
+     * Stubs the event classes `registerRichText` tells a clipboard, drag, input and key event apart by.
+     */
+    function stubEventClasses(): void {
+        vi.stubGlobal('ClipboardEvent', class ClipboardEvent {});
+        vi.stubGlobal('DragEvent', class DragEvent {});
+        vi.stubGlobal('InputEvent', class InputEvent {});
+        vi.stubGlobal('KeyboardEvent', class KeyboardEvent {});
+    }
+
+    /**
+     * A data transfer holding `text` as plain text.
+     *
+     * @param text - The text.
+     * @returns The transfer's `types`, `files` and `getData`.
+     */
+    function transferOf(text: string): { types: string[]; files: never[]; getData: (type: string) => string } {
+        return { types: ['text/plain'], files: [], getData: (type: string) => (type === 'text/plain' ? text : '') };
+    }
+
+    /**
+     * Runs one route over the editor's selection.
+     *
+     * @param editor - The editor.
+     * @param route - The route.
+     * @param inUpdate - Whether a command is dispatched inside one update, as a browser's key and input events do.
+     */
+    async function run(editor: MarkdownEditor, route: Route, inUpdate: boolean): Promise<void> {
+        const lexical = lexicalOf(editor);
+
+        const dispatch = <P>(command: LexicalCommand<P>, payload: P): void => {
+            if (inUpdate) {
+                lexical.update(() => { lexical.dispatchCommand(command, payload); }, { discrete: true });
+            } else {
+                lexical.dispatchCommand(command, payload);
+            }
+        };
+
+        const paste = (nodes: () => LexicalNode[]): void => {
+            lexical.update(() => { $insertGeneratedNodes(lexical, nodes(), $getSelection()!); }, { discrete: true });
+        };
+
+        switch (route) {
+            case 'Delete': dispatch(DELETE_CHARACTER_COMMAND, false); break;
+            case 'Backspace': dispatch(DELETE_CHARACTER_COMMAND, true); break;
+            case 'word delete': dispatch(DELETE_WORD_COMMAND, false); break;
+            case 'REMOVE_TEXT_COMMAND': dispatch(REMOVE_TEXT_COMMAND, null); break;
+            case 'type': dispatch(CONTROLLED_TEXT_INSERTION_COMMAND, 'x'); break;
+            // What Lexical's composition start dispatches over a range: a zero-width space, the composition's seat.
+            case 'IME start': dispatch(CONTROLLED_TEXT_INSERTION_COMMAND, '\u200b'); break;
+            // What `insertFromDrop` dispatches: the input event, carrying a data transfer.
+            case 'drop insert':
+                stubEventClasses();
+                dispatch(CONTROLLED_TEXT_INSERTION_COMMAND, Object.assign(new InputEvent('beforeinput'), { dataTransfer: transferOf('zd'), data: null }));
+                break;
+            case 'Enter': dispatch(KEY_ENTER_COMMAND, null); break;
+            case 'INSERT_PARAGRAPH_COMMAND': dispatch(INSERT_PARAGRAPH_COMMAND, undefined); break;
+            case 'Shift+Enter': dispatch(INSERT_LINE_BREAK_COMMAND, false); break;
+            case 'Tab': dispatch(INSERT_TAB_COMMAND, undefined); break;
+            case 'PASTE_COMMAND':
+                stubEventClasses();
+                dispatch(PASTE_COMMAND, Object.assign(new ClipboardEvent('paste'), { clipboardData: transferOf('zc'), preventDefault: () => {} }));
+                break;
+            case 'paste()':
+                vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('zc');
+                await editor.paste();
+                break;
+            case 'paste nodes': paste(() => [$createTextNode('zp').toggleFormat('bold')]); break;
+            case 'paste blocks':
+                paste(() => [
+                    $createParagraphNode().append($createTextNode('p1 '), $createTextNode('zb').toggleFormat('bold')),
+                    $createParagraphNode().append($createTextNode('p2')),
+                ]);
+                break;
+            case 'cut()': editor.cut(); break;
+            case 'CUT_COMMAND':
+                stubEventClasses();
+                dispatch(CUT_COMMAND, null);
+                // The cut removes in an update queued behind the copy.
+                await vi.waitFor(() => expect(copyToClipboard).toHaveBeenCalled());
+                await Promise.resolve();
+                break;
+            case 'insertImage': editor.insertImage('/i.png', { alt: 'i' }); break;
+            case 'insertTable': editor.insertTable(2, 2); break;
+        }
+    }
+
+    /**
+     * Asserts that the editor shows what its save reads as, and that a reload saves and shows the same.
+     *
+     * @param editor - The editor.
+     */
+    function expectParity(editor: MarkdownEditor): void {
+        const saved = editor.getValue();
+        const surface = editorSurfaceModel(editor);
+        const reloaded = load(saved);
+
+        expect(surface).toEqual(viewerModel(saved).blocks);
+        expect(reloaded.getValue()).toBe(saved);
+        expect(editorSurfaceModel(reloaded)).toEqual(surface);
+    }
+
+    /**
+     * Gives a collapsed caret the format of the text it is in, as a browser's selection change does.
+     *
+     * @param editor - The editor.
+     */
+    function syncCaretFormat(editor: MarkdownEditor): void {
+        lexicalOf(editor).update(() => {
+            const selection = $getSelection();
+            const isCaretInText = $isRangeSelection(selection) && selection.isCollapsed() && selection.anchor.type === 'text';
+
+            if (isCaretInText) {
+                const text = selection.anchor.getNode() as TextNode;
+
+                selection.format = text.getFormat();
+                selection.style = text.getStyle();
+            }
+        }, { discrete: true });
+    }
+
+    it.each(SHAPES)('$id: $name, typed over and deleted', async (shape) => {
+        for (const backward of [false, true]) {
+            const typed = select(shape, backward);
+
+            await run(typed, 'type', true);
+
+            expect(typed.getValue(), `typed, backward ${backward}`).toBe(shape.typed);
+            expectParity(typed);
+            lexicalOf(typed).dispatchCommand(UNDO_COMMAND, undefined);
+            expect(typed.getValue(), `undo, backward ${backward}`).toBe(shape.source);
+
+            const deleted = select(shape, backward);
+
+            await run(deleted, 'Delete', true);
+
+            expect(deleted.getValue(), `deleted, backward ${backward}`).toBe(shape.deleted);
+        }
+    });
+
+    it.each<[string, Route, string]>([
+        // Neither cut tags the update that removes the range for the run-edge rule: `cut()` carries no tag, as at the
+        // parent, and the native cut's tag marks the command's own update, while the removal follows in an update of its
+        // own. So a cut keeps the bold of a link's text elsewhere in the block, as the parent's cut did (TE82).
+        ['TE82', 'cut()', 'x [**b**](/u)yz and m 7Y'],
+        ['TE82', 'CUT_COMMAND', 'x [**b**](/u)yz and m 7Y'],
+        ['TE1', 'Delete', '<div>\nrah **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'Backspace', '<div>\nrah **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'word delete', '<div>\nrah **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'REMOVE_TEXT_COMMAND', '<div>\nrah **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'cut()', '<div>\nrah **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'CUT_COMMAND', '<div>\nrah **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'Enter', '<div>\nra\nh **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'INSERT_PARAGRAPH_COMMAND', '<div>\nra\n\nh **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'Shift+Enter', '<div>\nra\nh **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'Tab', '<div>\nra\th **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'PASTE_COMMAND', '<div>\nrazch **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'paste()', '<div>\nrazch **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'paste nodes', '<div>\nrazph **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'paste blocks', '<div>\nrap1 zb\n\np2h **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'drop insert', '<div>\nrazdh **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'IME start', '<div>\nra\u200bh **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'insertImage', '<div>\nraw text\n</div>\n\nefgh **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'insertTable', '<div>\nraw text\n</div>\n\nefgh **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'Delete', '**ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'Backspace', '**ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'word delete', '**ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'REMOVE_TEXT_COMMAND', '**ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'cut()', '**ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'CUT_COMMAND', '**ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'Enter', '**ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'INSERT_PARAGRAPH_COMMAND', '**ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'Shift+Enter', '\\\n**ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'Tab', '**ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'PASTE_COMMAND', '**zcij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'paste()', 'zc**ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'paste nodes', '**zpij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'paste blocks', 'p1 **zb**\n\np2**ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'drop insert', '**zdij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'IME start', '**\u200bij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'insertImage', '<div>\nraw text\n</div>\n\nefgh **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'insertTable', '<div>\nraw text\n</div>\n\nefgh **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE7', 'Delete', '\\<fter'],
+        ['TE7', 'Backspace', '\\<fter'],
+        ['TE7', 'word delete', '\\<fter'],
+        ['TE7', 'REMOVE_TEXT_COMMAND', '\\<fter'],
+        ['TE7', 'cut()', '\\<fter'],
+        ['TE7', 'CUT_COMMAND', '\\<fter'],
+        ['TE7', 'Enter', '<\n\nfter'],
+        ['TE7', 'INSERT_PARAGRAPH_COMMAND', '<\n\nfter'],
+        ['TE7', 'Shift+Enter', '<\\\nfter'],
+        ['TE7', 'Tab', '<\tfter'],
+        ['TE7', 'PASTE_COMMAND', '\\<zcfter'],
+        ['TE7', 'paste()', '\\<zcfter'],
+        ['TE7', 'paste nodes', '<**zp**fter'],
+        ['TE7', 'paste blocks', '\\<p1 **zb**\n\np2fter'],
+        ['TE7', 'drop insert', '\\<zdfter'],
+        ['TE7', 'IME start', '<\u200bfter'],
+        ['TE7', 'insertImage', '<div>\nraw text\n</div>\n\nafter'],
+        ['TE7', 'insertTable', '<div>\nraw text\n</div>\n\nafter'],
+        ['TE11', 'Delete', 'efgw text\\\n\\</div>\n\nafter'],
+        ['TE11', 'Backspace', 'efgw text\\\n\\</div>\n\nafter'],
+        ['TE11', 'word delete', 'efgw text\\\n\\</div>\n\nafter'],
+        ['TE11', 'REMOVE_TEXT_COMMAND', 'efgw text\\\n\\</div>\n\nafter'],
+        ['TE11', 'cut()', 'efgw text\\\n\\</div>\n\nafter'],
+        ['TE11', 'CUT_COMMAND', 'efgw text\\\n\\</div>\n\nafter'],
+        ['TE11', 'Enter', 'efg\n\nw text\\\n\\</div>\n\nafter'],
+        ['TE11', 'INSERT_PARAGRAPH_COMMAND', 'efg\n\nw text\\\n\\</div>\n\nafter'],
+        ['TE11', 'Shift+Enter', 'efg\\\nw text\\\n\\</div>\n\nafter'],
+        ['TE11', 'Tab', 'efg\tw text\\\n\\</div>\n\nafter'],
+        ['TE11', 'PASTE_COMMAND', 'efgzcw text\\\n\\</div>\n\nafter'],
+        ['TE11', 'paste()', 'efgzcw text\\\n\\</div>\n\nafter'],
+        ['TE11', 'paste nodes', 'efg**zp**w text\\\n\\</div>\n\nafter'],
+        ['TE11', 'paste blocks', 'efgp1 **zb**\n\np2w text\\\n\\</div>\n\nafter'],
+        ['TE11', 'drop insert', 'efgzdw text\\\n\\</div>\n\nafter'],
+        ['TE11', 'IME start', 'efg\u200bw text\\\n\\</div>\n\nafter'],
+        ['TE11', 'insertImage', 'efgh **ij** kl [a](u) \\*x\\*\n\n<div>\nraw text\n</div>\n\nafter'],
+        ['TE11', 'insertTable', 'efgh **ij** kl [a](u) \\*x\\*\n\n<div>\nraw text\n</div>\n\nafter'],
+        ['TE42', 'Delete', '\\<!-- cfter\n\nmore'],
+        ['TE42', 'Backspace', '\\<!-- cfter\n\nmore'],
+        ['TE42', 'word delete', '\\<!-- cfter\n\nmore'],
+        ['TE42', 'REMOVE_TEXT_COMMAND', '\\<!-- cfter\n\nmore'],
+        ['TE42', 'cut()', '\\<!-- cfter\n\nmore'],
+        ['TE42', 'CUT_COMMAND', '\\<!-- cfter\n\nmore'],
+        ['TE42', 'Enter', '\\<!-- c\n\nfter\n\nmore'],
+        ['TE42', 'INSERT_PARAGRAPH_COMMAND', '\\<!-- c\n\nfter\n\nmore'],
+        ['TE42', 'Shift+Enter', '\\<!-- c\\\nfter\n\nmore'],
+        ['TE42', 'Tab', '\\<!-- c\tfter\n\nmore'],
+        ['TE42', 'PASTE_COMMAND', '\\<!-- czcfter\n\nmore'],
+        ['TE42', 'paste()', '\\<!-- czcfter\n\nmore'],
+        ['TE42', 'paste nodes', '\\<!-- c**zp**fter\n\nmore'],
+        ['TE42', 'paste blocks', '\\<!-- cp1 **zb**\n\np2fter\n\nmore'],
+        ['TE42', 'drop insert', '\\<!-- czdfter\n\nmore'],
+        ['TE42', 'IME start', '\\<!-- c\u200bfter\n\nmore'],
+        ['TE42', 'insertImage', '<!-- c1\nc2 -->\n\nafter\n\nmore'],
+        ['TE42', 'insertTable', '<!-- c1\nc2 -->\n\nafter\n\nmore'],
+        ['TE43', 'Delete', '- one\n\n  \\<!-- cara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'Backspace', '- one\n\n  \\<!-- cara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'word delete', '- one\n\n  \\<!-- cara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'REMOVE_TEXT_COMMAND', '- one\n\n  \\<!-- cara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'cut()', '- one\n\n  \\<!-- cara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'CUT_COMMAND', '- one\n\n  \\<!-- cara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'Enter', '- one\n\n  \\<!-- c\n\n  ara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'INSERT_PARAGRAPH_COMMAND', '- one\n\n  \\<!-- c\n\n  ara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'Shift+Enter', '- one\n\n  \\<!-- c\\\n  ara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'Tab', '- one\n\n  \\<!-- c\tara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'PASTE_COMMAND', '- one\n\n  \\<!-- czcara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'paste()', '- one\n\n  \\<!-- czcara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'paste nodes', '- one\n\n  \\<!-- c**zp**ara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'paste blocks', '- one\n\n  \\<!-- cp1 **zb**\n\n  p2ara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'drop insert', '- one\n\n  \\<!-- czdara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'IME start', '- one\n\n  \\<!-- c\u200bara\n\n  more\n\n- z\n\nafter'],
+        ['TE43', 'insertImage', '- one\n\n  <!-- c1\n  c2 -->\n\n  para\n\n  more\n- z\n\nafter'],
+        ['TE43', 'insertTable', '- one\n\n  <!-- c1\n  c2 -->\n\n  para\n\n  more\n- z\n\nafter'],
+        ['TE44', 'Delete', '\\<!-- cwo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'Backspace', '\\<!-- cwo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'word delete', '\\<!-- cwo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'REMOVE_TEXT_COMMAND', '\\<!-- cwo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'cut()', '\\<!-- cwo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'CUT_COMMAND', '\\<!-- cwo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'Enter', '\\<!-- c\n\nwo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'INSERT_PARAGRAPH_COMMAND', '\\<!-- c\n\nwo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'Shift+Enter', '\\<!-- c\\\nwo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'Tab', '\\<!-- c\two\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'PASTE_COMMAND', '\\<!-- czcwo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'paste()', '\\<!-- czcwo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'paste nodes', '\\<!-- c**zp**wo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'paste blocks', '\\<!-- cp1 **zb**\n\np2wo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'drop insert', '\\<!-- czdwo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'IME start', '\\<!-- c\u200bwo\n\npq\n\n- z\n\nafter'],
+        ['TE44', 'insertImage', '<!-- c1\nc2 -->\n\n- two\n\n  pq\n- z\n\nafter'],
+        ['TE44', 'insertTable', '<!-- c1\nc2 -->\n\n- two\n\n  pq\n- z\n\nafter'],
+    ])('%s, %s', async (id, route, expected) => {
+        const shape = shapeOfId(id);
+        const declines = route === 'insertImage' || route === 'insertTable';
+
+        for (const [backward, inUpdate] of VARIANTS) {
+            const isRepeat = METHOD_ROUTES.includes(route) && inUpdate;
+
+            if (isRepeat) {
+                continue;
+            }
+
+            const editor = select(shape, backward);
+            const range = rangeOf(editor);
+            const context = `backward ${backward}, in an update ${inUpdate}`;
+
+            vi.mocked(copyToClipboard).mockClear();
+            await run(editor, route, inUpdate);
+
+            expect(editor.getValue(), context).toBe(expected);
+
+            if (declines) {
+                expect(rangeOf(editor), context).toBe(range);
+
+                continue;
+            }
+
+            expectParity(editor);
+            lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+            expect(editor.getValue(), `undo, ${context}`).toBe(shape.source);
+        }
+    });
+
+    it.each<[string, string]>([
+        ['TS1', 'TE13'], ['TS2', 'TE25'], ['TS3', 'TE29'], ['TS4', 'TE36'], ['TS13', 'TE41'], ['TS14', 'TE50'],
+    ])('%s: Shift+Enter over %s is declined, and nothing changes', async (_name, id) => {
+        const shape = shapeOfId(id);
+
+        for (const [backward, inUpdate] of VARIANTS) {
+            const editor = select(shape, backward);
+            const range = rangeOf(editor);
+
+            await run(editor, 'Shift+Enter', inUpdate);
+
+            expect(editor.getValue()).toBe(shape.source);
+            expect(rangeOf(editor)).toBe(range);
+        }
+    });
+
+    it.each<[string, string, Route, string]>([
+        ['TS5', 'TE25', 'paste blocks', '### hep1 **zb**\n\np2w text\\\n\\</div>\n\nafter'],
+        ['TS6', 'TE8', 'Shift+Enter', '<'],
+        ['TS7', 'TE32', 'Shift+Enter', '\\<d\n\nafter'],
+        ['TS8', 'TE31', 'Tab', 'w text\n\n</div>\n\nafter'],
+        ['TS9', 'TE31', 'paste nodes', '**zp**w text\n\n</div>\n\nafter'],
+        ['TS10', 'TE31', 'Shift+Enter', '\\\nw text\n\n</div>\n\nafter'],
+        ['TS11', 'TE36', 'INSERT_PARAGRAPH_COMMAND', '- ab\n\nafter'],
+        ['TS12', 'TE5', 'paste nodes', '<div>\nrazp\n\nafter'],
+        ['TS15', 'TE50', 'paste blocks', '### hep1 **zb**\n\np2\\<div>\\\nraw text\\\n\\</div>\n\nafter'],
+    ])('%s: %s, %s', async (_name, id, route, expected) => {
+        const shape = shapeOfId(id);
+
+        for (const [backward, inUpdate] of VARIANTS) {
+            const editor = select(shape, backward);
+
+            await run(editor, route, inUpdate);
+
+            expect(editor.getValue(), `backward ${backward}, in an update ${inUpdate}`).toBe(expected);
+            expect(lexicalOf(editor).read(() => $getSelection()!.isCollapsed())).toBe(true);
+        }
+    });
+
+    const CONTRACT_SHAPES = ['TE15', 'TE20', 'TE33', 'TE34', 'TE37', 'TE38', 'TE39'];
+    const CONTRACT_ROUTES: readonly Route[] = ['word delete', 'cut()', 'Enter', 'INSERT_PARAGRAPH_COMMAND', 'PASTE_COMMAND', 'paste nodes', 'paste blocks'];
+
+    it.each(CONTRACT_SHAPES.flatMap((id) => CONTRACT_ROUTES.map((route) => [id, route] as const)))(
+        'TC: %s, %s gives what Delete and then the route gives', async (id, route) => {
+            const shape = shapeOfId(id);
+            const direct = select(shape, false);
+
+            await run(direct, route, true);
+
+            const stepped = select(shape, false);
+
+            await run(stepped, 'Delete', true);
+            stepped.getValue();
+            syncCaretFormat(stepped);
+
+            const insertsNothing = route === 'word delete' || route === 'cut()';
+
+            if (!insertsNothing) {
+                await run(stepped, route, true);
+            }
+
+            expect(direct.getValue()).toBe(stepped.getValue());
+            expect(lexicalOf(direct).read(() => $getRoot().getTextContent())).toBe(lexicalOf(stepped).read(() => $getRoot().getTextContent()));
+            expect(rootChildren(direct)).toEqual(rootChildren(stepped));
+        });
+
+    /** Shapes whose removal makes a raw block show as other blocks, each with where the removal's joint is in what Delete saves. */
+    const JOINTS: ReadonlyArray<readonly [id: string, joint: TextPoint]> = [
+        ['TE7', ['<fter', 1]], ['TE42', ['<!-- cfter', 6]], ['TE43', ['<!-- cara', 6]], ['TE44', ['<!-- cwo', 6]],
+    ];
+
+    /** The routes run at a joint: every route that acts over a guarded range, but for the native cut, which removes later. */
+    const JOINT_ROUTES: readonly Route[] = [
+        'Delete', 'Backspace', 'word delete', 'REMOVE_TEXT_COMMAND', 'cut()', 'type', 'IME start', 'drop insert', 'Enter',
+        'INSERT_PARAGRAPH_COMMAND', 'Shift+Enter', 'Tab', 'PASTE_COMMAND', 'paste()', 'paste nodes', 'paste blocks',
+    ];
+
+    it.each(JOINTS.flatMap(([id, joint]) => JOINT_ROUTES.map((route) => [id, route, joint] as const)))(
+        'TJ: %s, %s acts at the joint, where the selection was', async (id, route, joint) => {
+            const shape = shapeOfId(id);
+            const removesOnly = ['Delete', 'Backspace', 'word delete', 'REMOVE_TEXT_COMMAND', 'cut()'].includes(route);
+
+            for (const backward of [false, true]) {
+                const direct = select(shape, backward);
+
+                await run(direct, route, true);
+
+                // What Delete saves, loaded anew, with the caret set where the range was: no caret is carried over.
+                const atJoint = load(shape.deleted);
+
+                selectText(atJoint, joint, joint);
+                syncCaretFormat(atJoint);
+
+                if (!removesOnly) {
+                    await run(atJoint, route, true);
+                }
+
+                expect(direct.getValue(), `backward ${backward}`).toBe(atJoint.getValue());
+                expect(rootChildren(direct), `backward ${backward}`).toEqual(rootChildren(atJoint));
+                expect(rangeOf(direct), `backward ${backward}`).toBe(rangeOf(atJoint));
+            }
+        });
+
+    it.each<[string, Route, string]>([
+        ['TG1', 'type', '<x>\nraw text\n</div>\n\nafter'],
+        ['TG2', 'PASTE_COMMAND', '<zc>\nraw text\n</div>\n\nafter'],
+        ['TG3', 'Delete', '<>\nraw text\n\n</div>\n\nafter'],
+        ['TG4', 'Enter', '<\n\n>\n\nraw text\n\n</div>\n\nafter'],
+    ])('%s: a selection inside one raw block is edited in place (%s)', async (_name, route, expected) => {
+        const editor = load('<div>\nraw text\n</div>\n\nafter');
+
+        selectText(editor, ['<div>', 1], ['<div>', 4]);
+        await run(editor, route, true);
+
+        expect(editor.getValue()).toBe(expected);
+    });
+
+    it('TG5: a paste that brings no node leaves the range as it is', () => {
+        for (const backward of [false, true]) {
+            const editor = select(shapeOfId('TE1'), backward);
+            const lexical = lexicalOf(editor);
+            const range = rangeOf(editor);
+
+            lexical.update(() => { $insertGeneratedNodes(lexical, [], $getSelection()!); }, { discrete: true });
+
+            expect(editor.getValue()).toBe(RAW_THEN_RICH);
+            expect(rangeOf(editor)).toBe(range);
+        }
+    });
+
+    it.each<[string, TextPoint, boolean]>([
+        ['TG6: Backspace at the start of a paragraph after a raw block', ['efgh ', 0], true],
+        ['TG7: Delete at the end of a raw block before a paragraph', ['</div>', 6], false],
+    ])('%s joins the paragraph as its Markdown', (_name, point, backward) => {
+        const editor = load('<div>\nraw text\n</div>\n\nefgh **ij** kl [a](u) \\*x\\*');
+
+        selectText(editor, point, point);
+        lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, backward);
+
+        expect(editor.getValue()).toBe('<div>\nraw text\n</div>efgh **ij** kl [a](u) \\*x\\*');
+    });
+
+    it.each<[string, boolean, string, string[]]>([
+        ['TG9: Backspace', true, 'after', ['paragraph:', 'paragraph:after']],
+        ['TG10: Delete', false, '#\n\nafter', ['heading:', 'paragraph:after']],
+    ])('%s over a range from the start of the document\'s first block to a raw block\'s end is left to Lexical', (_name, backward, expected, children) => {
+        const editor = select(shapeOfId('TE41'), false);
+
+        lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, backward);
+
+        expect(editor.getValue()).toBe(expected);
+        expect(rootChildren(editor)).toEqual(children);
+    });
+
+    it('TG8: a native cut (CUT_COMMAND) of a range from a raw block\'s start copies once, then removes it as Delete does', async () => {
+        const shape = shapeOfId('TE2');
+        const editor = select(shape, false);
+
+        vi.mocked(copyToClipboard).mockClear();
+        await run(editor, 'CUT_COMMAND', false);
+
+        expect(copyToClipboard).toHaveBeenCalledTimes(1);
+        expect(editor.getValue()).toBe(shape.deleted);
+    });
+
+    it('TS18: typing over a range that starts after a space of a bold run types one run, outside an update as inside one', async () => {
+        // The removal tags nothing as a deletion: typing is tidied where the caret is, as over any range, so the
+        // dispatch's own update ends before or after the text is typed alike.
+        for (const backward of [false, true]) {
+            for (const inUpdate of [true, false]) {
+                const editor = select(shapeOfId('TE52'), backward);
+
+                await run(editor, 'type', inUpdate);
+
+                expect(editor.getValue(), `backward ${backward}, in an update ${inUpdate}`).toBe(shapeOfId('TE52').typed);
+            }
+        }
+    });
+
+    it.each(['TE82'])('TS23: typing over %s keeps the bold of a link\'s text elsewhere in the block, as typing over any range does', async (id) => {
+        const shape = shapeOfId(id);
+
+        for (const backward of [false, true]) {
+            for (const inUpdate of [true, false]) {
+                const editor = select(shape, backward);
+
+                await run(editor, 'type', inUpdate);
+
+                expect(editor.getValue(), `backward ${backward}, in an update ${inUpdate}`).toBe(shape.typed);
+            }
+        }
+    });
+
+    it('TU1: a typed character that completes a typing shortcut in the block the removal leaves applies it as a step of its own', async () => {
+        const source = '---\n\nafter word';
+        const editor = load(source);
+
+        selectText(editor, ['---', 1], ['after word', 2]);
+        // The removal shows the raw block as the paragraph `-ter word`; the space then makes it a list item's marker.
+        lexicalOf(editor).update(() => { lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, ' '); }, { discrete: true });
+
+        expect(editor.getValue()).toBe('- ter word');
+
+        // The shortcut is an update of its own, as for any typed shortcut: one undo takes it back, a second the typing.
+        lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+        expect(editor.getValue()).toBe('\\- ter word');
+        lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+        expect(editor.getValue()).toBe(source);
+    });
+
+    /** A range end held as a point on a node that holds blocks: the node's type, which node of that type, and a child index. */
+    type HolderPoint = readonly [type: string, nth: number, index: number];
+
+    const LIST_AFTER_RAW = `${RAW.replace('raw text', 'raw')}\n\n- la\n- lb\n\nafter`;
+    const COLUMNS_AFTER_RAW = `${RAW.replace('raw text', 'raw')}\n\n::: columns\nca\n|||\ncb\n:::\n\nafter`;
+    const RAW_AFTER_LIST = `before\n\n- la\n- lb\n\n${RAW.replace('raw text', 'raw')}\n\nafter`;
+    const LIST_AFTER_CODE = `${FENCE}\ncode\n${FENCE}\n\n- la\n- lb\n\nafter`;
+    const ITEM_BLOCKS_AFTER_RAW = `${RAW.replace('raw text', 'raw')}\n\n- one\n\n  para\n\n  more\n- z\n\nafter`;
+    const TABLE_AFTER_RAW = `${RAW.replace('raw text', 'raw')}\n\n${TABLE}\n\nafter`;
+    const RAW_AFTER_TABLE = `before\n\n${TABLE}\n\n${RAW.replace('raw text', 'raw')}\n\nafter`;
+
+    /** Every route but the native cut, which runs offline only over a range the editor removes itself (TN14). */
+    const POINT_ROUTES: readonly Route[] = [
+        'Delete', 'Backspace', 'word delete', 'REMOVE_TEXT_COMMAND', 'cut()', 'type', 'IME start', 'drop insert', 'Enter',
+        'INSERT_PARAGRAPH_COMMAND', 'Shift+Enter', 'Tab', 'PASTE_COMMAND', 'paste()', 'paste nodes', 'paste blocks', 'insertImage',
+        'insertTable',
+    ];
+
+    /**
+     * Loads `source` and selects from a text point to another end: a text point, or a point on a node that holds blocks.
+     *
+     * @param source - The Markdown.
+     * @param inner - The end inside a raw block or a code block.
+     * @param other - The other end.
+     * @param backward - Whether the other end is the anchor.
+     * @returns The editor.
+     */
+    function selectTo(source: string, inner: TextPoint, other: TextPoint | HolderPoint, backward: boolean): MarkdownEditor {
+        const editor = load(source);
+
+        lexicalOf(editor).update(() => {
+            const selection = $createRangeSelection();
+            const [near, far] = backward ? [selection.focus, selection.anchor] : [selection.anchor, selection.focus];
+
+            near.set($textNode(inner[0]).getKey(), inner[1], 'text');
+
+            if (other.length === 2) {
+                far.set($textNode(other[0]).getKey(), other[1], 'text');
+            } else {
+                const [type, nth, index] = other;
+                const holder = $dfs().map(({ node }) => node).filter((node) => node.getType() === type)[nth]!;
+
+                far.set(holder.getKey(), index, 'element');
+            }
+
+            $setSelection(selection);
+        }, { discrete: true });
+
+        return editor;
+    }
+
+    /**
+     * What an editor holds after a route: its Markdown and its nodes, and its selection too unless the route is a
+     * method that declines, which leaves the selection as it was handed over.
+     *
+     * @param editor - The editor.
+     * @param route - The route that ran.
+     * @returns What it holds, as one text.
+     */
+    function outcomeOf(editor: MarkdownEditor, route: Route): string {
+        const value = editor.getValue();
+        const nodes = JSON.stringify(lexicalOf(editor).getEditorState().toJSON());
+        const declines = route === 'insertImage' || route === 'insertTable';
+
+        return [value, nodes, declines ? '' : rangeOf(editor)].join('\n');
+    }
+
+    it.each<[string, string, TextPoint, HolderPoint, TextPoint]>([
+        ['TN1: a list, before its first item', LIST_AFTER_RAW, ['raw', 1], ['list', 0, 0], ['</div>', 6]],
+        ['TN2: a list, after its first item', LIST_AFTER_RAW, ['raw', 1], ['list', 0, 1], ['la', 2]],
+        ['TN3: a list, after its last item', LIST_AFTER_RAW, ['raw', 1], ['list', 0, 2], ['lb', 2]],
+        ['TN4: a list item, before its text', LIST_AFTER_RAW, ['raw', 1], ['markdown-list-item', 0, 0], ['</div>', 6]],
+        ['TN5: a list item, after its text', LIST_AFTER_RAW, ['raw', 1], ['markdown-list-item', 1, 1], ['lb', 2]],
+        ['TN6: the document, before the list', LIST_AFTER_RAW, ['raw', 1], ['root', 0, 1], ['</div>', 6]],
+        ['TN7: the document, at its end', LIST_AFTER_RAW, ['raw', 1], ['root', 0, 3], ['after', 5]],
+        ['TN8: a `:::` block, before its first column', COLUMNS_AFTER_RAW, ['raw', 1], ['markdown-block', 0, 0], ['</div>', 6]],
+        ['TN9: a `:::` block, after its first column', COLUMNS_AFTER_RAW, ['raw', 1], ['markdown-block', 0, 1], ['ca', 2]],
+        ['TN10: a column, before its paragraph', COLUMNS_AFTER_RAW, ['raw', 1], ['markdown-column', 1, 0], ['ca', 2]],
+        ['TN11: a column, after its paragraph', COLUMNS_AFTER_RAW, ['raw', 1], ['markdown-column', 1, 1], ['cb', 2]],
+        ['TN12: a list before the raw block, before its first item', RAW_AFTER_LIST, ['raw', 1], ['list', 0, 0], ['la', 0]],
+        ['TN13: a list before the raw block, after its last item', RAW_AFTER_LIST, ['raw', 1], ['list', 0, 2], ['<div>', 0]],
+        // A point on a table, a row or a cell is inside the table: the range reaches into it, as the range to the text
+        // at that place in the table does, and both are removed with the whole table.
+        ['TN21: a table, before its first row', TABLE_AFTER_RAW, ['raw', 1], ['table', 0, 0], ['a', 0]],
+        ['TN22: a table row, after its first cell', TABLE_AFTER_RAW, ['raw', 1], ['tablerow', 0, 1], ['b', 0]],
+        ['TN23: a table cell, after its paragraph', TABLE_AFTER_RAW, ['raw', 1], ['tablecell', 3, 1], ['d1', 2]],
+        ['TN24: a table before the raw block, after its last row', RAW_AFTER_TABLE, ['raw', 1], ['table', 0, 2], ['d1', 2]],
+        ['TN15: the document, at its start', RAW_AFTER_LIST, ['raw', 1], ['root', 0, 0], ['before', 0]],
+        ['TN16: a list after a code block, before its first item', LIST_AFTER_CODE, ['code', 1], ['list', 0, 0], ['code', 4]],
+        ['TN17: a list after a code block, after its first item', LIST_AFTER_CODE, ['code', 1], ['list', 0, 1], ['la', 2]],
+        ['TN18: a list item, between its blocks', ITEM_BLOCKS_AFTER_RAW, ['raw', 1], ['markdown-list-item', 0, 2], ['para', 4]],
+    ])('%s: every route gives what it gives for the range to the text there', async (_name, source, inner, holder, text) => {
+        for (const route of POINT_ROUTES) {
+            for (const [backward, inUpdate] of VARIANTS) {
+                const isRepeat = METHOD_ROUTES.includes(route) && inUpdate;
+
+                if (isRepeat) {
+                    continue;
+                }
+
+                const onHolder = selectTo(source, inner, holder, backward);
+                const inText = selectTo(source, inner, text, backward);
+                const context = `${route}, backward ${backward}, in an update ${inUpdate}`;
+
+                await run(onHolder, route, inUpdate);
+                await run(inText, route, inUpdate);
+
+                expect(outcomeOf(onHolder, route), context).toBe(outcomeOf(inText, route));
+                expectParity(onHolder);
+
+                onHolder.dispose();
+                inText.dispose();
+            }
+        }
+    });
+
+    it.each<[string, Route, string]>([
+        ['TN1', 'Delete', '<div>\nr\n\n- la\n- lb\n\nafter'],
+        ['TN1', 'Backspace', '<div>\nr\n\n- la\n- lb\n\nafter'],
+        ['TN1', 'Enter', '<div>\nr\n\n- la\n- lb\n\nafter'],
+        ['TN1', 'type', '<div>\nrx\n\n- la\n- lb\n\nafter'],
+        ['TN1', 'paste blocks', '<div>\nrp1 zb\n\np2\n\n- la\n- lb\n\nafter'],
+    ])('%s, %s: a range from a raw block to a point on the list after it, before its first item, loses no block', async (_id, route, expected) => {
+        for (const [backward, inUpdate] of VARIANTS) {
+            const editor = selectTo(LIST_AFTER_RAW, ['raw', 1], ['list', 0, 0], backward);
+            const context = `backward ${backward}, in an update ${inUpdate}`;
+
+            await run(editor, route, inUpdate);
+
+            expect(editor.getValue(), context).toBe(expected);
+            lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+            expect(editor.getValue(), `undo, ${context}`).toBe(LIST_AFTER_RAW);
+        }
+    });
+
+    it('TN14: a native cut (CUT_COMMAND) of a range from a raw block to a point on a list, after its first item, cuts as the range to that item\'s text', async () => {
+        for (const [backward, inUpdate] of VARIANTS) {
+            const onHolder = selectTo(LIST_AFTER_RAW, ['raw', 1], ['list', 0, 1], backward);
+            const inText = selectTo(LIST_AFTER_RAW, ['raw', 1], ['la', 2], backward);
+
+            vi.mocked(copyToClipboard).mockClear();
+            await run(onHolder, 'CUT_COMMAND', inUpdate);
+            vi.mocked(copyToClipboard).mockClear();
+            await run(inText, 'CUT_COMMAND', inUpdate);
+
+            expect(onHolder.getValue(), `backward ${backward}, in an update ${inUpdate}`).toBe('<div>\nr\n\n- lb\n\nafter');
+            expect(outcomeOf(onHolder, 'CUT_COMMAND'), `backward ${backward}, in an update ${inUpdate}`).toBe(outcomeOf(inText, 'CUT_COMMAND'));
+        }
     });
 });
 

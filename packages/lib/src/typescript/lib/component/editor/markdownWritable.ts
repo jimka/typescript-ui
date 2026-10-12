@@ -886,6 +886,44 @@ function $keepColumnInFence(column: MarkdownColumnNode): void {
 // ---------------------------------------------------------------- raw blocks
 
 /**
+ * Shows the raw blocks beside `node` as their save writes them
+ * ({@link $showRawBlocksAsWritten}), for a block whose own change can change
+ * what a raw block next to it is written as.
+ *
+ * @param node - The block that changed.
+ */
+function $showSiblingRawBlocksAsWritten(node: LexicalNode): void {
+    const parent = node.getParent();
+
+    if (parent !== null) {
+        $showRawBlocksAsWritten(parent);
+    }
+}
+
+/**
+ * Shows a raw block whose text or place changed as its save reads:
+ * without the blocks a join left inside it, which follow it
+ * ({@link $moveBlocksOutAfter}: its text is read next, and theirs is
+ * none of it); as the paragraph it is written as, else as the blocks its
+ * own text reads as; and where it stays a raw block in a list item that
+ * no raw block of its text can stand in, the whole list read again. Each
+ * step runs only while the one before it left the raw block in place.
+ *
+ * @param node - The raw block.
+ */
+export function $showRawBlockAsSaved(node: MarkdownRawBlockNode): void {
+    const steps = [$moveBlocksOutAfter, $showSiblingRawBlocksAsWritten, $showRawBlockAsItsBlocks, $readListAgainAroundRawBlock];
+
+    for (const step of steps) {
+        const inPlace = node.isAttached();
+
+        if (inPlace) {
+            step(node);
+        }
+    }
+}
+
+/**
  * Registers the raw-block rules. A raw block whose text runs on — an HTML
  * block its own text does not close, such as `<!--` without `-->` — would
  * take in the blocks after it, so the save writes it as a paragraph holding
@@ -902,44 +940,13 @@ function $keepColumnInFence(column: MarkdownColumnNode): void {
  * @returns The unregister function.
  */
 function registerRawBlockRules(editor: LexicalEditor): () => void {
-    const checkSiblings = (node: LexicalNode): void => {
-        const parent = node.getParent();
-
-        if (parent !== null) {
-            $showRawBlocksAsWritten(parent);
-        }
-    };
-
-    /**
-     * Shows a raw block whose text or place changed as its save reads:
-     * without the blocks a join left inside it, which follow it
-     * ({@link $moveBlocksOutAfter}: its text is read next, and theirs is
-     * none of it); as the paragraph it is written as, else as the blocks its
-     * own text reads as; and where it stays a raw block in a list item that
-     * no raw block of its text can stand in, the whole list read again. Each
-     * step runs only while the one before it left the raw block in place.
-     *
-     * @param node - The raw block.
-     */
-    const $showRawBlockAsSaved = (node: MarkdownRawBlockNode): void => {
-        const steps = [$moveBlocksOutAfter, checkSiblings, $showRawBlockAsItsBlocks, $readListAgainAroundRawBlock];
-
-        for (const step of steps) {
-            const inPlace = node.isAttached();
-
-            if (inPlace) {
-                step(node);
-            }
-        }
-    };
-
     return mergeRegister(
         editor.registerNodeTransform(RootNode, $showRawBlocksAsWritten),
         editor.registerNodeTransform(MarkdownColumnNode, $showColumnRawBlocksAsWritten),
         editor.registerNodeTransform(ListItemNode, $showRawBlocksAsWritten),
         editor.registerNodeTransform(MarkdownRawBlockNode, $showRawBlockAsSaved),
-        editor.registerNodeTransform(ParagraphNode, checkSiblings),
-        editor.registerNodeTransform(MarkdownListItemTextNode, checkSiblings),
+        editor.registerNodeTransform(ParagraphNode, $showSiblingRawBlocksAsWritten),
+        editor.registerNodeTransform(MarkdownListItemTextNode, $showSiblingRawBlocksAsWritten),
         editor.registerNodeTransform(TextNode, (text) => {
             const parent = text.getParent();
 

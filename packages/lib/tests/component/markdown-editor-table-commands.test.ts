@@ -672,7 +672,7 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
         }, { discrete: true });
     }
 
-    describe('commands over a range that starts before a list (Q, E and S rows)', () => {
+    describe('commands over a range that starts before a list, or whose end or start settles into a raw block (Q, E and S rows)', () => {
         const TWO = '- one\n- two';
         const BEFORE_LIST = { on: 'root', at: 0 } as Spot;
         const ABOVE_LIST = { on: 'root', at: 1 } as Spot;
@@ -695,6 +695,11 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
             ['E1', TWO, { on: 'list', at: 0 }, ['two', 3], enter, ''],
             ['E2', 'Above\n\n- one\n- two', { on: 'list', at: 0 }, ['two', 3], enter, 'Above'],
             ['E3', 'Above\n\n- one\n- two', { on: 'list', at: 0 }, ['one', 3], enter, 'Above\n\n-\n- two'],
+            // Enter in a raw block reads the range before the paragraph command's guard settles it: a range whose ends are
+            // points where no caret can be reaches a raw block only once they are settled (E4: the document just after a raw
+            // block to a `:::` block; E5: the end of a column holding a raw block to a paragraph outside the column).
+            ['E4', '<div>\nraw text\n</div>\n\n::: columns\nca\n|||\ncb\n:::\n\nafter', { on: 'root', at: 1 }, { on: 'fence', at: 0 }, enter, '<div>\nraw text\n</div>\nca\n\n::: {}\ncb\n:::\n\nafter'],
+            ['E5', 'before\n\n::: columns\nca\n|||\n<div>\nraw\n</div>\n:::\n\nafter', { on: 'column', at: 1 }, ['after', 0], enter, 'before\n\n::: columns\nca\n|||\n<div>\nraw\n</div>\nafter\n:::'],
             ['S2', TWO, BEFORE_LIST, ['two', 0], lineBreak, '- \\\n  two'],
             ['S3', 'Above\n\n- one\n- two', ABOVE_LIST, ['two', 1], lineBreak, 'Above\n\n- wo'],
         ] as Array<[string, string, Spot, Spot, (editor: MarkdownEditor) => void, string]>)('%s: %j, in both directions, saves what Delete then the command does', (_row, source, from, to, command, saved) => {
