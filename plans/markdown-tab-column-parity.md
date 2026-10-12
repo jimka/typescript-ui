@@ -109,7 +109,7 @@ Source mode's highlighting comes from `@lezer/markdown` 1.7.2, not from `marked`
 | The docs bullet on `tabSize` and Markdown's four columns | `CodeEditor.md` | unchanged: `markdown-language-readonly-and-fences` owns it |
 | `E19` `h2` (`-·one→tab`) | `DIFFERS` in `markdown-editor.test.ts` | moves to `SAME` with new texts: both surfaces act and keep the tab |
 | `E19` `UL`, `E24` (two), `E25`, `E26`, `E27` | `DIFFERS` | unchanged: they belong to `markdown-source-mode-list-lift-parity` |
-| `E18` | only on the branch `wip/markdown-source-list-lift` | belongs to that plan; its WYSIWYG text becomes `··bb` (row T30 pins the reading) |
+| `E18` | not in the tree yet: `markdown-source-mode-list-lift-parity` adds it | belongs to that plan; its WYSIWYG text becomes `··bb` (row T30 pins the reading) |
 
 `marked` is not upgraded here.[^marked-version]
 

@@ -29,7 +29,7 @@ touches-shared:
 
 The whole change is in [markdownSourceLines.ts](../packages/lib/src/typescript/lib/component/editor/markdownSourceLines.ts). `markdownSourceTokens.ts`, `MarkdownEditor.ts` and `CodeEditor.ts` are not touched. The tests are rows in two existing test files. The docs lose their paragraph on "the difference that is to go".
 
-A first implementation of this rule was written inside `markdown-list-toggle-task-item-parity`, went through five reviews without converging, and was withdrawn on 2026-10-11. It is kept on the branch `wip/markdown-source-list-lift`. This plan calls it *the first attempt*; its design is not reused.
+A first implementation of this rule was written inside `markdown-list-toggle-task-item-parity`, went through five reviews without converging, and was withdrawn on 2026-10-11. Its branch was deleted on 2026-10-12. This plan calls it *the first attempt*; its design is not reused.
 
 *Base* means the code this plan starts from: commit `75d022ba1`, the tip of the Markdown stack, with the plans of `depends-on` on top. Every number here was measured on `75d022ba1` with `marked` 18.0.9, the installed version, once as it is and once with the code of `markdown-tab-column-parity` installed.[^measured] Line numbers are from `75d022ba1`; find each site by its symbol name.
 
