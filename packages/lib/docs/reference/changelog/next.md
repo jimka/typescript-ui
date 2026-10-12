@@ -1830,6 +1830,32 @@ page resets to empty.
   Delete does, and insert where it leaves the caret. Enter over a
   selection that empties a list leaves the list, as Delete then Enter
   does. No consumer action is needed.
+- **`MarkdownEditor` replaces a selection that leaves a raw Markdown block or
+  a code block the way Delete removes it.** Typing, an input method, Tab,
+  Shift+Enter, a paste, a cut, a word delete or a drag over a selection that
+  ran from inside such a block into rich text merged the two blocks' nodes:
+  escaped characters lost their escape (`\*x\*` was saved as `*x*`, which
+  reads as emphasis), and from the block's start the bold and the link of
+  the joined text were dropped too. Only Delete, Backspace and Enter kept
+  them. Every such edit now removes the selection as Delete does — the rest
+  of the later block joins as its Markdown — and then inserts at the caret
+  that leaves, whichever way the selection was made. A raw block the removal
+  makes read as other blocks shows as those blocks before the insert, so
+  Enter, Shift+Enter, Tab and a paste over it give what Delete followed by
+  the same key gives: Enter over a selection that cuts `<div>` down to `<`
+  starts a new paragraph, and Tab no longer turns what is left into a code
+  block. A paste over a selection that runs into such a block no longer
+  depends on the direction the selection was dragged in. One limit remains:
+  Shift+Enter is judged before the selection is removed, so where the
+  removal makes a raw block read as a block in which the break has no place,
+  the selection is removed and no break is added. Where no break could
+  follow the caret at all — the selection ends at the start or the end of
+  such a block and nothing would follow it, or it runs from a level 3 to 6
+  heading to such a block's start — Shift+Enter now does nothing, as over
+  any other selection there; it used to remove the selection. A selection
+  that runs from such a block's very start into a table is not judged so: it
+  is removed with the table and no break is added. No consumer
+  action is needed.
 
 ### Core
 
