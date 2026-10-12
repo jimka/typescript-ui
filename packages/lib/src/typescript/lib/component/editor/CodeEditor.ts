@@ -20,8 +20,8 @@ import {
     dropCursor, rectangularSelection, crosshairCursor, Decoration,
 } from "@codemirror/view";
 import type { DecorationSet, KeyBinding } from "@codemirror/view";
-import { EditorState, EditorSelection, Compartment, Prec, StateEffect, StateField } from "@codemirror/state";
-import type { Extension } from "@codemirror/state";
+import { Annotation, EditorState, EditorSelection, Compartment, Prec, StateEffect, StateField } from "@codemirror/state";
+import type { Extension, Transaction, TransactionSpec } from "@codemirror/state";
 import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { indentOnInput, bracketMatching, indentRange, codeFolding, foldGutter, foldKeymap, foldedRanges, indentUnit } from "@codemirror/language";
 import {
@@ -167,7 +167,7 @@ export interface CodeEditorRevealOptions {
  * The events {@link CodeEditor} exposes through its custom `on` / `off` surface:
  *
  * - `"change"` — the document text changed (payload {@link CodeEditorChange}).
- * - `"readonlyedit"` — a user edit was rejected because the editor is read-only
+ * - `"readonlyedit"` — an edit was refused because the editor is read-only
  *   (no payload); see {@link CodeEditor.on}.
  * - `"heightchange"` — {@link CodeEditorOptions.autoHeightMaxRows} is set and the
  *   editor's own computed height changed (payload {@link CodeEditorHeightChange}).
@@ -370,18 +370,72 @@ const CLIPBOARD_READ_DENIED_MESSAGE = "Clipboard read blocked by the browser —
 const CLIPBOARD_HINT_DURATION_MS = 6000;
 
 /**
- * Builds the readOnly-state extension: `EditorState.readOnly` blocks every
- * edit (including programmatic ones) while leaving the content DOM editable, so
- * the caret, cursor navigation, and text selection / copy all keep working —
- * the standard read-only experience. (`EditorView.editable.of(false)` would
- * additionally strip selection by making CodeMirror stop managing a caret in
- * the content, so it is deliberately *not* used here.)
+ * Marks the one transaction a read-only editor still takes a document change
+ * from: the host loading a document through `setValue`.
+ */
+const hostDocumentLoad = Annotation.define<boolean>();
+
+/**
+ * Marks the transaction that took the place of a refused edit: one that would
+ * have changed a read-only document. The editor's update listener reads the
+ * mark to signal the refusal.
+ */
+const readOnlyEditRefused = Annotation.define<boolean>();
+
+/**
+ * The transaction filter of a read-only editor. A transaction that changes
+ * the document is replaced by one that changes nothing, moves no caret, and
+ * carries the refusal mark; every other transaction passes as it is, so caret
+ * movement, selection, folding and search keep working. The host's own
+ * document load passes too.
+ *
+ * `EditorState.readOnly` alone does not do this. It is a flag each editing
+ * command is expected to read, and not all of them do: CodeMirror's Markdown
+ * Enter and Backspace commands, its paste-a-URL-as-a-link handler, and a
+ * click on a completion all change a read-only document.
+ *
+ * @param transaction - The transaction about to be applied.
+ * @returns The transaction itself, or the specification of its replacement.
+ */
+function refuseDocumentChange(transaction: Transaction): TransactionSpec {
+    const hostLoad = transaction.annotation(hostDocumentLoad) === true;
+
+    if (!transaction.docChanged || hostLoad) {
+        return transaction;
+    }
+
+    return { annotations: readOnlyEditRefused.of(true) };
+}
+
+/**
+ * Builds the read-only extension. Read-only, it is two parts.
+ * `EditorState.readOnly` is the flag CodeMirror's own input handling and
+ * commands read; it leaves the content focusable, so the caret, selection and
+ * copy keep working. (`EditorView.editable.of(false)` would take the caret
+ * away too, so it is not used.) The transaction filter is what makes the
+ * state hold: it refuses a document change from any command, handler or
+ * language that does not read the flag.
+ *
+ * The filter has the highest precedence. CodeMirror runs transaction filters
+ * from the lowest precedence to the highest, and each may replace the
+ * transaction, so only the last one to run decides what is applied. The
+ * read-only compartment also comes before the language's in the editor's
+ * extension list, which puts this filter after a language's own at the same
+ * precedence.
+ *
+ * Exported for the offline tests, which type into a state made read-only the
+ * way the editor makes it, because `CodeEditor` mounts no view there.
  *
  * @param readOnly - Whether the editor should reject edits.
  * @returns The extension for the readOnly compartment.
+ * @internal
  */
-function buildReadOnlyExtension(readOnly: boolean): Extension {
-    return EditorState.readOnly.of(readOnly);
+export function buildReadOnlyExtension(readOnly: boolean): Extension {
+    if (!readOnly) {
+        return EditorState.readOnly.of(false);
+    }
+
+    return [EditorState.readOnly.of(true), Prec.highest(EditorState.transactionFilter.of(refuseDocumentChange))];
 }
 
 /**
@@ -795,7 +849,9 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
     /**
      * Replaces the whole document. Caches the value; when a view is mounted,
-     * also dispatches a full-document replace transaction.
+     * also dispatches a full-document replace transaction. A read-only editor
+     * takes it too: read-only guards against edits, not against the host
+     * loading another document.
      *
      * @param value - The new document text.
      * @returns This component, for method chaining.
@@ -805,7 +861,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         if (this._view) {
             this._view.dispatch({
-                changes: { from: 0, to: this._view.state.doc.length, insert: value },
+                changes:     { from: 0, to: this._view.state.doc.length, insert: value },
+                annotations: hostDocumentLoad.of(true),
             });
         }
 
@@ -1499,6 +1556,10 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * the rejection surfaces through the `"readonlyedit"` event and the
      * read-only flash, as it does for {@link CodeEditor.replaceRange}.
      *
+     * An editor made read-only while the clipboard read is in flight inserts
+     * nothing either, and signals the same way unless the clipboard was
+     * empty; the clipboard was read by then, so the method returns `true`.
+     *
      * @returns `true` when the clipboard was read (even if empty), `false`
      *   when there is no mounted view, the browser refused the read, or the
      *   editor is read-only.
@@ -1575,6 +1636,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * Refused while the editor is read-only: no formatter is run and nothing
      * changes, and the rejection surfaces through the `"readonlyedit"` event
      * and the read-only flash, as it does for {@link CodeEditor.replaceRange}.
+     * A result that arrives after the editor was made read-only is refused
+     * the same way.
      *
      * @param options - Style knobs forwarded to the active language's
      *   formatter. Ignored when the language has no formatter (the
@@ -1607,6 +1670,16 @@ class CodeEditor extends Component<CodeEditorOptions> {
         const cursorOffset = this._view ? this._view.state.selection.main.head : 0;
 
         const result = await formatter(source, cursorOffset, this.resolveFormatOptions(options));
+
+        // Re-checked after the awaits: the editor may have been made
+        // read-only while the formatter was loading or running.
+        const readOnlyNow = this.getReadOnly();
+
+        if (readOnlyNow) {
+            this.signalReadOnlyEdit();
+
+            return;
+        }
 
         this.applyFormatted(result.formatted, result.cursorOffset);
     }
@@ -1813,8 +1886,13 @@ class CodeEditor extends Component<CodeEditorOptions> {
      */
     on(event: "change", listener: (payload: CodeEditorChange) => void): this;
     /**
-     * Registers a listener for the `"readonlyedit"` event, fired when a user
-     * edit (typing, paste, drop) is rejected because the editor is read-only.
+     * Registers a listener for the `"readonlyedit"` event, fired when an edit
+     * that reached the editor is refused because it is read-only: typed text,
+     * Enter, a paste, a drop, a completion picked from the list, a change a
+     * language's own command or handler tried to make, or a call to
+     * `replaceRange`, `cut`, `paste` or `format`. A key whose command
+     * declines on its own in a read-only editor, such as undo or indent,
+     * fires nothing.
      *
      * @param event - Must be `"readonlyedit"`.
      * @param listener - Invoked with no arguments on each rejected edit.
@@ -2280,6 +2358,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
             this._spellcheckCompartment.of(
                 EditorView.contentAttributes.of({ spellcheck: this.getSpellcheck() ? "true" : "false" })),
             EditorView.updateListener.of((update) => {
+                this.signalRefusedEdit(update.transactions);
+
                 if (update.docChanged) {
                     this.onDocChange(update.state.doc.toString());
                 }
@@ -2314,11 +2394,16 @@ class CodeEditor extends Component<CodeEditorOptions> {
                 }
             }),
             EditorView.domEventHandlers({
-                // A user edit while read-only is blocked by `EditorState.readOnly`
-                // at the input layer — it never becomes a transaction, so it emits
-                // no "change". These hooks surface the rejection as feedback:
-                // typing / IME / delete fire `beforeinput`, while paste and drop are
-                // prevented before `beforeinput` runs, so each needs its own hook.
+                // Typed text, IME input, a plain paste and a drop in a read-only
+                // editor are dropped by CodeMirror's own input handling before
+                // they become a transaction, so the read-only filter never sees
+                // them. These hooks signal those: typing, IME input and a
+                // deletion that arrives as input (a virtual keyboard's) fire
+                // `beforeinput`, while paste and drop are prevented before
+                // `beforeinput` runs, so each needs its own hook. An edit that
+                // does become a transaction is refused by the filter and
+                // signalled from the update listener above; its key or paste
+                // event is handled by then, so it does not reach these hooks.
                 beforeinput: () => this.onEditIntent(),
                 paste:       () => this.onEditIntent(),
                 drop:        () => this.onEditIntent(),
@@ -2854,6 +2939,23 @@ class CodeEditor extends Component<CodeEditorOptions> {
         }
 
         return false;
+    }
+
+    /**
+     * Signals a refused edit when one of an update's transactions carries the
+     * refusal mark the read-only extension's filter leaves. One signal per
+     * update, however many of its transactions were refused. Factored out of
+     * the update listener in {@link CodeEditor.mount} so it can be tested
+     * without a view.
+     *
+     * @param transactions - The transactions of one view update.
+     */
+    private signalRefusedEdit(transactions: readonly Transaction[]): void {
+        const refused = transactions.some((transaction) => transaction.annotation(readOnlyEditRefused) === true);
+
+        if (refused) {
+            this.signalReadOnlyEdit();
+        }
     }
 
     /**
