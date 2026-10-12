@@ -3,7 +3,7 @@
 import { callable, Component, Panel } from '@jimka/typescript-ui/core';
 import { Border, Fit, HBox, Split } from '@jimka/typescript-ui/layout';
 import { Placement } from '@jimka/typescript-ui/primitive';
-import { Button } from '@jimka/typescript-ui/component/button';
+import { Button, ToggleButton } from '@jimka/typescript-ui/component/button';
 import { Markdown } from '@jimka/typescript-ui/component/display';
 import { MarkdownDocumentPanel } from '@jimka/typescript-ui/component/editor';
 import { Text } from '@jimka/typescript-ui/component/input';
@@ -58,7 +58,9 @@ const editor = new MarkdownEditor("# Hello");
  * viewer. A status row below the editor reports the editor's own dirty flag
  * and the panel's own, the panel's arriving through the framework's
  * parent-to-child relay three containers up; Save clears it, and so does
- * undoing an edit back to the last-saved text.
+ * undoing an edit back to the last-saved text. The Read-only toggle beside
+ * it switches the editor read-only: the caret, keyboard selection and Copy
+ * stay, and every edit is refused with a flash.
  */
 class MarkdownEditorPanel extends Panel {
 
@@ -79,10 +81,14 @@ class MarkdownEditorPanel extends Panel {
         const saveBtn = new Button('Save');
         saveBtn.on('action', () => { this._editorPanel.markClean(); });
 
+        const readOnlyBtn = new ToggleButton('Read-only');
+        readOnlyBtn.on('action', () => { this._editorPanel.getEditor().setReadOnly(readOnlyBtn.isSelected()); });
+
         this._statusText = new Text('');
 
         const statusRow = new Component({ layoutManager: new HBox() });
         statusRow.addComponent(saveBtn);
+        statusRow.addComponent(readOnlyBtn);
         statusRow.addComponent(this._statusText);
 
         const editorHost = new Panel({ layoutManager: new Border() });
