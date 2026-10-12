@@ -1867,6 +1867,29 @@ page resets to empty.
   Shift+Enter over a selection that would leave nothing but the break does
   nothing, as in any empty paragraph. No consumer action is needed.
 
+- **The caret keeps its place when an edit makes a raw Markdown block show
+  as rich text.** When a raw block's text was edited until it read as a
+  block the editor holds as rich text — a quote of two paragraphs cut down
+  to one, a list losing the block that kept it raw — the caret went to the
+  end of that block unless the text before it showed exactly as written,
+  which a quote's `>`, a list item's marker or a line end before the caret
+  rules out. It now stays where it was in the text: the editor finds the
+  source of everything the block shows and puts the caret after all whose
+  source stood before it, so what is typed or pasted next goes in there, and
+  a space that shows stays on its side of the caret. Between text in two
+  formats the caret is in the one its place had in the source. Where the
+  list item or table cell that holds it shows nothing, it stays in that item
+  or cell, not in the text of the one beside it. It still goes to the end of
+  its block where the block shows nothing at all, and where the block
+  holds, beside the caret or after it, text Markdown's lexer hands back
+  otherwise than it is written, so that its place in the source is not
+  found: a list item's line that a tab indents and that shows as spaces, a
+  task item whose checkbox is followed by more than one space in a list with
+  blank lines between its items, text of a list item that begins as a link
+  reference definition repeated before it does, or a character reference
+  such as `&#35;`, which shows as the character it stands for. No consumer
+  action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
