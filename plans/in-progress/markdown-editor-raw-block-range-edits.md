@@ -217,6 +217,63 @@ This plan is implemented after `markdown-editor-raw-block-edge-cases`.[^after-ed
 
 ---
 
+### The caret after a re-read is placed by source offsets
+
+*Added at implementation, after the fourth review; see D2 of the
+Implementation Notes.*
+
+Where the removal makes a raw block show as rich blocks, the caret is put
+at the place the joint's offset has in those blocks: after everything
+they show whose source ends at or before the offset, before the rest.
+Nothing they show changes sides, and a space that shows is content. The
+place comes from `$placeOfSourceOffset`
+([markdownSourcePlaces.ts](../packages/lib/src/typescript/lib/component/editor/markdownSourcePlaces.ts)),
+which reads the source of what a block shows off the source analysis
+([markdownSourceTokens.ts](../packages/lib/src/typescript/lib/component/editor/markdownSourceTokens.ts),
+`analyzeMarkdownSource`, `SourceEntry.start` and `end`) and matches the
+block the load built against it, character for character.
+
+That analysis is the one source mode's commands use. It is used from the
+WYSIWYG side as it stands, and nothing was moved: it reads Markdown
+through the viewer's lexer and imports nothing of CodeMirror or of
+Lexical, so it is shared the way the lexer itself is (`markdownWritable.ts`
+calls `lexMarkdownWithDefinitions` directly). The mapping is a module of
+its own because it needs both sides: the analysis and the nodes a load
+builds. It keeps the analysis's rule that a token whose text is not found
+has no place, so the caller declines, here by putting the caret at the
+end of its block, and that fallback's shapes are few and named.
+
+The alternative, reading the text a second time with a mark at the
+caret, was built first and failed in a new corner in each of three
+reviews: a mark is a character, and a character beside a delimiter or a
+marker changes what they are.
+
+### A removal the editor makes itself completes no typing shortcut
+
+*Added at implementation, after the fifth review, and narrowed after the
+sixth; see D10 of the Implementation Notes.*
+
+Lexical's Markdown shortcuts take any update that leaves a collapsed
+caret in changed text for a typed character, so a deletion completed a
+shortcut when the text left before the caret read as one. With the
+caret at the joint after a removal, that turned escaped text into
+formatting. The editor's own removal of a guarded range is therefore
+tagged when the route only removes (the delete commands, a cut,
+`cut()`), and the wrapper that already keeps the shortcuts out of raw
+blocks (`registerMarkdownShortcutsOutsideRawBlocks`,
+[MarkdownEditor.ts](../packages/lib/src/typescript/lib/component/editor/MarkdownEditor.ts))
+hands Lexical's listener no tagged update. Nothing else is classified:
+typing, a paste, a drop and a deletion in an ordinary paragraph are
+handed over as before, and the last keeps the parent's defect. Lexical's
+listener offers no hook and is not changed.
+
+The fifth round made it a rule for every block (a shortcut is applied
+for typed text only, by marking what is no typing). The sixth review
+showed that rule dropped a character committed by an input method or a
+dead key on desktop WebKit, and the general rule is a plan of its own,
+`markdown-editor-typing-shortcuts-only-for-typing`, that marks what *is*
+typing.
+
 ## Internal Structure
 
 All in `MarkdownEditor.ts` unless a heading says otherwise. Write full JSDoc per CODE_CONVENTIONS; the bodies are below. A call's result is assigned to a constant before it is tested.
@@ -1537,3 +1594,1867 @@ The four are Tab over TE39, whose control fails the same way (see *Non-Goals*). 
     check its selection: only a row whose selection is a text-only-edge
     range may change, and its new value must equal Delete's result with the
     route's insert at the caret.
+
+---
+
+## Implementation Notes
+
+Implemented on `feature/markdown-editor-raw-block-range-edits`, on top of
+`feature/markdown-editor-raw-block-edge-cases` at `fef32344b`, which these
+notes call "the parent". Scratch files named below are under
+`~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/impl/raw-block-range-edits/`
+("the scratch folder"). They are not in the repository. The reviser's
+files are under `…/scratch-keep/plans3/raw-block-revision/` ("the
+reviser's folder"), the edge-cases implementer's under
+`…/scratch-keep/impl/raw-block-edge-cases/`.
+
+The branch has four code commits. The first is the plan, with two things
+in it that the plan's code cannot stand without: the selection the
+caller passed is the editor's again (D1: without it three routes throw),
+and an end of a range held as a point on a list, a `:::` block or the
+document is moved into the text the range reaches before any route
+reads it (D11: without it every route throws on such a range, where at
+the parent Delete and Enter did). The second is D8: a raw block left
+holding nothing shows as an empty paragraph. The plan does not have it;
+the fourth review asked for it, and it is sign-off 9. The third is D10:
+a removal the editor makes itself completes no Markdown typing shortcut.
+The fifth review asked for it; it changes the editor outside this plan's
+ranges, so it is a commit of its own and sign-off 11. The fourth is D2, the
+caret's place after a raw block shows as its blocks: it changes where
+the caret stands after Delete, which the plan's Non-Goals leave alone,
+so it is a commit of its own and the first decision under *Decisions
+that await the user's sign-off*. Each code commit has its documentation
+commit but the third, which changes nothing a user can see against the
+parent and so has none (D5, D10).
+
+**Where the review stands.** The first review found no defect in the
+code. It had two blocking findings. The notes described verification that
+had not ended: the fuzz table, the browser checks on the final code, M4
+and M5 as stand-ins, and a count of passing tests that was not the logged
+one. The fuzz has ended, the browser checks were run again on the final
+code, the count is the logged one, and M4 and M5 are sign-off 6. And D2's
+effect on an ordinary edit had no row: rows `TP1` to `TP6` pin it, and
+`TL1` its limit. Its advisory notes were taken up: what the update tag
+does was measured (*Found along the way*, sign-off 5, `TE52`); the second
+changelog entry names the limit; three JSDoc passages were reworded (a
+range "that ends where no text node is cut", and which guards are at
+which priority); D1 names the place the file already meets the same
+hazard; the rows are counted by commit (D3); and the notes say which
+commits they name are not on the branch. One was left for sign-off 7:
+whether the changelog should name the Shift+Enter changes.
+
+The second review found one defect, in D2: a mark with no plain text on
+either side of it (between a quote's marker and bold text, before a link,
+after formatted text) is a run of its own in the second reading, the
+reading was then taken as another one, and the caret went to the block's
+end, so for a selection that ended before formatted text every inserting
+route still put its text there. The mark's own run is now left out of the
+comparison and the caret is placed between the two runs it stood between
+(D2). The review's own sweep of 957 typed cells had 57 with the text at
+the block's end; it has 6 now, each a caret inside the delimiters of the
+raw block's own formatting. Rows `TE53` to `TE58`, `TP7` and `TS16`. The
+notes, the changelog and the JSDoc now state the limit as it is. Its
+advisory notes were taken up: a typed character that completes a typing
+shortcut is two undo steps (*Found along the way*); the two JSDoc
+passages on the update tag say what sets it now; the changelog names the
+Shift+Enter change (D5).
+
+The third review, the last the audit loop allows, found no defect in the
+plan's own code. Its three blocking findings were all in D2. Two were a
+row that was missing and notes that were wrong: nothing failed without
+the place "at the end of the text right before" a mark that stands alone
+(`TE59` pins it now), and the notes said `TE58` tells the second code
+commit from the first, which it does not (its joint is the end of its
+block, where the caret went before too). The third was in the code: the
+place past spaces was taken only when the mark then opened its run of
+text, so a range that starts right after a block's marker and ends
+before two spaces, of which the reading keeps one, still sent typed text
+to the block's end, where the parent had it at the selection (15 cells
+of that review's sweep). The condition is gone: the place past the
+spaces is taken as it is. Rows `TE60`, `TE61` and `TS17`. Its advisory
+notes were taken up but for one that is the user's to settle (the update
+tag, sign-off 5): `TS18` pins what the tag does outside an update and
+the notes give the same effect for a range with no raw block; the typed
+shortcut that is two undo steps is sign-off 8 and row `TU1`; D1 says
+why the guard is at the removal; three stale comments were reworded;
+`TS16` asserts where the tab stands; `TL2` pins text that holds the
+mark's character; the docs page names the caret's limit.
+
+The account above names rows as they were then; `TE60`, `TE61`, `TP6`,
+`TL1` and `TL2` have been restated since, and the second reading it
+describes is gone (D2).
+
+The fourth review was run after the loop's cap, on the code as it stood
+then. It found the plan's own code sound under every probe, and one
+blocking defect in the fix made after the third review: the place past
+spaces was taken wherever the mark at the caret told nothing, also where
+those spaces show. A mark right after a closing delimiter keeps it from
+closing (`_x_`, `**Note:**`, `*(x)*`, `~~s.~~`), and the mark was then
+tried past the space that follows, which is text. So typed and pasted
+text went in on the wrong side of a space: `> a **Note:** w⏎>⏎> q2` and
+`ab next`, with the range from after `**Note:**` to after `ab`, typed
+over, gave `> a **Note:** Xnext` where the parent gave
+`> a **Note:**X next`. No row pinned it, and the sweep of joints could
+not see it: it counted only text at the block's end.
+
+D2 had then failed in two rounds running, each time in a corner of one
+approach: reading the text a second time with a mark in it, whose
+presence changes how the text around it reads. So the mark is gone. The
+caret's place is now computed from the source offsets of what the blocks
+show, with no second reading (D2). The rule is the one the review gave:
+the caret is at the joint, and nothing the blocks show changes sides.
+`TE60` and `TE61` are restated by it. The review's advisory finding, a
+range that empties a raw block leaves a raw block of no text, is D8. The
+sweep was written anew so that it sees the class (*The widened sweep*).
+
+**What was changed after the fourth review was read by no reviewer**: all
+of D2 as it is now (a new module, `markdownSourcePlaces.ts`, in place of
+the second reading), D8, their rows, the docs of both and these notes.
+Every check, the differential, the fuzz, the widened sweep and the
+browser checks were run on that code. The coordinator runs a review of
+it; none was started there.
+
+The fifth review was run on that code. It found three blocking defects,
+none of which the harnesses here could see, and each for a reason of the
+harness's own making.
+
+- *A removal completed a typing shortcut.* With the caret at the joint
+  (D2), a removal that left it right behind text reading as a shortcut's
+  syntax applied the shortcut, as a second update: `> a \*x\* w⏎>⏎> q2`
+  and `ab cd`, with the range from after `\*x\*` to after `ab`, deleted,
+  saved `> a *x* cd`, in italics, where the parent saved
+  `> a \*x\* cd`; one undo did not bring the document back. The notes
+  said the same happened at the parent and listed it as found and left.
+  That was half true: the parent applied a shortcut after a deletion in
+  an ordinary paragraph too, but not here, where its caret went to the
+  block's end. The wide probe's blocks ended in a plain word *so that*
+  the shortcut would not show, its undo check skipped Delete and
+  Backspace, and the widened sweep took `*`, `_`, `~` and backslashes
+  out of what it compared. The branch's own removals now
+  complete none (D10); the parent's case, a deletion in an ordinary
+  paragraph, stays as it was.
+- *The caret went inside a task item's checkbox.* The mapping moved a
+  blank that opens a line's text to the last blank the source holds
+  there, and took the checkbox's own space for such a blank: with the
+  caret right after the checkbox and one more space before the text, a
+  typed character went into the checkbox's source and the item lost its
+  checkbox. A blank is now moved only when it is a character of
+  ordinary text, among the blanks the source holds between it and the
+  next thing shown (D2, *What is no text keeps its own source*).
+- *An end held as a point on a container threw on every route.* A range
+  from inside a raw block to an element point on a list before its
+  first item is a text-only-edge range, and its removal took the point
+  for a place in a block's text. Such an end is now settled into text
+  before a route reads the range (D11).
+
+The review's advisory findings are taken with them: the reason the
+Shift+Enter decline gives for an emptied raw block holds for a settled
+end only, which D11 now gives it and its JSDoc says; three multi-line
+initialisers of the mapping's module stand between blank lines; a call
+no longer stands in an `else if`.
+
+The harnesses were then changed so that they see what they hid (*The
+differential check*, *The widened sweep*): every value is read after
+the editor's pending updates are flushed, because a shortcut runs in an
+update of its own that a first read does not commit; one undo is
+checked for Delete and Backspace as for every route, with no condition
+on the parent; the wide probe has blocks whose text before the joint is
+escaped syntax and shortcut-shaped text of every kind, task items with
+the joint after the checkbox, and ends held as points on containers;
+the sweep compares saved documents byte for byte and the shown text on
+each side of the caret as it is.
+
+**What was changed after the fifth review was read by no reviewer**:
+D10 and D11 and their rows, the change to the mapping's blank rule and
+its rows (`SP13`, and `TE76`), the fallback's one more shape (a task
+item's checkbox followed by a tab), the docs of all three and these
+notes. Every check, the differential, the fuzz, the sweeps and the
+browser checks were run on that code. The coordinator runs a review of
+it; none was started here. The plan is left in `plans/in-progress/`.
+
+### The base
+
+The plan was written against `85b55a8f4`. The parent is four branches
+above it. Of the files this plan changes, `git diff --stat 85b55a8f4
+fef32344b` names `MarkdownEditor.ts` (808 lines: the list toggles'
+rewrite, and the settle step for selection ends), `markdownWritable.ts`
+(65 lines, `$selectTextOffset` among them), the docs page and the
+changelog. The two test files are unchanged. In `MarkdownEditor.ts` every
+site the plan names stands five lines lower than the plan gives; in
+`markdownWritable.ts` the lines are the plan's. Every function the plan
+changes has the body the plan prints as "today", and every symbol it
+names exists under that name.
+
+What the plans around this one expect of each other:
+
+| Expected | Found |
+|---|---|
+| `$showRawBlockAsSaved` at module level and exported | not done by the edge-cases branch, whose notes leave it to this plan; step 3 of this plan did it |
+| rows `Q11` to `Q13` restated in place (`markdown-editor-list-item-edits.test.ts`) | there, `:647` to `:652` |
+| `pasteText` at module level in `markdown-editor-list-item-paste.test.ts` | there, `:173` |
+| the imports the plan that follows needs in `markdown-editor-command-crashes.test.ts` | added by this plan, as its *Expected Behaviour* says |
+
+**The defect at the base.** The reviser's matrix was run on a private copy
+of the parent before any change (`diff/ec-matrix-P.json`). 1,148 of its
+3,116 guarded cells fail their check there: the same number, with the same
+split by route, as the reviser measured at `85b55a8f4`
+(`diff/redcount.py`, which is the rule of the reviser's `rbr-red.py`). The
+parent's matrix, cross-item grid and places probe are byte for byte the
+edge-cases implementer's last run (`…-b6.json`), so that run's fuzz
+results are the baselines here.
+
+### How the plan's steps went
+
+| Step | The plan's check | Measured |
+|---|---|---|
+| 1 | the parent's results are recorded | matrix 3,192 cells, grid 26,928, places 66,976 records, on a private copy of `fef32344b` |
+| 2 | the 103 tests marked red fail, every other passes | so: 464 tests, 103 fail, by name the plan's (18 TE rows, 30 route rows, 9 TS rows, 44 TC rows, `TG8`, `X14`); the run reports the `window is not defined` rejections the plan foretells (`logs/red-base.log`) |
+| 3 | `checkSiblings` gives no match; three suites green | so |
+| 6 | the two delete listeners are gone; the table-edge suite is green | so |
+| 10 | `$isStaleFocusRange(` is called in four functions | so: `$isGuardedRange`, `$removeJoiningRange`, `$guardedRemovalDeclinesLineBreak`, `$isPlainlyRemovedRange` |
+| 11 | the grep for the old wording gives no match | so |
+| 12 | every row passes; no existing row but `X14` changes | so, on the plan's code as printed: 464 tests pass, and the suites of step 12 pass with no expected string changed |
+
+The rows were taken from the reviser's `proto/patch-ret.txt` and checked
+against the plan's tables by a script, row by row (41 shapes, 72 route
+rows); the shapes' documents are written with the plan's constants. The
+source edits are the plan's snippets as printed.
+
+### Deviations
+
+**D1. The selection the caller passed is the editor's again when the
+removal returns.** The plan says "Pass the editor's own selection" and
+that the re-read "places the caret through the node's `select`, which
+moves the same selection object". One step of the re-read does not: a raw
+block that its text leaves open before a block (`<!--` without `-->`) is
+shown as the paragraph it is written as by `LexicalNode.replace`, which
+installs a clone of the selection as the editor's and leaves the object it
+cloned pointing at the node it removed. `paste()` and Lexical's own
+insertion of pasted nodes go on with the object they passed. Measured on
+the plan's code as printed, for `<!-- c1⏎c2 -->⏎⏎after⏎⏎more` with
+`"<!-- c1"`@6 → `"after"`@1: `paste()`, a paste of nodes and a paste of
+blocks throw `ElementNode.splice: start + deleteCount > oldSize`. The
+plan's 41 shapes do not reach that step, and the matrix does not either.
+
+`$removeGuardedRange` now ends with `$keepAsEditorSelection(selection)`:
+when the editor holds another selection object, the caller's object takes
+its points and is set as the editor's selection again. It is in the
+function every route goes through, so no caller has to read the selection
+anew. The file meets the same hazard once already, another way:
+`$replaceEmptiedContainerAtCaret` moves the caret before its container
+goes and does not call `replace` at all. `$showRawBlocksAsWritten` could
+be written that way too. The guard is at the removal instead for its
+reach: that rule runs on every ordinary edit, where no caller holds the
+selection and nothing is wrong, and one guard where the callers are covers
+every step of the re-read, this one and any that comes to call `replace`
+later. The two places the plan's snippets read the selection anew
+(`$handleRawBlockEnter`, `$removeGuardedRangeBeforeText`) are left as the
+plan prints them; they are no longer needed. Rows: shapes `TE42` to `TE44`
+(a raw comment left open before a block: in the document, in a list item,
+and joined by the text of an item that holds blocks), each through all 18
+routes; their expected strings are what Delete and then the route give at
+the parent (`adhoc/controls1-P.json`). Without the call, 18 of those rows
+fail (the three paste routes over the three shapes, in the route rows and
+in the `TJ` rows).
+
+**D2. The caret keeps its place when a raw block shows as its blocks.**
+This is the fourth code commit and sign-off 1.
+
+The plan's contract is "the route inserts at the caret the removal
+leaves", and it measures it as "equals Delete, then the route". Both hold
+on the plan's code. But where the removal makes a raw block read as rich
+blocks, the caret the re-read leaves was not where the range was. The
+re-read (`$showRawBlockAsItsBlocks`) kept the caret's place only where
+the raw text before the caret showed exactly as written; a quote's `>`, a
+list item's marker or a line end before the caret (which shows as a
+space) sent the caret to the end of its block. That is the parent's
+behaviour for Delete. With the plan, every route then inserts there:
+
+| Source | Selection | Route | Parent | The plan's code | The branch |
+|---|---|---|---|---|---|
+| `> q1 w⏎>⏎> q2⏎⏎after` | `"> q1 w"`@5 → `"after"`@1 | Delete, then the caret | `> q1 fter`, caret after `fter` | the same | `> q1 fter`, caret before `fter` |
+| same | same | type `x` | `> q1 xfter` | `> q1 fterx` | `> q1 xfter` |
+| same | same | Enter | `> q1⏎> fter` | `> q1 fter` and an empty paragraph | `> q1⏎⏎fter` |
+| `- a⏎  > q⏎- b⏎⏎after` | `"  > q"`@2 → `"after"`@1 | type `x` | `- a⏎  xfter` | `- a⏎  fterx` | `- a⏎  xfter` |
+
+So the plan as written moved typed and pasted text, and Enter's split, to
+the end of the paragraph for these selections, where the parent had them
+at the selection. The reviewer-7 fuzz showed it first (four new
+`linesMerged` records on the plan's code, Enter over such a range). The
+cause is the re-read's caret, so it is fixed there, for Delete as well.
+
+*The rule.* The caret is at the place, in the blocks the raw text now
+shows as, that its offset has in the raw text: after everything those
+blocks show whose source ends at or before the offset, and before
+everything else they show. Nothing the blocks show is on another side of
+the caret than its source was. A space that shows is content like any
+other character.
+
+*How the place is found.* Where the text before the caret shows as
+written, the caret is counted from the block's start, as at the parent;
+no existing row changes. Elsewhere `$placeOfSourceOffset` finds it
+(`markdownSourcePlaces.ts`, a new module). The source of what a block
+shows comes from the source analysis (`analyzeMarkdownSource`,
+`markdownSourceTokens.ts`): it reads Markdown through the viewer's lexer,
+as the load does, and gives every visible character its source offsets
+(`SourceEntry.start` and `end`). The block's own Markdown is analysed,
+with the link reference definitions of the text around it, and the block
+the load built is walked beside the analysis's entries: each entry must
+be what the block shows next, character for character. A line end shows
+as a space; an atom shows as a node of its own or as a source node; a
+code block or a raw block inside the block shows its lines as they are
+written (a raw block that no entry stands for, a definition `marked`
+drops for repeating a label, is found by those lines); a table cell's
+paragraph break shows as no character. Where the
+block shows something else, the walk stops there, and what follows has
+no known source. A place is never guessed: it is given only where the
+thing before it and everything after it have their source found, and the
+sources stand in the order of what the block shows. The analysis finds a
+token by searching for its text from the end of the one before, so text
+it cannot find where it stands may be found further on, in the place of
+other text that reads the same, which is then not found in its turn;
+hence "everything after it".
+
+*Why not the second reading.* Three versions before this one read the
+text once more with a mark at the caret (U+E000) and took the place the
+mark showed at: the mark compared node for node (failed for an escaped
+character), run for run with a rule for a mark between two runs (the
+second review), then tried past spaces (the third review, and the fourth
+review's defect). Each fix opened a corner, because a mark is a
+character, and a character beside a delimiter or a marker changes what
+they are. The mapping puts nothing into the text. Before the second
+reading was taken out, both were run over the same (text, offset) pairs
+(`r4/zz-r4-proto.test.ts`: 21 raw texts cut at every offset and joined
+to 20 tails; 37 texts holding one construct each, with 9 tails; and
+every document of the round-trip corpus cut at every offset, with 4
+tails):
+
+| | Pairs with a caret to place | Same place | The mapping alone tells | The mark alone tells | Neither tells | Other places |
+|---|---|---|---|---|---|---|
+| 21 raw texts × 20 tails | 6,700 | 5,947 | 733 | 4 | 13 | 3 |
+| 37 constructs × 9 tails | 7,652 | 7,071 | 564 | 6 | 3 | 8 |
+| the round-trip corpus × 4 tails | 27,826 | 24,933 | 2,433 | 225 | 235 | 0 |
+
+"The mark tells" where the text reads with the mark as without it, which
+makes the mark's place a place found without any source offset. The 11
+other places are one convention (below): a caret between the backslash
+of an escape and its character. The 235 pairs the mark alone tells, and
+the 251 neither tells, are the fallback's shapes (below): a block that
+shows nothing, and in the corpus a tab that indents a list item's line
+(158 pairs), a task item's text that opens with a space (2), and text
+that begins as a link reference definition repeated before it (5).
+`SP10` of the new test file pins the corpus comparison for two of the
+tails: more than 15,000 places the mark confirms, none other, and no
+pair without a place outside those shapes.
+
+*Why a module of the source-mode side is used here.* The analysis is the
+one source mode's commands read a selection's blocks and formats from.
+It imports the viewer's lexer and nothing of CodeMirror or of Lexical,
+so the WYSIWYG side calls it as it calls the lexer itself
+(`markdownWritable.ts` imports `lexMarkdownWithDefinitions` the same
+way); nothing was moved. The mapping is in a module of its own beside
+it, because it needs both the analysis and the nodes a load builds. It
+keeps the rule the analysis is built on: a token whose text is not found
+is left without a place, and the caller declines rather than guess. The
+plan's *Architecture Decisions* has the same in short, added with this
+commit (D9).
+
+*Where the place is between two things.* All of these keep the rule;
+they say which of two nodes that meet there holds the caret.
+
+- Between two text nodes of one line, the caret is in the one whose
+  format its offset has in the source: inside the delimiters of bold
+  text it is in the bold text, outside them in the text beside it. Where
+  both have that format it is at the end of the first, where neither has
+  at the start of the second. So after `**Note:**` the caret is in the
+  plain text that follows, and what is typed there is plain.
+- A source node (a soft line break, inline HTML, a task item's checkbox)
+  takes no typing, so it gives way to ordinary text on its other side.
+  An offset inside the source of one that shows its source as written
+  (`<b`│`>`, or `[x]`│ before the checkbox's own space) is at the nearer
+  end of that node, its start where both are as near, and never inside
+  it (`$placeOutsideSourceNode`). A character typed inside a source node
+  replaces the node whole, at the parent as here, so a caret left there
+  would take the checkbox with the next key (the fifth round's sweep
+  found it). The same step is taken where the caret is counted from the
+  block's start.
+- Between two blocks the caret is at the end of the text before it until
+  the source has ended that block: with a line end, with the `|` between
+  two cells of a table's row, or with the paragraph break of a cell. Where
+  the offset's own list item or table cell shows nothing, the caret is in
+  it, and neither neighbour's text holds it (`$emptyBlockAt`, round 7).
+- An offset inside the source of one thing the block shows as a whole is
+  before that thing: between the backslash of an escape and its
+  character, in the syntax of a hard line break or of an image.
+
+*The fallback.* The caret goes to the end of its block, and only there,
+where there is no place:
+
+1. The block shows nothing at all (an emptied quote or list item). Its
+   end is its only place. A list item or a table cell that shows nothing
+   in a block that shows something elsewhere is no fallback: its place is
+   in it (`$emptyBlockAt`, round 7, `SP15`).
+2. The block holds, beside the caret or after it, text whose source is
+   not found, because `marked` hands that text back otherwise than the
+   source holds it:
+   - a list item's line that a tab indents past the item's text, which
+     shows as spaces the source does not hold;
+   - a tab between the words of a list item's text, which `marked` also
+     hands back as a space (round 7; `- a⇥b w¦ x`, `1. a⇥b¦ c`,
+     `- [ ] a⇥b¦ c`, the nested form: the whole text token is not found,
+     so a caret anywhere in that item has no place; `SP7`, `TL5`);
+   - a task item whose checkbox is followed by more than one space, in
+     a list with blank lines between its items, or by a tab
+     (`- [x]⇥Alpha`): the checkbox shows with the one space of its own.
+3. The sources found are not in the order of what the block shows: text
+   of a list item that begins as a link reference definition does which
+   `marked` dropped before it for repeating a label (the text is found
+   in that definition's place).
+
+Text of those kinds in an *earlier line or item* than the caret's takes
+nothing from it (`TL4`, `SP8`); a tab between the words of the caret's
+own item does (`SP7`, `TL5`). In the three sets of pairs above every pair without a place is
+one of these, and the sweep has no cell at the block's end; but the
+sets do not hold every shape. The tab after a checkbox was found by the
+fifth review, in none of them. `SP7` pins it now, and `SP10`, the
+corpus comparison, names the two causes the corpus has (a tab that
+indents a line, a definition that repeats a label) where it let any
+text holding a tab pass. The docs page and the changelog name 1 to 3.
+
+One more text is handed back otherwise than written, and its source is
+found all the same: a link text holding an escaped bracket
+(`[a \[b](/u)`). `marked` takes the backslash out before it reads the
+text, so the analysis leaves the text's tokens without offsets; but the
+text stands in the source after the link's `[` with just those
+backslashes in it, and each character's place in it follows from the
+tokens (`leavesOfUnescapedLinks`, with `contentOffset` exported from the
+analysis for it). Shape `TE75` and rows `SP11`. Before that step it was
+a fourth shape of the fallback, at the block's end in 1,480 cells of the
+widened sweep.
+
+*What is no text keeps its own source (the fifth review).* The source
+analysis finds a shown blank at the first blank of a run in the source,
+and a load drops a run's surplus from the left, so the mapping moves a
+shown blank to the last blank the source holds there
+(`keepLastOfLeadingBlanks`). It moved the checkbox's own space as well:
+for `- [x]`, two spaces and `cd`, the offset after the first space was
+put *inside* the checkbox's node, and a character typed there replaced
+the checkbox. Only a blank that is a character of ordinary text is
+moved now, and only among the blanks the source holds between it and
+the next thing shown. A checkbox with its space, inline HTML, a line
+end, a hard line break, an image and a link that shows nothing stand
+where their own source does. `SP13` has every such thing with none, one
+and two blanks after it, at the offsets just before it, inside its
+source, just after it and at each blank (195 rows); `TE76` is the
+review's shape in the editor, and `TE77` the joint between the checkbox
+and the space the tail gives it.
+
+*`TE60` and `TE61` restated.* A range from right after a quote's marker
+to before two spaces leaves `>` and two spaces, of which the marker
+takes one and the block shows the other. The third review's fix put the
+caret past the one that shows, and the rows pinned `> xNext`: a typed
+character glued to the next word, the fourth review's defect at a
+block's start. By the rule the space that shows stays after the caret:
+`> x Next`, and `> q1⏎> x cd` for `TE61`. The parent, which typed into
+the raw text, gave `X  Next` with two spaces: there the typed character
+made both show. What Delete saves holds one, on the parent and on the
+branch alike, and the route is Delete, then the route.
+
+*Rows.* In the crash test file: shapes `TE45` to `TE49`, `TE51`, `TE53`
+to `TE61` and `TE66` to `TE78`. `TE76` to `TE78` came with the fifth
+review (above; `TE78`: a tag's opening before the range and its `>`
+after it stay text, the join makes no tag). The ten before them are new
+with the mapping:
+after bold, italic and struck text that ends in punctuation or is
+written with underscores, before one space and before two (`TE66` to
+`TE69`, the fourth review's class, in a raw quote and in a raw list's
+item); before a space and bold text that opens with punctuation (`TE70`,
+`TE71`); inside the address of a link the two halves make (`TE72`, the
+caret after the link, where the second reading sent it to the block's
+end); between the backslash of an escape and its character (`TE73`);
+inside inline code the two halves make (`TE74`); before a space and a
+link whose text holds an escaped bracket (`TE75`). The `TJ` rows: for 29
+shapes whose removal re-reads a raw block, each of 16 routes over the
+range must give the document, the tree and the caret that the route
+gives in a freshly loaded copy of what Delete saves, with the caret set
+at the joint by hand. That comparison carries no caret over from Delete,
+so it does not pass by two wrong carets agreeing. The `TJ` rows of `TE7`
+and `TE42` to `TE44` pass on the first code commit, and so do `TE58`'s:
+its joint is the end of its block. Two cells are no `TJ` row: Tab at a
+joint before inline code (`TE56`) and inside it (`TE74`), which `TS16`
+pins for the first (*Found along the way*, the tab's format). `TE60`,
+`TE61` and `TE73` have no `TJ` rows: the first two keep a space after
+their joint that a save trims, so what Delete saves, loaded anew, holds
+another node there, and the third's joint is inside the two characters
+of an escape, where a loaded document has no place; their shape rows and
+`TS17` pin them. `TP1` to `TP8` pin the same rule for an edit inside one
+raw block (below), `TL1` to `TL3` the fallback's shapes 1 and 2, and
+`TL4` that such text before the caret takes nothing from it.
+
+In `markdown-source-places.test.ts`, new: 330 rows on the mapping
+itself, which read Markdown as a raw block's text is read and ask for an
+offset's place. `SP1` to `SP6` are 96 places by kind (nothing changes
+sides; the formats; markers, indentation and line ends; between blocks;
+things shown as one, and the nearer end of a source node; code and raw
+blocks inside a block), `SP7` to `SP9` the fallback (`SP9` its shape 3;
+`SP7` holds the tab after a checkbox), with `SP8` for text of those
+kinds before the offset, `SP11` the link text that holds an escaped
+bracket, `SP12` a reference link whose definition stands in a block
+before its own, `SP13` the 195 places around what is no text (above),
+`SP14` the step that keeps a place out of a source node, and `SP10` the
+corpus comparison above, in which a place inside a source node's source
+is expected at that node's nearer end, where the mark shows inside it.
+
+What it changes outside this plan's ranges: the same rule runs when an
+ordinary edit makes a raw block show as its blocks, so the caret stays in
+place there too (the changelog's entry). Rows `TP1` to `TP8` pin that
+path, a selection inside one raw block deleted or typed over: the text
+shows as written; a quote's marker before the caret, deleted and typed
+over; a line end before it; the caret inside a quote's marker; between a
+quote's marker and bold text; inside a link's address, where the caret
+is now after the link (`TP6`, restated: it went to the block's end); and
+after italic text written with underscores, before a space (`TP8`, the
+fourth review's case of an ordinary edit). In the reviser's matrix eight
+cells change by the caret alone: Enter and Shift+Enter over `TE10` leave
+it after the break they made, where it was at the end of the block.
+
+**D3. Rows the plan does not have.** In the first code commit: `TE42` to
+`TE44` with their 54 route rows (D1), the 64 `TJ` rows of `TE7` and
+`TE42` to `TE44`, `TE50`, `TS14` and `TS15` (D4), `TE52` (*Found along
+the way*, the tag), `TS18` and `TU1` (the same section), and `TN1` to
+`TN18` and `TN21` to `TN24` with their five route rows and `TN14`
+(D11). In the second: `TE62` to `TE65`, the 15 route rows of `TE62`,
+`TS19` to `TS22`, `TX1` to `TX7` and `TN19` and `TN20` (D8); row `R32` of
+the table-edge file is restated there. In the third: the rows of the
+new `markdown-editor-typing-shortcuts.test.ts` (D10; the seventh round
+rewrote them, and they are 112 now). In the fourth:
+`TE45` to `TE49`, `TE51`, `TE53` to `TE61`, `TE66` to `TE78`, their 398
+`TJ` rows, `TP1` to `TP8`, `TL1` to `TL4`, `TK1` to `TK7`, `TS16` and
+`TS17`, and the 330 rows of the new `markdown-source-places.test.ts`
+(D2). The describe holds 821 tests, the plan's 185 among them.
+
+**D4. A fourth Shift+Enter result changes, which the plan's list of
+changed results does not name.** The plan judges Shift+Enter over a
+text-only-edge range before the removal, by the formula of the
+stale-focus range, and lists three results that change. The formula also
+declines a range from a level 3 to 6 heading to the *start* of a raw
+block or code block (a heading of those levels is one line). At the
+parent that range was removed and the break showed as a space
+(`### he \<div> raw text \</div>`); now nothing changes, as for the same
+range ending inside the raw block's word (`TS2`). Shape `TE50`, row
+`TS14`; `TS15` pins a paste of blocks over it, which is the plan's class
+"rules that run when an update ends" (`TS5`).
+
+**D5. The docs say more than the plan's text.** The plan's docs edit is
+word for word. Its changelog entry is word for word but for one sentence
+added before its last: that Shift+Enter now does nothing over a
+selection that ends at the start or the end of such a block with nothing
+to follow the caret, or that runs from a level 3 to 6 heading to such a
+block's start, where it used to remove the selection. The plan's entry
+names none of its Shift+Enter changes; the reviews said a key that stops
+acting should be named. Two entries follow it, one each for D8 and D2,
+and the component page has a sentence for D8 and for D2 in the paragraph
+the plan edits: what a raw block left holding nothing becomes; and where
+the caret stands after a raw block shows as its blocks, which text it is
+in between two formats, and each shape of the fallback. Each is in the
+documentation commit of its code commit. D10 has no docs and D11 has
+none: against the parent D10 changes nothing a user sees (round 7: the
+fifth round's entry and sentence, which described a rule for every
+block, went with the rule), and no click makes the selection D11 is
+about. Sign-off 7.
+
+**D6. Where the harnesses ran, and one more.** The differential and the
+fuzz files ran on private archive copies of the two commits
+(`mkcopy.sh`), as on the edge-cases branch, so nothing was written into
+the worktree. The plan's two harnesses were run with the edge-cases
+copies of the reviser's scripts (`diff/proto/`), compared with the
+reviser's `rbrdiff.py` and `griddiff.py`. A third harness was written for
+this run, because the plan's 41 shapes hold one kind of raw block, cut in
+few places: the wide probe (*The differential check*).
+
+**D7. One comment in a test file the plan does not list.**
+`markdown-editor-table-edge.test.ts`, above row `D17`, said the row fails
+"when the table-edge delete listener runs after
+`$joinIntoTextOnlyBlock`". Neither is a listener of a range any more; the
+comment now names the order inside the removal.
+
+**D8. A raw block left holding nothing shows as an empty paragraph.**
+This is the second code commit and sign-off 9. The fourth review found
+that a range which takes all of a raw block (`"<div>"`@0 → the end of a
+later block) left a raw block of no text. A save writes nothing for one
+and a reload shows another tree; the parent does the same for Delete,
+Enter and Tab. The branch had added two things to it: Shift+Enter left a
+raw block holding only a line break (the parent declined it), and a
+paste of formatted nodes went in as plain text where, for a backward
+range, the parent kept the bold.
+
+What the editor does already, measured before the change
+(`r4/empty-parent.txt`, `r4/empty-branch.txt`): a selection of all a raw
+block holds, deleted inside the block, leaves the same raw block of no
+text, on the parent too; a character typed into it makes it a paragraph
+at once, by the rule that shows a raw block as its text reads; Backspace
+in an emptied code block makes it a paragraph; an emptied code block
+stays a code block, which Markdown writes (a fence with nothing in it).
+So the paragraph is what the editor already makes of such a block as
+soon as it holds a character, and an empty paragraph is what it holds a
+document of no blocks as.
+
+The rule is one more step of `$showRawBlockAsSaved`, the function that
+shows a raw block as its save reads
+(`$showBlankRawBlockAsParagraph`, `markdownWritable.ts`): a raw block
+whose text is blank is replaced by a paragraph holding what it held, the
+caret with it. It runs where the other steps run: as a transform when a
+raw block's text changes, and inside the removal. So it holds for every
+way a raw block is emptied, a selection inside the block as well as a
+range that runs on (`TX2` to `TX7`), and what is typed or pasted next is
+rich text (`TE62`'s rows: a paste of bold nodes stays bold in both
+directions). An emptied code block is unchanged.
+
+Shift+Enter: a break would be all such a paragraph holds, which no save
+writes, so it is declined before anything is removed, as over any other
+selection: over a range that starts at the very start of a raw block and
+has nothing follow its end (`$rawBlockEmptiedFrom`, in
+`$joiningRemovalDeclinesLineBreak`; rows `TS19` to `TS22`), and over a
+selection that covers all one raw block holds (`$coversAllOfRawBlock`,
+in the line-break rules' `$declinesLineBreak`; row `TX5`). At the parent
+the first was declined too and the second left the raw block holding the
+break.
+
+Rows: shapes `TE62` to `TE65` (a raw block's start → a later block's
+end; the same with nothing left of the document; the raw block of a list
+item; two raw blocks, both emptied), each typed over and deleted in both
+directions; the 15 routes of `TE62`, each in both directions and both
+dispatch contexts with one undo; `TX1` (after Delete no raw block is
+left and the caret is in the empty paragraph, for the four shapes).
+`R32` of `markdown-editor-table-edge.test.ts` pinned the empty raw block
+after a range from a table cell to a raw block's end; it now expects the
+paragraph. No other existing row changed.
+
+The plan that follows does not rely on an emptied raw block (see the
+last section).
+
+**D9. Two subsections added to the plan's *Architecture Decisions*.**
+"The caret after a re-read is placed by source offsets", marked as added
+at implementation: the coordinator asked for the reason a module of the
+source-mode side is used from the WYSIWYG side to stand there, and D2
+has it at length. And "A removal the editor makes itself completes no typing
+shortcut", marked the same way, for D10.
+
+**D10. A removal the editor makes itself completes no Markdown typing
+shortcut.** This is the third code commit and sign-off 11. The plan does
+not have it; the fifth review asked for it, after the caret's new place
+(D2) let a removal complete a shortcut. The fifth round made it the rule
+"a shortcut is applied for typed text only", with tags for what is no
+typing; the sixth review found that rule wrong for a character committed
+by an input method or a dead key on desktop WebKit, and the user chose
+the narrower one below (round 7). The general rule is the plan
+`markdown-editor-typing-shortcuts-only-for-typing`, the next branch on
+top of this one.
+
+*What happened.* `registerMarkdownShortcuts` (Lexical) has no notion of
+typing. Its update listener takes any update that leaves a collapsed
+caret in changed text, at most one character further on than it was,
+for a typed character, and reads the text before the caret for a
+shortcut. A deletion is such an update, and so is the removal of a
+range. After a range from a raw block was removed the parent's caret was
+at the end of the block, and nothing applied. With D2 the caret is at the
+joint, and escaped text right before it became formatting, as an update
+of its own: for Delete, Backspace, a word delete, `REMOVE_TEXT_COMMAND`
+and `cut()` alike, so one undo did not bring the removed text back.
+
+*The rule.* An update in which the editor removes a guarded range for a
+route that inserts no text completes no shortcut. `$removeGuardedRangeAsDeletion`
+(`MarkdownEditor.ts`) calls `$removeGuardedRange` and tags the update
+`GUARDED_DELETION_TAG` when it removed one; the delete commands'
+listener, the native cut's removal, `cut()`, Enter, the paragraph
+command and the line-break command use it (the paragraph command tags
+after its own call, which the insert routes share), and
+`registerMarkdownShortcutsOutsideRawBlocks` does not hand Lexical's
+listener an update that carries the tag. A route that inserts text over
+the range (typing, an input method, a paste, a drop, Tab) does not tag,
+so what it types or pastes is the update's, as over any other range:
+nothing is classified as "not typing", no command's payload is read, and
+`cut()` has no tag of its own again. The wide probe found the first
+version of this, which tagged the removal-only routes, short of Shift+Enter
+at a block's end: the line break is dropped there, and the shortcut then
+applied to what the removal left (`TK8`).
+
+*What is not covered, and is as at the parent.*
+
+- A deletion or a cut in an ordinary paragraph, or any range Lexical
+  removes by itself, completes a shortcut when the text left before the
+  caret reads as its syntax: `\- .cd` with the `.` deleted becomes a list
+  item, as a second undo step. The branch does not fix it. Rows `TY5`
+  pin it, over the 14 kinds, six removals and both contexts. It is the
+  plan `markdown-editor-typing-shortcuts-only-for-typing`.
+- Pasting or dropping the one character that completes a shortcut's
+  syntax applies it, as at the parent (`TY4`).
+- One shape differs from the parent. A range inside a single raw block is
+  no guarded range, so Lexical removes it; when the block then reads as a
+  quote and the caret stands at the joint (D2), right behind text that
+  reads as a shortcut, the shortcut applies (`> a \*x\*.` with the rest
+  of the range removed gives `> a *x*q2`, `TK6`). The parent's caret went
+  to the end of the block there and nothing applied. It is the same
+  defect as the paragraph's, reached through D2's caret; the next plan
+  removes it. It is listed in the round 7 section.
+
+*Collision with the next plan.* That plan registers the update tag of
+typing and marks nothing as "not typing". Its step 2 removes what this
+leaves for it: `GUARDED_DELETION_TAG`, the helper and its three callers
+(the check in the shortcut wrapper goes with the tag), `TY1`, `TY1b` and
+`TY5`, which that plan replaces whole. `TY2`, `TY3`, `TY4` and `TY6`
+(typing, a browser's own typing, a paste or drop, the end of a
+composition) hold under both.
+
+*Rows.* `markdown-editor-typing-shortcuts.test.ts`, new: 112 rows over 14
+kinds of shortcut (italic, bold, inline code, strikethrough, underline,
+a link, three bullets, a list number, two headings, a quote, a code
+fence), each as escaped text that reads as the syntax once one character
+is gone. `TY1`: a range from that character into a raw block's text,
+removed by Delete, Backspace, a word or line delete,
+`REMOVE_TEXT_COMMAND`, `cut()` and the native cut, forward and backward,
+inside an update and outside, saves the text with its escapes joined to
+the raw block's rest, and one undo restores the document. `TY1c`: Enter,
+the paragraph command and the line break over it keep the escapes too. `TY1b`: the
+character that completes the syntax, typed over such a range, gives what
+typing it after the removal gives. `TY2`: typed after a removal, it
+applies the shortcut; one undo takes the shortcut back, a second the
+character. `TY3`: the same character put in by an update with no tag, as
+a browser's own input is, applies it too. `TY4`: pasted or dropped, it
+applies it. `TY5`: a removal in an ordinary paragraph applies it.
+`TY6`: the end of a composition applies it. On the parent `TY1` fails for
+every kind (14 of the 112). With the tag not set, `TY1` fails; `TK1` to
+`TK5` too. `TK8`: Enter, a line break and a paragraph over a range that
+ends at a block's end; the line break fails without the tag. `TK1` to `TK5` in the crash test file are the review's own
+shapes (escaped emphasis, an escaped bullet, heading marker and list
+number, asterisks the joined text writes as text), each through the five
+removal routes in both directions and both dispatch contexts, with the
+saved document, the reload and one undo. The rows read the document
+after flushing the editor's pending updates: a shortcut's update is
+queued when the edit is committed, and a first read alone does not show
+it.
+
+**D11. An end held as a point on a container is settled into text
+before a route reads the range.** Part of the first code commit;
+sign-off 12. The fifth review found that a range from inside a raw
+block to an element point on a list before its first item (`"raw"`@1 →
+the list node at offset 0, in `<div>⏎raw⏎</div>⏎⏎- la⏎- lb⏎⏎after`)
+threw on every route of the branch
+(`insertAfter: list node is not parent of list item node`); at the
+parent Delete and Enter threw, and the other routes went on. No click
+makes such a point; a selection made in code can hold one.
+
+*Why it threw.* The range is a text-only-edge range (one end in a raw
+block), and its removal takes the other end for a place in a block's
+text: it moves "the rest of the end's block" out, and the end's block
+is here the list itself. The plan made that removal the one every route
+takes, so every route threw.
+
+*The rule.* Before a route reads a range that has one end in a raw
+block or a code block and the other on a node that holds blocks,
+between its children (a list, a list item, a `:::` block, one of its
+columns, the document), that end is moved into the range: the range's
+start to the start of the first block of text at or after it, its end
+to the end of the last block of text at or before it, and each is then
+named as a point in text (`$settleTextOnlyEdgeEnds`, `MarkdownEditor.ts`,
+by `$settleRangeEndsInward` and `$moveBlockPointsIntoText`, which the
+block commands settle their selection with already). The range is then
+the text range a reader sees, and every route gives what it gives for
+that range. It runs in two places: at the start of
+`$removeGuardedRange`, for a route that is no command (`cut()`,
+`paste()`), and as the first listener at `COMMAND_PRIORITY_CRITICAL` of
+every command that has a guard (`$settleSelectionBeforeGuard`), and of
+`KEY_ENTER_COMMAND`, whose handler for a raw block reads the range
+before any guard does. So each listener after it, a guard or a decline,
+reads a settled range.
+
+What follows from the rule, and is pinned:
+
+- A range whose end stands right after its raw block (a list before its
+  first item, the document between the two blocks) is settled to the
+  raw block's end: nothing of the list is in it, and no route touches
+  the list. At the parent the routes that did not throw gave the same.
+- A range that is empty once settled is a caret, and every route acts
+  as at a caret there.
+- A command that is declined leaves the same range, held as points in
+  text (Shift+Enter over a range that would leave nothing but the
+  break). `insertImage` and `insertTable`, which decline any range that
+  touches a raw block before they read it further, leave the selection
+  as it was handed over.
+- A point on a table, a row or a cell is left as it is. It is inside
+  the table, so the range is a table-edge range, which has its own
+  removal and reads such a point already (`$isTableEdgeRange` counts a
+  point on the table node as inside it): the range is removed with the
+  whole table, as the range to the text at that place inside the table
+  is, and as at the parent. `TN21` to `TN24`.
+
+*The Shift+Enter decline (the review's advisory finding).* The decline
+for a range that empties its raw block asks whether anything follows
+the range's end in the end's block (`$joiningRemovalDeclinesLineBreak`).
+For an end on a list that question had no block to be asked in. The
+listener that settles the range runs before the one that asks, so the
+end stands in a block of text; the function's JSDoc now says so.
+
+*The sweep.* `r5/zz-r5-points.test.ts`: 19 documents (a raw block, a
+raw quote or a code block before and after a list, a `:::` block, a
+list item of three blocks, a nested list and a table; a raw block
+inside a list item; the range from the raw block's very start, to its
+very end, and with nothing after the list), every element point on
+every node that holds blocks in them (the document, lists, list items,
+`:::` blocks, columns, tables, rows, cells), 19 routes, both directions,
+both dispatch contexts: 19,608 cells. Each is run twice: with the
+element point, and with the text point in its place — for a list, a
+list item, a `:::` block, a column and the document the end of the text
+before the point (the start of the text after it, where the point is
+the range's start); for a table, a row and a cell the text at that
+place inside the table.
+
+| | Cells |
+|---|---|
+| the outcome is the text-point range's — the save, the nodes, the selection — for a point on a list, a list item, a `:::` block, a column or the document | 15,660 |
+| the same for a point on a table, a row or a cell | 3,672 |
+| the native cut, which needs a browser's clipboard, on both sides alike | 204 |
+| the range is empty: a caret, whose Delete needs a browser's selection, on both sides alike | 72 |
+| a throw, one undo that does not restore, a save that does not read as shown where the text-point range's does, or any other difference | **0** |
+
+For `insertImage` and `insertTable`, which decline, the selection is
+left out of the comparison: it stays as it was handed over. Delete and
+Backspace give, in all 2,016 cells that have one, what the *parent's*
+Delete gives for the text-point range (the save, and the tree but for
+D8). 104 cells hold a document that does not read as shown on either
+side: a raw quote the range did not touch shows its source.
+
+On the parent the same sweep throws in 136 cells
+(`r5/points-P5.json`).
+
+*Rows.* `TN1` to `TN24` in the crash test file: 23 element points (a
+list before, between and after its items; a list item; the document; a
+`:::` block and a column; a list before the raw block; a code block; a
+list item of several blocks; the raw block's very start; a table, a row
+and a cell), each through 18 routes in both directions and both
+dispatch contexts, against the same range with text points: the saved
+document, the nodes and the selection are the same, and the save reads
+as shown. Five routes over the review's own range with their documents
+and one undo; and `TN14`, the native cut. On the fourth review's code
+20 of them fail, on the parent 23.
+
+*For `plans/markdown-editor-table-command-fixes.md`, part D* ("one rule
+moves such a selection point to a caret position before a command
+acts"): what is here is narrower than that rule and built so that it
+can be taken over by it. `$settleTextOnlyEdgeEnds` acts only on a range
+with one end in a raw block or a code block, and leaves a table-edge
+range alone; it uses the two functions the block commands already
+settle with, and adds none. A rule for every command and every
+selection can replace it by settling in the same listener
+(`$settleSelectionBeforeGuard`, first at `COMMAND_PRIORITY_CRITICAL` of
+each command in `registerRangeGuards`) and dropping the two conditions;
+`$removeGuardedRange`'s own call is then only for the routes that are
+no command. What part D has to decide and this plan did not: a point on
+a table, a row or a cell from outside the table (today: inside the
+table, so the whole table goes), a caret (today: the block commands'
+`$settleCaretIntoBlockOfText`), and a range with no end in a text-only
+block.
+
+### Found along the way, not changed
+
+- **Enter over a range from a raw block is Delete, then Enter, also
+  where the parent's line break read better.** This is the plan's
+  decision (*Enter in a raw block uses the same removal*), and the
+  reviewer-7 fuzz has one record of it; see *The fuzz* and sign-off 2.
+- **The update tag on the removal: the plan's decision does not hold, and
+  the branch no longer sets it.** The plan tags the removal's update as
+  Delete's command is tagged (`RUN_EDGE_TAG`). The fifth round kept
+  the tag and measured one effect, outside an update (typing over a range
+  that starts after a space in a formatted run). The sixth review found
+  more: the tag sends every route over the range through the rule that
+  tidies each changed block whole, typing and Tab among them, and that
+  rule strips the mark from a link's text elsewhere in the block when a
+  letter follows the link. `x [**b**](/u)yz and more` and `QZ 7Y`, with the
+  range from `and m│ore` to `QZ│` and `x` typed inside an update, saved
+  `[b](/u)` where the parent saved `[**b**](/u)`, in a document with no raw
+  block. Delete, paste and Enter lose the mark at the parent already; the
+  branch had newly sent typing and Tab through it, for the parent's two
+  shapes too. The earlier sign-off said no result inside an update
+  changes with the tag; the probe held twelve shapes, none with a link
+  and a letter after it. Round 7: `$removeGuardedRange` sets no tag. A
+  route that was tagged at the parent is tagged now by what tagged it
+  then: the delete commands, the paste commands, the cut command, the
+  drop, Enter and Shift+Enter (`registerRunEdgeRules`, at the critical
+  priority), and `insertImage`. Typing, the composition's start and Tab
+  are tagged by nothing, and are tidied where the caret is, as typing
+  over any range is. Outside an update the removal's update no longer
+  ends before the text is typed with the tag on it, so the two contexts
+  give the same document again: `TS18` now says so, and `TS19` pins the
+  link (`TE82`, a document with no raw block, and `TE83`, a raw list).
+  One route changes by it: `cut()`, the method, carried no tag at the
+  parent either (the cut key's command does), and does not tidy; `TE71`
+  has no `cut()` row among the joint rows for that reason.- **The plan's two classes of difference from Delete, then the route
+  have more triggers than it names.** For that same shape the typed text
+  is bold and Delete, then typing gives it plain (`**cd** xw text`): the
+  plan's class "the format of typed and pasted plain text", which it
+  describes for a range that starts at the very start of a formatted
+  run; here the range starts after a space of the run, which the
+  deletion's tidying then takes the format off. A paste of bold `zp`
+  gives `**cd zp**` where Delete, then the paste gives `**cd** **zp**`:
+  the plan's class "rules that run when an update ends". The wide
+  probe's ranges start in no such place, so its count of cells outside
+  the classes is zero for the places it holds.
+- **A tab takes the caret's format, and the removal sets that for typed
+  and pasted text only.** Lexical's `INSERT_TAB_COMMAND` handler gives
+  the tab the selection's format. After Delete a browser's selection
+  change gives the caret the format of the text it stands in; the guard
+  does that for typed and pasted text (the plan's
+  `$removeGuardedRangeBeforeText`) and not for Tab, at the parent's two
+  shapes either. It shows where the caret lands at the start of inline
+  code: Tab over `TE56`'s range puts the tab before the code, where
+  Delete, then Tab puts it inside (`` `⇥code` ``). `TS16` pins it. It is
+  one more member of the plan's class "the format of typed and pasted
+  plain text".
+- **A typed character that completes a typing shortcut is two undo
+  steps.** `---` and `after word`, with the range from inside the break
+  to inside the word and a space typed in a browser's way: the removal
+  shows the raw block as the paragraph `-ter word`, the space makes it
+  `- ter word`, and the list shortcut then applies as an update of its
+  own, as it does for any typed shortcut. One undo gives `\- ter word`,
+  a second the source. The parent, which typed into the raw block, took
+  one. The document is what Delete, then the space gives. The plan's
+  rows type `x`, which completes no shortcut. Row `TU1`; sign-off 8.
+- **A typing shortcut ran after a deletion.** At the parent a deletion
+  that left the caret right behind text reading as a typing shortcut
+  applied the shortcut, as a second update: `a \*x\*.b` with the `.`
+  selected, Delete, gave `a *x*b` in italics, and one undo brought back
+  `a \*x\*b`, not the document. With the caret at the joint (D2) the
+  same happened after a range from a raw block was removed, where the
+  parent's caret was at the block's end and nothing applied. The
+  branch stops it for the removals it makes itself (D10, round 7) and not
+  for the parent's case, which stays (`TY5`).
+- **Lexical's Enter shortcut takes a caret behind a marker, typed or
+  not.** `registerMarkdownShortcuts` has a second way in, a handler of
+  the Enter key: with a caret at the end of a block's first text node,
+  and that text reading as a list, heading, quote or fence marker, Enter
+  makes the block that kind of block instead of starting a paragraph.
+  It asks for a caret, so Enter over a selection never meets it, with a
+  raw block or without. After a range is removed up to such text
+  (`> \- w⏎>⏎> q2`, from after `\- ` on), Enter over the range starts a
+  paragraph (`> \-` and an empty paragraph, as at the parent), and
+  Delete, then Enter makes the quote a list item. It is one more case
+  where the route differs from Delete, then the route, in none of the
+  plan's classes: 192 cells of the wide probe's new blocks, row
+  `TK7`, sign-off 13. Nothing was changed: the handler is Lexical's, the
+  key is typed, and it is the same in a paragraph that never was a raw
+  block.
+- **Delete's update tidies a run's edge that a route would have moved
+  away from.** `> a ~~s.~~ w…` and `ab **cd** ef`, with the range from
+  after `~~s.~~` into the bold: Delete leaves struck `s.` right before
+  bold `d`, and the run-edge rule, which judges a run's last character
+  against the next character shown, takes the strikethrough off the
+  `.` (`~~s~~.**d**`), although `~~s.~~**d**` would read the same.
+  Tab, Shift+Enter and a new paragraph over the range put something
+  between the two first and keep `~~s.~~`. It is the plan's class
+  "rules that run when an update ends" (16 cells). The same
+  rule is why Delete dispatched outside an update differs from the
+  parent's there in 8 cells and equals the parent's Delete
+  inside an update: the removal tags its own update (sign-off 5).
+- **A character typed inside a source node replaces the node.** A source
+  node (a task item's checkbox, inline HTML) is kept as written and
+  takes no typing: with the caret set inside one, `- [x] next` and `Z`
+  typed save `- Znext`, at the parent as here. Nothing was changed in
+  that; the caret a re-read leaves is kept out of such a node (D2).
+- **An update's listeners run when it is committed, and a command
+  dispatched outside an update is committed by the next read.** A typing
+  shortcut is an update its listener starts, so a harness that reads the
+  document once after such a dispatch does not see it. The rows `TY`
+  and `TK` and every harness of the fifth round read after flushing.
+- **Where there is no place for the caret** (D2, *The fallback*), a
+  route still inserts at the end of the block. No cell of the widened
+  sweep and no shape of the wide probe reaches it; rows `TL1` to `TL3`
+  and `SP7` do, by an edit inside one raw block.
+- **A caret between the backslash of an escape and its character.** A
+  range that starts right after a backslash and ends before text that
+  opens with a character Markdown escapes joins the two as an escape:
+  `> esc \` and `*e`, saved by the join as `\*e`, give `\\*e`, which
+  shows `\*e`. The backslash that shows is written by the two together,
+  and the caret is put before it (`TE73`); a mark put between the two
+  would show after it. It is the one place where the mapping and a mark
+  that reads the same differ (11 pairs of D2's table).
+- **In a browser, a caret between two text nodes is Lexical's to
+  resolve.** After Delete the removal leaves the caret at the start of
+  the plain text that follows bold text (`TE66`: before ` next`). A
+  browser's selection change then makes Lexical resolve that boundary to
+  the end of the text before it, as for any caret between two text nodes
+  in any block, so a character typed *after Delete* there is bold. Typed
+  over the range, it is plain, by the format the removal gives the caret
+  for typed text. This is the plan's class "the format of typed and
+  pasted plain text", seen in the browser checks; the unit rows compare
+  with the format of the text the caret is set in.
+- **One of two spaces after a quote's marker shows, and a save trims
+  it.** `> q1⏎>⏎> q2` and `end.  Next`, with the range from after the
+  first `>` to before the two spaces: Delete leaves a quote whose text
+  node reads ` Next`, saved as `> Next`. The parent's Delete gives the
+  same tree and the same save (`adhoc/controls7-P.json`), and the checks
+  that the save reads as shown and reloads to itself pass on both sides.
+  It is why `TE60` and `TE61` have no `TJ` rows (D2).
+- **A space that the joined line's marker takes.** A range from right
+  after a quote's `>` to before *one* space leaves `> cd`: the space is
+  the marker's now and shows nothing, so what is typed stands right
+  before `cd` (`TE51`: `> xcd`). The parent typed into the raw text and
+  gave `X cd`, the typed character making the space show. What Delete
+  saves is the same on both sides, and the route is Delete, then the
+  route; with two spaces one still shows, and it stays after the caret
+  (`TE60`).
+- **Tab over a code block of a list item** fails the viewer check with
+  and without the range (the plan's Non-Goal): the matrix's four `E39`
+  cells, as at the parent.
+- **In the demo, the Tab key leaves the editor.** Nothing in the demo
+  binds it, so M3 and M10 dispatch `INSERT_TAB_COMMAND` on the editor.
+- **Lexical's `updateEditorSync … read-only context` warning** is logged
+  when the source-mode toggle runs while a table selection is held. The
+  stack is the commit's selection sync, not a range guard. The notes of
+  the two plans before this one report the same warning.
+
+### Round 7: the sixth review's four findings, and what was checked again
+
+The sixth review (tip `5ca27085a`) found four blocking defects. The user
+chose how each is closed; the code is in the commits of the code they
+belong to, and nothing was redesigned. The commits are folded; the tip
+before this round was `29f5cdb2c`.
+
+| # | Finding | The rule as implemented | Where | Rows |
+|---|---|---|---|---|
+| B1 | A character committed by an input method or a dead key completed no shortcut on desktop WebKit | A removal the editor makes itself by a route that inserts no text completes no shortcut, and nothing else is classified as no typing: the three typing tags, `isTypedUpdate`, `caretTextGrew` and the tag on `cut()` are gone; `GUARDED_DELETION_TAG` is set by `$removeGuardedRangeAsDeletion` (the delete commands, the native cut, `cut()`, Enter, the paragraph and the line-break commands, the routes that insert no text) and the wrapper skips an update that carries it | the third code commit | `TY1` to `TY6` rewritten (112 rows; `TY4` has the composition commit and the replacement text), `TK6`, `TK8` |
+| B2 | A caret in a list item or table cell that shows nothing went to the text of a neighbour | `$emptyBlockAt` gives the place in the item or cell itself, when the block shows something elsewhere and the source and the block agree on how many items (or tables) there are | the fourth code commit | `SP15`, `TE79` to `TE81`, `TC` rows of those |
+| B3 | Typing over a guarded range dropped a link's mark elsewhere in the block, in a document with no raw block | `$removeGuardedRange` sets no `RUN_EDGE_TAG`; a route carries it if and only if it carried it at the parent | the first code commit | `TE82`, `TE83`, `TS18` rewritten, `TS19` |
+| B4 | A tab between the words of a raw list item is a fallback shape that no doc or row named | named in the component page, the changelog, the fallback list above, and pinned | the docs and tests of the fourth code commit | `SP7` (7 rows), `TL5`; `SP8` and `TL4` say "earlier line or item" |
+
+The repros of B1 to B3 now give the parent's result (B2: what Delete, then the
+route gives); B4's is the fallback it is, pinned (`- a⇥b w⏎  > q⏎- b` with `QZ 7Y`: the
+caret goes to the end of the block, where the parent kept it after `w`). The rows
+that are red on the tip before the round: 45 of the 1,495 tests of the three files that changed fail on the code of `29f5cdb2c`: `SP15` 8, `TE79` to `TE81`, `TE82`, `TE83`, `TS18`, `TS19` 2, `TY4` 14, `TY5` 14 and `TK6`; `TY1` and `TK8` pass there, which the earlier rule covered, and `SP7`, `SP8` and `TL5` pin what the code did already (B4 is a statement of a fallback). On the parent `TY1` fails for every kind, and the rest of the typing-shortcut file passes.
+
+*The read-only overlap.* The notes of
+`markdown-editor-readonly-keyboard-selection` ("For the plans that
+follow") list the regions both branches touch. This branch changes none of
+`copy()`, `copyWysiwygSelection`, `refuseIfReadOnly` or the view restore:
+its only edit to a method of the class is `cut()`'s body, and the class's
+other hunks are in the module-level functions. It registers no command of
+its own; every command its guards listen to is in
+`READ_ONLY_REFUSED_COMMANDS` (the delete commands, `REMOVE_TEXT_COMMAND`,
+`CONTROLLED_TEXT_INSERTION_COMMAND`, the paragraph, line-break and tab
+commands, `PASTE_COMMAND`, `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND`,
+`CUT_COMMAND`, `DROP_COMMAND`, `KEY_ENTER_COMMAND`, `KEY_BACKSPACE_COMMAND`
+and `KEY_DELETE_COMMAND`), except `COPY_COMMAND`, which the read-only list
+allows and whose table-edge listener only reads. The refusal runs at
+`COMMAND_PRIORITY_BEFORE_CRITICAL`, ahead of every guard here. The methods
+`cut()`, `paste()`, `insertImage` and `insertTable` refuse first. Rows
+`TRO`: 5 shapes (`TE1` and `TE5`, a raw block into a rich word and into a
+rich block's end; `TE30`, into a table cell; `TE31`, a table cell into a raw
+block; `TE62`, a raw block emptied) by 19 routes, both
+directions, in a read-only editor: the document, the root's children and
+the selection stay as they were and `"readonlyedit"` fires. The update
+listener of the shortcut wrapper reads no root, and the rule that
+re-reads a raw block is a node transform, which does not run when a
+read-only editor's view is put back.
+
+*Advisories.* Fixed: the `Shift+Enter` limit at a table (the docs said
+"does nothing"; the selection is removed with the table, no break: docs,
+changelog, row `TX6`); the space that ends the text before a range goes
+with it where nothing follows (the docs say so, and `TE58`'s name); the
+literal `Math.max(length, 1)` of the places module is a named constant in
+a helper (`ownBlocks`); `caretTextGrew` is gone with the rule it served.
+Left, with the reason: D8's decline for a range from a raw block's start
+into a table is not made (it needs a judgment of what follows the table
+that is removed with the range, which no other decline makes, and so is a
+change of its own); `cut()`, the
+method, carries no run-edge tag as at the parent, so it does not tidy as
+the cut key's command does (`TE71` has no `cut()` joint row).
+
+*Found while checking, left.* A range inside one raw block that makes the
+block read as a quote, with the caret right behind text that reads as a
+shortcut, completes the shortcut (`TK6`): the parent's caret was at the
+block's end there. It follows from D10's rule as chosen; the next plan
+removes it.
+
+*Checked again.* `npm run typecheck`, `typecheck:test` and `lint` are clean; `docs:api` gives no warning; `docs:llms:check` passes; `build:lib` builds. The full suite: 590 files, 20,761 tests pass, 2 todo, none fails (`r7/full-test2.json`, four workers); it was 20,591 before the round. Each code commit's source type-checks alone (the four commits, in archive copies).
+
+- The route matrix and the cross-item grid (`ec-matrix-*`, `ec-grid-*`; 3,192 cells and 26,928 records): re-baselined on the new parent (`feature/nested-scroll-reveal`, which sits on a longer stack since 2026-10-12). Its results equal the old parent's cell for cell, so the fifth round's baselines were good. On the tip: 0 of 3,116 guarded cells fail, where the parent fails 1,148; no throw, no undo failure; both files equal the fifth round's tip cell for cell, since no shape of the matrix reaches the round's changes.
+- The places probe (66,976 cells, one process): `placesdiff.py` hard checks none; equal to the fifth round's tip cell for cell (3,500 `emptyRaw` shape changes, as before), because the probe's raw blocks have no list item or table cell that shows nothing beside text.
+- The wide probe, cut to the chunks 0 to 5 of 24 (75,584 of 303,360 cells, 74,304 guarded), on the new parent and on the tip: no throw (H1), no save the plan does not name (H2), no declined key that acted (H4), no save that fails to read as shown or to reload where the parent's passes (H5), no neighbouring block changed (H7). The lines that fail are all of two kinds. *The parent's own defect, as it was*: a deletion or cut in an ordinary paragraph completes a shortcut, so one undo is not enough (`H3 … [nor at the parent]`: 216 cells), and the control "Delete, then the route" completes one in its second step where the route does not (`H6`, 304 cells; 240 of them are cells unchanged from the parent). *The one shape that differs from the parent, D10*: a range inside one raw quote that leaves the caret right behind text reading as a shortcut (`H8` with `H3`: 45 cells of 3 scenarios, `TK6`). The fifth round had none of either, with its general rule. In the first chunk, before the Enter, line-break and paragraph routes were tagged (D10), 20 Shift+Enter cells were more, which is how the tag came to cover them (`TK8`).
+- The fuzz, cut to two seeds of each family (601 and 1709 for the column paste and the table edge, both strict and not, 3,000 steps; the list edit, 1,500 steps; seeds 11 and 23 for the reviewer-7 fuzz, 3,000 steps): every file equals the fifth round's, record for record. Not run: the other nine seeds of the first four, the other three seeds of the reviewer-7 fuzz, the list edit without the blank-edge exemption, the widened sweep, the element-point sweep and the browser checks. The reason is the limit of three test processes at once and the time the full sizes take (the wide probe alone is 40 minutes a side one chunk after another). None of those reaches code the round changed but through the wide probe and the matrix, which ran.
+- The rows beside that: `TRO`, the read-only rows (5 shapes by 19 routes, both directions).
+
+### Checks
+
+The numbers in this section and in the next four were measured on the
+code of the fifth round, before round 7 changed three of the code commits;
+*Round 7* above has what was run again.
+
+From `packages/lib`, on the final code:
+
+- `npm run typecheck`, `npm run typecheck:test`, `npm run lint`: clean.
+- `npm test`: 559 files, 18,984 tests pass, 2 todo, none fails
+  (`logs/r5-full-test.json`, three workers). The parent has 17,749 and
+  the same 2. The 1,235 new ones are the new `describe` of
+  `markdown-editor-command-crashes.test.ts` (90 to 911 tests: 78
+  shapes, 141 route rows, 22 `TS`, 49 `TC`, 462 `TJ`, 10 `TG`, 8 `TP`, 4
+  `TL`, 10 `TX`, 7 `TK`, 29 `TN` and `TU1`), the 330 rows of the new
+  `markdown-source-places.test.ts` and the 84 of the new
+  `markdown-editor-typing-shortcuts.test.ts`; `X14` and `R32` are
+  restated in place.
+- The two test files of step 2 run with no unhandled rejection.
+- The branch's test files on the parent's source: 622 of
+  1,327 tests fail: 578 of the crash test file (395 `TJ` rows, 83 shape
+  and route rows, 44 `TC`, 23 `TN`, 14 `TS`, 8 `TX`, 7 `TP`, `TK5`,
+  `TK7`, `TG8` and `TU1`), `X14`, `R32`, and 42 of the typing-shortcut
+  file, `TY1`, `TY4` and `TY5` for every kind
+  (`logs/r5-tests-on-parent.json`). The places file needs the new module
+  and cannot run there.
+- Each code commit alone type-checks, and the test files it changes
+  pass on it: 761 tests on the first (three files), 607 on the
+  second, 548 on the third (`logs/r5-own-cA.json`, `-cA2.json`,
+  `-cS.json`), and the whole suite on the fourth. The final crash test
+  file run on the first commit has 434 rows failing, on the second 420
+  and on the third 419: 382 `TJ` rows, the shape rows of D2's shapes,
+  `TP2` to `TP8`, `TL4`, `TS16` and `TS17`
+  (`logs/r5-final-on-cA.json`, `-cA2.json`, `-cS.json`). The 14 more on
+  the first are D8's; the one more on the second is `TK7`, whose second
+  half needs D10.
+- The rows of the fifth round on the code of the fourth review
+  (`cff0ddee0`): 159 of 1,325 fail
+  (`logs/r5-final-on-r4tip.json`): `TK1` to `TK7`; 20 of the 29 `TN`
+  rows (the nine that pass there are the four of a point on a table part
+  and five where the old removal happened to give the range of text's
+  result); `TE76` and `TE77` with 18 of their `TJ` rows; `TY1`, `TY4` and
+  `TY5` for every kind; and 70 rows of the places file (56 of `SP13`,
+  `SP14`, four of `SP5`, `SP10`).
+- Single changes of the new code, each run against the crash, the
+  table-edge, the places and the typing-shortcut test files
+  (`r5/mutate.py`, `r5/mutants.json`). The seventeen of the round
+  before are caught as they were, some by more rows now (*D8*: a blank
+  raw block left a raw block; Shift+Enter not declined ahead, nor over
+  all a raw block holds. *D2*: the blank rule taken out; the end of
+  the first of two text nodes taken whatever the format; a source node
+  not giving way; only a line end ending a block; a place given though
+  a unit after it has no source, or though the sources are out of
+  order; a code span's characters all at the span; a cell's paragraph
+  break not passed over; a raw block that no entry stands for not
+  found by its lines; a link text with an escaped bracket left without
+  source; a block read without the definitions before it; a source
+  node's characters all at its span. *The first commit*: the call of
+  `$keepAsEditorSelection` taken out). The one that had no row has
+  none now: a place given for an offset inside the source of several
+  characters that share it, kept as a guard. `$isPlainlyRemovedRange`
+  and the update tag taken out (`TG9`, `TS18`) were not run again;
+  neither is changed. Of the fifth round:
+  every update counted as typed (`TK1` to `TK7`, `TY1`, `TY4`, `TY5`); an
+  update with no tag counted as typed whether its text grew or not
+  (`TY5`); the typing tag not winning over a removal's (`TU1`); a
+  composition's end not counted (`TY6`); the delete commands not tagged
+  at the editor's priority (`TK6`); `cut()` without its tag (`TK6`); a
+  drop's or a paste's input event not tagged (`TY4`); a place inside a
+  source node left there (55 rows, `TE77` among them), or always moved
+  to the node's start (43 rows); a source node that shows nothing being
+  no unit (`SP5`, `SP10`, `SP13`); `$removeGuardedRange` not settling an
+  end on a container (14 of the `TN` rows); the commands not settling it
+  (`TN12`, `TN13`, `TN19`, `TN20`); a table-edge range settled too
+  (`TN21` to `TN24` and seven rows of the table-edge file). Three have no
+  row, and are kept for these reasons. The blank rule moving what is no
+  text: since the caret is kept out of source nodes, the place comes
+  out the same, so the condition the review asked for cannot be told
+  from outside the mapping; it stays, as the rule. The listener that
+  settles the selection a paste of nodes carries: the removal settles
+  the same range itself, and the listener is there so that every
+  command of the list has one. The step that keeps a caret counted
+  from the block's start out of a source node: no shape was found that
+  reaches it, since the text before such a caret has to show as
+  written. A fourth, a tag of the editor's own for the command that
+  inserts pasted nodes, had no row either, and was taken out: that
+  command is only ever dispatched inside an update, where the run-edge
+  rule's tag marks it.
+- `npm run docs:api`: no warning. `npm run docs:llms:check`: coverage OK.
+  `npm run build:lib`: builds.
+- The greps of steps 3, 6, 10 and 11 give what the plan says.
+
+No demo was added: the demo's MD Editor page already shows every block
+this plan touches, and no public signature changed.
+
+### The differential check
+
+Four harnesses, each run on a private copy of the parent and of the
+branch's final source (`runall-final.sh`, which runs them and the fuzz in
+turns of three test processes, the most the machine allowed; the results
+are `diff/*-P*.json` and `diff/*-c5.json`). The copy was made of
+`213577173`, a commit of the work in progress that is not on the branch
+any more. The tip's source differs from it in comments, and in one
+listener taken out afterwards, which set a second tag on an update that
+always carries the first (D10, and *Checks*). The wide probe, the two
+sweeps and the test suite were run again on the tip's source: the wide
+probe's 303,360 cells are the same, cell for cell (`diff/wide-c6.json`).
+
+| Harness | Cells | Parent: guarded cells failing | Branch | Hard checks |
+|---|---|---|---|---|
+| the route matrix of the plan (`zz-rbr-probe.test.ts`, `rbrdiff.py`) | 3,192; 3,116 guarded | 1,148 | 0 | none failed |
+| the cross-item grid (`zz-cir-probe.test.ts`, `griddiff.py`) | 26,928; 10,404 with an end in a raw block or code block | — | — | none failed |
+| a raw block at every place (`zz-ec-places.test.ts`, `placesdiff.py`) | 66,976 records | — | — | none failed |
+| the wide probe (`zz-re-wide.test.ts`, `widediff.py`) | 303,360; 297,344 guarded | 79,458 | 0 | none failed |
+
+**The matrix.** 1,156 cells differ from the parent: the 1,148 that failed
+there, and the eight of D2 (the caret alone). No Delete or Backspace cell
+differs in any field. One undo restores every cell, nothing throws, and
+the four cells whose save does not read as shown are Tab over `E39`, as
+at the parent.
+
+**The grid.** 867 cells differ from the parent: the 861 the plan gives,
+of the 10,404 with an end in a raw block or code block, and six of D8
+(`INSERT_PARAGRAPH_COMMAND` over a range that empties a raw block: the
+save is the same, and the emptied block is a paragraph). 18 cells fail a
+check on both sides alike (the tab in a code block of a list item).
+
+**The places probe.** 3,500 records differ from the parent, all of one
+edit, the one that deletes all a raw block holds: the save is the same
+and the shape is D8's, an empty paragraph where the parent kept a raw
+block of no text. The parent fails the probe's reload check in each of
+them, and the branch passes it. Every other field of every record is the
+parent's.
+
+The three are byte for byte the results of the run before the fifth
+review (`diff/*-c3.json`): none of them holds a shape the fifth round
+changed.
+
+**The wide probe**, as it was: nine kinds of raw text (a closed HTML
+block, a comment, a `<pre>` holding an empty line, a thematic break, a
+definition, a quote of two paragraphs, a tight list holding a quote, a
+table whose body row is longer than its header, an HTML block a blank
+line ends), each beside eight kinds of other block (a paragraph, a level
+3 and a level 1 heading, a quote, a list item, a code block, a table
+cell, another raw block), in both orders, with and without a block after
+them, the range from four places in the raw block to three in the other
+block; and five of the raw texts as a block of a list item or of a `:::`
+column, in seven arrangements: 3,980 scenarios.
+
+What the fifth review asked to be added, 760 scenarios more:
+
+- *Text before the joint that is escaped syntax, or that reads as a
+  typing shortcut* (564 scenarios): 25 texts — escaped emphasis and
+  strong text with `*` and with `_`, strikethrough, inline code,
+  underline, a link, the three bullets, a list number, two headings, a
+  quote marker, two task markers, a fence, two thematic breaks; and bold,
+  italic (both spellings), inline code and strikethrough as real
+  formatting that ends at the joint — each as a raw quote's first line
+  and as a raw list's, with the range to three places in a paragraph,
+  in a paragraph that holds bold text and in a list item; inside one raw
+  block; in an HTML block; and as a paragraph's own text, with the range
+  into an HTML block and into a raw quote after it.
+- *Task items* (48): the joint right after the checkbox and its space,
+  in the first item and in a later one, in an ordered list, with an
+  upper-case `X`, and between the checkbox and its space.
+- *An end held as a point on a container* (148): a raw block, a raw
+  quote and a code block before and after a list, a `:::` block, a
+  table and a list item of three blocks, the point on the list, an
+  item, the block, a column, the table, a row, a cell and the document.
+
+159 scenarios are left out and listed by the probe: their raw text joins
+a neighbour at load (a raw list before a list item, for the most part).
+Each scenario runs in both drag directions through the 19 routes in both
+dispatch contexts. For every cell it records what the route gives, what
+Delete gives, and what Delete and then the route give: the save, the
+tree, the caret, the parity and reload checks, one undo, what one undo
+left where it did not restore, and the text that follows the caret.
+Every value is read after the editor's pending updates are flushed.
+
+| Hard check of `widediff.py` | Cells |
+|---|---|
+| a throw | 0 |
+| Delete or Backspace saves another document than at the parent, or another tree, outside the four named changes below | 0 |
+| one undo does not restore, **Delete and Backspace included**, whatever it does at the parent | 0 |
+| a route other than Shift+Enter that acted at the parent does nothing | 0 |
+| the save does not read as shown, or does not reload to itself, where the parent's own document or the control's does, Delete and Backspace included | 0 |
+| a route differs from Delete, then the route, outside the classes below | 0 |
+| the block after the range is saved differently than in the control | 0 |
+| a range inside one raw block saves another document than at the parent, but where the parent completed a typing shortcut | 0 of 3,200 |
+| a cell that is not guarded differs from the parent | 0 of 768 |
+
+The check of the save reading as shown cannot be absolute: a document
+that still holds a raw quote, list or table shows its source where the
+viewer shows the blocks, at the parent as here (9,127 cells whose
+document is the parent's own, 5,163 the control's).
+
+Counted, and read by class. Delete and Backspace against the parent:
+
+| Class | Cells | What it is |
+|---|---|---|
+| an empty paragraph where the parent left a raw block of no text, the save the same | 2,464 | D8 |
+| the parent completed a typing shortcut after the removal: two undo steps there, and its document one undo back is the branch's | 912 | D10: a paragraph that ends in escaped syntax, the range from there into a raw block |
+| the same inside one raw block | 264 | D10 |
+| an end held as a point on a container: the parent gave another document, or threw | 284 | D11; the element-point sweep compares these with the range of text |
+| outside an update the document is the one the parent's Delete gives *inside* an update | 8 | sign-off 5: the removal tags its update, so the block is tidied in both contexts (*Found along the way*) |
+| the caret elsewhere, the document the same | 2,712 | D2: at the joint, where the parent had it at the block's end |
+
+The other routes, against Delete, then the route:
+
+| Class | Cells | What it is |
+|---|---|---|
+| Shift+Enter declined now, where the parent removed the selection and added no break | 1,770 | the plan's second changed result, and D8 for a range from a raw block's start |
+| … where the parent also completed a typing shortcut | 110 | D10 |
+| … where the parent's break showed as a space | 144 | D4 |
+| … where the parent read an end held as a point on a container otherwise | 28 | D11 |
+| Shift+Enter declined on both sides | 1,052 | unchanged |
+| a paste of blocks from a level 3 heading into a raw block keeps the raw block's line ends as breaks | 216 | the plan's pinned class (`TS5`, `TS15`) |
+| Enter over the range starts a paragraph; Enter after Delete is taken by Lexical's Enter shortcut | 192 | *Found along the way*, `TK7`, sign-off 13; 160 of them as at the parent |
+| Tab's format beside inline code | 24 | the plan's class "the format of typed and pasted plain text" (`TS16`) |
+| the same text, another format at a run's edge | 16 | the plan's class "rules that run when an update ends" (*Found along the way*) |
+
+An end held as a point on a container, where the range read as text is
+a caret (512 cells) or lies inside one block (1,536), is not guarded:
+the probe's control does not apply to it, and the element-point sweep
+(D11) compares those cells with the range of text. Nothing throws in
+them but a caret's Delete, which needs a browser's selection (36).
+
+No route but Shift+Enter does nothing anywhere. After Delete, Enter and
+typing, the text that followed the range's end follows the caret in
+every cell that can be measured (8,376 or more each).
+
+The probe before this one was blind in three ways the fifth review
+named, and one it did not. Its blocks ended in a plain word, *because* a
+caret left right after `*x*` fired the typing shortcut between the
+control's two steps; its undo check skipped Delete and Backspace, and
+for the other routes asked for one undo only where the parent had it;
+and it read each value once, which after a command dispatched outside an
+update is before the shortcut's own update is committed. With the four
+mended, the code of the fourth review (`cff0ddee0`) fails it where the
+review said. Over the 760 added scenarios, 43,392 guarded cells, it
+throws in 712, Delete or Backspace saves another document than the
+parent in 516, one undo does not restore in 4,581, and a route differs
+from Delete, then the route, outside every class in 6,323
+(`r5/widediff-old5.txt`).
+
+### The widened sweep
+
+The fifth review found that the sweep took `*`, `_`, `~` and
+backslashes out of what it compared, so that escaped text turning into
+formatting looked the same to it. It was written anew
+(`r5/zz-r5-sweep.test.ts`, `r5/runsweep.sh`, `r5/sweepan.py`), and
+compares nothing with anything taken out:
+
+- 18 raw blocks: the 13 of the sweep before (six raw quotes, four raw
+  lists, a raw table, two HTML blocks), and five for the review's
+  classes: quotes whose first line holds escaped emphasis, escaped
+  strong text, an escaped bullet and an escaped list number, and a list
+  of task items.
+- The range starts at *every* offset of the raw block's text and ends
+  after `ab` in a paragraph after it, whose rest is one of 16 tails (the
+  14 of before, and two that hold formatted text after a space).
+- Six routes: Delete and Backspace (where the caret stands, the saved
+  document, one undo), typing in an update, typing dispatched outside
+  one, typing after a Delete in the same editor, and a paste of a bold
+  node; each with the range made forward and backward. 85,056
+  cells in 14,176 groups of one range. Every value is read after
+  the editor's pending updates are flushed. The parent was run through
+  the same sweep.
+
+| Check | Groups |
+|---|---|
+| Delete's saved document is the parent's, byte for byte | 14,154 |
+| … or the parent's one undo back, where the parent had completed a typing shortcut after the removal (D10) | 22 |
+| Backspace's: the same two counts, and Backspace equals Delete in every group | 14,154, 22 |
+| one undo does not restore Delete or Backspace | 0 |
+| typed, typed outside an update, typed after Delete, pasted: the line shows the same text on each side of the inserted letter as on each side of Delete's caret | 14,158 of 14,176 for typing in an update |
+| the three typed routes save the same document | 14,174 of 14,176 |
+| a group outside every class below | **0** |
+
+The groups where an inserted letter shows other text around it than
+Delete's caret has, each told by an exact condition:
+
+- 16: the range starts inside `<div` of an HTML block, and the letter
+  makes the text no HTML block any more (`<divΞ`), so the block shows
+  as a paragraph and the joined text as formatted; Delete leaves a raw
+  block there.
+- 2: the range starts at the start of the raw block's last line and
+  nothing follows it. Delete's update drops the line break that then
+  ends the block; a route that inserts in the same update inserts after
+  it. The plan's class "rules that run when an update ends".
+- 2, a paste only: the joint is beside inline code, where the pasted
+  bold letter is written with its asterisks as text; the text around
+  them is Delete's.
+
+Where the caret is, for each group, by what Delete leaves and the typed
+document holds, told one of these exact ways:
+
+| The caret is at the joint, told by | Groups |
+|---|---|
+| the text the line shows after the caret is what the later block showed after the range's end, and the text before it is the raw line before the range without its block marker, both character for character | 6,962 |
+| the text after the caret, so told | 2,860 |
+| the text before the caret, so told | 4,240 |
+| the typed document holds the raw text before the range, then the letter | 34 |
+| as the first, but for blanks at the joint that the joined line does not show (a marker or a line's start takes them, a block's end trims them) | 20 |
+| the range starts right after a backslash, which escapes the first character the later block brings: the typed document holds the raw text before the backslash, then the letter, then the escape (`TE73`) | 54 |
+| the range starts inside the address of a link the two halves make: the letter stands right after that link (`TE72`) | 4 |
+| the head ends with a backtick and the later block's rest opens with one: both show as text of the code the two halves make, and the caret is between them (`TE74`) | 2 |
+| none of these | **0** |
+
+The same sweep over the code of the fourth review (`cff0ddee0`) fails in
+five checks: one undo does not restore Delete in 117 groups and Backspace
+in 117, Delete saves another document than the parent in 95, the typed
+letter shows other text around it in 157, and 11 groups have the caret
+in none of the classes. So it sees both of the review's classes
+(`r5/sweepan-sOld.txt`).
+
+The first run of this sweep found two things the fix made for the
+review had left. In 22 groups the parent's Delete saved another
+document than the branch's: an HTML comment holding `**b.**`, broken by
+the removal, becomes a paragraph of text, and the parent then made the
+`**b.**` bold, by the typing shortcut, as a second step; the "bold" was
+the parent's defect, and the condition above counts it. And typing at a
+joint between a task item's checkbox and the space the tail gives it
+(`- [x]`│ and ` next`) lost the checkbox: the caret was inside the
+checkbox's source node, where a typed character replaces the node
+whole. The mapping now never leaves the caret inside a source node (D2).
+
+The sweep's raw blocks cannot hold the fallback's shapes after the
+caret, since the range takes all that follows its start in the raw
+block, and a tail is joined as the Markdown the editor writes, which
+holds none of them: `TL1` to `TL3` and `SP7` pin those, by an edit
+inside one raw block.
+
+### The fuzz
+
+The edge-cases implementer's harnesses, run on private archive copies
+(`runall-final.sh`), against that run's results (`fuzz-b6/`, `lif-b6/`,
+`r7-b6/` in its folder). `cmpfuzz2.py` and `r7cmp.py` compare record by
+record; `fuzzreplay.py` replays each side's records on the other side.
+
+| Fuzz | Seeds, size | Baseline | Branch |
+|---|---|---|---|
+| paste (`column-paste-fuzz`), and strict | the 11 seeds, 3,000 each | 0, 0 | 0, 0 |
+| table edge (`table-edge-fuzz-lbdeclined`), and strict | the 11 seeds, 3,000 each | 0, 0 | 0, 0 |
+| list edit (`lif`) | the 11 seeds, 1,500 each | 1 | 1 |
+| reviewer 7 (`r7`) | seeds 11, 23, 37, 41, 59, 3,000 each | 88 | 89 |
+
+The run is `fuzz-c5/`, `lif-c5/`, `lifx-c5/` and `r7-c5/` in the scratch
+folder, all 44 paste and table edge files, 11 list-edit files and 5
+reviewer-7 files of it, made at the same commit as the differential
+(above).
+
+**List edit.** The one record is the baseline's, field for field: seed
+7703, document 196, `load:canonical`, the tab-indented definition of the
+edge-cases plan's Non-Goal. Replayed, it fails the same check on both
+sides. The run without the fuzz file's exemption (`lifx-c5/`) is the
+same. One count of that seed differs from the run before the fourth
+review: of the steps that type into a raw block, one more found no raw
+block to type into, an emptied one being a paragraph now (D8).
+
+**Reviewer 7.** 86 of the 89 records are the baseline's, byte for byte.
+Each side's records were replayed on the other (`replay-ecb6-b3.json`,
+made of the third run, whose reviewer-7 files are byte for byte the
+last run's):
+all 88 of the baseline fail the same way on the branch (68 `linesMerged`,
+19 `lettersLost`, 1 `parity`), and 88 of the branch's 89 fail the same
+way at the parent.
+
+- Two records are baseline records written differently (seeds 23 and
+  59, `linesMerged`): the same source, steps and failing check. In the
+  first an earlier step of the record, a paste over a range, left a list
+  where the parent left paragraphs. In the second the tree holds one
+  empty paragraph more, which Enter over a range from a raw list now adds
+  after the removal; the save is the same.
+- One record is new and passes at the parent: seed 59, `rangeEnter`,
+  `linesMerged` of `m9` and `u2`. The document is a definition
+  `[dup]: /first` and a raw list; Enter is pressed over the range from
+  before the `t` to the start of the list's line `  3. w8`. The parent
+  broke the line in the raw text and read it once: a definition, and the
+  list item `3. w8` with its two blocks. The branch removes the range
+  first, as Delete does, and the joined text `[dup]: /firs  3. w8` with
+  the indented lines under it reads as a paragraph and an indented code
+  block, which holds the two lines the fuzz names; Enter then splits the
+  paragraph. Delete alone gives that code block at the parent too, and
+  Delete, then Enter gives the branch's document there
+  (`adhoc/controls5-P.json`). So the record is the plan's contract for
+  Enter, not a miss of it; it is sign-off 2.
+
+The fuzz was run eight times. On the plan's code as printed the reviewer-7
+count was 93: five new records, all Enter over a range, four of them the
+caret of D2. After D2's first form it was 90, with the record of a caret
+inside a quote's marker (`TE51`) still there; after the rule for spaces
+89. The five runs after it, one for each of the three later reviews'
+fixes and two as D2 was rewritten, the last of them on the final code,
+give the same records: the reviewer-7 files are byte for byte that
+run's in each, and the list-edit files but for the one count above (the
+eighth run's list-edit and reviewer-7 files are byte for byte the
+seventh's). The table edge and paste results were the same in every
+run.
+
+### The manual checks
+
+Run in Chrome on the demo's MD Editor page (`npx vite --port 8053` in
+`packages/lib`; the server is stopped). Each document was put in through
+source mode. The selection was set through the page's selection, and
+keys were real key events. What a script stood in for is said in each
+row: the browser automation here has no IME, no drag of a text selection
+and no system clipboard holding a table.
+
+| # | Result |
+|---|---|
+| M1 | the raw block ends `raxh **ij** kl [a](u) \*x\*`; the source reads `<div>⏎raxh **ij** kl [a](u) \*x\*⏎⏎after` |
+| M2 | one undo: the document and the selection are back |
+| M3 | Shift+Enter, Ctrl+X and Ctrl+Backspace keep the backslashes, and one undo restores each (Ctrl+V after the cut is a second step). The Tab key leaves the editor in the demo, so `INSERT_TAB_COMMAND` was dispatched on the editor: the tab stands after `ra`, backslashes kept, one undo. `DELETE_LINE_COMMAND`, which cannot run offline, was dispatched the same way: it removes the range as Delete does |
+| M4 | **by hand still.** A `compositionstart` event fired over the selection removes it as in M1 and puts the composition's seat after `ra` in the raw block, backslashes kept, no console message. The commit of composed text needs a real input method |
+| M5 | stood in for by the two `beforeinput` events a drag fires (`deleteByDrag`, then `insertFromDrop` with the dragged text at the end of `after`): the selection is removed as in M1, the text lands after `after` |
+| M6 | a `paste` event carrying `<b>bold</b>`: `bold` goes in as plain text after `ra`, the same for the selection made backward and forward |
+| M7 | two paragraphs, `<` and `fter` |
+| M8 | one paragraph: `<`, a break, `fter` |
+| M9 | one paragraph `<`, no break |
+| M10 | (`INSERT_TAB_COMMAND` dispatched) a paragraph holding the tab and `w text`, a raw block `</div>`; no code block |
+| M11 | one raw block reading `<p>⏎raw text⏎</div>` |
+| M12 | the table copied from another document through a `copy` event, pasted through a `paste` event: `- ab`, the table, `- kode`, for the selection made backward and forward |
+| added, D1 | `<!-- c1⏎c2 -->`, `after`, `more`; the selection from `<!-- c`│ to `a`│`fter`; a paste of `<b>bold</b>`: a paragraph `<!-- c`, bold `bold`, `fter`; nothing thrown |
+| added, D2 | `> a **Note:** w⏎>⏎> q2` and `ab next`; the selection from after `**Note:**` to `ab`│. Typing `X`: the source reads `> a **Note**:X next` (the `X` before the space; the colon leaves the bold text because Markdown cannot close bold between a colon and a letter). The same selection made backward, a paste of `<b>ZP</b>`: `> a **Note:ZP** next`. `> q1⏎>⏎> q2` and `end.  Next`, from after the first `>` to before the two spaces, typing `x`: `> x Next`. `> q1 w⏎>⏎> q2` and `ab [a \[b](/u) c`, from `> q1 `│ to `ab`│, typing `x`: `> q1 x [a \[b](/u) c`. ``> a `co w⏎>⏎> q2`` and ``abde` x``, from after `co` to `ab`│, typing `x`: inline code `coxde\` |
+| added, D8 | `<div>⏎raw text⏎</div>`, `after`, `last`; the selection from the raw block's start to the end of `after`. Shift+Enter: nothing changes. Delete: an empty paragraph holding the caret, then `last`. A paste of `<b>ZP</b>` there: `**ZP**⏎⏎last`. The selection of all the raw block holds: Shift+Enter changes nothing; typing `y` gives a paragraph `y` |
+
+| added, D10 | Typed `para`, then ` *x* y`: `x` is italic (`para *x* y`); `x` selected and `- item` typed: a list item. So a browser's own typing completes a shortcut. `> a \*x\* w⏎>⏎> q2` and `ab cd`, the selection from after `\*x\*` to `ab`│: Delete leaves the quote `a *x* cd` as text (`> a \*x\* cd`), `x` typed after it gives `> a \*x\*x cd`, and Ctrl+Z twice brings back the document and the selection, one step for the Delete. Backspace, Ctrl+X and Ctrl+Delete over the same selection save the same document. The review's other shapes, Delete: `> \-  cd`, `> \#  cd`, `> 1\.  cd`, `> a \*\*Note:\*\***d** ef`, and inside one raw block `> a \*x\*q2`. In a paragraph, a caret and a real Backspace: `a \*x\*.b` gives `a \*x\*b`, `\- .cd` gives `\- cd`. Delete, then a paste of `<b>ZP</b>`: `> a \*x\***ZP** cd`. `a \*x` and a pasted `*`: `a \*x\*`, text |
+| added, D2 (the checkbox) | `- [x] ta⏎  > q⏎- [ ] tb w` and `ab cd *ef*`, the selection from after `- [x] ` to `ab`│: `x` typed gives `- [x] xcd *ef*`; Delete, then `y`, gives `- [x] ycd *ef*`. With `ab next` and the selection from after `- [x]`: Delete, then `z`, gives `- [x] znext` |
+| added, D11 | A selection set through the page from `r`│`aw` in a raw block to the list element at offset 0 arrives in the editor as a range to the start of the first item's text: Lexical resolves a DOM point on a list forward. Delete gives `<div>⏎rla⏎⏎- lb⏎⏎after`. A point set in code on the list node is resolved the same way as soon as the browser's selection is read again, so D11's settle is met only by a command that runs in the update that set the point (sign-off 12) |
+
+The checks were run eight times. M1 to M12 and D1 were all run four
+times, the last time on the code as it stood before the fourth review;
+the range removal they exercise is that code's but for D8. The last
+three runs, after D2 was rewritten and after each of its two later
+steps, were of the rows that type or paste after a removal: M1, M2 (the
+fifth run), M6, and the rows "added, D2" and "added, D8" above, the last
+run on the code before the fifth review. The eighth run, on the final
+code, was of the rows "added, D10", "added, D2 (the checkbox)" and
+"added, D11" above. No console message in any of the four.
+
+One thing the fifth run showed is under *Found along the way*: after
+Delete, a browser resolves a caret between two text nodes to the end of
+the first.
+
+M4 and M5 are not the checks the plan asks for. M5's stand-in fires the
+events a drag fires, in the order a browser fires them, and the editor's
+handlers are the ones a drag reaches; M4's covers the removal and not the
+commit. Both are sign-off 6.
+
+### Decisions that await the user's sign-off
+
+**1. The caret keeps its place when a raw block shows as its blocks
+(D2).** Commit "Keep the caret's place when a raw block shows as its
+blocks", with its docs in a commit of their own. It changes where the
+caret stands after Delete over such a range, and after an ordinary edit
+that makes a raw block show as its blocks: the document is the same, the
+caret is where the edit was. Without it the plan's code is in force: for
+a selection that starts in a raw quote, list or table that then shows as
+rich text, typed and pasted text and Enter's split go to the end of the
+paragraph. Four things in it are choices:
+
+- *The mechanism.* The place is computed from source offsets, by a new
+  module that uses the source analysis of source mode from the WYSIWYG
+  side, and `contentOffset` is exported from that analysis for it. The
+  reason is in D2 and in the plan's *Architecture Decisions* (D9).
+- *The rule and what it restates.* The caret is at the joint and nothing
+  the blocks show changes sides. `TE60` and `TE61` now expect `> x Next`
+  and `> x cd`: the space that shows stays after the caret.
+- *The conventions* where the place is between two things (D2): the
+  format the offset has in the source; a source node gives way, and the
+  caret is never inside one; a block ends at a line end, a cell's `|`
+  or a cell's paragraph break; an offset inside the source of one thing
+  shown is before it.
+- *The fallback.* The end of the block, in four shapes the docs name
+  (D2; the fourth, a tab between the words of a list item's text, was
+  found by the sixth review). The other choice for a line a tab indents and for a task item's
+  checkbox followed by a tab or by two spaces is to find their source
+  too, as was done
+  for a link text holding an escaped bracket; both are the lexer
+  rewriting the text, a tab into spaces of which some show.
+
+To decide against D2, drop the two commits; the shapes `TE45` to `TE49`,
+`TE51`, `TE53` to `TE61` and `TE66` to `TE78`, their `TJ` rows, the `TP`,
+`TL` and `TK` rows, `TS16`, `TS17` and the new test file go with them.
+
+**2. Enter over a range from a raw block is Delete, then Enter.** This is
+the plan's own decision; it is listed because the fuzz found a document
+where a reader may prefer what the parent did. The parent put a line
+break into the raw text at the joint and read the text once; the branch
+reads the joined text first, as Delete does, and then splits at the
+caret. For `[dup]: /first`, then a raw list, with the range from before
+the `t` to the start of the list's line `  3. w8`: the parent gave a
+definition `[dup]: /firs` and the list item `3. w8` with its two blocks;
+the branch gives two paragraphs, `[dup]: /firs` and `3. w8`, and the two
+blocks as one indented code block, which is what Delete and then Enter
+give at the parent too. The other choice is to keep a line break at the
+joint for Enter alone, as the plan's first version did; the plan's row
+for `TE7` (`<⏎⏎fter`) would then go back to `<⏎fter`.
+
+**3. The selection is the caller's again (D1).** Part of the first code
+commit; without it three routes throw.
+
+**4. Rows beyond the plan's (D3), and the fourth Shift+Enter change
+(D4).** D4 follows from the plan's formula; the other choice is to remove
+such a range and let the break show as a space, as the parent did.
+
+**5. The update tag on the removal** (*Found along the way*). The plan
+tags the removal's update; the branch does not (round 7), because the
+sixth review found the tag strips a link's mark when typing over a range
+in a document with no raw block. What this gives: a route carries the
+run-edge tag if and only if it carried it at the parent; typing, the
+composition's start and Tab over a range are tidied where the caret is;
+and typing gives the same document inside an update and outside one.
+The notes' earlier sentence, that no probed result inside an update
+changes with the tag, was true of its twelve shapes and not of a link
+followed by a letter. The other choice is the plan's, to tag the removal:
+then `TS18` and `TS19` change, and a document with no raw block differs
+from the parent for typing and Tab over a range. Row `TS19` pins the
+choice; `TS18` and `TE71`'s missing `cut()` row follow from it.
+
+**6. M4 and M5 by hand.** M4 (an input method over the selection) could
+not be run here past the composition's start, and M5 (a drag of the
+selection) was stood in for by its two input events. Both want a hand on
+a real browser, or the user's word that the stand-ins do.
+
+**7. The docs text that is not the plan's (D5):** the sentence on
+Shift+Enter in the changelog's first entry (and, from round 7, the sentence
+there and on the component page on a selection from a raw block's start
+into a table), the two entries after it, and the sentences on the
+component page.
+
+**8. A typed character that completes a typing shortcut is two undo
+steps** (*Found along the way*, row `TU1`). The plan says one command is
+one undo step; this keystroke is the typing and, as an update of its
+own, the shortcut it completes, in the paragraph the removal leaves. It
+is what the same key gives after Delete. The other choice needs the
+shortcut to run inside the typing's update, or not to run for text
+typed over a range, which is a change to the typing shortcuts.
+
+**9. A raw block left holding nothing shows as an empty paragraph
+(D8).** Commit "Show a raw block that holds nothing as an empty
+paragraph", with its docs in a commit of their own. Three things in it
+go past what the fourth review reported:
+
+- It holds for every way a raw block is emptied, also a selection inside
+  the one block, where the parent left the same raw block of no text.
+  The rule is at the place the other raw-block rules are, so no route
+  can leave one. The other choice is to apply it inside the range
+  removal alone.
+- A raw block holding blanks alone (a tab, a line break) becomes a
+  paragraph holding them, since a save writes nothing for it either.
+- Shift+Enter is declined over a range that would empty its raw block
+  with nothing to follow, and over a selection of all one raw block
+  holds. The first is what the parent did; the second left a raw block
+  holding the break at the parent.
+
+An emptied code block is unchanged: it stays a code block, which
+Markdown writes.
+
+**10. In a browser, a caret between two text nodes after Delete is at
+the end of the first** (*Found along the way*). It is Lexical's
+resolution of any such caret, so a character typed after Delete at the
+joint behind bold text is bold, where the same character typed over the
+range is plain. Nothing was changed for it; it is the plan's class of
+format differences, and it is listed because the browser checks are
+where it shows.
+
+**11. A removal the editor makes itself completes no Markdown typing
+shortcut (D10).** Commit "Complete no typing shortcut after a removal the
+editor makes itself" (the commit's title says what it does), with no docs
+commit: against the parent it changes nothing a user sees. It keeps the
+caret that D2 puts at the joint from turning escaped text into formatting.
+The editor outside the plan's ranges is changed in no way but:
+
+- A range the editor removes itself (from a raw block or a table out into
+  other blocks) by Delete, Backspace, a word or line delete,
+  `REMOVE_TEXT_COMMAND`, a cut, `cut()`, Enter, the paragraph command or
+  a line break completes no shortcut.
+  Everything else is as at the parent, and so is its defect: a deletion
+  in an ordinary paragraph, or one Lexical makes inside a raw block, can
+  complete a shortcut (`\- .text` with the `.` deleted becomes a list
+  item, as a second undo step). The general rule, with a tag for typing,
+  is the next branch's plan; this commit leaves nothing it would have to
+  work around but one tag and its helper.
+- One shape differs from the parent: the range inside one raw block that
+  makes the block read as a quote with the caret right behind text that
+  reads as a shortcut (`TK6`, D10).
+- The fifth round's rule (typed text only, `isTypedUpdate`, three tags)
+  is gone. The sixth review found it blocked a character committed by an
+  input method or a dead key on desktop WebKit, where Lexical sends the
+  event rather than a string.
+
+**12. An end held as a point on a container is read as a point in text,
+inward (D11).** Part of the first code commit. Three things in it are
+choices:
+
+- A range end before a list's first item is read as the end of the
+  block before the list, so nothing of the list is in the range and its
+  first item's text is not joined onto the raw block. That is how the
+  block commands settle such an end, and what the parent's routes that
+  did not throw gave. The other reading is the one a browser gives a
+  DOM point there: the start of the first item's text, which joins that
+  text onto the raw block. In a focused editor the browser's reading
+  wins by itself: Lexical resolves the selection anew from the DOM, and
+  the point is in text before a key arrives (seen in the browser check).
+  The settle acts where a command runs in the update that set the point.
+- A declined command leaves the range held as points in text, where it
+  was handed over with a point on a container. The document and what is
+  selected are the same.
+- A point on a table, a row or a cell is left to the table-edge rule,
+  which takes the whole table with the range, as at the parent, also for
+  a point before the table's first row. Part D of
+  `plans/markdown-editor-table-command-fixes.md` plans the rule for
+  those.
+
+**13. Enter over a range applies no shortcut where Enter after Delete
+does** (*Found along the way*, row `TK7`). Lexical's Enter shortcut
+takes a caret at the end of a block's first text that reads as a
+marker; Enter over a selection, which this plan makes "Delete, then
+Enter" (sign-off 2), does not go through it, as at the parent. So the
+two differ for a range that leaves the caret right behind `- `, `1. `,
+`# `, `> ` or a fence. The other choice is to let Enter over such a
+range go on to Lexical's handler after the removal: the quote of the
+row would become a list item, by a key that was pressed over a
+selection.
+
+### For the plan that follows (`markdown-editor-cross-item-range-removal`)
+
+Line numbers are of this branch's tip.
+
+- **The names are the plan's.** `$isGuardedRange` (`:2372`),
+  `$removeJoiningRange` (`:2394`), `$removeGuardedRange` (`:2443`),
+  `$keepAsEditorSelection` (`:2546`), `$isPlainlyRemovedRange`
+  (`:2638`), `$deleteGuardedRange` (`:2667`),
+  `$guardedRemovalDeclinesLineBreak` (`:2793`),
+  `$joiningRemovalDeclinesLineBreak` (`:1815`), `$isTextOnlyEdgeRange`
+  (`:2344`), `$removeGuardedRangeBeforeText` (`:2841`), all in
+  `MarkdownEditor.ts`. `$removalJoinsEndBlockRest` is at `:1758`, its one
+  call at `:1817`. `registerRangeGuards` is at `:4439`, and
+  `guard(DELETE_CHARACTER_COMMAND, $deleteGuardedRange)` at `:4462`.
+- **That plan's printed edits apply.** Every edit of its stack prototype
+  (`…/plans3/cross-item-range/stack-proto/patch-ci.txt` and
+  `patch-cix.txt`) finds its text exactly once in this branch's
+  `MarkdownEditor.ts`, checked again on the final code: `$isGuardedRange`'s
+  body, the seven lines of `$removeGuardedRange` from
+  `$addUpdateTag(RUN_EDGE_TAG);` to the end of the `if`/`else`, the
+  `isJoining` line, the first statement of `$isPlainlyRemovedRange` (one
+  line, as that plan prints it), the delete registration and the comment
+  and `return` of `$deleteGuardedRange`. One does not: the `lexical`
+  import line now ends `$addUpdateTag, $setState,` (an earlier branch
+  added `$setState`), so `$isSiblingCaret` goes in after it by hand.
+- **`$removeGuardedRange` has three things that plan does not print.** It
+  opens with `$settleTextOnlyEdgeEnds(selection);` and a comment (D11),
+  before `$isGuardedRange` is asked; the raw blocks at the range's ends
+  are read before `$addUpdateTag`; and the function ends with
+  `$keepAsEditorSelection(selection)` (D1) before `return true`.
+  `$joinCoveredItemTexts(selection)` goes where that plan puts it,
+  directly before `if (isTableEdge)`. If its steps move an end out of a
+  raw block the range started in, the list of raw blocks read at the top
+  is still the right one to re-read: a block that is gone is skipped.
+- **`$joiningRemovalDeclinesLineBreak` has four lines that plan does not
+  print** (D8), after its `joinsRest` line: a range that starts at the
+  very start of a raw block and has nothing follow its end is declined
+  (`$rawBlockEmptiedFrom`, `:1837`). That plan changes the arguments of
+  `$removalJoinsEndBlockRest` to nodes; the four lines read `start` and
+  `end` as points and stay as they are.
+- **No raw block of no text survives a removal** (D8). After any route
+  over a range that takes all a raw block holds, an empty paragraph
+  stands where the raw block was and holds the caret
+  (`$showBlankRawBlockAsParagraph`, `markdownWritable.ts:943`, a step of
+  `$showRawBlockAsSaved`). That plan's rows do not rely on one that
+  does: its rows that empty the document's first block (`CI81` to
+  `CI90`, `D39`) hold a heading or a paragraph there. Should a row of it
+  empty a raw first block, expect the paragraph after Delete as well as
+  after Backspace. Row `R32` of the table-edge file is restated here.
+- **The delete registration.** `registerRangeGuards` now registers, for
+  each command, a listener that settles the range's ends
+  (`$settleSelectionBeforeGuard`, D11) ahead of the one that removes, and
+  its JSDoc says "each command has one listener that removes"; that
+  plan's `$deleteCharacterOverGuardedRange` takes the removing row's
+  place and the sentence still holds. A cross-item range with an end
+  held as a point on a list is not settled by D11 (it has no end in a
+  raw block or a code block); should that plan want it settled, the
+  listener is the place, with `$settleTextOnlyEdgeEnds`'s first
+  condition widened. Nothing in the code or its comments says the
+  row is the only listener of a range there will ever be.
+- **A caller may go on with the selection it passed** (D1). That plan's
+  `$deleteCharacterOverGuardedRange` calls `$deleteGuardedRange()` and
+  then reads `selection.isCollapsed()` on the object it read before: that
+  is sound now also where the re-read replaced a raw block.
+- **The caret after a re-read is at the joint** (D2). That plan's rows
+  that type or press Enter over a cross-item range ending in a raw block
+  of a list item were measured on a prototype without D2. Where its
+  removal makes a raw quote, list or table show as rich text, expect the
+  inserted text at the joint, not at the block's end, and measure its
+  rows again before pinning them. The place comes from
+  `$placeOfSourceOffset` (`markdownSourcePlaces.ts:143`), called by
+  `$selectCaretPlace` (`markdownWritable.ts:1090`); nothing of that plan
+  needs to call it.
+- **Shift+Enter** over a range from a level 3 to 6 heading to a raw
+  block's start is declined (D4), by the formula that plan extends.
+- **The update tag.** `$removeGuardedRange` sets no update tag any more
+  (round 7). The plan's snippet adds `$addUpdateTag(RUN_EDGE_TAG);` to the
+  end of the `if`/`else` that chooses the removal; with the sign-off 5
+  decision as it is, the line is not in the code, and that plan's steps
+  run in the update of the route: tagged for the routes `registerRunEdgeRules`
+  tags, untagged for typing, the composition's start and Tab.
+- **Rows that compare with Delete, then the route** should start their
+  ranges away from a space that ends a formatted run, and from
+  punctuation that ends one right before formatted text, or the control
+  differs for the reasons under *Found along the way*. A removal
+  completes no typing shortcut any more (D10), so text that reads as one
+  before the range is no trouble for Delete; but Enter after Delete,
+  with the caret at the end of text that reads as a marker, is taken by
+  Lexical's Enter shortcut, where Enter over the range is not (`TK7`).
+  A row that asserts "one undo restores the source" should not type a
+  character that completes a typing shortcut in the block the removal
+  leaves (a space after `-` or `#`), and Tab at the start of inline code
+  takes the caret's format (`TS16`). A row that dispatches outside an
+  update and then reads the document should read it twice, or flush:
+  what an update's listeners start is committed by the read after.
+- **The test file.** The new `describe` is at `:1041` of
+  `markdown-editor-command-crashes.test.ts`, directly before the
+  `upstream canaries` one (`:2057`); that plan's own goes between the
+  two. The imports it needs are there (`DELETE_WORD_COMMAND`,
+  `INSERT_TAB_COMMAND`, `REMOVE_TEXT_COMMAND`, `UNDO_COMMAND`,
+  `LexicalCommand`, `$insertGeneratedNodes`). The helpers `select`,
+  `run`, `expectParity` and `syncCaretFormat` and the constants are local
+  to this plan's `describe`; a row outside it cannot call them.
+- **`markdownWritable.ts`.** `$showRawBlockAsSaved` is exported (`:916`),
+  `$showSiblingRawBlocksAsWritten` is at `:895`, `registerRawBlockRules`
+  at `:969`, `$showRawBlockAsItsBlocks` at `:1032`, `$selectTextOffset`
+  at `:1111`. `$contentFollows` is exported now (`:1750`), for D8.
+- **Differential baselines.** The parent's results for that plan's checks
+  must be recorded anew on this branch's tip. The harnesses here:
+  `diff/zz-re-wide.test.ts` with `diff/runwide.sh` and `diff/widediff.py`
+  (the wide probe), `r5/zz-r5-sweep.test.ts` with `r5/runsweep.sh` and
+  `r5/sweepan.py` (the widened sweep), `r5/zz-r5-points.test.ts` with
+  `r5/runpoints.sh` and `r5/pointsan.py` (ends held as points on
+  containers), `r4/zz-r4-proto.test.ts` (the mapping against a mark),
+  `diff/redcount.py` (the matrix's failing
+  cells), `adhoc/zz-controls.test.ts` (what Delete, then each route gives
+  for shapes named in a JSON file). The wide probe has 768 cells that are
+  not guarded here, a list item's text into a raw list that joined it at
+  load; they are that plan's shape.
+- **Fuzz baselines at this tip**: `fuzz-c5/`, `lif-c5/` and `r7-c5/` in
+  the scratch folder (paste 0, 0, table edge 0, 0, list
+  edit 1, reviewer 7 89).
+- **Docs.** The paragraph at line 82 of `docs/components/MarkdownEditor.md`
+  changed; three entries were appended to `## Fixed` → `### Components`
+  of the changelog (`:1004`, `:1029`, `:1041`).
+- **The typing shortcuts** (D10). A removal `$removeGuardedRangeAsDeletion`
+  makes completes none; every other update is handed to Lexical's listener
+  as at the parent. That plan's `$joinCoveredItemTexts` runs inside the
+  removal and needs nothing more. A new route of it that only removes, outside
+  `$removeGuardedRange`, would use the same helper. The plan
+  `markdown-editor-typing-shortcuts-only-for-typing` replaces the helper's
+  tag (D10, *Collision with the next plan*).
+- **Left open.** The fallback's shapes (D2); Lexical's Enter shortcut
+  after Delete, the run-edge rule between the control's two steps, the
+  tab's format, `cut()` carrying no run-edge tag, and a browser's caret
+  between two text nodes (*Found along the way*); the typing shortcut
+  after a deletion Lexical makes itself, in a paragraph or in one raw
+  block (D10); a point on a table from outside it
+  (sign-off 12, for part D of the table-command-fixes plan); M4 and M5
+  by hand.
+
+### Held, and rebased onto the typing-shortcuts branch (2026-10-14)
+
+The seventh review was blocking again, so the branch is held by the owner's decision of 2026-10-13 (its report: `scratch-keep/impl/raw-block-range-edits/review7/REPORT.md`). The general rule that a typing shortcut applies only for typed text was implemented underneath it, as `feature/markdown-editor-typing-shortcuts-only-for-typing`, and this branch was rebased onto that one on 2026-10-14 with nothing else changed:
+
+- In `MarkdownEditor.ts` the shortcut wrapper now asks both questions: the update typed text, and it carries no `GUARDED_DELETION_TAG`. The two doc-comment conflicts were merged keeping that branch's wording, with one sentence each for the tag.
+- Both branches created `markdown-editor-typing-shortcuts.test.ts`. That branch's file keeps the name; this branch's rows moved unchanged to `markdown-editor-guarded-removal-shortcuts.test.ts`.
+- The changelog keeps both entries.
+- Typecheck, test typecheck and lint are clean. The full suite has 43 failing tests, all rows of this branch that pin the parent's behaviour the general rule changes: `TY3`, `TY4` and `TY5` (14 each) in `markdown-editor-guarded-removal-shortcuts.test.ts` and `TK6` in `markdown-editor-command-crashes.test.ts`. They are left for the resumption, which drops this branch's own shortcut commit (see that plan's section "For `markdown-editor-raw-block-range-edits`, when it resumes").
