@@ -65,7 +65,7 @@ import { SHORTCUT_TRANSFORMERS } from "~/component/editor/markdownTransformers.j
 import { $importMarkdown } from "~/component/editor/markdownImporter.js";
 import { $serializeBlockContent, $serializeInlineNodes, $serializeMarkdown, $writtenListMarker } from "~/component/editor/markdownSerializer.js";
 import {
-    $breakRuleContainerOf, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
+    $breakRuleContainerOf, $contentFollows, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
     $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $selectionHasFormat, $showRawBlockAsSaved, $takeBlocksOutOf, RUN_EDGE_TAG,
     registerWritableStateRules,
 } from "~/component/editor/markdownWritable.js";
@@ -1905,8 +1905,12 @@ function $removalJoinsEndBlockRest(start: PointType, end: PointType): boolean {
  * ({@link $removalJoinsEndBlockRest}) — is where a save cannot write a break
  * ({@link $lineBreakUnwritableAt}). Told ahead of the removal, so that a
  * declined Shift+Enter can leave the range as it is. A range that starts in
- * a raw Markdown block or a code block is never declined: its caret stays
- * in that block, which keeps every break.
+ * a raw Markdown block or a code block is not declined, since its caret
+ * stays in that block, which keeps every break — but for one that starts
+ * at the very start of a raw block and has nothing follow its end: the
+ * removal empties the raw block, which then shows as an empty paragraph
+ * ({@link $rawBlockEmptiedFrom}), where a break is all the block would
+ * hold.
  *
  * @remarks
  * Read off the document as it stands, so it cannot tell for a range with an
@@ -1914,14 +1918,52 @@ function $removalJoinsEndBlockRest(start: PointType, end: PointType): boolean {
  * where the break has no place in that block, the range is removed and no
  * break is added.
  *
- * @param selection - A range of one of those shapes, left as it is.
+ * "Nothing follows its end" is read in the block of text the range ends
+ * in, so the range's end has to stand in one: each command's guard settles
+ * the range's points ({@link $settleSelectionOffContainers}) before this is
+ * asked, and moves an end held as a point on a list, a `:::` block or the
+ * document — after which a whole block may follow — into the text the
+ * range reaches.
+ *
+ * @param selection - A range of one of those shapes, its ends settled, left as it is.
  * @returns Whether the break would be declined.
  */
 function $joiningRemovalDeclinesLineBreak(selection: RangeSelection): boolean {
     const [start, end] = $orderedPoints(selection);
     const joinsRest = $removalJoinsEndBlockRest(start, end);
+    const emptied = $rawBlockEmptiedFrom(start);
+    const endBlock = $findEnclosingBlock(end.getNode());
+
+    if (emptied !== null && endBlock !== null) {
+        return !$contentFollows(end, endBlock);
+    }
 
     return $lineBreakUnwritableAt(start, joinsRest ? end : null);
+}
+
+/**
+ * The raw Markdown block a removal from `start` empties: the one `start`
+ * stands in with nothing of it before `start`. Such a block shows as an
+ * empty paragraph once its text is gone, or as the blocks that the text
+ * joined onto it reads as.
+ *
+ * @param start - The start of a range that ends in another block.
+ * @returns The raw block, or `null` when `start` stands in none, or after some of its text.
+ */
+function $rawBlockEmptiedFrom(start: PointType): MarkdownRawBlockNode | null {
+    const node = start.getNode();
+    const block = $findMatchingParent(node, $isMarkdownRawBlockNode);
+
+    if (block === null) {
+        return null;
+    }
+
+    // A raw block holds its lines' text nodes and the line breaks between them, and nothing deeper.
+    const isOnBlock = node.is(block);
+    const before = isOnBlock ? block.getChildren().slice(0, start.offset) : node.getPreviousSiblings();
+    const isAtStart = before.length === 0 && (isOnBlock || start.offset === 0);
+
+    return isAtStart ? block : null;
 }
 
 /**

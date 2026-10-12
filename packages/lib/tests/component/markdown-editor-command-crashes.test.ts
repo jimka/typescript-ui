@@ -1299,6 +1299,10 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         { id: 'TE44', name: 'raw comment → the text of an item that holds blocks, left open before them', source: '<!-- c1\nc2 -->\n\n- two\n\n  pq\n- z\n\nafter', start: ['<!-- c1', 6], end: ['two', 1], typed: '\\<!-- cxwo\n\npq\n\n- z\n\nafter', deleted: '\\<!-- cwo\n\npq\n\n- z\n\nafter' },
         { id: 'TE50', name: 'level 3 heading → raw start', source: `### head **b**\n\n${RAW}\n\nafter`, start: ['head ', 2], end: ['<div>', 0], typed: '### hex\\<div> raw text \\</div>\n\nafter', deleted: '### he\\<div> raw text \\</div>\n\nafter' },
         { id: 'TE52', name: 'a bold run after its space → raw', source: `ab **cd ef** gh\n\n${RAW}\n\nafter`, start: ['cd ef', 3], end: ['raw text', 2], typed: 'ab **cd x**w text\\\n\\</div>\n\nafter', deleted: 'ab **cd** w text\\\n\\</div>\n\nafter' },
+        { id: 'TE62', name: 'raw start → a later block\'s end (the raw block emptied)', source: `${RAW}\n\nafter\n\nlast`, start: ['<div>', 0], end: ['after', 5], typed: 'x\n\nlast', deleted: 'last' },
+        { id: 'TE63', name: 'raw start → the end of the document (the raw block emptied, nothing left)', source: `${RAW}\n\nafter`, start: ['<div>', 0], end: ['after', 5], typed: 'x', deleted: '' },
+        { id: 'TE64', name: 'the start of a list item\'s raw block → the end of that item\'s paragraph (the raw block emptied)', source: '- one\n\n  <div>\n  raw text\n  </div>\n\n  para\n- z\n\nafter', start: ['<div>', 0], end: ['para', 4], typed: '- one\n\n  x\n\n- z\n\nafter', deleted: '- one\n\n- z\n\nafter' },
+        { id: 'TE65', name: 'raw start → the end of the next raw block (both emptied)', source: TWO_RAW, start: ['<div>', 0], end: ['</section>', 10], typed: 'x\n\nafter', deleted: 'after' },
         { id: 'TE82', name: 'a word of a paragraph → a later paragraph (bold link text elsewhere in the block, nothing raw)', source: 'x [**b**](/u)yz and more\n\nQZ 7Y', start: ['yz and more', 8], end: ['QZ 7Y', 2], typed: 'x [**b**](/u)yz and mx 7Y', deleted: 'x [b](/u)yz and m 7Y' },
     ];
 
@@ -1605,6 +1609,21 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         ['TE44', 'IME start', '\\<!-- c\u200bwo\n\npq\n\n- z\n\nafter'],
         ['TE44', 'insertImage', '<!-- c1\nc2 -->\n\n- two\n\n  pq\n- z\n\nafter'],
         ['TE44', 'insertTable', '<!-- c1\nc2 -->\n\n- two\n\n  pq\n- z\n\nafter'],
+        ['TE62', 'Delete', 'last'],
+        ['TE62', 'Backspace', 'last'],
+        ['TE62', 'word delete', 'last'],
+        ['TE62', 'REMOVE_TEXT_COMMAND', 'last'],
+        ['TE62', 'cut()', 'last'],
+        ['TE62', 'CUT_COMMAND', 'last'],
+        ['TE62', 'Enter', 'last'],
+        ['TE62', 'INSERT_PARAGRAPH_COMMAND', 'last'],
+        ['TE62', 'Tab', 'last'],
+        ['TE62', 'PASTE_COMMAND', 'zc\n\nlast'],
+        ['TE62', 'paste()', 'zc\n\nlast'],
+        ['TE62', 'paste nodes', '**zp**\n\nlast'],
+        ['TE62', 'paste blocks', 'p1 **zb**\n\np2\n\nlast'],
+        ['TE62', 'drop insert', 'zd\n\nlast'],
+        ['TE62', 'IME start', '\u200b\n\nlast'],
     ])('%s, %s', async (id, route, expected) => {
         const shape = shapeOfId(id);
         const declines = route === 'insertImage' || route === 'insertTable';
@@ -1639,6 +1658,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
 
     it.each<[string, string]>([
         ['TS1', 'TE13'], ['TS2', 'TE25'], ['TS3', 'TE29'], ['TS4', 'TE36'], ['TS13', 'TE41'], ['TS14', 'TE50'],
+        ['TS19', 'TE62'], ['TS20', 'TE63'], ['TS21', 'TE64'], ['TS22', 'TE65'],
     ])('%s: Shift+Enter over %s is declined, and nothing changes', async (_name, id) => {
         const shape = shapeOfId(id);
 
@@ -1802,6 +1822,105 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         expect(editor.getValue()).toBe(shape.deleted);
     });
 
+    it.each(['TE62', 'TE63', 'TE64', 'TE65'])('TX1: Delete over %s leaves an empty paragraph where the raw block was, and the caret in it', async (id) => {
+        const shape = shapeOfId(id);
+
+        for (const [backward, inUpdate] of VARIANTS) {
+            const editor = select(shape, backward);
+
+            await run(editor, 'Delete', inUpdate);
+
+            const nodes = JSON.stringify(lexicalOf(editor).getEditorState().toJSON());
+
+            expect(nodes, `backward ${backward}, in an update ${inUpdate}`).not.toContain('"markdown-raw-block"');
+            // An element point at the start of a paragraph that holds nothing.
+            expect(rangeOf(editor), `backward ${backward}, in an update ${inUpdate}`).toBe('paragraph@0 -> paragraph@0');
+        }
+    });
+
+    it.each<[string, string, TextPoint, TextPoint, Route, string, string[]]>([
+        ['TX2: Delete', `${RAW}\n\nafter`, ['<div>', 0], ['</div>', 6], 'Delete', 'after', ['paragraph:', 'paragraph:after']],
+        ['TX3: Delete, the raw block being the document', RAW, ['<div>', 0], ['</div>', 6], 'Delete', '', ['paragraph:']],
+        ['TX4: Enter', `${RAW}\n\nafter`, ['<div>', 0], ['</div>', 6], 'Enter', 'after', ['paragraph:', 'paragraph:', 'paragraph:after']],
+        ['TX6: type', `${RAW}\n\nafter`, ['<div>', 0], ['</div>', 6], 'type', 'x\n\nafter', ['paragraph:x', 'paragraph:after']],
+        // A selection inside one raw block is edited in place: the pasted text goes into the raw block's text, plain.
+        ['TX7: paste nodes', `${RAW}\n\nafter`, ['<div>', 0], ['</div>', 6], 'paste nodes', 'zp\n\nafter', ['paragraph:zp', 'paragraph:after']],
+    ])('%s over all that a raw block holds leaves no raw block that holds nothing', async (_name, source, start, end, route, expected, children) => {
+        for (const backward of [false, true]) {
+            const editor = load(source);
+
+            selectText(editor, backward ? end : start, backward ? start : end);
+            await run(editor, route, true);
+
+            expect(editor.getValue(), `backward ${backward}`).toBe(expected);
+            expect(rootChildren(editor), `backward ${backward}`).toEqual(children);
+            expectParity(editor);
+        }
+    });
+
+    const ALL_ROUTES: readonly Route[] = [
+        'Delete', 'Backspace', 'word delete', 'REMOVE_TEXT_COMMAND', 'cut()', 'CUT_COMMAND', 'type', 'IME start', 'drop insert', 'Enter',
+        'INSERT_PARAGRAPH_COMMAND', 'Shift+Enter', 'Tab', 'PASTE_COMMAND', 'paste()', 'paste nodes', 'paste blocks', 'insertImage', 'insertTable',
+    ];
+
+    // The read-only editor refuses each route before any guard of a range sees it: the document and the selection stay
+    // as they are, and the refusal is reported.
+    it.each(['TE1', 'TE5', 'TE30', 'TE31', 'TE62'].flatMap((id) => ALL_ROUTES.map((route) => [id, route] as const)))(
+        'TRO: %s, %s is refused in a read-only editor over a range the editor removes itself', async (id, route) => {
+            const shape = shapeOfId(id);
+
+            for (const backward of [false, true]) {
+                const editor = select(shape, backward);
+                const before = rangeOf(editor);
+                const roots = rootChildren(editor);
+                let refusals = 0;
+
+                editor.on('readonlyedit', () => { refusals += 1; });
+                editor.setReadOnly(true);
+
+                if (route === 'CUT_COMMAND') {
+                    // A refused cut copies nothing, which `run` waits for.
+                    stubEventClasses();
+                    lexicalOf(editor).dispatchCommand(CUT_COMMAND, null);
+                } else {
+                    await run(editor, route, false);
+                }
+
+                expect(editor.getValue(), `backward ${backward}`).toBe(shape.source);
+                expect(rootChildren(editor), `backward ${backward}`).toEqual(roots);
+                expect(rangeOf(editor), `backward ${backward}`).toBe(before);
+                expect(refusals, `backward ${backward}`).toBeGreaterThan(0);
+            }
+        });
+
+    it('TX5: Shift+Enter over all that a raw block holds is declined, and nothing changes', async () => {
+        // The break would be all the block holds, which no save writes.
+        for (const [backward, inUpdate] of VARIANTS) {
+            const editor = load(`${RAW}\n\nafter`);
+
+            selectText(editor, backward ? ['</div>', 6] : ['<div>', 0], backward ? ['<div>', 0] : ['</div>', 6]);
+
+            const range = rangeOf(editor);
+
+            await run(editor, 'Shift+Enter', inUpdate);
+
+            expect(editor.getValue()).toBe(`${RAW}\n\nafter`);
+            expect(rangeOf(editor)).toBe(range);
+        }
+    });
+
+    it('TX6: Shift+Enter over a range from a raw block\'s very start into a table removes it and adds no break', async () => {
+        // The limit the docs name: the decline of TX5 is judged for a range that ends in a block's text, not for one that takes a table.
+        for (const backward of [false, true]) {
+            const editor = load(`${RAW}\n\n${TABLE}\n\nafter`);
+
+            selectText(editor, backward ? ['c1', 1] : ['<div>', 0], backward ? ['<div>', 0] : ['c1', 1]);
+            await run(editor, 'Shift+Enter', true);
+
+            expect(editor.getValue(), `backward ${backward}`).toBe('after');
+        }
+    });
+
     it('TS18: typing over a range that starts after a space of a bold run types one run, outside an update as inside one', async () => {
         // The removal tags nothing as a deletion: typing is tidied where the caret is, as over any range, so the
         // dispatch's own update ends before or after the text is typed alike.
@@ -1938,6 +2057,8 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         ['TN16: a list after a code block, before its first item', LIST_AFTER_CODE, ['code', 1], ['list', 0, 0], ['code', 4]],
         ['TN17: a list after a code block, after its first item', LIST_AFTER_CODE, ['code', 1], ['list', 0, 1], ['la', 2]],
         ['TN18: a list item, between its blocks', ITEM_BLOCKS_AFTER_RAW, ['raw', 1], ['markdown-list-item', 0, 2], ['para', 4]],
+        ['TN19: a list, from the raw block\'s very start', LIST_AFTER_RAW, ['<div>', 0], ['list', 0, 0], ['</div>', 6]],
+        ['TN20: a list\'s first item, from the raw block\'s very start', LIST_AFTER_RAW, ['<div>', 0], ['list', 0, 1], ['la', 2]],
     ])('%s: every route gives what it gives for the range to the text there', async (_name, source, inner, holder, text) => {
         for (const route of POINT_ROUTES) {
             for (const [backward, inUpdate] of VARIANTS) {

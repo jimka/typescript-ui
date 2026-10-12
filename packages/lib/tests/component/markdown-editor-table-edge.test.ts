@@ -1321,7 +1321,8 @@ describe('every route removing a range across a table\'s edge takes the whole ta
         expect(caretBlockIndex(editor)).toBe(caretBlockIndex(removedThenEnter));
     });
 
-    // The removal empties the raw block, and Enter in an empty raw block starts a paragraph after it.
+    // The removal empties the raw block, which then shows as an empty paragraph, and Enter there starts a paragraph
+    // after it.
     it('R32: Enter over a range from a cell to the end of the raw block below starts a paragraph after the emptied block', () => {
         const editor = load(RAW_BELOW);
 
@@ -1333,7 +1334,7 @@ describe('every route removing a range across a table\'s edge takes the whole ta
         removedThenEnter.getValue();
         lexicalOf(removedThenEnter).dispatchCommand(KEY_ENTER_COMMAND, null);
 
-        expect(rootChildren(editor)).toEqual(['paragraph:Above para', 'markdown-raw-block:', 'paragraph:']);
+        expect(rootChildren(editor)).toEqual(['paragraph:Above para', 'paragraph:', 'paragraph:']);
         expect(caretOf(editor)).toBe('paragraph@0');
         expect(caretBlockIndex(editor)).toBe(2);
         expect(rootChildren(editor)).toEqual(rootChildren(removedThenEnter));

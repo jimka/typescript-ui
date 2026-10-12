@@ -904,15 +904,20 @@ function $showSiblingRawBlocksAsWritten(node: LexicalNode): void {
  * Shows a raw block whose text or place changed as its save reads:
  * without the blocks a join left inside it, which follow it
  * ({@link $moveBlocksOutAfter}: its text is read next, and theirs is
- * none of it); as the paragraph it is written as, else as the blocks its
- * own text reads as; and where it stays a raw block in a list item that
- * no raw block of its text can stand in, the whole list read again. Each
- * step runs only while the one before it left the raw block in place.
+ * none of it); as the paragraph it is written as; as a paragraph when it
+ * holds nothing ({@link $showBlankRawBlockAsParagraph}), else as the
+ * blocks its own text reads as; and where it stays a raw block in a list
+ * item that no raw block of its text can stand in, the whole list read
+ * again. Each step runs only while the one before it left the raw block
+ * in place.
  *
  * @param node - The raw block.
  */
 export function $showRawBlockAsSaved(node: MarkdownRawBlockNode): void {
-    const steps = [$moveBlocksOutAfter, $showSiblingRawBlocksAsWritten, $showRawBlockAsItsBlocks, $readListAgainAroundRawBlock];
+    const steps = [
+        $moveBlocksOutAfter, $showSiblingRawBlocksAsWritten, $showBlankRawBlockAsParagraph, $showRawBlockAsItsBlocks,
+        $readListAgainAroundRawBlock,
+    ];
 
     for (const step of steps) {
         const inPlace = node.isAttached();
@@ -920,6 +925,27 @@ export function $showRawBlockAsSaved(node: MarkdownRawBlockNode): void {
         if (inPlace) {
             step(node);
         }
+    }
+}
+
+/**
+ * Shows a raw block that holds nothing — no text, or blanks alone — as a
+ * paragraph holding what it held, the caret with it. Markdown has no block
+ * of no text: a save writes nothing for such a raw block, and a load shows
+ * nothing in its place, so the editor holds it as what an edit there
+ * starts from, the empty paragraph it holds a document of no blocks as. A
+ * removal that empties a raw block leaves one, and what is typed or pasted
+ * next goes into a paragraph. Not during a load, which builds no raw block
+ * of blank text.
+ *
+ * @param node - The raw block whose text changed.
+ */
+function $showBlankRawBlockAsParagraph(node: MarkdownRawBlockNode): void {
+    const isBlank = node.getTextContent().trim() === "";
+    const isLoading = $hasUpdateTag(MARKDOWN_IMPORT_TAG);
+
+    if (isBlank && !isLoading) {
+        node.replace($createParagraphNode(), true);
     }
 }
 
@@ -934,7 +960,8 @@ export function $showRawBlockAsSaved(node: MarkdownRawBlockNode): void {
  * or the blocks around it change — for a raw block of a list item, those are
  * the item's other blocks, its nested lists among them, and the column its
  * list comes to stand in ({@link $showColumnRawBlocksAsWritten}). A raw block whose text is edited until it
- * reads as several blocks shows as those blocks ({@link $showRawBlockAsItsBlocks}).
+ * reads as several blocks shows as those blocks ({@link $showRawBlockAsItsBlocks}), and one left holding
+ * nothing as an empty paragraph ({@link $showBlankRawBlockAsParagraph}).
  *
  * @param editor - The editor.
  * @returns The unregister function.
@@ -1524,8 +1551,9 @@ function registerLineBreakRules(editor: LexicalEditor): () => void {
 
 /**
  * `INSERT_LINE_BREAK_COMMAND` handler declining a break a save could not
- * write: in a level 3–6 heading, or where nothing with content follows the
- * selection's end in its block.
+ * write: in a level 3–6 heading, where nothing with content follows the
+ * selection's end in its block, or over a selection that covers all the
+ * text one raw block holds ({@link $coversAllOfRawBlock}).
  *
  * @returns Whether the break was declined.
  */
@@ -1538,14 +1566,31 @@ function $declinesLineBreak(): boolean {
 
     const end = selection.isBackward() ? selection.anchor : selection.focus;
 
-    return $lineBreakUnwritableAt(end);
+    return $lineBreakUnwritableAt(end) || $coversAllOfRawBlock(selection);
+}
+
+/**
+ * Whether a selection has both ends in one raw block and covers all the
+ * text it holds, blanks at its edges aside. A break put in its place would
+ * be all the block holds, and a raw block that holds nothing is no block
+ * ({@link $showBlankRawBlockAsParagraph}).
+ *
+ * @param selection - The selection.
+ * @returns Whether it does.
+ */
+function $coversAllOfRawBlock(selection: RangeSelection): boolean {
+    const block = $findMatchingParent(selection.anchor.getNode(), $isMarkdownRawBlockNode);
+    const isInOne = block !== null && block.is($findMatchingParent(selection.focus.getNode(), $isMarkdownRawBlockNode));
+
+    return isInOne && !selection.isCollapsed() && block.getTextContent().trim() === selection.getTextContent().trim();
 }
 
 /**
  * Whether a line break put at `point` is one a save could not write: the
  * point is in a level 3–6 heading, or nothing with content would follow the
  * break in its block. Never in a table cell, a code block or a raw block,
- * which keep every break.
+ * which keep every break — but a break that would be all a raw block holds
+ * is declined by the command's handler ({@link $declinesLineBreak}).
  *
  * @param point - The point the break would go in at.
  * @param rest - For a break that follows an edit joining another block's
@@ -1672,7 +1717,7 @@ function $holdsContent(node: LexicalNode, text?: string): boolean {
  * @param container - The block it sits in.
  * @returns `true` when a leaf after the point, before the run ends, holds content.
  */
-function $contentFollows(point: PointType, container: ElementNode): boolean {
+export function $contentFollows(point: PointType, container: ElementNode): boolean {
     const leaves = $inlineLeaves(container);
     const node = point.getNode();
     let start: number;
